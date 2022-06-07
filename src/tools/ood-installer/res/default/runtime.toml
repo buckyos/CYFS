@@ -1,0 +1,54 @@
+[stack.config]
+id = "default"
+shared_stack = true
+shared_stack_stub = false
+
+
+[stack.noc]
+type = "sqlite"
+
+[[stack.interface]]
+type = "http"
+listen = "127.0.0.1:1322"
+
+[[stack.interface]]
+type = "http-bdt"
+vport = "84"
+
+[[stack.interface]]
+type = "ws"
+enable = true
+listen = "127.0.0.1:1323"
+
+# bdt配置部分，可替换默认值
+
+[stack.bdt.config]
+device = "device"
+#tcp_port_mapping = 0
+#udp_sn_only = false
+
+[[stack.bdt.endpoint]]
+optional = true
+host = "$none_local_ip_v4"
+port = 8051
+protocol = "tcp"
+system_default = false
+
+[[stack.bdt.endpoint]]
+optional = true
+host = "$ip_v6"
+port = 8051
+protocol = "tcp"
+system_default = false
+
+[[stack.bdt.endpoint]]
+optional = true
+host = "$none_local_ip_v4"
+port = 8051
+protocol = "udp"
+
+[[stack.bdt.endpoint]]
+optional = true
+host = "$ip_v6"
+port = 8051
+protocol = "udp"

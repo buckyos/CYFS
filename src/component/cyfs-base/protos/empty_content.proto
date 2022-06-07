@@ -1,0 +1,8 @@
+
+// for all Empty Content
+message EmptyContent {}
+
+// for tests
+message EmptyContentV1 {
+    optional string name = 1;
+}

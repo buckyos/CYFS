@@ -1,0 +1,20 @@
+[package]
+name = "cyfs-tracker-cache"
+version = "0.5.0"
+authors = ["liyaxing <liyaxing@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust cyfs-tracker-cache package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rusqlite = { version = "0.27.0", features = ["bundled", "blob"] }
+log = "0.4"
+async-trait = "0.1.53"
+cyfs-util = { path = "../../component/cyfs-util" }
+cyfs-lib = { path = "../../component/cyfs-lib" }
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-debug = { path = "../../component/cyfs-debug" }
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+thread_local = "1.1"

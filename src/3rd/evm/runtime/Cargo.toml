@@ -1,0 +1,19 @@
+[package]
+name = "evm-runtime"
+version = "0.26.0"
+license = "Apache-2.0"
+authors = ["Wei Tang <hi@that.world>", "Parity Technologies <admin@parity.io>"]
+description = "SputnikVM - a Portable Blockchain Virtual Machine"
+repository = "https://github.com/sorpaas/rust-evm"
+keywords = ["no_std", "ethereum"]
+edition = "2018"
+
+[dependencies]
+evm-core = { version = "0.26", path = "../core", default-features = false }
+primitive-types = { version = "0.9", default-features = false }
+sha3 = { version = "0.8", default-features = false }
+cyfs-base = {path="../../../component/cyfs-base"}
+
+[features]
+default = ["std"]
+std = ["evm-core/std", "primitive-types/std", "sha3/std"]

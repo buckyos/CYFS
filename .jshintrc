@@ -1,0 +1,30 @@
+{
+  "undef": true,
+  "unused": true,
+  "esversion" : 6,
+  "curly" : true,
+  "eqeqeq" : false,
+  "globals": {
+    "require" : true,
+    "module" : true,
+    "setTimeout" : true,
+    "setInterval": true,
+    "setImmediate": true,
+    "clearTimeout": true,
+    "clearInterval": true,
+    "clearImmediate": true,
+    
+    "console": true,
+    "process" : true,
+
+    "BX_LOG": true,
+    "BX_DEBUG": true,
+    "BX_TRACE": true,
+    "BX_WARN" : true,
+    "BX_INFO": true,
+    "BX_ERROR": true,
+    "BX_ASSERT": true,
+    "BX_CHECK": true,
+    "BX_FATAL": true
+  }
+}

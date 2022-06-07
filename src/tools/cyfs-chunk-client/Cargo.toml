@@ -1,0 +1,23 @@
+[package]
+name = "cyfs-chunk-client"
+version = "0.5.0"
+authors = ["feilong <fanfeilong@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust cyfs-chunk-client package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+async-h1 = "2.3.3"
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-chunk = { path = "../../component/cyfs-chunk" }
+cyfs-util = { path = "../../component/cyfs-util" }
+log = "0.4"
+cyfs-bdt = { path = "../../component/cyfs-bdt" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+time = "0.1.41"
+url = "2.2"
+http-types = "2.12"

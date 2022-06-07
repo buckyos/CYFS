@@ -1,0 +1,5 @@
+[dsg]
+get-contract = { action = "*-get-object", res = "/dec_app/9tGpLNnBE4ATMPcdeqcxjhAvzNKm2AMCKgamLhZKKdbD/32769", group = { location = "outer" }, access = "accept" }
+get-contract-state = { action = "*-get-object", res = "/dec_app/9tGpLNnBE4ATMPcdeqcxjhAvzNKm2AMCKgamLhZKKdbD/32770", group = { location = "outer" }, access = "accept" }
+post-challenge = { action = "*-post-object", res = "/dec_app/9tGpLNnBE4ATMPcdeqcxjhAvzNKm2AMCKgamLhZKKdbD/32779", group = { location = "outer" }, access = "accept" }
+post-proof = { action = "*-post-object", res = "/dec_app/9tGpLNnBE4ATMPcdeqcxjhAvzNKm2AMCKgamLhZKKdbD/32780", group = { location = "outer" }, access = "accept" }

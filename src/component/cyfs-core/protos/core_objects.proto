@@ -1,0 +1,423 @@
+syntax = "proto3";
+
+// StorageObject
+message StorageDescContent {
+    string id = 1;
+}
+
+message StorageBodyContent {
+    bytes value = 1;
+}
+
+// TextObject
+message TextDescContent {
+    string id = 1;
+    string header = 2;
+}
+
+message TextContent {
+    string value = 1;
+}
+
+// Zone
+message ZoneDescContent {
+    bytes owner = 1;
+}
+
+message ZoneBodyContent {
+    repeated bytes ood_list = 1;
+    repeated bytes known_device_list = 2;
+    optional string ood_work_mode = 3;
+}
+
+// Admin
+message AdminGlobalStateAccessModeData {
+    enum Category {
+        RootState = 0;
+        LocalCache = 1;
+    }
+    enum AccessMode {
+        Read = 0;
+        Write = 1;
+    }
+
+    Category category = 1;
+    AccessMode access_mode = 2;
+}
+
+message AdminDescContent {
+    enum Command {
+        GlobalStateAccessMode = 0;
+    }
+
+    bytes target = 1;
+    Command cmd = 5;
+    oneof data {
+        AdminGlobalStateAccessModeData global_state_access_mode = 6;
+    }
+}
+
+// AppExtInfo
+message AppExtInfoDescContent {
+    string id = 1;
+}
+
+message AppExtInfoBodyContent {
+    string info = 1;
+}
+
+/////////////////////////////////
+// AppLocalStatus
+// permission 权限  reason 申请原因 state 是否允许
+message AppPermission {
+    string permission = 1;
+    string reason = 2;
+    uint32 state = 3;
+}
+
+message AppLocalStatusDesc {
+    bytes id = 1;
+    uint32 status = 2;
+    optional string version = 3;
+    optional bytes web_dir = 4;
+    repeated AppPermission permissions = 5;
+    AppQuota quota = 6;
+    string last_status_update_time = 7;
+    uint32 sub_error = 8;
+}
+// AppLocalStatusEnd
+
+
+//AppSetting
+message AppSettingDesc {
+    bytes id = 1;
+    bool auto_update = 2;
+}
+// AppSetting
+
+
+// AppLocalList
+// 只记录App列表，状态以AppLocalStatus为准
+message AppLocalListDesc {
+    string id = 1;
+    repeated AppLocalListItem list = 2;
+}
+
+message AppLocalListItem {
+    bytes app_id = 1;
+}
+// AppLocalListEnd
+
+// AppCmd
+message AddApp {
+    optional bytes app_owner_id = 1;
+}
+
+message InstallApp {
+    string ver = 1;
+    bool run_after_install = 2;
+}
+
+message AppQuota {
+    string mem = 1;
+    string disk_space = 2;
+    string cpu = 3;
+}
+
+message StringBoolMapItem {
+    string key = 1;
+    bool value = 2;
+}
+
+message ModifyAppPermission {
+    repeated StringBoolMapItem permission = 1;
+}
+
+message CmdCode {
+    int32 code = 1;
+    optional AddApp add_app = 2;
+    optional InstallApp install_app = 3;
+    optional ModifyAppPermission app_permission = 4;
+    optional AppQuota app_quota = 5;
+}
+
+message AppCmdDesc {
+    bytes app_id = 1;
+    CmdCode cmd_code = 2;
+}
+// AppCmdEnd
+
+// AppCmdList
+message AppCmdListDesc {
+    string id = 1;
+    repeated AppCmdListItem list = 2;
+}
+
+message AppCmdListItem {
+    bytes cmd = 1;
+    uint32 retry_count = 2;
+}
+// AppCmdListEnd
+
+// AppManagerAction
+message DecIpInfo {
+    string name = 1;
+    string ip = 2;
+}
+
+message DecAclInfo {
+    string name = 1;
+    map<string, bool> acl_info = 2;
+}
+
+message RegisterDec {
+    string docker_gateway_ip = 1;
+    map<string, DecIpInfo> dec_list = 2;
+}
+
+message UnregisterDec {
+    map<string, string> dec_list = 2;
+}
+
+message ModifyAcl {
+    map<string, DecAclInfo> dec_list = 2;
+}
+
+message AppManagerActionDesc {
+    oneof AppManagerActionEnum {
+        RegisterDec register_dec = 1;
+        UnregisterDec unregister_dec = 2;
+        ModifyAcl modify_acl = 3;
+    }
+}
+
+////////////////////////////////
+// AppStatus
+message AppStatusDescContent {
+    bytes id = 1;
+}
+
+message AppStatusContent {
+    string version = 1;
+    uint32 status = 2;
+}
+
+// AppStoreList
+message AppStoreListBodyContent {
+    repeated bytes app_store_list = 1;
+}
+
+// AppList
+message AppListDescContent {
+    string id = 1;
+    string category = 2;
+}
+
+message AppListSourceItem {
+    bytes app_id = 1;
+    bytes app_status = 2;
+}
+
+message AppListContent {
+    repeated AppListSourceItem source = 1;
+}
+
+// DecApp
+message DecAppDescContent {
+    string id = 1;
+}
+
+message StringBytesMapItem {
+    string key = 1;
+    bytes value = 2;
+}
+
+message StringStringMapItem {
+    string key = 1;
+    string value = 2;
+}
+
+message DecAppContent {
+    repeated StringBytesMapItem source = 1;
+    repeated StringStringMapItem source_desc = 2;
+    optional string icon = 3;
+    optional string desc = 4;
+    repeated StringStringMapItem tags = 5;
+}
+
+// FriendList
+message FriendItem {
+    bytes id = 1;
+    bytes content = 2;
+}
+
+message FriendListContent {
+    repeated FriendItem friends = 1;
+    uint32 auto_confirm = 2;
+    string auto_msg = 3;
+}
+
+// AddFriend
+message AddFriendDescContent {
+    bytes to = 1;
+}
+
+// RemoveFriend
+message RemoveFriendDescContent {
+    bytes to = 1;
+}
+
+// FriendOption
+message FriendOptionContent {
+    optional uint32 auto_confirm = 1;
+    optional string msg = 2;
+}
+
+// Msg
+message MsgObjectContent {
+    bytes id = 1;
+    string name = 2;
+}
+
+message MsgContent {
+    enum Type {
+        Text = 0;
+        Object = 1;
+    }
+    Type type = 1;
+    optional string text = 2;
+    optional MsgObjectContent content = 3;
+}
+
+message MsgDescContent {
+    bytes to = 1;
+    MsgContent content = 2;
+}
+
+/// Topic objects
+message MsgInfo {
+    uint32 orderd = 1;
+    uint64 seq = 2;
+    bytes msg_obj_id = 3;
+    bytes member_id = 4;
+}
+
+// TopicMessageList
+message TopicMessageListDescContent {
+    bytes topic_id = 1;
+    int32 slot = 2;
+}
+
+message TopicMessageListBodyContent {
+    uint32 start = 1;
+    repeated MsgInfo msg_list = 2;
+}
+
+// TopicPublishReq
+message TopicPublishReqDescContent {
+    bytes topic_id = 1;
+    bytes topic_owner_id = 2;
+    bytes member_id = 3;
+    int32 seq = 4;
+    uint32 count = 5;
+}
+
+// TopicPublishResp
+message TopicPublishRespDescContent {
+    bytes topic_id = 1;
+    bytes topic_owner_id = 2;
+    bytes member_id = 3;
+    uint64 seq = 4;
+}
+
+// TopicPublishStatus
+message TopicPublishStatusDescContent {
+    bytes topic_id = 1;
+}
+
+message SeqInfo {
+    bytes id = 1;
+
+    int64 offset = 2;
+    uint64 start_seq = 3;
+    repeated uint64 received_seqs = 4;
+}
+
+message TopicPublishStatusBodyContent {
+    bytes topic_id = 1;
+    repeated bytes device_list = 2;
+
+    bytes msg_list = 3;
+    uint32 msg_length = 4;
+
+    repeated SeqInfo seq_map = 5;
+}
+
+// TopicPublish
+message TopicPublishDescContent {
+    bytes topic_id = 1;
+    bytes topic_owner_id = 2;
+    MsgInfo msg_info = 3;
+}
+
+// TopicSubscribeSuccess
+message TopicSubscribeSuccessDescContent {
+    bytes topic_id = 1;
+    bytes topic_owner_id = 2;
+    bytes member_id = 3;
+    int64 msg_seq = 4;
+    optional bytes msg_obj_id = 5;
+}
+
+// TopicSubscribe
+message TopicSubscribeDescContent {
+    bytes topic_id = 1;
+    bytes topic_owner_id = 2;
+    bytes member_id = 3;
+    int64 msg_offset = 4;
+    optional bytes msg_obj_id = 5;
+}
+
+// TopicUnsubscribeSuccess
+message TopicUnsubscribeSuccessDescContent {
+    bytes topic_id = 1;
+    bytes topic_owner_id = 2;
+    bytes member_id = 3;
+    optional bytes msg_obj_id = 4;
+}
+
+// TopicUnsubscribeDescContent
+message TopicUnsubscribeDescContent {
+    bytes topic_id = 1;
+    bytes topic_owner_id = 2;
+    bytes member_id = 3;
+    optional bytes msg_obj_id = 4;
+}
+
+// Topic
+message TopicDescContent {
+    bytes unique_id = 1;
+    optional bytes user_data_id = 2;
+}
+
+message TopicBodyContent {
+    optional bytes topic_publish_status_id = 1;
+}
+
+message TransContextDescContent {
+    bytes dec_id = 1;
+    string context_name = 2;
+}
+
+message TransContextBodyContent {
+    optional bytes ref_id = 1;
+    repeated bytes device_list = 2;
+}
+
+message NFTFileDesc {
+    bytes desc = 1;
+}
+
+message NFTListDescContent {
+    repeated NFTFileDesc nft_list = 1;
+}

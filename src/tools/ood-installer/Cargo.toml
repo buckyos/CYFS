@@ -1,0 +1,32 @@
+[package]
+name = "ood-installer"
+version = "0.5.0"
+authors = ["liyaxing <liyaxing@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust ood-installer package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mac_address = "1.1.3"
+hex = "0.4"
+log = "0.4"
+cyfs-util = { path = "../../component/cyfs-util" }
+desc-tool = { path = "../../tools/desc-tool" }
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
+ood-daemon = { path = "../../service/ood-daemon" }
+ood-control = { path = "../../service/ood-control" }
+cyfs-meta-lib = {path="../../component/cyfs-meta-lib"}
+base = { path = "../../service/base", default-features = false, features = ["mongo"] }
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+async-trait = "0.1.53"
+futures-util = "0.3"
+rust-embed = { version = "6.4.0", features = ["debug-embed"]}
+clap = "2.34.0"
+qrcode = "0.12"
+
+[target.'cfg(unix)'.dependencies]
+os_type = '2.4.0'

@@ -1,0 +1,26 @@
+APP打包格式为zip。安装app时会将zip解压到app_manager指定目录。app无法指定自己被安装的位置
+zip根目录下必须有package.json文件，文件内容：
+{
+  "name": "nginx",
+  "version": "1.0.0",
+  "startType": 1,
+  "start": "nginx_warpper start",
+  "status": "nginx_warpper status",
+  "sync": "nginx_warpper sync",
+  "stop": "nginx_warpper stop"
+}
+name和version标识包名和版本，当前无用。包名和版本以app_manager为准
+startType预计标识app启动方法，类似windows service的启动类型，当前无用
+
+重要的是以下几个值，当app_manager操作app时，会调用这几个值对应的命令，工作目录是app解压目录
+这些值必须都存在，否则app不会被加载
+install: app_manager首次安装app后会立即调用一次，供app初始化自己设置
+start: app_manager启动app时调用
+status: app_manager检查app是否在运行时调用
+stop: app_manager需要停止app时调用
+uninstall: app_manager卸载app时，先调用stop，再调用uninstall，让app清理自己的配置和数据
+
+除了start之外的命令都必须返回，app_manager会等待进程退出
+
+结果返回：
+通过退出码，0表示成功，非0表示执行错误，check时0表示正在运行，非0表示没有在运行

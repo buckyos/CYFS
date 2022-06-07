@@ -1,0 +1,31 @@
+[package]
+name = "cyfs-stack-loader"
+version = "0.5.0"
+authors = ["liyaxing <liyaxing@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust cyfs-stack-loader package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = ["mongo"]
+mongo = ["cyfs-noc/mongo", "cyfs-stack/mongo"]
+sqlite = ["cyfs-noc/sqlite", "cyfs-stack/sqlite"]
+
+[dependencies]
+cyfs-util = { path = "../cyfs-util" }
+cyfs-bdt = { path = "../cyfs-bdt" }
+cyfs-stack = { path = "../cyfs-stack", default-features = false }
+cyfs-lib = { path = "../cyfs-lib" }
+cyfs-base = { path = "../cyfs-base" }
+cyfs-debug = { path = "../cyfs-debug" }
+cyfs-noc = { path = "../cyfs-noc", default-features = false }
+cyfs-meta-lib = { path = "../cyfs-meta-lib" }
+serde = "1.0"
+log = "0.4"
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+async-trait = "0.1.53"
+lazy_static = "1.4"
+regex = "1.5"
+toml = { version = "0.5", features = ["preserve_order"] }

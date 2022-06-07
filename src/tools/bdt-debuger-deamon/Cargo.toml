@@ -1,0 +1,17 @@
+[package]
+name = "bdt-debuger-deamon"
+version = "0.5.0"
+authors = ["swjtusw <swjtusw@126.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust bdt-debuger-deamon package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-bdt = { path = "../../component/cyfs-bdt" }
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+clap = "2.34.0"
+log = "0.4"

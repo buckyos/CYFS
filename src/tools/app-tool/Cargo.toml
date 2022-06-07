@@ -1,0 +1,23 @@
+[package]
+name = "app-tool"
+version = "0.5.0"
+authors = ["weiqiushi <weiqiushi@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust app-tool package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
+cyfs-core = { path = "../../component/cyfs-core" }
+cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
+cyfs-lib = { path = "../../component/cyfs-lib" }
+cyfs-util = { path = "../../component/cyfs-util" }
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+clap = "2.34.0"
+log = "0.4"
+simple_logger = "2.1"
+serde_json = "1.0"
+lazy_static = "1.4"

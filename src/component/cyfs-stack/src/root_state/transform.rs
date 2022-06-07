@@ -1,0 +1,732 @@
+use super::processor::*;
+use cyfs_base::*;
+use cyfs_lib::*;
+
+use std::sync::Arc;
+
+// 实现从output到input的转换
+pub(crate) struct GlobalStateOutputTransformer {
+    processor: GlobalStateInputProcessorRef,
+    source: DeviceId,
+}
+
+impl GlobalStateOutputTransformer {
+    pub fn new(
+        processor: GlobalStateInputProcessorRef,
+        source: DeviceId,
+    ) -> GlobalStateOutputProcessorRef {
+        let ret = Self { processor, source };
+        Arc::new(Box::new(ret))
+    }
+
+    fn convert_common(&self, common: RootStateOutputRequestCommon) -> RootStateInputRequestCommon {
+        RootStateInputRequestCommon {
+            // 来源DEC
+            dec_id: common.dec_id,
+            target: common.target,
+            flags: common.flags,
+
+            source: self.source.clone(),
+            protocol: NONProtocol::Native,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl GlobalStateOutputProcessor for GlobalStateOutputTransformer {
+    async fn get_current_root(
+        &self,
+        req: RootStateGetCurrentRootOutputRequest,
+    ) -> BuckyResult<RootStateGetCurrentRootOutputResponse> {
+        let in_req = RootStateGetCurrentRootInputRequest {
+            common: self.convert_common(req.common),
+            root_type: req.root_type,
+        };
+
+        self.processor.get_current_root(in_req).await
+    }
+
+    async fn create_op_env(
+        &self,
+        req: RootStateCreateOpEnvOutputRequest,
+    ) -> BuckyResult<OpEnvOutputProcessorRef> {
+        let in_req = RootStateCreateOpEnvInputRequest {
+            common: self.convert_common(req.common),
+
+            op_env_type: req.op_env_type,
+        };
+
+        let resp = self.processor.create_op_env(in_req).await?;
+        let processor = self.processor.create_op_env_processor();
+
+        let ret = OpEnvOutputTransformer::new(resp.sid, processor, self.source.clone());
+        Ok(ret)
+    }
+}
+
+// 实现从output到input的转换
+pub(crate) struct OpEnvOutputTransformer {
+    sid: u64,
+    processor: OpEnvInputProcessorRef,
+    source: DeviceId,
+}
+
+impl OpEnvOutputTransformer {
+    pub fn new(
+        sid: u64,
+        processor: OpEnvInputProcessorRef,
+        source: DeviceId,
+    ) -> OpEnvOutputProcessorRef {
+        let ret = Self {
+            sid,
+            processor,
+            source,
+        };
+        Arc::new(Box::new(ret))
+    }
+
+    fn convert_common(&self, common: OpEnvOutputRequestCommon) -> OpEnvInputRequestCommon {
+        OpEnvInputRequestCommon {
+            // 来源DEC
+            dec_id: common.dec_id,
+            target: common.target,
+
+            flags: common.flags,
+
+            source: self.source.clone(),
+            protocol: NONProtocol::Native,
+
+            sid: self.sid,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl OpEnvOutputProcessor for OpEnvOutputTransformer {
+    fn get_sid(&self) -> u64 {
+        self.sid
+    }
+
+    async fn load(&self, req: OpEnvLoadOutputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvLoadInputRequest {
+            common: self.convert_common(req.common),
+
+            target: req.target,
+        };
+
+        self.processor.load(in_req).await
+    }
+
+    async fn load_by_path(&self, req: OpEnvLoadByPathOutputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvLoadByPathInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+        };
+
+        self.processor.load_by_path(in_req).await
+    }
+
+    async fn create_new(&self, req: OpEnvCreateNewOutputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvCreateNewInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            key: req.key,
+            content_type: req.content_type,
+        };
+
+        self.processor.create_new(in_req).await
+    }
+
+    async fn lock(&self, req: OpEnvLockOutputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvLockInputRequest {
+            common: self.convert_common(req.common),
+
+            path_list: req.path_list,
+            duration_in_millsecs: req.duration_in_millsecs,
+            try_lock: req.try_lock,
+        };
+
+        self.processor.lock(in_req).await
+    }
+
+    async fn commit(
+        &self,
+        req: OpEnvCommitOutputRequest,
+    ) -> BuckyResult<OpEnvCommitOutputResponse> {
+        let in_req = OpEnvCommitInputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.commit(in_req).await
+    }
+
+    async fn abort(&self, req: OpEnvAbortOutputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvAbortInputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.abort(in_req).await
+    }
+
+    // map methods
+    async fn get_by_key(
+        &self,
+        req: OpEnvGetByKeyOutputRequest,
+    ) -> BuckyResult<OpEnvGetByKeyOutputResponse> {
+        let in_req = OpEnvGetByKeyInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            key: req.key,
+        };
+
+        self.processor.get_by_key(in_req).await
+    }
+
+    async fn insert_with_key(&self, req: OpEnvInsertWithKeyOutputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvInsertWithKeyInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            key: req.key,
+            value: req.value,
+        };
+
+        self.processor.insert_with_key(in_req).await
+    }
+
+    async fn set_with_key(
+        &self,
+        req: OpEnvSetWithKeyOutputRequest,
+    ) -> BuckyResult<OpEnvSetWithKeyOutputResponse> {
+        let in_req = OpEnvSetWithKeyInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            key: req.key,
+            value: req.value,
+            prev_value: req.prev_value,
+            auto_insert: req.auto_insert,
+        };
+
+        self.processor.set_with_key(in_req).await
+    }
+
+    async fn remove_with_key(
+        &self,
+        req: OpEnvRemoveWithKeyOutputRequest,
+    ) -> BuckyResult<OpEnvRemoveWithKeyOutputResponse> {
+        let in_req = OpEnvRemoveWithKeyInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            key: req.key,
+            prev_value: req.prev_value,
+        };
+
+        self.processor.remove_with_key(in_req).await
+    }
+
+    // set methods
+    async fn contains(
+        &self,
+        req: OpEnvContainsOutputRequest,
+    ) -> BuckyResult<OpEnvContainsOutputResponse> {
+        let in_req = OpEnvContainsInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            value: req.value,
+        };
+
+        self.processor.contains(in_req).await
+    }
+
+    async fn insert(
+        &self,
+        req: OpEnvInsertOutputRequest,
+    ) -> BuckyResult<OpEnvInsertOutputResponse> {
+        let in_req = OpEnvInsertInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            value: req.value,
+        };
+
+        self.processor.insert(in_req).await
+    }
+
+    async fn remove(
+        &self,
+        req: OpEnvRemoveOutputRequest,
+    ) -> BuckyResult<OpEnvRemoveOutputResponse> {
+        let in_req = OpEnvRemoveInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            value: req.value,
+        };
+
+        self.processor.remove(in_req).await
+    }
+
+    // iterator methods
+    async fn next(&self, req: OpEnvNextOutputRequest) -> BuckyResult<OpEnvNextOutputResponse> {
+        let in_req = OpEnvNextInputRequest {
+            common: self.convert_common(req.common),
+
+            step: req.step,
+        };
+
+        self.processor.next(in_req).await
+    }
+
+    async fn metadata(
+        &self,
+        req: OpEnvMetadataOutputRequest,
+    ) -> BuckyResult<OpEnvMetadataOutputResponse> {
+        let in_req = OpEnvMetadataInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+        };
+
+        self.processor.metadata(in_req).await
+    }
+}
+
+///////////////////////////////////////////////////
+
+// 实现从input到output的转换
+pub(crate) struct GlobalStateInputTransformer {
+    processor: GlobalStateOutputProcessorRef,
+}
+
+impl GlobalStateInputTransformer {
+    pub fn new(processor: GlobalStateOutputProcessorRef) -> GlobalStateInputProcessorRef {
+        let ret = Self { processor };
+        Arc::new(Box::new(ret))
+    }
+
+    fn convert_common(&self, common: RootStateInputRequestCommon) -> RootStateOutputRequestCommon {
+        RootStateOutputRequestCommon {
+            // 来源DEC
+            dec_id: common.dec_id,
+            target: common.target,
+            flags: common.flags,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl GlobalStateInputProcessor for GlobalStateInputTransformer {
+    fn create_op_env_processor(&self) -> OpEnvInputProcessorRef {
+        unreachable!();
+    }
+
+    async fn get_current_root(
+        &self,
+        req: RootStateGetCurrentRootInputRequest,
+    ) -> BuckyResult<RootStateGetCurrentRootInputResponse> {
+        let in_req = RootStateGetCurrentRootOutputRequest {
+            common: self.convert_common(req.common),
+            root_type: req.root_type,
+        };
+
+        self.processor.get_current_root(in_req).await
+    }
+
+    async fn create_op_env(
+        &self,
+        req: RootStateCreateOpEnvInputRequest,
+    ) -> BuckyResult<RootStateCreateOpEnvInputResponse> {
+        let in_req = RootStateCreateOpEnvOutputRequest {
+            common: self.convert_common(req.common),
+
+            op_env_type: req.op_env_type,
+        };
+
+        let processor = self.processor.create_op_env(in_req).await?;
+        let resp = RootStateCreateOpEnvOutputResponse {
+            sid: processor.get_sid(),
+        };
+
+        Ok(resp)
+    }
+}
+
+// 实现从output到input的转换
+pub(crate) struct OpEnvInputTransformer {
+    processor: OpEnvOutputProcessorRef,
+}
+
+impl OpEnvInputTransformer {
+    pub fn new(processor: OpEnvOutputProcessorRef) -> OpEnvInputProcessorRef {
+        let ret = Self { processor };
+        Arc::new(Box::new(ret))
+    }
+
+    fn convert_common(&self, common: OpEnvInputRequestCommon) -> OpEnvOutputRequestCommon {
+        OpEnvOutputRequestCommon {
+            // 来源DEC
+            dec_id: common.dec_id,
+            target: common.target,
+
+            flags: common.flags,
+
+            sid: common.sid,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl OpEnvInputProcessor for OpEnvInputTransformer {
+    async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvLoadOutputRequest {
+            common: self.convert_common(req.common),
+
+            target: req.target,
+        };
+
+        self.processor.load(in_req).await
+    }
+
+    async fn load_by_path(&self, req: OpEnvLoadByPathInputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvLoadByPathOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+        };
+
+        self.processor.load_by_path(in_req).await
+    }
+
+    async fn create_new(&self, req: OpEnvCreateNewInputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvCreateNewOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            key: req.key,
+            content_type: req.content_type,
+        };
+
+        self.processor.create_new(in_req).await
+    }
+
+    async fn lock(&self, req: OpEnvLockInputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvLockOutputRequest {
+            common: self.convert_common(req.common),
+
+            path_list: req.path_list,
+            duration_in_millsecs: req.duration_in_millsecs,
+            try_lock: req.try_lock,
+        };
+
+        self.processor.lock(in_req).await
+    }
+
+    async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
+        let in_req = OpEnvCommitOutputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.commit(in_req).await
+    }
+
+    async fn abort(&self, req: OpEnvAbortInputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvAbortOutputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.abort(in_req).await
+    }
+
+    // map methods
+    async fn get_by_key(
+        &self,
+        req: OpEnvGetByKeyInputRequest,
+    ) -> BuckyResult<OpEnvGetByKeyInputResponse> {
+        let in_req = OpEnvGetByKeyOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            key: req.key,
+        };
+
+        self.processor.get_by_key(in_req).await
+    }
+
+    async fn insert_with_key(&self, req: OpEnvInsertWithKeyInputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvInsertWithKeyOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            key: req.key,
+            value: req.value,
+        };
+
+        self.processor.insert_with_key(in_req).await
+    }
+
+    async fn set_with_key(
+        &self,
+        req: OpEnvSetWithKeyInputRequest,
+    ) -> BuckyResult<OpEnvSetWithKeyInputResponse> {
+        let in_req = OpEnvSetWithKeyOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            key: req.key,
+            value: req.value,
+            prev_value: req.prev_value,
+            auto_insert: req.auto_insert,
+        };
+
+        self.processor.set_with_key(in_req).await
+    }
+
+    async fn remove_with_key(
+        &self,
+        req: OpEnvRemoveWithKeyInputRequest,
+    ) -> BuckyResult<OpEnvRemoveWithKeyInputResponse> {
+        let in_req = OpEnvRemoveWithKeyOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            key: req.key,
+            prev_value: req.prev_value,
+        };
+
+        self.processor.remove_with_key(in_req).await
+    }
+
+    // set methods
+    async fn contains(
+        &self,
+        req: OpEnvContainsInputRequest,
+    ) -> BuckyResult<OpEnvContainsInputResponse> {
+        let in_req = OpEnvContainsOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            value: req.value,
+        };
+
+        self.processor.contains(in_req).await
+    }
+
+    async fn insert(&self, req: OpEnvInsertInputRequest) -> BuckyResult<OpEnvInsertInputResponse> {
+        let in_req = OpEnvInsertOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            value: req.value,
+        };
+
+        self.processor.insert(in_req).await
+    }
+
+    async fn remove(&self, req: OpEnvRemoveInputRequest) -> BuckyResult<OpEnvRemoveInputResponse> {
+        let in_req = OpEnvRemoveOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+            value: req.value,
+        };
+
+        self.processor.remove(in_req).await
+    }
+
+    // iterator methods
+    async fn next(&self, req: OpEnvNextInputRequest) -> BuckyResult<OpEnvNextInputResponse> {
+        let in_req = OpEnvNextOutputRequest {
+            common: self.convert_common(req.common),
+
+            step: req.step,
+        };
+
+        self.processor.next(in_req).await
+    }
+
+    async fn metadata(
+        &self,
+        req: OpEnvMetadataInputRequest,
+    ) -> BuckyResult<OpEnvMetadataInputResponse> {
+        let in_req = OpEnvMetadataOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+        };
+
+        self.processor.metadata(in_req).await
+    }
+}
+
+// 实现从output到input的转换
+pub(crate) struct GlobalStateAccessOutputTransformer {
+    processor: GlobalStateAccessInputProcessorRef,
+    source: DeviceId,
+}
+
+impl GlobalStateAccessOutputTransformer {
+    pub fn new(
+        processor: GlobalStateAccessInputProcessorRef,
+        source: DeviceId,
+    ) -> GlobalStateAccessOutputProcessorRef {
+        let ret = Self { processor, source };
+        Arc::new(Box::new(ret))
+    }
+
+    fn convert_common(&self, common: RootStateOutputRequestCommon) -> RootStateInputRequestCommon {
+        RootStateInputRequestCommon {
+            // 来源DEC
+            dec_id: common.dec_id,
+            target: common.target,
+            flags: common.flags,
+
+            source: self.source.clone(),
+            protocol: NONProtocol::Native,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl GlobalStateAccessOutputProcessor for GlobalStateAccessOutputTransformer {
+    async fn get_object_by_path(
+        &self,
+        req: RootStateAccessGetObjectByPathOutputRequest,
+    ) -> BuckyResult<RootStateAccessGetObjectByPathOutputResponse> {
+        let in_req = RootStateAccessGetObjectByPathInputRequest {
+            common: self.convert_common(req.common),
+            mode: req.mode,
+            inner_path: req.inner_path,
+        };
+
+        let in_resp = self.processor.get_object_by_path(in_req).await?;
+
+        let resp = if let Some(object) = in_resp.object {
+            RootStateAccessGetObjectByPathOutputResponse {
+                object: Some(NONGetObjectOutputResponse {
+                    object: object.object,
+                    object_expires_time: object.object_expires_time,
+                    object_update_time: object.object_update_time,
+                    attr: object.attr,
+                }),
+                data: None,
+            }
+        } else if let Some(data) = in_resp.data {
+            RootStateAccessGetObjectByPathOutputResponse {
+                data: Some(NDNGetDataOutputResponse {
+                    object_id: data.object_id,
+                    owner_id: data.owner_id,
+                    attr: data.attr,
+                    range: data.range,
+                    length: data.length,
+                    data: data.data,
+                }),
+                object: None,
+            }
+        } else {
+            unreachable!();
+        };
+
+        Ok(resp)
+    }
+
+    async fn list(
+        &self,
+        req: RootStateAccessListOutputRequest,
+    ) -> BuckyResult<RootStateAccessListOutputResponse> {
+        let in_req = RootStateAccessListInputRequest {
+            common: self.convert_common(req.common),
+            page_index: req.page_index,
+            page_size: req.page_size,
+            inner_path: req.inner_path,
+        };
+
+        self.processor.list(in_req).await
+    }
+}
+
+// 实现从input到output的转换
+pub(crate) struct GlobalStateAccessInputTransformer {
+    processor: GlobalStateAccessOutputProcessorRef,
+}
+
+impl GlobalStateAccessInputTransformer {
+    pub fn new(
+        processor: GlobalStateAccessOutputProcessorRef,
+    ) -> GlobalStateAccessInputProcessorRef {
+        let ret = Self { processor };
+        Arc::new(Box::new(ret))
+    }
+
+    fn convert_common(&self, common: RootStateInputRequestCommon) -> RootStateOutputRequestCommon {
+        RootStateOutputRequestCommon {
+            // 来源DEC
+            dec_id: common.dec_id,
+            target: common.target,
+            flags: common.flags,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl GlobalStateAccessInputProcessor for GlobalStateAccessInputTransformer {
+    async fn get_object_by_path(
+        &self,
+        req: RootStateAccessGetObjectByPathInputRequest,
+    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
+        let out_req = RootStateAccessGetObjectByPathOutputRequest {
+            common: self.convert_common(req.common),
+            mode: req.mode,
+            inner_path: req.inner_path,
+        };
+
+        let out_resp = self.processor.get_object_by_path(out_req).await?;
+
+        let resp = if let Some(object) = out_resp.object {
+            RootStateAccessGetObjectByPathInputResponse {
+                object: Some(NONGetObjectInputResponse {
+                    object: object.object,
+                    object_expires_time: object.object_expires_time,
+                    object_update_time: object.object_update_time,
+                    attr: object.attr,
+                }),
+                data: None,
+            }
+        } else if let Some(data) = out_resp.data {
+            RootStateAccessGetObjectByPathInputResponse {
+                data: Some(NDNGetDataInputResponse {
+                    object_id: data.object_id,
+                    owner_id: data.owner_id,
+                    attr: data.attr,
+                    range: data.range,
+                    length: data.length,
+                    data: data.data,
+                }),
+                object: None,
+            }
+        } else {
+            unreachable!();
+        };
+
+        Ok(resp)
+    }
+
+    async fn list(
+        &self,
+        req: RootStateAccessListInputRequest,
+    ) -> BuckyResult<RootStateAccessListInputResponse> {
+        let out_req = RootStateAccessListOutputRequest {
+            common: self.convert_common(req.common),
+            page_index: req.page_index,
+            page_size: req.page_size,
+            inner_path: req.inner_path,
+        };
+
+        self.processor.list(out_req).await
+    }
+}

@@ -1,0 +1,37 @@
+[config]
+
+
+[stack.config]
+id="default"
+
+[stack.noc]
+type = "mongo"
+
+[[stack.bdt.endpoint]]
+optional = true
+host = "$none_local_ip_v4"
+port = 8050
+protocol = "tcp"
+
+[[stack.bdt.endpoint]]
+optional = true
+host = "$none_local_ip_v4"
+port = 8050
+protocol = "udp"
+
+[[stack.bdt.endpoint]]
+optional = true
+host = "$ip_v6"
+port = 8050
+protocol = "tcp"
+
+[[stack.bdt.endpoint]]
+optional = true
+host = "$ip_v6"
+port = 8050
+protocol = "udp"
+ 
+[stack.bdt.config]
+device = "device"
+#tcp_port_mapping = 8050
+#udp_sn_only = false

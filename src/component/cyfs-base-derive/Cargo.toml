@@ -1,0 +1,18 @@
+[package]
+name = "cyfs-base-derive"
+version = "0.5.0"
+authors = ["wugren <wuguoren@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust cyfs-base-derive package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+syn = {version = "1.0", features = ["visit"]}
+quote = "1.0"
+proc-macro2 = "1.0"
+regex = "1.5"
+
+[lib]
+proc-macro = true

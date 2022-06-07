@@ -1,0 +1,41 @@
+[package]
+name = "gateway"
+version = "0.5.0"
+authors = ["liyaxing <liyaxing@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust gateway package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+base = { path = "../base", features = [
+    "mongo",
+    "sqlite",
+], default-features = false }
+cyfs-util = { path = "../../component/cyfs-util" }
+cyfs-bdt = { path = "../../component/cyfs-bdt" }
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-stack-loader = { path = "../../component/cyfs-stack-loader" }
+serde = "1.0"
+serde_json = "1.0"
+log = "0.4"
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+async-trait = "0.1.53"
+futures = "0.3"
+async-h1 = "2.3.3"
+http-types = "2.12"
+lazy_static = "1.4"
+regex = "1.5"
+wildmatch = "2.1"
+hex = "0.4"
+lru_time_cache = "0.11"
+clap = "2.34.0"
+tide = "0.16"
+url = "2.2"
+bytes = "1.1"
+toml = "0.5"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["mswsock", "winsock2"] }

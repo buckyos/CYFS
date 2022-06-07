@@ -1,0 +1,18 @@
+[package]
+name = "pack-tools"
+version = "0.5.0"
+authors = ["liyaxing <liyaxing@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust pack-tools package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+walkdir = "2.3"
+clap = "2.34.0"
+simple_logger = "2.1"
+log = "0.4"
+sha2 = "0.8"
+zip = "0.6.2"
+cyfs-base={path="../../component/cyfs-base"}

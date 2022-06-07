@@ -1,0 +1,12 @@
+*.o
+*.so
+*.rlib
+*.dll
+*.swp
+*.exe
+*.iml
+.idea
+target
+**/result
+tests.bin
+Cargo.lock

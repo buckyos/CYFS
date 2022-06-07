@@ -1,0 +1,100 @@
+syntax="proto3";
+
+// contract
+message ContractBodyContent {
+    bytes data = 1;
+}
+
+// device
+message DeviceBodyContent {
+    repeated bytes endpoints = 1;
+    repeated bytes sn_list = 2;
+    repeated bytes passive_pn_list = 3;
+    optional string name = 4;
+}
+
+// dir
+message DirBodyContent {
+    enum Type {
+        Chunk = 0;
+        ObjList = 1;
+    }
+    Type type = 1;
+    optional bytes chunk_id = 2;
+
+    // 使用list编码hash_map
+    message ObjItem {
+        bytes obj_id = 1;
+        bytes value = 2;
+    }
+    repeated ObjItem obj_list = 3;
+}
+
+// file
+message ChunkList {
+    enum Type {
+        ChunkInList = 0;
+        ChunkInFile = 1;
+        ChunkInBundle = 2;
+    }
+    enum HashMethod {
+        Serial = 0;
+    }
+
+    Type type = 1;
+    repeated bytes chunk_id_list = 2;
+    bytes file_id = 3;
+    optional HashMethod hash_method = 4;
+}
+
+message FileBodyContent {
+    ChunkList chunk_list = 1;
+}
+
+// org
+message Director {
+    bytes id = 1;
+    uint32 right = 2;
+}
+
+message OrgMember {
+    bytes id = 1;
+    uint32 right = 2;
+    uint64 shares = 3;
+}
+
+message OrgBodyContent {
+    repeated OrgMember members = 1;
+    repeated Director directors = 2;
+    uint64 total_equity = 3;
+}
+
+// people
+message PeopleBodyContent {
+    repeated bytes ood_list = 1;
+    optional string name = 2;
+    optional bytes icon = 3;
+    optional string ood_work_mode = 4;
+}
+
+
+// simple_group
+message SimpleGroupBodyContent {
+    repeated bytes members = 1;
+    repeated bytes ood_list = 2;
+    optional string ood_work_mode = 3;
+}
+
+// tx
+message TxBodyContent {
+    bytes data = 1;
+}
+
+// proof_of_service
+message ProofData {
+    bytes data = 1;
+}
+
+message ProofOfServiceBodyContent {
+    ProofData data = 1;
+}

@@ -1,0 +1,28 @@
+[package]
+name = "dsg-client"
+version = "0.5.0"
+edition = "2021"
+license = "BSD-2-Clause"
+description = "Rust dsg-client package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-std = { version = "1.8", features = ["std"] }
+async-trait = "0.1.53"
+log = "0.4"
+protobuf = { version = "2", features = ["with-bytes"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.8.1"
+rand = "0.8.5"
+cyfs-base = { path = "../../../component/cyfs-base" }
+cyfs-lib = { path = "../../../component/cyfs-lib" }
+cyfs-util = { path = "../../../component/cyfs-util" }
+cyfs-debug = { path = "../../../component/cyfs-debug" }
+cyfs-core = { path = "../../../component/cyfs-core" }
+cyfs-bdt = { path = "../../../component/cyfs-bdt" }
+
+[build-dependencies]
+protoc-rust = "2"
+protoc-bin-vendored = "3"

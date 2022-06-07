@@ -1,0 +1,25 @@
+[package]
+name = "cyfs-container"
+version = "0.5.0"
+authors = ["liyaxing <liyaxing@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust cyfs-container package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4"
+async-std = { version = "1.11", features = ["attributes"] }
+async-trait = "0.1.53"
+futures = "0.3"
+serde-hjson = "0.9.1"
+cyfs-util = { path = "../../component/cyfs-util" }
+cyfs-bdt = { path = "../../component/cyfs-bdt" }
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-lib = { path = "../../component/cyfs-lib" }
+cyfs-stack-loader = { path = "../../component/cyfs-stack-loader", features = [
+    "mongo",
+], default-features = false }
+# im-service = {path="../../product/cyim/im-service", features = ["http"]}

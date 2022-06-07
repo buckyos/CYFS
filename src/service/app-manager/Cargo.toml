@@ -1,0 +1,45 @@
+[package]
+name = "app-manager"
+version = "0.5.0"
+authors = [
+    "weiqiushi <weiqiushi@buckyos.com>",
+    "Wangsong <wangsong@buckyos.com>",
+    "Sunxinle <sunxinle@buckyos.com>",
+]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust app-manager package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
+cyfs-core = { path = "../../component/cyfs-core" }
+cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
+cyfs-lib = { path = "../../component/cyfs-lib" }
+async-std = { version = "1.11", features = [
+    "unstable",
+    "attributes",
+    "tokio1",
+] }
+log = "0.4"
+async-trait = "0.1.53"
+ood-daemon = { path = "../ood-daemon" }
+cyfs-client = { path = "../../tools/cyfs-client" }
+zip = "0.6"
+fs_extra = "1.2"
+cyfs-util = { path = "../../component/cyfs-util" }
+cyfs-debug = { path = "../../component/cyfs-debug" }
+walkdir = "2.3"
+which = "4.2.5"
+regex = "1.5"
+flate2 = "1.0.23"
+tar = "0.4.38"
+chrono = "0.4"
+bollard = "0.11"
+futures-util = "0.3"
+version-compare = "0.1"
+app-manager-lib = { path = "../app-manager-lib" }

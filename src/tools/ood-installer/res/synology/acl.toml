@@ -1,0 +1,22 @@
+[config]
+
+[app]
+include = "system.app"
+
+[im]
+include = "official.im"
+
+[dsg]
+include = "official.dsg"
+
+[cyfs-git]
+include = "official.git"
+
+[drive]
+include = "official.drive"
+
+[nft]
+include = "official.nft"
+
+[perf]
+include = "system.perf"

@@ -1,0 +1,8 @@
+[log.global]
+level = "info"
+console = "info"
+
+[log.cyfs_bdt]
+level = "info"
+console = "info"
+file = "bdt"

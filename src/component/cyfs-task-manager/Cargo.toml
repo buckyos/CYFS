@@ -1,0 +1,34 @@
+[package]
+name = "cyfs-task-manager"
+version = "0.5.0"
+edition = "2021"
+license = "BSD-2-Clause"
+description = "Rust cyfs-task-manager package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cyfs-base = { path = "../../component/cyfs-base", version = "0.5" }
+async-trait = "0.1.53"
+futures = "0.3"
+log = "0.4"
+async-std = { version = "1.11.0", features = ["attributes"] }
+generic-array = "0.12.4"
+base58 = "0.2.0"
+lazy_static = "1.4"
+
+[target.'cfg(all(target_os="windows", target_env = "gnu"))'.dependencies]
+sqlx = { version = "0.5.11", features = [
+    "runtime-async-std-native-tls",
+    "any",
+    "sqlite",
+    "mysql",
+] }
+
+[target.'cfg(any(not(target_os="windows"), not(target_env = "gnu")))'.dependencies]
+sqlx = { version = "0.5.11", features = [
+    "runtime-async-std-rustls",
+    "any",
+    "sqlite",
+    "mysql",
+] }

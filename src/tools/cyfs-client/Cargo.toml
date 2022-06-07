@@ -1,0 +1,30 @@
+[package]
+name = "cyfs-client"
+version = "0.5.0"
+authors = ["liuzhicong <liuzhicong@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust cyfs-client package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cyfs-bdt = { path = "../../component/cyfs-bdt" }
+cyfs-util = { path = "../../component/cyfs-util" }
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
+cyfs-chunk = { path = "../../component/cyfs-chunk" }
+cyfs-chunk-client = { path = "../../tools/cyfs-chunk-client" }
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+url = "2.2"
+async-h1 = "2.3.3"
+http-types = "2.12"
+serde_json = "1.0"
+clap = "2.34.0"
+rand = "0.7"
+log = "0.4"
+cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
+hex = "0.4"
+walkdir = "2.3"
+async-trait = "0.1.53"

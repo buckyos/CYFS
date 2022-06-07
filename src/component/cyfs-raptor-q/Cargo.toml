@@ -1,0 +1,54 @@
+[package]
+name = "cyfs-raptorq"
+description = "RaptorQ (RFC6330)"
+license = "Apache-2.0"
+homepage = "https://github.com/cberner/cyfs_raptorq"
+repository = "https://github.com/cberner/cyfs_raptorq"
+readme = "README.md"
+version = "1.6.1"
+edition = "2018"
+authors = ["Christopher Berner <christopherberner@gmail.com>"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = {version = "1.0.102", features=["std", "derive"], optional = true}
+pyo3 = {version = "0.12", features=["extension-module"], optional = true }
+rand = "0.7"
+
+[dev-dependencies]
+criterion = "0.3"
+primal = "0.3"
+rand = "0.7"
+threadpool = "1.7"
+
+[[bench]]
+name = "codec_benchmark"
+harness = false
+
+[[bench]]
+name = "matrix_sparsity"
+harness = false
+
+[[bench]]
+name = "encode_benchmark"
+harness = false
+
+[[bench]]
+name = "decode_benchmark"
+harness = false
+
+[features]
+benchmarking = []
+python = ["pyo3"]
+serde_support = ["serde"]
+
+[package.metadata.maturin]
+requires-python = ">= 3.5"
+classifier = ["Development Status :: 4 - Beta",
+              "License :: OSI Approved :: Apache Software License",
+              "Programming Language :: Python",
+              "Programming Language :: Python :: 3",
+              "Programming Language :: Python :: 3 :: Only",
+              "Programming Language :: Rust"]

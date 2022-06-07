@@ -1,0 +1,20 @@
+[package]
+name = "cyfs-chunk-lib"
+version = "0.5.0"
+edition = "2021"
+license = "BSD-2-Clause"
+description = "Rust cyfs-chunk-lib package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-std = { version = "1.11", features = ["unstable", "std"] }
+cyfs-base = { path = "../../component/cyfs-base", version = "0.5" }
+memmap2 = "0.5.0"
+log = "0.4"
+async-trait = "0.1.53"
+
+[target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
+shared_memory = { version = "0.12.2", default-features = false, features = [
+    "log",
+] }

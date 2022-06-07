@@ -1,0 +1,21 @@
+{
+	"env": {
+		"node": true,
+		"es6": true
+	},
+	"rules": {
+		"no-console": 0,
+		"no-cond-assign": 0,
+		"no-unused-vars": 1,
+		"no-extra-semi": "warn",
+		"semi": "warn",
+		"no-empty": 0
+	},
+	"extends": "eslint:recommended",
+	"globals": {
+		"getCurrentRuntime": true,
+		"BaseLib": true,
+		"ErrorCode": true
+	},
+	"parser": "babel-eslint" 
+}

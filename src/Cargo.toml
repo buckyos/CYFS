@@ -1,0 +1,68 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "./component/cyfs-base",
+    "./component/cyfs-core",
+    "./component/cyfs-base-derive",
+    "./component/cyfs-chunk",
+    "./component/cyfs-base-meta",
+    "./component/cyfs-meta",
+    "./component/cyfs-debug",
+    "./component/cyfs-raptor-q",
+    "./component/cyfs-bdt",
+    "./component/cyfs-util",
+    "./component/cyfs-noc",
+    "./component/cyfs-noc",
+    "./component/cyfs-tracker-cache",
+    "./component/cyfs-cip",
+    "./component/cyfs-lib",
+    "./component/cyfs-stack",
+    "./component/cyfs-stack-loader",
+    "./component/cyfs-meta-spv",
+    "./component/cyfs-meta-lib",
+    "./component/cyfs-perf/cyfs-perf-base",
+    "./component/cyfs-perf/cyfs-perf-client",
+    "./component/cyfs-task-manager",
+    "./component/cyfs-chunk-cache",
+    "./component/cyfs-chunk-lib",
+
+    "./service/base",
+    "./service/ood-control",
+    "./service/ood-daemon",
+    "./service/app-manager",
+    "./service/chunk-manager",
+    "./service/gateway",
+    "./service/file-manager",
+    "./service/cyfs-runtime",
+    "./service/app-manager-lib",
+
+    "./tools/cyfs-client",
+    "./tools/pack-tools",
+    "./tools/desc-tool",
+    "./tools/ood-installer",
+    "./tools/cyfs-chunk-client",
+    "./tools/cyfs-meta-client",
+    "./tools/cyfs-meta-genesis",
+    "./tools/app-tool",
+    "./tools/app-tool-ex",
+    "./tools/cyfs-container",
+    "./tools/zone-simulator",
+    "./tools/zone-stack",
+    "./tools/bdt-debuger",
+    "./tools/bdt-debuger-deamon",
+    "./tools/cyfs-check",
+
+    "./tests/cyfs-stack-test",
+]
+
+[profile.release]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = false
+panic = 'unwind'
+incremental = false
+codegen-units = 16
+rpath = false
