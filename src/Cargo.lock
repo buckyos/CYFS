@@ -2144,6 +2144,7 @@ dependencies = [
  "futures",
  "hex",
  "log 0.4.16",
+ "once_cell",
  "rand 0.8.5",
  "serde_json",
  "zone-simulator",

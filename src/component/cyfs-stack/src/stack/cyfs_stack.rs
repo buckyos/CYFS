@@ -401,21 +401,6 @@ impl CyfsStackImpl {
             config.clone(),
         );
 
-        
-        // 触发一个测试事件
-        {
-            let events = router_events.clone();
-            async_std::task::spawn(async move {
-                async_std::task::sleep(std::time::Duration::from_secs(10)).await;
-
-                let mut emitter = events.events().test_event().emitter();
-                let param = TestEventRequest {};
-                let resp = emitter.emit(param).await;
-                info!("test event resp: {}", resp);
-            });
-        }
-        
-
         let mut stack = Self {
             config,
 

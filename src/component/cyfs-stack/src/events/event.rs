@@ -226,16 +226,16 @@ where
         inner.remove_event(id)
     }
 
-    pub(crate) fn emitter(&self) -> RouterEventEmitter<REQ, RESP> {
+    pub fn emitter(&self) -> RouterEventEmitter<REQ, RESP> {
         RouterEventEmitter::<REQ, RESP>::new(self)
     }
 
-    pub(crate) fn specified_emitter(&self, id: &str) -> Option<RouterEventEmitter<REQ, RESP>> {
+    pub fn specified_emitter(&self, id: &str) -> Option<RouterEventEmitter<REQ, RESP>> {
         RouterEventEmitter::<REQ, RESP>::new_with_specified(self, id)
     }
 }
 
-pub(crate) struct RouterEventEmitter<REQ, RESP>
+pub struct RouterEventEmitter<REQ, RESP>
 where
     REQ: Send + Sync + 'static + JsonCodec<REQ> + fmt::Display,
     RESP: Send + Sync + 'static + JsonCodec<RESP> + fmt::Display,
@@ -303,7 +303,7 @@ where
             Some(event) => RouterEventsImpl::emit(&self.category, event, &param).await,
             None => RouterEventResponse {
                 handled: false,
-                call_next: true,
+                call_next: false,
                 response: None,
             },
         }
@@ -314,20 +314,24 @@ where
             request: param,
         };
 
+        let mut last_resp = Some(RouterEventResponse {
+            handled: false,
+            call_next: false,
+            response: None,
+        });
+
         loop {
             let resp = match self.next_event() {
                 Some(event) => {
                     RouterEventsImpl::emit(&self.category, event, &req).await
                 }
-                None => RouterEventResponse {
-                    handled: false,
-                    call_next: true,
-                    response: None,
-                },
+                None => break last_resp.unwrap(),
             };
 
             if !resp.call_next {
                 break resp;
+            } else {
+                last_resp = Some(resp)
             }
         }
     }
