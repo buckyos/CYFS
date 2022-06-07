@@ -44,7 +44,7 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
             param.request.object.object_id
         );
 
-        let result = match self.owner.on_post_owner(&param.request.object).await {
+        let result = match self.owner.on_update_owner(&param.request.object).await {
             Ok(()) => Ok(NONPostObjectInputResponse { object: None }),
             Err(e) => Err(e),
         };
@@ -134,10 +134,27 @@ impl ZoneRoleManager {
         Ok(())
     }
 
-    async fn on_post_owner(&self, object: &NONObjectInfo) -> BuckyResult<()> {
+    pub async fn on_update_owner(&self, object: &NONObjectInfo) -> BuckyResult<()> {
         let mut object = object.clone();
         if object.object.is_none() {
             object.decode()?;
+        }
+
+        // verify owner's id if match
+        let current_info = self.zone_manager.get_current_info().await?;
+        if current_info.owner_id != object.object_id {
+            let msg = format!("unmatch zone's owner_id: current={}, got={}", current_info.owner_id, object.object_id);
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
+        }
+
+        // check update_time if is newer
+        let current_update_time = current_info.owner.get_update_time();
+        let new_update_time = object.object.as_ref().unwrap().get_update_time();
+        if current_update_time >= new_update_time {
+            let msg = format!("zone's owner's update_time is older: current={}, got={}", current_update_time, new_update_time);
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::AlreadyExists, msg));
         }
 
         // should verify the owner's body sign

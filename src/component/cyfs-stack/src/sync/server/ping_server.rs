@@ -197,8 +197,19 @@ impl SyncPingServer {
             owner: None,
         };
 
+        let mut with_owner = false;
         if resp.zone_role != ZoneRole::ActiveOOD {
             warn!("recv device ping but current ood' role is not active ood! role={}", resp.zone_role);
+            with_owner = true;
+        } else {
+            let owner_update_time = zone_state.owner.get_update_time();
+            if ping_req.owner_update_time != 0 && ping_req.owner_update_time < owner_update_time {
+                info!("recv device ping with older owner's update time! device={}, current={}", ping_req.owner_update_time, owner_update_time);
+                with_owner = true;
+            }
+        }
+
+        if with_owner {
             let object_raw = zone_state.owner.to_vec().unwrap();
             resp.owner = Some(object_raw);
         }
@@ -218,6 +229,7 @@ impl SyncPingServer {
                         root_state: device_state.root_state,
                         root_state_revision: device_state.root_state_revision,
                         state: DeviceSyncState::Offline,
+                        owner_update_time: 0,
                     };
 
                     let _r = self.zone_state.device_offline(&req);

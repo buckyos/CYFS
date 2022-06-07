@@ -59,7 +59,9 @@ pub struct ZoneState {
     pub zone_root_state_revision: u64,
     pub zone_role: ZoneRole,
     pub ood_work_mode: OODWorkMode,
-    pub owner: Arc<AnyNamedObject>, // 当前zone对应的owner对象
+
+    // 当前zone对应的owner对象
+    pub owner: Arc<AnyNamedObject>,
 }
 
 impl std::fmt::Display for ZoneState {
@@ -67,7 +69,7 @@ impl std::fmt::Display for ZoneState {
         write!(
             f,
             "{},{},{},{}",
-            self.zone_root_state, self.zone_root_state_revision, self.zone_role, self.ood_work_mode
+            self.zone_root_state, self.zone_root_state_revision, self.zone_role, self.ood_work_mode,
         )
     }
 }

@@ -53,6 +53,9 @@ pub(crate) struct SyncPingRequest {
     pub root_state_revision: u64,
     
     pub state: DeviceSyncState,
+
+    // local owner's body update time
+    pub owner_update_time: u64,
 }
 
 #[derive(Debug, Clone)]

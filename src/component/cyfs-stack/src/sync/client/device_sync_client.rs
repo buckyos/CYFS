@@ -254,7 +254,7 @@ impl DeviceSyncClient {
         };
 
         if let Some(object_raw) = zone_req.owner {
-            let _ = self.state_manager.update_owner(object_raw).await;
+            let _ = self.ping_client.update_owner(object_raw).await;
         }
 
         self.state_manager.update_zone_state(zone_state);

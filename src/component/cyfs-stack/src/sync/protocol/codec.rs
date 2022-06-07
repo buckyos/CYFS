@@ -14,6 +14,7 @@ impl JsonCodec<SyncPingRequest> for SyncPingRequest {
         JsonCodecHelper::encode_string_field(&mut obj, "root_state", &self.root_state);
         JsonCodecHelper::encode_string_field(&mut obj, "root_state_revision", &self.root_state_revision);
         JsonCodecHelper::encode_string_field(&mut obj, "state", &self.state);
+        JsonCodecHelper::encode_string_field(&mut obj, "owner_update_time", &self.owner_update_time);
 
         obj
     }
@@ -25,6 +26,7 @@ impl JsonCodec<SyncPingRequest> for SyncPingRequest {
             root_state: JsonCodecHelper::decode_string_field(obj, "root_state")?,
             root_state_revision: JsonCodecHelper::decode_string_field(obj, "root_state_revision")?,
             state: JsonCodecHelper::decode_string_field(obj, "state")?,
+            owner_update_time: JsonCodecHelper::decode_option_int_filed(obj, "owner_update_time")?.unwrap_or(0),
         })
     }
 }

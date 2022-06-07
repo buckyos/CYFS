@@ -3,7 +3,7 @@ use super::device_state::*;
 use super::object_sync_client::ObjectSyncClient;
 use super::ping_status::*;
 use super::requestor::*;
-use cyfs_base::{bucky_time_now, BuckyErrorCode, BuckyResult, DeviceId};
+use cyfs_base::*;
 use cyfs_debug::Mutex;
 use cyfs_lib::*;
 use crate::zone::ZoneRoleManager;
@@ -345,12 +345,13 @@ impl SyncPingClient {
             root_state: state.root_state,
             root_state_revision: state.root_state_revision,
             state: self.state(),
+            owner_update_time: state.owner_update_time,
         };
 
         let resp = self.requestor.ping(req, &self.ping_status).await?;
 
         if let Some(object_raw) = resp.owner {
-            let _ = self.device_state.update_owner(object_raw).await;
+            let _ = self.update_owner(object_raw).await;
         }
 
         let zone_state = LocalZoneState {
@@ -363,5 +364,13 @@ impl SyncPingClient {
         self.device_state.update_zone_state(zone_state);
 
         Ok(())
+    }
+
+    pub(super) async fn update_owner(&self, object_raw: Vec<u8>) -> BuckyResult<()> {
+        let owner = AnyNamedObject::clone_from_slice(&object_raw)?;
+        let owner_id = owner.object_id();
+
+        let object_info = NONObjectInfo::new(owner_id, object_raw, Some(Arc::new(owner)));
+        self.role_manager.on_update_owner(&object_info).await
     }
 }

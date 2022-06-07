@@ -25,6 +25,8 @@ pub struct CurrentZoneInfo {
     pub zone_role: ZoneRole,
     pub ood_work_mode: OODWorkMode,
 
+    pub owner_id: ObjectId,
+
     // current zone's owner object, maybe changed on ood modify
     pub owner: Arc<AnyNamedObject>,
 }
@@ -33,13 +35,14 @@ impl std::fmt::Display for CurrentZoneInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "device={},category={},ood={},zone={},zone_role={},ood_work_mode={}",
+            "device={},category={},ood={},zone={},zone_role={},ood_work_mode={},owner={}",
             self.device_id,
             self.device_category,
             self.zone_device_ood_id,
             self.zone_id,
             self.zone_role,
-            self.ood_work_mode
+            self.ood_work_mode,
+            self.owner_id,
         )
     }
 }
@@ -138,7 +141,8 @@ impl ZoneManager {
             };
 
             // load current zone's owner
-            let owner = self.search_object(zone.owner()).await?;
+            let owner_id = zone.owner().to_owned();
+            let owner = self.search_object(&owner_id).await?;
 
             info!(
                 "current zone rule: rule={:?}, ood_work_mode={:?}",
@@ -152,6 +156,7 @@ impl ZoneManager {
                 zone_id,
                 zone_role,
                 ood_work_mode,
+                owner_id,
                 owner: Arc::new(owner),
             };
 
