@@ -12,12 +12,11 @@ session-file = { action = "*-get-object", res = "/standard/8", group = { locatio
 
 pub const DSG_ACL_CONFIG: &str = r#"
 [dsg]
-backup-filter = {action = "*-post-object", res = "/dec_app/9tGpLNnEsjkYRaoXeZprXKBS9LmH2s7X8v9wnC1rN2H4/**", access = "accept"}
-miner-filter = {action = "*-post-object", res = "/dec_app/9tGpLNnfgV1s1uhAkdaZibwSs7gPro1JaPmMQsxNL7hE/**", access = "accept"}
-backup-put-data-filter = {action = "*-put-data", res = "/9tGpLNnEsjkYRaoXeZprXKBS9LmH2s7X8v9wnC1rN2H4/dsg/**", access = "accept"}
-backup-get-data-filter = {action = "*-get-data", res = "/9tGpLNnEsjkYRaoXeZprXKBS9LmH2s7X8v9wnC1rN2H4/dsg/**", access = "accept"}
-miner-put-data-filter = {action = "*-put-data", res = "/9tGpLNnfgV1s1uhAkdaZibwSs7gPro1JaPmMQsxNL7hE/dsg/**", access = "accept"}
-miner-get-data-filter = {action = "*-get-data", res = "/9tGpLNnfgV1s1uhAkdaZibwSs7gPro1JaPmMQsxNL7hE/dsg/**", access = "accept"}
+dmc_dsg-filter = {action = "*-get-object", res = "/dec_app/9tGpLNnBuQvSVgFee7s8vUqCe373z6vkFbVrRpadM9Sp/**", access = "accept"}
+dmc_dsg-filter3 = {action = "*-get-object", res = "/9tGpLNnBuQvSVgFee7s8vUqCe373z6vkFbVrRpadM9Sp/**", access = "accept"}
+dmc_dsg-filter2 = {action = "*-post-object", res = "/dec_app/9tGpLNnBuQvSVgFee7s8vUqCe373z6vkFbVrRpadM9Sp/**", access = "accept"}
+nft-put-data-filter = {action = "*-put-data", res = "/9tGpLNnBuQvSVgFee7s8vUqCe373z6vkFbVrRpadM9Sp/dmc-dsg/**", access = "accept"}
+nft-get-data-filter = {action = "*-get-data", res = "/9tGpLNnBuQvSVgFee7s8vUqCe373z6vkFbVrRpadM9Sp/dmc-dsg/**", access = "accept"}
 "#;
 
 pub const GIT_ACL_CONFIG: &str = r#"
