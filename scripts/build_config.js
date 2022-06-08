@@ -114,7 +114,7 @@ const sdk = [
         "lib": { "aarch64-linux-android": "cyfsruntime" },
     },
     {
-        "name": "mobile-stack",
+        "name": "cyfs-mobile-stack",
         "include": ["aarch64-linux-android", "armv7-linux-androideabi"],
         "lib": { "aarch64-linux-android": "cyfsstack", "armv7-linux-androideabi": "cyfsstack" },
     },

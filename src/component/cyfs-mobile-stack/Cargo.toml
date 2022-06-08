@@ -1,0 +1,31 @@
+[package]
+name = "cyfs-mobile-stack"
+version = "0.5.0"
+authors = ["weiqiushi <weiqiushi@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust mobile-stack package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cyfs-util = "0.5"
+cyfs-debug = "0.5"
+cyfs-base = "0.5"
+cyfs-lib = "0.5"
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+cyfs-stack-loader = { path = "../../component/cyfs-stack-loader", features = [
+    "sqlite",
+], default-features = false }
+log = "0.4"
+hex = "0.4"
+async-trait = "0.1.53"
+once_cell = "1.12"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.19"
+android_logger = "0.11"
+
+[lib]
+name = "cyfsstack"
+crate-type = ["cdylib", "staticlib"]
