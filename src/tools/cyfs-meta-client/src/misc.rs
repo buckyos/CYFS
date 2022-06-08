@@ -33,7 +33,9 @@ pub async fn match_command(matches: &ArgMatches<'_>, client: &MetaClient) -> Buc
                         if let Some(address) = receipt.address {
                             info!("contract address: {}", &address);
                         }
-                        info!("contract return value {}", hex::encode(&result_value));
+                        if let Some(result_value) = receipt.return_value {
+                            info!("contract return value {}", hex::encode(&result_value));
+                        }
                     } else {
                         info!("cannot get receipt for tx {}", txhash);
                     }
