@@ -13,7 +13,6 @@ use crate::sign::{sign_subcommand, sign_desc};
 pub mod desc;
 mod show;
 mod create;
-mod verify;
 
 fn calc_nonce(peer_desc_file: &str, _bits: u32) {
     // let mut nonce = [0u8; NONCE_LENGTH];

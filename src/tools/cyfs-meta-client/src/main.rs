@@ -37,7 +37,6 @@ async fn main() ->BuckyResult<()> {
         && crate::union_account::match_command(&matches, &client).await?
         && crate::name::match_command(&matches, &client).await?
         && crate::misc::match_command(&matches, &client).await?
-        && crate::contract::match_command(&matches, &client).await?
     {
         error!("unknown command: {}", matches.subcommand().0);
         std::process::exit(1);

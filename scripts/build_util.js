@@ -53,7 +53,7 @@ function build(prog, buildType, target, version, channel, bash_base_path) {
     }
     if (target.includes("unknown-linux")) {
         cmd = cmd.replace('cargo','~/.cargo/bin/cargo');
-        cmd = `bash -c "export CARGO_HTTP_MULTIPLEXING=false;export VERSION=${version};export CHANNEL=${channel};cd ${bash_base_path};${cmd}"`
+        cmd = `bash -c "export CARGO_HTTP_MULTIPLEXING=false;export VERSION=${version};export CHANNEL=${channel};${cmd}"`
     }
     child_process.execSync(cmd, { stdio: 'inherit' })
     if (target.includes("unknown-linux")) {
@@ -63,8 +63,8 @@ function build(prog, buildType, target, version, channel, bash_base_path) {
         }
         // child_process.execSync(`bash -c "cd ${bash_base_path};${cmd} target/${target}/${buildType}/${bin_name}${ext}"`)
         // 这里要拷贝编译后的文件到原来的目录
-        child_process.execSync(`bash -c "mkdir -p target/${target}/${buildType}"`)
-        child_process.execSync(`bash -c "cp -f ${bash_base_path}/target/${target}/${buildType}/${bin_name}${ext} target/${target}/${buildType}/${bin_name}${ext}"`)
+        //child_process.execSync(`bash -c "mkdir -p target/${target}/${buildType}"`)
+        //child_process.execSync(`bash -c "cp -f ${bash_base_path}/target/${target}/${buildType}/${bin_name}${ext} target/${target}/${buildType}/${bin_name}${ext}"`)
     }
     /*
     if (target === "aarch64-linux-android") {

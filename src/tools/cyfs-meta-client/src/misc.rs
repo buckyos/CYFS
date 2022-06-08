@@ -10,10 +10,6 @@ pub fn append_command<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .about("get receipt for tx")
         .arg(Arg::with_name("tx").index(1).takes_value(true).required(true)
             .help("tx hash"))
-        .arg(Arg::with_name("abi").short("a").long("abi").takes_value(true)
-            .help("contract abi file path, generate from cyfs-solc or cyfs-solcjs"))
-        .arg(Arg::with_name("name").short("n").long("name").takes_value(true).requires("abi")
-            .help("contract function name or signature"))
     ).subcommand(SubCommand::with_name("setconfig")
         .about("set config to meta")
         .arg(get_caller_arg("caller", "c", Some(&DEFAULT_DESC_PATH)))
@@ -37,15 +33,7 @@ pub async fn match_command(matches: &ArgMatches<'_>, client: &MetaClient) -> Buc
                         if let Some(address) = receipt.address {
                             info!("contract address: {}", &address);
                         }
-                        if let Some(result_value) = receipt.return_value {
-                            if let Some(abi_path) = matches.value_of("abi") {
-                                let abi = std::fs::read_to_string(abi_path)?;
-                                let result_str = ethabi::decode_call_output(&abi, matches.value_of("name").unwrap(), result_value).unwrap();
-                                info!("contract return value {}", result_str);
-                            } else {
-                                info!("contract return value {}", hex::encode(&result_value));
-                            }
-                        }
+                        info!("contract return value {}", hex::encode(&result_value));
                     } else {
                         info!("cannot get receipt for tx {}", txhash);
                     }

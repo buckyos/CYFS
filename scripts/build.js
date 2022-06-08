@@ -32,10 +32,11 @@ function build(catalogy, need_pack, need_bin) {
         console.error(`build catalogy ${catalogy} not exists in config`)
         return
     }
+    /*
     if (process.argv[2].includes("unknown-linux")) {
         // 这里拷贝rust_src下的必要文件到bash的文件夹下
-        prepare_bash("~/workspace/ffs", ["3rd", "component", "service", "tools", "Cargo.toml", "Cargo.lock"])
-    }
+        prepare_bash("~/workspace/ffs", ["3rd", "component", "service", "tests", "tools", "Cargo.toml", "Cargo.lock"])
+    }*/
 
     for (const prog of build_config[catalogy]) {
         for (const target of targets) {
