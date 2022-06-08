@@ -259,7 +259,7 @@ mod test_mem_chunk {
     #[test]
     fn test_mem_async_test() {
         async_std::task::block_on(async move {
-            let mut mem_chunk = MemChunk::new(20);
+            let mut mem_chunk = MemChunk::new(20, 0);
             mem_chunk.write("test".as_bytes()).await;
         })
     }
@@ -267,10 +267,10 @@ mod test_mem_chunk {
     #[test]
     fn test_share_mem_test() {
         async_std::task::block_on(async move {
-            let mut mem_chunk = SharedMemChunk::new(20, "test").unwrap();
+            let mut mem_chunk = SharedMemChunk::new(20, 0, "test").unwrap();
             mem_chunk.write("test".as_bytes()).await;
 
-            let mut mem_chunk2 = SharedMemChunk::new(20, "test").unwrap();
+            let mut mem_chunk2 = SharedMemChunk::new(20, mem_chunk.get_len(), "test").unwrap();
             let mut buf = [0u8;4];
             mem_chunk2.read(&mut buf).await.unwrap();
             println!("{} {}", mem_chunk.len(), mem_chunk2.len());
