@@ -55,7 +55,7 @@ function build(prog, buildType, target, version, channel, bash_base_path) {
         cmd = cmd.replace('cargo','~/.cargo/bin/cargo');
         cmd = `bash -c "export CARGO_HTTP_MULTIPLEXING=false;export VERSION=${version};export CHANNEL=${channel};cd ${bash_base_path};${cmd}"`
     }
-    child_process.execSync(cmd, { stdio: 'inherit', cwd: __dirname, env: env })
+    child_process.execSync(cmd, { stdio: 'inherit' })
     if (target.includes("unknown-linux")) {
         let cmd = 'strip'
         if (target === 'aarch64-unknown-linux-gnu') {
