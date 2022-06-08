@@ -5,6 +5,7 @@ authors = ["liuzhicong <liuzhicong@buckyos.com>"]
 edition = "2018"
 license = "BSD-2-Clause"
 description = "Rust cyfs-base package"
+rust-version = "1.60"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
