@@ -4,7 +4,6 @@ mod union_account;
 mod account;
 mod desc;
 mod common;
-mod contract;
 
 use clap::{App, Arg, AppSettings};
 use log::*;
