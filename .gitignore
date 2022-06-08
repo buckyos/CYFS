@@ -6,6 +6,7 @@ yarn.lock
 .projectile
 .DS_Store
 src/.idea/
+build/
 
 .svn
 .hg
