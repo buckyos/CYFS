@@ -37,49 +37,6 @@ const tools = [
         "name": "zone-simulator",
         "include": formal_platform
     },
-    {
-        "name": "net-tool",
-        "include": only_ood
-    },
-    {
-        "name": "cyfs-monitor",
-        "include": ["x86_64-unknown-linux-gnu"]
-    },
-]
-
-const apps = [
-    {
-        "name": "sn-miner-rust",
-        "include": formal_platform,
-        "pub": false,
-        "config_file": {
-            "default": "config/package.cfg"
-        }
-    },
-    {
-        "name": "pn-miner",
-        "include": formal_platform,
-        "pub": false,
-        "config_file": {
-            "default": "config/package.cfg"
-        }
-    },
-    {
-        "name": "perf-service",
-        "include": formal_platform,
-        "pub": false,
-        "config_file": {
-            "default": "config/package.cfg"
-        }
-    },
-    {
-        "name": "cyfs-monitor-daemon",
-        "include": formal_platform,
-        "pub": false,
-        "config_file": {
-            "default": "service/package.cfg"
-        }
-    }
 ]
 
 const service_default_cfg = {
@@ -148,37 +105,6 @@ const services = [
     },
 ]
 
-const metas = [
-    {
-        "name": "cyfs-meta-genesis",
-        "include": formal_platform
-    },
-    {
-        "name": "cyfs-meta-miner",
-        "include": formal_platform
-    },
-	{
-        "name": "cyfs-meta-spv",
-        "include": formal_platform
-    },
-    {
-        "name": "cyfs-meta-tool",
-        "include": formal_platform
-    },
-    {
-        "name": "browser-meta-spv",
-        "include": formal_platform
-    },
-]
-
-const tests = [
-    {
-        "name": "raptor-test"
-    },
-    {
-        "name": "rust-bdt-test-demo"
-    }
-]
 
 const sdk = [
     {
@@ -198,25 +124,9 @@ const sdk = [
         "lib": { "aarch64-linux-android": "ood_control", "armv7-linux-androideabi": "ood_control" },
     }
 ]
-
-const dsg = [
-    {
-        "name": "dsg-meta-miner",
-        "include": formal_platform
-    },
-    {
-        "name": "dsg-meta-spv",
-        "include": formal_platform
-    }
-]
-
 module.exports = {
     tools,
-    apps,
     services,
-    metas,
-    tests,
     sdk,
-    dsg,
     installer
 }
