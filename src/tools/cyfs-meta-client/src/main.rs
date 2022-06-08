@@ -28,7 +28,6 @@ async fn main() ->BuckyResult<()> {
     app = crate::union_account::append_command(app);
     app = crate::name::append_command(app);
     app = crate::misc::append_command(app);
-    app = crate::contract::append_command(app);
 
     let matches = app.get_matches();
 
