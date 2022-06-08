@@ -38,16 +38,6 @@ mod android {
     pub const SERVICE_NAME: &str = ::cyfs_base::CYFS_RUNTIME_NAME;
 
     #[no_mangle]
-    #[allow(non_snake_case)]
-    unsafe fn JNI_OnLoad(jvm: JavaVM, _reserved: *mut c_void) -> jint {
-        let env: JNIEnv = jvm.get_env().unwrap();
-        let jni_version = env.get_version().unwrap();
-        let version: jint = jni_version.into();
-        //info!("JNI_OnLoad end");
-        version
-    }
-
-    #[no_mangle]
     pub extern "system" fn Java_org_chromium_chrome_browser_init_CYFSRuntime_start(
         env: JNIEnv,
         _class: JClass,

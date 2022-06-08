@@ -220,15 +220,6 @@ mod android {
     static STRING_CLASS: &str = "java/lang/String";
 
     #[no_mangle]
-    #[allow(non_snake_case)]
-    unsafe fn JNI_OnLoad(jvm: JavaVM, _reserved: *mut c_void) -> jint {
-        let env: JNIEnv = jvm.get_env().unwrap();
-        let jni_version = env.get_version().unwrap();
-        let version: jint = jni_version.into();
-        version
-    }
-
-    #[no_mangle]
     pub extern "system" fn Java_com_cyfs_OodControl_init(
         env: JNIEnv,
         _class: JClass,
