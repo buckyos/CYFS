@@ -1,0 +1,25 @@
+{
+  "name": "cyfs-scripts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "doc"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/buckyos/CYFS.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/buckyos/CYFS/issues"
+  },
+  "homepage": "https://github.com/buckyos/CYFS#readme",
+  "dependencies": {
+    "@ltd/j-toml": "^1.30.0"
+  }
+}
