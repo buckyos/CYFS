@@ -278,7 +278,7 @@ mod test_connection {
         where
             DB: sqlx::Database,
     {
-        Ok(DB::Connection::connect("sqlite::memory:").await.map_err(DefaultToBuckyError::map)?)
+        Ok(DB::Connection::connect("sqlite::memory:").await.map_err(|e|DefaultToBuckyError::map(e, ""))?)
     }
 
     #[test]

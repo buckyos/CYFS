@@ -440,7 +440,7 @@ mod test_task {
             todo!()
         }
 
-        fn set_task_store(&self, task_store: Arc<dyn TaskStore>) {
+        async fn set_task_store(&mut self, task_store: Arc<dyn TaskStore>) {
             todo!()
         }
 
