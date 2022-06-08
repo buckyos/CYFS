@@ -6,7 +6,6 @@ use hmac::{Hmac, Mac,};
 use memzero::Memzero;
 use rand_core::{SeedableRng};
 use sha2::Sha512;
-use std::convert::TryInto;
 use std::fmt;
 use std::ops::Deref;
 

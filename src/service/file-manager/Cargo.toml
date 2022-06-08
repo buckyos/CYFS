@@ -2,7 +2,7 @@
 name = "file-manager"
 version = "0.5.0"
 authors = ["liyaxing <liyaxing@buckyos.com>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust file-manager package"
 
@@ -11,9 +11,9 @@ description = "Rust file-manager package"
 [dependencies]
 lazy_static = "1.4"
 tide = "0.16"
-async-std = {version="1.11", features = ["unstable", "attributes"]}
-cyfs-base = {path = "../../component/cyfs-base"}
-cyfs-util = {path="../../component/cyfs-util"}
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-util = { path = "../../component/cyfs-util" }
 rusqlite = { version = "0.27.0", features = ["bundled", "blob"] }
 log = "0.4"
 cyfs-debug = { path = "../../component/cyfs-debug" }

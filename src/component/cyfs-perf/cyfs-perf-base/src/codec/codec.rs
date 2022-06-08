@@ -4,7 +4,6 @@ use cyfs_base::*;
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::convert::TryInto;
 
 // PerfRequest的编解码
 impl TryFrom<protos::PerfTimeRange> for PerfTimeRange {
@@ -48,7 +47,9 @@ impl TryFrom<protos::PerfRequest> for PerfRequest {
         };
 
         if value.has_total_size() {
-            ret.total_size = Some(ProtobufCodecHelper::decode_str_value(value.get_total_size())?);
+            ret.total_size = Some(ProtobufCodecHelper::decode_str_value(
+                value.get_total_size(),
+            )?);
         }
 
         Ok(ret)
@@ -89,7 +90,9 @@ impl TryFrom<protos::PerfAccumulation> for PerfAccumulation {
         };
 
         if value.has_total_size() {
-            ret.total_size = Some(ProtobufCodecHelper::decode_str_value(value.get_total_size())?);
+            ret.total_size = Some(ProtobufCodecHelper::decode_str_value(
+                value.get_total_size(),
+            )?);
         }
 
         Ok(ret)
@@ -129,7 +132,9 @@ impl TryFrom<protos::PerfRecord> for PerfRecord {
         };
 
         if value.has_total_size() {
-            ret.total_size = Some(ProtobufCodecHelper::decode_str_value(value.get_total_size())?);
+            ret.total_size = Some(ProtobufCodecHelper::decode_str_value(
+                value.get_total_size(),
+            )?);
         }
 
         Ok(ret)

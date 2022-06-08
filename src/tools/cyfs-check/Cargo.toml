@@ -1,25 +1,24 @@
 [package]
 name = "cyfs-check"
 version = "0.5.0"
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust cyfs-check package"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cyfs-base = {path="../../component/cyfs-base"}
-cyfs-util = {path="../../component/cyfs-util"}
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-util = { path = "../../component/cyfs-util" }
 clap = "2.34.0"
 log = "0.4"
 async-trait = "0.1.53"
 dirs = "4.0"
 sysinfo = "0.23"
-async-std = {version="1.11", features = ["unstable", "attributes"]}
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
 ansi_term = "0.12"
-cyfs-base-meta={path="../../component/cyfs-base-meta"}
-cyfs-meta-lib = {path="../../component/cyfs-meta-lib"}
+cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
+cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
 
 [target.'cfg(target_os="windows")'.dependencies]
 # winapi = {version = "0.3.4", features = ["consoleapi", "errhandlingapi", "fileapi", "handleapi", "processenv"]}
-

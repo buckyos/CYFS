@@ -6,7 +6,7 @@ authors = [
     "Wangsong <wangsong@buckyos.com>",
     "Sunxinle <sunxinle@buckyos.com>",
 ]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust app-manager package"
 

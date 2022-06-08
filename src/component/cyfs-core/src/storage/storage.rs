@@ -2,8 +2,6 @@ use crate::coreobj::CoreObjectType;
 use cyfs_base::*;
 use serde::Serialize;
 
-use std::convert::TryInto;
-
 #[derive(Debug, Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::StorageDescContent)]
 pub struct StorageDescContent {

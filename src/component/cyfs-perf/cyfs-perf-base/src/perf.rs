@@ -251,26 +251,14 @@ impl PerfObject for Perf {
 mod test {
     use crate::*;
     use cyfs_base::*;
-    use cyfs_core::*;
-    use std::collections::HashMap;
-    use std::convert::TryFrom;
 
     #[test]
     fn test_empty() {
-        let secret1 = PrivateKey::generate_rsa(1024).unwrap();
-        let people1 = People::new(None, vec![], secret1.public(), None, None, None)
-            .build()
-            .desc()
-            .people_id();
-
-        let owner: ObjectId = Default::default();
-        let device: DeviceId = Default::default();
-        let people: PeopleId = people1;
+        let owner = ObjectId::default();
+        let device = DeviceId::default();
         let app_dec_id: ObjectId = Default::default();
-        let dec_id: ObjectId = Default::default();
-        let id: String = "".to_string();
-
-        let perf_obj = Perf::create(owner, device, people, app_dec_id, dec_id, id);
+        let list = PerfIsolateEntityList::default();
+        let perf_obj = Perf::create(device, owner, Some(app_dec_id), "".to_owned(), "".to_owned(), list);
 
         let buf = perf_obj.to_vec().unwrap();
 
@@ -283,19 +271,12 @@ mod test {
 
     #[test]
     fn test_codec() {
-        let secret1 = PrivateKey::generate_rsa(1024).unwrap();
-        let people1 = People::new(None, vec![], secret1.public(), None, None, None)
-            .build()
-            .desc()
-            .people_id();
-        let owner: ObjectId = Default::default();
-        let device: DeviceId = Default::default();
-        let people: PeopleId = people1;
+        let owner = ObjectId::default();
+        let device = DeviceId::default();
         let app_dec_id: ObjectId = Default::default();
-        let dec_id: ObjectId = Default::default();
-        let id: String = "".to_string();
 
-        let perf_obj = Perf::create(owner, device, people, app_dec_id, dec_id, id);
+        let list = PerfIsolateEntityList::default();
+        let perf_obj = Perf::create(device, owner, Some(app_dec_id), "test".to_owned(), "1.0.0".to_owned(), list);
 
         let perf_id = perf_obj.desc().calculate_id();
         let buf = perf_obj.to_vec().unwrap();

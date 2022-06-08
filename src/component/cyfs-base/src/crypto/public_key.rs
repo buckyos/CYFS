@@ -4,7 +4,7 @@ use rand::thread_rng;
 use rsa::{PublicKey as RSAPublicKeyTrait, PublicKeyParts};
 
 use std::convert::From;
-use std::convert::TryInto;
+
 
 // RSA
 const RAW_PUBLIC_KEY_RSA_1024_CODE: u8 = 0_u8;

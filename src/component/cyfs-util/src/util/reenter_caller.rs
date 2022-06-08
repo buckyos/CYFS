@@ -96,6 +96,7 @@ where
 mod test {
     use super::*;
     use crate::*;
+    use cyfs_base::*;
     use std::sync::atomic::{AtomicU32, Ordering};
 
     #[derive(Clone)]

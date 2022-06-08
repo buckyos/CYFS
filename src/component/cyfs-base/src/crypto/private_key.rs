@@ -4,7 +4,6 @@ use generic_array::GenericArray;
 use libc::memcpy;
 use rand::{thread_rng, Rng};
 use rsa::PublicKeyParts;
-use std::convert::TryInto;
 use std::os::raw::c_void;
 
 // 密钥类型的编码

@@ -1,7 +1,7 @@
 #![no_std]
 #[macro_use]
 extern crate digest;
-extern crate sha2;
+extern crate cyfs_sha2 as sha2;
 
 use digest::dev::{one_million_a, digest_test};
 

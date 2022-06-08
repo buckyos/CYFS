@@ -2,7 +2,7 @@
 name = "cyfs-mobile-stack"
 version = "0.5.0"
 authors = ["weiqiushi <weiqiushi@buckyos.com>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust mobile-stack package"
 

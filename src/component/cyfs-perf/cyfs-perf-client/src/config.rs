@@ -2,7 +2,6 @@ use cyfs_base::*;
 use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
 
 use std::convert::TryFrom;
-use std::convert::TryInto;
 
 // perf_service在链上的名字
 pub const CYFS_PERF_SERVICE_NAME: &str = "cyfs-perf-service";

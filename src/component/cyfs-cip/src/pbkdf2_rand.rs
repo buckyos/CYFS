@@ -93,7 +93,6 @@ impl BlockRngCore for PBKDF2Core {
 
         let state: Vec<u8> = r.0.iter().flat_map(|val| val.to_le_bytes()).collect();
 
-        use std::convert::TryInto;
         self.state = Some(state.try_into().unwrap());
 
         //println!("end gen pbkdf2 {}", self.count);

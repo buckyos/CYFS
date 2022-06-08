@@ -6,7 +6,7 @@ homepage = "https://github.com/cberner/cyfs_raptorq"
 repository = "https://github.com/cberner/cyfs_raptorq"
 readme = "README.md"
 version = "1.6.1"
-edition = "2018"
+edition = "2021"
 authors = ["Christopher Berner <christopherberner@gmail.com>"]
 
 [lib]

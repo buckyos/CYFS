@@ -2,7 +2,7 @@
 name = "cyfs-base-derive"
 version = "0.5.0"
 authors = ["wugren <wuguoren@buckyos.com>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust cyfs-base-derive package"
 

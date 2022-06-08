@@ -5,7 +5,6 @@ use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, PrivateKey};
 
 use bip39::{Language, Mnemonic};
 use memzero::Memzero;
-use std::convert::TryInto;
 use std::fmt;
 
 pub struct CyfsSeedKeyBip {

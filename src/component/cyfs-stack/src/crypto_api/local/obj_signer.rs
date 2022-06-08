@@ -1,10 +1,9 @@
 use crate::resolver::DeviceCache;
 use crate::zone::*;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::StackGuard;
+use cyfs_lib::*;
 
-use std::convert::TryInto;
 use std::sync::Arc;
 
 pub struct ObjectSignRequest {
@@ -70,7 +69,10 @@ impl ObjectSigner {
             || (flags & CRYPTO_REQUEST_FLAG_SIGN_BY_DEVICE != 0)
     }
 
-    pub async fn sign_object(&self, req: CryptoSignObjectInputRequest) -> BuckyResult<CryptoSignObjectInputResponse> {
+    pub async fn sign_object(
+        &self,
+        req: CryptoSignObjectInputRequest,
+    ) -> BuckyResult<CryptoSignObjectInputResponse> {
         // 至少要指定一个要使用的签名源
         if !self.need_sign(&req.flags) {
             let msg = format!(
@@ -101,13 +103,15 @@ impl ObjectSigner {
         }
     }
 
-    async fn process_sign_by_device(&self, req: CryptoSignObjectInputRequest) -> BuckyResult<CryptoSignObjectInputResponse> {
+    async fn process_sign_by_device(
+        &self,
+        req: CryptoSignObjectInputRequest,
+    ) -> BuckyResult<CryptoSignObjectInputResponse> {
         info!(
             "will sign object by current device now: obj={}, flags={}, source={}",
             req.object.object_id, req.flags, req.common.source
         );
 
-        
         let sign_source = self
             .calc_sign_source(&req.object, &self.sign_object_id)
             .await
@@ -135,15 +139,23 @@ impl ObjectSigner {
             debug!("will sign and set desc: obj={}", req.object.object_id);
 
             Some(
-                AnyNamedObjectSignHelper::sign_and_set_desc(&self.signer, &mut result_object, &sign_source)
-                    .await,
+                AnyNamedObjectSignHelper::sign_and_set_desc(
+                    &self.signer,
+                    &mut result_object,
+                    &sign_source,
+                )
+                .await,
             )
         } else if req.flags & CRYPTO_REQUEST_FLAG_SIGN_PUSH_DESC != 0 {
             debug!("will sign and push desc: obj={}", req.object.object_id);
 
             Some(
-                AnyNamedObjectSignHelper::sign_and_push_desc(&self.signer, &mut result_object, &sign_source)
-                    .await,
+                AnyNamedObjectSignHelper::sign_and_push_desc(
+                    &self.signer,
+                    &mut result_object,
+                    &sign_source,
+                )
+                .await,
             )
         } else {
             None
@@ -169,15 +181,23 @@ impl ObjectSigner {
             debug!("will sign and set body: obj={}", req.object.object_id);
 
             Some(
-                AnyNamedObjectSignHelper::sign_and_set_body(&self.signer, &mut result_object, &sign_source)
-                    .await,
+                AnyNamedObjectSignHelper::sign_and_set_body(
+                    &self.signer,
+                    &mut result_object,
+                    &sign_source,
+                )
+                .await,
             )
         } else if req.flags & CRYPTO_REQUEST_FLAG_SIGN_PUSH_BODY != 0 {
             debug!("will sign and push body: obj={}", req.object.object_id);
 
             Some(
-                AnyNamedObjectSignHelper::sign_and_push_body(&self.signer, &mut result_object, &sign_source)
-                    .await,
+                AnyNamedObjectSignHelper::sign_and_push_body(
+                    &self.signer,
+                    &mut result_object,
+                    &sign_source,
+                )
+                .await,
             )
         } else {
             None
@@ -209,9 +229,13 @@ impl ObjectSigner {
                 "object sign updated! now will encode object: obj={}",
                 req.object.object_id
             );
-            
+
             let object_raw = result_object.to_vec()?;
-            let object = NONObjectInfo::new(req.object.object_id, object_raw, Some(Arc::new(result_object)));
+            let object = NONObjectInfo::new(
+                req.object.object_id,
+                object_raw,
+                Some(Arc::new(result_object)),
+            );
 
             resp.object = Some(object);
         }

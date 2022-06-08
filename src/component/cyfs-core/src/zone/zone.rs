@@ -3,7 +3,6 @@ use crate::coreobj::CoreObjectType;
 use cyfs_base::*;
 use serde::Serialize;
 
-use std::convert::TryInto;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]

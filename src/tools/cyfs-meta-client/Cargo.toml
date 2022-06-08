@@ -2,7 +2,7 @@
 name = "cyfs-meta-client"
 version = "0.5.0"
 authors = ["liuzhicong <liuzhicong@buckyos.com>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust cyfs-meta-client package"
 
@@ -13,10 +13,10 @@ async-std = "1.11"
 http-types = "2.12"
 async-h1 = "2.3.3"
 hex = "0.4"
-cyfs-base={path="../../component/cyfs-base"}
-cyfs-base-meta={path="../../component/cyfs-base-meta"}
-cyfs-meta-lib = {path="../../component/cyfs-meta-lib"}
-cyfs-util = {path="../../component/cyfs-util"}
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
+cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
+cyfs-util = { path = "../../component/cyfs-util" }
 log = "0.4"
 clap = "2.34.0"
 dirs = "4.0"

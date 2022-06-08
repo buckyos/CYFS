@@ -2,16 +2,16 @@
 name = "desc-tool"
 version = "0.5.0"
 authors = ["swjtusw <swjtusw@126.com>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust desc-tool package"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cyfs-base={path="../../component/cyfs-base"}
-cyfs-core={path="../../component/cyfs-core"}
-async-std = {version = "1.11", features = ["unstable", "attributes"]}
+cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-core = { path = "../../component/cyfs-core" }
+async-std = { version = "1.11", features = ["unstable", "attributes"] }
 serde_json = "1.0"
 clap = "2.34.0"
 hex = "0.4"

@@ -119,7 +119,6 @@ async fn add_file(stack: &SharedCyfsStack) -> FileId {
     let resp = ret.unwrap();
     info!("sync add file success! id={}", resp.file_id);
 
-    use std::convert::TryInto;
     resp.file_id.try_into().unwrap()
 }
 

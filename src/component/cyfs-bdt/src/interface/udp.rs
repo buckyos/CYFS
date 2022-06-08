@@ -122,7 +122,6 @@ impl Interface {
                 }
                 #[cfg(not(windows))]
                 {
-                    use std::convert::TryInto;
                     use std::os::unix::io::FromRawFd;
                     unsafe {
                         let raw_sock = libc::socket(libc::AF_INET6, libc::SOCK_DGRAM, 0);
@@ -216,7 +215,6 @@ impl Interface {
     pub fn close(&self) {
         #[cfg(windows)]
         {
-            use std::convert::TryInto;
             use std::os::windows::io::AsRawSocket;
             use winapi::um::winsock2::closesocket;
             unsafe {

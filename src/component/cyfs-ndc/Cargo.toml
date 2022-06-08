@@ -2,7 +2,7 @@
 name = "cyfs-ndc"
 version = "0.5.0"
 authors = ["liyaxing <liyaxing@buckyos.com>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust cyfs-ndc package"
 

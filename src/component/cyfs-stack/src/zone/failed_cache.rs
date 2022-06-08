@@ -3,7 +3,6 @@ use cyfs_core::*;
 
 use lru_time_cache::{Entry, LruCache};
 use std::sync::{Arc, Mutex};
-use std::convert::TryInto;
 
 /*
 用以缓存下面两种zone信息：
@@ -22,7 +21,7 @@ struct OrphanZoneCache {
 }
 
 impl OrphanZoneCache {
-    pub fn new(timeout: std::time::Duration) -> Self{
+    pub fn new(timeout: std::time::Duration) -> Self {
         Self {
             device_list: LruCache::with_expiry_duration(timeout.clone()),
             zone_list: LruCache::with_expiry_duration(timeout),
@@ -43,22 +42,14 @@ impl OrphanZoneCache {
     pub fn get(&mut self, zone_id: &ZoneId) -> Option<Zone> {
         let ret = self.zone_list.get(zone_id);
         match ret {
-            Some(device_id) => {
-                self.device_list.get(device_id).map(|v| {
-                    v.zone.clone()
-                })
-            }
+            Some(device_id) => self.device_list.get(device_id).map(|v| v.zone.clone()),
             None => None,
         }
     }
 
     pub fn remove(&mut self, zone_id: &ZoneId) -> Option<Zone> {
         match self.zone_list.remove(zone_id) {
-            Some(device_id) => {
-                self.device_list.remove(&device_id).map(|value| {
-                    value.zone
-                })
-            }
+            Some(device_id) => self.device_list.remove(&device_id).map(|value| value.zone),
             None => None,
         }
     }
@@ -106,7 +97,7 @@ impl ZoneFailedCache {
 
     // device搜寻zone失败，创建孤儿zone并缓存
     pub fn on_device_zone_failed(&self, device_id: &DeviceId) -> Zone {
-        let mut cache  = self.device_cache.lock().unwrap();
+        let mut cache = self.device_cache.lock().unwrap();
         match cache.device_list.entry(device_id.to_owned()) {
             Entry::Occupied(v) => {
                 warn!("zone failed from device already in cache! id={}", device_id);
@@ -133,7 +124,7 @@ impl ZoneFailedCache {
 
     // 搜寻或者校验owner失败，缓存对应的错误
     pub fn on_owner_failed(&self, owner: &ObjectId, err: BuckyError) {
-        let mut cache  = self.owner_cache.lock().unwrap();
+        let mut cache = self.owner_cache.lock().unwrap();
         match cache.entry(owner.to_owned()) {
             Entry::Occupied(_v) => {
                 warn!("zone failed from owner already in cache! id={}", owner);
@@ -142,12 +133,17 @@ impl ZoneFailedCache {
                 v.insert(err);
             }
         }
-    } 
+    }
 
     // 创建孤儿zone，也即owner本身就是device的zone
     fn create_orphan_zone(device_id: &DeviceId) -> (ZoneId, Zone) {
         let owner = device_id.object_id().to_owned();
-        let zone = Zone::create(owner, OODWorkMode::Standalone, vec![device_id.to_owned()], vec![]);
+        let zone = Zone::create(
+            owner,
+            OODWorkMode::Standalone,
+            vec![device_id.to_owned()],
+            vec![],
+        );
         let zone_id: ZoneId = zone.desc().calculate_id().try_into().unwrap();
 
         info!(

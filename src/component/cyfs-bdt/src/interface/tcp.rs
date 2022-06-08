@@ -9,20 +9,16 @@ use log::*;
 use std::{
     convert::TryFrom, io::ErrorKind, net::TcpListener, sync::RwLock, thread, time::Duration,
 };
-// use std::convert::TryInto;
+//
 // use socket2;
-use super::{
-    manager::UpdateOuterResult, 
-    udp
-};
+use super::{manager::UpdateOuterResult, udp};
 use crate::{
     history::keystore,
     protocol::*,
     stack::{Stack, WeakStack},
 };
-use cyfs_base::*;
 use cyfs_base::endpoint;
-
+use cyfs_base::*;
 
 struct ListenerImpl {
     local: RwLock<Endpoint>,
@@ -89,7 +85,6 @@ impl Listener {
                 }
                 #[cfg(not(windows))]
                 {
-                    use std::convert::TryInto;
                     use std::os::unix::io::FromRawFd;
                     unsafe {
                         let raw_sock = libc::socket(libc::AF_INET6, libc::SOCK_STREAM, 0);
@@ -102,7 +97,7 @@ impl Listener {
                             std::mem::size_of::<libc::c_int>().try_into().unwrap(),
                         );
                         let addr = libc::sockaddr_in6 {
-                            #[cfg(any(target_os = "macos",target_os = "ios"))]
+                            #[cfg(any(target_os = "macos", target_os = "ios"))]
                             sin6_len: 24,
                             sin6_family: libc::AF_INET6 as libc::sa_family_t,
                             sin6_port: local.addr().port().to_be(),
@@ -194,7 +189,6 @@ impl Listener {
     pub fn close(&self) {
         #[cfg(windows)]
         {
-            use std::convert::TryInto;
             use std::os::windows::io::AsRawSocket;
             use winapi::um::winsock2::closesocket;
             unsafe {
@@ -219,7 +213,11 @@ type FirstBoxDecodeContext<'de> = udp::PackageBoxDecodeContext<'de>;
 pub(crate) struct OtherBoxEncodeContext {}
 
 impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
-    fn raw_measure_with_context(&self, _: &mut OtherBoxEncodeContext, _purpose: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
+    fn raw_measure_with_context(
+        &self,
+        _: &mut OtherBoxEncodeContext,
+        _purpose: &Option<RawEncodePurpose>,
+    ) -> BuckyResult<usize> {
         unimplemented!()
     }
     fn raw_encode_with_context<'a>(
@@ -346,7 +344,7 @@ impl RawEncodeWithContext<PackageBoxEncodeContext<FirstBoxEncodeContext>> for Pa
     fn raw_measure_with_context(
         &self,
         _: &mut PackageBoxEncodeContext<FirstBoxEncodeContext>,
-        _purpose: &Option<RawEncodePurpose>
+        _purpose: &Option<RawEncodePurpose>,
     ) -> BuckyResult<usize> {
         unimplemented!()
     }
@@ -434,10 +432,9 @@ impl<'de> RawDecodeWithContext<'de, PackageBoxDecodeContext<OtherBoxDecodeContex
 
 #[derive(Eq, PartialEq)]
 enum BoxType {
-    Package, 
-    RawData
+    Package,
+    RawData,
 }
-
 
 async fn receive_box<'a>(
     socket: &TcpStream,
@@ -498,7 +495,8 @@ impl AcceptInterface {
         let local = Endpoint::from((endpoint::Protocol::Tcp, local));
 
         let mut recv_buf = [0u8; udp::MTU];
-        let (box_type, box_buf) = future::timeout(timeout, receive_box(&socket, &mut recv_buf)).await??;
+        let (box_type, box_buf) =
+            future::timeout(timeout, receive_box(&socket, &mut recv_buf)).await??;
         if box_type != BoxType::Package {
             let msg = format!("recv first box raw data from {}", remote);
             error!("{}", msg);
@@ -568,7 +566,11 @@ impl AcceptInterface {
         package_box.append(packages);
         let mut socket = self.socket().clone();
         socket
-            .write_all(package_box.raw_tail_encode_with_context(&mut send_buffer, &mut context, &None)?)
+            .write_all(package_box.raw_tail_encode_with_context(
+                &mut send_buffer,
+                &mut context,
+                &None,
+            )?)
             .await?;
         Ok(())
     }
@@ -577,8 +579,8 @@ impl AcceptInterface {
 impl Into<PackageInterface> for AcceptInterface {
     fn into(self) -> PackageInterface {
         PackageInterface(Arc::new(PackageInterfaceImpl {
-            local: self.0.local, 
-            remote: self.0.remote, 
+            local: self.0.local,
+            remote: self.0.remote,
             socket: self.0.socket.clone(),
             key: self.0.key.clone(),
             remote_device_id: self.0.remote_device_id.clone(),
@@ -689,16 +691,17 @@ impl Interface {
         })?;
         debug!("{} first box sent {} bytes", self, send_buf.len());
 
-        let (box_type, box_buf) = future::timeout(timeout, receive_box(&self.0.socket, &mut buffer))
-            .await
-            .map_err(|err| {
-                debug!("{} recv first box failed for {}", self, err);
-                err
-            })?
-            .map_err(|err| {
-                debug!("{} recv first box failed for {}", self, err);
-                err
-            })?;
+        let (box_type, box_buf) =
+            future::timeout(timeout, receive_box(&self.0.socket, &mut buffer))
+                .await
+                .map_err(|err| {
+                    debug!("{} recv first box failed for {}", self, err);
+                    err
+                })?
+                .map_err(|err| {
+                    debug!("{} recv first box failed for {}", self, err);
+                    err
+                })?;
         if box_type != BoxType::Package {
             let msg = format!("{} recv first box raw data", self);
             error!("{}", msg);
@@ -729,8 +732,8 @@ impl Interface {
 impl Into<PackageInterface> for Interface {
     fn into(self) -> PackageInterface {
         PackageInterface(Arc::new(PackageInterfaceImpl {
-            local: self.0.local, 
-            remote: self.0.remote, 
+            local: self.0.local,
+            remote: self.0.remote,
             socket: self.0.socket.clone(),
             key: self.0.key.clone(),
             remote_device_id: self.0.remote_device_id.clone(),
@@ -739,15 +742,14 @@ impl Into<PackageInterface> for Interface {
 }
 
 struct PackageInterfaceImpl {
-    local: Endpoint, 
-    remote: Endpoint, 
+    local: Endpoint,
+    remote: Endpoint,
     socket: TcpStream,
     key: AesKey,
     remote_device_id: DeviceId,
 }
 #[derive(Clone)]
 pub struct PackageInterface(Arc<PackageInterfaceImpl>);
-
 
 impl std::fmt::Display for PackageInterface {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -760,8 +762,8 @@ impl std::fmt::Display for PackageInterface {
 }
 
 pub enum RecvBox<'a> {
-    Package(PackageBox), 
-    RawData(&'a [u8])
+    Package(PackageBox),
+    RawData(&'a [u8]),
 }
 
 impl PackageInterface {
@@ -796,12 +798,11 @@ impl PackageInterface {
                     &self.0.remote_device_id,
                     &self.0.key,
                 );
-                let package = PackageBox::raw_decode_with_context(box_buf, context).map(|(package_box, _)| package_box)?;
+                let package = PackageBox::raw_decode_with_context(box_buf, context)
+                    .map(|(package_box, _)| package_box)?;
                 Ok(RecvBox::Package(package))
-            }, 
-            BoxType::RawData => {
-                Ok(RecvBox::RawData(box_buf))
             }
+            BoxType::RawData => Ok(RecvBox::RawData(box_buf)),
         }
     }
 
@@ -816,7 +817,7 @@ impl PackageInterface {
     pub async fn send_raw_data(&self, data: Vec<u8>) -> BuckyResult<()> {
         let mut data = data;
         self.send_raw_buffer(data.as_mut_slice()).await
-    } 
+    }
 
     pub async fn send_package<'a>(
         &self,

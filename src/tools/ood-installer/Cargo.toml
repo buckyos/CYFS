@@ -2,7 +2,7 @@
 name = "ood-installer"
 version = "0.5.0"
 authors = ["liyaxing <liyaxing@buckyos.com>"]
-edition = "2018"
+edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust ood-installer package"
 
@@ -19,12 +19,14 @@ cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
 ood-daemon = { path = "../../service/ood-daemon" }
 ood-control = { path = "../../service/ood-control" }
-cyfs-meta-lib = {path="../../component/cyfs-meta-lib"}
-base = { path = "../../service/base", default-features = false, features = ["mongo"] }
+cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
+base = { path = "../../service/base", default-features = false, features = [
+    "mongo",
+] }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 async-trait = "0.1.53"
 futures-util = "0.3"
-rust-embed = { version = "6.4.0", features = ["debug-embed"]}
+rust-embed = { version = "6.4.0", features = ["debug-embed"] }
 clap = "2.34.0"
 qrcode = "0.12"
 

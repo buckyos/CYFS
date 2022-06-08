@@ -1,6 +1,6 @@
-extern crate sha2;
+extern crate cyfs_sha2;
 
-use sha2::{Sha256, Digest};
+use cyfs_sha2::{Sha256, Digest};
 use std::env;
 use std::fs;
 use std::io::{self, Read};
