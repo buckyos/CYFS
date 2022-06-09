@@ -78,16 +78,26 @@ impl AccessTokenGen {
     }
 
     fn random_access_token(len: usize) -> String {
-        use rand::Rng;
-        const CHARSET: &[u8] = b"0123456789";
+        use rand::{thread_rng, Rng};
+        use rand::distributions::Alphanumeric;
 
-        let mut rng = rand::thread_rng();
-        let token: String = (0..len)
-            .map(|_| {
-                let idx = rng.gen_range(0..CHARSET.len());
-                CHARSET[idx] as char
-            })
+        let token: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(len)
+            .map(char::from)
             .collect();
         token
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::AccessTokenGen;
+
+    #[test]
+    fn test_token() {
+        let token = AccessTokenGen::random_access_token(10);
+        println!("{}", token);
     }
 }

@@ -43,7 +43,7 @@ impl ControlInterface {
     // tcp_port tcp监听的本地端口，传None表示使用默认值(取决于mode)
     pub fn new(param: ControlInterfaceParam, controller: &Controller) -> Self {
         let access_token = match param.require_access_token {
-            true => Some(AccessTokenGen::new().gen_access_token(8)),
+            true => Some(AccessTokenGen::new().gen_access_token(12)),
             false => None,
         };
         if access_token.is_some() {
