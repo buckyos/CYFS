@@ -11,7 +11,7 @@ pub struct CYFSDiskScanner;
 
 impl DiskScanner for CYFSDiskScanner {
     fn get_cache_path_list(&self) -> Vec<(PathBuf, u64)> {
-        vec![(cyfs_util::get_cyfs_root_path(), 1024*1024*1024*1024)]
+        vec![(cyfs_util::get_cyfs_root_path().join("data").join("chunk-cache"), 1024*1024*1024*1024)]
     }
 }
 
