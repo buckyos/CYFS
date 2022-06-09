@@ -777,7 +777,7 @@ impl ChunkWriterExt for LocalChunkListWriter {
         Ok(())
     }
 
-    async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>, range: Option<Range<u64>>) -> BuckyResult<()> {
+    async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>, _range: Option<Range<u64>>) -> BuckyResult<()> {
         
         let task_sender = {
             let state = &mut *self.0.state.write().unwrap();
