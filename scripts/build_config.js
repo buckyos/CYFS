@@ -52,28 +52,6 @@ const services = [
         "pub": true,
         "config_file": service_default_cfg,
         "id": "9tGpLNnQnReSYJhrgrLMjz2bFoRDVKP9Dp8Crqy1bjzY",
-        "assets": {
-            "x86_64-pc-windows-msvc": [
-                {
-                    from: "../3rd/windivert/x64/WinDivert.dll",
-                    to: "bin/WinDivert.dll"
-                },
-                {
-                    from: "../3rd/windivert/x64/WinDivert64.sys",
-                    to: "bin/WinDivert64.sys"
-                }
-            ],
-            "i686-pc-windows-msvc": [
-                {
-                    from: "../3rd/windivert/x86/WinDivert.dll",
-                    to: "bin/WinDivert.dll"
-                },
-                {
-                    from: "../3rd/windivert/x86/WinDivert32.sys",
-                    to: "bin/WinDivert64.sys"
-                }
-            ]
-        }
     },
     {
         "name": "chunk-manager",
