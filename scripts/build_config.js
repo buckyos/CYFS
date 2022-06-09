@@ -81,6 +81,13 @@ const services = [
         "config_file": service_default_cfg,
         "id": "9tGpLNnDwJ1nReZqJgWev5eoe23ygViGDC4idnCK1Dy5"
     },
+	{
+        "name": "dsg-service",
+        "include": only_ood,
+        "pub": true,
+        "config_file": service_default_cfg,
+        "id": "9tGpLNnPtNxqwjgcxKfMpyaQqVRkLQ5aka69FgWy5PLU"
+    },
 ]
 
 

@@ -1,0 +1,94 @@
+syntax = "proto3"; 
+
+message CacheStorage {
+    optional string pub_http = 1; 
+    bool pub_cyfs = 2; 
+}
+
+message BackupStorage {
+    uint32 reserved = 1;
+}
+
+message ImmutableDataSource {
+    repeated bytes chunks = 1;
+}
+
+message ContractDesc {
+    enum DataSourceType {
+        Immutable = 0;
+        Mutable = 1;
+    }
+    DataSourceType data_source_type = 1;
+    oneof data_source {
+        ImmutableDataSource immut_data_source = 2;
+        uint64 mut_data_source = 3;
+    }
+
+    enum StorageType {
+        Cache = 0;
+        Backup = 1;
+    }
+    StorageType storage_type = 4;
+    oneof storage {
+        CacheStorage cache_storage = 5;
+        BackupStorage backup_storage = 6;
+    } 
+
+    bytes miner = 7; 
+    uint64 start_at = 8; 
+    uint64 end_at = 9;
+    bytes witness = 10;
+    optional bytes witness_dec_id = 11;
+}
+
+message DataSourceChangedState {
+    repeated bytes chunks = 1;
+}
+
+message DataSourcePreparedState {
+    repeated bytes chunks = 1;
+    bytes data_source_stub = 2;
+}
+
+message ContractState {
+    enum ContractStateType {
+        Initial = 0;
+        DataSourceChanged = 1; 
+        DataSourcePrepared = 2;   
+        DataSourceSyncing = 3;
+        DataSourceStored = 4;  
+        ContractExecuted = 5; 
+        ContractBroken = 6;
+    }
+    ContractStateType state_type = 1;
+    oneof state {
+        DataSourceChangedState data_source_changed = 2;
+        DataSourcePreparedState data_source_prepared = 3;
+    }
+}
+
+message ContractStateDesc {
+    bytes contract = 1;
+    ContractState state = 2;
+}
+
+
+message ChunkMergeStub {
+    optional uint32 first_range = 1;
+
+    repeated uint32 index_range = 2; 
+
+    optional uint32 last_range = 3;
+}
+
+
+message ChunkFunctionMerge {
+    optional bytes key = 1; 
+    ChunkMergeStub chunks = 2;
+    uint32 split = 3;
+}
+
+
+message DataSourceStubDesc {
+    repeated ChunkFunctionMerge functions = 1;
+}

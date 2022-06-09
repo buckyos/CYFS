@@ -1739,6 +1739,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyfs-dsg-client"
+version = "0.5.0"
+dependencies = [
+ "aes 0.7.5",
+ "async-recursion",
+ "async-std",
+ "async-trait",
+ "block-modes",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-util",
+ "generic-array 0.12.4",
+ "log 0.4.16",
+ "protobuf",
+ "protoc-bin-vendored",
+ "protoc-rust",
+ "rand 0.8.5",
+ "serde 1.0.137",
+ "serde_json",
+ "sha2 0.8.2",
+]
+
+[[package]]
 name = "cyfs-ecies"
 version = "0.1.4"
 dependencies = [
@@ -2296,6 +2322,24 @@ name = "dotenv"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
+
+[[package]]
+name = "dsg-service"
+version = "0.5.0"
+dependencies = [
+ "async-recursion",
+ "async-std",
+ "async-trait",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-debug",
+ "cyfs-dsg-client",
+ "cyfs-lib",
+ "cyfs-util",
+ "log 0.4.16",
+ "rand 0.8.5",
+ "sha2 0.8.2",
+]
 
 [[package]]
 name = "either"
