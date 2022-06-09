@@ -1,22 +1,16 @@
 use cyfs_base::*;
-use cyfs_debug::Mutex;
-use cyfs_bdt::{ChunkReader, ChunkWriter};
-use std::fmt::{Display, Formatter};
-use std::io::SeekFrom;
-use std::path::Path;
+use cyfs_bdt::ChunkReader;
+use cyfs_chunk_cache::{ChunkManager, ChunkType};
+use cyfs_util::cache::{
+    GetChunkRequest, GetTrackerPositionRequest, NamedDataCache, RemoveTrackerPositionRequest,
+    TrackerCache, TrackerDirection, TrackerPostion,
+};
 
 use async_std::fs::OpenOptions;
 use futures::{AsyncReadExt, AsyncSeekExt};
+use std::io::SeekFrom;
+use std::path::Path;
 use std::sync::Arc;
-
-
-use cyfs_chunk_cache::{Chunk, ChunkManager, ChunkType, MemRefChunk};
-use cyfs_util::cache::{
-    AddTrackerPositonRequest, GetChunkRequest, GetTrackerPositionRequest, NamedDataCache,
-    RemoveTrackerPositionRequest, TrackerCache, TrackerDirection, TrackerPostion,
-    UpdateChunkStateRequest,
-};
-
 
 pub struct ChunkStoreReader {
     ndc: Box<dyn NamedDataCache>,
@@ -231,97 +225,5 @@ impl ChunkReader for ChunkStoreReader {
                 "chunk not exists",
             ))
         }
-    }
-}
-
-pub struct ChunkManagerWriter {
-    err: Arc<Mutex<BuckyErrorCode>>,
-    chunk_manager: Arc<ChunkManager>,
-    ndc: Box<dyn NamedDataCache>,
-    tracker: Box<dyn TrackerCache>,
-}
-
-impl Clone for ChunkManagerWriter {
-    fn clone(&self) -> Self {
-        Self {
-            err: self.err.clone(),
-            chunk_manager: self.chunk_manager.clone(),
-            ndc: self.ndc.clone(),
-            tracker: self.tracker.clone(),
-        }
-    }
-}
-
-impl ChunkManagerWriter {
-    pub fn new(
-        chunk_manager: Arc<ChunkManager>,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
-    ) -> Self {
-        Self {
-            err: Arc::new(Mutex::new(BuckyErrorCode::Ok)),
-            chunk_manager,
-            ndc,
-            tracker,
-        }
-    }
-}
-
-impl Display for ChunkManagerWriter {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Chunk Writer")
-    }
-}
-
-#[async_trait::async_trait]
-impl ChunkWriter for ChunkManagerWriter {
-    fn clone_as_writer(&self) -> Box<dyn ChunkWriter> {
-        Box::new(self.clone())
-    }
-
-    async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
-        let ref_chunk = MemRefChunk::from(unsafe {
-            std::mem::transmute::<_, &'static [u8]>(content.as_slice())
-        });
-        let content = Box::new(ref_chunk) as Box<dyn Chunk>;
-        self.chunk_manager
-            .put_chunk(chunk, content.as_ref())
-            .await?;
-
-        self.ndc
-            .update_chunk_state(&UpdateChunkStateRequest {
-                chunk_id: chunk.clone(),
-                current_state: None,
-                state: ChunkState::Ready,
-            })
-            .await
-            .map_err(|e| {
-                error!("{} add to tracker failed for {}", self, e);
-                e
-            })?;
-
-        let request = AddTrackerPositonRequest {
-            id: chunk.to_string(),
-            direction: TrackerDirection::Store,
-            pos: TrackerPostion::ChunkManager,
-            flags: 0,
-        };
-        if let Err(e) = self.tracker.add_position(&request).await {
-            if e.code() != BuckyErrorCode::AlreadyExists {
-                error!("{} add to tracker failed for {}", self, e);
-                return Err(e);
-            }
-        };
-
-        Ok(())
-    }
-
-    async fn finish(&self) -> BuckyResult<()> {
-        Ok(())
-    }
-
-    async fn err(&self, e: BuckyErrorCode) -> BuckyResult<()> {
-        *self.err.lock().unwrap() = e;
-        Ok(())
     }
 }

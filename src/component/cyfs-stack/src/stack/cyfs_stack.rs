@@ -14,7 +14,7 @@ use crate::interface::{
 use crate::meta::*;
 use crate::name::NameResolver;
 use crate::ndn::NDNOutputTransformer;
-use crate::ndn_api::{ChunkStoreReader, NDNBdtDataAclProcessor, NDNDataCacheManager, NDNService};
+use crate::ndn_api::{ChunkStoreReader, NDNBdtDataAclProcessor, NDNService};
 use crate::non::NONOutputTransformer;
 use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
@@ -279,11 +279,7 @@ impl CyfsStackImpl {
             config.clone(),
         );
 
-        // ndn本地数据缓存
-        let data_cache = NDNDataCacheManager::new(bdt_stack.clone(), isolate);
-
         let (non_service, ndn_service) = NONService::new(
-            data_cache,
             noc.clone_noc(),
             bdt_stack.clone(),
             ndc.clone(),

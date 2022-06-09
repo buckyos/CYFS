@@ -1,7 +1,7 @@
 use super::super::file::*;
-use super::super::NDNDataCacheManager;
 use crate::ndn::*;
 use cyfs_base::*;
+use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 use cyfs_bdt::StackGuard;
 
@@ -31,10 +31,10 @@ pub(crate) struct NDNForwardDataOutputProcessor {
 impl NDNForwardDataOutputProcessor {
     pub fn new(
         bdt_stack: StackGuard,
-        data_cache: NDNDataCacheManager,
+        chunk_manager: ChunkManagerRef,
         target: DeviceId,
     ) -> NDNInputProcessorRef {
-        let data_manager = TargetDataManager::new(bdt_stack, data_cache, target);
+        let data_manager = TargetDataManager::new(bdt_stack, chunk_manager, target);
         let ret = Self { data_manager };
 
         Arc::new(Box::new(ret))

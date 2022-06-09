@@ -2,7 +2,6 @@ use super::super::acl::*;
 use super::super::handler::*;
 use super::super::ndc::NDCLevelInputProcessor;
 use super::super::ndc::NDNObjectLoader;
-use super::super::NDNDataCacheManager;
 use super::forward::NDNForwardDataOutputProcessor;
 use super::forward_object_processor::NDNForwardObjectProcessor;
 use super::NDNOutputFailHandleProcessor;
@@ -12,12 +11,12 @@ use crate::meta::ObjectFailHandler;
 use crate::ndn::*;
 use crate::non::*;
 use crate::router_handler::RouterHandlersManager;
-use cyfs_util::cache::NamedDataCache;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::StackGuard;
+use cyfs_chunk_cache::ChunkManagerRef;
+use cyfs_lib::*;
+use cyfs_util::cache::NamedDataCache;
 
-use cyfs_chunk_cache::ChunkManager;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
@@ -31,7 +30,7 @@ pub(crate) struct NDNLevelInputProcessor {
 
     bdt_stack: StackGuard,
 
-    data_cache: NDNDataCacheManager,
+    chunk_manager: ChunkManagerRef,
 
     // 对象加载器
     local_object_loader: NDNObjectLoader,
@@ -52,16 +51,15 @@ impl NDNLevelInputProcessor {
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        data_cache: NDNDataCacheManager,
         raw_noc_processor: NONInputProcessorRef,
         inner_non_processor: NONInputProcessorRef,
         router_handlers: RouterHandlersManager,
-        chunk_mananger: Arc<ChunkManager>,
+        chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
         let ndc_processor = NDCLevelInputProcessor::new_raw(
-            chunk_mananger,
+            chunk_manager.clone(),
             ndc,
             tracker,
             raw_noc_processor.clone(),
@@ -74,7 +72,7 @@ impl NDNLevelInputProcessor {
         let ret = Self {
             acl,
             bdt_stack,
-            data_cache,
+            chunk_manager,
             local_object_loader,
             target_object_loader,
             ndc_processor,
@@ -91,11 +89,10 @@ impl NDNLevelInputProcessor {
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        data_cache: NDNDataCacheManager,
         raw_noc_processor: NONInputProcessorRef,
         inner_non_processor: NONInputProcessorRef,
         router_handlers: RouterHandlersManager,
-        chunk_manager: Arc<ChunkManager>,
+        chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
@@ -105,7 +102,6 @@ impl NDNLevelInputProcessor {
             bdt_stack,
             ndc,
             tracker,
-            data_cache,
             raw_noc_processor,
             inner_non_processor,
             router_handlers,
@@ -124,14 +120,13 @@ impl NDNLevelInputProcessor {
     }
 
     async fn get_data_forward(&self, target: DeviceId) -> BuckyResult<NDNInputProcessorRef> {
-        
         // ensure target device in local, used for bdt stack
         self.forward.get(&target).await?;
 
         // 获取到目标的processor
         let processor = NDNForwardDataOutputProcessor::new(
             self.bdt_stack.clone(),
-            self.data_cache.clone(),
+            self.chunk_manager.clone(),
             target.clone(),
         );
 

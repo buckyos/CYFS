@@ -1,14 +1,12 @@
+use super::state::*;
 use cyfs_base::*;
 use cyfs_bdt::ChunkWriter;
-
 use cyfs_chunk_cache::{LocalFile, MemRefChunk};
-use futures::{AsyncWriteExt};
+use cyfs_util::cache::{NamedDataCache, TrackerCache};
+
+use futures::AsyncWriteExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use cyfs_util::cache::{
-    AddTrackerPositonRequest, NamedDataCache, PostionFileRange, TrackerCache, TrackerDirection,
-    TrackerPostion, UpdateChunkStateRequest,
-};
 
 pub struct LocalFileWriter {
     file_path: PathBuf,
@@ -16,6 +14,7 @@ pub struct LocalFileWriter {
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
     err: Arc<Mutex<BuckyErrorCode>>,
+    state: Arc<LocalFileStateUpdater>,
 }
 
 impl Clone for LocalFileWriter {
@@ -26,6 +25,7 @@ impl Clone for LocalFileWriter {
             ndc: self.ndc.clone(),
             tracker: self.tracker.clone(),
             err: self.err.clone(),
+            state: self.state.clone(),
         }
     }
 }
@@ -40,11 +40,12 @@ impl LocalFileWriter {
         Ok(Self {
             file_path: path.clone(),
             local_file: Arc::new(async_std::sync::Mutex::new(
-                LocalFile::open(path, file).await?,
+                LocalFile::open(path.clone(), file.clone()).await?,
             )),
             ndc,
             tracker,
             err: Arc::new(Mutex::new(BuckyErrorCode::Ok)),
+            state: Arc::new(LocalFileStateUpdater::new(file, path)),
         })
     }
 }
@@ -65,48 +66,20 @@ impl ChunkWriter for LocalFileWriter {
         Box::new(self.clone())
     }
 
-    async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
+    async fn write(&self, chunk_id: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
         let ref_chunk = MemRefChunk::from(unsafe {
             std::mem::transmute::<_, &'static [u8]>(content.as_slice())
         });
 
-        let chunk_range_list = {
+        {
             let mut local_file = self.local_file.lock().await;
-            local_file.put_chunk(chunk, &ref_chunk).await?;
-
-            local_file.get_chunk_range_list(chunk).await?.clone()
-        };
-
-        self.ndc
-            .update_chunk_state(&UpdateChunkStateRequest {
-                chunk_id: chunk.clone(),
-                current_state: None,
-                state: ChunkState::Ready,
-            })
-            .await
-            .map_err(|e| {
-                error!("{} add to tracker failed for {}", self, e);
-                e
-            })?;
-
-        for (offset, length) in chunk_range_list.iter() {
-            let request = AddTrackerPositonRequest {
-                id: chunk.to_string(),
-                direction: TrackerDirection::Store,
-                pos: TrackerPostion::FileRange(PostionFileRange {
-                    path: self.file_path.to_string_lossy().to_string(),
-                    range_begin: *offset,
-                    range_end: *offset + *length,
-                }),
-                flags: 0,
-            };
-            if let Err(e) = self.tracker.add_position(&request).await {
-                if e.code() != BuckyErrorCode::AlreadyExists {
-                    error!("add to tracker failed for {}", e);
-                    return Err(e);
-                }
-            };
+            local_file.put_chunk(chunk_id, &ref_chunk).await?;
         }
+
+        self.state.update_chunk_state(&self.ndc, chunk_id).await?;
+        self.state
+            .update_chunk_tracker(&self.tracker, chunk_id)
+            .await?;
 
         Ok(())
     }
@@ -128,6 +101,7 @@ pub struct LocalChunkWriter {
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
     err: Arc<Mutex<BuckyErrorCode>>,
+    state: Arc<LocalChunkStateUpdater>,
 }
 
 impl Clone for LocalChunkWriter {
@@ -137,6 +111,7 @@ impl Clone for LocalChunkWriter {
             ndc: self.ndc.clone(),
             tracker: self.tracker.clone(),
             err: self.err.clone(),
+            state: self.state.clone(),
         }
     }
 }
@@ -148,10 +123,11 @@ impl LocalChunkWriter {
         tracker: Box<dyn TrackerCache>,
     ) -> Self {
         Self {
-            local_path,
+            local_path: local_path.clone(),
             ndc,
             tracker,
             err: Arc::new(Mutex::new(BuckyErrorCode::Ok)),
+            state: Arc::new(LocalChunkStateUpdater::new(local_path)),
         }
     }
 }
@@ -214,30 +190,10 @@ impl ChunkWriter for LocalChunkWriter {
             BuckyError::new(BuckyErrorCode::Failed, msg)
         })?;
 
-        self.ndc
-            .update_chunk_state(&UpdateChunkStateRequest {
-                chunk_id: chunk_id.clone(),
-                current_state: None,
-                state: ChunkState::Ready,
-            })
-            .await
-            .map_err(|e| {
-                error!("{} add to tracker failed for {}", self, e);
-                e
-            })?;
-
-        let request = AddTrackerPositonRequest {
-            id: chunk_id.to_string(),
-            direction: TrackerDirection::Store,
-            pos: TrackerPostion::File(self.local_path.to_string_lossy().to_string()),
-            flags: 0,
-        };
-        if let Err(e) = self.tracker.add_position(&request).await {
-            if e.code() != BuckyErrorCode::AlreadyExists {
-                error!("add to tracker failed for {}", e);
-                return Err(e);
-            }
-        };
+        self.state.update_chunk_state(&self.ndc, chunk_id).await?;
+        self.state
+            .update_chunk_tracker(&self.tracker, chunk_id)
+            .await?;
 
         Ok(())
     }

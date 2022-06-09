@@ -4,10 +4,10 @@ use super::object_loader::NDNObjectLoader;
 use crate::acl::*;
 use crate::ndn::*;
 use crate::non::*;
-use cyfs_util::cache::NamedDataCache;
 use cyfs_base::*;
-use futures::AsyncReadExt;
 use cyfs_lib::*;
+use cyfs_util::cache::NamedDataCache;
+use futures::AsyncReadExt;
 
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_chunk_lib::{ChunkMeta, MemRefChunk};
@@ -22,7 +22,7 @@ pub(crate) struct NDCLevelInputProcessor {
 
 impl NDCLevelInputProcessor {
     pub fn new_raw(
-        chunk_mananger: Arc<ChunkManager>,
+        chunk_manager: Arc<ChunkManager>,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
 
@@ -32,7 +32,7 @@ impl NDCLevelInputProcessor {
         let object_loader = NDNObjectLoader::new(non_processor);
 
         let ret = Self {
-            data_manager: LocalDataManager::new(chunk_mananger, ndc, tracker),
+            data_manager: LocalDataManager::new(chunk_manager, ndc, tracker),
             object_loader,
         };
 
@@ -42,13 +42,13 @@ impl NDCLevelInputProcessor {
     // 创建一个带本地权限的processor
     pub fn new_local(
         acl: AclManagerRef,
-        chunk_mananger: Arc<ChunkManager>,
+        chunk_manager: Arc<ChunkManager>,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         raw_noc_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
         // 不带input acl的处理器
-        let raw_processor = Self::new_raw(chunk_mananger, ndc, tracker, raw_noc_processor);
+        let raw_processor = Self::new_raw(chunk_manager, ndc, tracker, raw_noc_processor);
 
         // 带local input acl的处理器
         let acl_processor = NDNAclLocalInputProcessor::new(acl, raw_processor.clone());

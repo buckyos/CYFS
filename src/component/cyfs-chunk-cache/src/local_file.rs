@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{SeekFrom};
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ChunkId, ChunkList, File, NamedObject};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ChunkId, File, NamedObject};
 use memmap2::MmapMut;
 use cyfs_chunk_lib::{Chunk, ChunkMeta, ChunkMut};
 
@@ -264,7 +264,7 @@ impl LocalFile {
 
 
             let mut chunk_map = HashMap::new();
-            if let ChunkList::ChunkInList(chunk_list) = file.body().as_ref().unwrap().content().chunk_list() {
+            if let Some(chunk_list) = file.body().as_ref().unwrap().content().chunk_list().inner_chunk_list() {
                 let mut pos = 0;
                 for chunk_id in chunk_list.iter() {
                     if !chunk_map.contains_key(chunk_id) {

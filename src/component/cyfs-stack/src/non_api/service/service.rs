@@ -10,11 +10,11 @@ use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManager;
 use crate::{acl::*, non::*};
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::StackGuard;
+use cyfs_chunk_cache::ChunkManagerRef;
+use cyfs_lib::*;
 
 use std::sync::Arc;
-use cyfs_chunk_cache::ChunkManager;
 
 #[derive(Clone)]
 pub struct NONService {
@@ -26,7 +26,6 @@ pub struct NONService {
 
 impl NONService {
     pub(crate) fn new(
-        data_cache: NDNDataCacheManager,
         noc: Box<dyn NamedObjectCache>,
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
@@ -39,7 +38,7 @@ impl NONService {
         router_handlers: RouterHandlersManager,
         meta_cache: Box<dyn MetaCache>,
         fail_handler: ObjectFailHandler,
-        chunk_manager: Arc<ChunkManager>,
+        chunk_manager: ChunkManagerRef,
     ) -> (NONService, NDNService) {
         // 带file服务的无权限的noc processor
         let raw_noc_processor = NOCLevelInputProcessor::new_raw_with_file_service(
@@ -99,7 +98,6 @@ impl NONService {
             bdt_stack,
             ndc,
             tracker.clone(),
-            data_cache,
             ood_resovler,
             zone_manager,
             router_handlers.clone(),

@@ -1,4 +1,3 @@
-use super::super::cache::NDNDataCacheManager;
 use super::super::ndc::*;
 use super::super::ndn::*;
 use super::super::router::*;
@@ -11,10 +10,10 @@ use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManager;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::StackGuard;
+use cyfs_chunk_cache::ChunkManagerRef;
+use cyfs_lib::*;
 
-use cyfs_chunk_cache::ChunkManager;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -22,7 +21,7 @@ pub struct NDNService {
     ndc: NDNInputProcessorRef,
     ndn: NDNInputProcessorRef,
     router: NDNInputProcessorRef,
-    chunk_manager: Arc<ChunkManager>,
+    chunk_manager: ChunkManagerRef,
 }
 
 impl NDNService {
@@ -31,7 +30,6 @@ impl NDNService {
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        data_cache: NDNDataCacheManager,
 
         ood_resolver: OodResolver,
         zone_manager: ZoneManager,
@@ -45,7 +43,7 @@ impl NDNService {
 
         // 带acl的non router
         non_router: NONInputProcessorRef,
-        chunk_manager: Arc<ChunkManager>,
+        chunk_manager: ChunkManagerRef,
 
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
@@ -63,7 +61,6 @@ impl NDNService {
             bdt_stack.clone(),
             ndc.clone(),
             tracker.clone(),
-            data_cache.clone(),
             raw_noc_processor.clone(),
             inner_non_processor,
             router_handlers.clone(),
@@ -77,7 +74,6 @@ impl NDNService {
             bdt_stack,
             ndc,
             tracker,
-            data_cache,
             non_router,
             ood_resolver,
             zone_manager,

@@ -1,8 +1,9 @@
-use super::super::cache::NDNDataCacheManager;
+use super::super::cache::ChunkManagerWriter;
 use super::stream_writer::*;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::{ChunkDownloadConfig, ChunkWriter, ChunkWriterExt, StackGuard};
+use cyfs_chunk_cache::ChunkManagerRef;
+use cyfs_lib::*;
 
 use async_std::io::Read;
 use std::ops::Range;
@@ -10,25 +11,35 @@ use std::ops::Range;
 // 用以向远程device发起chunk/file操作
 pub(crate) struct TargetDataManager {
     bdt_stack: StackGuard,
-    data_cache: NDNDataCacheManager,
+    chunk_manager: ChunkManagerRef,
     target: DeviceId,
 }
 
 impl TargetDataManager {
     pub(crate) fn new(
         bdt_stack: StackGuard,
-        data_cache: NDNDataCacheManager,
+        chunk_manager: ChunkManagerRef,
         target: DeviceId,
     ) -> Self {
         Self {
             bdt_stack,
-            data_cache,
+            chunk_manager,
             target,
         }
     }
 
     pub fn target(&self) -> &DeviceId {
         &self.target
+    }
+
+    fn new_chunk_manager_writer(&self) -> Box<dyn ChunkWriter> {
+        let writer = ChunkManagerWriter::new(
+            self.chunk_manager.clone(),
+            self.bdt_stack.ndn().chunk_manager().ndc().clone(),
+            self.bdt_stack.ndn().chunk_manager().tracker().clone(),
+        );
+
+        Box::new(writer)
     }
 
     pub async fn get_file(
@@ -65,7 +76,7 @@ impl TargetDataManager {
             assert!(ranges.len() > 0);
 
             let (writers, waker, resp) = self
-                .create_file_ext_writers(&file_id, file_obj, total_size as usize)
+                .create_file_ext_writers(&file_id, total_size as usize)
                 .await;
 
             let controller = cyfs_bdt::download::download_file_with_ranges(
@@ -81,7 +92,7 @@ impl TargetDataManager {
             waker.wait_and_return(Box::new(reader)).await?
         } else {
             let (writers, waker, resp) = self
-                .create_file_writers(&file_id, file_obj, total_size as usize)
+                .create_file_writers(&file_id, total_size as usize)
                 .await;
 
             let controller = cyfs_bdt::download::download_file(
@@ -148,7 +159,6 @@ impl TargetDataManager {
     async fn create_file_writers(
         &self,
         file_id: &ObjectId,
-        file: &File,
         total_size: usize,
     ) -> (
         Vec<Box<dyn ChunkWriter>>,
@@ -160,9 +170,7 @@ impl TargetDataManager {
         let mut writer_list = vec![writer.clone().into_writer()];
 
         // 本地缓存
-        if let Ok(Some(writer)) = self.data_cache.gen_file_writer(file_id, file).await {
-            writer_list.push(writer);
-        }
+        writer_list.push(self.new_chunk_manager_writer());
 
         // 增加返回短路器
         let waker = FirstWakeupStreamWriter::new(writer.task_id());
@@ -174,7 +182,6 @@ impl TargetDataManager {
     async fn create_file_ext_writers(
         &self,
         file_id: &ObjectId,
-        file: &File,
         total_size: usize,
     ) -> (
         Vec<Box<dyn ChunkWriterExt>>,
@@ -186,7 +193,8 @@ impl TargetDataManager {
         let mut writer_list = vec![writer.clone().into_writer_ext()];
 
         // 本地缓存
-        if let Ok(Some(writer)) = self.data_cache.gen_file_writer(file_id, file).await {
+        {
+            let writer = self.new_chunk_manager_writer();
             writer_list.push(ChunkWriterExtAdapter::new(writer).into_writer_ext());
         }
 
@@ -218,9 +226,7 @@ impl TargetDataManager {
         let mut writer_list = vec![ret_writer];
 
         // 本地缓存
-        if let Ok(Some(writer)) = self.data_cache.gen_chunk_writer(chunk_id).await {
-            writer_list.push(writer);
-        }
+        writer_list.push(self.new_chunk_manager_writer());
 
         // 增加返回短路器
         let waker = FirstWakeupStreamWriter::new(writer.task_id());

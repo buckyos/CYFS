@@ -19,6 +19,8 @@ pub struct ChunkManager {
     chunk_cache: RwLock<Option<Arc<dyn ChunkCache>>>
 }
 
+pub type ChunkManagerRef = Arc<ChunkManager>;
+
 impl ChunkManager {
     pub fn new() -> Self {
         Self {
