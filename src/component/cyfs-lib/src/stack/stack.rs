@@ -570,7 +570,7 @@ mod test {
         cyfs_base::init_simple_log("test-shared-object-stack", Some("trace"));
 
         async_std::task::block_on(async move {
-            test_online().await;
+            // test_online().await;
         })
     }
 }

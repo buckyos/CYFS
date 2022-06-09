@@ -105,6 +105,7 @@ fn hkdf_sha256(master: &[u8]) -> AesKey {
 mod tests {
     use super::*;
     use secp256k1::Error;
+    use rand::Rng;
 
     #[test]
     fn test_remove_0x_decode_hex() {

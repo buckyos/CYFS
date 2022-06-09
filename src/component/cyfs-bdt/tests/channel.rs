@@ -194,7 +194,7 @@ async fn one_small_chunk_in_file() {
     let chunk_hash = hash_data(&chunk_data[..]);
     let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
 
-    let dir = get_named_data_root(rn_stack.local_device_id().to_string().as_str());
+    let dir = cyfs_util::get_named_data_root(rn_stack.local_device_id().to_string().as_str());
     let path = dir.join(chunkid.to_string().as_str());
     let _ = track_chunk_to_path(&*rn_stack, &chunkid, Arc::new(chunk_data), path.as_path())
         .await

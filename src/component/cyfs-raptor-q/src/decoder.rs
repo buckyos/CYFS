@@ -420,6 +420,7 @@ impl SourceBlockDecoder {
     }
 }
 
+/*
 #[cfg(test)]
 mod codec_tests {
     use crate::SourceBlockEncoder;
@@ -659,3 +660,5 @@ mod codec_tests {
         return result.unwrap() == data;
     }
 }
+
+*/

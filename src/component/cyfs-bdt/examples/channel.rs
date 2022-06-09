@@ -77,7 +77,7 @@ async fn main() {
         let chunk_hash = hash_data(&chunk_data[..]);
         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
 
-        let dir = get_named_data_root("bdt-example-channel-upload");
+        let dir = cyfs_util::get_named_data_root("bdt-example-channel-upload");
         let path = dir.join(chunkid.to_string().as_str());
         let _ = track_chunk_to_path(&*rn_stack, &chunkid, Arc::new(chunk_data), path.as_path())
             .await

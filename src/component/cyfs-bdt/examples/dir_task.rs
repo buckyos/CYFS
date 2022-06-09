@@ -56,7 +56,7 @@ async fn gen_file() -> (PathBuf, File) {
     .no_create_time()
     .build();
 
-    let dir = get_named_data_root("bdt-example-dir-task-uploader");
+    let dir = cyfs_util::get_named_data_root("bdt-example-dir-task-uploader");
     let path = dir.join(file.desc().file_id().to_string().as_str());
 
     {
@@ -117,7 +117,7 @@ async fn main() {
     // let mut entrys = HashMap::new();
     let mut file_obj_map = HashMap::new();
 
-    let down_dir = get_named_data_root("bdt-example-dir-task-downloader");
+    let down_dir = cyfs_util::get_named_data_root("bdt-example-dir-task-downloader");
     // let down_path = PathBuf::new();
     let mut down_file_path/* : Vec<_> */ = vec![];
     // let down_path = down_dir.join(file.desc().file_id().to_string().as_str());

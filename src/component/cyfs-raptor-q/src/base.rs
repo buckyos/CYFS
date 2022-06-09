@@ -343,7 +343,7 @@ mod tests {
             rand::thread_rng().gen_range(0, 256 * 256 * 256),
         );
         let packet = EncodingPacket::new(payload_id, vec![rand::thread_rng().gen()]);
-        let deserialized = EncodingPacket::deserialize(&packet.serialize());
+        let deserialized = EncodingPacket::deserialize(packet.serialize());
         assert_eq!(deserialized, packet);
     }
 

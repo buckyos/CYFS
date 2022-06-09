@@ -79,7 +79,7 @@ async fn main() {
     .no_create_time()
     .build();
 
-    let up_dir = get_named_data_root("bdt-example-file-task-uploader");
+    let up_dir = cyfs_util::get_named_data_root("bdt-example-file-task-uploader");
     let up_path = up_dir.join(file.desc().file_id().to_string().as_str());
 
     {
@@ -99,7 +99,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let down_dir = get_named_data_root("bdt-example-file-task-downloader");
+    let down_dir = cyfs_util::get_named_data_root("bdt-example-file-task-downloader");
     let down_path = down_dir.join(file.desc().file_id().to_string().as_str());
     let task = download_file_to_path(
         &*ln_stack,

@@ -26,6 +26,7 @@ fn main() {
     let length = packets.len();
     packets.truncate(length - 10);
 
+    /*
     // The Decoder MUST be constructed with the configuration of the Encoder.
     // The ObjectTransmissionInformation configuration should be transmitted over a reliable
     // channel
@@ -42,4 +43,5 @@ fn main() {
 
     // Check that even though some of the data was lost we are able to reconstruct the original message
     assert_eq!(result.unwrap(), data);
+    */
 }

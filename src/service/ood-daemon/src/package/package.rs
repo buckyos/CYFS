@@ -409,7 +409,7 @@ fn test() {
     options.overwrite = true;
     options.copy_inside = true;
 
-    if let Err(e) = move_dir_contents(&PathBuf::from(src), &PathBuf::from(dest)) {
+    if let Err(e) = super::ServicePackage::move_dir_contents(&PathBuf::from(src), &PathBuf::from(dest)) {
         error!("move dir error! err={}", e);
     }
 }

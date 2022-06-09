@@ -133,7 +133,13 @@ mod test {
             binder2.stop();
         });
         
-        binder.wait_util_bind().await;
+        let r = binder.wait_util_bind().await;
+        if let Err(e) = r {
+            println!("bind error: {}", e);
+        } else {
+            println!("bind success");
+        }
+        
         async_std::task::sleep(std::time::Duration::from_secs(10)).await;
     }
 }
