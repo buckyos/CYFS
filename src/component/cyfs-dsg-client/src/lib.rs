@@ -1,4 +1,6 @@
-mod protos;
+mod protos {
+    include!(concat!(env!("OUT_DIR"), "/mod.rs"));
+}
 mod obj_id;
 mod contracts;
 mod proof;

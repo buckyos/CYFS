@@ -1740,7 +1740,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-dsg-client"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "aes 0.7.5",
  "async-recursion",

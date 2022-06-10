@@ -889,7 +889,7 @@ impl RestoreReaderIter {
                     RestoreReaderState::Chunks => {
                         let data = if let Some(key) = self.function.key.as_ref() {
                             let mut buffer = vec![0u8; data.len()];
-                            let dec_len = DsgDataSourceStubObjectRef::dec_block(key, &mut buffer[self.split_offset..], data.len() - self.split_offset)?;
+                            let _dec_len = DsgDataSourceStubObjectRef::dec_block(key, &mut buffer[self.split_offset..], data.len() - self.split_offset)?;
                             Arc::new(buffer)
                         } else {
                             data
@@ -1202,7 +1202,7 @@ impl<'a> DsgDataSourceStubObjectRef<'a> {
         &self,  
         stack: &SharedCyfsStack, 
         reader: &Box<dyn ChunkReader>, 
-        merged: ChunkListDesc, 
+        _merged: ChunkListDesc,
         sources: ChunkListDesc,
         sample: &DsgChallengeSample,
     ) -> BuckyResult<Box<dyn Read + Unpin + Send + Sync>> {
