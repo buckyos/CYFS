@@ -236,7 +236,7 @@ impl DsgService {
         }
 
         let _ = self.stack().router_handlers().add_handler(
-            RouterHandlerChain::PreRouter, 
+            RouterHandlerChain::Handler, 
             "OnSyncContractState", 
             0, 
             format!("obj_type == {} && object.dec_id == {}",  DsgContractStateDesc::obj_type(), dsg_dec_id()).as_str(), 
@@ -279,7 +279,7 @@ impl DsgService {
         }
 
         let _ = self.stack().router_handlers().add_handler(
-            RouterHandlerChain::PreRouter, 
+            RouterHandlerChain::Handler, 
             "OnProof", 
             0, 
             format!("obj_type == {} && object.dec_id == {}",  DsgProofDesc::obj_type(), dsg_dec_id()).as_str(), 
@@ -317,7 +317,7 @@ impl DsgService {
         }
 
         let _ = self.stack().router_handlers().add_handler(
-            RouterHandlerChain::PreRouter, 
+            RouterHandlerChain::Handler,
             "OnQuery", 
             0, 
             format!("obj_type == {} && object.dec_id == {}",  DsgQueryDesc::obj_type(), dsg_dec_id()).as_str(), 
