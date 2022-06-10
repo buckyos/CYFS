@@ -160,51 +160,21 @@ impl StackInfo {
 
         let mut init_sn_peers = vec![];
         let mut init_pn_peers = vec![];
-        let sn = cyfs_util::get_default_sn_desc();
+        
+        // should not change the device's inner sn_list and pn_list
+        info!("current device: {}", device_info.device.format_json());
 
-        let mut device_changed = false;
-        // 如果device没有指定sn，那么使用当前sn
-        let device_sn_list = device_info.device.mut_connect_info().mut_sn_list();
-        if device_sn_list.is_empty() {
-            let sn_id = sn.desc().device_id();
-            info!(
-                "device.desc sn list is empty! now will use default sn: {}",
-                sn_id
-            );
-            device_sn_list.push(sn_id);
-            device_changed = true;
-        } else {
-            info!("device.desc had inner sn list: {:?}", device_sn_list);
-        }
+        let sn = cyfs_util::get_default_sn_desc();
+        let sn_id = sn.desc().device_id();
+        info!("default sn: {}", sn_id);
+        
         init_sn_peers.push(sn);
 
         if let Some(pn) = cyfs_util::get_pn_desc() {
-            let device_pn_list = device_info.device.mut_connect_info().mut_passive_pn_list();
-
-            // 如果device没有指定pn，那么使用当前pn
-            if device_pn_list.is_empty() {
-                let pn_id = pn.desc().device_id();
-                info!(
-                    "device.desc pn list is empty! now will use default pn: {}",
-                    pn_id
-                );
-                device_pn_list.push(pn_id);
-                device_changed = true;
-            } else {
-                info!("device.desc had inner pn list: {:?}", device_pn_list);
-            }
+            let pn_id = pn.desc().device_id();
+            info!("default pn: {}", pn_id);
 
             init_pn_peers.push(pn);
-        }
-
-        // device更新sn或者pn后，必须更新update_time
-        if device_changed {
-            device_info
-                .device
-                .body_mut()
-                .as_mut()
-                .unwrap()
-                .increase_update_time(bucky_time_now());
         }
 
         let init_known_peers = cyfs_util::get_default_known_peers();
