@@ -90,7 +90,7 @@ impl AdminManager {
         if let Err(e) = router_handlers
             .post_object()
             .add_handler(
-                RouterHandlerChain::PreRouter,
+                RouterHandlerChain::Handler,
                 "system_admin_manager_command_controller",
                 1,
                 &filter,

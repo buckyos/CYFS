@@ -526,7 +526,7 @@ impl ZoneRoleManager {
         if let Err(e) = router_handlers
             .post_object()
             .add_handler(
-                RouterHandlerChain::PreRouter,
+                RouterHandlerChain::Handler,
                 "system_role_manager_controller",
                 1,
                 &filter,

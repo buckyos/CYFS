@@ -243,7 +243,7 @@ impl AppController {
         if let Err(e) = router_handlers
             .post_object()
             .add_handler(
-                RouterHandlerChain::PreRouter,
+                RouterHandlerChain::Handler,
                 "system_app_manager_controller",
                 1,
                 &filter,
