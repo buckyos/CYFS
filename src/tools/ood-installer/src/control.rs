@@ -36,7 +36,7 @@ impl ActivateControl {
 
         let tcp_port = tcp_port.unwrap_or(cyfs_base::OOD_INSTALLER_CONTROL_PORT);
         let param = ControlInterfaceParam {
-            mode: OODControlMode::Daemon,
+            mode: OODControlMode::Installer,
             tcp_port: Some(tcp_port),
             require_access_token: true,
             tcp_host,

@@ -153,6 +153,7 @@ impl ControlInterface {
         match mode {
             OODControlMode::Daemon => cyfs_base::OOD_DAEMON_CONTROL_PORT,
             OODControlMode::Runtime => cyfs_base::CYFS_RUNTIME_DAEMON_CONTROL_PORT,
+            OODControlMode::Installer => cyfs_base::OOD_INSTALLER_CONTROL_PORT,
             OODControlMode::App => {
                 // 对于app，采用随机端口
                 0

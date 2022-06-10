@@ -38,6 +38,9 @@ pub enum OODControlMode {
 
     // 第三方app模式，端口随机
     App = 2,
+
+    // ood-installer mode
+    Installer = 3,
 }
 
 #[cfg(target_os = "ios")]
