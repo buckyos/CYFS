@@ -79,6 +79,8 @@ pub(crate) struct RouterHandlersSavedData {
     pub pre_crypto: Option<RouterHandlerContainerSavedData>,
     pub post_crypto: Option<RouterHandlerContainerSavedData>,
 
+    pub handler: Option<RouterHandlerContainerSavedData>,
+    
     pub acl: Option<RouterHandlerContainerSavedData>,
 }
 
@@ -94,6 +96,8 @@ impl RouterHandlersSavedData {
             
             pre_crypto: None,
             post_crypto: None,
+
+            handler: None,
 
             acl: None,
         }

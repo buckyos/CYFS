@@ -19,6 +19,8 @@ pub enum RouterHandlerChain {
     PreCrypto,
     PostCrypto,
 
+    Handler,
+
     Acl,
 }
 
@@ -36,6 +38,8 @@ impl fmt::Display for RouterHandlerChain {
 
             Self::PreCrypto => "pre_crypto",
             Self::PostCrypto => "post_crypto",
+
+            Self::Handler => "handler",
 
             Self::Acl => "acl",
         };
@@ -60,6 +64,8 @@ impl FromStr for RouterHandlerChain {
             "pre_crypto" => Self::PreCrypto,
             "post_crypto" => Self::PostCrypto,
 
+            "handler" => Self::Handler,
+            
             "acl" => Self::Acl,
             
             v @ _ => {

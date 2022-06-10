@@ -2,6 +2,7 @@ use super::super::acl::*;
 use super::super::handler::*;
 use super::super::non::NONOutputFailHandleProcessor;
 use super::def::*;
+use super::handler::NONRouterHandler;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::*;
@@ -32,6 +33,9 @@ pub(crate) struct NONRouter {
     router_handlers: RouterHandlersManager,
 
     fail_handler: ObjectFailHandler,
+
+    // action's handler with router handler system, now only valid for post_object
+    handler: Arc<NONRouterHandler>,
 }
 
 impl NONRouter {
@@ -50,6 +54,8 @@ impl NONRouter {
         meta_processor: NONInputProcessorRef,
         fail_handler: ObjectFailHandler,
     ) -> NONInputProcessorRef {
+        let handler = NONRouterHandler::new(&router_handlers, zone_manager.clone());
+
         let ret = Self {
             noc_processor: raw_noc_processor,
             forward,
@@ -61,6 +67,8 @@ impl NONRouter {
 
             meta_processor,
             fail_handler,
+
+            handler: Arc::new(handler),
         };
 
         Arc::new(Box::new(ret))
@@ -583,16 +591,9 @@ impl NONRouter {
 
         let object_id = std::borrow::Cow::Borrowed(&req.object.object_id);
         if router_info.next_hop.is_none() {
-            // 没有下一跳了，但post_object又必须依赖handler的处理，那么返回NotHandled错误码
-            let msg = format!(
-                "post object must be handled by handler! req={}, soruce={}, device={}",
-                object_id,
-                req.common.source,
-                self.zone_manager.get_current_device_id(),
-            );
-            error!("{}", msg);
 
-            return Err(BuckyError::new(BuckyErrorCode::NotHandled, msg));
+            // 没有下一跳了，交由handler处理器
+            return self.handler.post_object(req).await;
         }
 
         // 不再修正req的target，保留请求原始值
@@ -610,18 +611,22 @@ impl NONRouter {
             .await?;
 
         let object_id = object_id.into_owned();
-        forward_processor.post_object(req).await.map_err(|mut e| {
-            // 需要区分一下是zone内连接失败，还是跨zone连接失败
-            if e.code() == BuckyErrorCode::ConnectFailed
-                && *router_info.next_direction.as_ref().unwrap() == ZoneDirection::LocalToRemote
-            {
-                e.set_code(BuckyErrorCode::ConnectInterZoneFailed);
-            }
-            e
-        }).map(|resp| {
-            info!("post_object response: req={}, resp={}", object_id, resp);
-            resp
-        })
+        forward_processor
+            .post_object(req)
+            .await
+            .map_err(|mut e| {
+                // 需要区分一下是zone内连接失败，还是跨zone连接失败
+                if e.code() == BuckyErrorCode::ConnectFailed
+                    && *router_info.next_direction.as_ref().unwrap() == ZoneDirection::LocalToRemote
+                {
+                    e.set_code(BuckyErrorCode::ConnectInterZoneFailed);
+                }
+                e
+            })
+            .map(|resp| {
+                info!("post_object response: req={}, resp={}", object_id, resp);
+                resp
+            })
     }
 
     async fn default_select_object(
