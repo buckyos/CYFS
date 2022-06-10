@@ -341,7 +341,7 @@ impl SharedCyfsStack {
 
         // 初始化对应的事件处理器，二选一
         let router_handlers =
-            RouterHandlerManager::new(&param.service_url.to_string(), param.event_type.clone())
+            RouterHandlerManager::new(Some(dec_id.clone()), &param.service_url.to_string(), param.event_type.clone())
                 .await?;
 
         let router_events =

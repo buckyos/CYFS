@@ -51,6 +51,7 @@ impl RouterHandlerWSProcessor {
 
         let handler = RouterHandler::new(
             req.id.clone(),
+            req.dec_id,
             req.param.index,
             &req.param.filter,
             req.param.default_action.clone(),
@@ -189,64 +190,64 @@ impl RouterHandlerWSProcessor {
                 .manager
                 .handlers(&req.chain)
                 .put_object()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
 
             RouterHandlerCategory::GetObject => self
                 .manager
                 .handlers(&req.chain)
                 .get_object()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
 
             RouterHandlerCategory::PostObject => self
                 .manager
                 .handlers(&req.chain)
                 .post_object()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
 
             RouterHandlerCategory::SelectObject => self
                 .manager
                 .handlers(&req.chain)
                 .select_object()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
 
             RouterHandlerCategory::DeleteObject => self
                 .manager
                 .handlers(&req.chain)
                 .delete_object()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
 
             RouterHandlerCategory::GetData => self
                 .manager
                 .handlers(&req.chain)
                 .get_data()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
             RouterHandlerCategory::PutData => self
                 .manager
                 .handlers(&req.chain)
                 .put_data()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
             RouterHandlerCategory::DeleteData => self
                 .manager
                 .handlers(&req.chain)
                 .delete_data()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
 
             RouterHandlerCategory::SignObject => self
                 .manager
                 .handlers(&req.chain)
                 .sign_object()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
             RouterHandlerCategory::VerifyObject => self
                 .manager
                 .handlers(&req.chain)
                 .verify_object()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
 
             RouterHandlerCategory::Acl => self
                 .manager
                 .handlers(&req.chain)
                 .acl()
-                .remove_handler(&req.id),
+                .remove_handler(&req.id, req.dec_id),
         };
 
         Ok(ret)

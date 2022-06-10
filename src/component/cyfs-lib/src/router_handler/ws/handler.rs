@@ -2,7 +2,7 @@ use super::super::RouterHandlerId;
 use super::super::*;
 use crate::base::*;
 use crate::ws::*;
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, JsonCodec};
+use cyfs_base::*;
 use cyfs_debug::Mutex;
 use cyfs_util::*;
 
@@ -17,6 +17,7 @@ struct RouterHandlerItem {
     chain: RouterHandlerChain,
     category: RouterHandlerCategory,
     id: String,
+    dec_id: Option<ObjectId>,
     index: i32,
     filter: String,
     default_action: RouterHandlerAction,
@@ -65,6 +66,7 @@ impl RouterHandlerItem {
             chain: self.chain.clone(),
             category: self.category.clone(),
             id: self.id.clone(),
+            dec_id: self.dec_id.clone(),
             param,
         };
 
@@ -109,6 +111,7 @@ struct RouterHandlerUnregisterItem {
     chain: RouterHandlerChain,
     category: RouterHandlerCategory,
     id: String,
+    dec_id: Option<ObjectId>,
 }
 
 impl RouterHandlerUnregisterItem {
@@ -125,6 +128,7 @@ impl RouterHandlerUnregisterItem {
             chain: self.chain.clone(),
             category: self.category.clone(),
             id: self.id.clone(),
+            dec_id: self.dec_id.clone(),
         };
 
         let msg = req.encode_string();
@@ -280,11 +284,13 @@ impl RouterWSHandlerManagerImpl {
         chain: RouterHandlerChain,
         category: RouterHandlerCategory,
         id: &str,
+        dec_id: Option<ObjectId>,
     ) -> BuckyResult<bool> {
         let unregister_item = manager.lock().unwrap().remove_handler_op(
             chain.clone(),
             category.clone(),
             id.to_owned(),
+            dec_id,
         );
 
         let ret = manager.lock().unwrap().session.clone();
@@ -306,6 +312,7 @@ impl RouterWSHandlerManagerImpl {
         chain: RouterHandlerChain,
         category: RouterHandlerCategory,
         id: String,
+        dec_id: Option<ObjectId>,
     ) -> Arc<RouterHandlerUnregisterItem> {
         let id = RouterHandlerId {
             chain: chain,
@@ -333,6 +340,7 @@ impl RouterWSHandlerManagerImpl {
             chain: id.chain.clone(),
             category: id.category.clone(),
             id: id.id.clone(),
+            dec_id,
         };
 
         let unregister_item = Arc::new(unregister_item);
@@ -487,6 +495,7 @@ impl RouterWSHandlerManager {
         &self,
         chain: RouterHandlerChain,
         id: &str,
+        dec_id: Option<ObjectId>,
         index: i32,
         filter: &str,
         default_action: RouterHandlerAction,
@@ -510,6 +519,7 @@ impl RouterWSHandlerManager {
             chain,
             category,
             id: id.to_owned(),
+            dec_id,
             index,
             filter: filter.to_owned(),
             default_action: default_action.clone(),
@@ -529,7 +539,8 @@ impl RouterWSHandlerManager {
         chain: RouterHandlerChain,
         category: RouterHandlerCategory,
         id: &str,
+        dec_id: Option<ObjectId>,
     ) -> BuckyResult<bool> {
-        RouterWSHandlerManagerImpl::remove_handler(&self.manager, chain, category, id).await
+        RouterWSHandlerManagerImpl::remove_handler(&self.manager, chain, category, id, dec_id).await
     }
 }

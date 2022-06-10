@@ -25,7 +25,7 @@ macro_rules! declare_router_handler_processor {
                 >,
             ) -> BuckyResult<()> {
                 let handler =
-                    RouterHandler::new(id.to_owned(), index, filter, default_action, routine)?;
+                    RouterHandler::new(id.to_owned(), None, index, filter, default_action, routine)?;
 
                 self.handlers(&chain).$func().add_handler(handler)
             }
@@ -35,7 +35,7 @@ macro_rules! declare_router_handler_processor {
                 chain: RouterHandlerChain,
                 id: &str,
             ) -> BuckyResult<bool> {
-                let ret = self.handlers(&chain).$func().remove_handler(id);
+                let ret = self.handlers(&chain).$func().remove_handler(id, None);
 
                 Ok(ret)
             }

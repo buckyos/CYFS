@@ -20,6 +20,8 @@ where
 
     pub id: String,
 
+    pub dec_id: Option<ObjectId>,
+
     pub filter: ExpEvaluator,
 
     pub default_action: RouterHandlerAction,
@@ -40,15 +42,21 @@ where
     RESP: Send + Sync + 'static + ExpReservedTokenTranslator + JsonCodec<RESP> + fmt::Display,
     RouterHandlerRequest<REQ, RESP>: RouterHandlerCategoryInfo,
 {
+    pub fn compare_id(&self, other: &Self) -> bool {
+        self.id == other.id && self.dec_id == other.dec_id
+    }
+
     pub fn eq(&self, other: &Self) -> bool {
         self.index == other.index
             && self.id == other.id
+            && self.dec_id == other.dec_id
             && self.filter.exp() == other.filter.exp()
             && self.default_action == other.default_action
     }
 
     pub fn new(
         id: impl Into<String>,
+        dec_id: Option<ObjectId>,
         index: i32,
         filter: &str,
         default_action: RouterHandlerAction,
@@ -67,6 +75,7 @@ where
 
         let handler = RouterHandler::<REQ, RESP> {
             id: id.into(),
+            dec_id,
             index,
             filter,
             default_action,
@@ -114,23 +123,25 @@ where
         let changed = (|| {
             for i in 0..self.handler_list.len() {
                 let cur = &self.handler_list[i];
-                if cur.id == handler.id {
+                if cur.compare_id(&handler) {
                     // 比较是否相同
                     let changed;
                     if cur.eq(&handler) {
                         info!(
-                            "router handler already exists! chain={}, category={}, id={}",
+                            "router handler already exists! chain={}, category={}, id={}, dec={:?}",
                             self.chain,
                             Self::category(),
-                            handler.id
+                            handler.id,
+                            handler.dec_id,
                         );
                         changed = false;
                     } else {
                         info!(
-                            "will replace router handler: chain={}, category={}, id={}, index={}, filter={}, default_action={}, routine={}",
+                            "will replace router handler: chain={}, category={}, id={}, dec={:?}, index={}, filter={}, default_action={}, routine={}",
                             self.chain,
                             Self::category(),
                             handler.id,
+                            handler.dec_id,
                             handler.index,
                             handler.filter.exp(),
                             handler.default_action,
@@ -145,10 +156,11 @@ where
             }
 
             info!(
-                "new router handler: chain={}, category={}, id={}, index={}, filter={}, default_action={}, routine={}",
+                "new router handler: chain={}, category={}, id={}, dec={:?}, index={}, filter={}, default_action={}, routine={}",
                 self.chain,
                 Self::category(),
                 handler.id,
+                handler.dec_id,
                 handler.index,
                 handler.filter.exp(),
                 handler.default_action,
@@ -168,14 +180,16 @@ where
         Ok(changed)
     }
 
-    pub fn remove_handler(&mut self, id: &str) -> bool {
+    pub fn remove_handler(&mut self, id: &str, dec_id: Option<ObjectId>) -> bool {
         for i in 0..self.handler_list.len() {
-            if self.handler_list[i].id == id {
+            let item = &self.handler_list[i];
+            if item.id == id && item.dec_id == dec_id {
                 info!(
-                    "will remove router handler: chain={}, category={}, id={}",
+                    "will remove router handler: chain={}, category={}, id={}, dec={:?}",
                     self.chain,
                     Self::category(),
-                    id
+                    id,
+                    dec_id,
                 );
                 self.handler_list.remove(i);
                 return true;
@@ -183,10 +197,11 @@ where
         }
 
         warn!(
-            "router handler not found! chain={}, category={}, id={}",
+            "router handler not found! chain={}, category={}, id={}, dec={:?}",
             self.chain,
             Self::category(),
-            id
+            id,
+            dec_id,
         );
 
         false
@@ -224,22 +239,22 @@ where
     ) -> RouterHandlerResponse<REQ, RESP> {
         let resp = if handler.routine.is_some() {
             info!(
-                "will emit handler routine: chain={}, category={}, id={}, param={}",
-                chain, category, handler.id, param
+                "will emit handler routine: chain={}, category={}, id={}, dec={:?}, param={}",
+                chain, category, handler.id, handler.dec_id, param
             );
 
             match handler.routine.as_ref().unwrap().call(&param).await {
                 Ok(resp) => {
                     info!(
-                        "emit handler routine success: chain={}, category={}, id={}, action={}",
-                        chain, category, handler.id, resp.action
+                        "emit handler routine success: chain={}, category={}, id={}, dec={:?}, action={}",
+                        chain, category, handler.id, handler.dec_id, resp.action
                     );
                     resp
                 }
                 Err(e) => {
                     error!(
-                        "emit handler routine error, will use default action: chain={}, category={}, id={}, default action={}, {}",
-                        chain, category, handler.id, handler.default_action, e
+                        "emit handler routine error, will use default action: chain={}, category={}, id={}, dec={:?}, default action={}, {}",
+                        chain, category, handler.id, handler.dec_id, handler.default_action, e
                     );
 
                     // 触发事件出错后，使用默认action
@@ -270,6 +285,7 @@ where
         for item in &self.handler_list {
             let data = RouterHandlerSavedData {
                 index: item.index,
+                dec_id: item.dec_id.clone(),
                 filter: item.filter.exp().to_owned(),
                 default_action: item.default_action.to_string(),
             };
@@ -297,6 +313,11 @@ where
         id: String,
         data: RouterHandlerSavedData,
     ) -> BuckyResult<bool> {
+        // will ignore all system's router handlers!
+        if data.dec_id.is_none() {
+            return Ok(false);
+        }
+        
         let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
         let filter = ExpEvaluator::new(&data.filter, reserved_token_list)?;
 
@@ -309,6 +330,7 @@ where
 
         let handler = RouterHandler::<REQ, RESP> {
             id,
+            dec_id: data.dec_id,
             index: data.index,
             filter,
             default_action: RouterHandlerAction::from_str(&data.default_action)?,
@@ -360,9 +382,9 @@ where
         Ok(())
     }
 
-    pub fn remove_handler(&self, id: &str) -> bool {
+    pub fn remove_handler(&self, id: &str, dec_id: Option<ObjectId>) -> bool {
         let mut inner = self.handlers.lock().unwrap();
-        let ret = inner.remove_handler(id);
+        let ret = inner.remove_handler(id, dec_id);
         if ret {
             self.storage.async_save();
         }

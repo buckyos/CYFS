@@ -221,6 +221,8 @@ pub(crate) struct AppController {
     listener_manager: ObjectListenerManagerRef,
 }
 
+const APP_MANAGER_CONTROLLER_HANDLER_ID: &str = "system_app_manager_controller";
+
 impl AppController {
     pub fn new(config_isolate: Option<String>, listener_manager: ObjectListenerManagerRef) -> Self {
         Self {
@@ -244,7 +246,7 @@ impl AppController {
             .post_object()
             .add_handler(
                 RouterHandlerChain::Handler,
-                "system_app_manager_controller",
+                APP_MANAGER_CONTROLLER_HANDLER_ID,
                 1,
                 &filter,
                 RouterHandlerAction::Reject,

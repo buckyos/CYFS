@@ -13,6 +13,7 @@ struct RouterHandlerRegisterHelper {
     chain: RouterHandlerChain,
     category: RouterHandlerCategory,
     id: String,
+    dec_id: Option<ObjectId>,
     service_url: Url,
 }
 
@@ -21,6 +22,7 @@ impl RouterHandlerRegisterHelper {
         chain: RouterHandlerChain,
         category: RouterHandlerCategory,
         id: impl Into<String>,
+        dec_id: Option<ObjectId>,
         service_url: &str,
     ) -> Self {
         let service_url = Url::parse(service_url).unwrap();
@@ -31,6 +33,7 @@ impl RouterHandlerRegisterHelper {
             chain,
             category,
             id: id.into(),
+            dec_id,
             service_url,
         }
     }
@@ -46,11 +49,15 @@ impl RouterHandlerRegisterHelper {
         self.service_url.join(&path).unwrap()
     }
 
-    fn gen_http_request<T>(method: Method, url: Url, req: Option<&T>) -> Request
+    fn gen_http_request<T>(&self, method: Method, url: Url, req: Option<&T>) -> Request
     where
         T: JsonCodec<T>,
     {
         let mut http_req = Request::new(method, url);
+
+        if let Some(dec_id) = &self.dec_id {
+            http_req.insert_header(cyfs_base::CYFS_DEC_ID, dec_id.to_string());
+        }
 
         if req.is_some() {
             let req = req.as_ref().unwrap().encode_string();
@@ -142,6 +149,7 @@ impl RouterHandlerRegister {
         chain: RouterHandlerChain,
         category: RouterHandlerCategory,
         id: &str,
+        dec_id: Option<ObjectId>,
         index: i32,
         filter: &str,
         default_action: RouterHandlerAction,
@@ -149,7 +157,7 @@ impl RouterHandlerRegister {
         service_url: &str,
     ) -> Self {
         let inner = RouterHandlerRegisterInner::new(index, filter, default_action, routine);
-        let helper = RouterHandlerRegisterHelper::new(chain, category, id, service_url);
+        let helper = RouterHandlerRegisterHelper::new(chain, category, id, dec_id, service_url);
 
         Self {
             inner: Arc::new(Mutex::new(inner)),
@@ -212,7 +220,7 @@ impl RouterHandlerRegister {
 
             let inner = self.inner.lock().unwrap();
             let req = inner.gen_add_handler_param();
-            RouterHandlerRegisterHelper::gen_http_request(Method::Post, url, Some(&req))
+            self.helper.gen_http_request(Method::Post, url, Some(&req))
         };
 
         let url = req.url().clone();
@@ -238,9 +246,10 @@ impl RouterHandlerUnregister {
         chain: RouterHandlerChain,
         category: RouterHandlerCategory,
         id: impl Into<String>,
+        dec_id: Option<ObjectId>,
         service_url: &str,
     ) -> Self {
-        let helper = RouterHandlerRegisterHelper::new(chain, category, id, service_url);
+        let helper = RouterHandlerRegisterHelper::new(chain, category, id, dec_id, service_url);
 
         Self {
             helper: Arc::new(helper),
@@ -260,7 +269,7 @@ impl RouterHandlerUnregister {
     pub async fn unregister(&self) -> BuckyResult<bool> {
         let req = {
             let url = self.helper.gen_handler_url();
-            RouterHandlerRegisterHelper::gen_http_request::<RouterRemoveHandlerParam>(
+            self.helper.gen_http_request::<RouterRemoveHandlerParam>(
                 Method::Delete,
                 url,
                 None,

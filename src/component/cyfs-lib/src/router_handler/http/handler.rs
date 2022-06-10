@@ -42,6 +42,7 @@ where
 
 struct RouterHandlerItem {
     id: String,
+    dec_id: Option<ObjectId>,
     index: i32,
     filter: String,
     default_action: RouterHandlerAction,
@@ -182,6 +183,7 @@ impl RouterHttpHandlerManager {
         &self,
         chain: RouterHandlerChain,
         id: &str,
+        dec_id: Option<ObjectId>,
         index: i32,
         filter: &str,
         default_action: RouterHandlerAction,
@@ -201,6 +203,7 @@ impl RouterHttpHandlerManager {
     {
         let mut item = RouterHandlerItem {
             id: id.to_owned(),
+            dec_id,
             index,
             filter: filter.to_owned(),
             default_action: default_action.clone(),
@@ -227,6 +230,7 @@ impl RouterHttpHandlerManager {
             chain.clone(),
             category.clone(),
             id,
+            dec_id,
             index,
             filter,
             default_action,
@@ -268,6 +272,7 @@ impl RouterHttpHandlerManager {
         chain: RouterHandlerChain,
         category: RouterHandlerCategory,
         id: &str,
+        dec_id: Option<ObjectId>,
     ) -> BuckyResult<bool> {
         let id = RouterHandlerId {
             id: id.to_owned(),
@@ -294,7 +299,7 @@ impl RouterHttpHandlerManager {
                     id
                 );
                 let unregister =
-                    RouterHandlerUnregister::new(id.chain, id.category, id.id, &service_url);
+                    RouterHandlerUnregister::new(id.chain, id.category, id.id, dec_id, &service_url);
                 unregister.unregister().await
             }
         }

@@ -17,6 +17,8 @@ use cyfs_util::*;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
+const ROLE_MANAGER_HANDLER_ID: &str = "system_role_manager_controller";
+
 // zone role changed
 #[derive(Debug, Clone)]
 pub struct ZoneRoleChangedParam {
@@ -527,7 +529,7 @@ impl ZoneRoleManager {
             .post_object()
             .add_handler(
                 RouterHandlerChain::Handler,
-                "system_role_manager_controller",
+                ROLE_MANAGER_HANDLER_ID,
                 1,
                 &filter,
                 RouterHandlerAction::Default,

@@ -55,11 +55,17 @@ enum RouterHandlerManagerInner {
 
 #[derive(Clone)]
 pub struct RouterHandlerManager {
+    dec_id: Option<SharedObjectStackDecID>,
+
     inner: Arc<RouterHandlerManagerInner>,
 }
 
 impl RouterHandlerManager {
-    pub async fn new(service_url: &str, event_type: CyfsStackEventType) -> BuckyResult<Self> {
+    pub async fn new(
+        dec_id: Option<SharedObjectStackDecID>,
+        service_url: &str,
+        event_type: CyfsStackEventType,
+    ) -> BuckyResult<Self> {
         let inner = match event_type {
             CyfsStackEventType::Http => {
                 let ret = RouterHttpHandlerManager::new(service_url);
@@ -76,8 +82,14 @@ impl RouterHandlerManager {
         };
 
         Ok(Self {
+            dec_id,
             inner: Arc::new(inner),
         })
+    }
+
+    
+    fn get_dec_id(&self) -> Option<ObjectId> {
+        self.dec_id.as_ref().map(|v| v.get().cloned()).flatten()
     }
 
     pub fn clone_processor(&self) -> RouterHandlerManagerProcessorRef {
@@ -107,10 +119,10 @@ impl RouterHandlerManager {
     {
         match self.inner.as_ref() {
             RouterHandlerManagerInner::Http(inner) => {
-                inner.add_handler(chain, id, index, filter, default_action, routine)
+                inner.add_handler(chain, id, self.get_dec_id(), index, filter, default_action, routine)
             }
             RouterHandlerManagerInner::WS(inner) => {
-                inner.add_handler(chain, id, index, filter, default_action, routine)
+                inner.add_handler(chain, id, self.get_dec_id(), index, filter, default_action, routine)
             }
         }
     }
@@ -123,9 +135,9 @@ impl RouterHandlerManager {
     ) -> BuckyResult<bool> {
         match self.inner.as_ref() {
             RouterHandlerManagerInner::Http(inner) => {
-                inner.remove_handler(chain, category, id).await
+                inner.remove_handler(chain, category, id, self.get_dec_id()).await
             }
-            RouterHandlerManagerInner::WS(inner) => inner.remove_handler(chain, category, id).await,
+            RouterHandlerManagerInner::WS(inner) => inner.remove_handler(chain, category, id, self.get_dec_id()).await,
         }
     }
 }

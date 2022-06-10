@@ -47,6 +47,8 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
     }
 }
 
+const ADMIN_MANAGER_HANDLER_ID: &str = "system_admin_manager_command_controller";
+
 #[derive(Clone)]
 pub struct AdminManager {
     role_manager: ZoneRoleManager,
@@ -91,7 +93,7 @@ impl AdminManager {
             .post_object()
             .add_handler(
                 RouterHandlerChain::Handler,
-                "system_admin_manager_command_controller",
+                ADMIN_MANAGER_HANDLER_ID,
                 1,
                 &filter,
                 RouterHandlerAction::Default,

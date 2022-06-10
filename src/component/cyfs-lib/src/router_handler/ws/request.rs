@@ -10,6 +10,7 @@ pub struct RouterWSAddHandlerParam {
     pub chain: RouterHandlerChain,
     pub category: RouterHandlerCategory,
     pub id: String,
+    pub dec_id: Option<ObjectId>,
 
     pub param: RouterAddHandlerParam,
 }
@@ -19,6 +20,7 @@ pub struct RouterWSRemoveHandlerParam {
     pub category: RouterHandlerCategory,
 
     pub id: String,
+    pub dec_id: Option<ObjectId>,
 }
 
 impl JsonCodec<RouterWSAddHandlerParam> for RouterWSAddHandlerParam {
@@ -28,6 +30,7 @@ impl JsonCodec<RouterWSAddHandlerParam> for RouterWSAddHandlerParam {
         JsonCodecHelper::encode_string_field(&mut obj, "chain", &self.chain);
         JsonCodecHelper::encode_string_field(&mut obj, "category", &self.category);
         JsonCodecHelper::encode_string_field(&mut obj, "id", &self.id);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
         JsonCodecHelper::encode_field(&mut obj, "param", &self.param);
 
         obj
@@ -38,6 +41,7 @@ impl JsonCodec<RouterWSAddHandlerParam> for RouterWSAddHandlerParam {
             chain: JsonCodecHelper::decode_string_field(req_obj, "chain")?,
             category: JsonCodecHelper::decode_string_field(req_obj, "category")?,
             id: JsonCodecHelper::decode_string_field(req_obj, "id")?,
+            dec_id: JsonCodecHelper::decode_option_string_field(req_obj, "dec_id")?,
             param: JsonCodecHelper::decode_field(req_obj, "param")?,
         })
     }
@@ -49,6 +53,7 @@ impl JsonCodec<RouterWSRemoveHandlerParam> for RouterWSRemoveHandlerParam {
 
         JsonCodecHelper::encode_string_field(&mut obj, "chain", &self.chain);
         JsonCodecHelper::encode_string_field(&mut obj, "category", &self.category);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
         JsonCodecHelper::encode_string_field(&mut obj, "id", &self.id);
 
         obj
@@ -59,6 +64,7 @@ impl JsonCodec<RouterWSRemoveHandlerParam> for RouterWSRemoveHandlerParam {
             chain: JsonCodecHelper::decode_string_field(req_obj, "chain")?,
             category: JsonCodecHelper::decode_string_field(req_obj, "category")?,
             id: JsonCodecHelper::decode_string_field(req_obj, "id")?,
+            dec_id: JsonCodecHelper::decode_option_string_field(req_obj, "dec_id")?,
         })
     }
 }

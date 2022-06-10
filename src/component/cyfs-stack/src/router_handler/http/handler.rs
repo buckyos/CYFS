@@ -3,7 +3,6 @@ use super::processor::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::str::FromStr;
 
 pub(crate) struct RouterHandlerHttpHandler {
     protocol: NONProtocol,
@@ -101,26 +100,25 @@ impl RouterHandlerHttpHandler {
     ) -> BuckyResult<()> {
         let (chain, category, id) = Self::extract_id_from_path(&req)?;
 
-        info!(
-            "recv add handler request: chain={}, category={}, id={}, body={}",
-            chain, category, id, body
-        );
-
         let param = RouterAddHandlerParam::decode_string(&body)?;
 
         // 提取来源device
-        let source = if let Some(device_id) = req.header(::cyfs_base::CYFS_REMOTE_DEVICE) {
-            let device_id = device_id.last().as_str();
-            Some(DeviceId::from_str(device_id)?)
-        } else {
-            None
-        };
+        let source = RequestorHelper::decode_optional_header(&req, cyfs_base::CYFS_REMOTE_DEVICE)?;
+
+        // extrac source dec_id
+        let dec_id = RequestorHelper::decode_optional_header(&req, cyfs_base::CYFS_DEC_ID)?;
+
+        info!(
+            "recv add handler request: chain={}, category={}, id={}, dec={:?}, source={:?}, body={}",
+            chain, category, id, dec_id, source, body
+        );
 
         let add_req = RouterAddHandlerRequest {
             protocol: self.protocol.clone(),
             chain,
             category,
             id,
+            dec_id,
             param,
             source,
         };
@@ -134,24 +132,24 @@ impl RouterHandlerHttpHandler {
         _body: String,
     ) -> BuckyResult<bool> {
         let (chain, category, id) = Self::extract_id_from_path(&req)?;
-        info!(
-            "recv remove handler request: chain={}, category={}, id={}",
-            chain, category, id
-        );
 
         // 提取来源device
-        let source = if let Some(device_id) = req.header(::cyfs_base::CYFS_REMOTE_DEVICE) {
-            let device_id = device_id.last().as_str();
-            Some(DeviceId::from_str(device_id)?)
-        } else {
-            None
-        };
+        let source = RequestorHelper::decode_optional_header(&req, cyfs_base::CYFS_REMOTE_DEVICE)?;
+
+        // extrac source dec_id
+        let dec_id = RequestorHelper::decode_optional_header(&req, cyfs_base::CYFS_DEC_ID)?;
+
+        info!(
+            "recv remove handler request: chain={}, category={}, id={}, dec={:?}, source={:?}",
+            chain, category, id, dec_id, source,
+        );
 
         let remove_req = RouterRemoveHandlerRequest {
             protocol: self.protocol.clone(),
             chain,
             category,
             id,
+            dec_id,
             source,
         };
 
