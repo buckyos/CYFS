@@ -228,6 +228,48 @@ impl RouterHandlersContainer {
         self.acl.get()
     }
 
+    pub(crate) fn clear_dec_handlers(&self, dec_id: &Option<ObjectId>) -> bool {
+        let mut changed = false;
+        if let Some(container) = self.get_object.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+        if let Some(container) = self.put_object.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+        if let Some(container) = self.post_object.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+        if let Some(container) = self.select_object.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+        if let Some(container) = self.delete_object.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+
+        if let Some(container) = self.get_data.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+        if let Some(container) = self.put_data.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+        if let Some(container) = self.delete_data.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+
+        if let Some(container) = self.sign_object.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+        if let Some(container) = self.verify_object.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+
+        if let Some(container) = self.acl.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+
+        changed
+    }
+
     pub(crate) fn dump_data(&self) -> RouterHandlerContainerSavedData {
         let mut result = RouterHandlerContainerSavedData::new();
         if let Some(container) = self.get_object.get() {
@@ -415,6 +457,30 @@ impl RouterHandlersManager {
 
             RouterHandlerChain::Acl => &self.acl,
         }
+    }
+
+    pub(crate) fn clear_dec_handlers(&self, dec_id: &Option<ObjectId>) -> bool {
+        let mut changed = self.pre_noc.clear_dec_handlers(dec_id);
+        changed |= self.post_noc.clear_dec_handlers(dec_id);
+
+        changed |= self.pre_router.clear_dec_handlers(dec_id);
+        changed |= self.post_router.clear_dec_handlers(dec_id);
+
+        changed |= self.pre_forward.clear_dec_handlers(dec_id);
+        changed |= self.post_forward.clear_dec_handlers(dec_id);
+
+        changed |= self.pre_crypto.clear_dec_handlers(dec_id);
+        changed |= self.post_crypto.clear_dec_handlers(dec_id);
+
+        changed |= self.handler.clear_dec_handlers(dec_id);
+
+        changed |= self.acl.clear_dec_handlers(dec_id);
+
+        if changed {
+            self.storage.async_save();
+        }
+
+        changed
     }
 
     pub(crate) fn dump_data(&self) -> RouterHandlersSavedData {

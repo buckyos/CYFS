@@ -1,7 +1,8 @@
 use cyfs_base::*;
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
+use std::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct RouterHandlerSavedData {
@@ -82,7 +83,7 @@ pub(crate) struct RouterHandlersSavedData {
     pub post_crypto: Option<RouterHandlerContainerSavedData>,
 
     pub handler: Option<RouterHandlerContainerSavedData>,
-    
+
     pub acl: Option<RouterHandlerContainerSavedData>,
 }
 
@@ -95,7 +96,7 @@ impl RouterHandlersSavedData {
             post_router: None,
             pre_forward: None,
             post_forward: None,
-            
+
             pre_crypto: None,
             post_crypto: None,
 
@@ -229,6 +230,8 @@ impl RouterHandlersStorageImpl {
 pub struct RouterHandlersStorage {
     save_lock: Arc<async_std::sync::Mutex<bool>>,
     storage: Arc<RouterHandlersStorageImpl>,
+
+    dec_state: Arc<Mutex<HashSet<ObjectId>>>,
 }
 
 impl RouterHandlersStorage {
@@ -236,6 +239,8 @@ impl RouterHandlersStorage {
         Self {
             save_lock: Arc::new(async_std::sync::Mutex::new(true)),
             storage: Arc::new(RouterHandlersStorageImpl::new(config_isolate)),
+
+            dec_state: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -258,5 +263,24 @@ impl RouterHandlersStorage {
             // TODO 失败后继续重试
             let _ = this.storage.save().await;
         });
+    }
+
+    fn clear_dec_handlers(&self, dec_id: &Option<ObjectId>) -> bool {
+        self.storage
+            .handler_manager
+            .get()
+            .unwrap()
+            .clear_dec_handlers(dec_id)
+    }
+
+    // clear all the old handlers at the first time handler register of {dec_id}
+    pub fn on_dec_register(&self, dec_id: &ObjectId) {
+        let mut state = self.dec_state.lock().unwrap();
+
+        if !state.contains(dec_id) {
+            state.insert(dec_id.to_owned());
+            info!("dec first register router handlers! dec={}", dec_id);
+            self.clear_dec_handlers(&Some(dec_id.to_owned()));
+        }
     }
 }

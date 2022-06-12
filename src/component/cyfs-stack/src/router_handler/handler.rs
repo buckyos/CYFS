@@ -2,8 +2,8 @@ use super::storage::RouterHandlerSavedData;
 use super::storage::RouterHandlersStorage;
 use cyfs_base::*;
 use cyfs_debug::Mutex;
-use cyfs_util::*;
 use cyfs_lib::*;
+use cyfs_util::*;
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -230,6 +230,22 @@ where
         None
     }
 
+    pub fn clear_dec_handlers(&mut self, dec_id: &Option<ObjectId>) -> bool {
+        let mut changed = false;
+        let mut i = 0;
+        while i < self.handler_list.len() {
+            if self.handler_list[i].dec_id == *dec_id {
+                self.handler_list.remove(i);
+                changed = true;
+            } else {
+                i += 1;
+            }
+        }
+
+        changed
+        // self.handler_list.drain_filter(|item| item.dec_id.as_ref() == dec_id)
+    }
+
     // handlers必须确保已经经过filter了
     pub async fn emit(
         chain: &RouterHandlerChain,
@@ -283,6 +299,11 @@ where
 
         let mut list = BTreeMap::new();
         for item in &self.handler_list {
+            // only save handler item with dec_id is not empty
+            if item.dec_id.is_none() {
+                continue;
+            }
+
             let data = RouterHandlerSavedData {
                 index: item.index,
                 dec_id: item.dec_id.clone(),
@@ -317,7 +338,7 @@ where
         if data.dec_id.is_none() {
             return Ok(false);
         }
-        
+
         let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
         let filter = ExpEvaluator::new(&data.filter, reserved_token_list)?;
 
@@ -373,7 +394,13 @@ where
         inner.listener_count()
     }
 
+
     pub fn add_handler(&self, handler: RouterHandler<REQ, RESP>) -> BuckyResult<()> {
+
+        if let Some(dec_id) = &handler.dec_id {
+            self.storage.on_dec_register(dec_id);
+        }
+
         let mut inner = self.handlers.lock().unwrap();
         let changed = inner.add_handler(handler)?;
         if changed {
@@ -392,28 +419,10 @@ where
         ret
     }
 
-    /*
-    pub async fn emit(
-        &self,
-        param: &REQ,
-        default_action: RouterHandlerAction,
-    ) -> RouterHandlerResponse<REQ, RESP> {
-        let handler;
-        {
-            let inner = self.0.lock().unwrap();
-            handler = inner.get_handler(&param);
-        };
-
-        match handler {
-            Some(handler) => RouterHandlersImpl::emit(handler, param).await,
-            None => RouterHandlerResponse {
-                action: default_action,
-                request: None,
-                response: None,
-            },
-        }
+    pub fn clear_dec_handlers(&self, dec_id:& Option<ObjectId>) -> bool {
+        let mut inner = self.handlers.lock().unwrap();
+        inner.clear_dec_handlers(dec_id)
     }
-    */
 
     pub(crate) fn emitter(&self) -> RouterHandlerEmitter<REQ, RESP> {
         RouterHandlerEmitter::<REQ, RESP>::new(self)
