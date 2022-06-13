@@ -1,5 +1,6 @@
 use super::super::RouterHandlersManager;
 use super::processor::*;
+use crate::interface::{HttpRequestSource, InterfaceAuth};
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -34,6 +35,8 @@ impl RouterHandlerWebSocketHandler {
         session_requestor: Arc<WebSocketRequestManager>,
         cmd: u16,
         content: String,
+        source: HttpRequestSource,
+        auth: Option<&InterfaceAuth>,
     ) -> BuckyResult<Option<String>> {
         match cmd {
             ROUTER_WS_HANDLER_CMD_ADD | ROUTER_WS_HANDLER_CMD_REMOVE => {
@@ -41,6 +44,11 @@ impl RouterHandlerWebSocketHandler {
                     info!("recv add ws router handler request: {}", content);
 
                     let req = RouterWSAddHandlerParam::decode_string(&content)?;
+
+                    if let Some(auth) = auth {
+                        auth.check_option_dec(req.dec_id.as_ref(), &source)?;
+                    }
+
                     self.on_add_handler_request(session_requestor, req)
                         .await
                         .map(|v| Some(v))
@@ -48,6 +56,11 @@ impl RouterHandlerWebSocketHandler {
                     info!("recv ws remove router handler request: {}", content);
 
                     let req = RouterWSRemoveHandlerParam::decode_string(&content)?;
+
+                    if let Some(auth) = auth {
+                        auth.check_option_dec(req.dec_id.as_ref(), &source)?;
+                    }
+                    
                     self.on_remove_handler_request(req).map(|v| Some(v))
                 }
             }

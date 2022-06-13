@@ -1,10 +1,10 @@
+use super::auth::InterfaceAuth;
 use super::translator::*;
-use crate::app::AuthenticatedAppList;
-use cyfs_lib::*;
 use cyfs_base::*;
+use cyfs_lib::*;
 
-use std::sync::Arc;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct HttpDefaultHandler {
@@ -27,17 +27,19 @@ impl Default for HttpDefaultHandler {
 impl HttpDefaultHandler {
     pub fn process(&self, req: &http_types::Request) -> Option<http_types::Response> {
         if self.block_list.contains(req.url().path()) {
-            return Some(RequestorHelper::new_response(http_types::StatusCode::NotFound));
+            return Some(RequestorHelper::new_response(
+                http_types::StatusCode::NotFound,
+            ));
         }
 
         None
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum HttpRequestSource {
     Remote((DeviceId, u16)),
-    Local(SocketAddr)
+    Local(SocketAddr),
 }
 
 #[async_trait::async_trait]
@@ -57,9 +59,7 @@ pub(crate) struct RawHttpServer {
 }
 
 impl RawHttpServer {
-    pub(crate) fn new(
-        server: ::tide::Server<()>,
-    ) -> Self {
+    pub(crate) fn new(server: ::tide::Server<()>) -> Self {
         Self {
             server: Arc::new(server),
         }
@@ -69,7 +69,6 @@ impl RawHttpServer {
         Arc::new(Box::new(self))
     }
 }
-
 
 #[async_trait::async_trait]
 impl HttpServerHandler for RawHttpServer {
@@ -81,7 +80,6 @@ impl HttpServerHandler for RawHttpServer {
         self.server.respond(req).await
     }
 }
-
 
 #[derive(Clone)]
 pub(crate) struct DefaultHttpServer {
@@ -108,7 +106,6 @@ impl DefaultHttpServer {
     }
 }
 
-
 #[async_trait::async_trait]
 impl HttpServerHandler for DefaultHttpServer {
     async fn respond(
@@ -116,7 +113,6 @@ impl HttpServerHandler for DefaultHttpServer {
         source: HttpRequestSource,
         mut req: http_types::Request,
     ) -> http_types::Result<http_types::Response> {
-
         // 过滤一些错误请求
         if let Some(resp) = self.default_handler.process(&req) {
             return Ok(resp);
@@ -137,14 +133,14 @@ impl HttpServerHandler for DefaultHttpServer {
 // 请求里面必须带和注册权限时候匹配的dec_id
 pub(crate) struct AuthenticatedHttpServer {
     handler: HttpServerHandlerRef,
-    auth_app_list: AuthenticatedAppList,
+    auth: InterfaceAuth,
 }
 
 impl AuthenticatedHttpServer {
-    pub fn new(handler: HttpServerHandlerRef, auth_app_list: AuthenticatedAppList) -> Self {
+    pub fn new(handler: HttpServerHandlerRef, auth: InterfaceAuth) -> Self {
         Self {
             handler,
-            auth_app_list,
+            auth,
         }
     }
 
@@ -152,22 +148,15 @@ impl AuthenticatedHttpServer {
         Arc::new(Box::new(self))
     }
 
-    fn check_dec(&self, source: &HttpRequestSource, req: &mut http_types::Request) -> BuckyResult<()> {
+    fn check_dec(
+        &self,
+        source: &HttpRequestSource,
+        req: &mut http_types::Request,
+    ) -> BuckyResult<()> {
         // extract dec_id from headers, must been existed!
-        let dec_id: ObjectId =
-            RequestorHelper::decode_header(req, cyfs_base::CYFS_DEC_ID)?;
+        let dec_id: ObjectId = RequestorHelper::decode_header(req, cyfs_base::CYFS_DEC_ID)?;
 
-        let addr = match source {
-            HttpRequestSource::Remote((device_id, _)) => {
-                device_id.to_string()
-            }
-            HttpRequestSource::Local(addr) => {
-                addr.ip().to_string()
-            }
-        };
-
-        let dec_id_str = dec_id.to_string();
-        self.auth_app_list.check_auth(&dec_id_str, &addr)
+        self.auth.check_dec(&dec_id, source)
     }
 }
 
@@ -178,7 +167,6 @@ impl HttpServerHandler for AuthenticatedHttpServer {
         source: HttpRequestSource,
         mut req: http_types::Request,
     ) -> http_types::Result<http_types::Response> {
-       
         if let Err(e) = self.check_dec(&source, &mut req) {
             return Ok(RequestorHelper::trans_error(e));
         }

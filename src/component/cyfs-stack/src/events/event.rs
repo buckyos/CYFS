@@ -16,6 +16,8 @@ where
 
     pub id: String,
 
+    pub dec_id: Option<ObjectId>,
+
     pub routine:
         Box<dyn EventListenerAsyncRoutine<RouterEventRequest<REQ>, RouterEventResponse<RESP>>>,
 }
@@ -27,11 +29,12 @@ where
     RouterEventRequest<REQ>: RouterEventCategoryInfo,
 {
     pub fn eq(&self, other: &Self) -> bool {
-        self.index == other.index && self.id == other.id
+        self.index == other.index && self.id == other.id && self.dec_id == other.dec_id
     }
 
     pub fn new(
         id: impl Into<String>,
+        dec_id: Option<ObjectId>,
         index: i32,
         routine: Box<
             dyn EventListenerAsyncRoutine<RouterEventRequest<REQ>, RouterEventResponse<RESP>>,
@@ -39,6 +42,7 @@ where
     ) -> BuckyResult<Self> {
         let event = RouterEvent::<REQ, RESP> {
             id: id.into(),
+            dec_id,
             index,
             routine,
         };
@@ -82,21 +86,23 @@ where
         let changed = (|| {
             for i in 0..self.event_list.len() {
                 let cur = &self.event_list[i];
-                if cur.id == event.id {
+                if cur.id == event.id && cur.dec_id == event.dec_id {
                     // 比较是否相同
                     let changed;
                     if cur.eq(&event) {
                         debug!(
-                            "router event already exists! category={}, id={}",
+                            "router event already exists! category={}, id={}, dec={:?}",
                             Self::category(),
-                            event.id
+                            event.id,
+                            event.dec_id,
                         );
                         changed = false;
                     } else {
                         info!(
-                            "will replace router event: category={}, id={}, index={}",
+                            "will replace router event: category={}, id={}, dec={:?}, index={}",
                             Self::category(),
                             event.id,
+                            event.dec_id,
                             event.index,
                         );
                         changed = true;
@@ -108,9 +114,10 @@ where
             }
 
             info!(
-                "new router event: category={}, id={}, index={}",
+                "new router event: category={}, id={}, dec={:?}, index={}",
                 Self::category(),
                 event.id,
+                event.dec_id,
                 event.index,
             );
             self.event_list.push(event);
@@ -127,13 +134,15 @@ where
         Ok(changed)
     }
 
-    pub fn remove_event(&mut self, id: &str) -> bool {
+    pub fn remove_event(&mut self, id: &str, dec_id: Option<ObjectId>) -> bool {
         for i in 0..self.event_list.len() {
-            if self.event_list[i].id == id {
+            let item = &self.event_list[i];
+            if item.id == id && item.dec_id == dec_id {
                 info!(
-                    "will remove router event: category={}, id={}",
+                    "will remove router event: category={}, id={}, dec={:?}",
                     Self::category(),
-                    id
+                    id,
+                    dec_id,
                 );
                 self.event_list.remove(i);
                 return true;
@@ -141,9 +150,10 @@ where
         }
 
         warn!(
-            "router event not found! category={}, id={}",
+            "router event not found! category={}, id={}, dec={:?}",
             Self::category(),
-            id
+            id,
+            dec_id,
         );
 
         false
@@ -221,9 +231,9 @@ where
         Ok(())
     }
 
-    pub fn remove_event(&self, id: &str) -> bool {
+    pub fn remove_event(&self, id: &str, dec_id: Option<ObjectId>,) -> bool {
         let mut inner = self.events.lock().unwrap();
-        inner.remove_event(id)
+        inner.remove_event(id, dec_id)
     }
 
     pub fn emitter(&self) -> RouterEventEmitter<REQ, RESP> {

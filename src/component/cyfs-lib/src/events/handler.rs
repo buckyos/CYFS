@@ -38,11 +38,13 @@ where
 
 #[derive(Clone)]
 pub struct RouterEventManager {
+    dec_id: Option<SharedObjectStackDecID>,
+
     inner: RouterWSEventManager,
 }
 
 impl RouterEventManager {
-    pub async fn new(_service_url: &str, event_type: CyfsStackEventType) -> BuckyResult<Self> {
+    pub async fn new(dec_id: Option<SharedObjectStackDecID>, _service_url: &str, event_type: CyfsStackEventType) -> BuckyResult<Self> {
         let inner = match event_type {
             CyfsStackEventType::Http => {
                 unimplemented!();
@@ -55,11 +57,15 @@ impl RouterEventManager {
             }
         };
 
-        Ok(Self { inner })
+        Ok(Self { dec_id, inner })
     }
 
     pub fn clone_processor(&self) -> RouterEventManagerProcessorRef {
         Arc::new(Box::new(self.clone()))
+    }
+
+    fn get_dec_id(&self) -> Option<ObjectId> {
+        self.dec_id.as_ref().map(|v| v.get().cloned()).flatten()
     }
 
     pub fn add_event<REQ, RESP>(
@@ -75,11 +81,11 @@ impl RouterEventManager {
         RESP: Send + Sync + 'static + JsonCodec<RESP> + fmt::Display,
         RouterEventRequest<REQ>: RouterEventCategoryInfo,
     {
-        self.inner.add_event(id, index, routine)
+        self.inner.add_event(id, self.get_dec_id(), index, routine)
     }
 
     pub async fn remove_event(&self, category: RouterEventCategory, id: &str) -> BuckyResult<bool> {
-        self.inner.remove_event(category, id).await
+        self.inner.remove_event(category, id, self.get_dec_id()).await
     }
 }
 

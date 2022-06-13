@@ -345,7 +345,7 @@ impl SharedCyfsStack {
                 .await?;
 
         let router_events =
-            RouterEventManager::new(&param.service_url.to_string(), param.event_type).await?;
+            RouterEventManager::new(Some(dec_id.clone()), &param.service_url.to_string(), param.event_type).await?;
 
         // 缓存所有processors，用以uni_stack直接返回使用
         let processors = Arc::new(CyfsStackProcessors {

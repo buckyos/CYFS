@@ -19,13 +19,13 @@ macro_rules! declare_router_event_processor {
                     >,
                 >,
             ) -> BuckyResult<()> {
-                let event = RouterEvent::new(id.to_owned(), index, routine)?;
+                let event = RouterEvent::new(id.to_owned(), None, index, routine)?;
 
                 self.events().$func().add_event(event)
             }
 
             async fn remove_event(&self, id: &str) -> BuckyResult<bool> {
-                let ret = self.events().$func().remove_event(id);
+                let ret = self.events().$func().remove_event(id, None);
 
                 Ok(ret)
             }

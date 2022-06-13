@@ -21,6 +21,7 @@ struct RouterEventId {
 struct RouterEventItem {
     category: RouterEventCategory,
     id: String,
+    dec_id: Option<ObjectId>,
     index: i32,
     routine: Box<dyn RouterEventAnyRoutine>,
 }
@@ -41,6 +42,7 @@ impl RouterEventItem {
         let req = RouterWSAddEventParam {
             category: self.category.clone(),
             id: self.id.clone(),
+            dec_id: self.dec_id.clone(),
             index: self.index,
             routine: requestor.sid().to_string(),
         };
@@ -85,6 +87,7 @@ impl RouterEventItem {
 struct RouterEventUnregisterItem {
     category: RouterEventCategory,
     id: String,
+    dec_id: Option<ObjectId>,
 }
 
 impl RouterEventUnregisterItem {
@@ -99,6 +102,7 @@ impl RouterEventUnregisterItem {
         let req = RouterWSRemoveEventParam {
             category: self.category.clone(),
             id: self.id.clone(),
+            dec_id: self.dec_id.clone(),
         };
 
         let msg = req.encode_string();
@@ -248,11 +252,12 @@ impl RouterWSEventManagerImpl {
         manager: &Arc<Mutex<RouterWSEventManagerImpl>>,
         category: RouterEventCategory,
         id: &str,
+        dec_id: Option<ObjectId>,
     ) -> BuckyResult<bool> {
         let unregister_item = manager
             .lock()
             .unwrap()
-            .remove_event_op(category.clone(), id.to_owned());
+            .remove_event_op(category.clone(), id.to_owned(), dec_id);
 
         let ret = manager.lock().unwrap().session.clone();
         if let Some(session) = ret {
@@ -272,6 +277,7 @@ impl RouterWSEventManagerImpl {
         &mut self,
         category: RouterEventCategory,
         id: String,
+        dec_id: Option<ObjectId>,
     ) -> Arc<RouterEventUnregisterItem> {
         let id = RouterEventId {
             category: category,
@@ -286,10 +292,10 @@ impl RouterWSEventManagerImpl {
                 assert!(item.category == id.category);
                 assert!(item.id == id.id);
 
-                info!("will remove ws router event: id={:?}", id);
+                info!("will remove ws router event: id={:?}, dec={:?}", id, dec_id,);
             }
             None => {
-                info!("will remove ws router event without exists: id={:?}", id);
+                info!("will remove ws router event without exists: id={:?}, dec={:?}", id, dec_id,);
             }
         };
 
@@ -297,6 +303,7 @@ impl RouterWSEventManagerImpl {
         let unregister_item = RouterEventUnregisterItem {
             category: id.category.clone(),
             id: id.id.clone(),
+            dec_id,
         };
 
         let unregister_item = Arc::new(unregister_item);
@@ -442,6 +449,7 @@ impl RouterWSEventManager {
     pub fn add_event<REQ, RESP>(
         &self,
         id: &str,
+        dec_id: Option<ObjectId>,
         index: i32,
         routine: 
             Box<dyn EventListenerAsyncRoutine<RouterEventRequest<REQ>, RouterEventResponse<RESP>>>,
@@ -459,6 +467,7 @@ impl RouterWSEventManager {
         let event_item = RouterEventItem {
             category,
             id: id.to_owned(),
+            dec_id,
             index,
             routine: Box::new(routine),
         };
@@ -466,7 +475,7 @@ impl RouterWSEventManager {
         self.manager.lock().unwrap().add_event(event_item)
     }
 
-    pub async fn remove_event(&self, category: RouterEventCategory, id: &str) -> BuckyResult<bool> {
-        RouterWSEventManagerImpl::remove_event(&self.manager, category, id).await
+    pub async fn remove_event(&self, category: RouterEventCategory, id: &str, dec_id: Option<ObjectId>,) -> BuckyResult<bool> {
+        RouterWSEventManagerImpl::remove_event(&self.manager, category, id, dec_id).await
     }
 }

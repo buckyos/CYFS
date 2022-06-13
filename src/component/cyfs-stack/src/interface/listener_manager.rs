@@ -1,3 +1,4 @@
+use super::auth::InterfaceAuth;
 use super::http_server::*;
 use super::translator::UrlTransaltor;
 use super::{
@@ -16,8 +17,8 @@ use crate::router_handler::RouterHandlersManager;
 use crate::stack::ObjectServices;
 use crate::zone::ZoneRoleManager;
 use cyfs_base::*;
-use cyfs_lib::NONProtocol;
 use cyfs_bdt::StackGuard;
+use cyfs_lib::NONProtocol;
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -201,7 +202,7 @@ impl ObjectListenerManager {
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
-            
+
             self.http_auth_raw_server = Some(raw_handler.into());
         }
 
@@ -242,6 +243,7 @@ impl ObjectListenerManager {
                 router_handlers.clone(),
                 router_events.clone(),
                 addr,
+                None,
             );
             self.ws_event_interface = Some(ws_event_interface);
             self.router_events_manager = Some(router_events.clone());
@@ -323,6 +325,8 @@ impl ObjectListenerManager {
         gateway_ip: &str,
         auth_app_list: AuthenticatedAppList,
     ) -> BuckyResult<()> {
+        let auth = InterfaceAuth::new(auth_app_list);
+
         // check if running already
         let mut should_stop = false;
         {
@@ -342,12 +346,13 @@ impl ObjectListenerManager {
         }
 
         let raw_http_server = self.http_auth_raw_server.as_ref().unwrap().clone();
-        let auth_http_server = AuthenticatedHttpServer::new(raw_http_server.into(), auth_app_list);
+        let auth_http_server = AuthenticatedHttpServer::new(raw_http_server.into(), auth.clone());
         let server = DefaultHttpServer::new(
             auth_http_server.into(),
             Some(self.url_translator.as_ref().unwrap().clone()),
             self.default_handler.as_ref().unwrap().clone(),
-        ).into();
+        )
+        .into();
 
         let addr = format!("{}:{}", gateway_ip, 0);
         let mut sock_addr: SocketAddr = addr.parse().map_err(|e| {
@@ -377,6 +382,7 @@ impl ObjectListenerManager {
                 self.router_handlers_manager.as_ref().unwrap().clone(),
                 self.router_events_manager.as_ref().unwrap().clone(),
                 sock_addr,
+                Some(auth),
             );
 
             if let Err(e) = ws_event_interface.start().await {

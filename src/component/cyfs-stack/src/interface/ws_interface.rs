@@ -1,9 +1,10 @@
+use super::auth::InterfaceAuth;
+use super::http_server::HttpRequestSource;
+use super::http_ws_listener::ObjectHttpWSService;
 use crate::events::*;
 use crate::router_handler::*;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_lib::*;
-use super::http_ws_listener::ObjectHttpWSService;
-
 
 use async_trait::async_trait;
 use std::net::SocketAddr;
@@ -14,6 +15,7 @@ struct WebSocketRequestInnerHandler {
     http_ws_service: ObjectHttpWSService,
     router_handlers_handler: Arc<RouterHandlerWebSocketHandler>,
     router_events_handler: Arc<RouterEventWebSocketHandler>,
+    auth: Option<InterfaceAuth>,
 }
 
 #[async_trait]
@@ -25,9 +27,11 @@ impl WebSocketRequestHandler for WebSocketRequestInnerHandler {
         content: Vec<u8>,
     ) -> BuckyResult<Option<Vec<u8>>> {
         match cmd {
-            HTTP_CMD_REQUEST => {
-                self.http_ws_service.process_request(session_requestor, content).await.map(|resp| Some(resp))
-            }
+            HTTP_CMD_REQUEST => self
+                .http_ws_service
+                .process_request(session_requestor, content)
+                .await
+                .map(|resp| Some(resp)),
             _ => {
                 self.process_string_request(session_requestor, cmd, content)
                     .await
@@ -41,15 +45,23 @@ impl WebSocketRequestHandler for WebSocketRequestInnerHandler {
         cmd: u16,
         content: String,
     ) -> BuckyResult<Option<String>> {
+        let remote = session_requestor
+            .session()
+            .unwrap()
+            .conn_info()
+            .1
+            .to_owned();
+        let source = HttpRequestSource::Local(remote);
+
         match cmd {
             ROUTER_WS_HANDLER_CMD_ADD | ROUTER_WS_HANDLER_CMD_REMOVE => {
                 self.router_handlers_handler
-                    .process_request(session_requestor, cmd, content)
+                    .process_request(session_requestor, cmd, content, source, self.auth.as_ref())
                     .await
             }
             ROUTER_WS_EVENT_CMD_ADD | ROUTER_WS_EVENT_CMD_REMOVE => {
                 self.router_events_handler
-                    .process_request(session_requestor, cmd, content)
+                    .process_request(session_requestor, cmd, content, source, self.auth.as_ref())
                     .await
             }
             _ => {
@@ -88,6 +100,7 @@ impl WebSocketEventInterface {
         router_handlers_manager: RouterHandlersManager,
         router_events_manager: RouterEventsManager,
         addr: SocketAddr,
+        auth: Option<InterfaceAuth>,
     ) -> Self {
         let router_handlers_handler =
             RouterHandlerWebSocketHandler::new(NONProtocol::HttpLocal, router_handlers_manager);
@@ -98,6 +111,7 @@ impl WebSocketEventInterface {
             http_ws_service,
             router_handlers_handler: Arc::new(router_handlers_handler),
             router_events_handler: Arc::new(router_events_handler),
+            auth,
         };
 
         let server = WebSocketServer::new(addr, Box::new(handler));

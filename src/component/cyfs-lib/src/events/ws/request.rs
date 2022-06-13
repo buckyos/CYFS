@@ -10,6 +10,7 @@ use serde_json::{Map, Value};
 pub struct RouterWSAddEventParam {
     pub category: RouterEventCategory,
     pub id: String,
+    pub dec_id: Option<ObjectId>,
     pub index: i32,
     pub routine: String,
 }
@@ -17,6 +18,7 @@ pub struct RouterWSAddEventParam {
 pub struct RouterWSRemoveEventParam {
     pub category: RouterEventCategory,
     pub id: String,
+    pub dec_id: Option<ObjectId>,
 }
 
 impl JsonCodec<Self> for RouterWSAddEventParam {
@@ -25,6 +27,7 @@ impl JsonCodec<Self> for RouterWSAddEventParam {
 
         JsonCodecHelper::encode_string_field(&mut obj, "category", &self.category);
         JsonCodecHelper::encode_string_field(&mut obj, "id", &self.id);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
         JsonCodecHelper::encode_string_field(&mut obj, "index", &self.index);
         JsonCodecHelper::encode_string_field(&mut obj, "routine", &self.routine);
 
@@ -35,6 +38,7 @@ impl JsonCodec<Self> for RouterWSAddEventParam {
         Ok(Self {
             category: JsonCodecHelper::decode_string_field(req_obj, "category")?,
             id: JsonCodecHelper::decode_string_field(req_obj, "id")?,
+            dec_id: JsonCodecHelper::decode_option_string_field(req_obj, "dec_id")?,
             index: JsonCodecHelper::decode_string_field(req_obj, "index")?,
             routine: JsonCodecHelper::decode_string_field(req_obj, "routine")?,
         })
@@ -47,6 +51,7 @@ impl JsonCodec<Self> for RouterWSRemoveEventParam {
 
         JsonCodecHelper::encode_string_field(&mut obj, "category", &self.category);
         JsonCodecHelper::encode_string_field(&mut obj, "id", &self.id);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
 
         obj
     }
@@ -55,6 +60,7 @@ impl JsonCodec<Self> for RouterWSRemoveEventParam {
         Ok(Self {
             category: JsonCodecHelper::decode_string_field(req_obj, "category")?,
             id: JsonCodecHelper::decode_string_field(req_obj, "id")?,
+            dec_id: JsonCodecHelper::decode_option_string_field(req_obj, "dec_id")?,
         })
     }
 }

@@ -1,3 +1,4 @@
+mod auth;
 mod http_bdt_listener;
 mod http_listener;
 mod http_server;
@@ -8,6 +9,7 @@ mod sync_interface;
 mod translator;
 mod ws_interface;
 
+pub(crate) use auth::InterfaceAuth;
 use http_bdt_listener::*;
 use http_listener::*;
 pub use http_server::*;

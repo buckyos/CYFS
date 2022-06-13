@@ -27,10 +27,12 @@ impl RouterEventWSProcessor {
         RouterEventRequest<REQ>: RouterEventCategoryInfo,
     {
         info!(
-            "new router ws event: sid={}, category={}, id={}, routine={}",
+            "new router ws event: sid={}, category={}, id={}, dec={:?}, index={}, routine={}",
             session_requestor.sid(),
             req.category.to_string(),
             req.id,
+            req.dec_id,
+            req.index,
             req.routine
         );
 
@@ -43,7 +45,7 @@ impl RouterEventWSProcessor {
                 dyn EventListenerAsyncRoutine<RouterEventRequest<REQ>, RouterEventResponse<RESP>>,
             >;
 
-        let event = RouterEvent::new(req.id.clone(), req.index, routine)?;
+        let event = RouterEvent::new(req.id.clone(), req.dec_id.clone(), req.index, routine)?;
 
         Ok(event)
     }
@@ -67,7 +69,7 @@ impl RouterEventWSProcessor {
     pub fn on_remove_event_request(&self, req: RouterWSRemoveEventParam) -> BuckyResult<bool> {
         let ret = match req.category {
             RouterEventCategory::TestEvent => {
-                self.manager.events().test_event().remove_event(&req.id)
+                self.manager.events().test_event().remove_event(&req.id, req.dec_id)
             }
         };
 

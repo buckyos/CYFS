@@ -1,4 +1,4 @@
-use super::http_server::{HttpServerHandlerRef, HttpRequestSource};
+use super::http_server::{HttpRequestSource, HttpServerHandlerRef};
 use super::ObjectListener;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -72,7 +72,8 @@ impl ObjectHttpWSService {
                 error!("{}", msg);
 
                 BuckyError::from(msg)
-            })?.ok_or_else(|| {
+            })?
+            .ok_or_else(|| {
                 let msg = format!("decode http request from buffer but got none! sid={}", sid);
                 error!("{}", msg);
 
@@ -81,8 +82,13 @@ impl ObjectHttpWSService {
 
         // http请求都是同机请求，需要设定为当前device
         req.insert_header(cyfs_base::CYFS_REMOTE_DEVICE, self.device_id.to_string());
-        
-        let remote = session_requestor.session().unwrap().conn_info().1.to_owned();
+
+        let remote = session_requestor
+            .session()
+            .unwrap()
+            .conn_info()
+            .1
+            .to_owned();
         let source = HttpRequestSource::Local(remote);
 
         let method = req.method();

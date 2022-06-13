@@ -53,18 +53,25 @@ impl RouterHandlerContainerSavedData {
         }
     }
 
+    fn is_container_empty(container: &Option<BTreeMap<String, RouterHandlerSavedData>>) -> bool {
+        match container {
+            Some(c) => c.is_empty(),
+            None => true,
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.put_object.is_none()
-            && self.get_object.is_none()
-            && self.post_object.is_none()
-            && self.select_object.is_none()
-            && self.delete_object.is_none()
-            && self.get_data.is_none()
-            && self.put_data.is_none()
-            && self.delete_data.is_none()
-            && self.sign_object.is_none()
-            && self.verify_object.is_none()
-            && self.acl.is_none()
+        Self::is_container_empty(&self.put_object)
+            && Self::is_container_empty(&self.get_object)
+            && Self::is_container_empty(&self.post_object)
+            && Self::is_container_empty(&self.select_object)
+            && Self::is_container_empty(&self.delete_object)
+            && Self::is_container_empty(&self.get_data)
+            && Self::is_container_empty(&self.put_data)
+            && Self::is_container_empty(&self.delete_data)
+            && Self::is_container_empty(&self.sign_object)
+            && Self::is_container_empty(&self.verify_object)
+            && Self::is_container_empty(&self.acl)
     }
 }
 

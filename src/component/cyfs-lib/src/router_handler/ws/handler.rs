@@ -92,14 +92,14 @@ impl RouterHandlerItem {
 
         if resp.err == 0 {
             info!(
-                "add ws router handler success: chain={}, category={}, id={}",
-                req.chain, req.category, req.id
+                "add ws router handler success: chain={}, category={}, id={}, dec={:?}",
+                req.chain, req.category, req.id, req.dec_id,
             );
             Ok(())
         } else {
             error!(
-                "add ws router handler failed! chain={}, category={}, id={}, err={}, msg={:?}",
-                req.chain, req.category, req.id, resp.err, resp.msg
+                "add ws router handler failed! chain={}, category={}, id={}, dec={:?}, err={}, msg={:?}",
+                req.chain, req.category, req.id, req.dec_id, resp.err, resp.msg
             );
 
             Err(BuckyError::new(resp.err, resp.msg.unwrap_or("".to_owned())))
@@ -117,10 +117,11 @@ struct RouterHandlerUnregisterItem {
 impl RouterHandlerUnregisterItem {
     async fn unregister(&self, requestor: &Arc<WebSocketRequestManager>) -> BuckyResult<bool> {
         info!(
-            "ws will remove handler: chain={}, category={}, id={}, sid={}",
+            "ws will remove handler: chain={}, category={}, id={}, dec={:?}, sid={}",
             self.chain,
             self.category,
             self.id,
+            self.dec_id,
             requestor.sid()
         );
 
@@ -151,14 +152,14 @@ impl RouterHandlerUnregisterItem {
         let ret;
         if resp.err == 0 {
             info!(
-                "ws remove handler success! chain={}, category={}, id={}",
-                self.chain, self.category, self.id
+                "ws remove handler success! chain={}, category={}, id={}, dec={:?}",
+                self.chain, self.category, self.id, self.dec_id,
             );
             ret = true;
         } else {
             warn!(
-                "ws remove handler failed! chain={}, category={}, id={}, {:?}",
-                self.chain, self.category, self.id, resp
+                "ws remove handler failed! chain={}, category={}, id={}, dec={:?}, {:?}",
+                self.chain, self.category, self.id, self.dec_id, resp
             );
             ret = false;
         }

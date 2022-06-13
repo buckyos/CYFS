@@ -73,12 +73,9 @@ impl ObjectHttpListener {
 
         default_handler(&mut server);
 
-        // router事件和sync只支持本地的http协议
+        // router事件只支持本地的http协议
         if protocol == NONProtocol::HttpLocal {
-            // rule events
-            //let handler = RouterRuleHttpHandler::new(protocol.clone(), rules.clone());
-            //RouterRuleRequestHandlerEndpoint::register_server(&handler, &mut server);
-
+            
             // router handlers
             let handler = RouterHandlerHttpHandler::new(protocol.clone(), router_handlers.clone());
             RouterHandlerRequestHandlerEndpoint::register_server(&handler, &mut server);
