@@ -23,8 +23,44 @@ fn new_object(dec_id: &ObjectId, id: &str) -> Text {
         .build()
 }
 
+fn gen_text_object_list(dec_id: &ObjectId,) -> Vec<(Text,ObjectId)> {
+    let mut list = vec![];
+
+    let object = new_object(dec_id, "first-text");
+    let object_id = object.text_id().object_id().to_owned();
+    list.push((object, object_id));
+
+    let object = new_object(dec_id, "second-text");
+    let object_id = object.text_id().object_id().to_owned();
+    list.push((object, object_id));
+
+    list
+}
+
+async fn clear_all(dec_id: &ObjectId) {
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+
+    let device1 = stack.local_device_id();
+    let device2 = TestLoader::get_shared_stack(DeviceIndex::User1Device2).local_device_id();
+    let ood = TestLoader::get_shared_stack(DeviceIndex::User1OOD).local_device_id();
+
+    let list= gen_text_object_list(dec_id);
+    for (_, object_id) in list {
+        info!("will clear object={}, dec={}, target={}", object_id, dec_id, device1);
+        test_delete_object(&object_id, dec_id, &stack, &device1).await;
+
+        info!("will clear object={}, dec={}, target={}", object_id, dec_id, device2);
+        test_delete_object(&object_id, dec_id, &stack, &device2).await;
+
+        info!("will clear object={}, dec={}, target={}", object_id, dec_id, ood);
+        test_delete_object(&object_id, dec_id, &stack, &ood).await;
+    }
+}
+
 pub async fn test() {
     let dec_id = new_dec("test-non");
+
+    clear_all(&dec_id).await;
 
     async_std::task::spawn(async move {
         loop {
@@ -63,8 +99,8 @@ async fn test_outer_put(dec_id: &ObjectId) {
     let object = new_object(dec_id, "first-outter-text");
     let object_id = object.text_id().object_id().to_owned();
 
-    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-    let target_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device2);
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User2Device2);
+    let target_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
 
     let mut req =
         NONPutObjectOutputRequest::new_router(None, object_id.clone(), object.to_vec().unwrap());
@@ -77,29 +113,7 @@ async fn test_outer_put(dec_id: &ObjectId) {
             assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
         }
         Ok(_) => unreachable!(),
-    };
-
-    /*
-    match ret.result {
-        NONPutObjectResult::Reject => {
-            info!("first outer put_object rejected! {}", object_id);
-        }
-        _=> {
-            unreachable!();
-        }
-        /*
-        NONPutObjectResult::Accept => {
-            info!("first outer put_object success! {}", object_id);
-        }
-        NONPutObjectResult::Updated => {
-            info!("updated outer put_object success! {}", object_id);
-        }
-        _ => {
-            unreachable!();
-        }
-        */
     }
-    */
 }
 
 async fn test_delete_object(
@@ -142,6 +156,9 @@ async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
             NONPutObjectResult::Updated => {
                 info!("updated put_object success! {}", object_id);
             }
+            NONPutObjectResult::AlreadyExists => {
+                info!("put_object but already exists! {}", object_id);
+            }
             _ => {
                 unreachable!();
             }
@@ -179,6 +196,14 @@ async fn test_select(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &Device
     let mut req = NONSelectObjectRequest::new(NONAPILevel::NON, filter, None);
     req.common.target = Some(target.object_id().to_owned());
     let resp = stack.non_service().select_object(req).await.unwrap();
+
+    /*
+    // used for clear old data
+    for item in &resp.objects {
+        test_delete_object(&item.object.as_ref().unwrap().object_id, dec_id, stack, target).await;
+    }
+    */
+    
     assert_eq!(resp.objects.len(), 2);
 }
 

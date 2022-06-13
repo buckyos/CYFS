@@ -37,8 +37,24 @@ pub async fn test() {
     info!("test all ndn case success!");
 }
 
+fn gen_random_dir(dir: &Path) {
+    (0..10).for_each(|i| {
+        let name = format!("test{}", i);
+        let dir = dir.join(&name);
+        std::fs::create_dir_all(&dir).unwrap();
+        (0..2).for_each(|i| {
+            let name = format!("{}.log", i);
+            let local_path = dir.join(&name);
+            if !local_path.exists() {
+                async_std::task::block_on(gen_all_random_file(&local_path));
+            }
+        })
+    })
+}
+
 async fn add_dir(dec_id: &ObjectId) -> (DirId, FileId) {
     let data_dir = cyfs_util::get_app_data_dir("cyfs-stack-test").join("root");
+    gen_random_dir(&data_dir);
 
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
     let req = TransPublishFileOutputRequest {
@@ -280,8 +296,11 @@ async fn get_file_with_task(dir_id: &DirId, dec_id: &ObjectId, stack: &SharedCyf
 async fn gen_all_random_file(local_path: &Path) {
     if local_path.exists() {
         assert!(local_path.is_file());
+        info!("will remove random file: {}", local_path.display());
         std::fs::remove_file(&local_path).unwrap();
     }
+
+    info!("will gen random file: {}", local_path.display());
 
     let mut opt = async_std::fs::OpenOptions::new();
     opt.write(true).create(true).truncate(true);
@@ -321,6 +340,7 @@ async fn read_file_range(local_path: &Path, range: NDNDataRange) -> Vec<u8> {
 
 async fn test_range_file(dec_id: &ObjectId) {
     let data_dir = cyfs_util::get_app_data_dir("cyfs-stack-test").join("root");
+    std::fs::create_dir_all(&data_dir).unwrap();
     let local_path = data_dir.join("test-file-range");
     gen_all_random_file(&local_path).await;
 

@@ -5,7 +5,9 @@ mod router_handlers;
 mod trans;
 mod util;
 //mod acl;
+mod admin;
 mod app_manager;
+mod codec;
 mod crypto;
 mod events;
 mod ndn;
@@ -18,8 +20,6 @@ mod sync;
 mod test_drive;
 mod test_obj_searcher;
 mod zone;
-mod admin;
-mod codec;
 
 pub async fn test_restart() {
     let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
@@ -42,22 +42,21 @@ pub async fn test() {
 
     // perf::test().await;
 
-    // util::test().await;
-    // root_state::test().await;
+    util::test().await;
+    root_state::test().await;
 
-    // ndn::test().await;
+    ndn::test().await;
 
-    //non_handlers::test().await;
-    //non::test().await;
+    non_handlers::test().await;
+    non::test().await;
     //non_file::test().await;
 
-    // trans::test().await;
+    trans::test().await;
 
-    //router_handlers::test().await;
-    //util::test().await;
+    router_handlers::test().await;
 
     //mnemonic::test().await;
-    // app_manager::test().await;
+    app_manager::test().await;
 
     admin::test().await;
     sync::test().await;
