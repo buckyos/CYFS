@@ -175,10 +175,7 @@ impl AppController {
                     }
                 };
                 let docker_api = self.docker_api.as_ref().unwrap();
-                docker_api
-                    .volume_create(&id)
-                    .await
-                    .and(docker_api.install(&id, version, executable).await)
+                docker_api.install(&id, version, executable).await
                     .map_err(|e| {
                         error!("docker install failed. app {} failed, {}", app_id, e);
                         SubErrorCode::DockerFailed
