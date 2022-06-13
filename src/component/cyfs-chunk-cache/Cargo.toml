@@ -1,6 +1,6 @@
 [package]
 name = "cyfs-chunk-cache"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust cyfs-chunk-cache package"

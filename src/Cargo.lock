@@ -1511,7 +1511,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-bdt"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1574,7 +1574,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-chunk-cache"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1778,7 +1778,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-lib"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "async-h1",
  "async-std",
@@ -2002,7 +2002,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-stack"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "async-h1",
  "async-std",
@@ -4168,7 +4168,7 @@ checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
 
 [[package]]
 name = "ood-control"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "android_logger",
  "async-h1",
