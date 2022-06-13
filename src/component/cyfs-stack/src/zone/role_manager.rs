@@ -240,7 +240,7 @@ impl ZoneRoleManager {
 
         let (zone, changed) = self.flush_owner().await?;
         if !changed {
-            info!("people notify flush owner but not changed!");
+            info!("zone notify flush owner but not changed!");
             return Ok(());
         }
 
@@ -569,6 +569,7 @@ impl ZoneRoleManager {
         let server = ZoneSyncServer::new(
             &self.device_id,
             &current_zone_info.zone_id,
+            self.clone(),
             self.zone_manager.clone(),
             root_state.clone(),
             self.noc.clone_noc(),

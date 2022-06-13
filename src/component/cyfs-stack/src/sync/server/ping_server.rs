@@ -1,14 +1,14 @@
 use super::super::protocol::*;
 use super::zone_state::ZoneStateManager;
+use crate::zone::ZoneRoleManager;
 use cyfs_base::*;
 use cyfs_debug::Mutex;
 use cyfs_lib::ZoneRole;
 
-
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
-
 
 const SYNC_PING_INTERVAL_IN_SECS: u64 = 60;
 const SYNC_PING_TIMEOUT_IN_SECS: u64 = SYNC_PING_INTERVAL_IN_SECS * 3;
@@ -62,6 +62,8 @@ impl SyncPingServerState {
 pub(crate) struct SyncPingServer {
     state: Arc<Mutex<SyncPingServerState>>,
     zone_state: Arc<ZoneStateManager>,
+    role_manager: ZoneRoleManager,
+    last_flush_owner_tick: Arc<AtomicU64>,
 }
 
 #[derive(Debug)]
@@ -70,11 +72,16 @@ pub(crate) struct SyncDeviceInfo {
 }
 
 impl SyncPingServer {
-    pub fn new(zone_state: Arc<ZoneStateManager>) -> Self {
+    pub fn new(zone_state: Arc<ZoneStateManager>, role_manager: ZoneRoleManager) -> Self {
         let state = SyncPingServerState::new();
         let state = Arc::new(Mutex::new(state));
 
-        Self { state, zone_state }
+        Self {
+            state,
+            zone_state,
+            role_manager,
+            last_flush_owner_tick: Arc::new(AtomicU64::new(0)),
+        }
     }
 
     pub fn start(&self) {
@@ -199,13 +206,26 @@ impl SyncPingServer {
 
         let mut with_owner = false;
         if resp.zone_role != ZoneRole::ActiveOOD {
-            warn!("recv device ping but current ood' role is not active ood! role={}", resp.zone_role);
+            warn!(
+                "recv device ping but current ood' role is not active ood! role={}",
+                resp.zone_role
+            );
             with_owner = true;
         } else {
             let owner_update_time = zone_state.owner.get_update_time();
-            if ping_req.owner_update_time != 0 && ping_req.owner_update_time < owner_update_time {
-                info!("recv device ping with older owner's update time! device={}, current={}", ping_req.owner_update_time, owner_update_time);
-                with_owner = true;
+            if ping_req.owner_update_time != 0 {
+                if ping_req.owner_update_time < owner_update_time {
+                    info!(
+                        "recv device ping with older owner's update time! device={}, device's={}, current's={}",
+                        ping_req.device_id, ping_req.owner_update_time, owner_update_time
+                    );
+                    with_owner = true;
+                }
+            } else if ping_req.owner_update_time > owner_update_time {
+                warn!("device's owner's udpate_time is newer than current ood's owner! device={}, device's={}, current={}",
+                    ping_req.device_id, ping_req.owner_update_time, owner_update_time);
+
+                self.try_flush_owner();
             }
         }
 
@@ -215,6 +235,20 @@ impl SyncPingServer {
         }
 
         Ok(resp)
+    }
+
+    fn try_flush_owner(&self) {
+        let tick = bucky_time_now();
+        let last_tick = self.last_flush_owner_tick.load(Ordering::SeqCst);
+        if tick <= last_tick + 15 * 60 * 1000 * 1000 {
+            return;
+        }
+
+        self.last_flush_owner_tick.store(tick, Ordering::SeqCst);
+        let role_manager = self.role_manager.clone();
+        async_std::task::spawn(async move {
+            let _ = role_manager.notify_owner_changed().await;
+        });
     }
 
     fn check_timeout(&self) {

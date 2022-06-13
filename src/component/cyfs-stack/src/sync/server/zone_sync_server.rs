@@ -29,6 +29,7 @@ impl ZoneSyncServer {
     pub fn new(
         device_id: &DeviceId,
         zone_id: &ZoneId,
+        role_manager: ZoneRoleManager,
         zone_manager: ZoneManager,
         root_state: GlobalStateLocalService,
         noc: Box<dyn NamedObjectCache>,
@@ -41,7 +42,7 @@ impl ZoneSyncServer {
             ZoneStateManager::new(zone_id, root_state.clone(), zone_manager, noc.clone_noc());
         let zone_state = Arc::new(zone_state);
 
-        let ping_server = SyncPingServer::new(zone_state.clone());
+        let ping_server = SyncPingServer::new(zone_state.clone(), role_manager);
 
         let ndc = bdt_stack.ndn().chunk_manager().ndc().clone();
 
