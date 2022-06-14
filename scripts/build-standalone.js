@@ -41,13 +41,14 @@ console.log('build default target:', target)
 console.log("build channel:", channel)
 console.log('build version:', version)
 
-const services = ["app-manager", "file-manager", "chunk-manager", "gateway", "ood-daemon"]
+const services = ["app-manager", "file-manager", "chunk-manager", "gateway", "ood-daemon", "dsg-service"]
 const services_id = {
 	"app-manager": "9tGpLNnDwJ1nReZqJgWev5eoe23ygViGDC4idnCK1Dy5",
 	"file-manager": "9tGpLNnDpa8deXEk2NaWGccEu4yFQ2DrTZJPLYLT7gj4",
 	"chunk-manager": "9tGpLNnabHoTxFbodTHGPZoZrS9yeEZVu83ZVeXL9uVr",
 	"gateway": "9tGpLNnQnReSYJhrgrLMjz2bFoRDVKP9Dp8Crqy1bjzY",
-	"ood-daemon": "9tGpLNnTdsycFPRcpBNgK1qncX6Mh8chRLK28mhNb6fU",
+    "dsg-service": "9tGpLNnTdsycFPRcpBNgK1qncX6Mh8chRLK28mhNb6fU",
+	"ood-daemon": "9tGpLNnPtNxqwjgcxKfMpyaQqVRkLQ5aka69FgWy5PLU",
 }
 
 console.log('build tools for pack standalone ood')
