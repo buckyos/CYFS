@@ -21,6 +21,7 @@
   "homepage": "https://github.com/buckyos/CYFS#readme",
   "dependencies": {
     "@ltd/j-toml": "^1.30.0",
+    "semver": "^7.3.7",
     "tar": "^6.1.11"
   }
 }

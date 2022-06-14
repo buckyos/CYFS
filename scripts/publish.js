@@ -1,27 +1,8 @@
-const path = require('path')
 const toml = require('@ltd/j-toml')
 const fs = require('fs')
 const child_process = require('child_process')
 
-const publish_packages = [
-    "cyfs-base",
-    "cyfs-base-derive",
-    "cyfs-base-meta",
-    "cyfs-bdt",
-    "cyfs-chunk-lib",
-    "cyfs-core",
-    "cyfs-debug",
-    "cyfs-ecies",
-    "cyfs-lib",
-    "cyfs-meta-lib",
-    "cyfs-perf-base",
-    "cyfs-perf-client",
-    "cyfs-raptorq",
-    "cyfs-sha2",
-    "cyfs-task-manager",
-    "cyfs-util",
-
-]
+const {publish_packages} = require('./cargo_config')
 
 if (!fs.existsSync('Cargo.toml')) {
     console.error('script MUST RUN IN src dir!')
@@ -34,6 +15,10 @@ function get_remote_version(name) {
     let out = child_process.execSync(`cargo search ${name}`, {encoding:'utf-8'})
     return toml.parse(out)[name]
 }
+
+let rev = child_process.execSync(`git rev-parse --short=8 HEAD`, {encoding:'utf-8'}).trim();
+fs.writeFileSync('../cargo_pub_rev', rev)
+console.log('write rev', rev)
 
 // 遍历所有工程
 for (const metadata of metadatas.packages) {
