@@ -30,6 +30,9 @@ pub struct CyfsStackParams {
 
     // meta miner的类型
     pub meta: MetaMinerTarget,
+
+    // if enable the front module
+    pub front: bool,
 }
 
 impl CyfsStackParams {
@@ -44,6 +47,7 @@ impl CyfsStackParams {
             sync_service: true,
             shared_stack: true,
             meta: MetaMinerTarget::default(),
+            front: false,
         }
     }
 
@@ -69,7 +73,7 @@ impl CyfsStackParams {
             sync_service: true,
             shared_stack: true,
             meta: MetaMinerTarget::default(),
-            //dsg_options: None,
+            front: false,
         }
     }
 }

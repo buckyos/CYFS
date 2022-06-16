@@ -8,6 +8,7 @@ use crate::crypto::CryptoOutputTransformer;
 use crate::crypto_api::{CryptoService, ObjectCrypto, ObjectVerifier};
 use crate::events::RouterEventsManager;
 use crate::forward::ForwardProcessorManager;
+use crate::front::FrontService;
 use crate::interface::{
     ObjectListenerManager, ObjectListenerManagerParams, ObjectListenerManagerRef,
 };
@@ -71,6 +72,8 @@ pub(crate) struct ObjectServices {
     pub crypto_service: Arc<CryptoService>,
     pub util_service: Arc<UtilService>,
     pub trans_service: Arc<TransService>,
+
+    pub front_service: Option<Arc<FrontService>>,
 }
 
 pub struct CyfsStackImpl {
@@ -316,16 +319,6 @@ impl CyfsStackImpl {
         let crypto_service = Arc::new(crypto_service);
         let util_service = Arc::new(util_service);
 
-        let services = ObjectServices {
-            ndn_service,
-            non_service,
-
-            crypto_service,
-            util_service,
-
-            trans_service: Arc::new(trans_service),
-        };
-
         // 加载全局状态
         let (root_state, local_cache) = Self::load_global_state(
             &device_id,
@@ -335,12 +328,37 @@ impl CyfsStackImpl {
             forward_manager.clone(),
             zone_manager.clone(),
             fail_handler.clone(),
-            &services.non_service,
-            &services.ndn_service,
+            &non_service,
+            &ndn_service,
             &config,
         )
         .await?;
         let current_root = root_state.local_service().state().get_current_root();
+
+        let front_service = if param.front {
+            let front_service = FrontService::new(
+                non_service.clone_processor(),
+                ndn_service.clone_processor(),
+                root_state.clone_access_processor(),
+                local_cache.clone_access_processor(),
+                ood_resoler.clone(),
+            );
+            Some(Arc::new(front_service))
+        } else {
+            None
+        };
+
+        let services = ObjectServices {
+            ndn_service,
+            non_service,
+
+            crypto_service,
+            util_service,
+
+            trans_service: Arc::new(trans_service),
+
+            front_service,
+        };
 
         // 缓存所有processors，用以uni_stack直接返回使用
         let processors = CyfsStackProcessors {

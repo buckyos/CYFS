@@ -1,5 +1,7 @@
 use crate::acl::AclManagerRef;
 use crate::crypto_api::*;
+use crate::front::{FrontProtocolHandler, FrontRequestHandlerEndpoint};
+use crate::name::NameResolver;
 use crate::ndn_api::*;
 use crate::non_api::*;
 use crate::root_state_api::*;
@@ -10,6 +12,7 @@ use crate::stack::ObjectServices;
 use crate::sync::*;
 use crate::trans_api::{TransRequestHandler, TransRequestHandlerEndpoint};
 use crate::util_api::*;
+use crate::zone::ZoneManager;
 use cyfs_base::*;
 use cyfs_lib::{GlobalStateCategory, NONProtocol, RequestorHelper};
 
@@ -68,17 +71,27 @@ impl ObjectHttpListener {
         sync_client: Option<&Arc<DeviceSyncClient>>,
         root_state: &GlobalStateService,
         local_cache: &GlobalStateLocalService,
+        name_resolver: &NameResolver,
+        zone_manager: &ZoneManager,
     ) -> Self {
         let mut server = new_server();
 
         default_handler(&mut server);
 
-        // router事件只支持本地的http协议
         if protocol == NONProtocol::HttpLocal {
-            
             // router handlers
             let handler = RouterHandlerHttpHandler::new(protocol.clone(), router_handlers.clone());
             RouterHandlerRequestHandlerEndpoint::register_server(&handler, &mut server);
+
+            if let Some(front) = &services.front_service {
+                let handler = FrontProtocolHandler::new(
+                    name_resolver.clone(),
+                    zone_manager.clone(),
+                    front.clone(),
+                );
+                let handler = Arc::new(handler);
+                FrontRequestHandlerEndpoint::register_server(&protocol, &handler, &mut server);
+            }
         }
 
         // sync提供的对外服务

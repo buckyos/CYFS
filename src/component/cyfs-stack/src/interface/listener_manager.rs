@@ -147,6 +147,8 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                name_resolver,
+                role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
@@ -168,6 +170,8 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                name_resolver,
+                role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
@@ -189,6 +193,8 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                name_resolver,
+                role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());

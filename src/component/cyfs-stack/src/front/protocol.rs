@@ -20,7 +20,7 @@ const PATH_SEGMENT_OBJECT_ID_MAX_LEN: usize = 45;
 pub(crate) struct FrontProtocolHandler {
     name_resolver: NameResolver,
     zone_manager: ZoneManager,
-    service: FrontService,
+    service: Arc<FrontService>,
 }
 
 pub(crate) type FrontProtocolHandlerRef = Arc<FrontProtocolHandler>;
@@ -29,7 +29,7 @@ impl FrontProtocolHandler {
     pub fn new(
         name_resolver: NameResolver,
         zone_manager: ZoneManager,
-        service: FrontService,
+        service: Arc<FrontService>,
     ) -> Self {
         Self {
             name_resolver,

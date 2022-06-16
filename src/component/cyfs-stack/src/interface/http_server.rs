@@ -107,7 +107,7 @@ impl HttpServerHandler for DefaultHttpServer {
     async fn respond(
         &self,
         source: HttpRequestSource,
-        mut req: http_types::Request,
+        req: http_types::Request,
     ) -> http_types::Result<http_types::Response> {
         // 过滤一些错误请求
         if let Some(resp) = self.default_handler.process(&req) {

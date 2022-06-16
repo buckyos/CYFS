@@ -8,15 +8,33 @@ use crate::root_state::GlobalStateAccessInputProcessorRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-pub struct FrontService {
+pub(crate) struct FrontService {
     non: NONInputProcessorRef,
     ndn: NDNInputProcessorRef,
 
-    global_state_processor: GlobalStateAccessInputProcessorRef,
+    root_state: GlobalStateAccessInputProcessorRef,
+    local_cache: GlobalStateAccessInputProcessorRef,
+
     ood_resolver: OodResolver,
 }
 
 impl FrontService {
+    pub fn new(
+        non: NONInputProcessorRef,
+        ndn: NDNInputProcessorRef,
+        root_state: GlobalStateAccessInputProcessorRef,
+        local_cache: GlobalStateAccessInputProcessorRef,
+        ood_resolver: OodResolver,
+    ) -> Self {
+        Self {
+            non,
+            ndn,
+            root_state,
+            local_cache,
+            ood_resolver,
+        }
+    }
+
     pub async fn process_o_request(&self, req: FrontORequest) -> BuckyResult<FrontOResponse> {
         let resp = match req.object_id.obj_type_code() {
             ObjectTypeCode::Chunk => {
@@ -326,8 +344,11 @@ impl FrontService {
             inner_path: req.inner_path.unwrap_or("".to_owned()),
         };
 
-        self.global_state_processor
-            .get_object_by_path(state_req)
-            .await
+        let processor = match req.category {
+            GlobalStateCategory::RootState => &self.root_state,
+            GlobalStateCategory::LocalCache => &self.local_cache,
+        };
+
+        processor.get_object_by_path(state_req).await
     }
 }
