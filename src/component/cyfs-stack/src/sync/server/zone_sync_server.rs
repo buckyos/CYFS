@@ -127,7 +127,7 @@ impl ZoneSyncServer {
 
         self.zone_state.verify_source(&source).await?;
 
-        self.ping_server.ping(&ping_req)
+        self.ping_server.ping(&ping_req).await
     }
 
     pub async fn sync_diff(

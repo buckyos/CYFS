@@ -104,6 +104,19 @@ impl ZoneContainerInner {
         };
     }
 
+    fn get_known_device_list_for_zone(&self, zone_id: &ZoneId) -> Vec<DeviceId> {
+        self.zone_device_indexer
+            .iter()
+            .filter_map(|(k, v)| {
+                if *v == *zone_id {
+                    Some(k.to_owned())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     pub fn get_or_create_zone_by_owner(
         &mut self,
         owner: ObjectId,
@@ -112,65 +125,77 @@ impl ZoneContainerInner {
         device_id: Option<&DeviceId>,
     ) -> (ZoneId, Zone, bool) {
         let mut update_noc = false;
-        let (zone_id, zone) = {
+        let (zone_id, zone) = loop {
             // 首先查找owner对应的zone是不是已经存在了
             if let Some(zone_id) = self.zone_indexer.get(&owner) {
                 let zone_id = zone_id.clone();
-                let mut zone = self.zone_list.get_mut(&zone_id).unwrap().clone();
+                if let Some(zone) = self.zone_list.get_mut(&zone_id) {
+                    let mut zone = zone.clone();
 
-                // check if ood_work_mode changed
-                if *zone.ood_work_mode() != ood_work_mode {
-                    zone.set_ood_work_mode(ood_work_mode);
-                    update_noc = true;
-                }
-
-                // 已经存在zone了，那么尝试更新device_id到zone列表，并保存zone，更新索引
-                if let Some(device_id) = device_id {
-                    if Self::update_zone_known_device(&zone_id, &mut zone, device_id) {
-                        // 保存zone
-                        self.zone_list.insert(zone_id.clone(), zone.clone());
-                        // 添加device索引
-                        self.zone_device_indexer
-                            .insert(device_id.clone(), zone_id.clone());
+                    // check if ood_work_mode changed
+                    if *zone.ood_work_mode() != ood_work_mode {
+                        zone.set_ood_work_mode(ood_work_mode);
                         update_noc = true;
                     }
-                }
-                (zone_id, zone)
-            } else {
-                let mut known_device_list = Vec::new();
-                if let Some(device_id) = device_id {
-                    if ood_list.iter().find(|&v| v == device_id).is_none() {
-                        known_device_list.push(device_id.to_owned());
+
+                    // 已经存在zone了，那么尝试更新device_id到zone列表，并保存zone，更新索引
+                    if let Some(device_id) = device_id {
+                        if Self::update_zone_known_device(&zone_id, &mut zone, device_id) {
+                            // 保存zone
+                            self.zone_list.insert(zone_id.clone(), zone.clone());
+                            // 添加device索引
+                            self.zone_device_indexer
+                                .insert(device_id.clone(), zone_id.clone());
+                            update_noc = true;
+                        }
                     }
+                    break (zone_id, zone);
                 }
-
-                let zone =
-                    Zone::create(owner.to_owned(), ood_work_mode, ood_list, known_device_list);
-                let zone_id: ZoneId = zone.desc().calculate_id().try_into().unwrap();
-
-                info!(
-                    "will create new zone for owner={}, device={:?}, zone={}",
-                    owner, device_id, zone_id
-                );
-
-                if let Some(_old) = self.zone_list.insert(zone_id.clone(), zone.clone()) {
-                    error!(
-                        "create new zone but old already exists! zone_id={}",
-                        zone_id
-                    );
-                    unreachable!();
-                }
-
-                // 托管zone
-                self.zone_indexer.insert(owner.to_owned(), zone_id.clone());
-
-                // 更新device索引
-                self.build_device_index_for_zone(&zone_id, &zone);
-
-                update_noc = true;
-
-                (zone_id, zone)
             }
+
+            let mut known_device_list = vec![];
+            if let Some(device_id) = device_id {
+                if ood_list.iter().find(|&v| v == device_id).is_none() {
+                    known_device_list.push(device_id.to_owned());
+                }
+            }
+
+            let mut zone =
+                Zone::create(owner.to_owned(), ood_work_mode, ood_list, known_device_list);
+            let zone_id: ZoneId = zone.desc().calculate_id().try_into().unwrap();
+
+            let current_device_list = self.get_known_device_list_for_zone(&zone_id);
+            for device_id in current_device_list {
+                if zone.ood_list().iter().find(|&v| *v == device_id).is_none() {
+                    zone.known_device_list_mut().push(device_id);
+                }
+            }
+
+            info!(
+                "will create new zone for owner={}, device={:?}, zone={}, known_device_list={:?}",
+                owner,
+                device_id,
+                zone_id,
+                zone.known_device_list(),
+            );
+
+            if let Some(_old) = self.zone_list.insert(zone_id.clone(), zone.clone()) {
+                error!(
+                    "create new zone but old already exists! zone_id={}",
+                    zone_id
+                );
+                unreachable!();
+            }
+
+            // 托管zone
+            self.zone_indexer.insert(owner.to_owned(), zone_id.clone());
+
+            // 更新device索引
+            self.build_device_index_for_zone(&zone_id, &zone);
+
+            update_noc = true;
+
+            break (zone_id, zone);
         };
 
         (zone_id, zone, update_noc)

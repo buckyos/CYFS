@@ -1,10 +1,9 @@
 use cyfs_base::*;
 use cyfs_lib::*;
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
-use serde::{Serialize, Deserialize};
-
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum DeviceSyncState {
@@ -51,7 +50,7 @@ pub(crate) struct SyncPingRequest {
 
     pub root_state: ObjectId,
     pub root_state_revision: u64,
-    
+
     pub state: DeviceSyncState,
 
     // local owner's body update time
@@ -66,7 +65,6 @@ pub(crate) struct SyncPingResponse {
     pub ood_work_mode: OODWorkMode,
     pub owner: Option<Vec<u8>>,
 }
-
 
 #[derive(Debug, Clone)]
 pub(crate) struct SyncDiffRequest {
@@ -85,7 +83,6 @@ pub(crate) struct SyncDiffResponse {
     pub objects: Vec<SelectResponseObjectInfo>,
 }
 
-
 #[derive(Debug)]
 pub(crate) struct SyncObjectsRequest {
     pub begin_seq: u64,
@@ -95,7 +92,6 @@ pub(crate) struct SyncObjectsRequest {
 
 // 目前使用SelectResponse来作为同步结果返回，结构是一致的
 pub(crate) type SyncObjectsResponse = SelectResponse;
-
 
 pub(crate) type SyncZoneRequest = SyncPingResponse;
 

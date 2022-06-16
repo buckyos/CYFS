@@ -272,7 +272,7 @@ impl SyncPingClient {
                 Abortable::new(async_std::task::sleep(interval_in_secs), abort_registration);
             match fut.await {
                 Ok(_) => {
-                    debug!("ping wait timeout, now will ping once");
+                    trace!("ping wait timeout, now will ping once");
                 }
                 Err(futures::future::Aborted { .. }) => {
                     debug!("ping wait waked up, now will ping once");

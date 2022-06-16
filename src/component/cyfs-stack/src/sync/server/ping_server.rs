@@ -6,8 +6,8 @@ use cyfs_debug::Mutex;
 use cyfs_lib::ZoneRole;
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 const SYNC_PING_INTERVAL_IN_SECS: u64 = 60;
@@ -113,8 +113,8 @@ impl SyncPingServer {
         info_list
     }
 
-    pub fn ping(&self, ping_req: &SyncPingRequest) -> BuckyResult<SyncPingResponse> {
-        let (zone_state, _device_state) = match ping_req.state {
+    pub async fn ping(&self, ping_req: &SyncPingRequest) -> BuckyResult<SyncPingResponse> {
+        let _device_state = match ping_req.state {
             DeviceSyncState::Online | DeviceSyncState::OnlineAccept => {
                 let mut state = self.state.lock().unwrap();
                 match state.device_list.get_mut(&ping_req.device_id) {
@@ -196,6 +196,8 @@ impl SyncPingServer {
             }
         };
 
+        let zone_state = self.zone_state.get_zone_state().await;
+
         let mut resp = SyncPingResponse {
             zone_root_state: zone_state.zone_root_state,
             zone_root_state_revision: zone_state.zone_root_state_revision,
@@ -204,26 +206,27 @@ impl SyncPingServer {
             owner: None,
         };
 
-        let mut with_owner = false;
+        
         if resp.zone_role != ZoneRole::ActiveOOD {
             warn!(
                 "recv device ping but current ood' role is not active ood! role={}",
                 resp.zone_role
             );
-            with_owner = true;
-        } else {
-            let owner_update_time = zone_state.owner.get_update_time();
-            if ping_req.owner_update_time != 0 {
-                if ping_req.owner_update_time < owner_update_time {
-                    info!(
+        }
+
+        // try diffusion newer owner to device
+        let mut with_owner = false;
+        let owner_update_time = zone_state.owner.get_update_time();
+        if ping_req.owner_update_time != 0 {
+            if ping_req.owner_update_time < owner_update_time {
+                info!(
                         "recv device ping with older owner's update time! device={}, device's={}, current's={}",
                         ping_req.device_id, ping_req.owner_update_time, owner_update_time
                     );
-                    with_owner = true;
-                }
+                with_owner = true;
             } else if ping_req.owner_update_time > owner_update_time {
                 warn!("device's owner's udpate_time is newer than current ood's owner! device={}, device's={}, current={}",
-                    ping_req.device_id, ping_req.owner_update_time, owner_update_time);
+                        ping_req.device_id, ping_req.owner_update_time, owner_update_time);
 
                 self.try_flush_owner();
             }

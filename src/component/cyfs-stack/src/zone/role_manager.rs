@@ -154,8 +154,8 @@ impl ZoneRoleManager {
         let current_update_time = current_info.owner.get_update_time();
         let new_update_time = object.object.as_ref().unwrap().get_update_time();
         if current_update_time >= new_update_time {
-            let msg = format!("zone's owner's update_time is older: current={}, got={}", current_update_time, new_update_time);
-            error!("{}", msg);
+            let msg = format!("zone's owner's update_time is same or older: current={}, got={}", current_update_time, new_update_time);
+            warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::AlreadyExists, msg));
         }
 
@@ -256,7 +256,7 @@ impl ZoneRoleManager {
         // gen new current zone info
         let new_info = self.zone_manager.get_current_info().await?;
         info!(
-            "zone role changed: current={}, latest={}",
+            "zone info changed: current={}, latest={}",
             current_info, new_info
         );
 
@@ -306,7 +306,7 @@ impl ZoneRoleManager {
                 ZoneRole::ActiveOOD | ZoneRole::ReservedOOD | ZoneRole::StandbyOOD => {
                     match self.sync_server.get() {
                         Some(server) => {
-                            let zone_state = server.zone_state_manager().get_zone_state();
+                            let zone_state = server.zone_state_manager().get_zone_state().await;
                             server.notify_device_zone_state_changed(zone_state, true);
                         }
                         None => {

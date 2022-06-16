@@ -34,7 +34,7 @@ impl std::fmt::Display for CurrentZoneInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "device={},category={},ood={},zone={},zone_role={},ood_work_mode={},owner={}",
+            "device={},category={},ood={},zone={},zone_role={},ood_work_mode={},owner={},owner_udpatetime={}",
             self.device_id,
             self.device_category,
             self.zone_device_ood_id,
@@ -42,6 +42,7 @@ impl std::fmt::Display for CurrentZoneInfo {
             self.zone_role,
             self.ood_work_mode,
             self.owner_id,
+            self.owner.get_update_time(),
         )
     }
 }
@@ -143,10 +144,7 @@ impl ZoneManager {
             let owner_id = zone.owner().to_owned();
             let owner = self.search_object(&owner_id).await?;
 
-            info!(
-                "current zone rule: rule={:?}, ood_work_mode={:?}",
-                zone_role, ood_work_mode,
-            );
+            info!("current zone owner: {}", owner.format_json().to_string());
 
             let info = CurrentZoneInfo {
                 device_id: self.device_id.clone(),
@@ -158,6 +156,9 @@ impl ZoneManager {
                 owner_id,
                 owner: Arc::new(owner),
             };
+
+            info!("current zone info: {}", info,);
+
 
             let info = Arc::new(info);
             {

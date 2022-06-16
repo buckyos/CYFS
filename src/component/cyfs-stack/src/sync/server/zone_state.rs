@@ -6,7 +6,6 @@ use cyfs_core::*;
 use cyfs_util::*;
 use cyfs_lib::*;
 
-use once_cell::sync::OnceCell;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
 
@@ -106,7 +105,6 @@ impl EventListenerSyncRoutine<ZoneId, ()> for ZoneChangedNotify {
 pub(crate) struct ZoneStateManager {
     zone_id: ZoneId,
 
-    current_zone_info: OnceCell<Arc<CurrentZoneInfo>>,
     zone_manager: ZoneManager,
     root_state: GlobalStateLocalService,
 
@@ -126,7 +124,6 @@ impl ZoneStateManager {
         let ret = Self {
             zone_id: zone_id.to_owned(),
             root_state,
-            current_zone_info: OnceCell::new(),
             zone_manager,
             state,
         };
@@ -157,10 +154,7 @@ impl ZoneStateManager {
             }
         };
 
-        let current_zone_info = self.zone_manager.get_current_info().await?;
-        if let Err(_) = self.current_zone_info.set(current_zone_info) {
-            unreachable!();
-        }
+        self.zone_manager.get_current_zone().await?;
 
         // 加载当前zone信息
         self.on_zone_changed();
@@ -190,11 +184,11 @@ impl ZoneStateManager {
         Ok(())
     }
 
-    pub fn get_zone_state(&self) -> ZoneState {
+    pub async fn get_zone_state(&self) -> ZoneState {
         let (zone_root_state, zone_root_state_revision) =
             self.root_state.state().get_current_root();
 
-        let current_zone_info = self.current_zone_info.get().unwrap();
+        let current_zone_info = self.zone_manager.get_current_info().await.unwrap();
         let state = ZoneState {
             zone_root_state,
             zone_root_state_revision,
@@ -262,7 +256,7 @@ impl ZoneStateManager {
     pub fn device_online(
         &self,
         ping_req: &SyncPingRequest,
-    ) -> BuckyResult<(ZoneState, ZoneDeviceState)> {
+    ) -> BuckyResult<ZoneDeviceState> {
         let ret = {
             let mut state = self.state.coll().lock().unwrap();
 
@@ -287,11 +281,10 @@ impl ZoneStateManager {
                 device_state.clone()
             };
 
-            let zone_state = self.get_zone_state();
-            (zone_state, device_state)
+            device_state
         };
 
-        info!("device state change to online: {:?}", ret.1);
+        info!("device state change to online: {:?}", ret);
         self.state.set_dirty(true);
 
         Ok(ret)
@@ -300,7 +293,7 @@ impl ZoneStateManager {
     pub fn device_offline(
         &self,
         ping_req: &SyncPingRequest,
-    ) -> BuckyResult<(ZoneState, ZoneDeviceState)> {
+    ) -> BuckyResult<ZoneDeviceState> {
         let device_state = match self
             .state
             .coll()
@@ -340,14 +333,13 @@ impl ZoneStateManager {
         );
         self.state.set_dirty(true);
 
-        let zone_state = self.get_zone_state();
-        Ok((zone_state, device_state))
+        Ok(device_state)
     }
 
     pub fn device_update(
         &self,
         ping_req: &SyncPingRequest,
-    ) -> BuckyResult<(ZoneState, ZoneDeviceState)> {
+    ) -> BuckyResult<ZoneDeviceState> {
         let mut changed = false;
         let mut zone_state = self.state.coll().lock().unwrap();
         let device_state = match zone_state.device_list.get_mut(&ping_req.device_id) {
@@ -382,8 +374,7 @@ impl ZoneStateManager {
             self.state.set_dirty(true);
         }
 
-        let zone_state = self.get_zone_state();
-        Ok((zone_state, device_state))
+        Ok(device_state)
     }
 
     pub async fn save(&self) {
