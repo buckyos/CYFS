@@ -134,14 +134,48 @@ impl NONRequestHandler {
         self.processor.put_object(put_req).await
     }
 
+    pub fn encode_get_object_response_times(
+        http_resp: &mut http_types::Response,
+        resp: &NONGetObjectInputResponse,
+    ) {
+        RequestorHelper::encode_opt_header(
+            http_resp,
+            cyfs_base::CYFS_OBJECT_EXPIRES_TIME,
+            &resp.object_expires_time,
+        );
+        RequestorHelper::encode_opt_header(
+            http_resp,
+            cyfs_base::CYFS_OBJECT_UPDATE_TIME,
+            &resp.object_update_time,
+        );
+
+        // 设置标准的http header
+        if let Some(object_update_time) = resp.object_update_time {
+            RequestorHelper::encode_time_header(
+                http_resp,
+                http_types::headers::LAST_MODIFIED,
+                object_update_time,
+            );
+        }
+        if let Some(object_expires_time) = resp.object_expires_time {
+            RequestorHelper::encode_time_header(
+                http_resp,
+                http_types::headers::EXPIRES,
+                object_expires_time,
+            );
+        }
+    }
+
     pub fn encode_get_object_response(
         resp: NONGetObjectInputResponse,
         format: NONObjectFormat,
     ) -> Response {
         let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
 
+        Self::encode_get_object_response_times(&mut http_resp, &resp);
+
         match format {
-            NONObjectFormat::Raw => {
+            NONObjectFormat::Raw |NONObjectFormat::Default => {
                 NONRequestorHelper::encode_object_info(&mut http_resp, resp.object);
             }
             NONObjectFormat::Json => {
@@ -151,33 +185,6 @@ impl NONRequestHandler {
                 http_resp.set_body(resp.object.object().format_json().to_string());
                 http_resp.set_content_type(::tide::http::mime::JSON);
             }
-        }
-
-        RequestorHelper::encode_opt_header(
-            &mut http_resp,
-            cyfs_base::CYFS_OBJECT_EXPIRES_TIME,
-            &resp.object_expires_time,
-        );
-        RequestorHelper::encode_opt_header(
-            &mut http_resp,
-            cyfs_base::CYFS_OBJECT_UPDATE_TIME,
-            &resp.object_update_time,
-        );
-
-        // 设置标准的http header
-        if let Some(object_update_time) = resp.object_update_time {
-            RequestorHelper::encode_time_header(
-                &mut http_resp,
-                http_types::headers::LAST_MODIFIED,
-                object_update_time,
-            );
-        }
-        if let Some(object_expires_time) = resp.object_expires_time {
-            RequestorHelper::encode_time_header(
-                &mut http_resp,
-                http_types::headers::EXPIRES,
-                object_expires_time,
-            );
         }
 
         if let Some(attr) = &resp.attr {

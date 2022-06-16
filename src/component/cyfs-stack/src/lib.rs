@@ -26,6 +26,7 @@ mod events;
 mod root_state;
 mod root_state_api;
 mod config;
+mod front;
 
 pub use stack::*;
 pub use storage::*;
