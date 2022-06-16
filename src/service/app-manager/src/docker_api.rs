@@ -46,9 +46,11 @@ impl Default for RunConfig {
     }
 }
 
-// 启动脚本
+
+// entry strip content
 // 有些配置需要在docker run之后处理
-// 启动脚本 注入docker entrypoint, app run的命令设置在docker run cmd(作为首个参数)
+// start script 注入docker entrypoint, app run的命令设置在docker run cmd(作为首个参数)
+// iptables: alternative set the corret iptables version which defined by host kenel mod
 const START_SHELL: &'static str = "
 #!/bin/bash
 set -m
@@ -61,6 +63,13 @@ cd /opt/app
 {executable_relative_path}$1 &
 
 container_ip=`hostname -i`
+
+iptables -L
+exit_status=$?
+if [ $exit_status -eq 1 ]; then
+    echo 'kenel mod tables is not nftables. switch client to iptables-legacy'
+    update-alternatives --set iptables /usr/sbin/iptables-legacy
+fi
 iptables -t nat -F
 
 iptables -t nat -A OUTPUT -d 127.0.0.1/32 -p tcp -m tcp --dport 1318 -j DNAT --to-destination {gateway_ip}:1318
