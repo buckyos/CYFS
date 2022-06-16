@@ -1,4 +1,3 @@
-use super::def::*;
 use super::output_request::*;
 use crate::*;
 use cyfs_base::*;
@@ -377,7 +376,6 @@ pub type OpEnvNextInputResponse = OpEnvNextOutputResponse;
 pub struct RootStateAccessGetObjectByPathInputRequest {
     pub common: RootStateInputRequestCommon,
 
-    pub mode: RootStateAccessGetMode,
     pub inner_path: String,
 }
 
@@ -386,16 +384,16 @@ impl fmt::Display for RootStateAccessGetObjectByPathInputRequest {
         write!(f, "common: {}", self.common)?;
         write!(
             f,
-            ", mode: {}, inner_path: {}",
-            self.mode.as_str(),
+            ", inner_path: {}",
             self.inner_path
         )
     }
 }
 
 pub struct RootStateAccessGetObjectByPathInputResponse {
-    pub object: Option<NONGetObjectInputResponse>,
-    pub data: Option<NDNGetDataInputResponse>,
+    pub object: NONGetObjectInputResponse,
+    pub root: ObjectId,
+    pub revision: u64,
 }
 
 // list

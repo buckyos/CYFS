@@ -109,6 +109,10 @@ impl GlobalStateManager {
         self.global_root_state.get_current_root()
     }
 
+    pub fn get_root_revision(&self, root: &ObjectId) -> Option<u64> {
+        self.global_root_state.revision().get_root_revision(root)
+    }
+
     pub fn root_cache(&self) -> &ObjectMapRootCacheRef {
         self.global_root_state.root_cache()
     }
@@ -124,7 +128,7 @@ impl GlobalStateManager {
                 let revision = self
                     .global_root_state
                     .revision()
-                    .get_root_revision(&info.root);
+                    .get_root_revision(&info.root).unwrap();
                 Ok(Some((info.root, revision, info.dec_root)))
             }
             None => Ok(None),
