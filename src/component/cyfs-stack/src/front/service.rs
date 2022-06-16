@@ -1,3 +1,4 @@
+use super::def::*;
 use super::request::*;
 use crate::ndn::NDNInputProcessorRef;
 use crate::ndn_api::NDNForwardObjectData;
@@ -6,7 +7,6 @@ use crate::resolver::OodResolver;
 use crate::root_state::GlobalStateAccessInputProcessorRef;
 use cyfs_base::*;
 use cyfs_lib::*;
-
 
 pub struct FrontService {
     non: NONInputProcessorRef,
@@ -22,7 +22,7 @@ impl FrontService {
             ObjectTypeCode::Chunk => {
                 // verify the mode
                 let mode = Self::select_mode(&req.mode, &req.object_id)?;
-                assert_eq!(mode, RootStateAccessGetMode::Data);
+                assert_eq!(mode, FrontRequestGetMode::Data);
 
                 let ndn_req = FrontNDNRequest::new_o_chunk(req);
                 let resp = self.process_get_chunk(ndn_req).await?;
@@ -39,11 +39,11 @@ impl FrontService {
                 let mode = Self::select_mode(&req.mode, &non_resp.object.object_id)?;
 
                 match mode {
-                    RootStateAccessGetMode::Object => FrontOResponse {
+                    FrontRequestGetMode::Object => FrontOResponse {
                         object: Some(non_resp),
                         data: None,
                     },
-                    RootStateAccessGetMode::Data => {
+                    FrontRequestGetMode::Data => {
                         let ndn_req = FrontNDNRequest::new_o_file(req, non_resp.object.clone());
                         let ndn_resp = self.process_get_file(ndn_req).await?;
 
@@ -214,20 +214,20 @@ impl FrontService {
     }
 
     fn select_mode(
-        mode: &RootStateAccessGetMode,
+        mode: &FrontRequestGetMode,
         object_id: &ObjectId,
-    ) -> BuckyResult<RootStateAccessGetMode> {
+    ) -> BuckyResult<FrontRequestGetMode> {
         let mode = match mode {
-            RootStateAccessGetMode::Object => {
+            FrontRequestGetMode::Object => {
                 if object_id.obj_type_code() == ObjectTypeCode::Chunk {
                     let msg = format!("chunk not support object mode! chunk={}", object_id,);
                     error!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg));
                 }
 
-                RootStateAccessGetMode::Object
+                FrontRequestGetMode::Object
             }
-            RootStateAccessGetMode::Data => {
+            FrontRequestGetMode::Data => {
                 if !Self::is_data_mode_valid(object_id) {
                     let msg = format!(
                         "object not support data mode! object={}, type={:?}",
@@ -238,13 +238,13 @@ impl FrontService {
                     return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg));
                 }
 
-                RootStateAccessGetMode::Data
+                FrontRequestGetMode::Data
             }
-            RootStateAccessGetMode::Default => {
+            FrontRequestGetMode::Default => {
                 if Self::is_data_mode_valid(object_id) {
-                    RootStateAccessGetMode::Data
+                    FrontRequestGetMode::Data
                 } else {
-                    RootStateAccessGetMode::Object
+                    FrontRequestGetMode::Object
                 }
             }
         };
@@ -266,7 +266,7 @@ impl FrontService {
             ObjectTypeCode::Chunk => {
                 // verify the mode
                 let mode = Self::select_mode(&req.mode, &state_resp.object.object.object_id)?;
-                assert_eq!(mode, RootStateAccessGetMode::Data);
+                assert_eq!(mode, FrontRequestGetMode::Data);
 
                 let ndn_req = FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
                 let resp = self.process_get_chunk(ndn_req).await?;
@@ -283,13 +283,13 @@ impl FrontService {
                 let mode = Self::select_mode(&req.mode, &state_resp.object.object.object_id)?;
 
                 match mode {
-                    RootStateAccessGetMode::Object => FrontRResponse {
+                    FrontRequestGetMode::Object => FrontRResponse {
                         object: Some(state_resp.object),
                         root: state_resp.root,
                         revision: state_resp.revision,
                         data: None,
                     },
-                    RootStateAccessGetMode::Data => {
+                    FrontRequestGetMode::Data => {
                         let ndn_req =
                             FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
                         let ndn_resp = self.process_get_file(ndn_req).await?;

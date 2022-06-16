@@ -1,3 +1,4 @@
+use super::def::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -13,7 +14,7 @@ pub struct FrontORequest {
     pub object_id: ObjectId,
     pub inner_path: Option<String>,
 
-    pub mode: RootStateAccessGetMode,
+    pub mode: FrontRequestGetMode,
 
     pub flags: u32,
 }
@@ -27,7 +28,7 @@ pub struct FrontOResponse {
 pub struct FrontRRequest {
     pub protocol: NONProtocol,
     pub source: DeviceId,
-    
+
     pub category: GlobalStateCategory,
 
     pub target: Option<ObjectId>,
@@ -35,7 +36,7 @@ pub struct FrontRRequest {
     pub dec_id: Option<ObjectId>,
     pub inner_path: Option<String>,
 
-    pub mode: RootStateAccessGetMode,
+    pub mode: FrontRequestGetMode,
 
     pub flags: u32,
 }
@@ -110,10 +111,6 @@ impl FrontNDNRequest {
     }
 }
 
-pub struct FrontARequest {
+pub struct FrontARequest {}
 
-}
-
-pub struct FrontAResponse {
-
-}
+pub struct FrontAResponse {}

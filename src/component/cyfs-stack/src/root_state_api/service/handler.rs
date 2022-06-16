@@ -1,3 +1,4 @@
+use crate::front::FrontRequestObjectFormat;
 use crate::non_api::NONRequestHandler;
 use crate::root_state::*;
 use cyfs_base::*;
@@ -939,8 +940,10 @@ impl GlobalStateAccessRequestHandler {
     fn encode_get_object_by_path_response(
         resp: RootStateAccessGetObjectByPathInputResponse,
     ) -> Response {
-        let mut http_resp =
-            NONRequestHandler::encode_get_object_response(resp.object, NONObjectFormat::Raw);
+        let mut http_resp = NONRequestHandler::encode_get_object_response(
+            resp.object,
+            FrontRequestObjectFormat::Raw,
+        );
         http_resp.insert_header(cyfs_base::CYFS_ROOT, resp.root.to_string());
         http_resp.insert_header(cyfs_base::CYFS_REVISION, resp.revision.to_string());
 

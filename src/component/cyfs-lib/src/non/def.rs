@@ -189,32 +189,6 @@ impl FromStr for NONPutObjectResult {
     }
 }
 
-#[derive(Clone, Debug, Copy)]
-pub enum NONObjectFormat {
-    Default,
-    Raw,
-    Json,
-}
-
-impl FromStr for NONObjectFormat {
-    type Err = BuckyError;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        let ret = match value {
-            "default" => Self::Default,
-            "raw" => Self::Raw,
-            "json" => Self::Json,
-            v @ _ => {
-                let msg = format!("unknown NONObjectFormat: {}", v);
-                error!("{}", msg);
-
-                Self::Raw
-            }
-        };
-
-        Ok(ret)
-    }
-}
 
 #[derive(Clone)]
 pub struct NONObjectInfo {

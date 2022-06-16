@@ -1,4 +1,5 @@
 use super::url::*;
+use crate::front::FrontRequestObjectFormat;
 use crate::non::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -168,17 +169,17 @@ impl NONRequestHandler {
 
     pub fn encode_get_object_response(
         resp: NONGetObjectInputResponse,
-        format: NONObjectFormat,
+        format: FrontRequestObjectFormat,
     ) -> Response {
         let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
 
         Self::encode_get_object_response_times(&mut http_resp, &resp);
 
         match format {
-            NONObjectFormat::Raw |NONObjectFormat::Default => {
+            FrontRequestObjectFormat::Raw | FrontRequestObjectFormat::Default => {
                 NONRequestorHelper::encode_object_info(&mut http_resp, resp.object);
             }
-            NONObjectFormat::Json => {
+            FrontRequestObjectFormat::Json => {
                 http_resp
                     .insert_header(cyfs_base::CYFS_OBJECT_ID, resp.object.object_id.to_string());
 
@@ -194,33 +195,17 @@ impl NONRequestHandler {
         http_resp.into()
     }
 
-    pub fn object_format_from_request(protocol: &NONProtocol, url: &http_types::Url) -> NONObjectFormat {
-        match protocol {
-            NONProtocol::HttpLocal | NONProtocol::HttpLocalAuth => {
-                match RequestorHelper::value_from_querys("format", url) {
-                    Ok(Some(format)) => format,
-                    Ok(None) => NONObjectFormat::Raw,
-                    Err(_) => NONObjectFormat::Raw,
-                }
-            }
-            _ => {
-                NONObjectFormat::Raw
-            }
-        }
-    }
-
     pub async fn process_get_request<State>(&self, req: NONInputHttpRequest<State>) -> Response {
         // get操作存在get_object和select_object两种请求，需要通过action来进一步区分
         let ret = Self::decode_action(&req, NONAction::GetObject);
 
         match ret {
             Ok(NONAction::GetObject) => {
-                // FIXME
-                let format = Self::object_format_from_request(&req.protocol, req.request.url());
-
                 let ret = self.on_get_object(req).await;
                 match ret {
-                    Ok(resp) => Self::encode_get_object_response(resp, format),
+                    Ok(resp) => {
+                        Self::encode_get_object_response(resp, FrontRequestObjectFormat::Raw)
+                    }
                     Err(e) => RequestorHelper::trans_error(e),
                 }
             }

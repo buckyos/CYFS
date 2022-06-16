@@ -1,3 +1,4 @@
+use super::def::*;
 use super::listener::FrontInputHttpRequest;
 use super::listener::FrontRequestType;
 use super::request::*;
@@ -123,10 +124,10 @@ impl FrontProtocolHandler {
         }
     }
 
-    fn mode_from_request(url: &http_types::Url) -> BuckyResult<RootStateAccessGetMode> {
+    fn mode_from_request(url: &http_types::Url) -> BuckyResult<FrontRequestGetMode> {
         match RequestorHelper::value_from_querys("mode", url) {
             Ok(Some(mode)) => Ok(mode),
-            Ok(None) => Ok(RootStateAccessGetMode::Default),
+            Ok(None) => Ok(FrontRequestGetMode::Default),
             Err(e) => {
                 let msg = format!("invalid request url mode query param! {}, {}", url, e);
                 error!("{}", msg);
@@ -135,10 +136,10 @@ impl FrontProtocolHandler {
         }
     }
 
-    fn object_format_from_request(url: &http_types::Url) -> BuckyResult<NONObjectFormat> {
+    fn object_format_from_request(url: &http_types::Url) -> BuckyResult<FrontRequestObjectFormat> {
         match RequestorHelper::value_from_querys("format", url) {
             Ok(Some(format)) => Ok(format),
-            Ok(None) => Ok(NONObjectFormat::Default),
+            Ok(None) => Ok(FrontRequestObjectFormat::Default),
             Err(e) => {
                 let msg = format!("invalid request url format query param! {}, {}", url, e);
                 error!("{}", msg);
@@ -511,7 +512,7 @@ impl FrontProtocolHandler {
     async fn encode_o_response(
         &self,
         resp: FrontOResponse,
-        format: NONObjectFormat,
+        format: FrontRequestObjectFormat,
     ) -> tide::Response {
         match resp.data {
             Some(data_resp) => {
@@ -536,7 +537,7 @@ impl FrontProtocolHandler {
     async fn encode_r_response(
         &self,
         resp: FrontRResponse,
-        format: NONObjectFormat,
+        format: FrontRequestObjectFormat,
     ) -> tide::Response {
         let mut http_resp = match resp.data {
             Some(data_resp) => {
@@ -566,7 +567,7 @@ impl FrontProtocolHandler {
     async fn encode_a_response(
         &self,
         resp: FrontAResponse,
-        format: NONObjectFormat,
+        format: FrontRequestObjectFormat,
     ) -> tide::Response {
         todo!();
     }

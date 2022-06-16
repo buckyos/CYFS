@@ -1,6 +1,5 @@
 use super::auth::InterfaceAuth;
 use super::http_server::*;
-use super::translator::UrlTransaltor;
 use super::{
     ObjectHttpBdtListener, ObjectHttpListener, ObjectHttpTcpListener, ObjectListener,
     WebSocketEventInterface,
@@ -61,7 +60,6 @@ pub struct ObjectListenerManager {
     http_auth_raw_server: Option<HttpServerHandlerRef>,
     authenticated_server: Mutex<Option<AuthenticatedServerInfo>>,
 
-    url_translator: Option<UrlTransaltor>,
     default_handler: Option<HttpDefaultHandler>,
 }
 
@@ -80,7 +78,6 @@ impl ObjectListenerManager {
             router_events_manager: None,
             http_auth_raw_server: None,
             authenticated_server: Mutex::new(None),
-            url_translator: None,
             default_handler: None,
         }
     }
@@ -135,12 +132,7 @@ impl ObjectListenerManager {
     ) {
         assert!(self.listeners.is_empty());
 
-        let url_translator = UrlTransaltor::new(
-            name_resolver.clone(),
-            app_service.clone(),
-            role_manager.zone_manager().clone(),
-            ood_resolver,
-        );
+
         let default_handler = HttpDefaultHandler::default();
 
         // 首先初始化三个基础的http_server
@@ -160,7 +152,6 @@ impl ObjectListenerManager {
             let raw_handler = RawHttpServer::new(server.into_server());
             let http_server = DefaultHttpServer::new(
                 raw_handler.into(),
-                Some(url_translator.clone()),
                 default_handler.clone(),
             );
             self.http_bdt_server = Some(http_server.into());
@@ -182,7 +173,6 @@ impl ObjectListenerManager {
             let raw_handler = RawHttpServer::new(server.into_server());
             let http_server = DefaultHttpServer::new(
                 raw_handler.into(),
-                Some(url_translator.clone()),
                 default_handler.clone(),
             );
             self.http_tcp_server = Some(http_server.into());
@@ -206,10 +196,8 @@ impl ObjectListenerManager {
             self.http_auth_raw_server = Some(raw_handler.into());
         }
 
-        // save url_translator and default_handler for dynamic auth interface
-        assert!(self.url_translator.is_none());
+        // save default_handler for dynamic auth interface
         assert!(self.default_handler.is_none());
-        self.url_translator = Some(url_translator);
         self.default_handler = Some(default_handler);
 
         // init all listeners
@@ -349,7 +337,6 @@ impl ObjectListenerManager {
         let auth_http_server = AuthenticatedHttpServer::new(raw_http_server.into(), auth.clone());
         let server = DefaultHttpServer::new(
             auth_http_server.into(),
-            Some(self.url_translator.as_ref().unwrap().clone()),
             self.default_handler.as_ref().unwrap().clone(),
         )
         .into();
