@@ -35,8 +35,8 @@ async fn main_run() {
     cyfs_util::process::check_cmd_and_exec_with_args(SERVICE_NAME, &matches);
 
     cyfs_debug::CyfsLoggerBuilder::new_service(SERVICE_NAME)
-        .level("info")
-        .console("info")
+        .level("debug")
+        .console("debug")
         .enable_bdt(Some("info"), Some("info"))
         .build()
         .unwrap()
