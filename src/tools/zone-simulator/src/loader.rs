@@ -176,6 +176,17 @@ impl TestLoader {
         };
         list.push(obj);
 
+        if let Some(info) = &user.standby_ood {
+            let obj = KnownObject {
+                object_id: info.device.desc().calculate_id(),
+                object_raw: info.device.to_vec().unwrap(),
+                object: Arc::new(AnyNamedObject::Standard(StandardObject::Device(
+                    info.device.clone(),
+                ))),
+            };
+            list.push(obj);
+        }
+
         let obj = KnownObject {
             object_id: user.device1.device.desc().calculate_id(),
             object_raw: user.device1.device.to_vec().unwrap(),
