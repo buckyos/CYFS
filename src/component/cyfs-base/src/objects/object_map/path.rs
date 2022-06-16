@@ -712,9 +712,10 @@ impl ObjectMapPath {
             // 所在目录不存在，那么直接返回不存在即可
             if ret.is_none() {
                 debug!(
-                    "objectmap path remove_with_key but path not found! root={}, path={}",
+                    "objectmap path remove_with_key but path not found! root={}, path={}, key={}",
                     self.root(),
-                    op_data.path
+                    op_data.path,
+                    op_data.param.key,
                 );
 
                 break (None, None);
@@ -732,9 +733,10 @@ impl ObjectMapPath {
                 .await?;
 
             info!(
-                "objectmap path remove_with_key success! root={}, path={}, value={:?}",
+                "objectmap path remove_with_key success! root={}, path={}, key={}, value={:?}",
                 self.root(),
                 op_data.path,
+                op_data.param.key,
                 ret
             );
             break (ret, Some(obj_map_list));

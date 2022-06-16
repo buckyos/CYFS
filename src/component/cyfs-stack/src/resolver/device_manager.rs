@@ -306,7 +306,7 @@ impl DeviceInfoManagerImpl {
             .obj_searcher
             .search_ex(None, device_id.object_id(), ObjectSearcherFlags::none_local())
             .await.map_err(|e| {
-                let msg = format!("search target device but not found! targer={}, {}", device_id, e);
+                let msg = format!("search target device but not found! target={}, {}", device_id, e);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::TargetNotFound, msg)
             })?;
