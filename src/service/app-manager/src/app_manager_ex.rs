@@ -68,7 +68,7 @@ impl AppManager {
             .unwrap_or_else(|| device.desc().calculate_id());
         let (sender, receiver) = async_std::channel::unbounded();
         let app_config = AppManagerConfig::new();
-        let use_docker = *app_config.host_mode() == AppManagerHostMode::Default;
+        let use_docker = *app_config.host_mode() == AppManagerHostMode::Default && cfg!(target_os = "linux");
         info!("app use docker:{}", use_docker);
         Self {
             shared_stack: shared_stack.clone(),
