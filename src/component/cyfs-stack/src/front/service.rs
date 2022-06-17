@@ -36,6 +36,8 @@ impl FrontService {
     }
 
     pub async fn process_o_request(&self, req: FrontORequest) -> BuckyResult<FrontOResponse> {
+        info!("will process o request: {:?}", req);
+
         let resp = match req.object_id.obj_type_code() {
             ObjectTypeCode::Chunk => {
                 // verify the mode
@@ -85,7 +87,15 @@ impl FrontService {
         let target = if req.target.len() > 0 {
             Some(req.target[0])
         } else {
-            None
+            if let Ok(list) = self.resolve_target_from_object_id(&req.object_id).await {
+                if list.len() > 0 {
+                    Some(list[0])
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         };
 
         let common = NONInputRequestCommon {
@@ -159,7 +169,7 @@ impl FrontService {
         } else {
             let targets = self.resolve_target_from_file(&req.object).await?;
             if targets.len() > 0 {
-                Some(req.target[0])
+                Some(targets[0])
             } else {
                 None
             }
@@ -188,7 +198,52 @@ impl FrontService {
         self.ndn.get_data(req).await
     }
 
-    async fn resolve_target_from_file(&self, object: &NONObjectInfo) -> BuckyResult<Vec<DeviceId>> {
+    async fn resolve_target_from_object_id(
+        &self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Vec<ObjectId>> {
+        let mut sources = vec![];
+        match self
+            .ood_resolver
+            .resolve_ood(
+                object_id,
+                None)
+            .await
+        {
+            Ok(list) => {
+                if list.is_empty() {
+                    info!(
+                        "get target from path root seg but not found! seg={}",
+                        object_id,
+                    );
+                } else {
+                    info!(
+                        "get target from path root seg success! seg={}, sources={:?}",
+                        object_id, list
+                    );
+
+                    list.into_iter().for_each(|device_id| {
+                        // 这里需要列表去重
+                        let id = device_id.into();
+                        if !sources.iter().any(|v| *v == id) {
+                            sources.push(id);
+                        }
+                    });
+                }
+
+                Ok(sources)
+            }
+            Err(e) => {
+                error!(
+                    "get target from path root seg failed! id={}, {}",
+                    object_id, e
+                );
+                Err(e)
+            }
+        }
+    }
+
+    async fn resolve_target_from_file(&self, object: &NONObjectInfo) -> BuckyResult<Vec<ObjectId>> {
         let mut targets = vec![];
         match self
             .ood_resolver
@@ -213,8 +268,9 @@ impl FrontService {
 
                     list.into_iter().for_each(|device_id| {
                         // 这里需要列表去重
-                        if !targets.iter().any(|v| *v == device_id) {
-                            targets.push(device_id);
+                        let id = device_id.into();
+                        if !targets.iter().any(|v| *v == id) {
+                            targets.push(id);
                         }
                     });
                 }
@@ -278,6 +334,8 @@ impl FrontService {
     }
 
     pub async fn process_r_request(&self, req: FrontRRequest) -> BuckyResult<FrontRResponse> {
+        info!("will process r request: {:?}", req);
+
         let state_resp = self.process_global_state_request(req.clone()).await?;
 
         let resp = match state_resp.object.object.object_id.obj_type_code() {

@@ -78,11 +78,14 @@ impl ObjectHttpListener {
 
         default_handler(&mut server);
 
-        if protocol == NONProtocol::HttpLocal {
+        if protocol == NONProtocol::HttpLocal || protocol == NONProtocol::HttpLocalAuth {
             // router handlers
             let handler = RouterHandlerHttpHandler::new(protocol.clone(), router_handlers.clone());
             RouterHandlerRequestHandlerEndpoint::register_server(&handler, &mut server);
+        }
 
+        if protocol == NONProtocol::HttpLocal {
+            // front service
             if let Some(front) = &services.front_service {
                 let handler = FrontProtocolHandler::new(
                     name_resolver.clone(),

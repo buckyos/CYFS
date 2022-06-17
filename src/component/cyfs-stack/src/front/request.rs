@@ -78,7 +78,7 @@ impl FrontNDNRequest {
     }
 
     pub fn new_o_file(req: FrontORequest, object: NONObjectInfo) -> Self {
-        assert_eq!(object.object_id.obj_type_code(), ObjectTypeCode::Chunk);
+        assert_eq!(object.object_id.obj_type_code(), ObjectTypeCode::File);
 
         FrontNDNRequest {
             protocol: req.protocol,

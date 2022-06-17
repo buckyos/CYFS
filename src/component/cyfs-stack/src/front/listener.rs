@@ -1,6 +1,6 @@
+use super::protocol::FrontProtocolHandlerRef;
 /// use super::handler::*;
 use cyfs_lib::*;
-use super::protocol::FrontProtocolHandlerRef;
 
 use async_trait::async_trait;
 
@@ -13,8 +13,10 @@ pub enum FrontRequestType {
     R,
     L,
     A,
-}
 
+    // treat as o protocol
+    Any,
+}
 
 pub(crate) struct FrontRequestHandlerEndpoint {
     protocol: NONProtocol,
@@ -37,6 +39,7 @@ impl FrontRequestHandlerEndpoint {
 
     async fn process_request<State: Send>(&self, req: tide::Request<State>) -> tide::Response {
         let req = FrontInputHttpRequest::new(&self.protocol, req);
+
         self.handler.process_request(self.req_type, req).await
     }
 
@@ -70,6 +73,14 @@ impl FrontRequestHandlerEndpoint {
             FrontRequestType::A,
             handler.clone(),
         ));
+
+        // any
+        server.at("/:name/*must").get(FrontRequestHandlerEndpoint::new(
+            protocol.to_owned(),
+            FrontRequestType::Any,
+            handler.clone(),
+        ));
+
     }
 }
 

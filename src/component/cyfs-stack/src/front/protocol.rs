@@ -17,6 +17,27 @@ use std::sync::Arc;
 const PATH_SEGMENT_OBJECT_ID_MIN_LEN: usize = 42;
 const PATH_SEGMENT_OBJECT_ID_MAX_LEN: usize = 45;
 
+const KNOWN_ROOTS: &[&str] = &[
+    "handler",
+    "non",
+    "ndn",
+    "crypto",
+    "util",
+    "sync",
+    "trans",
+    "root-state",
+    "local-cache",
+
+    "system",
+    "root",
+
+    "o",
+    "r",
+    "l",
+    "a",
+];
+
+
 pub(crate) struct FrontProtocolHandler {
     name_resolver: NameResolver,
     zone_manager: ZoneManager,
@@ -104,6 +125,7 @@ impl FrontProtocolHandler {
                     e
                 })?;
 
+                info!("name resolved: {} -> {}", item, id);
                 result.push(id);
             }
         }
@@ -186,6 +208,11 @@ impl FrontProtocolHandler {
         Ok(segs)
     }
 
+    fn gen_inner_path(segs: &[&str]) -> String {
+        let path = segs.join("/");
+        format!("/{}", path)
+    }
+
     pub async fn process_request<State>(
         &self,
         req_type: FrontRequestType,
@@ -225,7 +252,35 @@ impl FrontProtocolHandler {
                 let http_resp = self.encode_a_response(resp, format).await;
                 Ok(http_resp)
             }
+            FrontRequestType::Any => {
+                let resp = self.process_any_request(req, route_param).await?;
+
+                let http_resp = self.encode_o_response(resp, format).await;
+                Ok(http_resp)
+            }
         }
+    }
+
+    async fn process_any_request<State>(
+        &self,
+        req: FrontInputHttpRequest<State>,
+        route_param: String,
+    ) -> BuckyResult<FrontOResponse>
+    {
+        let name = req.request.param("name").map_err(|e| {
+            let msg = format!("invalid request url root param! {}", req.request.url(),);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidParam, msg)
+        })?;
+
+        if KNOWN_ROOTS.iter().find(|v| **v == name).is_some() {
+            let msg = format!("reserved request url root param! {}, root={}", req.request.url(), name);
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
+        let route_param = format!("{}/{}", name, route_param);
+        self.process_o_request(req, route_param).await
     }
 
     async fn process_o_request<State>(
@@ -272,7 +327,7 @@ impl FrontProtocolHandler {
                 // treat as two seg mode
 
                 let inner_path = if segs.len() > 2 {
-                    Some(segs[2..].join("/"))
+                    Some(Self::gen_inner_path(&segs[2..]))
                 } else {
                     None
                 };
@@ -302,7 +357,7 @@ impl FrontProtocolHandler {
                 }
 
                 let inner_path = if segs.len() > 1 {
-                    Some(segs[1..].join("/"))
+                    Some(Self::gen_inner_path(&segs[1..]))
                 } else {
                     None
                 };
@@ -457,7 +512,7 @@ impl FrontProtocolHandler {
                     }
                     _ => {
                         let msg = format!(
-                            "invalid r path targer|dec seg type: {}, type_code={:?}",
+                            "invalid r path target|dec seg type: {}, type_code={:?}",
                             seg_object,
                             seg_object.obj_type_code()
                         );
@@ -469,7 +524,7 @@ impl FrontProtocolHandler {
         }
 
         let inner_path = if segs.len() >= inner_path_pos {
-            Some(segs[inner_path_pos..].join("/"))
+            Some(Self::gen_inner_path(&segs[inner_path_pos..]))
         } else {
             None
         };
