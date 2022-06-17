@@ -11,12 +11,7 @@ fn default_cyfs_root_path() -> PathBuf {
         PathBuf::from(&format!("C:\\{}", CFYS_ROOT_NAME))
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        dirs::data_dir().unwrap().join(CFYS_ROOT_NAME)
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios"))]
+    #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "macos"))]
     {
         PathBuf::from(&format!("/{}", CFYS_ROOT_NAME))
     }
