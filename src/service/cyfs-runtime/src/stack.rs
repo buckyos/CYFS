@@ -83,6 +83,7 @@ impl CyfsStackInsImpl {
             "127.0.0.1:{}",
             cyfs_base::CYFS_RUNTIME_NON_STACK_WS_PORT
         ));
+        params.front_enable = true;
 
         let config = CyfsServiceLoaderConfig::new(params)?;
         info!(

@@ -134,12 +134,12 @@ impl CyfsStackImpl {
         let device_id = device.desc().device_id();
         let device_category = device.category().unwrap();
 
-        let isolate = match &param.isolate {
+        let isolate = match &param.config.isolate {
             Some(v) => v.as_str(),
             None => "",
         };
 
-        let noc = Self::init_raw_noc(&device_id, param.noc_type, isolate, known_objects).await?;
+        let noc = Self::init_raw_noc(&device_id, param.noc.noc_type, isolate, known_objects).await?;
 
         // 初始化data cache和tracker
         let ndc = Self::init_ndc(isolate)?;
@@ -151,7 +151,7 @@ impl CyfsStackImpl {
 
         // 不使用rules的meta_client
         // 内部依赖带rule-noc，需要使用延迟绑定策略
-        let raw_meta_cache = RawMetaCache::new(param.meta);
+        let raw_meta_cache = RawMetaCache::new(param.meta.target);
 
         // init object searcher for global use
         let obj_searcher = CompoundObjectSearcher::new(
@@ -193,7 +193,7 @@ impl CyfsStackImpl {
         zone_manager.init().await?;
 
         // handlers
-        let router_handlers = RouterHandlersManager::new(param.isolate.clone());
+        let router_handlers = RouterHandlersManager::new(param.config.isolate.clone());
         if let Err(e) = router_handlers.load().await {
             error!("load router handlers error! {}", e);
         }
@@ -204,7 +204,7 @@ impl CyfsStackImpl {
         // acl
         let acl_manager = Arc::new(AclManager::new(
             noc.clone_noc(),
-            param.isolate.clone(),
+            param.config.isolate.clone(),
             device_manager.clone_cache(),
             zone_manager.clone(),
             router_handlers.clone(),
@@ -335,7 +335,7 @@ impl CyfsStackImpl {
         .await?;
         let current_root = root_state.local_service().state().get_current_root();
 
-        let front_service = if param.front {
+        let front_service = if param.front.enable {
             let front_service = FrontService::new(
                 non_service.clone_processor(),
                 ndn_service.clone_processor(),
@@ -476,7 +476,7 @@ impl CyfsStackImpl {
 
         Self::init_chunk_manager(&chunk_manager, isolate).await?;
 
-        if param.sync_service {
+        if param.config.sync_service {
             // 避免调用栈过深，使用task异步初始化
 
             let (ret, s) = async_std::task::spawn(async move {
@@ -511,15 +511,15 @@ impl CyfsStackImpl {
         let mut interface = ObjectListenerManager::new(device_id.clone());
         let mut init_params = ObjectListenerManagerParams {
             bdt_stack: stack.bdt_stack.clone(),
-            bdt_listeners: param.bdt_listeners,
+            bdt_listeners: param.interface.bdt_listeners,
             tcp_listeners: Vec::new(),
             ws_listener: None,
         };
 
         // 如果开启了本地的sharestack，那么就需要初始化tcp-http接口
-        if param.shared_stack {
-            init_params.tcp_listeners = param.tcp_listeners;
-            init_params.ws_listener = param.ws_listener;
+        if param.config.shared_stack {
+            init_params.tcp_listeners = param.interface.tcp_listeners;
+            init_params.ws_listener = param.interface.ws_listener;
         }
 
         interface.init(
@@ -542,7 +542,7 @@ impl CyfsStackImpl {
         }
 
         // init app controller
-        let app_controller = AppController::new(param.isolate.clone(), interface);
+        let app_controller = AppController::new(param.config.isolate.clone(), interface);
         app_controller
             .init(&stack.router_handlers.clone_processor())
             .await?;

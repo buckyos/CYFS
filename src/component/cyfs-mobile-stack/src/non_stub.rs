@@ -126,6 +126,7 @@ impl NonStub {
             shared_stack_stub: true,
             sync_service: true,
             is_mobile_stack: true,
+            front_enable: true,
         };
         let config = CyfsServiceLoaderConfig::new(param)?;
 

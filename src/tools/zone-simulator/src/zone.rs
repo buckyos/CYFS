@@ -35,6 +35,7 @@ impl TestStack {
         param.device = Some(self.device_info.clone());
         param.shared_stack = true;
         param.shared_stack_stub = true;
+        param.front_enable = true;
 
         let config = CyfsServiceLoaderConfig::new(param).unwrap();
         CyfsServiceLoader::direct_load(config).await.unwrap();
