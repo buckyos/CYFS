@@ -47,9 +47,10 @@ impl TestProfile {
         let user2 = USER2_DATA.get().unwrap();
 
         let s = format!(
-            "zone1 as follows:\npeople:{}\nood:{}\ndevice1:{}\ndevice2:{}\n\nzone2 as follows:\npeople:{}\nood:{}\ndevice1:{}\ndevice2:{}\n",
+            "zone1 as follows:\npeople:{}\nood:{}\nstandby_ood:{}\ndevice1:{}\ndevice2:{}\n\nzone2 as follows:\npeople:{}\nood:{}\ndevice1:{}\ndevice2:{}\n",
             user1.people_id,
             user1.ood_id,
+            user1.standby_ood_id.as_ref().unwrap(),
             user1.device1_id,
             user1.device2_id,
             user2.people_id,
