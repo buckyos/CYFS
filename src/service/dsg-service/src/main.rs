@@ -1,9 +1,12 @@
-mod service;
+mod contract_service;
+mod cache_service;
+use std::sync::Arc;
 use cyfs_lib::*;
 use cyfs_util::process::ProcessAction;
 use dsg_client::*;
-use service::*;
-use std::sync::Arc;
+use contract_service::*;
+
+
 
 #[async_std::main]
 async fn main() {

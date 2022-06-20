@@ -6,10 +6,14 @@ mod contracts;
 mod proof;
 mod data_source;
 mod query;
-mod client;
+mod contract_client;
+mod cache;
+mod cache_client;
 
 pub use data_source::*;
 pub use contracts::*;
 pub use proof::*;
 pub use query::*;
-pub use client::*;
+pub use contract_client::*;
+pub use cache::*;
+pub use cache_client::*;

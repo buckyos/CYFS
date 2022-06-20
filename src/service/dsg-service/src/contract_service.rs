@@ -214,13 +214,7 @@ impl DsgService {
                         log::error!("{} OnSyncContractState failed, id={} from={} err=decode state object {}", self.service, param.request.object.object_id, param.request.common.source, err);
                         err 
                     })?;
-                let state_ref = DsgContractStateObjectRef::from(&state);
-                self.service.put_object_to_noc(state_ref.id(), state_ref.as_ref()).await
-                    .map_err(|err| {
-                        log::error!("{} OnSyncContractState failed, id={} from={} err=put state object to noc {}", self.service, param.request.object.object_id, param.request.common.source, err);
-                        err 
-                    })?;
-                let new_state = self.service.on_sync_contract_state(state, Some(param.request.common.source.object_id().clone())).await?;
+                let new_state = self.service.sync_contract_state(state, Some(param.request.common.source.object_id().clone())).await?;
                 Ok(RouterHandlerPostObjectResult {
                     action: RouterHandlerAction::Response, 
                     request: None, 
@@ -331,61 +325,73 @@ impl DsgService {
         Ok(())
     } 
 
+    pub(crate) async fn query_contracts(&self, skip: u32, limit: Option<u32>) -> BuckyResult<HashMap<ObjectId, ObjectId>> {
+        let op = self.stack().root_state_stub(None).create_single_op_env().await?;
+        op.load_by_path("/dsg-service/contracts/").await?;
+        let _ = op.next(skip).await?;
+        let states = if let Some(limit) = limit {
+            let iter = op.next(limit).await?;
+            HashMap::from_iter(
+                iter.into_iter().map(|stub| {
+                    if let ObjectMapContentItem::Map((id_str, state_id)) = stub {
+                        (ObjectId::from_str(id_str.as_str()).unwrap(), state_id)
+                    } else {
+                        unreachable!()
+                    }
+                })
+            )
+        } else {
+            let step: u32 = 10;
+            let mut states = HashMap::default(); 
+            loop {
+                let iter = op.next(step).await?;
+                let len = iter.len() as u32;
+                for (contract_id, state_id) in iter.into_iter().map(|stub| {
+                    if let ObjectMapContentItem::Map((id_str, state_id)) = stub {
+                        (ObjectId::from_str(id_str.as_str()).unwrap(), state_id)
+                    } else {
+                        unreachable!()
+                    }
+                }) {
+                    states.insert(contract_id, state_id);
+                }
+                if len < step {
+                    break;
+                }
+            }
+            states
+        };
+        Ok(states)
+    }
+
+    pub(crate) async fn query_states(&self, contracts: HashMap<ObjectId, Option<ObjectId>>) -> BuckyResult<HashMap<ObjectId, ObjectId>> {
+        let mut states = HashMap::default(); 
+        let op = self.stack().root_state_stub(None).create_path_op_env().await?;
+        for (contract_id, state_id) in contracts {
+            if let Some(cur_state_id) = op.get_by_key(format!("/dsg-service/contracts/{}/", contract_id), "state").await? {
+                if state_id.is_none() || cur_state_id != state_id.unwrap() {
+                    states.insert(contract_id, cur_state_id);
+                }  
+            } else {
+
+            }
+        }
+        Ok(states)
+    }
+
     async fn on_query(&self, query: DsgQuery) -> BuckyResult<DsgQuery> {
         match query {
             DsgQuery::QueryContracts {
                 skip, 
                 limit
             } => {
-                let op = self.stack().root_state_stub(None, None).create_single_op_env().await?;
-                op.load_by_path("/dsg-service/contracts/").await?;
-                let _ = op.next(skip).await?;
-                let states = if let Some(limit) = limit {
-                    let iter = op.next(limit).await?;
-                    HashMap::from_iter(
-                        iter.into_iter().map(|stub| {
-                            if let ObjectMapContentItem::Map((id_str, state_id)) = stub {
-                                (ObjectId::from_str(id_str.as_str()).unwrap(), state_id)
-                            } else {
-                                unreachable!()
-                            }
-                        })
-                    )
-                } else {
-                    let step: u32 = 10;
-                    let mut states = HashMap::default(); 
-                    loop {
-                        let iter = op.next(step).await?;
-                        let len = iter.len() as u32;
-                        for (contract_id, state_id) in iter.into_iter().map(|stub| {
-                            if let ObjectMapContentItem::Map((id_str, state_id)) = stub {
-                                (ObjectId::from_str(id_str.as_str()).unwrap(), state_id)
-                            } else {
-                                unreachable!()
-                            }
-                        }) {
-                            states.insert(contract_id, state_id);
-                        }
-                        if len < step {
-                            break;
-                        }
-                    }
-                    states
-                };
+                let states = self.query_contracts(skip, limit).await?;
                 Ok(DsgQuery::RespContracts { states })
             }, 
             DsgQuery::QueryStates { 
                 contracts
             } => {
-                let mut states = HashMap::default(); 
-                let op = self.stack().root_state_stub(None, None).create_path_op_env().await?;
-                for (contract_id, state_id) in contracts {
-                    if let Some(cur_state_id) = op.get_by_key(format!("/dsg-service/contracts/{}/", contract_id), "state").await? {
-                        if state_id.is_none() || cur_state_id != state_id.unwrap() {
-                            states.insert(contract_id, cur_state_id);
-                        }  
-                    } else {}
-                }
+                let states = self.query_states(contracts).await?;
                 Ok(DsgQuery::RespStates { states })
                 
             }, 
@@ -393,6 +399,13 @@ impl DsgService {
         }
 
     }
+
+    pub(crate) async fn sync_contract_state(&self, state: DsgContractStateObject, from: Option<ObjectId>) -> BuckyResult<DsgContractStateObject> {
+        let state_ref = DsgContractStateObjectRef::from(&state);
+        let _ = self.put_object_to_noc(state_ref.id(), state_ref.as_ref()).await?;
+        self.on_sync_contract_state(state, from).await
+    }
+    
 
     #[async_recursion]
     async fn on_sync_contract_state(&self, state: DsgContractStateObject, from: Option<ObjectId>) -> BuckyResult<DsgContractStateObject> {

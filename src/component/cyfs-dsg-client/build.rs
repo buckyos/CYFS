@@ -5,8 +5,10 @@ use std::io::Write;
 static MOD_PROTOS_RS:&str = r#"
 mod contracts;
 mod proof;
+mod cache;
 pub use contracts::*;
 pub use proof::*;
+pub use cache::*;
 "#;
 
 fn gen_protos() {
@@ -14,6 +16,7 @@ fn gen_protos() {
     let mut gen = protoc_rust::Codegen::new();
     gen.input("protos/contracts.proto")
     .input("protos/proof.proto")
+    .input("protos/cache.proto")
     .protoc_path(protoc_bin_vendored::protoc_bin_path().unwrap())
         .out_dir(&out_dir)
         .customize(protoc_rust::Customize {
