@@ -22,6 +22,10 @@ impl AssociationChunks {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.list.is_empty()
+    }
+
     pub fn append(&mut self, object_id: &ObjectId, object: &AnyNamedObject) {
         match object_id.obj_type_code() {
             ObjectTypeCode::File => {
@@ -123,6 +127,10 @@ impl ChunksCollector {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.chunks.lock().unwrap().is_empty()
+    }
+
     pub fn detach_chunks(&self) -> Vec<ChunkId> {
         self.chunks.lock().unwrap().detach_chunks()
     }
@@ -139,6 +147,10 @@ impl ChunksCollector {
         }
 
         Ok(())
+    }
+
+    pub fn append_chunk(&self, chunk_id: &ChunkId) {
+        self.chunks.lock().unwrap().append_chunk(chunk_id);
     }
 
     async fn append_impl(&self, object_id: &ObjectId) -> BuckyResult<()> {

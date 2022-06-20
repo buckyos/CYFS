@@ -74,32 +74,36 @@ impl ObjectMapSync {
 
         loop {
             let list = walker.next(64).await;
-            if list.is_empty() {
-                info!("sync object list complete! target={}", self.target);
+            if list.is_empty() && self.chunks_collector.is_empty() {
+                info!("sync object & chunk list complete! target={}", self.target);
                 break Ok(());
             }
 
-            // filter the missing objects
-            let list = self.state_cache.filter_missing(list);
-            if list.is_empty() {
-                return Ok(());
+            // sync objects
+            if !list.is_empty() {
+                // filter the missing objects
+                let list = self.state_cache.filter_missing(list);
+                if !list.is_empty() {
+                    if let Err(e) = self.sync_objects_with_assoc(list, had_err).await {
+                        error!(
+                            "sync object list error! now will stop sync target={}",
+                            self.target,
+                        );
+                        break Err(e);
+                    }
+                }
             }
 
-            if let Err(e) = self.sync_objects_with_assoc(list, had_err).await {
-                error!(
-                    "sync object list error! now will stop sync target={}",
-                    self.target,
-                );
-                break Err(e);
-            }
-
+            // sync chunks
             let chunk_list = self.chunks_collector.detach_chunks();
-            if let Err(e) = self.sync_chunks(chunk_list).await {
-                error!(
-                    "sync chunks list error! now will stop sync target={}",
-                    self.target,
-                );
-                break Err(e);
+            if !chunk_list.is_empty() {
+                if let Err(e) = self.sync_chunks(chunk_list).await {
+                    error!(
+                        "sync chunks list error! now will stop sync target={}",
+                        self.target,
+                    );
+                    break Err(e);
+                }
             }
         }
     }
@@ -111,17 +115,14 @@ impl ObjectMapSync {
         had_err: &mut bool,
     ) -> BuckyResult<()> {
         loop {
-            let mut assoc = AssociationObjects::new();
+            let mut assoc = AssociationObjects::new(self.chunks_collector.clone());
 
             let mut sync_list = vec![];
             {
                 std::mem::swap(&mut list, &mut sync_list);
             }
 
-            if let Err(e) = self
-                .sync_objects(sync_list, had_err, &mut assoc)
-                .await
-            {
+            if let Err(e) = self.sync_objects(sync_list, had_err, &mut assoc).await {
                 error!(
                     "sync object list error! now will stop sync target={}",
                     self.target,
@@ -254,25 +255,17 @@ impl ObjectMapSync {
             }
         });
 
-        // extract all assoc objects
+        // extract all assoc objects/chunks
         sync_resp.objects.iter().for_each(|item| {
             assoc_objects.append(item.object.as_ref().unwrap());
         });
 
-        self.save_objects(
-            sync_resp.objects,
-            had_err,
-        )
-        .await;
+        self.save_objects(sync_resp.objects, had_err).await;
 
         Ok(())
     }
 
-    pub async fn save_objects(
-        &self,
-        list: Vec<SelectResponseObjectInfo>,
-        had_err: &mut bool,
-    ) {
+    pub async fn save_objects(&self, list: Vec<SelectResponseObjectInfo>, had_err: &mut bool) {
         for item in list {
             let object = item.object.unwrap();
             let type_code = object.object_id.obj_type_code();
@@ -286,7 +279,8 @@ impl ObjectMapSync {
                     // deal with assoc chunks
                     match type_code {
                         ObjectTypeCode::File | ObjectTypeCode::Dir => {
-                            self.chunks_collector.append_object(&object.object_id, &object.object.as_ref().unwrap());
+                            self.chunks_collector
+                                .append_object(&object.object_id, &object.object.as_ref().unwrap());
                         }
                         _ => {}
                     }
@@ -379,70 +373,21 @@ impl ObjectMapSync {
         }
     }
 
-    /*
-    async fn put_others(&self, object: NONObjectInfo) -> BuckyResult<()> {
-        let common = NONInputRequestCommon {
-            req_path: None,
-            dec_id: None,
-            source: self.device_id.clone(),
-            protocol: NONProtocol::Sync,
-            level: NONAPILevel::NON,
-            target: None,
-            flags: 0,
-        };
-
-        let req = NONPutObjectInputRequest {
-            common: common.clone(),
-            object: NONObjectInfo::new(object.object_id.clone(), object.object_raw, object.object),
-        };
-
-        match self.non.put_object(req).await {
-            Ok(resp) => {
-                info!(
-                    "sync object insert to noc success! object={}, result={:?}",
-                    object.object_id, resp.result
-                );
-
-                Ok(())
-            }
-            Err(e) => {
-                match e.code() {
-                    BuckyErrorCode::Reject | BuckyErrorCode::Ignored => {
-                        // 如果对象被明确拒绝或者忽略，那么认为同步成功
-                        warn!(
-                            "sync object insert to noc but reject or ignored! {}, {}",
-                            object.object_id, e
-                        );
-
-                        Ok(())
-                    }
-                    _ => {
-                        error!(
-                            "sync object insert to noc failed! {}, {}",
-                            object.object_id, e
-                        );
-                        // FIXME 如果同步回来的对象插入失败，要如何处理？
-                        Err(e)
-                    }
-                }
-            }
+    async fn sync_chunks(&self, list: Vec<ChunkId>) -> BuckyResult<()> {
+        for sub_list in list.chunks(1024) {
+            self.sync_chunks_impl(sub_list).await?;
         }
-    }
-    */
 
-    async fn sync_chunks(
-        &self,
-        list: Vec<ChunkId>,
-    ) -> BuckyResult<()> {
+        Ok(())
+    }
+
+    async fn sync_chunks_impl(&self, list: &[ChunkId]) -> BuckyResult<()> {
         // 重试间隔
         let mut retry_interval = SYNC_RETRY_MIN_INTERVAL_SECS;
         let mut retry_times = 0;
 
         loop {
-            match self
-                .data_sync.sync_chunks(list.clone())
-                .await
-            {
+            match self.data_sync.sync_chunks(list.to_owned()).await {
                 Ok(_) => break,
                 Err(e) => {
                     error!(

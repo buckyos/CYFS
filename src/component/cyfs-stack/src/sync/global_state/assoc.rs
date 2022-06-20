@@ -1,3 +1,4 @@
+use super::data::ChunksCollector;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -5,12 +6,14 @@ use std::collections::HashSet;
 
 pub(super) struct AssociationObjects {
     list: HashSet<ObjectId>,
+    chunks_collector: ChunksCollector,
 }
 
 impl AssociationObjects {
-    pub fn new() -> Self {
+    pub fn new(chunks_collector: ChunksCollector,) -> Self {
         Self {
             list: HashSet::new(),
+            chunks_collector,
         }
     }
 
@@ -70,8 +73,15 @@ impl AssociationObjects {
     }
 
     fn append_item(&mut self, id: &ObjectId) {
-        if self.list.get(id).is_none() {
-            self.list.insert(id.to_owned());
+        match id.obj_type_code() {
+            ObjectTypeCode::Chunk => {
+                self.chunks_collector.append_chunk(id.as_chunk_id());
+            }
+            _ => {
+                if self.list.get(id).is_none() {
+                    self.list.insert(id.to_owned());
+                }
+            }
         }
     }
 
