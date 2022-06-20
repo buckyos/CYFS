@@ -17,6 +17,15 @@ dmc_dsg-filter3 = {action = "*-get-object", res = "/9tGpLNnBuQvSVgFee7s8vUqCe373
 dmc_dsg-filter2 = {action = "*-post-object", res = "/dec_app/9tGpLNnBuQvSVgFee7s8vUqCe373z6vkFbVrRpadM9Sp/**", access = "accept"}
 nft-put-data-filter = {action = "*-put-data", res = "/9tGpLNnBuQvSVgFee7s8vUqCe373z6vkFbVrRpadM9Sp/dmc-dsg/**", access = "accept"}
 nft-get-data-filter = {action = "*-get-data", res = "/9tGpLNnBuQvSVgFee7s8vUqCe373z6vkFbVrRpadM9Sp/dmc-dsg/**", access = "accept"}
+get-contract = { action = "*-get-object", res = "/dec_app/9tGpLNnBE4ATMPcdeqcxjhAvzNKm2AMCKgamLhZKKdbD/32769", group = { location = "outer" }, access = "accept" }
+get-contract-state = { action = "*-get-object", res = "/dec_app/9tGpLNnBE4ATMPcdeqcxjhAvzNKm2AMCKgamLhZKKdbD/32770", group = { location = "outer" }, access = "accept" }
+post-challenge = { action = "*-post-object", res = "/dec_app/9tGpLNnBE4ATMPcdeqcxjhAvzNKm2AMCKgamLhZKKdbD/32779", group = { location = "outer" }, access = "accept" }
+post-proof = { action = "*-post-object", res = "/dec_app/9tGpLNnBE4ATMPcdeqcxjhAvzNKm2AMCKgamLhZKKdbD/32780", group = { location = "outer" }, access = "accept" }
+dsg-miner-filter = {action = "*-get-object", res = "/dec_app/9tGpLNnRL7ZXD26PUxGgBqjFJf7tJazN8XrmcEinKrh2/**", access = "accept"}
+dsg-miner-filter3 = {action = "*-get-object", res = "/9tGpLNnRL7ZXD26PUxGgBqjFJf7tJazN8XrmcEinKrh2/**", access = "accept"}
+dsg-miner-filter2 = {action = "*-post-object", res = "/dec_app/9tGpLNnRL7ZXD26PUxGgBqjFJf7tJazN8XrmcEinKrh2/**", access = "accept"}
+dsg-miner-put-data-filter = {action = "*-put-data", res = "/9tGpLNnRL7ZXD26PUxGgBqjFJf7tJazN8XrmcEinKrh2/dmc-dsg/**", access = "accept"}
+dsg-miner-get-data-filter = {action = "*-get-data", res = "/9tGpLNnRL7ZXD26PUxGgBqjFJf7tJazN8XrmcEinKrh2/dmc-dsg/**", access = "accept"}
 "#;
 
 pub const GIT_ACL_CONFIG: &str = r#"
