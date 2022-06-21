@@ -414,11 +414,11 @@ impl AppCmdExecutor {
             if let Ok(dec_app) = self.non_helper.get_dec_app(app_id.object_id(), None).await {
                 let _ = self
                     .non_helper
-                    .remove_app_web_dir(app_id.object_id(), &ver, &obj_id)
+                    .unregister_app_name(dec_app.name(), app_id.object_id())
                     .await;
                 let _ = self
                     .non_helper
-                    .unregister_app_name(dec_app.name(), app_id.object_id())
+                    .remove_app_web_dir(app_id.object_id(), &ver, &obj_id)
                     .await;
             }
         }
