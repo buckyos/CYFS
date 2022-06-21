@@ -1,5 +1,6 @@
 use super::def::*;
 use super::request::*;
+use crate::app::AppService;
 use crate::ndn::NDNInputProcessorRef;
 use crate::ndn_api::NDNForwardObjectData;
 use crate::non::NONInputProcessorRef;
@@ -15,6 +16,8 @@ pub(crate) struct FrontService {
     root_state: GlobalStateAccessInputProcessorRef,
     local_cache: GlobalStateAccessInputProcessorRef,
 
+    app: AppService,
+
     ood_resolver: OodResolver,
 }
 
@@ -24,6 +27,7 @@ impl FrontService {
         ndn: NDNInputProcessorRef,
         root_state: GlobalStateAccessInputProcessorRef,
         local_cache: GlobalStateAccessInputProcessorRef,
+        app: AppService,
         ood_resolver: OodResolver,
     ) -> Self {
         Self {
@@ -31,6 +35,7 @@ impl FrontService {
             ndn,
             root_state,
             local_cache,
+            app,
             ood_resolver,
         }
     }
@@ -203,13 +208,7 @@ impl FrontService {
         object_id: &ObjectId,
     ) -> BuckyResult<Vec<ObjectId>> {
         let mut sources = vec![];
-        match self
-            .ood_resolver
-            .resolve_ood(
-                object_id,
-                None)
-            .await
-        {
+        match self.ood_resolver.resolve_ood(object_id, None).await {
             Ok(list) => {
                 if list.is_empty() {
                     info!(
@@ -408,5 +407,51 @@ impl FrontService {
         };
 
         processor.get_object_by_path(state_req).await
+    }
+
+    pub async fn process_a_request(&self, req: FrontARequest) -> BuckyResult<FrontAResponse> {
+        let target = match req.target {
+            Some(id) => vec![id],
+            None => vec![],
+        };
+
+        let o_req = match req.goal {
+            FrontARequestGoal::Web(web_req) => {
+                let (dec_id, dir_id) = self.app.get_app_web_dir(&req.dec, &web_req.version).await?;
+
+                FrontORequest {
+                    protocol: req.protocol,
+                    source: req.source,
+
+                    target,
+
+                    dec_id: Some(dec_id),
+                    object_id: dir_id,
+                    inner_path: web_req.inner_path,
+
+                    mode: req.mode,
+                    flags: req.flags,
+                }
+            }
+            FrontARequestGoal::LocalStatus => {
+                let (dec_id, local_status_id) = self.app.get_app_local_status(&req.dec).await?;
+
+                FrontORequest {
+                    protocol: req.protocol,
+                    source: req.source,
+
+                    target,
+
+                    dec_id: Some(dec_id),
+                    object_id: local_status_id,
+                    inner_path: None,
+
+                    mode: req.mode,
+                    flags: req.flags,
+                }
+            }
+        };
+
+        self.process_o_request(o_req).await
     }
 }

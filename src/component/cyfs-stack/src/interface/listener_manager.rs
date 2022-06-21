@@ -5,12 +5,10 @@ use super::{
     WebSocketEventInterface,
 };
 use crate::acl::AclManagerRef;
-use crate::app::AppService;
 use crate::app::AuthenticatedAppList;
 use crate::events::RouterEventsManager;
 use crate::interface::http_ws_listener::ObjectHttpWSService;
 use crate::name::NameResolver;
-use crate::resolver::OodResolver;
 use crate::root_state_api::*;
 use crate::router_handler::RouterHandlersManager;
 use crate::stack::ObjectServices;
@@ -124,11 +122,9 @@ impl ObjectListenerManager {
         router_events: &RouterEventsManager,
         name_resolver: &NameResolver,
         acl: &AclManagerRef,
-        app_service: &AppService,
         role_manager: &ZoneRoleManager,
         root_state: &GlobalStateService,
         local_cache: &GlobalStateLocalService,
-        ood_resolver: OodResolver,
     ) {
         assert!(self.listeners.is_empty());
 

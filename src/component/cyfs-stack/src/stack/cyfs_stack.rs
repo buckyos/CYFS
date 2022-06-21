@@ -336,11 +336,14 @@ impl CyfsStackImpl {
         let current_root = root_state.local_service().state().get_current_root();
 
         let front_service = if param.front.enable {
+            let app_service = AppService::new(device_id.clone(), root_state.local_service().state().clone());
+
             let front_service = FrontService::new(
                 non_service.clone_processor(),
                 ndn_service.clone_processor(),
                 root_state.clone_access_processor(),
                 local_cache.clone_access_processor(),
+                app_service,
                 ood_resoler.clone(),
             );
             Some(Arc::new(front_service))
@@ -406,8 +409,6 @@ impl CyfsStackImpl {
                 device_id.clone(),
             ),
         };
-
-        let app_service = AppService::new(device_id.clone(), noc.clone_noc(), zone_manager.clone());
 
         let admin_manager = AdminManager::new(
             zone_role_manager.clone(),
@@ -529,11 +530,9 @@ impl CyfsStackImpl {
             &stack.router_events,
             &stack.name_resolver,
             &stack.acl_manager,
-            &app_service,
             &stack.zone_role_manager,
             &stack.root_state,
             &stack.local_cache,
-            ood_resoler.clone(),
         );
 
         let interface = Arc::new(interface);

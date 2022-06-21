@@ -111,6 +111,39 @@ impl FrontNDNRequest {
     }
 }
 
-pub struct FrontARequest {}
+pub enum FrontARequestDec {
+    DecID(ObjectId),
+    Name(String),
+}
 
-pub struct FrontAResponse {}
+pub enum FrontARequestVersion {
+    Version(String),
+    DirID(ObjectId),
+    Current,
+}
+
+pub struct FrontARequestWeb {
+    pub version: FrontARequestVersion,
+    pub inner_path: Option<String>,
+}
+
+pub enum FrontARequestGoal {
+    Web(FrontARequestWeb),
+    LocalStatus,
+}
+
+pub struct FrontARequest {
+    pub protocol: NONProtocol,
+    pub source: DeviceId,
+
+    pub target: Option<ObjectId>,
+
+    pub dec: FrontARequestDec,
+    pub goal: FrontARequestGoal,
+
+    pub mode: FrontRequestGetMode,
+
+    pub flags: u32,
+}
+
+pub type FrontAResponse = FrontOResponse;

@@ -268,7 +268,7 @@ impl FrontProtocolHandler {
     ) -> BuckyResult<FrontOResponse>
     {
         let name = req.request.param("name").map_err(|e| {
-            let msg = format!("invalid request url root param! {}", req.request.url(),);
+            let msg = format!("invalid request url root param! {}, {}", req.request.url(), e);
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
@@ -432,7 +432,7 @@ impl FrontProtocolHandler {
         route_param: String,
     ) -> BuckyResult<FrontRResponse> {
         /*
-        [/target]/dec_id/inner_path
+        [/target]/dec_id/{inner_path}
 
         target: People/SimpleGroup/Device-id, name, $
         dec-id: DecAppId/system/root
@@ -556,12 +556,87 @@ impl FrontProtocolHandler {
         self.service.process_r_request(r_req).await
     }
 
+    /*
+    cyfs://a/{dec-id}/{inner-path}
+    cyfs://a/{dec-id}/{dir-id}/{inner-path}
+    cyfs://a/{dec-id}/{x.x.x}/{inner-path}
+    cyfs://a/{dec-id}/local_status
+    */
     async fn process_a_request<State>(
         &self,
         req: FrontInputHttpRequest<State>,
         route_param: String,
     ) -> BuckyResult<FrontAResponse> {
-        todo!();
+        let segs = Self::parse_url_segs(&route_param)?;
+        let url = req.request.url();
+
+        assert!(segs.len() > 0);
+        if segs.len() < 2 {
+            let msg = format!("invalid request url root segs! {}", url,);
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+        let dec = match Self::parse_object_seg(segs[0]) {
+            Some(id) => FrontARequestDec::DecID(id),
+            None => FrontARequestDec::Name(segs[0].to_owned()),
+        };
+
+        let goal = match segs[1] {
+            "local_status" => {
+                FrontARequestGoal::LocalStatus
+            }
+            _ => {
+                let version = match Self::parse_object_seg(segs[1]) {
+                    Some(id) => FrontARequestVersion::DirID(id),
+                    None => {
+                        // check if semversion
+                        match semver::Version::parse(segs[1]) {
+                            Ok(_version) => {
+                                FrontARequestVersion::Version(segs[1].to_owned())
+                            }
+                            Err(_) => {
+                                FrontARequestVersion::Current
+                            }
+                        }
+                    }
+                };
+        
+                let inner_path = if segs.len() > 2 {
+                    Some(Self::gen_inner_path(&segs[2..]))
+                } else {
+                    None
+                };
+
+                let web_req = FrontARequestWeb {
+                    version,
+                    inner_path,
+                };
+
+                FrontARequestGoal::Web(web_req)
+            }
+        };
+        
+
+        let mode = Self::mode_from_request(url)?;
+        let flags = Self::flags_from_request(url)?;
+
+        // TODO now target always be local stack
+        let target = self.zone_manager.get_current_device_id();
+
+        let a_req = FrontARequest {
+            protocol: req.protocol,
+            source: req.source,
+
+            target: Some(target.object_id().to_owned()),
+
+            dec,
+            goal,
+
+            mode,
+            flags,
+        };
+
+        self.service.process_a_request(a_req).await
     }
 
     async fn encode_o_response(
@@ -624,6 +699,6 @@ impl FrontProtocolHandler {
         resp: FrontAResponse,
         format: FrontRequestObjectFormat,
     ) -> tide::Response {
-        todo!();
+        self.encode_o_response(resp, format).await
     }
 }
