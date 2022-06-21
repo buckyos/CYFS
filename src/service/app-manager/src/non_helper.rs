@@ -1,8 +1,10 @@
 //use crate::app_manager_ex::USER_APP_LIST;
 use cyfs_base::*;
 use cyfs_core::*;
-use log::*;
 use cyfs_lib::*;
+use log::*;
+
+const APP_MAIN_PATH: &str = "/app";
 
 pub struct NonHelper {
     owner: ObjectId,
@@ -253,6 +255,107 @@ impl NonHelper {
             .await?;
         let app = DecApp::clone_from_slice(&resp.object.object_raw)?;
         Ok(app)
+    }
+
+    fn get_app_dir_path_with_ver(app_id: &ObjectId, ver: &str) -> String {
+        format!("{}/{}/{}", APP_MAIN_PATH, app_id.to_string(), ver)
+    }
+
+    fn get_app_dir_current_path(app_id: &ObjectId) -> String {
+        format!("{}/{}/current", APP_MAIN_PATH, app_id)
+    }
+
+    fn get_app_name_register_path(app_name: &str) -> String {
+        format!("{}/names/{}", APP_MAIN_PATH, app_name)
+    }
+
+    pub async fn save_app_web_dir(
+        &self,
+        app_id: &ObjectId,
+        ver: &str,
+        web_dir_id: &ObjectId,
+    ) -> BuckyResult<()> {
+        let app_web_path_ver = Self::get_app_dir_path_with_ver(app_id, ver);
+        if let Err(e) = self.store_on_map(&app_web_path_ver, web_dir_id).await {
+            warn!(
+                "store app web file with ver on obj map failed, web path:{}, err:{}",
+                app_web_path_ver, e
+            );
+            return Err(e);
+        }
+
+        let app_web_path_current = Self::get_app_dir_current_path(app_id);
+        if let Err(e) = self.store_on_map(&app_web_path_current, web_dir_id).await {
+            warn!(
+                "store app web file current on obj map failed, web path:{}, err:{}",
+                app_web_path_current, e
+            );
+            return Err(e);
+        }
+
+        Ok(())
+    }
+
+    pub async fn remove_app_web_dir(
+        &self,
+        app_id: &ObjectId,
+        ver: &str,
+        web_dir_id: &ObjectId,
+    ) -> BuckyResult<()> {
+        let app_web_path_ver = Self::get_app_dir_path_with_ver(app_id, ver);
+        if let Err(e) = self
+            .delete_from_map(&app_web_path_ver, Some(web_dir_id.clone()))
+            .await
+        {
+            warn!(
+                "delete app web file with ver from obj map failed, web path:{}, err:{}",
+                app_web_path_ver, e
+            );
+            return Err(e);
+        }
+
+        let app_web_path_current = Self::get_app_dir_current_path(app_id);
+        if let Err(e) = self
+            .delete_from_map(&app_web_path_current, Some(web_dir_id.clone()))
+            .await
+        {
+            warn!(
+                "delete app web file current from obj map failed, web path:{}, err:{}",
+                app_web_path_current, e
+            );
+            return Err(e);
+        }
+
+        Ok(())
+    }
+
+    pub async fn register_app_name(&self, app_name: &str, app_id: &ObjectId) -> BuckyResult<()> {
+        let app_name_path = Self::get_app_name_register_path(app_name);
+        if let Err(e) = self.store_on_map(&app_name_path, app_id).await {
+            warn!(
+                "register app name on obj map failed, app name:{}, app id: {}, err:{}",
+                app_name, app_id, e
+            );
+            return Err(e);
+        }
+
+        Ok(())
+    }
+
+    pub async fn unregister_app_name(&self, app_name: &str, app_id: &ObjectId) -> BuckyResult<()> {
+        let app_name_path = Self::get_app_name_register_path(app_name);
+        if let Err(e) = self
+            .delete_from_map(&app_name_path, Some(app_id.clone()))
+            .await
+        {
+            warn!(
+                "unregister app name from obj map failed, app name:{}, app id: {}, err:{}",
+                app_name, app_id, e
+            );
+            return Err(e);
+        }
+
+        Ok(())
     }
 
     pub async fn store_on_map(&self, path: &str, obj_id: &ObjectId) -> BuckyResult<()> {

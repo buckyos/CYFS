@@ -361,13 +361,14 @@ impl AppCmdExecutor {
         status.lock().unwrap().set_web_dir(web_dir);
 
         if let Some(obj_id) = web_dir {
-            let app_web_path = format!("{}/{}", APP_DIR_MAIN_PATH, app_id.to_string());
-            if let Err(e) = self.non_helper.store_on_map(&app_web_path, &obj_id).await {
-                warn!(
-                    "store app web file on obj map failed, web path:{}, err:{}",
-                    app_web_path, e
-                );
-            }
+            let _ = self
+                .non_helper
+                .save_app_web_dir(app_id.object_id(), version, &obj_id)
+                .await;
+            let _ = self
+                .non_helper
+                .register_app_name(dec_app.name(), app_id.object_id())
+                .await;
         }
         //版本已经提前设置了
         //status.lock().unwrap().set_version(version);
@@ -394,9 +395,11 @@ impl AppCmdExecutor {
         .await?;
 
         let web_id;
+        let ver;
         {
             let status = status.lock().unwrap();
             web_id = status.web_dir().cloned();
+            ver = status.version().unwrap().to_owned();
         }
 
         let mut target_status_code = AppLocalStatusCode::Uninstalled;
@@ -408,16 +411,15 @@ impl AppCmdExecutor {
             sub_err = e;
         }
         if let Some(obj_id) = web_id {
-            let app_web_path = format!("{}/{}", APP_DIR_MAIN_PATH, app_id.to_string());
-            if let Err(e) = self
-                .non_helper
-                .delete_from_map(&app_web_path, Some(obj_id))
-                .await
-            {
-                warn!(
-                    "delete app web file from obj map failed, web path:{}, err:{}",
-                    app_web_path, e
-                );
+            if let Ok(dec_app) = self.non_helper.get_dec_app(app_id.object_id(), None).await {
+                let _ = self
+                    .non_helper
+                    .remove_app_web_dir(app_id.object_id(), &ver, &obj_id)
+                    .await;
+                let _ = self
+                    .non_helper
+                    .unregister_app_name(dec_app.name(), app_id.object_id())
+                    .await;
             }
         }
 
