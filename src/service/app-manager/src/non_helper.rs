@@ -6,6 +6,17 @@ use log::*;
 
 const APP_MAIN_PATH: &str = "/app";
 
+/*app related object path
+//user
+/system/app/{dec-id}/versions
+/system/app/{dec-id}/local_status
+/system/app/names/${app-name}
+
+//manager
+/system/app/manager/cmd_list
+/system/app/manager/local_list
+*/
+
 pub struct NonHelper {
     owner: ObjectId,
     shared_stack: SharedCyfsStack,
@@ -19,8 +30,20 @@ impl NonHelper {
         }
     }
 
-    fn get_local_status_path(&self, app_id: &DecAppId) -> String {
-        format!("{}/{}", APP_LOCAL_STATUS_MAIN_PATH, app_id.to_string())
+    fn get_local_status_path(app_id: &DecAppId) -> String {
+        format!("{}/{}/local_status", APP_MAIN_PATH, app_id.to_string())
+    }
+
+    fn get_app_dir_path_with_ver(app_id: &DecAppId, ver: &str) -> String {
+        format!("{}/{}/versions/{}", APP_MAIN_PATH, app_id.to_string(), ver)
+    }
+
+    fn get_app_dir_path_current(app_id: &DecAppId) -> String {
+        format!("{}/{}/versions/current", APP_MAIN_PATH, app_id.to_string())
+    }
+
+    fn get_app_name_register_path(app_name: &str) -> String {
+        format!("{}/names/{}", APP_MAIN_PATH, app_name)
     }
 
     pub async fn put_local_status(&self, status: &AppLocalStatus) -> BuckyResult<()> {
@@ -42,7 +65,7 @@ impl NonHelper {
             }
         };
 
-        let status_path = self.get_local_status_path(&app_id);
+        let status_path = Self::get_local_status_path(app_id);
 
         if let Err(e) = self.store_on_map(&status_path, &object_id).await {
             error!("store status on map failed. status:{}", status.output());
@@ -87,7 +110,7 @@ impl NonHelper {
     }
 
     pub async fn get_local_status(&self, app_id: &DecAppId) -> AppLocalStatus {
-        let status_path = self.get_local_status_path(&app_id);
+        let status_path = Self::get_local_status_path(app_id);
 
         match self.load_from_map(&status_path).await {
             Ok(v) => {
@@ -127,7 +150,7 @@ impl NonHelper {
         };
 
         //如果没有取到，则创建，并且put
-        info!("will create local status, app:{}", app_id);
+        info!("local status obj not found, will create it, app:{}", app_id);
         let local_status = AppLocalStatus::create(self.owner.clone(), app_id.clone());
         let _ = self.put_local_status(&local_status).await;
 
@@ -257,21 +280,9 @@ impl NonHelper {
         Ok(app)
     }
 
-    fn get_app_dir_path_with_ver(app_id: &ObjectId, ver: &str) -> String {
-        format!("{}/{}/{}", APP_MAIN_PATH, app_id.to_string(), ver)
-    }
-
-    fn get_app_dir_current_path(app_id: &ObjectId) -> String {
-        format!("{}/{}/current", APP_MAIN_PATH, app_id)
-    }
-
-    fn get_app_name_register_path(app_name: &str) -> String {
-        format!("{}/names/{}", APP_MAIN_PATH, app_name)
-    }
-
     pub async fn save_app_web_dir(
         &self,
-        app_id: &ObjectId,
+        app_id: &DecAppId,
         ver: &str,
         web_dir_id: &ObjectId,
     ) -> BuckyResult<()> {
@@ -284,7 +295,7 @@ impl NonHelper {
             return Err(e);
         }
 
-        let app_web_path_current = Self::get_app_dir_current_path(app_id);
+        let app_web_path_current = Self::get_app_dir_path_current(app_id);
         if let Err(e) = self.store_on_map(&app_web_path_current, web_dir_id).await {
             warn!(
                 "store app web file current on obj map failed, web path:{}, err:{}",
@@ -298,7 +309,7 @@ impl NonHelper {
 
     pub async fn remove_app_web_dir(
         &self,
-        app_id: &ObjectId,
+        app_id: &DecAppId,
         ver: &str,
         web_dir_id: &ObjectId,
     ) -> BuckyResult<()> {
@@ -314,7 +325,7 @@ impl NonHelper {
             return Err(e);
         }
 
-        let app_web_path_current = Self::get_app_dir_current_path(app_id);
+        let app_web_path_current = Self::get_app_dir_path_current(app_id);
         if let Err(e) = self
             .delete_from_map(&app_web_path_current, Some(web_dir_id.clone()))
             .await
@@ -329,9 +340,9 @@ impl NonHelper {
         Ok(())
     }
 
-    pub async fn register_app_name(&self, app_name: &str, app_id: &ObjectId) -> BuckyResult<()> {
+    pub async fn register_app_name(&self, app_name: &str, app_id: &DecAppId) -> BuckyResult<()> {
         let app_name_path = Self::get_app_name_register_path(app_name);
-        if let Err(e) = self.store_on_map(&app_name_path, app_id).await {
+        if let Err(e) = self.store_on_map(&app_name_path, app_id.object_id()).await {
             warn!(
                 "register app name on obj map failed, app name:{}, app id: {}, err:{}",
                 app_name, app_id, e
@@ -342,10 +353,10 @@ impl NonHelper {
         Ok(())
     }
 
-    pub async fn unregister_app_name(&self, app_name: &str, app_id: &ObjectId) -> BuckyResult<()> {
+    pub async fn unregister_app_name(&self, app_name: &str, app_id: &DecAppId) -> BuckyResult<()> {
         let app_name_path = Self::get_app_name_register_path(app_name);
         if let Err(e) = self
-            .delete_from_map(&app_name_path, Some(app_id.clone()))
+            .delete_from_map(&app_name_path, Some(app_id.object_id().clone()))
             .await
         {
             warn!(

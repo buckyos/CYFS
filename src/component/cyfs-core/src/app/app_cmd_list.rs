@@ -5,7 +5,7 @@ use cyfs_base::*;
 use std::collections::VecDeque;
 
 pub const DEFAULT_CMD_LIST: &str = "default";
-pub const CMD_LIST_PATH: &str = "/app_cmd_list";
+pub const CMD_LIST_PATH: &str = "/app/manager/cmd_list";
 
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
 #[cyfs_protobuf_type(crate::codec::protos::AppCmdListItem)]

@@ -5,6 +5,7 @@ use cyfs_lib::*;
 use log::*;
 
 const DEFAULT_CMD_LIST: &str = "default";
+const APP_MAIN_PATH: &str = "/app";
 
 pub struct NonHelper {
     shared_stack: Option<SharedCyfsStack>,
@@ -34,7 +35,7 @@ impl NonHelper {
     }
 
     pub async fn get_local_status(&self, app_id: &DecAppId) -> BuckyResult<AppLocalStatus> {
-        let status_path = format!("{}/{}", APP_LOCAL_STATUS_MAIN_PATH, app_id.to_string());
+        let status_path = format!("{}/{}/local_status", APP_MAIN_PATH, app_id.to_string());
 
         let v = self.load_from_map(&status_path).await?;
         let status_id = v.ok_or(BuckyError::from(BuckyErrorCode::NotFound))?;

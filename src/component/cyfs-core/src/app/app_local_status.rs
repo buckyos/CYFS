@@ -174,6 +174,7 @@ pub struct AppLocalStatusDesc {
     quota: AppQuota,
     last_status_update_time: u64,
     sub_error: SubErrorCode,
+    auto_update: bool,
 }
 impl DescContent for AppLocalStatusDesc {
     fn obj_type() -> u16 {
@@ -211,6 +212,7 @@ impl ProtobufTransform<protos::AppLocalStatusDesc> for AppLocalStatusDesc {
             quota,
             last_status_update_time: value.last_status_update_time.parse::<u64>()?,
             sub_error: ProtobufCodecHelper::decode_value(value.sub_error as u8)?,
+            auto_update: value.auto_update,
         };
         if value.version.is_some() {
             ret.version = Some(value.version.unwrap());
@@ -240,6 +242,7 @@ impl ProtobufTransform<&AppLocalStatusDesc> for protos::AppLocalStatusDesc {
             quota: Some(quota),
             last_status_update_time: value.last_status_update_time.to_string(),
             sub_error: value.sub_error as u32,
+            auto_update: value.auto_update,
         };
         ret.id = value.id.to_vec()?;
         if let Some(dir) = &value.web_dir {
@@ -283,6 +286,7 @@ pub trait AppLocalStatusObj {
     fn permission_unhandled(&self) -> Option<HashMap<String, String>>;
     fn last_status_update_time(&self) -> u64;
     fn sub_error(&self) -> SubErrorCode;
+    fn auto_update(&self) -> bool;
 
     fn set_status(&mut self, status: AppLocalStatusCode);
     fn set_web_dir(&mut self, web_dir: Option<ObjectId>);
@@ -294,6 +298,8 @@ pub trait AppLocalStatusObj {
     //设置配额，返回值表示配额有没有变化（是否与现有权限相同）
     fn set_quota(&mut self, quota: &AppQuota) -> bool;
     fn set_sub_error(&mut self, code: SubErrorCode);
+    //return old auto_update value
+    fn set_auto_update(&mut self, auto_update: bool) -> bool;
 
     fn output(&self) -> String;
 }
@@ -315,6 +321,7 @@ impl AppLocalStatusObj for AppLocalStatus {
             quota,
             last_status_update_time: bucky_time_now(),
             sub_error: SubErrorCode::None,
+            auto_update: true,
         };
         let body = AppLocalStatusBody {};
         AppLocalStatusBuilder::new(desc, body)
@@ -333,6 +340,10 @@ impl AppLocalStatusObj for AppLocalStatus {
 
     fn sub_error(&self) -> SubErrorCode {
         self.desc().content().sub_error
+    }
+
+    fn auto_update(&self) -> bool {
+        self.desc().content().auto_update
     }
 
     fn last_status_update_time(&self) -> u64 {
@@ -438,6 +449,12 @@ impl AppLocalStatusObj for AppLocalStatus {
         self.desc_mut().content_mut().sub_error = code;
     }
 
+    fn set_auto_update(&mut self, auto_update: bool) -> bool {
+        let old_value = self.auto_update();
+        self.desc_mut().content_mut().auto_update = auto_update;
+        old_value
+    }
+
     fn output(&self) -> String {
         let app_id = self.app_id();
         let status = self.status();
@@ -445,9 +462,10 @@ impl AppLocalStatusObj for AppLocalStatus {
         //let web_dir = self.web_dir();
         let sub_err = self.sub_error();
         let self_id = self.desc().calculate_id();
+        let auto_update = self.auto_update();
         format!(
-            "[AppLocalStatus] appid: {} statusid: {}, status:{}, ver:{:?}, sub err:{}",
-            app_id, self_id, status, ver, sub_err
+            "[AppLocalStatus] appid: {} statusid: {}, status:{}, ver:{:?}, auto_update: {}, sub err:{}",
+            app_id, self_id, status, ver, auto_update, sub_err
         )
     }
 }

@@ -4,7 +4,7 @@ use crate::DecAppId;
 use chrono::{DateTime, Local};
 use cyfs_base::*;
 use serde::Serialize;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
 //AppCmd只提供基本的操作，升级降级可以由客户端拼出来。（先uninstall，再install）
 #[derive(Clone, Debug, ProtobufTransform)]
@@ -19,7 +19,6 @@ pub struct InstallApp {
     pub ver: String,
     pub run_after_install: bool,
 }
-
 #[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
 #[cyfs_protobuf_type(crate::codec::protos::ModifyAppPermission)]
 pub struct ModifyAppPermission {
@@ -32,22 +31,19 @@ impl ProtobufTransform<protos::ModifyAppPermission> for ModifyAppPermission {
         for item in &value.permission {
             permission.insert(item.key.clone(), item.value);
         }
-        Ok(Self {
-            permission
-        })
+        Ok(Self { permission })
     }
 }
 
 impl ProtobufTransform<&ModifyAppPermission> for protos::ModifyAppPermission {
     fn transform(value: &ModifyAppPermission) -> BuckyResult<Self> {
         let mut permission = vec![];
-        let tree_map : std::collections::BTreeMap<String, bool> = value.permission.clone().into_iter().collect();
+        let tree_map: std::collections::BTreeMap<String, bool> =
+            value.permission.clone().into_iter().collect();
         for (key, value) in tree_map {
-            permission.push(protos::StringBoolMapItem {key, value})
+            permission.push(protos::StringBoolMapItem { key, value })
         }
-        Ok(Self {
-            permission
-        })
+        Ok(Self { permission })
     }
 }
 
@@ -90,6 +86,7 @@ pub enum CmdCode {
     Stop,
     SetPermission(ModifyAppPermission),
     SetQuota(AppQuota),
+    SetAutoUpdate(bool),
     Unknown,
 }
 
@@ -122,6 +119,7 @@ impl ProtobufTransform<protos::CmdCode> for CmdCode {
             5 => Self::Stop,
             6 => Self::SetPermission(ProtobufTransform::transform(value.app_permission.unwrap())?),
             7 => Self::SetQuota(ProtobufTransform::transform(value.app_quota.unwrap())?),
+            8 => Self::SetAutoUpdate(value.auto_update.unwrap()),
             v @ _ => {
                 warn!("unknown app cmd code: {}", v);
                 Self::Unknown
@@ -140,6 +138,7 @@ impl ProtobufTransform<&CmdCode> for protos::CmdCode {
             install_app: None,
             app_permission: None,
             app_quota: None,
+            auto_update: None,
         };
         match value {
             CmdCode::Add(v) => {
@@ -169,6 +168,10 @@ impl ProtobufTransform<&CmdCode> for protos::CmdCode {
             CmdCode::SetQuota(v) => {
                 ret.code = 7;
                 ret.app_quota = Some(ProtobufTransform::transform(v)?);
+            }
+            CmdCode::SetAutoUpdate(v) => {
+                ret.code = 8;
+                ret.auto_update = Some(*v);
             }
             _ => {
                 ret.code = -1;
@@ -225,12 +228,11 @@ pub trait AppCmdObj {
     fn uninstall(owner: ObjectId, id: DecAppId) -> Self;
     fn start(owner: ObjectId, id: DecAppId) -> Self;
     fn stop(owner: ObjectId, id: DecAppId) -> Self;
-
     //permission参数： String表示语义路径，bool表示是否授权，如果permission有改变，app会重启并应用新的权限
     fn set_permission(owner: ObjectId, id: DecAppId, permission: ModifyAppPermission) -> Self;
-
     //quota参数： String表示语义路径，bool表示是否授权，如果permission有改变，app会重启并应用新的权限
     fn set_quota(owner: ObjectId, id: DecAppId, quota: AppQuota) -> Self;
+    fn set_auto_update(owner: ObjectId, id: DecAppId, auto_update: bool) -> Self;
 
     fn output(&self) -> String;
 }
@@ -295,6 +297,10 @@ impl AppCmdObj for AppCmd {
 
     fn set_quota(owner: ObjectId, id: DecAppId, quota: AppQuota) -> Self {
         AppCmdHelper::create(owner, id, CmdCode::SetQuota(quota))
+    }
+
+    fn set_auto_update(owner: ObjectId, id: DecAppId, auto_update: bool) -> Self {
+        AppCmdHelper::create(owner, id, CmdCode::SetAutoUpdate(auto_update))
     }
 
     fn output(&self) -> String {

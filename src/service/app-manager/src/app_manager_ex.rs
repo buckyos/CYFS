@@ -8,8 +8,8 @@ use async_std::stream::StreamExt;
 use cyfs_base::*;
 use cyfs_client::NamedCacheClient;
 use cyfs_core::*;
-use log::*;
 use cyfs_lib::*;
+use log::*;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
@@ -68,7 +68,8 @@ impl AppManager {
             .unwrap_or_else(|| device.desc().calculate_id());
         let (sender, receiver) = async_std::channel::unbounded();
         let app_config = AppManagerConfig::new();
-        let use_docker = *app_config.host_mode() == AppManagerHostMode::Default && cfg!(target_os = "linux");
+        let use_docker =
+            *app_config.host_mode() == AppManagerHostMode::Default && cfg!(target_os = "linux");
         info!("app use docker:{}", use_docker);
         Self {
             shared_stack: shared_stack.clone(),
@@ -233,6 +234,10 @@ impl AppManager {
                         self.on_set_quota_cmd(app_id, status.clone(), cmd.clone())
                             .await
                     }
+                    CmdCode::SetAutoUpdate(_) => {
+                        self.on_set_auto_update_cmd(app_id, status.clone(), cmd.clone())
+                            .await
+                    }
                     _ => Err(BuckyError::from((
                         BuckyErrorCode::Unknown,
                         "unknown AppCmd".to_string(),
@@ -260,6 +265,11 @@ impl AppManager {
             let app_cur_version;
             {
                 let status = status.lock().unwrap();
+                if !status.auto_update() {
+                    //auto update is turned off
+                    info!("app auto update is turned off. skip it, app:{}", app_id);
+                    continue;
+                }
                 status_code = status.status();
                 let version = status.version();
                 if version.is_none() {
@@ -282,12 +292,6 @@ impl AppManager {
                     "app can not update right now, app:{}, status:{}",
                     app_id, status_code
                 );
-                continue;
-            }
-
-            let app_setting = self.non_helper.get_app_setting_obj(&app_id).await;
-            if !app_setting.auto_update() {
-                info!("app is not auto update, skip. app:{}", app_id);
                 continue;
             }
 
@@ -425,6 +429,13 @@ impl AppManager {
                     info!("### sys app is uninstalled, will skip it. app:{}", app_id);
                     continue;
                     //sys app被卸载了的话，就不要再安装了
+                }
+                if !local_status.auto_update() {
+                    info!(
+                        "### sys app auto update is turned off, will skip it. app:{}",
+                        app_id
+                    );
+                    continue;
                 }
 
                 if let Some(install_version) = local_status.version() {
@@ -861,6 +872,31 @@ impl AppManager {
             }
         } else {
             let err_msg = format!("recv cmd: {:?}, expect set permission cmd", cmd_code);
+            warn!("{}", err_msg);
+            return Err(BuckyError::from((BuckyErrorCode::InvalidParam, err_msg)));
+        }
+
+        Ok(())
+    }
+
+    async fn on_set_auto_update_cmd(
+        &self,
+        app_id: &DecAppId,
+        status: Arc<Mutex<AppLocalStatus>>,
+        cmd: AppCmd,
+    ) -> BuckyResult<()> {
+        let cmd_code = cmd.cmd();
+        info!("on set auto update, app:{}, cmd: {:?}", app_id, cmd_code);
+
+        if let CmdCode::SetAutoUpdate(auto_update) = cmd_code {
+            let old_value = status.lock().unwrap().set_auto_update(*auto_update);
+            if old_value != *auto_update {
+                //if auto_update changed, then put status object
+                let status_clone = status.lock().unwrap().clone();
+                let _ = self.non_helper.put_local_status(&status_clone).await;
+            }
+        } else {
+            let err_msg = format!("recv cmd: {:?}, expect set auto update cmd", cmd_code);
             warn!("{}", err_msg);
             return Err(BuckyError::from((BuckyErrorCode::InvalidParam, err_msg)));
         }
