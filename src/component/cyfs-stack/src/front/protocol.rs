@@ -27,16 +27,13 @@ const KNOWN_ROOTS: &[&str] = &[
     "trans",
     "root-state",
     "local-cache",
-
     "system",
     "root",
-
     "o",
     "r",
     "l",
     "a",
 ];
-
 
 pub(crate) struct FrontProtocolHandler {
     name_resolver: NameResolver,
@@ -170,18 +167,28 @@ impl FrontProtocolHandler {
         }
     }
 
-    fn dec_id_from_request(url: &http_types::Url) -> BuckyResult<Option<ObjectId>> {
-        // try extract dec_id from query pairs
-        let dec_id = match RequestorHelper::value_from_querys("dec_id", url) {
-            Ok(v) => v,
-            Err(e) => {
-                let msg = format!("invalid request url dec_id query param! {}, {}", url, e);
-                error!("{}", msg);
-                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-            }
-        };
+    fn dec_id_from_request(req: &http_types::Request) -> BuckyResult<Option<ObjectId>> {
+        // first extract dec_id from headers
+        match RequestorHelper::decode_optional_header(req, cyfs_base::CYFS_DEC_ID)? {
+            Some(dec_id) => Ok(Some(dec_id)),
+            None => {
+                // try extract dec_id from query pairs
+                let dec_id = match RequestorHelper::value_from_querys("dec_id", req.url()) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let msg = format!(
+                            "invalid request url dec_id query param! {}, {}",
+                            req.url(),
+                            e
+                        );
+                        error!("{}", msg);
+                        return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                    }
+                };
 
-        Ok(dec_id)
+                Ok(dec_id)
+            }
+        }
     }
 
     fn flags_from_request(url: &http_types::Url) -> BuckyResult<u32> {
@@ -266,16 +273,23 @@ impl FrontProtocolHandler {
         req: FrontInputHttpRequest<State>,
         route_param: String,
         format: FrontRequestObjectFormat,
-    ) -> BuckyResult<FrontOResponse>
-    {
+    ) -> BuckyResult<FrontOResponse> {
         let name = req.request.param("name").map_err(|e| {
-            let msg = format!("invalid request url root param! {}, {}", req.request.url(), e);
+            let msg = format!(
+                "invalid request url root param! {}, {}",
+                req.request.url(),
+                e
+            );
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
 
         if KNOWN_ROOTS.iter().find(|v| **v == name).is_some() {
-            let msg = format!("reserved request url root param! {}, root={}", req.request.url(), name);
+            let msg = format!(
+                "reserved request url root param! {}, root={}",
+                req.request.url(),
+                name
+            );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
         }
@@ -303,8 +317,8 @@ impl FrontProtocolHandler {
 
         let mode = Self::mode_from_request(url)?;
 
-        // try extract dec_id from query pairs
-        let dec_id = Self::dec_id_from_request(url)?;
+        // try extract dec_id from headers or query pairs
+        let dec_id = Self::dec_id_from_request(req.request.as_ref())?;
         let flags = Self::flags_from_request(url)?;
 
         /*
@@ -539,6 +553,12 @@ impl FrontProtocolHandler {
             _ => unreachable!(),
         };
 
+        // try extract dec_id from headers or query pairs
+        let extra_dec_id = Self::dec_id_from_request(req.request.as_ref())?;
+
+        // header or params dec_id has higher priority
+        let dec_id = extra_dec_id.or(dec_id);
+
         let mode = Self::mode_from_request(url)?;
         let flags = Self::flags_from_request(url)?;
 
@@ -587,9 +607,7 @@ impl FrontProtocolHandler {
         };
 
         let goal = match segs[1] {
-            "local_status" => {
-                FrontARequestGoal::LocalStatus
-            }
+            "local_status" => FrontARequestGoal::LocalStatus,
             _ => {
                 let mut inner_path_pos = 2;
                 let version = match Self::parse_object_seg(segs[1]) {
@@ -597,9 +615,7 @@ impl FrontProtocolHandler {
                     None => {
                         // check if semversion
                         match semver::Version::parse(segs[1]) {
-                            Ok(_version) => {
-                                FrontARequestVersion::Version(segs[1].to_owned())
-                            }
+                            Ok(_version) => FrontARequestVersion::Version(segs[1].to_owned()),
                             Err(_) => {
                                 inner_path_pos = 1;
                                 FrontARequestVersion::Current
@@ -607,7 +623,7 @@ impl FrontProtocolHandler {
                         }
                     }
                 };
-        
+
                 let inner_path = if segs.len() > inner_path_pos {
                     Some(Self::gen_inner_path(&segs[inner_path_pos..]))
                 } else {
@@ -622,13 +638,17 @@ impl FrontProtocolHandler {
                 FrontARequestGoal::Web(web_req)
             }
         };
-        
 
         let mode = Self::mode_from_request(url)?;
         let flags = Self::flags_from_request(url)?;
 
         // TODO now target always be current zone's ood
-        let target = self.zone_manager.get_current_info().await?.zone_device_ood_id.clone();
+        let target = self
+            .zone_manager
+            .get_current_info()
+            .await?
+            .zone_device_ood_id
+            .clone();
 
         let a_req = FrontARequest {
             protocol: req.protocol,
@@ -709,12 +729,8 @@ impl FrontProtocolHandler {
         format: FrontRequestObjectFormat,
     ) -> tide::Response {
         match resp {
-            FrontAResponse::Response(o_resp) => {
-                self.encode_o_response(o_resp, format).await
-            }
-            FrontAResponse::Redirect(url) => {
-                tide::Redirect::new(url).into()
-            }
+            FrontAResponse::Response(o_resp) => self.encode_o_response(o_resp, format).await,
+            FrontAResponse::Redirect(url) => tide::Redirect::new(url).into(),
         }
     }
 }
