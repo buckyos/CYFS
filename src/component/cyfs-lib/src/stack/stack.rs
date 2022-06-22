@@ -491,8 +491,8 @@ impl SharedCyfsStack {
         &self.services.local_cache
     }
 
-    pub fn local_cache_stub(&self, target: Option<ObjectId>, dec_id: Option<ObjectId>) -> GlobalStateStub {
-        GlobalStateStub::new(self.services.local_cache.clone_processor(), target, dec_id)
+    pub fn local_cache_stub(&self, dec_id: Option<ObjectId>) -> GlobalStateStub {
+        GlobalStateStub::new(self.services.local_cache.clone_processor(), None, dec_id)
     }
 
     // uni_stack相关接口

@@ -212,7 +212,7 @@ impl GlobalStateRouter {
 #[async_trait::async_trait]
 impl GlobalStateInputProcessor for GlobalStateRouter {
     fn create_op_env_processor(&self) -> OpEnvInputProcessorRef {
-        self.op_env_processor.clone()
+        self.clone_op_env_processor()
     }
 
     async fn get_current_root(

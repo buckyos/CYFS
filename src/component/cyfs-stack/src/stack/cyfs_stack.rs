@@ -139,7 +139,8 @@ impl CyfsStackImpl {
             None => "",
         };
 
-        let noc = Self::init_raw_noc(&device_id, param.noc.noc_type, isolate, known_objects).await?;
+        let noc =
+            Self::init_raw_noc(&device_id, param.noc.noc_type, isolate, known_objects).await?;
 
         // 初始化data cache和tracker
         let ndc = Self::init_ndc(isolate)?;
@@ -336,7 +337,8 @@ impl CyfsStackImpl {
         let current_root = root_state.local_service().state().get_current_root();
 
         let front_service = if param.front.enable {
-            let app_service = AppService::new(device_id.clone(), root_state.local_service().state().clone());
+            let app_service =
+                AppService::new(&zone_manager, root_state.clone_global_state_processor()).await?;
 
             let front_service = FrontService::new(
                 non_service.clone_processor(),
@@ -1008,8 +1010,33 @@ impl CyfsStack {
         &self.stack.root_state
     }
 
+    pub fn root_state_stub(
+        &self,
+        target: Option<ObjectId>,
+        dec_id: Option<ObjectId>,
+    ) -> GlobalStateStub {
+        let processor = GlobalStateOutputTransformer::new(
+            self.stack.root_state.clone_global_state_processor(),
+            self.zone_manager().get_current_device_id().clone(),
+        );
+
+        GlobalStateStub::new(processor, target, dec_id)
+    }
+
     pub fn local_cache(&self) -> &GlobalStateLocalService {
         &self.stack.local_cache
+    }
+
+    pub fn local_cache_stub(
+        &self,
+        dec_id: Option<ObjectId>,
+    ) -> GlobalStateStub {
+        let processor = GlobalStateOutputTransformer::new(
+            self.stack.local_cache.clone_global_state_processor(),
+            self.zone_manager().get_current_device_id().clone(),
+        );
+
+        GlobalStateStub::new(processor, None, dec_id)
     }
 
     // 只有ood才会开启DSG服务
