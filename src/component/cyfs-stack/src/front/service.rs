@@ -435,17 +435,23 @@ impl FrontService {
                             inner_path: web_req.inner_path,
 
                             mode: req.mode,
+                            format: req.format,
+
                             flags: req.flags,
                         };
 
-                        let o_resp = self.process_o_request(o_req).await?;
-
-                        FrontAResponse::Response(o_resp)
+                        let url = self.gen_o_redirect_url(&o_req);
+                        FrontAResponse::Redirect(url)
+                        //let o_resp = self.process_o_request(o_req).await?;
+                        //FrontAResponse::Response(o_resp)
                     }
-                    AppInstallStatus::NotInstalled(dec_id) => {
-                        let url = self.gen_app_redirect_url(
-                            Some(&dec_id),
-                            Some(&req.dec),
+                    AppInstallStatus::NotInstalled(dec) => {
+                        let dec_id = dec.as_dec_id().or(req.dec.as_dec_id());
+                        let name = dec.as_name().or(req.dec.as_name());
+                        
+                        let url = self.gen_app_not_installed_redirect_url(
+                            dec_id,
+                            name,
                             Some(&web_req.version),
                         );
                         FrontAResponse::Redirect(url)
@@ -467,6 +473,8 @@ impl FrontService {
                             inner_path: None,
 
                             mode: req.mode,
+                            format: req.format,
+
                             flags: req.flags,
                         };
 
@@ -474,8 +482,11 @@ impl FrontService {
 
                         FrontAResponse::Response(o_resp)
                     }
-                    AppInstallStatus::NotInstalled(dec_id) => {
-                        let url = self.gen_app_redirect_url(Some(&dec_id), Some(&req.dec), None);
+                    AppInstallStatus::NotInstalled(dec) => {
+                        let dec_id = dec.as_dec_id().or(req.dec.as_dec_id());
+                        let name = dec.as_name().or(req.dec.as_name());
+
+                        let url = self.gen_app_not_installed_redirect_url(dec_id, name, None);
                         FrontAResponse::Redirect(url)
                     }
                 }
@@ -485,27 +496,81 @@ impl FrontService {
         Ok(resp)
     }
 
-    fn gen_app_redirect_url(
+    fn gen_o_redirect_url(
+        &self,
+        req: &FrontORequest,
+    ) -> String {
+        let mut parts = vec![];
+        if req.target.len() > 0 {
+            let targets: Vec<String> = req.target.iter().map(|v| v.to_string()).collect();
+            parts.push(targets.join(","));
+        }
+
+        parts.push(req.object_id.to_string());
+
+        if let Some(inner_path) = &req.inner_path {
+            parts.push(inner_path.trim_start_matches("/").to_owned());
+        }
+
+        let url = format!("/o/{}", parts.join("/"));
+
+        let mut querys = vec![];
+        if let Some(dec_id) = &req.dec_id {
+            querys.push(format!("dec_id={}", dec_id));
+        }
+
+        if req.flags != 0 {
+            querys.push(format!("flags={}", req.flags));
+        }
+
+        if req.mode != FrontRequestGetMode::Default {
+            querys.push(format!("mode={}", req.mode.as_str()));
+        }
+
+        if req.format != FrontRequestObjectFormat::Default {
+            querys.push(format!("format={}", req.format.as_str()));
+        }
+
+        let url = if querys.len() > 0 {
+            let querys = querys.join("&");
+            format!("{}?{}", url, querys)
+        } else {
+            url
+        };
+        
+        url
+    }
+
+    fn gen_app_not_installed_redirect_url(
         &self,
         dec_id: Option<&ObjectId>,
-        dec: Option<&FrontARequestDec>,
+        name: Option<&str>,
         version: Option<&FrontARequestVersion>,
     ) -> String {
         let mut querys = vec![];
+
         if let Some(dec_id) = dec_id {
             querys.push(format!("dec_id={}", dec_id));
         }
 
-        if let Some(FrontARequestDec::Name(name)) = dec {
+        if let Some(name) = name {
             let v: String =
                 percent_encoding::utf8_percent_encode(name, percent_encoding::NON_ALPHANUMERIC)
                     .collect();
 
-            querys.push(format!("name={}", v));
+                querys.push(format!("name={}", v));
         }
 
-        if let Some(FrontARequestVersion::Version(ver)) = version {
-            querys.push(format!("version={}", ver));
+        if let Some(version) = &version {
+            match version {
+                FrontARequestVersion::Version(ver) => {
+                    querys.push(format!("version={}", ver));
+                }
+                FrontARequestVersion::DirID(dir_id) => {
+                    querys.push(format!("dir_id={}", dir_id));
+                }
+                FrontARequestVersion::Current => {}
+            }
         }
 
         let url = if querys.len() > 0 {

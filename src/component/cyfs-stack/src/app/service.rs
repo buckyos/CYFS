@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 pub enum AppInstallStatus {
     Installed((ObjectId, ObjectId)),
-    NotInstalled(ObjectId),
+    NotInstalled(FrontARequestDec),
 }
 
 #[derive(Clone)]
@@ -45,12 +45,17 @@ impl AppService {
         dec: &FrontARequestDec,
         ver: &FrontARequestVersion,
     ) -> BuckyResult<AppInstallStatus> {
-        let dec_id = self.get_app(dec).await?;
+        let dec_id = match self.get_app(dec).await? {
+            Some(dec_id) => dec_id,
+            None => {
+                return Ok(AppInstallStatus::NotInstalled(dec.to_owned()));
+            }
+        };
 
         let ret = self.search_app_web_dir(&dec_id, ver).await?;
         let status = match ret {
             Some(dir_id) => AppInstallStatus::Installed((dec_id, dir_id)),
-            None => AppInstallStatus::NotInstalled(dec_id),
+            None => AppInstallStatus::NotInstalled(FrontARequestDec::DecID(dec_id)),
         };
 
         Ok(status)
@@ -60,20 +65,25 @@ impl AppService {
         &self,
         dec: &FrontARequestDec,
     ) -> BuckyResult<AppInstallStatus> {
-        let dec_id = self.get_app(dec).await?;
+        let dec_id = match self.get_app(dec).await? {
+            Some(dec_id) => dec_id,
+            None => {
+                return Ok(AppInstallStatus::NotInstalled(dec.to_owned()));
+            }
+        };
 
         let ret = self.search_local_status(&dec_id).await?;
         let status = match ret {
             Some(local_status_id) => AppInstallStatus::Installed((dec_id, local_status_id)),
-            None => AppInstallStatus::NotInstalled(dec_id),
+            None => AppInstallStatus::NotInstalled(FrontARequestDec::DecID(dec_id)),
         };
 
         Ok(status)
     }
 
-    async fn get_app(&self, dec: &FrontARequestDec) -> BuckyResult<ObjectId> {
+    async fn get_app(&self, dec: &FrontARequestDec) -> BuckyResult<Option<ObjectId>> {
         let dec_id = match dec {
-            FrontARequestDec::DecID(dec_id) => dec_id.to_owned(),
+            FrontARequestDec::DecID(dec_id) => Some(dec_id.to_owned()),
             FrontARequestDec::Name(name) => self.get_app_by_name(name).await?,
         };
 
@@ -159,9 +169,9 @@ impl AppService {
         Ok(Some(dir_id))
     }
 
-    async fn get_app_by_name(&self, name: &str) -> BuckyResult<ObjectId> {
+    async fn get_app_by_name(&self, name: &str) -> BuckyResult<Option<ObjectId>> {
         if let Some(dec_id) = self.get_app_from_cache(name) {
-            return Ok(dec_id);
+            return Ok(Some(dec_id));
         }
 
         // TODO add failure cache
@@ -170,7 +180,7 @@ impl AppService {
     }
 
     // get dec-id by name from /system/app/names/${name}
-    async fn search_app_by_name(&self, name: &str) -> BuckyResult<ObjectId> {
+    async fn search_app_by_name(&self, name: &str) -> BuckyResult<Option<ObjectId>> {
         let op_env = self.root_state_stub.create_path_op_env().await?;
 
         let name_path = format!("/app/names/{}", name);
@@ -182,7 +192,7 @@ impl AppService {
                 name, name_path,
             );
             warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            return Ok(None);
         }
 
         info!("get app by name: {} -> {}", name, ret.as_ref().unwrap());
@@ -190,6 +200,6 @@ impl AppService {
         let dec_id = ret.unwrap();
         self.cache_app(name, dec_id.clone());
 
-        Ok(dec_id)
+        Ok(Some(dec_id))
     }
 }

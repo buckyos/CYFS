@@ -44,7 +44,7 @@ impl FromStr for FrontRequestGetMode {
     }
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Eq, PartialEq)]
 pub enum FrontRequestObjectFormat {
     Default,
     Raw,

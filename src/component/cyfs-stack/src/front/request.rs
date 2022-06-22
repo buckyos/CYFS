@@ -15,6 +15,7 @@ pub struct FrontORequest {
     pub inner_path: Option<String>,
 
     pub mode: FrontRequestGetMode,
+    pub format: FrontRequestObjectFormat,
 
     pub flags: u32,
 }
@@ -111,10 +112,26 @@ impl FrontNDNRequest {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FrontARequestDec {
     DecID(ObjectId),
     Name(String),
+}
+
+impl FrontARequestDec {
+    pub fn as_dec_id(&self) -> Option<&ObjectId> {
+        match self {
+            Self::DecID(ref id) => Some(id),
+            Self::Name(_) => None,
+        }
+    }
+
+    pub fn as_name(&self) -> Option<&str> {
+        match self {
+            Self::Name(ref name) => Some(name.as_str()),
+            Self::DecID(_) => None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -147,6 +164,7 @@ pub struct FrontARequest {
     pub goal: FrontARequestGoal,
 
     pub mode: FrontRequestGetMode,
+    pub format: FrontRequestObjectFormat,
 
     pub flags: u32,
 }

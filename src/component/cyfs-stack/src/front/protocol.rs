@@ -235,7 +235,7 @@ impl FrontProtocolHandler {
 
         match req_type {
             FrontRequestType::O => {
-                let resp = self.process_o_request(req, route_param).await?;
+                let resp = self.process_o_request(req, route_param, format).await?;
 
                 let http_resp = self.encode_o_response(resp, format).await;
                 Ok(http_resp)
@@ -247,13 +247,13 @@ impl FrontProtocolHandler {
                 Ok(http_resp)
             }
             FrontRequestType::A => {
-                let resp = self.process_a_request(req, route_param).await?;
+                let resp = self.process_a_request(req, route_param, format).await?;
 
                 let http_resp = self.encode_a_response(resp, format).await;
                 Ok(http_resp)
             }
             FrontRequestType::Any => {
-                let resp = self.process_any_request(req, route_param).await?;
+                let resp = self.process_any_request(req, route_param, format).await?;
 
                 let http_resp = self.encode_o_response(resp, format).await;
                 Ok(http_resp)
@@ -265,6 +265,7 @@ impl FrontProtocolHandler {
         &self,
         req: FrontInputHttpRequest<State>,
         route_param: String,
+        format: FrontRequestObjectFormat,
     ) -> BuckyResult<FrontOResponse>
     {
         let name = req.request.param("name").map_err(|e| {
@@ -280,13 +281,14 @@ impl FrontProtocolHandler {
         }
 
         let route_param = format!("{}/{}", name, route_param);
-        self.process_o_request(req, route_param).await
+        self.process_o_request(req, route_param, format).await
     }
 
     async fn process_o_request<State>(
         &self,
         req: FrontInputHttpRequest<State>,
         route_param: String,
+        format: FrontRequestObjectFormat,
     ) -> BuckyResult<FrontOResponse> {
         let segs = Self::parse_url_segs(&route_param)?;
         let url = req.request.url();
@@ -343,6 +345,7 @@ impl FrontProtocolHandler {
                     inner_path,
 
                     mode,
+                    format,
 
                     flags,
                 }
@@ -373,6 +376,7 @@ impl FrontProtocolHandler {
                     inner_path,
 
                     mode,
+                    format,
 
                     flags,
                 }
@@ -566,6 +570,7 @@ impl FrontProtocolHandler {
         &self,
         req: FrontInputHttpRequest<State>,
         route_param: String,
+        format: FrontRequestObjectFormat,
     ) -> BuckyResult<FrontAResponse> {
         let segs = Self::parse_url_segs(&route_param)?;
         let url = req.request.url();
@@ -635,6 +640,8 @@ impl FrontProtocolHandler {
             goal,
 
             mode,
+            format,
+
             flags,
         };
 
