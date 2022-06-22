@@ -1,5 +1,6 @@
 use super::def::*;
 use super::request::*;
+use crate::app::AppInstallStatus;
 use crate::app::AppService;
 use crate::ndn::NDNInputProcessorRef;
 use crate::ndn_api::NDNForwardObjectData;
@@ -8,6 +9,7 @@ use crate::resolver::OodResolver;
 use crate::root_state::GlobalStateAccessInputProcessorRef;
 use cyfs_base::*;
 use cyfs_lib::*;
+
 
 pub(crate) struct FrontService {
     non: NONInputProcessorRef,
@@ -410,48 +412,111 @@ impl FrontService {
     }
 
     pub async fn process_a_request(&self, req: FrontARequest) -> BuckyResult<FrontAResponse> {
+        info!("will process a request: {:?}", req);
+
         let target = match req.target {
             Some(id) => vec![id],
             None => vec![],
         };
 
-        let o_req = match req.goal {
+        let resp = match req.goal {
             FrontARequestGoal::Web(web_req) => {
-                let (dec_id, dir_id) = self.app.get_app_web_dir(&req.dec, &web_req.version).await?;
+                let ret = self.app.get_app_web_dir(&req.dec, &web_req.version).await?;
+                match ret {
+                    AppInstallStatus::Installed((dec_id, dir_id)) => {
+                        let o_req = FrontORequest {
+                            protocol: req.protocol,
+                            source: req.source,
 
-                FrontORequest {
-                    protocol: req.protocol,
-                    source: req.source,
+                            target,
 
-                    target,
+                            dec_id: Some(dec_id),
+                            object_id: dir_id,
+                            inner_path: web_req.inner_path,
 
-                    dec_id: Some(dec_id),
-                    object_id: dir_id,
-                    inner_path: web_req.inner_path,
+                            mode: req.mode,
+                            flags: req.flags,
+                        };
 
-                    mode: req.mode,
-                    flags: req.flags,
+                        let o_resp = self.process_o_request(o_req).await?;
+
+                        FrontAResponse::Response(o_resp)
+                    }
+                    AppInstallStatus::NotInstalled(dec_id) => {
+                        let url = self.gen_app_redirect_url(
+                            Some(&dec_id),
+                            Some(&req.dec),
+                            Some(&web_req.version),
+                        );
+                        FrontAResponse::Redirect(url)
+                    }
                 }
             }
             FrontARequestGoal::LocalStatus => {
-                let (dec_id, local_status_id) = self.app.get_app_local_status(&req.dec).await?;
+                let ret = self.app.get_app_local_status(&req.dec).await?;
+                match ret {
+                    AppInstallStatus::Installed((dec_id, local_status_id)) => {
+                        let o_req = FrontORequest {
+                            protocol: req.protocol,
+                            source: req.source,
 
-                FrontORequest {
-                    protocol: req.protocol,
-                    source: req.source,
+                            target,
 
-                    target,
+                            dec_id: Some(dec_id),
+                            object_id: local_status_id,
+                            inner_path: None,
 
-                    dec_id: Some(dec_id),
-                    object_id: local_status_id,
-                    inner_path: None,
+                            mode: req.mode,
+                            flags: req.flags,
+                        };
 
-                    mode: req.mode,
-                    flags: req.flags,
+                        let o_resp = self.process_o_request(o_req).await?;
+
+                        FrontAResponse::Response(o_resp)
+                    }
+                    AppInstallStatus::NotInstalled(dec_id) => {
+                        let url = self.gen_app_redirect_url(Some(&dec_id), Some(&req.dec), None);
+                        FrontAResponse::Redirect(url)
+                    }
                 }
             }
         };
 
-        self.process_o_request(o_req).await
+        Ok(resp)
+    }
+
+    fn gen_app_redirect_url(
+        &self,
+        dec_id: Option<&ObjectId>,
+        dec: Option<&FrontARequestDec>,
+        version: Option<&FrontARequestVersion>,
+    ) -> String {
+        let mut querys = vec![];
+        if let Some(dec_id) = dec_id {
+            querys.push(format!("dec_id={}", dec_id));
+        }
+
+        if let Some(FrontARequestDec::Name(name)) = dec {
+            let v: String =
+                percent_encoding::utf8_percent_encode(name, percent_encoding::NON_ALPHANUMERIC)
+                    .collect();
+
+            querys.push(format!("name={}", v));
+        }
+
+        if let Some(FrontARequestVersion::Version(ver)) = version {
+            querys.push(format!("version={}", ver));
+        }
+
+        let url = if querys.len() > 0 {
+            let querys = querys.join("&");
+            format!("{}?{}", APP_DETAIL_URL, querys)
+        } else {
+            APP_DETAIL_URL.to_owned()
+        };
+        
+        url
     }
 }
+
+const APP_DETAIL_URL: &str = "/static/app/app_detail.html";

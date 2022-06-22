@@ -586,6 +586,7 @@ impl FrontProtocolHandler {
                 FrontARequestGoal::LocalStatus
             }
             _ => {
+                let mut inner_path_pos = 2;
                 let version = match Self::parse_object_seg(segs[1]) {
                     Some(id) => FrontARequestVersion::DirID(id),
                     None => {
@@ -595,14 +596,15 @@ impl FrontProtocolHandler {
                                 FrontARequestVersion::Version(segs[1].to_owned())
                             }
                             Err(_) => {
+                                inner_path_pos = 1;
                                 FrontARequestVersion::Current
                             }
                         }
                     }
                 };
         
-                let inner_path = if segs.len() > 2 {
-                    Some(Self::gen_inner_path(&segs[2..]))
+                let inner_path = if segs.len() > inner_path_pos {
+                    Some(Self::gen_inner_path(&segs[inner_path_pos..]))
                 } else {
                     None
                 };
@@ -620,14 +622,14 @@ impl FrontProtocolHandler {
         let mode = Self::mode_from_request(url)?;
         let flags = Self::flags_from_request(url)?;
 
-        // TODO now target always be local stack
-        let target = self.zone_manager.get_current_device_id();
+        // TODO now target always be current zone's ood
+        let target = self.zone_manager.get_current_info().await?.zone_device_ood_id.clone();
 
         let a_req = FrontARequest {
             protocol: req.protocol,
             source: req.source,
 
-            target: Some(target.object_id().to_owned()),
+            target: Some(target.into()),
 
             dec,
             goal,
@@ -699,6 +701,13 @@ impl FrontProtocolHandler {
         resp: FrontAResponse,
         format: FrontRequestObjectFormat,
     ) -> tide::Response {
-        self.encode_o_response(resp, format).await
+        match resp {
+            FrontAResponse::Response(o_resp) => {
+                self.encode_o_response(o_resp, format).await
+            }
+            FrontAResponse::Redirect(url) => {
+                tide::Redirect::new(url).into()
+            }
+        }
     }
 }

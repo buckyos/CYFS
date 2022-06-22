@@ -111,27 +111,32 @@ impl FrontNDNRequest {
     }
 }
 
+#[derive(Debug)]
 pub enum FrontARequestDec {
     DecID(ObjectId),
     Name(String),
 }
 
+#[derive(Debug)]
 pub enum FrontARequestVersion {
     Version(String),
     DirID(ObjectId),
     Current,
 }
 
+#[derive(Debug)]
 pub struct FrontARequestWeb {
     pub version: FrontARequestVersion,
     pub inner_path: Option<String>,
 }
 
+#[derive(Debug)]
 pub enum FrontARequestGoal {
     Web(FrontARequestWeb),
     LocalStatus,
 }
 
+#[derive(Debug)]
 pub struct FrontARequest {
     pub protocol: NONProtocol,
     pub source: DeviceId,
@@ -146,4 +151,7 @@ pub struct FrontARequest {
     pub flags: u32,
 }
 
-pub type FrontAResponse = FrontOResponse;
+pub enum FrontAResponse {
+    Response(FrontOResponse),
+    Redirect(String),
+}
