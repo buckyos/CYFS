@@ -51,7 +51,7 @@ impl Default for RunConfig {
 // 有些配置需要在docker run之后处理
 // start script 注入docker entrypoint, app run的命令设置在docker run cmd(作为首个参数)
 // iptables: alternative set the corret iptables version which defined by host kenel mod
-const START_SHELL: &'static str = "
+const START_SHELL: &'static str = r#"
 #!/bin/bash
 set -m
 
@@ -63,10 +63,8 @@ cd /opt/app
 {executable_relative_path}$1 &
 
 container_ip=`hostname -i`
-
-iptables -L
-exit_status=$?
-if [ $exit_status -eq 1 ]; then
+result=$(iptables -L 2>&1)
+if [[ "$result" == *"iptables-legacy tables present"* ]]; then
     echo 'kenel mod tables is not nftables. switch client to iptables-legacy'
     update-alternatives --set iptables /usr/sbin/iptables-legacy
 fi
@@ -83,7 +81,7 @@ iptables -t nat -A POSTROUTING -s 127.0.0.1 -p tcp -j SNAT --to-source $containe
 
 
 # now the primary process back into the foreground
-fg %1";
+fg %1"#;
 
 /// 基础镜像
 /// cyfs-base 镜像处理好前置需要网络安装和更新 Dockfile:

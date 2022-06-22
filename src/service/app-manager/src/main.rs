@@ -14,7 +14,6 @@ mod app_cmd_executor;
 mod app_controller;
 mod app_manager_ex;
 mod dapp;
-mod dec_user_manager;
 mod docker_api;
 mod docker_network_manager;
 mod event_handler;
