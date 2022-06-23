@@ -1,4 +1,4 @@
-use crate::ndn_api::NDNRequestHandler;
+use crate::front::FrontRequestObjectFormat;
 use crate::non_api::NONRequestHandler;
 use crate::root_state::*;
 use cyfs_base::*;
@@ -880,14 +880,10 @@ impl GlobalStateAccessRequestHandler {
         let mut page_index: Option<u32> = None;
         let mut page_size: Option<u32> = None;
         let mut action = RootStateAccessAction::GetObjectByPath;
-        let mut mode = RootStateAccessGetMode::Default;
 
         let pairs = req.request.url().query_pairs();
         for (k, v) in pairs {
             match k.as_ref() {
-                "mode" => {
-                    mode = RootStateAccessGetMode::from_str(v.as_ref())?;
-                }
                 "action" => {
                     action = RootStateAccessAction::from_str(v.as_ref())?;
                 }
@@ -926,14 +922,8 @@ impl GlobalStateAccessRequestHandler {
 
         match action {
             RootStateAccessAction::GetObjectByPath => {
-                let format =
-                    NONRequestHandler::object_format_from_request(&req.protocol, req.request.url());
-                let req = RootStateAccessGetObjectByPathInputRequest {
-                    common,
-                    mode,
-                    inner_path,
-                };
-                self.on_get_object_by_path(req, format).await
+                let req = RootStateAccessGetObjectByPathInputRequest { common, inner_path };
+                self.on_get_object_by_path(req).await
             }
             RootStateAccessAction::List => {
                 let req = RootStateAccessListInputRequest {
@@ -947,22 +937,27 @@ impl GlobalStateAccessRequestHandler {
         }
     }
 
+    fn encode_get_object_by_path_response(
+        resp: RootStateAccessGetObjectByPathInputResponse,
+    ) -> Response {
+        let mut http_resp = NONRequestHandler::encode_get_object_response(
+            resp.object,
+            FrontRequestObjectFormat::Raw,
+        );
+        http_resp.insert_header(cyfs_base::CYFS_ROOT, resp.root.to_string());
+        http_resp.insert_header(cyfs_base::CYFS_REVISION, resp.revision.to_string());
+
+        http_resp
+    }
+
     async fn on_get_object_by_path(
         &self,
         req: RootStateAccessGetObjectByPathInputRequest,
-        format: NONObjectFormat,
     ) -> BuckyResult<Response> {
-
         let resp = self.processor.get_object_by_path(req).await?;
 
-        let resp = if let Some(object) = resp.object {
-            NONRequestHandler::encode_get_object_response(object, format)
-        } else {
-            let data = resp.data.unwrap();
-            NDNRequestHandler::encode_get_data_response(data)
-        };
-
-        Ok(resp)
+        let http_resp = Self::encode_get_object_by_path_response(resp);
+        Ok(http_resp)
     }
 
     async fn on_list(&self, req: RootStateAccessListInputRequest) -> BuckyResult<Response> {

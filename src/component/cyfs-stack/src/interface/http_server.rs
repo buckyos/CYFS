@@ -1,5 +1,4 @@
 use super::auth::InterfaceAuth;
-use super::translator::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -84,19 +83,16 @@ impl HttpServerHandler for RawHttpServer {
 #[derive(Clone)]
 pub(crate) struct DefaultHttpServer {
     handler: HttpServerHandlerRef,
-    url_translator: Option<UrlTransaltor>,
     default_handler: HttpDefaultHandler,
 }
 
 impl DefaultHttpServer {
     pub(crate) fn new(
         handler: HttpServerHandlerRef,
-        url_translator: Option<UrlTransaltor>,
         default_handler: HttpDefaultHandler,
     ) -> Self {
         Self {
             handler,
-            url_translator,
             default_handler,
         }
     }
@@ -111,21 +107,14 @@ impl HttpServerHandler for DefaultHttpServer {
     async fn respond(
         &self,
         source: HttpRequestSource,
-        mut req: http_types::Request,
+        req: http_types::Request,
     ) -> http_types::Result<http_types::Response> {
         // 过滤一些错误请求
         if let Some(resp) = self.default_handler.process(&req) {
             return Ok(resp);
         }
 
-        if let Some(url_translator) = &self.url_translator {
-            match url_translator.translate_url(&mut req).await {
-                Ok(_) => self.handler.respond(source, req).await,
-                Err(e) => Ok(RequestorHelper::trans_error(e)),
-            }
-        } else {
-            self.handler.respond(source, req).await
-        }
+        self.handler.respond(source, req).await
     }
 }
 

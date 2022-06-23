@@ -48,6 +48,9 @@ shared_stack_stub = ${shared_stack_stub}
 sync_service = ${sync_service}
 isolate = "${isolate}"
 
+[stack.front]
+enable = ${front_enable}
+
 [stack.meta]
 #target = dev
 
@@ -124,6 +127,9 @@ pub struct CyfsServiceLoaderParam {
 
     // 是不是移动端
     pub is_mobile_stack: bool,
+
+    // is front module enabled
+    pub front_enable: bool,
 }
 
 impl Default for CyfsServiceLoaderParam {
@@ -142,6 +148,7 @@ impl Default for CyfsServiceLoaderParam {
             shared_stack_stub: false,
             sync_service: true,
             is_mobile_stack: false,
+            front_enable : true,
         }
     }
 }
@@ -224,7 +231,8 @@ impl CyfsServiceLoaderConfig {
             .replace(
                 "${http-bdt-vport}",
                 &cyfs_base::NON_STACK_BDT_VPORT.to_string(),
-            );
+            )
+            .replace("${front_enable}", &param.front_enable.to_string());
 
         // 根据是否传入了ws_addr，选择enable=true或者enable=false
         if let Some(ws_addr) = &param.non_ws_addr {

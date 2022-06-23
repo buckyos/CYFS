@@ -363,11 +363,11 @@ impl AppCmdExecutor {
         if let Some(obj_id) = web_dir {
             let _ = self
                 .non_helper
-                .save_app_web_dir(app_id.object_id(), version, &obj_id)
+                .save_app_web_dir(app_id, version, &obj_id)
                 .await;
             let _ = self
                 .non_helper
-                .register_app_name(dec_app.name(), app_id.object_id())
+                .register_app_name(dec_app.name(), app_id)
                 .await;
         }
         //版本已经提前设置了
@@ -411,16 +411,20 @@ impl AppCmdExecutor {
             sub_err = e;
         }
         if let Some(obj_id) = web_id {
-            if let Ok(dec_app) = self.non_helper.get_dec_app(app_id.object_id(), None).await {
-                let _ = self
-                    .non_helper
-                    .unregister_app_name(dec_app.name(), app_id.object_id())
-                    .await;
-                let _ = self
-                    .non_helper
-                    .remove_app_web_dir(app_id.object_id(), &ver, &obj_id)
-                    .await;
-            }
+            let _ = self
+                .non_helper
+                .remove_app_web_dir(app_id, &ver, &obj_id)
+                .await;
+            // if let Ok(dec_app) = self.non_helper.get_dec_app(app_id.object_id(), None).await {
+            //     let _ = self
+            //         .non_helper
+            //         .unregister_app_name(dec_app.name(), app_id)
+            //         .await;
+            //     let _ = self
+            //         .non_helper
+            //         .remove_app_web_dir(app_id, &ver, &obj_id)
+            //         .await;
+            // }
         }
 
         let _ = self

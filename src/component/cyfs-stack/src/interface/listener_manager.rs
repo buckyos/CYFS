@@ -1,17 +1,14 @@
 use super::auth::InterfaceAuth;
 use super::http_server::*;
-use super::translator::UrlTransaltor;
 use super::{
     ObjectHttpBdtListener, ObjectHttpListener, ObjectHttpTcpListener, ObjectListener,
     WebSocketEventInterface,
 };
 use crate::acl::AclManagerRef;
-use crate::app::AppService;
 use crate::app::AuthenticatedAppList;
 use crate::events::RouterEventsManager;
 use crate::interface::http_ws_listener::ObjectHttpWSService;
 use crate::name::NameResolver;
-use crate::resolver::OodResolver;
 use crate::root_state_api::*;
 use crate::router_handler::RouterHandlersManager;
 use crate::stack::ObjectServices;
@@ -61,7 +58,6 @@ pub struct ObjectListenerManager {
     http_auth_raw_server: Option<HttpServerHandlerRef>,
     authenticated_server: Mutex<Option<AuthenticatedServerInfo>>,
 
-    url_translator: Option<UrlTransaltor>,
     default_handler: Option<HttpDefaultHandler>,
 }
 
@@ -80,7 +76,6 @@ impl ObjectListenerManager {
             router_events_manager: None,
             http_auth_raw_server: None,
             authenticated_server: Mutex::new(None),
-            url_translator: None,
             default_handler: None,
         }
     }
@@ -127,20 +122,13 @@ impl ObjectListenerManager {
         router_events: &RouterEventsManager,
         name_resolver: &NameResolver,
         acl: &AclManagerRef,
-        app_service: &AppService,
         role_manager: &ZoneRoleManager,
         root_state: &GlobalStateService,
         local_cache: &GlobalStateLocalService,
-        ood_resolver: OodResolver,
     ) {
         assert!(self.listeners.is_empty());
 
-        let url_translator = UrlTransaltor::new(
-            name_resolver.clone(),
-            app_service.clone(),
-            role_manager.zone_manager().clone(),
-            ood_resolver,
-        );
+
         let default_handler = HttpDefaultHandler::default();
 
         // 首先初始化三个基础的http_server
@@ -155,12 +143,13 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                name_resolver,
+                role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
             let http_server = DefaultHttpServer::new(
                 raw_handler.into(),
-                Some(url_translator.clone()),
                 default_handler.clone(),
             );
             self.http_bdt_server = Some(http_server.into());
@@ -177,12 +166,13 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                name_resolver,
+                role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
             let http_server = DefaultHttpServer::new(
                 raw_handler.into(),
-                Some(url_translator.clone()),
                 default_handler.clone(),
             );
             self.http_tcp_server = Some(http_server.into());
@@ -199,6 +189,8 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                name_resolver,
+                role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
@@ -206,10 +198,8 @@ impl ObjectListenerManager {
             self.http_auth_raw_server = Some(raw_handler.into());
         }
 
-        // save url_translator and default_handler for dynamic auth interface
-        assert!(self.url_translator.is_none());
+        // save default_handler for dynamic auth interface
         assert!(self.default_handler.is_none());
-        self.url_translator = Some(url_translator);
         self.default_handler = Some(default_handler);
 
         // init all listeners
@@ -349,7 +339,6 @@ impl ObjectListenerManager {
         let auth_http_server = AuthenticatedHttpServer::new(raw_http_server.into(), auth.clone());
         let server = DefaultHttpServer::new(
             auth_http_server.into(),
-            Some(self.url_translator.as_ref().unwrap().clone()),
             self.default_handler.as_ref().unwrap().clone(),
         )
         .into();

@@ -54,7 +54,7 @@ async fn main() -> BuckyResult<()> {
         .subcommand(SubCommand::with_name("cmd_list").about("show app cmd list object"))
         .subcommand(
             SubCommand::with_name("cmd")
-                .about("add/install/uninstall/start/stop/setpermission/setquota")
+                .about("add/install/uninstall/start/stop/setpermission/setquota/setautoupdate")
                 .subcommand(
                     SubCommand::with_name("add")
                         .about("add app")
@@ -151,6 +151,22 @@ async fn main() -> BuckyResult<()> {
                                 .takes_value(true)
                                 .required(true)
                                 .help("app id"),
+                        ),
+                )
+                .subcommand(
+                    SubCommand::with_name("setautoupdate")
+                        .about("set app autoupdate")
+                        .arg(
+                            Arg::with_name("id")
+                                .takes_value(true)
+                                .required(true)
+                                .help("app id"),
+                        )
+                        .arg(
+                            Arg::with_name("autoupdate")
+                                .takes_value(true)
+                                .required(true)
+                                .help("set auto update, [0 or 1]"),
                         ),
                 ),
         )
@@ -302,6 +318,28 @@ async fn main() -> BuckyResult<()> {
                         }
                         Err(e) => {
                             warn!("===> remove app failed, err:{}", e);
+                        }
+                    };
+                })
+                .await;
+            }
+            ("setautoupdate", Some(matches)) => {
+                let matches = matches.clone();
+                async_std::task::spawn(async move {
+                    let mut helper = NonHelper::new();
+                    let _ = helper.init().await;
+                    let id = DecAppId::from_str(matches.value_of("id").unwrap()).unwrap();
+                    let mut autoupdate = true;
+                    if matches.value_of("autoupdate").unwrap() == "0" {
+                        autoupdate = false;
+                    }
+                    let cmd = AppCmd::set_auto_update(helper.get_owner(), id, autoupdate);
+                    match helper.post_object_without_resp(&cmd).await {
+                        Ok(_) => {
+                            info!("===> set autoupdate success");
+                        }
+                        Err(e) => {
+                            warn!("===> set autoupdate failed, err:{}", e);
                         }
                     };
                 })

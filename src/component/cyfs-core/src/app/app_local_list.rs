@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 // 一些内置的categroy
 pub const APP_LOCAL_LIST_CATEGORY_APP: &str = "app";
-pub const APP_LOCAL_LIST_PATH: &str = "/app_local_list";
+pub const APP_LOCAL_LIST_PATH: &str = "/app/manager/local_list";
 
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::AppLocalListDesc)]

@@ -50,8 +50,8 @@ impl RevisionListImpl {
         // assert!(ret.is_none());
     }
 
-    pub fn get_root_revision(&self, global_root: &ObjectId) -> u64 {
-        self.revision_list.get(global_root).unwrap().to_owned()
+    pub fn get_root_revision(&self, global_root: &ObjectId) -> Option<u64> {
+        self.revision_list.get(global_root).cloned()
     }
 
     pub fn get_dec_relation_root_info(&self, dec_root: &ObjectId) -> (ObjectId, u64) {
@@ -85,7 +85,7 @@ impl RevisionList {
             .insert_revision(revision, global_root)
     }
 
-    pub fn get_root_revision(&self, global_root: &ObjectId) -> u64 {
+    pub fn get_root_revision(&self, global_root: &ObjectId) -> Option<u64> {
         self.0.read().unwrap().get_root_revision(global_root)
     }
 

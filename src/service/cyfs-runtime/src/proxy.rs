@@ -47,24 +47,6 @@ impl NonForward {
     pub fn new(owner: CyfsProxy) -> Self {
         Self { owner }
     }
-
-    pub fn fix_url(url: &mut http_types::Url) {
-        let ret = url.path_segments();
-        if ret.is_none() {
-            return;
-        }
-
-        let mut ret = ret.unwrap();
-        if let Some(seg) = ret.next() {
-            // 只会trim单字母==o的域名
-            if seg.len() == 1 && seg == "o" {
-                let segs: Vec<&str> = ret.collect();
-                let path = segs.join("/");
-                debug!("non url path changed: {} -> {}", url.path(), path);
-                url.set_path(&path);
-            }
-        }
-    }
 }
 
 #[async_trait]
@@ -84,8 +66,6 @@ where
         let resp = match self.owner.non_handler() {
             Some(handler) => {
                 let mut req: http_types::Request = req.into();
-
-                Self::fix_url(req.url_mut());
 
                 // http请求都是同机请求，需要设定为当前device
                 req.insert_header(

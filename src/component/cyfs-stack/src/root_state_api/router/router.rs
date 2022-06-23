@@ -1,7 +1,6 @@
 use super::super::acl::*;
 use super::super::local::GlobalStateLocalService;
 use super::cache_access::GlobalStateAccessCacheProcessor;
-use super::ndn_access::GlobalStateAccessWithNDNInputProcessor;
 use crate::acl::AclManagerRef;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -208,27 +207,12 @@ impl GlobalStateRouter {
             Ok(self.access_processor.clone())
         }
     }
-
-    async fn get_global_state_access_with_ndn_processor(
-        &self,
-        target: Option<&ObjectId>,
-    ) -> BuckyResult<GlobalStateAccessInputProcessorRef> {
-        let processor = self.get_global_state_access_processor(target).await?;
-
-        let processor = GlobalStateAccessWithNDNInputProcessor::new(
-            processor,
-            self.ndn_processor.clone(),
-            self.zone_manager.get_current_device_id().to_owned(),
-        );
-
-        Ok(processor)
-    }
 }
 
 #[async_trait::async_trait]
 impl GlobalStateInputProcessor for GlobalStateRouter {
     fn create_op_env_processor(&self) -> OpEnvInputProcessorRef {
-        self.op_env_processor.clone()
+        self.clone_op_env_processor()
     }
 
     async fn get_current_root(
@@ -404,7 +388,7 @@ impl GlobalStateAccessInputProcessor for GlobalStateRouter {
         req: RootStateAccessGetObjectByPathInputRequest,
     ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
         let processor = self
-            .get_global_state_access_with_ndn_processor(req.common.target.as_ref())
+            .get_global_state_access_processor(req.common.target.as_ref())
             .await?;
         processor.get_object_by_path(req).await
     }

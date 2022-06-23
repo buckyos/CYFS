@@ -84,6 +84,7 @@ message AppLocalStatusDesc {
     AppQuota quota = 6;
     string last_status_update_time = 7;
     uint32 sub_error = 8;
+    bool auto_update = 9;
 }
 // AppLocalStatusEnd
 
@@ -139,6 +140,7 @@ message CmdCode {
     optional InstallApp install_app = 3;
     optional ModifyAppPermission app_permission = 4;
     optional AppQuota app_quota = 5;
+    optional bool auto_update = 6;
 }
 
 message AppCmdDesc {

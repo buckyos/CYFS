@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-//use crate::{PeerDesc, BuckyResult};
 
 pub const CFYS_ROOT_NAME: &str = "cyfs";
 
@@ -11,9 +10,27 @@ fn default_cyfs_root_path() -> PathBuf {
         PathBuf::from(&format!("C:\\{}", CFYS_ROOT_NAME))
     }
 
-    #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "android", target_os = "ios"))]
     {
         PathBuf::from(&format!("/{}", CFYS_ROOT_NAME))
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        match dirs::data_dir() {
+            Some(dir) => {
+                let root = dir.join(&format!("../{}", CFYS_ROOT_NAME));
+                if root.is_dir() {
+                    root.canonicalize().unwrap()
+                } else {
+                    root
+                }
+            }
+            None => {
+                error!("get user dir failed!");
+                PathBuf::from(&format!("/{}", CFYS_ROOT_NAME))
+            }
+        }
     }
 
     #[cfg(target_arch = "wasm32")]

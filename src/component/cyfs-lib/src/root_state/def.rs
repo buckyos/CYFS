@@ -169,49 +169,6 @@ impl FromStr for RootStateAccessAction {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RootStateAccessGetMode {
-    Default,
-    Object,
-    Data,
-}
-
-impl RootStateAccessGetMode {
-    pub fn as_str(&self) -> &str {
-        match *self {
-            Self::Default => "default",
-            Self::Object => "object",
-            Self::Data => "data",
-        }
-    }
-}
-
-impl ToString for RootStateAccessGetMode {
-    fn to_string(&self) -> String {
-        self.as_str().to_owned()
-    }
-}
-
-impl FromStr for RootStateAccessGetMode {
-    type Err = BuckyError;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        let ret = match value {
-            "default" => Self::Default,
-            "object" => Self::Object,
-            "data" => Self::Data,
-
-            _ => {
-                // as default action in access get action
-                Self::Default
-            }
-        };
-
-        Ok(ret)
-    }
-}
-
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GlobalStateCategory {
     RootState,

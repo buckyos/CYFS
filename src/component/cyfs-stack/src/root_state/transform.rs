@@ -600,36 +600,20 @@ impl GlobalStateAccessOutputProcessor for GlobalStateAccessOutputTransformer {
     ) -> BuckyResult<RootStateAccessGetObjectByPathOutputResponse> {
         let in_req = RootStateAccessGetObjectByPathInputRequest {
             common: self.convert_common(req.common),
-            mode: req.mode,
             inner_path: req.inner_path,
         };
 
         let in_resp = self.processor.get_object_by_path(in_req).await?;
 
-        let resp = if let Some(object) = in_resp.object {
-            RootStateAccessGetObjectByPathOutputResponse {
-                object: Some(NONGetObjectOutputResponse {
-                    object: object.object,
-                    object_expires_time: object.object_expires_time,
-                    object_update_time: object.object_update_time,
-                    attr: object.attr,
-                }),
-                data: None,
-            }
-        } else if let Some(data) = in_resp.data {
-            RootStateAccessGetObjectByPathOutputResponse {
-                data: Some(NDNGetDataOutputResponse {
-                    object_id: data.object_id,
-                    owner_id: data.owner_id,
-                    attr: data.attr,
-                    range: data.range,
-                    length: data.length,
-                    data: data.data,
-                }),
-                object: None,
-            }
-        } else {
-            unreachable!();
+        let resp = RootStateAccessGetObjectByPathOutputResponse {
+            object: NONGetObjectOutputResponse {
+                object: in_resp.object.object,
+                object_expires_time: in_resp.object.object_expires_time,
+                object_update_time: in_resp.object.object_update_time,
+                attr: in_resp.object.attr,
+            },
+            root: in_resp.root,
+            revision: in_resp.revision,
         };
 
         Ok(resp)
@@ -681,36 +665,20 @@ impl GlobalStateAccessInputProcessor for GlobalStateAccessInputTransformer {
     ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
         let out_req = RootStateAccessGetObjectByPathOutputRequest {
             common: self.convert_common(req.common),
-            mode: req.mode,
             inner_path: req.inner_path,
         };
 
         let out_resp = self.processor.get_object_by_path(out_req).await?;
 
-        let resp = if let Some(object) = out_resp.object {
-            RootStateAccessGetObjectByPathInputResponse {
-                object: Some(NONGetObjectInputResponse {
-                    object: object.object,
-                    object_expires_time: object.object_expires_time,
-                    object_update_time: object.object_update_time,
-                    attr: object.attr,
-                }),
-                data: None,
-            }
-        } else if let Some(data) = out_resp.data {
-            RootStateAccessGetObjectByPathInputResponse {
-                data: Some(NDNGetDataInputResponse {
-                    object_id: data.object_id,
-                    owner_id: data.owner_id,
-                    attr: data.attr,
-                    range: data.range,
-                    length: data.length,
-                    data: data.data,
-                }),
-                object: None,
-            }
-        } else {
-            unreachable!();
+        let resp = RootStateAccessGetObjectByPathInputResponse {
+            object: NONGetObjectInputResponse {
+                object: out_resp.object.object,
+                object_expires_time: out_resp.object.object_expires_time,
+                object_update_time: out_resp.object.object_update_time,
+                attr: out_resp.object.attr,
+            },
+            root: out_resp.root,
+            revision: out_resp.revision,
         };
 
         Ok(resp)

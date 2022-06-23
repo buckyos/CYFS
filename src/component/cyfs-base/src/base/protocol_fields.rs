@@ -43,6 +43,7 @@ pub const CYFS_TARGET: &str = "cyfs-target";
 pub const CYFS_REFERER_OBJECT: &str = "cyfs-referer-object";
 pub const CYFS_FILTER_FLAGS: &str = "cyfs-filter-flags";
 pub const CYFS_REVISION: &str = "cyfs-revision";
+pub const CYFS_ROOT: &str = "cyfs-root";
 
 pub const CYFS_TIMEOUT: &str = "cyfs-timeout";
 
