@@ -105,7 +105,7 @@ function get_obj_id(desc_file) {
 }
 
 async function run() {
-    // 检查余额，余额小于10000报错
+    // check balance
     let repo_id = get_obj_id(repo_path+".desc")
     let out = JSON.parse(await post(meta_url(channel)+"/balance", [[0, repo_id]]));
     let balance = BigInt(out.result[0])
