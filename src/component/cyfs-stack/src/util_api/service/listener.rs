@@ -217,8 +217,18 @@ impl UtilRequestHandlerEndpoint {
             UtilRequestType::BuildFile,
             handler.clone(),
         ));
+        server.at("/util/build_file/*must").post(Self::new(
+            protocol.to_owned(),
+            UtilRequestType::BuildFile,
+            handler.clone(),
+        ));
 
         server.at("/util/build_dir_from_object_map").post(Self::new(
+            protocol.to_owned(),
+            UtilRequestType::BuildDirFromObjectMap,
+            handler.clone(),
+        ));
+        server.at("/util/build_dir_from_object_map/*must").post(Self::new(
             protocol.to_owned(),
             UtilRequestType::BuildDirFromObjectMap,
             handler.clone(),
