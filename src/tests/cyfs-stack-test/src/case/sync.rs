@@ -124,7 +124,7 @@ async fn add_file(stack: &SharedCyfsStack) -> FileId {
 
 async fn test_ood_change(stack: &SharedCyfsStack, indexer: Indexer) {
     // let dec_id = new_dec("root_state1");
-    let root_state = stack.root_state_stub(None);
+    let root_state = stack.root_state_stub(None, None);
     let root_info = root_state.get_current_root().await.unwrap();
     info!("current root: {:?}", root_info);
 
@@ -183,7 +183,7 @@ async fn test_ood_change(stack: &SharedCyfsStack, indexer: Indexer) {
 }
 
 async fn test_standby_ood_get(stack: &SharedCyfsStack, indexer: Indexer) {
-    let root_state = stack.root_state_stub(None);
+    let root_state = stack.root_state_stub(None, None);
     loop {
         let root_info = root_state.get_current_root().await.unwrap();
         info!("device current root: {:?}", root_info);

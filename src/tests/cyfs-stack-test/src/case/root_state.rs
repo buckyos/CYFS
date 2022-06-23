@@ -33,7 +33,7 @@ pub async fn test() {
 
 pub async fn test_path_env(stack: &SharedCyfsStack) {
     // let dec_id = new_dec("root_state1");
-    let root_state = stack.root_state_stub(None);
+    let root_state = stack.root_state_stub(None, None);
     let root_info = root_state.get_current_root().await.unwrap();
     info!("current root: {:?}", root_info);
 
@@ -123,7 +123,7 @@ pub async fn test_path_env(stack: &SharedCyfsStack) {
 }
 
 pub async fn test_iterator(stack: &SharedCyfsStack) {
-    let root_state = stack.root_state_stub(None);
+    let root_state = stack.root_state_stub(None, None);
     let root_info = root_state.get_current_root().await.unwrap();
     info!("current root: {:?}", root_info);
 
@@ -166,10 +166,10 @@ pub async fn test_router(ood: &SharedCyfsStack, device: &SharedCyfsStack) {
     let ood_id = ood.local_device_id();
     // let device_id = device.local_device_id();
 
-    let ood_root_state = ood.root_state_stub(None);
+    let ood_root_state = ood.root_state_stub(None, None);
     let ood_root_info = ood_root_state.get_current_root().await.unwrap();
 
-    let root_state = device.root_state_stub(Some(ood_id.object_id().clone()));
+    let root_state = device.root_state_stub(Some(ood_id.object_id().clone()), None);
     let root_info = root_state.get_current_root().await.unwrap();
 
     assert_eq!(ood_root_info, root_info);
@@ -204,10 +204,10 @@ pub async fn test_cross_zone_router(ood: &SharedCyfsStack, device: &SharedCyfsSt
     let ood_id = ood.local_device_id();
     // let device_id = device.local_device_id();
 
-    //let ood_root_state = ood.root_state_stub(None);
+    //let ood_root_state = ood.root_state_stub(None, None);
     //let ood_root_info = ood_root_state.get_current_root().await.unwrap();
 
-    let root_state = device.root_state_stub(Some(ood_id.object_id().clone()));
+    let root_state = device.root_state_stub(Some(ood_id.object_id().clone()), None);
     match root_state.get_current_root().await {
         Err(e) => {
             assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
@@ -229,7 +229,7 @@ pub async fn test_cross_zone_router(ood: &SharedCyfsStack, device: &SharedCyfsSt
 
 pub async fn test_gbk_path(stack: &SharedCyfsStack) {
     // let dec_id = new_dec("root_state1");
-    let root_state = stack.root_state_stub(None);
+    let root_state = stack.root_state_stub(None, None);
     let root_info = root_state.get_current_root().await.unwrap();
     info!("current root: {:?}", root_info);
 
@@ -297,7 +297,7 @@ pub async fn test_rs_access(ood: &SharedCyfsStack, device: &SharedCyfsStack) {
     let ood_id = ood.local_device_id();
     // let device_id = device.local_device_id();
 
-    let ood_root_state = ood.root_state_stub(None);
+    let ood_root_state = ood.root_state_stub(None, None);
     let ood_access = ood.root_state_access();
 
     let ood_root_info = ood_root_state.get_current_root().await.unwrap();

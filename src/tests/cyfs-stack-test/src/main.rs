@@ -55,7 +55,7 @@ mod main_tests {
         let stack = Arc::new(SharedCyfsStack::open_default(Some(dec_id)).await.unwrap());
         stack.wait_online(None).await.unwrap();
         let env = stack
-            .root_state_stub(None)
+            .root_state_stub(None, None)
             .create_path_op_env()
             .await
             .unwrap();
@@ -91,7 +91,7 @@ mod main_tests {
         println!("new dec root is: {:?}", root);
 
         let env2 = stack
-            .root_state_stub(None)
+            .root_state_stub(None, None)
             .create_path_op_env()
             .await
             .unwrap();

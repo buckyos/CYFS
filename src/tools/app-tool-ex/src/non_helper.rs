@@ -70,7 +70,7 @@ impl NonHelper {
             .shared_stack
             .as_ref()
             .unwrap()
-            .root_state_stub(None)
+            .root_state_stub(None, None)
             .create_path_op_env()
             .await?;
         op_env.get_by_path(path).await

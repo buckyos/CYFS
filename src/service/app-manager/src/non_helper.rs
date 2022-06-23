@@ -258,7 +258,7 @@ impl NonHelper {
     pub async fn store_on_map(&self, path: &str, obj_id: &ObjectId) -> BuckyResult<()> {
         let op_env = self
             .shared_stack
-            .root_state_stub(None)
+            .root_state_stub(None, None)
             .create_path_op_env()
             .await?;
         op_env.lock(vec![path.to_owned()], 0).await.unwrap();
@@ -275,7 +275,7 @@ impl NonHelper {
     ) -> BuckyResult<()> {
         let op_env = self
             .shared_stack
-            .root_state_stub(None)
+            .root_state_stub(None, None)
             .create_path_op_env()
             .await?;
         op_env.lock(vec![path.to_owned()], 0).await.unwrap();
@@ -288,7 +288,7 @@ impl NonHelper {
     async fn load_from_map(&self, path: &str) -> BuckyResult<Option<ObjectId>> {
         let op_env = self
             .shared_stack
-            .root_state_stub(None)
+            .root_state_stub(None, None)
             .create_path_op_env()
             .await?;
         op_env.get_by_path(path).await
