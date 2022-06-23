@@ -549,6 +549,9 @@ impl FrontService {
     ) -> String {
         let mut querys = vec![];
 
+        // FIXME distinguish between not installed and version unmatch
+        querys.push("error=not_installed".to_owned());
+
         if let Some(dec_id) = dec_id {
             querys.push(format!("dec_id={}", dec_id));
         }
