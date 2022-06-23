@@ -5,7 +5,6 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
-
 pub struct GlobalStateAccessCacheProcessor {
     next: GlobalStateAccessInputProcessorRef,
 
@@ -61,21 +60,11 @@ impl GlobalStateAccessInputProcessor for GlobalStateAccessCacheProcessor {
     ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
         let cache_req = req.clone();
         let resp = self.next.get_object_by_path(req).await?;
-        assert!(resp.object.is_some());
 
         // FIXME now only cache file
-        match resp
-            .object
-            .as_ref()
-            .unwrap()
-            .object
-            .object_id
-            .obj_type_code()
-        {
+        match resp.object.object.object_id.obj_type_code() {
             ObjectTypeCode::File => {
-                let _ = self
-                    .cache_object(cache_req, &resp.object.as_ref().unwrap().object)
-                    .await;
+                let _ = self.cache_object(cache_req, &resp.object.object).await;
             }
             _ => {}
         }

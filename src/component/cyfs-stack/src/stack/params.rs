@@ -4,15 +4,75 @@ use cyfs_noc::*;
 
 use async_std::net::SocketAddr;
 
-
 #[derive(Debug, Clone)]
-pub struct CyfsStackParams {
-    // 内部使用的noc存储类型
-    pub noc_type: NamedObjectStorageType,
-
+pub struct CyfsStackConfigParams {
     // 隔离配置文件和数据库使用的isolate
     pub isolate: Option<String>,
 
+    // 是否开启sync服务
+    pub sync_service: bool,
+
+    // 是否开启shared_object_stack服务，默认为true
+    pub shared_stack: bool,
+
+}
+
+impl Default for CyfsStackConfigParams {
+    fn default() -> Self {
+        Self {
+            isolate: None,
+            sync_service: true,
+            shared_stack: true,
+        }
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct CyfsStackFrontParams {
+    // if enable the front module
+    pub enable: bool,
+}
+
+impl Default for CyfsStackFrontParams {
+    fn default() -> Self {
+        Self {
+            enable: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CyfsStackMetaParams {
+    // meta miner's type
+    pub target: MetaMinerTarget,
+}
+
+impl Default for CyfsStackMetaParams {
+    fn default() -> Self {
+        Self {
+            target: MetaMinerTarget::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CyfsStackNOCParams {
+    // Internally used noc storage type
+    pub noc_type: NamedObjectStorageType,
+}
+
+impl Default for CyfsStackNOCParams {
+    fn default() -> Self {
+        Self {
+            noc_type: NamedObjectStorageType::default(),
+        }
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct CyfsStackInterfaceParams {
     // bdt协议栈监听的vport列表
     pub bdt_listeners: Vec<u16>,
 
@@ -21,33 +81,11 @@ pub struct CyfsStackParams {
 
     // ws event服务地址
     pub ws_listener: Option<SocketAddr>,
-
-    // 是否开启sync服务
-    pub sync_service: bool,
-
-    // 是否开启shared_object_stack服务，默认为true
-    pub shared_stack: bool,
-
-    // meta miner的类型
-    pub meta: MetaMinerTarget,
 }
 
-impl CyfsStackParams {
-    pub fn new_empty() -> Self {
-        // 初始化两个标准地址
-        Self {
-            noc_type: NamedObjectStorageType::default(),
-            isolate: None,
-            tcp_listeners: Vec::new(),
-            bdt_listeners: Vec::new(),
-            ws_listener: None,
-            sync_service: true,
-            shared_stack: true,
-            meta: MetaMinerTarget::default(),
-        }
-    }
+impl Default for CyfsStackInterfaceParams {
+    fn default() -> Self {
 
-    pub fn new_default() -> Self {
         // 初始化两个标准地址
         let bdt_listeners = vec![cyfs_base::NON_STACK_BDT_VPORT];
         let tcp_listener: SocketAddr = format!("127.0.0.1:{}", cyfs_base::NON_STACK_HTTP_PORT)
@@ -61,15 +99,59 @@ impl CyfsStackParams {
             .unwrap();
 
         Self {
-            noc_type: NamedObjectStorageType::default(),
-            isolate: None,
             tcp_listeners,
             bdt_listeners,
             ws_listener: Some(ws_listener),
-            sync_service: true,
-            shared_stack: true,
-            meta: MetaMinerTarget::default(),
-            //dsg_options: None,
+        }
+    }
+}
+
+impl CyfsStackInterfaceParams {
+    pub fn new_empty() -> Self {
+        Self {
+            tcp_listeners: Vec::new(),
+            bdt_listeners: Vec::new(),
+            ws_listener: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CyfsStackParams {
+    pub config: CyfsStackConfigParams,
+
+    // noc module
+    pub noc: CyfsStackNOCParams,
+
+    // interface module
+    pub interface: CyfsStackInterfaceParams,
+
+    // meta module config
+    pub meta: CyfsStackMetaParams,
+
+    // front module config
+    pub front: CyfsStackFrontParams,
+}
+
+impl CyfsStackParams {
+    pub fn new_empty() -> Self {
+        // 初始化两个标准地址
+        Self {
+            config: CyfsStackConfigParams::default(),
+            noc: CyfsStackNOCParams::default(),
+            interface: CyfsStackInterfaceParams::new_empty(),
+            meta: CyfsStackMetaParams::default(),
+            front: CyfsStackFrontParams::default(),
+        }
+    }
+
+    pub fn new_default() -> Self {
+        Self {
+            config: CyfsStackConfigParams::default(),
+            noc: CyfsStackNOCParams::default(),
+            interface: CyfsStackInterfaceParams::default(),
+            meta: CyfsStackMetaParams::default(),
+            front: CyfsStackFrontParams::default(),
         }
     }
 }

@@ -2,7 +2,6 @@ use super::def::*;
 use super::output_request::*;
 use super::processor::*;
 use crate::base::*;
-use crate::ndn::{NDNAction, NDNRequestorHelper};
 use crate::non::NONRequestorHelper;
 use crate::stack::SharedObjectStackDecID;
 use cyfs_base::*;
@@ -946,11 +945,7 @@ impl GlobalStateAccessRequestor {
         &self,
         req: &RootStateAccessGetObjectByPathOutputRequest,
     ) -> Request {
-        let mut url = self.gen_url(&req.inner_path);
-
-        if req.mode != RootStateAccessGetMode::Default {
-            url.query_pairs_mut().append_pair("mode", req.mode.as_str());
-        }
+        let url = self.gen_url(&req.inner_path);
 
         let mut http_req = Request::new(Method::Get, url);
         self.encode_common_headers(&req.common, &mut http_req);
@@ -961,26 +956,15 @@ impl GlobalStateAccessRequestor {
     pub async fn decode_get_object_by_path_response(
         resp: &mut Response,
     ) -> BuckyResult<RootStateAccessGetObjectByPathOutputResponse> {
-        let action: Option<NDNAction> =
-            RequestorHelper::decode_optional_header(resp, cyfs_base::CYFS_NDN_ACTION)?;
-        let resp = match action {
-            Some(_action) => {
-                let data = NDNRequestorHelper::decode_get_data_response(resp).await?;
-                RootStateAccessGetObjectByPathOutputResponse {
-                    data: Some(data),
-                    object: None,
-                }
-            }
-            None => {
-                let object = NONRequestorHelper::decode_get_object_response(resp).await?;
-                RootStateAccessGetObjectByPathOutputResponse {
-                    object: Some(object),
-                    data: None,
-                }
-            }
-        };
+        let object = NONRequestorHelper::decode_get_object_response(resp).await?;
+        let root = RequestorHelper::decode_header(resp, cyfs_base::CYFS_ROOT)?;
+        let revision = RequestorHelper::decode_header(resp, cyfs_base::CYFS_REVISION)?;
 
-        Ok(resp)
+        Ok(RootStateAccessGetObjectByPathOutputResponse {
+            object,
+            root,
+            revision,
+        })
     }
 
     async fn get_object_by_path(

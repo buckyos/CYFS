@@ -1,6 +1,5 @@
 use crate::*;
 use cyfs_base::*;
-use super::def::*;
 
 use std::fmt;
 use std::str::FromStr;
@@ -718,31 +717,26 @@ pub struct OpEnvNextOutputResponse {
 pub struct RootStateAccessGetObjectByPathOutputRequest {
     pub common: RootStateOutputRequestCommon,
 
-    pub mode: RootStateAccessGetMode,
     pub inner_path: String,
 }
 
 impl fmt::Display for RootStateAccessGetObjectByPathOutputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
-        write!(f, ", mode: {}, inner_path: {}", self.mode.as_str(), self.inner_path)
+        write!(f, ", inner_path: {}", self.inner_path)
     }
 }
 
 pub struct RootStateAccessGetObjectByPathOutputResponse {
-    pub object: Option<NONGetObjectOutputResponse>,
-    pub data: Option<NDNGetDataOutputResponse>,
+    pub object: NONGetObjectOutputResponse,
+    pub root: ObjectId,
+    pub revision: u64,
 }
 
 impl fmt::Display for RootStateAccessGetObjectByPathOutputResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(object) = &self.object {
-            object.fmt(f)
-        } else if let Some(data) = &self.data {
-            data.fmt(f)
-        } else {
-            Ok(())
-        }
+        self.object.fmt(f)?;
+        write!(f, ", root: {}, revision: {}", self.root, self.revision)
     }
 }
 

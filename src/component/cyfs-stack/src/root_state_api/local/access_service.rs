@@ -33,12 +33,12 @@ impl GlobalStateAccessService {
         &self,
         dec_id: &Option<ObjectId>,
         inner_path: &str,
-    ) -> BuckyResult<(ObjectId, ObjectMapRootCacheRef)> {
+    ) -> BuckyResult<(ObjectId, ObjectMapRootCacheRef, (ObjectId, u64))> {
         match dec_id {
             None => {
-                let (root, _) = self.root_state.get_current_root();
+                let (root, revision) = self.root_state.get_current_root();
                 let root_cache = self.root_state.root_cache().clone();
-                Ok((root, root_cache))
+                Ok((root.clone(), root_cache, (root, revision)))
             }
             Some(dec_id) => {
                 let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
@@ -53,9 +53,12 @@ impl GlobalStateAccessService {
                     return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
                 }
 
+                let root = op_env.root().clone();
+                let revision = self.root_state.get_root_revision(&root).unwrap();
+
                 let object_id = ret.unwrap();
                 let root_cache = dec_root_manager.root_cache().clone();
-                Ok((object_id, root_cache))
+                Ok((object_id, root_cache, (root, revision)))
             }
         }
     }
@@ -64,13 +67,9 @@ impl GlobalStateAccessService {
         &self,
         req: RootStateAccessGetObjectByPathInputRequest,
     ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
-        let object = self.get_by_path_impl(&req.common.dec_id, &req.inner_path)
+        let resp = self.get_by_path_impl(&req.common.dec_id, &req.inner_path)
             .await?;
 
-        let resp = RootStateAccessGetObjectByPathInputResponse {
-            object: Some(object),
-            data: None,
-        };
         Ok(resp)
     }
 
@@ -79,42 +78,56 @@ impl GlobalStateAccessService {
         &self,
         dec_id: &Option<ObjectId>,
         inner_path: &str,
-    ) -> BuckyResult<NONGetObjectInputResponse> {
-        let (object_id, root_cache) = self.get_object_id(dec_id, inner_path).await?;
+    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
+        let (object_id, root_cache, root_info) = self.get_object_id(dec_id, inner_path).await?;
 
-        let ret = if object_id.obj_type_code() == ObjectTypeCode::ObjectMap {
-            let obj = root_cache.get_object_map(&object_id).await?;
-            match obj {
-                Some(obj) => {
-                    let object = {
-                        let object_map = obj.lock().await;
-                        object_map.clone()
-                    };
-
-                    let object_raw = object.to_vec()?;
-                    let object = AnyNamedObject::Standard(StandardObject::ObjectMap(object));
-
-                    Some((Arc::new(object), object_raw))
-                }
-                None => None,
+        let object_resp = match object_id.obj_type_code() {
+            ObjectTypeCode::Chunk => {
+                NONGetObjectInputResponse::new(object_id, vec![], None)
             }
-        } else {
-            self.load_object_from_noc(&object_id).await?
+            _ => {
+                let ret = if object_id.obj_type_code() == ObjectTypeCode::ObjectMap {
+                    let obj = root_cache.get_object_map(&object_id).await?;
+                    match obj {
+                        Some(obj) => {
+                            let object = {
+                                let object_map = obj.lock().await;
+                                object_map.clone()
+                            };
+        
+                            let object_raw = object.to_vec()?;
+                            let object = AnyNamedObject::Standard(StandardObject::ObjectMap(object));
+        
+                            Some((Arc::new(object), object_raw))
+                        }
+                        None => None,
+                    }
+                } else {
+                    self.load_object_from_noc(&object_id).await?
+                };
+        
+                if ret.is_none() {
+                    let msg = format!(
+                        "get_by_path but object not found! dec={:?}, path={}, object={}",
+                        dec_id, inner_path, object_id
+                    );
+                    warn!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+                }
+        
+                let (object, object_raw) = ret.unwrap();
+        
+                let mut resp = NONGetObjectInputResponse::new(object_id, object_raw, Some(object));
+                resp.init_times()?;
+                resp
+            }
         };
-
-        if ret.is_none() {
-            let msg = format!(
-                "get_by_path but object not found! dec={:?}, path={}, object={}",
-                dec_id, inner_path, object_id
-            );
-            warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
-        }
-
-        let (object, object_raw) = ret.unwrap();
-
-        let mut resp = NONGetObjectInputResponse::new(object_id, object_raw, Some(object));
-        resp.init_times()?;
+        
+        let resp = RootStateAccessGetObjectByPathInputResponse {
+            object: object_resp,
+            root: root_info.0,
+            revision: root_info.1,
+        };
 
         Ok(resp)
     }
@@ -149,7 +162,7 @@ impl GlobalStateAccessService {
         &self,
         req: RootStateAccessListInputRequest,
     ) -> BuckyResult<RootStateAccessListInputResponse> {
-        let (target, root_cache) = self
+        let (target, root_cache, _) = self
             .get_object_id(&req.common.dec_id, &req.inner_path)
             .await?;
 

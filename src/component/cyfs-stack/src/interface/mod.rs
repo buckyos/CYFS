@@ -6,7 +6,6 @@ mod http_tcp_listener;
 mod http_ws_listener;
 mod listener_manager;
 mod sync_interface;
-mod translator;
 mod ws_interface;
 
 pub(crate) use auth::InterfaceAuth;

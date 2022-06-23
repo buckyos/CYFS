@@ -337,7 +337,7 @@ impl DsgService {
                 skip, 
                 limit
             } => {
-                let op = self.stack().root_state_stub(None).create_single_op_env().await?;
+                let op = self.stack().root_state_stub(None, None).create_single_op_env().await?;
                 op.load_by_path("/dsg-service/contracts/").await?;
                 let _ = op.next(skip).await?;
                 let states = if let Some(limit) = limit {
@@ -378,7 +378,7 @@ impl DsgService {
                 contracts
             } => {
                 let mut states = HashMap::default(); 
-                let op = self.stack().root_state_stub(None).create_path_op_env().await?;
+                let op = self.stack().root_state_stub(None, None).create_path_op_env().await?;
                 for (contract_id, state_id) in contracts {
                     if let Some(cur_state_id) = op.get_by_key(format!("/dsg-service/contracts/{}/", contract_id), "state").await? {
                         if state_id.is_none() || cur_state_id != state_id.unwrap() {
@@ -398,7 +398,7 @@ impl DsgService {
     async fn on_sync_contract_state(&self, state: DsgContractStateObject, from: Option<ObjectId>) -> BuckyResult<DsgContractStateObject> {
         let state_ref = DsgContractStateObjectRef::from(&state);
         log::info!("{} on sync contract state, state={}", self, state_ref);
-        let op = self.stack().root_state_stub(None).create_path_op_env().await
+        let op = self.stack().root_state_stub(None, None).create_path_op_env().await
             .map_err(|err| {
                 log::error!("{} on sync contract state failed, contract={}, state={}, err=operate root state {}", self, state_ref.contract_id(), state_ref.id(), err);
                 err
@@ -525,7 +525,7 @@ impl DsgService {
                             err
                         })?;
                     let challenge_ref = DsgChallengeObjectRef::from(&challenge);
-                    let op = self.stack().root_state_stub(None).create_path_op_env().await
+                    let op = self.stack().root_state_stub(None, None).create_path_op_env().await
                         .map_err(|err| {
                             log::error!("{} sync data source to miner failed, contract={}, state={}, reason=op root state {}", self, contract.id(), state.id(), err);
                             err
@@ -628,7 +628,7 @@ impl DsgService {
                 log::error!("{} set finish state failed, contract={}, state={}, err=put state {}", self, state.contract_id(), state.id(), err);   
                 err
             })?;
-        let op = self.stack().root_state_stub(None).create_path_op_env().await
+        let op = self.stack().root_state_stub(None, None).create_path_op_env().await
             .map_err(|err| {
                 log::error!("{} set finish state failed, contract={}, state={}, err=creat op {}", self, state.contract_id(), state.id(), err);   
                 err
@@ -730,7 +730,7 @@ impl DsgService {
             })?;
         let contract_ref = DsgContractObjectRef::from(&contract);
 
-        let op = self.stack().root_state_stub(None).create_path_op_env().await
+        let op = self.stack().root_state_stub(None, None).create_path_op_env().await
             .map_err(|err| {
                 log::error!("{} on proof failed, proof={}, err=op root state {} ", self, proof.id(), err);
                 err
@@ -893,7 +893,7 @@ impl DsgService {
     async fn on_time_escape(&self, now: u64) -> BuckyResult<()> {
         let mut contracts = LinkedList::new(); 
         {
-            let op = self.stack().root_state_stub(None).create_single_op_env().await?;
+            let op = self.stack().root_state_stub(None, None).create_single_op_env().await?;
             op.load_by_path("/dsg-service/contracts/").await?;
             loop {
                 let iter = op.next(1).await?;
@@ -932,7 +932,7 @@ impl DsgService {
 
     async fn check_contract_state(&self, contract_id: ObjectId, now: u64) -> BuckyResult<()> {
         log::debug!("{} check contract, contract={}, at={}", self, contract_id, now);
-        let op = self.stack().root_state_stub(None).create_single_op_env().await
+        let op = self.stack().root_state_stub(None, None).create_single_op_env().await
             .map_err(|err| {
                 log::debug!("{} check contract failed, contract={}, at={}, err= create op {}", self, contract_id, now, err);   
                 err
@@ -1052,7 +1052,7 @@ impl DsgService {
                                         err
                                     })?;
 
-                                let path_op = self.stack().root_state_stub(None).create_path_op_env().await
+                                let path_op = self.stack().root_state_stub(None, None).create_path_op_env().await
                                     .map_err(|err| {
                                         log::debug!("{} check contract failed, contract={}, at={}, err=commit op {}", self, contract_id, now, err);   
                                         err
@@ -1087,7 +1087,7 @@ impl DsgService {
 
     async fn get_contract_state(&self, contract_id: &ObjectId) -> BuckyResult<DsgContractStateObject> {
         log::info!("{} get contract state, contract={}", self, contract_id);
-        let op = self.stack().root_state_stub(None).create_single_op_env().await
+        let op = self.stack().root_state_stub(None, None).create_single_op_env().await
             .map_err(|err| {
                 log::error!("{} get contract state failed, contract={}, err=op root state {}", self, contract_id, err);
                 err    
@@ -1137,7 +1137,7 @@ impl DsgService {
     }
 
     async fn get_contract_latest_challenge(&self, contract_id: &ObjectId) -> BuckyResult<DsgChallengeObject> {
-        let op = self.stack().root_state_stub(None).create_single_op_env().await?;
+        let op = self.stack().root_state_stub(None, None).create_single_op_env().await?;
         op.load_by_path(format!("/dsg-service/contracts/{}/", contract_id)).await?;
         if let Some(state_id) = op.get_by_key("challenge").await? {
             self.get_object_from_noc(state_id).await?

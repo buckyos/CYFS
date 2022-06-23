@@ -39,7 +39,7 @@ impl SyncListenerManager {
             info!("new http-bdt sync bdt listener: vport={}", vport);
             let server = SyncHttpListener::new(NONProtocol::HttpBdt, sync_server, sync_client);
             let handler = RawHttpServer::new(server.into_server()).into();
-            let http_server = DefaultHttpServer::new(handler, None, default_handler.clone());
+            let http_server = DefaultHttpServer::new(handler, default_handler.clone());
 
             let bdt_listener =
                 ObjectHttpBdtListener::new(params.bdt_stack.clone(), vport, http_server.into());

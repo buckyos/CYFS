@@ -8,6 +8,7 @@ use crate::crypto::CryptoOutputTransformer;
 use crate::crypto_api::{CryptoService, ObjectCrypto, ObjectVerifier};
 use crate::events::RouterEventsManager;
 use crate::forward::ForwardProcessorManager;
+use crate::front::FrontService;
 use crate::interface::{
     ObjectListenerManager, ObjectListenerManagerParams, ObjectListenerManagerRef,
 };
@@ -71,6 +72,8 @@ pub(crate) struct ObjectServices {
     pub crypto_service: Arc<CryptoService>,
     pub util_service: Arc<UtilService>,
     pub trans_service: Arc<TransService>,
+
+    pub front_service: Option<Arc<FrontService>>,
 }
 
 pub struct CyfsStackImpl {
@@ -131,12 +134,13 @@ impl CyfsStackImpl {
         let device_id = device.desc().device_id();
         let device_category = device.category().unwrap();
 
-        let isolate = match &param.isolate {
+        let isolate = match &param.config.isolate {
             Some(v) => v.as_str(),
             None => "",
         };
 
-        let noc = Self::init_raw_noc(&device_id, param.noc_type, isolate, known_objects).await?;
+        let noc =
+            Self::init_raw_noc(&device_id, param.noc.noc_type, isolate, known_objects).await?;
 
         // 初始化data cache和tracker
         let ndc = Self::init_ndc(isolate)?;
@@ -148,7 +152,7 @@ impl CyfsStackImpl {
 
         // 不使用rules的meta_client
         // 内部依赖带rule-noc，需要使用延迟绑定策略
-        let raw_meta_cache = RawMetaCache::new(param.meta);
+        let raw_meta_cache = RawMetaCache::new(param.meta.target);
 
         // init object searcher for global use
         let obj_searcher = CompoundObjectSearcher::new(
@@ -190,7 +194,7 @@ impl CyfsStackImpl {
         zone_manager.init().await?;
 
         // handlers
-        let router_handlers = RouterHandlersManager::new(param.isolate.clone());
+        let router_handlers = RouterHandlersManager::new(param.config.isolate.clone());
         if let Err(e) = router_handlers.load().await {
             error!("load router handlers error! {}", e);
         }
@@ -201,7 +205,7 @@ impl CyfsStackImpl {
         // acl
         let acl_manager = Arc::new(AclManager::new(
             noc.clone_noc(),
-            param.isolate.clone(),
+            param.config.isolate.clone(),
             device_manager.clone_cache(),
             zone_manager.clone(),
             router_handlers.clone(),
@@ -316,16 +320,6 @@ impl CyfsStackImpl {
         let crypto_service = Arc::new(crypto_service);
         let util_service = Arc::new(util_service);
 
-        let services = ObjectServices {
-            ndn_service,
-            non_service,
-
-            crypto_service,
-            util_service,
-
-            trans_service: Arc::new(trans_service),
-        };
-
         // 加载全局状态
         let (root_state, local_cache) = Self::load_global_state(
             &device_id,
@@ -335,12 +329,41 @@ impl CyfsStackImpl {
             forward_manager.clone(),
             zone_manager.clone(),
             fail_handler.clone(),
-            &services.non_service,
-            &services.ndn_service,
+            &non_service,
+            &ndn_service,
             &config,
         )
         .await?;
         let current_root = root_state.local_service().state().get_current_root();
+
+        let front_service = if param.front.enable {
+            let app_service =
+                AppService::new(&zone_manager, root_state.clone_global_state_processor()).await?;
+
+            let front_service = FrontService::new(
+                non_service.clone_processor(),
+                ndn_service.clone_processor(),
+                root_state.clone_access_processor(),
+                local_cache.clone_access_processor(),
+                app_service,
+                ood_resoler.clone(),
+            );
+            Some(Arc::new(front_service))
+        } else {
+            None
+        };
+
+        let services = ObjectServices {
+            ndn_service,
+            non_service,
+
+            crypto_service,
+            util_service,
+
+            trans_service: Arc::new(trans_service),
+
+            front_service,
+        };
 
         // 缓存所有processors，用以uni_stack直接返回使用
         let processors = CyfsStackProcessors {
@@ -388,8 +411,6 @@ impl CyfsStackImpl {
                 device_id.clone(),
             ),
         };
-
-        let app_service = AppService::new(device_id.clone(), noc.clone_noc(), zone_manager.clone());
 
         let admin_manager = AdminManager::new(
             zone_role_manager.clone(),
@@ -458,7 +479,7 @@ impl CyfsStackImpl {
 
         Self::init_chunk_manager(&chunk_manager, isolate).await?;
 
-        if param.sync_service {
+        if param.config.sync_service {
             // 避免调用栈过深，使用task异步初始化
 
             let (ret, s) = async_std::task::spawn(async move {
@@ -493,15 +514,15 @@ impl CyfsStackImpl {
         let mut interface = ObjectListenerManager::new(device_id.clone());
         let mut init_params = ObjectListenerManagerParams {
             bdt_stack: stack.bdt_stack.clone(),
-            bdt_listeners: param.bdt_listeners,
+            bdt_listeners: param.interface.bdt_listeners,
             tcp_listeners: Vec::new(),
             ws_listener: None,
         };
 
         // 如果开启了本地的sharestack，那么就需要初始化tcp-http接口
-        if param.shared_stack {
-            init_params.tcp_listeners = param.tcp_listeners;
-            init_params.ws_listener = param.ws_listener;
+        if param.config.shared_stack {
+            init_params.tcp_listeners = param.interface.tcp_listeners;
+            init_params.ws_listener = param.interface.ws_listener;
         }
 
         interface.init(
@@ -511,11 +532,9 @@ impl CyfsStackImpl {
             &stack.router_events,
             &stack.name_resolver,
             &stack.acl_manager,
-            &app_service,
             &stack.zone_role_manager,
             &stack.root_state,
             &stack.local_cache,
-            ood_resoler.clone(),
         );
 
         let interface = Arc::new(interface);
@@ -524,7 +543,7 @@ impl CyfsStackImpl {
         }
 
         // init app controller
-        let app_controller = AppController::new(param.isolate.clone(), interface);
+        let app_controller = AppController::new(param.config.isolate.clone(), interface);
         app_controller
             .init(&stack.router_handlers.clone_processor())
             .await?;
@@ -991,8 +1010,33 @@ impl CyfsStack {
         &self.stack.root_state
     }
 
+    pub fn root_state_stub(
+        &self,
+        target: Option<ObjectId>,
+        dec_id: Option<ObjectId>,
+    ) -> GlobalStateStub {
+        let processor = GlobalStateOutputTransformer::new(
+            self.stack.root_state.clone_global_state_processor(),
+            self.zone_manager().get_current_device_id().clone(),
+        );
+
+        GlobalStateStub::new(processor, target, dec_id)
+    }
+
     pub fn local_cache(&self) -> &GlobalStateLocalService {
         &self.stack.local_cache
+    }
+
+    pub fn local_cache_stub(
+        &self,
+        dec_id: Option<ObjectId>,
+    ) -> GlobalStateStub {
+        let processor = GlobalStateOutputTransformer::new(
+            self.stack.local_cache.clone_global_state_processor(),
+            self.zone_manager().get_current_device_id().clone(),
+        );
+
+        GlobalStateStub::new(processor, None, dec_id)
     }
 
     // 只有ood才会开启DSG服务

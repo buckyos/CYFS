@@ -74,6 +74,17 @@ impl CyfsStackConfigLoader {
                     self.load_config(v.as_table().unwrap())?;
                 }
 
+                "front" => {
+                    if !v.is_table() {
+                        let msg = format!("invalid non stack.front field format: {:?}", v);
+                        error!("{}", msg);
+
+                        return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+                    }
+
+                    self.load_front(v.as_table().unwrap())?;
+                }
+
                 "noc" => {
                     if !v.is_table() {
                         let msg = format!("invalid non stack.noc field format: {:?}", v);
@@ -128,7 +139,7 @@ impl CyfsStackConfigLoader {
                 }
 
                 "shared_stack" => {
-                    self.params.cyfs_stack_params.shared_stack =
+                    self.params.cyfs_stack_params.config.shared_stack =
                         TomlHelper::decode_from_boolean(v)?;
                 }
                 "shared_stack_stub" => {
@@ -136,7 +147,7 @@ impl CyfsStackConfigLoader {
                 }
 
                 "sync_service" => {
-                    self.params.cyfs_stack_params.sync_service =
+                    self.params.cyfs_stack_params.config.sync_service =
                         TomlHelper::decode_from_boolean(v)?;
                 }
 
@@ -146,7 +157,7 @@ impl CyfsStackConfigLoader {
                         return Err(BuckyError::from(BuckyErrorCode::InvalidFormat));
                     }
 
-                    self.params.cyfs_stack_params.isolate = Some(v.as_str().unwrap().to_owned());
+                    self.params.cyfs_stack_params.config.isolate = Some(v.as_str().unwrap().to_owned());
                 }
 
                 _ => {
@@ -158,11 +169,27 @@ impl CyfsStackConfigLoader {
         Ok(())
     }
 
+    fn load_front(&mut self, node: &toml::value::Table) -> BuckyResult<()> {
+        for (k, v) in node {
+            match k.as_str() {
+                "enable" => {
+                    self.params.cyfs_stack_params.front.enable = TomlHelper::decode_from_boolean(v)?;
+                }
+
+                _ => {
+                    warn!("unknown non stack.front field: {}", k.as_str());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn load_meta(&mut self, node: &toml::value::Table) -> BuckyResult<()> {
         for (k, v) in node {
             match k.as_str() {
                 "target" => {
-                    self.params.cyfs_stack_params.meta = TomlHelper::decode_from_string(v)?;
+                    self.params.cyfs_stack_params.meta.target = TomlHelper::decode_from_string(v)?;
                 }
 
                 _ => {
@@ -211,7 +238,7 @@ impl CyfsStackConfigLoader {
 
         // 如果提供了配置，那么才需要覆盖默认的配置
         if let Some(noc_type) = noc_type {
-            self.params.cyfs_stack_params.noc_type = noc_type;
+            self.params.cyfs_stack_params.noc.noc_type = noc_type;
         }
 
         Ok(())
@@ -224,9 +251,9 @@ impl CyfsStackConfigLoader {
         }
 
         // 只要配置了listener字段，那么就需要清除掉所有的listener的默认配置
-        self.params.cyfs_stack_params.bdt_listeners.clear();
-        self.params.cyfs_stack_params.tcp_listeners.clear();
-        self.params.cyfs_stack_params.ws_listener = None;
+        self.params.cyfs_stack_params.interface.bdt_listeners.clear();
+        self.params.cyfs_stack_params.interface.tcp_listeners.clear();
+        self.params.cyfs_stack_params.interface.ws_listener = None;
 
         let node = node.as_array().unwrap();
         for listener_node in node {
@@ -278,13 +305,14 @@ impl CyfsStackConfigLoader {
             if self
                 .params
                 .cyfs_stack_params
+                .interface
                 .tcp_listeners
                 .iter()
                 .find(|&x| *x == addr)
                 .is_none()
             {
                 info!("new non stack http interface addr: {}", addr);
-                self.params.cyfs_stack_params.tcp_listeners.push(addr);
+                self.params.cyfs_stack_params.interface.tcp_listeners.push(addr);
             } else {
                 error!("conflict non stack http interface addr: {}", addr);
             }
@@ -321,13 +349,14 @@ impl CyfsStackConfigLoader {
         if self
             .params
             .cyfs_stack_params
+            .interface
             .bdt_listeners
             .iter()
             .find(|&x| *x == vport)
             .is_none()
         {
             info!("new non stack.bdt.endpoint listener vport: {}", vport);
-            self.params.cyfs_stack_params.bdt_listeners.push(vport);
+            self.params.cyfs_stack_params.interface.bdt_listeners.push(vport);
         } else {
             error!("conflict non stack.interface vport: {}", vport);
         }
@@ -358,7 +387,7 @@ impl CyfsStackConfigLoader {
             );
         }
 
-        self.params.cyfs_stack_params.ws_listener = Some(listener_list.pop().unwrap());
+        self.params.cyfs_stack_params.interface.ws_listener = Some(listener_list.pop().unwrap());
 
         Ok(())
     }
