@@ -59,12 +59,17 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 - CYFS Tool: 基于Node.js的命令行工具，提供upload和get命令。当前可以通过`npm i -g cyfs-tool-nightly`安装
 
 ## 使用刚刚编译组件
-参照文章[Hello CYFS 2:发布文件并下载](doc/zh-CN/Hello_CYFS/2.%E5%8F%91%E5%B8%83%E6%96%87%E4%BB%B6%E5%B9%B6%E4%B8%8B%E8%BD%BD.md)中的步骤，体验发布单个文件，并下载的过程
+在一台已经安装CYFS浏览器，并激活的机器上，安装CYFS Tool：
 
-参照文章[Hello CYFS 3:发布网站并查看](doc/zh-CN/Hello_CYFS/3.%E5%8F%91%E5%B8%83%E7%BD%91%E7%AB%99%E5%B9%B6%E6%9F%A5%E7%9C%8B.md)中的步骤，体验通过发布一个文件夹来发布一个静态网站，并通过CYFS浏览器查看的过程
+使用命令`cyfs upload <file_path> -t ood`, 将本地<file_path>指向的文件，上传到OOD上。
 
-使用刚刚编译组件完成cyfs://的构造和下载 （只有MetaChain Testnet不是用自己编译的代码工作的）
+使用命令`cyfs get <对象链接> -s <save_path>`，可以将文件通过cyfs-runtime协议栈下载到本地
 
+更加具体的说明，以及参数的含义，可以参照文章[Hello CYFS 2:发布文件并下载](doc/zh-CN/Hello_CYFS/2.%E5%8F%91%E5%B8%83%E6%96%87%E4%BB%B6%E5%B9%B6%E4%B8%8B%E8%BD%BD.md)
+
+使用命令`cyfs upload <folder_path> -t ood`，通过发布一个文件夹来发布一个静态网站。该命令会输出一个cyfs链接。将链接填入CYFS浏览器的地址栏，就可以通过CYFS浏览器，查看你刚刚发布的网站
+
+更加具体的说明，可以参照文章[Hello CYFS 3:发布网站并查看](doc/zh-CN/Hello_CYFS/3.%E5%8F%91%E5%B8%83%E7%BD%91%E7%AB%99%E5%B9%B6%E6%9F%A5%E7%9C%8B.md)
 
 # 代码导读
 通过上面的流程，你已经对CYFS的设计和使用有了一个基本的认识。尽管CYFS的设计已经基本稳定，但我们还有不少的代码要写。我们非常渴望你的帮助，但肯定也不会特别多的精力去编写文档（细节都在源码里了~）。这里我们做一个极其简单的代码导读，希望能帮助你更快的理解CYFS的实现。
@@ -76,7 +81,7 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
    此时cyfs://已经完成构造，但此时该cyfs:// 还无法被访问
 4. 将上述命名对象和命名数据添加到本地协议栈
 5. 向OOD发起CYFS PUT操作:将MapObject保存到OOD上并设置成访问权限为公开
-6. OOD上的file-manager响应CYFS PUT MapObject成功，执行默认的MapObject Prepare流程
+6. 让OOD启动MapObject Prepare，在OOD上保存一份命名数据
 7. OOD上MapObject Prepare完成，cyfs:// 可以被访问
 
 随后使用cyfs get获取的流程如下：
@@ -106,9 +111,30 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 
 在理解上述流程的逻辑后，可以按下面的指引阅读相关代码。
 ## Upload
-
+1. 启动本地协议栈：[cyfs-ts-sdk/src/tool/lib/util.ts:304](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/lib/util.ts#L304)
+2. 构造FileObject: [file_recorder.rs:46](src/component/cyfs-stack/src/trans_api/local/file_recorder.rs#L46)
+3. 构造ObjectMap: [publish_manager.rs:223](src/component/cyfs-stack/src/trans_api/local/publish_manager.rs#L223)
+4. 将上述命名对象和命名数据添加到本地协议栈:[file_recorder.rs:257](src/component/cyfs-stack/src/trans_api/local/file_recorder.rs#L257)
+5. 向OOD发起CYFS PUT操作:将MapObject保存到OOD上并设置成访问权限为公开:[cyfs-ts-sdk/src/tool/actions/upload.ts:35](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/actions/upload.ts#L35)
+6. 让OOD启动MapObject Prepare，在OOD上保存一份命名数据:[cyfs-ts-sdk/src/tool/actions/upload.ts:170](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/actions/upload.ts#L170)
 ## Get
-
+1. 启动本地协议栈: [cyfs-ts-sdk/src/tool/lib/util.ts:304](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/lib/util.ts#L304)
+2. 用HTTP协议发起HTTP GET请求
+3. cyfs-runtime在本地缓存中查看对象是否存在
+4. cyfs-runtime发起NamedObject查询需求(下列行为通常不是串行的)
+    4.1 向OOD查询NamedObject
+    4.2 OOD查询本地，NamedObject是否存在
+    4.3 OOD查询MetaChain，NamedObject是否存在
+    4.4 OOD根据get中的Reference信息，在上一跳设备上查询NamedObject是否存在
+    4.5 OOD通过MetaChain查询Object's Owner Zone的配置
+    4.6 OOD通过Zone配置，连接NamedObject's OOD，或则连接NamedObject’ Cache,查询NamedObject
+5. 得到ChunkId后，cyfs-runtime调用BDT的Channel接口(NDN语义接口)请求Chunk
+    5.1 对于首个，小的Chunk，直接从关联OOD上获取
+    5.2 对于第二个Chunk，会尝试从上一跳(Reference OOD)获取
+    5.3 BDT会尝试基于应用层的Context信息，进行多源查找和基于喷泉码的多源下载
+    5.4 路由器能识别BDT发出的Chunk请求包，进行拦截、转发，进一步优化网络的整体负载
+    5.5 只有OOD会进行Chunk上传
+6. 当FileObject的第一个Chunk就绪并验证后，步骤1的HTTP GET请求开始返回数据
 
 # 目录结构
 
