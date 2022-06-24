@@ -111,14 +111,14 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 
 在理解上述流程的逻辑后，可以按下面的指引阅读相关代码。
 ## Upload
-1. 启动本地协议栈：[cyfs-ts-sdk/src/tool/lib/util.ts:304](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/lib/util.ts#L304)
-2. 构造FileObject: [file_recorder.rs:46](src/component/cyfs-stack/src/trans_api/local/file_recorder.rs#L46)
-3. 构造ObjectMap: [publish_manager.rs:223](src/component/cyfs-stack/src/trans_api/local/publish_manager.rs#L223)
-4. 将上述命名对象和命名数据添加到本地协议栈:[file_recorder.rs:257](src/component/cyfs-stack/src/trans_api/local/file_recorder.rs#L257)
-5. 向OOD发起CYFS PUT操作:将MapObject保存到OOD上并设置成访问权限为公开:[cyfs-ts-sdk/src/tool/actions/upload.ts:35](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/actions/upload.ts#L35)
-6. 让OOD启动MapObject Prepare，在OOD上保存一份命名数据:[cyfs-ts-sdk/src/tool/actions/upload.ts:170](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/actions/upload.ts#L170)
+1. 启动本地协议栈：[util.ts: create_stack()](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/lib/util.ts)
+2. 构造FileObject: [file_recorder.rs: FileRecorder.add_file()](src/component/cyfs-stack/src/trans_api/local/file_recorder.rs)
+3. 构造ObjectMap: [publish_manager.rs: PublishLocalDirTask.publish()](src/component/cyfs-stack/src/trans_api/local/publish_manager.rs)
+4. 将上述命名对象和命名数据添加到本地协议栈:[file_recorder.rs: FileRecorder.record_file_chunk_list()](src/component/cyfs-stack/src/trans_api/local/file_recorder.rs)
+5. 向OOD发起CYFS PUT操作:将MapObject保存到OOD上并设置成访问权限为公开:[upload.ts: upload_obj()](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/actions/upload.ts)
+6. 让OOD启动MapObject Prepare，在OOD上保存一份命名数据:[upload.ts: run()](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/actions/upload.ts)
 ## Get
-1. 启动本地协议栈: [cyfs-ts-sdk/src/tool/lib/util.ts:304](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/lib/util.ts#L304)
+1. 启动本地协议栈: [util.ts: create_stack()](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/lib/util.ts)
 2. 用HTTP协议发起HTTP GET请求
 3. cyfs-runtime在本地缓存中查看对象是否存在
 4. cyfs-runtime发起NamedObject查询需求(下列行为通常不是串行的)

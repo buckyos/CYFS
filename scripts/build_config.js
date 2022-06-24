@@ -109,9 +109,30 @@ const sdk = [
         "lib": { "aarch64-linux-android": "ood_control", "armv7-linux-androideabi": "ood_control" },
     }
 ]
+
+const metas = [
+    {
+        "name": "cyfs-meta-genesis",
+        "include": formal_platform
+    },
+    {
+        "name": "cyfs-meta-miner",
+        "include": formal_platform
+    },
+	{
+        "name": "cyfs-meta-spv",
+        "include": formal_platform
+    },
+    {
+        "name": "browser-meta-spv",
+        "include": formal_platform
+    },
+]
+
 module.exports = {
     tools,
     services,
     sdk,
-    installer
+    installer,
+    metas
 }

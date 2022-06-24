@@ -53,6 +53,12 @@ members = [
     "./tools/bdt-debuger-deamon",
     "./tools/cyfs-check",
 
+    "./meta/browser-meta-spv",
+    "./meta/cyfs-meta",
+    "./meta/cyfs-meta-genesis",
+    "./meta/cyfs-meta-miner",
+    "./meta/cyfs-meta-spv",
+
     "./tests/cyfs-stack-test",
 ]
 
