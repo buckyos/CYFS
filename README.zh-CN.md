@@ -51,13 +51,19 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 
 注意这个环境正常并不是孤立的，而是能够加入到CYFS网络的（我们有规划3个网络:nightly,beta,relase，目前只有nightly是可用的），所以下面的教程并不包含用源码编译MetaChain+SN的部分。如果你打算在一个独立环境搭建一套完整的系统，需要编译并部署MetaChain超级节点，请阅读文档《MetaChain的构建》(Coming soon)。
 
-## 准备编译环境
-
 ## 进行编译
+这个基础体验需要以下几个独立的组件，这些组件都是开源，并可以独自编译的。也可以将官方版本和自己编译的版本混合使用
+- OOD: 可以参考文章[Hello CYFS 0:编译并部署DIYOOD](doc/zh-CN/Hello_CYFS/0.编译并部署DIYOOD.md), 从源码编译并部署DIYOOD
+- 超送：用来管理用户身份，绑定自己的OOD和CYFS Browser，当前可以从官网下载
+- CYFS Browser：通过cyfs链接，访问自己或别人发布的网站，当前可以从官网下载
+- CYFS Tool: 基于Node.js的命令行工具，提供upload和get命令。当前可以通过`npm i -g cyfs-tool-nightly`安装
 
 ## 使用刚刚编译组件
-使用刚刚编译组件完成cyfs://的构造和下载 （只有MetaChain Testnet不是用自己编译的代码工作的）
+参照文章[Hello CYFS 2:发布文件并下载](doc/zh-CN/Hello_CYFS/2.%E5%8F%91%E5%B8%83%E6%96%87%E4%BB%B6%E5%B9%B6%E4%B8%8B%E8%BD%BD.md)中的步骤，体验发布单个文件，并下载的过程
 
+参照文章[Hello CYFS 3:发布网站并查看](doc/zh-CN/Hello_CYFS/3.%E5%8F%91%E5%B8%83%E7%BD%91%E7%AB%99%E5%B9%B6%E6%9F%A5%E7%9C%8B.md)中的步骤，体验通过发布一个文件夹来发布一个静态网站，并通过CYFS浏览器查看的过程
+
+使用刚刚编译组件完成cyfs://的构造和下载 （只有MetaChain Testnet不是用自己编译的代码工作的）
 
 
 # 代码导读
@@ -67,7 +73,7 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 1. 启动本地协议栈(cyfs-rutnime)
 2. 本地计算目录内所有文件的Hash，并以当前的PeopleId为Owner构造FileObject
 3. 本地生成Map结构（目录结构），并以当前的PeopleId为Owner构造MapObject,
-   此时cyf://已经完成构造，但此时该cyfs:// 还无法被访问
+   此时cyfs://已经完成构造，但此时该cyfs:// 还无法被访问
 4. 将上述命名对象和命名数据添加到本地协议栈
 5. 向OOD发起CYFS PUT操作:将MapObject保存到OOD上并设置成访问权限为公开
 6. OOD上的file-manager响应CYFS PUT MapObject成功，执行默认的MapObject Prepare流程
@@ -114,13 +120,18 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
         - cyfs-runtime //CYFS用户态协议栈实现，开发调试中最常打交道的进程
         - ood-daemon //OOD的基础daemon,对其它基础服务进行保活和自动更新
         - app-manager //DEC App的安装管理器
-        - chunk-manager //让OOD能实现对NDN协议的默认逻辑支持
-        - file-manager //让OOD能默认实现对静态文件的保存和访问
+        - chunk-manager // 最原始，简单的对CYFS NDN概念的思考和实现，目前用于最底层的基础服务
+        - file-manager // 最原始，简单的对CYFS NON概念的思考和实现，目前用于最底层的基础服务
+        - cyfs-runtime // CYFS浏览器使用的CYFS协议栈后端，在标准CYFS协议栈的基础上，提供了一些方便浏览器使用的功能
     - component
         - cyfs-base //所有项目共用的基础组件，这里可以看到NamedObject的实现细节
+        - cyfs-base-meta // MetaChain的基础对象定义
         - cyfs-bdt //BDT协议的实现，小心展开时庞大的规模
+        - cyfs-core // CYFS体系中核心对象的定义
+        - cyfs-chunk // CYFS协议栈对NDN协议的支持
         - cyfs-stack //CYFS协议的实现，应该是系统中规模最庞大的组件
-        - cyfs-meta-lib //MetaChain的相关实现
+        - cyfs-meta-lib //MetaChain Client的相关实现
+        - cyfs-mobile-stack //CYFS移动端协议栈的封装
         - cyfs-noc //NamedObject的存储引擎实现（SQLite+MongoDB），是对系统IO性能影响最大的组件
     - test //测试项目，只包含了已经整理的部分，CYFS的大量网络测试的代码在CYFS Transmission Lab里。
     - tools //cyfs工具。cyfs工具链的设计思路是一个顶层脚本和一系列独立的小工具，兼顾cli体验的一致性和工程构建的独立性
