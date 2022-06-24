@@ -4,9 +4,11 @@ const path = require('path')
 const toml = require('@ltd/j-toml')
 let root;
 if (process.platform === 'win32') {
-	root = "c:\\"
+	root = "c:\\cyfs"
+} else if (process.platform === 'darwin') {
+    root = path.join(process.env['HOME'], 'Library', 'cyfs')
 } else {
-	root = "/"
+	root = "/cyfs"
 }
 const env = process.env;
 
@@ -37,7 +39,7 @@ const target = read_default_target();
 const version = `1.0.${version_from_channel(channel)}.${buildnumber}`
 
 console.log("build CYFS OOD Service")
-console.log('build default target:', target)
+console.log('build target:', target)
 console.log("build channel:", channel)
 console.log('build version:', version)
 
@@ -60,17 +62,18 @@ let people = fs.readFileSync('people_id').toString();
 env["VERSION"] = buildnumber;
 env["CHANNEL"] = channel;
 
-const repo_store_path = path.join(root, "cyfs", "repo_store");
+const repo_store_path = path.join(root, "repo_store");
+
 fs.mkdirSync(repo_store_path, {recursive: true})
 
 let ext = target.includes("windows")?".exe":'';
 
 let device_config = {service: []}
 for (const service of services) {
-	console.log("build and pack service", service)
-	child_process.execSync(`cargo build -p ${service} --release`, {env: env, stdio:"inherit"})
+	console.log("build and pack service", service, "target", target)
+	child_process.execSync(`cargo build -p ${service} --target ${target} --release`, {env: env, stdio:"inherit"})
 	fs.mkdirSync(path.join("dist", "services", service, target, "bin"), {recursive: true})
-	fs.copyFileSync(path.normalize(`target/release/${service}${ext}`), path.normalize(`dist/services/${service}/${target}/bin/${service}${ext}`))
+	fs.copyFileSync(path.normalize(`target/${target}/release/${service}${ext}`), path.normalize(`dist/services/${service}/${target}/bin/${service}${ext}`))
 	fs.copyFileSync(path.normalize(`service/${service}/service/linux/package.cfg`), path.normalize(`dist/services/${service}/${target}/package.cfg`))
 
 	child_process.execSync(`${path.normalize("../target/release/pack-tools")} -d services/${service}/${target}`, { cwd: 'dist'})
