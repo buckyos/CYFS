@@ -20,7 +20,7 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 
 本仓库仅包含CYFS核心系统的实现。并未包含CYFS生态重要的基础软件:CyberChat和CYFS Browser，也未包含面向不同语言的开发者的SDK实现。下面是CYFS生态其它重要的开源项目列表（持续更新）
 
-- cyfs-ts-sdk:基于typescript实现的cyfs-sdk，帮助typescript开发者构建Web3 DEC App。
+- [cyfs-ts-sdk](https://github.com/buckyos/cyfs-ts-sdk):基于typescript实现的cyfs-sdk，帮助typescript开发者构建Web3 DEC App。
 - CYFS Transmission Lab:对CYFS协议进行测试的网络实验室所用系统 (Coming soon)
 - CyberChat: CYFS钱包，管理DID,OOD,DECApp以及数据资产（Coming soon）
 - CYFS Browser: 基于Chrome内核，支持cyfs://协议的浏览器（Coming soon）
@@ -41,7 +41,7 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 - 基于可信计算的输入与结果的数据产权分析，实现从链上智能合约到链下Data Exchage Contract(DEC)的进化。
 - Web3 DEC App的Service端安装在每个人的OOD上，实现了应用服务的去中心化
 
-这些设计是为了解决哪几个关键问题？（我们相信“找到正确的问题已经完成了一半~”）可以阅读 doc/CYFS Architecture.pdf 与 《CYFS 白皮书》，这些内容量比较大，可以边实践边理解~
+这些设计是为了解决哪几个关键问题？（我们相信“找到正确的问题已经完成了一半~”）可以阅读 《[CYFS Architecture](doc/zh-CN/CYFS%20Architecture.pptx)》 与 《CYFS 白皮书》(coming soon)，这些内容量比较大，可以边实践边理解~
 
 # Quick Start
 
@@ -72,7 +72,7 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 更加具体的说明，可以参照文章[Hello CYFS 3:发布网站并查看](doc/zh-CN/Hello_CYFS/3.%E5%8F%91%E5%B8%83%E7%BD%91%E7%AB%99%E5%B9%B6%E6%9F%A5%E7%9C%8B.md)
 
 # 代码导读
-通过上面的流程，你已经对CYFS的设计和使用有了一个基本的认识。尽管CYFS的设计已经基本稳定，但我们还有不少的代码要写。我们非常渴望你的帮助，但肯定也不会特别多的精力去编写文档（细节都在源码里了~）。这里我们做一个极其简单的代码导读，希望能帮助你更快的理解CYFS的实现。
+通过上面的流程，你已经对CYFS的设计和使用有了一个基本的认识。尽管CYFS的设计已经基本稳定，但我们还有不少的代码要写。我们非常渴望你的帮助，但肯定也不会特别多的精力去编写文档（细节都在源码里了~）。这里我们做一个极简的代码导读，希望能帮助你更快的理解CYFS的实现。
 
 根据架构我们可知,cyfs://的核心是 Object Linke的构造和获取，而获取的前提是至少要把数据上传到OOD上。流程如下:
 1. 启动本地协议栈(cyfs-rutnime)
@@ -80,16 +80,16 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 3. 本地生成Map结构（目录结构），并以当前的PeopleId为Owner构造MapObject,
    此时cyfs://已经完成构造，但此时该cyfs:// 还无法被访问
 4. 将上述命名对象和命名数据添加到本地协议栈
-5. 向OOD发起CYFS PUT操作:将MapObject保存到OOD上并设置成访问权限为公开
+5. 向OOD发起CYFS PUT操作:将MapObject保存到OOD上并设置访问权限为公开
 6. 让OOD启动MapObject Prepare，在OOD上保存一份命名数据
 7. OOD上MapObject Prepare完成，cyfs:// 可以被访问
 
-随后使用cyfs get获取的流程如下：
+随后使用`cyfs get`获取的流程如下：
 
 1. 启动本地协议栈cyfs-runtime
 2. 用HTTP协议向cyfs-runtime发起HTTP GET请求
 3. cyfs-runtime在本地缓存中查看对象是否存在
-4. cyfs-runtime发起NamedObject查询需求(下列行为通常不是串行的)
+4. cyfs-runtime发起NamedObject查询需求(下列行为不是串行的)
     4.1 向OOD查询NamedObject
     4.2 OOD查询本地，NamedObject是否存在
     4.3 OOD查询MetaChain，NamedObject是否存在
@@ -102,7 +102,7 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
     5.3 BDT会尝试基于应用层的Context信息，进行多源查找和基于喷泉码的多源下载
     5.4 路由器能识别BDT发出的Chunk请求包，进行拦截、转发，进一步优化网络的整体负载
     5.5 只有OOD会进行Chunk上传
-6. 当FileObject的第一个Chunk就绪并验证后，步骤1的HTTP GET请求开始返回数据
+6. 当FileObject的第一个Chunk就绪(通过验证)后，步骤1的HTTP GET请求开始返回数据
 
 (上述流程如下图所示)
 ![get-from-cyfs](doc/en/image/get-from-cyfs.png)
@@ -171,7 +171,7 @@ CYFS目前正处于开发测试网(nightly)上线的状态，这个状态下所�
 
 我们希望能在18个月内上线CYFS正式网，CYFS正式网没有明确的上线时间，只要beta网的资产安全性、稳定性、性能达到预设目标，我们就会进入CYFS正式网的发布轨道。
 
-通过关注#1 issue,可以了解CYFS Roadmap的更多细节~
+欢迎关注[#1 issue](https://github.com/buckyos/CYFS/issues/1),来了解CYFS Roadmap的更多信息~
 
 # Contributing
 CYFS的开发测试网是由深圳巴克云设计和实现的，深圳巴克云的核心团队继承自原迅雷基础研发团队，我们有丰富的网络协议、基础架构开发经验以及超大规模的P2P网络设计和调优经验。在CYFS开源后，巴克云已经完成了其关键的历史使命，如今我们更愿意称自己为CYFS Core Dev Team,未来是一个开放的，基于DAO来组织的Team，主要职责就是推进CYFS的持续研发，我们欢迎所有工程师的加入：
