@@ -11,9 +11,9 @@ This page collects download links for various important resources of the CYFS ec
      Due to well known Apple's Appstore policy, we regularly update on testflight, which is update slower than the Android version.
 
 ## CYFS Brower
-- Windows版本：https://www.cyfs.com/download/`{channel}`/browser/windows/latest
-- MAC x86版本：https://www.cyfs.com/download/`{channel}`/browser/mac-x86/latest
-- MAC M1/M2版本：https://www.cyfs.com/download/`{channel}`/browser/mac-aarch64/latest
+- Windows：https://www.cyfs.com/download/`{channel}`/browser/windows/latest
+- MAC x86：https://www.cyfs.com/download/`{channel}`/browser/mac-x86/latest
+- MAC M1/M2：https://www.cyfs.com/download/`{channel}`/browser/mac-aarch64/latest
 
 
 ## OOD installer
@@ -29,15 +29,15 @@ This page collects download links for various important resources of the CYFS ec
 - iOS:     https://testflight.apple.com/join/cDS8j9Ts 
 
 ## CYFS Brower
-- Windows版本：[https://www.cyfs.com/download/nightly/browser/windows/latest](https://www.cyfs.com/download/nightly/browser/windows/latest)
-- MAC x86版本：[https://www.cyfs.com/download/nightly/browser/mac-x86/latest](https://www.cyfs.com/download/nightly/browser/mac-x86/latest)
-- MAC M1/M2版本：[https://www.cyfs.com/download/nightly/browser/mac-aarch64/latest](https://www.cyfs.com/download/nightly/browser/mac-aarch64/latest)
+- Windows：[https://www.cyfs.com/download/nightly/browser/windows/latest](https://www.cyfs.com/download/nightly/browser/windows/latest)
+- MAC x86：[https://www.cyfs.com/download/nightly/browser/mac-x86/latest](https://www.cyfs.com/download/nightly/browser/mac-x86/latest)
+- MAC M1/M2：[https://www.cyfs.com/download/nightly/browser/mac-aarch64/latest](https://www.cyfs.com/download/nightly/browser/mac-aarch64/latest)
 
 ## OOD installer
 - Linux(x86): [https://www.cyfs.com/download/nightly/ood/linux/latest](https://www.cyfs.com/download/nightly/ood/linux/latest)
 - synology(6.x)：[https://www.cyfs.com/download/nightly/ood/synology-6.2/latest](https://www.cyfs.com/download/nightly/ood/synology-6.2/latest)
 - synology(7.x)：[https://www.cyfs.com/download/nightly/ood/synology-7.0/latest](https://www.cyfs.com/download/nightly/ood/synology-7.0/latest)
-- QNAP版本：[https://www.cyfs.com/download/nightly/ood/qnap/latest](https://www.cyfs.com/download/nightly/ood/qnap/latest)
+- QNAP：[https://www.cyfs.com/download/nightly/ood/qnap/latest](https://www.cyfs.com/download/nightly/ood/qnap/latest)
 - Windows(for debug only): [https://www.cyfs.com/download/nightly/ood/windows/latest](https://www.cyfs.com/download/nightly/ood/windows/latest)
 
 # beta (testnet)
