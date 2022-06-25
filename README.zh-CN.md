@@ -53,7 +53,7 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 
 ## 进行编译
 这个基础体验需要以下几个独立的组件，这些组件都是开源，并可以独自编译的。也可以将官方版本和自己编译的版本混合使用
-- OOD: 可以参考文章[Hello CYFS 0:编译并部署DIYOOD](doc/zh-CN/Hello_CYFS/0.编译并部署DIYOOD.md), 从源码编译并部署DIYOOD
+- OOD: 参考文章[Hello CYFS 0:编译并部署DIYOOD](doc/zh-CN/Hello_CYFS/0.%E7%BC%96%E8%AF%91%E5%B9%B6%E9%83%A8%E7%BD%B2DIYOOD.md), 从源码编译并部署DIYOOD
 - 超送：用来管理用户身份，绑定自己的OOD和CYFS Browser，当前可以从官网下载
 - CYFS Browser：通过cyfs链接，访问自己或别人发布的网站，当前可以从官网下载
 - CYFS Tool: 基于Node.js的命令行工具，提供upload和get命令。当前可以通过`npm i -g cyfs-tool-nightly`安装
@@ -70,6 +70,12 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 使用命令`cyfs upload <folder_path> -t ood`，通过发布一个文件夹来发布一个静态网站。该命令会输出一个cyfs链接。将链接填入CYFS浏览器的地址栏，就可以通过CYFS浏览器，查看你刚刚发布的网站
 
 更加具体的说明，可以参照文章[Hello CYFS 3:发布网站并查看](doc/zh-CN/Hello_CYFS/3.%E5%8F%91%E5%B8%83%E7%BD%91%E7%AB%99%E5%B9%B6%E6%9F%A5%E7%9C%8B.md)
+
+## 资源汇总
+
+预编译软件的下载
+
+《Hello CYFS》 系列
 
 # 代码导读
 通过上面的流程，你已经对CYFS的设计和使用有了一个基本的认识。尽管CYFS的设计已经基本稳定，但我们还有不少的代码要写。我们非常渴望你的帮助，但肯定也不会特别多的精力去编写文档（细节都在源码里了~）。这里我们做一个极简的代码导读，希望能帮助你更快的理解CYFS的实现。

@@ -42,7 +42,7 @@ The above is the overall architecture diagram of CYFS, which can help to establi
 
 What key problems are these designs designed to solve? (We believe that "finding the right problem is half done~") You can read "[CYFS Architecture](doc/en/CYFS%20Architecture.pptx)" and "CYFS Whitepaper" (coming soon), the amount of content comparison Great, you can understand it with practice~
 
-# Quickstart
+# Quick Start
 
 The following will build your own Web3 environment by compiling the CYFS source code, and complete the basic experience of Web3 in this environment:
 - Publish a folder to the Web3 world and get a permanent address of cyfs://o/$ownerid/$dirid/index.html which can be accessed by CYFS Browser.
