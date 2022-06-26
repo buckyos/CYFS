@@ -1,6 +1,6 @@
 ![CYFS Logo](./doc/logos/CYFS_logo.png)
 
-***CYFS：Next Generation Protocl Family to Build Web3***    
+****CYFS：Next Generation Protocl Family to Build Web3****    
 + 官方主页: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index_en.html](cyfs://cyfs/index_en.html)  
 + Discord 讨论组：[https://discord.gg/dXDxjXTEjT](https://discord.gg/dXDxjXTEjT)   
 + CYFS白皮书(Coming soon)   
@@ -43,39 +43,95 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 
 这些设计是为了解决哪几个关键问题？（我们相信“找到正确的问题已经完成了一半~”）可以阅读 《[CYFS Architecture](doc/zh-CN/CYFS%20Architecture.pptx)》 与 《CYFS 白皮书》(coming soon)，这些内容量比较大，可以边实践边理解~
 
-# Quick Start
 
+## 通过《Hello CYFS》开始旅程
+我们强烈建议您完整的阅读《Hello CYFS》系列文章来获得一次完整的CYFS初体验（全部流程可以在1个小时内完成）：   
+1. [《编译并部署DIYOOD》](doc/zh-CN/Hello_CYFS/0.%E7%BC%96%E8%AF%91%E5%B9%B6%E9%83%A8%E7%BD%B2DIYOOD.md)    
+2. [《创建自己的身份文件》](doc/zh-CN/Hello_CYFS/1.%E5%88%9B%E5%BB%BA%E8%87%AA%E5%B7%B1%E7%9A%84%E8%BA%AB%E4%BB%BD%E6%96%87%E4%BB%B6.md)
+3. [《发布文件并下载》](doc/zh-CN/Hello_CYFS/2.%E5%8F%91%E5%B8%83%E6%96%87%E4%BB%B6%E5%B9%B6%E4%B8%8B%E8%BD%BD.md)
+4. [《发布网站并查看》](doc/zh-CN/Hello_CYFS/3.%E5%8F%91%E5%B8%83%E7%BD%91%E7%AB%99%E5%B9%B6%E6%9F%A5%E7%9C%8B.md)
+5. [《给朋友一点打赏》](doc/zh-CN/Hello_CYFS/4.%E7%BB%99%E6%9C%8B%E5%8F%8B%E4%B8%80%E7%82%B9%E6%89%93%E8%B5%8F.md)
+
+也可以使用下面的简易流程进行一次“不求甚解”的初体验～
+
+# Quick Start
 下面将通过编译CYFS源码来构建你自己的Web3环境，并在这个环境中完成Web3的基础体验：
 - 将一个文件夹发布到Web3的世界，得到一个cyfs://o/$ownerid/$dirid/index.html的永久地址，该地址可用CYFS Browser访问。
 - 使用cyfs get命令下载刚刚发布的文件夹中的文件。
 
 注意这个环境正常并不是孤立的，而是能够加入到CYFS网络的（我们有规划3个网络:nightly,beta,relase，目前只有nightly是可用的），所以下面的教程并不包含用源码编译MetaChain+SN的部分。如果你打算在一个独立环境搭建一套完整的系统，需要编译并部署MetaChain超级节点，请阅读文档《MetaChain的构建》(Coming soon)。
 
-## 进行编译
-这个基础体验需要以下几个独立的组件，这些组件都是开源，并可以独自编译的。也可以将官方版本和自己编译的版本混合使用
-- OOD: 参考文章[Hello CYFS 0:编译并部署DIYOOD](doc/zh-CN/Hello_CYFS/0.%E7%BC%96%E8%AF%91%E5%B9%B6%E9%83%A8%E7%BD%B2DIYOOD.md), 从源码编译并部署DIYOOD
-- 超送：用来管理用户身份，绑定自己的OOD和CYFS Browser，当前可以从官网下载
-- CYFS Browser：通过cyfs链接，访问自己或别人发布的网站，当前可以从官网下载
-- CYFS Tool: 基于Node.js的命令行工具，提供upload和get命令。当前可以通过`npm i -g cyfs-tool-nightly`安装
 
-## 使用刚刚编译组件
-在一台已经安装CYFS浏览器，并激活的机器上，安装CYFS Tool：
+## 编译
+准备一台闲置的Linux主机，最好是VPS，有2G以上内存。
+准备工作:
+- node.js 14或以上版本
+- rustc 1.57或以上版本
 
-使用命令`cyfs upload <file_path> -t ood`, 将本地<file_path>指向的文件，上传到OOD上。
+运行下面命令进行OOD System的编译。
 
-使用命令`cyfs get <对象链接> -s <save_path>`，可以将文件通过cyfs-runtime协议栈下载到本地
+```shell
+cd ${cyfs_sources_dir}/src
+npm i
+node ../scripts/build-standalone.js
+```
+脚本在编译过程中，需要创建`${cyfs_root}`文件夹。如果当前系统或当前用户没有权限创建该文件夹，需要事先手工创建`${cyfs_root}`文件夹，并将读写权限赋予当前用户。(正式环境中，OOD System的所有组件和数据都会安装到`${cyfs_root}`)
 
-更加具体的说明，以及参数的含义，可以参照文章[Hello CYFS 2:发布文件并下载](doc/zh-CN/Hello_CYFS/2.%E5%8F%91%E5%B8%83%E6%96%87%E4%BB%B6%E5%B9%B6%E4%B8%8B%E8%BD%BD.md)
+`${cyfs_root}`具体路径：
+- Windows: `c:\cyfs`
+- MacOS: `~/Library/cyfs`
+- 其他系统: `/cyfs`
 
-使用命令`cyfs upload <folder_path> -t ood`，通过发布一个文件夹来发布一个静态网站。该命令会输出一个cyfs链接。将链接填入CYFS浏览器的地址栏，就可以通过CYFS浏览器，查看你刚刚发布的网站
+编译成功生成`ood-installer`
 
-更加具体的说明，可以参照文章[Hello CYFS 3:发布网站并查看](doc/zh-CN/Hello_CYFS/3.%E5%8F%91%E5%B8%83%E7%BD%91%E7%AB%99%E5%B9%B6%E6%9F%A5%E7%9C%8B.md)
+## 安装刚编译的OOD System
+安装前，需要自行准备OOD的依赖环境:
+- Node.js 14以上版本
+- MongoDB 4.4版本，配置开机启动，使用默认端口，无认证（使用SQLite做对象存储引擎可以不依赖MongoDB,后续安装脚本会支持选择存储引擎）
+- docker-ce最新版本，配置开机启动
 
-## 资源汇总
+在src目录找到刚编译好的 ood-installer ，执行
+```
+./ood-installer --target solo
+```
+稍等片刻即安装完成。
 
-预编译软件的下载
+## 激活OOD
+为了体验流程，这里使用cli工具来完成身份的创建流程。**基于cli工具创建的身份只能做测试用途！**
 
-《Hello CYFS》 系列
+1. 安装cyfs-tool：使用命令行`npm i -g cyfs-tool-nightly`，安装nightly版本的cyfs-tool工具
+2. 生成成套的身份
+   > 使用命令`cyfs desc -s <save_path>`，生成配套的身份文件，保存在save_path目录下。如果不指定save_path，默认为~/.cyfs_profile
+3. 绑定OOD
+   > 身份生成后，复制`<save_path>/ood.desc`和`<save_path>/ood.sec`两个文件到OOD机器的`${cyfs_root}/etc/desc`下，并重命名为`device.desc`和`device.sec`
+4. 绑定CYFS-Runtime
+   > 身份生成后，复制`<save_path>/runtime.desc`和`<save_path>/runtime.sec`两个文件到CYFS浏览器机器的`${cyfs_runtime_root}/etc/desc`下，并重命名为`device.desc`和`device.sec`
+
+`${cyfs_runtime_root}`具体路径：
+- Windows: `%appdata%/cyfs`
+- Mac OS: `~/Library/Application Support/cyfs`
+
+## 发布您的第一个Web3网站
+
+先准备好您的网站的www目录，我们先体验将静态网站发布到Web3,动态网站的构建后续文档会介绍。
+
+使用命令
+```
+cyfs upload <dir_path> -e ood -t ood
+```
+将本地<dir_path>指向的文件，添加到OOD上。
+命令执行完成，本地的www目录已经被上传到OOD并产生了Web3.0网站的唯一连接(命令执行的结尾)。
+该链接为cyfs O Link,看起来是这样的`cyfs://o/$ownerid/$objid`,此时$objid为目录的ContentId. 
+
+## 浏览刚发布的网站
+在任一安装了cyfs-tool的机器上使用命令
+```
+cyfs get cyfs://o/$ownerid/$objid/index.html
+```
+可以下载刚发布的官网。
+
+任意安装了cyfs浏览器的机器，可用cyfs浏览器打开`cyfs://o/$ownerid/$objid/index.html`,浏览刚刚发布的的网站。
+cyfs浏览器的下载，参见[这里](./download.md)
 
 # 代码导读
 通过上面的流程，你已经对CYFS的设计和使用有了一个基本的认识。尽管CYFS的设计已经基本稳定，但我们还有不少的代码要写。我们非常渴望你的帮助，但肯定也不会特别多的精力去编写文档（细节都在源码里了~）。这里我们做一个极简的代码导读，希望能帮助你更快的理解CYFS的实现。
@@ -96,18 +152,18 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 2. 用HTTP协议向cyfs-runtime发起HTTP GET请求
 3. cyfs-runtime在本地缓存中查看对象是否存在
 4. cyfs-runtime发起NamedObject查询需求(下列行为不是串行的)
-    4.1 向OOD查询NamedObject
-    4.2 OOD查询本地，NamedObject是否存在
-    4.3 OOD查询MetaChain，NamedObject是否存在
-    4.4 OOD根据get中的Reference信息，在上一跳设备上查询NamedObject是否存在
-    4.5 OOD通过MetaChain查询Object's Owner Zone的配置
-    4.6 OOD通过Zone配置，连接NamedObject's OOD，或则连接NamedObject’ Cache,查询NamedObject
+    - 4.1 向OOD查询NamedObject
+    - 4.2 OOD查询本地，NamedObject是否存在
+    - 4.3 OOD查询MetaChain，NamedObject是否存在
+    - 4.4 OOD根据get中的Reference信息，在上一跳设备上查询NamedObject是否存在
+    - 4.5 OOD通过MetaChain查询Object's Owner Zone的配置
+    - 4.6 OOD通过Zone配置，连接NamedObject's OOD，或则连接NamedObject’ Cache,查询NamedObject
 5. 得到ChunkId后，cyfs-runtime调用BDT的Channel接口(NDN语义接口)请求Chunk
-    5.1 对于首个，小的Chunk，直接从关联OOD上获取
-    5.2 对于第二个Chunk，会尝试从上一跳(Reference OOD)获取
-    5.3 BDT会尝试基于应用层的Context信息，进行多源查找和基于喷泉码的多源下载
-    5.4 路由器能识别BDT发出的Chunk请求包，进行拦截、转发，进一步优化网络的整体负载
-    5.5 只有OOD会进行Chunk上传
+    - 5.1 对于首个，小的Chunk，直接从关联OOD上获取
+    - 5.2 对于第二个Chunk，会尝试从上一跳(Reference OOD)获取
+    - 5.3 BDT会尝试基于应用层的Context信息，进行多源查找和基于喷泉码的多源下载
+    - 5.4 路由器能识别BDT发出的Chunk请求包，进行拦截、转发，进一步优化网络的整体负载
+    - 5.5 只有OOD会进行Chunk上传
 6. 当FileObject的第一个Chunk就绪(通过验证)后，步骤1的HTTP GET请求开始返回数据
 
 (上述流程如下图所示)
@@ -128,18 +184,18 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 2. 用HTTP协议发起HTTP GET请求
 3. cyfs-runtime在本地缓存中查看对象是否存在
 4. cyfs-runtime发起NamedObject查询需求(下列行为通常不是串行的)
-    4.1 向OOD查询NamedObject
-    4.2 OOD查询本地，NamedObject是否存在
-    4.3 OOD查询MetaChain，NamedObject是否存在
-    4.4 OOD根据get中的Reference信息，在上一跳设备上查询NamedObject是否存在
-    4.5 OOD通过MetaChain查询Object's Owner Zone的配置
-    4.6 OOD通过Zone配置，连接NamedObject's OOD，或则连接NamedObject’ Cache,查询NamedObject
+    - 4.1 向OOD查询NamedObject
+    - 4.2 OOD查询本地，NamedObject是否存在
+    - 4.3 OOD查询MetaChain，NamedObject是否存在
+    - 4.4 OOD根据get中的Reference信息，在上一跳设备上查询NamedObject是否存在
+    - 4.5 OOD通过MetaChain查询Object's Owner Zone的配置
+    - 4.6 OOD通过Zone配置，连接NamedObject's OOD，或则连接NamedObject’ Cache,查询NamedObject
 5. 得到ChunkId后，cyfs-runtime调用BDT的Channel接口(NDN语义接口)请求Chunk
-    5.1 对于首个，小的Chunk，直接从关联OOD上获取
-    5.2 对于第二个Chunk，会尝试从上一跳(Reference OOD)获取
-    5.3 BDT会尝试基于应用层的Context信息，进行多源查找和基于喷泉码的多源下载
-    5.4 路由器能识别BDT发出的Chunk请求包，进行拦截、转发，进一步优化网络的整体负载
-    5.5 只有OOD会进行Chunk上传
+    - 5.1 对于首个，小的Chunk，直接从关联OOD上获取
+    - 5.2 对于第二个Chunk，会尝试从上一跳(Reference OOD)获取
+    - 5.3 BDT会尝试基于应用层的Context信息，进行多源查找和基于喷泉码的多源下载
+    - 5.4 路由器能识别BDT发出的Chunk请求包，进行拦截、转发，进一步优化网络的整体负载
+    - 5.5 只有OOD会进行Chunk上传
 6. 当FileObject的第一个Chunk就绪并验证后，步骤1的HTTP GET请求开始返回数据
 
 # 目录结构

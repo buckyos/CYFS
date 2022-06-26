@@ -1,6 +1,6 @@
 ![CYFS Logo](./doc/logos/CYFS_logo.png)
 
-***CYFS：Next Generation Protocl Family to Build Web3***    
+****CYFS：Next Generation Protocl Family to Build Web3****    
 + CYFS Website: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index_en.html](cyfs://cyfs/index_en.html)  
 + Discord：[https://discord.gg/dXDxjXTEjT](https://discord.gg/dXDxjXTEjT)   
 + CYFS White Paper(Coming soon)  
@@ -42,6 +42,16 @@ The above is the overall architecture diagram of CYFS, which can help to establi
 
 What key problems are these designs designed to solve? (We believe that "finding the right problem is half done~") You can read "[CYFS Architecture](doc/en/CYFS%20Architecture.pptx)" and "CYFS Whitepaper" (coming soon), the amount of content comparison Great, you can understand it with practice~
 
+## Start your Web3 journey with “Hello CYFS”
+We strongly recommend that you read the "Hello CYFS" series of articles in full to get a complete initial experience of CYFS (the whole process can be completed within 1 hour):
+1. ["Compile and deploy DIYOOD"](doc/en/Hello_CYFS/0.%20Compile%20and%20deploy%20DIY%20OOD.md)
+2. ["Create Your Own Identity Document"](doc/en/Hello_CYFS/1.%20Create%20your%20own%20identity%20document.md)
+3. ["Publish File and Download"](doc/en/Hello_CYFS/2.%20Publish%20the%20file%20and%20download%20it.md)
+4. ["Publish Website and View"](doc/en/Hello_CYFS/3.%20Publish%20the%20web3%20site%20and%20view%20it.md)
+5. ["Tips your friend"](doc/en/Hello_CYFS/4.Tips%20your%20friend.md)
+
+You can also use the following fast progress to have a first experience of "doing nothing without understand and save time"~
+
 # Quick Start
 
 The following will build your own Web3 environment by compiling the CYFS source code, and complete the basic experience of Web3 in this environment:
@@ -51,24 +61,75 @@ The following will build your own Web3 environment by compiling the CYFS source 
 Note that this environment is normally not isolated, but can be added to the CYFS network (we have planned 3 networks: nightly, beta, relase, currently only nightly is available), so the following tutorial does not include compiling MetaChain with source code +SN part. If you plan to build a complete system in an independent environment and need to compile and deploy MetaChain super nodes, please read the document "MetaChain Construction" (Coming soon).
 
 ## Compile
-This basic experience requires the following independent components, all of which are open source and can be compiled independently. You can also mix the official version with your own compiled version
-- OOD: You can refer to the article [Hello CYFS 0: Compile and deploy DIYOOD](doc/zh-CN/Hello_CYFS/0. Compile and deploy DIYOOD.md), compile and deploy DIYOOD from source code
-- Over-delivery: used to manage user identities, bind your own OOD and CYFS Browser, and can currently be downloaded from the official website
-- CYFS Browser: Access the website published by yourself or others through the cyfs link, which can currently be downloaded from the official website
-- CYFS Tool: Node.js-based command line tool that provides upload and get commands. Currently installable via `npm i -g cyfs-tool-nightly`
+Prepare an idle Linux host, preferably a VPS, with more than 2G of memory.
+Preparation:
+- Node.js 14 or above
+- rustc 1.57 or above
 
-## Use the component just compiled
-On a machine with CYFS browser installed and activated, install CYFS Tool:
+Run the following command to compile the OOD System.
 
-Use the command `cyfs upload <file_path> -t ood` to upload the file pointed to by the local <file_path> to OOD.
+```shell
+cd ${cyfs_sources_dir}/src
+npm i
+node ../scripts/build-standalone.js
+````
+During the compilation process of the script, the `${cyfs_root}` folder needs to be created. If the current system or current user does not have permission to create this folder, you need to manually create the `${cyfs_root}` folder in advance, and assign read and write permissions to the current user. (In the official environment, all components and data of the OOD System will be installed to `${cyfs_root}`)
 
-Use the command `cyfs get <object link> -s <save_path>` to download the file to the local through the cyfs-runtime protocol stack
+`${cyfs_root}` path:
+- Windows: `c:\cyfs`
+- MacOS: `~/Library/cyfs`
+- Other systems: `/cyfs`
 
-For more specific instructions and the meaning of the parameters, you can refer to the article [Hello CYFS 2: Release files and download](doc/zh-CN/Hello_CYFS/2.%E5%8F%91%E5%B8%83%E6%96 %87%E4%BB%B6%E5%B9%B6%E4%B8%8B%E8%BD%BD.md)
+Compile successfully generates `ood-installer`
 
-Publish a static website by publishing a folder using the command `cyfs upload <folder_path> -t ood`. This command outputs a cyfs link. Fill in the link in the address bar of the CYFS browser, you can view the website you just published through the CYFS browser
+## Install the newly compiled OOD System
+Before installation, you need to prepare the depends:
+- Node.js 14 and above
+- MongoDB 4.4 version, configured to boot, use the default port, no authentication (using SQLite as the object storage engine can not rely on MongoDB, the subsequent installation script will support the selection of the storage engine)
+- The latest version of docker-ce, configured to start at boot
 
-For more specific instructions, you can refer to the article [Hello CYFS 3: Publish the website and view](doc/zh-CN/Hello_CYFS/3.%E5%8F%91%E5%B8%83%E7%BD%91%E7% AB%99%E5%B9%B6%E6%9F%A5%E7%9C%8B.md)
+Find the newly compiled ood-installer in the src directory and execute
+````
+./ood-installer --target solo
+````
+After a minintes , the installation is complete.
+
+## Activate OOD
+In order to experience the process, the cli tool is used here to complete the D.I.D creation process. **D.I.D created based on the cli tool can only be used for testing purposes! **
+
+1. Install cyfs-tool: use the command line `npm i -g cyfs-tool-nightly` to install the nightly version of the cyfs-tool tool
+2. Generating sets of identities
+   > Use the command `cyfs desc -s <save_path>` to generate a matching identity file and save it in the save_path directory. If save_path is not specified, it defaults to ~/.cyfs_profile
+3. Bind OOD
+   > After the identity is generated, copy the two files `<save_path>/ood.desc` and `<save_path>/ood.sec` to `${cyfs_root}/etc/desc` on the OOD machine and rename it to `device. desc` and `device.sec`
+4. Bind CYFS-Runtime
+   > After the identity is generated, copy the two files `<save_path>/runtime.desc` and `<save_path>/runtime.sec` to `${cyfs_runtime_root}/etc/desc` on the CYFS browser machine and rename them to ` device.desc` and `device.sec`
+
+`${cyfs_runtime_root}` specific path:
+- Windows: `%appdata%/cyfs`
+- Mac OS: `~/Library/Application Support/cyfs`
+
+## Publish your first Web3 website
+
+First prepare the `www` directory of your website, let's first experience publishing static websites to Web3, and follow-up documents for the construction of dynamic websites will be introduced.
+
+use command
+````
+cyfs upload <dir_path> -e ood -t ood
+````
+Add the file pointed to by the local <dir_path> to the OOD.
+The command execution is complete, the local `www` directory has been uploaded to OOD and the unique URL to the Web3.0 website has been generated (the end of the command execution).
+The link is `cyfs O-Link`, which looks like this `cyfs://o/$ownerid/$objid`, where $objid is the ContentId of the directory.
+
+## Browse the website just released
+Use the command on any machine with cyfs-tool installed
+````
+cyfs get cyfs://o/$ownerid/$objid/index.html
+````
+You can download the just-released official website.
+
+Any machine with a `cyfs browser` installed can use the cyfs browser to open `cyfs://o/$ownerid/$objid/index.html` and browse the website just released.
+For the download of `cyfs browser`, see [here](./download.md)
 
 # Code guide
 Through the above process, you have a basic understanding of the design and use of CYFS. Although the design of CYFS is basically stable, we still have a lot of code to write. We are very eager for your help, but certainly not too much energy to write documentation (details are in the source code~). Here we do a minimalist code introduction, hoping to help you understand the implementation of CYFS faster.
@@ -89,18 +150,18 @@ Then the process of using `cyfs get` to obtain is as follows:
 2. Use the HTTP protocol to initiate an HTTP GET request to cyfs-runtime
 3. cyfs-runtime checks whether the object exists in the local cache
 4. cyfs-runtime initiates a NamedObject query request (the following behaviors are not serial)
-    4.1 Query NamedObject from OOD
-    4.2 OOD query local, whether NamedObject exists
-    4.3 OOD queries MetaChain, whether NamedObject exists
-    4.4 OOD queries whether the NamedObject exists on the previous hop device according to the Reference information in get
-    4.5 OOD queries the configuration of Object's Owner Zone through MetaChain
-    4.6 OOD is configured through Zone, connected to NamedObject's OOD, or connected to NamedObject' Cache, and query NamedObject
+    - 4.1 Query NamedObject from OOD
+    - 4.2 OOD query local, whether NamedObject exists
+    - 4.3 OOD queries MetaChain, whether NamedObject exists
+    - 4.4 OOD queries whether the NamedObject exists on the previous hop device according to the Reference information in get
+    - 4.5 OOD queries the configuration of Object's Owner Zone through MetaChain
+    - 4.6 OOD is configured through Zone, connected to NamedObject's OOD, or connected to NamedObject' Cache, and query NamedObject
 5. After getting the ChunkId, cyfs-runtime calls the Channel interface (NDN semantic interface) of the BDT to request the Chunk
-    5.1 For the first, small Chunk, get it directly from the associated OOD
-    5.2 For the second Chunk, it will try to get it from the previous hop (Reference OOD)
-    5.3 BDT will try to perform multi-source search and multi-source download based on fountain code based on the context information of the application layer
-    5.4 The router can identify the Chunk request packets sent by the BDT, intercept and forward them, and further optimize the overall load of the network
-    5.5 Only OOD will upload Chunk
+    - 5.1 For the first, small Chunk, get it directly from the associated OOD
+    - 5.2 For the second Chunk, it will try to get it from the previous hop (Reference OOD)
+    - 5.3 BDT will try to perform multi-source search and multi-source download based on fountain code based on the context information of the application layer
+    - 5.4 The router can identify the Chunk request packets sent by the BDT, intercept and forward them, and further optimize the overall load of the network
+    - 5.5 Only OOD will upload Chunk
 6. When the first Chunk of the FileObject is ready (passed authentication), the HTTP GET request in step 1 starts to return data
 
 (The above process is shown in the figure below)
@@ -111,30 +172,30 @@ Then the process of using `cyfs get` to obtain is as follows:
 After understanding the logic of the above process, you can read the relevant code according to the following guidelines.
 
 ## Upload
-1. Start the local protocol stack: [cyfs-ts-sdk/src/tool/lib/util.ts:304](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool /lib/util.ts#L304)
-2. Construct FileObject: [file_recorder.rs:46](src/component/cyfs-stack/src/trans_api/local/file_recorder.rs#L46)
-3. Construct ObjectMap: [publish_manager.rs:223](src/component/cyfs-stack/src/trans_api/local/publish_manager.rs#L223)
-4. Add the above named objects and named data to the local protocol stack: [file_recorder.rs:257](src/component/cyfs-stack/src/trans_api/local/file_recorder.rs#L257)
-5. Initiate a CYFS PUT operation to the OOD: save the MapObject to the OOD and set the access permission to public: [cyfs-ts-sdk/src/tool/actions/upload.ts:35](https://github.com /buckyos/cyfs-ts-sdk/blob/master/src/tool/actions/upload.ts#L35)
-6. Let OOD start MapObject Prepare and save a named data on OOD: [cyfs-ts-sdk/src/tool/actions/upload.ts:170](https://github.com/buckyos/cyfs-ts -sdk/blob/master/src/tool/actions/upload.ts#L170)
+1. Start the local protocol stack: [util.ts: create_stack()](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/lib/util.ts)
+2. Construct FileObject: [file_recorder.rs: FileRecorder.add_file()](src/component/cyfs-stack/src/trans_api/local/file_recorder.rs)
+3. Construct ObjectMap: [publish_manager.rs: PublishLocalDirTask.publish()](src/component/cyfs-stack/src/trans_api/local/publish_manager.rs)
+4. Add the above Named-Objects and Named-Data to the local protocol stack: [file_recorder.rs: FileRecorder.record_file_chunk_list()](src/component/cyfs-stack/src/trans_api/local/file_recorder.rs)
+5. Initiate a CYFS PUT operation to the OOD: save the MapObject to the OOD and set the access permission to public: [upload.ts: upload_obj()](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/actions/upload.ts)
+6. Let OOD start MapObject Prepare and save Named-data(Chunks) on OOD: [upload.ts: run()](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/actions/upload.ts)
 
 ## Get
-1. Start the local protocol stack: [cyfs-ts-sdk/src/tool/lib/util.ts:304](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool /lib/util.ts#L304)
+1. Start the local protocol stack: [util.ts: create_stack()](https://github.com/buckyos/cyfs-ts-sdk/blob/master/src/tool/lib/util.ts)
 2. Initiate an HTTP GET request using the HTTP protocol
 3. cyfs-runtime checks whether the object exists in the local cache
 4. cyfs-runtime initiates NamedObject query requirements (the following behaviors are usually not serial)
-    4.1 Query NamedObject from OOD
-    4.2 OOD query local, whether NamedObject exists
-    4.3 OOD queries MetaChain, whether NamedObject exists
-    4.4 OOD queries whether the NamedObject exists on the previous hop device according to the Reference information in get
-    4.5 OOD queries the configuration of Object's Owner Zone through MetaChain
-    4.6 OOD is configured through Zone, connected to NamedObject's OOD, or connected to NamedObject' Cache, and query NamedObject
-5. After getting the ChunkId, cyfs-runtime calls the Channel interface (NDN semantic interface) of the BDT to request the Chunk
-    5.1 For the first, small Chunk, get it directly from the associated OOD
-    5.2 For the second Chunk, it will try to get it from the previous hop (Reference OOD)
-    5.3 BDT will try to perform multi-source search and multi-source download based on fountain code based on the context information of the application layer
-    5.4 The router can identify the Chunk request packets sent by the BDT, intercept and forward them, and further optimize the overall load of the network
-    5.5 Only OOD will upload Chunk
+    - 4.1 Query NamedObject from OOD
+    - 4.2 OOD query local, whether NamedObject exists
+    - 4.3 OOD queries MetaChain, whether NamedObject exists
+    - 4.4 OOD queries whether the NamedObject exists on the previous hop device according to the Reference information in GET
+    - 4.5 OOD queries the configuration of Object's Owner Zone through MetaChain
+    - 4.6 OOD is configured through Zone, connected to NamedObject's OOD, or connected to NamedObject' Cache, and query NamedObject
+5. After get the ChunkId, cyfs-runtime calls the Channel interface (NDN semantic interface) of the BDT to request the Chunk
+    - 5.1 For the first and small Chunk, get it directly from the associated OOD
+    - 5.2 For the second Chunk, it will try to get it from the previous-jump (Reference OOD)
+    - 5.3 BDT will try to perform multi-source search and multi-source download based on fountain code based on the context information of the application layer
+    - 5.4 The router can identify the Chunk request packets sent by the BDT, intercept and forward them, and further optimize the overall load of the network
+    - 5.5 Only OOD will upload Chunk
 6. When the first chunk of the FileObject is ready and verified, the HTTP GET request in step 1 starts to return data
 
 # Directory Structure
