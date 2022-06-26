@@ -1,9 +1,11 @@
 ![CYFS Logo](./doc/logos/CYFS_logo.png)
 
 ****CYFS：Next Generation Protocl Family to Build Web3****    
++ CYFS is short for CYberFileSystem
 + CYFS Website: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index_en.html](cyfs://cyfs/index_en.html)  
 + Discord：[https://discord.gg/dXDxjXTEjT](https://discord.gg/dXDxjXTEjT)   
 + CYFS White Paper(Coming soon)  
++ Language: [中文](./README.zh-CN.md)
 
 # Introduce
 
@@ -44,8 +46,8 @@ What key problems are these designs designed to solve? (We believe that "finding
 
 ## Start your Web3 journey with “Hello CYFS”
 We strongly recommend that you read the "Hello CYFS" series of articles in full to get a complete initial experience of CYFS (the whole process can be completed within 1 hour):
-1. ["Compile and deploy DIYOOD"](doc/en/Hello_CYFS/0.%20Compile%20and%20deploy%20DIY%20OOD.md)
-2. ["Create Your Own Identity Document"](doc/en/Hello_CYFS/1.%20Create%20your%20own%20identity%20document.md)
+1. ["Compile and deploy DIY-OOD"](doc/en/Hello_CYFS/0.%20Compile%20and%20deploy%20DIY%20OOD.md)
+2. ["Create Your DID"](doc/en/Hello_CYFS/1.%20Create%20your%20DID.md)
 3. ["Publish File and Download"](doc/en/Hello_CYFS/2.%20Publish%20the%20file%20and%20download%20it.md)
 4. ["Publish Website and View"](doc/en/Hello_CYFS/3.%20Publish%20the%20web3%20site%20and%20view%20it.md)
 5. ["Tips your friend"](doc/en/Hello_CYFS/4.Tips%20your%20friend.md)

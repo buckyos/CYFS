@@ -1,10 +1,11 @@
 ![CYFS Logo](./doc/logos/CYFS_logo.png)
 
 ****CYFS：Next Generation Protocl Family to Build Web3****    
++ CYFS是CYberFileSystem的缩写
 + 官方主页: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index_en.html](cyfs://cyfs/index_en.html)  
 + Discord 讨论组：[https://discord.gg/dXDxjXTEjT](https://discord.gg/dXDxjXTEjT)   
 + CYFS白皮书(Coming soon)   
-
++ Language: [English](./README.md)
 # Introduce
 
 CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3。它采用颠覆性的架构设计，每一个人带着自己的OOD(Owner Online Device)进入，形成一个真正去中心化的网络。
