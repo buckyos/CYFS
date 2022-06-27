@@ -15,7 +15,7 @@ sqlite = ["rusqlite"]
 memory = ["lru_time_cache"]
 
 [dependencies]
-mongodb = { version = "1.1.1", default-features = false, features = [
+mongodb = { version = "1.2", default-features = false, features = [
     "async-std-runtime",
 ], optional = true }
 bson = { version = "1.1", optional = true }

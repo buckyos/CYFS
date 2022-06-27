@@ -35,4 +35,4 @@ sha2 = "0.8"
 clap = "2.34.0"
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.18"
+nix = "0.24"
