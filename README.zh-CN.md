@@ -1,4 +1,8 @@
 ![CYFS Logo](./doc/logos/CYFS_logo.png)
+[![cyfs-lib-ver](https://img.shields.io/crates/v/cyfs-lib?label=cyfs-lib&style=plastic)](https://crates.io/crates/cyfs-lib)
+![rust](https://img.shields.io/badge/rustc-1.57%2B-green?style=plastic)
+![liscence](https://img.shields.io/crates/l/cyfs-base?style=plastic)
+![Downloads](https://img.shields.io/crates/d/cyfs-base?style=plastic)
 
 ****CYFS：Next Generation Protocl Family to Build Web3****    
 + CYFS是CYberFileSystem的缩写
