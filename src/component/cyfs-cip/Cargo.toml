@@ -19,7 +19,7 @@ log = "0.4"
 sha2 = "0.10"
 hmac = "0.12"
 memzero = "0.1.0"
-cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-base = { path = "../../component/cyfs-base", version = "0.5" }
 hex = "0.4"
 
 [dependencies.digest]

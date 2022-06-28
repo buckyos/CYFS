@@ -15,7 +15,8 @@ const publish_packages = [
     "cyfs-sha2",
     "cyfs-task-manager",
     "cyfs-util",
-    "cyfs-dsg-client"
+    "cyfs-dsg-client",
+    "cyfs-cip"
 ]
 
 module.exports = {
