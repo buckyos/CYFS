@@ -66,7 +66,7 @@ impl ChunkManager {
                 Err(BuckyError::from(e))
             }
         }
-    }d
+    }
 
     pub async fn create_union_account(&self, miner_device_id:&DeviceId, balance: &i64)->BuckyResult<CreateUnionTx>{
         let id = self.ctx.get_device().desc().calculate_id();
