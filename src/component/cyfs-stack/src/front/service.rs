@@ -10,6 +10,10 @@ use crate::root_state::GlobalStateAccessInputProcessorRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
+enum GlobalStateResponse {
+    Object(RootStateAccessGetObjectByPathInputResponse),
+    List(RootStateAccessListInputResponse),
+}
 
 pub(crate) struct FrontService {
     non: NONInputProcessorRef,
@@ -339,46 +343,62 @@ impl FrontService {
 
         let state_resp = self.process_global_state_request(req.clone()).await?;
 
-        let resp = match state_resp.object.object.object_id.obj_type_code() {
-            ObjectTypeCode::Chunk => {
-                // verify the mode
-                let mode = Self::select_mode(&req.mode, &state_resp.object.object.object_id)?;
-                assert_eq!(mode, FrontRequestGetMode::Data);
-
-                let ndn_req = FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
-                let resp = self.process_get_chunk(ndn_req).await?;
-
-                FrontRResponse {
-                    object: Some(state_resp.object),
-                    root: state_resp.root,
-                    revision: state_resp.revision,
-                    data: Some(resp),
-                }
-            }
-            _ => {
-                // decide the mode
-                let mode = Self::select_mode(&req.mode, &state_resp.object.object.object_id)?;
-
-                match mode {
-                    FrontRequestGetMode::Object => FrontRResponse {
-                        object: Some(state_resp.object),
-                        root: state_resp.root,
-                        revision: state_resp.revision,
-                        data: None,
-                    },
-                    FrontRequestGetMode::Data => {
-                        let ndn_req =
-                            FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
-                        let ndn_resp = self.process_get_file(ndn_req).await?;
-
+       let resp = match state_resp {
+            GlobalStateResponse::Object(state_resp) => {
+                match state_resp.object.object.object_id.obj_type_code() {
+                    ObjectTypeCode::Chunk => {
+                        // verify the mode
+                        let mode = Self::select_mode(&req.mode, &state_resp.object.object.object_id)?;
+                        assert_eq!(mode, FrontRequestGetMode::Data);
+        
+                        let ndn_req = FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
+                        let resp = self.process_get_chunk(ndn_req).await?;
+        
                         FrontRResponse {
                             object: Some(state_resp.object),
                             root: state_resp.root,
                             revision: state_resp.revision,
-                            data: Some(ndn_resp),
+                            data: Some(resp),
+                            list: None,
                         }
                     }
-                    _ => unreachable!(),
+                    _ => {
+                        // decide the mode
+                        let mode = Self::select_mode(&req.mode, &state_resp.object.object.object_id)?;
+        
+                        match mode {
+                            FrontRequestGetMode::Object => FrontRResponse {
+                                object: Some(state_resp.object),
+                                root: state_resp.root,
+                                revision: state_resp.revision,
+                                data: None,
+                                list: None,
+                            },
+                            FrontRequestGetMode::Data => {
+                                let ndn_req =
+                                    FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
+                                let ndn_resp = self.process_get_file(ndn_req).await?;
+        
+                                FrontRResponse {
+                                    object: Some(state_resp.object),
+                                    root: state_resp.root,
+                                    revision: state_resp.revision,
+                                    data: Some(ndn_resp),
+                                    list: None,
+                                }
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                }
+            }
+            GlobalStateResponse::List(state_resp) => {
+                FrontRResponse {
+                    object: None,
+                    root: state_resp.root,
+                    revision: state_resp.revision,
+                    data: None,
+                    list: Some(state_resp.list),
                 }
             }
         };
@@ -386,10 +406,11 @@ impl FrontService {
         Ok(resp)
     }
 
+   
     async fn process_global_state_request(
         &self,
         req: FrontRRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
+    ) -> BuckyResult<GlobalStateResponse> {
         let common = RootStateInputRequestCommon {
             dec_id: req.dec_id,
             source: req.source,
@@ -398,17 +419,37 @@ impl FrontService {
             flags: req.flags,
         };
 
-        let state_req = RootStateAccessGetObjectByPathInputRequest {
-            common,
-            inner_path: req.inner_path.unwrap_or("".to_owned()),
-        };
-
         let processor = match req.category {
             GlobalStateCategory::RootState => &self.root_state,
             GlobalStateCategory::LocalCache => &self.local_cache,
         };
 
-        processor.get_object_by_path(state_req).await
+        match req.action {
+            RootStateAccessAction::GetObjectByPath => {
+                let state_req = RootStateAccessGetObjectByPathInputRequest {
+                    common,
+                    inner_path: req.inner_path.unwrap_or("".to_owned()),
+                };
+        
+                processor.get_object_by_path(state_req).await.map(|resp| {
+                    GlobalStateResponse::Object(resp)
+                })
+            }
+            RootStateAccessAction::List => {
+                let state_req = RootStateAccessListInputRequest {
+                    common,
+                    inner_path: req.inner_path.unwrap_or("".to_owned()),
+
+                    page_index: req.page_index,
+                    page_size: req.page_size,
+                };
+
+                processor.list(state_req).await.map(|resp| {
+                    GlobalStateResponse::List(resp)
+                })
+            }
+        }
+        
     }
 
     pub async fn process_a_request(&self, req: FrontARequest) -> BuckyResult<FrontAResponse> {

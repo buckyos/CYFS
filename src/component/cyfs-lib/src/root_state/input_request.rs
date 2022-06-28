@@ -382,11 +382,7 @@ pub struct RootStateAccessGetObjectByPathInputRequest {
 impl fmt::Display for RootStateAccessGetObjectByPathInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
-        write!(
-            f,
-            ", inner_path: {}",
-            self.inner_path
-        )
+        write!(f, ", inner_path: {}", self.inner_path)
     }
 }
 
@@ -419,4 +415,4 @@ impl fmt::Display for RootStateAccessListInputRequest {
     }
 }
 
-pub type RootStateAccessListInputResponse = OpEnvNextInputResponse;
+pub type RootStateAccessListInputResponse = RootStateAccessListOutputResponse;

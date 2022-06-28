@@ -450,7 +450,7 @@ impl FrontProtocolHandler {
         route_param: String,
     ) -> BuckyResult<FrontRResponse> {
         /*
-        [/target]/dec_id/{inner_path}
+        [/target]/{dec_id}/{inner_path}
 
         target: People/SimpleGroup/Device-id, name, $
         dec-id: DecAppId/system/root
@@ -559,8 +559,53 @@ impl FrontProtocolHandler {
         // header or params dec_id has higher priority
         let dec_id = extra_dec_id.or(dec_id);
 
-        let mode = Self::mode_from_request(url)?;
-        let flags = Self::flags_from_request(url)?;
+        // let mode = Self::mode_from_request(url)?;
+        // let flags = Self::flags_from_request(url)?;
+
+        // extract params from url querys
+        let mut page_index: Option<u32> = None;
+        let mut page_size: Option<u32> = None;
+        let mut action = RootStateAccessAction::GetObjectByPath;
+        let mut mode = FrontRequestGetMode::Default;
+        let mut flags = 0;
+
+        let pairs = req.request.url().query_pairs();
+        for (k, v) in pairs {
+            match k.as_ref() {
+                "mode" => {
+                    mode = FrontRequestGetMode::from_str(v.as_ref())?;
+                }
+                "flags" => {
+                    flags = u32::from_str(v.as_ref()).map_err(|e| {
+                        let msg = format!("invalid request url flags query param! {}, {}", req.request.url(), e);
+                        error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::InvalidParam, msg)
+                    })?;
+                }
+                "action" => {
+                    action = RootStateAccessAction::from_str(v.as_ref())?;
+                }
+                "page_index" => {
+                    let v = v.as_ref().parse().map_err(|e| {
+                        let msg = format!("invalid page_index param: {}, {}", v, e);
+                        error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::InvalidParam, msg)
+                    })?;
+                    page_index = Some(v);
+                }
+                "page_size" => {
+                    let v = v.as_ref().parse().map_err(|e| {
+                        let msg = format!("invalid page_size param: {}, {}", v, e);
+                        error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::InvalidParam, msg)
+                    })?;
+                    page_size = Some(v);
+                }
+                _ => {
+                    warn!("unknown global state access url query: {}={}", k, v);
+                }
+            }
+        }
 
         let r_req = FrontRRequest {
             protocol: req.protocol,
@@ -570,7 +615,11 @@ impl FrontProtocolHandler {
 
             target,
             dec_id,
+
+            action,
             inner_path,
+            page_index,
+            page_size,
 
             mode,
 
@@ -698,23 +747,26 @@ impl FrontProtocolHandler {
         resp: FrontRResponse,
         format: FrontRequestObjectFormat,
     ) -> tide::Response {
-        let mut http_resp = match resp.data {
-            Some(data_resp) => {
-                let mut http_resp = NDNRequestHandler::encode_get_data_response(data_resp);
+        let mut http_resp = if let Some(data_resp) = resp.data {
+            let mut http_resp = NDNRequestHandler::encode_get_data_response(data_resp);
 
-                if let Some(object_resp) = resp.object {
-                    NONRequestHandler::encode_get_object_response_times(
-                        http_resp.as_mut(),
-                        &object_resp,
-                    );
-                }
+            if let Some(object_resp) = resp.object {
+                NONRequestHandler::encode_get_object_response_times(
+                    http_resp.as_mut(),
+                    &object_resp,
+                );
+            }
 
-                http_resp
-            }
-            None => {
-                let object_resp = resp.object.unwrap();
-                NONRequestHandler::encode_get_object_response(object_resp, format)
-            }
+            http_resp
+        } else if let Some(object_resp) = resp.object {
+            NONRequestHandler::encode_get_object_response(object_resp, format)
+        } else if let Some(list_resp) = resp.list {
+            let mut http_resp = RequestorHelper::new_response(http_types::StatusCode::Ok);
+            http_resp.set_body(list_resp.encode_string());
+            http_resp.set_content_type(tide::http::mime::JSON);
+            http_resp.into()
+        } else {
+            unreachable!();
         };
 
         http_resp.insert_header(cyfs_base::CYFS_ROOT, resp.root.to_string());

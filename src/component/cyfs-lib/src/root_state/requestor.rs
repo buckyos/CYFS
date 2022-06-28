@@ -380,10 +380,7 @@ impl OpEnvRequestor {
             Ok(())
         } else {
             let e = RequestorHelper::error_from_resp(&mut resp).await;
-            error!(
-                "create_new for op_env error! sid={}, {}",
-                self.sid, e
-            );
+            error!("create_new for op_env error! sid={}, {}", self.sid, e);
             Err(e)
         }
     }
@@ -1018,6 +1015,21 @@ impl GlobalStateAccessRequestor {
         http_req
     }
 
+    pub async fn decode_list_response(
+        resp: &mut Response,
+    ) -> BuckyResult<RootStateAccessListOutputResponse> {
+        
+        let list = RequestorHelper::decode_json_body(resp).await?;
+        let root = RequestorHelper::decode_header(resp, cyfs_base::CYFS_ROOT)?;
+        let revision = RequestorHelper::decode_header(resp, cyfs_base::CYFS_REVISION)?;
+
+        Ok(RootStateAccessListOutputResponse {
+            list,
+            root,
+            revision,
+        })
+    }
+
     async fn list(
         &self,
         req: RootStateAccessListOutputRequest,
@@ -1029,14 +1041,15 @@ impl GlobalStateAccessRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         if resp.status().is_success() {
-            let resp: RootStateAccessListOutputResponse =
-                RequestorHelper::decode_json_body(&mut resp).await?;
+            let resp = Self::decode_list_response(&mut resp).await?;
 
             info!(
-                "list from global state success: category={}, req={}, count={}",
+                "list from global state success: category={}, req={}, count={}, root={}, revision={}",
                 self.category,
                 req,
-                resp.list.len()
+                resp.list.len(),
+                resp.root,
+                resp.revision,
             );
 
             Ok(resp)

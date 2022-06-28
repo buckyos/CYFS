@@ -763,4 +763,9 @@ impl fmt::Display for RootStateAccessListOutputRequest {
     }
 }
 
-pub type RootStateAccessListOutputResponse = OpEnvNextOutputResponse;
+pub struct RootStateAccessListOutputResponse {
+    pub list: Vec<ObjectMapContentItem>,
+
+    pub root: ObjectId,
+    pub revision: u64,
+}

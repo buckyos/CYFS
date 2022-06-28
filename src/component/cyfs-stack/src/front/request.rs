@@ -35,10 +35,13 @@ pub struct FrontRRequest {
     pub target: Option<ObjectId>,
 
     pub dec_id: Option<ObjectId>,
+
+    pub action: RootStateAccessAction,
     pub inner_path: Option<String>,
+    pub page_index: Option<u32>,
+    pub page_size: Option<u32>,
 
     pub mode: FrontRequestGetMode,
-
     pub flags: u32,
 }
 
@@ -48,6 +51,9 @@ pub struct FrontRResponse {
     pub revision: u64,
 
     pub data: Option<NDNGetDataInputResponse>,
+    
+    // for list action
+    pub list: Option<Vec<ObjectMapContentItem>>,
 }
 
 pub struct FrontNDNRequest {

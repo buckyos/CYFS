@@ -135,7 +135,7 @@ impl FromStr for OpEnvAction {
 }
 
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum RootStateAccessAction {
     GetObjectByPath,
     List,

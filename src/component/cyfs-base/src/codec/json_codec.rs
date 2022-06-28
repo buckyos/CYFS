@@ -7,8 +7,12 @@ use serde::{Serialize, Deserialize};
 
 
 pub trait JsonCodec<T> {
-    fn encode_json(&self) -> Map<String, Value>;
-    fn decode_json(obj: &Map<String, Value>) -> BuckyResult<T>;
+    fn encode_json(&self) -> Map<String, Value> {
+        unimplemented!();
+    }
+    fn decode_json(obj: &Map<String, Value>) -> BuckyResult<T> {
+        unimplemented!();
+    }
 
     fn encode_string(&self) -> String {
         self.encode_value().to_string()
@@ -850,5 +854,15 @@ impl JsonCodec<Self> for ObjectMapContentItem {
         };
 
         Ok(ret)
+    }
+}
+
+impl JsonCodec<Self> for Vec<ObjectMapContentItem> {
+    fn decode_value(value: &Value) -> BuckyResult<Self> {
+        JsonCodecHelper::decode_from_array(value)
+    }
+
+    fn encode_value(&self) -> Value {
+        JsonCodecHelper::encode_to_array(self)
     }
 }

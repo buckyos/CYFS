@@ -53,8 +53,8 @@ impl GlobalStateAccessService {
                     return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
                 }
 
-                let root = op_env.root().clone();
-                let revision = self.root_state.get_root_revision(&root).unwrap();
+                let dec_root = op_env.root().clone();
+                let (root, revision) = self.root_state.get_dec_relation_root_info(&dec_root);
 
                 let object_id = ret.unwrap();
                 let root_cache = dec_root_manager.root_cache().clone();
@@ -67,7 +67,8 @@ impl GlobalStateAccessService {
         &self,
         req: RootStateAccessGetObjectByPathInputRequest,
     ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
-        let resp = self.get_by_path_impl(&req.common.dec_id, &req.inner_path)
+        let resp = self
+            .get_by_path_impl(&req.common.dec_id, &req.inner_path)
             .await?;
 
         Ok(resp)
@@ -82,9 +83,7 @@ impl GlobalStateAccessService {
         let (object_id, root_cache, root_info) = self.get_object_id(dec_id, inner_path).await?;
 
         let object_resp = match object_id.obj_type_code() {
-            ObjectTypeCode::Chunk => {
-                NONGetObjectInputResponse::new(object_id, vec![], None)
-            }
+            ObjectTypeCode::Chunk => NONGetObjectInputResponse::new(object_id, vec![], None),
             _ => {
                 let ret = if object_id.obj_type_code() == ObjectTypeCode::ObjectMap {
                     let obj = root_cache.get_object_map(&object_id).await?;
@@ -94,10 +93,11 @@ impl GlobalStateAccessService {
                                 let object_map = obj.lock().await;
                                 object_map.clone()
                             };
-        
+
                             let object_raw = object.to_vec()?;
-                            let object = AnyNamedObject::Standard(StandardObject::ObjectMap(object));
-        
+                            let object =
+                                AnyNamedObject::Standard(StandardObject::ObjectMap(object));
+
                             Some((Arc::new(object), object_raw))
                         }
                         None => None,
@@ -105,7 +105,7 @@ impl GlobalStateAccessService {
                 } else {
                     self.load_object_from_noc(&object_id).await?
                 };
-        
+
                 if ret.is_none() {
                     let msg = format!(
                         "get_by_path but object not found! dec={:?}, path={}, object={}",
@@ -114,15 +114,15 @@ impl GlobalStateAccessService {
                     warn!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
                 }
-        
+
                 let (object, object_raw) = ret.unwrap();
-        
+
                 let mut resp = NONGetObjectInputResponse::new(object_id, object_raw, Some(object));
                 resp.init_times()?;
                 resp
             }
         };
-        
+
         let resp = RootStateAccessGetObjectByPathInputResponse {
             object: object_resp,
             root: root_info.0,
@@ -162,7 +162,7 @@ impl GlobalStateAccessService {
         &self,
         req: RootStateAccessListInputRequest,
     ) -> BuckyResult<RootStateAccessListInputResponse> {
-        let (target, root_cache, _) = self
+        let (target, root_cache, root_info) = self
             .get_object_id(&req.common.dec_id, &req.inner_path)
             .await?;
 
@@ -190,7 +190,11 @@ impl GlobalStateAccessService {
         let page_index = req.page_index.unwrap_or(0) as usize;
         let page_size = req.page_size.unwrap_or(1024) as usize;
         if page_size == 0 {
-            return Ok(RootStateAccessListInputResponse { list: vec![] });
+            return Ok(RootStateAccessListInputResponse {
+                list: vec![],
+                root: root_info.0,
+                revision: root_info.1,
+            });
         }
 
         let begin = page_size * page_index;
@@ -202,7 +206,11 @@ impl GlobalStateAccessService {
             let mut it = ObjectMapIterator::new(true, &obj, op_env_cache);
             let count = it.skip(&obj, begin).await?;
             if count < begin {
-                return Ok(RootStateAccessListInputResponse { list: vec![] });
+                return Ok(RootStateAccessListInputResponse {
+                    list: vec![],
+                    root: root_info.0,
+                    revision: root_info.1,
+                });
             }
 
             it.into_iterator()
@@ -212,7 +220,11 @@ impl GlobalStateAccessService {
 
         let list = it.next(&obj, page_size).await?;
 
-        Ok(RootStateAccessListInputResponse { list: list.list })
+        Ok(RootStateAccessListInputResponse {
+            list: list.list,
+            root: root_info.0,
+            revision: root_info.1,
+        })
     }
 }
 

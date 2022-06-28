@@ -964,7 +964,13 @@ impl GlobalStateAccessRequestHandler {
         let resp = self.processor.list(req).await?;
 
         let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
-        http_resp.set_body(resp.encode_string());
+
+        http_resp.set_body(resp.list.encode_string());
+
+        http_resp.set_content_type(tide::http::mime::JSON);
+        http_resp.insert_header(cyfs_base::CYFS_ROOT, resp.root.to_string());
+        http_resp.insert_header(cyfs_base::CYFS_REVISION, resp.revision.to_string());
+
         Ok(http_resp.into())
     }
 }
