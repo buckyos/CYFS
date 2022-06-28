@@ -521,7 +521,8 @@ impl MergeWriter {
 
 struct MergeMeasure {
     cur: Option<SourceReaderIter>, 
-    sources: ChunkListDesc
+    sources: ChunkListDesc, 
+    merge_chunk_size: u64
 }
 
 impl MergeMeasure {
@@ -550,14 +551,15 @@ impl MergeMeasure {
         header_len
     } 
 
-    fn new(sources: ChunkListDesc) -> Self {
+    fn new(sources: ChunkListDesc, merge_chunk_size: u64) -> Self {
         Self {
             cur: Some(SourceReaderIter {
                 range: 0..0, 
                 index: 0, 
                 cache: None
             }), 
-            sources
+            sources, 
+            merge_chunk_size
         }
     }
 
@@ -591,10 +593,10 @@ impl MergeMeasure {
                     ((next_header_len / enc_block as u64) + 1) * enc_block as u64
                 };
                   
-                if next_header_len > u32::MAX as u64 {
+                if next_header_len > self.merge_chunk_size {
                     break Some(source_iter);
                 } 
-                let remain_chunk_len = u32::MAX as usize - next_header_len as usize;
+                let remain_chunk_len = (self.merge_chunk_size - next_header_len) as usize;
                 let cur_id = &self.sources.chunks()[source_iter.index];
 
                 header_len += range_len;
@@ -1079,9 +1081,10 @@ impl<'a> DsgDataSourceStubObjectRef<'a> {
         stack: &SharedCyfsStack, 
         sources: ChunkListDesc, 
         aes_key: AesKey, 
+        merge: u64, 
         split: u32
     ) -> DsgDataSourceStubObject {
-        let mut measure = MergeMeasure::new(sources);
+        let mut measure = MergeMeasure::new(sources, merge);
         let key = Some(aes_key);
         let mut functions = vec![];
         loop {

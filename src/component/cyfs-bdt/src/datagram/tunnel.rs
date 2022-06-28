@@ -282,7 +282,6 @@ impl DatagramTunnel {
     }
 
     pub fn close(&self) {
-        //FIXME: 释放端口
         let stack = Stack::from(&self.0.stack);
         stack.datagram_manager().unbind(self.vport());
     }

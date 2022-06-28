@@ -23,6 +23,7 @@ pub struct DsgServiceConfig {
     pub challenge_interval: Duration,  
     pub repost_challenge_interval: Duration, 
     pub atomic_interval: Duration, 
+    pub merge_chunk_size: u64, 
     pub split_chunk_size: usize
 }
 
@@ -42,6 +43,7 @@ impl Default for DsgServiceConfig {
             }, 
             repost_challenge_interval: Duration::from_secs(60), 
             challenge_interval: Duration::from_secs(24 * 3600), 
+            merge_chunk_size: u32::MAX as u64, 
             split_chunk_size: 18 * 1024 * 1024
         }
     }
@@ -596,6 +598,7 @@ impl DsgService {
                     self.stack(), 
                     sources.clone(), 
                     AesKey::random(), 
+                    self.config().merge_chunk_size, 
                     self.config().split_chunk_size as u32)
             }
         };

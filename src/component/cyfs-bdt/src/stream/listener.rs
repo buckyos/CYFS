@@ -62,7 +62,6 @@ impl StreamListener {
         Self(Arc::new(StreamListenerImpl {
             manager, 
             port, 
-            //FIXME: backlog count config
             state: RwLock::new(StreamListenerState::Listening(bounded::<PreAcceptedStream>(backlog)))
         }))
     } 

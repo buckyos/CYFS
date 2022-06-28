@@ -960,7 +960,7 @@ impl Tunnel {
                             }
                             if miss_active_time > ping_interval {
                                 if tunnel.0.keeper_count.load(Ordering::SeqCst) > 0 {
-                                    debug!("send ping, tunnel:{}", tunnel);
+                                    info!("send ping, tunnel:{}", tunnel);
                                     let ping = PingTunnel {
                                         package_id: 0,
                                         to_container_id: IncreaseId::default(),

@@ -538,15 +538,6 @@ impl TunnelContainer {
         1024 // FIXME:先写固定值，一般没连通时需要先ExchangeKey/Syn...，负载会比较小，连通时负载会比较大
     }
 
-    // fn sync_builder_state<T: 'static + TunnelBuilder>(&self, builder: T) {
-    //     let tunnel = self.clone();
-    //     task::spawn(async move {
-    //         let _ = builder.wait_establish().await;
-    //         //FIXME: 这里可以同步到container的 tunnel状态
-    //         *tunnel.0.build_state.write().unwrap() = TunnelBuildState::Idle;
-    //     });
-    // }
-
     pub fn reset(&self) {
         let (tunnels, waiter) = {
             let mut state = self.0.state.write().unwrap();
