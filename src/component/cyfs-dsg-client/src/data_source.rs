@@ -599,7 +599,7 @@ impl MergeMeasure {
                 let remain_chunk_len = (self.merge_chunk_size - next_header_len) as usize;
                 let cur_id = &self.sources.chunks()[source_iter.index];
 
-                header_len += range_len;
+                // header_len += range_len;
                 if (source_iter.range.end + remain_chunk_len) <= cur_id.len() {
                     if stub.indices.len() > 0 {
                         stub.last_range = Some(remain_chunk_len as u32);

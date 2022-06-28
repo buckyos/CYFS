@@ -328,7 +328,7 @@ impl DsgService {
     } 
 
     pub(crate) async fn query_contracts(&self, skip: u32, limit: Option<u32>) -> BuckyResult<HashMap<ObjectId, ObjectId>> {
-        let op = self.stack().root_state_stub(None).create_single_op_env().await?;
+        let op = self.stack().root_state_stub(None, None).create_single_op_env().await?;
         op.load_by_path("/dsg-service/contracts/").await?;
         let _ = op.next(skip).await?;
         let states = if let Some(limit) = limit {
@@ -368,7 +368,7 @@ impl DsgService {
 
     pub(crate) async fn query_states(&self, contracts: HashMap<ObjectId, Option<ObjectId>>) -> BuckyResult<HashMap<ObjectId, ObjectId>> {
         let mut states = HashMap::default(); 
-        let op = self.stack().root_state_stub(None).create_path_op_env().await?;
+        let op = self.stack().root_state_stub(None, None).create_path_op_env().await?;
         for (contract_id, state_id) in contracts {
             if let Some(cur_state_id) = op.get_by_key(format!("/dsg-service/contracts/{}/", contract_id), "state").await? {
                 if state_id.is_none() || cur_state_id != state_id.unwrap() {
