@@ -278,15 +278,71 @@ impl OpEnvLockOutputRequest {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum OpEnvCommitOpType {
+    Commit,
+    Update,
+}
+
+impl OpEnvCommitOpType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Commit => "commit",
+            Self::Update => "update",
+        }
+    }
+}
+
+impl ToString for OpEnvCommitOpType {
+    fn to_string(&self) -> String {
+        self.as_str().to_owned()
+    }
+}
+
+impl FromStr for OpEnvCommitOpType {
+    type Err = BuckyError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let ret = match value {
+            "commit" => Self::Commit,
+            "update" => Self::Update,
+
+            v @ _ => {
+                let msg = format!("unknown OpEnvCommitOpType value: {}", v);
+                error!("{}", msg);
+
+                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+            }
+        };
+
+        Ok(ret)
+    }
+}
+
+impl Default for OpEnvCommitOpType {
+    fn default() -> Self {
+        Self::Commit
+    }
+}
+
 // commit
 pub struct OpEnvCommitOutputRequest {
     pub common: OpEnvOutputRequestCommon,
+    pub op_type: Option<OpEnvCommitOpType>,
 }
 
 impl OpEnvCommitOutputRequest {
     pub fn new() -> Self {
         Self {
             common: OpEnvOutputRequestCommon::new_empty(),
+            op_type: None,
+        }
+    }
+
+    pub fn new_update() -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+            op_type: Some(OpEnvCommitOpType::Update),
         }
     }
 }

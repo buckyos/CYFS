@@ -7,13 +7,13 @@ use crate::*;
 
 use async_std::sync::Mutex as AsyncMutex;
 use once_cell::sync::OnceCell;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 //#[derive(Clone)]
 
 pub struct ObjectMapPathSnapshot {
     // 记录的初始状态的root
-    root: ObjectId,
+    root: RwLock<ObjectId>,
 
     // 所有基于path的操作都在这里面实现，包括root的更新
     path: ObjectMapPath,
@@ -76,7 +76,10 @@ impl ObjectMapPathOpEnv {
             );
             let path = ObjectMapPath::new(root.clone(), self.cache.clone());
 
-            ObjectMapPathSnapshot { root, path }
+            ObjectMapPathSnapshot {
+                root: RwLock::new(root),
+                path,
+            }
         })
     }
 
@@ -89,16 +92,20 @@ impl ObjectMapPathOpEnv {
     }
 
     // 调用次方法会导致path快照被绑定，所以如果需要lock，那么需要按照create_op_env->lock->访问其它方法的次序操作
-    pub fn root(&self) -> &ObjectId {
-        &self.path_snapshot().root
+    pub fn root(&self) -> ObjectId {
+        self.path_snapshot().root.read().unwrap().to_owned()
     }
 
     fn path(&self) -> &ObjectMapPath {
         &self.path_snapshot().path
     }
 
-
-    pub async fn lock_path(&self, path_list: Vec<String>, duration_in_millsecs: u64, as_try: bool) -> BuckyResult<()> {
+    pub async fn lock_path(
+        &self,
+        path_list: Vec<String>,
+        duration_in_millsecs: u64,
+        as_try: bool,
+    ) -> BuckyResult<()> {
         info!(
             "path_op_env lock_path: sid={}, path_list={:?}, duration_in_millsecs={}",
             self.sid, path_list, duration_in_millsecs
@@ -156,7 +163,9 @@ impl ObjectMapPathOpEnv {
 
         let _write_lock = self.write_lock.lock().await;
         self.lock.try_enter_path(full_path, self.sid).await?;
-        self.path().create_new_with_path(full_path, content_type).await
+        self.path()
+            .create_new_with_path(full_path, content_type)
+            .await
     }
 
     pub async fn insert_with_path(&self, full_path: &str, value: &ObjectId) -> BuckyResult<()> {
@@ -221,7 +230,9 @@ impl ObjectMapPathOpEnv {
         );
 
         let _write_lock = self.write_lock.lock().await;
-        self.lock.try_enter_path_and_key(path, key, self.sid).await?;
+        self.lock
+            .try_enter_path_and_key(path, key, self.sid)
+            .await?;
 
         self.path().create_new(path, key, content_type).await
     }
@@ -238,7 +249,9 @@ impl ObjectMapPathOpEnv {
         );
 
         let _write_lock = self.write_lock.lock().await;
-        self.lock.try_enter_path_and_key(path, key, self.sid).await?;
+        self.lock
+            .try_enter_path_and_key(path, key, self.sid)
+            .await?;
         self.path().insert_with_key(path, key, value).await
     }
 
@@ -256,7 +269,9 @@ impl ObjectMapPathOpEnv {
         );
 
         let _write_lock = self.write_lock.lock().await;
-        self.lock.try_enter_path_and_key(path, key, self.sid).await?;
+        self.lock
+            .try_enter_path_and_key(path, key, self.sid)
+            .await?;
         self.path()
             .set_with_key(path, key, value, prev_value, auto_insert)
             .await
@@ -274,7 +289,9 @@ impl ObjectMapPathOpEnv {
         );
 
         let _write_lock = self.write_lock.lock().await;
-        self.lock.try_enter_path_and_key(path, key, self.sid).await?;
+        self.lock
+            .try_enter_path_and_key(path, key, self.sid)
+            .await?;
         self.path().remove_with_key(path, key, prev_value).await
     }
 
@@ -305,12 +322,10 @@ impl ObjectMapPathOpEnv {
         self.path().remove(path, object_id).await
     }
 
-    // 提交操作，只可以调用一次
-    // 提交成功，返回最新的root id
-    pub async fn commit(self) -> BuckyResult<ObjectId> {
+    async fn update_root(&self) -> BuckyResult<ObjectId> {
         // 首先判断有没有发生写操作，会导致path.root改变
         let new_root = self.path().root();
-        let current_root = self.root().clone();
+        let current_root = self.root();
         if new_root == current_root {
             info!(
                 "op env commit but root not changed! sid={}, root={}",
@@ -344,9 +359,11 @@ impl ObjectMapPathOpEnv {
                 this.path().clear_op_list();
             }
 
-            // 提交所有pending的对象到noc
+            // update current op_env's snapshot
             let new_root = this.path().root();
+            *this.path_snapshot().root.write().unwrap() = new_root.clone();
 
+            // 提交所有pending的对象到noc
             if let Err(e) = this.cache.gc(false, &new_root).await {
                 error!("path env's cache gc error! root={}, {}", root, e);
             }
@@ -359,6 +376,17 @@ impl ObjectMapPathOpEnv {
         let new_root = self.root_holder.update_root(Box::new(update)).await?;
 
         Ok(new_root)
+    }
+
+    pub async fn update(&self) -> BuckyResult<ObjectId> {
+        let _write_lock = self.write_lock.lock().await;
+        self.update_root().await
+    }
+
+    // 提交操作，只可以调用一次
+    // 提交成功，返回最新的root id
+    pub async fn commit(self) -> BuckyResult<ObjectId> {
+        self.update_root().await
     }
 
     // 释当前session持有的所有lock

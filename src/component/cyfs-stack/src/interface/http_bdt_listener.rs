@@ -187,11 +187,11 @@ impl ObjectHttpBdtListener {
         let opts = async_h1::ServerOptions::default();
         let ret = async_h1::accept_with_opts(stream, |mut req| async move {
             info!(
-                "recv bdt http request: source={}, seq={:?}, method={}, path={}, len={:?}",
+                "recv bdt http request: source={}, seq={:?}, method={}, url={}, len={:?}",
                 device_id_str,
                 seq,
                 req.method(),
-                req.url().path(),
+                req.url(),
                 req.len()
             );
 

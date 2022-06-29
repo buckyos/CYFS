@@ -236,10 +236,20 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         let dec_id = Self::get_dec_id(&req.common)?;
         let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
 
-        let dec_root = dec_root_manager
-            .managed_envs()
-            .commit(req.common.sid)
-            .await?;
+        let dec_root = match req.op_type {
+            Some(OpEnvCommitOpType::Update) => {
+                dec_root_manager
+                    .managed_envs()
+                    .update(req.common.sid)
+                    .await?
+            }
+            _ => {
+                dec_root_manager
+                    .managed_envs()
+                    .commit(req.common.sid)
+                    .await?
+            }
+        };
 
         let resp = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {

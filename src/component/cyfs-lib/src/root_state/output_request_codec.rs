@@ -218,6 +218,7 @@ impl JsonCodec<Self> for OpEnvCommitOutputRequest {
         let mut obj = Map::new();
 
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "op_type", self.op_type.as_ref());
 
         obj
     }
@@ -225,6 +226,7 @@ impl JsonCodec<Self> for OpEnvCommitOutputRequest {
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
+            op_type: JsonCodecHelper::decode_option_string_field(obj, "op_type")?,
         })
     }
 }

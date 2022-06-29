@@ -187,6 +187,34 @@ impl ObjectMapSingleOpEnv {
         it.next(&obj, step).await
     }
 
+    // reset the iterator
+    pub async fn reset(&self) {
+        if self.iterator.get().is_none() {
+            return;
+        }
+
+        let ret = self.root.lock().await;
+        if ret.is_none() {
+            let msg = format!("single op_env root not been init yet!");
+            error!("{}", msg);
+            return;
+        }
+
+        let obj = ret.as_ref().unwrap();
+
+        let ret = self.iterator.get();
+        if ret.is_none() {
+            return;
+        }
+
+        let new_it = ObjectMapIterator::new(false, &obj, self.cache.clone());
+
+        info!("will reset single op_env iterator: root={}", obj.cached_object_id().unwrap());
+
+        let iterator = ret.unwrap();
+        *iterator.lock().await = new_it;
+    }
+
     pub async fn metadata(&self) -> BuckyResult<ObjectMapMetaData> {
         let ret = self.root.lock().await;
         if ret.is_none() {
@@ -299,10 +327,10 @@ impl ObjectMapSingleOpEnv {
         ret.as_mut().unwrap().remove(&self.cache, object_id).await
     }
 
-    pub async fn commit(self) -> BuckyResult<ObjectId> {
+    async fn update_root(&self) -> BuckyResult<ObjectId> {
         let root = self.root.lock().await.take();
         if root.is_none() {
-            let msg = format!("commit error, single op_env root not been init yet!");
+            let msg = format!("update root error, single op_env root not been init yet!");
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
@@ -312,7 +340,7 @@ impl ObjectMapSingleOpEnv {
         let new_id = root.flush_id();
         if object_id == new_id {
             info!(
-                "single op_env commit but object_id unchanged! id={}",
+                "single op_env update root but object_id unchanged! id={}",
                 object_id
             );
             return Ok(new_id);
@@ -331,10 +359,17 @@ impl ObjectMapSingleOpEnv {
 
         self.cache.commit().await?;
 
-        info!("single op_env commit success! id={}", new_id);
+        info!("single op_env update root success! id={}", new_id);
         Ok(new_id)
     }
 
+    pub async fn update(&self) -> BuckyResult<ObjectId> {
+        self.update_root().await
+    }
+
+    pub async fn commit(self) -> BuckyResult<ObjectId> {
+        self.update_root().await
+    }
 
     pub fn abort(self) -> BuckyResult<()> {
         info!("will abord single_op_env: sid={}", self.sid);

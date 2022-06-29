@@ -157,6 +157,7 @@ impl OpEnvOutputProcessor for OpEnvOutputTransformer {
     ) -> BuckyResult<OpEnvCommitOutputResponse> {
         let in_req = OpEnvCommitInputRequest {
             common: self.convert_common(req.common),
+            op_type: req.op_type,
         };
 
         self.processor.commit(in_req).await
@@ -430,6 +431,7 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
     async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
         let in_req = OpEnvCommitOutputRequest {
             common: self.convert_common(req.common),
+            op_type: req.op_type,
         };
 
         self.processor.commit(in_req).await
