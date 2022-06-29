@@ -22,7 +22,7 @@ pub fn append_command<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .arg(Arg::with_name("deviate").short("d").long("deviate").takes_value(true).required(true)
             .help("deviate tx infomation file"))
     )
-    .subcommand(SubCommand::with_name("withdraw")
+    .subcommand(SubCommand::with_name("unionwithdraw")
         .about("withdraw an union account ")
         .arg(get_caller_arg("caller", "c", Some(&DEFAULT_DESC_PATH)))
         .arg(Arg::with_name("union").short("u").long("union").takes_value(true).required(true)
@@ -50,7 +50,7 @@ pub async fn match_command(matches: &ArgMatches<'_>, client: &MetaClient) -> Buc
             // tx.add_sign(&right).unwrap();
             info!("create and send deviate tx, hash {}", tx.to_string());
         }
-        ("withdraw", Some(matches)) => {
+        ("unionwithdraw", Some(matches)) => {
             let (caller, secret) = get_desc_and_secret_from_matches(matches, "caller")?;
             let union_id = matches.value_of("union").expect("need union account id");
             let union_id = ObjectId::from_str(union_id)?;

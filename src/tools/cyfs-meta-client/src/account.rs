@@ -1,6 +1,6 @@
 use clap::{App, SubCommand, Arg, ArgMatches};
 use crate::common::{get_caller_arg, get_desc_and_objid_from_matches, get_objid_from_str, DEFAULT_DESC_PATH, get_desc_and_secret_from_matches};
-use cyfs_base::{BuckyResult};
+use cyfs_base::{BuckyResult, TxCaller};
 use log::*;
 use cyfs_meta_lib::{MetaClient};
 use cyfs_base_meta::ViewBalanceResult;
@@ -34,6 +34,15 @@ pub fn append_command<'a, 'b>(app: App<'a, 'b>) -> App<'a, 'b> {
         .arg(Arg::with_name("account").index(1).takes_value(true).required(true)
             .help("account id"))
     )
+        .subcommand(SubCommand::with_name("withdraw")
+            .about("withdraw from object account")
+            .arg(get_caller_arg("caller", "c", Some(&DEFAULT_DESC_PATH)))
+            .arg(Arg::with_name("account").index(1).takes_value(true).required(true)
+                .help("object account"))
+            .arg(Arg::with_name("balance").index(2).takes_value(true).required(true)
+                .help("balance value to withdraw"))
+            .arg(Arg::with_name("coin_id").index(3).default_value("0").help("coin id"))
+        )
 }
 
 pub async fn match_command(matches: &ArgMatches<'_>, client: &MetaClient) -> BuckyResult<bool> {
@@ -96,6 +105,23 @@ pub async fn match_command(matches: &ArgMatches<'_>, client: &MetaClient) -> Buc
             let benefi = client.get_benefi(&account).await?;
             info!("account {} benefi {}", &account, &benefi);
 
+        },
+        ("withdraw", Some(matches)) => {
+            let (caller, secret) = get_desc_and_secret_from_matches(matches, "caller")?;
+            let account = get_objid_from_str(matches.value_of("account").unwrap(), &client).await.map_err(|e|{
+                error!("convert account to Objid err, {}", e);
+                e
+            })?;
+            let balance = matches.value_of("balance").unwrap().parse::<i64>().map_err(|e|{
+                error!("invalid balance amount, err {}", e);
+                e
+            })?;
+            let coin_id = matches.value_of("coin_id").unwrap().parse::<u8>().map_err(|e|{
+                error!("invalid coin id, err {}", e);
+                e
+            })?;
+            let hash = client.withdraw_from_file(TxCaller::try_from(&caller).unwrap(), &account, balance, coin_id, &secret).await?;
+            info!("withdraw {} from {} to {} success, txHash {}", balance, &account, &caller.calculate_id(), hash.as_ref().to_string());
         },
         _ => {return Ok(true)}
     };
