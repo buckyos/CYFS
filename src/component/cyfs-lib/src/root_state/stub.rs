@@ -2,7 +2,7 @@ use super::output_request::*;
 use super::processor::*;
 use cyfs_base::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct DecRootInfo {
     pub root: ObjectId,
     pub revision: u64,
@@ -189,6 +189,15 @@ impl SingleOpEnvStub {
     }
 
     // transcation
+    pub async fn update(&self) -> BuckyResult<ObjectId> {
+        let mut req = OpEnvCommitOutputRequest::new_update();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.commit(req).await?;
+        Ok(resp.dec_root)
+    }
+
     pub async fn commit(self) -> BuckyResult<ObjectId> {
         let mut req = OpEnvCommitOutputRequest::new();
         req.common.target = self.target.clone();
@@ -445,6 +454,22 @@ impl PathOpEnvStub {
     }
 
     // transcation
+    pub async fn update(&self) -> BuckyResult<DecRootInfo> {
+        let mut req = OpEnvCommitOutputRequest::new_update();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.commit(req).await?;
+
+        let info = DecRootInfo {
+            root: resp.root,
+            revision: resp.revision,
+            dec_root: resp.dec_root,
+        };
+
+        Ok(info)
+    }
+
     pub async fn commit(self) -> BuckyResult<DecRootInfo> {
         let mut req = OpEnvCommitOutputRequest::new();
         req.common.target = self.target.clone();

@@ -67,6 +67,8 @@ impl GlobalStateAccessService {
         &self,
         req: RootStateAccessGetObjectByPathInputRequest,
     ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
+        info!("on access get_object_by_path request: {}", req);
+
         let resp = self
             .get_by_path_impl(&req.common.dec_id, &req.inner_path)
             .await?;
@@ -162,6 +164,8 @@ impl GlobalStateAccessService {
         &self,
         req: RootStateAccessListInputRequest,
     ) -> BuckyResult<RootStateAccessListInputResponse> {
+        info!("on access list request: {}", req);
+
         let (target, root_cache, root_info) = self
             .get_object_id(&req.common.dec_id, &req.inner_path)
             .await?;

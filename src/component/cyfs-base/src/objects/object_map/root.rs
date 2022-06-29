@@ -236,6 +236,13 @@ impl ObjectMapOpEnv {
         }
     }
 
+    pub async fn update(self) -> BuckyResult<ObjectId> {
+        match self {
+            ObjectMapOpEnv::Path(env) => env.update().await,
+            ObjectMapOpEnv::Single(env) => env.update().await,
+        }
+    }
+
     pub async fn commit(self) -> BuckyResult<ObjectId> {
         match self {
             ObjectMapOpEnv::Path(env) => env.commit().await,
@@ -336,6 +343,13 @@ impl ObjectMapOpEnvContainer {
         let op_env = self.get_op_env(sid)?;
         op_env.single_op_env(sid)
     }
+
+    pub async fn update(&self, sid: u64) -> BuckyResult<ObjectId> {
+        let op_env = self.get_op_env(sid)?;
+
+        op_env.update().await
+    }
+
 
     pub async fn commit(&self, sid: u64) -> BuckyResult<ObjectId> {
         let ret = self.all.lock().unwrap().remove(&sid);

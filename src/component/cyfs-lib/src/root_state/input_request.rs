@@ -180,11 +180,12 @@ impl fmt::Display for OpEnvLockInputRequest {
 // commit
 pub struct OpEnvCommitInputRequest {
     pub common: OpEnvInputRequestCommon,
+    pub op_type: Option<OpEnvCommitOpType>,
 }
 
 impl fmt::Display for OpEnvCommitInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "common: {}", self.common)
+        write!(f, "common: {}, op_type: {:?}", self.common, self.op_type)
     }
 }
 

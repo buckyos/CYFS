@@ -253,6 +253,80 @@ async fn test2(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
     assert_eq!(new_root, dec_root);
 }
 
+async fn test_update(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
+    let root_manager = global_state_manager
+        .get_dec_root_manager(&dec_id, true)
+        .await
+        .unwrap();
+
+    // 这里使用非托管模式env
+    let op_env = root_manager.create_op_env().await.unwrap();
+
+    let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
+    let x2_value = ObjectId::from_str("95RvaS5aZKKM8ghTYmsTyhSEWD4pAmALoUSJx1yNxSx5").unwrap();
+    
+    let path = "/x/y";
+    let path2 = "/x/y/z";
+
+    op_env
+        .insert_with_key(path, "test1", &x1_value)
+        .await
+        .unwrap();
+
+
+    let current_value = op_env.get_by_key(path, "test1").await.unwrap();
+    assert_eq!(current_value, Some(x1_value));
+
+    let current_value = op_env.get_by_key(path2, "test1").await.unwrap();
+    assert_eq!(current_value, None);
+
+    // update
+    let root = op_env.update().await.unwrap();
+    info!("dec root changed to {}", root);
+
+    let current_value = op_env.get_by_key(path, "test1").await.unwrap();
+    assert_eq!(current_value, Some(x1_value));
+
+    // new op_env
+    let op_env2 = root_manager.create_op_env().await.unwrap();
+    assert_eq!(op_env2.root(),  root);
+
+    let current_value = op_env2.get_by_key(path, "test1").await.unwrap();
+    assert_eq!(current_value, Some(x1_value));
+
+    {
+        let c_root = op_env2.update().await.unwrap();
+        assert_eq!(op_env2.root(),  c_root);
+        assert_eq!(root,  c_root);
+    }
+    
+    // modify again
+    let prev = op_env.set_with_key(path, "test1", &x2_value, &Some(x1_value), false).await.unwrap();
+    assert_eq!(Some(x1_value), prev);
+
+    let root = op_env.update().await.unwrap();
+    info!("dec root changed to {}", root);
+
+    // 提交
+    let root2 = op_env.commit().await.unwrap();
+    assert_eq!(root2, root);
+
+    info!("dec root changed to {}", root2);
+
+    // new op_env again
+    let op_env3 = root_manager.create_op_env().await.unwrap();
+    assert_eq!(op_env3.root(),  root2);
+
+    let current_value = op_env3.get_by_key(path, "test1").await.unwrap();
+    assert_eq!(current_value, Some(x2_value));
+
+    info!(
+        "global root changed to {}",
+        global_state_manager.get_current_root().0
+    );
+}
+
+
 async fn test_single_env(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
     let root = global_state_manager
         .get_dec_root_manager(&dec_id, true)
@@ -608,9 +682,10 @@ async fn test() {
     test1(&global_state_manager, &dec_id).await;
     test_single_env(&global_state_manager, &dec_id).await;
 
-    // 模拟重启
     let global_state_manager2 = create_global_state_manager().await;
     test2(&global_state_manager2, &dec_id).await;
+
+    test_update(&global_state_manager2, &dec_id).await;
 
     test_managed(&global_state_manager2, &dec_id).await;
 

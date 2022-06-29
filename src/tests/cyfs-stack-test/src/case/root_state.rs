@@ -28,7 +28,64 @@ pub async fn test() {
     test_cross_zone_router(&stack, &device2_stack).await;
 
     test_path_env(&stack).await;
+    test_path_env_update(&stack).await;
     test_iterator(&stack).await;
+}
+
+pub async fn test_path_env_update(stack: &SharedCyfsStack) {
+    // let dec_id = new_dec("root_state1");
+    let root_state = stack.root_state_stub(None, None);
+    let root_info = root_state.get_current_root().await.unwrap();
+    info!("current root: {:?}", root_info);
+
+    let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
+    let x2_value = ObjectId::from_str("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
+
+    let path = "/test/update";
+
+    let op_env = root_state.create_path_op_env().await.unwrap();
+
+
+    // 首先移除老的值，如果存在的话
+    op_env.remove_with_path(path, None).await.unwrap();
+
+    let ret = op_env.get_by_path(path).await.unwrap();
+    assert_eq!(ret, None);
+ 
+    op_env
+         .insert_with_path(path, &x1_value)
+         .await
+         .unwrap();
+
+    let root = op_env.update().await.unwrap();
+
+
+    {
+        let op_env = root_state.create_path_op_env().await.unwrap();
+        let ret = op_env.get_by_path(path).await.unwrap();
+        assert_eq!(ret, Some(x1_value));
+    }
+
+    let ret = op_env.get_by_path(path).await.unwrap();
+    assert_eq!(ret, Some(x1_value));
+
+    let ret = op_env
+         .set_with_path(path, &x2_value, Some(x1_value.clone()), false)
+         .await
+         .unwrap();
+    assert_eq!(ret, Some(x1_value));
+
+    let root2 = op_env.update().await.unwrap();
+    assert_ne!(root, root2);
+
+    let root3 = op_env.commit().await.unwrap();
+    assert_eq!(root3, root2);
+
+    {
+        let op_env = root_state.create_path_op_env().await.unwrap();
+        let ret = op_env.get_by_path(path).await.unwrap();
+        assert_eq!(ret, Some(x2_value));
+    }
 }
 
 pub async fn test_path_env(stack: &SharedCyfsStack) {

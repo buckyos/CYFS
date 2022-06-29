@@ -371,7 +371,7 @@ impl OpEnvRequestHandler {
 
     async fn on_commit<State: Send>(
         &self,
-        req: OpEnvInputHttpRequest<State>,
+        mut req: OpEnvInputHttpRequest<State>,
     ) -> BuckyResult<OpEnvCommitInputResponse> {
         // 检查action
         let action = Self::decode_action(&req)?;
@@ -384,7 +384,10 @@ impl OpEnvRequestHandler {
 
         let common = Self::decode_common_headers(&req)?;
 
-        let req = OpEnvCommitInputRequest { common };
+        let output_req: OpEnvCommitOutputRequest =
+            RequestorHelper::decode_json_body(&mut req.request).await?;
+
+        let req = OpEnvCommitInputRequest { common, op_type: output_req.op_type };
 
         info!("recv op_env commit request: {}", req);
 
