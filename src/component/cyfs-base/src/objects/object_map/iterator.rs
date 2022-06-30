@@ -100,7 +100,7 @@ impl IntoObjectMapContentItem for ObjectId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq,)]
 pub enum ObjectMapContentItem {
     DiffMap((String, ObjectMapDiffMapItem)),
     Map((String, ObjectId)),

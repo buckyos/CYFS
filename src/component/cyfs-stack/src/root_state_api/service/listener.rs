@@ -108,6 +108,7 @@ enum OpEnvRequestType {
 
     // iterator
     Next,
+    Reset,
 
     // metadata
     Metadata,
@@ -168,6 +169,7 @@ impl OpEnvRequestHandlerEndpoint {
             OpEnvRequestType::Remove => self.handler.process_remove_request(req).await,
 
             OpEnvRequestType::Next => self.handler.process_next_request(req).await,
+            OpEnvRequestType::Reset => self.handler.process_reset_request(req).await,
 
             OpEnvRequestType::Metadata => self.handler.process_metadata_request(req).await,
         }
@@ -284,6 +286,12 @@ impl OpEnvRequestHandlerEndpoint {
         server.at(&path).post(Self::new(
             protocol.to_owned(),
             OpEnvRequestType::Next,
+            handler.clone(),
+        ));
+
+        server.at(&path).delete(Self::new(
+            protocol.to_owned(),
+            OpEnvRequestType::Reset,
             handler.clone(),
         ));
 

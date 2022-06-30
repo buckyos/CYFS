@@ -68,6 +68,7 @@ pub enum OpEnvAction {
 
     // iterator
     Next,
+    Reset,
 }
 
 impl ToString for OpEnvAction {
@@ -95,6 +96,7 @@ impl ToString for OpEnvAction {
             Self::GetCurrentRoot => "get-current-root",
 
             Self::Next => "next",
+            Self::Reset => "reset",
         })
         .to_owned()
     }
@@ -127,6 +129,7 @@ impl FromStr for OpEnvAction {
             "get-current-root" => Self::GetCurrentRoot,
             
             "next" => Self::Next,
+            "reset" => Self::Reset,
             
             v @ _ => {
                 let msg = format!("unknown op_env action: {}", v);

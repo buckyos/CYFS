@@ -770,6 +770,27 @@ impl OpEnvRequestor {
             Err(e)
         }
     }
+
+    // reset
+    fn encode_reset_request(&self, req: &OpEnvResetOutputRequest) -> Request {
+        let url = self.service_url.join("iterator").unwrap();
+        let mut http_req = Request::new(Method::Delete, url);
+        self.encode_common_headers(OpEnvAction::Reset, &req.common, &mut http_req);
+        http_req
+    }
+
+    async fn reset(&self, req: OpEnvResetOutputRequest) -> BuckyResult<()> {
+        let http_req = self.encode_reset_request(&req);
+        let mut resp = self.requestor.request(http_req).await?;
+        if resp.status().is_success() {
+            info!("reset for op_env success: sid={}", self.sid,);
+            Ok(())
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!("reset for op_env error! sid={}, {}", self.sid, e);
+            Err(e)
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -869,6 +890,10 @@ impl OpEnvOutputProcessor for OpEnvRequestor {
     // iterator methods
     async fn next(&self, req: OpEnvNextOutputRequest) -> BuckyResult<OpEnvNextOutputResponse> {
         Self::next(&self, req).await
+    }
+
+    async fn reset(&self, req: OpEnvResetOutputRequest) -> BuckyResult<()> {
+        Self::reset(&self, req).await
     }
 }
 

@@ -567,6 +567,18 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         Ok(resp)
     }
 
+    async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()> {
+        let dec_id = Self::get_dec_id(&req.common)?;
+
+        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let op_env = dec_root_manager
+            .managed_envs()
+            .get_single_op_env(req.common.sid)?;
+        op_env.reset().await;
+
+        Ok(())
+    }
+
     // metadata
     async fn metadata(
         &self,

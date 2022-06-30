@@ -283,7 +283,7 @@ impl OpEnvInputProcessor for GlobalStateRouter {
 
         processor.get_current_root(req).await
     }
-    
+
     // transcation
     async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
         let processor = self
@@ -378,6 +378,14 @@ impl OpEnvInputProcessor for GlobalStateRouter {
             .await?;
 
         processor.next(req).await
+    }
+
+    async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()> {
+        let processor = self
+            .get_op_env_processor(req.common.sid, req.common.target.as_ref())
+            .await?;
+
+        processor.reset(req).await
     }
 
     // metadata

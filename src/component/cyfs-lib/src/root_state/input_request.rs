@@ -359,7 +359,9 @@ pub type OpEnvInsertInputResponse = OpEnvSetInputResponse;
 pub type OpEnvRemoveInputRequest = OpEnvSetInputRequest;
 pub type OpEnvRemoveInputResponse = OpEnvSetInputResponse;
 
-// 迭代器next
+// 迭代器
+
+// next
 pub struct OpEnvNextInputRequest {
     pub common: OpEnvInputRequestCommon,
 
@@ -376,6 +378,9 @@ impl fmt::Display for OpEnvNextInputRequest {
 }
 
 pub type OpEnvNextInputResponse = OpEnvNextOutputResponse;
+
+// reset
+pub type OpEnvResetInputRequest = OpEnvNoParamInputRequest;
 
 //////////////////////////
 /// root-state access requests

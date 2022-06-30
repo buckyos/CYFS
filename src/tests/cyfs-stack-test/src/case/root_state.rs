@@ -45,20 +45,15 @@ pub async fn test_path_env_update(stack: &SharedCyfsStack) {
 
     let op_env = root_state.create_path_op_env().await.unwrap();
 
-
     // 首先移除老的值，如果存在的话
     op_env.remove_with_path(path, None).await.unwrap();
 
     let ret = op_env.get_by_path(path).await.unwrap();
     assert_eq!(ret, None);
- 
-    op_env
-         .insert_with_path(path, &x1_value)
-         .await
-         .unwrap();
+
+    op_env.insert_with_path(path, &x1_value).await.unwrap();
 
     let root = op_env.update().await.unwrap();
-
 
     {
         let op_env = root_state.create_path_op_env().await.unwrap();
@@ -70,9 +65,9 @@ pub async fn test_path_env_update(stack: &SharedCyfsStack) {
     assert_eq!(ret, Some(x1_value));
 
     let ret = op_env
-         .set_with_path(path, &x2_value, Some(x1_value.clone()), false)
-         .await
-         .unwrap();
+        .set_with_path(path, &x2_value, Some(x1_value.clone()), false)
+        .await
+        .unwrap();
     assert_eq!(ret, Some(x1_value));
 
     let root2 = op_env.update().await.unwrap();
@@ -209,14 +204,30 @@ pub async fn test_iterator(stack: &SharedCyfsStack) {
     let single_env = root_state.create_single_op_env().await.unwrap();
     single_env.load_by_path("/test/it").await.unwrap();
 
+    let mut all_list = vec![];
     loop {
-        let ret = single_env.next(10).await.unwrap();
+        let mut ret = single_env.next(10).await.unwrap();
         if ret.len() == 0 {
             break;
         }
 
         info!("it got list: {:?}", ret);
+        all_list.append(&mut ret);
     }
+
+    single_env.reset().await.unwrap();
+    let mut all_list2 = vec![];
+    loop {
+        let mut ret = single_env.next(10).await.unwrap();
+        if ret.len() == 0 {
+            break;
+        }
+
+        info!("it got list: {:?}", ret);
+        all_list2.append(&mut ret);
+    }
+
+    assert_eq!(all_list, all_list2);
 }
 
 pub async fn test_router(ood: &SharedCyfsStack, device: &SharedCyfsStack) {
