@@ -236,6 +236,14 @@ impl SingleOpEnvStub {
         Ok(resp.list)
     }
 
+    pub async fn reset(&self) -> BuckyResult<()> {
+        let mut req = OpEnvResetOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        self.processor.reset(req).await
+    }
+
     // metadata
     async fn metadata(&self) -> BuckyResult<ObjectMapMetaData> {
         let mut req = OpEnvMetadataOutputRequest::new(None);

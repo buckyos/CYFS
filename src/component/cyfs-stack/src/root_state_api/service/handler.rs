@@ -862,6 +862,46 @@ impl OpEnvRequestHandler {
 
         self.processor.next(req).await
     }
+
+    // reset
+    pub async fn process_reset_request<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_reset(req).await;
+        match ret {
+            Ok(_) => {
+                let http_resp = RequestorHelper::new_response(StatusCode::Ok);
+                http_resp.into()
+            }
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_reset<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> BuckyResult<()> {
+        // 检查action
+        let action = Self::decode_action(&req)?;
+        if action != OpEnvAction::Reset {
+            let msg = format!("invalid op_env reset action! {:?}", action);
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let common = Self::decode_common_headers(&req)?;
+
+
+        let req = OpEnvResetInputRequest {
+            common,
+        };
+
+        debug!("recv op_env reset request: {}", req);
+
+        self.processor.reset(req).await
+    }
 }
 
 #[derive(Clone)]

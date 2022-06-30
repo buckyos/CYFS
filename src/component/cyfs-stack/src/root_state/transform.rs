@@ -292,6 +292,14 @@ impl OpEnvOutputProcessor for OpEnvOutputTransformer {
         self.processor.next(in_req).await
     }
 
+    async fn reset(&self, req: OpEnvResetOutputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvResetInputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.reset(in_req).await
+    }
+
     async fn metadata(
         &self,
         req: OpEnvMetadataOutputRequest,
@@ -566,6 +574,14 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
         };
 
         self.processor.next(in_req).await
+    }
+
+    async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvResetOutputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.reset(in_req).await
     }
 
     async fn metadata(

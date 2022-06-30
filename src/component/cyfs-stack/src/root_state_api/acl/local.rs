@@ -209,6 +209,14 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
         self.next.next(req).await
     }
 
+    async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()> {
+        self.acl
+            .check_local_zone_permit("op_env.reset", &req.common.source)
+            .await?;
+
+        self.next.reset(req).await
+    }
+
     // metadata
     async fn metadata(
         &self,

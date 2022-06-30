@@ -751,7 +751,9 @@ pub type OpEnvInsertOutputResponse = OpEnvSetOutputResponse;
 pub type OpEnvRemoveOutputRequest = OpEnvSetOutputRequest;
 pub type OpEnvRemoveOutputResponse = OpEnvSetOutputResponse;
 
-// 迭代器next
+// 迭代器
+
+// next
 pub struct OpEnvNextOutputRequest {
     pub common: OpEnvOutputRequestCommon,
 
@@ -771,6 +773,9 @@ impl OpEnvNextOutputRequest {
 pub struct OpEnvNextOutputResponse {
     pub list: Vec<ObjectMapContentItem>,
 }
+
+// reset
+pub type OpEnvResetOutputRequest = OpEnvNoParamOutputRequest;
 
 //////////////////////////
 /// root-state access requests
