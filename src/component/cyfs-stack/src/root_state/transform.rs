@@ -139,6 +139,14 @@ impl OpEnvOutputProcessor for OpEnvOutputTransformer {
         self.processor.create_new(in_req).await
     }
 
+    async fn get_current_root(&self, req: OpEnvGetCurrentRootOutputRequest) -> BuckyResult<OpEnvGetCurrentRootOutputResponse> {
+        let in_req = OpEnvGetCurrentRootInputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.get_current_root(in_req).await
+    }
+
     async fn lock(&self, req: OpEnvLockOutputRequest) -> BuckyResult<()> {
         let in_req = OpEnvLockInputRequest {
             common: self.convert_common(req.common),
@@ -414,6 +422,14 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
         };
 
         self.processor.create_new(in_req).await
+    }
+
+    async fn get_current_root(&self, req: OpEnvGetCurrentRootInputRequest) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
+        let in_req = OpEnvGetCurrentRootOutputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.get_current_root(in_req).await
     }
 
     async fn lock(&self, req: OpEnvLockInputRequest) -> BuckyResult<()> {

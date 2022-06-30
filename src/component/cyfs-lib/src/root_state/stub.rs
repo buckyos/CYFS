@@ -104,6 +104,16 @@ impl SingleOpEnvStub {
         self.processor.load_by_path(req).await
     }
 
+    // get_current_root
+    pub async fn get_current_root(&self) -> BuckyResult<ObjectId> {
+        let mut req = OpEnvGetCurrentRootOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.get_current_root(req).await?;
+        Ok(resp.dec_root)
+    }
+
     // map methods
     pub async fn get_by_key(&self, key: impl Into<String>) -> BuckyResult<Option<ObjectId>> {
         let mut req = OpEnvGetByKeyOutputRequest::new_key(key);
@@ -255,6 +265,23 @@ pub struct PathOpEnvStub {
 impl PathOpEnvStub {
     pub(crate) fn new(processor: OpEnvOutputProcessorRef, target: Option<ObjectId>, dec_id: Option<ObjectId>) -> Self {
         Self { processor, target, dec_id }
+    }
+
+    // get_current_root
+    pub async fn get_current_root(&self) -> BuckyResult<DecRootInfo> {
+        let mut req = OpEnvGetCurrentRootOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.get_current_root(req).await?;
+
+        let info = DecRootInfo {
+            root: resp.root,
+            revision: resp.revision,
+            dec_root: resp.dec_root,
+        };
+
+        Ok(info)
     }
 
     // lock

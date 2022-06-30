@@ -236,7 +236,23 @@ impl ObjectMapOpEnv {
         }
     }
 
-    pub async fn update(self) -> BuckyResult<ObjectId> {
+    pub async fn get_current_root(&self) -> BuckyResult<ObjectId> {
+        match self {
+            ObjectMapOpEnv::Path(env) => Ok(env.root()),
+            ObjectMapOpEnv::Single(env) => {
+                match env.get_current_root().await {
+                    Some(root) => Ok(root),
+                    None => {
+                        let msg = format!("single op_env root not been init yet! sid={}", env.sid());
+                        error!("{}", msg);
+                        Err(BuckyError::new(BuckyErrorCode::ErrorState, msg))
+                    }
+                }
+            }
+        }
+    }
+
+    pub async fn update(&self) -> BuckyResult<ObjectId> {
         match self {
             ObjectMapOpEnv::Path(env) => env.update().await,
             ObjectMapOpEnv::Single(env) => env.update().await,
@@ -344,12 +360,17 @@ impl ObjectMapOpEnvContainer {
         op_env.single_op_env(sid)
     }
 
+    pub async fn get_current_root(&self, sid: u64) -> BuckyResult<ObjectId> {
+        let op_env = self.get_op_env(sid)?;
+
+        op_env.get_current_root().await
+    }
+
     pub async fn update(&self, sid: u64) -> BuckyResult<ObjectId> {
         let op_env = self.get_op_env(sid)?;
 
         op_env.update().await
     }
-
 
     pub async fn commit(&self, sid: u64) -> BuckyResult<ObjectId> {
         let ret = self.all.lock().unwrap().remove(&sid);

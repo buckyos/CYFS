@@ -107,6 +107,17 @@ impl fmt::Display for OpEnvInputRequestCommon {
     }
 }
 
+pub struct OpEnvNoParamInputRequest {
+    pub common: OpEnvInputRequestCommon,
+}
+
+impl fmt::Display for OpEnvNoParamInputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)
+    }
+}
+
+
 /// single_op_env methods
 // load
 pub struct OpEnvLoadInputRequest {
@@ -177,6 +188,10 @@ impl fmt::Display for OpEnvLockInputRequest {
     }
 }
 
+// get_current_root
+pub type OpEnvGetCurrentRootInputRequest = OpEnvNoParamInputRequest;
+pub type OpEnvGetCurrentRootInputResponse = OpEnvCommitOutputResponse;
+
 // commit
 pub struct OpEnvCommitInputRequest {
     pub common: OpEnvInputRequestCommon,
@@ -192,15 +207,8 @@ impl fmt::Display for OpEnvCommitInputRequest {
 pub type OpEnvCommitInputResponse = OpEnvCommitOutputResponse;
 
 // abort
-pub struct OpEnvAbortInputRequest {
-    pub common: OpEnvInputRequestCommon,
-}
+pub type OpEnvAbortInputRequest = OpEnvNoParamInputRequest;
 
-impl fmt::Display for OpEnvAbortInputRequest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "common: {}", self.common)
-    }
-}
 
 // metadata
 pub struct OpEnvMetadataInputRequest {
