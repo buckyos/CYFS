@@ -80,6 +80,10 @@ impl ChunkWriter for MemChunkStore {
         Ok(())
     }
 
+    async fn redirect(&self, _redirect_node: &DeviceId) -> BuckyResult<()> {
+        Ok(())
+    }
+
     async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
         if chunk.len() == 0 {
             return Ok(());

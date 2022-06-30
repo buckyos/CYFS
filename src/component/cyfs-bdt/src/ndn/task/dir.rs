@@ -305,6 +305,13 @@ impl DirTask {
                 Ok(())
             }
 
+            async fn redirect(&self, redirect_node: &DeviceId) -> BuckyResult<()> {
+                for writer in self.0.writers.iter() {
+                    let _ = writer.redirect(redirect_node).await;
+                }
+                Ok(())
+            }
+        
             async fn finish(&self) -> BuckyResult<()> {
                 self.0.dir.on_sub_task_finish(self.0.id);
 
@@ -380,6 +387,15 @@ impl DirTask {
                 self.0.dir.on_sub_task_finish(self.0.id);
                 Ok(())
             }
+
+            async fn redirect(&self, redirect_node: &DeviceId) -> BuckyResult<()> {
+                for w in &self.0.writers {
+                    let _ = w.redirect(redirect_node).await;
+                }
+                self.0.dir.on_sub_task_finish(self.0.id);
+                Ok(())
+            }
+
         }
 
         Box::new(Writer(Arc::new(WriterImpl {

@@ -348,9 +348,6 @@ impl Stack {
         let mut chunk_store = None;
         std::mem::swap(&mut chunk_store, &mut params.chunk_store);
 
-        let mut ndn_acl = None;
-        std::mem::swap(&mut ndn_acl, &mut params.ndn_acl);
-
         let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_acl);
         let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
         stack_impl.ndn = Some(ndn);
