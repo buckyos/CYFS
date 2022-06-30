@@ -264,7 +264,8 @@ fn encode_protocol_ineterest() {
 pub struct RespInterest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,  
-    pub err: BuckyErrorCode
+    pub err: BuckyErrorCode,
+    pub cache_node: Option<DeviceId>,
 }
 
 
@@ -282,11 +283,14 @@ impl RawEncodeWithContext<DatagramOptions> for RespInterest {
         options: &mut DatagramOptions,
         _purpose: &Option<RawEncodePurpose>
     ) -> Result<&'a mut [u8], BuckyError> {
+        let mut flags = FlagsCounter::new();
+
         options.sequence = Some(self.session_id);
         // let mut flags = FlagsCounter::new();
         let (mut context, buf) = FlagsEncodeContext::new(CommandCode::RespInterest as u8, enc_buf)?;
         let buf = context.encode(buf, &self.chunk)?;
-        let _ = context.encode(buf, &(self.err.into_u16()));
+        let buf = context.encode(buf, &(self.err.into_u16()))?;
+        let _ = context.option_encode(buf, &(self.cache_node), flags.next())?;
         context.finish(enc_buf)
     }
 }
@@ -298,16 +302,19 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for RespInterest {
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let session_id = options.sequence.ok_or_else(|| 
             BuckyError::new(BuckyErrorCode::InvalidData, "RespInterest package should has sequence"))?;
-        // let mut flags = FlagsCounter::new();
+        let mut flags = FlagsCounter::new();
+
         let (mut context, buf) = FlagsDecodeContext::new(buf)?;
         let (chunk, buf) = context.decode(buf)?;
         let (err, buf) = context.decode::<u16>(buf)?;
         let err = BuckyErrorCode::from(err);
+        let (id, buf) = context.option_decode(buf, flags.next())?;
         Ok((
             Self {
                 session_id, 
                 chunk, 
-                err
+                err,
+                cache_node: id
             },
             buf,
         ))
