@@ -171,6 +171,18 @@ impl fmt::Display for OpEnvOutputRequestCommon {
     }
 }
 
+pub struct OpEnvNoParamOutputRequest {
+    pub common: OpEnvOutputRequestCommon,
+}
+
+impl OpEnvNoParamOutputRequest {
+    pub fn new() -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+        }
+    }
+}
+
 /// single_op_env methods
 // load
 pub struct OpEnvLoadOutputRequest {
@@ -278,6 +290,10 @@ impl OpEnvLockOutputRequest {
     }
 }
 
+// get_current_root
+pub type OpEnvGetCurrentRootOutputRequest = OpEnvNoParamOutputRequest;
+pub type OpEnvGetCurrentRootOutputResponse = OpEnvCommitOutputResponse;
+
 #[derive(Clone, Debug)]
 pub enum OpEnvCommitOpType {
     Commit,
@@ -355,17 +371,8 @@ pub struct OpEnvCommitOutputResponse {
 }
 
 // abort
-pub struct OpEnvAbortOutputRequest {
-    pub common: OpEnvOutputRequestCommon,
-}
+pub type OpEnvAbortOutputRequest = OpEnvNoParamOutputRequest;
 
-impl OpEnvAbortOutputRequest {
-    pub fn new() -> Self {
-        Self {
-            common: OpEnvOutputRequestCommon::new_empty(),
-        }
-    }
-}
 
 pub struct OpEnvPathHelper {}
 

@@ -101,6 +101,18 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
         self.next.lock(req).await
     }
 
+    // get_current_root
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootInputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
+        self.acl
+            .check_local_zone_permit("op_env.get_current_root", &req.common.source)
+            .await?;
+
+        self.next.get_current_root(req).await
+    }
+
     // transcation
     async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
         self.acl

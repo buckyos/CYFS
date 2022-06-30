@@ -231,6 +231,39 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .await
     }
 
+    // get_current_root
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootInputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
+        let dec_id = Self::get_dec_id(&req.common)?;
+        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+
+        let dec_root = dec_root_manager
+            .managed_envs()
+            .get_current_root(req.common.sid)
+            .await?;
+
+        let resp = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
+            ObjectMapOpEnvType::Path => {
+                let (root, revision) = self.root_state.get_dec_relation_root_info(&dec_root);
+
+                OpEnvCommitInputResponse {
+                    root,
+                    revision,
+                    dec_root,
+                }
+            }
+            ObjectMapOpEnvType::Single => OpEnvCommitInputResponse {
+                root: dec_root.clone(),
+                revision: 0,
+                dec_root,
+            },
+        };
+
+        Ok(resp)
+    }
+
     // transcation
     async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;

@@ -353,6 +353,44 @@ impl OpEnvRequestHandler {
         self.processor.lock(req).await
     }
 
+    // get_current_root
+    pub async fn process_get_current_root_request<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_get_current_root(req).await;
+        match ret {
+            Ok(resp) => {
+                let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+                http_resp.set_body(resp.encode_string());
+                http_resp.into()
+            }
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_get_current_root<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
+        // 检查action
+        let action = Self::decode_action(&req)?;
+        if action != OpEnvAction::GetCurrentRoot {
+            let msg = format!("invalid op_env get_current_root action! {:?}", action);
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let common = Self::decode_common_headers(&req)?;
+
+        let req = OpEnvGetCurrentRootInputRequest { common };
+
+        info!("recv op_env get_current_root request: {}", req);
+
+        self.processor.get_current_root(req).await
+    }
+
     // commit
     pub async fn process_commit_request<State: Send>(
         &self,

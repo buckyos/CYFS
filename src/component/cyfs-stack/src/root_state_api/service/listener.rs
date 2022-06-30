@@ -92,6 +92,9 @@ enum OpEnvRequestType {
     // lock
     Lock,
 
+    // get_current_root
+    GetCurrentRoot,
+
     // map
     GetByKey,
     InsertWithKey,
@@ -145,6 +148,8 @@ impl OpEnvRequestHandlerEndpoint {
             OpEnvRequestType::CreateNew => self.handler.process_create_new_request(req).await,
 
             OpEnvRequestType::Lock => self.handler.process_lock_request(req).await,
+
+            OpEnvRequestType::GetCurrentRoot => self.handler.process_get_current_root_request(req).await,
 
             OpEnvRequestType::Commit => self.handler.process_commit_request(req).await,
             OpEnvRequestType::Abort => self.handler.process_abort_request(req).await,
@@ -203,6 +208,14 @@ impl OpEnvRequestHandlerEndpoint {
         server.at(&path).post(Self::new(
             protocol.to_owned(),
             OpEnvRequestType::Lock,
+            handler.clone(),
+        ));
+
+        // get_current_root
+        let path = format!("/{}/op-env/root", root_seg);
+        server.at(&path).get(Self::new(
+            protocol.to_owned(),
+            OpEnvRequestType::GetCurrentRoot,
             handler.clone(),
         ));
 

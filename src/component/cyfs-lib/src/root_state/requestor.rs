@@ -420,6 +420,35 @@ impl OpEnvRequestor {
         }
     }
 
+    // get_current_root
+    fn encode_get_current_root_request(&self, req: &OpEnvGetCurrentRootOutputRequest) -> Request {
+        let url = self.service_url.join("root").unwrap();
+        let mut http_req = Request::new(Method::Get, url);
+        self.encode_common_headers(OpEnvAction::GetCurrentRoot, &req.common, &mut http_req);
+
+        http_req
+    }
+
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootOutputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootOutputResponse> {
+        let http_req = self.encode_get_current_root_request(&req);
+        let mut resp = self.requestor.request(http_req).await?;
+
+        if resp.status().is_success() {
+            let resp: OpEnvGetCurrentRootOutputResponse =
+                RequestorHelper::decode_json_body(&mut resp).await?;
+
+            info!("get_current_root for op_env success: sid={}", self.sid,);
+            Ok(resp)
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!("get_current_root for op_env error! sid={}, {}", self.sid, e);
+            Err(e)
+        }
+    }
+
     // commit
     fn encode_commit_request(&self, req: &OpEnvCommitOutputRequest) -> Request {
         let url = self.service_url.join("transaction").unwrap();
@@ -765,6 +794,13 @@ impl OpEnvOutputProcessor for OpEnvRequestor {
         Self::lock(&self, req).await
     }
 
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootOutputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootOutputResponse> {
+        Self::get_current_root(&self, req).await
+    }
+
     async fn commit(
         &self,
         req: OpEnvCommitOutputRequest,
@@ -1018,7 +1054,6 @@ impl GlobalStateAccessRequestor {
     pub async fn decode_list_response(
         resp: &mut Response,
     ) -> BuckyResult<RootStateAccessListOutputResponse> {
-        
         let list = RequestorHelper::decode_json_body(resp).await?;
         let root = RequestorHelper::decode_header(resp, cyfs_base::CYFS_ROOT)?;
         let revision = RequestorHelper::decode_header(resp, cyfs_base::CYFS_REVISION)?;

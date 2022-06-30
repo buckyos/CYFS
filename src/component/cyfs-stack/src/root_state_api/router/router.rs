@@ -272,6 +272,18 @@ impl OpEnvInputProcessor for GlobalStateRouter {
         processor.lock(req).await
     }
 
+    // get_current_root
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootInputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
+        let processor = self
+            .get_op_env_processor(req.common.sid, req.common.target.as_ref())
+            .await?;
+
+        processor.get_current_root(req).await
+    }
+    
     // transcation
     async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
         let processor = self

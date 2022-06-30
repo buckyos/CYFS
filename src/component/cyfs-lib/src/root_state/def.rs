@@ -64,6 +64,8 @@ pub enum OpEnvAction {
     // metadata
     Metadata,
 
+    GetCurrentRoot,
+
     // iterator
     Next,
 }
@@ -89,6 +91,8 @@ impl ToString for OpEnvAction {
             Self::Abort => "abort",
 
             Self::Metadata => "metadata",
+
+            Self::GetCurrentRoot => "get-current-root",
 
             Self::Next => "next",
         })
@@ -119,6 +123,8 @@ impl FromStr for OpEnvAction {
             "abort" => Self::Abort,
 
             "metadata" => Self::Metadata,
+
+            "get-current-root" => Self::GetCurrentRoot,
             
             "next" => Self::Next,
             
