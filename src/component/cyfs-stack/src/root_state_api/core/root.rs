@@ -133,6 +133,8 @@ impl GlobalStateRoot {
 
         self.root.root_holder().direct_reload_root(new_root_info.root_state.unwrap()).await;
 
+        self.revision.update_dec_relation(&self.root).await?;
+
         Ok(())
     }
 
