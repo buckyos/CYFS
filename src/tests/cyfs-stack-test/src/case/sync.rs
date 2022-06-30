@@ -171,14 +171,14 @@ async fn test_ood_change(stack: &SharedCyfsStack, indexer: Indexer) {
             .unwrap();
 
         let root = op_env.commit().await.unwrap();
-        info!("new dec root is: {:?}", root);
+        info!("new dec root is: {:?}, text={}", root, text_id);
 
         let req = NONPutObjectRequest::new_noc(text_id, text_obj.to_vec().unwrap());
         stack.non_service().put_object(req).await.unwrap();
 
         indexer.add(&root.root, &text_id);
 
-        async_std::task::sleep(std::time::Duration::from_secs(15)).await;
+        async_std::task::sleep(std::time::Duration::from_secs(60)).await;
     }
 }
 
@@ -188,23 +188,26 @@ async fn test_standby_ood_get(stack: &SharedCyfsStack, indexer: Indexer) {
         let root_info = root_state.get_current_root().await.unwrap();
         info!("device current root: {:?}", root_info);
 
-        if indexer.get(&root_info.0).is_none() {
+        let op_env = root_state.create_path_op_env().await.unwrap();
+        let root_info = op_env.get_current_root().await.unwrap();
+        info!("path bind to device current root: {:?}", root_info);
+
+        if indexer.get(&root_info.root).is_none() {
             warn!("standby ood not sync yet!");
             async_std::task::sleep(std::time::Duration::from_secs(15)).await;
             continue;
         }
 
-        let op_env = root_state.create_path_op_env().await.unwrap();
         let ret = op_env.get_by_path("/a/b/c").await.unwrap();
         let v = ret.unwrap();
 
-        let expect = indexer.get(&root_info.0).unwrap();
+        let expect = indexer.get(&root_info.root).unwrap();
         assert_eq!(expect, v);
 
         let ret = op_env.get_by_path("/a/z/e").await.unwrap();
         let v = ret.unwrap();
 
-        let expect = indexer.get(&root_info.0).unwrap();
+        let expect = indexer.get(&root_info.root).unwrap();
         assert_eq!(expect, v);
 
         info!("device will get text_object: {}", v);

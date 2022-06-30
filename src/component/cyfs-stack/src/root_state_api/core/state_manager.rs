@@ -6,8 +6,9 @@ use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::ReenterCallManager;
 
+use async_std::sync::Mutex as AsyncMutex;
 use std::collections::{hash_map::Entry, HashMap};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GlobalStateManager {
@@ -19,7 +20,7 @@ pub struct GlobalStateManager {
 
     noc_cache: ObjectMapNOCCacheRef,
 
-    root_list: Arc<Mutex<HashMap<ObjectId, ObjectMapRootManagerRef>>>,
+    root_list: Arc<AsyncMutex<HashMap<ObjectId, ObjectMapRootManagerRef>>>,
 
     create_root_manager_reenter_call_manager:
         ReenterCallManager<ObjectId, BuckyResult<ObjectMapRootManagerRef>>,
@@ -34,9 +35,15 @@ impl GlobalStateManager {
         config: StackGlobalConfig,
     ) -> BuckyResult<Self> {
         let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone_noc());
-        let global_root_state =
-            GlobalStateRoot::load(category.clone(), device_id, owner, noc, noc_cache.clone(), config)
-                .await?;
+        let global_root_state = GlobalStateRoot::load(
+            category.clone(),
+            device_id,
+            owner,
+            noc,
+            noc_cache.clone(),
+            config,
+        )
+        .await?;
         let global_root_state = Arc::new(global_root_state);
 
         let ret = Self {
@@ -44,7 +51,7 @@ impl GlobalStateManager {
             owner,
             global_root_state,
             noc_cache,
-            root_list: Arc::new(Mutex::new(HashMap::new())),
+            root_list: Arc::new(AsyncMutex::new(HashMap::new())),
             create_root_manager_reenter_call_manager: ReenterCallManager::new(),
         };
 
@@ -61,15 +68,18 @@ impl GlobalStateManager {
         new_root_info: RootInfo,
         prev_root_id: Option<ObjectId>,
     ) -> BuckyResult<()> {
+        info!("will direct set root state: category={}, {:?} -> {:?}", self.category, prev_root_id, new_root_info);
+
+        // should keep the lock during the whole func
+        // Prevent inconsistencies in the instantaneous state caused by the successive setting of global_root and dec_root
+        let mut root_list_holder = self.root_list.lock().await;
+
         self.global_root_state
             .direct_set_root_state(new_root_info, prev_root_id)
             .await?;
 
         // 尝试更新所有已经加载的dec_root
-        let list: Vec<(ObjectId, ObjectMapRootManagerRef)> = self
-            .root_list
-            .lock()
-            .unwrap()
+        let list: Vec<(ObjectId, ObjectMapRootManagerRef)> = root_list_holder
             .iter()
             .map(|(k, v)| (k.to_owned(), v.clone()))
             .collect();
@@ -77,7 +87,7 @@ impl GlobalStateManager {
         for (dec_id, root_manager) in list {
             match self.global_root_state.get_dec_root(&dec_id, false).await {
                 Ok(Some(root_info)) => {
-                    if root_info.root != root_manager.get_current_root() {
+                    if root_info.dec_root != root_manager.get_current_root() {
                         root_manager
                             .root_holder()
                             .direct_reload_root(root_info.dec_root)
@@ -89,14 +99,14 @@ impl GlobalStateManager {
                         "dec root had been removed! now will remove dec root manager: dec={}",
                         dec_id
                     );
-                    self.root_list.lock().unwrap().remove(&dec_id);
+                    root_list_holder.remove(&dec_id);
                 }
                 Err(e) => {
                     warn!(
                         "got dec root error! now will remove dec root manager: dec={}, {}",
                         dec_id, e
                     );
-                    self.root_list.lock().unwrap().remove(&dec_id);
+                    root_list_holder.remove(&dec_id);
                 }
             }
         }
@@ -128,7 +138,8 @@ impl GlobalStateManager {
                 let revision = self
                     .global_root_state
                     .revision()
-                    .get_root_revision(&info.root).unwrap();
+                    .get_root_revision(&info.root)
+                    .unwrap();
                 Ok(Some((info.root, revision, info.dec_root)))
             }
             None => Ok(None),
@@ -147,7 +158,7 @@ impl GlobalStateManager {
         auto_create: bool,
     ) -> BuckyResult<ObjectMapRootManagerRef> {
         {
-            let root_list = self.root_list.lock().unwrap();
+            let root_list = self.root_list.lock().await;
             let root = root_list.get(dec_id);
             if root.is_some() {
                 return Ok(root.unwrap().clone());
@@ -187,7 +198,7 @@ impl GlobalStateManager {
         let mut root = Arc::new(root);
 
         {
-            let mut root_list = self.root_list.lock().unwrap();
+            let mut root_list = self.root_list.lock().await;
             match root_list.entry(dec_id.to_owned()) {
                 Entry::Vacant(v) => {
                     v.insert(root.clone());
