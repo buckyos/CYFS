@@ -208,18 +208,6 @@ impl ChunkWriterExt for ChunkListTask {
         Ok(())
     }
 
-    async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()> {
-        // {
-        //     let state = &mut *self.0.state.write().unwrap();
-        //     state.control_state = TaskControlState::Redirect(redirect_node.clone());
-        // }
-
-        // for writer in self.0.writers.iter() {
-        //     let _ = writer.redirect(redirect_node).await;
-        // }
-        Ok(())
-    }
-
     async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>, range: Option<Range<u64>>) -> BuckyResult<()> {
         let (cur_task, next_task) = {
             let mut state = self.0.state.write().unwrap();

@@ -11,7 +11,6 @@ message DeviceBodyContent {
     repeated bytes sn_list = 2;
     repeated bytes passive_pn_list = 3;
     optional string name = 4;
-    repeated bytes dump_pn_list = 5;
 }
 
 // dir
