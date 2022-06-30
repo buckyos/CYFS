@@ -21,6 +21,7 @@ enum TaskStateImpl {
     Downloading(ChunkDownloader),
     Canceled(BuckyErrorCode),  
     Writting,  
+    Redirect(DeviceId),
     Finished,
 }
 
@@ -161,6 +162,15 @@ impl ChunkTask {
 
                     break; 
                 }, 
+                TaskState::Redirect(redirect_node) => {
+                    info!("{} redirect {}", self, redirect_node);
+
+                    self.0.state.write().unwrap().schedule_state = TaskStateImpl::Redirect(redirect_node.clone());
+                    for writer in &self.0.writers {
+                        let _ = writer.redirect(&redirect_node).await;
+                    }
+                    break;
+                },
                 _ => unimplemented!()
             }
         }
@@ -179,6 +189,7 @@ impl TaskSchedule for ChunkTask {
             TaskStateImpl::Downloading(downloader) => downloader.schedule_state(), 
             TaskStateImpl::Canceled(err) => TaskState::Canceled(*err), 
             TaskStateImpl::Writting => TaskState::Running(0), 
+            TaskStateImpl::Redirect(redirect_node) => TaskState::Redirect(redirect_node.clone()),
             TaskStateImpl::Finished => TaskState::Finished
         }
     }
