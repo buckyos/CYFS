@@ -40,6 +40,13 @@ pub use cyfs_util::cache::*;
 #[macro_use]
 extern crate log;
 
+pub fn register_core_objects_format() {
+    use cyfs_base::*;
+    use crate::admin::*;
+
+    FORMAT_FACTORY.register(cyfs_core::CoreObjectType::Admin, format_json::<AdminObject>);
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

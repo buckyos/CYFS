@@ -4,19 +4,20 @@ use cyfs_core::codec::protos::core_objects as protos;
 use cyfs_core::*;
 
 use std::convert::{TryFrom, TryInto};
+use serde::Serialize;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct AdminGlobalStateAccessModeData {
     pub category: GlobalStateCategory,
     pub access_mode: GlobalStateAccessMode,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub enum AdminCommand {
     GlobalStateAccessMode(AdminGlobalStateAccessModeData),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AdminDescContent {
     pub target: DeviceId,
     pub cmd: AdminCommand,
@@ -37,7 +38,8 @@ impl DescContent for AdminDescContent {
     type PublicKeyType = SubDescNone;
 }
 
-#[derive(Debug, Clone)]
+
+#[derive(Debug, Clone, Serialize)]
 pub struct AdminBodyContent {}
 
 impl BodyContent for AdminBodyContent {
@@ -160,6 +162,9 @@ impl TryFrom<&AdminDescContent> for protos::AdminDescContent {
 
 impl_default_protobuf_raw_codec!(AdminDescContent);
 impl_empty_protobuf_raw_codec!(AdminBodyContent);
+
+impl ObjectFormatAutoWithSerde for AdminDescContent {}
+impl ObjectFormatAutoWithSerde for AdminBodyContent {}
 
 pub trait AdminObj {
     fn create(owner: ObjectId, target: DeviceId, cmd: AdminCommand) -> Self;

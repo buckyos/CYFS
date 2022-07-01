@@ -183,7 +183,7 @@ impl NONRequestHandler {
                 http_resp
                     .insert_header(cyfs_base::CYFS_OBJECT_ID, resp.object.object_id.to_string());
 
-                http_resp.set_body(resp.object.object().format_json().to_string());
+                http_resp.set_body(resp.object.format_json().to_string());
                 http_resp.set_content_type(::tide::http::mime::JSON);
             }
         }
