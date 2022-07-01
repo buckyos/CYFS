@@ -149,10 +149,18 @@ where
             );
         }
 
-        JsonCodecHelper::encode_string_field_2(&mut map, "create_time", ObjectFormatHelper::format_time(self.create_time()));
+        JsonCodecHelper::encode_string_field_2(
+            &mut map,
+            "create_time",
+            ObjectFormatHelper::format_time(self.create_time()),
+        );
 
         if let Some(time) = self.expired_time() {
-            JsonCodecHelper::encode_string_field_2(&mut map, "expired_time", ObjectFormatHelper::format_time(time));
+            JsonCodecHelper::encode_string_field_2(
+                &mut map,
+                "expired_time",
+                ObjectFormatHelper::format_time(time),
+            );
         }
 
         if let Some(owner) = self.owner() {
@@ -322,7 +330,11 @@ where
             JsonCodecHelper::encode_string_field_2(&mut map, "prev_version", prev.to_hex_string());
         }
 
-        JsonCodecHelper::encode_string_field_2(&mut map, "update_time", ObjectFormatHelper::format_time(self.update_time()));
+        JsonCodecHelper::encode_string_field_2(
+            &mut map,
+            "update_time",
+            ObjectFormatHelper::format_time(self.update_time()),
+        );
 
         ObjectFormatHelper::encode_field(&mut map, "content", self.content());
 
@@ -634,7 +646,7 @@ impl ObjectFormat for ChunkBundle {
 
         JsonCodecHelper::encode_str_array_field(&mut map, "list", self.chunk_list());
         JsonCodecHelper::encode_string_field(&mut map, "hash_method", self.hash_method().as_str());
-        
+
         map.into()
     }
 }
@@ -888,4 +900,71 @@ fn test() {
     let value = file.desc().format_json();
     let s = value.to_string();
     println!("{}", s);
+}
+
+
+use std::sync::{Arc, Mutex};
+use std::collections::{hash_map::Entry, HashMap};
+
+pub fn format_json<T: for<'de> RawDecode<'de> + ObjectFormat>(buf: &[u8]) -> BuckyResult<serde_json::Value> {
+    let (obj, _) = T::raw_decode(buf)?;
+
+    Ok(obj.format_json())
+}
+
+
+pub struct FormatFactory {
+    ext_types: Arc<
+        Mutex<
+            HashMap<u16, Arc<Box<dyn Fn(&[u8]) -> BuckyResult<serde_json::Value> + Send + Sync>>>,
+        >,
+    >,
+}
+
+impl FormatFactory {
+    pub fn new() -> Self {
+        Self {
+            ext_types: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn register<F: 'static + Fn(&[u8]) -> BuckyResult<serde_json::Value> + Send + Sync>(
+        &self,
+        obj_type: impl Into<u16>,
+        formater: F,
+    ) {
+        let f = Arc::new(Box::new(formater)
+            as Box<dyn Fn(&[u8]) -> BuckyResult<serde_json::Value> + Send + Sync>);
+
+        let mut all = self.ext_types.lock().unwrap();
+        match all.entry(obj_type.into()) {
+            Entry::Vacant(v) => {
+                v.insert(f);
+            }
+            Entry::Occupied(_o) => {
+                unreachable!();
+            }
+        }
+    }
+
+    pub fn format(&self, obj_type: u16, obj_raw: &[u8]) -> Option<serde_json::Value> {
+        let f = self
+            .ext_types
+            .lock()
+            .unwrap()
+            .get(&obj_type)
+            .map(|f| f.clone());
+        match f {
+            Some(f) => match f(obj_raw) {
+                Ok(r) => Some(r),
+                Err(_e) => None,
+            },
+            None => None,
+        }
+    }
+}
+
+
+lazy_static::lazy_static! {
+    pub static ref FORMAT_FACTORY: FormatFactory = FormatFactory::new();
 }

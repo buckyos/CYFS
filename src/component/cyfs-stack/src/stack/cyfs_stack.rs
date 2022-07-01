@@ -127,6 +127,8 @@ impl CyfsStackImpl {
         param: CyfsStackParams,
         known_objects: Vec<KnownObject>,
     ) -> BuckyResult<Self> {
+        Self::register_custom_objects_format();
+        
         let stack_params = param.clone();
         let config = StackGlobalConfig::new(stack_params);
 
@@ -917,6 +919,17 @@ impl CyfsStackImpl {
             }
         }
     }
+
+    fn register_custom_objects_format() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+    
+        static INIT_DONE: AtomicBool = AtomicBool::new(false);
+        if !INIT_DONE.swap(true, Ordering::SeqCst) {
+            cyfs_core::register_core_objects_format();
+            cyfs_lib::register_core_objects_format();
+        }
+    }
+    
 }
 
 #[derive(Clone)]
@@ -1027,10 +1040,7 @@ impl CyfsStack {
         &self.stack.local_cache
     }
 
-    pub fn local_cache_stub(
-        &self,
-        dec_id: Option<ObjectId>,
-    ) -> GlobalStateStub {
+    pub fn local_cache_stub(&self, dec_id: Option<ObjectId>) -> GlobalStateStub {
         let processor = GlobalStateOutputTransformer::new(
             self.stack.local_cache.clone_global_state_processor(),
             self.zone_manager().get_current_device_id().clone(),

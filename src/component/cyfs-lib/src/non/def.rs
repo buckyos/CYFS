@@ -374,6 +374,21 @@ impl JsonCodec<NONObjectInfo> for NONObjectInfo {
 }
 
 
+impl ObjectFormat for NONObjectInfo {
+    fn format_json(&self) -> serde_json::Value {
+        let obj = self.object();
+        if obj.obj_type_code() != ObjectTypeCode::Custom {
+            obj.format_json()
+        } else {
+            let obj_type = obj.obj_type();
+            match FORMAT_FACTORY.format(obj_type, &self.object_raw) {
+                Some(ret) => ret,
+                None => obj.format_json(),
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct NONSlimObjectInfo {
     pub object_id: ObjectId,

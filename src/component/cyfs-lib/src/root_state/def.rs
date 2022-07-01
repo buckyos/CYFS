@@ -1,6 +1,8 @@
 use cyfs_base::*;
 
 use std::str::FromStr;
+use serde::Serialize;
+
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum RootStateAction {
@@ -178,7 +180,7 @@ impl FromStr for RootStateAccessAction {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub enum GlobalStateCategory {
     RootState,
     LocalCache,
@@ -216,7 +218,8 @@ impl FromStr for GlobalStateCategory {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
 pub enum GlobalStateAccessMode {
     Read = 0,
     Write = 1,
