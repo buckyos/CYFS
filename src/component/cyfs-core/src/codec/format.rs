@@ -29,8 +29,16 @@ impl ObjectFormatAutoWithSerde for AppLocalStatusBody {}
 impl ObjectFormatAutoWithSerde for AppSettingDesc {}
 impl ObjectFormatAutoWithSerde for AppSettingBody {}
 
+impl ObjectFormatAutoWithSerde for AppManagerActionDesc {}
+impl ObjectFormatAutoWithSerde for AppManagerActionBody {}
+
 impl ObjectFormatAutoWithSerde for AppStatusDescContent {}
 impl ObjectFormatAutoWithSerde for AppStatusContent {}
+
+impl ObjectFormatAutoWithSerde for AppCmdDesc {}
+impl ObjectFormatAutoWithSerde for AppCmdBody {}
+
+impl ObjectFormatAutoWithSerde for AppCmdListBody {}
 
 impl ObjectFormatAutoWithSerde for DecAppDescContent {}
 impl ObjectFormatAutoWithSerde for DecAppContent {}
@@ -87,9 +95,11 @@ impl ObjectFormat for FriendListContent {
     }
 }
 
-use std::str::FromStr;
+
 #[test]
 fn test() {
+    use std::str::FromStr;
+
     let obj = Text::create("id1", "header1", "value1");
 
     let value = obj.format_json();
@@ -109,7 +119,7 @@ pub fn register_core_objects_format() {
     FORMAT_FACTORY.register(CoreObjectType::Storage, format_json::<Storage>);
     FORMAT_FACTORY.register(CoreObjectType::Text, format_json::<Text>);
 
-    // FORMAT_FACTORY.register(CoreObjectType::FriendList, format_json::<FriendList>);
+    FORMAT_FACTORY.register(CoreObjectType::FriendList, format_json::<FriendList>);
 
     FORMAT_FACTORY.register(CoreObjectType::TransContext, format_json::<TransContext>);
     FORMAT_FACTORY.register(CoreObjectType::DecApp, format_json::<DecApp>);
@@ -120,17 +130,12 @@ pub fn register_core_objects_format() {
 
     FORMAT_FACTORY.register(CoreObjectType::DefaultAppList, format_json::<DefaultAppList>);
     
-    // FORMAT_FACTORY.register(CoreObjectType::AppCmd, format_json::<AppCmd>);
+    FORMAT_FACTORY.register(CoreObjectType::AppCmd, format_json::<AppCmd>);
     FORMAT_FACTORY.register(CoreObjectType::AppLocalStatus, format_json::<AppLocalStatus>);
-    // FORMAT_FACTORY.register(CoreObjectType::AppCmdList, format_json::<AppCmdList>);
+    FORMAT_FACTORY.register(CoreObjectType::AppCmdList, format_json::<AppCmdList>);
     FORMAT_FACTORY.register(CoreObjectType::AppSetting, format_json::<AppSetting>);
-    // FORMAT_FACTORY.register(CoreObjectType::AppManagerAction, format_json::<AppManagerAction>);
+    FORMAT_FACTORY.register(CoreObjectType::AppManagerAction, format_json::<AppManagerAction>);
     FORMAT_FACTORY.register(CoreObjectType::AppLocalList, format_json::<AppLocalList>);
 
     FORMAT_FACTORY.register(CoreObjectType::NFTList, format_json::<NFTList>);
-
-    FORMAT_FACTORY.register(CoreObjectType::AddFriend, format_json::<AddFriend>);
-    FORMAT_FACTORY.register(CoreObjectType::FriendOption, format_json::<FriendOption>);
-    FORMAT_FACTORY.register(CoreObjectType::Msg, format_json::<Msg>);
-    FORMAT_FACTORY.register(CoreObjectType::RemoveFriend, format_json::<RemoveFriend>);
 }
