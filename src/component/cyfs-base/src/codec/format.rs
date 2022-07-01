@@ -63,19 +63,22 @@ impl ObjectFormatHelper {
         }
     }
 
-    pub fn encode_array<T>(obj: &mut Map<String, Value>, key: impl ToString, list: &Vec<T>)
-    where
+    pub fn encode_array<'a, T: 'a, I: IntoIterator<Item = &'a T>>(
+        obj: &mut Map<String, Value>,
+        key: impl ToString,
+        it: I,
+    ) where
         T: ObjectFormat,
     {
-        obj.insert(key.to_string(), Self::encode_to_array(list));
+        obj.insert(key.to_string(), Self::encode_to_array(it));
     }
 
-    pub fn encode_to_array<T>(list: &Vec<T>) -> Value
+    pub fn encode_to_array<'a, T: 'a, I: IntoIterator<Item = &'a T>>(it: I) -> Value
     where
         T: ObjectFormat,
     {
         let mut result = Vec::new();
-        for item in list {
+        for item in it.into_iter() {
             let item = T::format_json(item);
             result.push(item);
         }
@@ -902,29 +905,27 @@ fn test() {
     println!("{}", s);
 }
 
-
-use std::sync::{Arc, Mutex};
 use std::collections::{hash_map::Entry, HashMap};
+use std::sync::{Arc, Mutex};
 
-pub fn format_json<T: for<'de> RawDecode<'de> + ObjectFormat>(buf: &[u8]) -> BuckyResult<serde_json::Value> {
+pub fn format_json<T: for<'de> RawDecode<'de> + ObjectFormat>(
+    buf: &[u8],
+) -> BuckyResult<serde_json::Value> {
     let (obj, _) = T::raw_decode(buf)?;
 
     Ok(obj.format_json())
 }
 
-
 pub struct FormatFactory {
-    ext_types: Arc<
-        Mutex<
-            HashMap<u16, Arc<Box<dyn Fn(&[u8]) -> BuckyResult<serde_json::Value> + Send + Sync>>>,
-        >,
+    ext_types: Mutex<
+        HashMap<u16, Arc<Box<dyn Fn(&[u8]) -> BuckyResult<serde_json::Value> + Send + Sync>>>,
     >,
 }
 
 impl FormatFactory {
     pub fn new() -> Self {
         Self {
-            ext_types: Arc::new(Mutex::new(HashMap::new())),
+            ext_types: Mutex::new(HashMap::new()),
         }
     }
 
@@ -937,12 +938,14 @@ impl FormatFactory {
             as Box<dyn Fn(&[u8]) -> BuckyResult<serde_json::Value> + Send + Sync>);
 
         let mut all = self.ext_types.lock().unwrap();
-        match all.entry(obj_type.into()) {
+        let obj_type = obj_type.into();
+        match all.entry(obj_type) {
             Entry::Vacant(v) => {
                 v.insert(f);
             }
-            Entry::Occupied(_o) => {
-                unreachable!();
+            Entry::Occupied(mut o) => {
+                warn!("register ext object format but already exists! obj_type={}", obj_type);
+                o.insert(f);
             }
         }
     }
@@ -963,7 +966,6 @@ impl FormatFactory {
         }
     }
 }
-
 
 lazy_static::lazy_static! {
     pub static ref FORMAT_FACTORY: FormatFactory = FormatFactory::new();
