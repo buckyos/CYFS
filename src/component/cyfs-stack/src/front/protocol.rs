@@ -57,6 +57,19 @@ impl FrontProtocolHandler {
     }
 
     fn extract_route_param<State>(req: &tide::Request<State>) -> BuckyResult<String> {
+        match Self::extract_option_route_param(req)? {
+            Some(value) => {
+                Ok(value)
+            }
+            None => {
+                let msg = format!("request url must param missing! {}", req.url());
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+            }
+        }
+    }
+
+    fn extract_option_route_param<State>(req: &tide::Request<State>) -> BuckyResult<Option<String>> {
         match req.param("must") {
             Ok(v) => {
                 // 对url里面的以%编码的unicode字符进行解码
@@ -67,12 +80,10 @@ impl FrontProtocolHandler {
                     BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
                 })?;
 
-                Ok(value.into_owned())
+                Ok(Some(value.into_owned()))
             }
-            Err(e) => {
-                let msg = format!("request url param missing! {}, {}", req.url(), e);
-                error!("{}", msg);
-                Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+            Err(_) => {
+                Ok(None)
             }
         }
     }
@@ -236,30 +247,32 @@ impl FrontProtocolHandler {
         req_type: FrontRequestType,
         req: FrontInputHttpRequest<State>,
     ) -> BuckyResult<tide::Response> {
-        let route_param = Self::extract_route_param(&req.request)?;
-
         let format = Self::object_format_from_request(req.request.url())?;
 
         match req_type {
             FrontRequestType::O => {
+                let route_param = Self::extract_route_param(&req.request)?;
                 let resp = self.process_o_request(req, route_param, format).await?;
 
                 let http_resp = self.encode_o_response(resp, format).await;
                 Ok(http_resp)
             }
             FrontRequestType::R | FrontRequestType::L => {
+                let route_param = Self::extract_route_param(&req.request)?;
                 let resp = self.process_r_request(req_type, req, route_param).await?;
 
                 let http_resp = self.encode_r_response(resp, format).await;
                 Ok(http_resp)
             }
             FrontRequestType::A => {
+                let route_param = Self::extract_route_param(&req.request)?;
                 let resp = self.process_a_request(req, route_param, format).await?;
 
                 let http_resp = self.encode_a_response(resp, format).await;
                 Ok(http_resp)
             }
             FrontRequestType::Any => {
+                let route_param = Self::extract_option_route_param(&req.request)?;
                 let resp = self.process_any_request(req, route_param, format).await?;
 
                 let http_resp = self.encode_o_response(resp, format).await;
@@ -271,7 +284,7 @@ impl FrontProtocolHandler {
     async fn process_any_request<State>(
         &self,
         req: FrontInputHttpRequest<State>,
-        route_param: String,
+        route_param: Option<String>,
         format: FrontRequestObjectFormat,
     ) -> BuckyResult<FrontOResponse> {
         let name = req.request.param("name").map_err(|e| {
@@ -294,7 +307,11 @@ impl FrontProtocolHandler {
             return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
         }
 
-        let route_param = format!("{}/{}", name, route_param);
+        let route_param = match route_param {
+            Some(param) => format!("{}/{}", name, param),
+            None => name.to_owned(),
+        };
+
         self.process_o_request(req, route_param, format).await
     }
 
@@ -575,6 +592,7 @@ impl FrontProtocolHandler {
                 "mode" => {
                     mode = FrontRequestGetMode::from_str(v.as_ref())?;
                 }
+                "format" => { /* ignore */ }
                 "flags" => {
                     flags = u32::from_str(v.as_ref()).map_err(|e| {
                         let msg = format!("invalid request url flags query param! {}, {}", req.request.url(), e);
