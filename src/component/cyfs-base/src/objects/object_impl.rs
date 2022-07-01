@@ -1,6 +1,7 @@
 use crate::*;
 
 use std::marker::PhantomData;
+use serde::Serialize;
 
 
 /// 子Desc类型系统
@@ -1964,12 +1965,12 @@ pub trait BodyContent {
 }
 
 // 两个默认的空body_content
-#[derive(Clone, Default, cyfs_base_derive::RawEncode, cyfs_base_derive::RawDecode)]
+#[derive(Clone, Default, cyfs_base_derive::RawEncode, cyfs_base_derive::RawDecode, Serialize)]
 pub struct EmptyBodyContent;
 
 impl BodyContent for EmptyBodyContent {}
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize)]
 pub struct EmptyProtobufBodyContent;
 
 impl BodyContent for EmptyProtobufBodyContent {
