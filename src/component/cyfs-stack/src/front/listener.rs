@@ -81,6 +81,12 @@ impl FrontRequestHandlerEndpoint {
             handler.clone(),
         ));
 
+        server.at("/:name").get(FrontRequestHandlerEndpoint::new(
+            protocol.to_owned(),
+            FrontRequestType::Any,
+            handler.clone(),
+        ));
+
     }
 }
 
