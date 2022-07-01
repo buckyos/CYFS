@@ -16,7 +16,7 @@ use log::*;
 
 enum ConnectPackageStreamState {
     Connecting1(StateWaiter), 
-    PreEstablish(IncreaseId/*remote id*/), 
+    PreEstablish(SessionData), 
     Connecting2, 
     Establish, 
     Closed
@@ -124,7 +124,7 @@ impl ConnectPackageStream {
                     match ca.state() {
                         ConnectStreamState::Connecting1 => {
                             trace!("{} send sync session data", ca);
-                            let _ = ca.0.stream.as_ref().tunnel().send_packages(vec![DynamicPackage::from(syn_session_data.clone())]);
+                            let _ = ca.0.stream.as_ref().tunnel().send_packages(vec![DynamicPackage::from(syn_session_data.clone_with_data())]);
                         }, 
                         _ => break
                     };
@@ -186,14 +186,14 @@ impl ConnectStreamAction for ConnectPackageStream {
 
     async fn continue_connect(&self) -> Result<(), BuckyError> {
         // 让 package stream 联通， 发送不带 syn flag的session data包的逻辑应该在 package stream provider中完成 
-        let remote_id = {
+        let sesstion_data = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
-                ConnectPackageStreamState::PreEstablish(remote_id) => {
+                ConnectPackageStreamState::PreEstablish(syn_ack) => {
                     info!("{} PreEstablish=>Establish", self);
-                    let remote_id = *remote_id;
+                    let sesstion_data = syn_ack.clone_with_data();
                     *state = ConnectPackageStreamState::Establish;
-                    Ok(remote_id)
+                    Ok(sesstion_data)
                 }, 
                 _ => {
                     error!("{} continue connect failed for in state {}", self, state);
@@ -201,8 +201,12 @@ impl ConnectStreamAction for ConnectPackageStream {
                 }
             }
         }?;
-        
-        self.0.stream.as_ref().establish_with(StreamProviderSelector::Package(remote_id, None), &self.0.stream).await
+
+        let remote_id = sesstion_data.syn_info.clone().unwrap().from_session_id;
+
+        self.0.stream.as_ref().establish_with(
+            StreamProviderSelector::Package(remote_id, Some(sesstion_data), 0), 
+            &self.0.stream).await
     }
 }
 
@@ -218,7 +222,7 @@ impl OnPackage<SessionData> for ConnectPackageStream {
                     ConnectPackageStreamState::Connecting1(ref mut waiter) => {
                         info!("{} Connecting1=>PreEstablish", self);
                         let waiter = Some(waiter.transfer());
-                        *state = ConnectPackageStreamState::PreEstablish(pkg.syn_info.clone().unwrap().from_session_id);
+                        *state = ConnectPackageStreamState::PreEstablish(pkg.clone_with_data());
                         waiter
                     }, 
                     _ => {None}

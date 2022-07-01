@@ -1942,10 +1942,18 @@ impl SessionData {
             Self::raw_decode_with_context(buf, &mut merge_context::OtherDecode::default())?;
         Ok(pkg)
     }
-}
 
-impl Clone for SessionData {
-    fn clone(&self) -> Self {
+    pub fn clone_with_data(&self) -> SessionData {
+        let mut session = self.clone_without_data();
+
+        let mut buf = vec![0; self.payload.as_ref().len()];
+        buf.copy_from_slice(self.payload.as_ref());
+        session.payload = TailedOwnedData::from(buf);
+
+        session
+    }
+
+    pub fn clone_without_data(&self) -> SessionData {
         let mut session = SessionData::new();
         session.stream_pos = self.stream_pos;
         session.ack_stream_pos = self.ack_stream_pos;
@@ -1963,7 +1971,7 @@ impl Clone for SessionData {
         session.send_time = self.send_time.clone();
         session.syn_info = self.syn_info.clone();
         session.to_session_id = self.to_session_id.clone();
-        //TODO payload不进行数据copy，理论上是不会在有playload的情况下进行Clone的
+
         session.payload = TailedOwnedData::from(Vec::new());
         session.flags = self.flags.clone();
         session.id_part = self.id_part.clone();

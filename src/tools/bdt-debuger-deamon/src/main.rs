@@ -1,7 +1,8 @@
-use std::{io::Read, path::Path, str::FromStr};
+use std::{io::Read, path::Path, str::FromStr, net::Shutdown};
 use async_std::{
     task,
-    stream::StreamExt
+    stream::StreamExt,
+    io::prelude::{ReadExt},
 };
 use clap::{App, Arg};
 use cyfs_base::*;
@@ -193,8 +194,26 @@ async fn main() {
             let mut incoming = listener.incoming();
             loop {
                 if let Some(stream) = incoming.next().await {
-                    if let Ok(stream) = stream {
-                        let _ = stream.stream.confirm(b"accepted".as_ref()).await;
+                    if let Ok(mut stream) = stream {
+                        println!("question len={} content={:?}", 
+                            stream.question.len(), String::from_utf8(stream.question).expect(""));
+
+                        let _ = stream.stream.confirm(b"accepted!".as_ref()).await;
+
+                        task::spawn(async move {
+                            let mut buf = vec![];
+                            match stream.stream.read_to_end(&mut buf).await {
+                                Ok(len) => {
+                                    println!("read data success. len={} data={}", 
+                                        len, String::from_utf8(buf[..len].to_vec()).expect(""));
+                                },
+                                Err(e) => {
+                                    println!("read data err: {}", e);
+                                }
+                            }
+
+                            let _ = stream.stream.shutdown(Shutdown::Both);
+                        });
                     }
                 }
             }

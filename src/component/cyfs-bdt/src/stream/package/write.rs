@@ -112,12 +112,12 @@ enum WriteProviderState {
 pub struct WriteProvider(Mutex<WriteProviderState>);
 
 impl WriteProvider {
-    pub fn new(config: &super::super::container::Config) -> Self {
+    pub fn new(config: &super::super::container::Config, confirm_answer_len: u64) -> Self {
         Self(Mutex::new(WriteProviderState::Open(WriteProviderImpl {
             write_waiter: None, 
             flush_waiters: LinkedList::new(), 
             close_waiter: None, 
-            queue: SendQueue::new(config.send_buffer), 
+            queue: SendQueue::new(config.send_buffer, confirm_answer_len), 
             est_id: IncreaseIdGenerator::new(), 
             est_stubs: LinkedList::new(), 
             last_recv: bucky_time_now(), 

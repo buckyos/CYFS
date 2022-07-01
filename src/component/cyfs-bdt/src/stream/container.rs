@@ -371,8 +371,8 @@ enum StreamStateImpl {
 
 struct PackageStreamProviderSelector {}
 pub enum StreamProviderSelector {
-    Package(IncreaseId /*remote id*/, Option<SessionData>),
-    Tcp(async_std::net::TcpStream, AesKey),
+    Package(IncreaseId /*remote id*/, Option<SessionData>, u64/*confirm answer len*/),
+    Tcp(async_std::net::TcpStream, AesKey, Option<TcpAckConnection>),
 }
 
 pub struct StreamContainerImpl {
@@ -554,15 +554,25 @@ impl StreamContainerImpl {
         })?;
 
         let (provider, provider_stub) = match selector {
-            StreamProviderSelector::Package(remote_id, _session_data) => {
-                let stream = PackageStream::new(self, self.local_id.clone(), remote_id)?;
+            StreamProviderSelector::Package(remote_id, ack, confirm_answer_len) => {
+
+                let stream = PackageStream::new(self, self.local_id.clone(), remote_id, ack, confirm_answer_len)?;
                 (
                     Box::new(stream.clone()) as Box<dyn StreamProvider>,
                     Box::new(stream) as Box<dyn StreamProvider>,
                 )
             }
-            StreamProviderSelector::Tcp(socket, key) => {
-                let stream = TcpStream::new(arc_self.clone(), socket, key)?;
+            StreamProviderSelector::Tcp(socket, key, ack) => {
+                let answer = match ack {
+                    Some(tcp_ack_connection) => {
+                        let mut answer = vec![0; tcp_ack_connection.payload.as_ref().len()];
+                        answer.copy_from_slice(tcp_ack_connection.payload.as_ref());
+                        answer
+                    },
+                    _ => vec![],
+                };
+
+                let stream = TcpStream::new(arc_self.clone(), socket, key, answer)?;
                 (
                     Box::new(stream.clone()) as Box<dyn StreamProvider>,
                     Box::new(stream) as Box<dyn StreamProvider>,
@@ -706,7 +716,7 @@ impl StreamContainerImpl {
         }
         .map(|question| {
             let mut session = SessionData::new();
-            session.stream_pos = 1;
+            session.stream_pos = 0;
             session.syn_info = Some(SessionSynInfo {
                 sequence: self.sequence,
                 from_session_id: self.local_id.clone(),
@@ -734,13 +744,13 @@ impl StreamContainerImpl {
         }
         .map(|remote_id| {
             let mut session = SessionData::new();
-            session.stream_pos = 1;
+            session.stream_pos = 0;
             session.syn_info = Some(SessionSynInfo {
                 sequence: self.sequence,
                 from_session_id: self.local_id.clone(),
                 to_vport: 0,
             });
-            session.ack_stream_pos = 1; //TODO
+            session.ack_stream_pos = 0;
             session.send_time = bucky_time_now();
             session.flags_add(SESSIONDATA_FLAG_SYN | SESSIONDATA_FLAG_ACK);
             session.to_session_id = Some(remote_id.clone());
@@ -781,7 +791,7 @@ impl StreamContainerImpl {
         })
     }
 
-    pub fn ack_tcp_stream(&self, _answer: &[u8]) -> Option<TcpAckConnection> {
+    pub fn ack_tcp_stream(&self, answer: &[u8]) -> Option<TcpAckConnection> {
         {
             match &*self.state.read().unwrap() {
                 StreamStateImpl::Connecting(connecting) => match connecting {
@@ -793,12 +803,17 @@ impl StreamContainerImpl {
                 _ => None,
             }
         }
-        .map(|remote_id| TcpAckConnection {
-            sequence: self.sequence,
-            to_session_id: remote_id,
-            result: TCP_ACK_CONNECTION_RESULT_OK,
-            to_device_desc: Stack::from(&self.stack).local().clone(),
-            payload: TailedOwnedData::from(Vec::new()),
+        .map(|remote_id| {
+            let mut payload = vec![0u8; answer.len()];
+            payload.copy_from_slice(answer);
+
+            TcpAckConnection {
+                sequence: self.sequence,
+                to_session_id: remote_id,
+                result: TCP_ACK_CONNECTION_RESULT_OK,
+                to_device_desc: Stack::from(&self.stack).local().clone(),
+                payload: TailedOwnedData::from(payload),
+            }
         })
     }
 

@@ -161,7 +161,7 @@ impl ConnectStreamBuilder {
             let _ = exchg.sign(&key_stub.aes_key, stack.keystore().signer()).await;
             first_box.push(exchg);
         }
-        first_box.push(syn_tunnel).push(syn_session_data.clone());
+        first_box.push(syn_tunnel).push(syn_session_data.clone_with_data());
         Some(first_box)
     }
 

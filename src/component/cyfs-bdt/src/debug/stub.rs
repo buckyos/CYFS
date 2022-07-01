@@ -1,4 +1,9 @@
-use std::{net::{IpAddr, Ipv4Addr, SocketAddr}, path::Path, str::FromStr, time::{Duration, Instant}};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown}, 
+    path::Path, 
+    str::FromStr, 
+    time::{Duration, Instant}
+};
 use async_std::{
     sync::Arc, 
     task, 
@@ -239,12 +244,41 @@ impl DebugStub {
         let mut tunnel = tunnel;
         let stack = Stack::from(&self.0.stack);
         let _ = tunnel.write_all("connecting stream\r\n".as_ref()).await;
-        let _ = stack.stream_manager().connect(command.port, vec![], BuildTunnelParams {
-            remote_const: command.remote.desc().clone(), 
-            remote_sn: vec![], 
-            remote_desc: Some(command.remote.clone())
+
+        let question = b"question?";
+        let mut conn = stack.stream_manager().connect(
+            command.port, 
+            question.to_vec(), 
+            BuildTunnelParams {
+                remote_const: command.remote.desc().clone(), 
+                remote_sn: vec![], 
+                remote_desc: Some(command.remote.clone())
         }).await.map_err(|err| format!("Err: {}\r\n", err.msg().to_string()))?;
+
+        let _ = tunnel.write_all("Connect success, read answer\r\n".as_ref()).await;
+
+        let mut answer = [0; 128];
+        match conn.read(&mut answer).await {
+            Ok(len) => {
+                let s = format!("Read answer success, len={} content={:?}\r\n", 
+                    len, String::from_utf8(answer[..len].to_vec()).expect(""));
+
+                let _ = tunnel.write_all(s.as_bytes()).await;
+            },
+            Err(e) => {
+                let s = format!("Read answer fail, err={}\r\n", e);
+
+                let _ = tunnel.write_all(s.as_bytes()).await;
+                return Ok(());
+            }
+        }
+
+        let _ = conn.write_all(b"hello world.").await;
+
         let _ = tunnel.write_all("Ok: stream connected\r\n".as_ref()).await;
+
+        let _ = conn.shutdown(Shutdown::Both);
+
         Ok(())
     }
 

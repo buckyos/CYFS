@@ -378,11 +378,41 @@ impl RecvQueue {
     async fn start(
         stream: TcpStream, 
         waiter: Receiver<usize>, 
-        data_producer: ringbuf::Producer<u8>) {
+        data_producer: ringbuf::Producer<u8>,
+        answer: Vec<u8>) {
         let mut socket = stream.0.socket.clone();
         let config = &stream.0.config;
         let key = &stream.0.key;
         let mut data_producer = data_producer;
+
+        if answer.len() > 0 {
+            data_producer.push_slice(&answer);
+
+            let (readable_waker, read_waker) = {
+                let read_provider = &mut *cyfs_debug::lock!(stream.0.read_provider).unwrap();
+                match read_provider {
+                    PollReadProvider::Open(queue) => {
+                        let mut readable_waker = None;
+                        std::mem::swap(&mut queue.readable_waiter, &mut readable_waker);
+                        (readable_waker, Some(queue.wake(&stream, config, data_producer.len())))
+                    }, 
+                    PollReadProvider::Closed(_) => (None, None)
+                }
+            };
+
+            if let Some(to_wake) = readable_waker {
+                to_wake.wake();
+            }
+
+            if let Some(to_wake) = read_waker {
+                if let Some(to_wake) = to_wake {
+                    to_wake.wake();
+                }
+            } else {
+                debug!("{} recv record loop break recv queue closed", stream);
+                return;
+            }
+        }
 
         let mut header_buffer = vec![0u8; box_header_len()];
         let mut record_buffer = vec![0u8; AesKey::padded_len(config.tcp.max_record as usize)]; // TODO, padded_len 调用变化
@@ -634,7 +664,8 @@ impl TcpStream {
     pub fn new(
         owner: StreamContainer, 
         socket: async_std::net::TcpStream, 
-        key: AesKey) -> BuckyResult<Self> {
+        key: AesKey,
+        answer: Vec<u8>) -> BuckyResult<Self> {
         let local = Endpoint::from((Protocol::Tcp, socket.local_addr()?));
         let remote = Endpoint::from((Protocol::Tcp, socket.peer_addr()?));
         let stack = owner.as_ref().stack();
@@ -659,7 +690,8 @@ impl TcpStream {
                 RecvQueue::start(
                     stream, 
                     record_waker, 
-                    data_producer).await;
+                    data_producer,
+                    answer).await;
             });
         }
         
