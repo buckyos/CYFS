@@ -7,7 +7,7 @@ use std::collections::{HashMap, hash_map};
 
 use serde::{Serialize, Deserialize};
 
-#[derive(Clone, Default, ProtobufEmptyEncode, ProtobufEmptyDecode)]
+#[derive(Clone, Default, ProtobufEmptyEncode, ProtobufEmptyDecode, Serialize)]
 pub struct FriendListDescContent {}
 
 impl DescContent for FriendListDescContent {
@@ -30,9 +30,9 @@ pub struct FriendContent {}
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
 #[cyfs_protobuf_type(crate::codec::protos::FriendListContent)]
 pub struct FriendListContent {
-    friends: HashMap<ObjectId, FriendContent>,
-    auto_confirm: u8,
-    auto_msg: String,
+    pub(crate) friends: HashMap<ObjectId, FriendContent>,
+    pub(crate) auto_confirm: u8,
+    pub(crate) auto_msg: String,
 }
 
 impl BodyContent for FriendListContent {
