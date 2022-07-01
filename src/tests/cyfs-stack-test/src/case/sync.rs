@@ -129,10 +129,13 @@ async fn test_ood_change(stack: &SharedCyfsStack, indexer: Indexer) {
     info!("current root: {:?}", root_info);
 
     let file_id = add_file(&stack).await;
-    let chunk_id = add_chunk(&stack).await;
 
-    let mut index = 0;
+    let mut index: usize = 0;
     loop {
+        let chunk_id = add_chunk(&stack).await;
+        let error_chunk_id = ChunkId::calculate_sync(&index.to_be_bytes()).unwrap();
+        info!("gen error chunk: {}", error_chunk_id);
+
         let op_env = root_state.create_path_op_env().await.unwrap();
 
         let id = format!("test_text_{}", index);
@@ -163,6 +166,10 @@ async fn test_ood_change(stack: &SharedCyfsStack, indexer: Indexer) {
 
         op_env
             .set_with_key("/data/chunk1", "e", chunk_id.as_object_id(), None, true)
+            .await
+            .unwrap();
+        op_env
+            .set_with_path("/data/error_chunk", error_chunk_id.as_object_id(), None, true)
             .await
             .unwrap();
         op_env

@@ -584,7 +584,9 @@ impl ChunkCache for SingleDiskChunkCache {
         log::info!("SingleDiskChunkCache get_chunk {}", chunk_id.to_string());
         let file_path = self.get_file_path(chunk_id, false);
         if !file_path.exists() {
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, format!("[{}:{}] file {} not exist", file!(), line!(), file_path.to_string_lossy().to_string())));
+            let msg = format!("get chunk's file but not exist! chunk={}, file={}", chunk_id, file_path.display());
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
         match chunk_type {
@@ -594,9 +596,9 @@ impl ChunkCache for SingleDiskChunkCache {
             },
             ChunkType::MemChunk => {
                 let buf = async_std::fs::read(file_path.as_path()).await.map_err(|e| {
-                    let msg = format!("[{}:{}] open {} failed.err {}", file!(), line!(), file_path.to_string_lossy().to_string(), e);
-                    log::error!("{}", msg.as_str());
-                    BuckyError::new(BuckyErrorCode::Failed, msg)
+                    let msg = format!("open chunk's file error! chunk={}, file={}, {}", chunk_id, file_path.display(), e);
+                    log::error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::IoError, msg)
                 })?;
                 let chunk: Box<dyn Chunk> = Box::new(MemChunk::from(buf));
                 Ok(chunk)
