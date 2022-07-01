@@ -2,6 +2,7 @@ use crate::app::app_cmd::AppCmd;
 use crate::coreobj::CoreObjectType;
 use crate::{codec::*, AppCmdObj};
 use cyfs_base::*;
+use serde::Serialize;
 use std::collections::VecDeque;
 
 pub const DEFAULT_CMD_LIST: &str = "default";
@@ -30,6 +31,16 @@ impl ProtobufTransform<&AppCmdListItem> for protos::AppCmdListItem {
             cmd: value.cmd.to_vec()?,
             retry_count: value.retry_count,
         })
+    }
+}
+
+impl ObjectFormat for AppCmdListItem {
+    fn format_json(&self) -> serde_json::Value {
+        let mut map = serde_json::Map::new();
+        ObjectFormatHelper::encode_field(&mut map, "cmd", &self.cmd);
+        JsonCodecHelper::encode_string_field(&mut map, "retry_count", &self.retry_count);
+
+        serde_json::Value::Object(map)
     }
 }
 
@@ -86,7 +97,17 @@ impl ProtobufTransform<&AppCmdListDesc> for protos::AppCmdListDesc {
     }
 }
 
-#[derive(Clone, Default, ProtobufEmptyEncode, ProtobufEmptyDecode)]
+impl ObjectFormat for AppCmdListDesc {
+    fn format_json(&self) -> serde_json::Value {
+        let mut map = serde_json::Map::new();
+        ObjectFormatHelper::encode_array(&mut map, "list", &self.list);
+        JsonCodecHelper::encode_string_field(&mut map, "id", &self.id);
+
+        serde_json::Value::Object(map)
+    }
+}
+
+#[derive(Clone, Default, ProtobufEmptyEncode, ProtobufEmptyDecode, Serialize)]
 pub struct AppCmdListBody {}
 
 impl BodyContent for AppCmdListBody {

@@ -1,41 +1,43 @@
 use crate::coreobj::CoreObjectType;
 use cyfs_base::*;
 use std::collections::HashMap;
+use serde::Serialize;
 
-#[derive(Clone, Debug, ProtobufTransform)]
+
+#[derive(Clone, Debug, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::DecIpInfo)]
 pub struct DecIpInfo {
     pub name: String,
     pub ip: String,
 }
 
-#[derive(Clone, ProtobufTransform)]
+#[derive(Clone, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::DecAclInfo)]
 pub struct DecAclInfo {
     pub name: String,
     pub acl_info: HashMap<String, bool>,
 }
 
-#[derive(Clone, ProtobufTransform)]
+#[derive(Clone, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::RegisterDec)]
 pub struct RegisterDec {
     pub docker_gateway_ip: String,
     pub dec_list: HashMap<String, DecIpInfo>,
 }
 
-#[derive(Clone, ProtobufTransform)]
+#[derive(Clone, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::UnregisterDec)]
 pub struct UnregisterDec {
     pub dec_list: HashMap<String, String>,
 }
 
-#[derive(Clone, ProtobufTransform)]
+#[derive(Clone, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::ModifyAcl)]
 pub struct ModifyAcl {
     pub dec_list: HashMap<String, DecAclInfo>,
 }
 
-#[derive(Clone, ProtobufTransform)]
+#[derive(Clone, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::app_manager_action_desc::AppManagerActionEnum)]
 pub enum AppManagerActionEnum {
     RegisterDec(RegisterDec),
@@ -43,7 +45,7 @@ pub enum AppManagerActionEnum {
     ModifyAcl(ModifyAcl),
 }
 
-#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::AppManagerActionDesc)]
 pub struct AppManagerActionDesc {
     app_manager_action_enum: AppManagerActionEnum,
@@ -64,7 +66,7 @@ impl DescContent for AppManagerActionDesc {
     type PublicKeyType = SubDescNone;
 }
 
-#[derive(Clone, Default, ProtobufEmptyEncode, ProtobufEmptyDecode)]
+#[derive(Clone, Default, ProtobufEmptyEncode, ProtobufEmptyDecode, Serialize)]
 pub struct AppManagerActionBody {}
 
 impl BodyContent for AppManagerActionBody {
