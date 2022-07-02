@@ -28,6 +28,9 @@ pub async fn test() {
     // 添加目录到user1ood
     let (dir_id, _file_id) = add_dir(&dec_id).await;
 
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    get_file(&dir_id, &dec_id, &stack, true).await;
+
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
     get_file(&dir_id, &dec_id, &stack, true).await;
 
@@ -45,9 +48,11 @@ fn gen_random_dir(dir: &Path) {
         (0..2).for_each(|i| {
             let name = format!("{}.log", i);
             let local_path = dir.join(&name);
-            if !local_path.exists() {
-                async_std::task::block_on(gen_all_random_file(&local_path));
+            if local_path.exists() {
+                std::fs::remove_file(&local_path).unwrap();
             }
+
+            async_std::task::block_on(gen_all_random_file(&local_path));
         })
     })
 }
