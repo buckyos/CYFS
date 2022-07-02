@@ -11,6 +11,8 @@ mod reenter_caller;
 mod system_info;
 mod toml_helper;
 mod async_h1;
+mod read_helper;
+mod read_seek;
 
 pub use bdt_util::*;
 pub use condvar_helper::*;
@@ -25,3 +27,5 @@ pub use reenter_caller::*;
 pub use system_info::*;
 pub use toml_helper::*;
 pub use self::async_h1::*;
+pub use read_helper::*;
+pub use read_seek::*;
