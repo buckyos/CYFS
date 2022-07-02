@@ -123,11 +123,9 @@ impl LocalStore {
 #[cfg(test)]
 mod tests {
 
-    use super::super::{into_async_storage_sync, AsyncStorage, FileStorage, SqliteStorage};
+    use super::super::{into_async_storage_sync, FileStorage, SqliteStorage};
     use super::LocalStore;
-    use serde::de::DeserializeOwned;
     use serde::{Deserialize, Serialize};
-    use std::sync::{Arc, Mutex};
     extern crate simple_logger;
     #[derive(Serialize, Deserialize, Eq, PartialEq, Debug)]
     struct TestObj {
