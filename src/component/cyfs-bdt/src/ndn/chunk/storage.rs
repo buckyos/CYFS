@@ -10,7 +10,7 @@ use async_std::{
     task::{Context, Poll}
 };
 use cyfs_base::*;
-
+use cyfs_util::AsyncReadWithSeek;
 
 #[async_trait]
 pub trait ChunkWriter: 'static + std::fmt::Display + Send + Sync {
@@ -87,7 +87,7 @@ pub trait ChunkReader: 'static + Send + Sync {
     fn clone_as_reader(&self) -> Box<dyn ChunkReader>;
     async fn exists(&self, chunk: &ChunkId) -> bool;
     async fn get(&self, chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>>;
-    async fn read(&self, chunk: &ChunkId) -> BuckyResult<Box<dyn Read + Unpin + Send + Sync>> {
+    async fn read(&self, chunk: &ChunkId) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         struct ArcWrap(Arc<Vec<u8>>);
         impl AsRef<[u8]> for ArcWrap {
             fn as_ref(&self) -> &[u8] {
