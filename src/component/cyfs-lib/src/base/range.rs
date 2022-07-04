@@ -10,7 +10,7 @@ Content-Length: 1000
 Content-Range: bytes 0-999/123456
 */
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NDNDataRange {
     pub start: Option<u64>,
     pub length: Option<u64>,
@@ -46,7 +46,7 @@ impl From<Range<u64>> for NDNDataRange {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NDNDataRanges(Vec<NDNDataRange>);
 
 impl Deref for NDNDataRanges {
@@ -81,7 +81,7 @@ impl NDNDataRanges {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum NDNDataRequestRange {
     Unparsed(String),
     Range(NDNDataRanges),
@@ -238,6 +238,7 @@ impl NDNDataRequestRange {
                         NDNDataResponseRange::NoOverlap(size)
                     }
                     http_range::HttpRangeParseError::InvalidRange => {
+                        warn!("invalid range: {}, size={}", range_str, size);
                         NDNDataResponseRange::InvalidRange
                     }
                 };

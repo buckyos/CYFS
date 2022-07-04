@@ -156,7 +156,7 @@ impl FrontService {
             common,
             object_id: req.object.object_id,
             data_type: NDNDataType::Mem,
-            range: None,
+            range: req.range,
             inner_path: None,
         };
 
@@ -202,7 +202,7 @@ impl FrontService {
             common,
             object_id: req.object.object_id,
             data_type: NDNDataType::Mem,
-            range: None,
+            range: req.range,
             inner_path: None,
         };
 
@@ -474,6 +474,7 @@ impl FrontService {
                             dec_id: Some(dec_id),
                             object_id: dir_id,
                             inner_path: web_req.inner_path,
+                            range: None,
 
                             mode: req.mode,
                             format: req.format,
@@ -512,6 +513,7 @@ impl FrontService {
                             dec_id: Some(dec_id),
                             object_id: local_status_id,
                             inner_path: None,
+                            range: None,
 
                             mode: req.mode,
                             format: req.format,
