@@ -58,9 +58,7 @@ impl FrontProtocolHandler {
 
     fn extract_route_param<State>(req: &tide::Request<State>) -> BuckyResult<String> {
         match Self::extract_option_route_param(req)? {
-            Some(value) => {
-                Ok(value)
-            }
+            Some(value) => Ok(value),
             None => {
                 let msg = format!("request url must param missing! {}", req.url());
                 error!("{}", msg);
@@ -69,7 +67,9 @@ impl FrontProtocolHandler {
         }
     }
 
-    fn extract_option_route_param<State>(req: &tide::Request<State>) -> BuckyResult<Option<String>> {
+    fn extract_option_route_param<State>(
+        req: &tide::Request<State>,
+    ) -> BuckyResult<Option<String>> {
         match req.param("must") {
             Ok(v) => {
                 // 对url里面的以%编码的unicode字符进行解码
@@ -82,9 +82,7 @@ impl FrontProtocolHandler {
 
                 Ok(Some(value.into_owned()))
             }
-            Err(_) => {
-                Ok(None)
-            }
+            Err(_) => Ok(None),
         }
     }
 
@@ -200,6 +198,31 @@ impl FrontProtocolHandler {
                 Ok(dec_id)
             }
         }
+    }
+
+    fn range_from_request(req: &http_types::Request) -> BuckyResult<Option<NDNDataRequestRange>> {
+        // first extract dec_id from headers
+        let s: Option<String> =
+            match RequestorHelper::decode_optional_header(req, "Range")? {
+                Some(range) => Some(range),
+                None => {
+                    // try extract dec_id from query pairs
+                    match RequestorHelper::value_from_querys("range", req.url()) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            let msg = format!(
+                                "invalid request url range query param! {}, {}",
+                                req.url(),
+                                e
+                            );
+                            error!("{}", msg);
+                            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                        }
+                    }
+                }
+            };
+
+        Ok(s.map(|s| NDNDataRequestRange::new_unparsed(s)))
     }
 
     fn flags_from_request(url: &http_types::Url) -> BuckyResult<u32> {
@@ -338,6 +361,8 @@ impl FrontProtocolHandler {
         let dec_id = Self::dec_id_from_request(req.request.as_ref())?;
         let flags = Self::flags_from_request(url)?;
 
+        let range = Self::range_from_request(req.request.as_ref())?;
+
         /*
         /object_id
         /object_id/inner_path
@@ -374,6 +399,7 @@ impl FrontProtocolHandler {
 
                     object_id: id,
                     inner_path,
+                    range,
 
                     mode,
                     format,
@@ -405,6 +431,7 @@ impl FrontProtocolHandler {
 
                     object_id: roots[0],
                     inner_path,
+                    range,
 
                     mode,
                     format,
@@ -576,6 +603,8 @@ impl FrontProtocolHandler {
         // header or params dec_id has higher priority
         let dec_id = extra_dec_id.or(dec_id);
 
+        let range = Self::range_from_request(req.request.as_ref())?;
+
         // let mode = Self::mode_from_request(url)?;
         // let flags = Self::flags_from_request(url)?;
 
@@ -595,7 +624,11 @@ impl FrontProtocolHandler {
                 "format" => { /* ignore */ }
                 "flags" => {
                     flags = u32::from_str(v.as_ref()).map_err(|e| {
-                        let msg = format!("invalid request url flags query param! {}, {}", req.request.url(), e);
+                        let msg = format!(
+                            "invalid request url flags query param! {}, {}",
+                            req.request.url(),
+                            e
+                        );
                         error!("{}", msg);
                         BuckyError::new(BuckyErrorCode::InvalidParam, msg)
                     })?;
@@ -636,6 +669,7 @@ impl FrontProtocolHandler {
 
             action,
             inner_path,
+            range,
             page_index,
             page_size,
 
