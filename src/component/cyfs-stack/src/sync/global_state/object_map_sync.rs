@@ -6,6 +6,7 @@ use super::data::{ChunksCollector, DataSync};
 use super::walker::*;
 use cyfs_base::*;
 use cyfs_lib::*;
+use super::dir_sync::*;
 
 use futures::future::{AbortHandle, Abortable};
 use std::sync::{Arc, Mutex};
@@ -74,23 +75,43 @@ impl ObjectMapSync {
 
         loop {
             let list = walker.next(64).await;
-            if list.is_empty() && self.chunks_collector.is_empty() {
-                info!("sync object & chunk list complete! target={}", self.target);
+            if list.is_empty() {
+                info!("sync object complete! target={}", self.target);
+                break Ok(());
+            }
+
+            if let Err(e) = self.sync_objects_with_assoc(list, had_err).await {
+                break Err(e);
+            }
+        }
+    }
+
+    // sync objects with all assoc objects
+    async fn sync_objects_with_assoc(
+        &self,
+        mut list: Vec<ObjectId>,
+        had_err: &mut bool,
+    ) -> BuckyResult<()> {
+        let mut dir_sync = self.data_sync.create_dir_sync();
+
+        loop {
+            if list.is_empty() && self.chunks_collector.is_empty() && dir_sync.is_empty() {
+                info!("sync object & chunk list & dir list complete! target={}", self.target);
                 break Ok(());
             }
 
             // sync objects
-            if !list.is_empty() {
-                // filter the missing objects
-                let list = self.state_cache.filter_missing(list);
-                if !list.is_empty() {
-                    if let Err(e) = self.sync_objects_with_assoc(list, had_err).await {
-                        error!(
-                            "sync object list error! now will stop sync target={}",
-                            self.target,
-                        );
-                        break Err(e);
-                    }
+            let sync_list = self.state_cache.filter_missing(list);
+            match self.sync_objects_with_assoc_once(sync_list, &mut dir_sync, had_err).await {
+                Ok(assoc_objects) => {
+                    list = assoc_objects;
+                }
+                Err(e) => {
+                    error!(
+                        "sync object list error! now will stop sync target={}",
+                        self.target,
+                    );
+                    break Err(e);
                 }
             }
 
@@ -107,58 +128,57 @@ impl ObjectMapSync {
             }
         }
     }
-
     // sync objects with all assoc objects
-    async fn sync_objects_with_assoc(
+    async fn sync_objects_with_assoc_once(
         &self,
-        mut list: Vec<ObjectId>,
+        list: Vec<ObjectId>,
+        dir_sync: &mut DirListSync, 
         had_err: &mut bool,
-    ) -> BuckyResult<()> {
-        loop {
-            let mut assoc = AssociationObjects::new(self.chunks_collector.clone());
+    ) -> BuckyResult<Vec<ObjectId>> {
+        let mut assoc = AssociationObjects::new(self.chunks_collector.clone());
 
-            let mut sync_list = vec![];
-            {
-                std::mem::swap(&mut list, &mut sync_list);
-            }
+        // first sync objects
+        if !list.is_empty() {
+            debug!("will sync assoc list: {:?}", list);
 
-            if let Err(e) = self.sync_objects(sync_list, had_err, &mut assoc).await {
+            if let Err(e) = self.sync_objects(list, had_err, &mut assoc, dir_sync).await {
                 error!(
                     "sync object list error! now will stop sync target={}",
                     self.target,
                 );
-                break Err(e);
+                return Err(e);
             }
+        }
+        
+        // then sync dirs once
+        // dir_sync will try to parse dir and extract all relative objects and chunks
+        dir_sync.sync_once(&mut assoc).await;
 
-            let assoc_list = assoc.into_list();
-            if assoc_list.is_empty() {
-                break Ok(());
-            }
+        let assoc_list = assoc.into_list();
+        if assoc_list.is_empty() {
+            return Ok(vec![]);
+        }
 
-            // filter the missing objects
-            let assoc_list = self.state_cache.filter_missing(assoc_list);
-            if assoc_list.is_empty() {
-                return Ok(());
-            }
+        // filter the missing objects
+        let assoc_list = self.state_cache.filter_missing(assoc_list);
+        if assoc_list.is_empty() {
+            return Ok(vec![]);
+        }
 
-            // filter the already exists objects
-            for id in assoc_list {
-                match self.cache.exists(&id).await {
-                    Ok(exists) if !exists => {
-                        list.push(id);
-                    }
-                    _ => {
-                        // TODO wht should do if call exists error?
-                    }
+        // filter the already exists objects
+        let mut list = vec![];
+        for id in assoc_list {
+            match self.cache.exists(&id).await {
+                Ok(exists) if !exists => {
+                    list.push(id);
+                }
+                _ => {
+                    // TODO wht should do if call exists error?
                 }
             }
-
-            if list.is_empty() {
-                break Ok(());
-            }
-
-            debug!("will sync assoc list: {:?}", list);
         }
+
+        Ok(list)
     }
 
     async fn sync_objects(
@@ -166,6 +186,7 @@ impl ObjectMapSync {
         list: Vec<ObjectId>,
         had_err: &mut bool,
         assoc_objects: &mut AssociationObjects,
+        dir_sync: &mut DirListSync, 
     ) -> BuckyResult<()> {
         // 重试间隔
         let mut retry_interval = SYNC_RETRY_MIN_INTERVAL_SECS;
@@ -173,7 +194,7 @@ impl ObjectMapSync {
 
         loop {
             match self
-                .sync_objects_once(list.clone(), had_err, assoc_objects)
+                .sync_objects_once(list.clone(), had_err, assoc_objects, dir_sync)
                 .await
             {
                 Ok(_) => break,
@@ -229,6 +250,7 @@ impl ObjectMapSync {
         list: Vec<ObjectId>,
         had_err: &mut bool,
         assoc_objects: &mut AssociationObjects,
+        dir_sync: &mut DirListSync,
     ) -> BuckyResult<()> {
         debug!("will sync objects: {:?}", list);
 
@@ -257,7 +279,12 @@ impl ObjectMapSync {
 
         // extract all assoc objects/chunks
         sync_resp.objects.iter().for_each(|item| {
-            assoc_objects.append(item.object.as_ref().unwrap());
+            let info = item.object.as_ref().unwrap();
+            assoc_objects.append(info);
+
+            if info.object_id.obj_type_code() == ObjectTypeCode::Dir {
+                dir_sync.append_dir(info);
+            }
         });
 
         self.save_objects(sync_resp.objects, had_err).await;

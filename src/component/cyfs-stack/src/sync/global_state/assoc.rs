@@ -18,6 +18,7 @@ impl AssociationObjects {
     }
 
     pub fn append(&mut self, info: &NONObjectInfo) {
+        // debug!("add object's assoc items: {}", info.object_id);
         let object = info.object.as_ref().unwrap();
 
         if let Some(id) = object.owner() {
@@ -72,7 +73,7 @@ impl AssociationObjects {
         }
     }
 
-    fn append_item(&mut self, id: &ObjectId) {
+    pub fn append_item(&mut self, id: &ObjectId) {
         match id.obj_type_code() {
             ObjectTypeCode::Chunk => {
                 self.chunks_collector.append_chunk(id.as_chunk_id());
