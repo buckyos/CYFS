@@ -674,7 +674,11 @@ impl RequestorHelper {
 
         let unix_time = cyfs_base::bucky_time_to_unix_time(bucky_time);
         let secs = unix_time / (1000 * 1000);
-        let nsecs = (unix_time % secs) * 1000;
+        let nsecs = if secs > 0 {
+            (unix_time % secs) * 1000 
+        } else {
+            0
+        };
 
         let time = NaiveDateTime::from_timestamp(secs as i64, nsecs as u32);
 
