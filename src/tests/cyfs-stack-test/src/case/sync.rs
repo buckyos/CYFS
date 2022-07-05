@@ -19,12 +19,14 @@ fn new_dec(name: &str) -> ObjectId {
 #[derive(Clone)]
 struct Indexer {
     all: Arc<Mutex<HashMap<ObjectId, ObjectId>>>,
+    chunks: Arc<Mutex<Vec<ChunkId>>>,
 }
 
 impl Indexer {
     pub fn new() -> Self {
         Self {
             all: Arc::new(Mutex::new(HashMap::new())),
+            chunks: Arc::new(Mutex::new(vec![])),
         }
     }
 
@@ -38,6 +40,16 @@ impl Indexer {
 
     pub fn get(&self, root: &ObjectId) -> Option<ObjectId> {
         self.all.lock().unwrap().get(root).cloned()
+    }
+
+    pub fn set_chunks(&self, mut chunks: Vec<ChunkId>) {
+        let mut slot = self.chunks.lock().unwrap();
+        slot.clear();
+        slot.append(&mut chunks);
+    }
+
+    pub fn get_chunks(&self) -> Vec<ChunkId> {
+        self.chunks.lock().unwrap().clone()
     }
 }
 
@@ -62,22 +74,40 @@ async fn add_chunk(stack: &SharedCyfsStack) -> ChunkId {
     let buf: Vec<u8> = (0..3000).map(|_| rand::random::<u8>()).collect();
     let chunk_id = ChunkId::calculate(&buf).await.unwrap();
 
-    let mut req = NDNPutDataRequest::new_with_buffer(
-        NDNAPILevel::Router,
-        chunk_id.object_id().to_owned(),
-        buf.clone(),
-    );
+    put_chunk(stack, chunk_id.clone(), buf).await;
+
+    chunk_id
+}
+
+async fn put_chunk(stack: &SharedCyfsStack, chunk_id: ChunkId, buf: Vec<u8>) -> ChunkId {
+    let mut req =
+        NDNPutDataRequest::new_with_buffer(NDNAPILevel::Router, chunk_id.object_id(), buf.clone());
     // router层级，指定为none默认为所在zone的ood了，所以这里强制指定为当前协议栈
     req.common.target = Some(stack.local_device_id().into());
 
     if let Err(e) = stack.ndn_service().put_data(req).await {
-        error!("put chunk error! {}", e);
+        error!("put chunk error! chunk={}, {}", chunk_id, e);
         unreachable!();
     } else {
-        info!("put random chunk success! {}", chunk_id);
+        info!("put chunk success! {}", chunk_id);
     }
 
     chunk_id
+}
+
+async fn put_object(stack: &SharedCyfsStack, object_id: ObjectId, object_raw: Vec<u8>) {
+    let req = NONPutObjectOutputRequest::new_noc(object_id.clone(), object_raw);
+
+    let ret = stack.non_service().put_object(req).await;
+    match ret {
+        Err(e) => {
+            error!("put object error! object={}, {}", object_id, e);
+            unreachable!();
+        }
+        Ok(_) => {
+            info!("put object success! object={}", object_id);
+        }
+    }
 }
 
 async fn add_file(stack: &SharedCyfsStack) -> FileId {
@@ -122,6 +152,114 @@ async fn add_file(stack: &SharedCyfsStack) -> FileId {
     resp.file_id.try_into().unwrap()
 }
 
+async fn add_dir(stack: &SharedCyfsStack) -> (ObjectId, ChunkId) {
+    let buf: Vec<u8> = (0..3000).map(|_| rand::random::<u8>()).collect();
+    let chunk_id = ChunkId::calculate(&buf).await.unwrap();
+    info!("new sync target chunk: {}", chunk_id);
+    put_chunk(stack, chunk_id.clone(), buf).await;
+
+    let dir_id = add_full_chunk_dir(
+        stack,
+        vec![("target_chunk_dir".to_owned(), chunk_id.clone())],
+    )
+    .await;
+    let dir_id =
+        add_desc_chunk_dir(stack, vec![("full_chunk_dir".to_owned(), dir_id.into())]).await;
+
+    (dir_id, chunk_id)
+}
+
+async fn add_full_chunk_dir(stack: &SharedCyfsStack, sub: Vec<(String, ChunkId)>) -> ObjectId {
+    let attr = Attributes::new(0xFFFF);
+    let inner_node =
+        InnerNodeInfo::new(Attributes::default(), InnerNode::ObjId(ObjectId::default()));
+
+    let mut object_map = HashMap::new();
+    object_map.insert("path1".to_owned(), inner_node);
+
+    let buf: Vec<u8> = (0..3000).map(|_| rand::random::<u8>()).collect();
+    let chunk_id = ChunkId::calculate(&buf).await.unwrap();
+    let inner_node = InnerNodeInfo::new(
+        Attributes::default(),
+        InnerNode::ObjId(chunk_id.as_object_id().clone()),
+    );
+    object_map.insert("path2".to_owned(), inner_node);
+
+    for (k, v) in sub {
+        let inner_node = InnerNodeInfo::new(Attributes::default(), InnerNode::Chunk(v));
+        object_map.insert(k, inner_node);
+    }
+
+    let list = NDNObjectList {
+        parent_chunk: None,
+        object_map,
+    };
+
+    let desc_chunk = list.to_vec().unwrap();
+    let desc_chunk_id = ChunkId::calculate_sync(&desc_chunk).unwrap();
+
+    let mut obj_map = HashMap::new();
+    obj_map.insert(chunk_id.object_id(), buf);
+
+    let body_chunk = obj_map.to_vec().unwrap();
+    let body_chunk_id = ChunkId::calculate_sync(&body_chunk).unwrap();
+
+    let builder = Dir::new_with_chunk_body(
+        attr.clone(),
+        NDNObjectInfo::Chunk(desc_chunk_id.clone()),
+        body_chunk_id.clone(),
+    );
+    let dir = builder.no_create_time().update_time(0).build();
+    let dir_id = dir.desc().calculate_id();
+
+    info!("new sync full chunk dir: {}, desc={}, body={}", dir_id, desc_chunk_id, body_chunk_id);
+
+    put_chunk(stack, desc_chunk_id, desc_chunk).await;
+    put_chunk(stack, body_chunk_id, body_chunk).await;
+    put_object(stack, dir_id.clone(), dir.to_vec().unwrap()).await;
+
+    dir_id
+}
+
+async fn add_desc_chunk_dir(stack: &SharedCyfsStack, sub: Vec<(String, ObjectId)>) -> ObjectId {
+    let attr = Attributes::new(0xFFFF);
+    let inner_node =
+        InnerNodeInfo::new(Attributes::default(), InnerNode::ObjId(ObjectId::default()));
+
+    let mut object_map = HashMap::new();
+    object_map.insert("path2".to_owned(), inner_node);
+    for (k, v) in sub {
+        let inner_node = InnerNodeInfo::new(Attributes::default(), InnerNode::ObjId(v));
+        object_map.insert(k, inner_node);
+    }
+
+    let list = NDNObjectList {
+        parent_chunk: None,
+        object_map,
+    };
+
+    let desc_chunk = list.to_vec().unwrap();
+    let desc_chunk_id = ChunkId::calculate_sync(&desc_chunk).unwrap();
+
+    let obj_map = HashMap::new();
+    // obj_map.insert(desc_chunk_id.object_id(), desc_chunk);
+
+    let builder = Dir::new(
+        attr.clone(),
+        NDNObjectInfo::Chunk(desc_chunk_id.clone()),
+        obj_map,
+    );
+    let dir = builder.no_create_time().update_time(0).build();
+    let dir_id = dir.desc().calculate_id();
+
+    info!("new sync desc chunk dir: {}", dir_id);
+
+    put_chunk(stack, desc_chunk_id, desc_chunk).await;
+    put_object(stack, dir_id.clone(), dir.to_vec().unwrap()).await;
+
+    dir_id
+}
+
 async fn test_ood_change(stack: &SharedCyfsStack, indexer: Indexer) {
     // let dec_id = new_dec("root_state1");
     let root_state = stack.root_state_stub(None, None);
@@ -129,6 +267,10 @@ async fn test_ood_change(stack: &SharedCyfsStack, indexer: Indexer) {
     info!("current root: {:?}", root_info);
 
     let file_id = add_file(&stack).await;
+
+    let (dir_id, target_chunk_id) = add_dir(&stack).await;
+
+    indexer.set_chunks(vec![target_chunk_id]);
 
     let mut index: usize = 0;
     loop {
@@ -169,11 +311,21 @@ async fn test_ood_change(stack: &SharedCyfsStack, indexer: Indexer) {
             .await
             .unwrap();
         op_env
-            .set_with_path("/data/error_chunk", error_chunk_id.as_object_id(), None, true)
+            .set_with_path(
+                "/data/error_chunk",
+                error_chunk_id.as_object_id(),
+                None,
+                true,
+            )
             .await
             .unwrap();
         op_env
             .set_with_key("/data/file1", "e", file_id.object_id(), None, true)
+            .await
+            .unwrap();
+
+        op_env
+            .set_with_path("/data/dir1", &dir_id, None, true)
             .await
             .unwrap();
 
@@ -191,6 +343,7 @@ async fn test_ood_change(stack: &SharedCyfsStack, indexer: Indexer) {
 
 async fn test_standby_ood_get(stack: &SharedCyfsStack, indexer: Indexer) {
     let root_state = stack.root_state_stub(None, None);
+
     loop {
         let root_info = root_state.get_current_root().await.unwrap();
         info!("device current root: {:?}", root_info);
@@ -222,6 +375,14 @@ async fn test_standby_ood_get(stack: &SharedCyfsStack, indexer: Indexer) {
         let resp = stack.non_service().get_object(req).await.unwrap();
         let text_obj = Text::decode(&resp.object.object_raw).unwrap();
         info!("device got text_obj: {}", text_obj.id());
+
+        let chunks = indexer.get_chunks();
+        for chunk_id in chunks {
+            info!("device will get chunk: {}", chunk_id);
+            let req = NDNGetDataOutputRequest::new_ndc(chunk_id.object_id(), None);
+            let _resp = stack.ndn_service().get_data(req).await.unwrap();
+            info!("device got target chunk: {}", chunk_id);
+        }
 
         async_std::task::sleep(std::time::Duration::from_secs(15)).await;
     }
