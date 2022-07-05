@@ -6,6 +6,7 @@ mod object_map_sync;
 mod cache;
 mod assoc;
 mod data;
+mod dir_sync;
 
 pub(crate) use sync_client::*;
 pub(crate) use sync_helper::*;
