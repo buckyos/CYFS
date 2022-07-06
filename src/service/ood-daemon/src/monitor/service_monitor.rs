@@ -1,6 +1,6 @@
 use crate::config::{ServiceConfig, ServiceState};
 use crate::service::Service;
-use cyfs_base::BuckyError;
+use cyfs_base::{BuckyError, BuckyResult};
 
 use async_std::task;
 use std::path::PathBuf;
@@ -35,7 +35,21 @@ impl ServiceMonitor {
         Self::run_monitor_checker(service_name);
     }
 
-    pub fn launch_monitor() -> Result<(), BuckyError> {
+    fn try_get_cmd_from_config() -> Option<String> {
+        match crate::SERVICE_MANAGER
+            .get_service_info(::cyfs_base::OOD_DAEMON_NAME)
+            .map(|v| v.service)
+        {
+            Some(Some(service)) => service
+                .get_script("start")
+                .map(|v| format!("{} --as-monitor", v)),
+            _ => {
+                None
+            }
+        }
+    }
+
+    fn try_get_cmd_from_exe() -> BuckyResult<String> {
         let ret = std::env::current_exe();
         if ret.is_err() {
             let msg = format!("get current exe error: {}", ret.unwrap_err());
@@ -46,6 +60,15 @@ impl ServiceMonitor {
 
         let exe_file = ret.unwrap();
         let cmd_line = format!(r#""{}" --as-monitor"#, exe_file.to_str().unwrap());
+
+        Ok(cmd_line)
+    }
+
+    pub fn launch_monitor() -> Result<(), BuckyError> {
+        let cmd_line = match Self::try_get_cmd_from_config() {
+            Some(cmd) => cmd,
+            None => Self::try_get_cmd_from_exe()?,
+        };
 
         info!("will launch daemon monitor: {}", cmd_line);
 
