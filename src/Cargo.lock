@@ -2505,6 +2505,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "dsg-test"
+version = "0.5.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-dsg-client",
+ "cyfs-lib",
+ "cyfs-util",
+ "dsg-service",
+ "futures",
+ "log 0.4.16",
+ "rand 0.8.5",
+]
+
+[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

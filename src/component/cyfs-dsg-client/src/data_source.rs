@@ -59,6 +59,23 @@ impl ChunkReader for DsgStackChunkReader {
 }
 
 
+/**
+ * # DSG backup storage
++ 需要备份的data source chunk list应当被加密为另一组backup chunk list落地到contract miner；miner无法还原落地的backup chunk list为data source chunk list；
++ 特定dec app/service在要备份的data source更新时，通过dsg client向dsg service发起contract sync data source changed state；dsg service将data source chunk list编码为backup chunk list，并且保留data source stub，contract进入data source prepared state;向dsg miner发出对backup chunk list的initial challenge；
++ dsg miner在收到initial challenge后，通过ndn同步backup chunk list；完成后回复initial proof；
++ dsg service接收并验证initial proof之后，可以选择删除backup chunk list；此后在dec app/service在更新data source chunk list之前，dsg service定期生成storage challenge，生成challenge的过程依赖data source stub；miner接收到storage challenge之后，通过读取落地到miner上的backup chunk list生成proof；dsg service在验证proof时，通过data source stub和data source chunk list来验证proof；
++ dsg service应当保留data source chunk list，否则无法进行storage challenge的生成和验证；如果dsg service无法读取data source chunk list，应当进入backup restore过程，无论data source stub是否可读，只要持有consumer secret key，都应当可以restore data source chunk list；
+
+## 生成backup chunk list 
++ backup chunk 的格式
+
+|field|version|aes key|padding|range count|[ranges]|padding|data|padding| 
+|-----|:----:|----|----|:----:|----|----|----|----|
+|bytes|1|公钥长度 ||4|8 * range count||加密后长度||
+|说明|版本号|共钥加密后的aes key|0填充aes block|u32源数据chunk区间数目|[u32;u32]源数据区间|0填充aes block|aes加密源数据|0填充aes block|
+ */
+
 #[derive(Clone, Debug)]
 pub struct DsgChunkMergeStub {
     pub first_range: Option<u32>, 

@@ -14,7 +14,7 @@ use cyfs_base::*;
 use cyfs_bdt::*;
 use cyfs_lib::*;
 use cyfs_util::*;
-use dsg_client::*;
+use cyfs_dsg_client::*;
 
 
 pub struct DsgServiceConfig {

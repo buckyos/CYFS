@@ -60,6 +60,7 @@ members = [
     "./meta/cyfs-meta-spv",
 
     "./tests/cyfs-stack-test",
+    "./tests/dsg-test",
 ]
 
 [profile.release]

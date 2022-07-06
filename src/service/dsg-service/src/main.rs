@@ -3,7 +3,7 @@ mod cache_service;
 use std::sync::Arc;
 use cyfs_lib::*;
 use cyfs_util::process::ProcessAction;
-use dsg_client::*;
+use cyfs_dsg_client::*;
 use contract_service::*;
 
 
