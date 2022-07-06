@@ -180,6 +180,10 @@ impl Service {
             return;
         }
 
+        self.direct_sync_state(target_state);
+    }
+
+    pub fn direct_sync_state(&self, target_state: ServiceState) {
         self.update_state();
 
         if self.state() == target_state {

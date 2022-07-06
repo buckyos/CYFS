@@ -158,7 +158,7 @@ impl ServiceMonitor {
 
         let service = self.new_service(&self.version)?;
 
-        service.sync_state(ServiceState::RUN);
+        service.direct_sync_state(ServiceState::RUN);
 
         self.service = Some(service);
 
