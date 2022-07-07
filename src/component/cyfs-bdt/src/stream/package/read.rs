@@ -167,33 +167,6 @@ impl ReadProviderImpl {
 pub struct ReadProvider(Mutex<ReadProviderState>);
 
 impl ReadProvider {
-    pub fn remote_confirm(&self, stream: &PackageStream, syn_ack: &SessionData) {
-        if syn_ack.payload.as_ref().len() > 0 {
-            let state = &mut *(cyfs_debug::lock!(self.0)).unwrap();
-            match state {
-                ReadProviderState::Open(provider) => {
-                    let (confirmed, _) = provider.queue.push(stream, syn_ack);
-
-                    let (readable_waker, read_waker) = if confirmed > 0 {
-                        let mut readable_waker = None;
-                        std::mem::swap(&mut provider.readable_waiter, &mut readable_waker);
-                        (readable_waker, provider.wake(stream, provider.queue.stream_len()))
-                    } else {
-                        (None, None)
-                    };
-
-                    if let Some(to_wake) = readable_waker {
-                        to_wake.wake();
-                    }
-                    if let Some(to_wake) = read_waker {
-                        to_wake.wake();
-                    }
-                },
-                _ => {}
-            };
-        }
-    }
-
     pub fn new(config: &super::super::container::Config) -> Self {
         Self(Mutex::new(
             ReadProviderState::Open(ReadProviderImpl {

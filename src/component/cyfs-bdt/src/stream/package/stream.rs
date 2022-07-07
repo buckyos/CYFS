@@ -62,13 +62,11 @@ impl PackageStream {
         owner: &super::super::container::StreamContainerImpl, 
         local_id: IncreaseId, 
         remote_id: IncreaseId,
-        ack: Option<SessionData>,
-        confirm_answer_len: u64,
     ) -> BuckyResult<Self> {
         let owner_disp = format!("{}", owner);
         let config = owner.tunnel().stack().config().stream.stream.clone();
-	
-        let write_provider = WriteProvider::new(&config, confirm_answer_len);
+
+        let write_provider = WriteProvider::new(&config);
         let read_provider = ReadProvider::new(&config);
         let stream = Self(Arc::new(PackageStreamImpl {
             owner_disp, 
@@ -79,13 +77,6 @@ impl PackageStream {
             write_provider,
             read_provider
         }));
-
-        match ack {
-            Some(syn_ack) => {
-                stream.read_provider().remote_confirm(&stream, &syn_ack)
-            },
-            _ => {}
-        }
 
         Ok(stream)
     }

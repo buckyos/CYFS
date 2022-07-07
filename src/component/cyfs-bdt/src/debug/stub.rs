@@ -262,18 +262,30 @@ impl DebugStub {
             Ok(len) => {
                 let s = format!("Read answer success, len={} content={:?}\r\n", 
                     len, String::from_utf8(answer[..len].to_vec()).expect(""));
-
                 let _ = tunnel.write_all(s.as_bytes()).await;
             },
             Err(e) => {
                 let s = format!("Read answer fail, err={}\r\n", e);
-
                 let _ = tunnel.write_all(s.as_bytes()).await;
                 return Ok(());
             }
         }
 
         let _ = conn.write_all(b"hello world.").await;
+
+        let mut buf = [0u8; 128];
+        match conn.read(&mut buf).await {
+            Ok(len) => {
+                let s = format!("Read data success, len={} content={:?}\r\n", 
+                    len, String::from_utf8(buf[..len].to_vec()).expect(""));
+                let _ = tunnel.write_all(s.as_bytes()).await;
+            },
+            Err(e) => {
+                let s = format!("Read data fail, err={}\r\n", e);
+                let _ = tunnel.write_all(s.as_bytes()).await;
+                return Ok(());
+            }
+        }
 
         let _ = tunnel.write_all("Ok: stream connected\r\n".as_ref()).await;
 

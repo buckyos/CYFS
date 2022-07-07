@@ -106,13 +106,9 @@ impl OnPackage<SessionData> for AcceptPackageStream {
             let pkg = pkg.clone_without_data();
             task::spawn(async move {
                 if let Ok(builder) = AcceptStreamBuilder::try_from(&action.0.builder) {
-                    let confirm_len = match builder.confirm_syn_ack().map(|c| c.package_syn_ack.clone_with_data()) {
-                        Some(syn_ack) => syn_ack.payload.as_ref().len() as u64,
-                        _ => 0
-                    };
                     let stream = builder.building_stream().clone();
                     let _ = stream.as_ref().establish_with(
-                        StreamProviderSelector::Package(action.0.remote_id, Some(pkg), confirm_len), 
+                        StreamProviderSelector::Package(action.0.remote_id, Some(pkg)), 
                         &stream).await;
                 } else {
                     debug!("{} ingore syn session data for {}", action, "builder released");

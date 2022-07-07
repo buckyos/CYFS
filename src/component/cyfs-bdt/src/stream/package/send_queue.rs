@@ -72,10 +72,10 @@ pub struct SendQueue {
 
 
 impl SendQueue {
-    pub fn new(capacity: usize, start: u64) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
             capacity, 
-            start, 
+            start: 0, 
             nagle_buffer: vec![0u8; PackageStream::mss()], 
             nagle_state: NagleState::None, 
             blocks: LinkedList::new(), 

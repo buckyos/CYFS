@@ -205,7 +205,7 @@ impl ConnectStreamAction for ConnectPackageStream {
         let remote_id = sesstion_data.syn_info.clone().unwrap().from_session_id;
 
         self.0.stream.as_ref().establish_with(
-            StreamProviderSelector::Package(remote_id, Some(sesstion_data), 0), 
+            StreamProviderSelector::Package(remote_id, Some(sesstion_data)), 
             &self.0.stream).await
     }
 }
