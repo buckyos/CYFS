@@ -179,40 +179,44 @@ impl SyncPingClient {
         }
     }
 
+    pub async fn wakeup_ping_and_wait(&self) {
+        let waker;
+        let abort_registration;
+        {
+            let pair = AbortHandle::new_pair();
+            abort_registration = pair.1;
+
+            let mut state = self.sync_state.lock().unwrap();
+            waker = state.ping_waker.take();
+            if let Some(ref mut list) = state.ping_complete {
+                list.push(pair.0);
+            } else {
+                state.ping_complete = Some(vec![pair.0]);
+            }
+        }
+
+        if let Some(waker) = waker {
+            waker.abort();
+        }
+
+        let fut = Abortable::new(
+            async_std::task::sleep(SYNC_PING_TIMEOUT_IN_SECS),
+            abort_registration,
+        );
+
+        match fut.await {
+            Ok(_) => {
+                error!("flush ping timeout");
+            }
+            Err(futures::future::Aborted { .. }) => {
+                info!("flush ping wakeup");
+            }
+        };
+    }
+
     pub async fn ping_state(&self, flush: bool) -> PingResult {
         if flush {
-            let waker;
-            let abort_registration;
-            {
-                let pair = AbortHandle::new_pair();
-                abort_registration = pair.1;
-
-                let mut state = self.sync_state.lock().unwrap();
-                waker = state.ping_waker.take();
-                if let Some(ref mut list) = state.ping_complete {
-                    list.push(pair.0);
-                } else {
-                    state.ping_complete = Some(vec![pair.0]);
-                }
-            }
-
-            if let Some(waker) = waker {
-                waker.abort();
-            }
-
-            let fut = Abortable::new(
-                async_std::task::sleep(SYNC_PING_TIMEOUT_IN_SECS),
-                abort_registration,
-            );
-
-            match fut.await {
-                Ok(_) => {
-                    error!("flush ping timeout");
-                }
-                Err(futures::future::Aborted { .. }) => {
-                    info!("flush ping wakeup");
-                }
-            };
+            self.wakeup_ping_and_wait().await;
         }
 
         let state = self.sync_state.lock().unwrap();
