@@ -202,25 +202,24 @@ impl FrontProtocolHandler {
 
     fn range_from_request(req: &http_types::Request) -> BuckyResult<Option<NDNDataRequestRange>> {
         // first extract dec_id from headers
-        let s: Option<String> =
-            match RequestorHelper::decode_optional_header(req, "Range")? {
-                Some(range) => Some(range),
-                None => {
-                    // try extract dec_id from query pairs
-                    match RequestorHelper::value_from_querys("range", req.url()) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            let msg = format!(
-                                "invalid request url range query param! {}, {}",
-                                req.url(),
-                                e
-                            );
-                            error!("{}", msg);
-                            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-                        }
+        let s: Option<String> = match RequestorHelper::decode_optional_header(req, "Range")? {
+            Some(range) => Some(range),
+            None => {
+                // try extract dec_id from query pairs
+                match RequestorHelper::value_from_querys("range", req.url()) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let msg = format!(
+                            "invalid request url range query param! {}, {}",
+                            req.url(),
+                            e
+                        );
+                        error!("{}", msg);
+                        return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
                     }
                 }
-            };
+            }
+        };
 
         Ok(s.map(|s| NDNDataRequestRange::new_unparsed(s)))
     }
@@ -239,7 +238,11 @@ impl FrontProtocolHandler {
     }
 
     fn parse_url_segs(route_param: &str) -> BuckyResult<Vec<&str>> {
-        let segs: Vec<&str> = route_param.trim_start_matches('/').split('/').collect();
+        let segs: Vec<&str> = route_param
+            .trim_start_matches('/')
+            .split('/')
+            .filter(|seg| !seg.is_empty())
+            .collect();
         if segs.is_empty() {
             let msg = format!("invalid request url param! param={}", route_param);
             error!("{}", msg);
@@ -469,7 +472,7 @@ impl FrontProtocolHandler {
                             }
                             code @ _ => {
                                 let msg = format!(
-                                    "invalid r path dec seg tpye: {}, type_code={:?}",
+                                    "invalid r path dec seg type: {}, type_code={:?}",
                                     dec_seg, code
                                 );
                                 error!("{}", msg);
@@ -496,7 +499,7 @@ impl FrontProtocolHandler {
         /*
         [/target]/{dec_id}/{inner_path}
 
-        target: People/SimpleGroup/Device-id, name, $
+        target: People/SimpleGroup/Device-id, name, $, $$
         dec-id: DecAppId/system/root
         */
 
