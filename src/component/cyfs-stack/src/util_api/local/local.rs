@@ -257,7 +257,7 @@ impl UtilLocalService {
 
     pub async fn get_ood_status(
         &self,
-        _req: UtilGetOODStatusInputRequest,
+        req: UtilGetOODStatusInputRequest,
     ) -> BuckyResult<UtilGetOODStatusInputResponse> {
         let sync_client = self.sync_client.get();
         if sync_client.is_none() {
@@ -268,7 +268,9 @@ impl UtilLocalService {
         }
 
         let sync_client = sync_client.unwrap();
-        let status = sync_client.get_ood_status().await?;
+
+        let flush_ping = (req.common.flags | CYFS_ROUTER_REQUEST_FLAG_FLUSH) != 0;
+        let status = sync_client.get_ood_status(flush_ping).await?;
 
         Ok(UtilGetOODStatusInputResponse { status })
     }

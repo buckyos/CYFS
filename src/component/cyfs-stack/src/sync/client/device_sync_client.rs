@@ -296,7 +296,12 @@ impl DeviceSyncClient {
     }
 
     // 获取目标ood的状态，目前都是通过ping推导出来的
-    pub async fn get_ood_status(&self) -> BuckyResult<OODStatus> {
+    pub async fn get_ood_status(&self, flush_ping: bool) -> BuckyResult<OODStatus> {
+
+        if flush_ping {
+            self.ping_client.wakeup_ping_and_wait().await;
+        }
+        
         let device_state = self.state_manager.get_device_state().await?;
         let zone_state = self.state_manager.get_zone_state();
 
