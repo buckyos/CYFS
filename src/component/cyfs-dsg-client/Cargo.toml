@@ -1,32 +1,31 @@
-[package]
-name = "cyfs-dsg-client"
-version = "0.5.1"
-edition = "2021"
-license = "BSD-2-Clause"
-description = "Rust dsg-client package"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package]
+name = 'cyfs-dsg-client'
+version = '0.5.2'
+edition = '2021'
+license = 'BSD-2-Clause'
+description = 'Rust dsg-client package'
 
 [dependencies]
-async-std = { version = "1.8", features = ["std"] }
-async-trait = "0.1.53"
-async-recursion = "1.0.0"
-log = "0.4"
-protobuf = { version = "2", features = ["with-bytes"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-sha2 = "0.8.1"
-generic-array = { version = "0.12", default-features = false, features = ["serde"] }
-aes = "=0.7"
-block-modes = "=0.8"
-rand = "0.8.5"
-cyfs-base = {path="../cyfs-base", version = "0.5"}
-cyfs-lib = {path="../cyfs-lib", version = "0.5"}
-cyfs-util = {path="../cyfs-util", version = "0.5"}
-cyfs-debug = {path="../cyfs-debug", version = "0.5"}
-cyfs-core = {path="../cyfs-core", version = "0.5"}
-cyfs-bdt = {path="../cyfs-bdt", version = "0.5"}
+async-std = { version = '1.8', features = ['std'] }
+async-trait = '0.1.53'
+async-recursion = '1.0.0'
+log = '0.4'
+protobuf = { version = '2', features = ['with-bytes'] }
+serde = { version = '1.0', features = ['derive'] }
+serde_json = '1.0'
+sha2 = '0.8.1'
+generic-array = { version = '0.12', default-features = false, features = ['serde'] }
+aes = '=0.7'
+block-modes = '=0.8'
+rand = '0.8.5'
+cyfs-base = { path = '../cyfs-base', version = '0.5' }
+cyfs-lib = { path = '../cyfs-lib', version = '0.5' }
+cyfs-util = { path = '../cyfs-util', version = '0.5' }
+cyfs-debug = { path = '../cyfs-debug', version = '0.5' }
+cyfs-core = { path = '../cyfs-core', version = '0.5' }
+cyfs-bdt = { path = '../cyfs-bdt', version = '0.5' }
 
 [build-dependencies]
-protoc-rust = "2"
-protoc-bin-vendored = "3"
+protoc-rust = '2'
+protoc-bin-vendored = '3'
