@@ -1212,13 +1212,13 @@ impl Into<ErrorKind> for BuckyErrorCode {
         }
     }
 }
-
+/*
 impl Termination for BuckyError {
     fn report(self) -> ExitCode {
         ExitCode::from(self.code.into_u8())
     }
 }
-
+*/
 #[cfg(test)]
 mod tests {
     use crate::*;
