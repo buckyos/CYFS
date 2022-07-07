@@ -1,39 +1,38 @@
-[package]
-name = "cyfs-lib"
-version = "0.5.2"
-authors = ["liyaxing <liyaxing@buckyos.com>"]
-edition = "2021"
-license = "BSD-2-Clause"
-description = "Rust cyfs-lib package"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package]
+name = 'cyfs-lib'
+version = '0.5.3'
+authors = ['liyaxing <liyaxing@buckyos.com>']
+edition = '2021'
+license = 'BSD-2-Clause'
+description = 'Rust cyfs-lib package'
 
 [dependencies]
-cyfs-util = { path = "../../component/cyfs-util", version = "0.5" }
-cyfs-bdt = { path = "../../component/cyfs-bdt", version = "0.5" }
-cyfs-base = { path = "../../component/cyfs-base", version = "0.5" }
-cyfs-core = { path = "../../component/cyfs-core", version = "0.5" }
-cyfs-debug = { path = "../../component/cyfs-debug", version = "0.5" }
-log = "0.4"
-async-h1 = "2.3.3"
-http-types = "2.12"
-tide = "0.16"
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-async-trait = "0.1.53"
-hex = "0.4"
-async-std = { version = "1.11", features = ["unstable", "attributes"] }
-lazy_static = "1.4"
-async-tungstenite = "0.17"
-bytes = "1.1"
-futures-util = "0.3"
-futures = "0.3"
-lru_time_cache = "0.11"
-rand = "0.8"
-int-enum = "0.4"
-once_cell = "1.12"
-chrono = "0.4"
-globset = "0.4.8"
-percent-encoding = "2.1"
-http-range = "0.1.5"
-protobuf = { version = "2", features = ["with-bytes"] }
+cyfs-util = { path = '../../component/cyfs-util', version = '0.5' }
+cyfs-bdt = { path = '../../component/cyfs-bdt', version = '0.5' }
+cyfs-base = { path = '../../component/cyfs-base', version = '0.5' }
+cyfs-core = { path = '../../component/cyfs-core', version = '0.5' }
+cyfs-debug = { path = '../../component/cyfs-debug', version = '0.5' }
+log = '0.4'
+async-h1 = '2.3.3'
+http-types = '2.12'
+tide = '0.16'
+serde_json = '1.0'
+serde = { version = '1.0', features = ['derive'] }
+async-trait = '0.1.53'
+hex = '0.4'
+async-std = { version = '1.11', features = ['unstable', 'attributes'] }
+lazy_static = '1.4'
+async-tungstenite = '0.17'
+bytes = '1.1'
+futures-util = '0.3'
+futures = '0.3'
+lru_time_cache = '0.11'
+rand = '0.8'
+int-enum = '0.4'
+once_cell = '1.12'
+chrono = '0.4'
+globset = '0.4.8'
+percent-encoding = '2.1'
+http-range = '0.1.5'
+protobuf = { version = '2', features = ['with-bytes'] }
