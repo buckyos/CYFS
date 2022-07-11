@@ -330,7 +330,7 @@ impl ObjectMapOpEnvContainer {
     // 回收超时的op_env列表
     fn gc_list(&self, expired_list: Vec<(u64, ObjectMapOpEnv)>) {
         for (sid, op_env) in expired_list {
-            warn!("will gc managed op_env on timeout: sid={}", sid);
+            warn!("will gc managed op_env on drop: sid={}", sid);
             if let Err(e) = op_env.abort() {
                 error!("op_env abort error! sid={}, {}", sid, e);
             }
