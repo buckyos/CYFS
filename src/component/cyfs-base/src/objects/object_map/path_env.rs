@@ -424,13 +424,17 @@ impl ObjectMapPathOpEnvRef {
 
     fn into_raw(self) -> BuckyResult<ObjectMapPathOpEnv> {
         let sid = self.sid();
-        let env = Arc::try_unwrap(self.0).map_err(|_| {
-            let msg = format!("path_op_env's ref_count is more than one! sid={}", sid);
+        let env = Arc::try_unwrap(self.0).map_err(|this| {
+            let msg = format!("path_op_env's ref_count is more than one! sid={}, ref={}", sid, Arc::strong_count(&this));
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::ErrorState, msg)
         })?;
 
         Ok(env)
+    }
+
+    pub fn is_dropable(&self) -> bool {
+        Arc::strong_count(&self.0) == 1
     }
 
     pub async fn commit(self) -> BuckyResult<ObjectId> {

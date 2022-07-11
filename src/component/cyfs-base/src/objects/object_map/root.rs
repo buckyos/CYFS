@@ -50,7 +50,7 @@ impl ObjectMapRootHolder {
     pub async fn direct_reload_root(&self, new_root_id: ObjectId) {
         let _update_lock = self.update_lock.lock().await;
         let mut current = self.root.write().unwrap();
-        
+
         info!(
             "reload objectmap root holder's root! dec={:?}, current={}, new={}",
             self.dec_id, *current, new_root_id
@@ -69,9 +69,13 @@ impl ObjectMapRootHolder {
         let new_root = update_root_fn(root.clone()).await?;
         if new_root != root {
             info!("will update root holder: {} -> {}", root, new_root);
-            
+
             // 必须先触发事件，通知上层更新全局状态
-            if let Err(e) = self.event.root_updated(&self.dec_id, new_root.clone(), root.clone()).await {
+            if let Err(e) = self
+                .event
+                .root_updated(&self.dec_id, new_root.clone(), root.clone())
+                .await
+            {
                 error!(
                     "root update event notify error! {} -> {}, {}",
                     root, new_root, e
@@ -239,16 +243,14 @@ impl ObjectMapOpEnv {
     pub async fn get_current_root(&self) -> BuckyResult<ObjectId> {
         match self {
             ObjectMapOpEnv::Path(env) => Ok(env.root()),
-            ObjectMapOpEnv::Single(env) => {
-                match env.get_current_root().await {
-                    Some(root) => Ok(root),
-                    None => {
-                        let msg = format!("single op_env root not been init yet! sid={}", env.sid());
-                        error!("{}", msg);
-                        Err(BuckyError::new(BuckyErrorCode::ErrorState, msg))
-                    }
+            ObjectMapOpEnv::Single(env) => match env.get_current_root().await {
+                Some(root) => Ok(root),
+                None => {
+                    let msg = format!("single op_env root not been init yet! sid={}", env.sid());
+                    error!("{}", msg);
+                    Err(BuckyError::new(BuckyErrorCode::ErrorState, msg))
                 }
-            }
+            },
         }
     }
 
@@ -272,21 +274,27 @@ impl ObjectMapOpEnv {
             ObjectMapOpEnv::Single(env) => env.abort(),
         }
     }
+
+    pub fn is_dropable(&self) -> bool {
+        match self {
+            ObjectMapOpEnv::Path(env) => env.is_dropable(),
+            ObjectMapOpEnv::Single(env) => env.is_dropable(),
+        }
+    }
 }
 
-use lru_time_cache::LruCache;
+
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct ObjectMapOpEnvContainer {
-    all: Arc<Mutex<LruCache<u64, ObjectMapOpEnv>>>,
+    all: Arc<Mutex<HashMap<u64, ObjectMapOpEnv>>>,
 }
 
 impl ObjectMapOpEnvContainer {
     pub(crate) fn new() -> Self {
         let ret = Self {
-            all: Arc::new(Mutex::new(LruCache::with_expiry_duration(
-                std::time::Duration::from_secs(60 * 5),
-            ))),
+            all: Arc::new(Mutex::new(HashMap::new())),
         };
 
         // 自动启动定期gc
@@ -306,7 +314,16 @@ impl ObjectMapOpEnvContainer {
     }
 
     fn gc_once(&self) {
-        let (_, expired_list) = self.all.lock().unwrap().notify_get(&0);
+        let mut expired_list = vec![];
+        self.all.lock().unwrap().retain(|sid, op_env| {
+            if op_env.is_dropable() {
+                expired_list.push((*sid, op_env.clone()));
+                false
+            } else {
+                true
+            }
+        });
+
         self.gc_list(expired_list);
     }
 
@@ -322,18 +339,15 @@ impl ObjectMapOpEnvContainer {
 
     pub fn add_env(&self, env: ObjectMapOpEnv) {
         let sid = env.sid();
-        let (prev, expired_list) = self.all.lock().unwrap().notify_insert(sid, env);
+        let prev = self.all.lock().unwrap().insert(sid, env);
         assert!(prev.is_none());
-
-        self.gc_list(expired_list);
     }
 
     pub fn get_op_env(&self, sid: u64) -> BuckyResult<ObjectMapOpEnv> {
-        let (ret, expired_list) = {
-            let mut all = self.all.lock().unwrap();
-            let (ret, expired_list) = all.notify_get(&sid);
+        let ret = {
+            let ret = self.all.lock().unwrap().get(&sid).cloned();
             let result = match ret {
-                Some(value) => Ok(value.to_owned()),
+                Some(value) => Ok(value),
                 None => {
                     let msg = format!("op_env not found! sid={}", sid);
                     error!("{}", msg);
@@ -341,11 +355,8 @@ impl ObjectMapOpEnvContainer {
                 }
             };
 
-            (result, expired_list)
+            result
         };
-
-        // 回收超时的op_env
-        self.gc_list(expired_list);
 
         ret
     }
