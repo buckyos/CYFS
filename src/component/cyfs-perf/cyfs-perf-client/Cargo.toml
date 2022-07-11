@@ -23,14 +23,14 @@ cyfs-core = { path = "../../../component/cyfs-core", version = "0.5" }
 cyfs-lib = { path = "../../../component/cyfs-lib", version = "0.5" }
 cyfs-meta-lib = { path = "../../../component/cyfs-meta-lib", version = "0.5" }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
-rand = "0.7"
-sha2 = "0.8"
+rand = "0.8"
+sha2 = "0.10"
 async-trait = "0.1.53"
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.19"
 android_logger = "0.11"
 
-#[lib]
-#name = "cyfs_perf"
-#crate-type = ["cdylib", "staticlib"]
+# [lib]
+# name = "cyfs_perf"
+# crate-type = ["cdylib", "staticlib"]

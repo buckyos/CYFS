@@ -37,6 +37,7 @@ members = [
     "./service/cyfs-runtime",
     "./service/app-manager-lib",
     "./service/dsg-service",
+    "./service/perf-service",
 
     "./tools/cyfs-client",
     "./tools/pack-tools",

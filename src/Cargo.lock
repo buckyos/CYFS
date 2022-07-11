@@ -2079,9 +2079,9 @@ dependencies = [
  "int-enum",
  "jni",
  "log 0.4.16",
- "rand 0.7.3",
+ "rand 0.8.5",
  "serde_json",
- "sha2 0.8.2",
+ "sha2 0.10.2",
 ]
 
 [[package]]
@@ -4873,6 +4873,28 @@ name = "percent-encoding"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
+
+[[package]]
+name = "perf-service"
+version = "0.5.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "bson 1.2.4",
+ "cyfs-base",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-perf-base",
+ "cyfs-util",
+ "lazy_static",
+ "log 0.4.16",
+ "lru_time_cache",
+ "mongodb 1.2.5",
+ "serde",
+ "serde_json",
+ "toml",
+]
 
 [[package]]
 name = "petgraph"

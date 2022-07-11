@@ -2,6 +2,7 @@ use crate::config::*;
 use crate::isolate::PerfIsolate;
 use crate::reporter::*;
 use crate::store::PerfStore;
+use crate::noc_root_state::NocRootState;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_debug::Mutex;
@@ -68,8 +69,22 @@ impl PerfClientInner {
         }
 
         let perf_server = PerfServerLoader::load_perf_server(self.perf_server_config.clone()).await;
-
+        // route handler report to specified target perf server
         let reporter = PerfReporter::new(
+            self.id.clone(),
+            self.version.clone(),
+            resp.device_id.clone(),
+            people_id,
+            self.dec_id.clone(),
+            perf_server.clone(),
+            self.cyfs_stack.clone(),
+            self.store.clone(),
+        );
+
+        reporter.start();
+
+        // noc root state update
+        let noc_root_state = NocRootState::new(
             self.id.clone(),
             self.version.clone(),
             resp.device_id,
@@ -80,7 +95,7 @@ impl PerfClientInner {
             self.store.clone(),
         );
 
-        reporter.start();
+        noc_root_state.start(); 
 
         Ok(())
     }
