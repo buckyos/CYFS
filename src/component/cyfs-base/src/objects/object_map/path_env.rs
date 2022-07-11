@@ -113,7 +113,12 @@ impl ObjectMapPathOpEnv {
 
         let mut req_list = vec![];
         let expired = if duration_in_millsecs > 0 {
-            bucky_time_now() + duration_in_millsecs * 1000
+            let now = bucky_time_now();
+            if duration_in_millsecs < (u64::MAX - now) / 1000 {
+                now + duration_in_millsecs * 1000
+            } else {
+                duration_in_millsecs
+            }
         } else {
             0
         };
