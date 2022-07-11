@@ -4,6 +4,8 @@ use cyfs_lib::*;
 use std::str::FromStr;
 use zone_simulator::*;
 
+use std::sync::Arc;
+
 fn new_dec(name: &str) -> ObjectId {
     let owner_id = &USER1_DATA.get().unwrap().people_id;
 
@@ -22,6 +24,8 @@ pub async fn test() {
     let device_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
     let device2_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
 
+    test_storage(&device_stack).await;
+    return;
     test_gbk_path(&stack).await;
 
     test_router(&stack, &device_stack).await;
@@ -371,3 +375,142 @@ pub async fn test_rs_access(ood: &SharedCyfsStack, device: &SharedCyfsStack) {
     let ood_root_info = ood_root_state.get_current_root().await.unwrap();
 }
 */
+
+pub async fn test_storage(s: &SharedCyfsStack) {
+    let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
+    let x2_value = ObjectId::from_str("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
+
+    {
+        let storage = s.global_state_storage_ex(
+            GlobalStateCategory::RootState,
+            "/user/friends",
+            ObjectMapSimpleContentType::Map,
+            None,
+            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        );
+
+        storage.init().await.unwrap();
+
+        let map = StateStorageMap::new(storage);
+        match map.remove("user1").await.unwrap() {
+            Some(value) => {
+                info!("remove current value: {}", value);
+            }
+            None => {
+                info!("current value is none!");
+            }
+        }
+
+        map.save().await.unwrap();
+    }
+
+    {
+        let storage = s.global_state_storage_ex(
+            GlobalStateCategory::RootState,
+            "/user/friends",
+            ObjectMapSimpleContentType::Map,
+            None,
+            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        );
+
+        storage.init().await.unwrap();
+
+        let map = StateStorageMap::new(storage);
+        let v = map.get("user1").await.unwrap();
+        assert!(v.is_none());
+
+        let prev = map.set("user1", &x1_value).await.unwrap();
+        assert!(prev.is_none());
+
+        map.storage().save().await.unwrap();
+
+        let prev = map.set("user1", &x2_value).await.unwrap();
+        assert_eq!(prev, Some(x1_value));
+
+        map.storage().save().await.unwrap();
+        map.storage().save().await.unwrap();
+
+        map.into_storage().abort().await;
+    }
+
+    {
+        let storage = s.global_state_storage_ex(
+            GlobalStateCategory::RootState,
+            "/user/friends",
+            ObjectMapSimpleContentType::Map,
+            None,
+            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        );
+
+        storage.init().await.unwrap();
+
+        let map = StateStorageMap::new(storage);
+        let v = map.get("user1").await.unwrap();
+        assert_eq!(v, Some(x2_value));
+
+        map.abort().await;
+    }
+
+    // test auto_save
+    {
+        let storage = s.global_state_storage_ex(
+            GlobalStateCategory::LocalCache,
+            "/user/friends",
+            ObjectMapSimpleContentType::Map,
+            None,
+            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        );
+
+        storage.init().await.unwrap();
+        storage.start_save(std::time::Duration::from_secs(5));
+
+        let map = StateStorageMap::new(storage);
+        map.remove("user2").await.unwrap();
+        map.set("user2", &x1_value).await.unwrap();
+
+        info!("will wait for auto save for user2...");
+        async_std::task::sleep(std::time::Duration::from_secs(10)).await;
+
+        info!("will drop map for user2...");
+        drop(map);
+
+        {
+            let storage = s.global_state_storage_ex(
+                GlobalStateCategory::LocalCache,
+                "/user/friends",
+                ObjectMapSimpleContentType::Map,
+                None,
+                Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            );
+
+            storage.init().await.unwrap();
+
+            let map = StateStorageMap::new(storage);
+            let ret = map.get("user2").await.unwrap();
+            assert_eq!(ret, Some(x1_value));
+        }
+    }
+
+    // test auto_save and drop
+    {
+        let storage = s.global_state_storage_ex(
+            GlobalStateCategory::LocalCache,
+            "/user/friends",
+            ObjectMapSimpleContentType::Map,
+            None,
+            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        );
+
+        storage.init().await.unwrap();
+
+        let map = StateStorageMap::new(storage);
+        map.remove("user2").await.unwrap();
+        map.set("user2", &x1_value).await.unwrap();
+        assert!(map.storage().is_dirty());
+
+        map.storage().start_save(std::time::Duration::from_secs(5));
+        async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+    }
+
+    info!("state storage test complete!");
+}
