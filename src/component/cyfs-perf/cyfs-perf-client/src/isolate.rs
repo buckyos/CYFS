@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 // 用以辅助request的区间统计
 struct PerfRequestHolder {
-    pub pending_reqs: HashMap<String, PerfRequestBeginAction>,
-    pub reqs: HashMap<String, PerfRequest>,
+    pub pending_reqs: HashMap<String, u64>,
+    pub reqs: HashMap<String, PerfRequestDesc>,
 }
 
 impl std::fmt::Display for PerfRequestHolder {
@@ -30,10 +30,9 @@ impl PerfRequestHolder {
 
         match self.pending_reqs.entry(full_id) {
             Entry::Vacant(v) => {
-                let action = PerfRequestBeginAction {
-                    tick: bucky_time_now(),
-                };
-                v.insert(action);
+                let bucky_time = bucky_time_now();
+                let js_time = bucky_time_to_js_time(bucky_time);
+                v.insert(js_time);
             }
             Entry::Occupied(_o) => {
                 unreachable!("perf request item already begin! id={}, key={}", id, key);
@@ -41,58 +40,70 @@ impl PerfRequestHolder {
         }
     }
 
-    pub fn end(&mut self, id: &str, key: &str, err: BuckyErrorCode, bytes: Option<u32>) {
-        let now = bucky_time_now();
+    pub fn end(&mut self, id: &str, key: &str, result: BuckyResult<u64>) {
+        let bucky_time = bucky_time_now();
+        let js_time = bucky_time_to_js_time(bucky_time);
         let full_id = format!("{}_{}", id, key);
         match self.pending_reqs.remove(&full_id) {
-            Some(action) => {
-                let during = if now > action.tick {
-                    now - action.tick
+            Some(tick) => {
+                let during = if js_time > tick {
+                    js_time - tick
                 } else {
                     0
                 };
 
                 match self.reqs.entry(id.to_owned()) {
                     Entry::Vacant(v) => {
-                        let mut req = PerfRequest {
-                            id: id.to_owned(),
-                            time_range: PerfTimeRange {
-                                begin: action.tick,
-                                end: now,
-                            },
-                            total: 1,
+                        let mut req = PerfRequestDesc {
+                            time: TimeResult { total: during, avg: 0, min: u64::MAX, max: u64::MIN },
+                            speed: SpeedResult { avg: 0., min: f32::MAX, max: f32::MIN },
+                            size: SizeResult { total: 0, avg: 0, min: u64::MAX, max: u64::MIN },
                             success: 0,
-                            total_time: during,
-                            total_size: None,
+                            failed: 0,
                         };
 
-                        if err == BuckyErrorCode::Ok {
+                        if let Ok(v) = result {
+                            req.size.total = v;
                             req.success = 1;
-                        }
-                        if let Some(bytes) = bytes {
-                            req.total_size = Some(bytes as u64);
+                        } else {
+                            req.failed = 1;
                         }
 
                         v.insert(req);
                     }
                     Entry::Occupied(mut o) => {
                         let item = o.get_mut();
-                        item.total += 1;
-                        if err == BuckyErrorCode::Ok {
+                        if let Ok(v) = result {
                             item.success += 1;
-                        }
-                        item.total_time += during;
-                        if let Some(bytes) = bytes {
-                            match item.total_size.as_mut() {
-                                Some(s) => *s += bytes as u64,
-                                None => item.total_size = Some(bytes as u64),
+                            item.size.total += v;
+                            if v < item.size.min {
+                                item.size.min = v;
                             }
+                            if v > item.size.max {
+                                item.size.max = v;
+                            }
+
+                        } else {
+                            item.failed += 1;
                         }
+                        item.size.avg = item.size.total / (item.success + item.failed) as u64;
+
+                        item.time.total += during;
+                        item.time.avg = item.time.total / (item.success + item.failed) as u64;
+                        if during < item.time.min {
+                            item.time.min = during;
+                        }
+                        if during > item.time.max {
+                            item.time.max = during;
+                        }
+
+                        // todo 流量统计item speed
+
                     }
                 }
             }
             None => {
-                //unreachable!();
+                unreachable!();
             }
         }
     }
@@ -104,26 +115,24 @@ impl PerfItemMerge<PerfRequestHolder> for PerfRequestHolder {
     }
 }
 
-// 一个统计实体
-struct PerfIsolateImpl {
+struct PerfIsolateInner {
     id: String,
 
-    time_range: PerfTimeRange,
+    actions: Vec<PerfActionDesc>,
 
-    actions: Vec<PerfAction>,
+    records: HashMap<String, PerfRecordDesc>,
 
-    records: HashMap<String, PerfRecord>,
-
-    accumulations: HashMap<String, PerfAccumulation>,
+    accumulations: HashMap<String, PerfAccumulationDesc>,
 
     reqs: PerfRequestHolder,
 }
 
-impl PerfIsolateImpl {
-    pub fn new(id: &str) -> PerfIsolateImpl {
+pub type PerfIsolateEntity = PerfIsolateInner;
+
+impl PerfIsolateInner {
+    pub fn new(id: &str) -> PerfIsolateInner {
         Self {
             id: id.to_owned(),
-            time_range: PerfTimeRange::now(),
             actions: vec![],
             records: HashMap::new(),
             accumulations: HashMap::new(),
@@ -135,38 +144,44 @@ impl PerfIsolateImpl {
         self.reqs.begin(id, key);
     }
 
-    pub fn end_request(&mut self, id: &str, key: &str, err: BuckyErrorCode, bytes: Option<u32>) {
-        self.reqs.end(id, key, err, bytes);
-        self.time_range.update();
+    pub fn end_request(&mut self, id: &str, key: &str, result: BuckyResult<u64>) {
+        self.reqs.end(id, key, result);
     }
 
-    pub fn acc(&mut self, id: &str, err: BuckyErrorCode, size: Option<u64>) {
-        self.time_range.update();
+    pub fn acc(&mut self, id: &str, result: BuckyResult<u64>) {
         match self.accumulations.entry(id.to_owned()) {
             Entry::Vacant(v) => {
-                let acc = PerfAccumulation {
-                    id: id.to_owned(),
-                    time_range: PerfTimeRange::now(),
-                    success: if err == BuckyErrorCode::Ok { 1 } else { 0 },
-                    total: 1,
-                    total_size: size,
+                let mut acc = PerfAccumulationDesc {
+                    size: SizeResult { total: 0, avg: 0, min: u64::MAX, max: u64::MIN },
+                    success: 0,
+                    failed: 0,
                 };
+                if let Ok(v) = result {
+                    acc.size.total = v;
+                    acc.success = 1;
+                } else {
+                    acc.failed = 1;
+                }
+
                 v.insert(acc);
             }
             Entry::Occupied(mut o) => {
                 let acc = o.get_mut();
-                acc.total += 1;
-                acc.time_range.end = bucky_time_now();
-                if err == BuckyErrorCode::Ok {
+                if let Ok(v) = result {
                     acc.success += 1;
-                }
-                if let Some(total) = size {
-                    if acc.total_size.is_none() {
-                        acc.total_size = Some(total);
-                    } else {
-                        *acc.total_size.as_mut().unwrap() += total;
+                    acc.size.total += v;
+                    if v < acc.size.min {
+                        acc.size.min = v;
                     }
+                    if v > acc.size.max {
+                        acc.size.max = v;
+                    }
+                } else {
+                    acc.failed += 1;
                 }
+
+                acc.size.avg =  acc.size.total / (acc.failed + acc.success)  as u64;
+
             }
         }
     }
@@ -174,53 +189,45 @@ impl PerfIsolateImpl {
     pub fn action(
         &mut self,
         id: &str,
-        err: BuckyErrorCode,
-        name: impl Into<String>,
-        value: impl Into<String>,
+        result: BuckyResult<(String, String)>,
     ) {
-        let action = PerfAction {
-            id: id.to_owned(),
-            time: bucky_time_now(),
-            err: err.into(),
-            name: name.into(),
-            value: value.into(),
+        let mut action = PerfActionDesc {
+            err: BuckyErrorCode::Ok,
+            key: "".into(),
+            value: "".into(),
         };
+        if let Ok((k, v)) = result {
+            action.key = k;
+            action.value = v;
+        }
 
         self.actions.push(action);
-        self.time_range.update();
     }
 
     pub fn record(&mut self, id: &str, total: u64, total_size: Option<u64>) {
-        let record = PerfRecord {
-            id: id.to_owned(),
-            time: bucky_time_now(),
+        let record = PerfRecordDesc {
             total,
             total_size,
         };
 
         self.records.insert(id.to_owned(), record);
-        self.time_range.update();
     }
 
     // 取走所有已有的统计项
     pub fn take_data(&mut self) -> PerfIsolateEntity {
         let mut other = PerfIsolateEntity::new(&self.id);
 
-        std::mem::swap(&mut self.time_range, &mut other.time_range);
         std::mem::swap(&mut self.actions, &mut other.actions);
         std::mem::swap(&mut self.records, &mut other.records);
         std::mem::swap(&mut self.accumulations, &mut other.accumulations);
-        std::mem::swap(&mut self.reqs.reqs, &mut other.reqs);
-
-        // 重新设定统计间隔为当前开始
-        self.time_range = PerfTimeRange::now();
+        std::mem::swap(&mut self.reqs, &mut other.reqs);
 
         other
     }
 }
 
-impl PerfItemMerge<PerfIsolateImpl> for PerfIsolateImpl {
-    fn merge(&mut self, mut other: PerfIsolateImpl) {
+impl PerfItemMerge<PerfIsolateInner> for PerfIsolateInner {
+    fn merge(&mut self, mut other: PerfIsolateInner) {
         assert_eq!(self.id, other.id);
 
         self.actions.append(&mut other.actions);
@@ -231,33 +238,32 @@ impl PerfItemMerge<PerfIsolateImpl> for PerfIsolateImpl {
 }
 
 #[derive(Clone)]
-pub struct PerfIsolate(Arc<Mutex<PerfIsolateImpl>>);
+pub struct PerfIsolate(Arc<Mutex<PerfIsolateInner>>);
 
 impl PerfIsolate {
     pub fn new(id: &str) -> Self {
-        Self(Arc::new(Mutex::new(PerfIsolateImpl::new(id))))
+        Self(Arc::new(Mutex::new(PerfIsolateInner::new(id))))
     }
 
+    // 开启一个request
     pub fn begin_request(&self, id: &str, key: &str) {
         self.0.lock().unwrap().begin_request(id, key)
     }
-
-    pub fn end_request(&self, id: &str, key: &str, err: BuckyErrorCode, bytes: Option<u32>) {
-        self.0.lock().unwrap().end_request(id, key, err, bytes)
+    // 统计一个操作的耗时, 流量统计
+    pub fn end_request(&self, id: &str, key: &str, result: BuckyResult<u64>) {
+        self.0.lock().unwrap().end_request(id, key, result)
     }
 
-    pub fn acc(&self, id: &str, err: BuckyErrorCode, size: Option<u64>) {
-        self.0.lock().unwrap().acc(id, err, size)
+    pub fn acc(&self, id: &str, result: BuckyResult<u64>) {
+        self.0.lock().unwrap().acc(id, result)
     }
 
     pub fn action(
         &self,
         id: &str,
-        err: BuckyErrorCode,
-        name: impl Into<String>,
-        value: impl Into<String>,
+        result: BuckyResult<(String, String)>,
     ) {
-        self.0.lock().unwrap().action(id, err, name, value)
+        self.0.lock().unwrap().action(id, result)
     }
 
     pub fn record(&self, id: &str, total: u64, total_size: Option<u64>) {

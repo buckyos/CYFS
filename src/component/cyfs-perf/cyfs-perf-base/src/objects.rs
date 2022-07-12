@@ -72,6 +72,7 @@ impl ProtobufTransform<&SizeResult> for protos::SizeResult {
     }
 }
 
+
 #[derive(Clone, Debug, Default, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(protos::TimeResult)]
 pub struct TimeResult {
@@ -102,6 +103,7 @@ impl MergeResult<f32> for SpeedResult {
     fn merge(&mut self, value: f32, _total_num: u32) {
         self.min = if self.min.partial_cmp(&0.0) == Some(Ordering::Equal) {value} else {self.min.min(value)};
         self.max = self.max.max(value);
+
     }
 }
 
