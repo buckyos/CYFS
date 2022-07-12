@@ -579,6 +579,41 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         Ok(())
     }
 
+    async fn list(&self, req: OpEnvListInputRequest) -> BuckyResult<OpEnvListInputResponse> {
+        let dec_id = Self::get_dec_id(&req.common)?;
+
+        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+
+        let list = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
+            ObjectMapOpEnvType::Path => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_path_op_env(req.common.sid)?;
+
+                if req.path.is_none() {
+                    let msg = format!(
+                        "call list on path_op_env but path param not found! req={}",
+                        req
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+
+                op_env.list(req.path.as_ref().unwrap()).await
+            }
+            ObjectMapOpEnvType::Single => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_single_op_env(req.common.sid)?;
+                op_env.list().await
+            }
+        }?;
+
+        let resp = OpEnvListInputResponse { list: list.list };
+
+        Ok(resp)
+    }
+
     // metadata
     async fn metadata(
         &self,

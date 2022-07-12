@@ -244,6 +244,15 @@ impl SingleOpEnvStub {
         self.processor.reset(req).await
     }
 
+    pub async fn list(&self) -> BuckyResult<Vec<ObjectMapContentItem>> {
+        let mut req = OpEnvListOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.list(req).await?;
+        Ok(resp.list)
+    }
+
     // metadata
     async fn metadata(&self) -> BuckyResult<ObjectMapMetaData> {
         let mut req = OpEnvMetadataOutputRequest::new(None);
@@ -528,6 +537,16 @@ impl PathOpEnvStub {
 
         self.processor.abort(req).await?;
         Ok(())
+    }
+
+    // list
+    pub async fn list(&self, path: impl Into<String>) -> BuckyResult<Vec<ObjectMapContentItem>> {
+        let mut req = OpEnvListOutputRequest::new_path(path);
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.list(req).await?;
+        Ok(resp.list)
     }
 
     // metadata

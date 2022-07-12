@@ -791,6 +791,32 @@ impl OpEnvRequestor {
             Err(e)
         }
     }
+
+    // list
+    fn encode_list_request(&self, req: &OpEnvListOutputRequest) -> Request {
+        let url = self.service_url.join("list").unwrap();
+        let mut http_req = Request::new(Method::Get, url);
+
+        self.encode_common_headers(OpEnvAction::List, &req.common, &mut http_req);
+        RequestorHelper::encode_opt_header_with_encoding(&mut http_req, cyfs_base::CYFS_OP_ENV_PATH, req.path.as_deref());
+
+        http_req
+    }
+
+    async fn list(&self, req: OpEnvListOutputRequest) -> BuckyResult<OpEnvListOutputResponse> {
+        let http_req = self.encode_list_request(&req);
+        let mut resp = self.requestor.request(http_req).await?;
+        if resp.status().is_success() {
+            let resp: OpEnvListOutputResponse =
+                RequestorHelper::decode_json_body(&mut resp).await?;
+            info!("list for op_env success: sid={}", self.sid,);
+            Ok(resp)
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!("list for op_env error! sid={}, {}", self.sid, e);
+            Err(e)
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -894,6 +920,10 @@ impl OpEnvOutputProcessor for OpEnvRequestor {
 
     async fn reset(&self, req: OpEnvResetOutputRequest) -> BuckyResult<()> {
         Self::reset(&self, req).await
+    }
+
+    async fn list(&self, req: OpEnvListOutputRequest) -> BuckyResult<OpEnvListOutputResponse> {
+        Self::list(&self, req).await
     }
 }
 
