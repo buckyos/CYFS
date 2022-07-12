@@ -1,64 +1,46 @@
 syntax = "proto3";
 
-message PerfTimeRange {
-    string /*uint64*/ begin = 1;
-    string /*uint64*/ end = 2;
+message SizeResult {    // byte
+    string /*uint64*/ total = 1;
+    string /*uint64*/ avg = 2;
+    string /*uint64*/ min = 3;
+    string /*uint64*/ max = 4;
 }
 
-//PerfRequest
+message TimeResult {    // ms
+    uint64 total = 1;
+    uint64 avg = 2;
+    uint64 min = 3;
+    uint64 max = 4;
+}
+
+message SpeedResult {   // bytes/s
+    float avg = 1;
+    float min = 2;
+    float max = 3;
+}
+
 message PerfRequest {
-    string id = 1;
-    PerfTimeRange time_range = 2;
-    uint32 total = 3;
+    TimeResult time = 1;
+    SpeedResult speed = 2;
+    SizeResult size = 3;
     uint32 success = 4;
-    string /*uint64*/ total_time = 5;
-    optional string /*uint64*/ total_size = 6;
+    uint32 failed = 5;
 }
 
 message PerfAccumulation {
-    string id = 1;
-    PerfTimeRange time_range = 2;
-    uint32 total = 3;
+    SizeResult size = 1;
     uint32 success = 4;
-    optional string /*uint64*/ total_size = 5;
-}
-
-message PerfRecord {
-    string id = 1;
-    string /*uint64*/ time = 2;
-    string /*uint64*/ total = 3;
-    optional string /*uint64*/ total_size = 4;
+    uint32 failed = 5;
 }
 
 message PerfAction {
-    string id = 1;
-    string /*uint64*/ time = 2;
-    uint32 err = 3;
-    string name = 4;
-    string value = 5;
+    uint32 err = 1;
+    string key = 2;
+    string value = 3;
 }
 
-
-// 一个统计实体
-message PerfIsolateEntity {
-    string id = 1;
-    PerfTimeRange time_range = 2;
-    repeated PerfAction actions = 3;
-    map<string, PerfRecord> records = 4;
-    map<string, PerfAccumulation> accumulations = 5;
-    map<string, PerfRequest> reqs = 6;
-}
-
-message PerfDescContent {
-    bytes device = 1;
-    bytes people = 2;
-    string id =  3;
-    string version = 4;
-    string hash = 5;
-}
-
-// Perf Object
-message PerfBodyContent {
-    PerfTimeRange time_range = 1;
-    map<string, PerfIsolateEntity> all = 2;
+message PerfRecord {
+    string /*uint64*/ total = 3;
+    optional string /*uint64*/ total_size = 4;
 }
