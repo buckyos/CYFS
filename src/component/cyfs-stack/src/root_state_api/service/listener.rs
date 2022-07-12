@@ -109,6 +109,7 @@ enum OpEnvRequestType {
     // iterator
     Next,
     Reset,
+    List,
 
     // metadata
     Metadata,
@@ -170,6 +171,7 @@ impl OpEnvRequestHandlerEndpoint {
 
             OpEnvRequestType::Next => self.handler.process_next_request(req).await,
             OpEnvRequestType::Reset => self.handler.process_reset_request(req).await,
+            OpEnvRequestType::List => self.handler.process_list_request(req).await,
 
             OpEnvRequestType::Metadata => self.handler.process_metadata_request(req).await,
         }
@@ -292,6 +294,14 @@ impl OpEnvRequestHandlerEndpoint {
         server.at(&path).delete(Self::new(
             protocol.to_owned(),
             OpEnvRequestType::Reset,
+            handler.clone(),
+        ));
+
+        // list
+        let path = format!("/{}/op-env/list", root_seg);
+        server.at(&path).get(Self::new(
+            protocol.to_owned(),
+            OpEnvRequestType::List,
             handler.clone(),
         ));
 

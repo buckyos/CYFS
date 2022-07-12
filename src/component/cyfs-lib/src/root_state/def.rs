@@ -71,6 +71,7 @@ pub enum OpEnvAction {
     // iterator
     Next,
     Reset,
+    List,
 }
 
 impl ToString for OpEnvAction {
@@ -99,6 +100,7 @@ impl ToString for OpEnvAction {
 
             Self::Next => "next",
             Self::Reset => "reset",
+            Self::List => "list",
         })
         .to_owned()
     }
@@ -132,6 +134,7 @@ impl FromStr for OpEnvAction {
             
             "next" => Self::Next,
             "reset" => Self::Reset,
+            "list" => Self::List,
             
             v @ _ => {
                 let msg = format!("unknown op_env action: {}", v);

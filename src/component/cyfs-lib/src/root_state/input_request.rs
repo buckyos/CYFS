@@ -382,6 +382,25 @@ pub type OpEnvNextInputResponse = OpEnvNextOutputResponse;
 // reset
 pub type OpEnvResetInputRequest = OpEnvNoParamInputRequest;
 
+// list
+// next
+pub struct OpEnvListInputRequest {
+    pub common: OpEnvInputRequestCommon,
+
+    // for path-op-env
+    pub path: Option<String>,
+}
+
+impl fmt::Display for OpEnvListInputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)?;
+
+        write!(f, ", path: {:?}", self.path)
+    }
+}
+
+pub type OpEnvListInputResponse = OpEnvNextOutputResponse;
+
 //////////////////////////
 /// root-state access requests
 

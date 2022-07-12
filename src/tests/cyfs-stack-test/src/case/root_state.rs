@@ -25,7 +25,7 @@ pub async fn test() {
     let device2_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
 
     test_storage(&device_stack).await;
-    return;
+
     test_gbk_path(&stack).await;
 
     test_router(&stack, &device_stack).await;
@@ -232,6 +232,9 @@ pub async fn test_iterator(stack: &SharedCyfsStack) {
     }
 
     assert_eq!(all_list, all_list2);
+
+    let all_list3 = single_env.list().await.unwrap();
+    assert_eq!(all_list, all_list3);
 }
 
 pub async fn test_router(ood: &SharedCyfsStack, device: &SharedCyfsStack) {
@@ -357,11 +360,31 @@ pub async fn test_gbk_path(stack: &SharedCyfsStack) {
         let ret = op_env.insert("/gbk_set/一二三", &x1_value).await.unwrap();
         assert!(ret);
 
+        let list = op_env.list("/gbk_set").await.unwrap();
+        assert_eq!(list.len(), 1);
+        if let ObjectMapContentItem::Map((k, _v)) = &list[0] {
+            assert_eq!(k, "一二三");
+        }
+
+        info!("list: {:?}", list);
+
+        let list = op_env.list("/gbk_set/一二三").await.unwrap();
+        assert_eq!(list.len(), 2);
+
+        for item in list {
+            if let ObjectMapContentItem::Set(v) = item {
+                assert!(v == x1_value || v == x2_value);
+            } else {
+                unreachable!();
+            }
+        }
+        
+
         let root = op_env.commit().await.unwrap();
         info!("new dec root is: {:?}", root);
     }
 
-    info!("test root_state complete!");
+    info!("test root_state gbk complete!");
 }
 
 /*
