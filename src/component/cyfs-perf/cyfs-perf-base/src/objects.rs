@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use serde::Serialize;
 use cyfs_base::*;
 use crate::codec::*;
@@ -22,6 +23,9 @@ impl Into<u16> for &PerfObjectType {
     }
 }
 
+pub(crate) trait MergeResult<T> {
+    fn merge(&mut self, value: T, total_num: u32);
+}
 
 #[derive(Clone, Debug, Default, Serialize, ProtobufTransformType)]
 #[cyfs_protobuf_type(protos::SizeResult)]
@@ -30,6 +34,15 @@ pub struct SizeResult {
     pub avg: u64,
     pub min: u64,
     pub max: u64,
+}
+
+impl MergeResult<u64> for SizeResult {
+    fn merge(&mut self, value: u64, total_num: u32) {
+        self.total += value;
+        self.min = if self.min == 0 {value} else {self.min.min(value)};
+        self.max = self.max.max(value);
+        self.avg = self.total / total_num as u64;
+    }
 }
 
 impl ProtobufTransform<protos::SizeResult> for SizeResult {
@@ -68,12 +81,28 @@ pub struct TimeResult {
     pub max: u64,
 }
 
+impl MergeResult<u64> for TimeResult {
+    fn merge(&mut self, value: u64, total_num: u32) {
+        self.total += value;
+        self.min = if self.min == 0 {value} else {self.min.min(value)};
+        self.max = self.max.max(value);
+        self.avg = self.total / total_num as u64;
+    }
+}
+
 #[derive(Clone, Debug, Default, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(protos::SpeedResult)]
 pub struct SpeedResult {
     pub avg: f32,
     pub min: f32,
     pub max: f32,
+}
+
+impl MergeResult<f32> for SpeedResult {
+    fn merge(&mut self, value: f32, _total_num: u32) {
+        self.min = if self.min.partial_cmp(&0.0) == Some(Ordering::Equal) {value} else {self.min.min(value)};
+        self.max = self.max.max(value);
+    }
 }
 
 #[derive(Clone, Debug, Default, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
@@ -108,16 +137,17 @@ pub type PerfRequestId = NamedObjectId<PerfRequestType>;
 pub type PerfRequest = NamedObjectBase<PerfRequestType>;
 
 pub trait PerfRequestObj {
-    fn create(owner: ObjectId) -> PerfRequest;
+    fn create(owner: ObjectId, dec_id: ObjectId) -> PerfRequest;
     fn success(&self) -> u32;
     fn failed(&self) -> u32;
-    fn add_stat(&mut self, stat: BuckyResult<Option<u64>>);
+    fn add_stat(&self, spend_time: u64, stat: BuckyResult<Option<u64>>) -> PerfRequest;
 }
 
 impl PerfRequestObj for PerfRequest {
-    fn create(owner: ObjectId) -> PerfRequest {
+    fn create(owner: ObjectId, dec_id: ObjectId) -> PerfRequest {
         PerfRequestBuilder::new(PerfRequestDesc::default(), EmptyProtobufBodyContent {})
             .owner(owner)
+            .dec_id(dec_id)
             .build()
     }
 
@@ -129,8 +159,28 @@ impl PerfRequestObj for PerfRequest {
         self.desc().content().failed
     }
 
-    fn add_stat(&mut self, stat: BuckyResult<Option<u64>>) {
-        todo!()
+    // spend_time: ms
+    fn add_stat(&self, spend_time: u64, stat: BuckyResult<Option<u64>>) -> PerfRequest {
+        let mut desc = self.desc().content().clone();
+        if let Ok(stat) = stat {
+            desc.success += 1;
+            desc.time.merge(spend_time, desc.success);
+
+            if let Some(stat) = stat {
+                desc.size.merge(stat, desc.success);
+
+                let speed = (stat as f64 / (spend_time / 1000) as f64) as f32;
+                desc.speed.merge(speed, 0);
+                desc.speed.avg = (desc.size.total as f64 / (desc.time.total / 1000) as f64) as f32;
+            }
+        } else {
+            desc.failed += 1;
+        }
+
+        PerfRequestBuilder::new(desc, EmptyProtobufBodyContent {})
+            .owner(self.desc().owner().unwrap())
+            .dec_id(self.desc().dec_id().unwrap())
+            .build()
     }
 }
 
@@ -164,16 +214,17 @@ pub type PerfAccumulationId = NamedObjectId<PerfAccumulationType>;
 pub type PerfAccumulation = NamedObjectBase<PerfAccumulationType>;
 
 pub trait PerfAccumulationObj {
-    fn create(owner: ObjectId) -> PerfAccumulation;
+    fn create(owner: ObjectId, dec_id: ObjectId) -> PerfAccumulation;
     fn success(&self) -> u32;
     fn failed(&self) -> u32;
-    fn add_stat(&mut self, stat: BuckyResult<u64>);
+    fn add_stat(&self, stat: BuckyResult<u64>) -> PerfAccumulation;
 }
 
 impl PerfAccumulationObj for PerfAccumulation {
-    fn create(owner: ObjectId) -> PerfAccumulation {
+    fn create(owner: ObjectId, dec_id: ObjectId) -> PerfAccumulation {
         PerfAccumulationBuilder::new(PerfAccumulationDesc::default(), EmptyProtobufBodyContent {})
             .owner(owner)
+            .dec_id(dec_id)
             .build()
     }
 
@@ -185,8 +236,19 @@ impl PerfAccumulationObj for PerfAccumulation {
         self.desc().content().failed
     }
 
-    fn add_stat(&mut self, stat: BuckyResult<u64>) {
-        todo!()
+    fn add_stat(&self, stat: BuckyResult<u64>) -> PerfAccumulation {
+        let mut desc = self.desc().content().clone();
+        if let Ok(stat) = stat {
+            desc.success += 1;
+            desc.size.merge(stat, desc.success);
+        } else {
+            desc.failed += 1;
+        }
+
+        PerfAccumulationBuilder::new(desc, EmptyProtobufBodyContent {})
+            .owner(self.desc().owner().unwrap())
+            .dec_id(self.desc().dec_id().unwrap())
+            .build()
     }
 }
 
@@ -240,12 +302,12 @@ pub type PerfActionId = NamedObjectId<PerfActionType>;
 pub type PerfAction = NamedObjectBase<PerfActionType>;
 
 pub trait PerfActionObj {
-    fn create(owner: ObjectId, stat: BuckyResult<(String, String)>) -> PerfAction;
+    fn create(owner: ObjectId, dec_id: ObjectId, stat: BuckyResult<(String, String)>) -> PerfAction;
     fn err_code(&self) -> BuckyErrorCode;
 }
 
 impl PerfActionObj for PerfAction {
-    fn create(owner: ObjectId, stat: BuckyResult<(String, String)>) -> PerfAction {
+    fn create(owner: ObjectId, dec_id: ObjectId, stat: BuckyResult<(String, String)>) -> PerfAction {
         let (err, key, value) = match stat {
             Ok((k, v)) => {(BuckyErrorCode::Ok, k, v)}
             Err(e) => {(e.code(), "".to_owned(), "".to_owned())}
@@ -256,6 +318,7 @@ impl PerfActionObj for PerfAction {
             value
         }, EmptyProtobufBodyContent {})
             .owner(owner)
+            .dec_id(dec_id)
             .build()
     }
 
@@ -316,19 +379,20 @@ pub type PerfRecordId = NamedObjectId<PerfRecordType>;
 pub type PerfRecord = NamedObjectBase<PerfRecordType>;
 
 pub trait PerfRecordObj {
-    fn create(owner: ObjectId, total: u64, total_size: Option<u64>) -> PerfRecord;
+    fn create(owner: ObjectId, dec_id: ObjectId, total: u64, total_size: Option<u64>) -> PerfRecord;
     fn total(&self) -> u64;
     fn total_size(&self) -> Option<u64>;
-    fn add_stat(&mut self, total: u64, total_size: Option<u64>);
+    fn add_stat(&self, total: u64, total_size: Option<u64>) -> PerfRecord;
 }
 
 impl PerfRecordObj for PerfRecord {
-    fn create(owner: ObjectId, total: u64, total_size: Option<u64>) -> PerfRecord {
+    fn create(owner: ObjectId, dec_id: ObjectId, total: u64, total_size: Option<u64>) -> PerfRecord {
         PerfRecordBuilder::new(PerfRecordDesc {
             total,
             total_size
         }, EmptyProtobufBodyContent {})
             .owner(owner)
+            .dec_id(dec_id)
             .build()
     }
 
@@ -340,8 +404,16 @@ impl PerfRecordObj for PerfRecord {
         self.desc().content().total_size
     }
 
-    fn add_stat(&mut self, total: u64, total_size: Option<u64>) {
-        todo!()
+    fn add_stat(&self, total: u64, total_size: Option<u64>) -> PerfRecord {
+        let mut desc = self.desc().content().clone();
+        desc.total = total;
+        desc.total_size = total_size;
+
+        PerfRecordBuilder::new(desc, EmptyProtobufBodyContent {})
+            .owner(self.desc().owner().unwrap())
+            .dec_id(self.desc().dec_id().unwrap())
+            .build()
+
     }
 }
 
