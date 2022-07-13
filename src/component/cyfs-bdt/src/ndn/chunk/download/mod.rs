@@ -301,7 +301,12 @@ impl ChunkDownloader {
                 StateImpl::Running(running) => NextStep::Wait(running.waiters.new_waiter()), 
                 StateImpl::Finished(_) => NextStep::Return(TaskState::Finished), 
                 StateImpl::Redirect(redirect_node, redirect_referer) => NextStep::Return(TaskState::Redirect(redirect_node.clone(), redirect_referer.clone())),
-                StateImpl::Canceled(err) => NextStep::Return(TaskState::Canceled(*err)),
+                StateImpl::Canceled(err) => { 
+                    match *err {
+                        BuckyErrorCode::SessionWaitRedirect => NextStep::Return(TaskState::WaitRedirect),
+                        _ => NextStep::Return(TaskState::Canceled(*err))
+                    }
+                }
             }
         };
         match next_step {

@@ -455,7 +455,7 @@ impl DownloadSession {
     pub(super) fn on_resp_interest(&self, resp_interest: &RespInterest) -> BuckyResult<()> {
         match &resp_interest.err {
             BuckyErrorCode::Ok => unimplemented!(),
-            BuckyErrorCode::SessionRedirect | BuckyErrorCode::SessionWaitRedirect => {
+            BuckyErrorCode::SessionRedirect => {
                 if resp_interest.redirect.is_some() && resp_interest.redirect_referer.is_some() {
                     let redirect_node = resp_interest.redirect.as_ref().unwrap();
                     let referer = resp_interest.redirect_referer.as_ref().unwrap();
@@ -463,7 +463,7 @@ impl DownloadSession {
                 } else {
                     self.cancel_by_error(BuckyError::new(resp_interest.err, "need redirect, but has not new node"));
                 }
-            }
+            },
             _ => {
                 self.cancel_by_error(BuckyError::new(resp_interest.err, "remote resp interest error"));
             }

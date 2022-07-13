@@ -292,6 +292,9 @@ impl UploadSession {
                 StateImpl::Redirect(cache_node, referer) => {
                     NextStep::RedirectInterest(cache_node.clone(), referer.clone())
                 },
+                StateImpl::WaitRedirect => {
+                    NextStep::RespInterest(BuckyErrorCode::SessionWaitRedirect)
+                },
                 _ => {
                     NextStep::None
                 }
