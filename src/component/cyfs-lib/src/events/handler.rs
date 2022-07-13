@@ -119,4 +119,8 @@ impl RouterEventManagerProcessor for RouterEventManager {
     fn test_event(&self) -> &dyn RouterEventProcessor<TestEventRequest, TestEventResponse> {
         self
     }
+
+    fn zone_role_changed_event(&self) -> &dyn RouterEventProcessor<ZoneRoleChangedEventRequest, ZoneRoleChangedEventResponse> {
+        self
+    }
 }

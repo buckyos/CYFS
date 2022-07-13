@@ -1,6 +1,7 @@
 use super::zone_manager::*;
 use crate::acl::AclManagerRef;
 use crate::config::StackGlobalConfig;
+use crate::events::RouterEventsManager;
 use crate::interface::{SyncListenerManager, SyncListenerManagerParams};
 use crate::meta::RawMetaCache;
 use crate::root_state_api::GlobalStateLocalService;
@@ -18,16 +19,6 @@ use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
 const ROLE_MANAGER_HANDLER_ID: &str = "system_role_manager_controller";
-
-// zone role changed
-#[derive(Debug, Clone)]
-pub struct ZoneRoleChangedParam {
-    current_role: ZoneRole,
-    new_role: ZoneRole,
-}
-
-pub type FnZoneRoleChanged = dyn EventListenerAsyncRoutine<ZoneRoleChangedParam, ()>;
-type ZoneRoleChangeEventManager = SyncEventManagerSync<ZoneRoleChangedParam, ()>;
 
 struct OnPeopleUpdateWatcher {
     owner: ZoneRoleManager,
@@ -77,7 +68,7 @@ pub struct ZoneRoleManager {
     sync_interface: Arc<OnceCell<SyncListenerManager>>,
 
     // events
-    zone_role_changed_event: ZoneRoleChangeEventManager,
+    event_manager: RouterEventsManager,
 }
 
 impl ZoneRoleManager {
@@ -87,6 +78,7 @@ impl ZoneRoleManager {
         noc: Box<dyn NamedObjectCache>,
         raw_meta_cache: RawMetaCache,
         acl_manager: AclManagerRef,
+        event_manager: RouterEventsManager,
         config: StackGlobalConfig,
     ) -> Self {
         Self {
@@ -95,23 +87,18 @@ impl ZoneRoleManager {
             noc: Arc::new(noc),
             raw_meta_cache,
             acl_manager,
+            event_manager,
 
             config,
 
             sync_server: Arc::new(OnceCell::new()),
             sync_client: Arc::new(OnceCell::new()),
             sync_interface: Arc::new(OnceCell::new()),
-
-            zone_role_changed_event: ZoneRoleChangeEventManager::new(),
         }
     }
 
     pub fn zone_manager(&self) -> &ZoneManager {
         &self.zone_manager
-    }
-
-    pub fn zone_role_changed_event(&self) -> &ZoneRoleChangeEventManager {
-        &self.zone_role_changed_event
     }
 
     pub(crate) fn sync_server(&self) -> Option<&Arc<ZoneSyncServer>> {
@@ -145,7 +132,10 @@ impl ZoneRoleManager {
         // verify owner's id if match
         let current_info = self.zone_manager.get_current_info().await?;
         if current_info.owner_id != object.object_id {
-            let msg = format!("unmatch zone's owner_id: current={}, got={}", current_info.owner_id, object.object_id);
+            let msg = format!(
+                "unmatch zone's owner_id: current={}, got={}",
+                current_info.owner_id, object.object_id
+            );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
         }
@@ -154,7 +144,10 @@ impl ZoneRoleManager {
         let current_update_time = current_info.owner.get_update_time();
         let new_update_time = object.object.as_ref().unwrap().get_update_time();
         if current_update_time >= new_update_time {
-            let msg = format!("zone's owner's update_time is same or older: current={}, got={}", current_update_time, new_update_time);
+            let msg = format!(
+                "zone's owner's update_time is same or older: current={}, got={}",
+                current_update_time, new_update_time
+            );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::AlreadyExists, msg));
         }
@@ -265,6 +258,22 @@ impl ZoneRoleManager {
         Ok(())
     }
 
+    async fn emit_zone_role_changed_event(
+        &self,
+        param: ZoneRoleChangedEventRequest,
+    ) -> BuckyResult<()> {
+        let event = self.event_manager.events().try_zone_role_changed_event();
+        if event.is_none() {
+            return Ok(());
+        }
+
+        let mut emitter = event.unwrap().emitter();
+        let resp = emitter.emit(param).await;
+        info!("zone role changed event resp: {}", resp);
+
+        Ok(())
+    }
+
     async fn on_zone_changed(
         &self,
         current_info: Arc<CurrentZoneInfo>,
@@ -272,17 +281,20 @@ impl ZoneRoleManager {
     ) {
         // if zone_role changed, cyfs-stack should be restart to apply the change!
         if current_info.zone_role != new_info.zone_role {
-            warn!("zone role changed: {} -> {}", current_info.zone_role, new_info.zone_role);
+            warn!(
+                "zone role changed: {} -> {}",
+                current_info.zone_role, new_info.zone_role
+            );
 
-            let param = ZoneRoleChangedParam {
+            let param = ZoneRoleChangedEventRequest {
                 current_role: current_info.zone_role,
-                new_role: current_info.zone_role,
+                new_role: new_info.zone_role,
             };
 
-            if let Err(e) = self.zone_role_changed_event.emit(&param) {
+            if let Err(e) = self.emit_zone_role_changed_event(param).await {
                 error!("emit zone role changed event error! {}", e);
-            } else{
-                info!("emit zone role chanegd event success!");
+            } else {
+                info!("emit zone role changed event success!");
             }
         } else {
             match new_info.zone_role {
