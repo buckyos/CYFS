@@ -1,7 +1,7 @@
 use log::*;
 use std::{
     time::Duration, 
-    sync::{RwLock, atomic::{AtomicU32, AtomicU64, Ordering}}
+    sync::{RwLock}
 };
 use async_std::{
     sync::Arc, 
@@ -86,59 +86,6 @@ impl StateImpl {
     }
 }
 
-struct SessionPPSImpl {
-    t: u64,
-    pps_mini: u32,
-    check_time: AtomicU64,
-    pps: AtomicU32,
-}
-
-#[derive(Clone)]
-pub struct SessionPPS(Arc<SessionPPSImpl>);
-
-impl SessionPPS {
-    pub fn default() -> Self {
-        let pps = 3;
-        let pps_def_t = 10;
-        let pps_def_pps_mini = pps_def_t*pps;
-
-        Self(Arc::new(SessionPPSImpl {
-            t: std::time::Duration::from_secs(pps_def_t).as_micros() as u64,
-            pps_mini: pps_def_pps_mini as u32,
-            check_time: AtomicU64::new(0),
-            pps: AtomicU32::new(0),
-        }))
-    }
-
-    pub fn new(t: u64, pps_mini: u32) -> Self {
-        Self(Arc::new(SessionPPSImpl {
-            t: std::time::Duration::from_secs(t).as_micros() as u64,
-            pps_mini,
-            check_time: AtomicU64::new(0),
-            pps: AtomicU32::new(0),
-        }))
-    }
-
-    pub fn new_package(&self) {
-        self.0.pps.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn check(&self) -> bool {
-        let mut less_than_pps_mini = false;
-        let now = bucky_time_now();
-        let check_time = self.0.check_time.load(Ordering::SeqCst);
-        if now > check_time {
-            if check_time > 0 {
-                let pps = self.0.pps.load(Ordering::SeqCst);
-                less_than_pps_mini = pps < self.0.pps_mini;
-            }
-            self.0.check_time.store(now + self.0.t, Ordering::SeqCst);
-            self.0.pps.store(0, Ordering::SeqCst);
-        }
-
-        less_than_pps_mini
-    }
-}
 
 struct SessionImpl {
     chunk: ChunkId, 
