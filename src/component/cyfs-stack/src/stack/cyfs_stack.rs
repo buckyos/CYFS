@@ -220,6 +220,7 @@ impl CyfsStackImpl {
             noc.clone_noc(),
             raw_meta_cache.clone(),
             acl_manager.clone(),
+            router_events.clone(),
             config.clone(),
         );
 
