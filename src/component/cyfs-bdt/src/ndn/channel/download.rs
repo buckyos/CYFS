@@ -60,7 +60,8 @@ struct CanceledState {
 
 struct RedirectState {
     send_ctrl_time: Timestamp,
-    cache_node: DeviceId
+    redirect: DeviceId,
+    redirect_referer: String,
 }
 
 enum StateImpl {
@@ -80,7 +81,7 @@ impl StateImpl {
             Self::Downloading(_) => TaskState::Running(0), 
             Self::Finished(_) => TaskState::Finished, 
             Self::Canceled(canceled) => TaskState::Canceled(canceled.err.code()),
-            Self::Redirect(redirect) => TaskState::Redirect(redirect.cache_node.clone()),
+            Self::Redirect(redirect) => TaskState::Redirect(redirect.redirect.clone(), redirect.redirect_referer.clone()),
         }
     }
 }
@@ -277,7 +278,7 @@ impl DownloadSession {
                 StateImpl::Downloading(downloading) => NextStep::Wait(downloading.waiters.new_waiter()),
                 StateImpl::Finished(_) => NextStep::Return(TaskState::Finished), 
                 StateImpl::Canceled(canceled) => NextStep::Return(TaskState::Canceled(canceled.err.code())),
-                StateImpl::Redirect(cn) => NextStep::Return(TaskState::Redirect(cn.cache_node.clone())),
+                StateImpl::Redirect(cn) => NextStep::Return(TaskState::Redirect(cn.redirect.clone(), cn.redirect_referer.clone())),
             }
         };
         match next_step {
@@ -455,8 +456,10 @@ impl DownloadSession {
         match &resp_interest.err {
             BuckyErrorCode::Ok => unimplemented!(),
             BuckyErrorCode::SessionRedirect | BuckyErrorCode::SessionWaitRedirect => {
-                if let Some(node) = &resp_interest.cache_node {
-                    self.redirect_interest(node);
+                if resp_interest.redirect.is_some() && resp_interest.redirect_referer.is_some() {
+                    let redirect_node = resp_interest.redirect.as_ref().unwrap();
+                    let referer = resp_interest.redirect_referer.as_ref().unwrap();
+                    self.redirect_interest(redirect_node, referer);
                 } else {
                     self.cancel_by_error(BuckyError::new(resp_interest.err, "need redirect, but has not new node"));
                 }
@@ -490,8 +493,8 @@ impl DownloadSession {
         Ok(())
     }
 
-    pub fn redirect_interest(&self, redirect_node: &DeviceId) {
-        info!("{} redirect to {}", self, redirect_node);
+    pub fn redirect_interest(&self, redirect_node: &DeviceId, referer: &String) {
+        info!("{} redirect to {} refer {}", self, redirect_node, referer);
 
         let mut waiters = StateWaiter::new();
         {
@@ -500,21 +503,25 @@ impl DownloadSession {
                 StateImpl::Init(_waiters) => {
                     std::mem::swap(&mut waiters, _waiters);
                     *state = StateImpl::Redirect(RedirectState {send_ctrl_time: 0, 
-                                                                cache_node: redirect_node.clone()});
+                                                                redirect: redirect_node.clone(),
+                                                                redirect_referer: referer.clone()});
                 },
                 StateImpl::Interesting(interesting) => {
                     std::mem::swap(&mut waiters, &mut interesting.waiters);
                     *state = StateImpl::Redirect(RedirectState {send_ctrl_time: 0, 
-                                                                cache_node: redirect_node.clone()});
+                                                                redirect: redirect_node.clone(),
+                                                                redirect_referer: referer.clone()});
                 },
                 StateImpl::Downloading(downloading) => {
                     std::mem::swap(&mut waiters, &mut downloading.waiters);
                     *state = StateImpl::Redirect(RedirectState {send_ctrl_time: 0, 
-                                                                cache_node: redirect_node.clone()});
+                                                                redirect: redirect_node.clone(),
+                                                                redirect_referer: referer.clone()});
                 },
 	    	    StateImpl::Finished(_) => {
                     *state = StateImpl::Redirect(RedirectState {send_ctrl_time: 0, 
-                                                                cache_node: redirect_node.clone()});
+                                                                redirect: redirect_node.clone(),
+                                                                redirect_referer: referer.clone()});
                 },
                 _ => {}
             }

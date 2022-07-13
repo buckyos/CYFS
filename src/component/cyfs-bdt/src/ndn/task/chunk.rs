@@ -21,7 +21,6 @@ enum TaskStateImpl {
     Downloading(ChunkDownloader),
     Canceled(BuckyErrorCode),  
     Writting,  
-    Redirect(DeviceId),
     Finished,
 }
 
@@ -162,14 +161,53 @@ impl ChunkTask {
 
                     break; 
                 }, 
-                TaskState::Redirect(redirect_node) => {
-                    info!("{} redirect {}", self, redirect_node);
+                TaskState::Redirect(redirect_node, redirect_referer) => {
+                    info!("{} redirect {} referer {}", self, redirect_node, redirect_referer);
+                    // i need a new task for redirection task
+                    let device_id = DeviceId::try_from(redirect_node.clone());
+                    if device_id.is_err() {
+                        error!("failed try_from deviceid, {}", redirect_node);
+                        for writer in &self.0.writers {
+                            let _ = writer.err(BuckyErrorCode::InvalidParam).await;
+                        }
+                        break;
+                    }
 
-                    self.0.state.write().unwrap().schedule_state = TaskStateImpl::Redirect(redirect_node.clone());
+                    let device_id = device_id.unwrap();
+                    let mut config = ChunkDownloadConfig::force_stream(device_id);
+                    config.referer = Some(redirect_referer);
+
+                    let stack = Stack::from(&self.0.stack);
+                    let downloader = stack.ndn().chunk_manager().start_download(
+                        self.chunk().clone(), 
+                        Arc::new(config), 
+                        self.resource().clone(),
+			self.as_statistic()).await.unwrap();
+
+                    info!("{} create a new downloader for redirection task", self);
+                    let mut state = self.0.state.write().unwrap();
+                    state.schedule_state = TaskStateImpl::Downloading(downloader.clone());
+/*
+                    self.0.state.write().unwrap().schedule_state = TaskStateImpl::Redirect(redirect_node.clone(), redirect_referer.clone());
                     for writer in &self.0.writers {
-                        let _ = writer.redirect(&redirect_node).await;
+                        let _ = writer.redirect(&redirect_node, &redirect_referer).await;
                     }
                     break;
+*/
+                },
+                TaskState::WaitRedirect => {
+                    let stack = Stack::from(&self.0.stack);
+
+                    async_std::future::timeout(stack.config().ndn.channel.wait_redirect_timeout, async move{
+                        let downloader = stack.ndn().chunk_manager().start_download(
+                            self.chunk().clone(), 
+                            self.config().clone(), 
+                            self.resource().clone(),
+			    self.as_statistic()).await.unwrap();
+                        info!("{} reset downloader for read chunk failed", self);
+                        let mut state = self.0.state.write().unwrap();
+                        state.schedule_state = TaskStateImpl::Downloading(downloader.clone());
+                    });
                 },
                 _ => unimplemented!()
             }
@@ -189,7 +227,7 @@ impl TaskSchedule for ChunkTask {
             TaskStateImpl::Downloading(downloader) => downloader.schedule_state(), 
             TaskStateImpl::Canceled(err) => TaskState::Canceled(*err), 
             TaskStateImpl::Writting => TaskState::Running(0), 
-            TaskStateImpl::Redirect(redirect_node) => TaskState::Redirect(redirect_node.clone()),
+            // TaskStateImpl::Redirect(redirect_node, referer) => TaskState::Redirect(redirect_node.clone(), referer.clone()),
             TaskStateImpl::Finished => TaskState::Finished
         }
     }

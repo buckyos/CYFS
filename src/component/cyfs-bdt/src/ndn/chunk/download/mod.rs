@@ -137,7 +137,7 @@ enum StateImpl {
     Running(RunningState), 
     // Paused(DownloadSessions), 
     Canceled(BuckyErrorCode),
-    Redirect(DeviceId),
+    Redirect(DeviceId, String),
     Finished(Arc<Box<dyn ChunkReader>>)  
 }
 
@@ -147,7 +147,7 @@ impl StateImpl {
             Self::Init(_) => TaskState::Running(0), 
             Self::Running(_) => TaskState::Running(0), 
             Self::Canceled(err) => TaskState::Canceled(*err), 
-            Self::Redirect(redirect_node) => TaskState::Redirect(redirect_node.clone()),
+            Self::Redirect(redirect_node, referer) => TaskState::Redirect(redirect_node.clone(), referer.clone()),
             Self::Finished(_) => TaskState::Finished
         }
     }
@@ -267,12 +267,12 @@ impl ChunkDownloader {
                             _ => unreachable!()
                         }
                     }, 
-                    TaskState::Redirect(redirect_node) => {
+                    TaskState::Redirect(redirect_node, referer) => {
                         let state = &mut *downloader.0.state.write().unwrap();
                         match state {
                             StateImpl::Running(running) => {
                                 std::mem::swap(&mut waiters, &mut running.waiters);
-                                *state = StateImpl::Redirect(redirect_node);
+                                *state = StateImpl::Redirect(redirect_node, referer);
                             },
                             _ => unreachable!()
                         }
@@ -300,7 +300,7 @@ impl ChunkDownloader {
                 StateImpl::Init(init) => NextStep::Wait(init.waiters.new_waiter()), 
                 StateImpl::Running(running) => NextStep::Wait(running.waiters.new_waiter()), 
                 StateImpl::Finished(_) => NextStep::Return(TaskState::Finished), 
-                StateImpl::Redirect(redirect_node) => NextStep::Return(TaskState::Redirect(redirect_node.clone())),
+                StateImpl::Redirect(redirect_node, redirect_referer) => NextStep::Return(TaskState::Redirect(redirect_node.clone(), redirect_referer.clone())),
                 StateImpl::Canceled(err) => NextStep::Return(TaskState::Canceled(*err)),
             }
         };

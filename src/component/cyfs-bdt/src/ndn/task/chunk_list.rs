@@ -208,15 +208,15 @@ impl ChunkWriterExt for ChunkListTask {
         Ok(())
     }
 
-    async fn redirect(&self, redirect_node: &DeviceId) -> BuckyResult<()> {
-        {
-            let state = &mut *self.0.state.write().unwrap();
-            state.control_state = TaskControlState::Redirect(redirect_node.clone());
-        }
+    async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()> {
+        // {
+        //     let state = &mut *self.0.state.write().unwrap();
+        //     state.control_state = TaskControlState::Redirect(redirect_node.clone());
+        // }
 
-        for writer in self.0.writers.iter() {
-            let _ = writer.redirect(redirect_node).await;
-        }
+        // for writer in self.0.writers.iter() {
+        //     let _ = writer.redirect(redirect_node).await;
+        // }
         Ok(())
     }
 

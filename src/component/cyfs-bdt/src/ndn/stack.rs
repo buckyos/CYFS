@@ -74,7 +74,7 @@ impl NdnStack {
                 tracker, 
                 store), 
             channel_manager: ChannelManager::new(stack.clone()), 
-            event_handler: EventHandler::new(stack.clone(), acl), 
+            event_handler: EventHandler::new(stack.clone(), acl, None), 
             root_task: RootTask::new(resource.clone()),
         }))
     }
