@@ -65,7 +65,7 @@ impl PerfClientInner {
             hash_map::Entry::Vacant(v) => {
                 log::info!("new isolate module: id={}", id);
 
-                let isolate = PerfIsolate::new(id, self.people_id.clone(), self.dec_id.clone(), self.id.to_owned(), self.cyfs_stack.clone());
+                let isolate = PerfIsolate::new(id, self.people_id.clone(), self.device_id.clone(), self.dec_id.clone(), self.id.to_owned(), self.cyfs_stack.clone());
                 let temp_isolate = isolate.clone();
                 v.insert(isolate);
                 temp_isolate.clone()

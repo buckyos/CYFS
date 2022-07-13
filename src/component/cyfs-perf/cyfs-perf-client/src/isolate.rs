@@ -34,6 +34,7 @@ struct PerfIsolateInner {
 
     people_id: ObjectId,
 
+    device_id: DeviceId,
     dec_id: ObjectId,
 
     isolate_id: String,
@@ -51,13 +52,15 @@ struct PerfIsolateInner {
 }
 
 impl PerfIsolateInner {
-    pub fn new(isolate_id: &str, people_id: ObjectId, dec_id: Option<ObjectId>, id: String, stack: SharedCyfsStack) -> PerfIsolateInner {
+    pub fn new(isolate_id: &str, people_id: ObjectId, device_id: DeviceId, dec_id: Option<ObjectId>, id: String, stack: SharedCyfsStack) -> PerfIsolateInner {
         let dec_id = match dec_id {
             Some(id) => id,
             None => ObjectId::from_str(PERF_SERVICE_DEC_ID).unwrap(),
         };
 
         Self {
+            people_id,
+            device_id,
             isolate_id: isolate_id.to_owned(),
             id,
             actions: vec![],
@@ -65,7 +68,6 @@ impl PerfIsolateInner {
             accumulations: HashMap::new(),
             pending_reqs: HashMap::new(),
             reqs: HashMap::new(),
-            people_id,
             dec_id,
             stack,
         }
@@ -84,13 +86,16 @@ impl PerfIsolateInner {
         let now = Utc::now();
         let (_is_common_era, year) = now.year_ce();
         let date = format!("{:02}:{:02}:{:02}", year, now.month(), now.day());
-        //let time_span_start = format!("{:02}:{:02}", now.hour(), now.minute());
-        let time_span_start = format!("{:02}:00", now.hour());
+        //let time_span = format!("{:02}:{:02}", now.hour(), now.minute());
+        let time_span = format!("{:02}:00", now.hour());
         let dec_id = match dec_id {
             Some(id) => id.to_string(),
             None => ObjectId::from_str(PERF_SERVICE_DEC_ID).unwrap().to_string(),
         };
-        let path = format!("/{PERF_SERVICE_DEC_ID}/local/{dec_id}/{isolate_id}/{date}/{time_span_start}/{id}/{perf_type}");
+        let people_id = self.people_id.to_string();
+        let device_id = self.device_id.to_string();
+        // /<owner>/<device>/<DecId>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
+        let path = format!("/{people_id}/{device_id}/{dec_id}/{isolate_id}/{id}/{perf_type}/{date}/{time_span}");
 
         path
     }
@@ -143,7 +148,23 @@ impl PerfIsolateInner {
 
         let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
-        let ret = op_env.get_by_path(path).await?;
+        let ret = op_env.get_by_path(&path).await?;
+        if ret.is_none() {
+            info!("end_request get_by_path: {path}  not found");
+            match self.pending_reqs.remove(&full_id) {
+                Some(_tick) => {
+                    let perf_obj = PerfRequest::create(self.people_id, self.dec_id);
+                    let v = perf_obj.add_stat(spend_time, stat);
+                    let object_raw = v.to_vec()?;
+                    let object_id = v.desc().object_id();
+                    self.put_noc_and_root_state(object_id, object_raw, PerfType::Requests).await?
+                }
+                None => {
+                    unreachable!();
+                }
+            }
+            return Ok(());
+        }
         let v = ret.unwrap();
         let req = NONGetObjectRequest::new_noc(v, None);
         match self.stack.non_service().get_object(req).await {
@@ -187,7 +208,16 @@ impl PerfIsolateInner {
 
         let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
-        let ret = op_env.get_by_path(path).await?;
+        let ret = op_env.get_by_path(&path).await?;
+        if ret.is_none() {
+            info!("acc get_by_path: {path}  not found");
+            let perf_obj = PerfAccumulation::create(self.people_id, self.dec_id);
+            let v = perf_obj.add_stat(stat);
+            let object_raw = v.to_vec()?;
+            let object_id = v.desc().object_id();
+            self.put_noc_and_root_state(object_id, object_raw, PerfType::Accumulations).await?;
+            return Ok(());
+        }
         let v = ret.unwrap();
         let req = NONGetObjectRequest::new_noc(v, None);
         match self.stack.non_service().get_object(req).await{
@@ -230,7 +260,16 @@ impl PerfIsolateInner {
 
         let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
-        let ret = op_env.get_by_path(path).await?;
+        let ret = op_env.get_by_path(&path).await?;
+        if ret.is_none() {
+            info!("record get_by_path: {path}  not found");
+            let perf_obj = PerfRecord::create(self.people_id, self.dec_id, total, total_size);
+            let v = perf_obj.add_stat(total, total_size);
+            let object_raw = v.to_vec()?;
+            let object_id = v.desc().object_id();
+            self.put_noc_and_root_state(object_id, object_raw, PerfType::Records).await?;
+            return Ok(());
+        }
         let v = ret.unwrap();
         let req = NONGetObjectRequest::new_noc(v, None);
         match self.stack.non_service().get_object(req).await{
@@ -261,8 +300,8 @@ impl PerfIsolateInner {
 pub struct PerfIsolate(Arc<Mutex<PerfIsolateInner>>);
 
 impl PerfIsolate {
-    pub fn new(isolate_id: &str, people_id: ObjectId, dec_id: Option<ObjectId>, id: String, stack: SharedCyfsStack) -> Self {
-        Self(Arc::new(Mutex::new(PerfIsolateInner::new(isolate_id, people_id, dec_id, id, stack))))
+    pub fn new(isolate_id: &str, people_id: ObjectId, device_id: DeviceId, dec_id: Option<ObjectId>, id: String, stack: SharedCyfsStack) -> Self {
+        Self(Arc::new(Mutex::new(PerfIsolateInner::new(isolate_id, people_id, device_id, dec_id, id, stack))))
     }
 
     // 开启一个request
@@ -270,24 +309,24 @@ impl PerfIsolate {
         self.0.lock().unwrap().begin_request(id, key)
     }
     // 统计一个操作的耗时, 流量统计
-    pub async fn end_request(&self, id: &str, key: &str, spend_time: u64, stat: BuckyResult<Option<u64>>) -> BuckyResult<()> {
-        self.0.lock().unwrap().end_request(id, key, spend_time, stat).await
+    pub fn end_request(&self, id: &str, key: &str, spend_time: u64, stat: BuckyResult<Option<u64>>) -> BuckyResult<()> {
+        async_std::task::block_on(async { self.0.lock().unwrap().end_request(id, key, spend_time, stat).await })
     }
 
-    pub async fn acc(&self, id: &str, result: BuckyResult<u64>) -> BuckyResult<()> {
-        self.0.lock().unwrap().acc(id, result).await
+    pub fn acc(&self, id: &str, result: BuckyResult<u64>) -> BuckyResult<()> {
+        async_std::task::block_on(async { self.0.lock().unwrap().acc(id, result).await })
     }
 
-    pub async fn action(
+    pub fn action(
         &self,
         id: &str,
         stat: BuckyResult<(String, String)>,
     )-> BuckyResult<()> {
-        self.0.lock().unwrap().action(id, stat).await
+        async_std::task::block_on(async { self.0.lock().unwrap().action(id, stat).await })   
     }
 
-    pub async fn record(&self, id: &str, total: u64, total_size: Option<u64>) -> BuckyResult<()>{
-        self.0.lock().unwrap().record(id, total, total_size).await
+    pub fn record(&self, id: &str, total: u64, total_size: Option<u64>) -> BuckyResult<()>{
+        async_std::task::block_on(async { self.0.lock().unwrap().record(id, total, total_size).await })
     }
 
     pub fn get_id(&self) -> String {
