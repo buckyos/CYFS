@@ -317,7 +317,7 @@ impl Channel {
                         false
                     }
                 }, 
-                TaskState::Redirect(_redirect_node) => {
+                TaskState::Redirect(_redirect_node, _redirect_referer) => {
                     // redirect
                     true
                 },
