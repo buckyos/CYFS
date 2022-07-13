@@ -19,7 +19,7 @@ pub trait ChunkWriter: 'static + std::fmt::Display + Send + Sync {
     async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()>;
     async fn finish(&self) -> BuckyResult<()>;
     async fn err(&self, e: BuckyErrorCode) -> BuckyResult<()>;
-    async fn redirect(&self, redirect_node: &DeviceId) -> BuckyResult<()>;
+    async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()>;
 }
 
 
@@ -30,7 +30,7 @@ pub trait ChunkWriterExt: 'static + std::fmt::Display + Send + Sync {
     async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>, range: Option<Range<u64>>) -> BuckyResult<()>;
     async fn finish(&self) -> BuckyResult<()>;
     async fn err(&self, e: BuckyErrorCode) -> BuckyResult<()>;
-    async fn redirect(&self, redirect_node: &DeviceId) -> BuckyResult<()>;
+    async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()>;
 }
 
 pub struct ChunkWriterExtWrapper {
@@ -80,8 +80,8 @@ impl ChunkWriterExt for ChunkWriterExtWrapper {
         self.writer.err(e).await
     }
 
-    async fn redirect(&self, redirect_node: &DeviceId) -> BuckyResult<()> {
-        self.writer.redirect(redirect_node).await
+    async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()> {
+        self.writer.redirect(redirect_node, redirect_referer).await
     }
 
 }
@@ -93,9 +93,6 @@ impl ChunkWriterExt for ChunkWriterExtWrapper {
 pub trait ChunkReader: 'static + Send + Sync {
     fn clone_as_reader(&self) -> Box<dyn ChunkReader>;
     async fn exists(&self, chunk: &ChunkId) -> bool;
-    async fn get_cache_node(&self, _chunk: &ChunkId) -> Option<DeviceId> {
-        None
-    }
     async fn get(&self, chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>>;
     async fn read(&self, chunk: &ChunkId) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         struct ArcWrap(Arc<Vec<u8>>);

@@ -12,7 +12,8 @@ use crate::{
 
 struct Proxies {
     active_proxies: BTreeSet<DeviceId>, 
-    passive_proxies: BTreeSet<DeviceId>
+    passive_proxies: BTreeSet<DeviceId>,
+    dump_proxies: BTreeSet<DeviceId>,
 }
 
 impl Proxies {
@@ -20,6 +21,7 @@ impl Proxies {
         Self {
             active_proxies: Default::default(), 
             passive_proxies: Default::default(), 
+            dump_proxies: Default::default(),
         }
     }
 }
@@ -78,6 +80,22 @@ impl ProxyManager {
 
     pub fn passive_proxies(&self) -> Vec<DeviceId> {
         self.proxies.read().unwrap().passive_proxies.iter().cloned().collect()
+    }
+
+    pub fn add_dump_proxy(&self, proxy: &Device) {
+        let stack = Stack::from(&self.stack);
+        let proxy_id = proxy.desc().device_id();
+        info!("{} add dump proxy {}", self, proxy_id);
+        stack.device_cache().add(&proxy_id, proxy);
+        let _ = self.proxies.write().unwrap().dump_proxies.insert(proxy_id);
+    }
+
+    pub fn remove_dump_proxy(&self, proxy: &DeviceId) -> bool {
+        self.proxies.write().unwrap().dump_proxies.remove(proxy)
+    }
+
+    pub fn dump_proxies(&self) -> Vec<DeviceId> {
+        self.proxies.read().unwrap().dump_proxies.iter().cloned().collect()
     }
 
     pub async fn sync_passive_proxies(&self) {

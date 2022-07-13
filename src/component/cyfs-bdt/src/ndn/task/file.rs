@@ -1,5 +1,5 @@
 use std::{
-    sync::RwLock,
+    sync::{RwLock, Mutex},
     collections::BTreeMap, 
     ops::Range
 };
@@ -90,7 +90,7 @@ struct TaskImpl {
     file: File,
     chunk_list: ChunkListDesc, 
     ranges: Vec<(usize, Option<Range<u64>>)>, 
-    config: Arc<ChunkDownloadConfig>, 
+    config: Mutex<Arc<ChunkDownloadConfig>>, 
     resource: ResourceManager, 
     state: RwLock<StateImpl>,  
     writers: Vec<Box<dyn ChunkWriterExt>>,
@@ -124,7 +124,7 @@ impl FileTask {
             file: file.clone(), 
             ranges: (0..chunk_list.chunks().len()).into_iter().map(|i| (i, None)).collect(),  
             chunk_list, 
-            config, 
+            config : Mutex::new(Arc::new(config.as_ref().clone())),
             resource: ResourceManager::new(Some(owner)), 
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
@@ -171,7 +171,7 @@ impl FileTask {
             file: file.clone(), 
             chunk_list, 
             ranges, 
-            config, 
+            config: Mutex::new(Arc::new(config.as_ref().clone())),
             resource: ResourceManager::new(Some(owner)), 
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
@@ -195,8 +195,8 @@ impl FileTask {
         &self.0.ranges
     }
 
-    pub fn config(&self) -> &Arc<ChunkDownloadConfig> {
-        &self.0.config
+    pub fn config(&self) -> Arc<ChunkDownloadConfig> {
+        self.0.config.lock().unwrap().clone()
     }
 
     pub fn as_statistic(&self) -> Arc<dyn StatisticTask> {
@@ -221,14 +221,53 @@ impl ChunkWriterExt for FileTask {
         Ok(())
     }
 
-    async fn redirect(&self, redirect_node: &DeviceId) -> BuckyResult<()> {
+    async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()> {
+        // need redirect
+        // change prefer source to redirect source node
         {
-            let state = &mut *self.0.state.write().unwrap();
-            state.control_state = TaskControlState::Redirect(redirect_node.clone());
+            let mut new_config = self.config();
+            if let Some(new_config_w) = Arc::get_mut(&mut new_config) {
+                new_config_w.prefer_source = redirect_node.clone();
+            }
+            let config = &mut *self.0.config.lock().unwrap();
+            std::mem::swap(&mut new_config, config);
         }
-        for writer in self.0.writers.iter() {
-            let _ = writer.redirect(redirect_node).await;
+
+        let (cur_task, new_task) = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut state.schedule_state {
+                TaskStateImpl::Downloading(downloading) => {
+                    let next_index = downloading.cur_index;
+                    let cur_task = Some(downloading.cur_task.clone());
+
+                    let (index, range) = self.ranges()[next_index].clone();
+                    let chunk_task = ChunkTask::with_range(
+                        self.0.stack.clone(), 
+                        self.chunk_list().chunks()[index].clone(), 
+                        range, 
+                        self.config().clone(), 
+                        vec![self.clone_as_writer()], 
+                        self.resource().clone(),
+			None
+                    );
+                    downloading.cur_index = next_index;
+                    downloading.cur_task = chunk_task.clone();
+
+                    (cur_task, Some(chunk_task))
+                }, 
+                _ => (None, None)
+            }    
+        };
+
+        if let Some(cur_task) = cur_task {
+            let _ = self.resource().remove_child(cur_task.resource());
+            info!("{} remove sub task {}", self, cur_task);
         }
+
+        if let Some(new_task) = new_task {
+            new_task.start();
+        }
+
         Ok(())
     }
 

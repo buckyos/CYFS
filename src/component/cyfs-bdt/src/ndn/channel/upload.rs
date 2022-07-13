@@ -30,7 +30,8 @@ enum StateImpl {
     Uploading(UploadingState),
     Finished, 
     Canceled(BuckyErrorCode),
-    Redirect(DeviceId),
+    Redirect(DeviceId, String /* redirect_referer */),
+    WaitRedirect,
 }
 
 impl StateImpl {
@@ -40,7 +41,8 @@ impl StateImpl {
             StateImpl::Uploading(_) => TaskState::Running(0), 
             StateImpl::Finished => TaskState::Finished, 
             StateImpl::Canceled(err) => TaskState::Canceled(*err),
-            StateImpl::Redirect(_) => TaskState::Finished,
+            StateImpl::Redirect(_, _) => TaskState::Finished,
+            StateImpl::WaitRedirect => TaskState::WaitRedirect,
         }
     }
 }
@@ -112,7 +114,8 @@ impl UploadSession {
                     session_id: TempSeq, 
                     piece_type: PieceSessionType, 
                     channel: Channel,
-                    cache_node: DeviceId) -> Self {
+                    dump_pn: DeviceId, 
+                    referer: String) -> Self {
         Self(Arc::new(SessionImpl {
             chunk,
             session_id, 
@@ -120,7 +123,24 @@ impl UploadSession {
             channel, 
             resource: ResourceManager::new(None), 
 	    resource_quota: ResourceQuota::new(),
-            state: RwLock::new(StateImpl::Redirect(cache_node)),
+            state: RwLock::new(StateImpl::Redirect(dump_pn, referer)),
+            last_active: AtomicU64::new(0), 
+            pending_from: AtomicU64::new(0),
+        }))
+    }
+
+    pub fn wait_redirect(chunk: ChunkId, 
+                         session_id: TempSeq,
+                         piece_type: PieceSessionType, 
+                         channel: Channel) -> Self {
+        Self(Arc::new(SessionImpl {
+            chunk,
+            session_id, 
+            piece_type, 
+            channel, 
+            resource: ResourceManager::new(None), 
+	    resource_quota: ResourceQuota::new(),
+            state: RwLock::new(StateImpl::WaitRedirect),
             last_active: AtomicU64::new(0), 
             pending_from: AtomicU64::new(0),
         }))
@@ -256,7 +276,7 @@ impl UploadSession {
         enum NextStep {
             CallProvider(Box<dyn UploadSessionProvider>), 
             RespInterest(BuckyErrorCode), 
-            RedirectInterest(DeviceId),
+            RedirectInterest(DeviceId, String),
             None
         }
         self.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
@@ -269,8 +289,8 @@ impl UploadSession {
                 StateImpl::Canceled(err) => {
                     NextStep::RespInterest(*err)
                 }, 
-                StateImpl::Redirect(cache_node) => {
-                    NextStep::RedirectInterest(cache_node.clone())
+                StateImpl::Redirect(cache_node, referer) => {
+                    NextStep::RedirectInterest(cache_node.clone(), referer.clone())
                 },
                 _ => {
                     NextStep::None
@@ -285,17 +305,19 @@ impl UploadSession {
                     session_id: self.session_id().clone(), 
                     chunk: self.chunk().clone(), 
                     err, 
-                    cache_node: None,
+                    redirect: None,
+                    redirect_referer: None,
                 };
                 self.channel().resp_interest(resp_interest);
                 Ok(())
             }, 
-            NextStep::RedirectInterest(cache_node) => {
+            NextStep::RedirectInterest(cache_node, referer) => {
                 let resp_interest = RespInterest {
                     session_id: self.session_id().clone(), 
                     chunk: self.chunk().clone(), 
                     err: BuckyErrorCode::SessionRedirect,
-                    cache_node: Some(cache_node)
+                    redirect: Some(cache_node),
+                    redirect_referer: Some(referer),
                 };
                 self.channel().resp_interest(resp_interest);
                 Ok(())
@@ -349,7 +371,8 @@ impl UploadSession {
                     session_id: self.session_id().clone(), 
                     chunk: self.chunk().clone(), 
                     err: err,
-                    cache_node: None
+                    redirect: None,
+                    redirect_referer: None,
                 };
                 self.channel().resp_interest(resp_interest);
                 Ok(())
@@ -388,7 +411,8 @@ impl UploadSession {
                     Some(TaskState::Canceled(*err))
                 }
             }
-            StateImpl::Redirect(_cache_node) => None
+            StateImpl::Redirect(_cache_node, _referer) => None,
+            StateImpl::WaitRedirect => None,
         }
     }
 }
