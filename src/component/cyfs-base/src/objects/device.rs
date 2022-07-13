@@ -155,6 +155,7 @@ pub struct DeviceBodyContent {
     endpoints: Vec<Endpoint>,
     sn_list: Vec<DeviceId>,
     passive_pn_list: Vec<DeviceId>,
+    dump_pn: Vec<DeviceId>,
     name: Option<String>,
 }
 
@@ -197,6 +198,7 @@ impl Default for DeviceBodyContent {
             endpoints: Vec::new(),
             sn_list: Vec::new(),
             passive_pn_list: Vec::new(),
+            dump_pn: Vec::new(),
             name: None,
         }
     }
@@ -207,12 +209,14 @@ impl DeviceBodyContent {
         endpoints: Vec<Endpoint>,
         sn_list: Vec<DeviceId>,
         passive_pn_list: Vec<DeviceId>,
+        dump_pn: Vec<DeviceId>,
         name: Option<String>,
     ) -> Self {
         Self {
             endpoints,
             sn_list,
             passive_pn_list,
+            dump_pn,
             name,
         }
     }
@@ -229,6 +233,14 @@ impl DeviceBodyContent {
         &self.passive_pn_list
     }
 
+    pub fn dump_pn(&self) -> &Vec<DeviceId> {
+        &self.dump_pn
+    }
+
+    pub fn dump_current_pn(&self) -> Option<&DeviceId> {
+        self.dump_pn.get(0) 
+    }
+
     pub fn mut_endpoints(&mut self) -> &mut Vec<Endpoint> {
         &mut self.endpoints
     }
@@ -239,6 +251,10 @@ impl DeviceBodyContent {
 
     pub fn mut_passive_pn_list(&mut self) -> &mut Vec<DeviceId> {
         &mut self.passive_pn_list
+    }
+
+    pub fn mut_dump_pn(&mut self) -> &mut Vec<DeviceId> {
+        &mut self.dump_pn
     }
 
     pub fn name(&self) -> Option<&str> {
@@ -261,6 +277,8 @@ impl TryFrom<&DeviceBodyContent> for protos::DeviceBodyContent {
         ret.set_passive_pn_list(ProtobufCodecHelper::encode_buf_list(
             &value.passive_pn_list,
         )?);
+        ret.set_dump_pn_list(ProtobufCodecHelper::encode_buf_list(&value.dump_pn)?);
+
         if let Some(name) = &value.name {
             ret.set_name(name.to_owned());
         }
@@ -277,6 +295,7 @@ impl TryFrom<protos::DeviceBodyContent> for DeviceBodyContent {
             endpoints: ProtobufCodecHelper::decode_buf_list(value.take_endpoints())?,
             sn_list: ProtobufCodecHelper::decode_buf_list(value.take_sn_list())?,
             passive_pn_list: ProtobufCodecHelper::decode_buf_list(value.take_passive_pn_list())?,
+            dump_pn: ProtobufCodecHelper::decode_buf_list(value.take_dump_pn_list())?,
             name: None,
         };
 
@@ -314,13 +333,14 @@ impl Device {
         endpoints: Vec<Endpoint>,
         sn_list: Vec<DeviceId>,
         passive_pn_list: Vec<DeviceId>,
+        dump_pn: Vec<DeviceId>,
         public_key: PublicKey,
         area: Area,
         category: DeviceCategory,
     ) -> DeviceBuilder {
         let desc_content = DeviceDescContent::new(unique_id);
 
-        let body_content = DeviceBodyContent::new(endpoints, sn_list, passive_pn_list, None);
+        let body_content = DeviceBodyContent::new(endpoints, sn_list, passive_pn_list, dump_pn, None);
         let mut real_area = area.clone();
         real_area.inner = category as u8;
 
@@ -444,6 +464,7 @@ mod test {
             endpoints,
             sn_list,
             Vec::new(),
+            Vec::new(),
             pubic_key,
             area,
             DeviceCategory::Server,
@@ -469,6 +490,7 @@ mod test {
             device_unique_id,
             device_endpoints,
             device_sn_list,
+            Vec::new(),
             Vec::new(),
             device_public_key,
             device_area,

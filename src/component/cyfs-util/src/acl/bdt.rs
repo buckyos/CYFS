@@ -64,3 +64,10 @@ pub trait BdtDataAclProcessor: Sync + Send {
     async fn put_data(&self, req: BdtPutDataInputRequest) -> BuckyResult<()>;
     async fn delete_data(&self, req: BdtDeleteDataInputRequest) -> BuckyResult<()>;
 }
+
+#[async_trait::async_trait]
+pub trait BdtRefererProcessor: Sync + Send {
+    async fn parse_referer_link(&self, referer: &str) -> BuckyResult<(ObjectId /* target-id */, String /* inner */)>;
+    async fn build_referer_link(&self, target_id: &ObjectId, inner: String) -> BuckyResult<String>;
+    
+}

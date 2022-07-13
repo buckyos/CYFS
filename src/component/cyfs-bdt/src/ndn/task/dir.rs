@@ -305,9 +305,9 @@ impl DirTask {
                 Ok(())
             }
 
-            async fn redirect(&self, redirect_node: &DeviceId) -> BuckyResult<()> {
+            async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()> {
                 for writer in self.0.writers.iter() {
-                    let _ = writer.redirect(redirect_node).await;
+                    let _ = writer.redirect(redirect_node, redirect_referer).await;
                 }
                 Ok(())
             }
@@ -388,9 +388,9 @@ impl DirTask {
                 Ok(())
             }
 
-            async fn redirect(&self, redirect_node: &DeviceId) -> BuckyResult<()> {
+            async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()> {
                 for w in &self.0.writers {
-                    let _ = w.redirect(redirect_node).await;
+                    let _ = w.redirect(redirect_node, redirect_referer).await;
                 }
                 self.0.dir.on_sub_task_finish(self.0.id);
                 Ok(())

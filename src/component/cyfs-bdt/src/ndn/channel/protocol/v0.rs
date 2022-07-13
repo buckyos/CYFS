@@ -265,7 +265,8 @@ pub struct RespInterest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,  
     pub err: BuckyErrorCode,
-    pub cache_node: Option<DeviceId>,
+    pub redirect: Option<DeviceId>,
+    pub redirect_referer: Option<String>,
 }
 
 
@@ -290,7 +291,8 @@ impl RawEncodeWithContext<DatagramOptions> for RespInterest {
         let (mut context, buf) = FlagsEncodeContext::new(CommandCode::RespInterest as u8, enc_buf)?;
         let buf = context.encode(buf, &self.chunk)?;
         let buf = context.encode(buf, &(self.err.into_u16()))?;
-        let _ = context.option_encode(buf, &(self.cache_node), flags.next())?;
+        let buf = context.option_encode(buf, &(self.redirect), flags.next())?;
+        let _ = context.option_encode(buf, &(self.redirect_referer), flags.next())?;
         context.finish(enc_buf)
     }
 }
@@ -309,12 +311,14 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for RespInterest {
         let (err, buf) = context.decode::<u16>(buf)?;
         let err = BuckyErrorCode::from(err);
         let (id, buf) = context.option_decode(buf, flags.next())?;
+        let (referer, buf) = context.option_decode(buf, flags.next())?;
         Ok((
             Self {
                 session_id, 
                 chunk, 
                 err,
-                cache_node: id
+                redirect: id,
+                redirect_referer: referer
             },
             buf,
         ))

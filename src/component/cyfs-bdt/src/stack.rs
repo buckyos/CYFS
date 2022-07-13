@@ -143,6 +143,7 @@ impl StackConfig {
                     precoding_timeout: Duration::from_secs(900),
                     resend_interval: Duration::from_millis(500), 
                     resend_timeout: Duration::from_secs(5), 
+                    wait_redirect_timeout: Duration::from_millis(500),
                     msl: Duration::from_secs(60), 
                     udp: ndn::channel::tunnel::udp::Config {
                         no_resp_loss_count: 3, 
@@ -190,6 +191,7 @@ pub struct StackOpenParams {
     pub known_device: Option<Vec<Device>>, 
     pub active_pn: Option<Vec<Device>>, 
     pub passive_pn: Option<Vec<Device>>, 
+    pub dump_pn: Option<Device>,
 
     pub outer_cache: Option<Box<dyn OuterDeviceCache>>,
 
@@ -208,7 +210,8 @@ impl StackOpenParams {
             known_sn: None, 
             known_device: None, 
             active_pn: None, 
-            passive_pn: None, 
+            passive_pn: None,
+            dump_pn: None, 
             outer_cache: None,
             ndc: None, 
             tracker: None, 
@@ -273,6 +276,11 @@ impl Stack {
                 passive_pn_list.push(pn);
             }
 
+            let dump_pn_list = device.mut_connect_info().mut_dump_pn();
+            if let Some(pn) = &params.dump_pn {
+                dump_pn_list.push(pn.desc().device_id());
+            }
+
             device
                 .body_mut()
                 .as_mut()
@@ -316,9 +324,13 @@ impl Stack {
             proxy_manager.add_active_proxy(&pn);
         }
 
-
         for pn in passive_pn {
             proxy_manager.add_passive_proxy(&pn);
+        }
+
+        // for pn in dump_pn {
+        if let Some(pn) = &params.dump_pn {
+            proxy_manager.add_dump_proxy(pn);
         }
 
         let debug_stub = if stack.config().debug.is_some() {
@@ -487,6 +499,9 @@ impl Stack {
 
         let mut passive_pn_list = self.proxy_manager().passive_proxies();
         std::mem::swap(local.mut_connect_info().mut_passive_pn_list(), &mut passive_pn_list);
+
+        let mut dump_pn_id_list = self.proxy_manager().dump_proxies();
+        std::mem::swap(local.mut_connect_info().mut_dump_pn(), &mut dump_pn_id_list);
          
         local
             .body_mut()

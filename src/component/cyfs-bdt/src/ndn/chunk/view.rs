@@ -35,7 +35,6 @@ struct StateImpl {
     raptor_encoder: Option<RaptorEncoder>,
     raptor_decoder: Option<RaptorDecoder>,
     chunk_cache: Option<Arc<Vec<u8>>>, 
-    cache_node: Option<DeviceId>,
 }
 
 struct ViewImpl {
@@ -165,7 +164,6 @@ impl ChunkView {
                     raptor_encoder: None,
                     raptor_decoder: None, 
                     chunk_cache: None,
-                    cache_node: None,
                 }),
                 resource_quota: ResourceQuota::new(),
                 statistic_task_cb: 
@@ -209,27 +207,10 @@ impl ChunkView {
         let stack = Stack::from(&self.0.stack);
         let view = self.clone();
 
-        let (exists, cache_node) = {
-            if stack.ndn().chunk_manager().store().exists(self.chunk()).await {
-                (true, stack.ndn().chunk_manager().store().get_cache_node(self.chunk()).await)
-            } else {
-                (false, None)
-            }
-        };
-
-        if exists {
+        if stack.ndn().chunk_manager().store().exists(self.chunk()).await {
             let mut state = view.0.state.write().unwrap();
             if state.state == ChunkState::Unknown {
-                state.cache_node = cache_node;
-                if let Some(node) = &state.cache_node {
-                    if node.clone() == stack.local_device_id().clone() {
-                        state.state = ChunkState::Ready;
-                    } else {
-                        state.state = ChunkState::OnRemotely;
-                    }
-                } else {
-                    state.state = ChunkState::Ready;
-                }
+                state.state = ChunkState::Ready;
             }
         } else {
             let mut state = view.0.state.write().unwrap();
@@ -257,8 +238,10 @@ impl ChunkView {
                     let newly = if state.downloader.is_none() {
                         info!("{} will create downloader", self);
                         state.downloader = Some(ChunkDownloader::new(
-                            self.clone(), 
-                            self.0.stack.clone()));
+			    self.clone(),
+                            self.0.stack.clone())
+                        );
+                        state.state = ChunkState::Pending;
                         true
                     }  else {
                         false
@@ -280,11 +263,16 @@ impl ChunkView {
                         reader
                     ), false)
                 }, 
+                ChunkState::Pending => {
+                    return Err(BuckyError::new(BuckyErrorCode::Pending, 
+                                               format!("{} is pending, please wait ...", self.chunk())));
+                }
                 _ => unreachable!()
             }
         };
-        let _ = downloader.add_config(config, owner);
+
         if newly {
+            let _ = downloader.add_config(config, owner);
             let downloader = downloader.clone();
             let view = self.clone();
             task::spawn(async move {
@@ -305,7 +293,7 @@ impl ChunkView {
                     TaskState::Canceled(_) => {
                         // do nothing
                     }, 
-                    TaskState::Redirect(_) => {
+                    TaskState::Redirect(_, _) => {
                         // do nothing
                     },
                     _ => unimplemented!()
@@ -321,26 +309,10 @@ impl ChunkView {
         piece_type: PieceSessionType, 
         to: Channel, 
         owner: ResourceManager) -> BuckyResult<UploadSession> {
-        enum NextStep {
-            Uploading(ChunkUploader, UploadSession),
-            Finish(UploadSession),
-        }
-
-        let next_step = {
+        let uploader = {
             let mut state = self.0.state.write().unwrap();
             match &state.state {
-                ChunkState::OnRemotely => {
-                    if let Some(cache_node) = &state.cache_node {
-                        Ok(NextStep::Finish(UploadSession::redirect(self.chunk().clone(),
-                                                                    session_id,
-                                                                    piece_type,
-                                                                    to,
-                                                                    cache_node.clone())))
-                    } else {
-                        unreachable!()
-                    }
-                }, 
-                ChunkState::NotFound => Err(BuckyError::new(BuckyErrorCode::NotFound, "chunk not found")),
+                ChunkState::NotFound => Err(BuckyError::new(BuckyErrorCode::NotFound, "chunk not found")),  
                 ChunkState::Ready => {
                     if state.uploader.is_none() {
                         info!("{} will create uploader", self);
@@ -349,33 +321,26 @@ impl ChunkView {
                             owner
                         ));
                     }
-
-                    let uploader = state.uploader.as_ref().unwrap();
-
-                    Ok(NextStep::Uploading(uploader.clone(), 
-                                           UploadSession::new(self.chunk().clone(), 
-                                                              session_id, 
-                                                              piece_type, 
-                                                              to, 
-							      self.0.resource_quota.clone(),
-                                                              uploader.clone().resource().clone())))
+                    Ok(state.uploader.as_ref().unwrap().clone())
                 }, 
+                ChunkState::Pending => Err(BuckyError::new(BuckyErrorCode::Pending, "chunk pending.")),
                 _ => unreachable!()
             }
         }?;
 
-        match next_step {
-            NextStep::Uploading(uploader, session) => {
-                match uploader.add_session(session.clone()) {
-                    Ok(_) => Ok(session),
-                    Err(e) => {
-                        let _ = uploader.resource().remove_child(session.resource());
-                        Err(e)
-                    }
-                }
-            }
-            NextStep::Finish(session) => {
-                Ok(session)
+        let session = UploadSession::new(
+            self.chunk().clone(), 
+            session_id, 
+            piece_type, 
+            to, 
+	    self.0.resource_quota.clone(),
+            uploader.resource().clone()
+        );
+        match uploader.add_session(session.clone()) {
+            Ok(_) => Ok(session), 
+            Err(err) => {
+                let _ = uploader.resource().remove_child(session.resource());
+                Err(err)
             }
         }
     }

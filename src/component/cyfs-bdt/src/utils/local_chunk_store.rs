@@ -363,7 +363,7 @@ impl ChunkWriter for LocalChunkWriter {
         Ok(())
     }
 
-    async fn redirect(&self, _redirect_node: &DeviceId) -> BuckyResult<()> {
+    async fn redirect(&self, _redirect_node: &DeviceId, _redirect_referer: &String) -> BuckyResult<()> {
         Ok(())
     }
 
@@ -704,7 +704,7 @@ impl ChunkWriter for LocalChunkListWriter {
         Ok(())
     }
 
-    async fn redirect(&self, _redirect_node: &DeviceId) -> BuckyResult<()> {
+    async fn redirect(&self, _redirect_node: &DeviceId, _redirect_referer: &String) -> BuckyResult<()> {
         Ok(())
     }
 
@@ -821,7 +821,7 @@ impl ChunkWriterExt for LocalChunkListWriter {
         Ok(())
     }
 
-    async fn redirect(&self, _redirect_node: &DeviceId) -> BuckyResult<()> {
+    async fn redirect(&self, _redirect_node: &DeviceId, _: &String) -> BuckyResult<()> {
         Ok(())
     }
 

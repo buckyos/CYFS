@@ -299,7 +299,6 @@ pub enum ChunkState {
     OnAir = 3,
     Ready = 4,  // 就绪
     Ignore = 5, // 被忽略
-    OnRemotely = 6, // 远程优先
 }
 
 // impl Into<u8> for ChunkState {
@@ -319,7 +318,6 @@ impl TryFrom<u8> for ChunkState {
             3 => Ok(ChunkState::OnAir),
             4 => Ok(ChunkState::Ready),
             5 => Ok(ChunkState::Ignore),
-            6 => Ok(ChunkState::OnRemotely),
             _ => {
                 let msg = format!("unknown chunk-state: {}", value);
                 error!("{}", msg);
@@ -345,7 +343,6 @@ impl From<&ChunkState> for u8 {
             ChunkState::OnAir => 3,
             ChunkState::Ready => 4,
             ChunkState::Ignore => 5,
-            ChunkState::OnRemotely => 6,
         }
     }
 }

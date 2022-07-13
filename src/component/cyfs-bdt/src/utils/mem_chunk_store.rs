@@ -80,7 +80,7 @@ impl ChunkWriter for MemChunkStore {
         Ok(())
     }
 
-    async fn redirect(&self, _redirect_node: &DeviceId) -> BuckyResult<()> {
+    async fn redirect(&self, _redirect_node: &DeviceId, _redirect_referer: &String) -> BuckyResult<()> {
         Ok(())
     }
 

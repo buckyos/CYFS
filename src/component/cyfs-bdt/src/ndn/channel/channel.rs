@@ -36,6 +36,7 @@ pub struct Config {
     pub precoding_timeout: Duration,
     pub resend_interval: Duration, 
     pub resend_timeout: Duration,  
+    pub wait_redirect_timeout: Duration,
     pub msl: Duration, 
     pub udp: udp::Config
 }
@@ -304,7 +305,7 @@ impl Channel {
                         false
                     }
                 }, 
-                TaskState::Redirect(_redirect_node) => {
+                TaskState::Redirect(_redirect_node, _redirect_referer) => {
                     // redirect
                     true
                 },
