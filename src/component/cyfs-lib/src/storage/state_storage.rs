@@ -60,6 +60,10 @@ impl StateStorage {
         }
     }
 
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
     pub fn stub(&self) -> &SingleOpEnvStub {
         &self.op_data.get().unwrap().single_stub
     }
@@ -195,7 +199,7 @@ impl StateStorage {
 
     async fn abort_impl(&self, op_data: StorageOpData) {
         info!("will abort state storage: path={}", self.path);
-        
+
         // first hold the lock for update
         let mut _current = op_data.current.lock().await;
 
@@ -354,6 +358,51 @@ impl StateStorageMap {
 
         Ok(ret)
     }
+
+    pub async fn next(&self, step: u32) -> BuckyResult<Vec<(String, ObjectId)>> {
+        let list = self.storage.stub().next(step).await?;
+
+        self.convert_list(list)
+    }
+
+    pub async fn reset(&self) -> BuckyResult<()> {
+        self.storage.stub().reset().await
+    }
+
+    pub async fn list(&self) -> BuckyResult<Vec<(String, ObjectId)>> {
+        let list = self.storage.stub().list().await?;
+
+        self.convert_list(list)
+    }
+
+    fn convert_list(
+        &self,
+        list: Vec<ObjectMapContentItem>,
+    ) -> BuckyResult<Vec<(String, ObjectId)>> {
+        if list.is_empty() {
+            return Ok(vec![]);
+        }
+
+        if list[0].content_type() != ObjectMapSimpleContentType::Map {
+            let msg = format!(
+                "state storage is not valid map type! path={}, type={}",
+                self.storage().path,
+                list[0].content_type().as_str()
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+        }
+
+        let list = list
+            .into_iter()
+            .map(|item| match item {
+                ObjectMapContentItem::Map(kp) => kp,
+                _ => unreachable!(),
+            })
+            .collect();
+
+        Ok(list)
+    }
 }
 
 pub struct StateStorageSet {
@@ -401,5 +450,47 @@ impl StateStorageSet {
         }
 
         Ok(ret)
+    }
+
+    pub async fn next(&self, step: u32) -> BuckyResult<Vec<ObjectId>> {
+        let list = self.storage.stub().next(step).await?;
+
+        self.convert_list(list)
+    }
+
+    pub async fn reset(&self) -> BuckyResult<()> {
+        self.storage.stub().reset().await
+    }
+
+    pub async fn list(&self) -> BuckyResult<Vec<ObjectId>> {
+        let list = self.storage.stub().list().await?;
+
+        self.convert_list(list)
+    }
+
+    fn convert_list(&self, list: Vec<ObjectMapContentItem>) -> BuckyResult<Vec<ObjectId>> {
+        if list.is_empty() {
+            return Ok(vec![]);
+        }
+
+        if list[0].content_type() != ObjectMapSimpleContentType::Set {
+            let msg = format!(
+                "state storage is not valid set type! path={}, type={}",
+                self.storage().path,
+                list[0].content_type().as_str()
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+        }
+
+        let list = list
+            .into_iter()
+            .map(|item| match item {
+                ObjectMapContentItem::Set(id) => id,
+                _ => unreachable!(),
+            })
+            .collect();
+
+        Ok(list)
     }
 }

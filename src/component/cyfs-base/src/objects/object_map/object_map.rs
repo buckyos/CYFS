@@ -1678,17 +1678,20 @@ impl ObjectMapSimpleContentType {
             None => false,
         }
     }
-}
 
-impl ToString for ObjectMapSimpleContentType {
-    fn to_string(&self) -> String {
-        match *self {
+    pub fn as_str(&self) -> &str {
+        match self {
             Self::Map => "map",
             Self::DiffMap => "diffmap",
             Self::Set => "set",
             Self::DiffSet => "diffset",
         }
-        .to_owned()
+    }
+}
+
+impl ToString for ObjectMapSimpleContentType {
+    fn to_string(&self) -> String {
+        self.as_str().to_owned()
     }
 }
 

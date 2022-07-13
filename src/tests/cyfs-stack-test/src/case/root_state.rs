@@ -1,10 +1,9 @@
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
-use std::str::FromStr;
 use zone_simulator::*;
 
-use std::sync::Arc;
+use std::str::FromStr;
 
 fn new_dec(name: &str) -> ObjectId {
     let owner_id = &USER1_DATA.get().unwrap().people_id;
@@ -378,7 +377,6 @@ pub async fn test_gbk_path(stack: &SharedCyfsStack) {
                 unreachable!();
             }
         }
-        
 
         let root = op_env.commit().await.unwrap();
         info!("new dec root is: {:?}", root);
@@ -424,6 +422,9 @@ pub async fn test_storage(s: &SharedCyfsStack) {
             }
         }
 
+        let list = map.list().await.unwrap();
+        assert!(list.is_empty());
+
         map.save().await.unwrap();
     }
 
@@ -452,6 +453,12 @@ pub async fn test_storage(s: &SharedCyfsStack) {
 
         map.storage().save().await.unwrap();
         map.storage().save().await.unwrap();
+
+        let list = map.list().await.unwrap();
+        assert!(list.len() == 1);
+        let item = &list[0];
+        assert_eq!(item.0, "user1");
+        assert_eq!(item.1, x2_value);
 
         map.into_storage().abort().await;
     }
@@ -533,6 +540,56 @@ pub async fn test_storage(s: &SharedCyfsStack) {
 
         map.storage().start_save(std::time::Duration::from_secs(5));
         async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+    }
+
+    // test some set cases
+    {
+        let storage = s.global_state_storage_ex(
+            GlobalStateCategory::RootState,
+            "/user/index",
+            ObjectMapSimpleContentType::Set,
+            None,
+            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        );
+
+        storage.init().await.unwrap();
+
+        let set = StateStorageSet::new(storage);
+        assert!(!set.contains(&x1_value).await.unwrap());
+        assert!(!set.contains(&x2_value).await.unwrap());
+
+        set.insert(&x1_value).await.unwrap();
+        assert!(set.contains(&x1_value).await.unwrap());
+
+        set.save().await.unwrap();
+        let ret = set.insert(&x2_value).await.unwrap();
+        assert!(ret);
+
+        let ret = set.insert(&x2_value).await.unwrap();
+        assert!(!ret);
+
+        set.save().await.unwrap();
+    }
+
+    {
+        let storage = s.global_state_storage_ex(
+            GlobalStateCategory::RootState,
+            "/user/index",
+            ObjectMapSimpleContentType::Set,
+            None,
+            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        );
+
+        storage.init().await.unwrap();
+
+        let set = StateStorageSet::new(storage);
+
+        let list = set.list().await.unwrap();
+        assert!(list.len() == 2);
+        assert!(list.iter().find(|&&v| v == x1_value).is_some());
+        assert!(list.iter().find(|&&v| v == x2_value).is_some());
+
+        set.abort().await;
     }
 
     info!("state storage test complete!");
