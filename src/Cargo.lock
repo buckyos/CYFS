@@ -3113,6 +3113,7 @@ dependencies = [
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-debug",
+ "cyfs-lib",
  "cyfs-stack-loader",
  "cyfs-util",
  "futures",
