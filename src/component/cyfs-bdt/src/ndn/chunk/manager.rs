@@ -63,14 +63,6 @@ impl ChunkReader for EmptyChunkWrapper {
         }
     }
 
-    async fn get_cache_node(&self, chunk: &ChunkId) -> Option<DeviceId> {
-        if chunk.len() == 0 {
-            None
-        } else {
-            self.0.get_cache_node(chunk).await
-        }
-    }
-
     async fn get(&self, chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>> {
         if chunk.len() == 0 {
             Ok(Arc::new(vec![0u8; 0]))

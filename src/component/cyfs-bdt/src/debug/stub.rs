@@ -422,9 +422,6 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTaskControl>, timeout:
                     i += 1;
                 }
             },
-            TaskControlState::Redirect(_) => {
-                break Ok(());
-            }
             TaskControlState::Canceled => {
                 break Err(format!("download canceled\r\n"));
             },

@@ -259,7 +259,7 @@ impl ChunkWriter for ChunkRange {
         Ok(())
     }
 
-    async fn redirect(&self, _: &DeviceId) -> BuckyResult<()> {
+    async fn redirect(&self, _: &DeviceId, _: &String) -> BuckyResult<()> {
         Ok(())
     }
 }
