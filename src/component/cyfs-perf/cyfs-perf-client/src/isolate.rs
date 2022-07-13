@@ -1,38 +1,121 @@
 use cyfs_base::*;
+use cyfs_lib::*;
 use cyfs_debug::Mutex;
 use cyfs_perf_base::*;
 
 use std::collections::{hash_map::Entry, HashMap};
+use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
+use chrono::{Datelike, Timelike, Utc};
 
-// 用以辅助request的区间统计
-struct PerfRequestHolder {
-    pub pending_reqs: HashMap<String, u64>,
-    pub reqs: HashMap<String, PerfRequestDesc>,
+#[derive(Debug, Clone, Copy)]
+pub enum PerfType {
+    Requests,
+    Accumulations,
+    Actions,
+    Records,
 }
 
-impl std::fmt::Display for PerfRequestHolder {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "reqs len: {}", self.reqs.len())
+impl fmt::Display for PerfType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PerfType::Requests => write!(f, "Requests"),
+            PerfType::Accumulations => write!(f, "Accumulations"),
+            PerfType::Actions => write!(f, "Actions"),
+            PerfType::Records => write!(f, "Records"),
+        }
     }
 }
 
-impl PerfRequestHolder {
-    pub fn new() -> Self {
+#[derive(Clone)]
+struct PerfIsolateInner {
+    stack: SharedCyfsStack,
+
+    people_id: ObjectId,
+
+    dec_id: ObjectId,
+
+    isolate_id: String,
+
+    id: String,
+
+    actions: Vec<PerfAction>,
+
+    records: HashMap<String, PerfRecord>,
+
+    accumulations: HashMap<String, PerfAccumulation>,
+
+    pending_reqs: HashMap<String, u64>,
+    reqs: HashMap<String, PerfRequest>,
+}
+
+impl PerfIsolateInner {
+    pub fn new(isolate_id: &str, people_id: ObjectId, dec_id: Option<ObjectId>, id: String, stack: SharedCyfsStack) -> PerfIsolateInner {
+        let dec_id = match dec_id {
+            Some(id) => id,
+            None => ObjectId::from_str(PERF_SERVICE_DEC_ID).unwrap(),
+        };
+
         Self {
+            isolate_id: isolate_id.to_owned(),
+            id,
+            actions: vec![],
+            records: HashMap::new(),
+            accumulations: HashMap::new(),
             pending_reqs: HashMap::new(),
             reqs: HashMap::new(),
+            people_id,
+            dec_id,
+            stack,
         }
     }
 
-    pub fn begin(&mut self, id: &str, key: &str) {
+    async fn put_object(&self, object_id: ObjectId, object_raw: Vec<u8>) -> BuckyResult<()>{
+
+        let req = NONPutObjectOutputRequest::new_noc(object_id, object_raw);
+        self.stack.non_service().put_object(req).await?;
+
+        Ok(())
+    }
+
+
+    fn get_local_cache_path(&self, dec_id: Option<ObjectId>, isolate_id: String, id: String, perf_type: PerfType) -> String {
+        let now = Utc::now();
+        let (_is_common_era, year) = now.year_ce();
+        let date = format!("{:02}:{:02}:{:02}", year, now.month(), now.day());
+        let time_span_start = format!("{:02}:{:02}", now.hour(), now.minute());
+        let dec_id = match dec_id {
+            Some(id) => id.to_string(),
+            None => ObjectId::from_str(PERF_SERVICE_DEC_ID).unwrap().to_string(),
+        };
+        let path = format!("/{PERF_SERVICE_DEC_ID}/local/{dec_id}/{isolate_id}/{date}/{time_span_start}/{id}/{perf_type}");
+
+        path
+    }
+
+    async fn noc_root_state(&self, people_id: Option<ObjectId>, dec_id: Option<ObjectId>, isolate_id: String, id: String, perf_object_id: ObjectId, perf_type: PerfType) -> BuckyResult<()>{
+        // 把对象存到root_state
+        let root_state = self.stack.root_state_stub(people_id, dec_id);
+        let op_env = root_state.create_path_op_env().await?;
+        let path = self.get_local_cache_path(dec_id, isolate_id, id, perf_type);
+        op_env
+            .set_with_key(path, perf_object_id.to_string(), &perf_object_id, None, true)
+            .await?;
+
+        let root = op_env.commit().await?;
+        info!("new dec root is: {:?}, perf_obj_id={}", root, perf_object_id);
+
+        Ok(())
+    }
+
+    pub fn begin_request(&mut self, id: &str, key: &str) {
         let full_id = format!("{}_{}", id, key);
 
         match self.pending_reqs.entry(full_id) {
             Entry::Vacant(v) => {
                 let bucky_time = bucky_time_now();
-                let js_time = bucky_time_to_js_time(bucky_time);
-                v.insert(js_time);
+                v.insert(bucky_time);
             }
             Entry::Occupied(_o) => {
                 unreachable!("perf request item already begin! id={}, key={}", id, key);
@@ -40,209 +123,124 @@ impl PerfRequestHolder {
         }
     }
 
-    pub fn end(&mut self, id: &str, key: &str, result: BuckyResult<u64>) {
-        let bucky_time = bucky_time_now();
-        let js_time = bucky_time_to_js_time(bucky_time);
+    pub async fn end_request(&mut self, id: &str, key: &str, value: u64, stat: BuckyResult<Option<u64>>) -> BuckyResult<()>{
         let full_id = format!("{}_{}", id, key);
+
+        let path = self.get_local_cache_path(Some(self.dec_id), self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
+
+        let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
+        let op_env = root_state.create_path_op_env().await?;
+        let ret = op_env.get_by_path(path).await?;
+        let v = ret.unwrap();
+        let req = NONGetObjectRequest::new_noc(v, None);
+        let resp = self.stack.non_service().get_object(req).await?;
+
+        let perf_obj = PerfRequest::decode(&resp.object.object_raw)?;
+
         match self.pending_reqs.remove(&full_id) {
-            Some(tick) => {
-                let during = if js_time > tick {
-                    js_time - tick
-                } else {
-                    0
-                };
-
-                match self.reqs.entry(id.to_owned()) {
-                    Entry::Vacant(v) => {
-                        let mut req = PerfRequestDesc {
-                            time: TimeResult { total: during, avg: 0, min: u64::MAX, max: u64::MIN },
-                            speed: SpeedResult { avg: 0., min: f32::MAX, max: f32::MIN },
-                            size: SizeResult { total: 0, avg: 0, min: u64::MAX, max: u64::MIN },
-                            success: 0,
-                            failed: 0,
-                        };
-
-                        if let Ok(v) = result {
-                            req.size.total = v;
-                            req.success = 1;
-                        } else {
-                            req.failed = 1;
-                        }
-
-                        v.insert(req);
-                    }
-                    Entry::Occupied(mut o) => {
-                        let item = o.get_mut();
-                        if let Ok(v) = result {
-                            item.success += 1;
-                            item.size.total += v;
-                            if v < item.size.min {
-                                item.size.min = v;
-                            }
-                            if v > item.size.max {
-                                item.size.max = v;
-                            }
-
-                        } else {
-                            item.failed += 1;
-                        }
-                        item.size.avg = item.size.total / (item.success + item.failed) as u64;
-
-                        item.time.total += during;
-                        item.time.avg = item.time.total / (item.success + item.failed) as u64;
-                        if during < item.time.min {
-                            item.time.min = during;
-                        }
-                        if during > item.time.max {
-                            item.time.max = during;
-                        }
-
-                        // todo 流量统计item speed
-
-                    }
-                }
+            Some(_tick) => {
+                let v = perf_obj.add_stat(value, stat);
+                let object_raw = v.to_vec()?;
+                let object_id = v.desc().object_id();
+                let _ = self.put_object(object_id, object_raw).await;
+                let _ = self.noc_root_state(
+                    Some(self.people_id), 
+                    Some(self.dec_id), 
+                    self.isolate_id.to_owned(), 
+                    self.id.to_owned(), 
+                    object_id, PerfType::Requests).await;
             }
             None => {
                 unreachable!();
             }
         }
-    }
-}
 
-impl PerfItemMerge<PerfRequestHolder> for PerfRequestHolder {
-    fn merge(&mut self, other: Self) {
-        self.reqs.merge(other.reqs)
-    }
-}
-
-struct PerfIsolateInner {
-    id: String,
-
-    actions: Vec<PerfActionDesc>,
-
-    records: HashMap<String, PerfRecordDesc>,
-
-    accumulations: HashMap<String, PerfAccumulationDesc>,
-
-    reqs: PerfRequestHolder,
-}
-
-pub type PerfIsolateEntity = PerfIsolateInner;
-
-impl PerfIsolateInner {
-    pub fn new(id: &str) -> PerfIsolateInner {
-        Self {
-            id: id.to_owned(),
-            actions: vec![],
-            records: HashMap::new(),
-            accumulations: HashMap::new(),
-            reqs: PerfRequestHolder::new(),
-        }
+        Ok(())
     }
 
-    pub fn begin_request(&mut self, id: &str, key: &str) {
-        self.reqs.begin(id, key);
+    pub async fn acc(&mut self, _id: &str, stat: BuckyResult<u64>) -> BuckyResult<()>{
+
+        let path = self.get_local_cache_path(Some(self.dec_id), self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
+
+        let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
+        let op_env = root_state.create_path_op_env().await?;
+        let ret = op_env.get_by_path(path).await?;
+        let v = ret.unwrap();
+        let req = NONGetObjectRequest::new_noc(v, None);
+        let resp = self.stack.non_service().get_object(req).await?;
+
+        let perf_obj = PerfAccumulation::decode(&resp.object.object_raw)?;
+
+
+        let v = perf_obj.add_stat(stat);
+        let object_raw = v.to_vec()?;
+        let object_id = v.desc().object_id();
+        let _ = self.put_object(object_id, object_raw).await;
+        let _ = self.noc_root_state(
+            Some(self.people_id), 
+            Some(self.dec_id), 
+            self.isolate_id.to_owned(), 
+            self.id.to_owned(), 
+            object_id, PerfType::Accumulations).await;
+
+        Ok(())
     }
 
-    pub fn end_request(&mut self, id: &str, key: &str, result: BuckyResult<u64>) {
-        self.reqs.end(id, key, result);
-    }
-
-    pub fn acc(&mut self, id: &str, result: BuckyResult<u64>) {
-        match self.accumulations.entry(id.to_owned()) {
-            Entry::Vacant(v) => {
-                let mut acc = PerfAccumulationDesc {
-                    size: SizeResult { total: 0, avg: 0, min: u64::MAX, max: u64::MIN },
-                    success: 0,
-                    failed: 0,
-                };
-                if let Ok(v) = result {
-                    acc.size.total = v;
-                    acc.success = 1;
-                } else {
-                    acc.failed = 1;
-                }
-
-                v.insert(acc);
-            }
-            Entry::Occupied(mut o) => {
-                let acc = o.get_mut();
-                if let Ok(v) = result {
-                    acc.success += 1;
-                    acc.size.total += v;
-                    if v < acc.size.min {
-                        acc.size.min = v;
-                    }
-                    if v > acc.size.max {
-                        acc.size.max = v;
-                    }
-                } else {
-                    acc.failed += 1;
-                }
-
-                acc.size.avg =  acc.size.total / (acc.failed + acc.success)  as u64;
-
-            }
-        }
-    }
-
-    pub fn action(
+    pub async fn action(
         &mut self,
-        id: &str,
-        result: BuckyResult<(String, String)>,
-    ) {
-        let mut action = PerfActionDesc {
-            err: BuckyErrorCode::Ok,
-            key: "".into(),
-            value: "".into(),
-        };
-        if let Ok((k, v)) = result {
-            action.key = k;
-            action.value = v;
-        }
+        _id: &str,
+        stat: BuckyResult<(String, String)>,
+    ) -> BuckyResult<()>{
+        let v = PerfAction::create(self.people_id, self.dec_id, stat);
+        let object_raw = v.to_vec()?;
+        let object_id = v.desc().object_id();
+        let _ = self.put_object(object_id, object_raw).await;
+        let _ = self.noc_root_state(
+            Some(self.people_id), 
+            Some(self.dec_id), 
+            self.isolate_id.to_owned(), 
+            self.id.to_owned(), 
+            object_id, PerfType::Actions).await;
 
-        self.actions.push(action);
+        Ok(())
     }
 
-    pub fn record(&mut self, id: &str, total: u64, total_size: Option<u64>) {
-        let record = PerfRecordDesc {
-            total,
-            total_size,
-        };
+    pub async fn record(&mut self, _id: &str, total: u64, total_size: Option<u64>) -> BuckyResult<()>{
+        let path = self.get_local_cache_path(Some(self.dec_id), self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
 
-        self.records.insert(id.to_owned(), record);
+        let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
+        let op_env = root_state.create_path_op_env().await?;
+        let ret = op_env.get_by_path(path).await?;
+        let v = ret.unwrap();
+        let req = NONGetObjectRequest::new_noc(v, None);
+        let resp = self.stack.non_service().get_object(req).await?;
+
+        let perf_obj = PerfRecord::decode(&resp.object.object_raw)?;
+
+
+        let v = perf_obj.add_stat(total, total_size);
+        let object_raw = v.to_vec()?;
+        let object_id = v.desc().object_id();
+        let _ = self.put_object(object_id, object_raw).await;
+        let _ = self.noc_root_state(
+            Some(self.people_id), 
+            Some(self.dec_id), 
+            self.isolate_id.to_owned(), 
+            self.id.to_owned(), 
+            object_id, PerfType::Accumulations).await;
+
+        Ok(())
     }
 
-    // 取走所有已有的统计项
-    pub fn take_data(&mut self) -> PerfIsolateEntity {
-        let mut other = PerfIsolateEntity::new(&self.id);
-
-        std::mem::swap(&mut self.actions, &mut other.actions);
-        std::mem::swap(&mut self.records, &mut other.records);
-        std::mem::swap(&mut self.accumulations, &mut other.accumulations);
-        std::mem::swap(&mut self.reqs, &mut other.reqs);
-
-        other
-    }
 }
 
-impl PerfItemMerge<PerfIsolateInner> for PerfIsolateInner {
-    fn merge(&mut self, mut other: PerfIsolateInner) {
-        assert_eq!(self.id, other.id);
-
-        self.actions.append(&mut other.actions);
-        self.records.merge(other.records);
-        self.accumulations.merge(other.accumulations);
-        self.reqs.merge(other.reqs);
-    }
-}
 
 #[derive(Clone)]
 pub struct PerfIsolate(Arc<Mutex<PerfIsolateInner>>);
 
 impl PerfIsolate {
-    pub fn new(id: &str) -> Self {
-        Self(Arc::new(Mutex::new(PerfIsolateInner::new(id))))
+    pub fn new(isolate_id: &str, people_id: ObjectId, dec_id: Option<ObjectId>, id: String, stack: SharedCyfsStack) -> Self {
+        Self(Arc::new(Mutex::new(PerfIsolateInner::new(isolate_id, people_id, dec_id, id, stack))))
     }
 
     // 开启一个request
@@ -250,29 +248,24 @@ impl PerfIsolate {
         self.0.lock().unwrap().begin_request(id, key)
     }
     // 统计一个操作的耗时, 流量统计
-    pub fn end_request(&self, id: &str, key: &str, result: BuckyResult<u64>) {
-        self.0.lock().unwrap().end_request(id, key, result)
+    pub async fn end_request(&self, id: &str, key: &str, value: u64, stat: BuckyResult<Option<u64>>) -> BuckyResult<()> {
+        self.0.lock().unwrap().end_request(id, key, value, stat).await
     }
 
-    pub fn acc(&self, id: &str, result: BuckyResult<u64>) {
-        self.0.lock().unwrap().acc(id, result)
+    pub async fn acc(&self, id: &str, result: BuckyResult<u64>) -> BuckyResult<()> {
+        self.0.lock().unwrap().acc(id, result).await
     }
 
-    pub fn action(
+    pub async fn action(
         &self,
         id: &str,
-        result: BuckyResult<(String, String)>,
-    ) {
-        self.0.lock().unwrap().action(id, result)
+        stat: BuckyResult<(String, String)>,
+    )-> BuckyResult<()> {
+        self.0.lock().unwrap().action(id, stat).await
     }
 
-    pub fn record(&self, id: &str, total: u64, total_size: Option<u64>) {
-        self.0.lock().unwrap().record(id, total, total_size)
-    }
-
-    // 取走数据并置空
-    pub(crate) fn take_data(&self) -> PerfIsolateEntity {
-        self.0.lock().unwrap().take_data()
+    pub async fn record(&self, id: &str, total: u64, total_size: Option<u64>) -> BuckyResult<()>{
+        self.0.lock().unwrap().record(id, total, total_size).await
     }
 
     pub fn get_id(&self) -> String {

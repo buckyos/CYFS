@@ -26,6 +26,7 @@ async-std = { version = "1.11", features = ["unstable", "attributes"] }
 rand = "0.8"
 sha2 = "0.10"
 async-trait = "0.1.53"
+chrono = '0.4'
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.19"
