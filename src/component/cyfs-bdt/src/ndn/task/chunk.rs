@@ -187,28 +187,21 @@ impl ChunkTask {
                     info!("{} create a new downloader for redirection task", self);
                     let mut state = self.0.state.write().unwrap();
                     state.schedule_state = TaskStateImpl::Downloading(downloader.clone());
-/*
-                    self.0.state.write().unwrap().schedule_state = TaskStateImpl::Redirect(redirect_node.clone(), redirect_referer.clone());
-                    for writer in &self.0.writers {
-                        let _ = writer.redirect(&redirect_node, &redirect_referer).await;
-                    }
-                    break;
-*/
                 },
                 TaskState::WaitRedirect => {
                     let stack = Stack::from(&self.0.stack);
 
-                    async_std::future::timeout(stack.config().ndn.channel.wait_redirect_timeout, async move{
-                        let downloader = stack.ndn().chunk_manager().start_download(
-                            self.chunk().clone(), 
-                            self.config().clone(), 
-                            self.resource().clone(),
-			    self.as_statistic()).await.unwrap();
-                        info!("{} reset downloader for read chunk failed", self);
-                        let mut state = self.0.state.write().unwrap();
-                        state.schedule_state = TaskStateImpl::Downloading(downloader.clone());
-                    });
-                },
+                    async_std::future::timeout(stack.config().ndn.channel.wait_redirect_timeout, async_std::future::pending::<()>());
+
+                    let downloader = stack.ndn().chunk_manager().start_download(
+                        self.chunk().clone(), 
+                        self.config().clone(), 
+                        self.resource().clone(),
+			self.as_statistic()).await.unwrap();
+                    info!("{} reset downloader for read chunk failed", self);
+                    let mut state = self.0.state.write().unwrap();
+                    state.schedule_state = TaskStateImpl::Downloading(downloader.clone());
+            },
                 _ => unimplemented!()
             }
         }

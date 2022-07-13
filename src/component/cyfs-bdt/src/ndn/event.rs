@@ -119,8 +119,8 @@ impl EventHandler {
                 Err(err) => {
                     match err.code() {
                         BuckyErrorCode::NotFound => {
-                            let target_Id = target_id.unwrap().clone();
-                            let config = Arc::new(ChunkDownloadConfig::force_stream(target_Id));
+                            let target_id = target_id.unwrap().clone();
+                            let config = Arc::new(ChunkDownloadConfig::force_stream(target_id));
                             let chunk = interest.chunk.clone();
                             let stack = stack.clone();
                             // download process will be initialized from the source node, and channel will wait
