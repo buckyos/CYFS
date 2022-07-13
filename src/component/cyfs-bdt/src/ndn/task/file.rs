@@ -226,8 +226,9 @@ impl ChunkWriterExt for FileTask {
         // change prefer source to redirect source node
         {
             let mut new_config = self.config();
-            if let Some(new_config_w) = Arc::get_mut(&mut new_config) {
-                new_config_w.prefer_source = redirect_node.clone();
+            if let Some(w) = Arc::get_mut(&mut new_config) {
+                w.prefer_source = redirect_node.clone();
+                w.referer = Some(redirect_referer.clone());
             }
             let config = &mut *self.0.config.lock().unwrap();
             std::mem::swap(&mut new_config, config);
