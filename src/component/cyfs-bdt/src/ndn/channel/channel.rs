@@ -305,10 +305,8 @@ impl Channel {
                         false
                     }
                 }, 
-                TaskState::Redirect(_redirect_node, _redirect_referer) => {
-                    // redirect
-                    true
-                },
+                TaskState::Redirect(_, _) => true,
+                TaskState::WaitRedirect => true,
                 _ => unreachable!()
             } {
                 let _ = future::timeout(2 * session.channel().config().msl, future::pending::<()>()).await;

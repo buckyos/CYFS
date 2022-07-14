@@ -221,56 +221,6 @@ impl ChunkWriterExt for FileTask {
         Ok(())
     }
 
-    async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()> {
-        // need redirect
-        // change prefer source to redirect source node
-        {
-            let mut new_config = self.config();
-            if let Some(w) = Arc::get_mut(&mut new_config) {
-                w.prefer_source = redirect_node.clone();
-                w.referer = Some(redirect_referer.clone());
-            }
-            let config = &mut *self.0.config.lock().unwrap();
-            std::mem::swap(&mut new_config, config);
-        }
-
-        let (cur_task, new_task) = {
-            let mut state = self.0.state.write().unwrap();
-            match &mut state.schedule_state {
-                TaskStateImpl::Downloading(downloading) => {
-                    let next_index = downloading.cur_index;
-                    let cur_task = Some(downloading.cur_task.clone());
-
-                    let (index, range) = self.ranges()[next_index].clone();
-                    let chunk_task = ChunkTask::with_range(
-                        self.0.stack.clone(), 
-                        self.chunk_list().chunks()[index].clone(), 
-                        range, 
-                        self.config().clone(), 
-                        vec![self.clone_as_writer()], 
-                        self.resource().clone(),
-			None
-                    );
-                    downloading.cur_index = next_index;
-                    downloading.cur_task = chunk_task.clone();
-
-                    (cur_task, Some(chunk_task))
-                }, 
-                _ => (None, None)
-            }    
-        };
-
-        if let Some(cur_task) = cur_task {
-            let _ = self.resource().remove_child(cur_task.resource());
-            info!("{} remove sub task {}", self, cur_task);
-        }
-
-        if let Some(new_task) = new_task {
-            new_task.start();
-        }
-
-        Ok(())
-    }
 
     async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>, range: Option<Range<u64>>) -> BuckyResult<()> {
         let (cur_task, next_task) = {
