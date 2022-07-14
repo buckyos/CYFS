@@ -2,6 +2,7 @@ pub mod channel;
 pub mod chunk;
 mod scheduler;
 mod event;
+mod event_ext;
 mod root;
 mod stack;
 mod task;
