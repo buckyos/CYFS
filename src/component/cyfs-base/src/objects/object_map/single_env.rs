@@ -122,7 +122,7 @@ impl ObjectMapSingleOpEnv {
     }
 
     pub async fn load_by_path(&self, full_path: &str) -> BuckyResult<()> {
-        let (path, key) = ObjectMapPath::parse_full_path(full_path)?;
+        let (path, key) = ObjectMapPath::parse_path_allow_empty_key(full_path)?;
 
         self.load_by_key(path, key).await
     }
@@ -131,18 +131,25 @@ impl ObjectMapSingleOpEnv {
     // root不能使用single_op_env直接操作，所以必须至少要指定一个key
     pub async fn load_by_key(&self, path: &str, key: &str) -> BuckyResult<()> {
         let root = self.root_holder.get_current_root();
-        let object_path = ObjectMapPath::new(root.clone(), self.cache.clone());
-        let value = object_path.get_by_key(path, key).await?;
-        if value.is_none() {
-            let msg = format!(
-                "load single_op_env by path but not found!  root={}, path={}, key={}",
-                root, path, key
-            );
-            error!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
-        }
 
-        let value = value.unwrap();
+        let value = if key.len() > 0 {
+            let object_path = ObjectMapPath::new(root.clone(), self.cache.clone());
+            let value = object_path.get_by_key(path, key).await?;
+            if value.is_none() {
+                let msg = format!(
+                    "load single_op_env by path but not found!  root={}, path={}, key={}",
+                    root, path, key
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            }
+    
+            value.unwrap()
+        } else {
+            assert_eq!(path, "/");
+            root
+        };
+        
         info!(
             "will load single_op_env by path! root={}, path={}, key={}, value={}",
             root, path, key, value

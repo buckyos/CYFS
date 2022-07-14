@@ -404,6 +404,26 @@ pub async fn test_storage(s: &SharedCyfsStack) {
     {
         let storage = s.global_state_storage_ex(
             GlobalStateCategory::RootState,
+            "/",
+            ObjectMapSimpleContentType::Map,
+            None,
+            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        );
+
+        storage.init().await.unwrap();
+
+        let map = StateStorageMap::new(storage);
+        
+        let list = map.list().await.unwrap();
+        info!("list: {:?}", list);
+
+        map.save().await.unwrap();
+    }
+
+
+    {
+        let storage = s.global_state_storage_ex(
+            GlobalStateCategory::RootState,
             "/user/friends",
             ObjectMapSimpleContentType::Map,
             None,
