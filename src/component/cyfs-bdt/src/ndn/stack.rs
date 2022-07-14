@@ -55,7 +55,8 @@ impl NdnStack {
         ndc: Option<Box<dyn NamedDataCache>>,
         tracker: Option<Box<dyn TrackerCache>>, 
         store: Option<Box<dyn ChunkReader>>, 
-        acl: Option<Box<dyn BdtDataAclProcessor>>
+        acl: Option<Box<dyn BdtDataAclProcessor>>,
+        event: Option<Box<dyn BdtEventHandleProcessor>>,
     ) -> Self {
         let mem_tracker = MemTracker::new();
         let tracker = tracker.unwrap_or(TrackerCache::clone(&mem_tracker));
@@ -74,7 +75,7 @@ impl NdnStack {
                 tracker, 
                 store), 
             channel_manager: ChannelManager::new(stack.clone()), 
-            event_handler: EventHandler::new(stack.clone(), acl, None), 
+            event_handler: EventHandler::new(stack.clone(), acl, event), 
             root_task: RootTask::new(resource.clone()),
         }))
     }
