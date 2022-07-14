@@ -238,48 +238,61 @@ impl ChunkDownloader {
 
         if let Some(sessions) = sessions { 
             let downloader = self.clone();
+            let stack = stack.clone();
+            let config = config.clone();
             task::spawn(async move {
-                let mut waiters = StateWaiter::new();
-                match sessions.start().await {
-                    TaskState::Finished => {
-                        let cache = sessions.take_chunk_content().unwrap();
-                        let state = &mut *downloader.0.state.write().unwrap();
-                        match state {
-                            StateImpl::Running(running) => {
-                                std::mem::swap(&mut waiters, &mut running.waiters);
-                                *state = StateImpl::Finished(Arc::new(Box::new(CacheReader {
-                                    cache
-                                })));
-                            },
-                            StateImpl::Finished(_) => {
-                                
-                            },
-                            _ => unreachable!()
-                        }
-                    }, 
-                    TaskState::Canceled(err) => {
-                        let state = &mut *downloader.0.state.write().unwrap();
-                        match state {
-                            StateImpl::Running(running) => {
-                                std::mem::swap(&mut waiters, &mut running.waiters);
-                                *state = StateImpl::Canceled(err);
-                            },
-                            _ => unreachable!()
-                        }
-                    }, 
-                    TaskState::Redirect(redirect_node, referer) => {
-                        let state = &mut *downloader.0.state.write().unwrap();
-                        match state {
-                            StateImpl::Running(running) => {
-                                std::mem::swap(&mut waiters, &mut running.waiters);
-                                *state = StateImpl::Redirect(redirect_node, referer);
-                            },
-                            _ => unreachable!()
-                        }
-                    },
-                    _ => unreachable!()
+                let waiters = {
+                    match sessions.start().await {
+                        TaskState::Finished => {
+                            let mut waiters = StateWaiter::new();
+                            let cache = sessions.take_chunk_content().unwrap();
+                            let state = &mut *downloader.0.state.write().unwrap();
+                            match state {
+                                StateImpl::Running(running) => {
+                                    std::mem::swap(&mut waiters, &mut running.waiters);
+                                    *state = StateImpl::Finished(Arc::new(Box::new(CacheReader {
+                                        cache
+                                    })));
+                                },
+                                StateImpl::Finished(_) => {
+                                    
+                                },
+                                _ => unreachable!()
+                            }
+                            Some(waiters)
+                        }, 
+                        TaskState::Canceled(err) => {
+                            let mut waiters = StateWaiter::new();
+                            let state = &mut *downloader.0.state.write().unwrap();
+                            match state {
+                                StateImpl::Running(running) => {
+                                    std::mem::swap(&mut waiters, &mut running.waiters);
+                                    *state = StateImpl::Canceled(err);
+                                },
+                                _ => unreachable!()
+                            }
+                            Some(waiters)
+                        }, 
+                        TaskState::Redirect(redirect_node, referer) => {
+                            let mut config = ChunkDownloadConfig::force_stream(redirect_node.clone());
+                            config.referer = Some(referer);
+
+                            let _ = downloader.add_config(Arc::new(config), downloader.resource().clone());
+                            None
+                        },
+                        TaskState::WaitRedirect => {
+                            let _ = async_std::future::timeout(stack.config().ndn.channel.wait_redirect_timeout, 
+                                                               async_std::future::pending::<()>());
+                            // restart session
+                            let _ = downloader.add_config(config, downloader.resource().clone());
+                            None
+                        },
+                        _ => unreachable!()
+                    }
+                };
+                if let Some(waiters) = waiters {
+                    waiters.wake();
                 }
-                waiters.wake();
             });
         }
         Ok(())

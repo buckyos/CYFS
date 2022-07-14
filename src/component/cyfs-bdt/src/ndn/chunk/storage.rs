@@ -19,7 +19,6 @@ pub trait ChunkWriter: 'static + std::fmt::Display + Send + Sync {
     async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()>;
     async fn finish(&self) -> BuckyResult<()>;
     async fn err(&self, e: BuckyErrorCode) -> BuckyResult<()>;
-    async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()>;
 }
 
 
@@ -30,7 +29,6 @@ pub trait ChunkWriterExt: 'static + std::fmt::Display + Send + Sync {
     async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>, range: Option<Range<u64>>) -> BuckyResult<()>;
     async fn finish(&self) -> BuckyResult<()>;
     async fn err(&self, e: BuckyErrorCode) -> BuckyResult<()>;
-    async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()>;
 }
 
 pub struct ChunkWriterExtWrapper {
@@ -80,9 +78,6 @@ impl ChunkWriterExt for ChunkWriterExtWrapper {
         self.writer.err(e).await
     }
 
-    async fn redirect(&self, redirect_node: &DeviceId, redirect_referer: &String) -> BuckyResult<()> {
-        self.writer.redirect(redirect_node, redirect_referer).await
-    }
 
 }
 
