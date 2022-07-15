@@ -1,5 +1,6 @@
 use cyfs_base::*;
 use cyfs_core::*;
+use cyfs_lib::*;
 use cyfs_perf_client::{PerfClient, PerfIsolate, PerfServerConfig};
 use zone_simulator::*;
 
@@ -15,8 +16,9 @@ fn new_dec(name: &str) -> ObjectId {
 
 pub async fn test() {
     let dec_id = new_dec("test-perf");
-    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-
+    //let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
+    let stack = SharedCyfsStack::open_default(Some(dec_id)).await.unwrap();
+    stack.wait_online(None).await.unwrap();
     let perf = PerfClient::new(
         "test-perf".to_owned(),
         "1.0.0".to_owned(),
@@ -25,13 +27,11 @@ pub async fn test() {
         stack,
     );
 
-    let ret = perf.start().await;
-    assert!(ret.is_ok());
-
     let isolate = perf.new_isolate("main");
-    test_flush(perf.clone()).await;
     test_request(isolate.clone()).await;
     test_acc(isolate.clone()).await;
+    test_action(isolate.clone()).await;
+    test_record(isolate.clone()).await;
 
     // async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
 }
@@ -41,9 +41,9 @@ async fn test_request(perf: PerfIsolate) {
         loop {
             perf.begin_request("connect", "address");
 
-            async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+            async_std::task::sleep(std::time::Duration::from_secs(10)).await;
 
-            perf.end_request("connect", "address", BuckyErrorCode::Ok, None);
+            let _ = perf.end_request("connect", "address", 100, Ok(Some(100)));
         }
     });
 }
@@ -53,17 +53,27 @@ async fn test_acc(perf: PerfIsolate) {
         loop {
             async_std::task::sleep(std::time::Duration::from_secs(1)).await;
 
-            perf.acc("total", BuckyErrorCode::Ok, Some(100));
+            let _ = perf.acc("total", Ok(100));
         }
     });
 }
 
-async fn test_flush(perf_client: PerfClient) {
+async fn test_action(perf: PerfIsolate) {
     async_std::task::spawn(async move {
         loop {
-            async_std::task::sleep(std::time::Duration::from_secs(80)).await;
+            async_std::task::sleep(std::time::Duration::from_secs(10)).await;
 
-            perf_client.flush().await.unwrap();
+            let _ = perf.action("total", Ok(("drive".into(), "dsg".into())));
+        }
+    });
+}
+
+async fn test_record(perf: PerfIsolate) {
+    async_std::task::spawn(async move {
+        loop {
+            async_std::task::sleep(std::time::Duration::from_secs(10)).await;
+
+            let _ = perf.record("total", 100, Some(100));
         }
     });
 }

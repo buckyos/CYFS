@@ -85,7 +85,7 @@ impl PerfIsolateInner {
     fn get_local_cache_path(&self, dec_id: Option<ObjectId>, isolate_id: String, id: String, perf_type: PerfType) -> String {
         let now = Utc::now();
         let (_is_common_era, year) = now.year_ce();
-        let date = format!("{:02}:{:02}:{:02}", year, now.month(), now.day());
+        let date = format!("{:02}-{:02}-{:02}", year, now.month(), now.day());
         //let time_span = format!("{:02}:{:02}", now.hour(), now.minute());
         let time_span = format!("{:02}:00", now.hour());
         let dec_id = match dec_id {
@@ -95,7 +95,7 @@ impl PerfIsolateInner {
         let people_id = self.people_id.to_string();
         let device_id = self.device_id.to_string();
         // /<owner>/<device>/<DecId>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
-        let path = format!("/{people_id}/{device_id}/{dec_id}/{isolate_id}/{id}/{perf_type}/{date}/{time_span}");
+        let path = format!("/{PERF_SERVICE_DEC_ID}/{people_id}/{device_id}/{dec_id}/{isolate_id}/{id}/{perf_type}/{date}/{time_span}");
 
         path
     }
@@ -136,7 +136,7 @@ impl PerfIsolateInner {
                 v.insert(bucky_time);
             }
             Entry::Occupied(_o) => {
-                unreachable!("perf request item already begin! id={}, key={}", id, key);
+                //unreachable!("perf request item already begin! id={}, key={}", id, key);
             }
         }
     }
@@ -144,7 +144,7 @@ impl PerfIsolateInner {
     pub async fn end_request(&mut self, id: &str, key: &str, spend_time: u64, stat: BuckyResult<Option<u64>>) -> BuckyResult<()>{
         let full_id = format!("{}_{}", id, key);
 
-        let path = self.get_local_cache_path(Some(self.dec_id), self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
+        let path = self.get_local_cache_path(Some(self.dec_id), self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Requests);
 
         let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
@@ -204,13 +204,13 @@ impl PerfIsolateInner {
 
     pub async fn acc(&mut self, _id: &str, stat: BuckyResult<u64>) -> BuckyResult<()>{
 
-        let path = self.get_local_cache_path(Some(self.dec_id), self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
+        let path = self.get_local_cache_path(Some(self.dec_id), self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Accumulations);
 
         let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
         let ret = op_env.get_by_path(&path).await?;
         if ret.is_none() {
-            info!("acc get_by_path: {path}  not found");
+            warn!("acc get_by_path: {path}  not found");
             let perf_obj = PerfAccumulation::create(self.people_id, self.dec_id);
             let v = perf_obj.add_stat(stat);
             let object_raw = v.to_vec()?;
@@ -313,8 +313,8 @@ impl PerfIsolate {
         async_std::task::block_on(async { self.0.lock().unwrap().end_request(id, key, spend_time, stat).await })
     }
 
-    pub fn acc(&self, id: &str, result: BuckyResult<u64>) -> BuckyResult<()> {
-        async_std::task::block_on(async { self.0.lock().unwrap().acc(id, result).await })
+    pub fn acc(&self, id: &str, stat: BuckyResult<u64>) -> BuckyResult<()> {
+        async_std::task::block_on(async { self.0.lock().unwrap().acc(id, stat).await })
     }
 
     pub fn action(
