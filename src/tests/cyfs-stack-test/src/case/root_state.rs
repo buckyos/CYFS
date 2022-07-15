@@ -575,6 +575,25 @@ pub async fn test_storage(s: &SharedCyfsStack) {
         storage.init().await.unwrap();
 
         let set = StateStorageSet::new(storage);
+        set.remove(&x1_value).await.unwrap();
+        set.remove(&x2_value).await.unwrap();
+
+        set.save().await.unwrap();
+        set.abort().await;
+    }
+
+    {
+        let storage = s.global_state_storage_ex(
+            GlobalStateCategory::RootState,
+            "/user/index",
+            ObjectMapSimpleContentType::Set,
+            None,
+            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        );
+
+        storage.init().await.unwrap();
+
+        let set = StateStorageSet::new(storage);
         assert!(!set.contains(&x1_value).await.unwrap());
         assert!(!set.contains(&x2_value).await.unwrap());
 
