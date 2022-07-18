@@ -81,9 +81,8 @@ impl PerfIsolateInner {
         let time_span = format!("{:02}:00", now.hour());
         let people_id = self.people_id.to_string();
         let device_id = self.device_id.to_string();
-        let dec_id = self.dec_id.to_string();
-        // /<owner>/<device>/<DecId>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
-        let path = format!("/{PERF_SERVICE_DEC_ID}/{people_id}/{device_id}/{dec_id}/{isolate_id}/{id}/{perf_type}/{date}/{time_span}");
+        //<owner>/<device>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
+        let path = format!("/{PERF_SERVICE_DEC_ID}/{people_id}/{device_id}/{isolate_id}/{id}/{perf_type}/{date}/{time_span}");
 
         path
     }
