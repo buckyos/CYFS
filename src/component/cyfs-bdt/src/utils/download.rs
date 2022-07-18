@@ -258,10 +258,6 @@ impl ChunkWriter for ChunkRange {
     async fn err(&self, _: BuckyErrorCode) -> BuckyResult<()> {
         Ok(())
     }
-
-    async fn redirect(&self, _: &DeviceId, _: &String) -> BuckyResult<()> {
-        Ok(())
-    }
 }
 
 pub struct DirTaskPathControl {
