@@ -18,11 +18,10 @@ use crate::{
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
     pn::client::ProxyManager,
-    ndn::{self, NdnStack, ChunkReader}, 
+    ndn::{self, NdnStack, ChunkReader, NdnEventHandler}, 
     debug::{self, DebugStub}
 };
 use cyfs_util::{
-    acl::*, 
     cache::*
 };
 use async_std::{
@@ -198,9 +197,7 @@ pub struct StackOpenParams {
     pub tracker: Option<Box<dyn TrackerCache>>, 
     pub chunk_store: Option<Box<dyn ChunkReader>>, 
 
-    pub ndn_acl: Option<Box<dyn BdtDataAclProcessor>>,
-
-    pub ndn_event: Option<Box<dyn BdtEventHandleProcessor>>,
+    pub ndn_event: Option<Box<dyn NdnEventHandler>>,
 }
 
 impl StackOpenParams {
@@ -216,7 +213,6 @@ impl StackOpenParams {
             ndc: None, 
             tracker: None, 
             chunk_store: None, 
-            ndn_acl: None,
             ndn_event: None,
         }
     }
@@ -345,15 +341,13 @@ impl Stack {
         std::mem::swap(&mut ndc, &mut params.ndc);
         let mut tracker = None;
         std::mem::swap(&mut tracker, &mut params.tracker);
-        let mut ndn_acl = None;
-        std::mem::swap(&mut ndn_acl, &mut params.ndn_acl);
         let mut ndn_event = None;
         std::mem::swap(&mut ndn_event, &mut params.ndn_event);
 
         let mut chunk_store = None;
         std::mem::swap(&mut chunk_store, &mut params.chunk_store);
 
-        let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_acl, ndn_event);
+        let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
         let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
         stack_impl.ndn = Some(ndn);
 

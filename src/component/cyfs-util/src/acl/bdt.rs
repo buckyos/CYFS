@@ -64,25 +64,3 @@ pub trait BdtDataAclProcessor: Sync + Send {
     async fn put_data(&self, req: BdtPutDataInputRequest) -> BuckyResult<()>;
     async fn delete_data(&self, req: BdtDeleteDataInputRequest) -> BuckyResult<()>;
 }
-
-pub enum BdtEventResult {
-    UploadProcess,
-    RedirectProcess(DeviceId /* Miner */, String /* Referer */),
-    WaitRedirectProcess(DeviceId /* Target-Id */),
-}
-
-pub struct BdtEventRequest {
-    pub object_id: ObjectId,
-    pub from: DeviceId,
-    pub referer: Option<String>,
-}
-
-#[async_trait::async_trait]
-pub trait BdtEventHandleTrait: Sync + Send {
-    async fn on_newly_interest(&self, request: BdtEventRequest) -> BuckyResult<BdtEventResult>;
-}
-
-#[async_trait::async_trait]
-pub trait BdtEventHandleProcessor: Sync + Send {
-    async fn get_handle(&self, from: &DeviceId, object_id: ObjectId) -> Option<Box<dyn BdtEventHandleTrait>>;
-}
