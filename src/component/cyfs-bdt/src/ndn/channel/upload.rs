@@ -272,7 +272,7 @@ impl UploadSession {
     }
 
     // 把第一个包加到重发队列里去
-    pub(super) fn on_interest(&self, interest: &Interest) -> BuckyResult<()> {
+    pub fn on_interest(&self, interest: &Interest) -> BuckyResult<()> {
         enum NextStep {
             CallProvider(Box<dyn UploadSessionProvider>), 
             RespInterest(BuckyErrorCode), 

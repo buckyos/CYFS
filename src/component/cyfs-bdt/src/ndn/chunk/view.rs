@@ -229,7 +229,7 @@ impl ChunkView {
     pub fn start_download(
         &self, 
         config: Arc<ChunkDownloadConfig>, 
-        owner: ResourceManager
+        _owner: ResourceManager
     ) -> BuckyResult<ChunkDownloader> {
         let (downloader, newly) = {
             let mut state = self.0.state.write().unwrap();
@@ -402,25 +402,6 @@ impl Scheduler for ChunkView {
     }
 }
 
-impl EventScheduler for ChunkView {
-    fn upload_scheduler_event(&self, requester: &DeviceId) -> BuckyResult<()> {
-        let stack = Stack::from(&self.0.stack);
-        let limit_config = &stack.config().ndn.limit;
-        let connections = self.0.resource_quota.count() as u16;
-        // 单源配额逻辑
-        if connections >= limit_config.max_connections_per_source {
-            return Err(BuckyError::new(BuckyErrorCode::OutofSessionLimit, "session too many"));
-        }
-
-        // 总体配额逻辑
-        return stack.ndn().upload_scheduler_event(requester);
-    }
-
-    fn download_scheduler_event(&self, requester: &DeviceId) -> BuckyResult<()> {
-        Stack::from(&self.0.stack).ndn().download_scheduler_event(requester)
-    }
-
-}
 
 impl StatisticTask for ChunkView {
     fn reset(&self) {
