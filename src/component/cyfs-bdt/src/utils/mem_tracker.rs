@@ -55,7 +55,6 @@ impl ChunkStub {
             } else {
                 None
             },
-            cache_node: None
         }
     }
 }
