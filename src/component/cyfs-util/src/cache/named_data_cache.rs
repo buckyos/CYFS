@@ -179,9 +179,6 @@ pub struct ChunkCacheData {
 
     pub trans_sessions: Option<Vec<String>>,
     pub ref_objects: Option<Vec<ChunkObjectRef>>,
-
-    // cache-node
-    pub cache_node: Option<DeviceId>,
 }
 
 

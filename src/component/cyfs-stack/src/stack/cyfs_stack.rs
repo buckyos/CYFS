@@ -28,10 +28,20 @@ use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneRoleManager};
 use cyfs_base::*;
-use cyfs_bdt::{ChunkReader, DeviceCache, Stack, StackGuard, StackOpenParams};
+use cyfs_bdt::{
+    ChunkReader, 
+    DeviceCache, 
+    Stack, 
+    StackGuard, 
+    StackOpenParams, 
+    NdnEventHandler, 
+    DefaultNdnEventHandler, 
+    ndn::channel::{Channel, UploadSession, protocol::{Interest, PieceData}}
+};
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 use cyfs_noc::*;
+use cyfs_util::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
 
 use once_cell::sync::OnceCell;
@@ -699,8 +709,55 @@ impl CyfsStackImpl {
         bdt_params.outer_cache = Some(device_cache);
         bdt_params.chunk_store = Some(chunk_store);
 
-        let acl = NDNBdtDataAclProcessor::new(acl, router_handlers);
-        bdt_params.ndn_acl = Some(Box::new(acl));
+        struct NdnEvent {
+            acl: NDNBdtDataAclProcessor, 
+            default: DefaultNdnEventHandler
+        }
+
+        #[async_trait::async_trait]
+        impl NdnEventHandler for NdnEvent {
+            fn on_unknown_piece_data(
+                &self, 
+                stack: &Stack, 
+                piece: &PieceData, 
+                from: &Channel
+            ) -> BuckyResult<()> {
+                self.default.on_unknown_piece_data(stack, piece, from)
+            }
+        
+            // 处理全新的interest请求;已经正在上传的interest请求不会传递到这里;
+            async fn on_newly_interest(
+                &self, 
+                stack: &Stack, 
+                interest: &Interest, 
+                from: &Channel
+            ) -> BuckyResult<()> {
+                match self.acl.get_data(
+                    BdtGetDataInputRequest {
+                        object_id: interest.chunk.object_id(), 
+                        source: from.remote().clone(), 
+                        referer: interest.referer.clone() 
+                    }).await {
+                    Ok(_) => {
+                        self.default.on_newly_interest(stack, interest, from).await
+                    }, 
+                    Err(err) => {
+                        let session = UploadSession::canceled(interest.chunk.clone(), 
+                                                        interest.session_id.clone(), 
+                                                        interest.prefer_type.clone(), 
+                                                        from.clone(), 
+                                                        err.code());
+                        let _ = from.upload(session.clone());
+                        session.on_interest(interest)
+                    }
+                }
+            }
+        }
+
+        bdt_params.ndn_event = Some(Box::new(NdnEvent {
+            acl: NDNBdtDataAclProcessor::new(acl, router_handlers), 
+            default: DefaultNdnEventHandler::new()
+        }));
 
         let ret = Stack::open(params.device, params.secret, bdt_params).await;
 
