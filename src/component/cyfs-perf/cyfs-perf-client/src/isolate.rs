@@ -9,12 +9,13 @@ use std::str::FromStr;
 use std::sync::Arc;
 use chrono::{Datelike, Timelike, Utc};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PerfType {
     Requests,
     Accumulations,
     Actions,
     Records,
+
 }
 
 impl fmt::Display for PerfType {
@@ -82,18 +83,15 @@ impl PerfIsolateInner {
     }
 
 
-    fn get_local_cache_path(&self, dec_id: Option<ObjectId>, isolate_id: String, id: String, perf_type: PerfType) -> String {
+    fn get_local_cache_path(&self, isolate_id: String, id: String, perf_type: PerfType) -> String {
         let now = Utc::now();
         let (_is_common_era, year) = now.year_ce();
         let date = format!("{:02}-{:02}-{:02}", year, now.month(), now.day());
         //let time_span = format!("{:02}:{:02}", now.hour(), now.minute());
         let time_span = format!("{:02}:00", now.hour());
-        let dec_id = match dec_id {
-            Some(id) => id.to_string(),
-            None => ObjectId::from_str(PERF_SERVICE_DEC_ID).unwrap().to_string(),
-        };
         let people_id = self.people_id.to_string();
         let device_id = self.device_id.to_string();
+        let dec_id = self.dec_id.to_string();
         // /<owner>/<device>/<DecId>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
         let path = format!("/{PERF_SERVICE_DEC_ID}/{people_id}/{device_id}/{dec_id}/{isolate_id}/{id}/{perf_type}/{date}/{time_span}");
 
@@ -104,11 +102,12 @@ impl PerfIsolateInner {
         // 把对象存到root_state
         let root_state = self.stack.root_state_stub(people_id, dec_id);
         let op_env = root_state.create_path_op_env().await?;
-        let path = self.get_local_cache_path(dec_id, isolate_id, id, perf_type);
-        op_env
-            .set_with_key(path, perf_object_id.to_string(), &perf_object_id, None, true)
-            .await?;
-
+        let path = self.get_local_cache_path(isolate_id, id, perf_type);
+        if perf_type == PerfType::Actions {
+            op_env.set_with_key(&path, perf_object_id.to_string(), &perf_object_id, None, true).await?;
+        } else{
+            op_env.set_with_path(&path, &perf_object_id, None, true).await?;
+        }
         let root = op_env.commit().await?;
         info!("new dec root is: {:?}, perf_obj_id={}", root, perf_object_id);
 
@@ -144,13 +143,12 @@ impl PerfIsolateInner {
     pub async fn end_request(&mut self, id: &str, key: &str, spend_time: u64, stat: BuckyResult<Option<u64>>) -> BuckyResult<()>{
         let full_id = format!("{}_{}", id, key);
 
-        let path = self.get_local_cache_path(Some(self.dec_id), self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Requests);
+        let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Requests);
 
         let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
         let ret = op_env.get_by_path(&path).await?;
         if ret.is_none() {
-            info!("end_request get_by_path: {path}  not found");
             match self.pending_reqs.remove(&full_id) {
                 Some(_tick) => {
                     let perf_obj = PerfRequest::create(self.people_id, self.dec_id);
@@ -204,13 +202,12 @@ impl PerfIsolateInner {
 
     pub async fn acc(&mut self, _id: &str, stat: BuckyResult<u64>) -> BuckyResult<()>{
 
-        let path = self.get_local_cache_path(Some(self.dec_id), self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Accumulations);
+        let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Accumulations);
 
         let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
         let ret = op_env.get_by_path(&path).await?;
         if ret.is_none() {
-            warn!("acc get_by_path: {path}  not found");
             let perf_obj = PerfAccumulation::create(self.people_id, self.dec_id);
             let v = perf_obj.add_stat(stat);
             let object_raw = v.to_vec()?;
@@ -256,7 +253,7 @@ impl PerfIsolateInner {
     }
 
     pub async fn record(&mut self, _id: &str, total: u64, total_size: Option<u64>) -> BuckyResult<()>{
-        let path = self.get_local_cache_path(Some(self.dec_id), self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
+        let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
 
         let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
