@@ -223,9 +223,6 @@ async fn one_small_file_with_ranges() {
             unreachable!()
         }
 
-        async fn redirect(&self, _redirect_node: &DeviceId) -> BuckyResult<()> {
-            unreachable!()
-        }
     }
     
     let task = download_file_with_ranges(
