@@ -277,6 +277,11 @@ impl Channel {
         &self.0.config
     }
 
+    pub fn upload(&self, session: UploadSession) -> BuckyResult<()> {
+        self.0.uploaders.add(session);
+        Ok(())
+    }
+
     pub fn download(&self, session: DownloadSession) -> BuckyResult<()> {
         {
             let mut downloaders = self.0.downloaders.write().unwrap();
@@ -392,7 +397,7 @@ impl Channel {
         }
     }
 
-    fn stack(&self) -> Stack {
+    pub fn stack(&self) -> Stack {
         Stack::from(&self.0.stack)
     }
 
@@ -428,6 +433,8 @@ impl Channel {
         }
     }
 
+
+
     async fn on_interest(&self, command: &Interest) -> BuckyResult<()> {
         info!("{} got interest {:?}", self, command);
         // 如果已经存在上传 session，什么也不干
@@ -438,10 +445,7 @@ impl Channel {
             session.on_interest(command)
         } else {
             let stack = self.stack();
-            let session = stack.ndn().event_handler().on_newly_interest(command, self).await?;
-            // 加入到channel的 upload sessions中
-            self.0.uploaders.add(session.clone());
-            session.on_interest(command)
+            stack.ndn().event_handler().on_newly_interest(&self.stack(), command, self).await
         }
     }
 
@@ -496,8 +500,8 @@ impl Channel {
         } else {
             let stack = Stack::from(&self.0.stack);
             // 这里可能要保证同步到同线程处理,重入会比较麻烦
-            match stack.ndn().event_handler().on_unknown_piece_data(&piece, self) {
-                Ok(_session) => {
+            match stack.ndn().event_handler().on_unknown_piece_data(&self.stack(), &piece, self) {
+                Ok(_) => {
                     unimplemented!()
                     //FIXME： 如果新建了任务，这里应当继续接受piece data
                 },
