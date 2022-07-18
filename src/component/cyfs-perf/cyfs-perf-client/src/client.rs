@@ -17,7 +17,7 @@ pub struct PerfClientInner {
     perf_server_config: PerfServerConfig,
 
     people_id: ObjectId,
-    device_id: DeviceId,
+    device_id: ObjectId,
 
     cyfs_stack: SharedCyfsStack,
 
@@ -32,12 +32,8 @@ impl PerfClientInner {
         perf_server_config: PerfServerConfig,
         stack: SharedCyfsStack,
     ) -> Self {
-        let device_id = stack.local_device_id();
-
-        // let dec_name = match &dec_id {
-        //     Some(id) => id.to_string(),
-        //     None => "system".to_owned(),
-        // };
+        // let device_id = stack.local_device_id();
+        let device_id = stack.local_device().desc().calculate_id();
 
         let req = UtilGetZoneOutputRequest::new(None, None);
         let resp = block_on(stack.util().get_zone(req)).unwrap();
@@ -65,7 +61,7 @@ impl PerfClientInner {
             hash_map::Entry::Vacant(v) => {
                 log::info!("new isolate module: id={}", id);
 
-                let isolate = PerfIsolate::new(id, self.people_id.clone(), self.device_id.clone(), self.dec_id.clone(), self.id.to_owned(), self.cyfs_stack.clone());
+                let isolate = PerfIsolate::new(id, &self.people_id, &self.device_id, self.dec_id.clone(), &self.id, self.cyfs_stack.clone());
                 let temp_isolate = isolate.clone();
                 v.insert(isolate);
                 temp_isolate.clone()

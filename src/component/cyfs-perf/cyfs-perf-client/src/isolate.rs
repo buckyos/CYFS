@@ -35,40 +35,30 @@ struct PerfIsolateInner {
 
     people_id: ObjectId,
 
-    device_id: DeviceId,
+    device_id: ObjectId,
     dec_id: ObjectId,
 
     isolate_id: String,
 
     id: String,
 
-    actions: Vec<PerfAction>,
-
-    records: HashMap<String, PerfRecord>,
-
-    accumulations: HashMap<String, PerfAccumulation>,
-
     pending_reqs: HashMap<String, u64>,
-    reqs: HashMap<String, PerfRequest>,
+
 }
 
 impl PerfIsolateInner {
-    pub fn new(isolate_id: &str, people_id: ObjectId, device_id: DeviceId, dec_id: Option<ObjectId>, id: String, stack: SharedCyfsStack) -> PerfIsolateInner {
+    pub fn new(isolate_id: &str, people_id: &ObjectId, device_id: &ObjectId, dec_id: Option<ObjectId>, id: impl Into<String>, stack: SharedCyfsStack) -> PerfIsolateInner {
         let dec_id = match dec_id {
             Some(id) => id,
             None => ObjectId::from_str(PERF_SERVICE_DEC_ID).unwrap(),
         };
 
         Self {
-            people_id,
-            device_id,
+            people_id: people_id.to_owned(),
+            device_id: device_id.to_owned(),
             isolate_id: isolate_id.to_owned(),
-            id,
-            actions: vec![],
-            records: HashMap::new(),
-            accumulations: HashMap::new(),
+            id: id.into(),
             pending_reqs: HashMap::new(),
-            reqs: HashMap::new(),
             dec_id,
             stack,
         }
@@ -98,9 +88,9 @@ impl PerfIsolateInner {
         path
     }
 
-    async fn noc_root_state(&self, people_id: Option<ObjectId>, dec_id: Option<ObjectId>, isolate_id: String, id: String, perf_object_id: ObjectId, perf_type: PerfType) -> BuckyResult<()>{
+    async fn local_cache(&self, device_id: Option<ObjectId>, dec_id: Option<ObjectId>, isolate_id: String, id: String, perf_object_id: ObjectId, perf_type: PerfType) -> BuckyResult<()>{
         // 把对象存到root_state
-        let root_state = self.stack.root_state_stub(people_id, dec_id);
+        let root_state = self.stack.root_state_stub(device_id, dec_id);
         let op_env = root_state.create_path_op_env().await?;
         let path = self.get_local_cache_path(isolate_id, id, perf_type);
         if perf_type == PerfType::Actions {
@@ -116,8 +106,8 @@ impl PerfIsolateInner {
 
     async fn put_noc_and_root_state(&self, object_id: ObjectId, object_raw: Vec<u8>, perf_type: PerfType) -> BuckyResult<()>{
         let _ = self.put_object(object_id, object_raw).await;
-        let _ = self.noc_root_state(
-            Some(self.people_id), 
+        let _ = self.local_cache(
+            Some(self.device_id), 
             Some(self.dec_id), 
             self.isolate_id.to_owned(), 
             self.id.to_owned(), 
@@ -297,7 +287,7 @@ impl PerfIsolateInner {
 pub struct PerfIsolate(Arc<Mutex<PerfIsolateInner>>);
 
 impl PerfIsolate {
-    pub fn new(isolate_id: &str, people_id: ObjectId, device_id: DeviceId, dec_id: Option<ObjectId>, id: String, stack: SharedCyfsStack) -> Self {
+    pub fn new(isolate_id: &str, people_id: &ObjectId, device_id: &ObjectId, dec_id: Option<ObjectId>, id: impl Into<String>, stack: SharedCyfsStack) -> Self {
         Self(Arc::new(Mutex::new(PerfIsolateInner::new(isolate_id, people_id, device_id, dec_id, id, stack))))
     }
 
