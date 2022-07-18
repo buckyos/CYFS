@@ -363,10 +363,6 @@ impl ChunkWriter for LocalChunkWriter {
         Ok(())
     }
 
-    async fn redirect(&self, _redirect_node: &DeviceId, _redirect_referer: &String) -> BuckyResult<()> {
-        Ok(())
-    }
-
     async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
         assert!(chunk.eq(self.chunk()));
 
@@ -704,10 +700,6 @@ impl ChunkWriter for LocalChunkListWriter {
         Ok(())
     }
 
-    async fn redirect(&self, _redirect_node: &DeviceId, _redirect_referer: &String) -> BuckyResult<()> {
-        Ok(())
-    }
-
     async fn write(
         &self, 
         chunk: &ChunkId, 
@@ -818,10 +810,6 @@ impl ChunkWriterExt for LocalChunkListWriter {
             debug!("chunk file writer notified to return, writer:{}, chunk:{}", self, chunk);
         }
 
-        Ok(())
-    }
-
-    async fn redirect(&self, _redirect_node: &DeviceId, _: &String) -> BuckyResult<()> {
         Ok(())
     }
 

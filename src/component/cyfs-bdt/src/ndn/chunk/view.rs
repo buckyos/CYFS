@@ -272,7 +272,7 @@ impl ChunkView {
         };
 
         if newly {
-            let _ = downloader.add_config(config, owner);
+            let _ = downloader.add_config(config);
             let downloader = downloader.clone();
             let view = self.clone();
             task::spawn(async move {

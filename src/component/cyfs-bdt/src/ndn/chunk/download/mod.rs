@@ -197,8 +197,8 @@ impl ChunkDownloader {
 
     pub fn add_config(
         &self, 
-        config: Arc<ChunkDownloadConfig>, 
-        _owner: ResourceManager) -> BuckyResult<()> {
+        config: Arc<ChunkDownloadConfig>
+    ) -> BuckyResult<()> {
         // TODO：如果多个不同task传入不同的config，需要合并config中的源;
         // 并且合并resource manager
         self.0.configs.write().unwrap().push_back(config.clone());
@@ -215,7 +215,7 @@ impl ChunkDownloader {
                 self.0.stack.clone(), 
                 self.chunk(), 
                 stack.ndn().chunk_manager().gen_session_id(), 
-                config, 
+                config.clone(), 
                 view);
             let state = &mut *self.0.state.write().unwrap();
             match state {
@@ -277,14 +277,14 @@ impl ChunkDownloader {
                             let mut config = ChunkDownloadConfig::force_stream(redirect_node.clone());
                             config.referer = Some(referer);
 
-                            let _ = downloader.add_config(Arc::new(config), downloader.resource().clone());
+                            let _ = downloader.add_config(Arc::new(config));
                             None
                         },
                         TaskState::WaitRedirect => {
                             let _ = async_std::future::timeout(stack.config().ndn.channel.wait_redirect_timeout, 
                                                                async_std::future::pending::<()>());
                             // restart session
-                            let _ = downloader.add_config(config, downloader.resource().clone());
+                            let _ = downloader.add_config(config);
                             None
                         },
                         _ => unreachable!()

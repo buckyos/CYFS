@@ -14,7 +14,8 @@ use super::{
         protocol::v0::*, 
         Channel, 
         UploadSession
-    }, event_ext::EventExtHandler, 
+    }, 
+    event_ext::EventExtHandler, 
 };
 
 
