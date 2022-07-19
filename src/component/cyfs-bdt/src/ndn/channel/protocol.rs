@@ -2,6 +2,7 @@ use std::{
     convert::TryFrom, 
     ops::Range,
 };
+use serde_json::{Map, Value};
 use cyfs_base::*;
 use crate::{
     types::*, 
@@ -174,7 +175,7 @@ impl FlagsCounter {
 
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Interest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,
@@ -238,6 +239,28 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for Interest {
     }
 }
 
+impl JsonCodec<Interest> for Interest {
+    fn encode_json(&self) -> Map<String, Value> {
+        let mut obj = Map::new();
+        JsonCodecHelper::encode_number_field(&mut obj, "session_id", self.session_id.value());
+        JsonCodecHelper::encode_string_field(&mut obj, "chunk", &self.chunk);
+        JsonCodecHelper::encode_field(&mut obj, "prefer_type", &self.prefer_type);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "referer", self.referer.as_ref());
+        obj
+    }
+
+    fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
+        let session_id: u32 = JsonCodecHelper::decode_int_field(obj, "sessioin_id")?;
+        Ok(Self {
+            session_id: TempSeq::from(session_id), 
+            chunk: JsonCodecHelper::decode_string_field(obj, "chunk")?, 
+            prefer_type: JsonCodecHelper::decode_field(obj, "prefer_type")?, 
+            referer: JsonCodecHelper::decode_option_string_field(obj, "referer")?, 
+        })
+    }
+}
+
+
 #[test]
 fn encode_protocol_ineterest() {
     let src = Interest {
@@ -260,7 +283,7 @@ fn encode_protocol_ineterest() {
 
 
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RespInterest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,  
@@ -322,6 +345,31 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for RespInterest {
             },
             buf,
         ))
+    }
+}
+
+impl JsonCodec<RespInterest> for RespInterest {
+    fn encode_json(&self) -> Map<String, Value> {
+        let mut obj = Map::new();
+        JsonCodecHelper::encode_number_field(&mut obj, "session_id", self.session_id.value());
+        JsonCodecHelper::encode_string_field(&mut obj, "chunk", &self.chunk);
+        let err: u32 = self.err.into();
+        JsonCodecHelper::encode_number_field(&mut obj, "err", err);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "redirect", self.redirect.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "redirect_referer", self.redirect_referer.as_ref());
+        obj
+    }
+
+    fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
+        let session_id: u32 = JsonCodecHelper::decode_int_field(obj, "sessioin_id")?;
+        let err: u32 = JsonCodecHelper::decode_int_field(obj, "err")?;
+        Ok(Self {
+            session_id: TempSeq::from(session_id), 
+            chunk: JsonCodecHelper::decode_string_field(obj, "chunk")?, 
+            err: BuckyErrorCode::from(err), 
+            redirect: JsonCodecHelper::decode_option_string_field(obj, "redirect")?, 
+            redirect_referer: JsonCodecHelper::decode_option_string_field(obj, "redirect_referer")?, 
+        })
     }
 }
 

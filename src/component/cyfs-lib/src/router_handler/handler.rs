@@ -241,4 +241,8 @@ impl RouterHandlerManagerProcessor for RouterHandlerManager {
     fn acl(&self) -> &dyn RouterHandlerProcessor<AclHandlerRequest, AclHandlerResponse> {
         self
     }
+
+    fn interest(&self) -> &dyn RouterHandlerProcessor<InterestHandlerRequest, InterestHandlerResponse> {
+        self
+    }
 }
