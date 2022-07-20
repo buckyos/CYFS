@@ -339,7 +339,7 @@ impl Channel {
     }
 
     // 从 datagram tunnel 发送控制命令
-    pub(in crate::ndn) fn interest(&self, interest: Interest) {
+    pub fn interest(&self, interest: Interest) {
         let mut buf = vec![0u8; MTU];
         let mut options = DatagramOptions::default();
         let tail = interest.raw_encode_with_context(

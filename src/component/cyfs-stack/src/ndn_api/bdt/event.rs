@@ -121,12 +121,20 @@ impl NdnEventHandler for BdtNdnEventHandler {
                         let _ = session.on_interest(interest)?;
                     }
                 }
+            },  
+            InterestHandlerResponse::Transmit(to) => {
+                let mut interest = interest.clone();
+                if interest.from.is_none() {
+                    interest.from = Some(from.remote().clone());
+                }
+                let trans_channel = stack.ndn().channel_manager().create_channel(&to);
+                trans_channel.interest(interest);
             }, 
             InterestHandlerResponse::Resp(resp_interest) => {
                 from.resp_interest(resp_interest);
             }, 
             InterestHandlerResponse::Handled => {
-
+                
             }
         }
 

@@ -721,6 +721,7 @@ impl ExpReservedTokenTranslator for InterestHandlerRequest {
         match token {
             "interest.chunk" => ExpTokenEvalValue::from_string(&self.interest.chunk), 
             "interest.referer" => ExpTokenEvalValue::from_opt_glob(&self.interest.referer), 
+            "interest.from" => ExpTokenEvalValue::from_opt_string(&self.interest.from), 
             "from_channel" => ExpTokenEvalValue::from_string(&self.from_channel), 
             _ => {
                 unreachable!("unknown router acl request reserved token: {}", token);
@@ -732,7 +733,8 @@ impl ExpReservedTokenTranslator for InterestHandlerRequest {
 impl ExpReservedTokenTranslator for InterestHandlerResponse {
     fn trans(&self, token: &str) -> ExpTokenEvalValue {
         match token {
-            "type" => ExpTokenEvalValue::String(self.type_str().to_owned()),
+            "type" => ExpTokenEvalValue::String(self.type_str().to_owned()), 
+            "transmit_to" => ExpTokenEvalValue::from_opt_string(&self.transmit_to().clone()), 
             "resp_interest.err" => {
                 if let Some(err) = self.resp_interest().map(|r| r.err.as_u16()) {
                     ExpTokenEvalValue::U32(err as u32)
@@ -1243,6 +1245,7 @@ impl RouterHandlerReservedTokenList {
         
         token_list.add_string("interest.chunk");
         token_list.add_glob("interest.referer");
+        token_list.add_string("interest.from");
         token_list.add_string("from_channel");
 
         token_list
@@ -1252,6 +1255,7 @@ impl RouterHandlerReservedTokenList {
         let mut token_list = ExpReservedTokenList::new();
 
         token_list.add_string("type");
+        token_list.add_string("transmit_to");
         token_list.add_u32("resp_interest.err");
         token_list.add_glob("resp_interest.redirect_referer");
         token_list.add_string("resp_interest.redirect");

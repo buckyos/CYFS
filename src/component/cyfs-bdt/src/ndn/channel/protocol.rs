@@ -250,6 +250,7 @@ impl JsonCodec<Interest> for Interest {
         JsonCodecHelper::encode_string_field(&mut obj, "chunk", &self.chunk);
         JsonCodecHelper::encode_field(&mut obj, "prefer_type", &self.prefer_type);
         JsonCodecHelper::encode_option_string_field(&mut obj, "referer", self.referer.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "from", self.from.as_ref());
         obj
     }
 
@@ -260,6 +261,7 @@ impl JsonCodec<Interest> for Interest {
             chunk: JsonCodecHelper::decode_string_field(obj, "chunk")?, 
             prefer_type: JsonCodecHelper::decode_field(obj, "prefer_type")?, 
             referer: JsonCodecHelper::decode_option_string_field(obj, "referer")?, 
+            from: JsonCodecHelper::decode_option_string_field(obj, "from")?, 
         })
     }
 }
