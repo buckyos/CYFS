@@ -58,9 +58,3 @@ impl fmt::Display for BdtDeleteDataInputRequest {
     }
 }
 
-#[async_trait::async_trait]
-pub trait BdtDataAclProcessor: Sync + Send {
-    async fn get_data(&self, req: BdtGetDataInputRequest) -> BuckyResult<()>;
-    async fn put_data(&self, req: BdtPutDataInputRequest) -> BuckyResult<()>;
-    async fn delete_data(&self, req: BdtDeleteDataInputRequest) -> BuckyResult<()>;
-}

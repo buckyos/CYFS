@@ -8,7 +8,7 @@ mod ndn;
 mod router;
 mod service;
 
-pub(crate) use bdt::NDNBdtDataAclProcessor;
+pub(crate) use bdt::*;
 pub(crate) use cache::*;
 pub(crate) use file::*;
 pub(crate) use ndc::NDCLevelInputProcessor;

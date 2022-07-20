@@ -346,7 +346,7 @@ impl Channel {
 
     } 
 
-    pub(in crate::ndn) fn resp_interest(&self, resp: RespInterest) {
+    pub fn resp_interest(&self, resp: RespInterest) {
         debug!("{} will send resp interest {:?}", self, resp);
         let mut buf = vec![0u8; MTU];
         let mut options = DatagramOptions::default();

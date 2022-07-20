@@ -43,6 +43,24 @@ pub enum InterestHandlerResponse {
     Handled
 }
 
+impl InterestHandlerResponse {
+    pub fn type_str(&self) -> &str {
+        match self {
+            Self::Upload => "Upload", 
+            Self::Resp(_) => "Resp", 
+            Self::Handled => "Handled"
+        }
+    }
+
+    pub fn resp_interest(&self) -> Option<&RespInterest> {
+        if let Self::Resp(resp) = self {
+            Some(resp)
+        } else {
+            None
+        }
+    }
+}
+
 impl JsonCodec<InterestHandlerResponse> for InterestHandlerResponse {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
