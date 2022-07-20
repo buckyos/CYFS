@@ -4613,6 +4613,7 @@ dependencies = [
  "cyfs-client",
  "cyfs-core",
  "cyfs-debug",
+ "cyfs-lib",
  "cyfs-meta-lib",
  "cyfs-util",
  "fs_extra",

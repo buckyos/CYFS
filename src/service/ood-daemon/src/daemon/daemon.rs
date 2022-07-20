@@ -7,6 +7,7 @@ use ood_control::{
     ControlInterface, ControlInterfaceAddrType, ControlInterfaceParam, OODControlMode,
     OOD_CONTROLLER,
 };
+use super::gateway_monitor::GATEWAY_MONITOR;
 
 use async_std::task;
 use futures::future::{AbortHandle, Abortable};
@@ -36,10 +37,10 @@ pub struct Daemon {
 
 impl Daemon {
     // add code here
-    pub fn new(mode: ServiceMode) -> Daemon {
+    pub fn new(mode: ServiceMode) -> Self {
         let device_config_manager = DeviceConfigManager::new();
 
-        Daemon {
+        Self {
             mode,
             device_config_manager,
         }
@@ -76,6 +77,8 @@ impl Daemon {
             abort_handle: Arc::new(Mutex::new(None)),
         };
         OOD_CONTROLLER.bind_event().on(Box::new(notify.clone()));
+
+        let _ = GATEWAY_MONITOR.init().await;
 
         self.run_check_loop(notify).await;
 
