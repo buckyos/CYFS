@@ -119,6 +119,17 @@ impl DownloadSessions {
             }
         }
     }
+
+    fn take_redirect(&self) -> Option<(DeviceId, String)> {
+        match &self.0.session_type {
+            SessionType::Single(session) => {
+                session.take_redirect()
+            },
+            SessionType::Double(session) => {
+                session.take_redirect()
+            }
+        }
+    }
 }
 
 struct InitState {
@@ -137,7 +148,6 @@ enum StateImpl {
     Running(RunningState), 
     // Paused(DownloadSessions), 
     Canceled(BuckyErrorCode),
-    Redirect(DeviceId, String),
     Finished(Arc<Box<dyn ChunkReader>>)  
 }
 
@@ -147,7 +157,6 @@ impl StateImpl {
             Self::Init(_) => TaskState::Running(0), 
             Self::Running(_) => TaskState::Running(0), 
             Self::Canceled(err) => TaskState::Canceled(*err), 
-            Self::Redirect(redirect_node, referer) => TaskState::Redirect(redirect_node.clone(), referer.clone()),
             Self::Finished(_) => TaskState::Finished
         }
     }
@@ -262,31 +271,39 @@ impl ChunkDownloader {
                             Some(waiters)
                         }, 
                         TaskState::Canceled(err) => {
-                            let mut waiters = StateWaiter::new();
-                            let state = &mut *downloader.0.state.write().unwrap();
-                            match state {
-                                StateImpl::Running(running) => {
-                                    std::mem::swap(&mut waiters, &mut running.waiters);
-                                    *state = StateImpl::Canceled(err);
+                            match err {
+                                BuckyErrorCode::SessionRedirect | BuckyErrorCode::SessionWaitActive => {
+                                    if let Some((target_id, referer)) = sessions.take_redirect() {
+                                        let mut config = ChunkDownloadConfig::force_stream(target_id.clone());
+                                        config.referer = Some(referer);
+    
+                                        let _ = downloader.add_config(Arc::new(config));
+                                        None
+                                    } else {
+                                        unreachable!()
+                                    }
                                 },
-                                _ => unreachable!()
+                                BuckyErrorCode::SessionWaitRedirect => {
+                                    let _ = async_std::future::timeout(stack.config().ndn.channel.wait_redirect_timeout, 
+                                                                       async_std::future::pending::<()>());
+                                    // restart session
+                                    let _ = downloader.add_config(config);
+                                    None
+                                },
+                                _ => {
+                                    let mut waiters = StateWaiter::new();
+                                    let state = &mut *downloader.0.state.write().unwrap();
+                                    match state {
+                                        StateImpl::Running(running) => {
+                                            std::mem::swap(&mut waiters, &mut running.waiters);
+                                            *state = StateImpl::Canceled(err);
+                                        },
+                                        _ => unreachable!()
+                                    }
+                                    Some(waiters)
+                                }
                             }
-                            Some(waiters)
                         }, 
-                        TaskState::Redirect(redirect_node, referer) => {
-                            let mut config = ChunkDownloadConfig::force_stream(redirect_node.clone());
-                            config.referer = Some(referer);
-
-                            let _ = downloader.add_config(Arc::new(config));
-                            None
-                        },
-                        TaskState::WaitRedirect => {
-                            let _ = async_std::future::timeout(stack.config().ndn.channel.wait_redirect_timeout, 
-                                                               async_std::future::pending::<()>());
-                            // restart session
-                            let _ = downloader.add_config(config);
-                            None
-                        },
                         _ => unreachable!()
                     }
                 };
@@ -313,13 +330,7 @@ impl ChunkDownloader {
                 StateImpl::Init(init) => NextStep::Wait(init.waiters.new_waiter()), 
                 StateImpl::Running(running) => NextStep::Wait(running.waiters.new_waiter()), 
                 StateImpl::Finished(_) => NextStep::Return(TaskState::Finished), 
-                StateImpl::Redirect(redirect_node, redirect_referer) => NextStep::Return(TaskState::Redirect(redirect_node.clone(), redirect_referer.clone())),
-                StateImpl::Canceled(err) => { 
-                    match *err {
-                        BuckyErrorCode::SessionWaitRedirect => NextStep::Return(TaskState::WaitRedirect),
-                        _ => NextStep::Return(TaskState::Canceled(*err))
-                    }
-                }
+                StateImpl::Canceled(err) => NextStep::Return(TaskState::Canceled(*err)),
             }
         };
         match next_step {

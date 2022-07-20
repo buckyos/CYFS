@@ -96,13 +96,20 @@ impl Uploaders {
 
     fn add(&self, session: UploadSession) {
         match session.schedule_state() {
-            TaskState::Canceled(_) => {
-                let mut sessions = self.sessions.write().unwrap();
-                if sessions.canceled.iter().find(|s| session.session_id().eq(s.session_id())).is_none() {
-                    info!("{} add canceled upload session {}", session.channel(), session);
-                    sessions.canceled.push_back(session);
+            TaskState::Canceled(err) => {
+                match err {
+                    BuckyErrorCode::SessionRedirect | BuckyErrorCode::SessionWaitRedirect => {
+                        info!("{} session need redirect or wait-redirect opertator", session.channel());
+                    }, 
+                    _ => {
+                        let mut sessions = self.sessions.write().unwrap();
+                        if sessions.canceled.iter().find(|s| session.session_id().eq(s.session_id())).is_none() {
+                            info!("{} add canceled upload session {}", session.channel(), session);
+                            sessions.canceled.push_back(session);
+                        }
+                    }
                 }
-            },  
+            }, 
             _ => {
                 let mut sessions = self.sessions.write().unwrap();
                 if sessions.uploading.iter().find(|s| session.session_id().eq(s.session_id())).is_none() {
@@ -310,8 +317,6 @@ impl Channel {
                         false
                     }
                 }, 
-                TaskState::Redirect(_, _) => true,
-                TaskState::WaitRedirect => true,
                 _ => unreachable!()
             } {
                 let _ = future::timeout(2 * session.channel().config().msl, future::pending::<()>()).await;
@@ -450,10 +455,23 @@ impl Channel {
     }
 
     fn on_resp_interest(&self, command: &RespInterest) -> BuckyResult<()> {
-        if let Some(session) = self.0.downloaders.read().unwrap().get(&command.session_id).clone() {
-            session.on_resp_interest(command)
-        } else {
-            Ok(())
+        match command.err {
+            BuckyErrorCode::SessionWaitActive => {
+                // get session
+                if let Some(upload) = self.0.uploaders.find(&command.session_id) {
+                    upload.on_resp_interest(command)
+                } else {
+                    error!("{} not found upload session {}", self, command.session_id.value());
+                    Ok(())
+                }
+            },
+            _ => {
+                if let Some(session) = self.0.downloaders.read().unwrap().get(&command.session_id).clone() {
+                    session.on_resp_interest(command)
+                } else {
+                    Ok(())
+                }
+            }
         }
     }
 }
