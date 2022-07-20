@@ -60,14 +60,13 @@ impl NdnEventHandler for BdtNdnEventHandler {
                     }, 
                     response: Some(Ok(InterestHandlerResponse::Upload))
                 };
-                // FIXME: how to emit handler
-                // let mut handler = NONHandlerCaller::new(handler.emitter());
-                // if let Some(resp) = handler.call("sign_object", &mut param).await? {
-                //     resp?
-                // } else {
-                //     param.response.unwrap()
-                // }
-                InterestHandlerResponse::Upload
+
+                let mut handler = NONHandlerCaller::new(handler.emitter());
+                if let Some(resp) = handler.call("sign_object", &mut param).await? {
+                    resp?
+                } else {
+                    param.response.unwrap()?
+                }
             } else {
                 InterestHandlerResponse::Upload
             }

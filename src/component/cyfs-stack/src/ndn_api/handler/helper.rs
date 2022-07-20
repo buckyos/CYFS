@@ -122,3 +122,25 @@ impl RequestHandlerHelper<NDNDeleteDataInputResponse> for NDNDeleteDataInputResp
         unimplemented!();
     }
 }
+
+
+// interest handler
+impl RequestHandlerHelper<InterestHandlerRequest> for InterestHandlerRequest {
+    fn update(&mut self, handler: Self) {
+        self.interest = handler.interest.clone();
+    }
+
+    fn debug_info(&self) -> String {
+        self.interest.session_id.value().to_string()
+    }
+}
+
+impl RequestHandlerHelper<InterestHandlerResponse> for InterestHandlerResponse {
+    fn update(&mut self, handler: Self) {
+        *self = handler.clone(); 
+    }
+
+    fn debug_info(&self) -> String {
+        unimplemented!()
+    }
+}
