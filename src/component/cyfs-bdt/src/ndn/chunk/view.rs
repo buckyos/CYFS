@@ -292,9 +292,6 @@ impl ChunkView {
                     },
                     TaskState::Canceled(_) => {
                         // do nothing
-                    }, 
-                    TaskState::Redirect(_, _) => {
-                        // do nothing
                     },
                     _ => unimplemented!()
                 } 

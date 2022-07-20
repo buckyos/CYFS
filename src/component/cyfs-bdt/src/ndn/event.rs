@@ -80,38 +80,72 @@ impl NdnEventHandler for DefaultNdnEventHandler {
         //                                           err.code()))
         //     }
         // }?;
+        enum State {
+            Continue(Channel),
+            Break(UploadSession),
+        }
 
+        let (step, requestor) = {
+            if let Some(requestor) = &interest.from {
+                if let Some(requestor) = stack.ndn().channel_manager().channel_of(&requestor) {
+                    (State::Continue(requestor.clone()), requestor)
+                } else {
+                    // (State::Break(UploadSession::redirect(interest.chunk.clone(), 
+                    //                                       interest.session_id.clone(),
+                    //                                       interest.prefer_type.clone(), 
+                    //                                       from.clone(), 
+                    //                                       requestor.clone(),
+                    //                                       interest.referer)), from.clone())
+                    (State::Break(UploadSession::canceled(interest.chunk.clone(),
+                                                          interest.session_id.clone(),
+                                                          interest.prefer_type.clone(),
+                                                          from.clone(),
+                                                          BuckyErrorCode::SessionWaitActive)), from.clone())
+                }
+            } else {
+                (State::Continue(from.clone()), from.clone())
+            }
+        };
 
         //TODO: 这里的逻辑可能是：根据当前 root uploader的resource情况，
         //  如果还有空间或者透支不大，可以新建上传；
         //  否则拒绝或者给出其他源，回复RespInterest
-        let session = match stack.ndn().chunk_manager().start_upload(
-            interest.session_id.clone(), 
-            interest.chunk.clone(), 
-            interest.prefer_type.clone(), 
-            from.clone(), 
-            stack.ndn().root_task().upload().resource().clone()).await {
-            Ok(session) => {
-                // do nothing
-                Ok(session)
-            }, 
-            Err(err) => {
-                match err.code() {
-                    BuckyErrorCode::AlreadyExists => {
-                        //do nothing
-                        Err(err)
-                    },
-                    _ => Ok(UploadSession::canceled(
-                        interest.chunk.clone(), 
+
+        let session = {
+            match step {
+                State::Continue(from) => {
+                    match stack.ndn().chunk_manager().start_upload(
                         interest.session_id.clone(), 
+                        interest.chunk.clone(), 
                         interest.prefer_type.clone(), 
-                        from.clone(), 
-                        err.code()))
+                        requestor.clone(), 
+                        stack.ndn().root_task().upload().resource().clone()).await {
+                        Ok(session) => {
+                            // do nothing
+                            Ok(session)
+                        }, 
+                        Err(err) => {
+                            match err.code() {
+                                BuckyErrorCode::AlreadyExists => {
+                                    //do nothing
+                                    Err(err)
+                                },
+                                _ => Ok(UploadSession::canceled(
+                                    interest.chunk.clone(), 
+                                    interest.session_id.clone(), 
+                                    interest.prefer_type.clone(), 
+                                    from.clone(), 
+                                    err.code()))
+                            }
+                        }
+                    }?
                 }
+                State::Break(s) => s,
             }
-        }?;
+        };
+
         // 加入到channel的 upload sessions中
-        let _ = from.upload(session.clone());
+        let _ = requestor.upload(session.clone());
         session.on_interest(interest)
 
         // let stack = self.stack();

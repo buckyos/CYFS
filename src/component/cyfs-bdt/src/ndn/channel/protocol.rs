@@ -180,6 +180,7 @@ pub struct Interest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,
     pub prefer_type: PieceSessionType, 
+    pub from: Option<DeviceId>,
     pub referer: Option<String>,
     // pub link_url: Option<String>,
     // flow_id:Option<u32>,
@@ -210,6 +211,7 @@ impl RawEncodeWithContext<DatagramOptions> for Interest {
         let (mut context, buf) = FlagsEncodeContext::new(CommandCode::Interest as u8, enc_buf)?;
         let buf = context.encode(buf, &self.chunk)?;
         let buf = context.encode(buf, &self.prefer_type)?;
+        let buf = context.option_encode(buf, &self.from, flags.next())?;
         let _ = context.option_encode(buf, &self.referer, flags.next())?;
         context.finish(enc_buf)
     }
@@ -226,12 +228,14 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for Interest {
         let (mut context, buf) = FlagsDecodeContext::new(buf)?;
         let (chunk, buf) = context.decode(buf)?;
         let (prefer_type, buf) = context.decode(buf)?;
+        let (from, buf) = context.option_decode(buf, flags.next())?;
         let (referer, buf) = context.option_decode(buf, flags.next())?;
         Ok((
             Self {
                 session_id, 
                 chunk, 
                 prefer_type, 
+                from,
                 referer
             },
             buf,
@@ -267,6 +271,7 @@ fn encode_protocol_ineterest() {
         session_id: TempSeq::from(123), 
         chunk: ChunkId::default(),
         prefer_type: PieceSessionType::Stream(0), 
+        from: None,
         referer: Some("referer".to_owned()),
     };
 
