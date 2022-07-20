@@ -3,7 +3,7 @@ use cyfs_bdt::{
     Stack, 
     NdnEventHandler, 
     DefaultNdnEventHandler, 
-    ndn::channel::{Channel, UploadSession, protocol::{Interest, PieceData}}
+    ndn::channel::{Channel, UploadSession, protocol::{Interest, RespInterest, PieceData}}
 };
 use cyfs_util::acl::*;
 use cyfs_lib::*;
@@ -51,28 +51,54 @@ impl NdnEventHandler for BdtNdnEventHandler {
         from: &Channel
     ) -> BuckyResult<()> {
 
-        let next_step = if let Some(handler) = self.handlers.handlers(&RouterHandlerChain::Interest) .try_interest() {
+        let next_step = if let Some(handler) = self.handlers.handlers(&RouterHandlerChain::Interest).try_interest() {
             if !handler.is_empty() {
                 let mut param = RouterHandlerInterestRequest {
                     request: InterestHandlerRequest {
                         interest: interest.clone(), 
                         from_channel: from.remote().clone()
                     }, 
-                    response: Some(Ok(InterestHandlerResponse::Upload))
+                    response: None
                 };
 
                 let mut handler = NONHandlerCaller::new(handler.emitter());
-                if let Some(resp) = handler.call("sign_object", &mut param).await? {
-                    resp?
-                } else {
-                    param.response.unwrap()?
-                }
+                match handler.call("interest_handler", &mut param).await {
+                    Ok(resp) => {
+                        if let Some(resp) = resp {
+                            resp
+                        } else {
+                            //RouterHandlerAction::Default
+                            Ok(InterestHandlerResponse::Upload)
+                        }
+                    },
+                    Err(err) => {
+                        match err.code() {
+                            BuckyErrorCode::Reject => {
+                                //RouterHandlerAction::Reject
+                                Ok(InterestHandlerResponse::Resp(RespInterest {
+                                    session_id: interest.session_id.clone(), 
+                                    chunk: interest.chunk.clone(),  
+                                    err: BuckyErrorCode::Reject,
+                                    redirect: None,
+                                    redirect_referer: None,
+                                }))
+                            }, 
+                            BuckyErrorCode::Ignored => {
+                                //RouterHandlerAction::Drop
+                                Ok(InterestHandlerResponse::Handled)
+                            }, 
+                            _ => Err(err)
+                        }
+                    } 
+                } 
             } else {
-                InterestHandlerResponse::Upload
+                // no handler register
+                Ok(InterestHandlerResponse::Upload)
             }
         } else {
-            InterestHandlerResponse::Upload
-        };
+            // no handler register
+            Ok(InterestHandlerResponse::Upload)
+        }?;
 
         match next_step {
             InterestHandlerResponse::Upload => {
