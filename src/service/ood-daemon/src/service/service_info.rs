@@ -1,5 +1,5 @@
 use crate::package::ServicePackage;
-use crate::config::ServiceConfig;
+use crate::config::{ServiceConfig, OOD_DAEMON_SERVICE};
 use cyfs_base::{BuckyError, BuckyErrorCode};
 use cyfs_util::ZipPackage;
 
@@ -10,8 +10,6 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 
-// ood_daemon服务本身，需要特殊处理
-pub const OOD_DAEMON_SERVICE: &str = "ood-daemon";
 
 #[derive(Debug)]
 pub(super) struct ServicePackageInfo {

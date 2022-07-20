@@ -4,6 +4,13 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
+// ood_daemon服务本身，需要特殊处理
+pub const OOD_DAEMON_SERVICE: &str = "ood-daemon";
+
+// gateway服务，需要特殊处理
+pub const GATEWAY_SERVICE: &str = "gateway";
+
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum ServiceState {
     RUN,
