@@ -59,6 +59,14 @@ impl DoubleSession {
         None
     }
 
+    pub fn take_redirect(&self) -> Option<(DeviceId, String)> {
+        let session = self.0.download_session.read().unwrap();
+        if let Some(session) = &*session {
+            return session.take_redirect()
+        }
+        None
+    }
+
     pub async fn start(&self) -> TaskState {
         let state = self.start_stream_session(&self.0.src_ref).await;
         match state {

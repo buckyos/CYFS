@@ -81,7 +81,7 @@ impl StateImpl {
             Self::Downloading(_) => TaskState::Running(0), 
             Self::Finished(_) => TaskState::Finished, 
             Self::Canceled(canceled) => TaskState::Canceled(canceled.err.code()),
-            Self::Redirect(redirect) => TaskState::Redirect(redirect.redirect.clone(), redirect.redirect_referer.clone()),
+            Self::Redirect(_) => TaskState::Canceled(BuckyErrorCode::SessionRedirect),
         }
     }
 }
@@ -205,6 +205,7 @@ impl DownloadSession {
             session_id: self.session_id().clone(), 
             chunk: self.chunk().clone(), 
             prefer_type: self.prefer_type().clone(), 
+	    from: None,
             referer: self.referer().cloned()
         };
         info!("{} sent {:?}", self, interest);
@@ -225,7 +226,7 @@ impl DownloadSession {
                 StateImpl::Downloading(downloading) => NextStep::Wait(downloading.waiters.new_waiter()),
                 StateImpl::Finished(_) => NextStep::Return(TaskState::Finished), 
                 StateImpl::Canceled(canceled) => NextStep::Return(TaskState::Canceled(canceled.err.code())),
-                StateImpl::Redirect(cn) => NextStep::Return(TaskState::Redirect(cn.redirect.clone(), cn.redirect_referer.clone())),
+                StateImpl::Redirect(_) => NextStep::Return(TaskState::Canceled(BuckyErrorCode::SessionRedirect)),
             }
         };
         match next_step {
@@ -249,6 +250,16 @@ impl DownloadSession {
             }, 
             _ => None
         }
+    }
+
+    pub fn take_redirect(&self) -> Option<(DeviceId /* target-id */, String /* referer */)> {
+        match &*self.0.state.read().unwrap() {
+            StateImpl::Redirect(redirect) => {
+                Some((redirect.redirect.clone(), redirect.redirect_referer.clone()))
+            },
+            _ => { None }
+        }
+
     }
 
     pub(super) fn push_piece_data(&self, piece: &PieceData) {
@@ -402,7 +413,7 @@ impl DownloadSession {
     pub(super) fn on_resp_interest(&self, resp_interest: &RespInterest) -> BuckyResult<()> {
         match &resp_interest.err {
             BuckyErrorCode::Ok => unimplemented!(),
-            BuckyErrorCode::SessionRedirect => {
+            BuckyErrorCode::SessionRedirect | BuckyErrorCode::SessionWaitActive => {
                 if resp_interest.redirect.is_some() && resp_interest.redirect_referer.is_some() {
                     let redirect_node = resp_interest.redirect.as_ref().unwrap();
                     let referer = resp_interest.redirect_referer.as_ref().unwrap();
@@ -433,6 +444,7 @@ impl DownloadSession {
             session_id: self.session_id().clone(), 
             chunk: self.chunk().clone(), 
             prefer_type: self.prefer_type().clone(), 
+            from: None,
             referer: self.referer().cloned()
         };
         info!("{} sent {:?}", self, interest);
