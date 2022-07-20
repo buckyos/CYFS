@@ -23,7 +23,7 @@ pub enum RouterHandlerChain {
 
     Acl, 
 
-    Interest
+    NDN,
 }
 
 impl fmt::Display for RouterHandlerChain {
@@ -45,7 +45,7 @@ impl fmt::Display for RouterHandlerChain {
 
             Self::Acl => "acl",
 
-            Self::Interest => "interest"
+            Self::NDN => "ndn"
         };
 
         fmt::Display::fmt(s, f)
@@ -72,7 +72,7 @@ impl FromStr for RouterHandlerChain {
             
             "acl" => Self::Acl, 
 
-            "interest" => Self::Interest, 
+            "ndn" => Self::NDN, 
             
             v @ _ => {
                 let msg = format!("unknown router chain: {}", v);

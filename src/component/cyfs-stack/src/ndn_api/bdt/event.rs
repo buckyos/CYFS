@@ -51,7 +51,7 @@ impl NdnEventHandler for BdtNdnEventHandler {
         from: &Channel
     ) -> BuckyResult<()> {
 
-        let next_step = if let Some(handler) = self.handlers.handlers(&RouterHandlerChain::Interest).try_interest() {
+        let next_step = if let Some(handler) = self.handlers.handlers(&RouterHandlerChain::NDN).try_interest() {
             if !handler.is_empty() {
                 let mut param = RouterHandlerInterestRequest {
                     request: InterestHandlerRequest {

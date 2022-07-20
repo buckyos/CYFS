@@ -96,7 +96,7 @@ pub(crate) struct RouterHandlersSavedData {
 
     pub acl: Option<RouterHandlerContainerSavedData>, 
 
-    pub interest: Option<RouterHandlerContainerSavedData>
+    pub ndn: Option<RouterHandlerContainerSavedData>
 }
 
 impl RouterHandlersSavedData {
@@ -116,7 +116,7 @@ impl RouterHandlersSavedData {
 
             acl: None,
 
-            interest: None
+            ndn: None
         }
     }
 }

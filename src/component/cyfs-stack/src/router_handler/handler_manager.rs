@@ -401,7 +401,7 @@ pub struct RouterHandlersManager {
 
     acl: Arc<RouterHandlersContainer>, 
 
-    interest: Arc<RouterHandlersContainer>
+    ndn: Arc<RouterHandlersContainer>
 }
 
 impl RouterHandlersManager {
@@ -456,8 +456,8 @@ impl RouterHandlersManager {
                 storage.clone(),
             )), 
             
-            interest:  Arc::new(RouterHandlersContainer::new(
-                RouterHandlerChain::Interest,
+            ndn: Arc::new(RouterHandlersContainer::new(
+                RouterHandlerChain::NDN,
                 storage.clone(),
             ))
         };
@@ -493,7 +493,7 @@ impl RouterHandlersManager {
 
             RouterHandlerChain::Acl => &self.acl,
 
-            RouterHandlerChain::Interest => &self.interest        
+            RouterHandlerChain::NDN => &self.ndn,  
         }
     }
 
@@ -514,7 +514,7 @@ impl RouterHandlersManager {
 
         changed |= self.acl.clear_dec_handlers(dec_id);
 
-        changed |= self.interest.clear_dec_handlers(dec_id);
+        changed |= self.ndn.clear_dec_handlers(dec_id);
 
         if changed {
             self.storage.async_save();
@@ -571,9 +571,9 @@ impl RouterHandlersManager {
             list.acl = Some(data);
         }
 
-        let data = self.interest.dump_data();
+        let data = self.ndn.dump_data();
         if !data.is_empty() {
-            list.interest = Some(data);
+            list.ndn = Some(data);
         }
 
         list
@@ -616,8 +616,8 @@ impl RouterHandlersManager {
             self.acl.load_data(data);
         }
 
-        if let Some(data) = list.interest {
-            self.interest.load_data(data);
+        if let Some(data) = list.ndn {
+            self.ndn.load_data(data);
         }
     }
 }
