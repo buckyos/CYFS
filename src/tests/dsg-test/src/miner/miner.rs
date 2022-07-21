@@ -324,6 +324,59 @@ where
             })),
         )?;
 
+
+        struct OnInterest<D>
+        where
+            D: 'static + DsgMinerDelegate,
+        {
+            miner: DsgMiner<D>,
+        }
+
+        #[async_trait]
+        impl<D> EventListenerAsyncRoutine<RouterHandlerInterestRequest, RouterHandlerInterestResult>
+            for OnInterest<D>
+        where
+            D: 'static + DsgMinerDelegate,
+        {
+            async fn call(
+                &self,
+                param: &RouterHandlerInterestRequest,
+            ) -> BuckyResult<RouterHandlerInterestResult> {
+                log::info!(
+                    "{} OnInterest, interest={:?}, from={}",
+                    self.miner,
+                    param.request.interest, 
+                    param.request.from_channel
+                );
+                let referer = BdtDataRefererInfo::decode_string(param.request.interest.referer.as_ref().unwrap().as_str())?;
+                let contract_id = referer.referer_object[0].target.clone().unwrap();
+
+
+                Ok(RouterHandlerInterestResult {
+                    action: RouterHandlerAction::Default,
+                    request: None,
+                    response: None,
+                })
+            }
+        }
+
+
+        
+        let _ = self.interface().stack().router_handlers().add_handler(
+            RouterHandlerChain::NDN,
+            "OnInterest",
+            0,
+            format!(
+                "interest.referer=='*:*'",
+            )
+            .as_str(),
+            RouterHandlerAction::Default,
+            Some(Box::new(OnInterest {
+                miner: self.clone(),
+            })),
+        )?;
+
+
         Ok(())
     }
 }

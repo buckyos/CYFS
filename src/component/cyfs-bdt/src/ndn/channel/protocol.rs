@@ -255,7 +255,7 @@ impl JsonCodec<Interest> for Interest {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let session_id: u32 = JsonCodecHelper::decode_int_field(obj, "sessioin_id")?;
+        let session_id: u32 = JsonCodecHelper::decode_int_field(obj, "session_id")?;
         Ok(Self {
             session_id: TempSeq::from(session_id), 
             chunk: JsonCodecHelper::decode_string_field(obj, "chunk")?, 
@@ -368,7 +368,7 @@ impl JsonCodec<RespInterest> for RespInterest {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let session_id: u32 = JsonCodecHelper::decode_int_field(obj, "sessioin_id")?;
+        let session_id: u32 = JsonCodecHelper::decode_int_field(obj, "session_id")?;
         let err: u32 = JsonCodecHelper::decode_int_field(obj, "err")?;
         Ok(Self {
             session_id: TempSeq::from(session_id), 

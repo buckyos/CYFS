@@ -1,6 +1,6 @@
 use cyfs_base::*;
 
-use std::str::FromStr;
+use std::{str::FromStr};
 
 use crate::NONAPILevel;
 
@@ -152,19 +152,27 @@ impl FromStr for NDNPutDataResult {
 // dir_id/file_id
 // file_id(file内部的chunk)
 
-// chunk的关联对象，一般是file/dir+inner_path
+// target 可以是 chunk的owner，或者转发者， 或者是关联的 dsg contract
+
+// chunk的关联对象，一般是[target:]file  或者 [target:]dir/inner_path
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NDNDataRefererObject {
+    pub target: Option<ObjectId>, 
     pub object_id: ObjectId,
     pub inner_path: Option<String>,
 }
 
 impl ToString for NDNDataRefererObject {
     fn to_string(&self) -> String {
-        if let Some(inner_path) = &self.inner_path {
+        let last = if let Some(inner_path) = &self.inner_path {
             format!("{}/{}", self.object_id.to_string(), inner_path)
         } else {
             self.object_id.to_string()
+        };
+        if let Some(target) = &self.target {
+            format!("{}:{}", target.to_string(), last)
+        } else {
+            last
         }
     }
 }
@@ -183,12 +191,34 @@ impl FromStr for NDNDataRefererObject {
             return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
         }
 
-        // 第一段一定是object
-        let object_id = ObjectId::from_str(parts[0]).map_err(|e| {
-            let msg = format!("invalid NDNDataRefererObject object_id format! {}, {}", value, e);
+        let id_parts: Vec<&str> = parts[0].split(":").collect();
+        let (target, object_id) = if id_parts.len() == 1 {
+            ObjectId::from_str(id_parts[0]).map_err(|e| {
+                let msg = format!("invalid NDNDataRefererObject object_id format! {}, {}", value, e);
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+            }).map(|o| (None, o))
+        } else if id_parts.len() == 2 {
+            ObjectId::from_str(id_parts[0]).map_err(|e| {
+                let msg = format!("invalid NDNDataRefererObject object_id format! {}, {}", value, e);
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+            }).and_then(|o| {
+                ObjectId::from_str(id_parts[1]).map_err(|e| {
+                    let msg = format!("invalid NDNDataRefererObject object_id format! {}, {}", value, e);
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+                }).map(|t| (Some(t), o))
+            })
+        } else {
+            let msg = format!(
+                "invalid NDNDataRefererObject, object_id not found! {}",
+                value
+            );
             error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        })?;
+            Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
+        }?;
+      
 
         let inner_path = if parts.len() > 1 {
             Some(parts[..1].join("/"))
@@ -197,6 +227,7 @@ impl FromStr for NDNDataRefererObject {
         };
 
         Ok(Self {
+            target, 
             object_id,
             inner_path,
         })
