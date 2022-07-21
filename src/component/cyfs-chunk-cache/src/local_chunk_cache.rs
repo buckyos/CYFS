@@ -503,14 +503,28 @@ impl SingleDiskChunkCache {
     }
 
     fn get_file_path(&self, file_id: &ChunkId, is_create: bool) -> PathBuf {
-        let hash_str = file_id.to_string();
-        let (tmp, last) = hash_str.split_at(42);
-        let (first, mid) = tmp.split_at(40);
-        let path = self.path.join(last).join(mid);
-        if is_create && !path.exists() {
-            let _ = create_dir_all(path.as_path());
+        #[cfg(target_os = "windows")]
+        {
+            let hash_str = hex::encode(file_id.as_slice());
+            let (tmp, last) = hash_str.split_at(hash_str.len() - 3);
+            let (first, mid) = tmp.split_at(tmp.len() - 3);
+            let path = self.path.join(last).join(mid);
+            if is_create && !path.exists() {
+                let _ = create_dir_all(path.as_path());
+            }
+            path.join(first)
         }
-        path.join(first)
+        #[cfg(not(target_os = "windows"))]
+        {
+            let hash_str = file_id.to_string();
+            let (tmp, last) = hash_str.split_at(hash_str.len() - 2);
+            let (first, mid) = tmp.split_at(tmp.len() - 2);
+            let path = self.path.join(last).join(mid);
+            if is_create && !path.exists() {
+                let _ = create_dir_all(path.as_path());
+            }
+            path.join(first)
+        }
     }
 
     pub async fn remove_file(&self, file_id: &ChunkId) -> BuckyResult<()> {
