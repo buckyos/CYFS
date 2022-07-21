@@ -17,7 +17,7 @@ fn new_dec(name: &str) -> ObjectId {
 pub async fn test() {
     let dec_id = new_dec("test-perf");
     //let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-    let stack = SharedCyfsStack::open_default(Some(dec_id)).await.unwrap();
+    let stack = SharedCyfsStack::open_runtime(Some(dec_id)).await.unwrap();
     stack.wait_online(None).await.unwrap();
     let perf = PerfClient::new(
         "test-perf".to_owned(),

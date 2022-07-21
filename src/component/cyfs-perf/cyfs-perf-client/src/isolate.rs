@@ -77,8 +77,7 @@ impl PerfIsolateInner {
         let now = Utc::now();
         let (_is_common_era, year) = now.year_ce();
         let date = format!("{:02}-{:02}-{:02}", year, now.month(), now.day());
-        //let time_span = format!("{:02}:{:02}", now.hour(), now.minute());
-        let time_span = format!("{:02}:00", now.hour());
+        let time_span = format!("{:02}:{:02}", now.hour(), now.minute());
         let people_id = self.people_id.to_string();
         let device_id = self.device_id.to_string();
         //<owner>/<device>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
