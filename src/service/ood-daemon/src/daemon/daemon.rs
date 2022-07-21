@@ -33,16 +33,18 @@ impl EventListenerSyncRoutine<(), ()> for BindNotify {
 pub struct Daemon {
     mode: ServiceMode,
     device_config_manager: DeviceConfigManager,
+    no_monitor: bool,
 }
 
 impl Daemon {
     // add code here
-    pub fn new(mode: ServiceMode) -> Self {
+    pub fn new(mode: ServiceMode, no_monitor: bool) -> Self {
         let device_config_manager = DeviceConfigManager::new();
 
         Self {
             mode,
             device_config_manager,
+            no_monitor,
         }
     }
 
@@ -140,9 +142,13 @@ impl Daemon {
                 );
 
                 // 需要确保ood-daemon-monitor已经启动
-                use crate::monitor::ServiceMonitor;
-                if ServiceMonitor::launch_monitor().is_ok() {
-                    task::sleep(Duration::from_secs(5)).await;
+                if !self.no_monitor {
+                    use crate::monitor::ServiceMonitor;
+                    if ServiceMonitor::launch_monitor().is_ok() {
+                        task::sleep(Duration::from_secs(5)).await;
+                        std::process::exit(0);
+                    }
+                } else {
                     std::process::exit(0);
                 }
             }
