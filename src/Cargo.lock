@@ -1661,6 +1661,7 @@ dependencies = [
  "cyfs-chunk-lib",
  "cyfs-util",
  "futures-lite",
+ "hex",
  "log 0.4.16",
  "memmap2",
  "num-traits",
