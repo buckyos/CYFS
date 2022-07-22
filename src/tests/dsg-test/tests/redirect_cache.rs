@@ -124,15 +124,12 @@ async fn download_from_cache_miner() {
         let chunk = chunks[0].clone();
         let mut config = ChunkDownloadConfig::force_stream(dsg.stack().local_device_id());
         config.referer = Some(BdtDataRefererInfo {
+            target: Some(contract_ref.id()), 
             object_id: chunk.object_id().clone(), 
             inner_path: None,
             dec_id: None, 
             req_path: None, 
-            referer_object: vec![NDNDataRefererObject {
-                target: Some(contract_ref.id()), 
-                object_id: chunk.object_id().clone(), 
-                inner_path: None,
-            }],
+            referer_object: vec![],
             flags: 0,
         }.encode_string());
         

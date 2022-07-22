@@ -343,19 +343,17 @@ where
                 param: &RouterHandlerInterestRequest,
             ) -> BuckyResult<RouterHandlerInterestResult> {
                 log::info!(
-                    "{} OnInterest, interest={:?}, from={}",
+                    "{} OnInterest, request={}",
                     self.miner,
-                    param.request.interest, 
-                    param.request.from_channel
+                    param.request, 
                 );
-                let referer = BdtDataRefererInfo::decode_string(param.request.interest.referer.as_ref().unwrap().as_str())?;
-                let contract_id = referer.referer_object[0].target.clone().unwrap();
-
+                let target = param.request.referer.as_ref().unwrap().target.clone().unwrap();
+                
 
                 Ok(RouterHandlerInterestResult {
-                    action: RouterHandlerAction::Default,
+                    action: RouterHandlerAction::Response,
                     request: None,
-                    response: None,
+                    response: Some(Ok(InterestHandlerResponse::Upload)),
                 })
             }
         }
@@ -367,7 +365,7 @@ where
             "OnInterest",
             0,
             format!(
-                "interest.referer=='*:*'",
+                "target!=$none",
             )
             .as_str(),
             RouterHandlerAction::Default,

@@ -127,11 +127,12 @@ impl RequestHandlerHelper<NDNDeleteDataInputResponse> for NDNDeleteDataInputResp
 // interest handler
 impl RequestHandlerHelper<InterestHandlerRequest> for InterestHandlerRequest {
     fn update(&mut self, handler: Self) {
-        self.interest = handler.interest.clone();
+        self.referer = handler.referer;
+        self.prefer_type = handler.prefer_type;
     }
 
     fn debug_info(&self) -> String {
-        self.interest.session_id.value().to_string()
+        self.session_id.value().to_string()
     }
 }
 

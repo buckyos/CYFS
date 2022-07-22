@@ -68,6 +68,32 @@ impl ExpReservedTokenTranslatorHelper {
         Some(ret)
     }
 
+    fn trans_bdt_interest_referer(
+        token: &str,
+        referer: &BdtDataRefererInfo
+    ) -> Option<ExpTokenEvalValue> {
+        let ret = match token {
+            "target" => ExpTokenEvalValue::from_opt_string(&referer.target),
+            "object_id" => ExpTokenEvalValue::from_string(&referer.object_id),
+            "inner_path" => ExpTokenEvalValue::from_opt_glob(&referer.inner_path),
+            "dec_id" => ExpTokenEvalValue::from_string(&referer.object_id),
+            "req_path" => ExpTokenEvalValue::from_opt_glob(&referer.inner_path),
+            "referer_object" => {
+                if referer.referer_object.len() > 0 {
+                    ExpTokenEvalValue::from_glob_list(&referer.referer_object)
+                } else {
+                    ExpTokenEvalValue::None
+                }
+            }, 
+            "flags" => ExpTokenEvalValue::U32(referer.flags),
+            _ => {
+                return None;
+            }
+        };
+
+        Some(ret)
+    }
+
     fn trans_ndn_input_request_common(
         token: &str,
         common: &NDNInputRequestCommon,
@@ -719,12 +745,16 @@ impl ExpReservedTokenTranslator for AclHandlerResponse {
 impl ExpReservedTokenTranslator for InterestHandlerRequest {
     fn trans(&self, token: &str) -> ExpTokenEvalValue {
         match token {
-            "interest.chunk" => ExpTokenEvalValue::from_string(&self.interest.chunk), 
-            "interest.referer" => ExpTokenEvalValue::from_opt_glob(&self.interest.referer), 
-            "interest.from" => ExpTokenEvalValue::from_opt_string(&self.interest.from), 
+            "chunk" => ExpTokenEvalValue::from_string(&self.chunk), 
+            "from" => ExpTokenEvalValue::from_opt_string(&self.from), 
             "from_channel" => ExpTokenEvalValue::from_string(&self.from_channel), 
             _ => {
-                unreachable!("unknown router acl request reserved token: {}", token);
+                if let Some(referer) = &self.referer {
+                    if let Some(v) = ExpReservedTokenTranslatorHelper::trans_bdt_interest_referer(token, referer) {
+                        return v;
+                    }
+                }
+                unreachable!("unknown router interest request reserved token: {}", token);
             }
         }
     }
@@ -735,16 +765,18 @@ impl ExpReservedTokenTranslator for InterestHandlerResponse {
         match token {
             "type" => ExpTokenEvalValue::String(self.type_str().to_owned()), 
             "transmit_to" => ExpTokenEvalValue::from_opt_string(&self.transmit_to().clone()), 
-            "resp_interest.err" => {
+            "err" => {
                 if let Some(err) = self.resp_interest().map(|r| r.err.as_u16()) {
                     ExpTokenEvalValue::U32(err as u32)
                 } else {
                     ExpTokenEvalValue::None
                 }
             }, 
-            "resp_interest.redirect" => ExpTokenEvalValue::from_opt_string(&self.resp_interest().and_then(|r| r.redirect.clone())), 
-            "resp_interest.redirect_referer" => ExpTokenEvalValue::from_opt_glob(&self.resp_interest().and_then(|r| r.redirect_referer.clone())), 
-            _ => ExpTokenEvalValue::None,
+            "redirect" => ExpTokenEvalValue::from_opt_string(&self.resp_interest().and_then(|r| r.redirect.clone())), 
+            "redirect_referer_target" => ExpTokenEvalValue::from_opt_string(&self.resp_interest().and_then(|r| r.redirect_referer_target.clone())), 
+            _ => {
+                unreachable!("unknown router interest response reserved token: {}", token);
+            }, 
         }
     }
 }
@@ -816,6 +848,16 @@ impl RouterHandlerReservedTokenList {
             acl: Self::gen_acl(),
             interest: Self::gen_interest(), 
         }
+    }
+
+    fn add_bdt_interest_referer_tokens(token_list: &mut ExpReservedTokenList) {
+        token_list.add_string("target");
+        token_list.add_string("object_id");
+        token_list.add_glob("inner_path");
+        token_list.add_string("dec_id");
+        token_list.add_glob("req_path");
+        token_list.add_glob("referer_object");
+        token_list.add_u32("flags");
     }
 
     fn add_non_input_request_common_tokens(token_list: &mut ExpReservedTokenList) {
@@ -1243,9 +1285,9 @@ impl RouterHandlerReservedTokenList {
     fn gen_interest_request() -> ExpReservedTokenList {
         let mut token_list = ExpReservedTokenList::new();
         
-        token_list.add_string("interest.chunk");
-        token_list.add_glob("interest.referer");
-        token_list.add_string("interest.from");
+        token_list.add_string("chunk");
+        token_list.add_string("from");
+        Self::add_bdt_interest_referer_tokens(&mut token_list);
         token_list.add_string("from_channel");
 
         token_list
@@ -1256,9 +1298,9 @@ impl RouterHandlerReservedTokenList {
 
         token_list.add_string("type");
         token_list.add_string("transmit_to");
-        token_list.add_u32("resp_interest.err");
-        token_list.add_glob("resp_interest.redirect_referer");
-        token_list.add_string("resp_interest.redirect");
+        token_list.add_u32("err");
+        token_list.add_glob("redirect");
+        token_list.add_string("redirect_referer_target");
         
         token_list.translate_resp();
 
