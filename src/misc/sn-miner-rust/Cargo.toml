@@ -1,0 +1,21 @@
+[package]
+name = "sn-miner-rust"
+version = "0.5.0"
+authors = ["zhangzhen <zhangzhen@buckyos.com>"]
+edition = "2018"
+license = "BSD-2-Clause"
+description = "Rust sn-miner-rust package"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libc = "0.2"
+log = "0.4"
+async-std = "1.11"
+async-trait = "0.1.53"
+cyfs-util = {path="../../component/cyfs-util"}
+cyfs-base = {path="../../component/cyfs-base"}
+cyfs-debug = {path="../../component/cyfs-debug"}
+cyfs-bdt = {path="../../component/cyfs-bdt"}
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
