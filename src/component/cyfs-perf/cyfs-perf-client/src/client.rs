@@ -13,6 +13,7 @@ use std::sync::Arc;
 pub struct PerfClientInner {
     id: String,
     version: String,
+    span_times: Vec<u32>,
     dec_id: Option<ObjectId>,
     perf_server_config: PerfServerConfig,
 
@@ -28,6 +29,7 @@ impl PerfClientInner {
     pub(crate) fn new(
         id: String,
         version: String,
+        span_time: u32,
         dec_id: Option<ObjectId>,
         perf_server_config: PerfServerConfig,
         stack: SharedCyfsStack,
@@ -38,10 +40,22 @@ impl PerfClientInner {
         let req = UtilGetZoneOutputRequest::new(None, None);
         let resp = block_on(stack.util().get_zone(req)).unwrap();
         let people_id = resp.zone.owner().to_owned();
+        
+        let mut span_duration = span_time;
+        if span_time < 1 || span_time >= 1440 {
+            span_duration = 60;
+        }
+        let mut span_times = Vec::new();
+        let mut seg = 0;
+        while seg < 1440 {
+            span_times.push(seg);
+            seg += span_duration;
+        }
 
         Self {
             id,
             version,
+            span_times,
             dec_id,
             perf_server_config,
             people_id,
@@ -61,7 +75,7 @@ impl PerfClientInner {
             hash_map::Entry::Vacant(v) => {
                 log::info!("new isolate module: id={}", id);
 
-                let isolate = PerfIsolate::new(id, &self.people_id, &self.device_id, self.dec_id.clone(), &self.id, self.cyfs_stack.clone());
+                let isolate = PerfIsolate::new(id, &self.span_times, &self.people_id, &self.device_id, self.dec_id.clone(), &self.id, self.cyfs_stack.clone());
                 let temp_isolate = isolate.clone();
                 v.insert(isolate);
                 temp_isolate.clone()
@@ -87,11 +101,12 @@ impl PerfClient {
     pub fn new(
         id: String,
         version: String,
+        span_time: u32,
         dec_id: Option<ObjectId>,
         perf_server_config: PerfServerConfig,
         stack: SharedCyfsStack,
     ) -> Self {
-        let ret = PerfClientInner::new(id, version, dec_id, perf_server_config, stack);
+        let ret = PerfClientInner::new(id, version, span_time, dec_id, perf_server_config, stack);
         Self(Arc::new(ret))
     }
 }

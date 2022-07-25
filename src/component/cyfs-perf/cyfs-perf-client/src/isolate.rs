@@ -42,12 +42,14 @@ struct PerfIsolateInner {
 
     id: String,
 
+    span_times: Vec<u32>,
+
     pending_reqs: HashMap<String, u64>,
 
 }
 
 impl PerfIsolateInner {
-    pub fn new(isolate_id: &str, people_id: &ObjectId, device_id: &ObjectId, dec_id: Option<ObjectId>, id: impl Into<String>, stack: SharedCyfsStack) -> PerfIsolateInner {
+    pub fn new(isolate_id: &str, span_times: &Vec<u32>, people_id: &ObjectId, device_id: &ObjectId, dec_id: Option<ObjectId>, id: impl Into<String>, stack: SharedCyfsStack) -> PerfIsolateInner {
         let dec_id = match dec_id {
             Some(id) => id,
             None => ObjectId::from_str(PERF_SERVICE_DEC_ID).unwrap(),
@@ -57,6 +59,7 @@ impl PerfIsolateInner {
             people_id: people_id.to_owned(),
             device_id: device_id.to_owned(),
             isolate_id: isolate_id.to_owned(),
+            span_times: span_times.to_owned(),
             id: id.into(),
             pending_reqs: HashMap::new(),
             dec_id,
@@ -72,12 +75,41 @@ impl PerfIsolateInner {
         Ok(())
     }
 
+    fn search_lastsmall<E: PartialOrd>(&self, data: Vec<E>, target: E) -> i32 {
+        if data.len() <= 1 {
+            return 0;
+        }
+        let mut l: i32 = 0;
+        // 左闭右开区间
+        let mut r = data.len() as i32 -1;
+        while l <= r {
+            let mid = (l + r) / 2;
+            if data[mid as usize] <= target {
+                if mid == (data.len() -1) as i32 || data[mid as usize + 1] > target {
+                    return mid;
+                }
+                l = mid + 1;
+            } else {
+                r = mid - 1;
+            }
+        }
+
+        return 0;
+    }
+    
 
     fn get_local_cache_path(&self, isolate_id: String, id: String, perf_type: PerfType) -> String {
         let now = Utc::now();
         let (_is_common_era, year) = now.year_ce();
         let date = format!("{:02}-{:02}-{:02}", year, now.month(), now.day());
-        let time_span = format!("{:02}:{:02}", now.hour(), now.minute());
+        
+        //let time_span = format!("{:02}:{:02}", now.hour(), now.minute());
+        let cur_span_time = now.hour() * 60 + now.minute();
+        let slot = self.search_lastsmall(self.span_times.to_owned(), cur_span_time);
+        let cur_span_time = self.span_times[slot as usize];
+        let hour = cur_span_time / 60;
+        let minute = cur_span_time % 60;
+        let time_span = format!("{:02}:{:02}", hour, minute);
         let people_id = self.people_id.to_string();
         let device_id = self.device_id.to_string();
         //<owner>/<device>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
@@ -285,8 +317,8 @@ impl PerfIsolateInner {
 pub struct PerfIsolate(Arc<Mutex<PerfIsolateInner>>);
 
 impl PerfIsolate {
-    pub fn new(isolate_id: &str, people_id: &ObjectId, device_id: &ObjectId, dec_id: Option<ObjectId>, id: impl Into<String>, stack: SharedCyfsStack) -> Self {
-        Self(Arc::new(Mutex::new(PerfIsolateInner::new(isolate_id, people_id, device_id, dec_id, id, stack))))
+    pub fn new(isolate_id: &str, span_times: &Vec<u32>, people_id: &ObjectId, device_id: &ObjectId, dec_id: Option<ObjectId>, id: impl Into<String>, stack: SharedCyfsStack) -> Self {
+        Self(Arc::new(Mutex::new(PerfIsolateInner::new(isolate_id, span_times, people_id, device_id, dec_id, id, stack))))
     }
 
     // 开启一个request

@@ -22,6 +22,7 @@ pub async fn test() {
     let perf = PerfClient::new(
         "test-perf".to_owned(),
         "1.0.0".to_owned(),
+        60,
         Some(dec_id),
         PerfServerConfig::Default,
         stack,
