@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use serde::Serialize;
 use cyfs_base::*;
 use crate::codec::*;
@@ -101,7 +100,7 @@ pub struct SpeedResult {
 
 impl MergeResult<f32> for SpeedResult {
     fn merge(&mut self, value: f32, _total_num: u32) {
-        self.min = if self.min.partial_cmp(&0.0) == Some(Ordering::Equal) {value} else {self.min.min(value)};
+        self.min = self.min.min(value);
         self.max = self.max.max(value);
 
     }
@@ -171,9 +170,9 @@ impl PerfRequestObj for PerfRequest {
             if let Some(stat) = stat {
                 desc.size.merge(stat, desc.success);
 
-                let speed = (stat as f64 / (spend_time / 1000) as f64) as f32;
+                let speed = (stat / spend_time / 1000) as f32;
+                desc.speed.avg = (desc.size.total  / desc.time.total / 1000) as f32;
                 desc.speed.merge(speed, 0);
-                desc.speed.avg = (desc.size.total as f64 / (desc.time.total / 1000) as f64) as f32;
             }
         } else {
             desc.failed += 1;

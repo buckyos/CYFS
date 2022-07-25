@@ -164,14 +164,15 @@ impl PerfIsolateInner {
         let full_id = format!("{}_{}", id, key);
 
         let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Requests);
-
-        let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
+        //info!("path: {:?}", path);
+        let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
         let ret = op_env.get_by_path(&path).await?;
         if ret.is_none() {
             match self.pending_reqs.remove(&full_id) {
                 Some(_tick) => {
                     let perf_obj = PerfRequest::create(self.people_id, self.dec_id);
+                    info!("creating PerfRequest {:?}", perf_obj.desc().content());
                     let v = perf_obj.add_stat(spend_time, stat);
                     let object_raw = v.to_vec()?;
                     let object_id = v.desc().object_id();
@@ -190,6 +191,7 @@ impl PerfIsolateInner {
                 let perf_obj = PerfRequest::decode(&resp.object.object_raw)?;
                 match self.pending_reqs.remove(&full_id) {
                     Some(_tick) => {
+                        info!("creating PerfRequest {:?}", perf_obj.desc().content());
                         let v = perf_obj.add_stat(spend_time, stat);
                         let object_raw = v.to_vec()?;
                         let object_id = v.desc().object_id();
@@ -224,7 +226,7 @@ impl PerfIsolateInner {
 
         let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Accumulations);
 
-        let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
+        let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
         let ret = op_env.get_by_path(&path).await?;
         if ret.is_none() {
@@ -275,11 +277,10 @@ impl PerfIsolateInner {
     pub async fn record(&mut self, _id: &str, total: u64, total_size: Option<u64>) -> BuckyResult<()>{
         let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
 
-        let root_state = self.stack.root_state_stub(Some(self.people_id), Some(self.dec_id));
+        let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
         let ret = op_env.get_by_path(&path).await?;
         if ret.is_none() {
-            info!("record get_by_path: {path}  not found");
             let perf_obj = PerfRecord::create(self.people_id, self.dec_id, total, total_size);
             let v = perf_obj.add_stat(total, total_size);
             let object_raw = v.to_vec()?;
