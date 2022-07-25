@@ -360,7 +360,7 @@ impl ProtobufTransform<&PerfRecordDesc> for protos::PerfRecord {
 
 impl DescContent for PerfRecordDesc {
     fn obj_type() -> u16 {
-        PerfObjectType::Accumulation as u16
+        PerfObjectType::Record as u16
     }
 
     fn format(&self) -> u8 {
