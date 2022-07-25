@@ -283,7 +283,7 @@ impl ProtobufTransform<&PerfActionDesc> for protos::PerfAction {
 
 impl DescContent for PerfActionDesc {
     fn obj_type() -> u16 {
-        PerfObjectType::Accumulation as u16
+        PerfObjectType::Action as u16
     }
 
     fn format(&self) -> u8 {
