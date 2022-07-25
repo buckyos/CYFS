@@ -120,16 +120,17 @@ impl DownloadSessions {
         }
     }
 
-    fn take_redirect(&self) -> Option<(DeviceId, String)> {
+    fn get_redirect(&self) -> Option<(DeviceId, String)> {
         match &self.0.session_type {
             SessionType::Single(session) => {
-                session.take_redirect()
+                session.get_redirect()
             },
             SessionType::Double(session) => {
-                session.take_redirect()
+                session.get_redirect()
             }
         }
     }
+
 }
 
 struct InitState {
@@ -272,8 +273,8 @@ impl ChunkDownloader {
                         }, 
                         TaskState::Canceled(err) => {
                             match err {
-                                BuckyErrorCode::SessionRedirect | BuckyErrorCode::SessionWaitActive => {
-                                    if let Some((target_id, referer)) = sessions.take_redirect() {
+                                BuckyErrorCode::Redirect | BuckyErrorCode::NotConnected => {
+                                    if let Some((target_id, referer)) = sessions.get_redirect() {
                                         let mut config = ChunkDownloadConfig::force_stream(target_id.clone());
                                         config.referer = Some(referer);
     
@@ -283,7 +284,7 @@ impl ChunkDownloader {
                                         unreachable!()
                                     }
                                 },
-                                BuckyErrorCode::SessionWaitRedirect => {
+                                BuckyErrorCode::Pending => {
                                     let _ = async_std::future::timeout(stack.config().ndn.channel.wait_redirect_timeout, 
                                                                        async_std::future::pending::<()>());
                                     // restart session
