@@ -7,7 +7,7 @@ use super::{
     channel::{
         protocol::v0::*, 
         Channel, 
-        UploadSession
+        UploadSession, DownloadSession
     }, 
 };
 
@@ -26,7 +26,7 @@ pub trait NdnEventHandler: Send + Sync {
         stack: &Stack, 
         piece: &PieceData, 
         from: &Channel
-    ) -> BuckyResult<()>;
+    ) -> BuckyResult<DownloadSession>;
 }
 
 
@@ -50,9 +50,16 @@ impl NdnEventHandler for DefaultNdnEventHandler {
         _stack: &Stack, 
         _piece: &PieceData, 
         _from: &Channel
-    ) -> BuckyResult<()> {
+    ) -> BuckyResult<DownloadSession> {
         //FIXME: 也有可能向上传递新建task
-        Err(BuckyError::new(BuckyErrorCode::Interrupted, "no session downloading"))
+        let session = _stack.ndn().channel_manager().downloadsession_of(&_piece.session_id);
+        if session.is_none() {
+            return Err(BuckyError::new(BuckyErrorCode::Interrupted, "no session downloading"));
+        }
+        let session = session.unwrap();
+        _from.insert_download(session.clone())?;
+
+        Ok(session)
     }
 
     // 处理全新的interest请求;已经正在上传的interest请求不会传递到这里;
@@ -80,30 +87,26 @@ impl NdnEventHandler for DefaultNdnEventHandler {
         //                                           err.code()))
         //     }
         // }?;
-        enum State {
-            Continue(Channel),
-            Break(UploadSession),
-        }
-
-        let (step, requestor) = {
+        let requestor = {
             if let Some(requestor) = &interest.from {
                 if let Some(requestor) = stack.ndn().channel_manager().channel_of(&requestor) {
-                    (State::Continue(requestor.clone()), requestor)
+                    requestor
                 } else {
-                    // (State::Break(UploadSession::redirect(interest.chunk.clone(), 
-                    //                                       interest.session_id.clone(),
-                    //                                       interest.prefer_type.clone(), 
-                    //                                       from.clone(), 
-                    //                                       requestor.clone(),
-                    //                                       interest.referer)), from.clone())
-                    (State::Break(UploadSession::canceled(interest.chunk.clone(),
-                                                          interest.session_id.clone(),
-                                                          interest.prefer_type.clone(),
-                                                          from.clone(),
-                                                          BuckyErrorCode::SessionWaitActive)), from.clone())
+                    let resp_interest = 
+                        RespInterest {
+                            session_id: interest.session_id.clone(),
+                            chunk: interest.chunk.clone(),
+                            err: BuckyErrorCode::NotConnected,
+                            redirect: Some(stack.local_device_id().clone()),
+                            redirect_referer: interest.referer.clone(),
+                            to: Some(requestor.clone()),
+                        };
+
+                    from.resp_interest(resp_interest);
+                    return Ok(());
                 }
             } else {
-                (State::Continue(from.clone()), from.clone())
+                from.clone()
             }
         };
 
@@ -112,36 +115,31 @@ impl NdnEventHandler for DefaultNdnEventHandler {
         //  否则拒绝或者给出其他源，回复RespInterest
 
         let session = {
-            match step {
-                State::Continue(from) => {
-                    match stack.ndn().chunk_manager().start_upload(
-                        interest.session_id.clone(), 
-                        interest.chunk.clone(), 
-                        interest.prefer_type.clone(), 
-                        requestor.clone(), 
-                        stack.ndn().root_task().upload().resource().clone()).await {
-                        Ok(session) => {
-                            // do nothing
-                            Ok(session)
-                        }, 
-                        Err(err) => {
-                            match err.code() {
-                                BuckyErrorCode::AlreadyExists => {
-                                    //do nothing
-                                    Err(err)
-                                },
-                                _ => Ok(UploadSession::canceled(
-                                    interest.chunk.clone(), 
-                                    interest.session_id.clone(), 
-                                    interest.prefer_type.clone(), 
-                                    from.clone(), 
-                                    err.code()))
-                            }
-                        }
-                    }?
+            match stack.ndn().chunk_manager().start_upload(
+                interest.session_id.clone(), 
+                interest.chunk.clone(), 
+                interest.prefer_type.clone(), 
+                requestor.clone(), 
+                stack.ndn().root_task().upload().resource().clone()).await {
+                Ok(session) => {
+                    // do nothing
+                    Ok(session)
+                }, 
+                Err(err) => {
+                    match err.code() {
+                        BuckyErrorCode::AlreadyExists => {
+                            //do nothing
+                            Err(err)
+                        },
+                        _ => Ok(UploadSession::canceled(
+                            interest.chunk.clone(), 
+                            interest.session_id.clone(), 
+                            interest.prefer_type.clone(), 
+                            from.clone(), 
+                            err.code()))
+                    }
                 }
-                State::Break(s) => s,
-            }
+            }?
         };
 
         // 加入到channel的 upload sessions中

@@ -59,12 +59,17 @@ impl DoubleSession {
         None
     }
 
-    pub fn take_redirect(&self) -> Option<(DeviceId, String)> {
+    pub fn get_redirect(&self) -> Option<(DeviceId, String)> {
         let session = self.0.download_session.read().unwrap();
         if let Some(session) = &*session {
-            return session.take_redirect()
+            return session.get_redirect()
         }
         None
+    }
+
+    pub fn get_download_session(&self) -> Option<DownloadSession> {
+        let session = &*self.0.download_session.read().unwrap();
+        session.clone()
     }
 
     pub async fn start(&self) -> TaskState {

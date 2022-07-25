@@ -179,8 +179,8 @@ pub struct Interest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,
     pub prefer_type: PieceSessionType, 
-    pub from: Option<DeviceId>,
     pub referer: Option<String>,
+    pub from: Option<DeviceId>,
     // pub link_url: Option<String>,
     // flow_id:Option<u32>,
     // priority: Option<u8>,
@@ -210,8 +210,8 @@ impl RawEncodeWithContext<DatagramOptions> for Interest {
         let (mut context, buf) = FlagsEncodeContext::new(CommandCode::Interest as u8, enc_buf)?;
         let buf = context.encode(buf, &self.chunk)?;
         let buf = context.encode(buf, &self.prefer_type)?;
-        let buf = context.option_encode(buf, &self.from, flags.next())?;
-        let _ = context.option_encode(buf, &self.referer, flags.next())?;
+        let buf = context.option_encode(buf, &self.referer, flags.next())?;
+        let _ = context.option_encode(buf, &self.from, flags.next())?;
         context.finish(enc_buf)
     }
 }
@@ -227,15 +227,15 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for Interest {
         let (mut context, buf) = FlagsDecodeContext::new(buf)?;
         let (chunk, buf) = context.decode(buf)?;
         let (prefer_type, buf) = context.decode(buf)?;
-        let (from, buf) = context.option_decode(buf, flags.next())?;
         let (referer, buf) = context.option_decode(buf, flags.next())?;
+        let (from, buf) = context.option_decode(buf, flags.next())?;
         Ok((
             Self {
                 session_id, 
                 chunk, 
                 prefer_type, 
+                referer,
                 from,
-                referer
             },
             buf,
         ))
@@ -272,6 +272,7 @@ pub struct RespInterest {
     pub err: BuckyErrorCode,
     pub redirect: Option<DeviceId>,
     pub redirect_referer: Option<String>,
+    pub to: Option<DeviceId>,
 }
 
 
@@ -297,7 +298,8 @@ impl RawEncodeWithContext<DatagramOptions> for RespInterest {
         let buf = context.encode(buf, &self.chunk)?;
         let buf = context.encode(buf, &(self.err.into_u16()))?;
         let buf = context.option_encode(buf, &(self.redirect), flags.next())?;
-        let _ = context.option_encode(buf, &(self.redirect_referer), flags.next())?;
+        let buf = context.option_encode(buf, &(self.redirect_referer), flags.next())?;
+        let _ = context.option_encode(buf, &(self.to), flags.next())?;
         context.finish(enc_buf)
     }
 }
@@ -317,13 +319,16 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for RespInterest {
         let err = BuckyErrorCode::from(err);
         let (id, buf) = context.option_decode(buf, flags.next())?;
         let (referer, buf) = context.option_decode(buf, flags.next())?;
+        let (to, buf) = context.option_decode(buf, flags.next())?;
+
         Ok((
             Self {
                 session_id, 
                 chunk, 
                 err,
                 redirect: id,
-                redirect_referer: referer
+                redirect_referer: referer,
+                to
             },
             buf,
         ))

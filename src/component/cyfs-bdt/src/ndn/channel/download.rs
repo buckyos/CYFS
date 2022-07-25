@@ -81,7 +81,7 @@ impl StateImpl {
             Self::Downloading(_) => TaskState::Running(0), 
             Self::Finished(_) => TaskState::Finished, 
             Self::Canceled(canceled) => TaskState::Canceled(canceled.err.code()),
-            Self::Redirect(_) => TaskState::Canceled(BuckyErrorCode::SessionRedirect),
+            Self::Redirect(_) => TaskState::Canceled(BuckyErrorCode::Redirect),
         }
     }
 }
@@ -226,7 +226,7 @@ impl DownloadSession {
                 StateImpl::Downloading(downloading) => NextStep::Wait(downloading.waiters.new_waiter()),
                 StateImpl::Finished(_) => NextStep::Return(TaskState::Finished), 
                 StateImpl::Canceled(canceled) => NextStep::Return(TaskState::Canceled(canceled.err.code())),
-                StateImpl::Redirect(_) => NextStep::Return(TaskState::Canceled(BuckyErrorCode::SessionRedirect)),
+                StateImpl::Redirect(_) => NextStep::Return(TaskState::Canceled(BuckyErrorCode::Redirect)),
             }
         };
         match next_step {
@@ -252,7 +252,7 @@ impl DownloadSession {
         }
     }
 
-    pub fn take_redirect(&self) -> Option<(DeviceId /* target-id */, String /* referer */)> {
+    pub fn get_redirect(&self) -> Option<(DeviceId /* target-id */, String /* referer */)> {
         match &*self.0.state.read().unwrap() {
             StateImpl::Redirect(redirect) => {
                 Some((redirect.redirect.clone(), redirect.redirect_referer.clone()))
@@ -413,7 +413,7 @@ impl DownloadSession {
     pub(super) fn on_resp_interest(&self, resp_interest: &RespInterest) -> BuckyResult<()> {
         match &resp_interest.err {
             BuckyErrorCode::Ok => unimplemented!(),
-            BuckyErrorCode::SessionRedirect | BuckyErrorCode::SessionWaitActive => {
+            BuckyErrorCode::Redirect | BuckyErrorCode::NotConnected => {
                 if resp_interest.redirect.is_some() && resp_interest.redirect_referer.is_some() {
                     let redirect_node = resp_interest.redirect.as_ref().unwrap();
                     let referer = resp_interest.redirect_referer.as_ref().unwrap();
