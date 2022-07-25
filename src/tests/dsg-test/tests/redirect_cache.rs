@@ -141,7 +141,7 @@ async fn download_from_cache_miner() {
         )
         .await;
         let recv = future::timeout(
-            Duration::from_secs(5),
+            Duration::from_secs(10),
             watch_recv_chunk(requester.clone(), chunk.clone()),
         )
         .await
@@ -154,7 +154,7 @@ async fn download_from_cache_miner() {
 
 
 #[async_std::test]
-async fn download_from_cache_miner_embed_bdt() {
+async fn download_from_embed_bdt() {
     cyfs_debug::CyfsLoggerBuilder::new_app("dsg-all-in-one")
         .level("debug")
         .console("debug")
