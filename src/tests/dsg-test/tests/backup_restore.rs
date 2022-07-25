@@ -60,7 +60,7 @@ async fn backup_restore() {
         .build()
         .start();
 
-    let dsg = ignore_witness::AllInOneDsg::new(None).await.unwrap();
+    let dsg = ignore_witness::AllInOneDsg::new(None, None).await.unwrap();
 
     let (chunk_len, chunk_data) = random_mem(1024, 16 * 1024);
     let chunk_hash = hash_data(&chunk_data[..]);

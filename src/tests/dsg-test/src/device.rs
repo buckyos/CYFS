@@ -1,4 +1,5 @@
 use std::{
+    sync::Arc, 
     str::FromStr, 
     time::Duration
 };
@@ -37,9 +38,46 @@ fn create_device(owner: &str, endpoints: &[&str]) -> BuckyResult<(Device, Privat
 }
 
 
+pub async fn slave_bdt_stack(
+    stack: &SharedCyfsStack, 
+    ep_list: &[&str], 
+    config: Option<StackConfig>,
+) -> BuckyResult<StackGuard> {
+    let device = stack.local_device();
+
+    
+    let (ln_dev, ln_secret) = create_device(&device.desc().owner().as_ref().unwrap().to_string(), ep_list)?;
+    
+    let ndc = cyfs_ndc::DataCacheManager::create_data_cache("")?;
+    let tracker = cyfs_tracker_cache::TrackerCacheManager::create_tracker_cache("")?;
+    let chunk_manager = Arc::new(cyfs_chunk_cache::ChunkManager::new());
+
+    let mut ln_params = StackOpenParams::new("");
+    ln_params.chunk_store = Some(Box::new(cyfs_stack::ndn_api::ChunkStoreReader::new(
+        chunk_manager.clone(),
+        ndc.clone(),
+        tracker.clone(),
+    )));
+    ln_params.ndc = Some(ndc.clone());
+    ln_params.tracker = Some(tracker.clone());
+    let mut config = config;
+    if config.is_some() {
+        std::mem::swap(&mut ln_params.config, config.as_mut().unwrap());
+    }
+   
+    let sn = cyfs_util::get_default_sn_desc();
+    ln_params.known_sn = Some(vec![sn]);
+    ln_params.known_device = Some(vec![device]);
+
+    let local_stack = Stack::open(ln_dev.clone(), ln_secret, ln_params).await?;
+
+    Ok(local_stack)
+}
+
+
 pub async fn local_bdt_stack(
     stack: &SharedCyfsStack, 
-    ep: &[&str],
+    ep: &[&str], 
     config: Option<StackConfig>,
 ) -> BuckyResult<(StackGuard, MemChunkStore)> {
     let (ln_dev, ln_secret) = create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", ep)?;

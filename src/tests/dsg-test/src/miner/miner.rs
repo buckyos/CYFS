@@ -187,6 +187,12 @@ pub trait DsgMinerDelegate: Send + Sync {
         challenge: DsgChallengeObject,
         from: DeviceId,
     ) -> BuckyResult<()>;
+
+    async fn on_interest(
+        &self, 
+        interface: &DsgMinerInterface, 
+        request: &InterestHandlerRequest
+    ) -> BuckyResult<InterestHandlerResponse>;
 }
 
 struct MinerImpl<D>
@@ -347,13 +353,16 @@ where
                     self.miner,
                     param.request, 
                 );
-                let target = param.request.referer.as_ref().unwrap().target.clone().unwrap();
-                
+                let resp = self.miner.delegate().on_interest(
+                        self.miner.interface(),
+                        &param.request
+                    )
+                    .await;
 
                 Ok(RouterHandlerInterestResult {
                     action: RouterHandlerAction::Response,
                     request: None,
-                    response: Some(Ok(InterestHandlerResponse::Upload)),
+                    response: Some(resp),
                 })
             }
         }

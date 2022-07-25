@@ -62,7 +62,7 @@ async fn create_contract() {
         .build()
         .start();
 
-    let dsg = ignore_witness::AllInOneDsg::new(None).await.unwrap();
+    let dsg = ignore_witness::AllInOneDsg::new(None, None).await.unwrap();
 
     let mut chunks = vec![];
     for _ in 0..3 {

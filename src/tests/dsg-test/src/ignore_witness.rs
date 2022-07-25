@@ -4,9 +4,13 @@ use async_trait::async_trait;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
+use cyfs_bdt::*;
 use cyfs_dsg_client::*;
 use dsg_service::*;
-use super::miner::*;
+use super::{
+    device::*, 
+    miner::*
+};
 
 
 
@@ -56,7 +60,7 @@ pub struct AllInOneDsg {
 }
 
 impl AllInOneDsg {
-    pub async fn new(service_config: Option<DsgServiceConfig>) -> BuckyResult<Self> {
+    pub async fn new(service_config: Option<DsgServiceConfig>, miner_config: Option<TestMinerConfig>) -> BuckyResult<Self> {
         let dec_id = DecApp::generate_id(
             ObjectId::from_str("5r4MYfFPKMeHa1fec7dHKmBfowySBfVFvRQvKB956dnF").unwrap(),
             "dsg all in one",
@@ -68,7 +72,7 @@ impl AllInOneDsg {
 
         let service = DsgService::new(stack.clone(), service_config.unwrap_or_default()).await?;
 
-        let miner = DsgMiner::new(stack.clone(), TestMiner::new()).await?;
+        let miner = DsgMiner::new(stack.clone(), TestMiner::new(stack.as_ref(), miner_config.unwrap_or_default()).await?).await?;
 
         Ok(Self {
             stack,
@@ -138,11 +142,40 @@ impl DsgClientDelegate for TestClient {
     }
 }
 
-struct TestMiner {}
+pub struct TestMinerConfig {
+    pub embed_bdt_stack: Option<Vec<String/*endpoint string*/>>
+}
+
+impl Default for TestMinerConfig {
+    fn default() -> Self {
+        Self { embed_bdt_stack: None }
+    }
+}
+
+struct TestMiner {
+    embed_bdt_stack: Option<StackGuard>
+}
 
 impl TestMiner {
-    fn new() -> Self {
-        Self {}
+    async fn new(stack: &SharedCyfsStack, config: TestMinerConfig) -> BuckyResult<Self> {
+        let embed_bdt_stack = if let Some(ep_list) = config.embed_bdt_stack {
+            let ep: Vec<&str> = ep_list.iter().map(|e| e.as_str()).collect();
+            let bdt_stack = slave_bdt_stack(stack, ep.as_slice(), None).await?;
+            let _ = bdt_stack.net_manager().listener().wait_online().await?;
+
+            let _ = stack.non_service().put_object(NONPutObjectOutputRequest::new(
+                NONAPILevel::NOC,
+                bdt_stack.local_device_id().object_id().clone(),
+                bdt_stack.local().to_vec()?,
+            )).await?;
+            
+            Some(bdt_stack)
+        } else {
+            None
+        };
+        Ok(Self {
+            embed_bdt_stack
+        })
     }
 }
 
@@ -190,5 +223,17 @@ impl DsgMinerDelegate for TestMiner {
         });
 
         Ok(())
+    }
+
+    async fn on_interest(
+        &self, 
+        _interface: &DsgMinerInterface, 
+        _request: &InterestHandlerRequest
+    ) -> BuckyResult<InterestHandlerResponse> {
+        Ok(if let Some(bdt_stack) = &self.embed_bdt_stack {
+            InterestHandlerResponse::Transmit(bdt_stack.local_device_id().clone())
+        } else {
+            InterestHandlerResponse::Upload
+        })
     }
 }

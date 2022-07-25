@@ -23,17 +23,17 @@ enum Prooving {
 struct MinerImpl {
     stack: Arc<SharedCyfsStack>,
     prooving: Mutex<BTreeMap<ObjectId, Prooving>>,
-    config: DsgDefaultMinerConfig,
+    config: DsgDefaultMinerConfig, 
 }
 
 pub struct DsgDefaultMinerConfig {
-    pub atomic_interval: Duration,
+    pub atomic_interval: Duration, 
 }
 
 impl Default for DsgDefaultMinerConfig {
     fn default() -> Self {
         Self {
-            atomic_interval: Duration::from_secs(60),
+            atomic_interval: Duration::from_secs(60), 
         }
     }
 }
@@ -48,9 +48,11 @@ impl DsgDefaultMiner {
     ) -> BuckyResult<Self> {
         let miner = Self(Arc::new(MinerImpl {
             stack,
-            prooving: Mutex::new(BTreeMap::new()),
-            config,
+            prooving: Mutex::new(BTreeMap::new()),  
+            config, 
         }));
+
+       
         let _ = miner.listen()?;
         let _ = miner.load().await?;
 
@@ -716,5 +718,13 @@ impl DsgMinerDelegate for DsgDefaultMiner {
         );
 
         Ok(())
+    }
+
+    async fn on_interest(
+        &self, 
+        _interface: &DsgMinerInterface, 
+        _request: &InterestHandlerRequest
+    ) -> BuckyResult<InterestHandlerResponse> {
+        Ok(InterestHandlerResponse::Upload)
     }
 }

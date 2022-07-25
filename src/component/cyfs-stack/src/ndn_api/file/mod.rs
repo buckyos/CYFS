@@ -5,5 +5,5 @@ mod stream_writer;
 
 pub(crate) use target_data_manager::*;
 pub(crate) use local_data_manager::*;
-pub(crate) use reader::*;
-pub(crate) use stream_writer::*;
+pub use reader::*;
+pub use stream_writer::*;

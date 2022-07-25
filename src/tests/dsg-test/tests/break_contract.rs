@@ -83,7 +83,7 @@ async fn break_contract() {
     service_config.atomic_interval = Duration::from_secs(10);
     service_config.challenge_interval = Duration::from_secs(10);
     service_config.store_challenge.live_time = Duration::from_secs(10);
-    let dsg = ignore_witness::AllInOneDsg::new(Some(service_config)).await.unwrap();
+    let dsg = ignore_witness::AllInOneDsg::new(Some(service_config), None).await.unwrap();
 
     let (chunk_len, chunk_data) = random_mem(1024, 16 * 1024);
     let chunk_hash = hash_data(&chunk_data[..]);
