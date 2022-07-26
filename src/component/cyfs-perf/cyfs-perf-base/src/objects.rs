@@ -181,6 +181,7 @@ pub trait PerfRequestObj {
     fn add_stats(&self, stats: &[PerfRequestItem]) -> PerfRequest;
 }
 
+#[derive(Clone)]
 pub struct PerfRequestItem {
     pub time: u64,
     pub spend_time: u64,
@@ -262,6 +263,7 @@ impl PerfRequestObj for PerfRequest {
     }
 }
 
+#[derive(Clone)]
 pub struct PerfAccumulationItem {
     pub time: u64,
     pub err: BuckyErrorCode,

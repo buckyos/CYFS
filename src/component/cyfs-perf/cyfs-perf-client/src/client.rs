@@ -5,7 +5,7 @@ use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_debug::Mutex;
 use cyfs_lib::*;
-
+use crate::store::PerfStore;
 use std::collections::{hash_map, HashMap};
 use std::ops::Deref;
 use std::sync::Arc;
@@ -13,14 +13,10 @@ use std::sync::Arc;
 pub struct PerfClientInner {
     id: String,
     version: String,
-    span_times: Vec<u32>,
-    dec_id: Option<ObjectId>,
+
     perf_server_config: PerfServerConfig,
 
-    people_id: ObjectId,
-    device_id: ObjectId,
-
-    cyfs_stack: SharedCyfsStack,
+    store: PerfStore,
 
     isolates: Mutex<HashMap<String, PerfIsolate>>,
 }
@@ -40,27 +36,14 @@ impl PerfClientInner {
         let req = UtilGetZoneOutputRequest::new(None, None);
         let resp = block_on(stack.util().get_zone(req)).unwrap();
         let people_id = resp.zone.owner().to_owned();
-        
-        let mut span_duration = span_time;
-        if span_time < 1 || span_time >= 1440 {
-            span_duration = 60;
-        }
-        let mut span_times = Vec::new();
-        let mut seg = 0;
-        while seg < 1440 {
-            span_times.push(seg);
-            seg += span_duration;
-        }
+    
+        let store = PerfStore::new(span_time, people_id, device_id, dec_id, id.to_owned(), stack);
 
         Self {
             id,
             version,
-            span_times,
-            dec_id,
             perf_server_config,
-            people_id,
-            device_id,
-            cyfs_stack: stack,
+            store,
             isolates: Mutex::new(HashMap::new()),
         }
     }
@@ -75,18 +58,9 @@ impl PerfClientInner {
         loop {
             {
                 let isolates = self.isolates.lock().unwrap();
-                for (key, isolate) in isolates {
-                    let data = isolate.take_data();
-                    if data.is_empty() {
-                        continue;
-                    }
-        
-                    info!("will save perf isolate: {}, data={:?}", key, data);
-
-                }
-
+                self.store.save(&isolates);
             }
-            async_std::task::sleep(std::time::Duration::from_secs(60 * 10)).await;
+            async_std::task::sleep(std::time::Duration::from_secs(60 * 5)).await;
         }
     }
 
@@ -100,7 +74,7 @@ impl PerfClientInner {
             hash_map::Entry::Vacant(v) => {
                 log::info!("new isolate module: id={}", id);
 
-                let isolate = PerfIsolate::new(id, &self.span_times, &self.people_id, &self.device_id, self.dec_id.clone(), &self.id, self.cyfs_stack.clone());
+                let isolate = PerfIsolate::new(id);
                 let temp_isolate = isolate.clone();
                 v.insert(isolate);
                 temp_isolate.clone()
