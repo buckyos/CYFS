@@ -4,7 +4,15 @@ use async_trait::async_trait;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
-use cyfs_bdt::*;
+use cyfs_bdt::{
+    StackGuard, 
+    DefaultNdnEventHandler, 
+    NdnEventHandler, 
+    ndn::channel::{
+        ChannelState, 
+        protocol::Interest
+    }
+};
 use cyfs_dsg_client::*;
 use dsg_service::*;
 use super::{
@@ -152,8 +160,13 @@ impl Default for TestMinerConfig {
     }
 }
 
+struct EmbedBdt {
+    stack: StackGuard, 
+    defualt_handler: DefaultNdnEventHandler
+}
+
 struct TestMiner {
-    embed_bdt_stack: Option<StackGuard>
+    embed_bdt: Option<EmbedBdt>
 }
 
 impl TestMiner {
@@ -174,7 +187,10 @@ impl TestMiner {
             None
         };
         Ok(Self {
-            embed_bdt_stack
+            embed_bdt: embed_bdt_stack.map(|stack| EmbedBdt {
+                stack, 
+                defualt_handler: DefaultNdnEventHandler::new()
+            })
         })
     }
 }
@@ -227,11 +243,25 @@ impl DsgMinerDelegate for TestMiner {
 
     async fn on_interest(
         &self, 
-        _interface: &DsgMinerInterface, 
-        _request: &InterestHandlerRequest
+        interface: &DsgMinerInterface, 
+        request: &InterestHandlerRequest
     ) -> BuckyResult<InterestHandlerResponse> {
-        Ok(if let Some(bdt_stack) = &self.embed_bdt_stack {
-            InterestHandlerResponse::Transmit(bdt_stack.local_device_id().clone())
+        Ok(if let Some(embed_bdt) = &self.embed_bdt {
+            let trans_channel = embed_bdt.stack.ndn().channel_manager().create_channel(&request.from_channel);
+            if trans_channel.state() == ChannelState::Active {
+                let interest = Interest {
+                    session_id: request.session_id.clone(), 
+                    chunk: request.chunk.clone(),
+                    prefer_type: request.prefer_type.clone(), 
+                    from: request.from.clone(),
+                    referer: request.referer.as_ref().map(|referer| referer.encode_string()),   
+                };
+                let from_channel = embed_bdt.stack.ndn().channel_manager().create_channel(&interface.stack().local_device_id());
+                let _ = embed_bdt.defualt_handler.on_newly_interest(&*embed_bdt.stack, &interest, &from_channel).await;
+                InterestHandlerResponse::Handled
+            } else {
+                InterestHandlerResponse::Transmit(embed_bdt.stack.local_device_id().clone())
+            }
         } else {
             InterestHandlerResponse::Upload
         })

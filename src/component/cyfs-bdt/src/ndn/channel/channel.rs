@@ -27,7 +27,6 @@ use super::{
     upload::*, 
     protocol::*, 
     tunnel::*,
-    
 };
 
 
@@ -49,16 +48,17 @@ struct ChannelActiveState {
     statistic_task: DynamicStatisticTask,
 }
 
-enum ChannelState {
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ChannelState {
+    Unknown, 
+    Active, 
+    Dead
+}
+
+enum StateImpl {
     Unknown, 
     Active(ChannelActiveState), 
     Dead(Option<Timestamp>)
-}
-
-pub enum ChannelConnectionState {
-    Unknown,
-    Active,
-    Dead(Option<Timestamp>),
 }
 
 struct UploadSessions {
@@ -237,7 +237,7 @@ struct ChannelImpl {
     command_seq: TempSeqGenerator,  
     downloaders: RwLock<BTreeMap<TempSeq, DownloadSession>>, 
     uploaders: Uploaders, 
-    state: RwLock<ChannelState>, 
+    state: RwLock<StateImpl>, 
     statistic_task: DynamicStatisticTask,
 }
 
@@ -265,7 +265,7 @@ impl Channel {
             command_seq: TempSeqGenerator::new(), 
             downloaders: RwLock::new(BTreeMap::new()), 
             uploaders: Uploaders::new(), 
-            state: RwLock::new(ChannelState::Unknown), 
+            state: RwLock::new(StateImpl::Unknown), 
             statistic_task: DynamicStatisticTask::default(),
         }))
     }
@@ -273,7 +273,7 @@ impl Channel {
     pub fn reset(&self) {
         assert!(self.0.uploaders.is_empty());
         assert!(self.0.downloaders.read().unwrap().is_empty());
-        *self.0.state.write().unwrap() = ChannelState::Unknown;
+        *self.0.state.write().unwrap() = StateImpl::Unknown;
     }
 
     pub fn remote(&self) -> &DeviceId {
@@ -414,21 +414,21 @@ impl Channel {
         return self.0.statistic_task.clone();
     }
 
-    pub fn connection_state(&self) -> ChannelConnectionState {
+    pub fn state(&self) -> ChannelState {
         let state = &*self.0.state.read().unwrap();
         match state {
-            ChannelState::Unknown => ChannelConnectionState::Unknown,
-            ChannelState::Active(_) => ChannelConnectionState::Active,
-            ChannelState::Dead(t) => ChannelConnectionState::Dead(*t),
+            StateImpl::Unknown => ChannelState::Unknown,
+            StateImpl::Active(_) => ChannelState::Active,
+            StateImpl::Dead(_) => ChannelState::Dead,
         }
     }
 
     pub fn clear_dead(&self) {
         let state = &mut *self.0.state.write().unwrap();
         match state {
-            ChannelState::Dead(_) => {
+            StateImpl::Dead(_) => {
                 info!("{} Dead=>Unknown", self);
-                *state = ChannelState::Unknown;
+                *state = StateImpl::Unknown;
             },
             _ => {},
         }
@@ -437,7 +437,7 @@ impl Channel {
     fn tunnel(&self) -> Option<DynamicChannelTunnel> {
         let state = &*self.0.state.read().unwrap();
         match state {
-            ChannelState::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
+            StateImpl::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
             _ => None
         }
     }
@@ -568,8 +568,8 @@ impl Channel {
         let tunnel = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                ChannelState::Unknown => None, 
-                ChannelState::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
+                StateImpl::Unknown => None, 
+                StateImpl::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
                 _ => {
                     return;
                 }
@@ -628,7 +628,7 @@ impl Channel {
             }
            
             let state = &*self.0.state.read().unwrap();
-            if let ChannelState::Active(active) = state {
+            if let StateImpl::Active(active) = state {
                 if let TunnelState::Active(_) = active.tunnel.state() {
                     if active.tunnel.raw_ptr_eq(&default_tunnel) {
                         return Some(active.tunnel.clone_as_tunnel());
@@ -643,10 +643,10 @@ impl Channel {
 
         let former_state = {
             match &*self.0.state.read().unwrap() {
-                ChannelState::Unknown => {
+                StateImpl::Unknown => {
                     Some("Unknown")
                 }, 
-                ChannelState::Active(active) => {
+                StateImpl::Active(active) => {
                     // do nothing
                     if let TunnelState::Active(_) = active.tunnel.state() {
                         unreachable!()
@@ -654,7 +654,7 @@ impl Channel {
                         Some("Active")
                     }   
                 }, 
-                ChannelState::Dead(_) => {
+                StateImpl::Dead(_) => {
                     Some("Dead")
                 }
             }
@@ -671,7 +671,7 @@ impl Channel {
                         Ok(tunnel) => {
                             {
                                 let state = &mut *self.0.state.write().unwrap();
-                                *state = ChannelState::Active(ChannelActiveState {
+                                *state = StateImpl::Active(ChannelActiveState {
                                     guard, 
                                     tunnel: tunnel.clone_as_tunnel(),
                                     statistic_task: self.0.statistic_task.clone(),
@@ -702,14 +702,14 @@ impl Channel {
         let tunnel_state = {
             let state = &mut *self.0.state.write().unwrap();
             let tunnel_state = match state {
-                ChannelState::Unknown => None, 
-                ChannelState::Active(active) => Some((
+                StateImpl::Unknown => None, 
+                StateImpl::Active(active) => Some((
                     active.guard.clone(), 
                     active.tunnel.start_at(), 
                     active.tunnel.active_timestamp())), 
-                ChannelState::Dead(_) => None
+                    StateImpl::Dead(_) => None
             };
-            *state = ChannelState::Dead(tunnel_state.clone().map(|(_, _, r)| r));
+            *state = StateImpl::Dead(tunnel_state.clone().map(|(_, _, r)| r));
             tunnel_state
         };
 
