@@ -16,6 +16,10 @@ impl TextDescContent {
     pub fn header(&self) -> &str {
         &self.header
     }
+
+    pub fn header_mut(&mut self) -> &mut String {
+        &mut self.header
+    }
 }
 
 impl DescContent for TextDescContent {
@@ -69,6 +73,7 @@ pub trait TextObj {
     fn id(&self) -> &str;
 
     fn header(&self) -> &str;
+    fn header_mut(&mut self) -> &mut String;
 
     fn value(&self) -> &str;
     fn value_mut(&mut self) -> &mut String;
@@ -103,12 +108,16 @@ impl TextObj for Text {
         &self.desc().content().header
     }
 
+    fn header_mut(&mut self) -> &mut String {
+        self.desc_mut().content_mut().header_mut()
+    }
+
     fn value(&self) -> &str {
-        &self.body().as_ref().unwrap().content().value
+        self.body().as_ref().unwrap().content().value()
     }
 
     fn value_mut(&mut self) -> &mut String {
-        &mut self.body_mut().as_mut().unwrap().content_mut().value
+        self.body_mut().as_mut().unwrap().content_mut().value_mut()
     }
 
     fn into_header(self) -> String {

@@ -1,3 +1,4 @@
+use serde_json::{Map, Value};
 use cyfs_base::*;
 
 #[derive(Debug, Clone)]
@@ -63,3 +64,39 @@ impl<'de> RawDecode<'de> for PieceSessionType {
     }
 }
 
+
+impl JsonCodec<PieceSessionType> for PieceSessionType {
+    fn encode_json(&self) -> Map<String, Value> {
+        let mut obj = Map::new();
+        match self {
+            Self::Unknown => JsonCodecHelper::encode_string_field(&mut obj, "type", "Unknown"), 
+            Self::Stream(start) => {
+                JsonCodecHelper::encode_string_field(&mut obj, "type", "Stream");
+                JsonCodecHelper::encode_option_number_field(&mut obj, "stream_start", Some(*start));
+            }, 
+            Self::RaptorA(sequence) => {
+                JsonCodecHelper::encode_string_field(&mut obj, "type", "RaptorA");
+                JsonCodecHelper::encode_option_number_field(&mut obj, "raptor_sequence", Some(*sequence));
+            }, 
+            Self::RaptorB(sequence) => {
+                JsonCodecHelper::encode_string_field(&mut obj, "type", "RaptorB");
+                JsonCodecHelper::encode_option_number_field(&mut obj, "raptor_sequence", Some(*sequence));
+            } 
+        }
+        obj
+    }
+
+    fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
+        let prefer_type: String = JsonCodecHelper::decode_string_field(obj, "type")?;
+        match prefer_type.as_str() {
+            "Unknown" => Ok(Self::Unknown), 
+            "Stream" => Ok(Self::Stream(JsonCodecHelper::decode_option_int_filed(obj, "stream_start")?
+                .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidInput, "no stream_start field"))?)), 
+            "RaptorA" => Ok(Self::Stream(JsonCodecHelper::decode_option_int_filed(obj, "raptor_sequence")?
+                .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidInput, "no raptor_sequence field"))?)), 
+            "RaptorB" => Ok(Self::Stream(JsonCodecHelper::decode_option_int_filed(obj, "raptor_sequence")?
+                .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidInput, "no raptor_sequence field"))?)), 
+            _ => Err(BuckyError::new(BuckyErrorCode::InvalidInput, format!("invalid type {}", prefer_type)))
+        }
+    }
+}

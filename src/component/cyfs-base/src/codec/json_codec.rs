@@ -10,7 +10,7 @@ pub trait JsonCodec<T> {
     fn encode_json(&self) -> Map<String, Value> {
         unimplemented!();
     }
-    fn decode_json(obj: &Map<String, Value>) -> BuckyResult<T> {
+    fn decode_json(_obj: &Map<String, Value>) -> BuckyResult<T> {
         unimplemented!();
     }
 

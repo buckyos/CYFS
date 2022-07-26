@@ -7,19 +7,19 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 //AppCmd只提供基本的操作，升级降级可以由客户端拼出来。（先uninstall，再install）
-#[derive(Clone, Debug, ProtobufTransform)]
+#[derive(Clone, Debug, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::AddApp)]
 pub struct AddApp {
     pub app_owner_id: Option<ObjectId>,
 }
 
-#[derive(Clone, Debug, ProtobufTransform)]
+#[derive(Clone, Debug, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::InstallApp)]
 pub struct InstallApp {
     pub ver: String,
     pub run_after_install: bool,
 }
-#[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
+#[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransformType, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::ModifyAppPermission)]
 pub struct ModifyAppPermission {
     pub permission: HashMap<String, bool>,
@@ -75,7 +75,7 @@ impl ProtobufTransform<&AppQuota> for protos::AppQuota {
     }
 }
 
-#[derive(Clone, Debug, ProtobufTransformType)]
+#[derive(Clone, Debug, ProtobufTransformType, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::CmdCode)]
 pub enum CmdCode {
     Add(AddApp),
@@ -181,7 +181,7 @@ impl ProtobufTransform<&CmdCode> for protos::CmdCode {
     }
 }
 
-#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::AppCmdDesc)]
 pub struct AppCmdDesc {
     pub app_id: DecAppId,
@@ -203,7 +203,7 @@ impl DescContent for AppCmdDesc {
     type PublicKeyType = SubDescNone;
 }
 
-#[derive(Clone, Default, ProtobufEmptyEncode, ProtobufEmptyDecode)]
+#[derive(Clone, Default, ProtobufEmptyEncode, ProtobufEmptyDecode, Serialize)]
 pub struct AppCmdBody {}
 
 impl BodyContent for AppCmdBody {
