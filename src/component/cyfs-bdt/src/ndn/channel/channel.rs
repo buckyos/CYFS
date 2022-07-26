@@ -98,7 +98,7 @@ impl Uploaders {
         match session.schedule_state() {
             TaskState::Canceled(err) => {
                 match err {
-                    BuckyErrorCode::SessionRedirect | BuckyErrorCode::SessionWaitRedirect => {
+                    BuckyErrorCode::Redirect | BuckyErrorCode::Pending => {
                         info!("{} session need redirect or wait-redirect opertator", session.channel());
                     }, 
                     _ => {
@@ -284,23 +284,34 @@ impl Channel {
         &self.0.config
     }
 
+    pub fn downloadsession_of(&self, session_id: &TempSeq) -> Option<DownloadSession> {
+        let state = &*self.0.downloaders.read().unwrap();
+        if let Some(session) = state.get(session_id) {
+            Some(session.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn insert_download(&self, session: DownloadSession) -> BuckyResult<()> {
+        let downloaders = &mut *self.0.downloaders.write().unwrap();
+        if downloaders.get(session.session_id()).is_some() {
+            debug!("{} ignore session {} for duplicated", self, session);
+            Err(BuckyError::new(BuckyErrorCode::AlreadyExists, "duplicated"))
+        } else {
+            downloaders.insert(session.session_id().clone(), session.clone());
+            debug!("{} add session {}", self, session);
+            Ok(())
+        }
+    }
+
     pub fn upload(&self, session: UploadSession) -> BuckyResult<()> {
         self.0.uploaders.add(session);
         Ok(())
     }
 
     pub fn download(&self, session: DownloadSession) -> BuckyResult<()> {
-        {
-            let mut downloaders = self.0.downloaders.write().unwrap();
-            let _ = if downloaders.get(session.session_id()).is_some() {
-                debug!("{} ignore session {} for duplicated", self, session);
-                Err(BuckyError::new(BuckyErrorCode::AlreadyExists, "duplicated"))
-            } else {
-                downloaders.insert(session.session_id().clone(), session.clone());
-                debug!("{} add session {}", self, session);
-                Ok(())
-            }?;
-        }
+        self.insert_download(session.clone())?;
 
         let r = session.start();
         task::spawn(async move {
@@ -317,10 +328,6 @@ impl Channel {
                         false
                     }
                 }, 
-                TaskState::Redirect(_redirect_node, _redirect_referer) => {
-                    // redirect
-                    true
-                },
                 _ => unreachable!()
             } {
                 let _ = future::timeout(2 * session.channel().config().msl, future::pending::<()>()).await;
@@ -460,14 +467,19 @@ impl Channel {
 
     fn on_resp_interest(&self, command: &RespInterest) -> BuckyResult<()> {
         match command.err {
-            BuckyErrorCode::SessionWaitActive => {
-                // get session
-                if let Some(upload) = self.0.uploaders.find(&command.session_id) {
-                    upload.on_resp_interest(command)
+            BuckyErrorCode::NotConnected => {
+                let to = command.to.as_ref().unwrap();
+                if let Some(requestor) = self.stack().ndn().channel_manager().channel_of(to) {
+                    requestor.resp_interest(RespInterest { session_id: command.session_id.clone(),
+                                                                 chunk: command.chunk.clone(),
+                                                                 err: BuckyErrorCode::Redirect,
+                                                                 redirect: command.redirect.clone(),
+                                                                 redirect_referer: command.redirect_referer.clone(),
+                                                                 to: None });
                 } else {
-                    error!("{} not found upload session {}", self, command.session_id.value());
-                    Ok(())
+                    error!("{} not found requestor channel {}", self, to);
                 }
+                Ok(())
             },
             _ => {
                 if let Some(session) = self.0.downloaders.read().unwrap().get(&command.session_id).clone() {
@@ -514,30 +526,33 @@ impl Channel {
 
         let _ = self.0.statistic_task.on_stat(piece.data.len() as u64);
 
-        if let Some(session) = self.0.downloaders.read().unwrap().get(&piece.session_id).clone() {
-            if let Some(view) = Stack::from(&self.0.stack).ndn().chunk_manager().view_of(session.chunk()) {
-                let _ = view.on_piece_stat(&piece);
+        {
+            if let Some(session) = self.0.downloaders.read().unwrap().get(&piece.session_id).clone() {
+                if let Some(view) = Stack::from(&self.0.stack).ndn().chunk_manager().view_of(session.chunk()) {
+                    let _ = view.on_piece_stat(&piece);
+                }
+                session.push_piece_data(&piece);
+                return Ok(());
             }
-            session.push_piece_data(&piece);
-        } else {
-            let stack = Stack::from(&self.0.stack);
-            // 这里可能要保证同步到同线程处理,重入会比较麻烦
-            match stack.ndn().event_handler().on_unknown_piece_data(&self.stack(), &piece, self) {
-                Ok(_) => {
-                    unimplemented!()
-                    //FIXME： 如果新建了任务，这里应当继续接受piece data
-                },
-                Err(err) => {
-                    // 通过新建一个canceled的session来回复piece control
-                    let session = DownloadSession::canceled(
-                        piece.chunk.clone(), 
-                        piece.session_id.clone(), 
-                        self.clone(),
-                        err);
-                    let _ = self.download(session.clone());
-                    session.push_piece_data(&piece);
-                }  
-            }
+        }
+	
+        let strong_stack = Stack::from(&self.0.stack);
+        // 这里可能要保证同步到同线程处理,重入会比较麻烦
+        match strong_stack.ndn().event_handler().on_unknown_piece_data(&self.stack(), &piece, self) {
+            Ok(session) => {
+                session.push_piece_data(&piece);
+                //FIXME： 如果新建了任务，这里应当继续接受piece data
+            },
+            Err(err) => {
+                // 通过新建一个canceled的session来回复piece control
+                let session = DownloadSession::canceled(
+                    piece.chunk.clone(), 
+                    piece.session_id.clone(), 
+                    self.clone(),
+                    err);
+                let _ = self.download(session.clone());
+                session.push_piece_data(&piece);
+            }  
         }
         Ok(())
     }

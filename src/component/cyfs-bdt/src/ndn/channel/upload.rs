@@ -42,9 +42,8 @@ impl StateImpl {
             StateImpl::Uploading(_) => TaskState::Running(0), 
             StateImpl::Finished => TaskState::Finished, 
             StateImpl::Canceled(err) => TaskState::Canceled(*err),
-            StateImpl::Redirect(_, _) => TaskState::Canceled(BuckyErrorCode::SessionRedirect),
-            StateImpl::WaitRedirect => TaskState::Canceled(BuckyErrorCode::SessionWaitRedirect),
-            StateImpl::Forward(_, _, _) => TaskState::Running(0),
+            StateImpl::Redirect(_, _) | StateImpl::Forward(_, _, _) => TaskState::Canceled(BuckyErrorCode::Redirect),
+            StateImpl::WaitRedirect => TaskState::Canceled(BuckyErrorCode::Pending),
         }
     }
 }
@@ -316,7 +315,7 @@ impl UploadSession {
                     NextStep::RedirectInterest(cache_node.clone(), referer.clone())
                 },
                 StateImpl::WaitRedirect => {
-                    NextStep::RespInterest(BuckyErrorCode::SessionWaitRedirect)
+                    NextStep::RespInterest(BuckyErrorCode::Pending)
                 },
                 StateImpl::Forward(requestor, target_id, referer) => {
                     NextStep::ForwardInterest(requestor.remote().clone(), target_id.clone(), referer.clone())
@@ -336,6 +335,7 @@ impl UploadSession {
                     err, 
                     redirect: None,
                     redirect_referer: None,
+                    to: None,
                 };
                 self.channel().resp_interest(resp_interest);
                 Ok(())
@@ -344,9 +344,10 @@ impl UploadSession {
                 let resp_interest = RespInterest {
                     session_id: self.session_id().clone(), 
                     chunk: self.chunk().clone(), 
-                    err: BuckyErrorCode::SessionRedirect,
+                    err: BuckyErrorCode::Redirect,
                     redirect: Some(cache_node),
                     redirect_referer: Some(referer),
+                    to: None,
                 };
                 self.channel().resp_interest(resp_interest);
                 Ok(())
@@ -363,23 +364,6 @@ impl UploadSession {
             },
             NextStep::None => Ok(())
         }
-    }
-
-    pub fn on_resp_interest(&self, command: &RespInterest) -> BuckyResult<()> {
-        let state = &*self.0.state.read().unwrap();
-        match state {
-            StateImpl::Forward(requestor, redirect_target, referer) => {
-                let resp_interest = 
-                    RespInterest {session_id: self.session_id().clone(), 
-                                  chunk: self.chunk().clone(), 
-                                  err: command.err,
-                                  redirect: Some(redirect_target.remote().clone()),
-                                  redirect_referer: Some(referer.clone()),};
-                requestor.resp_interest(resp_interest);
-            }
-            _ => { unimplemented!() }
-        }
-        Ok(())
     }
 
     pub(super) fn on_piece_control(&self, ctrl: &PieceControl) -> BuckyResult<()> {
@@ -429,6 +413,7 @@ impl UploadSession {
                     err: err,
                     redirect: None,
                     redirect_referer: None,
+                    to: None,
                 };
                 self.channel().resp_interest(resp_interest);
                 Ok(())
@@ -465,16 +450,6 @@ impl UploadSession {
                     None
                 } else {
                     Some(TaskState::Canceled(*err))
-                }
-            },
-            StateImpl::Forward(_, _, _) => {
-                // forward状态保留2*msl时间
-                let last_active = self.0.last_active.load(Ordering::SeqCst);
-                if now > last_active 
-                    && Duration::from_micros(now - last_active) > 2 * self.channel().config().msl {
-                    None
-                } else {
-                    Some(TaskState::Running(0))
                 }
             },
             _ => { unimplemented!() }

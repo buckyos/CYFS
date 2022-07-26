@@ -3,7 +3,7 @@ use cyfs_bdt::{
     Stack, 
     NdnEventHandler, 
     DefaultNdnEventHandler, 
-    ndn::channel::{Channel, UploadSession, protocol::{Interest, RespInterest, PieceData}}
+    ndn::channel::{Channel, UploadSession, DownloadSession, protocol::{Interest, RespInterest, PieceData}}
 };
 use cyfs_util::acl::*;
 use cyfs_lib::*;
@@ -116,7 +116,7 @@ impl NdnEventHandler for BdtNdnEventHandler {
         stack: &Stack, 
         piece: &PieceData, 
         from: &Channel
-    ) -> BuckyResult<()> {
+    ) -> BuckyResult<DownloadSession> {
         self.default.on_unknown_piece_data(stack, piece, from)
     }
 
@@ -160,7 +160,8 @@ impl NdnEventHandler for BdtNdnEventHandler {
                         chunk: interest.chunk.clone(),  
                         err: resp_fields.err,
                         redirect: resp_fields.redirect, 
-                        redirect_referer: Some(referer.encode_string())
+                        redirect_referer: Some(referer.encode_string()),
+                        to: None
                     });
                     Ok(())      
                 }, 

@@ -11,8 +11,6 @@ pub enum TaskState {
     Running(u32/*健康度*/),
     Paused,
     Canceled(BuckyErrorCode/*被cancel的原因*/), 
-    Redirect(DeviceId, String),
-    WaitRedirect,
     Finished
 }
 

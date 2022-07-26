@@ -15,7 +15,7 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::channel::Channel;
-
+use super::download::*;
 struct ManagerImpl {
     stack: WeakStack, 
     command_tunnel: DatagramTunnelGuard, 
@@ -51,7 +51,18 @@ impl ChannelManager {
         manager
     }
 
+    pub fn downloadsession_of(&self, session_id: &TempSeq) -> Option<DownloadSession> {
+        let state = &*self.0.entries.read().unwrap();
 
+        for (_, channel) in state {
+            match channel.downloadsession_of(session_id) {
+                Some(r) => { return Some(r); }
+                None => {},
+            }
+        }
+
+        None
+    }
 
     pub fn channel_of(&self, remote: &DeviceId) -> Option<Channel> {
         self.0.entries.read().unwrap().get(remote).cloned()
