@@ -46,6 +46,12 @@ struct PerfIsolateInner {
 
     pending_reqs: HashMap<String, u64>,
 
+    // 本地缓存对象
+    request: HashMap<String, PerfRequest>,
+    acc: HashMap<String, PerfAccumulation>,
+    record: HashMap<String, PerfRecord>,
+
+    action: Vec<PerfAction>,
 }
 
 impl PerfIsolateInner {
@@ -61,9 +67,13 @@ impl PerfIsolateInner {
             isolate_id: isolate_id.to_owned(),
             span_times: span_times.to_owned(),
             id: id.into(),
-            pending_reqs: HashMap::new(),
             dec_id,
             stack,
+            pending_reqs: HashMap::new(),
+            request: HashMap::new(),
+            acc: HashMap::new(),
+            record: HashMap::new(),
+            action: Vec::new(),
         }
     }
 
@@ -134,13 +144,13 @@ impl PerfIsolateInner {
         Ok(())
     }
 
-    async fn put_noc_and_root_state(&self, object_id: ObjectId, object_raw: Vec<u8>, perf_type: PerfType) -> BuckyResult<()>{
+    async fn put_noc_and_root_state(&self, object_id: ObjectId, id: String, object_raw: Vec<u8>, perf_type: PerfType) -> BuckyResult<()>{
         let _ = self.put_object(object_id, object_raw).await;
         let _ = self.local_cache(
             Some(self.device_id), 
             Some(self.dec_id), 
             self.isolate_id.to_owned(), 
-            self.id.to_owned(), 
+            id, 
             object_id, perf_type).await;
 
         Ok(())
@@ -160,155 +170,188 @@ impl PerfIsolateInner {
         }
     }
 
-    pub async fn end_request(&mut self, id: &str, key: &str, spend_time: u64, stat: BuckyResult<Option<u64>>) -> BuckyResult<()>{
+    pub fn end_request(&mut self, id: &str, key: &str, err: BuckyErrorCode, bytes: Option<u32>) {
+        let now = bucky_time_now();
         let full_id = format!("{}_{}", id, key);
+        match self.pending_reqs.remove(&full_id) {
+            Some(tick) => {
+                let during = if now > tick {
+                    now - tick
+                } else {
+                    0
+                };
 
-        let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Requests);
-        //info!("path: {:?}", path);
-        let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
-        let op_env = root_state.create_path_op_env().await?;
-        let ret = op_env.get_by_path(&path).await?;
-        if ret.is_none() {
-            match self.pending_reqs.remove(&full_id) {
-                Some(_tick) => {
-                    let perf_obj = PerfRequest::create(self.people_id, self.dec_id);
-                    info!("creating PerfRequest {:?}", perf_obj.desc().content());
-                    let v = perf_obj.add_stat(spend_time, stat);
-                    let object_raw = v.to_vec()?;
-                    let object_id = v.desc().object_id();
-                    self.put_noc_and_root_state(object_id, object_raw, PerfType::Requests).await?
-                }
-                None => {
-                    unreachable!();
+                match self.request.entry(id.to_owned()) {
+                    Entry::Vacant(v) => {
+                        let perf_obj = PerfRequest::create(self.people_id, self.dec_id);
+                        let req = perf_obj.add_stat(during, err, bytes);
+
+                        v.insert(req);
+                    }
+                    Entry::Occupied(mut o) => {
+                        let perf_obj = o.get_mut();
+                        let req = perf_obj.add_stat(during, err, bytes);
+                        
+                        o.insert(req);
+
+                    }
                 }
             }
-            return Ok(());
-        }
-        let v = ret.unwrap();
-        let req = NONGetObjectRequest::new_noc(v, None);
-        match self.stack.non_service().get_object(req).await {
-            Ok(resp) => {
-                let perf_obj = PerfRequest::decode(&resp.object.object_raw)?;
-                match self.pending_reqs.remove(&full_id) {
-                    Some(_tick) => {
-                        info!("creating PerfRequest {:?}", perf_obj.desc().content());
-                        let v = perf_obj.add_stat(spend_time, stat);
-                        let object_raw = v.to_vec()?;
-                        let object_id = v.desc().object_id();
-                        self.put_noc_and_root_state(object_id, object_raw, PerfType::Requests).await?
-                    }
-                    None => {
-                        unreachable!();
-                    }
-                }
-            },
-            Err(_) => {
-                match self.pending_reqs.remove(&full_id) {
-                    Some(_tick) => {
-                        let perf_obj = PerfRequest::create(self.people_id, self.dec_id);
-                        let v = perf_obj.add_stat(spend_time, stat);
-                        let object_raw = v.to_vec()?;
-                        let object_id = v.desc().object_id();
-                        self.put_noc_and_root_state(object_id, object_raw, PerfType::Requests).await?
-                    }
-                    None => {
-                        unreachable!();
-                    }
-                }
-            },
+            None => {
+                //unreachable!();
+            }
         }
 
+        // let full_id = format!("{}_{}", id, key);
 
-        Ok(())
+        // let path = self.get_local_cache_path(self.isolate_id.to_owned(), id.to_string(), PerfType::Requests);
+        // let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
+        // let op_env = root_state.create_path_op_env().await?;
+        // let ret = op_env.get_by_path(&path).await?;
+        // if ret.is_none() {
+        //     match self.pending_reqs.remove(&full_id) {
+        //         Some(_tick) => {
+        //             let perf_obj = PerfRequest::create(self.people_id, self.dec_id);
+        //             let v = perf_obj.add_stat(spend_time, stat);
+        //             //FIXME: 异步保存数据
+        //             let object_raw = v.to_vec()?;
+        //             let object_id = v.desc().object_id();
+        //             self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Requests).await?
+        //         }
+        //         None => {
+        //             unreachable!();
+        //         }
+        //     }
+        //     return;
+        // }
+        // let v = ret.unwrap();
+        // let req = NONGetObjectRequest::new_noc(v, None);
+        // match self.stack.non_service().get_object(req).await {
+        //     Ok(resp) => {
+        //         let perf_obj = PerfRequest::decode(&resp.object.object_raw)?;
+        //         match self.pending_reqs.remove(&full_id) {
+        //             Some(_tick) => {
+        //                 let v = perf_obj.add_stat(spend_time, stat);
+        //                 //FIXME: 异步保存数据
+        //                 let object_raw = v.to_vec()?;
+        //                 let object_id = v.desc().object_id();
+        //                 self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Requests).await?
+        //             }
+        //             None => {
+        //                 unreachable!();
+        //             }
+        //         }
+        //     },
+        //     Err(_) => {
+        //         match self.pending_reqs.remove(&full_id) {
+        //             Some(_tick) => {
+        //                 let perf_obj = PerfRequest::create(self.people_id, self.dec_id);
+        //                 let v = perf_obj.add_stat(spend_time, stat);
+        //                 //FIXME: 异步保存数据
+        //                 let object_raw = v.to_vec()?;
+        //                 let object_id = v.desc().object_id();
+        //                 self.put_noc_and_root_state(object_id,   id.to_string(), object_raw, PerfType::Requests).await?
+        //             }
+        //             None => {
+        //                 unreachable!();
+        //             }
+        //         }
+        //     },
+        // }
+
     }
 
-    pub async fn acc(&mut self, _id: &str, stat: BuckyResult<u64>) -> BuckyResult<()>{
+    pub fn acc(&mut self, id: &str, err: BuckyErrorCode, size: Option<u64>) {
 
-        let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Accumulations);
+        // let path = self.get_local_cache_path(self.isolate_id.to_owned(), id.to_owned(), PerfType::Accumulations);
 
-        let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
-        let op_env = root_state.create_path_op_env().await?;
-        let ret = op_env.get_by_path(&path).await?;
-        if ret.is_none() {
-            let perf_obj = PerfAccumulation::create(self.people_id, self.dec_id);
-            let v = perf_obj.add_stat(stat);
-            let object_raw = v.to_vec()?;
-            let object_id = v.desc().object_id();
-            self.put_noc_and_root_state(object_id, object_raw, PerfType::Accumulations).await?;
-            return Ok(());
-        }
-        let v = ret.unwrap();
-        let req = NONGetObjectRequest::new_noc(v, None);
-        match self.stack.non_service().get_object(req).await{
-            Ok(resp) => {
-                let perf_obj = PerfAccumulation::decode(&resp.object.object_raw)?;
-                let v = perf_obj.add_stat(stat);
-                let object_raw = v.to_vec()?;
-                let object_id = v.desc().object_id();
-                self.put_noc_and_root_state(object_id, object_raw, PerfType::Accumulations).await?;
-            },
-            Err(_) => {
-                let perf_obj = PerfAccumulation::create(self.people_id, self.dec_id);
-                let v = perf_obj.add_stat(stat);
-                let object_raw = v.to_vec()?;
-                let object_id = v.desc().object_id();
-                self.put_noc_and_root_state(object_id, object_raw, PerfType::Accumulations).await?;
-            },
-        }
+        // let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
+        // let op_env = root_state.create_path_op_env().await?;
+        // let ret = op_env.get_by_path(&path).await?;
+        // if ret.is_none() {
+        //     let perf_obj = PerfAccumulation::create(self.people_id, self.dec_id);
+        //     let v = perf_obj.add_stat(stat);
+        //     // FIXME: 异步保存数据
+        //     let object_raw = v.to_vec()?;
+        //     let object_id = v.desc().object_id();
+        //     self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Accumulations).await?;
+        //     return Ok(());
+        // }
+        // let v = ret.unwrap();
+        // let req = NONGetObjectRequest::new_noc(v, None);
+        // match self.stack.non_service().get_object(req).await{
+        //     Ok(resp) => {
+        //         let perf_obj = PerfAccumulation::decode(&resp.object.object_raw)?;
+        //         let v = perf_obj.add_stat(stat);
+        //         // FIXME: 异步保存数据
+        //         let object_raw = v.to_vec()?;
+        //         let object_id = v.desc().object_id();
+        //         self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Accumulations).await?;
+        //     },
+        //     Err(_) => {
+        //         let perf_obj = PerfAccumulation::create(self.people_id, self.dec_id);
+        //         let v = perf_obj.add_stat(stat);
+        //         // FIXME: 异步保存数据
+        //         let object_raw = v.to_vec()?;
+        //         let object_id = v.desc().object_id();
+        //         self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Accumulations).await?;
+        //     },
+        // }
 
 
-
-        Ok(())
     }
 
-    pub async fn action(
+    pub fn action(
         &mut self,
-        _id: &str,
-        stat: BuckyResult<(String, String)>,
-    ) -> BuckyResult<()>{
-        let v = PerfAction::create(self.people_id, self.dec_id, stat);
-        let object_raw = v.to_vec()?;
-        let object_id = v.desc().object_id();
-        self.put_noc_and_root_state(object_id, object_raw, PerfType::Actions).await?;
+        id: &str,
+        err: BuckyErrorCode,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ) {
+        // FIXME: 本地缓存, 异步写操作, 默认10分钟
 
-        Ok(())
+        // let v = PerfAction::create(self.people_id, self.dec_id, stat);
+        // let object_raw = v.to_vec()?;
+        // let object_id = v.desc().object_id();
+        // self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Actions).await?;
+
     }
 
-    pub async fn record(&mut self, _id: &str, total: u64, total_size: Option<u64>) -> BuckyResult<()>{
-        let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
+    pub async fn record(&self, id: &str, total: u64, total_size: Option<u64>) {
+        // let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
 
-        let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
-        let op_env = root_state.create_path_op_env().await?;
-        let ret = op_env.get_by_path(&path).await?;
-        if ret.is_none() {
-            let perf_obj = PerfRecord::create(self.people_id, self.dec_id, total, total_size);
-            let v = perf_obj.add_stat(total, total_size);
-            let object_raw = v.to_vec()?;
-            let object_id = v.desc().object_id();
-            self.put_noc_and_root_state(object_id, object_raw, PerfType::Records).await?;
-            return Ok(());
-        }
-        let v = ret.unwrap();
-        let req = NONGetObjectRequest::new_noc(v, None);
-        match self.stack.non_service().get_object(req).await{
-            Ok(resp) => {
-                let perf_obj = PerfRecord::decode(&resp.object.object_raw)?;
-                let v = perf_obj.add_stat(total, total_size);
-                let object_raw = v.to_vec()?;
-                let object_id = v.desc().object_id();
-                self.put_noc_and_root_state(object_id, object_raw, PerfType::Records).await?;
-            },
-            Err(_) => {
-                let perf_obj = PerfRecord::create(self.people_id, self.dec_id, total, total_size);
-                let v = perf_obj.add_stat(total, total_size);
-                let object_raw = v.to_vec()?;
-                let object_id = v.desc().object_id();
-                self.put_noc_and_root_state(object_id, object_raw, PerfType::Records).await?;
-            },
-        }
-
-
-        Ok(())
+        // let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
+        // let op_env = root_state.create_path_op_env().await?;
+        // let ret = op_env.get_by_path(&path).await?;
+        // if ret.is_none() {
+        //     let perf_obj = PerfRecord::create(self.people_id, self.dec_id, total, total_size);
+        //     let v = perf_obj.add_stat(total, total_size);
+        //     // FIXME: 异步保存数据
+        //     let object_raw = v.to_vec()?;
+        //     let object_id = v.desc().object_id();
+        //     self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Records).await?;
+        //     return ;
+        // }
+        // let v = ret.unwrap();
+        // let req = NONGetObjectRequest::new_noc(v, None);
+        // match self.stack.non_service().get_object(req).await{
+        //     Ok(resp) => {
+        //         let perf_obj = PerfRecord::decode(&resp.object.object_raw)?;
+        //         let v = perf_obj.add_stat(total, total_size);
+        //         // FIXME: 异步保存数据
+        //         let object_raw = v.to_vec()?;
+        //         let object_id = v.desc().object_id();
+        //         self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Records).await?;
+        //     },
+        //     Err(_) => {
+        //         let perf_obj = PerfRecord::create(self.people_id, self.dec_id, total, total_size);
+        //         let v = perf_obj.add_stat(total, total_size);
+        //         // FIXME: 异步保存数据
+        //         let object_raw = v.to_vec()?;
+        //         let object_id = v.desc().object_id();
+        //         self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Records).await?;
+        //     },
+        // }
     }
 
 }
@@ -327,24 +370,26 @@ impl PerfIsolate {
         self.0.lock().unwrap().begin_request(id, key)
     }
     // 统计一个操作的耗时, 流量统计
-    pub fn end_request(&self, id: &str, key: &str, spend_time: u64, stat: BuckyResult<Option<u64>>) -> BuckyResult<()> {
-        async_std::task::block_on(async { self.0.lock().unwrap().end_request(id, key, spend_time, stat).await })
+    pub fn end_request(&self, id: &str, key: &str, err: BuckyErrorCode, bytes: Option<u32>) {
+        self.0.lock().unwrap().end_request(id, key, err, bytes)
     }
 
-    pub fn acc(&self, id: &str, stat: BuckyResult<u64>) -> BuckyResult<()> {
-        async_std::task::block_on(async { self.0.lock().unwrap().acc(id, stat).await })
+    pub fn acc(&self, id: &str, err: BuckyErrorCode, size: Option<u64>) {
+        self.0.lock().unwrap().acc(id, err, size)
     }
 
     pub fn action(
         &self,
         id: &str,
-        stat: BuckyResult<(String, String)>,
-    )-> BuckyResult<()> {
-        async_std::task::block_on(async { self.0.lock().unwrap().action(id, stat).await })   
+        err: BuckyErrorCode,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ){
+        self.0.lock().unwrap().action(id, err, name, value)
     }
 
-    pub fn record(&self, id: &str, total: u64, total_size: Option<u64>) -> BuckyResult<()>{
-        async_std::task::block_on(async { self.0.lock().unwrap().record(id, total, total_size).await })
+    pub fn record(&self, id: &str, total: u64, total_size: Option<u64>) {
+        self.0.lock().unwrap().record(id, total, total_size)
     }
 
     pub fn get_id(&self) -> String {

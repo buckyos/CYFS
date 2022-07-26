@@ -65,6 +65,31 @@ impl PerfClientInner {
         }
     }
 
+    pub(crate) async fn start(&self) -> BuckyResult<()> {
+        // FIXME: 上报逻辑
+        Ok(())
+    }
+
+    // 开启定期保存的任务
+    async fn run_save(&self) {
+        loop {
+            {
+                let isolates = self.isolates.lock().unwrap();
+                for (key, isolate) in isolates {
+                    let data = isolate.take_data();
+                    if data.is_empty() {
+                        continue;
+                    }
+        
+                    info!("will save perf isolate: {}, data={:?}", key, data);
+
+                }
+
+            }
+            async_std::task::sleep(std::time::Duration::from_secs(60 * 10)).await;
+        }
+    }
+
     pub fn is_isolates_exists(&self, id: &str) -> bool {
         self.isolates.lock().unwrap().contains_key(id)
     }
@@ -108,6 +133,17 @@ impl PerfClient {
     ) -> Self {
         let ret = PerfClientInner::new(id, version, span_time, dec_id, perf_server_config, stack);
         Self(Arc::new(ret))
+    }
+
+    pub async fn start(&self) -> BuckyResult<()> {
+        self.0.start().await?;
+        // 开启定期合并到store并保存
+        let this = self.clone();
+        async_std::task::spawn(async move {
+            this.0.run_save().await;
+        });
+
+        Ok(())
     }
 }
 
