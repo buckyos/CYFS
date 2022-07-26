@@ -30,9 +30,6 @@ enum StateImpl {
     Uploading(UploadingState),
     Finished, 
     Canceled(BuckyErrorCode),
-    Redirect(DeviceId, String /* redirect_referer */),
-    WaitRedirect,
-    Forward(Channel /* requestor */, Channel /* redirect-target */, String /* referer */),
 }
 
 impl StateImpl {
@@ -42,8 +39,6 @@ impl StateImpl {
             StateImpl::Uploading(_) => TaskState::Running(0), 
             StateImpl::Finished => TaskState::Finished, 
             StateImpl::Canceled(err) => TaskState::Canceled(*err),
-            StateImpl::Redirect(_, _) | StateImpl::Forward(_, _, _) => TaskState::Canceled(BuckyErrorCode::Redirect),
-            StateImpl::WaitRedirect => TaskState::Canceled(BuckyErrorCode::Pending),
         }
     }
 }
@@ -110,62 +105,6 @@ impl UploadSession {
             pending_from: AtomicU64::new(0)
         }))
     }
-
-    pub fn redirect(chunk: ChunkId, 
-                    session_id: TempSeq, 
-                    piece_type: PieceSessionType, 
-                    channel: Channel,
-                    target: DeviceId, 
-                    referer: String) -> Self {
-        Self(Arc::new(SessionImpl {
-            chunk,
-            session_id, 
-            piece_type, 
-            channel, 
-            resource: ResourceManager::new(None), 
-	    resource_quota: ResourceQuota::new(),
-            state: RwLock::new(StateImpl::Redirect(target, referer)),
-            last_active: AtomicU64::new(0), 
-            pending_from: AtomicU64::new(0),
-        }))
-    }
-
-    pub fn wait_redirect(chunk: ChunkId, 
-                         session_id: TempSeq,
-                         piece_type: PieceSessionType, 
-                         channel: Channel) -> Self {
-        Self(Arc::new(SessionImpl {
-            chunk,
-            session_id, 
-            piece_type, 
-            channel, 
-            resource: ResourceManager::new(None), 
-	    resource_quota: ResourceQuota::new(),
-            state: RwLock::new(StateImpl::WaitRedirect),
-            last_active: AtomicU64::new(0), 
-            pending_from: AtomicU64::new(0),
-        }))
-    }
-
-    pub fn forward(chunk: ChunkId, 
-                   session_id: TempSeq, 
-                   piece_type: PieceSessionType, 
-                   channel: Channel,
-                   target: Channel, 
-                   referer: String) -> Self {
-        Self(Arc::new(SessionImpl {
-            chunk,
-            session_id, 
-            piece_type, 
-            channel: channel.clone(), 
-            resource: ResourceManager::new(None), 
-	    resource_quota: ResourceQuota::new(),
-            state: RwLock::new(StateImpl::Forward(channel.clone(), target, referer)),
-            last_active: AtomicU64::new(0), 
-            pending_from: AtomicU64::new(0),
-        }))
-    }
-
 
     pub fn chunk(&self) -> &ChunkId {
         &self.0.chunk
@@ -297,8 +236,6 @@ impl UploadSession {
         enum NextStep {
             CallProvider(Box<dyn UploadSessionProvider>), 
             RespInterest(BuckyErrorCode), 
-            RedirectInterest(DeviceId, String),
-            ForwardInterest(DeviceId, Channel, String),
             None
         }
         self.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
@@ -311,15 +248,6 @@ impl UploadSession {
                 StateImpl::Canceled(err) => {
                     NextStep::RespInterest(*err)
                 }, 
-                StateImpl::Redirect(cache_node, referer) => {
-                    NextStep::RedirectInterest(cache_node.clone(), referer.clone())
-                },
-                StateImpl::WaitRedirect => {
-                    NextStep::RespInterest(BuckyErrorCode::Pending)
-                },
-                StateImpl::Forward(requestor, target_id, referer) => {
-                    NextStep::ForwardInterest(requestor.remote().clone(), target_id.clone(), referer.clone())
-                },
                 _ => {
                     NextStep::None
                 }
@@ -340,28 +268,6 @@ impl UploadSession {
                 self.channel().resp_interest(resp_interest);
                 Ok(())
             }, 
-            NextStep::RedirectInterest(cache_node, referer) => {
-                let resp_interest = RespInterest {
-                    session_id: self.session_id().clone(), 
-                    chunk: self.chunk().clone(), 
-                    err: BuckyErrorCode::Redirect,
-                    redirect: Some(cache_node),
-                    redirect_referer: Some(referer),
-                    to: None,
-                };
-                self.channel().resp_interest(resp_interest);
-                Ok(())
-            },
-            NextStep::ForwardInterest(requestor, target, referer) => {
-                let interest = Interest { session_id: self.session_id().clone(), 
-                                                    chunk: self.chunk().clone(),
-                                                    prefer_type: self.piece_type().clone(),
-                                                    from: Some(requestor),
-                                                    referer: Some(referer),};
-
-                target.interest(interest);
-                Ok(())
-            },
             NextStep::None => Ok(())
         }
     }
