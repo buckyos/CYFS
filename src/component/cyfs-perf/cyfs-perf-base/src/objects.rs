@@ -24,6 +24,7 @@ impl Into<u16> for &PerfObjectType {
 
 pub(crate) trait MergeResult<T> {
     fn merge(&mut self, value: T, total_num: u32);
+    fn merges(&mut self, stats: Vec<T>, total_num: u32);
 }
 
 #[derive(Clone, Debug, Default, Serialize, ProtobufTransformType)]
@@ -40,6 +41,20 @@ impl MergeResult<u64> for SizeResult {
         self.total += value;
         self.min = if self.min == 0 {value} else {self.min.min(value)};
         self.max = self.max.max(value);
+        self.avg = self.total / total_num as u64;
+    }
+
+    fn merges(&mut self, stats: Vec<u64>, total_num: u32) {
+        let mut min = 0;
+        let mut max = 0;
+        for value in stats {
+            self.total += value;
+            min = min.min(value);
+            max = max.max(value);
+        }
+
+        self.min = if self.min == 0 {min} else {self.min.min(min)};
+        self.max = self.max.max(max);
         self.avg = self.total / total_num as u64;
     }
 }
@@ -88,6 +103,20 @@ impl MergeResult<u64> for TimeResult {
         self.max = self.max.max(value);
         self.avg = self.total / total_num as u64;
     }
+
+    fn merges(&mut self, stats: Vec<u64>, total_num: u32) {
+        let mut min = 0;
+        let mut max = 0;
+        for value in stats {
+            self.total += value;
+            min = min.min(value);
+            max = max.max(value);
+        }
+
+        self.min = if self.min == 0 {min} else {self.min.min(min)};
+        self.max = self.max.max(max);
+        self.avg = self.total / total_num as u64;
+    }
 }
 
 #[derive(Clone, Debug, Default, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
@@ -103,6 +132,13 @@ impl MergeResult<f32> for SpeedResult {
         self.min = self.min.min(value);
         self.max = self.max.max(value);
 
+    }
+
+    fn merges(&mut self, stats: Vec<f32>, _total_num: u32) {
+        for value in stats {
+            self.min = self.min.min(value);
+            self.max = self.max.max(value);
+        }
     }
 }
 
@@ -141,7 +177,14 @@ pub trait PerfRequestObj {
     fn create(owner: ObjectId, dec_id: ObjectId) -> PerfRequest;
     fn success(&self) -> u32;
     fn failed(&self) -> u32;
-    fn add_stat(&self, spend_time: u64, stat: BuckyResult<Option<u64>>) -> PerfRequest;
+    fn add_stat(&self, stat: &PerfRequestItem) -> PerfRequest;
+    fn add_stats(&self, stats: &[PerfRequestItem]) -> PerfRequest;
+}
+
+pub struct PerfRequestItem {
+    pub spend_time: u64,
+    pub err: BuckyErrorCode,
+    pub stat: Option<u64>
 }
 
 impl PerfRequestObj for PerfRequest {
@@ -161,16 +204,16 @@ impl PerfRequestObj for PerfRequest {
     }
 
     // spend_time: ms
-    fn add_stat(&self, spend_time: u64, stat: BuckyResult<Option<u64>>) -> PerfRequest {
+    fn add_stat(&self, stat: &PerfRequestItem) -> PerfRequest {
         let mut desc = self.desc().content().clone();
-        if let Ok(stat) = stat {
+        if stat.err == BuckyErrorCode::Ok {
             desc.success += 1;
-            desc.time.merge(spend_time, desc.success);
+            desc.time.merge(stat.spend_time, desc.success);
 
-            if let Some(stat) = stat {
-                desc.size.merge(stat, desc.success);
+            if let Some(stat_num) = stat.stat {
+                desc.size.merge(stat_num, desc.success);
 
-                let speed = (stat / spend_time / 1000) as f32;
+                let speed = (stat_num / stat.spend_time / 1000) as f32;
                 desc.speed.avg = (desc.size.total  / desc.time.total / 1000) as f32;
                 desc.speed.merge(speed, 0);
             }
@@ -183,6 +226,44 @@ impl PerfRequestObj for PerfRequest {
             .dec_id(self.desc().dec_id().unwrap())
             .build()
     }
+
+    fn add_stats(&self, stats: &[PerfRequestItem]) -> PerfRequest {
+        let mut desc = self.desc().content().clone();
+
+        let mut spend_times = vec![];
+        let mut stat_nums = vec![];
+        let mut speeds = vec![];
+        for item in stats {
+            if item.err == BuckyErrorCode::Ok {
+                desc.success += 1;
+                spend_times.push(item.spend_time);
+
+                if let Some(stat) = item.stat {
+                    stat_nums.push(stat);
+                    speeds.push((stat / item.spend_time / 1000) as f32)
+                }
+
+            } else {
+                desc.failed += 1;
+            }
+        };
+
+        desc.time.merges(spend_times, desc.success);
+        desc.size.merges(stat_nums, desc.success);
+
+        desc.speed.avg = (desc.size.total  / desc.time.total / 1000) as f32;
+        desc.speed.merges(speeds, 0);
+
+        PerfRequestBuilder::new(desc, EmptyProtobufBodyContent {})
+            .owner(self.desc().owner().unwrap())
+            .dec_id(self.desc().dec_id().unwrap())
+            .build()
+    }
+}
+
+pub struct PerfAccumulationItem {
+    pub err: BuckyErrorCode,
+    pub stat: u64
 }
 
 #[derive(Clone, Debug, Default, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
@@ -218,7 +299,8 @@ pub trait PerfAccumulationObj {
     fn create(owner: ObjectId, dec_id: ObjectId) -> PerfAccumulation;
     fn success(&self) -> u32;
     fn failed(&self) -> u32;
-    fn add_stat(&self, stat: BuckyResult<u64>) -> PerfAccumulation;
+    fn add_stat(&self, stat: &PerfAccumulationItem) -> PerfAccumulation;
+    fn add_stats(&self, stats: &[PerfAccumulationItem]) -> PerfAccumulation;
 }
 
 impl PerfAccumulationObj for PerfAccumulation {
@@ -237,11 +319,11 @@ impl PerfAccumulationObj for PerfAccumulation {
         self.desc().content().failed
     }
 
-    fn add_stat(&self, stat: BuckyResult<u64>) -> PerfAccumulation {
+    fn add_stat(&self, stat: &PerfAccumulationItem) -> PerfAccumulation {
         let mut desc = self.desc().content().clone();
-        if let Ok(stat) = stat {
+        if stat.err == BuckyErrorCode::Ok {
             desc.success += 1;
-            desc.size.merge(stat, desc.success);
+            desc.size.merge(stat.stat, desc.success);
         } else {
             desc.failed += 1;
         }
@@ -251,34 +333,74 @@ impl PerfAccumulationObj for PerfAccumulation {
             .dec_id(self.desc().dec_id().unwrap())
             .build()
     }
+
+    fn add_stats(&self, stats: &[PerfAccumulationItem]) -> PerfAccumulation {
+        let mut desc = self.desc().content().clone();
+        let mut stat_nums = vec![];
+        for stat in stats {
+            if stat.err == BuckyErrorCode::Ok {
+                desc.success += 1;
+                stat_nums.push(stat.stat);
+            } else {
+                desc.failed += 1;
+            }
+        }
+
+        desc.size.merges(stat_nums, desc.success);
+
+        PerfAccumulationBuilder::new(desc, EmptyProtobufBodyContent {})
+            .owner(self.desc().owner().unwrap())
+            .dec_id(self.desc().dec_id().unwrap())
+            .build()
+    }
 }
 
 #[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransformType, Serialize)]
-#[cyfs_protobuf_type(protos::PerfAction)]
-pub struct PerfActionDesc {
+#[cyfs_protobuf_type(protos::PerfActionItem)]
+pub struct PerfActionItem {
     pub err: BuckyErrorCode,
+    pub time: u64,
     pub key: String,
-    pub value: String,
+    pub value: String
 }
 
-impl ProtobufTransform<protos::PerfAction> for PerfActionDesc {
-    fn transform(value: protos::PerfAction) -> BuckyResult<Self> {
-        Ok(PerfActionDesc {
+impl ProtobufTransform<protos::PerfActionItem> for PerfActionItem {
+    fn transform(value: protos::PerfActionItem) -> BuckyResult<Self> {
+        Ok(PerfActionItem {
             err: BuckyErrorCode::from(value.err),
+            time: value.time.parse::<u64>()?,
             key: value.key,
             value: value.value
         })
     }
 }
 
-impl ProtobufTransform<&PerfActionDesc> for protos::PerfAction {
-    fn transform(value: &PerfActionDesc) -> BuckyResult<Self> {
-        Ok(protos::PerfAction {
+impl ProtobufTransform<&PerfActionItem> for protos::PerfActionItem {
+    fn transform(value: &PerfActionItem) -> BuckyResult<Self> {
+        Ok(protos::PerfActionItem {
             err: value.err.as_u16() as u32,
+            time: value.time.to_string(),
             key: value.key.clone(),
             value: value.value.clone()
         })
     }
+}
+
+impl PerfActionItem {
+    pub(crate) fn create(err: BuckyErrorCode, key: String, value: String) -> PerfActionItem {
+        return Self {
+            err,
+            time: bucky_time_now(),
+            key,
+            value
+        }
+    }
+}
+
+#[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
+#[cyfs_protobuf_type(protos::PerfAction)]
+pub struct PerfActionDesc {
+    pub actions: Vec<PerfActionItem>
 }
 
 impl DescContent for PerfActionDesc {
@@ -303,28 +425,28 @@ pub type PerfActionId = NamedObjectId<PerfActionType>;
 pub type PerfAction = NamedObjectBase<PerfActionType>;
 
 pub trait PerfActionObj {
-    fn create(owner: ObjectId, dec_id: ObjectId, stat: BuckyResult<(String, String)>) -> PerfAction;
-    fn err_code(&self) -> BuckyErrorCode;
+    fn create(owner: ObjectId, dec_id: ObjectId) -> PerfAction;
+    fn add_stat(&self, stat: PerfActionItem) -> PerfAction;
 }
 
 impl PerfActionObj for PerfAction {
-    fn create(owner: ObjectId, dec_id: ObjectId, stat: BuckyResult<(String, String)>) -> PerfAction {
-        let (err, key, value) = match stat {
-            Ok((k, v)) => {(BuckyErrorCode::Ok, k, v)}
-            Err(e) => {(e.code(), "".to_owned(), "".to_owned())}
-        };
+    fn create(owner: ObjectId, dec_id: ObjectId) -> PerfAction {
         PerfActionBuilder::new(PerfActionDesc {
-            err,
-            key,
-            value
+            actions: vec![],
         }, EmptyProtobufBodyContent {})
             .owner(owner)
             .dec_id(dec_id)
             .build()
     }
 
-    fn err_code(&self) -> BuckyErrorCode {
-        self.desc().content().err
+    fn add_stat(&self, stat: PerfActionItem) -> PerfAction {
+        let mut desc = self.desc().content().clone();
+        desc.actions.push(stat);
+
+        PerfActionBuilder::new(desc, EmptyProtobufBodyContent {})
+            .owner(self.desc().owner().unwrap())
+            .dec_id(self.desc().dec_id().unwrap())
+            .build()
     }
 }
 

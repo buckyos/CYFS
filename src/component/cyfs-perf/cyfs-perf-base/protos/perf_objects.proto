@@ -34,10 +34,15 @@ message PerfAccumulation {
     uint32 failed = 5;
 }
 
-message PerfAction {
+message PerfActionItem {
     uint32 err = 1;
-    string key = 2;
-    string value = 3;
+    string /*uint64*/ time = 2;
+    string key = 3;
+    string value = 4;
+}
+
+message PerfAction {
+    repeated PerfActionItem actions = 1;
 }
 
 message PerfRecord {

@@ -15,9 +15,6 @@ prost-build = { version = '0.9.0' }
 
 [dependencies]
 cyfs-base = { path = "../../../component/cyfs-base", version = "0.5" }
-cyfs-core = { path = "../../../component/cyfs-core", version = "0.5" }
-cyfs-lib = { path = "../../../component/cyfs-lib", version = "0.5" }
-cyfs-util = { path = "../../../component/cyfs-util", version = "0.5" }
 log = "0.4"
 int-enum = "0.4"
 protobuf = { version = "2", features = ["with-bytes"] }

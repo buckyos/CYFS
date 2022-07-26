@@ -26,3 +26,4 @@ awsmobilejs/
 /src/github.com/
 /src/golang.org
 .VSCodeCounter
+/log/

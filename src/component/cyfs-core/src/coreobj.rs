@@ -55,9 +55,6 @@ pub enum CoreObjectType {
     // 钱包相关对象
     NFTList = 500,
 
-    // Perf
-    PerfOperation = 600,
-
     // IM通用对象
     AddFriend = 1001,
     FriendOption = 1002,
