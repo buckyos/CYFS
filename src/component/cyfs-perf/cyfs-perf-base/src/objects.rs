@@ -182,6 +182,7 @@ pub trait PerfRequestObj {
 }
 
 pub struct PerfRequestItem {
+    pub time: u64,
     pub spend_time: u64,
     pub err: BuckyErrorCode,
     pub stat: Option<u64>
@@ -262,6 +263,7 @@ impl PerfRequestObj for PerfRequest {
 }
 
 pub struct PerfAccumulationItem {
+    pub time: u64,
     pub err: BuckyErrorCode,
     pub stat: u64
 }
