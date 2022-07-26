@@ -54,7 +54,8 @@ nix = '0.24'
 dirs = '4.0'
 
 [build-dependencies]
-hex = '0.4'
+hex = "0.4"
+
 
 [dev-dependencies]
-rand = '0.8'
+rand = "0.8"

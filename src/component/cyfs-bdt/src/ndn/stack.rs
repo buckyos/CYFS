@@ -115,7 +115,7 @@ impl NdnStack {
         &self.0.root_task
     }
 
-    pub(crate) fn channel_manager(&self) -> &ChannelManager {
+    pub fn channel_manager(&self) -> &ChannelManager {
         &self.0.channel_manager
     }
 

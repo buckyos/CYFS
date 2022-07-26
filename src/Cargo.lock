@@ -1612,6 +1612,7 @@ dependencies = [
  "rand 0.7.3",
  "ringbuf",
  "rusqlite",
+ "serde_json",
  "sha2 0.8.2",
  "socket2 0.4.4",
  "winapi 0.3.9",

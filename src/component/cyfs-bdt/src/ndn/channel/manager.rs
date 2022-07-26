@@ -12,7 +12,7 @@ use crate::{
     interface::{udp::OnUdpRawData},
     tunnel::TunnelContainer, 
     datagram::{self, DatagramTunnelGuard},
-    stack::{WeakStack, Stack}, 
+    stack::{WeakStack, Stack}
 };
 use super::channel::Channel;
 use super::download::*;
