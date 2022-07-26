@@ -7,6 +7,7 @@ pub mod process;
 mod storage;
 mod test;
 mod util;
+mod perf;
 
 pub use acl::*;
 pub use cache::*;
@@ -16,6 +17,7 @@ pub use net::*;
 pub use pkg::*;
 pub use storage::*;
 pub use test::*;
+pub use perf::*;
 
 #[macro_use]
 extern crate log;
