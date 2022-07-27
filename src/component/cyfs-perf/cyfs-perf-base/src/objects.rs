@@ -186,7 +186,7 @@ pub struct PerfRequestItem {
     pub time: u64,
     pub spend_time: u64,
     pub err: BuckyErrorCode,
-    pub stat: Option<u64>
+    pub stat: Option<u32>
 }
 
 impl PerfRequestObj for PerfRequest {
@@ -213,9 +213,9 @@ impl PerfRequestObj for PerfRequest {
             desc.time.merge(stat.spend_time, desc.success);
 
             if let Some(stat_num) = stat.stat {
-                desc.size.merge(stat_num, desc.success);
+                desc.size.merge(stat_num as u64, desc.success);
 
-                let speed = (stat_num / stat.spend_time / 1000) as f32;
+                let speed = (stat_num as u64 / stat.spend_time / 1000) as f32;
                 desc.speed.avg = (desc.size.total  / desc.time.total / 1000) as f32;
                 desc.speed.merge(speed, 0);
             }
@@ -241,8 +241,8 @@ impl PerfRequestObj for PerfRequest {
                 spend_times.push(item.spend_time);
 
                 if let Some(stat) = item.stat {
-                    stat_nums.push(stat);
-                    speeds.push((stat / item.spend_time / 1000) as f32)
+                    stat_nums.push(stat as u64);
+                    speeds.push((stat as u64 / item.spend_time / 1000) as f32)
                 }
 
             } else {
@@ -267,7 +267,7 @@ impl PerfRequestObj for PerfRequest {
 pub struct PerfAccumulationItem {
     pub time: u64,
     pub err: BuckyErrorCode,
-    pub stat: u64
+    pub stat: Option<u64>
 }
 
 #[derive(Clone, Debug, Default, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
@@ -327,7 +327,9 @@ impl PerfAccumulationObj for PerfAccumulation {
         let mut desc = self.desc().content().clone();
         if stat.err == BuckyErrorCode::Ok {
             desc.success += 1;
-            desc.size.merge(stat.stat, desc.success);
+            if let Some(stat) = stat.stat {
+                desc.size.merge(stat, desc.success);
+            }
         } else {
             desc.failed += 1;
         }
@@ -344,12 +346,14 @@ impl PerfAccumulationObj for PerfAccumulation {
         for stat in stats {
             if stat.err == BuckyErrorCode::Ok {
                 desc.success += 1;
-                stat_nums.push(stat.stat);
+                if let Some(stat) = stat.stat {
+                    stat_nums.push(stat);
+                }
             } else {
                 desc.failed += 1;
             }
         }
-
+        
         desc.size.merges(stat_nums, desc.success);
 
         PerfAccumulationBuilder::new(desc, EmptyProtobufBodyContent {})

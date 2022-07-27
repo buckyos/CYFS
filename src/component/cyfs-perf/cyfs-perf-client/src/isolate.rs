@@ -1,12 +1,12 @@
 use cyfs_base::*;
-use cyfs_lib::*;
+use cyfs_util::*;
 use cyfs_debug::Mutex;
 use cyfs_perf_base::*;
 
 use std::collections::{hash_map::Entry, HashMap};
 use std::fmt;
 use std::sync::Arc;
-use chrono::{Datelike, Timelike, Utc};
+use chrono::{Utc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PerfType {
@@ -28,44 +28,71 @@ impl fmt::Display for PerfType {
     }
 }
 
-#[derive(Clone)]
 struct PerfIsolateInner {
-    isolate_id: String,
+    id: String,
     pending_reqs: HashMap<String, u64>,
     // 本地缓存对象
-    request: HashMap<String, Vec<PerfRequestItem>>,
+    requests: HashMap<String, Vec<PerfRequestItem>>,
     accumulations: HashMap<String, Vec<PerfAccumulationItem>>,
     records: HashMap<String, Vec<PerfRecordItem>>,
 
     actions:  HashMap<String, Vec<PerfActionItem>>,
 }
 
-// 一个统计实体
-pub struct PerfIsolateEntity {
-    pub isolate_id: String,
 
-    pub actions: HashMap<String, Vec<PerfActionItem>>,
+pub struct PerfObject {
+    id: String,
+    // 本地缓存对象
+    requests: HashMap<String, Vec<PerfRequestItem>>,
+    accumulations: HashMap<String, Vec<PerfAccumulationItem>>,
+    records: HashMap<String, Vec<PerfRecordItem>>,
 
-    pub records: HashMap<String, Vec<PerfRecordItem>>,
-
-    pub accumulations: HashMap<String, Vec<PerfAccumulationItem>>,
-
-    pub request: HashMap<String, Vec<PerfRequestItem>>,
+    actions:  HashMap<String, Vec<PerfActionItem>>,
 }
 
-impl PerfIsolateInner {
-    pub fn new(isolate_id: &str) -> PerfIsolateInner {
+impl PerfObject {
+    pub fn new(id: impl Into<String>) -> Self {
         Self {
-            isolate_id: isolate_id.to_owned(),
-            pending_reqs: HashMap::new(),
-            request: HashMap::new(),
+            id: id.into(),
+            requests: HashMap::new(),
             accumulations: HashMap::new(),
             records: HashMap::new(),
             actions: HashMap::new(),
         }
     }
 
-    pub fn begin_request(&mut self, id: &str, key: &str) {
+    pub fn requests(&self) -> &HashMap<String, Vec<PerfRequestItem>> {
+        &self.requests
+    }
+
+    pub fn accumulations(&self) -> &HashMap<String, Vec<PerfAccumulationItem>> {
+        &self.accumulations
+    }
+
+    pub fn actions(&self) -> &HashMap<String, Vec<PerfActionItem>> {
+        &self.actions
+    }
+
+    pub fn records(&self) -> &HashMap<String, Vec<PerfRecordItem>> {
+        &self.records
+    }
+}
+
+
+impl PerfIsolateInner {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            pending_reqs: HashMap::new(),
+            requests: HashMap::new(),
+            accumulations: HashMap::new(),
+            records: HashMap::new(),
+            actions: HashMap::new(),
+        }
+    }
+
+    // 开启一个request
+    fn begin_request(&mut self, id: &str, key: &str) {
         let full_id = format!("{}_{}", id, key);
 
         match self.pending_reqs.entry(full_id) {
@@ -78,8 +105,8 @@ impl PerfIsolateInner {
             }
         }
     }
-
-    pub fn end_request(&mut self, id: &str, key: &str, err: BuckyErrorCode, bytes: Option<u64>) {
+    // 统计一个操作的耗时, 流量统计
+    fn end_request(&mut self, id: &str, key: &str, err: BuckyErrorCode, bytes: Option<u32>) {
         let now = bucky_time_now();
         let full_id = format!("{}_{}", id, key);
         match self.pending_reqs.remove(&full_id) {
@@ -90,9 +117,9 @@ impl PerfIsolateInner {
                     0
                 };
 
-                match self.request.entry(id.to_owned()) {
+                match self.requests.entry(id.to_owned()) {
                     Entry::Vacant(v) => {
-                        let mut req = PerfRequestItem { 
+                        let req = PerfRequestItem { 
                             time: Utc::now().timestamp() as u64, 
                             spend_time: during,
                             err, 
@@ -103,7 +130,7 @@ impl PerfIsolateInner {
                     }
                     Entry::Occupied(mut o) => {
                         let item = o.get_mut();
-                        let mut req = PerfRequestItem { 
+                        let req = PerfRequestItem { 
                             time: now, 
                             spend_time: during,
                             err, 
@@ -122,7 +149,7 @@ impl PerfIsolateInner {
 
     }
 
-    pub fn acc(&mut self, id: &str, err: BuckyErrorCode, size: u64) {
+    fn acc(&mut self, id: &str, err: BuckyErrorCode, size: Option<u64>) {
         match self.accumulations.entry(id.to_owned()) {
             Entry::Vacant(v) => {
                 let acc = PerfAccumulationItem { 
@@ -135,7 +162,7 @@ impl PerfIsolateInner {
             }
             Entry::Occupied(mut o) => {
                 let item = o.get_mut();
-                let mut acc = PerfAccumulationItem { 
+                let acc = PerfAccumulationItem { 
                     time: Utc::now().timestamp() as u64, 
                     err, 
                     stat: size,
@@ -145,22 +172,21 @@ impl PerfIsolateInner {
 
             }
         }
-
     }
 
-    pub fn action(
+    fn action(
         &mut self,
         id: &str,
         err: BuckyErrorCode,
-        key: impl Into<String>,
-        value: impl Into<String>,
-    ) {
+        name: String,
+        value: String,
+    ){
         match self.actions.entry(id.to_owned()) {
             Entry::Vacant(v) => {
                 let action = PerfActionItem { 
                     time: Utc::now().timestamp() as u64, 
                     err, 
-                    key: key.into(),
+                    key: name.into(),
                     value: value.into(),
                 };
 
@@ -171,7 +197,7 @@ impl PerfIsolateInner {
                 let action = PerfActionItem { 
                     time: Utc::now().timestamp() as u64, 
                     err, 
-                    key: key.into(),
+                    key: name.into(),
                     value: value.into(),
                 };
                 
@@ -179,10 +205,9 @@ impl PerfIsolateInner {
 
             }
         }
-        
     }
 
-    pub fn record(&mut self, id: &str, total: u64, total_size: Option<u64>) {
+    fn record(&mut self, id: &str, total: u64, total_size: Option<u64>) {
         match self.records.entry(id.to_owned()) {
             Entry::Vacant(v) => {
                 let record = PerfRecordItem { 
@@ -205,23 +230,18 @@ impl PerfIsolateInner {
         }
     }
 
-    // 取走所有已有的统计项
-    pub fn take_data(&mut self) -> PerfIsolateEntity {
-        let mut other = PerfIsolateEntity {
-            isolate_id: self.isolate_id.to_owned(),
-            request: HashMap::new(),
-            accumulations: HashMap::new(),
-            actions: HashMap::new(),
-            records: HashMap::new(),
-        };
+    // 取走数据并置空
+    pub fn take_data(&mut self) -> PerfObject {
+        let mut other = PerfObject::new(self.id.to_owned());
 
         std::mem::swap(&mut self.actions, &mut other.actions);
         std::mem::swap(&mut self.records, &mut other.records);
         std::mem::swap(&mut self.accumulations, &mut other.accumulations);
-        std::mem::swap(&mut self.request, &mut other.request);
+        std::mem::swap(&mut self.requests, &mut other.requests);
 
         other
     }
+
 
 }
 
@@ -230,43 +250,51 @@ impl PerfIsolateInner {
 pub struct PerfIsolate(Arc<Mutex<PerfIsolateInner>>);
 
 impl PerfIsolate {
-    pub fn new(isolate_id: &str) -> Self {
-        Self(Arc::new(Mutex::new(PerfIsolateInner::new(isolate_id))))
-    }
-
-    // 开启一个request
-    pub fn begin_request(&self, id: &str, key: &str) {
-        self.0.lock().unwrap().begin_request(id, key)
-    }
-    // 统计一个操作的耗时, 流量统计
-    pub fn end_request(&self, id: &str, key: &str, err: BuckyErrorCode, bytes: Option<u64>) {
-        self.0.lock().unwrap().end_request(id, key, err, bytes)
-    }
-
-    pub fn acc(&self, id: &str, err: BuckyErrorCode, size: u64) {
-        self.0.lock().unwrap().acc(id, err, size)
-    }
-
-    pub fn action(
-        &self,
-        id: &str,
-        err: BuckyErrorCode,
-        name: impl Into<String>,
-        value: impl Into<String>,
-    ){
-        self.0.lock().unwrap().action(id, err, name, value)
-    }
-
-    pub fn record(&self, id: &str, total: u64, total_size: Option<u64>) {
-        self.0.lock().unwrap().record(id, total, total_size)
+    pub fn new(id: &str) -> Self {
+        Self(Arc::new(Mutex::new(PerfIsolateInner::new(id))))
     }
 
     // 取走数据并置空
-    pub(crate) fn take_data(&self) -> PerfIsolateEntity {
+    pub(crate) fn take_data(&self) -> PerfObject {
         self.0.lock().unwrap().take_data()
     }
 
-    pub fn get_id(&self) -> String {
-        self.0.lock().unwrap().isolate_id.clone()
+}
+
+impl Perf for PerfIsolate {
+
+    fn get_id(&self) -> String {
+        self.0.lock().unwrap().id.clone()
     }
+    // create a new perf module
+    fn fork(&self, id: &str) -> BuckyResult<Box<dyn Perf>> {
+        Ok(Box::new(Self(Arc::new(Mutex::new(PerfIsolateInner::new(id))))))
+    }
+
+    fn begin_request(&self, id: &str, key: &str) {
+        self.0.lock().unwrap().begin_request(id, key)
+    }
+
+    fn end_request(&self, id: &str, key: &str, err: BuckyErrorCode, bytes: Option<u32>) {
+        self.0.lock().unwrap().end_request(id, key, err, bytes)
+    }
+
+    fn acc(&self, id: &str, err: BuckyErrorCode, size: Option<u64>) {
+        self.0.lock().unwrap().acc(id, err, size)
+    }
+
+    fn action(
+        &self,
+        id: &str,
+        err: BuckyErrorCode,
+        name: String,
+        value: String,
+    ) {
+        self.0.lock().unwrap().action(id, err, name, value)
+    }
+
+    fn record(&self, id: &str, total: u64, total_size: Option<u64>) {
+        self.0.lock().unwrap().record(id, total, total_size)
+    }
+
 }

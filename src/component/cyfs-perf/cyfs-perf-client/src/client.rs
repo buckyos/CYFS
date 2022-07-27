@@ -5,8 +5,9 @@ use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_debug::Mutex;
 use cyfs_lib::*;
+
 use crate::store::PerfStore;
-use std::collections::{hash_map, HashMap};
+use std::collections::{HashMap, hash_map};
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -48,26 +49,6 @@ impl PerfClientInner {
         }
     }
 
-    pub(crate) async fn start(&self) -> BuckyResult<()> {
-        // FIXME: 上报逻辑
-        Ok(())
-    }
-
-    // 开启定期保存的任务
-    async fn run_save(&self) {
-        loop {
-            {
-                let isolates = self.isolates.lock().unwrap();
-                self.store.save(&isolates);
-            }
-            async_std::task::sleep(std::time::Duration::from_secs(5)).await;
-        }
-    }
-
-    pub fn is_isolates_exists(&self, id: &str) -> bool {
-        self.isolates.lock().unwrap().contains_key(id)
-    }
-
     pub fn new_isolate(&self, id: &str) -> PerfIsolate {
         let mut isolates = self.isolates.lock().unwrap();
         match isolates.entry(id.to_owned()) {
@@ -88,8 +69,15 @@ impl PerfClientInner {
         }
     }
 
-    pub fn get_isolate(&self, id: &str) -> Option<PerfIsolate> {
-        self.isolates.lock().unwrap().get(id).map(|v| v.clone())
+    // 开启定期保存的任务
+    async fn run(&self) {
+        loop {
+            {
+                let isolates = self.isolates.lock().unwrap();
+                self.store.save(&isolates);
+            }
+            async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+        }
     }
 }
 
@@ -110,11 +98,10 @@ impl PerfClient {
     }
 
     pub async fn start(&self) -> BuckyResult<()> {
-        self.0.start().await?;
         // 开启定期合并到store并保存
         let this = self.clone();
         async_std::task::spawn(async move {
-            this.0.run_save().await;
+            this.0.run().await;
         });
 
         Ok(())

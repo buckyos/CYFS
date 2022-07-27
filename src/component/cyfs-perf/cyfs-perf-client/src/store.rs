@@ -1,7 +1,6 @@
-use crate::isolate;
-
 use super::isolate::*;
 use cyfs_base::*;
+use cyfs_core::DecAppId;
 use cyfs_lib::*;
 use cyfs_perf_base::*;
 
@@ -112,22 +111,25 @@ impl PerfStore {
     fn get_local_cache_path(&self, isolate_id: impl Into<String>, id: impl Into<String>, date_span: impl Into<String>, time_span: impl Into<String>, perf_type: PerfType) -> String {
         let people_id = self.people_id.to_string();
         let device_id = self.device_id.to_string();
+        let dec_id = self.dec_id.to_string();
         let isolate_id = isolate_id.into();
         let id = id.into();
         let date_span = date_span.into();
         let time_span = time_span.into();
         //<owner>/<device>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
-        let path = format!("/{PERF_SERVICE_DEC_ID}/{people_id}/{device_id}/{isolate_id}/{id}/{perf_type}/{date_span}/{time_span}");
+        let path = format!("/{PERF_SERVICE_DEC_ID}/{people_id}/{device_id}/{dec_id}/{isolate_id}/{id}/{perf_type}/{date_span}/{time_span}");
 
         path
     }
 
-    async fn local_cache(&self, device_id: Option<ObjectId>, dec_id: Option<ObjectId>, 
+    async fn local_cache(&self, device_id: Option<ObjectId>,
         isolate_id: impl Into<String>, id: impl Into<String>, date_span: impl Into<String>, time_span: impl Into<String>, 
         perf_object_id: ObjectId, perf_type: PerfType) -> BuckyResult<()>{
         // 把对象存到root_state
-        let root_state = self.stack.root_state_stub(device_id, dec_id);
-        let op_env = root_state.create_path_op_env().await?;
+        let perf_dec_id = ObjectId::from_str(PERF_SERVICE_DEC_ID).unwrap();
+
+        let root_state = self.stack.root_state_stub(device_id, Some(perf_dec_id));
+        let op_env = root_state.create_path_op_env().await?;        
         let path = self.get_local_cache_path(isolate_id, id, date_span, time_span, perf_type);
         if perf_type == PerfType::Actions {
             op_env.set_with_key(&path, perf_object_id.to_string(), &perf_object_id, None, true).await?;
@@ -146,9 +148,9 @@ impl PerfStore {
         date_span: impl Into<String>, time_span: impl Into<String>, 
         object_raw: Vec<u8>, perf_type: PerfType) -> BuckyResult<()>{
         self.put_object(object_id, object_raw).await?;
+        
         self.local_cache(
             Some(self.device_id), 
-            Some(self.dec_id), 
             isolate_id.into(), 
             id.into(),
             date_span.into(),
@@ -180,18 +182,17 @@ impl PerfStore {
             let isolate_id = key.to_owned();
             let this = self.clone();
             async_std::task::spawn(async move {
-                let _ = this.request(&isolate_id, data.request).await;
-                let _ = this.acc(&isolate_id, data.accumulations).await;
-                let _ = this.action(&isolate_id, data.actions).await;
-                let _ = this.record(&isolate_id, data.records).await;
+                let _ = this.request(&isolate_id, &data.requests()).await;
+                let _ = this.acc(&isolate_id, &data.accumulations()).await;
+                let _ = this.action(&isolate_id, &data.actions()).await;
+                let _ = this.record(&isolate_id, &data.records()).await;
             });
-            info!("will save perf isolate: {}", key);
         }
 
     }
 
     // request
-    async fn request(&self, isolate_id: &String, request: HashMap<String, Vec<PerfRequestItem>>) -> BuckyResult<()> {
+    async fn request(&self, isolate_id: &String, request: &HashMap<String, Vec<PerfRequestItem>>) -> BuckyResult<()> {
         for (id, items) in request {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfRequestItem>> = HashMap::new();
@@ -203,11 +204,11 @@ impl PerfStore {
                 let id = format!("{date}_{time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
-                        v.insert(vec![item]);
+                        v.insert(vec![item.to_owned()]);
                     }
                     Entry::Occupied(mut o) => {
                         let v = o.get_mut();       
-                        v.push(item);
+                        v.push(item.to_owned());
 
                     }
                 }
@@ -248,8 +249,8 @@ impl PerfStore {
     }
 
     // acc
-    async fn acc(&self, isolate_id: &String, request: HashMap<String, Vec<PerfAccumulationItem>>) -> BuckyResult<()> {
-        for (id, items) in request {
+    async fn acc(&self, isolate_id: &String, acc: &HashMap<String, Vec<PerfAccumulationItem>>) -> BuckyResult<()> {
+        for (id, items) in acc {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfAccumulationItem>> = HashMap::new();
             for item in items {
@@ -260,11 +261,11 @@ impl PerfStore {
                 let id = format!("{date}_{time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
-                        v.insert(vec![item]);
+                        v.insert(vec![item.to_owned()]);
                     }
                     Entry::Occupied(mut o) => {
                         let v = o.get_mut();       
-                        v.push(item);
+                        v.push(item.to_owned());
 
                     }
                 }
@@ -305,7 +306,7 @@ impl PerfStore {
     }
 
     // action
-    async fn action(&self, isolate_id: &String, actions: HashMap<String, Vec<PerfActionItem>>) -> BuckyResult<()> {
+    async fn action(&self, isolate_id: &String, actions: &HashMap<String, Vec<PerfActionItem>>) -> BuckyResult<()> {
         for (id, items) in actions {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfActionItem>> = HashMap::new();
@@ -317,11 +318,11 @@ impl PerfStore {
                 let id = format!("{date}_{time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
-                        v.insert(vec![item]);
+                        v.insert(vec![item.to_owned()]);
                     }
                     Entry::Occupied(mut o) => {
                         let v = o.get_mut();       
-                        v.push(item);
+                        v.push(item.to_owned());
 
                     }
                 }
@@ -365,8 +366,8 @@ impl PerfStore {
     }
 
     // record
-    async fn record(&self, isolate_id: &String, actions: HashMap<String, Vec<PerfRecordItem>>) -> BuckyResult<()> {
-        for (id, items) in actions {
+    async fn record(&self, isolate_id: &String, records: &HashMap<String, Vec<PerfRecordItem>>) -> BuckyResult<()> {
+        for (id, items) in records {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfRecordItem>> = HashMap::new();
             for item in items {
@@ -377,11 +378,11 @@ impl PerfStore {
                 let id = format!("{date}_{time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
-                        v.insert(vec![item]);
+                        v.insert(vec![item.to_owned()]);
                     }
                     Entry::Occupied(mut o) => {
                         let v = o.get_mut();       
-                        v.push(item);
+                        v.push(item.to_owned());
 
                     }
                 }
@@ -392,7 +393,8 @@ impl PerfStore {
                 let split = key.split("_").collect::<Vec<_>>();
                 let date_span = split[0];
                 let time_span = split[1];
-                let mut record = PerfRecord::create(self.people_id, self.dec_id, stats[stats.len() - 1].total, stats[stats.len() - 1].total_size);
+                // 只取每个time_span的最新一条即可
+                let record = PerfRecord::create(self.people_id, self.dec_id, stats[stats.len() - 1].total, stats[stats.len() - 1].total_size);
               
                 let object_raw = record.to_vec()?;
                 let object_id = record.desc().object_id();

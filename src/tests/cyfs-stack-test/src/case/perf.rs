@@ -1,5 +1,6 @@
 use cyfs_base::*;
 use cyfs_core::*;
+use cyfs_util::Perf;
 use cyfs_lib::*;
 use cyfs_perf_client::{PerfClient, PerfIsolate, PerfServerConfig};
 use zone_simulator::*;
@@ -30,7 +31,8 @@ pub async fn test() {
     perf.start().await;
 
     let isolate = perf.new_isolate("main");
-    test_request(isolate.clone()).await;
+
+    //test_request(isolate.clone()).await;
     // test_acc(isolate.clone()).await;
     // test_action(isolate.clone()).await;
     // test_record(isolate.clone()).await;
