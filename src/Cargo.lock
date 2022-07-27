@@ -641,6 +641,7 @@ dependencies = [
  "cyfs-bdt",
  "cyfs-debug",
  "log 0.4.16",
+ "md5",
 ]
 
 [[package]]
@@ -1588,6 +1589,7 @@ dependencies = [
  "libc",
  "log 0.4.16",
  "lru_time_cache",
+ "md5",
  "nix 0.24.1",
  "once_cell",
  "rand 0.7.3",
@@ -4058,6 +4060,12 @@ dependencies = [
  "digest 0.9.0",
  "opaque-debug 0.3.0",
 ]
+
+[[package]]
+name = "md5"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
 
 [[package]]
 name = "memchr"

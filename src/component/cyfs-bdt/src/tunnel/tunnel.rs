@@ -34,13 +34,14 @@ pub trait Tunnel: Send + Sync + std::fmt::Display {
     fn remote(&self) -> &Endpoint;
     fn state(&self) -> TunnelState; 
     fn proxy(&self) -> ProxyType;
-    fn send_package(&self, packages: protocol::DynamicPackage) -> Result<(), BuckyError>;
+    fn send_package(&self, packages: protocol::DynamicPackage, plaintext: bool) -> Result<(), BuckyError>;
     fn raw_data_header_len(&self) -> usize;
     fn send_raw_data(&self, data: &mut [u8]) -> Result<usize, BuckyError>;
     fn ptr_eq(&self, other: &DynamicTunnel) -> bool;
     fn retain_keeper(&self);
     fn release_keeper(&self);
     fn reset(&self);
+    fn mtu(&self) -> usize;
 }
 
 
@@ -52,6 +53,10 @@ impl DynamicTunnel {
 
     pub fn clone_as_tunnel<T: 'static + Tunnel + Clone>(&self) -> T {
         self.0.as_any().downcast_ref::<T>().unwrap().clone()
+    }
+
+    pub fn mtu(&self) -> usize {
+        self.0.mtu()
     }
 }
 

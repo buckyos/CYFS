@@ -115,7 +115,7 @@ impl PackageStream {
         }
         
         for package in packages {
-            let _ = self.0.tunnel.send_package(package);
+            let _ = self.0.tunnel.send_package(package, false);
         }
         Ok(())
     } 

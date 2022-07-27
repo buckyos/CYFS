@@ -334,7 +334,8 @@ impl Channel {
             &buf[..len], 
             &mut options, 
             self.remote(), 
-            datagram::ReservedVPort::Channel as u16);
+            datagram::ReservedVPort::Channel as u16,
+            false);
 
     } 
 
@@ -351,7 +352,8 @@ impl Channel {
             &buf[..len], 
             &mut options, 
             self.remote(), 
-            datagram::ReservedVPort::Channel as u16);
+            datagram::ReservedVPort::Channel as u16,
+            false);
     }
 
     

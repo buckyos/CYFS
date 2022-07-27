@@ -17,6 +17,7 @@ use cyfs_base::*;
 use crate::{
     types::*, 
     protocol::{self, *},
+    MTU,
     interface::{self, *, tcp::{OnTcpInterface, RecvBox, PackageInterface}}
 };
 use super::{tunnel::{self, DynamicTunnel, TunnelOwner, ProxyType}, TunnelContainer};
@@ -88,7 +89,8 @@ struct TunnelImpl {
     keeper_count: AtomicI32, 
     last_active: AtomicU64, 
     retain_connect_timestamp: AtomicU64, 
-    state: Mutex<TunnelState>
+    state: Mutex<TunnelState>,
+    mtu: usize,
 }
 
 #[derive(Clone)]
@@ -106,6 +108,7 @@ impl Tunnel {
         ep_pair: EndpointPair) -> Self {
         let remote_device_id = owner.remote().clone();
         let tunnel = Self(Arc::new(TunnelImpl {
+            mtu: MTU-12, 
             remote_device_id, 
             local_remote: ep_pair, 
             keeper_count: AtomicI32::new(0), 
@@ -752,7 +755,7 @@ impl Tunnel {
                     send_buf: &mut [u8], 
                     pkg: PackageElem) -> BuckyResult<()> {
                     match pkg {
-                        PackageElem::Package(package) => interface.send_package(send_buf, package).await, 
+                        PackageElem::Package(package) => interface.send_package(send_buf, package, false).await, 
                         PackageElem::RawData(data) => interface.send_raw_data(data).await
                     }
                 }
@@ -867,7 +870,24 @@ impl Tunnel {
                             }
                         }, 
                         RecvBox::RawData(raw_data) => {
-                            let _ = owner.on_raw_data(raw_data);
+                            if raw_data.len() >= 1 {
+                                let (cmd_code, _) = u8::raw_decode(raw_data).unwrap();
+                                match PackageCmdCode::try_from(cmd_code) {
+                                    Ok(code) => {
+                                        match code {
+                                            PackageCmdCode::Datagram => {
+                                                tunnel.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
+                                                //todo tcp datagram plaintext
+                                                info!("recv tcp datagram plaintext.");
+                                            },
+                                            _ => {
+                                                let _ = owner.on_raw_data(raw_data);
+                                            }
+                                        }
+                                    },
+                                    _ => {}
+                                }
+                            }
                         }
                     }
                 }, 
@@ -967,7 +987,7 @@ impl Tunnel {
                                         send_time: now,
                                         recv_data: 0,
                                     };
-                                    let _ = tunnel::Tunnel::send_package(&tunnel, DynamicPackage::from(ping));
+                                    let _ = tunnel::Tunnel::send_package(&tunnel, DynamicPackage::from(ping), false);
                                 }
                             }
                         }
@@ -985,6 +1005,10 @@ impl Tunnel {
 
 #[async_trait]
 impl tunnel::Tunnel for Tunnel {
+    fn mtu(&self) -> usize {
+        self.0.mtu
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -1018,7 +1042,7 @@ impl tunnel::Tunnel for Tunnel {
         }
     } 
 
-    fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
+    fn send_package(&self, package: DynamicPackage, plaintext: bool) -> Result<(), BuckyError> {
         if package.cmd_code() == PackageCmdCode::SessionData {
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, "session data should not send from tcp tunnel"));
         }
@@ -1134,7 +1158,7 @@ impl OnPackage<PingTunnel> for Tunnel {
             send_time: bucky_time_now(),
             recv_data: 0,
         };
-        let _ = tunnel::Tunnel::send_package(self, DynamicPackage::from(ping_resp));
+        let _ = tunnel::Tunnel::send_package(self, DynamicPackage::from(ping_resp), false);
         Ok(OnPackageResult::Handled)
     }
 }

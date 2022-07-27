@@ -434,7 +434,7 @@ impl UdpListener {
                     trace!("udp({}) recv {} bytes from {}", self.0.addr, len, from);
                     let recv = &mut recv_buf[..len];
 
-                    let ctx = PackageBoxDecodeContext::new_inplace(recv.as_mut_ptr(), recv.len(), &self.0.key_store);
+                    let ctx = PackageBoxDecodeContext::new_inplace(recv.as_mut_ptr(), recv.len(), &self.0.key_store, false);
                     match PackageBox::raw_decode_with_context(recv, ctx) {
                         Ok((package_box, _)) => {
                             let resp_sender = MessageSender::Udp(UdpSender::new(self.0.clone(), package_box.remote().clone(), package_box.key().clone(), from));
@@ -606,7 +606,7 @@ impl TcpSender {
     pub async fn send(&mut self, pkg: DynamicPackage) -> BuckyResult<()> {
         let mut send_buf = [0; MTU];
 
-        match self.handle.send_package(&mut send_buf, pkg).await {
+        match self.handle.send_package(&mut send_buf, pkg, false).await {
             Ok(()) => Ok(()),
             Err(e) => {
                 error!("tcp({}) send-to({}) failed error({}).", self.local_str(), self.remote_str(), e);

@@ -5,6 +5,7 @@ mod dep {
     pub use std::fmt;
     pub use std::rc::Rc;
     pub use std::str::FromStr;
+    pub use std::mem;
 
     pub use cyfs_base::*;
 
@@ -206,7 +207,7 @@ mod context {
     use super::*;
     pub struct Encode<'enc, P: Package, MergeContext: merge_context::Encode> {
         flags: u16,
-        length: usize,
+        pub length: usize,
         merge_context: &'enc mut MergeContext,
         reserved: std::marker::PhantomData<P>,
     }
@@ -506,7 +507,7 @@ impl TryFrom<u8> for PackageCmdCode {
 
             _ => Err(BuckyError::new(
                 BuckyErrorCode::InvalidParam,
-                "invalid package command type value",
+                format!("invalid package command type value {}", v),
             )),
         }
     }
@@ -1297,6 +1298,7 @@ impl<'de> RawDecode<'de> for DatagramType {
     }
 }
 
+#[derive(Clone)]
 pub struct Datagram {
     pub to_vport: u16,
     pub from_vport: u16,
@@ -1311,6 +1313,61 @@ pub struct Datagram {
     // pub data_sign: Option<Signature>, // <TODO>暂时不清楚怎么签名，先把C版本搬过来
     pub inner_type: DatagramType,
     pub data: TailedOwnedData, // TailedSharedData<'a>,
+}
+
+impl Datagram {
+    pub fn fragment_len(&self, mtu: usize, plaintext: bool) -> usize {
+        let box_header_len = 8; //mixhash
+        let dynamic_header_len = 3;
+        let mut datagram_header_len = 0;
+        let mut dynamic_package_len;
+        let aes_width = 16;
+        let piece_field_len = 2;
+
+        datagram_header_len += 2;
+        datagram_header_len += 2;
+        if self.dest_zone.is_some() {
+            datagram_header_len += 4;
+        }
+        if self.hop_limit.is_some() {
+            datagram_header_len += 1;
+        }
+        if self.sequence.is_some() {
+            datagram_header_len += 4;
+        }
+        if self.piece.is_some() {//must be none
+            datagram_header_len += 2;
+        }
+        if self.send_time.is_some() {
+            datagram_header_len += 8;
+        }
+        if self.create_time.is_some() {
+            datagram_header_len += 8;
+        }
+        if self.author_id.is_some() {
+            datagram_header_len += mem::size_of::<DeviceId>();
+        }
+        if self.author.is_some() {
+            datagram_header_len += mem::size_of::<Device>();
+        }
+        datagram_header_len += 1;
+
+        dynamic_package_len = dynamic_header_len + datagram_header_len + self.data.as_ref().len();
+        if !plaintext {
+            dynamic_package_len = dynamic_package_len/aes_width*aes_width+aes_width;
+        }
+
+        if box_header_len + dynamic_package_len <= mtu {
+            0
+        } else {
+            dynamic_package_len = mtu-box_header_len;
+            if !plaintext {
+                dynamic_package_len = dynamic_package_len/aes_width*aes_width-aes_width;
+            }
+            let data_len = dynamic_package_len-dynamic_header_len-datagram_header_len-piece_field_len;
+            data_len
+        }
+    }
 }
 
 impl Package for Datagram {

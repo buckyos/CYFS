@@ -210,7 +210,9 @@ impl Listener {
 type FirstBoxEncodeContext = udp::PackageBoxEncodeContext;
 type FirstBoxDecodeContext<'de> = udp::PackageBoxDecodeContext<'de>;
 
-pub(crate) struct OtherBoxEncodeContext {}
+pub(crate) struct OtherBoxEncodeContext {
+    pub plaintext: bool,
+}
 
 impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
     fn raw_measure_with_context(
@@ -223,11 +225,14 @@ impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
     fn raw_encode_with_context<'a>(
         &self,
         buf: &'a mut [u8],
-        _context: &mut OtherBoxEncodeContext,
+        context: &mut OtherBoxEncodeContext,
         purpose: &Option<RawEncodePurpose>,
     ) -> BuckyResult<&'a mut [u8]> {
         let mut encrypt_in_len = buf.len();
         let to_encrypt_buf = buf;
+        let raw_buf_len = encrypt_in_len;
+
+        let plaintext = context.plaintext;
 
         // 编码所有包
         let mut context = merge_context::FirstEncode::new();
@@ -241,9 +246,18 @@ impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
             let enc: &dyn RawEncodeWithContext<merge_context::OtherEncode> = p.as_ref();
             buf = enc.raw_encode_with_context(buf, &mut context, purpose)?;
         }
+
         encrypt_in_len -= buf.len();
         // 用aes 加密package的部分
-        let len = self.key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?;
+        let len = if plaintext {
+            encrypt_in_len
+        } else {
+            self.key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?
+        };
+
+        info!("package_box tcp encode: encrypt_in_len={} len={} raw_buf_len={} plaintext={}", 
+            encrypt_in_len, len, raw_buf_len, plaintext);
+
         Ok(&mut to_encrypt_buf[len..])
     }
 }
@@ -363,6 +377,8 @@ impl RawEncodeWithContext<PackageBoxEncodeContext<FirstBoxEncodeContext>> for Pa
             ));
         }
 
+        info!("packagebox FirstBoxEncodeContext buf_len={} box_header_len={}", buf.len(), box_header_len);
+
         let box_len = {
             let buf_ptr =
                 self.raw_encode_with_context(&mut buf[box_header_len..], &mut context.0, purpose)?;
@@ -395,6 +411,8 @@ impl RawEncodeWithContext<PackageBoxEncodeContext<OtherBoxEncodeContext>> for Pa
                 "buffer not enough",
             ));
         }
+
+        info!("packagebox FirstBoxEncodeContext buf_len={} box_header_len={}", buf.len(), box_header_len);
 
         let box_len = {
             let buf_ptr =
@@ -504,7 +522,7 @@ impl AcceptInterface {
         }
         let first_box = {
             let context =
-                FirstBoxDecodeContext::new_inplace(box_buf.as_mut_ptr(), box_buf.len(), keystore);
+                FirstBoxDecodeContext::new_inplace(box_buf.as_mut_ptr(), box_buf.len(), keystore, false);
             PackageBox::raw_decode_with_context(box_buf, context)
                 .map(|(package_box, _)| package_box)?
         };
@@ -560,7 +578,9 @@ impl AcceptInterface {
 
     pub async fn confirm_accept(&self, packages: Vec<DynamicPackage>) -> Result<(), BuckyError> {
         let mut send_buffer = [0u8; udp::MTU];
-        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {});
+        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {
+            plaintext: false,
+        });
         let mut package_box =
             PackageBox::encrypt_box(self.remote_device_id().clone(), self.0.key.clone());
         package_box.append(packages);
@@ -823,11 +843,12 @@ impl PackageInterface {
         &self,
         send_buf: &'a mut [u8],
         package: DynamicPackage,
+        plaintext: bool,
     ) -> Result<(), BuckyError> {
         let mut socket = self.0.socket.clone();
         let package_box =
             PackageBox::from_package(self.0.remote_device_id.clone(), self.0.key.clone(), package);
-        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {});
+        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {plaintext});
         socket
             .write_all(package_box.raw_tail_encode_with_context(send_buf, &mut context, &None)?)
             .await?;

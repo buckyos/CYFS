@@ -28,7 +28,8 @@ use crate::{
     },
     sn::client::PingClientCalledEvent, 
     stream::{StreamContainer, RemoteSequence}, 
-    stack::{Stack, WeakStack}
+    stack::{Stack, WeakStack},
+    MTU
 };
 use super::{
     tunnel::*, 
@@ -41,7 +42,7 @@ use super::{
 pub struct BuildTunnelParams {
     pub remote_const: DeviceDesc, 
     pub remote_sn: Vec<DeviceId>, 
-    pub remote_desc: Option<Device>
+    pub remote_desc: Option<Device>,
 }
 
 #[derive(Clone)]
@@ -132,6 +133,14 @@ impl TunnelContainer {
                 })
             }), 
         }))
+    }
+
+    pub fn mtu(&self) -> usize {
+        if let Ok(tunnel) = self.default_tunnel() {
+            tunnel.mtu()
+        } else {
+            MTU-12
+        }
     }
 
     fn mark_in_use(&self) {
@@ -240,20 +249,20 @@ impl TunnelContainer {
         }
     }
 
-    pub fn send_packages(&self, packages: Vec<DynamicPackage>) -> Result<(), BuckyError> {
+    pub fn send_packages(&self, packages: Vec<DynamicPackage>, plaintext: bool) -> Result<(), BuckyError> {
         let tunnel = self.default_tunnel()?;
         for package in packages {
-            tunnel.as_ref().send_package(package)?;
+            tunnel.as_ref().send_package(package, plaintext)?;
         }
         Ok(())
     }
 
-    pub fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
+    pub fn send_package(&self, package: DynamicPackage, plaintext: bool) -> Result<(), BuckyError> {
         let tunnel = self.default_tunnel()?;
-        tunnel.as_ref().send_package(package)
+        tunnel.as_ref().send_package(package, plaintext)
     }
 
-    pub fn build_send(&self, package: DynamicPackage, build_params: BuildTunnelParams) -> BuckyResult<()> {
+    pub fn build_send(&self, package: DynamicPackage, build_params: BuildTunnelParams, plaintext: bool) -> BuckyResult<()> {
         let (tunnel, builder) = {
             let mut state = self.0.state.write().unwrap();
             match &mut state.tunnel_state {
@@ -288,7 +297,7 @@ impl TunnelContainer {
 
         if let Some(tunnel) = tunnel {
             trace!("{} send packages from {}", self, tunnel.as_ref().as_ref());
-            tunnel.as_ref().send_package(package)
+            tunnel.as_ref().send_package(package, plaintext)
         } else if let Some(builder) = builder {
             //FIXME: 加入到connecting的 send 缓存里面去  
             self.stack().keystore().reset_peer(self.remote());

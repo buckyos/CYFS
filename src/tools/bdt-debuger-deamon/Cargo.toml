@@ -15,3 +15,4 @@ cyfs-bdt = { path = "../../component/cyfs-bdt" }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 clap = "2.34.0"
 log = "0.4"
+md5 = "0.7.0"
