@@ -465,6 +465,14 @@ impl PerfActionObj for PerfAction {
     }
 }
 
+
+#[derive(Clone)]
+pub struct PerfRecordItem {
+    pub time: u64,
+    pub total: u64,
+    pub total_size: Option<u64>,
+}
+
 #[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransformType, Serialize)]
 #[cyfs_protobuf_type(protos::PerfRecord)]
 pub struct PerfRecordDesc {

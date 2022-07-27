@@ -34,21 +34,21 @@ struct PerfIsolateInner {
     pending_reqs: HashMap<String, u64>,
     // 本地缓存对象
     request: HashMap<String, Vec<PerfRequestItem>>,
-    // acc: HashMap<String, PerfAccumulationItem>,
-    // record: HashMap<String, PerfRecord>,
+    accumulations: HashMap<String, Vec<PerfAccumulationItem>>,
+    records: HashMap<String, Vec<PerfRecordItem>>,
 
-    // action: Vec<PerfActionItem>,
+    actions:  HashMap<String, Vec<PerfActionItem>>,
 }
 
 // 一个统计实体
 pub struct PerfIsolateEntity {
     pub isolate_id: String,
 
-    // pub actions: Vec<PerfAction>,
+    pub actions: HashMap<String, Vec<PerfActionItem>>,
 
-    // pub records: HashMap<String, PerfRecord>,
+    pub records: HashMap<String, Vec<PerfRecordItem>>,
 
-    // pub accumulations: HashMap<String, PerfAccumulation>,
+    pub accumulations: HashMap<String, Vec<PerfAccumulationItem>>,
 
     pub request: HashMap<String, Vec<PerfRequestItem>>,
 }
@@ -59,9 +59,9 @@ impl PerfIsolateInner {
             isolate_id: isolate_id.to_owned(),
             pending_reqs: HashMap::new(),
             request: HashMap::new(),
-            // acc: HashMap::new(),
-            // record: HashMap::new(),
-            // action: Vec::new(),
+            accumulations: HashMap::new(),
+            records: HashMap::new(),
+            actions: HashMap::new(),
         }
     }
 
@@ -122,43 +122,29 @@ impl PerfIsolateInner {
 
     }
 
-    pub fn acc(&mut self, id: &str, err: BuckyErrorCode, size: Option<u64>) {
+    pub fn acc(&mut self, id: &str, err: BuckyErrorCode, size: u64) {
+        match self.accumulations.entry(id.to_owned()) {
+            Entry::Vacant(v) => {
+                let acc = PerfAccumulationItem { 
+                    time: Utc::now().timestamp() as u64, 
+                    err, 
+                    stat: size,
+                };
 
-        // let path = self.get_local_cache_path(self.isolate_id.to_owned(), id.to_owned(), PerfType::Accumulations);
+                v.insert(vec![acc]);
+            }
+            Entry::Occupied(mut o) => {
+                let item = o.get_mut();
+                let mut acc = PerfAccumulationItem { 
+                    time: Utc::now().timestamp() as u64, 
+                    err, 
+                    stat: size,
+                };
+                
+                item.push(acc);
 
-        // let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
-        // let op_env = root_state.create_path_op_env().await?;
-        // let ret = op_env.get_by_path(&path).await?;
-        // if ret.is_none() {
-        //     let perf_obj = PerfAccumulation::create(self.people_id, self.dec_id);
-        //     let v = perf_obj.add_stat(stat);
-        //     // FIXME: 异步保存数据
-        //     let object_raw = v.to_vec()?;
-        //     let object_id = v.desc().object_id();
-        //     self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Accumulations).await?;
-        //     return Ok(());
-        // }
-        // let v = ret.unwrap();
-        // let req = NONGetObjectRequest::new_noc(v, None);
-        // match self.stack.non_service().get_object(req).await{
-        //     Ok(resp) => {
-        //         let perf_obj = PerfAccumulation::decode(&resp.object.object_raw)?;
-        //         let v = perf_obj.add_stat(stat);
-        //         // FIXME: 异步保存数据
-        //         let object_raw = v.to_vec()?;
-        //         let object_id = v.desc().object_id();
-        //         self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Accumulations).await?;
-        //     },
-        //     Err(_) => {
-        //         let perf_obj = PerfAccumulation::create(self.people_id, self.dec_id);
-        //         let v = perf_obj.add_stat(stat);
-        //         // FIXME: 异步保存数据
-        //         let object_raw = v.to_vec()?;
-        //         let object_id = v.desc().object_id();
-        //         self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Accumulations).await?;
-        //     },
-        // }
-
+            }
+        }
 
     }
 
@@ -166,53 +152,57 @@ impl PerfIsolateInner {
         &mut self,
         id: &str,
         err: BuckyErrorCode,
-        name: impl Into<String>,
+        key: impl Into<String>,
         value: impl Into<String>,
     ) {
-        // FIXME: 本地缓存, 异步写操作, 默认10分钟
+        match self.actions.entry(id.to_owned()) {
+            Entry::Vacant(v) => {
+                let action = PerfActionItem { 
+                    time: Utc::now().timestamp() as u64, 
+                    err, 
+                    key: key.into(),
+                    value: value.into(),
+                };
 
-        // let v = PerfAction::create(self.people_id, self.dec_id, stat);
-        // let object_raw = v.to_vec()?;
-        // let object_id = v.desc().object_id();
-        // self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Actions).await?;
+                v.insert(vec![action]);
+            }
+            Entry::Occupied(mut o) => {
+                let item = o.get_mut();
+                let action = PerfActionItem { 
+                    time: Utc::now().timestamp() as u64, 
+                    err, 
+                    key: key.into(),
+                    value: value.into(),
+                };
+                
+                item.push(action);
 
+            }
+        }
+        
     }
 
-    pub async fn record(&self, id: &str, total: u64, total_size: Option<u64>) {
-        // let path = self.get_local_cache_path(self.isolate_id.to_owned(), self.id.to_owned(), PerfType::Records);
+    pub fn record(&mut self, id: &str, total: u64, total_size: Option<u64>) {
+        match self.records.entry(id.to_owned()) {
+            Entry::Vacant(v) => {
+                let record = PerfRecordItem { 
+                    time: Utc::now().timestamp() as u64, 
+                    total,
+                    total_size,
+                };
+                v.insert(vec![record]);
+            }
+            Entry::Occupied(mut o) => {
+                let v = o.get_mut();
+                let record = PerfRecordItem { 
+                    time: Utc::now().timestamp() as u64, 
+                    total,
+                    total_size,
+                };
+                v.push(record);
 
-        // let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
-        // let op_env = root_state.create_path_op_env().await?;
-        // let ret = op_env.get_by_path(&path).await?;
-        // if ret.is_none() {
-        //     let perf_obj = PerfRecord::create(self.people_id, self.dec_id, total, total_size);
-        //     let v = perf_obj.add_stat(total, total_size);
-        //     // FIXME: 异步保存数据
-        //     let object_raw = v.to_vec()?;
-        //     let object_id = v.desc().object_id();
-        //     self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Records).await?;
-        //     return ;
-        // }
-        // let v = ret.unwrap();
-        // let req = NONGetObjectRequest::new_noc(v, None);
-        // match self.stack.non_service().get_object(req).await{
-        //     Ok(resp) => {
-        //         let perf_obj = PerfRecord::decode(&resp.object.object_raw)?;
-        //         let v = perf_obj.add_stat(total, total_size);
-        //         // FIXME: 异步保存数据
-        //         let object_raw = v.to_vec()?;
-        //         let object_id = v.desc().object_id();
-        //         self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Records).await?;
-        //     },
-        //     Err(_) => {
-        //         let perf_obj = PerfRecord::create(self.people_id, self.dec_id, total, total_size);
-        //         let v = perf_obj.add_stat(total, total_size);
-        //         // FIXME: 异步保存数据
-        //         let object_raw = v.to_vec()?;
-        //         let object_id = v.desc().object_id();
-        //         self.put_noc_and_root_state(object_id, id.to_string(), object_raw, PerfType::Records).await?;
-        //     },
-        // }
+            }
+        }
     }
 
     // 取走所有已有的统计项
@@ -220,11 +210,14 @@ impl PerfIsolateInner {
         let mut other = PerfIsolateEntity {
             isolate_id: self.isolate_id.to_owned(),
             request: HashMap::new(),
+            accumulations: HashMap::new(),
+            actions: HashMap::new(),
+            records: HashMap::new(),
         };
 
-        // std::mem::swap(&mut self.actions, &mut other.actions);
-        // std::mem::swap(&mut self.records, &mut other.records);
-        // std::mem::swap(&mut self.accumulations, &mut other.accumulations);
+        std::mem::swap(&mut self.actions, &mut other.actions);
+        std::mem::swap(&mut self.records, &mut other.records);
+        std::mem::swap(&mut self.accumulations, &mut other.accumulations);
         std::mem::swap(&mut self.request, &mut other.request);
 
         other
@@ -250,7 +243,7 @@ impl PerfIsolate {
         self.0.lock().unwrap().end_request(id, key, err, bytes)
     }
 
-    pub fn acc(&self, id: &str, err: BuckyErrorCode, size: Option<u64>) {
+    pub fn acc(&self, id: &str, err: BuckyErrorCode, size: u64) {
         self.0.lock().unwrap().acc(id, err, size)
     }
 
@@ -265,7 +258,7 @@ impl PerfIsolate {
     }
 
     pub fn record(&self, id: &str, total: u64, total_size: Option<u64>) {
-        // self.0.lock().unwrap().record(id, total, total_size)
+        self.0.lock().unwrap().record(id, total, total_size)
     }
 
     // 取走数据并置空

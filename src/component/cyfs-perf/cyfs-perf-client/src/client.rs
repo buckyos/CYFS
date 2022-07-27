@@ -60,7 +60,7 @@ impl PerfClientInner {
                 let isolates = self.isolates.lock().unwrap();
                 self.store.save(&isolates);
             }
-            async_std::task::sleep(std::time::Duration::from_secs(60 * 5)).await;
+            async_std::task::sleep(std::time::Duration::from_secs(5)).await;
         }
     }
 

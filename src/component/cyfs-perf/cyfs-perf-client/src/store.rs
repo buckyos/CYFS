@@ -64,11 +64,6 @@ impl PerfStore {
         }
     }
 
-    pub async fn start(&self) -> BuckyResult<()> {
-
-        Ok(())
-    }
-
     async fn put_object(&self, object_id: ObjectId, object_raw: Vec<u8>) -> BuckyResult<()>{
 
         let req = NONPutObjectOutputRequest::new_noc(object_id, object_raw);
@@ -114,24 +109,26 @@ impl PerfStore {
         (date, time_span)
     }
 
-    fn get_local_cache_path(&self, isolate_id: impl Into<String>, id: impl Into<String>, perf_type: PerfType) -> String {
-        let now = Utc::now();
-        let (date, time_span) = self.get_cur_time_span(now);
+    fn get_local_cache_path(&self, isolate_id: impl Into<String>, id: impl Into<String>, date_span: impl Into<String>, time_span: impl Into<String>, perf_type: PerfType) -> String {
         let people_id = self.people_id.to_string();
         let device_id = self.device_id.to_string();
         let isolate_id = isolate_id.into();
         let id = id.into();
+        let date_span = date_span.into();
+        let time_span = time_span.into();
         //<owner>/<device>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
-        let path = format!("/{PERF_SERVICE_DEC_ID}/{people_id}/{device_id}/{isolate_id}/{id}/{perf_type}/{date}/{time_span}");
+        let path = format!("/{PERF_SERVICE_DEC_ID}/{people_id}/{device_id}/{isolate_id}/{id}/{perf_type}/{date_span}/{time_span}");
 
         path
     }
 
-    async fn local_cache(&self, device_id: Option<ObjectId>, dec_id: Option<ObjectId>, isolate_id: impl Into<String>, id: impl Into<String>, perf_object_id: ObjectId, perf_type: PerfType) -> BuckyResult<()>{
+    async fn local_cache(&self, device_id: Option<ObjectId>, dec_id: Option<ObjectId>, 
+        isolate_id: impl Into<String>, id: impl Into<String>, date_span: impl Into<String>, time_span: impl Into<String>, 
+        perf_object_id: ObjectId, perf_type: PerfType) -> BuckyResult<()>{
         // 把对象存到root_state
         let root_state = self.stack.root_state_stub(device_id, dec_id);
         let op_env = root_state.create_path_op_env().await?;
-        let path = self.get_local_cache_path(isolate_id, id, perf_type);
+        let path = self.get_local_cache_path(isolate_id, id, date_span, time_span, perf_type);
         if perf_type == PerfType::Actions {
             op_env.set_with_key(&path, perf_object_id.to_string(), &perf_object_id, None, true).await?;
         } else{
@@ -143,20 +140,26 @@ impl PerfStore {
         Ok(())
     }
 
-    async fn put_noc_and_root_state(&self, object_id: ObjectId, isolate_id: impl Into<String>, id: impl Into<String>, object_raw: Vec<u8>, perf_type: PerfType) -> BuckyResult<()>{
-        let _ = self.put_object(object_id, object_raw).await;
-        let _ = self.local_cache(
+    async fn put_noc_and_root_state(
+        &self, 
+        object_id: ObjectId, isolate_id: impl Into<String>, id: impl Into<String>, 
+        date_span: impl Into<String>, time_span: impl Into<String>, 
+        object_raw: Vec<u8>, perf_type: PerfType) -> BuckyResult<()>{
+        self.put_object(object_id, object_raw).await?;
+        self.local_cache(
             Some(self.device_id), 
             Some(self.dec_id), 
             isolate_id.into(), 
-            id.into(), 
-            object_id, perf_type).await;
+            id.into(),
+            date_span.into(),
+            time_span.into(),
+            object_id, perf_type).await?;
 
         Ok(())
     }
 
-    async fn get_op_env_object(&self, isolate_id: impl Into<String>, id: impl Into<String>) -> BuckyResult<Option<ObjectId>> {
-        let path = self.get_local_cache_path(isolate_id, id, PerfType::Requests);
+    async fn get_op_env_object(&self, isolate_id: impl Into<String>, id: impl Into<String>, date_span: impl Into<String>, time_span: impl Into<String>, perf_type: PerfType) -> BuckyResult<Option<ObjectId>> {
+        let path = self.get_local_cache_path(isolate_id, id, date_span, time_span, perf_type);
         let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
         let ret = op_env.get_by_path(&path).await?;
@@ -177,9 +180,12 @@ impl PerfStore {
             let isolate_id = key.to_owned();
             let this = self.clone();
             async_std::task::spawn(async move {
-                this.request(&isolate_id, data.request).await;
+                let _ = this.request(&isolate_id, data.request).await;
+                let _ = this.acc(&isolate_id, data.accumulations).await;
+                let _ = this.action(&isolate_id, data.actions).await;
+                let _ = this.record(&isolate_id, data.records).await;
             });
-            //info!("will save perf isolate: {}, data={:?}", key, data.request);
+            info!("will save perf isolate: {}", key);
         }
 
     }
@@ -187,26 +193,14 @@ impl PerfStore {
     // request
     async fn request(&self, isolate_id: &String, request: HashMap<String, Vec<PerfRequestItem>>) -> BuckyResult<()> {
         for (id, items) in request {
-            let ret = self.get_op_env_object(isolate_id, id.to_owned()).await?;
-
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfRequestItem>> = HashMap::new();
-            let mut cur_groups: Vec<PerfRequestItem> = Vec::new();
-            let now = Utc::now();
-            let (date, time_span) = self.get_cur_time_span(now);
-            let cur_time_span = format!("{date}_{time_span}");
             for item in items {
                 let d = UNIX_EPOCH + Duration::from_secs(item.time);
                 // Create DateTime from SystemTime
                 let datetime = DateTime::<Utc>::from(d);
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
-                // 为后续的noc 已经存在的对象 merge 服务
-                if ret.is_none() && id == cur_time_span {
-                    cur_groups.push(item.to_owned());
-                    continue;
-                }
-
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
                         v.insert(vec![item]);
@@ -220,29 +214,33 @@ impl PerfStore {
 
             }
 
-            for (_key, value) in groups {
-                let mut request = PerfRequest::create(self.people_id, self.dec_id);
-                request  = request.add_stats(value.as_slice());
-                
-                let object_raw = request.to_vec()?;
-                let object_id = request.desc().object_id();
-                self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), object_raw, PerfType::Requests).await?;
-
-            }
-
-            if ret.is_some() {
-                let v = ret.unwrap();
-                let req = NONGetObjectRequest::new_noc(v, None);
-                if let Ok(resp) = self.stack.non_service().get_object(req).await {
-                    let mut request = PerfRequest::decode(&resp.object.object_raw)?;
-                    request  = request.add_stats(cur_groups.as_slice());
-            
+            for (key, values) in groups {
+                let split = key.split("_").collect::<Vec<_>>();
+                let date_span = split[0];
+                let time_span = split[1];
+                let ret = self.get_op_env_object(isolate_id, id.to_owned(), date_span, time_span, PerfType::Requests).await?;
+                if ret.is_none() {
+                    let mut request = PerfRequest::create(self.people_id, self.dec_id);
+                    request  = request.add_stats(values.as_slice());
+                    
                     let object_raw = request.to_vec()?;
                     let object_id = request.desc().object_id();
-                    self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), object_raw, PerfType::Requests).await?;
+                    self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Requests).await?;    
+                } else {
+                    let v = ret.unwrap();
+                    let req = NONGetObjectRequest::new_noc(v, None);
+                    if let Ok(resp) = self.stack.non_service().get_object(req).await {
+                        let mut request = PerfRequest::decode(&resp.object.object_raw)?;
+                        request  = request.add_stats(&values.as_slice());
+                
+                        let object_raw = request.to_vec()?;
+                        let object_id = request.desc().object_id();
+                        self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Requests).await?;
+                    }
+    
                 }
-            }
-            
+
+            }            
         }
 
         Ok(())
@@ -250,7 +248,162 @@ impl PerfStore {
     }
 
     // acc
+    async fn acc(&self, isolate_id: &String, request: HashMap<String, Vec<PerfAccumulationItem>>) -> BuckyResult<()> {
+        for (id, items) in request {
+            // group by time_span
+            let mut groups: HashMap::<String, Vec<PerfAccumulationItem>> = HashMap::new();
+            for item in items {
+                let d = UNIX_EPOCH + Duration::from_secs(item.time);
+                // Create DateTime from SystemTime
+                let datetime = DateTime::<Utc>::from(d);
+                let (date, time_span) = self.get_cur_time_span(datetime);
+                let id = format!("{date}_{time_span}");
+                match groups.entry(id) {
+                    Entry::Vacant(v) => {
+                        v.insert(vec![item]);
+                    }
+                    Entry::Occupied(mut o) => {
+                        let v = o.get_mut();       
+                        v.push(item);
 
+                    }
+                }
+
+            }
+
+            for (key, values) in groups {
+                let split = key.split("_").collect::<Vec<_>>();
+                let date_span = split[0];
+                let time_span = split[1];
+                let ret = self.get_op_env_object(isolate_id, id.to_owned(), date_span, time_span, PerfType::Accumulations).await?;
+                if ret.is_none() {
+                    let mut request = PerfAccumulation::create(self.people_id, self.dec_id);
+                    request  = request.add_stats(values.as_slice());
+                    
+                    let object_raw = request.to_vec()?;
+                    let object_id = request.desc().object_id();
+                    self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Accumulations).await?;    
+                } else {
+                    let v = ret.unwrap();
+                    let req = NONGetObjectRequest::new_noc(v, None);
+                    if let Ok(resp) = self.stack.non_service().get_object(req).await {
+                        let mut request = PerfAccumulation::decode(&resp.object.object_raw)?;
+                        request  = request.add_stats(&values.as_slice());
+                
+                        let object_raw = request.to_vec()?;
+                        let object_id = request.desc().object_id();
+                        self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Accumulations).await?;
+                    }
+    
+                }
+
+            }            
+        }
+
+        Ok(())
+
+    }
+
+    // action
+    async fn action(&self, isolate_id: &String, actions: HashMap<String, Vec<PerfActionItem>>) -> BuckyResult<()> {
+        for (id, items) in actions {
+            // group by time_span
+            let mut groups: HashMap::<String, Vec<PerfActionItem>> = HashMap::new();
+            for item in items {
+                let d = UNIX_EPOCH + Duration::from_secs(item.time);
+                // Create DateTime from SystemTime
+                let datetime = DateTime::<Utc>::from(d);
+                let (date, time_span) = self.get_cur_time_span(datetime);
+                let id = format!("{date}_{time_span}");
+                match groups.entry(id) {
+                    Entry::Vacant(v) => {
+                        v.insert(vec![item]);
+                    }
+                    Entry::Occupied(mut o) => {
+                        let v = o.get_mut();       
+                        v.push(item);
+
+                    }
+                }
+
+            }
+
+            for (key, stats) in groups {
+                let split = key.split("_").collect::<Vec<_>>();
+                let date_span = split[0];
+                let time_span = split[1];
+                let ret = self.get_op_env_object(isolate_id, id.to_owned(), date_span, time_span, PerfType::Actions).await?;
+                if ret.is_none() {
+                    let mut action = PerfAction::create(self.people_id, self.dec_id);
+                    for stat in stats {
+                        action  = action.add_stat(stat);
+                    }
+                    
+                    let object_raw = action.to_vec()?;
+                    let object_id = action.desc().object_id();
+                    self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Actions).await?;    
+                } else {
+                    let v = ret.unwrap();
+                    let req = NONGetObjectRequest::new_noc(v, None);
+                    if let Ok(resp) = self.stack.non_service().get_object(req).await {
+                        let mut action = PerfAction::decode(&resp.object.object_raw)?;
+                        for stat in stats {
+                            action  = action.add_stat(stat);
+                        }
+                        let object_raw = action.to_vec()?;
+                        let object_id = action.desc().object_id();
+                        self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Actions).await?;
+                    }
+    
+                }
+
+            }            
+        }
+
+        Ok(())
+
+    }
+
+    // record
+    async fn record(&self, isolate_id: &String, actions: HashMap<String, Vec<PerfRecordItem>>) -> BuckyResult<()> {
+        for (id, items) in actions {
+            // group by time_span
+            let mut groups: HashMap::<String, Vec<PerfRecordItem>> = HashMap::new();
+            for item in items {
+                let d = UNIX_EPOCH + Duration::from_secs(item.time);
+                // Create DateTime from SystemTime
+                let datetime = DateTime::<Utc>::from(d);
+                let (date, time_span) = self.get_cur_time_span(datetime);
+                let id = format!("{date}_{time_span}");
+                match groups.entry(id) {
+                    Entry::Vacant(v) => {
+                        v.insert(vec![item]);
+                    }
+                    Entry::Occupied(mut o) => {
+                        let v = o.get_mut();       
+                        v.push(item);
+
+                    }
+                }
+
+            }
+
+            for (key, stats) in groups {
+                let split = key.split("_").collect::<Vec<_>>();
+                let date_span = split[0];
+                let time_span = split[1];
+                let mut record = PerfRecord::create(self.people_id, self.dec_id, stats[stats.len() - 1].total, stats[stats.len() - 1].total_size);
+              
+                let object_raw = record.to_vec()?;
+                let object_id = record.desc().object_id();
+                self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Records).await?; 
+
+            }            
+        }
+
+        Ok(())
+
+    }
 
     // 锁定区间用以上报操作
     pub fn is_locked(&self) -> bool {

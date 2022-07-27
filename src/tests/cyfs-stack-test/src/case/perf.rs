@@ -27,12 +27,13 @@ pub async fn test() {
         PerfServerConfig::Default,
         stack,
     );
+    perf.start().await;
 
     let isolate = perf.new_isolate("main");
     test_request(isolate.clone()).await;
-    test_acc(isolate.clone()).await;
-    test_action(isolate.clone()).await;
-    test_record(isolate.clone()).await;
+    // test_acc(isolate.clone()).await;
+    // test_action(isolate.clone()).await;
+    // test_record(isolate.clone()).await;
 
     // async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
 }
@@ -42,39 +43,39 @@ async fn test_request(perf: PerfIsolate) {
         loop {
             perf.begin_request("connect", "address");
 
-            async_std::task::sleep(std::time::Duration::from_secs(10)).await;
+            async_std::task::sleep(std::time::Duration::from_secs(5)).await;
 
-            let _ = perf.end_request("connect", "address", 100, Ok(Some(100)));
+            let _ = perf.end_request("connect", "address", BuckyErrorCode::Ok, Some(100));
         }
     });
 }
 
-async fn test_acc(perf: PerfIsolate) {
-    async_std::task::spawn(async move {
-        loop {
-            async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+// async fn test_acc(perf: PerfIsolate) {
+//     async_std::task::spawn(async move {
+//         loop {
+//             async_std::task::sleep(std::time::Duration::from_secs(1)).await;
 
-            let _ = perf.acc("total", Ok(100));
-        }
-    });
-}
+//             let _ = perf.acc("total", Ok(100));
+//         }
+//     });
+// }
 
-async fn test_action(perf: PerfIsolate) {
-    async_std::task::spawn(async move {
-        loop {
-            async_std::task::sleep(std::time::Duration::from_secs(10)).await;
+// async fn test_action(perf: PerfIsolate) {
+//     async_std::task::spawn(async move {
+//         loop {
+//             async_std::task::sleep(std::time::Duration::from_secs(10)).await;
 
-            let _ = perf.action("total", Ok(("drive".into(), "dsg".into())));
-        }
-    });
-}
+//             let _ = perf.action("total", Ok(("drive".into(), "dsg".into())));
+//         }
+//     });
+// }
 
-async fn test_record(perf: PerfIsolate) {
-    async_std::task::spawn(async move {
-        loop {
-            async_std::task::sleep(std::time::Duration::from_secs(10)).await;
+// async fn test_record(perf: PerfIsolate) {
+//     async_std::task::spawn(async move {
+//         loop {
+//             async_std::task::sleep(std::time::Duration::from_secs(10)).await;
 
-            let _ = perf.record("total", 100, Some(100));
-        }
-    });
-}
+//             let _ = perf.record("total", 100, Some(100));
+//         }
+//     });
+// }
