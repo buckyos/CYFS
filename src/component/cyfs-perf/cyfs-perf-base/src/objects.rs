@@ -431,6 +431,7 @@ pub type PerfAction = NamedObjectBase<PerfActionType>;
 pub trait PerfActionObj {
     fn create(owner: ObjectId, dec_id: ObjectId) -> PerfAction;
     fn add_stat(&self, stat: PerfActionItem) -> PerfAction;
+    fn add_stats(&self, stat: &mut Vec<PerfActionItem>) -> PerfAction;
 }
 
 impl PerfActionObj for PerfAction {
@@ -446,6 +447,16 @@ impl PerfActionObj for PerfAction {
     fn add_stat(&self, stat: PerfActionItem) -> PerfAction {
         let mut desc = self.desc().content().clone();
         desc.actions.push(stat);
+
+        PerfActionBuilder::new(desc, EmptyProtobufBodyContent {})
+            .owner(self.desc().owner().unwrap())
+            .dec_id(self.desc().dec_id().unwrap())
+            .build()
+    }
+
+    fn add_stats(&self, stat: &mut Vec<PerfActionItem>) -> PerfAction {
+        let mut desc = self.desc().content().clone();
+        desc.actions.append(stat);
 
         PerfActionBuilder::new(desc, EmptyProtobufBodyContent {})
             .owner(self.desc().owner().unwrap())
@@ -540,7 +551,6 @@ impl PerfRecordObj for PerfRecord {
             .owner(self.desc().owner().unwrap())
             .dec_id(self.desc().dec_id().unwrap())
             .build()
-
     }
 }
 
