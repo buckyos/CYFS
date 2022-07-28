@@ -124,7 +124,7 @@ macro_rules! perf_acc {
 
 #[macro_export]
 macro_rules! perf_action {
-    ($perf:expr, $id:ident, $err:ident, $name:ident, $value:ident) => {
+    ($perf:expr, $id:expr, $err:expr, $name:expr, $value:expr) => {
         if let Some(perf) = $perf.get() {
             perf.action($id, $err, $name, $value);
         }

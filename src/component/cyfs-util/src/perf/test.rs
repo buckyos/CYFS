@@ -65,6 +65,8 @@ impl Second {
             perf_record!(self.perf, "record1", 100);
             perf_record!(self.perf, "record1", 100, 1024);
 
+            perf_action!(self.perf, "action1", BuckyErrorCode::AddrInUse, "key".to_owned(), "value".to_owned());
+
             // perf_begin_request!()
             async_std::task::sleep(std::time::Duration::from_secs(5)).await;
 
