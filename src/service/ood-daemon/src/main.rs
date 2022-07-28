@@ -38,6 +38,12 @@ async fn main() {
                 .help("Run ood-daemon service without backend monitor service"),
         )
         .arg(
+            Arg::with_name("no_ood_control")
+                .long("no-ood-control")
+                .takes_value(false)
+                .help("Run ood-daemon service without ood control service"),
+        )
+        .arg(
             Arg::with_name("mode")
                 .long("mode")
                 .takes_value(true)
@@ -92,7 +98,9 @@ async fn main() {
     };
     SERVICE_MANAGER.change_mode(mode.clone());
 
-    let mut daemon = Daemon::new(mode, no_monitor);
+    let no_ood_control = matches.is_present("no_ood_control");
+
+    let daemon = Daemon::new(mode, no_monitor, no_ood_control);
     if let Err(e) = daemon.run().await {
         error!("daemon run error! err={}", e);
     }
