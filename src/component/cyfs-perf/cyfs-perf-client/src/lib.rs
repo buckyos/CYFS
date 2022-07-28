@@ -1,9 +1,7 @@
 mod isolate;
-mod client;
 mod config;
 mod store;
 
-pub use client::*;
 pub use config::*;
 pub use isolate::*;
 

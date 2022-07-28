@@ -41,7 +41,7 @@ impl MergeResult<u64> for SizeResult {
         self.total += value;
         self.min = if self.min == 0 {value} else {self.min.min(value)};
         self.max = self.max.max(value);
-        self.avg = self.total / total_num as u64;
+        self.avg = if total_num == 0 { 0 } else { self.total / total_num as u64 };
     }
 
     fn merges(&mut self, stats: Vec<u64>, total_num: u32) {
@@ -55,7 +55,7 @@ impl MergeResult<u64> for SizeResult {
 
         self.min = if self.min == 0 {min} else {self.min.min(min)};
         self.max = self.max.max(max);
-        self.avg = self.total / total_num as u64;
+        self.avg = if total_num == 0 { 0 } else { self.total / total_num as u64 };
     }
 }
 

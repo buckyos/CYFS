@@ -1,6 +1,5 @@
 use super::isolate::*;
 use cyfs_base::*;
-use cyfs_core::DecAppId;
 use cyfs_lib::*;
 use cyfs_perf_base::*;
 
@@ -9,7 +8,6 @@ use std::collections::hash_map::Entry;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
 use chrono::{Datelike, Timelike, Utc, DateTime};
 
 // 基于noc的统计项缓存
@@ -24,15 +22,13 @@ pub(crate) struct PerfStore {
 
     dec_id: ObjectId,
 
-    id: String,
-
     span_times: Vec<u32>,
 
     stack: SharedCyfsStack,
 }
 
 impl PerfStore {
-    pub fn new(span_time: u32, people_id: ObjectId, device_id: ObjectId, dec_id: Option<ObjectId>, id: impl Into<String>, stack: SharedCyfsStack) -> Self {
+    pub fn new(span_time: u32, people_id: ObjectId, device_id: ObjectId, dec_id: Option<ObjectId>, stack: SharedCyfsStack) -> Self {
         let locked = Arc::new(AtomicBool::new(false));
 
         let mut span_duration = span_time;
@@ -56,7 +52,6 @@ impl PerfStore {
             people_id,
             device_id,
             dec_id,
-            id: id.into(),
             stack,
             span_times,
 
@@ -169,46 +164,24 @@ impl PerfStore {
         Ok(ret)
     }
 
-    // 尝试保存到noc，保存成功后会清空isolates内容
-    pub fn save(&self, isolates: &HashMap<String, PerfIsolate>) {
-        // 锁定状态下，不可修改数据
-        if self.is_locked() {
-            warn!("perf store still in locked state!");
-            return;
-        }
-
-        for (key, isolate) in isolates {
-            let data = isolate.take_data();
-            let isolate_id = key.to_owned();
-            let this = self.clone();
-            async_std::task::spawn(async move {
-                let _ = this.request(&isolate_id, &data.requests()).await;
-                let _ = this.acc(&isolate_id, &data.accumulations()).await;
-                let _ = this.action(&isolate_id, &data.actions()).await;
-                let _ = this.record(&isolate_id, &data.records()).await;
-            });
-        }
-
-    }
-
     // request
-    async fn request(&self, isolate_id: &String, request: &HashMap<String, Vec<PerfRequestItem>>) -> BuckyResult<()> {
+    pub async fn request(&self, isolate_id: &String, request: HashMap<String, Vec<PerfRequestItem>>) -> BuckyResult<()> {
         for (id, items) in request {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfRequestItem>> = HashMap::new();
             for item in items {
-                let d = UNIX_EPOCH + Duration::from_secs(item.time);
                 // Create DateTime from SystemTime
-                let datetime = DateTime::<Utc>::from(d);
+                let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
+                info!("time_span: {date} {time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
-                        v.insert(vec![item.to_owned()]);
+                        v.insert(vec![item]);
                     }
                     Entry::Occupied(mut o) => {
                         let v = o.get_mut();       
-                        v.push(item.to_owned());
+                        v.push(item);
 
                     }
                 }
@@ -249,23 +222,23 @@ impl PerfStore {
     }
 
     // acc
-    async fn acc(&self, isolate_id: &String, acc: &HashMap<String, Vec<PerfAccumulationItem>>) -> BuckyResult<()> {
+   pub async fn acc(&self, isolate_id: &String, acc: HashMap<String, Vec<PerfAccumulationItem>>) -> BuckyResult<()> {
         for (id, items) in acc {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfAccumulationItem>> = HashMap::new();
             for item in items {
-                let d = UNIX_EPOCH + Duration::from_secs(item.time);
                 // Create DateTime from SystemTime
-                let datetime = DateTime::<Utc>::from(d);
+                let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
+                info!("time_span: {date} {time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
-                        v.insert(vec![item.to_owned()]);
+                        v.insert(vec![item]);
                     }
                     Entry::Occupied(mut o) => {
                         let v = o.get_mut();       
-                        v.push(item.to_owned());
+                        v.push(item);
 
                     }
                 }
@@ -306,23 +279,23 @@ impl PerfStore {
     }
 
     // action
-    async fn action(&self, isolate_id: &String, actions: &HashMap<String, Vec<PerfActionItem>>) -> BuckyResult<()> {
+    pub async fn action(&self, isolate_id: &String, actions: HashMap<String, Vec<PerfActionItem>>) -> BuckyResult<()> {
         for (id, items) in actions {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfActionItem>> = HashMap::new();
             for item in items {
-                let d = UNIX_EPOCH + Duration::from_secs(item.time);
                 // Create DateTime from SystemTime
-                let datetime = DateTime::<Utc>::from(d);
+                let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
+                info!("time_span: {date} {time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
-                        v.insert(vec![item.to_owned()]);
+                        v.insert(vec![item]);
                     }
                     Entry::Occupied(mut o) => {
                         let v = o.get_mut();       
-                        v.push(item.to_owned());
+                        v.push(item);
 
                     }
                 }
@@ -366,23 +339,23 @@ impl PerfStore {
     }
 
     // record
-    async fn record(&self, isolate_id: &String, records: &HashMap<String, Vec<PerfRecordItem>>) -> BuckyResult<()> {
+    pub async fn record(&self, isolate_id: &String, records: HashMap<String, Vec<PerfRecordItem>>) -> BuckyResult<()> {
         for (id, items) in records {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfRecordItem>> = HashMap::new();
             for item in items {
-                let d = UNIX_EPOCH + Duration::from_secs(item.time);
                 // Create DateTime from SystemTime
-                let datetime = DateTime::<Utc>::from(d);
+                let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
+                info!("time_span: {date} {time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
-                        v.insert(vec![item.to_owned()]);
+                        v.insert(vec![item]);
                     }
                     Entry::Occupied(mut o) => {
                         let v = o.get_mut();       
-                        v.push(item.to_owned());
+                        v.push(item);
 
                     }
                 }
