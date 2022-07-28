@@ -56,6 +56,7 @@ impl Second {
         });
     }
 
+
     async fn run(&self) {
             
 
@@ -99,7 +100,7 @@ impl Second {
             println!("case run...");
             async_std::task::sleep(std::time::Duration::from_secs(5)).await;
 
-            perf_end_request!(self.perf, "begin1", &id);
+            perf_end_request!(self.perf, "begin1", &id, BuckyErrorCode::Ok, 100);
         }
     }
 }
