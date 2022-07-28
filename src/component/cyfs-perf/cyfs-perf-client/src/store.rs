@@ -174,7 +174,6 @@ impl PerfStore {
                 let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
-                info!("time_span: {date} {time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
                         v.insert(vec![item]);
@@ -231,7 +230,6 @@ impl PerfStore {
                 let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
-                info!("time_span: {date} {time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
                         v.insert(vec![item]);
@@ -288,7 +286,6 @@ impl PerfStore {
                 let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
-                info!("time_span: {date} {time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
                         v.insert(vec![item]);
@@ -348,7 +345,6 @@ impl PerfStore {
                 let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
-                info!("time_span: {date} {time_span}");
                 match groups.entry(id) {
                     Entry::Vacant(v) => {
                         v.insert(vec![item]);

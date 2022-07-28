@@ -55,11 +55,7 @@ impl Second {
             this.run().await;
         });
     }
-
-
     async fn run(&self) {
-            
-
         let dec_id = new_dec("test-perf");
         //let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
         let stack = SharedCyfsStack::open_runtime(Some(dec_id)).await.unwrap();
@@ -95,6 +91,9 @@ impl Second {
 
             perf_record!(self.perf, "record1", 100);
             perf_record!(self.perf, "record1", 100, 1024);
+
+            perf_action!(self.perf, "action1", BuckyErrorCode::InvalidData, "cyfs".to_owned(), "stack".to_owned());
+            perf_action!(self.perf, "action2", BuckyErrorCode::Ok, "cyfs".to_string(), "bdt".to_string());
 
             // perf_begin_request!()
             println!("case run...");
