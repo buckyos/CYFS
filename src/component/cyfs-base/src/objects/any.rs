@@ -554,7 +554,7 @@ mod tests {
         let desc_content = DeviceDescContent::new(unique_id.clone());
 
         let body_content =
-            DeviceBodyContent::new(endpoints, sn_list, Vec::new(), Some(name.to_owned()));
+            DeviceBodyContent::new(endpoints, sn_list, Vec::new(), Some(name.to_owned()), None);
         let secret1 = PrivateKey::generate_rsa(1024).unwrap();
         let public_key = secret1.public();
 

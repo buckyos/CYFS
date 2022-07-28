@@ -156,6 +156,7 @@ pub struct DeviceBodyContent {
     sn_list: Vec<DeviceId>,
     passive_pn_list: Vec<DeviceId>,
     name: Option<String>,
+    bdt_version: Option<u8>,
 }
 
 // body使用protobuf编解码
@@ -198,6 +199,7 @@ impl Default for DeviceBodyContent {
             sn_list: Vec::new(),
             passive_pn_list: Vec::new(),
             name: None,
+            bdt_version: None,
         }
     }
 }
@@ -208,12 +210,14 @@ impl DeviceBodyContent {
         sn_list: Vec<DeviceId>,
         passive_pn_list: Vec<DeviceId>,
         name: Option<String>,
+        bdt_version: Option<u8>,
     ) -> Self {
         Self {
             endpoints,
             sn_list,
             passive_pn_list,
             name,
+            bdt_version,
         }
     }
 
@@ -247,6 +251,9 @@ impl DeviceBodyContent {
     pub fn set_name(&mut self, name: Option<String>) {
         self.name = name
     }
+
+    pub fn bdt_version(&self) -> Option<u8> {self.bdt_version}
+    pub fn set_bdt_version(&mut self, bdt_version: Option<u8>) {self.bdt_version = bdt_version}
 }
 
 // protos编解码
@@ -265,6 +272,10 @@ impl TryFrom<&DeviceBodyContent> for protos::DeviceBodyContent {
             ret.set_name(name.to_owned());
         }
 
+        if let Some(bdt_version) = value.bdt_version {
+            ret.set_bdt_version(bdt_version as u32);
+        }
+
         Ok(ret)
     }
 }
@@ -278,10 +289,15 @@ impl TryFrom<protos::DeviceBodyContent> for DeviceBodyContent {
             sn_list: ProtobufCodecHelper::decode_buf_list(value.take_sn_list())?,
             passive_pn_list: ProtobufCodecHelper::decode_buf_list(value.take_passive_pn_list())?,
             name: None,
+            bdt_version: None,
         };
 
         if value.has_name() {
             ret.name = Some(value.take_name());
+        }
+
+        if value.has_bdt_version() {
+            ret.bdt_version = Some(value.get_bdt_version() as u8);
         }
 
         Ok(ret)
@@ -320,7 +336,7 @@ impl Device {
     ) -> DeviceBuilder {
         let desc_content = DeviceDescContent::new(unique_id);
 
-        let body_content = DeviceBodyContent::new(endpoints, sn_list, passive_pn_list, None);
+        let body_content = DeviceBodyContent::new(endpoints, sn_list, passive_pn_list, None, None);
         let mut real_area = area.clone();
         real_area.inner = category as u8;
 
@@ -348,6 +364,18 @@ impl Device {
             .unwrap()
             .content_mut()
             .set_name(name)
+    }
+
+    pub fn bdt_version(&self) -> Option<u8> {
+        self.body().as_ref().unwrap().content().bdt_version()
+    }
+
+    pub fn set_bdt_version(&mut self, bdt_version: Option<u8>) {
+        self.body_mut()
+            .as_mut()
+            .unwrap()
+            .content_mut()
+            .set_bdt_version(bdt_version)
     }
 
     pub fn category(&self) -> BuckyResult<DeviceCategory> {
