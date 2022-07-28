@@ -1,6 +1,7 @@
 mod isolate;
 mod config;
 mod store;
+mod manager;
 
 pub use config::*;
 pub use isolate::*;

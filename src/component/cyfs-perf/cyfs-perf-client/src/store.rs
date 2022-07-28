@@ -17,9 +17,6 @@ use chrono::{Datelike, Timelike, Utc, DateTime};
 pub(crate) struct PerfStore {
     locked: Arc<AtomicBool>,
 
-    people_id: ObjectId,
-    device_id: ObjectId,
-
     dec_id: ObjectId,
 
     span_times: Vec<u32>,
@@ -28,7 +25,7 @@ pub(crate) struct PerfStore {
 }
 
 impl PerfStore {
-    pub fn new(span_time: u32, people_id: ObjectId, device_id: ObjectId, dec_id: Option<ObjectId>, stack: SharedCyfsStack) -> Self {
+    pub fn new(span_time: u32, dec_id: ObjectId, stack: SharedCyfsStack) -> Self {
         let locked = Arc::new(AtomicBool::new(false));
 
         let mut span_duration = span_time;
@@ -42,24 +39,15 @@ impl PerfStore {
             seg += span_duration;
         }
         
-        let dec_id = match dec_id {
-            Some(id) => id,
-            None => ObjectId::from_str(PERF_SERVICE_DEC_ID).unwrap(),
-        };  
-        
         Self {
             locked,
-            people_id,
-            device_id,
             dec_id,
             stack,
             span_times,
-
         }
     }
 
     async fn put_object(&self, object_id: ObjectId, object_raw: Vec<u8>) -> BuckyResult<()>{
-
         let req = NONPutObjectOutputRequest::new_noc(object_id, object_raw);
         self.stack.non_service().put_object(req).await?;
 
@@ -104,15 +92,13 @@ impl PerfStore {
     }
 
     fn get_local_cache_path(&self, isolate_id: impl Into<String>, id: impl Into<String>, date_span: impl Into<String>, time_span: impl Into<String>, perf_type: PerfType) -> String {
-        let people_id = self.people_id.to_string();
-        let device_id = self.device_id.to_string();
         let dec_id = self.dec_id.to_string();
         let isolate_id = isolate_id.into();
         let id = id.into();
         let date_span = date_span.into();
         let time_span = time_span.into();
-        //<owner>/<device>/<dec_id>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
-        let path = format!("/{people_id}/{device_id}/{dec_id}/{isolate_id}/{id}/{perf_type}/{date_span}/{time_span}");
+        // /local/<dec_id>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
+        let path = format!("/local/{dec_id}/{isolate_id}/{id}/{perf_type}/{date_span}/{time_span}");
 
         path
     }
@@ -174,17 +160,8 @@ impl PerfStore {
                 let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
-                match groups.entry(id) {
-                    Entry::Vacant(v) => {
-                        v.insert(vec![item]);
-                    }
-                    Entry::Occupied(mut o) => {
-                        let v = o.get_mut();       
-                        v.push(item);
-
-                    }
-                }
-
+                info!("time_span: {date} {time_span}");
+                groups.entry(id).or_insert(vec![]).push(item);
             }
 
             for (key, values) in groups {
@@ -230,17 +207,7 @@ impl PerfStore {
                 let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
-                match groups.entry(id) {
-                    Entry::Vacant(v) => {
-                        v.insert(vec![item]);
-                    }
-                    Entry::Occupied(mut o) => {
-                        let v = o.get_mut();       
-                        v.push(item);
-
-                    }
-                }
-
+                groups.entry(id).or_insert(vec![]).push(item);
             }
 
             for (key, values) in groups {
@@ -286,16 +253,7 @@ impl PerfStore {
                 let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
-                match groups.entry(id) {
-                    Entry::Vacant(v) => {
-                        v.insert(vec![item]);
-                    }
-                    Entry::Occupied(mut o) => {
-                        let v = o.get_mut();       
-                        v.push(item);
-
-                    }
-                }
+                groups.entry(id).or_insert(vec![]).push(item);
 
             }
 
@@ -345,17 +303,7 @@ impl PerfStore {
                 let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
-                match groups.entry(id) {
-                    Entry::Vacant(v) => {
-                        v.insert(vec![item]);
-                    }
-                    Entry::Occupied(mut o) => {
-                        let v = o.get_mut();       
-                        v.push(item);
-
-                    }
-                }
-
+                groups.entry(id).or_insert(vec![]).push(item);
             }
 
             for (key, stats) in groups {
