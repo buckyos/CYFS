@@ -84,7 +84,7 @@ impl PerfIsolateInner {
         let people_id = resp.zone.owner().to_owned();
         let store = PerfStore::new(self.span_time, people_id, device_id, self.dec_id.clone(), self.stack.clone());
         
-        let mut interval = async_std::stream::interval(Duration::from_secs(10));
+        let mut interval = async_std::stream::interval(Duration::from_secs(60));
         while let Some(_) = interval.next().await {
 
             let _ = self.inner_save(&store).await?;
