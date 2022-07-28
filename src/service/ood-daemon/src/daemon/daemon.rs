@@ -34,25 +34,48 @@ pub struct Daemon {
     mode: ServiceMode,
     device_config_manager: DeviceConfigManager,
     no_monitor: bool,
+    no_ood_control: bool,
 }
 
 impl Daemon {
     // add code here
-    pub fn new(mode: ServiceMode, no_monitor: bool) -> Self {
+    pub fn new(mode: ServiceMode, no_monitor: bool, no_ood_control: bool) -> Self {
         let device_config_manager = DeviceConfigManager::new();
 
         Self {
             mode,
             device_config_manager,
             no_monitor,
+            no_ood_control,
         }
     }
 
-    pub async fn run(&mut self) -> BuckyResult<()> {
+    pub async fn run(&self) -> BuckyResult<()> {
         init_system_config().await?;
 
         self.device_config_manager.init().await?;
 
+        if !self.no_ood_control {
+            self.start_control().await?;
+        } else {
+            info!("will run without ood control service");
+        }
+
+        // 关注绑定事件
+        let notify = BindNotify {
+            abort_handle: Arc::new(Mutex::new(None)),
+        };
+        OOD_CONTROLLER.bind_event().on(Box::new(notify.clone()));
+
+        let _ = GATEWAY_MONITOR.init().await;
+
+        self.run_check_loop(notify).await;
+
+        Ok(())
+    }
+
+    async fn start_control(&self) -> BuckyResult<()> {
+        
         let control_mode = match self.mode {
             ServiceMode::Daemon => Some(OODControlMode::Daemon),
             ServiceMode::Runtime => Some(OODControlMode::Runtime),
@@ -69,25 +92,13 @@ impl Daemon {
             };
 
             let control_interface = ControlInterface::new(param, &OOD_CONTROLLER);
-            if let Err(e) = control_interface.start().await {
-                return Err(e);
-            }
+            control_interface.start().await?;
         }
-
-        // 关注绑定事件
-        let notify = BindNotify {
-            abort_handle: Arc::new(Mutex::new(None)),
-        };
-        OOD_CONTROLLER.bind_event().on(Box::new(notify.clone()));
-
-        let _ = GATEWAY_MONITOR.init().await;
-
-        self.run_check_loop(notify).await;
 
         Ok(())
     }
 
-    async fn run_check_loop(&mut self, notify: BindNotify) {
+    async fn run_check_loop(&self, notify: BindNotify) {
         Self::start_check_service_state();
 
         let mut need_load_config = true;
