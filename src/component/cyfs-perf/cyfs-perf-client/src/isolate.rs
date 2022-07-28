@@ -135,6 +135,7 @@ impl PerfIsolateInner {
             }
         }
 
+        // FIXME:  futures::future::join_all parallel 
         store.request(&self.isolate_id, reqs).await?;
         store.acc(&self.isolate_id, acc).await?;
         store.action(&self.isolate_id, act).await?;

@@ -111,8 +111,8 @@ impl PerfStore {
         let id = id.into();
         let date_span = date_span.into();
         let time_span = time_span.into();
-        //<owner>/<device>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
-        let path = format!("/{PERF_SERVICE_DEC_ID}/{people_id}/{device_id}/{dec_id}/{isolate_id}/{id}/{perf_type}/{date_span}/{time_span}");
+        //<owner>/<device>/<dec_id>/<isolate_id>/<id>/<PerfType>/<Date>/<TimeSpan>
+        let path = format!("/{people_id}/{device_id}/{dec_id}/{isolate_id}/{id}/{perf_type}/{date_span}/{time_span}");
 
         path
     }
