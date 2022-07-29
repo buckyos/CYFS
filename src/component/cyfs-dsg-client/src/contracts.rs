@@ -168,6 +168,7 @@ where
     pub end_at: u64,
     pub witness_dec_id: Option<ObjectId>,
     pub witness: T,
+    pub body_hash: Option<HashValue>,
 }
 
 impl<T> TryFrom<&DsgContractDesc<T>> for protos::ContractDesc
@@ -209,6 +210,9 @@ where
         proto.set_witness(rust.witness.to_vec()?);
         if let Some(witness_dec_id) = &rust.witness_dec_id {
             proto.set_witness_dec_id(witness_dec_id.to_vec()?);
+        }
+        if let Some(hash) = &rust.body_hash {
+            proto.set_body_hash(hash.as_slice().to_vec());
         }
 
         Ok(proto)
@@ -252,6 +256,11 @@ where
             } else {
                 None
             },
+            body_hash: if proto.has_body_hash() {
+                Some(HashValue::from(proto.take_body_hash().as_slice()))
+            } else {
+                None
+            }
         })
     }
 }
@@ -298,6 +307,7 @@ where
             end_at: 0,
             witness_dec_id: None,
             witness: T::default(),
+            body_hash: None
         }
     }
 }
@@ -320,10 +330,43 @@ where
     type PublicKeyType = SubDescNone;
 }
 
-#[derive(RawEncode, RawDecode, Clone)]
-pub struct DsgContractBody {}
+#[derive(Clone)]
+pub struct DsgContractBody {
+    extra_chunks: Option<Vec<ChunkId>>,
+}
 
 impl BodyContent for DsgContractBody {}
+
+impl TryFrom<&DsgContractBody> for protos::DsgContractBody {
+    type Error = BuckyError;
+
+    fn try_from(value: &DsgContractBody) -> BuckyResult<Self> {
+        let mut proto = protos::DsgContractBody::new();
+        if value.extra_chunks.is_some() {
+            let mut chunk_list = protos::DsgChunkList::new();
+            chunk_list.set_chunks(ProtobufCodecHelper::encode_buf_list(value.extra_chunks.as_ref().unwrap())?);
+            proto.set_extra_chunks(chunk_list);
+        }
+        Ok(proto)
+    }
+}
+
+impl TryFrom<protos::DsgContractBody> for DsgContractBody {
+    type Error = BuckyError;
+
+    fn try_from(mut value: protos::DsgContractBody) -> Result<Self, Self::Error> {
+        Ok(Self {
+            extra_chunks: if value.has_extra_chunks() {
+                let chunk_list = ProtobufCodecHelper::decode_buf_list(value.take_extra_chunks().take_chunks())?;
+                Some(chunk_list)
+            } else {
+                None
+            }
+        })
+    }
+}
+
+impl_default_protobuf_raw_codec!(DsgContractBody, protos::DsgContractBody);
 
 pub type DsgContractObjectType<T> = NamedObjType<DsgContractDesc<T>, DsgContractBody>;
 pub type DsgContractObject<T> = NamedObjectBase<DsgContractObjectType<T>>;
@@ -387,7 +430,30 @@ where
         stack: &SharedCyfsStack,
         desc: DsgContractDesc<T>,
     ) -> BuckyResult<DsgContractObject<T>> {
-        let builder = NamedObjectBuilder::new(desc, DsgContractBody {});
+        let (new_desc, body) = if let DsgDataSource::Immutable(chunk_list) = &desc.data_source {
+            if desc.raw_measure(&None)? > 64 * 1024 {
+                let body = DsgContractBody {
+                    extra_chunks: Some(chunk_list.clone())
+                };
+                let body_hash = hash_data(body.to_vec()?.as_slice());
+                let new_desc = DsgContractDesc {
+                    data_source: DsgDataSource::Immutable(vec![]),
+                    storage: desc.storage,
+                    miner: desc.miner,
+                    start_at: desc.start_at,
+                    end_at: desc.end_at,
+                    witness_dec_id: desc.witness_dec_id,
+                    witness: desc.witness,
+                    body_hash: Some(body_hash)
+                };
+                (new_desc, body)
+            } else {
+                (desc, DsgContractBody { extra_chunks: None })
+            }
+        } else {
+            (desc, DsgContractBody { extra_chunks: None })
+        };
+        let builder = NamedObjectBuilder::new(new_desc, body);
         let contract = builder
             .dec_id(dsg_dec_id())
             .owner(stack.local_device_id().object_id().clone())
@@ -443,8 +509,19 @@ where
     }
 
     // 数据源
-    pub fn data_source(&self) -> &DsgDataSource {
-        &self.obj.desc().content().data_source
+    pub fn data_source(&self) -> DsgDataSource {
+        match &self.obj.desc().content().data_source {
+            DsgDataSource::Immutable(chunk_list) => {
+                if chunk_list.len() == 0 && self.obj.body().as_ref().unwrap().content().extra_chunks.is_some() {
+                    DsgDataSource::Immutable(self.obj.body().as_ref().unwrap().content().extra_chunks.as_ref().unwrap().clone())
+                } else {
+                    DsgDataSource::Immutable(chunk_list.clone())
+                }
+            }
+            DsgDataSource::Mutable(space) => {
+                DsgDataSource::Mutable(*space)
+            }
+        }
     }
 
     // 存储介质
@@ -468,7 +545,7 @@ where
             DsgDataSource::Immutable(chunks) => DsgContractStateObjectRef::new(
                 self.id(),
                 DsgContractState::DataSourceChanged(DsgDataSourceChangedState {
-                    chunks: chunks.clone(),
+                    chunks,
                 }),
             ),
             DsgDataSource::Mutable(_) => {
@@ -637,6 +714,7 @@ impl TryFrom<protos::ContractState> for DsgContractState {
 pub struct DsgContractStateDesc {
     pub contract: ObjectId,
     pub state: DsgContractState,
+    pub body_hash: Option<HashValue>,
 }
 
 impl TryFrom<&DsgContractStateDesc> for protos::ContractStateDesc {
@@ -646,6 +724,9 @@ impl TryFrom<&DsgContractStateDesc> for protos::ContractStateDesc {
         let mut proto = protos::ContractStateDesc::new();
         proto.set_contract(rust.contract.to_vec()?);
         proto.set_state(protos::ContractState::try_from(&rust.state)?);
+        if rust.body_hash.is_some() {
+            proto.set_body_hash(rust.body_hash.as_ref().unwrap().as_slice().to_vec());
+        }
         Ok(proto)
     }
 }
@@ -657,6 +738,11 @@ impl TryFrom<protos::ContractStateDesc> for DsgContractStateDesc {
         Ok(Self {
             contract: ProtobufCodecHelper::decode_buf(proto.take_contract())?,
             state: DsgContractState::try_from(proto.take_state())?,
+            body_hash: if proto.has_body_hash() {
+                Some(HashValue::from(proto.take_body_hash().as_slice()))
+            } else {
+                None
+            }
         })
     }
 }
@@ -678,10 +764,43 @@ impl DescContent for DsgContractStateDesc {
 
 impl_default_protobuf_raw_codec!(DsgContractStateDesc, protos::ContractStateDesc);
 
-#[derive(RawEncode, RawDecode, Clone)]
-pub struct DsgContractStateBody {}
+#[derive(Clone)]
+pub struct DsgContractStateBody {
+    extra_chunks: Option<Vec<ChunkId>>,
+}
 
 impl BodyContent for DsgContractStateBody {}
+
+impl TryFrom<&DsgContractStateBody> for protos::DsgContractStateBody {
+    type Error = BuckyError;
+
+    fn try_from(value: &DsgContractStateBody) -> BuckyResult<Self> {
+        let mut proto = protos::DsgContractStateBody::new();
+        if value.extra_chunks.is_some() {
+            let mut chunk_list = protos::DsgChunkList::new();
+            chunk_list.set_chunks(ProtobufCodecHelper::encode_buf_list(value.extra_chunks.as_ref().unwrap())?);
+            proto.set_extra_chunks(chunk_list);
+        }
+        Ok(proto)
+    }
+}
+
+impl TryFrom<protos::DsgContractStateBody> for DsgContractStateBody {
+    type Error = BuckyError;
+
+    fn try_from(mut value: protos::DsgContractStateBody) -> Result<Self, Self::Error> {
+        Ok(Self {
+            extra_chunks: if value.has_extra_chunks() {
+                let chunk_list = ProtobufCodecHelper::decode_buf_list(value.take_extra_chunks().take_chunks())?;
+                Some(chunk_list)
+            } else {
+                None
+            }
+        })
+    }
+}
+
+impl_default_protobuf_raw_codec!(DsgContractStateBody, protos::DsgContractStateBody);
 
 pub type DsgContractStateObjectType = NamedObjType<DsgContractStateDesc, DsgContractStateBody>;
 pub type DsgContractStateObject = NamedObjectBase<DsgContractStateObjectType>;
@@ -717,11 +836,48 @@ impl<'a> std::fmt::Display for DsgContractStateObjectRef<'a> {
 
 impl<'a> DsgContractStateObjectRef<'a> {
     pub fn new(contract: ObjectId, state: DsgContractState) -> DsgContractStateObject {
+        let (new_state, body) = match state {
+            DsgContractState::Initial => {
+                (DsgContractState::Initial, DsgContractStateBody { extra_chunks: None })
+            }
+            DsgContractState::DataSourceChanged(state) => {
+                if state.chunks.len() > 2000 {
+                    (DsgContractState::DataSourceChanged(DsgDataSourceChangedState {
+                        chunks: vec![],
+                    }), DsgContractStateBody { extra_chunks: Some(state.chunks) })
+                } else {
+                    (DsgContractState::DataSourceChanged(state), DsgContractStateBody { extra_chunks: None })
+                }
+            }
+            DsgContractState::DataSourcePrepared(state) => {
+                if state.chunks.len() > 2000 {
+                    (DsgContractState::DataSourcePrepared(DsgDataSourcePreparedState {
+                        chunks: vec![],
+                        data_source_stub: state.data_source_stub
+                    }), DsgContractStateBody { extra_chunks: Some(state.chunks) })
+                } else {
+                    (DsgContractState::DataSourcePrepared(state), DsgContractStateBody { extra_chunks: None })
+                }
+            }
+            DsgContractState::DataSourceSyncing => {
+                (DsgContractState::DataSourceSyncing, DsgContractStateBody { extra_chunks: None })
+            }
+            DsgContractState::DataSourceStored => {
+                (DsgContractState::DataSourceStored, DsgContractStateBody { extra_chunks: None })
+            }
+            DsgContractState::ContractExecuted => {
+                (DsgContractState::ContractExecuted, DsgContractStateBody { extra_chunks: None })
+            }
+            DsgContractState::ContractBroken => {
+                (DsgContractState::ContractBroken, DsgContractStateBody { extra_chunks: None })
+            }
+        };
         let desc = DsgContractStateDesc {
             contract: contract.clone(),
-            state,
+            state: new_state,
+            body_hash: if body.extra_chunks.is_some() {Some(hash_data(body.to_vec().unwrap().as_slice()))} else {None}
         };
-        let state = NamedObjectBuilder::new(desc, DsgContractStateBody {})
+        let state = NamedObjectBuilder::new(desc, body)
             .dec_id(dsg_dec_id())
             .ref_objects(vec![ObjectLink {
                 obj_id: contract.clone(),
@@ -735,8 +891,43 @@ impl<'a> DsgContractStateObjectRef<'a> {
         self.as_ref().desc().object_id()
     }
 
-    pub fn state(&self) -> &DsgContractState {
-        &self.as_ref().desc().content().state
+    pub fn state(&self) -> DsgContractState {
+        match &self.as_ref().desc().content().state {
+            DsgContractState::Initial => {
+                DsgContractState::Initial
+            }
+            DsgContractState::DataSourceChanged(state) => {
+                if state.chunks.len() == 0 && self.obj.body().as_ref().unwrap().content().extra_chunks.is_some() {
+                    DsgContractState::DataSourceChanged(DsgDataSourceChangedState {
+                        chunks: self.obj.body().as_ref().unwrap().content().extra_chunks.as_ref().unwrap().clone()
+                    })
+                } else {
+                    DsgContractState::DataSourceChanged(state.clone())
+                }
+            }
+            DsgContractState::DataSourcePrepared(state) => {
+                if state.chunks.len() == 0 && self.obj.body().as_ref().unwrap().content().extra_chunks.is_some() {
+                    DsgContractState::DataSourcePrepared(DsgDataSourcePreparedState {
+                        chunks: self.obj.body().as_ref().unwrap().content().extra_chunks.as_ref().unwrap().clone(),
+                        data_source_stub: state.data_source_stub.clone()
+                    })
+                } else {
+                    DsgContractState::DataSourcePrepared(state.clone())
+                }
+            }
+            DsgContractState::DataSourceSyncing => {
+                DsgContractState::DataSourceSyncing
+            }
+            DsgContractState::DataSourceStored => {
+                DsgContractState::DataSourceStored
+            }
+            DsgContractState::ContractExecuted => {
+                DsgContractState::ContractExecuted
+            }
+            DsgContractState::ContractBroken => {
+                DsgContractState::ContractBroken
+            }
+        }
     }
 
     pub fn next(&self, state: DsgContractState) -> BuckyResult<DsgContractStateObject> {
@@ -792,12 +983,50 @@ impl<'a> DsgContractStateObjectRef<'a> {
                 "no invalid state after broken",
             )),
         }?;
+
+        let (new_state, body) = match state {
+            DsgContractState::Initial => {
+                (DsgContractState::Initial, DsgContractStateBody { extra_chunks: None })
+            }
+            DsgContractState::DataSourceChanged(state) => {
+                if state.chunks.len() > 2000 {
+                    (DsgContractState::DataSourceChanged(DsgDataSourceChangedState {
+                        chunks: vec![],
+                    }), DsgContractStateBody { extra_chunks: Some(state.chunks) })
+                } else {
+                    (DsgContractState::DataSourceChanged(state), DsgContractStateBody { extra_chunks: None })
+                }
+            }
+            DsgContractState::DataSourcePrepared(state) => {
+                if state.chunks.len() > 2000 {
+                    (DsgContractState::DataSourcePrepared(DsgDataSourcePreparedState {
+                        chunks: vec![],
+                        data_source_stub: state.data_source_stub
+                    }), DsgContractStateBody { extra_chunks: Some(state.chunks) })
+                } else {
+                    (DsgContractState::DataSourcePrepared(state), DsgContractStateBody { extra_chunks: None })
+                }
+            }
+            DsgContractState::DataSourceSyncing => {
+                (DsgContractState::DataSourceSyncing, DsgContractStateBody { extra_chunks: None })
+            }
+            DsgContractState::DataSourceStored => {
+                (DsgContractState::DataSourceStored, DsgContractStateBody { extra_chunks: None })
+            }
+            DsgContractState::ContractExecuted => {
+                (DsgContractState::ContractExecuted, DsgContractStateBody { extra_chunks: None })
+            }
+            DsgContractState::ContractBroken => {
+                (DsgContractState::ContractBroken, DsgContractStateBody { extra_chunks: None })
+            }
+        };
         let desc = DsgContractStateDesc {
             contract: self.contract_id().clone(),
-            state,
+            state: new_state,
+            body_hash: if body.extra_chunks.is_some() {Some(hash_data(body.to_vec().unwrap().as_slice()))} else {None}
         };
 
-        let state = NamedObjectBuilder::new(desc, DsgContractStateBody {})
+        let state = NamedObjectBuilder::new(desc, body)
             .dec_id(dsg_dec_id())
             .prev(self.id())
             .ref_objects(
