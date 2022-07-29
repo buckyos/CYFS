@@ -70,11 +70,10 @@ impl Second {
             PerfServerConfig::Default,
             stack,
         );
-    
 
-        perf.start().await;
+        let perf = perf.fork("main").unwrap();
 
-        self.perf.bind(Box::new(perf));
+        self.perf.bind(perf);
         println!("begin run...");
         loop {
             let id = perf_request_unique_id();

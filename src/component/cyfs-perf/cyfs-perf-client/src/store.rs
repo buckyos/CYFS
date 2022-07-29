@@ -99,7 +99,7 @@ impl PerfStore {
 
     async fn local_cache(
         &self,
-        map: &StateStorageMap,
+        map: &PathOpEnvStub,
         isolate_id: impl Into<String>,
         id: impl Into<String>, 
         date_span: impl Into<String>, 
@@ -109,17 +109,19 @@ impl PerfStore {
         ) -> BuckyResult<()> {
              
         let path = self.get_local_cache_path(isolate_id, id, date_span, time_span, perf_type);
-        map.set(&path, &perf_object_id).await?;
-        // 外部批量处理完, 上层统一commit save
-        // let root = op_env.commit().await?;
-        // info!("new dec root is: {:?}, perf_obj_id={}", root, perf_object_id);
+        if perf_type == PerfType::Actions {
+            map.set_with_key(&path, perf_object_id.to_string(), &perf_object_id, None, true).await?;
+        } else{
+            map.set_with_path(&path, &perf_object_id, None, true).await?;
+        }
+        // 外部批量处理完, 上层统一commit
 
         Ok(())
     }
 
     async fn put_noc_and_root_state(
         &self,
-        map: &StateStorageMap,
+        map: &PathOpEnvStub,
         object_id: ObjectId, 
         isolate_id: impl Into<String>, 
         id: impl Into<String>, 
@@ -145,7 +147,7 @@ impl PerfStore {
 
     async fn get_op_env_object(
         &self, 
-        map: &StateStorageMap, 
+        map: &PathOpEnvStub, 
         isolate_id: impl Into<String>, 
         id: impl Into<String>, 
         date_span: impl Into<String>, 
@@ -153,12 +155,12 @@ impl PerfStore {
         perf_type: PerfType
         ) -> BuckyResult<Option<ObjectId>> {
         let path = self.get_local_cache_path(isolate_id, id, date_span, time_span, perf_type);
-        let ret = map.get(path).await?;
+        let ret = map.get_by_path(path).await?;
         Ok(ret)
     }
 
     // request
-    pub async fn request(&self, map: &StateStorageMap, isolate_id: &String, request: HashMap<String, Vec<PerfRequestItem>>) -> BuckyResult<()> {
+    pub async fn request(&self, map: &PathOpEnvStub, isolate_id: &String, request: HashMap<String, Vec<PerfRequestItem>>) -> BuckyResult<()> {
         info!("2222222222222222222222: {}, {}", isolate_id, request.len());
         for (id, items) in request {
             // group by time_span
@@ -206,7 +208,7 @@ impl PerfStore {
     }
 
     // acc
-   pub async fn acc(&self, map: &StateStorageMap, isolate_id: &String, acc: HashMap<String, Vec<PerfAccumulationItem>>) -> BuckyResult<()> {
+   pub async fn acc(&self, map: &PathOpEnvStub, isolate_id: &String, acc: HashMap<String, Vec<PerfAccumulationItem>>) -> BuckyResult<()> {
         for (id, items) in acc {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfAccumulationItem>> = HashMap::new();
@@ -252,7 +254,7 @@ impl PerfStore {
     }
 
     // action
-    pub async fn action(&self, map: &StateStorageMap, isolate_id: &String, actions: HashMap<String, Vec<PerfActionItem>>) -> BuckyResult<()> {
+    pub async fn action(&self, map: &PathOpEnvStub, isolate_id: &String, actions: HashMap<String, Vec<PerfActionItem>>) -> BuckyResult<()> {
         for (id, items) in actions {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfActionItem>> = HashMap::new();
@@ -302,7 +304,7 @@ impl PerfStore {
     }
 
     // record
-    pub async fn record(&self, map: &StateStorageMap, isolate_id: &String, records: HashMap<String, Vec<PerfRecordItem>>) -> BuckyResult<()> {
+    pub async fn record(&self, map: &PathOpEnvStub, isolate_id: &String, records: HashMap<String, Vec<PerfRecordItem>>) -> BuckyResult<()> {
         for (id, items) in records {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfRecordItem>> = HashMap::new();
