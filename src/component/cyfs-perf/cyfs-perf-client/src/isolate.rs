@@ -199,13 +199,6 @@ impl PerfIsolate {
         Self(Arc::new(ret))
     }
 
-    pub async fn start(&self) {
-        let manager = self.0.manager.clone();
-       async_std::task::spawn(async move {
-            manager.start().await;
-        });
-    }
-
     // 取走数据并置空
     pub fn take_data(&self) -> PerfIsolateEntity {
         self.0.take_data()
