@@ -1121,12 +1121,27 @@ impl DsgService {
                             let _ = self.set_finish_state(DsgContractStateObjectRef::from(&executed_state)).await;
                         } else if Duration::from_micros(now - state_ref.create_at()) > self.config().challenge_interval {
                             log::info!("{} check contract new store challenge, contract={}, at={}", self, contract_id, now);
-                            let prepared_state = self.get_object_from_noc(state_ref.prev_state_id().unwrap().clone()).await
-                                .map_err(|err| {
-                                    log::debug!("{} check contract failed, contract={}, at={}, err=load state {} {}", self, contract_id, now, state_ref.prev_state_id().unwrap(), err);
-                                    err
-                                })?;
-                            let prepared_state_ref = DsgContractStateObjectRef::from(&prepared_state);
+                            let mut prepared_state = None;
+                            let mut prev_state_id = state_ref.prev_state_id().map(|i| i.clone());
+                            while prev_state_id.is_some() {
+                                let prev_state = self.get_object_from_noc(prev_state_id.as_ref().unwrap().clone()).await
+                                    .map_err(|err| {
+                                        log::debug!("{} check contract failed, contract={}, at={}, err=load state {} {}", self, contract_id, now, prev_state_id.as_ref().unwrap(), err);
+                                        err
+                                    })?;
+                                let prev_state_ref = DsgContractStateObjectRef::from(&prev_state);
+                                prev_state_id = prev_state_ref.prev_state_id().map(|i| i.clone());
+                                if let DsgContractState::DataSourcePrepared(_) = prev_state_ref.state() {
+                                    prepared_state = Some(prev_state);
+                                    break;
+                                }
+                            }
+                            if prepared_state.is_none() {
+                                log::error!("contract {} has no prepared state", contract_id);
+                                return Ok(());
+                            }
+
+                            let prepared_state_ref = DsgContractStateObjectRef::from(prepared_state.as_ref().unwrap());
                             if let DsgContractState::DataSourcePrepared(prepared) = prepared_state_ref.state() {
                                 let challenge = self.create_challenge(prepared_state_ref, prepared, &self.config().store_challenge).await
                                     .map_err(|err| {
