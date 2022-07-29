@@ -65,9 +65,8 @@ impl Second {
 
         let perf = PerfIsolate::new(
             "root",
-            "1.0.0".to_owned(),
             60,
-            Some(dec_id),
+            dec_id,
             PerfServerConfig::Default,
             stack,
         );

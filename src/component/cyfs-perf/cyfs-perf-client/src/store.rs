@@ -4,29 +4,24 @@ use cyfs_lib::*;
 use cyfs_perf_base::*;
 
 use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use chrono::{Datelike, Timelike, Utc, DateTime};
 
 // 基于noc的统计项缓存
 // 需要注意数据丢失和数据重复的两个核心问题，需要小心处理
 
 #[derive(Clone)]
-pub(crate) struct PerfStore {
-    locked: Arc<AtomicBool>,
-
+pub struct PerfStore {
     dec_id: ObjectId,
 
+    people_id: ObjectId,
     span_times: Vec<u32>,
 
     stack: SharedCyfsStack,
 }
 
 impl PerfStore {
-    pub fn new(span_time: u32, dec_id: ObjectId, stack: SharedCyfsStack) -> Self {
-        let locked = Arc::new(AtomicBool::new(false));
+    pub fn new(span_time: u32, people_id: ObjectId, dec_id: ObjectId, stack: SharedCyfsStack) -> Self {
 
         let mut span_duration = span_time;
         if span_time < 1 || span_time >= 1440 {
@@ -40,7 +35,7 @@ impl PerfStore {
         }
         
         Self {
-            locked,
+            people_id,
             dec_id,
             stack,
             span_times,
@@ -117,8 +112,9 @@ impl PerfStore {
         } else{
             op_env.set_with_path(&path, &perf_object_id, None, true).await?;
         }
-        let root = op_env.commit().await?;
-        info!("new dec root is: {:?}, perf_obj_id={}", root, perf_object_id);
+        // 外部批量处理完, 上层统一commit
+        //let root = op_env.commit().await?;
+        //info!("new dec root is: {:?}, perf_obj_id={}", root, perf_object_id);
 
         Ok(())
     }
@@ -131,7 +127,7 @@ impl PerfStore {
         self.put_object(object_id, object_raw).await?;
         
         self.local_cache(
-            Some(self.device_id), 
+            None, 
             isolate_id.into(), 
             id.into(),
             date_span.into(),
@@ -143,7 +139,7 @@ impl PerfStore {
 
     async fn get_op_env_object(&self, isolate_id: impl Into<String>, id: impl Into<String>, date_span: impl Into<String>, time_span: impl Into<String>, perf_type: PerfType) -> BuckyResult<Option<ObjectId>> {
         let path = self.get_local_cache_path(isolate_id, id, date_span, time_span, perf_type);
-        let root_state = self.stack.root_state_stub(Some(self.device_id), Some(self.dec_id));
+        let root_state = self.stack.root_state_stub(None, Some(self.dec_id));
         let op_env = root_state.create_path_op_env().await?;
         let ret = op_env.get_by_path(&path).await?;
 
@@ -322,31 +318,6 @@ impl PerfStore {
 
         Ok(())
 
-    }
-
-    // 锁定区间用以上报操作
-    pub fn is_locked(&self) -> bool {
-        self.locked.load(Ordering::SeqCst)
-    }
-
-    pub fn lock_for_report(&self) -> bool {
-        let ret = self.locked.swap(true, Ordering::SeqCst);
-        if !ret {
-            info!("lock perf store for reporting!");
-        } else {
-            error!("perf store already been locked!");
-        }
-
-        ret
-    }
-
-    pub fn unlock_for_report(&self) {
-        let ret = self.locked.swap(false, Ordering::SeqCst);
-        if ret {
-            info!("unlock perf store after report!");
-        } else {
-            error!("perf store not been locked yet!");
-        }
     }
 
 }

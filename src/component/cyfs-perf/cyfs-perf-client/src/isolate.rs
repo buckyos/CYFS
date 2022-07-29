@@ -1,21 +1,16 @@
 use cyfs_base::*;
-use cyfs_lib::{UtilGetZoneOutputRequest, SharedCyfsStack};
-use cyfs_core::*;
+use cyfs_lib::SharedCyfsStack;
 use cyfs_util::*;
 use cyfs_debug::Mutex;
 use cyfs_perf_base::*;
 
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::HashMap;
 use std::fmt;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
-use async_std::prelude::*;
-use std::time::Duration;
-
 use crate::{PerfServerConfig};
 use crate::manager::{IsolateManager, IsolateManagerRef};
-use crate::store::PerfStore;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PerfType {
@@ -35,6 +30,15 @@ impl fmt::Display for PerfType {
             PerfType::Records => write!(f, "Records"),
         }
     }
+}
+
+// 临时统计数据
+pub struct PerfIsolateEntity {
+    pub isolate_id: String,
+    pub requests: HashMap<String, Vec<PerfRequestItem>>,
+    pub accumulations: HashMap<String, Vec<PerfAccumulationItem>>,
+    pub records: HashMap<String, Vec<PerfRecordItem>>,
+    pub actions:  HashMap<String, Vec<PerfActionItem>>,
 }
 
 pub struct PerfIsolateInner {
@@ -78,35 +82,31 @@ impl PerfIsolateInner {
             manager
         }
     }
-    // 开启定期保存的任务
-    async fn run_save(&self) -> BuckyResult<()>{
-        let store = PerfStore::new(self.span_time, self.dec_id.clone(), self.stack.clone());
-        
-        let mut interval = async_std::stream::interval(Duration::from_secs(60));
-        while let Some(_) = interval.next().await {
-            let _ = self.inner_save(&store).await?;
-        }
 
-        Ok(())
+    // 取走所有已有的统计项
+    pub fn take_data(&self) -> PerfIsolateEntity {
+        let mut other = PerfIsolateEntity {
+            isolate_id: self.isolate_id.to_owned(),
+            requests: HashMap::new(),
+            accumulations: HashMap::new(),
+            records: HashMap::new(),
+            actions: HashMap::new(),
+        };
 
-    }
-    
-    async fn inner_save(&self, store: &PerfStore) -> BuckyResult<()> {
         let reqs = std::mem::replace(self.requests.lock().unwrap().deref_mut(), HashMap::new());
 
         let acc = std::mem::replace(self.accumulations.lock().unwrap().deref_mut(), HashMap::new());
 
         let act = std::mem::replace(self.actions.lock().unwrap().deref_mut(), HashMap::new());
 
-        let mut rec = std::mem::replace(self.records.lock().unwrap().deref_mut(), HashMap::new());
+        let rec = std::mem::replace(self.records.lock().unwrap().deref_mut(), HashMap::new());
 
-        // FIXME:  futures::future::join_all parallel 
-        store.request(&self.isolate_id, reqs).await?;
-        store.acc(&self.isolate_id, acc).await?;
-        store.action(&self.isolate_id, act).await?;
-        store.record(&&self.isolate_id, rec).await?;
+        other.requests = reqs;
+        other.accumulations = acc;
+        other.actions = act;
+        other.records = rec;
 
-        Ok(())
+        other
     }
 
     fn get_id(&self) -> String {
@@ -118,7 +118,7 @@ impl PerfIsolateInner {
         let full_id = format!("{}_{}", id, key);
         let mut pending_reqs = self.pending_reqs.lock().unwrap();
         if !pending_reqs.contains_key(&full_id) {
-            pending_reqs.insert(full_id, bucky_time_now())
+            pending_reqs.insert(full_id, bucky_time_now());
         }
     }
     // 统计一个操作的耗时, 流量统计
@@ -195,21 +195,20 @@ impl PerfIsolate {
         stack: SharedCyfsStack,) -> Self {            
         let ret = PerfIsolateInner::new(
             id, span_time, dec_id,
-            perf_server_config, IsolateManager::new(stack.clone(), dec_id),stack);
+            perf_server_config, IsolateManager::new(stack.clone(), dec_id, span_time),stack);
         Self(Arc::new(ret))
     }
 
     pub async fn start(&self) {
-        // 开启定期合并到store并保存
-        let this = self.clone();
-        async_std::task::spawn(async move {
-            let _ = this.0.run_save().await;
+        let manager = self.0.manager.clone();
+       async_std::task::spawn(async move {
+            manager.start().await;
         });
     }
 
-    pub async fn save(&self) {
-        let store = PerfStore::new(self.0.span_time, self.dec_id.clone(), self.stack.clone());
-        self.0.inner_save(&store).await;
+    // 取走数据并置空
+    pub fn take_data(&self) -> PerfIsolateEntity {
+        self.0.take_data()
     }
 
     pub fn fork_self(&self, id: &str) -> Self {
@@ -227,12 +226,15 @@ impl PerfIsolate {
 impl Perf for PerfIsolate {
 
     fn get_id(&self) -> String {
-        self.0.isolate_id.clone()
+        self.0.get_id()
     }
     // create a new perf module
     fn fork(&self, id: &str) -> BuckyResult<Box<dyn Perf>> {
         let ret = self.0.manager.fork(id, self);
-        Ok(Box::new(ret))
+        if ret.is_none() {
+            return Err(BuckyError::from("fork get rwlock failed"));
+        }
+        Ok(Box::new(ret.unwrap()))
     }
 
     fn begin_request(&self, id: &str, key: &str) {
