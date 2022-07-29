@@ -300,6 +300,16 @@ impl OpEnvOutputProcessor for OpEnvOutputTransformer {
         self.processor.reset(in_req).await
     }
 
+    async fn list(&self, req: OpEnvListOutputRequest) -> BuckyResult<OpEnvListOutputResponse> {
+        let in_req = OpEnvListInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+        };
+
+        self.processor.list(in_req).await
+    }
+
     async fn metadata(
         &self,
         req: OpEnvMetadataOutputRequest,
@@ -582,6 +592,16 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
         };
 
         self.processor.reset(in_req).await
+    }
+
+    async fn list(&self, req: OpEnvListInputRequest) -> BuckyResult<OpEnvListInputResponse> {
+        let in_req = OpEnvListOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+        };
+
+        self.processor.list(in_req).await
     }
 
     async fn metadata(

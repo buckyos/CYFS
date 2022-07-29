@@ -66,6 +66,7 @@ pub trait OpEnvInputProcessor: Sync + Send + 'static {
     // iterator methods
     async fn next(&self, req: OpEnvNextInputRequest) -> BuckyResult<OpEnvNextInputResponse>;
     async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()>;
+    async fn list(&self, req: OpEnvListInputRequest) -> BuckyResult<OpEnvListInputResponse>;
 
     // metadata
     async fn metadata(

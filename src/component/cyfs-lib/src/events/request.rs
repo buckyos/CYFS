@@ -126,3 +126,47 @@ pub type RouterEventTestEventRequest = RouterEventRequest<TestEventRequest>;
 
 // response
 pub type RouterEventTestEventResult = RouterEventResponse<TestEventResponse>;
+
+// zone role changed
+pub struct ZoneRoleChangedEventRequest {
+    pub current_role: ZoneRole,
+    pub new_role: ZoneRole,
+}
+crate::declare_event_empty_param!(ZoneRoleChangedEventResponse, ZoneRoleChanged);
+
+impl std::fmt::Display for ZoneRoleChangedEventRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "current_role={}, new_role={}", self.current_role.as_str(), self.new_role.as_str())
+    }
+}
+
+impl JsonCodec<Self> for ZoneRoleChangedEventRequest {
+    fn encode_json(&self) -> serde_json::Map<String, serde_json::Value> {
+        let mut obj = Map::new();
+        JsonCodecHelper::encode_string_field(&mut obj, "current_role", self.current_role.as_str());
+        JsonCodecHelper::encode_string_field(&mut obj, "new_role", &self.new_role.as_str());
+
+        obj
+    }
+
+    fn decode_json(
+        obj: &serde_json::Map<String, serde_json::Value>,
+    ) -> cyfs_base::BuckyResult<Self> {
+        Ok(Self {
+            current_role: JsonCodecHelper::decode_string_field(obj, "current_role")?,
+            new_role: JsonCodecHelper::decode_string_field(obj, "new_role")?,
+        })
+    }
+}
+
+impl RouterEventCategoryInfo for ZoneRoleChangedEventRequest {
+    fn category() -> RouterEventCategory {
+        RouterEventCategory::ZoneRoleChanged
+    }
+}
+
+// request
+pub type RouterEventZoneRoleChangedEventRequest = RouterEventRequest<ZoneRoleChangedEventRequest>;
+
+// response
+pub type RouterEventZoneRoleChangedEventResult = RouterEventResponse<ZoneRoleChangedEventResponse>;

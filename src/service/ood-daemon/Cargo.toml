@@ -16,6 +16,7 @@ cyfs-core = { path = "../../component/cyfs-core" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
 cyfs-client = { path = "../../tools/cyfs-client" }
+cyfs-lib = { path = "../../component/cyfs-lib" }
 base = { path = "../base", default-features = false, features = ["mongo"] }
 ood-control = { path = "../ood-control" }
 lazy_static = "1.4"

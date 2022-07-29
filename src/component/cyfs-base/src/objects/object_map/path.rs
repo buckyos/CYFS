@@ -352,7 +352,7 @@ impl ObjectMapPath {
         Ok(list)
     }
 
-    fn parse_path_allow_empty_key(full_path: &str) -> BuckyResult<(&str, &str)> {
+    pub fn parse_path_allow_empty_key(full_path: &str) -> BuckyResult<(&str, &str)> {
         let full_path = Self::fix_path(full_path)?;
 
         if full_path == "/" {

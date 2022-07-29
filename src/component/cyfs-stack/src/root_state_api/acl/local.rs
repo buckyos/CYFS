@@ -217,6 +217,14 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
         self.next.reset(req).await
     }
 
+    async fn list(&self, req: OpEnvListInputRequest) -> BuckyResult<OpEnvListInputResponse> {
+        self.acl
+            .check_local_zone_permit("op_env.list", &req.common.source)
+            .await?;
+
+        self.next.list(req).await
+    }
+
     // metadata
     async fn metadata(
         &self,

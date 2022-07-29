@@ -1,0 +1,79 @@
+ 
+    获取PN列表
+    req
+    uri: /pn/list
+    method: GET
+
+    resp
+    body: [{
+        id: DeviceId, 
+        bandwidth: 10M/20M, 带宽
+        limit: Number, 总共多少 
+        used: Number, 用了多少
+    },]
+
+
+
+
+    购买PN
+    req
+    uri: /pn/rent
+    method: POST
+    body: {
+        device: DeviceId,   ood的device id
+        pn: DeviceId,       pn的device id
+        bandwidth: Number   pn的带宽
+    }
+
+    resp:
+    body: {
+        err: 0 成功/ 4 pn不存在/ 5 已经有了/ 10 满了
+    }
+
+
+    当前使用的PN
+    req
+    uri: /pn/query
+    method: POST
+    body: {
+        device: DeviceId, ood的device id
+    }
+
+    resp
+    body: [{
+        pn: DeviceId, 
+        bandwith: 10M/20M, 带宽
+    }] 没有的话是空数组
+   
+
+    取消PN
+    req
+    uri: /pn/cancel
+    method: POST
+    body: {
+        device: DeviceId,   ood的device id
+        pn: DeviceId,       pn的device id
+        bandwidth: Number   pn的带宽
+    }
+
+    resp:
+    body: {
+        err: 0 成功/ 4 pn不存在
+    }
+
+
+
+    加入到白名单
+    req
+    uri: /pn/white_list
+    method: POST
+    body: {
+        device: DeviceId,   ood的device id
+        pn: DeviceId,       pn的device id
+        bandwidth: Number   pn的带宽
+    }
+
+    resp:
+    body: {
+        err: 0 成功/ 4 pn不存在/ 5 已经有了/ 10 满了
+    }

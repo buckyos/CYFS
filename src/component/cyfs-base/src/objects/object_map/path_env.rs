@@ -113,7 +113,12 @@ impl ObjectMapPathOpEnv {
 
         let mut req_list = vec![];
         let expired = if duration_in_millsecs > 0 {
-            bucky_time_now() + duration_in_millsecs * 1000
+            let now = bucky_time_now();
+            if duration_in_millsecs < (u64::MAX - now) / 1000 {
+                now + duration_in_millsecs * 1000
+            } else {
+                duration_in_millsecs
+            }
         } else {
             0
         };
@@ -340,7 +345,7 @@ impl ObjectMapPathOpEnv {
             // 1. root在外部没有发生改变，那么直接把暂存的操作提交到noc，并切换root到当前path的最新root
             // 2. root在外部发生改变了，那么需要更新path的root到最新状态，并以事务模式尝试提交，提交成功后，切换root到当前path的最新root
             if root != current_root {
-                info!("path_op_env commit but root chanegd, now will redo op list! sid={}, current_root={}, new_root={}", 
+                info!("path_op_env commit but root changed, now will redo op list! sid={}, current_root={}, new_root={}", 
                     this.sid, current_root, root);
 
                 this.cache.abort();
@@ -349,13 +354,13 @@ impl ObjectMapPathOpEnv {
                 this.path().update_root(root.clone(), &new_root)?;
 
                 info!(
-                    "will commit op list on root chanegd: {} -> {}",
+                    "will commit op list on root changed: {} -> {}",
                     current_root, root
                 );
                 this.path().commit_op_list().await?;
             } else {
                 // env操作期间，root没发生改变，那么不再重新执行op_list
-                info!("will clear op list because root not chanegd: {}", root);
+                info!("will clear op list because root not changed: {}", root);
                 this.path().clear_op_list();
             }
 
@@ -419,13 +424,21 @@ impl ObjectMapPathOpEnvRef {
 
     fn into_raw(self) -> BuckyResult<ObjectMapPathOpEnv> {
         let sid = self.sid();
-        let env = Arc::try_unwrap(self.0).map_err(|_| {
-            let msg = format!("path_op_env's ref_count is more than one! sid={}", sid);
+        let env = Arc::try_unwrap(self.0).map_err(|this| {
+            let msg = format!(
+                "path_op_env's ref_count is more than one! sid={}, ref={}",
+                sid,
+                Arc::strong_count(&this)
+            );
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::ErrorState, msg)
         })?;
 
         Ok(env)
+    }
+
+    pub fn is_dropable(&self) -> bool {
+        Arc::strong_count(&self.0) == 1
     }
 
     pub async fn commit(self) -> BuckyResult<ObjectId> {

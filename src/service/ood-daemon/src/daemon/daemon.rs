@@ -7,6 +7,7 @@ use ood_control::{
     ControlInterface, ControlInterfaceAddrType, ControlInterfaceParam, OODControlMode,
     OOD_CONTROLLER,
 };
+use super::gateway_monitor::GATEWAY_MONITOR;
 
 use async_std::task;
 use futures::future::{AbortHandle, Abortable};
@@ -32,16 +33,18 @@ impl EventListenerSyncRoutine<(), ()> for BindNotify {
 pub struct Daemon {
     mode: ServiceMode,
     device_config_manager: DeviceConfigManager,
+    no_monitor: bool,
 }
 
 impl Daemon {
     // add code here
-    pub fn new(mode: ServiceMode) -> Daemon {
+    pub fn new(mode: ServiceMode, no_monitor: bool) -> Self {
         let device_config_manager = DeviceConfigManager::new();
 
-        Daemon {
+        Self {
             mode,
             device_config_manager,
+            no_monitor,
         }
     }
 
@@ -76,6 +79,8 @@ impl Daemon {
             abort_handle: Arc::new(Mutex::new(None)),
         };
         OOD_CONTROLLER.bind_event().on(Box::new(notify.clone()));
+
+        let _ = GATEWAY_MONITOR.init().await;
 
         self.run_check_loop(notify).await;
 
@@ -137,9 +142,13 @@ impl Daemon {
                 );
 
                 // 需要确保ood-daemon-monitor已经启动
-                use crate::monitor::ServiceMonitor;
-                if ServiceMonitor::launch_monitor().is_ok() {
-                    task::sleep(Duration::from_secs(5)).await;
+                if !self.no_monitor {
+                    use crate::monitor::ServiceMonitor;
+                    if ServiceMonitor::launch_monitor().is_ok() {
+                        task::sleep(Duration::from_secs(5)).await;
+                        std::process::exit(0);
+                    }
+                } else {
                     std::process::exit(0);
                 }
             }

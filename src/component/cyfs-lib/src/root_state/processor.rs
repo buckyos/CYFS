@@ -74,6 +74,8 @@ pub trait OpEnvOutputProcessor: Sync + Send + 'static {
     // iterator methods
     async fn next(&self, req: OpEnvNextOutputRequest) -> BuckyResult<OpEnvNextOutputResponse>;
     async fn reset(&self, req: OpEnvResetOutputRequest) -> BuckyResult<()>;
+
+    async fn list(&self, req: OpEnvListOutputRequest) -> BuckyResult<OpEnvListOutputResponse>;
 }
 
 pub type OpEnvOutputProcessorRef = Arc<Box<dyn OpEnvOutputProcessor>>;

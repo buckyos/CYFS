@@ -902,6 +902,51 @@ impl OpEnvRequestHandler {
 
         self.processor.reset(req).await
     }
+
+    // next
+    pub async fn process_list_request<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_list(req).await;
+        match ret {
+            Ok(resp) => {
+                let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+                http_resp.set_body(resp.encode_string());
+                http_resp.into()
+            }
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_list<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> BuckyResult<OpEnvListInputResponse> {
+        // 检查action
+        let action = Self::decode_action(&req)?;
+        if action != OpEnvAction::List {
+            let msg = format!("invalid op_env list action! {:?}", action);
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let common = Self::decode_common_headers(&req)?;
+        let path = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            &req.request,
+            cyfs_base::CYFS_OP_ENV_PATH,
+        )?;
+
+        let req = OpEnvListInputRequest {
+            common,
+            path,
+        };
+
+        debug!("recv op_env list request: {}", req);
+
+        self.processor.list(req).await
+    }
 }
 
 #[derive(Clone)]

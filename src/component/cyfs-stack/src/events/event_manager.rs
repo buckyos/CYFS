@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 pub struct RouterEventsContainer {
     pub test_event: OnceCell<RouterEvents<TestEventRequest, TestEventResponse>>,
+    pub zone_role_changed_event: OnceCell<RouterEvents<ZoneRoleChangedEventRequest, ZoneRoleChangedEventResponse>>,
 }
 
 pub type RouterEventsContainerRef = Arc<RouterEventsContainer>;
@@ -14,6 +15,7 @@ impl RouterEventsContainer {
     fn new() -> Self {
         Self {
             test_event: OnceCell::new(),
+            zone_role_changed_event: OnceCell::new(),
         }
     }
 
@@ -24,6 +26,16 @@ impl RouterEventsContainer {
     pub fn try_test_event(&self) -> Option<&RouterEvents<TestEventRequest, TestEventResponse>> {
         self.test_event.get()
     }
+
+    pub fn zone_role_changed_event(&self) -> &RouterEvents<ZoneRoleChangedEventRequest, ZoneRoleChangedEventResponse> {
+        self.zone_role_changed_event
+            .get_or_init(|| RouterEvents::<ZoneRoleChangedEventRequest, ZoneRoleChangedEventResponse>::new())
+    }
+
+    pub fn try_zone_role_changed_event(&self) -> Option<&RouterEvents<ZoneRoleChangedEventRequest, ZoneRoleChangedEventResponse>> {
+        self.zone_role_changed_event.get()
+    }
+
 }
 
 #[derive(Clone)]

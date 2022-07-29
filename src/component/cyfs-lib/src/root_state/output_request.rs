@@ -777,6 +777,34 @@ pub struct OpEnvNextOutputResponse {
 // reset
 pub type OpEnvResetOutputRequest = OpEnvNoParamOutputRequest;
 
+
+// list
+pub struct OpEnvListOutputRequest {
+    pub common: OpEnvOutputRequestCommon,
+
+    // for path-env
+    pub path: Option<String>,
+}
+
+impl OpEnvListOutputRequest {
+    pub fn new() -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+            path: None,
+        }
+    }
+
+    pub fn new_path(path: impl Into<String>) -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+            path: Some(path.into()),
+        }
+    }
+}
+
+pub type OpEnvListOutputResponse = OpEnvNextOutputResponse;
+
+
 //////////////////////////
 /// root-state access requests
 

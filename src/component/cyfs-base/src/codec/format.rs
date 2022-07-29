@@ -532,6 +532,7 @@ impl ObjectFormat for DeviceBodyContent {
         );
 
         JsonCodecHelper::encode_option_string_field(&mut map, "name", self.name());
+        JsonCodecHelper::encode_option_number_field(&mut map, "bdt_version", self.bdt_version());
 
         map.into()
     }
@@ -903,6 +904,22 @@ fn test() {
     let value = file.desc().format_json();
     let s = value.to_string();
     println!("{}", s);
+
+    let secret = PrivateKey::generate_rsa(1024).unwrap();
+    let public = secret.public();
+    let mut device = Device::new(Some(owner), UniqueId::default(),
+                             vec![], vec![], vec![],
+                             public, Area::new(1,2,3,4), DeviceCategory::OOD).build();
+    device.set_bdt_version(Some(2));
+
+    println!("new device obj: {}", device.format_json().to_string());
+
+    let (mut old_device, _) = Device::decode_from_file("c:\\cyfs\\etc\\desc\\device.desc".as_ref(), &mut vec![]).unwrap();
+
+    println!("old device obj: {}", old_device.format_json().to_string());
+
+    old_device.set_bdt_version(Some(5));
+    println!("old device set bdt ver obj: {}", old_device.format_json().to_string());
 }
 
 use std::collections::{hash_map::Entry, HashMap};
