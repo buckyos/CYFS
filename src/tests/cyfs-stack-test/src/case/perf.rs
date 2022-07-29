@@ -70,6 +70,8 @@ impl Second {
             PerfServerConfig::Default,
             stack,
         );
+    
+
         perf.start().await;
 
         self.perf.bind(Box::new(perf));

@@ -234,6 +234,7 @@ impl Perf for PerfIsolate {
         if ret.is_none() {
             return Err(BuckyError::from("fork get rwlock failed"));
         }
+
         Ok(Box::new(ret.unwrap()))
     }
 

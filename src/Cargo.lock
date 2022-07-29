@@ -2070,11 +2070,10 @@ version = "0.5.0"
 dependencies = [
  "async-std",
  "cyfs-base",
- "cyfs-core",
- "cyfs-lib",
- "cyfs-util",
  "int-enum",
  "log 0.4.16",
+ "prost",
+ "prost-build",
  "protobuf",
  "protoc-bin-vendored",
  "protoc-rust",
@@ -2089,6 +2088,7 @@ dependencies = [
  "android_logger",
  "async-std",
  "async-trait",
+ "chrono",
  "cyfs-base",
  "cyfs-core",
  "cyfs-debug",
@@ -2099,9 +2099,9 @@ dependencies = [
  "int-enum",
  "jni",
  "log 0.4.16",
- "rand 0.7.3",
+ "rand 0.8.5",
  "serde_json",
- "sha2 0.8.2",
+ "sha2 0.10.2",
 ]
 
 [[package]]

@@ -3,8 +3,7 @@ use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_perf_base::*;
 
-use std::collections::HashMap;
-use std::str::FromStr;
+use std::{collections::HashMap};
 use chrono::{Datelike, Timelike, Utc, DateTime};
 
 // 基于noc的统计项缓存
@@ -12,9 +11,9 @@ use chrono::{Datelike, Timelike, Utc, DateTime};
 
 #[derive(Clone)]
 pub struct PerfStore {
-    dec_id: ObjectId,
-
     people_id: ObjectId,
+
+    dec_id: ObjectId,
     span_times: Vec<u32>,
 
     stack: SharedCyfsStack,
@@ -98,56 +97,69 @@ impl PerfStore {
         path
     }
 
-    async fn local_cache(&self, device_id: Option<ObjectId>,
-        isolate_id: impl Into<String>, id: impl Into<String>, date_span: impl Into<String>, time_span: impl Into<String>, 
-        perf_object_id: ObjectId, perf_type: PerfType) -> BuckyResult<()>{
-        // 把对象存到root_state
-        let perf_dec_id = ObjectId::from_str(PERF_SERVICE_DEC_ID).unwrap();
-
-        let root_state = self.stack.root_state_stub(device_id, Some(perf_dec_id));
-        let op_env = root_state.create_path_op_env().await?;        
+    async fn local_cache(
+        &self,
+        map: &StateStorageMap,
+        isolate_id: impl Into<String>,
+        id: impl Into<String>, 
+        date_span: impl Into<String>, 
+        time_span: impl Into<String>, 
+        perf_object_id: ObjectId, 
+        perf_type: PerfType
+        ) -> BuckyResult<()> {
+             
         let path = self.get_local_cache_path(isolate_id, id, date_span, time_span, perf_type);
-        if perf_type == PerfType::Actions {
-            op_env.set_with_key(&path, perf_object_id.to_string(), &perf_object_id, None, true).await?;
-        } else{
-            op_env.set_with_path(&path, &perf_object_id, None, true).await?;
-        }
-        // 外部批量处理完, 上层统一commit
-        //let root = op_env.commit().await?;
-        //info!("new dec root is: {:?}, perf_obj_id={}", root, perf_object_id);
+        map.set(&path, &perf_object_id).await?;
+        // 外部批量处理完, 上层统一commit save
+        // let root = op_env.commit().await?;
+        // info!("new dec root is: {:?}, perf_obj_id={}", root, perf_object_id);
 
         Ok(())
     }
 
     async fn put_noc_and_root_state(
-        &self, 
-        object_id: ObjectId, isolate_id: impl Into<String>, id: impl Into<String>, 
-        date_span: impl Into<String>, time_span: impl Into<String>, 
-        object_raw: Vec<u8>, perf_type: PerfType) -> BuckyResult<()>{
+        &self,
+        map: &StateStorageMap,
+        object_id: ObjectId, 
+        isolate_id: impl Into<String>, 
+        id: impl Into<String>, 
+        date_span: impl Into<String>, 
+        time_span: impl Into<String>, 
+        object_raw: Vec<u8>, 
+        perf_type: PerfType
+    ) -> BuckyResult<()>{
         self.put_object(object_id, object_raw).await?;
         
         self.local_cache(
-            None, 
+            map,
             isolate_id.into(), 
             id.into(),
             date_span.into(),
             time_span.into(),
-            object_id, perf_type).await?;
+            object_id, 
+            perf_type
+        ).await?;
 
         Ok(())
     }
 
-    async fn get_op_env_object(&self, isolate_id: impl Into<String>, id: impl Into<String>, date_span: impl Into<String>, time_span: impl Into<String>, perf_type: PerfType) -> BuckyResult<Option<ObjectId>> {
+    async fn get_op_env_object(
+        &self, 
+        map: &StateStorageMap, 
+        isolate_id: impl Into<String>, 
+        id: impl Into<String>, 
+        date_span: impl Into<String>, 
+        time_span: impl Into<String>, 
+        perf_type: PerfType
+        ) -> BuckyResult<Option<ObjectId>> {
         let path = self.get_local_cache_path(isolate_id, id, date_span, time_span, perf_type);
-        let root_state = self.stack.root_state_stub(None, Some(self.dec_id));
-        let op_env = root_state.create_path_op_env().await?;
-        let ret = op_env.get_by_path(&path).await?;
-
+        let ret = map.get(path).await?;
         Ok(ret)
     }
 
     // request
-    pub async fn request(&self, isolate_id: &String, request: HashMap<String, Vec<PerfRequestItem>>) -> BuckyResult<()> {
+    pub async fn request(&self, map: &StateStorageMap, isolate_id: &String, request: HashMap<String, Vec<PerfRequestItem>>) -> BuckyResult<()> {
+        info!("2222222222222222222222: {}, {}", isolate_id, request.len());
         for (id, items) in request {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfRequestItem>> = HashMap::new();
@@ -164,14 +176,14 @@ impl PerfStore {
                 let split = key.split("_").collect::<Vec<_>>();
                 let date_span = split[0];
                 let time_span = split[1];
-                let ret = self.get_op_env_object(isolate_id, id.to_owned(), date_span, time_span, PerfType::Requests).await?;
+                let ret = self.get_op_env_object(map, isolate_id, id.to_owned(), date_span, time_span, PerfType::Requests).await?;
                 if ret.is_none() {
                     let mut request = PerfRequest::create(self.people_id, self.dec_id);
                     request  = request.add_stats(values.as_slice());
                     
                     let object_raw = request.to_vec()?;
                     let object_id = request.desc().object_id();
-                    self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Requests).await?;    
+                    self.put_noc_and_root_state(map, object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Requests).await?;    
                 } else {
                     let v = ret.unwrap();
                     let req = NONGetObjectRequest::new_noc(v, None);
@@ -181,7 +193,7 @@ impl PerfStore {
                 
                         let object_raw = request.to_vec()?;
                         let object_id = request.desc().object_id();
-                        self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Requests).await?;
+                        self.put_noc_and_root_state(map, object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Requests).await?;
                     }
     
                 }
@@ -194,7 +206,7 @@ impl PerfStore {
     }
 
     // acc
-   pub async fn acc(&self, isolate_id: &String, acc: HashMap<String, Vec<PerfAccumulationItem>>) -> BuckyResult<()> {
+   pub async fn acc(&self, map: &StateStorageMap, isolate_id: &String, acc: HashMap<String, Vec<PerfAccumulationItem>>) -> BuckyResult<()> {
         for (id, items) in acc {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfAccumulationItem>> = HashMap::new();
@@ -210,14 +222,14 @@ impl PerfStore {
                 let split = key.split("_").collect::<Vec<_>>();
                 let date_span = split[0];
                 let time_span = split[1];
-                let ret = self.get_op_env_object(isolate_id, id.to_owned(), date_span, time_span, PerfType::Accumulations).await?;
+                let ret = self.get_op_env_object(map, isolate_id, id.to_owned(), date_span, time_span, PerfType::Accumulations).await?;
                 if ret.is_none() {
                     let mut request = PerfAccumulation::create(self.people_id, self.dec_id);
                     request  = request.add_stats(values.as_slice());
                     
                     let object_raw = request.to_vec()?;
                     let object_id = request.desc().object_id();
-                    self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Accumulations).await?;    
+                    self.put_noc_and_root_state(map, object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Accumulations).await?;    
                 } else {
                     let v = ret.unwrap();
                     let req = NONGetObjectRequest::new_noc(v, None);
@@ -227,7 +239,7 @@ impl PerfStore {
                 
                         let object_raw = request.to_vec()?;
                         let object_id = request.desc().object_id();
-                        self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Accumulations).await?;
+                        self.put_noc_and_root_state(map, object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Accumulations).await?;
                     }
     
                 }
@@ -240,7 +252,7 @@ impl PerfStore {
     }
 
     // action
-    pub async fn action(&self, isolate_id: &String, actions: HashMap<String, Vec<PerfActionItem>>) -> BuckyResult<()> {
+    pub async fn action(&self, map: &StateStorageMap, isolate_id: &String, actions: HashMap<String, Vec<PerfActionItem>>) -> BuckyResult<()> {
         for (id, items) in actions {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfActionItem>> = HashMap::new();
@@ -257,7 +269,7 @@ impl PerfStore {
                 let split = key.split("_").collect::<Vec<_>>();
                 let date_span = split[0];
                 let time_span = split[1];
-                let ret = self.get_op_env_object(isolate_id, id.to_owned(), date_span, time_span, PerfType::Actions).await?;
+                let ret = self.get_op_env_object(map, isolate_id, id.to_owned(), date_span, time_span, PerfType::Actions).await?;
                 if ret.is_none() {
                     let mut action = PerfAction::create(self.people_id, self.dec_id);
                     for stat in stats {
@@ -266,7 +278,7 @@ impl PerfStore {
                     
                     let object_raw = action.to_vec()?;
                     let object_id = action.desc().object_id();
-                    self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Actions).await?;    
+                    self.put_noc_and_root_state(map, object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Actions).await?;    
                 } else {
                     let v = ret.unwrap();
                     let req = NONGetObjectRequest::new_noc(v, None);
@@ -277,7 +289,7 @@ impl PerfStore {
                         }
                         let object_raw = action.to_vec()?;
                         let object_id = action.desc().object_id();
-                        self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Actions).await?;
+                        self.put_noc_and_root_state(map, object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Actions).await?;
                     }
     
                 }
@@ -290,7 +302,7 @@ impl PerfStore {
     }
 
     // record
-    pub async fn record(&self, isolate_id: &String, records: HashMap<String, Vec<PerfRecordItem>>) -> BuckyResult<()> {
+    pub async fn record(&self, map: &StateStorageMap, isolate_id: &String, records: HashMap<String, Vec<PerfRecordItem>>) -> BuckyResult<()> {
         for (id, items) in records {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfRecordItem>> = HashMap::new();
@@ -311,7 +323,7 @@ impl PerfStore {
               
                 let object_raw = record.to_vec()?;
                 let object_id = record.desc().object_id();
-                self.put_noc_and_root_state(object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Records).await?; 
+                self.put_noc_and_root_state(map, object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Records).await?; 
 
             }            
         }
