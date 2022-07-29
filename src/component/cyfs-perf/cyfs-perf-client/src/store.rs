@@ -109,11 +109,7 @@ impl PerfStore {
         ) -> BuckyResult<()> {
              
         let path = self.get_local_cache_path(isolate_id, id, date_span, time_span, perf_type);
-        if perf_type == PerfType::Actions {
-            map.set_with_key(&path, perf_object_id.to_string(), &perf_object_id, None, true).await?;
-        } else{
-            map.set_with_path(&path, &perf_object_id, None, true).await?;
-        }
+        map.set_with_path(&path, &perf_object_id, None, true).await?;
         // 外部批量处理完, 上层统一commit
 
         Ok(())
@@ -161,7 +157,6 @@ impl PerfStore {
 
     // request
     pub async fn request(&self, map: &PathOpEnvStub, isolate_id: &String, request: HashMap<String, Vec<PerfRequestItem>>) -> BuckyResult<()> {
-        info!("2222222222222222222222: {}, {}", isolate_id, request.len());
         for (id, items) in request {
             // group by time_span
             let mut groups: HashMap::<String, Vec<PerfRequestItem>> = HashMap::new();
@@ -170,7 +165,6 @@ impl PerfStore {
                 let datetime = DateTime::<Utc>::from(bucky_time_to_system_time(item.time));
                 let (date, time_span) = self.get_cur_time_span(datetime);
                 let id = format!("{date}_{time_span}");
-                info!("time_span: {date} {time_span}");
                 groups.entry(id).or_insert(vec![]).push(item);
             }
 
@@ -267,17 +261,14 @@ impl PerfStore {
 
             }
 
-            for (key, stats) in groups {
+            for (key, stats) in groups.iter_mut() {
                 let split = key.split("_").collect::<Vec<_>>();
                 let date_span = split[0];
                 let time_span = split[1];
                 let ret = self.get_op_env_object(map, isolate_id, id.to_owned(), date_span, time_span, PerfType::Actions).await?;
                 if ret.is_none() {
                     let mut action = PerfAction::create(self.people_id, self.dec_id);
-                    for stat in stats {
-                        action  = action.add_stat(stat);
-                    }
-                    
+                    action  = action.add_stats(stats);
                     let object_raw = action.to_vec()?;
                     let object_id = action.desc().object_id();
                     self.put_noc_and_root_state(map, object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Actions).await?;    
@@ -286,9 +277,7 @@ impl PerfStore {
                     let req = NONGetObjectRequest::new_noc(v, None);
                     if let Ok(resp) = self.stack.non_service().get_object(req).await {
                         let mut action = PerfAction::decode(&resp.object.object_raw)?;
-                        for stat in stats {
-                            action  = action.add_stat(stat);
-                        }
+                        action = action.add_stats(stats);
                         let object_raw = action.to_vec()?;
                         let object_id = action.desc().object_id();
                         self.put_noc_and_root_state(map, object_id, isolate_id, id.to_owned(), date_span, time_span, object_raw, PerfType::Actions).await?;

@@ -56,7 +56,7 @@ impl IsolateManager {
         return None;
     }
     
-    async fn inner_save(&self, store: &PerfStore, path: String, root_state: &GlobalStateStub) -> BuckyResult<()> {
+    async fn inner_save(&self, store: &PerfStore, _path: String, root_state: &GlobalStateStub) -> BuckyResult<()> {
         let mut items = vec![];
         if let Ok(lock) = self.isolates.read() {
             for (_id, iso) in lock.iter() {
@@ -67,13 +67,14 @@ impl IsolateManager {
         // 在这里lock一次/local/<dec_id>
         // 把/local/<dec_id>整个加载到op env
         let op_env = root_state.create_path_op_env().await?;
-        op_env.lock(vec![path.to_owned()], 0).await?;
+        // lock 一直在自旋?
+        // op_env.lock(vec![path.to_owned()], 0).await?;
 
-        // 如果把要save的新对象返回给这里，那么在这里统一put noc。现在可以先用for循环put，以后可能会有批量put的接口，效率会更高
-        let single_op_env = root_state.create_single_op_env().await?;
-        if let Err(e) = single_op_env.load_by_path(path.to_owned()).await {
-            warn!("inner_save load_by_path error: {e}");
-        }
+        // // 如果把要save的新对象返回给这里，那么在这里统一put noc。现在可以先用for循环put，以后可能会有批量put的接口，效率会更高
+        // let single_op_env = root_state.create_single_op_env().await?;
+        // if let Err(e) = single_op_env.load_by_path(path.to_owned()).await {
+        //     warn!("inner_save load_by_path error: {e}");
+        // }
 
         // 在这里内部操作op env或者state storage，不commit
         // save内部可以put noc，也可以把新对象返回给这里
@@ -92,7 +93,7 @@ impl IsolateManager {
         let root = op_env.commit().await?;
         info!("new dec root is: {:?}", root);
 
-        single_op_env.abort().await?;        
+        // single_op_env.abort().await?;        
         Ok(())
     }
 }
