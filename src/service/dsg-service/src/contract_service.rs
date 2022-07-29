@@ -688,10 +688,10 @@ impl DsgService {
     ) -> BuckyResult<()> {
         match to_state.state() {
             DsgContractState::DataSourceChanged(changed) => {
-                let _ = self.prepare_data_source(contract, to_state, changed).await?;
+                let _ = self.prepare_data_source(contract, to_state, &changed).await?;
             },
             DsgContractState::DataSourcePrepared(prepared) => {
-                let _ = self.sync_data_source_to_miner(contract, to_state, prepared).await?;
+                let _ = self.sync_data_source_to_miner(contract, to_state, &prepared).await?;
             },
             // DsgContractState::ContractBroken => {
             //     let _ = self.sync_data_source_to_miner(contract, to_state, prepared).await?;
@@ -1143,7 +1143,7 @@ impl DsgService {
 
                             let prepared_state_ref = DsgContractStateObjectRef::from(prepared_state.as_ref().unwrap());
                             if let DsgContractState::DataSourcePrepared(prepared) = prepared_state_ref.state() {
-                                let challenge = self.create_challenge(prepared_state_ref, prepared, &self.config().store_challenge).await
+                                let challenge = self.create_challenge(prepared_state_ref, &prepared, &self.config().store_challenge).await
                                     .map_err(|err| {
                                         log::debug!("{} check contract failed, contract={}, at={}, err=create challenge {}", self, contract_id, now, err);
                                         err
