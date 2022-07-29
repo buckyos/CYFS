@@ -135,7 +135,7 @@ impl AppManager {
             .shared_stack
             .router_handlers()
             .add_handler(
-                RouterHandlerChain::PreRouter,
+                RouterHandlerChain::Handler,
                 "app_manager_ex_pre_post_to_noc",
                 0,
                 &filter,
