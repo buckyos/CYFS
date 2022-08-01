@@ -249,6 +249,10 @@ impl Runnable for BuildFileTask {
                 file
             },
             Err(e) => {
+                self.task_state.get_state_mut().await.state = FileTaskState::new();
+                if self.task_store.is_some() {
+                    self.task_store.as_ref().unwrap().save_task_data(&self.task_id, Vec::new()).await?;
+                }
                 self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Failed(e.clone());
                 return Err(e);
             }
@@ -266,6 +270,10 @@ impl Runnable for BuildFileTask {
             if file.is_some() && file.as_ref().unwrap().object_raw.is_some() {
                 if let Ok(file) = File::clone_from_slice(
                     file.as_ref().unwrap().object_raw.as_ref().unwrap().as_slice()) {
+                    self.task_state.get_state_mut().await.state = FileTaskState::new();
+                    if self.task_store.is_some() {
+                        self.task_store.as_ref().unwrap().save_task_data(&self.task_id, Vec::new()).await?;
+                    }
                     self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Finished(file);
                     return Ok(());
                 }
@@ -285,10 +293,18 @@ impl Runnable for BuildFileTask {
             flags: 0,
         }).await {
             Ok(_) => {
+                self.task_state.get_state_mut().await.state = FileTaskState::new();
+                if self.task_store.is_some() {
+                    self.task_store.as_ref().unwrap().save_task_data(&self.task_id, Vec::new()).await?;
+                }
                 self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Finished(file);
                 Ok(())
             },
             Err(e) => {
+                self.task_state.get_state_mut().await.state = FileTaskState::new();
+                if self.task_store.is_some() {
+                    self.task_store.as_ref().unwrap().save_task_data(&self.task_id, Vec::new()).await?;
+                }
                 self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Failed(e.clone());
                 Err(e)
             }
