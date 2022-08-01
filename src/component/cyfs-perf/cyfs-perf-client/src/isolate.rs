@@ -214,6 +214,12 @@ impl PerfIsolate {
             self.0.stack.clone()
         )))
     }
+
+    // benchmark
+    pub async fn save_test(&self) {
+        self.0.manager.save_test().await
+    }
+
 }
 
 impl Perf for PerfIsolate {

@@ -1284,11 +1284,13 @@ version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1604dafd25fba2fe2d5895a9da139f8dc9b319a5fe5354ca137cbbce4e178d10"
 dependencies = [
+ "async-std",
  "atty",
  "cast",
  "clap",
  "criterion-plot",
  "csv",
+ "futures",
  "itertools",
  "lazy_static",
  "num-traits",
@@ -2089,6 +2091,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "chrono",
+ "criterion",
  "cyfs-base",
  "cyfs-core",
  "cyfs-debug",

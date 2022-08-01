@@ -11,6 +11,10 @@ use crate::store::PerfStore;
 
 pub struct IsolateManager {
     isolates: RwLock<HashMap<String, PerfIsolate>>,
+    // benchmark
+    stack: SharedCyfsStack,
+    dec_id: ObjectId,
+    span_time: u32,
 }
 
 pub type IsolateManagerRef = Arc<IsolateManager>;
@@ -19,6 +23,9 @@ impl IsolateManager {
     pub fn new(stack: SharedCyfsStack, dec_id: ObjectId, span_time: u32) -> IsolateManagerRef {
         let ret = Self {
             isolates: RwLock::new(HashMap::new()),
+            stack: stack.clone(),
+            dec_id: dec_id.clone(),
+            span_time,
         };
 
         let manager_ref = Arc::new(ret);
@@ -37,9 +44,8 @@ impl IsolateManager {
 
             // 启动save timer
             // 每30分钟存一次
-            let mut interval = async_std::stream::interval(Duration::from_secs(10));
+            let mut interval = async_std::stream::interval(Duration::from_secs(60 * 30));
             while let Some(_) = interval.next().await {
-                info!("waitings 10s ...");
                 let _ = manager.inner_save(&store, path.to_owned(), &root_state).await;
             }
         });
@@ -55,6 +61,21 @@ impl IsolateManager {
 
         return None;
     }
+
+    pub async fn save_test(&self) {
+        // // 这里拿到people id 是作为后续创建对象用的
+        // let device_id = self.stack.local_device_id().object_id().clone();
+        // let people_id = self.stack.local_device().desc().owner().unwrap_or(device_id);
+        
+        // let root_state = self.stack.root_state_stub(None, Some(ObjectId::default()));
+        // let path = format!("/local/{}", self.dec_id.to_string());
+
+        // let store = PerfStore::new(self.span_time, people_id, self.dec_id, self.stack.clone());
+
+        // let _ = self.inner_save(&store, path.to_owned(), &root_state).await;
+
+        println!("case done...");
+    }
     
     async fn inner_save(&self, store: &PerfStore, _path: String, root_state: &GlobalStateStub) -> BuckyResult<()> {
         let mut items = vec![];
@@ -64,12 +85,12 @@ impl IsolateManager {
                 items.push(iso.take_data());
             }
         }
+
         // 在这里lock一次/local/<dec_id>
         // 把/local/<dec_id>整个加载到op env
-        let op_env = root_state.create_path_op_env().await?;
+        let op_env = root_state.create_path_op_env().await.unwrap();
         // lock 一直在自旋?
         // op_env.lock(vec![path.to_owned()], 0).await?;
-
         // // 如果把要save的新对象返回给这里，那么在这里统一put noc。现在可以先用for循环put，以后可能会有批量put的接口，效率会更高
         // let single_op_env = root_state.create_single_op_env().await?;
         // if let Err(e) = single_op_env.load_by_path(path.to_owned()).await {

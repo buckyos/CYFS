@@ -30,39 +30,39 @@ pub async fn test_restart() {
 }
 
 pub async fn test() {
-    // // role::test().await;
+    // role::test().await;
 
-    // codec::test().await;
-    // test_restart().await;
+    codec::test().await;
+    test_restart().await;
 
-    // test_obj_searcher::test().await;
+    test_obj_searcher::test().await;
 
-    // // test_drive::test().await;
+    // test_drive::test().await;
 
-    // events::test().await;
-    // // crypto::test().await;
-    // zone::test().await;
+    events::test().await;
+    // crypto::test().await;
+    zone::test().await;
 
-    perf::test().await;
+    // perf::test().await;
 
-    // util::test().await;
-    // root_state::test().await;
+    util::test().await;
+    root_state::test().await;
 
-    // ndn::test().await;
+    ndn::test().await;
 
-    // non_handlers::test().await;
-    // non::test().await;
-    // //non_file::test().await;
+    non_handlers::test().await;
+    non::test().await;
+    //non_file::test().await;
 
-    // trans::test().await;
+    trans::test().await;
 
-    // router_handlers::test().await;
+    router_handlers::test().await;
 
-    // //mnemonic::test().await;
-    // app_manager::test().await;
+    //mnemonic::test().await;
+    app_manager::test().await;
 
-    // admin::test().await;
-    // sync::test().await;
+    admin::test().await;
+    sync::test().await;
 
-    // info!("test all case success!");
+    info!("test all case success!");
 }
