@@ -332,7 +332,7 @@ where
 
 #[derive(Clone)]
 pub struct DsgContractBody {
-    extra_chunks: Option<Vec<ChunkId>>,
+    pub extra_chunks: Option<Vec<ChunkId>>,
 }
 
 impl BodyContent for DsgContractBody {}
