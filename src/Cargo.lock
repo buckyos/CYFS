@@ -1523,7 +1523,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-base"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "aes 0.7.5",
  "async-recursion",
@@ -1820,7 +1820,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-dsg-client"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "aes 0.7.5",
  "async-recursion",
@@ -1858,7 +1858,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-lib"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "async-h1",
  "async-std",
