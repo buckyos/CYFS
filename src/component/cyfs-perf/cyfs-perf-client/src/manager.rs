@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use async_std::prelude::StreamExt;
 use cyfs_base::{BuckyResult, NamedObject, ObjectId, OwnerObjectDesc};
 use cyfs_lib::{SharedCyfsStack, GlobalStateStub};
@@ -79,8 +79,8 @@ impl IsolateManager {
             }
         }
 
-        // 在这里lock一次/local/<dec_id>
-        // 把/local/<dec_id>整个加载到op env
+        println!("items: {}", items.len());
+
         let op_env = root_state.create_path_op_env().await.unwrap();
 
         for item in items {
@@ -91,18 +91,13 @@ impl IsolateManager {
             store.record(&op_env, &item.isolate_id, item.records).await.unwrap();
         }
 
-        // 如果把要save的新对象返回给这里，那么在这里统一put noc。现在可以先用for循环put，以后可能会有批量put的接口，效率会更高
-
-        // unlock /local/<dec_id>
-        // 在这里commit一次
-        let root = op_env.commit().await.unwrap();
-        info!("new dec root is: {:?}", root);
-
+        let _root = op_env.commit().await.unwrap();
 
         println!("case done...");
     }
     
     async fn inner_save(&self, store: &PerfStore, _path: String, root_state: &GlobalStateStub) -> BuckyResult<()> {
+        let start = Instant::now();
         let mut items = vec![];
         if let Ok(lock) = self.isolates.read() {
             for (_id, iso) in lock.iter() {
@@ -137,6 +132,8 @@ impl IsolateManager {
         // unlock /local/<dec_id>
         // 在这里commit一次
         let root = op_env.commit().await?;
+
+        info!("batch commit cost miliseconds: {}", start.elapsed().as_millis());
         info!("new dec root is: {:?}", root);
 
         // single_op_env.abort().await?;        

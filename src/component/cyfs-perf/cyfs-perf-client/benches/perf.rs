@@ -62,7 +62,7 @@ impl Second {
     async fn run(&self) {
         let dec_id = new_dec("test-perf");
         //let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-        let stack = SharedCyfsStack::open_runtime(Some(dec_id)).await.unwrap();
+        let stack = SharedCyfsStack::open_default(Some(dec_id)).await.unwrap();
         stack.wait_online(None).await.unwrap();
 
         //let perf = TracePerf::new("root");, 实现了perf trait
@@ -126,7 +126,7 @@ fn perf(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().sample_size(100);
+    config = Criterion::default().sample_size(10);
     targets = perf
 }
 criterion_main!(benches);
