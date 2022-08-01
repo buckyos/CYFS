@@ -63,16 +63,41 @@ impl IsolateManager {
     }
 
     pub async fn save_test(&self) {
-        // // 这里拿到people id 是作为后续创建对象用的
-        // let device_id = self.stack.local_device_id().object_id().clone();
-        // let people_id = self.stack.local_device().desc().owner().unwrap_or(device_id);
+        // 这里拿到people id 是作为后续创建对象用的
+        let device_id = self.stack.local_device_id().object_id().clone();
+        let people_id = self.stack.local_device().desc().owner().unwrap_or(device_id);
         
-        // let root_state = self.stack.root_state_stub(None, Some(ObjectId::default()));
-        // let path = format!("/local/{}", self.dec_id.to_string());
+        let root_state = self.stack.root_state_stub(None, Some(ObjectId::default()));
 
-        // let store = PerfStore::new(self.span_time, people_id, self.dec_id, self.stack.clone());
+        let store = PerfStore::new(self.span_time, people_id, self.dec_id, self.stack.clone());
 
-        // let _ = self.inner_save(&store, path.to_owned(), &root_state).await;
+        let mut items = vec![];
+        if let Ok(lock) = self.isolates.read() {
+            for (_id, iso) in lock.iter() {
+                // 数据弹出, 不能在rwlock里用await
+                items.push(iso.take_data());
+            }
+        }
+
+        // 在这里lock一次/local/<dec_id>
+        // 把/local/<dec_id>整个加载到op env
+        let op_env = root_state.create_path_op_env().await.unwrap();
+
+        for item in items {
+            // FIXME:  futures::future::join_all parallel 
+            store.request(&op_env, &item.isolate_id, item.requests).await.unwrap();
+            store.acc(&op_env, &item.isolate_id, item.accumulations).await.unwrap();
+            store.action(&op_env, &item.isolate_id, item.actions).await.unwrap();
+            store.record(&op_env, &item.isolate_id, item.records).await.unwrap();
+        }
+
+        // 如果把要save的新对象返回给这里，那么在这里统一put noc。现在可以先用for循环put，以后可能会有批量put的接口，效率会更高
+
+        // unlock /local/<dec_id>
+        // 在这里commit一次
+        let root = op_env.commit().await.unwrap();
+        info!("new dec root is: {:?}", root);
+
 
         println!("case done...");
     }
