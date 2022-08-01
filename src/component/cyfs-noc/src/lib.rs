@@ -1,6 +1,7 @@
 mod named_object_storage;
 mod object_cache_manager;
 mod common;
+mod blob;
 
 #[cfg(feature = "mongo")]
 mod mongodb;
@@ -10,6 +11,7 @@ mod memory;
 
 #[cfg(feature = "sqlite")]
 mod sqlite;
+
 
 pub use object_cache_manager::*;
 pub use named_object_storage::*;
@@ -32,7 +34,7 @@ async fn test() {
 
     let object_manager = OBJECT_CACHE_MANAGER.lock().unwrap().clone();
 
-    let device_info = LOCAL_DEVICE_MANAGER.load("device").unwrap();
+    let device_info = LOCAL_DEVICE&_MANAGER.load("device").unwrap();
     let device = &device_info.device;
 
     let device_id = device.desc().device_id();

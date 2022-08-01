@@ -2056,6 +2056,7 @@ dependencies = [
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-util",
+ "hex",
  "lazy_static",
  "log 0.4.16",
  "lru_time_cache",
