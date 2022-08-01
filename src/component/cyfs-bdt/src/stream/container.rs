@@ -4,7 +4,7 @@ mod dep {
     };
     pub use crate::{
         interface::*,
-        protocol::*,
+        protocol::{*, v0::*},
         stack::{Stack, WeakStack},
         tunnel::{
             self, AcceptReverseTcpStream, AcceptStreamBuilder, BuildTunnelAction,

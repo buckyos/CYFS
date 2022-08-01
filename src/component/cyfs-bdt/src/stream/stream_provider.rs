@@ -2,7 +2,7 @@ use async_trait::{async_trait};
 pub use std::net::Shutdown;
 use std::task::{Context, Poll};
 use cyfs_base::*;
-use crate::protocol::{SessionData, OnPackage};
+use crate::protocol::{*, v0::*};
 use super::container::StreamContainer;
 
 #[async_trait]

@@ -16,7 +16,7 @@ use ringbuf;
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::{self, *},
+    protocol::{self, *, v0::*},
     interface::{self, *, tcp::{OnTcpInterface, RecvBox, PackageInterface}}
 };
 use super::{tunnel::{self, DynamicTunnel, TunnelOwner, ProxyType}, TunnelContainer};
@@ -601,10 +601,11 @@ impl Tunnel {
         }?;
         let syn_seq = owner.generate_sequence();
         let syn_tunnel = SynTunnel {
+            protocol_version: owner.protocol_version(), 
+            stack_version: owner.stack_version(),  
             from_device_id: stack.local_device_id().clone(),
             to_device_id: owner.remote().clone(),
             sequence: syn_seq.clone(),
-            from_container_id: IncreaseId::default(),
             from_device_desc: stack.local().clone(),
             send_time: bucky_time_now()
         };
@@ -637,10 +638,11 @@ impl Tunnel {
         let key_stub = stack.keystore().create_key(owner.remote(), true);
         let mut syn_box = PackageBox::encrypt_box(owner.remote().clone(), key_stub.aes_key.clone());
         let syn_tunnel = SynTunnel {
+            protocol_version: owner.protocol_version(), 
+            stack_version: owner.stack_version(),  
             from_device_id: stack.local_device_id().clone(),
             to_device_id: owner.remote().clone(),
             sequence: owner.generate_sequence(),
-            from_container_id: IncreaseId::default(),
             from_device_desc: stack.local().clone(),
             send_time: bucky_time_now()
         };
@@ -963,7 +965,6 @@ impl Tunnel {
                                     info!("send ping, tunnel:{}", tunnel);
                                     let ping = PingTunnel {
                                         package_id: 0,
-                                        to_container_id: IncreaseId::default(),
                                         send_time: now,
                                         recv_data: 0,
                                     };
@@ -1130,7 +1131,6 @@ impl OnPackage<PingTunnel> for Tunnel {
     fn on_package(&self, ping: &PingTunnel, _context: Option<()>) -> Result<OnPackageResult, BuckyError> {
         let ping_resp = PingTunnelResp {
             ack_package_id: ping.package_id,
-            to_container_id: IncreaseId::default(),
             send_time: bucky_time_now(),
             recv_data: 0,
         };
@@ -1186,9 +1186,9 @@ impl OnTcpInterface for Tunnel {
             if let Some(owner) = owner {
                 owner.on_package(syn_tunnel, None)?;
                 let ack_tunnel = AckTunnel {
+                    protocol_version: owner.protocol_version(), 
+                    stack_version: owner.stack_version(),  
                     sequence: syn_tunnel.sequence,
-                    from_container_id: IncreaseId::default(),
-                    to_container_id: IncreaseId::default(),
                     result: ret,
                     send_time: bucky_time_now(),
                     mtu: udp::MTU as u16,

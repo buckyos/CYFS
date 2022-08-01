@@ -6,7 +6,7 @@ use crate::{
 use super::{
     scheduler::*, 
     channel::{
-        protocol::*, 
+        protocol::v0::*, 
         Channel, 
         UploadSession
     }, 

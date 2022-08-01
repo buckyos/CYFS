@@ -13,7 +13,7 @@ use crate::{
 use super::super::{
     scheduler::*, 
     channel::*,
-    channel::protocol::PieceData,
+    channel::protocol::v0::*,
 };
 use super::{
     storage::ChunkReader, 

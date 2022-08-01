@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::{RwLock}};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*,
+    protocol::{*, v0::*},
     interface::*,  
     tunnel::{TunnelGuard, TunnelContainer, BuildTunnelParams}, 
     stack::{Stack, WeakStack}

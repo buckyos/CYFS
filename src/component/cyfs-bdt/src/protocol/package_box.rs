@@ -1,5 +1,7 @@
-use super::package::*;
-use cyfs_base::*;
+use super::{
+    common::*, 
+    package::*
+};
 
 //TODO: Option<AesKey> 支持明文包
 pub struct PackageBox {

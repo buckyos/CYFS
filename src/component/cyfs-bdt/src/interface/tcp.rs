@@ -316,16 +316,18 @@ impl<'de> RawDecodeWithContext<'de, OtherBoxDecodeContext<'de>> for PackageBox {
 
         {
             let mut context = merge_context::FirstDecode::new();
+            let mut version = 0;
             let (package, buf) = DynamicPackage::raw_decode_with_context(
                 decrypt_buf[0..decrypt_len].as_ref(),
-                &mut context,
+                (&mut context, &mut version),
             )?;
+            
             packages.push(package);
             let mut context: merge_context::OtherDecode = context.into();
             let mut buf_ptr = buf;
             while buf_ptr.len() > 0 {
                 let (package, buf) =
-                    DynamicPackage::raw_decode_with_context(buf_ptr, &mut context)?;
+                    DynamicPackage::raw_decode_with_context(buf_ptr, (&mut context, &mut version))?;
                 buf_ptr = buf;
                 packages.push(package);
             }
