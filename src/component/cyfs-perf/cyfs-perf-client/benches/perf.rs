@@ -30,13 +30,6 @@ struct First {
 
 impl First {
     pub fn new() -> Self {
-
-        let dec_id = new_dec("test-perf");
-        //let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-        let stack = SharedCyfsStack::open_runtime(Some(dec_id)).await.unwrap();
-        stack.wait_online(None).await.unwrap();
-
-        
         let perf = PerfHolder::new("first");
         let test1 = perf.fork("test1").unwrap();
         let test1 = Second::new(test1);
@@ -67,6 +60,10 @@ impl Second {
         });
     }
     async fn run(&self) {
+        let dec_id = new_dec("test-perf");
+        //let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
+        let stack = SharedCyfsStack::open_runtime(Some(dec_id)).await.unwrap();
+        stack.wait_online(None).await.unwrap();
 
         //let perf = TracePerf::new("root");, 实现了perf trait
 
@@ -129,7 +126,7 @@ fn perf(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().sample_size(10);
+    config = Criterion::default().sample_size(100);
     targets = perf
 }
 criterion_main!(benches);
