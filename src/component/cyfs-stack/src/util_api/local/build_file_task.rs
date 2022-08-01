@@ -243,7 +243,7 @@ impl Runnable for BuildFileTask {
 
     async fn run(&self) -> BuckyResult<()> {
         self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Running;
-        let builder = FileObjectBuilder::new(self.local_path.clone(), self.owner.clone(), self.chunk_size, Some(self.task_state.clone()));
+        let builder = FileObjectBuilder::new(self.local_path.clone(), self.owner.clone(), self.chunk_size, None);
         let file = match builder.build().await {
             Ok(file) => {
                 file
