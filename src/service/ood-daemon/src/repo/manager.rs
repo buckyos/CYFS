@@ -141,7 +141,7 @@ impl RepoManager {
             match Self::fetch_service_with_repo(&repo, &info, local_file.as_path()).await {
                 Ok(_) => {
                     info!(
-                        "find pkg from repo success! fid={}, repo={:?}",
+                        "fetch pkg from repo success! fid={}, repo={:?}",
                         fid,
                         repo.get_type()
                     );

@@ -69,25 +69,45 @@ impl HttpRepo {
 
         let req = Request::new(Method::Get, url.clone());
         let res = async_h1::connect(stream.clone(), req).await.map_err(|e| {
-            let msg = format!("http request via http repo failed! host={}, {}", url, e);
+            let msg = format!("http request via http repo failed! url={}, {}", url, e);
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::Failed, msg)
         })?;
 
+        if !res.status().is_success() {
+            warn!("request via http reqo url but got errot! url={}, status={}", url, res.status());
+        }
+        
         Ok(res)
     }
-}
 
-#[async_trait]
-impl Repo for HttpRepo {
-    async fn fetch(&self, info: &RepoPackageInfo, local_file: &Path) -> BuckyResult<()> {
+    async fn request_pkg(&self, info: &RepoPackageInfo, ) -> BuckyResult<Response> {
         let full_file_name = if let Some(inner_path) = &info.inner_path {
             format!("{}/{}", info.fid, inner_path)
         } else {
             info.fid.clone()
         };
 
-        let mut response = self.request(&full_file_name).await?;
+        let response = self.request(&full_file_name).await?;
+        if response.status().is_success() {
+            return Ok(response);
+        }
+
+        let response = self.request(&info.file_name).await?;
+        if response.status().is_success() {
+            return Ok(response);
+        }
+
+        let msg = format!("http request via http repo by file_name and full path failed! url={}, pkg={:?}", self.url, info);
+        error!("{}", msg);
+        Err(BuckyError::new(BuckyErrorCode::Failed, msg))
+    }
+}
+
+#[async_trait]
+impl Repo for HttpRepo {
+    async fn fetch(&self, info: &RepoPackageInfo, local_file: &Path) -> BuckyResult<()> {
+        let mut response = self.request_pkg(info).await?;
 
         let content_len = response.len();
         if content_len.is_none() {
