@@ -42,6 +42,10 @@ message PerfActionItem {
 }
 
 message PerfAction {
+    bytes body_hash = 2;
+}
+
+message PerfActionBody {
     repeated PerfActionItem actions = 1;
 }
 

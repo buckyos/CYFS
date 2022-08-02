@@ -405,10 +405,10 @@ impl PerfActionItem {
     }
 }
 
-#[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
+#[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
 #[cyfs_protobuf_type(protos::PerfAction)]
 pub struct PerfActionDesc {
-    pub actions: Vec<PerfActionItem>
+    pub body_hash: HashValue
 }
 
 impl DescContent for PerfActionDesc {
@@ -426,8 +426,20 @@ impl DescContent for PerfActionDesc {
     type PublicKeyType = SubDescNone;
 }
 
-type PerfActionType = NamedObjType<PerfActionDesc, EmptyProtobufBodyContent>;
-type PerfActionBuilder = NamedObjectBuilder<PerfActionDesc, EmptyProtobufBodyContent>;
+#[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
+#[cyfs_protobuf_type(protos::PerfActionBody)]
+pub struct PerfActionBody {
+    pub actions: Vec<PerfActionItem>,
+}
+
+impl BodyContent for PerfActionBody {
+    fn format(&self) -> u8 {
+        OBJECT_CONTENT_CODEC_FORMAT_PROTOBUF
+    }
+}
+
+type PerfActionType = NamedObjType<PerfActionDesc, PerfActionBody>;
+type PerfActionBuilder = NamedObjectBuilder<PerfActionDesc, PerfActionBody>;
 
 pub type PerfActionId = NamedObjectId<PerfActionType>;
 pub type PerfAction = NamedObjectBase<PerfActionType>;
@@ -440,29 +452,30 @@ pub trait PerfActionObj {
 
 impl PerfActionObj for PerfAction {
     fn create(owner: ObjectId, dec_id: ObjectId) -> PerfAction {
+        let body = PerfActionBody { actions: vec![] };
         PerfActionBuilder::new(PerfActionDesc {
-            actions: vec![],
-        }, EmptyProtobufBodyContent {})
+            body_hash: hash_data(&body.to_vec().unwrap())
+        }, body)
             .owner(owner)
             .dec_id(dec_id)
             .build()
     }
 
     fn add_stat(&self, stat: PerfActionItem) -> PerfAction {
-        let mut desc = self.desc().content().clone();
-        desc.actions.push(stat);
+        let mut body = self.body().as_ref().unwrap().content().clone();
+        body.actions.push(stat);
 
-        PerfActionBuilder::new(desc, EmptyProtobufBodyContent {})
+        PerfActionBuilder::new(PerfActionDesc {body_hash: hash_data(&body.to_vec().unwrap())}, body)
             .owner(self.desc().owner().unwrap())
             .dec_id(self.desc().dec_id().unwrap())
             .build()
     }
 
     fn add_stats(&self, stat: &mut Vec<PerfActionItem>) -> PerfAction {
-        let mut desc = self.desc().content().clone();
-        desc.actions.append(stat);
+        let mut body = self.body().as_ref().unwrap().content().clone();
+        body.actions.append(stat);
 
-        PerfActionBuilder::new(desc, EmptyProtobufBodyContent {})
+        PerfActionBuilder::new(PerfActionDesc { body_hash: hash_data(&body.to_vec().unwrap()) }, body)
             .owner(self.desc().owner().unwrap())
             .dec_id(self.desc().dec_id().unwrap())
             .build()
