@@ -766,7 +766,7 @@ impl_default_protobuf_raw_codec!(DsgContractStateDesc, protos::ContractStateDesc
 
 #[derive(Clone)]
 pub struct DsgContractStateBody {
-    extra_chunks: Option<Vec<ChunkId>>,
+    pub extra_chunks: Option<Vec<ChunkId>>,
 }
 
 impl BodyContent for DsgContractStateBody {}
