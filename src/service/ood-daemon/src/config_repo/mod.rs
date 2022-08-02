@@ -1,9 +1,10 @@
 mod local;
 mod meta;
+mod http;
 
 pub use local::*;
 pub use meta::*;
-
+pub use http::*;
 
 use cyfs_base::BuckyResult;
 

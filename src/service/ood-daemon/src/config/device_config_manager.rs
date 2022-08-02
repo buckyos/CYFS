@@ -31,7 +31,7 @@ impl DeviceConfigManager {
         let desc = &get_system_config().config_desc;
 
         info!("will init device_config repo: {}", desc);
-        
+
         let repo = if desc == "local" {
             let repo = DeviceConfigLocalRepo::new();
             Box::new(repo) as Box<dyn DeviceConfigRepo>
@@ -40,6 +40,10 @@ impl DeviceConfigManager {
             if let Err(e) = repo.init(&desc, &get_system_config().version) {
                 return Err(e);
             }
+
+            Box::new(repo) as Box<dyn DeviceConfigRepo>
+        } else if desc.starts_with("http") {
+            let repo = DeviceConfigHttpRepo::new(&desc)?;
 
             Box::new(repo) as Box<dyn DeviceConfigRepo>
         } else {
