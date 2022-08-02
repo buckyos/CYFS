@@ -7,3 +7,4 @@ pub use manager::Repo;
 pub use manager::RepoManager;
 pub use manager::RepoType;
 pub use manager::REPO_MANAGER;
+pub use http::HttpRepoBase;

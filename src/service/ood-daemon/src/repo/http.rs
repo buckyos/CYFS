@@ -10,19 +10,23 @@ use http_types::{Method, Request, Response, Url};
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 
-pub struct HttpRepo {
+pub struct HttpRepoBase {
     url: Url,
 }
 
-impl HttpRepo {
-    pub fn new(repo_url: &str) -> BuckyResult<HttpRepo> {
+impl HttpRepoBase {
+    pub fn new(repo_url: &str) -> BuckyResult<Self> {
         let url = Url::parse(repo_url).map_err(|e| {
             let msg = format!("invalid http repo url: {}, {}", repo_url, e);
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
 
-        Ok(HttpRepo { url })
+        Ok(Self { url })
+    }
+
+    pub fn url(&self) -> &Url {
+        &self.url
     }
 
     async fn resolve_host(&self) -> BuckyResult<SocketAddr> {
@@ -51,7 +55,7 @@ impl HttpRepo {
         Ok(addr)
     }
 
-    async fn request(&self, full_file_name: &str) -> BuckyResult<Response> {
+    pub async fn request(&self, full_file_name: &str) -> BuckyResult<Response> {
         let host = self.resolve_host().await?;
         let stream = TcpStream::connect(host).await.map_err(|e| {
             let msg = format!("connect to http repo server failed! host={}, {}", host, e);
@@ -75,35 +79,54 @@ impl HttpRepo {
         })?;
 
         if !res.status().is_success() {
-            warn!("request via http reqo url but got errot! url={}, status={}", url, res.status());
+            warn!(
+                "request via http reqo url but got errot! url={}, status={}",
+                url,
+                res.status()
+            );
         }
-        
+
         Ok(res)
     }
+}
 
-    async fn request_pkg(&self, info: &RepoPackageInfo, ) -> BuckyResult<Response> {
+pub struct HttpRepo {
+    repo: HttpRepoBase,
+}
+
+impl HttpRepo {
+    pub fn new(repo_url: &str) -> BuckyResult<Self> {
+        Ok(Self {
+            repo: HttpRepoBase::new(repo_url)?,
+        })
+    }
+
+    async fn request_pkg(&self, info: &RepoPackageInfo) -> BuckyResult<Response> {
         let full_file_name = if let Some(inner_path) = &info.inner_path {
             format!("{}/{}", info.fid, inner_path)
         } else {
             info.fid.clone()
         };
 
-        let response = self.request(&full_file_name).await?;
+        let response = self.repo.request(&full_file_name).await?;
         if response.status().is_success() {
             return Ok(response);
         }
 
-        let response = self.request(&info.file_name).await?;
+        let response = self.repo.request(&info.file_name).await?;
         if response.status().is_success() {
             return Ok(response);
         }
 
-        let msg = format!("http request via http repo by file_name and full path failed! url={}, pkg={:?}", self.url, info);
+        let msg = format!(
+            "http request via http repo by file_name and full path failed! url={}, pkg={:?}",
+            self.repo.url(),
+            info
+        );
         error!("{}", msg);
         Err(BuckyError::new(BuckyErrorCode::Failed, msg))
     }
 }
-
 #[async_trait]
 impl Repo for HttpRepo {
     async fn fetch(&self, info: &RepoPackageInfo, local_file: &Path) -> BuckyResult<()> {
