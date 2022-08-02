@@ -1,4 +1,4 @@
-//mod http;
+mod http;
 mod manager;
 mod local;
 mod named_data;

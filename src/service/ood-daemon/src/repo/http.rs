@@ -1,102 +1,143 @@
-use std::error::Error;
-use std::fs::File;
-use std::path::Path;
-
-use async_trait::async_trait;
-extern crate reqwest;
-extern crate url;
+use super::manager::RepoPackageInfo;
 use crate::repo::Repo;
 use crate::repo::RepoType;
-use futures_util::StreamExt;
-use log;
-use std::io::Write;
+use cyfs_base::*;
+
+use async_std::io::WriteExt;
+use async_std::net::TcpStream;
+use async_trait::async_trait;
+use http_types::{Method, Request, Response, Url};
+use std::net::{IpAddr, SocketAddr};
+use std::path::Path;
 
 pub struct HttpRepo {
-    url: String,
+    url: Url,
 }
 
 impl HttpRepo {
-    pub fn new(repo_url: &str) -> Result<HttpRepo, BuckyError> {
-        let ret = url::Url::parse(repo_url);
-        if let Err(e) = ret {
-            log::error!("invaid repo url: {}", repo_url);
-            return Err(Box::new(e));
+    pub fn new(repo_url: &str) -> BuckyResult<HttpRepo> {
+        let url = Url::parse(repo_url).map_err(|e| {
+            let msg = format!("invalid http repo url: {}, {}", repo_url, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidParam, msg)
+        })?;
+
+        Ok(HttpRepo { url })
+    }
+
+    async fn resolve_host(&self) -> BuckyResult<SocketAddr> {
+        let host = self.url.host();
+        if host.is_none() {
+            let msg = format!("invalid http repo url host: {}", self.url);
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
         }
 
-        Ok(HttpRepo {
-            url: String::from(repo_url),
-        })
+        let host = host.unwrap();
+        let addr = match host {
+            http_types::url::Host::Ipv4(addr) => IpAddr::V4(addr),
+            http_types::url::Host::Ipv6(addr) => IpAddr::V6(addr),
+            http_types::url::Host::Domain(domain) => {
+                let msg = format!(
+                    "unsupport http repo url host: url={}, domain={}",
+                    self.url, domain
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+        };
+
+        let addr = SocketAddr::new(addr, self.url.port().unwrap_or(80));
+        Ok(addr)
+    }
+
+    async fn request(&self, full_file_name: &str) -> BuckyResult<Response> {
+        let host = self.resolve_host().await?;
+        let stream = TcpStream::connect(host).await.map_err(|e| {
+            let msg = format!("connect to http repo server failed! host={}, {}", host, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::ConnectFailed, msg)
+        })?;
+
+        let url = self.url.join(full_file_name).map_err(|e| {
+            let msg = format!("unsupport http repo url: {}, {}", self.url, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidParam, msg)
+        })?;
+
+        info!("will request via http reqo url: {}", url);
+
+        let req = Request::new(Method::Get, url.clone());
+        let res = async_h1::connect(stream.clone(), req).await.map_err(|e| {
+            let msg = format!("http request via http repo failed! host={}, {}", url, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::Failed, msg)
+        })?;
+
+        Ok(res)
     }
 }
 
 #[async_trait]
 impl Repo for HttpRepo {
-    async fn fetch(&mut self, pkg_fid: &str, local_file: &Path) -> Result<(), BuckyError> {
-        let mut parts = url::Url::parse(&self.url).unwrap();
-        parts.set_query(Some(&format!("fid={}", pkg_fid)));
-        let pkg_url = parts.into_string();
+    async fn fetch(&self, info: &RepoPackageInfo, local_file: &Path) -> BuckyResult<()> {
+        let full_file_name = if let Some(inner_path) = &info.inner_path {
+            format!("{}/{}", info.fid, inner_path)
+        } else {
+            info.fid.clone()
+        };
 
-        log::info!("will download: {} -> {}", pkg_url, local_file.display());
+        let mut response = self.request(&full_file_name).await?;
 
-        let create_ret = File::create(local_file);
-        if let Err(e) = create_ret {
-            error!("open file error: {}, err={}", local_file.display(), e);
-            return Err(Box::new(e));
+        let content_len = response.len();
+        if content_len.is_none() {
+            warn!("repo http response content length had not beed set!");
         }
 
-        let out = create_ret.unwrap();
+        let mut body = response.take_body().into_reader();
 
-        let get_ret = reqwest::get(pkg_url.as_str()).await;
-        if let Err(e) = get_ret {
-            error!("get package from url error: {}, err={}", &pkg_url, e);
-            return Err(Box::new(e));
-        }
+        let mut file = async_std::fs::File::create(local_file).await.map_err(|e| {
+            let msg = format!(
+                "create local file error! file={}, {}",
+                local_file.display(),
+                e
+            );
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
 
-        let resp = get_ret.unwrap();
+        let write_len = async_std::io::copy(&mut body, &mut file)
+            .await
+            .map_err(|e| {
+                let msg = format!(
+                    "write response to local file error! file={}, {}",
+                    local_file.display(),
+                    e
+                );
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::IoError, msg)
+            })?;
 
-        // 判断状态是否出错
-        if !resp.status().is_success() {
-            match resp.error_for_status_ref() {
-                Err(e) => {
-                    error!("get package from url error status: {}, err={}", &pkg_url, e);
-                    return Err(Box::new(e));
-                }
-                Ok(_) => {
-                    // 非4xx 5xx的错误，比如重定向等
-                    error!(
-                        "get package from url error status: {}, err={}",
-                        &pkg_url,
-                        resp.status().as_str()
-                    );
-                    return Err(BuckyError::from(resp.status().as_str()));
-                }
-            }
-        }
+        file.flush().await.map_err(|e| {
+            let msg = format!(
+                "flush local file error! file={}, {}",
+                local_file.display(),
+                e
+            );
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
 
-        let mut writer = std::io::BufWriter::new(out);
-        let mut stream = resp.bytes_stream();
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(bytes) => {
-                    if let Err(e) = writer.write(&bytes) {
-                        error!(
-                            "write to file error, file={}, e={}",
-                            local_file.display(),
-                            e
-                        );
-                        return Err(Box::new(e));
-                    }
-                }
-                Err(e) => {
-                    error!("stream return error, url={}, e={}", pkg_url, e);
-                    return Err(Box::new(e));
+        match content_len {
+            Some(v) => {
+                if write_len != v as u64 {
+                    let msg = format!("read bytes from repsonse but got unmatch content length! file={}, write={}, content={}", local_file.display(), write_len, v);
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
                 }
             }
+            None => {}
         }
-
-        writer.flush()?;
-
-        // io::copy(&mut resp.bytes_stream(), &mut out).expect("failed to copy content");
 
         Ok(())
     }

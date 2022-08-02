@@ -4620,6 +4620,7 @@ dependencies = [
  "fs_extra",
  "futures",
  "futures-util",
+ "http-types",
  "lazy_static",
  "log 0.4.16",
  "once_cell",
@@ -4627,7 +4628,6 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
- "url 2.2.2",
  "zip",
 ]
 
