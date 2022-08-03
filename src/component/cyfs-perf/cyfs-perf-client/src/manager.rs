@@ -96,8 +96,15 @@ impl IsolateManager {
         println!("case done...");
     }
     
-    async fn inner_save(&self, store: &PerfStore, _path: String, root_state: &GlobalStateStub) -> BuckyResult<()> {
+    async fn inner_save(&self, store: &PerfStore, path: String, root_state: &GlobalStateStub) -> BuckyResult<()> {
         let start = Instant::now();
+
+        // 在这里lock一次/local/<dec_id>
+        // 把/local/<dec_id>整个加载到op env
+        let op_env = root_state.create_path_op_env().await.unwrap();
+        // lock 一直在自旋?
+        op_env.try_lock(vec![path.to_owned()], 0).await?;
+
         let mut items = vec![];
         if let Ok(lock) = self.isolates.read() {
             for (_id, iso) in lock.iter() {
@@ -106,11 +113,10 @@ impl IsolateManager {
             }
         }
 
-        // 在这里lock一次/local/<dec_id>
-        // 把/local/<dec_id>整个加载到op env
-        let op_env = root_state.create_path_op_env().await.unwrap();
-        // lock 一直在自旋?
-        // op_env.lock(vec![path.to_owned()], 0).await?;
+        if items.is_empty() {
+            return Ok(());
+        }
+
         // // 如果把要save的新对象返回给这里，那么在这里统一put noc。现在可以先用for循环put，以后可能会有批量put的接口，效率会更高
         // let single_op_env = root_state.create_single_op_env().await?;
         // if let Err(e) = single_op_env.load_by_path(path.to_owned()).await {
