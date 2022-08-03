@@ -695,7 +695,7 @@ fn encode_protocol_exchange() {
 }
 
 pub struct SynTunnel {
-    pub protocol_version: u8,  
+    pub protocol_version: u8,
     pub stack_version: u32,  
     pub from_device_id: DeviceId,
     pub to_device_id: DeviceId,

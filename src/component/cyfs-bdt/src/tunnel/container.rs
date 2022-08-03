@@ -633,36 +633,6 @@ impl TunnelContainer {
             _ => Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_udp_raw_data(data, self), 
         }
     }
-
-
-    
-    // 注意R端的打洞包要用SynTunnel不能用AckTunnel
-    // 因为可能出现如下时序：L端收到R端的打洞包，停止继续发送打洞包；但是R端没有收到L端的打洞包，继续发送打洞包；
-    //   如果R端发的是AckTunnel，L端收到之后不会回复；如果L端改成对AckTunnel回复SynTunnel/AckTunnel都不合适，会导致循环回复
-    //   R端发SynTunnel的话，L端收到之后可以回复复AckTunnel 
-    // pub(super) fn syn_tunnel_package(&self, syn_tunnel: &SynTunnel, local: Device) -> SynTunnel {
-    //     SynTunnel {
-    //         protocol_version: self.protocol_version(), 
-    //         stack_version: self.stack_version(), 
-    //         from_device_id: local.desc().device_id(),
-    //         to_device_id: syn_tunnel.from_device_id.clone(),
-    //         sequence: syn_tunnel.sequence,
-    //         from_device_desc: local,
-    //         send_time: 0
-    //     }
-    // }
-
-    // pub(super) fn ack_tunnel_package(&self, syn_tunnel: &SynTunnel, local: Device) -> AckTunnel {
-    //     AckTunnel {
-    //         protocol_version: self.protocol_version(), 
-    //         stack_version: self.stack_version(), 
-    //         sequence: syn_tunnel.sequence,
-    //         result: 0,
-    //         send_time: 0,
-    //         mtu: c::MTU as u16,
-    //         to_device_desc: local       
-    //     }
-    // }
 }
 
 impl fmt::Display for TunnelContainer {

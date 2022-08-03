@@ -2,7 +2,6 @@ use super::common::*;
 
 pub struct AckAckTunnel {
     seq: TempSeq,
-    to_container_id: u32,
 }
 
 impl Package for AckAckTunnel {
@@ -33,8 +32,6 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for AckAckTun
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Encode::<Self, Context>::new(enc_buf, merge_context)?;
         let buf = context.check_encode(buf, "seq", &self.seq, flags.next())?;
-        let _buf =
-            context.check_encode(buf, "to_container_id", &self.to_container_id, flags.next())?;
         context.finish(enc_buf)
     }
 }
@@ -47,11 +44,9 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (seq, buf) = context.check_decode(buf, "seq", flags.next())?;
-        let (to_container_id, buf) = context.check_decode(buf, "to_container_id", flags.next())?;
         Ok((
             Self {
                 seq,
-                to_container_id,
             },
             buf,
         ))
@@ -64,7 +59,6 @@ fn encode_protocol_ack_ack_tunnel() {
 
     let src = AckAckTunnel {
         seq: TempSeq::default(),
-        to_container_id: rand::random::<u32>(),
     };
 
     let mut buf = [0u8; udp::MTU];
@@ -83,7 +77,6 @@ fn encode_protocol_ack_ack_tunnel() {
             .unwrap();
 
     assert_eq!(dst.seq, src.seq);
-    assert_eq!(dst.to_container_id, src.to_container_id);
 }
 
 pub struct PingTunnel {
@@ -1150,7 +1143,6 @@ pub struct TcpSynConnection {
     pub from_session_id: IncreaseId,
     pub from_device_id: DeviceId,
     pub to_device_id: DeviceId,
-    pub proxy_device_id: Option<DeviceId>,
     pub from_device_desc: Device,
     pub reverse_endpoint: Option<Vec<Endpoint>>,
     pub payload: TailedOwnedData,
@@ -1214,7 +1206,6 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for TcpSynCon
         let buf =
             context.check_encode(buf, "from_device_id", &self.from_device_id, flags.next())?;
         let buf = context.check_encode(buf, "to_device_id", &self.to_device_id, flags.next())?;
-        let buf = context.option_encode(buf, &self.proxy_device_id, flags.next())?;
         let buf = context.check_encode(buf, "device_desc", &self.from_device_desc, flags.next())?;
         let buf = context.option_encode(buf, &self.reverse_endpoint, flags.next())?;
         let _buf = context.encode(buf, &self.payload, flags.next())?;
@@ -1237,7 +1228,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (from_session_id, buf) = context.decode(buf, flags.next())?;
         let (from_device_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (to_device_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
-        let (proxy_device_id, buf) = context.option_decode(buf, flags.next())?;
         let (from_device_desc, buf) = context.check_decode(buf, "device_desc", flags.next())?;
         let (reverse_endpoint, buf) = context.option_decode(buf, flags.next())?;
         let (payload, buf) = context.decode(buf, flags.next())?;
@@ -1250,7 +1240,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
                 from_session_id,
                 from_device_id,
                 to_device_id,
-                proxy_device_id,
                 from_device_desc,
                 reverse_endpoint,
                 payload,
@@ -1302,7 +1291,6 @@ fn encode_protocol_tcp_syn_connection() {
         from_session_id: IncreaseId::default(),
         from_device_id: from_device.desc().device_id(),
         to_device_id: to_device.desc().device_id(),
-        proxy_device_id: Some(from_device.desc().device_id()),
         from_device_desc: from_device,
         reverse_endpoint: Some(eps),
         payload: TailedOwnedData::from(data),
@@ -1329,7 +1317,6 @@ fn encode_protocol_tcp_syn_connection() {
     assert_eq!(dst.from_session_id, src.from_session_id);
     assert_eq!(dst.from_device_id, src.from_device_id);
     assert_eq!(dst.to_device_id, src.to_device_id);
-    assert_eq!(dst.proxy_device_id, src.proxy_device_id);
 
     let dst_from_device_desc = dst.from_device_desc.to_hex().unwrap();
     let src_from_device_desc = src.from_device_desc.to_hex().unwrap();
