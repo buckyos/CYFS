@@ -294,6 +294,8 @@ async fn main() {
     if matches.is_present("sync_repo") {
         if let Err(_e) = repo_downloader::RepoDownloader::new().load().await {
             std::process::exit(-1);
+        } else {
+            std::process::exit(0);
         }
     }
 

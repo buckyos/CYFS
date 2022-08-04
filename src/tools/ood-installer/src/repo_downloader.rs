@@ -1,5 +1,5 @@
 use cyfs_base::*;
-use ood_daemon::{RepoManager, DEVICE_CONFIG_MANAGER};
+use ood_daemon::*;
 
 use std::path::PathBuf;
 
@@ -13,6 +13,7 @@ impl RepoDownloader {
             repo_dir: ::cyfs_util::get_cyfs_root_path().join("repo_store"),
         }
     }
+
     pub async fn load(&self) -> BuckyResult<()> {
         if !self.repo_dir.is_dir() {
             if let Err(e) = std::fs::create_dir_all(&self.repo_dir) {
@@ -41,21 +42,37 @@ impl RepoDownloader {
 
             let cache_path = repo_manager.fetch_service(&service_config.fid).await?;
             if let Err(e) = async_std::fs::copy(&cache_path, &file).await {
-                error!(
+                let msg = format!(
                     "copy file error! {} -> {}, {}",
                     cache_path.display(),
                     file.display(),
                     e
                 );
+                error!("{}", msg);
+
                 if let Err(e) = async_std::fs::remove_file(&file).await {
                     error!("remove repo file error! file={}, {}", file.display(), e);
                 }
 
-                continue;
+                return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
             }
 
             info!("download repo package success! file={}", file.display());
         }
+
+        let target = self.repo_dir.join("device-config.toml");
+        async_std::fs::copy(&PATHS.device_config, &target)
+            .await
+            .map_err(|e| {
+                let msg = format!(
+                    "copy device-config.toml error! {} -> {}, {}",
+                    PATHS.device_config.display(),
+                    target.display(),
+                    e
+                );
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::IoError, msg)
+            })?;
 
         Ok(())
     }
