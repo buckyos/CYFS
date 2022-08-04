@@ -210,8 +210,9 @@ impl OnPackage<SessionData, &TunnelContainer> for StreamManager {
                 if let Some(stream) = self.stream_of_remote_sequence(&remote_seq) {
                     Some(stream)
                 } else {
-                    let mut question = vec![];
+                    let mut question = vec![0; pkg.payload.as_ref().len()];
                     question.copy_from_slice(pkg.payload.as_ref());
+
                     self.try_accept(
                         stack.tunnel_manager().container_of(tunnel.remote()).unwrap(), 
                         syn_info.to_vport,
@@ -248,7 +249,7 @@ impl OnPackage<TcpSynConnection, (&TunnelContainer, tcp::AcceptInterface)> for S
             if let Some(stream) = self.stream_of_remote_sequence(&remote_seq) {
                 Some(stream)
             } else {
-                let mut question = vec![];
+                let mut question = vec![0; pkg.payload.as_ref().len()];
                 question.copy_from_slice(pkg.payload.as_ref());
                 self.try_accept(
                     stack.tunnel_manager().container_of(tunnel.remote()).unwrap(), 
@@ -276,7 +277,7 @@ impl OnPackage<TcpSynConnection, &TunnelContainer> for StreamManager {
             if let Some(stream) = self.stream_of_remote_sequence(&remote_seq) {
                 Some(stream)
             } else {
-                let mut question = vec![];
+                let mut question = vec![0; pkg.payload.as_ref().len()];
                 question.copy_from_slice(pkg.payload.as_ref());
                 self.try_accept(
                     stack.tunnel_manager().container_of(tunnel.remote()).unwrap(), 

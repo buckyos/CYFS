@@ -372,7 +372,7 @@ enum StreamStateImpl {
 struct PackageStreamProviderSelector {}
 pub enum StreamProviderSelector {
     Package(IncreaseId /*remote id*/, Option<SessionData>),
-    Tcp(async_std::net::TcpStream, AesKey),
+    Tcp(async_std::net::TcpStream, AesKey, Option<TcpAckConnection>),
 }
 
 pub struct StreamContainerImpl {
@@ -382,6 +382,7 @@ pub struct StreamContainerImpl {
     local_id: IncreaseId,
     sequence: TempSeq,
     state: RwLock<StreamStateImpl>,
+    answer_data: RwLock<Option<Vec<u8>>>,
 }
 
 impl fmt::Display for StreamContainerImpl {
@@ -413,6 +414,7 @@ impl StreamContainerImpl {
             local_id,
             sequence: sequence,
             state: RwLock::new(StreamStateImpl::Initial),
+            answer_data: RwLock::new(None)
         };
 
         StreamContainer(Arc::new(stream_impl))
@@ -553,19 +555,47 @@ impl StreamContainerImpl {
             e
         })?;
 
-        let (provider, provider_stub) = match selector {
-            StreamProviderSelector::Package(remote_id, _session_data) => {
+        let (provider, provider_stub, answer_data) = match selector {
+            StreamProviderSelector::Package(remote_id, ack) => {
+                let answer_data = match ack {
+                    Some(session_data) => {
+                        if session_data.payload.as_ref().len() > 0 {
+                            let mut answer = vec![0; session_data.payload.as_ref().len()];
+                            answer.copy_from_slice(session_data.payload.as_ref());
+                            answer
+                        } else {
+                            vec![]
+                        }
+                    },
+                    _ => vec![],
+                };
+
                 let stream = PackageStream::new(self, self.local_id.clone(), remote_id)?;
                 (
                     Box::new(stream.clone()) as Box<dyn StreamProvider>,
                     Box::new(stream) as Box<dyn StreamProvider>,
+                    answer_data,
                 )
             }
-            StreamProviderSelector::Tcp(socket, key) => {
+            StreamProviderSelector::Tcp(socket, key, ack) => {
+                let answer_data = match ack {
+                    Some(tcp_ack_connection) => {
+                        if tcp_ack_connection.payload.as_ref().len() > 0 {
+                            let mut answer = vec![0; tcp_ack_connection.payload.as_ref().len()];
+                            answer.copy_from_slice(tcp_ack_connection.payload.as_ref());
+                            answer
+                        } else {
+                            vec![]
+                        }
+                    },
+                    _ => vec![],
+                };
+
                 let stream = TcpStream::new(arc_self.clone(), socket, key)?;
                 (
                     Box::new(stream.clone()) as Box<dyn StreamProvider>,
                     Box::new(stream) as Box<dyn StreamProvider>,
+                    answer_data,
                 )
             }
         };
@@ -591,6 +621,12 @@ impl StreamContainerImpl {
                         remote_timestamp,
                         provider: provider_stub,
                     });
+
+                    if answer_data.len() > 0 {
+                        let data = &mut *self.answer_data.write().unwrap();
+                        *data = Some(answer_data);
+                    }
+
                     Ok(waiter)
                 }
             },
@@ -706,7 +742,7 @@ impl StreamContainerImpl {
         }
         .map(|question| {
             let mut session = SessionData::new();
-            session.stream_pos = 1;
+            session.stream_pos = 0;
             session.syn_info = Some(SessionSynInfo {
                 sequence: self.sequence,
                 from_session_id: self.local_id.clone(),
@@ -734,13 +770,13 @@ impl StreamContainerImpl {
         }
         .map(|remote_id| {
             let mut session = SessionData::new();
-            session.stream_pos = 1;
+            session.stream_pos = 0;
             session.syn_info = Some(SessionSynInfo {
                 sequence: self.sequence,
                 from_session_id: self.local_id.clone(),
                 to_vport: 0,
             });
-            session.ack_stream_pos = 1; //TODO
+            session.ack_stream_pos = 0;
             session.send_time = bucky_time_now();
             session.flags_add(SESSIONDATA_FLAG_SYN | SESSIONDATA_FLAG_ACK);
             session.to_session_id = Some(remote_id.clone());
@@ -781,7 +817,7 @@ impl StreamContainerImpl {
         })
     }
 
-    pub fn ack_tcp_stream(&self, _answer: &[u8]) -> Option<TcpAckConnection> {
+    pub fn ack_tcp_stream(&self, answer: &[u8]) -> Option<TcpAckConnection> {
         {
             match &*self.state.read().unwrap() {
                 StreamStateImpl::Connecting(connecting) => match connecting {
@@ -793,12 +829,17 @@ impl StreamContainerImpl {
                 _ => None,
             }
         }
-        .map(|remote_id| TcpAckConnection {
-            sequence: self.sequence,
-            to_session_id: remote_id,
-            result: TCP_ACK_CONNECTION_RESULT_OK,
-            to_device_desc: Stack::from(&self.stack).local().clone(),
-            payload: TailedOwnedData::from(Vec::new()),
+        .map(|remote_id| {
+            let mut payload = vec![0u8; answer.len()];
+            payload.copy_from_slice(answer);
+
+            TcpAckConnection {
+                sequence: self.sequence,
+                to_session_id: remote_id,
+                result: TCP_ACK_CONNECTION_RESULT_OK,
+                to_device_desc: Stack::from(&self.stack).local().clone(),
+                payload: TailedOwnedData::from(payload),
+            }
         })
     }
 
@@ -952,10 +993,53 @@ impl StreamContainer {
         }
     }
 
+    fn contain_answer_data(&self) -> bool {
+        match *self.0.answer_data.read().unwrap() {
+            None => false,
+            _ => true,
+        }
+    }
+
+    fn answer_read(&self, buf: &mut [u8]) -> usize {
+        if self.contain_answer_data() {
+            let answer_data = &mut *self.0.answer_data.write().unwrap();
+            match answer_data {
+                Some(answer_buf) => {
+                    let mut read_len = answer_buf.len();
+                    if read_len > buf.len() {
+                        read_len = buf.len();
+                    }
+        
+                    buf[..read_len].copy_from_slice(&answer_buf[..read_len]);
+        
+                    if read_len == answer_buf.len() {
+                        *answer_data = None;
+                    } else {
+                        let data = &answer_buf[read_len..];
+
+                        *answer_data = Some(data.to_vec())
+                    }
+        
+                    read_len
+                },
+                None => 0
+            }
+        } else {
+            0
+        }
+    }
+
     fn poll_read(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<std::io::Result<usize>> {
         debug!("{} poll read {} bytes", self.as_ref(), buf.len());
+
         self.poll_io_wait_establish(cx.waker().clone(), true, |provider| {
-            provider.poll_read(cx, buf)
+            let read_len = self.answer_read(buf);
+
+            if read_len > 0 {
+                Poll::Ready(Ok(read_len))
+            } else {
+                provider.poll_read(cx, buf)
+            }
         })
     }
 

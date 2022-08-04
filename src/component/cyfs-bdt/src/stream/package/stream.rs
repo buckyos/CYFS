@@ -61,14 +61,14 @@ impl PackageStream {
     pub fn new(
         owner: &super::super::container::StreamContainerImpl, 
         local_id: IncreaseId, 
-        remote_id: IncreaseId
+        remote_id: IncreaseId,
     ) -> BuckyResult<Self> {
         let owner_disp = format!("{}", owner);
         let config = owner.tunnel().stack().config().stream.stream.clone();
 
         let write_provider = WriteProvider::new(&config);
         let read_provider = ReadProvider::new(&config);
-        Ok(Self(Arc::new(PackageStreamImpl {
+        let stream = Self(Arc::new(PackageStreamImpl {
             owner_disp, 
             config, 
             tunnel: owner.tunnel().default_udp_tunnel()?, 
@@ -76,7 +76,9 @@ impl PackageStream {
             remote_id, 
             write_provider,
             read_provider
-        })))
+        }));
+
+        Ok(stream)
     }
 
     pub fn config(&self) -> &super::super::container::Config {

@@ -237,7 +237,7 @@ impl ConnectStreamAction for ConnectTcpStream {
             }
         }?;
         let syn_stream = self.0.stream.as_ref().syn_tcp_stream().ok_or_else(|| BuckyError::new(BuckyErrorCode::ErrorState, "continue connect on stream not connecting"))?;
-        let _ = match interface.confirm_connect(&Stack::from(&self.0.stack), vec![DynamicPackage::from(syn_stream)], Stack::from(&self.0.stack).config().tunnel.tcp.confirm_timeout).await {
+        let ack = match interface.confirm_connect(&Stack::from(&self.0.stack), vec![DynamicPackage::from(syn_stream)], Stack::from(&self.0.stack).config().tunnel.tcp.confirm_timeout).await {
             Ok(resp_box) => {
                 let packages = resp_box.packages_no_exchange();
                 if packages.len() == 1 && packages[0].cmd_code() == PackageCmdCode::TcpAckConnection {
@@ -249,7 +249,7 @@ impl ConnectStreamAction for ConnectTcpStream {
                     match state {
                         ConnectTcpStreamState::Connecting2 => {
                             *state = ConnectTcpStreamState::Establish;
-                            Ok(())
+                            Ok(ack.clone())
                         }, 
                         _ => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tcp stram got ack but action not in connecting2 state"))
                     }
@@ -270,7 +270,9 @@ impl ConnectStreamAction for ConnectTcpStream {
             e
         })?;
 
-        self.0.stream.as_ref().establish_with(StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone()), &self.0.stream).await
+        self.0.stream.as_ref().establish_with(
+            StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone(), Some(ack.clone())), 
+            &self.0.stream).await
     }
 }
 
@@ -464,7 +466,9 @@ impl ConnectStreamAction for AcceptReverseTcpStream {
             }
         }?;
 
-        self.0.stream.as_ref().establish_with(StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone()), &self.0.stream).await
+        self.0.stream.as_ref().establish_with(
+            StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone(), None), 
+            &self.0.stream).await
     }
 }
 

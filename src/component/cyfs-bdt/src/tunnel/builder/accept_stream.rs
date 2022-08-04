@@ -57,16 +57,15 @@ impl AcceptPackageStream {
             remote_id, 
         }));
 
-
         task::spawn(async move { 
             if let Ok(builder) = AcceptStreamBuilder::try_from(&builder) {
-                if let Ok(syn_ack) = builder.wait_confirm().await.map(|s| s.package_syn_ack.clone()) {
+                if let Ok(syn_ack) = builder.wait_confirm().await.map(|s| s.package_syn_ack.clone_with_data()) {
                     // 重发ack直到连接成功，因为ackack可能丢失
                     loop {
                         if !builder.building_stream().as_ref().is_connecting() {
                             break;
                         }
-                        let packages = vec![DynamicPackage::from(syn_ack.clone())];
+                        let packages = vec![DynamicPackage::from(syn_ack.clone_with_data())];
                         let _ = builder.building_stream().as_ref().tunnel().send_packages(packages);
                         future::timeout(resend_interval, future::pending::<()>()).await.err();
                     }
@@ -89,9 +88,9 @@ impl OnPackage<SessionData> for AcceptPackageStream {
         if pkg.is_syn() {
             // 如果已经confirm了，立即回复ack
             if let Ok(builder) = AcceptStreamBuilder::try_from(&self.0.builder) {
-                if let Some(syn_ack) = builder.confirm_syn_ack().map(|c| c.package_syn_ack.clone()) {
+                if let Some(syn_ack) = builder.confirm_syn_ack().map(|c| c.package_syn_ack.clone_with_data()) {
                     debug!("{} send session data with ack", self);
-                    let packages = vec![DynamicPackage::from(syn_ack.clone())];
+                    let packages = vec![DynamicPackage::from(syn_ack.clone_with_data())];
                     let _ = builder.building_stream().as_ref().tunnel().send_packages(packages);
                 } else {
                     debug!("{} ingore syn session data for not confirmed", self);
@@ -104,11 +103,13 @@ impl OnPackage<SessionData> for AcceptPackageStream {
         } else {
             //没有syn标识的session data视为ackack,触发连接成功
             let action = self.clone();
-            let pkg = pkg.clone();
+            let pkg = pkg.clone_without_data();
             task::spawn(async move {
                 if let Ok(builder) = AcceptStreamBuilder::try_from(&action.0.builder) {
                     let stream = builder.building_stream().clone();
-                    let _ = stream.as_ref().establish_with(StreamProviderSelector::Package(action.0.remote_id, Some(pkg)), &stream).await;
+                    let _ = stream.as_ref().establish_with(
+                        StreamProviderSelector::Package(action.0.remote_id, Some(pkg)), 
+                        &stream).await;
                 } else {
                     debug!("{} ingore syn session data for {}", action, "builder released");
                 }
@@ -255,7 +256,7 @@ impl AcceptStreamBuilder {
     }
 
     pub fn confirm(&self, answer: &[u8]) -> Result<(), BuckyError> {
-        info!("{} confirm", self);
+        info!("{} confirm answer_len={}", self, answer.len());
         let confirm_ack = ConfirmSynAck {
             package_syn_ack: self.0.stream.as_ref().syn_ack_session_data(answer).ok_or_else(|| BuckyError::new(BuckyErrorCode::ErrorState, "stream not connecting"))?,
             tcp_syn_ack: self.0.stream.as_ref().ack_tcp_stream(answer).ok_or_else(|| BuckyError::new(BuckyErrorCode::ErrorState, "stream not connecting"))?
@@ -328,7 +329,7 @@ impl AcceptStreamBuilder {
             // first box 包含 ack tunnel 和 session data
             let ack_tunnel = tunnel::udp::Tunnel::syn_tunnel(syn_tunnel, local.clone());
             let mut first_box = PackageBox::encrypt_box(caller_box.remote().clone(), caller_box.key().clone());
-            first_box.append(vec![DynamicPackage::from(ack_tunnel), DynamicPackage::from(confirm_ack.package_syn_ack.clone())]);
+            first_box.append(vec![DynamicPackage::from(ack_tunnel), DynamicPackage::from(confirm_ack.package_syn_ack.clone_with_data())]);
             let first_box = Arc::new(first_box);
 
             for udp_interface in net_listener.udp() {
@@ -417,7 +418,9 @@ impl AcceptStreamBuilder {
 
         match ack_ack.result {
             TCP_ACK_CONNECTION_RESULT_OK => {
-                stream.as_ref().establish_with(StreamProviderSelector::Tcp(tcp_interface.socket().clone(), tcp_interface.key().clone()), stream).await
+                stream.as_ref().establish_with(
+                    StreamProviderSelector::Tcp(tcp_interface.socket().clone(), tcp_interface.key().clone(), None), 
+                    stream).await
             }, 
             TCP_ACK_CONNECTION_RESULT_REFUSED => {
                 // do nothing
@@ -530,7 +533,9 @@ impl OnPackage<TcpSynConnection, tcp::AcceptInterface> for AcceptStreamBuilder {
         task::spawn(async move {
             if let Ok(ack) = builder.wait_confirm().await.map(|s| s.tcp_syn_ack.clone()) {
                 let _ = match interface.confirm_accept(vec![DynamicPackage::from(ack)]).await {
-                    Ok(_) => builder.building_stream().as_ref().establish_with(StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone()), builder.building_stream()).await, 
+                    Ok(_) => builder.building_stream().as_ref().establish_with(
+                        StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone(), None), 
+                        builder.building_stream()).await, 
                     Err(err) => {
                         let _ = builder.building_stream().as_ref().cancel_connecting_with(&err);
                         Err(err)
@@ -661,7 +666,9 @@ impl OnPackage<TcpSynConnection> for AcceptStreamBuilder {
 
                         match ack_ack.result {
                             TCP_ACK_CONNECTION_RESULT_OK => {
-                                stream.as_ref().establish_with(StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone()), stream).await
+                                stream.as_ref().establish_with(
+                                    StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone(), None), 
+                                    stream).await
                             }, 
                             TCP_ACK_CONNECTION_RESULT_REFUSED => {
                                 // do nothing
