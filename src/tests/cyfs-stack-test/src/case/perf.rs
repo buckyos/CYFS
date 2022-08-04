@@ -66,6 +66,7 @@ impl Second {
         let perf = PerfIsolate::new(
             "root",
             60,
+            60 * 10,
             dec_id,
             PerfServerConfig::Default,
             stack,

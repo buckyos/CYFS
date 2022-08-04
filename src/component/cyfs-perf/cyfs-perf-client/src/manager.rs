@@ -20,7 +20,7 @@ pub struct IsolateManager {
 pub type IsolateManagerRef = Arc<IsolateManager>;
 
 impl IsolateManager {
-    pub fn new(stack: SharedCyfsStack, dec_id: ObjectId, span_time: u32) -> IsolateManagerRef {
+    pub fn new(stack: SharedCyfsStack, dec_id: ObjectId, span_time: u32, write_interval: u64) -> IsolateManagerRef {
         let ret = Self {
             isolates: RwLock::new(HashMap::new()),
             stack: stack.clone(),
@@ -43,8 +43,8 @@ impl IsolateManager {
             let store = PerfStore::new(span_time, people_id, dec_id, stack);
 
             // 启动save timer
-            // 每30分钟存一次
-            let mut interval = async_std::stream::interval(Duration::from_secs(60 * 30));
+            // 默认每30分钟存一次
+            let mut interval = async_std::stream::interval(Duration::from_secs(write_interval));
             while let Some(_) = interval.next().await {
                 let _ = manager.inner_save(&store, path.to_owned(), &root_state).await;
             }

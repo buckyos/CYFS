@@ -190,12 +190,13 @@ impl PerfIsolate {
     pub fn new(
         id: &str,
         span_time: u32,
+        write_interval: u64,
         dec_id: ObjectId,
         perf_server_config: PerfServerConfig,
         stack: SharedCyfsStack,) -> Self {            
         let ret = PerfIsolateInner::new(
             id, span_time, dec_id,
-            perf_server_config, IsolateManager::new(stack.clone(), dec_id, span_time),stack);
+            perf_server_config, IsolateManager::new(stack.clone(), dec_id, span_time, write_interval),stack);
         Self(Arc::new(ret))
     }
 
