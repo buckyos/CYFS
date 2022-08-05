@@ -434,7 +434,7 @@ impl UdpListener {
                     trace!("udp({}) recv {} bytes from {}", self.0.addr, len, from);
                     let recv = &mut recv_buf[..len];
 
-                    let ctx = PackageBoxDecodeContext::new_inplace(recv.as_mut_ptr(), recv.len(), &self.0.key_store, false);
+                    let ctx = PackageBoxDecodeContext::new_inplace(recv.as_mut_ptr(), recv.len(), &self.0.key_store);
                     match PackageBox::raw_decode_with_context(recv, ctx) {
                         Ok((package_box, _)) => {
                             let resp_sender = MessageSender::Udp(UdpSender::new(self.0.clone(), package_box.remote().clone(), package_box.key().clone(), from));

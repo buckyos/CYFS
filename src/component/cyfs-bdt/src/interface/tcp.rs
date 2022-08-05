@@ -225,14 +225,11 @@ impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
     fn raw_encode_with_context<'a>(
         &self,
         buf: &'a mut [u8],
-        context: &mut OtherBoxEncodeContext,
+        _context: &mut OtherBoxEncodeContext,
         purpose: &Option<RawEncodePurpose>,
     ) -> BuckyResult<&'a mut [u8]> {
         let mut encrypt_in_len = buf.len();
         let to_encrypt_buf = buf;
-        let raw_buf_len = encrypt_in_len;
-
-        let plaintext = context.plaintext;
 
         // 编码所有包
         let mut context = merge_context::FirstEncode::new();
@@ -249,14 +246,7 @@ impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
 
         encrypt_in_len -= buf.len();
         // 用aes 加密package的部分
-        let len = if plaintext {
-            encrypt_in_len
-        } else {
-            self.key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?
-        };
-
-        info!("package_box tcp encode: encrypt_in_len={} len={} raw_buf_len={} plaintext={}", 
-            encrypt_in_len, len, raw_buf_len, plaintext);
+        let len = self.key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?;
 
         Ok(&mut to_encrypt_buf[len..])
     }
@@ -522,7 +512,7 @@ impl AcceptInterface {
         }
         let first_box = {
             let context =
-                FirstBoxDecodeContext::new_inplace(box_buf.as_mut_ptr(), box_buf.len(), keystore, false);
+                FirstBoxDecodeContext::new_inplace(box_buf.as_mut_ptr(), box_buf.len(), keystore);
             PackageBox::raw_decode_with_context(box_buf, context)
                 .map(|(package_box, _)| package_box)?
         };

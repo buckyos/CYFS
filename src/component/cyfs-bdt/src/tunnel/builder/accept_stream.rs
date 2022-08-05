@@ -67,7 +67,7 @@ impl AcceptPackageStream {
                             break;
                         }
                         let packages = vec![DynamicPackage::from(syn_ack.clone())];
-                        let _ = builder.building_stream().as_ref().tunnel().send_packages(packages, false);
+                        let _ = builder.building_stream().as_ref().tunnel().send_packages(packages);
                         future::timeout(resend_interval, future::pending::<()>()).await.err();
                     }
                 }
@@ -92,7 +92,7 @@ impl OnPackage<SessionData> for AcceptPackageStream {
                 if let Some(syn_ack) = builder.confirm_syn_ack().map(|c| c.package_syn_ack.clone()) {
                     debug!("{} send session data with ack", self);
                     let packages = vec![DynamicPackage::from(syn_ack.clone())];
-                    let _ = builder.building_stream().as_ref().tunnel().send_packages(packages, false);
+                    let _ = builder.building_stream().as_ref().tunnel().send_packages(packages);
                 } else {
                     debug!("{} ingore syn session data for not confirmed", self);
                 }

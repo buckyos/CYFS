@@ -243,7 +243,7 @@ mod connector {
                             let _ = stream
                                 .as_ref()
                                 .tunnel()
-                                .send_packages(vec![DynamicPackage::from(syn_tcp.clone())], false);
+                                .send_packages(vec![DynamicPackage::from(syn_tcp.clone())]);
                         }
                         Ok(state) => {
                             match state {

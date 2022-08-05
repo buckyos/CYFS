@@ -135,6 +135,9 @@ impl StackConfig {
                 max_try_random_vport_times: 5,
                 piece_cache_duration: Duration::from_millis(1000),
                 recv_cache_count: 16,
+                expired_tick_sec: 10,
+                fragment_cache_size: 100 *1024*1024,
+                fragment_expired_us: 30 *1000*1000,
             },
             ndn: ndn::Config {
                 atomic_interval: Duration::from_millis(1), 

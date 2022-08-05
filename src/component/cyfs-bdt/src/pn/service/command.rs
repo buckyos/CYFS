@@ -109,7 +109,7 @@ impl CommandTunnel {
     fn on_recv(&self, recv: &mut [u8], from: SocketAddr) {
         let service = Service::from(&self.0.service);
         let ctx =
-            PackageBoxDecodeContext::new_inplace(recv.as_mut_ptr(), recv.len(), service.keystore(), false);
+            PackageBoxDecodeContext::new_inplace(recv.as_mut_ptr(), recv.len(), service.keystore());
         match PackageBox::raw_decode_with_context(recv, ctx) {
             Ok((package_box, _)) => {
                 let tunnel = self.clone();

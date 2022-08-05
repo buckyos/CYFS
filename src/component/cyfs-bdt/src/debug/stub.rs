@@ -94,8 +94,7 @@ impl DebugStub {
                                 datagram.data.as_ref(),//resp.as_ref(), 
                                 &mut options, 
                                 &datagram.source.remote, 
-                                datagram.source.vport,
-                                false);
+                                datagram.source.vport);
                         }
                     }, 
                     Err(_err) => {
@@ -218,8 +217,7 @@ impl DebugStub {
                 "debug".as_ref(), 
                 &mut options, 
                 &command.remote.desc().device_id(), 
-                datagram::ReservedVPort::Debug.into(),
-                false);
+                datagram::ReservedVPort::Debug.into());
             match future::timeout(command.timeout, datagram.recv_v()).await {
                 Err(_err) => {
                     let _ = tunnel.write_all("timeout\r\n".as_ref()).await;
@@ -274,12 +272,12 @@ impl DebugStub {
             if i%8 == 0 {
                 options.author_id = Some(command.remote.desc().device_id().clone());
             }
+            options.plaintext = plaintext;
             let _ = datagram.send_to(
                 &data, 
                 &mut options, 
                 &command.remote.desc().device_id(), 
-                datagram::ReservedVPort::Debug.into(),
-                plaintext);
+                datagram::ReservedVPort::Debug.into());
             match future::timeout(command.timeout, datagram.recv_v()).await {
                 Err(_err) => {
                     let _ = tunnel.write_all("timeout\r\n".as_ref()).await;
@@ -294,10 +292,12 @@ impl DebugStub {
                                 if md5_recv == md5_send {
                                     n_ok += 1;
                                 }
-                                let s = format!("respose. time: {:.1} ms, success {}/{}\r\n", 
+                                let s = format!("respose: plaintext: {} time: {:.1} ms, success {}/{}, fail {}\r\n", 
+                                                    options.plaintext,
                                                     (cyfs_base::bucky_time_now() - ts) as f64 / 1000.0,
                                                     n_ok,
-                                                    i);
+                                                    i,
+                                                    i-n_ok);
                                 let _ = tunnel.write_all(s.as_bytes()).await;
                                 break ;
                             }

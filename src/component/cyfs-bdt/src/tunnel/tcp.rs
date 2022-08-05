@@ -870,24 +870,7 @@ impl Tunnel {
                             }
                         }, 
                         RecvBox::RawData(raw_data) => {
-                            if raw_data.len() >= 1 {
-                                let (cmd_code, _) = u8::raw_decode(raw_data).unwrap();
-                                match PackageCmdCode::try_from(cmd_code) {
-                                    Ok(code) => {
-                                        match code {
-                                            PackageCmdCode::Datagram => {
-                                                tunnel.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
-                                                //todo tcp datagram plaintext
-                                                info!("recv tcp datagram plaintext.");
-                                            },
-                                            _ => {
-                                                let _ = owner.on_raw_data(raw_data);
-                                            }
-                                        }
-                                    },
-                                    _ => {}
-                                }
-                            }
+                            let _ = owner.on_raw_data(raw_data);
                         }
                     }
                 }, 
@@ -987,7 +970,7 @@ impl Tunnel {
                                         send_time: now,
                                         recv_data: 0,
                                     };
-                                    let _ = tunnel::Tunnel::send_package(&tunnel, DynamicPackage::from(ping), false);
+                                    let _ = tunnel::Tunnel::send_package(&tunnel, DynamicPackage::from(ping));
                                 }
                             }
                         }
@@ -1042,7 +1025,7 @@ impl tunnel::Tunnel for Tunnel {
         }
     } 
 
-    fn send_package(&self, package: DynamicPackage, plaintext: bool) -> Result<(), BuckyError> {
+    fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
         if package.cmd_code() == PackageCmdCode::SessionData {
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, "session data should not send from tcp tunnel"));
         }
@@ -1158,7 +1141,7 @@ impl OnPackage<PingTunnel> for Tunnel {
             send_time: bucky_time_now(),
             recv_data: 0,
         };
-        let _ = tunnel::Tunnel::send_package(self, DynamicPackage::from(ping_resp), false);
+        let _ = tunnel::Tunnel::send_package(self, DynamicPackage::from(ping_resp));
         Ok(OnPackageResult::Handled)
     }
 }

@@ -249,17 +249,37 @@ impl TunnelContainer {
         }
     }
 
-    pub fn send_packages(&self, packages: Vec<DynamicPackage>, plaintext: bool) -> Result<(), BuckyError> {
+    pub fn send_packages(&self, packages: Vec<DynamicPackage>) -> Result<(), BuckyError> {
         let tunnel = self.default_tunnel()?;
         for package in packages {
-            tunnel.as_ref().send_package(package, plaintext)?;
+            tunnel.as_ref().send_package(package)?;
         }
         Ok(())
     }
 
-    pub fn send_package(&self, package: DynamicPackage, plaintext: bool) -> Result<(), BuckyError> {
+    pub fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
         let tunnel = self.default_tunnel()?;
-        tunnel.as_ref().send_package(package, plaintext)
+        tunnel.as_ref().send_package(package)
+    }
+
+    pub fn send_plaintext(&self, package: DynamicPackage) -> Result<(), BuckyError> {
+        let tunnel = self.default_tunnel()?;
+
+        let mut buf = vec![0u8; MTU];
+
+        let buf_len = buf.len();
+        let enc_from = tunnel.as_ref().raw_data_header_len();
+
+        let mut context = merge_context::FirstEncode::new();
+        let enc: &dyn RawEncodeWithContext<merge_context::FirstEncode> = package.as_ref();
+        let buf_ptr = enc.raw_encode_with_context(&mut buf[enc_from..], &mut context, &None)?;
+
+        let len = buf_len - buf_ptr.len();
+
+        match tunnel.as_ref().send_raw_data(&mut buf[..len]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(BuckyError::new(BuckyErrorCode::Failed, format!("{}", e)))
+        }
     }
 
     pub fn build_send(&self, package: DynamicPackage, build_params: BuildTunnelParams, plaintext: bool) -> BuckyResult<()> {
@@ -297,7 +317,11 @@ impl TunnelContainer {
 
         if let Some(tunnel) = tunnel {
             trace!("{} send packages from {}", self, tunnel.as_ref().as_ref());
-            tunnel.as_ref().send_package(package, plaintext)
+            if plaintext {
+                self.send_plaintext(package)
+            } else {
+                tunnel.as_ref().send_package(package)
+            }
         } else if let Some(builder) = builder {
             //FIXME: 加入到connecting的 send 缓存里面去  
             self.stack().keystore().reset_peer(self.remote());
@@ -627,11 +651,23 @@ impl TunnelContainer {
 
     pub(super) fn on_raw_data(&self, data: &[u8]) -> BuckyResult<()> {
         let tunnel_impl = &self.0;
-        let (cmd_code, _) = u8::raw_decode(data)?;
+        let (cmd_code, buf) = u8::raw_decode(data)?;
         let cmd_code = PackageCmdCode::try_from(cmd_code)?;
         match cmd_code {
+            PackageCmdCode::Datagram => {
+                let (pkg, _) = Datagram::raw_decode_with_context(buf, &mut merge_context::OtherDecode::default())?;
+
+                let mut pkg = pkg;
+                pkg.set_plaintext(true);
+
+                let _ = Stack::from(&tunnel_impl.stack).datagram_manager().on_package(&pkg, self);
+
+                Ok(())
+            },
             PackageCmdCode::SessionData => unimplemented!(), 
-            _ => Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_udp_raw_data(data, self), 
+            _ => {
+                Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_udp_raw_data(data, self)
+            }, 
         }
     }
 }

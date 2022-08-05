@@ -1313,9 +1313,15 @@ pub struct Datagram {
     // pub data_sign: Option<Signature>, // <TODO>暂时不清楚怎么签名，先把C版本搬过来
     pub inner_type: DatagramType,
     pub data: TailedOwnedData, // TailedSharedData<'a>,
+
+    pub plaintext: bool,
 }
 
 impl Datagram {
+    pub fn set_plaintext(&mut self, b: bool) {
+        self.plaintext = b;
+    }
+
     pub fn fragment_len(&self, mtu: usize, plaintext: bool) -> usize {
         let box_header_len = 8; //mixhash
         let dynamic_header_len = 3;
@@ -1441,7 +1447,7 @@ impl RawEncode for Datagram {
 
     fn raw_encode<'a>(
         &self,
-        _buf: &'a mut [u8],
+        _enc_buf: &'a mut [u8],
         _purpose: &Option<RawEncodePurpose>,
     ) -> BuckyResult<&'a mut [u8]> {
         unimplemented!()
@@ -1486,6 +1492,7 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         buf: &'de [u8],
         merge_context: &mut Context,
     ) -> Result<(Self, &'de [u8]), BuckyError> {
+        let plaintext = false;
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (to_vport, buf) = context.decode(buf, flags.next())?;
@@ -1515,6 +1522,7 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
                 author,
                 inner_type,
                 data,
+                plaintext
             },
             buf,
         ))

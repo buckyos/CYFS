@@ -263,7 +263,6 @@ impl Interface {
     }
 
     fn on_recv(&self, stack: Stack, recv: &mut [u8], from: Endpoint) {
-        let mut plaintext = false;
         if recv[0] & 0x80 != 0 {
             match KeyMixHash::raw_decode(recv) {
                 Ok((mut mix_hash, raw_data)) => {
@@ -274,28 +273,10 @@ impl Interface {
                             return; 
                         }
 
-                        if raw_data.len() < 1 {
-                            return;
-                        }
-                        let (cmd_code, _) = u8::raw_decode(raw_data).unwrap();
-                        match PackageCmdCode::try_from(cmd_code) {
-                            Ok(code) => {
-                                match code {
-                                    PackageCmdCode::Datagram => {
-                                        plaintext = true;
-                                        recv[0] &= 0x7f;
-                                    },
-                                    _ => {
-                                        let _ =
-                                        stack.on_udp_raw_data(raw_data, (self.clone(), found_key.peerid, found_key.aes_key, from));    
-                                        return;
-                                    }
-                                }
-                            },
-                            Err(_) => {
-                                return ;
-                            }
-                        }
+                        let _ = 
+                            stack.on_udp_raw_data(raw_data, (self.clone(), found_key.peerid, found_key.aes_key, from));
+
+                        return;
                     }
                 }
                 Err(err) => {
@@ -305,7 +286,7 @@ impl Interface {
             }
         }
         let ctx =
-            PackageBoxDecodeContext::new_inplace(recv.as_mut_ptr(), recv.len(), stack.keystore(), plaintext);
+            PackageBoxDecodeContext::new_inplace(recv.as_mut_ptr(), recv.len(), stack.keystore());
         match PackageBox::raw_decode_with_context(recv, ctx) {
             Ok((package_box, _)) => {
                 if self.0.config.sn_only && !package_box.is_sn() {
@@ -536,7 +517,6 @@ enum DecryptBuffer<'de> {
 pub struct PackageBoxDecodeContext<'de> {
     decrypt_buf: DecryptBuffer<'de>,
     keystore: &'de keystore::Keystore,
-    plaintext: bool,
 }
 
 impl<'de> PackageBoxDecodeContext<'de> {
@@ -544,15 +524,13 @@ impl<'de> PackageBoxDecodeContext<'de> {
         Self {
             decrypt_buf: DecryptBuffer::Copy(decrypt_buf),
             keystore,
-            plaintext: false,
         }
     }
 
-    pub fn new_inplace(ptr: *mut u8, len: usize, keystore: &'de keystore::Keystore, plaintext: bool) -> Self {
+    pub fn new_inplace(ptr: *mut u8, len: usize, keystore: &'de keystore::Keystore) -> Self {
         Self {
             decrypt_buf: DecryptBuffer::Inplace(ptr, len),
             keystore,
-            plaintext
         }
     }
 
@@ -594,6 +572,7 @@ impl RawEncodeWithContext<PackageBoxEncodeContext> for PackageBox {
         //TODO
         Ok(2048)
     }
+
     fn raw_encode_with_context<'a>(
         &self,
         buf: &'a mut [u8],
@@ -701,7 +680,6 @@ impl<'de>
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let (context, mut merged_values) = c;
         let (mix_hash, hash_buf) = KeyMixHash::raw_decode(buf)?;
-        let plaintext = context.plaintext;
 
         let ((remote, aes_key, _mix_hash), buf) = {
             match context.key_from_mixhash(&mix_hash) {
@@ -737,11 +715,7 @@ impl<'de>
         // 把原数据拷贝到context 给的buffer上去
         let decrypt_buf = unsafe { context.decrypt_buf(buf) };
         // 用key 解密数据
-        let decrypt_len = if plaintext {
-            buf.len()
-        } else {
-            aes_key.inplace_decrypt(decrypt_buf, buf.len())?
-        };
+        let decrypt_len =  aes_key.inplace_decrypt(decrypt_buf, buf.len())?;
         let remain_buf = &buf[buf.len()..];
         let decrypt_buf = &decrypt_buf[..decrypt_len];
 

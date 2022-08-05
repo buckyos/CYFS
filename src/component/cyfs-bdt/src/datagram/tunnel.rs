@@ -32,7 +32,7 @@ pub struct DatagramOptions {
     pub author_id: Option<DeviceId>,
     pub create_time: Option<Timestamp>,
     pub send_time: Option<Timestamp>,
-    pub pieces: Option<u8>,
+    pub plaintext: bool,
 }
 
 impl Default for DatagramOptions {
@@ -42,7 +42,7 @@ impl Default for DatagramOptions {
             author_id: None,
             create_time: None,
             send_time: None,
-            pieces: None,
+            plaintext: false,
         }
     }
 }
@@ -73,7 +73,7 @@ struct DatagramFragments {
     fragments: HashMap<String, DatagramFragment>,
     frag_data_size: usize,
     frag_data_max_size: usize,
-    frag_expired: u64,
+    frag_expired_us: u64,
 }
 
 struct DatagramTunnelImpl {
@@ -119,9 +119,10 @@ impl AsRef<DatagramTunnelImpl> for DatagramTunnel {
 
 impl DatagramTunnel {
     pub(crate) fn new(stack: WeakStack, vport: u16, recv_buffer: usize) -> DatagramTunnel {
-        let expired_tick_sec = 10;
-        let fragment_cache_size = 200 *1024*1024;
-        let fragment_expired = 30 *1000*1000;
+        let cfg = Stack::from(&stack).config().datagram.clone();
+        let expired_tick_sec = cfg.expired_tick_sec;
+        let fragment_cache_size = cfg.fragment_cache_size;
+        let fragment_expired_us = cfg.fragment_expired_us;
 
         let datagram_tunnel = DatagramTunnel(Arc::new(DatagramTunnelImpl {
             stack,
@@ -133,7 +134,7 @@ impl DatagramTunnel {
                 buffer: LinkedList::new(),
             }),
             frag_buffer: Arc::new(Mutex::new(
-                DatagramFragments::new(fragment_cache_size, fragment_expired)
+                DatagramFragments::new(fragment_cache_size, fragment_expired_us)
             )),
         }));
 
@@ -207,9 +208,8 @@ impl DatagramTunnel {
         &self,
         datagram: protocol::Datagram,
         remote: &DeviceId,
-        vport: u16,
-        plaintext: bool
     ) -> Result<(), std::io::Error> {
+        let plaintext = datagram.plaintext;
         let stack = Stack::from(&self.as_ref().stack);
         let tunnel = stack.tunnel_manager().container_of(remote);
         if let Some(tunnel) = tunnel {
@@ -242,9 +242,15 @@ impl DatagramTunnel {
                     "pending on building tunnel",
                 ))
             } else {
-                tunnel
-                    .send_package(DynamicPackage::from(datagram), plaintext)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.msg()))
+                if plaintext {
+                    tunnel
+                        .send_plaintext(DynamicPackage::from(datagram))
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.msg()))
+                } else {
+                    tunnel
+                        .send_package(DynamicPackage::from(datagram))
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.msg()))
+                }
             }
         } else {
             debug!(
@@ -319,6 +325,7 @@ impl DatagramTunnel {
             author: None,
             inner_type: protocol::DatagramType::Data,
             data: TailedOwnedData::from(buf),
+            plaintext: options.plaintext,
         };
 
         trace!(
@@ -338,23 +345,20 @@ impl DatagramTunnel {
         options: &mut DatagramOptions,
         remote: &DeviceId,
         vport: u16,
-        plaintext: bool
     ) -> Result<(), std::io::Error> {
-        assert_eq!(options.pieces.is_none(), true);
-
         let mtu = MTU;
         let datagram = self.build_datagram(buf, options, remote, vport, None);
-        let fragment_len = datagram.fragment_len(mtu, plaintext);
+        let fragment_len = datagram.fragment_len(mtu, options.plaintext);
 
         if fragment_len == 0 {
-            self.send_datagram(datagram, remote, vport, plaintext)
+            self.send_datagram(datagram, remote)
         } else {
             let count = (buf.len() as f64 / fragment_len as f64).ceil() as u8;
             let mut start = 0;
             let mut end = fragment_len;
             for i in 0..count {
                 let datagram = self.build_datagram(&buf[start..end], options, remote, vport, Some((i, count)));
-                let _ = self.send_datagram(datagram, remote, vport, plaintext);
+                let _ = self.send_datagram(datagram, remote);
 
                 start += fragment_len;
                 end += fragment_len;
@@ -405,7 +409,7 @@ impl DatagramTunnel {
                 author_id: pkg.author_id.as_ref().map(|id| id.clone()),
                 create_time: pkg.create_time,
                 send_time: pkg.send_time,
-                pieces: None,
+                plaintext: pkg.plaintext,
             },
             data: Vec::from(pkg.data.as_ref()),
         };
@@ -453,7 +457,7 @@ impl OnPackage<protocol::Datagram, &TunnelContainer> for DatagramTunnel {
                         return Ok(OnPackageResult::Handled);
                     }
                 }
-                Err(e) => {
+                Err(_) => {
                     return Ok(OnPackageResult::Handled);
                 }
             }
@@ -501,12 +505,12 @@ impl Deref for DatagramTunnelGuard {
 }
 
 impl DatagramFragments {
-    pub fn new(frag_data_max_size: usize, frag_expired: u64) -> Self {
+    pub fn new(frag_data_max_size: usize, frag_expired_us: u64) -> Self {
         DatagramFragments {
             fragments: HashMap::new(),
             frag_data_size: 0,
             frag_data_max_size,
-            frag_expired 
+            frag_expired_us
         }
     }
 
@@ -562,7 +566,7 @@ impl DatagramFragments {
             format!("{}:{}:{}", from.remote(), pkg.from_vport, pkg.sequence.unwrap().value())
         };
 
-        let payload_merge = |fragment: &DatagramFragment| -> protocol::Datagram { 
+        let payload_merge = |fragment: &DatagramFragment, plaintext: bool| -> protocol::Datagram { 
             let mut payload_size = 0;
             for i in 0..fragment.fragment_total {
                 let n = i as u8;
@@ -594,9 +598,11 @@ impl DatagramFragments {
                 author: pkg.author.clone(),
                 inner_type: pkg.inner_type,
                 data: TailedOwnedData::from(payload),
+                plaintext
             }
         };
 
+        let plaintext = pkg.plaintext;
         let key = datagram_key(pkg, from);
         if let Some(fragment) = self.fragments.get_mut(&key) {
             let (fragment_index, _) = pkg.piece.unwrap();
@@ -611,7 +617,7 @@ impl DatagramFragments {
             fragment.datagrams.insert(fragment_index, pkg.clone());
 
             if fragment.datagrams.len() == fragment.fragment_total {//complete
-                let pkg = payload_merge(fragment);
+                let pkg = payload_merge(fragment, plaintext);
                 self.fragments.remove(&key);
                 if self.frag_data_size < pkg.data.as_ref().len() {
                     error!("size wrong. frag_data_size={} pkg_data={}", self.frag_data_size, pkg.data.as_ref().len());
@@ -632,7 +638,7 @@ impl DatagramFragments {
             return Ok(None);
         }
 
-        let expire_time = bucky_time_now() + self.frag_expired;
+        let expire_time = bucky_time_now() + self.frag_expired_us;
         let (fragment_index, fragment_total) = pkg.piece.unwrap();
 
         let mut fragment = DatagramFragment {

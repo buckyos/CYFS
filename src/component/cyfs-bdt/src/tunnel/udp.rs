@@ -365,12 +365,13 @@ impl tunnel::Tunnel for Tunnel {
                 TunnelState::Dead => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel dead"))
             }
         }?;
+
         assert_eq!(data.len() > Self::raw_data_header_len_impl(), true);
         
         interface.send_raw_data_to(&key, data, tunnel::Tunnel::remote(self))
     }
 
-    fn send_package(&self, package: DynamicPackage, plaintext: bool) -> Result<(), BuckyError> {
+    fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
         let (tunnel_container, interface, key) = {
             if let TunnelState::Active(active_state) =  &*self.0.state.read().unwrap() {
             Ok((active_state.container.clone(), active_state.interface.clone(), active_state.key.clone()))
@@ -381,7 +382,6 @@ impl tunnel::Tunnel for Tunnel {
         let package_box = PackageBox::from_package(tunnel_container.remote().clone(), key, package);
         let mut context = PackageBoxEncodeContext::from(tunnel_container.remote_const());
         context.set_ignore_exchange(ProxyType::None != self.0.proxy);
-        context.set_plaintext(plaintext);
         interface.send_box_to(&mut context, &package_box, tunnel::Tunnel::remote(self))?;
         Ok(())
     }
@@ -429,7 +429,7 @@ impl tunnel::Tunnel for Tunnel {
                                     send_time: now,
                                     recv_data: 0,
                                 };
-                                let _ = tunnel::Tunnel::send_package(&tunnel, DynamicPackage::from(ping), false);
+                                let _ = tunnel::Tunnel::send_package(&tunnel, DynamicPackage::from(ping));
                             }
                         }
 
@@ -508,7 +508,7 @@ impl OnPackage<PingTunnel, &PackageBox> for Tunnel {
             send_time: bucky_time_now(),
             recv_data: 0,
         };
-        let _ = tunnel::Tunnel::send_package(self, DynamicPackage::from(ping_resp), false);
+        let _ = tunnel::Tunnel::send_package(self, DynamicPackage::from(ping_resp));
         Ok(OnPackageResult::Handled)
     }
 }

@@ -36,6 +36,9 @@ pub struct Config {
     pub max_try_random_vport_times: usize,
     pub piece_cache_duration: Duration,
     pub recv_cache_count: usize,
+    pub expired_tick_sec: u64,
+    pub fragment_cache_size: usize,
+    pub fragment_expired_us: u64,
 }
 
 struct DatagramManagerImpl {
