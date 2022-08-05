@@ -351,6 +351,8 @@ impl LocalTransService {
         Self::ensure_dir(local_path).await?;
 
         let referer = BdtDataRefererInfo {
+            // FIXME: set target field from o link
+            target: None, 
             object_id: req.object_id,
             inner_path: None, // trans-task都是file为粒度
             dec_id: req.common.dec_id,

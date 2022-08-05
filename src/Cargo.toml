@@ -63,6 +63,7 @@ members = [
     "./misc/pn-miner",
 
     "./tests/cyfs-stack-test",
+    "./tests/dsg-test",
 ]
 
 [profile.release]

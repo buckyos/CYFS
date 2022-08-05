@@ -93,6 +93,9 @@ pub type RouterHandlerVerifyObjectRequest =
 pub type RouterHandlerAclRequest =
     RouterHandlerRequest<AclHandlerRequest, AclHandlerResponse>;
 
+pub type RouterHandlerInterestRequest = 
+    RouterHandlerRequest<InterestHandlerRequest, InterestHandlerResponse>;
+
 // response
 pub type RouterHandlerPutObjectResult =
     RouterHandlerResponse<NONPutObjectInputRequest, NONPutObjectInputResponse>;
@@ -119,6 +122,9 @@ pub type RouterHandlerVerifyObjectResult =
 
 pub type RouterHandlerAclResult =
     RouterHandlerResponse<AclHandlerRequest, AclHandlerResponse>;
+
+pub type RouterHandlerInterestResult = 
+    RouterHandlerResponse<InterestHandlerRequest, InterestHandlerResponse>;
 
 pub struct RouterHandlerResponseHelper;
 

@@ -4,11 +4,11 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
-pub(crate) struct NDNBdtEchoProcessor {
+pub(crate) struct BdtNdnEchoProcessor {
     response: BuckyError,
 }
 
-impl NDNBdtEchoProcessor {
+impl BdtNdnEchoProcessor {
     pub fn new() -> NDNInputProcessorRef {
         let ret = Self {
             response: BuckyError::from(BuckyErrorCode::NotImplement),
@@ -19,7 +19,7 @@ impl NDNBdtEchoProcessor {
 }
 
 #[async_trait::async_trait]
-impl NDNInputProcessor for NDNBdtEchoProcessor {
+impl NDNInputProcessor for BdtNdnEchoProcessor {
     async fn put_data(&self, _req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
         Err(self.response.clone())
     }
