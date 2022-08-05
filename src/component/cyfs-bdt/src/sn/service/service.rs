@@ -14,7 +14,7 @@ use cyfs_base::*;
 
 use crate::{
     history::keystore::{self, Keystore},
-    protocol::*,
+    protocol::{*, v0::*},
     types::*,
 };
 

@@ -8,6 +8,7 @@ use crate::ndn::*;
 use crate::non::*;
 use crate::root_state::*;
 use crate::router_handler::*;
+use crate::storage::StateStorage;
 use crate::sync::*;
 use crate::trans::*;
 use crate::util::*;
@@ -340,12 +341,19 @@ impl SharedCyfsStack {
         });
 
         // 初始化对应的事件处理器，二选一
-        let router_handlers =
-            RouterHandlerManager::new(Some(dec_id.clone()), &param.service_url.to_string(), param.event_type.clone())
-                .await?;
+        let router_handlers = RouterHandlerManager::new(
+            Some(dec_id.clone()),
+            &param.service_url.to_string(),
+            param.event_type.clone(),
+        )
+        .await?;
 
-        let router_events =
-            RouterEventManager::new(Some(dec_id.clone()), &param.service_url.to_string(), param.event_type).await?;
+        let router_events = RouterEventManager::new(
+            Some(dec_id.clone()),
+            &param.service_url.to_string(),
+            param.event_type,
+        )
+        .await?;
 
         // 缓存所有processors，用以uni_stack直接返回使用
         let processors = Arc::new(CyfsStackProcessors {
@@ -482,7 +490,11 @@ impl SharedCyfsStack {
         &self.services.root_state
     }
 
-    pub fn root_state_stub(&self, target: Option<ObjectId>, dec_id: Option<ObjectId>) -> GlobalStateStub {
+    pub fn root_state_stub(
+        &self,
+        target: Option<ObjectId>,
+        dec_id: Option<ObjectId>,
+    ) -> GlobalStateStub {
         GlobalStateStub::new(self.services.root_state.clone_processor(), target, dec_id)
     }
 
@@ -493,6 +505,41 @@ impl SharedCyfsStack {
 
     pub fn local_cache_stub(&self, dec_id: Option<ObjectId>) -> GlobalStateStub {
         GlobalStateStub::new(self.services.local_cache.clone_processor(), None, dec_id)
+    }
+
+    // state_storage
+    pub fn global_state_storage(
+        &self,
+        category: GlobalStateCategory,
+        path: impl Into<String>,
+        content_type: ObjectMapSimpleContentType,
+    ) -> StateStorage {
+        StateStorage::new(
+            self.uni_stack().clone(),
+            category,
+            path,
+            content_type,
+            None,
+            self.dec_id().cloned(),
+        )
+    }
+
+    pub fn global_state_storage_ex(
+        &self,
+        category: GlobalStateCategory,
+        path: impl Into<String>,
+        content_type: ObjectMapSimpleContentType,
+        target: Option<ObjectId>,
+        dec_id: Option<ObjectId>,
+    ) -> StateStorage {
+        StateStorage::new(
+            self.uni_stack().clone(),
+            category,
+            path,
+            content_type,
+            target,
+            dec_id,
+        )
     }
 
     // uni_stack相关接口

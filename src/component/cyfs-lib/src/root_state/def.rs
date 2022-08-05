@@ -1,6 +1,8 @@
 use cyfs_base::*;
 
 use std::str::FromStr;
+use serde::Serialize;
+
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum RootStateAction {
@@ -64,8 +66,12 @@ pub enum OpEnvAction {
     // metadata
     Metadata,
 
+    GetCurrentRoot,
+
     // iterator
     Next,
+    Reset,
+    List,
 }
 
 impl ToString for OpEnvAction {
@@ -90,7 +96,11 @@ impl ToString for OpEnvAction {
 
             Self::Metadata => "metadata",
 
+            Self::GetCurrentRoot => "get-current-root",
+
             Self::Next => "next",
+            Self::Reset => "reset",
+            Self::List => "list",
         })
         .to_owned()
     }
@@ -119,8 +129,12 @@ impl FromStr for OpEnvAction {
             "abort" => Self::Abort,
 
             "metadata" => Self::Metadata,
+
+            "get-current-root" => Self::GetCurrentRoot,
             
             "next" => Self::Next,
+            "reset" => Self::Reset,
+            "list" => Self::List,
             
             v @ _ => {
                 let msg = format!("unknown op_env action: {}", v);
@@ -169,7 +183,7 @@ impl FromStr for RootStateAccessAction {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub enum GlobalStateCategory {
     RootState,
     LocalCache,
@@ -207,7 +221,8 @@ impl FromStr for GlobalStateCategory {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
 pub enum GlobalStateAccessMode {
     Read = 0,
     Write = 1,

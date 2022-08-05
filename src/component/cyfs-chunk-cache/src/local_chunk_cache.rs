@@ -503,14 +503,28 @@ impl SingleDiskChunkCache {
     }
 
     fn get_file_path(&self, file_id: &ChunkId, is_create: bool) -> PathBuf {
-        let hash_str = file_id.to_string();
-        let (tmp, last) = hash_str.split_at(42);
-        let (first, mid) = tmp.split_at(40);
-        let path = self.path.join(last).join(mid);
-        if is_create && !path.exists() {
-            let _ = create_dir_all(path.as_path());
+        #[cfg(target_os = "windows")]
+        {
+            let hash_str = hex::encode(file_id.as_slice());
+            let (tmp, last) = hash_str.split_at(hash_str.len() - 3);
+            let (first, mid) = tmp.split_at(tmp.len() - 3);
+            let path = self.path.join(last).join(mid);
+            if is_create && !path.exists() {
+                let _ = create_dir_all(path.as_path());
+            }
+            path.join(first)
         }
-        path.join(first)
+        #[cfg(not(target_os = "windows"))]
+        {
+            let hash_str = file_id.to_string();
+            let (tmp, last) = hash_str.split_at(hash_str.len() - 2);
+            let (first, mid) = tmp.split_at(tmp.len() - 2);
+            let path = self.path.join(last).join(mid);
+            if is_create && !path.exists() {
+                let _ = create_dir_all(path.as_path());
+            }
+            path.join(first)
+        }
     }
 
     pub async fn remove_file(&self, file_id: &ChunkId) -> BuckyResult<()> {
@@ -584,7 +598,9 @@ impl ChunkCache for SingleDiskChunkCache {
         log::info!("SingleDiskChunkCache get_chunk {}", chunk_id.to_string());
         let file_path = self.get_file_path(chunk_id, false);
         if !file_path.exists() {
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, format!("[{}:{}] file {} not exist", file!(), line!(), file_path.to_string_lossy().to_string())));
+            let msg = format!("get chunk's file but not exist! chunk={}, file={}", chunk_id, file_path.display());
+            log::warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
         match chunk_type {
@@ -594,9 +610,9 @@ impl ChunkCache for SingleDiskChunkCache {
             },
             ChunkType::MemChunk => {
                 let buf = async_std::fs::read(file_path.as_path()).await.map_err(|e| {
-                    let msg = format!("[{}:{}] open {} failed.err {}", file!(), line!(), file_path.to_string_lossy().to_string(), e);
-                    log::error!("{}", msg.as_str());
-                    BuckyError::new(BuckyErrorCode::Failed, msg)
+                    let msg = format!("open chunk's file error! chunk={}, file={}, {}", chunk_id, file_path.display(), e);
+                    log::error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::IoError, msg)
                 })?;
                 let chunk: Box<dyn Chunk> = Box::new(MemChunk::from(buf));
                 Ok(chunk)

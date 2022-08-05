@@ -11,7 +11,7 @@ use crate::{
     tunnel::{udp::Tunnel as UdpTunnel, DynamicTunnel}, 
     datagram::DatagramOptions
 };
-use super::{
+use super::super::{
     types::*, 
 };
 
@@ -485,6 +485,10 @@ pub struct PieceData {
 }
 
 impl Package for PieceData {
+    fn version(&self) -> u8 {
+        0
+    }
+    
     fn cmd_code() -> PackageCmdCode {
         PackageCmdCode::PieceData
     }
@@ -650,6 +654,10 @@ impl PieceControl {
 }
 
 impl Package for PieceControl {
+    fn version(&self) -> u8 {
+        0
+    }
+
     fn cmd_code() -> PackageCmdCode {
         PackageCmdCode::PieceControl
     }
@@ -714,6 +722,10 @@ impl Default for ChannelEstimate {
 }
 
 impl Package for ChannelEstimate {
+    fn version(&self) -> u8 {
+        0
+    }
+    
     fn cmd_code() -> PackageCmdCode {
         PackageCmdCode::ChannelEstimate
     }

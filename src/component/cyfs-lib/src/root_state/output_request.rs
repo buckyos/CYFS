@@ -171,6 +171,18 @@ impl fmt::Display for OpEnvOutputRequestCommon {
     }
 }
 
+pub struct OpEnvNoParamOutputRequest {
+    pub common: OpEnvOutputRequestCommon,
+}
+
+impl OpEnvNoParamOutputRequest {
+    pub fn new() -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+        }
+    }
+}
+
 /// single_op_env methods
 // load
 pub struct OpEnvLoadOutputRequest {
@@ -278,15 +290,75 @@ impl OpEnvLockOutputRequest {
     }
 }
 
+// get_current_root
+pub type OpEnvGetCurrentRootOutputRequest = OpEnvNoParamOutputRequest;
+pub type OpEnvGetCurrentRootOutputResponse = OpEnvCommitOutputResponse;
+
+#[derive(Clone, Debug)]
+pub enum OpEnvCommitOpType {
+    Commit,
+    Update,
+}
+
+impl OpEnvCommitOpType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Commit => "commit",
+            Self::Update => "update",
+        }
+    }
+}
+
+impl ToString for OpEnvCommitOpType {
+    fn to_string(&self) -> String {
+        self.as_str().to_owned()
+    }
+}
+
+impl FromStr for OpEnvCommitOpType {
+    type Err = BuckyError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let ret = match value {
+            "commit" => Self::Commit,
+            "update" => Self::Update,
+
+            v @ _ => {
+                let msg = format!("unknown OpEnvCommitOpType value: {}", v);
+                error!("{}", msg);
+
+                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+            }
+        };
+
+        Ok(ret)
+    }
+}
+
+impl Default for OpEnvCommitOpType {
+    fn default() -> Self {
+        Self::Commit
+    }
+}
+
 // commit
 pub struct OpEnvCommitOutputRequest {
     pub common: OpEnvOutputRequestCommon,
+    pub op_type: Option<OpEnvCommitOpType>,
 }
 
 impl OpEnvCommitOutputRequest {
     pub fn new() -> Self {
         Self {
             common: OpEnvOutputRequestCommon::new_empty(),
+            op_type: None,
+        }
+    }
+
+    pub fn new_update() -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+            op_type: Some(OpEnvCommitOpType::Update),
         }
     }
 }
@@ -299,17 +371,8 @@ pub struct OpEnvCommitOutputResponse {
 }
 
 // abort
-pub struct OpEnvAbortOutputRequest {
-    pub common: OpEnvOutputRequestCommon,
-}
+pub type OpEnvAbortOutputRequest = OpEnvNoParamOutputRequest;
 
-impl OpEnvAbortOutputRequest {
-    pub fn new() -> Self {
-        Self {
-            common: OpEnvOutputRequestCommon::new_empty(),
-        }
-    }
-}
 
 pub struct OpEnvPathHelper {}
 
@@ -688,7 +751,9 @@ pub type OpEnvInsertOutputResponse = OpEnvSetOutputResponse;
 pub type OpEnvRemoveOutputRequest = OpEnvSetOutputRequest;
 pub type OpEnvRemoveOutputResponse = OpEnvSetOutputResponse;
 
-// 迭代器next
+// 迭代器
+
+// next
 pub struct OpEnvNextOutputRequest {
     pub common: OpEnvOutputRequestCommon,
 
@@ -708,6 +773,37 @@ impl OpEnvNextOutputRequest {
 pub struct OpEnvNextOutputResponse {
     pub list: Vec<ObjectMapContentItem>,
 }
+
+// reset
+pub type OpEnvResetOutputRequest = OpEnvNoParamOutputRequest;
+
+
+// list
+pub struct OpEnvListOutputRequest {
+    pub common: OpEnvOutputRequestCommon,
+
+    // for path-env
+    pub path: Option<String>,
+}
+
+impl OpEnvListOutputRequest {
+    pub fn new() -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+            path: None,
+        }
+    }
+
+    pub fn new_path(path: impl Into<String>) -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+            path: Some(path.into()),
+        }
+    }
+}
+
+pub type OpEnvListOutputResponse = OpEnvNextOutputResponse;
+
 
 //////////////////////////
 /// root-state access requests

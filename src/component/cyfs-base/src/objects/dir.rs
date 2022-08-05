@@ -275,6 +275,16 @@ impl Dir {
         DirBuilder::new(desc_content, body_content)
     }
 
+    pub fn new_with_chunk_body(
+        dir_attributes: Attributes,
+        obj_desc: NDNObjectInfo,
+        chunk_body: ChunkId,
+    ) -> DirBuilder {
+        let desc_content = DirDescContent::new(dir_attributes, obj_desc);
+        let body_content = DirBodyContent::Chunk(chunk_body);
+        DirBuilder::new(desc_content, body_content)
+    }
+
     pub fn get_data_from_body(&self, id: &ObjectId) -> Option<&Vec<u8>> {
         match self.body() {
             Some(body) => {

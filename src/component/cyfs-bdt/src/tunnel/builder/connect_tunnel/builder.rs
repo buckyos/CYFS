@@ -7,7 +7,7 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*,
+    protocol::{*, v0::*},
     interface::*, 
     sn::client::PingClientCalledEvent, 
     tunnel::{TunnelState, TunnelContainer, ProxyType, BuildTunnelParams}, 
@@ -283,9 +283,10 @@ impl ConnectTunnelBuilder {
         let mut first_box = PackageBox::encrypt_box(tunnel.remote().clone(), key_stub.aes_key.clone());
             
         let syn_tunnel = SynTunnel {
+            protocol_version: self.0.tunnel.protocol_version(), 
+            stack_version: self.0.tunnel.stack_version(), 
             from_device_id: local.desc().device_id(), 
             to_device_id: tunnel.remote().clone(), 
-            from_container_id: IncreaseId::default(),
             from_device_desc: local.clone(),
             sequence: self.sequence(), 
             send_time: bucky_time_now()

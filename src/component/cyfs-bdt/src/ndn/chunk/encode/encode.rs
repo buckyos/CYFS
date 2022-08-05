@@ -1,7 +1,7 @@
 use async_std::sync::Arc;
 use cyfs_base::*;
 use super::super::super::{
-    channel::protocol::*, 
+    channel::protocol::v0::*, 
 };
 
 #[derive(Clone)]

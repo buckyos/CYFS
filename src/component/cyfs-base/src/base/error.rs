@@ -7,6 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::error::Error;
 use std::fmt::{self, Debug, Display};
 use std::io::ErrorKind;
+// use std::process::{ExitCode, Termination};
 
 // 系统的内置error code范围 [BUCKY_SYSTEM_ERROR_CODE_START, BUCKY_SYSTEM_ERROR_CODE_END)
 pub const BUCKY_SYSTEM_ERROR_CODE_START: u16 = 0;
@@ -1218,7 +1219,13 @@ impl Into<ErrorKind> for BuckyErrorCode {
         }
     }
 }
-
+/*
+impl Termination for BuckyError {
+    fn report(self) -> ExitCode {
+        ExitCode::from(self.code.into_u8())
+    }
+}
+*/
 #[cfg(test)]
 mod tests {
     use crate::*;

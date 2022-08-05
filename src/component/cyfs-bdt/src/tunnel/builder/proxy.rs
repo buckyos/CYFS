@@ -10,7 +10,7 @@ use async_std::{
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::{udp::{Interface, PackageBoxEncodeContext}}, 
 };
 use super::super::*;
@@ -111,6 +111,8 @@ impl SynProxyTunnel {
         
         let stack = self.tunnel().stack();
         let syn_proxy = SynProxy {
+            protocol_version: 0, 
+            stack_version: 0, 
             seq,
             to_peer_id: self.tunnel().remote().clone(),
             to_peer_timestamp: remote_timestamp, 

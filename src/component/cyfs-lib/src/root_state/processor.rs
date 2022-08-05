@@ -30,6 +30,9 @@ pub trait OpEnvOutputProcessor: Sync + Send + 'static {
 
     async fn create_new(&self, req: OpEnvCreateNewOutputRequest) -> BuckyResult<()>;
 
+    // get_current_root
+    async fn get_current_root(&self, req: OpEnvGetCurrentRootOutputRequest) -> BuckyResult<OpEnvGetCurrentRootOutputResponse>;
+
     // lock and transcation
     async fn lock(&self, req: OpEnvLockOutputRequest) -> BuckyResult<()>;
     async fn commit(&self, req: OpEnvCommitOutputRequest)
@@ -70,6 +73,9 @@ pub trait OpEnvOutputProcessor: Sync + Send + 'static {
 
     // iterator methods
     async fn next(&self, req: OpEnvNextOutputRequest) -> BuckyResult<OpEnvNextOutputResponse>;
+    async fn reset(&self, req: OpEnvResetOutputRequest) -> BuckyResult<()>;
+
+    async fn list(&self, req: OpEnvListOutputRequest) -> BuckyResult<OpEnvListOutputResponse>;
 }
 
 pub type OpEnvOutputProcessorRef = Arc<Box<dyn OpEnvOutputProcessor>>;

@@ -139,6 +139,14 @@ impl OpEnvOutputProcessor for OpEnvOutputTransformer {
         self.processor.create_new(in_req).await
     }
 
+    async fn get_current_root(&self, req: OpEnvGetCurrentRootOutputRequest) -> BuckyResult<OpEnvGetCurrentRootOutputResponse> {
+        let in_req = OpEnvGetCurrentRootInputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.get_current_root(in_req).await
+    }
+
     async fn lock(&self, req: OpEnvLockOutputRequest) -> BuckyResult<()> {
         let in_req = OpEnvLockInputRequest {
             common: self.convert_common(req.common),
@@ -157,6 +165,7 @@ impl OpEnvOutputProcessor for OpEnvOutputTransformer {
     ) -> BuckyResult<OpEnvCommitOutputResponse> {
         let in_req = OpEnvCommitInputRequest {
             common: self.convert_common(req.common),
+            op_type: req.op_type,
         };
 
         self.processor.commit(in_req).await
@@ -281,6 +290,24 @@ impl OpEnvOutputProcessor for OpEnvOutputTransformer {
         };
 
         self.processor.next(in_req).await
+    }
+
+    async fn reset(&self, req: OpEnvResetOutputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvResetInputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.reset(in_req).await
+    }
+
+    async fn list(&self, req: OpEnvListOutputRequest) -> BuckyResult<OpEnvListOutputResponse> {
+        let in_req = OpEnvListInputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+        };
+
+        self.processor.list(in_req).await
     }
 
     async fn metadata(
@@ -415,6 +442,14 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
         self.processor.create_new(in_req).await
     }
 
+    async fn get_current_root(&self, req: OpEnvGetCurrentRootInputRequest) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
+        let in_req = OpEnvGetCurrentRootOutputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.get_current_root(in_req).await
+    }
+
     async fn lock(&self, req: OpEnvLockInputRequest) -> BuckyResult<()> {
         let in_req = OpEnvLockOutputRequest {
             common: self.convert_common(req.common),
@@ -430,6 +465,7 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
     async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
         let in_req = OpEnvCommitOutputRequest {
             common: self.convert_common(req.common),
+            op_type: req.op_type,
         };
 
         self.processor.commit(in_req).await
@@ -548,6 +584,24 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
         };
 
         self.processor.next(in_req).await
+    }
+
+    async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()> {
+        let in_req = OpEnvResetOutputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.reset(in_req).await
+    }
+
+    async fn list(&self, req: OpEnvListInputRequest) -> BuckyResult<OpEnvListInputResponse> {
+        let in_req = OpEnvListOutputRequest {
+            common: self.convert_common(req.common),
+
+            path: req.path,
+        };
+
+        self.processor.list(in_req).await
     }
 
     async fn metadata(

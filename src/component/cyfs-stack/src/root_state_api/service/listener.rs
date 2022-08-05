@@ -92,6 +92,9 @@ enum OpEnvRequestType {
     // lock
     Lock,
 
+    // get_current_root
+    GetCurrentRoot,
+
     // map
     GetByKey,
     InsertWithKey,
@@ -105,6 +108,8 @@ enum OpEnvRequestType {
 
     // iterator
     Next,
+    Reset,
+    List,
 
     // metadata
     Metadata,
@@ -146,6 +151,8 @@ impl OpEnvRequestHandlerEndpoint {
 
             OpEnvRequestType::Lock => self.handler.process_lock_request(req).await,
 
+            OpEnvRequestType::GetCurrentRoot => self.handler.process_get_current_root_request(req).await,
+
             OpEnvRequestType::Commit => self.handler.process_commit_request(req).await,
             OpEnvRequestType::Abort => self.handler.process_abort_request(req).await,
 
@@ -163,6 +170,8 @@ impl OpEnvRequestHandlerEndpoint {
             OpEnvRequestType::Remove => self.handler.process_remove_request(req).await,
 
             OpEnvRequestType::Next => self.handler.process_next_request(req).await,
+            OpEnvRequestType::Reset => self.handler.process_reset_request(req).await,
+            OpEnvRequestType::List => self.handler.process_list_request(req).await,
 
             OpEnvRequestType::Metadata => self.handler.process_metadata_request(req).await,
         }
@@ -203,6 +212,14 @@ impl OpEnvRequestHandlerEndpoint {
         server.at(&path).post(Self::new(
             protocol.to_owned(),
             OpEnvRequestType::Lock,
+            handler.clone(),
+        ));
+
+        // get_current_root
+        let path = format!("/{}/op-env/root", root_seg);
+        server.at(&path).get(Self::new(
+            protocol.to_owned(),
+            OpEnvRequestType::GetCurrentRoot,
             handler.clone(),
         ));
 
@@ -271,6 +288,20 @@ impl OpEnvRequestHandlerEndpoint {
         server.at(&path).post(Self::new(
             protocol.to_owned(),
             OpEnvRequestType::Next,
+            handler.clone(),
+        ));
+
+        server.at(&path).delete(Self::new(
+            protocol.to_owned(),
+            OpEnvRequestType::Reset,
+            handler.clone(),
+        ));
+
+        // list
+        let path = format!("/{}/op-env/list", root_seg);
+        server.at(&path).get(Self::new(
+            protocol.to_owned(),
+            OpEnvRequestType::List,
             handler.clone(),
         ));
 

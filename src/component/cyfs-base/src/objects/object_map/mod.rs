@@ -10,6 +10,7 @@ mod path_iterator;
 mod root;
 mod single_env;
 mod visitor;
+mod op_env;
 
 pub use cache::*;
 pub use iterator::*;
@@ -20,3 +21,4 @@ pub use root::*;
 pub use diff::*;
 pub use path::*;
 pub use visitor::*;
+pub use op_env::*;

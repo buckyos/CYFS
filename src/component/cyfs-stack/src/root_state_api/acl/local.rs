@@ -101,6 +101,18 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
         self.next.lock(req).await
     }
 
+    // get_current_root
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootInputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
+        self.acl
+            .check_local_zone_permit("op_env.get_current_root", &req.common.source)
+            .await?;
+
+        self.next.get_current_root(req).await
+    }
+
     // transcation
     async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
         self.acl
@@ -195,6 +207,22 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
             .await?;
 
         self.next.next(req).await
+    }
+
+    async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()> {
+        self.acl
+            .check_local_zone_permit("op_env.reset", &req.common.source)
+            .await?;
+
+        self.next.reset(req).await
+    }
+
+    async fn list(&self, req: OpEnvListInputRequest) -> BuckyResult<OpEnvListInputResponse> {
+        self.acl
+            .check_local_zone_permit("op_env.list", &req.common.source)
+            .await?;
+
+        self.next.list(req).await
     }
 
     // metadata

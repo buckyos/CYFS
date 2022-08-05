@@ -16,7 +16,7 @@ use super::super::{
 };
 use super::{
     types::*, 
-    protocol::*, 
+    protocol::v0::*, 
     provider::*, 
     channel::Channel, 
 };

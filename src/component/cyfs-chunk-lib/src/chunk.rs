@@ -2,6 +2,8 @@
 use crate::SharedMemChunk;
 use crate::{MMapChunk, MemChunk};
 use cyfs_base::*;
+use cyfs_util::AsyncReadWithSeek;
+
 use std::future::Future;
 use std::io::SeekFrom;
 use std::ops::Deref;
@@ -138,21 +140,26 @@ impl async_std::io::Seek for ChunkRead {
     }
 }
 
-use async_std::io::Seek;
+use async_std::io::{Seek, Read};
 use std::ops::Range;
 
+impl AsyncReadWithSeek for ChunkRead {}
+
 pub struct ChunkReadWithRanges {
-    reader: ChunkRead,
+    reader: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync + 'static>,
     ranges: Vec<Range<u64>>,
 }
 
 impl ChunkReadWithRanges {
-    pub fn new(reader: ChunkRead, ranges: Vec<Range<u64>>) -> Self {
+    pub fn new(
+        reader: Box<dyn AsyncReadWithSeek + Unpin + Send + Sync + 'static>,
+        ranges: Vec<Range<u64>>,
+    ) -> Self {
         Self { reader, ranges }
     }
 }
 
-impl async_std::io::Read for ChunkReadWithRanges {
+impl Read for ChunkReadWithRanges {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,

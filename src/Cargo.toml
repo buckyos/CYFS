@@ -59,6 +59,9 @@ members = [
     "./meta/cyfs-meta-miner",
     "./meta/cyfs-meta-spv",
 
+    "./misc/sn-miner-rust",
+    "./misc/pn-miner",
+
     "./tests/cyfs-stack-test",
 ]
 

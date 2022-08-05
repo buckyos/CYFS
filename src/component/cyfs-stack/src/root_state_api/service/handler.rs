@@ -353,6 +353,44 @@ impl OpEnvRequestHandler {
         self.processor.lock(req).await
     }
 
+    // get_current_root
+    pub async fn process_get_current_root_request<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_get_current_root(req).await;
+        match ret {
+            Ok(resp) => {
+                let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+                http_resp.set_body(resp.encode_string());
+                http_resp.into()
+            }
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_get_current_root<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
+        // 检查action
+        let action = Self::decode_action(&req)?;
+        if action != OpEnvAction::GetCurrentRoot {
+            let msg = format!("invalid op_env get_current_root action! {:?}", action);
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let common = Self::decode_common_headers(&req)?;
+
+        let req = OpEnvGetCurrentRootInputRequest { common };
+
+        info!("recv op_env get_current_root request: {}", req);
+
+        self.processor.get_current_root(req).await
+    }
+
     // commit
     pub async fn process_commit_request<State: Send>(
         &self,
@@ -371,7 +409,7 @@ impl OpEnvRequestHandler {
 
     async fn on_commit<State: Send>(
         &self,
-        req: OpEnvInputHttpRequest<State>,
+        mut req: OpEnvInputHttpRequest<State>,
     ) -> BuckyResult<OpEnvCommitInputResponse> {
         // 检查action
         let action = Self::decode_action(&req)?;
@@ -384,7 +422,10 @@ impl OpEnvRequestHandler {
 
         let common = Self::decode_common_headers(&req)?;
 
-        let req = OpEnvCommitInputRequest { common };
+        let output_req: OpEnvCommitOutputRequest =
+            RequestorHelper::decode_json_body(&mut req.request).await?;
+
+        let req = OpEnvCommitInputRequest { common, op_type: output_req.op_type };
 
         info!("recv op_env commit request: {}", req);
 
@@ -820,6 +861,91 @@ impl OpEnvRequestHandler {
         debug!("recv op_env next request: {}", req);
 
         self.processor.next(req).await
+    }
+
+    // reset
+    pub async fn process_reset_request<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_reset(req).await;
+        match ret {
+            Ok(_) => {
+                let http_resp = RequestorHelper::new_response(StatusCode::Ok);
+                http_resp.into()
+            }
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_reset<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> BuckyResult<()> {
+        // 检查action
+        let action = Self::decode_action(&req)?;
+        if action != OpEnvAction::Reset {
+            let msg = format!("invalid op_env reset action! {:?}", action);
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let common = Self::decode_common_headers(&req)?;
+
+
+        let req = OpEnvResetInputRequest {
+            common,
+        };
+
+        debug!("recv op_env reset request: {}", req);
+
+        self.processor.reset(req).await
+    }
+
+    // next
+    pub async fn process_list_request<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_list(req).await;
+        match ret {
+            Ok(resp) => {
+                let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+                http_resp.set_body(resp.encode_string());
+                http_resp.into()
+            }
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_list<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> BuckyResult<OpEnvListInputResponse> {
+        // 检查action
+        let action = Self::decode_action(&req)?;
+        if action != OpEnvAction::List {
+            let msg = format!("invalid op_env list action! {:?}", action);
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let common = Self::decode_common_headers(&req)?;
+        let path = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            &req.request,
+            cyfs_base::CYFS_OP_ENV_PATH,
+        )?;
+
+        let req = OpEnvListInputRequest {
+            common,
+            path,
+        };
+
+        debug!("recv op_env list request: {}", req);
+
+        self.processor.list(req).await
     }
 }
 

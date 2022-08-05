@@ -6,12 +6,43 @@ use crate::control::HttpControlInterface;
 use crate::server::http::HttpServerManager;
 use crate::server::stream::StreamServerManager;
 use cyfs_base::*;
-use cyfs_stack_loader::ZoneRoleChangedParam;
+use cyfs_lib::*;
 use cyfs_stack_loader::STACK_MANAGER;
-use cyfs_util::EventListenerSyncRoutine;
+use cyfs_util::EventListenerAsyncRoutine;
 
 struct ZoneRoleChangedNotify {}
 
+#[async_trait::async_trait]
+impl
+    EventListenerAsyncRoutine<
+        RouterEventZoneRoleChangedEventRequest,
+        RouterEventZoneRoleChangedEventResult,
+    > for ZoneRoleChangedNotify
+{
+    async fn call(
+        &self,
+        param: &RouterEventZoneRoleChangedEventRequest,
+    ) -> BuckyResult<RouterEventZoneRoleChangedEventResult> {
+        warn!(
+            "gateway recv zone role changed notify! now will restart! {}",
+            param
+        );
+        async_std::task::spawn(async {
+            async_std::task::sleep(std::time::Duration::from_secs(3)).await;
+            std::process::exit(0);
+        });
+
+        let resp = RouterEventResponse {
+            call_next: true,
+            handled: true,
+            response: None,
+        };
+
+        Ok(resp)
+    }
+}
+
+/*
 impl EventListenerSyncRoutine<ZoneRoleChangedParam, ()> for ZoneRoleChangedNotify {
     fn call(&self, param: &ZoneRoleChangedParam) -> BuckyResult<()> {
         warn!(
@@ -26,7 +57,7 @@ impl EventListenerSyncRoutine<ZoneRoleChangedParam, ()> for ZoneRoleChangedNotif
         Ok(())
     }
 }
-
+*/
 pub struct Gateway {
     config_file: PathBuf,
     pub stream_server_manager: StreamServerManager,
@@ -143,18 +174,25 @@ impl Gateway {
         Ok(())
     }
 
-    fn init_stack(&self) {
+    async fn init_stack() {
         let stack = STACK_MANAGER.get_default_cyfs_stack().unwrap();
 
         let notifier = ZoneRoleChangedNotify {};
-        stack
-            .zone_role_manager()
+        if let Err(e) = stack
+            .uni_stack()
+            .router_events()
             .zone_role_changed_event()
-            .on(Box::new(notifier));
+            .add_event("gateway-watcher", -1, Box::new(notifier))
+            .await
+        {
+            error!("watch zone role changed event failed! {}", e);
+        }
     }
 
     pub fn start(&self) {
-        self.init_stack();
+        async_std::task::spawn(async move {
+            Self::init_stack().await;
+        });
 
         self.stream_server_manager.start();
 

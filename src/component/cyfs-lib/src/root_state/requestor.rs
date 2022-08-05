@@ -420,6 +420,35 @@ impl OpEnvRequestor {
         }
     }
 
+    // get_current_root
+    fn encode_get_current_root_request(&self, req: &OpEnvGetCurrentRootOutputRequest) -> Request {
+        let url = self.service_url.join("root").unwrap();
+        let mut http_req = Request::new(Method::Get, url);
+        self.encode_common_headers(OpEnvAction::GetCurrentRoot, &req.common, &mut http_req);
+
+        http_req
+    }
+
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootOutputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootOutputResponse> {
+        let http_req = self.encode_get_current_root_request(&req);
+        let mut resp = self.requestor.request(http_req).await?;
+
+        if resp.status().is_success() {
+            let resp: OpEnvGetCurrentRootOutputResponse =
+                RequestorHelper::decode_json_body(&mut resp).await?;
+
+            info!("get_current_root for op_env success: sid={}", self.sid,);
+            Ok(resp)
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!("get_current_root for op_env error! sid={}, {}", self.sid, e);
+            Err(e)
+        }
+    }
+
     // commit
     fn encode_commit_request(&self, req: &OpEnvCommitOutputRequest) -> Request {
         let url = self.service_url.join("transaction").unwrap();
@@ -741,6 +770,53 @@ impl OpEnvRequestor {
             Err(e)
         }
     }
+
+    // reset
+    fn encode_reset_request(&self, req: &OpEnvResetOutputRequest) -> Request {
+        let url = self.service_url.join("iterator").unwrap();
+        let mut http_req = Request::new(Method::Delete, url);
+        self.encode_common_headers(OpEnvAction::Reset, &req.common, &mut http_req);
+        http_req
+    }
+
+    async fn reset(&self, req: OpEnvResetOutputRequest) -> BuckyResult<()> {
+        let http_req = self.encode_reset_request(&req);
+        let mut resp = self.requestor.request(http_req).await?;
+        if resp.status().is_success() {
+            info!("reset for op_env success: sid={}", self.sid,);
+            Ok(())
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!("reset for op_env error! sid={}, {}", self.sid, e);
+            Err(e)
+        }
+    }
+
+    // list
+    fn encode_list_request(&self, req: &OpEnvListOutputRequest) -> Request {
+        let url = self.service_url.join("list").unwrap();
+        let mut http_req = Request::new(Method::Get, url);
+
+        self.encode_common_headers(OpEnvAction::List, &req.common, &mut http_req);
+        RequestorHelper::encode_opt_header_with_encoding(&mut http_req, cyfs_base::CYFS_OP_ENV_PATH, req.path.as_deref());
+
+        http_req
+    }
+
+    async fn list(&self, req: OpEnvListOutputRequest) -> BuckyResult<OpEnvListOutputResponse> {
+        let http_req = self.encode_list_request(&req);
+        let mut resp = self.requestor.request(http_req).await?;
+        if resp.status().is_success() {
+            let resp: OpEnvListOutputResponse =
+                RequestorHelper::decode_json_body(&mut resp).await?;
+            info!("list for op_env success: sid={}", self.sid,);
+            Ok(resp)
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!("list for op_env error! sid={}, {}", self.sid, e);
+            Err(e)
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -763,6 +839,13 @@ impl OpEnvOutputProcessor for OpEnvRequestor {
 
     async fn lock(&self, req: OpEnvLockOutputRequest) -> BuckyResult<()> {
         Self::lock(&self, req).await
+    }
+
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootOutputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootOutputResponse> {
+        Self::get_current_root(&self, req).await
     }
 
     async fn commit(
@@ -833,6 +916,14 @@ impl OpEnvOutputProcessor for OpEnvRequestor {
     // iterator methods
     async fn next(&self, req: OpEnvNextOutputRequest) -> BuckyResult<OpEnvNextOutputResponse> {
         Self::next(&self, req).await
+    }
+
+    async fn reset(&self, req: OpEnvResetOutputRequest) -> BuckyResult<()> {
+        Self::reset(&self, req).await
+    }
+
+    async fn list(&self, req: OpEnvListOutputRequest) -> BuckyResult<OpEnvListOutputResponse> {
+        Self::list(&self, req).await
     }
 }
 
@@ -1018,7 +1109,6 @@ impl GlobalStateAccessRequestor {
     pub async fn decode_list_response(
         resp: &mut Response,
     ) -> BuckyResult<RootStateAccessListOutputResponse> {
-        
         let list = RequestorHelper::decode_json_body(resp).await?;
         let root = RequestorHelper::decode_header(resp, cyfs_base::CYFS_ROOT)?;
         let revision = RequestorHelper::decode_header(resp, cyfs_base::CYFS_REVISION)?;

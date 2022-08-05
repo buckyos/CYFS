@@ -1,3 +1,4 @@
+use cyfs_lib::ZoneRole;
 use futures::future::join_all;
 use lazy_static::lazy_static;
 use std::fmt;
@@ -9,13 +10,36 @@ use std::{collections::HashMap, str::FromStr};
 use super::service::Service;
 use crate::config::*;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
+use crate::daemon::GATEWAY_MONITOR;
 
-use super::service_info::OOD_DAEMON_SERVICE;
 
 #[derive(Debug, Clone)]
 pub struct ServiceItem {
     pub config: ServiceConfig,
     pub service: Option<Arc<Service>>,
+}
+
+impl ServiceItem {
+    pub fn target_state(&self) -> ServiceState {
+        match self.config.enable {
+            true => {
+                match GATEWAY_MONITOR.zone_role() {
+                    ZoneRole::ActiveOOD => {
+                        self.config.target_state
+                    }
+                    _  => {
+                        match self.config.name.as_str() {
+                            GATEWAY_SERVICE => {
+                                ServiceState::RUN
+                            }
+                            _ => ServiceState::STOP,
+                        }
+                    }
+                }
+            }
+            false => ServiceState::STOP,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -388,14 +412,14 @@ impl ServiceManager {
         }
 
         let old_service;
-        let need_start;
+        let service_item;
         {
             let mut coll = self.service_list.lock().unwrap();
             let current_service_info = coll.get_mut(&service_config.name).unwrap();
             old_service = current_service_info.service.take();
 
-            current_service_info.service = Some(new_service.clone());
-            need_start = service_config.enable && service_config.target_state == ServiceState::RUN;
+            current_service_info.service = Some(new_service);
+            service_item = current_service_info.clone();
         }
 
         // 首先停止老的服务
@@ -404,10 +428,7 @@ impl ServiceManager {
         }
 
         // 尝试启动新的服务
-
-        if need_start {
-            new_service.sync_state(ServiceState::RUN);
-        }
+        Self::sync_service_target_state(&service_item);
 
         Ok(())
     }
@@ -447,7 +468,7 @@ impl ServiceManager {
                 continue;
             }
 
-            if service_info.config.target_state == ServiceState::RUN {
+            if service_info.target_state() == ServiceState::RUN {
                 futures.push(Self::sync_service_package(service_info));
             }
         }
@@ -463,7 +484,7 @@ impl ServiceManager {
             Ok(changed) => {
                 if changed {
                     // 更新成功包，需要同步状态
-                    service.sync_state(service_info.config.target_state);
+                    Self::sync_service_target_state(&service_info);
                 }
             }
             Err(_e) => {}
@@ -471,10 +492,7 @@ impl ServiceManager {
     }
 
     fn sync_service_target_state(service_item: &ServiceItem) {
-        let target_state = match service_item.config.enable {
-            true => service_item.config.target_state,
-            false => ServiceState::STOP,
-        };
+        let target_state = service_item.target_state();
 
         let service = service_item.service.as_ref().unwrap();
         service.sync_state(target_state);

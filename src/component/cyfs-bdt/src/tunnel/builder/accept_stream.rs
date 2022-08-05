@@ -10,7 +10,7 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::*, 
     sn::client::PingClientCalledEvent, 
     stack::{WeakStack, Stack}, 
@@ -326,7 +326,16 @@ impl AcceptStreamBuilder {
             let confirm_ack = self.wait_confirm().await?;
            
             // first box 包含 ack tunnel 和 session data
-            let ack_tunnel = tunnel::udp::Tunnel::syn_tunnel(syn_tunnel, local.clone());
+            let tunnel = self.building_stream().as_ref().tunnel();
+            let ack_tunnel = SynTunnel {
+                protocol_version: tunnel.protocol_version(), 
+                stack_version: tunnel.stack_version(), 
+                from_device_id: local.desc().device_id(),
+                to_device_id: syn_tunnel.from_device_id.clone(),
+                sequence: syn_tunnel.sequence,
+                from_device_desc: local,
+                send_time: 0
+            };
             let mut first_box = PackageBox::encrypt_box(caller_box.remote().clone(), caller_box.key().clone());
             first_box.append(vec![DynamicPackage::from(ack_tunnel), DynamicPackage::from(confirm_ack.package_syn_ack.clone())]);
             let first_box = Arc::new(first_box);

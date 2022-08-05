@@ -10,7 +10,7 @@ use crate::{
         tcp::{self, OnTcpInterface},
         udp::{self, OnUdpPackageBox, OnUdpRawData, UdpPackageBox},
     },
-    protocol::*,
+    protocol::{*, v0::*},
     sn::{
         self,
         client::{PingClientCalledEvent, PingClientStateEvent},

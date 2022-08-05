@@ -47,6 +47,8 @@ pub async fn test() {
     assert!(ret.is_err());
 
     let (test_device_id, test_device) = gen_random_device();
+    info!("will test device search with random device_id: {}", test_device_id);
+    
     let ood1_ss = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
     put_test_device(&ood1_ss, test_device).await;
 

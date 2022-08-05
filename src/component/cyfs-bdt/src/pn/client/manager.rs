@@ -5,7 +5,7 @@ use std::{
 };
 use cyfs_base::*;
 use crate::{
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::udp::*, 
     stack::{WeakStack, Stack}
 };

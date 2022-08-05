@@ -5,17 +5,17 @@ pub mod daemon {
     use std::process::{exit, Command};
 
     use nix::{
-        sys::wait::waitpid,
+        sys::wait::{waitpid, WaitStatus},
         unistd::{fork, setsid, ForkResult},
     };
 
     pub fn launch_as_daemon(cmd_line: &str) -> Result<(), BuckyError> {
-        let ret = unsafe {fork()}.map_err(|e| {
+        let ret = unsafe { fork() }.map_err(|e| {
             let msg = format!("fork error: {}", e);
             error!("{}", msg);
 
             BuckyError::from(msg)
-        })? ;
+        })?;
 
         match ret {
             ForkResult::Parent { child } => {
@@ -24,13 +24,24 @@ pub mod daemon {
                 match waitpid(child, None) {
                     Ok(status) => {
                         info!("fork child exit: {} {:?}", child, status);
+                        if let WaitStatus::Exited(_pid, code) = status {
+                            if code == 0 {
+                                return Ok(());
+                            }
+                        }
+
+                        let msg = format!("fork child but wait error: {}, {:?}", child, status);
+                        error!("{}", msg);
+
+                        Err(BuckyError::from(msg))
                     }
                     Err(e) => {
-                        error!("fork child wait error: {} {}", child, e);
+                        let msg = format!("fork child wait error: {} {}", child, e);
+                        error!("{}", msg);
+
+                        Err(BuckyError::from(msg))
                     }
                 }
-
-                Ok(())
             }
 
             ForkResult::Child => {
@@ -40,6 +51,7 @@ pub mod daemon {
                     }
                     Err(e) => {
                         error!("setsid error: {}", e);
+                        exit(1);
                     }
                 }
 
@@ -52,16 +64,18 @@ pub mod daemon {
                     cmd.args(&parts);
                 }
 
-                match cmd.spawn() {
+                let code = match cmd.spawn() {
                     Ok(_) => {
                         info!("spawn daemon success!");
+                        0
                     }
                     Err(err) => {
                         error!("spawn daemon error: {}", err);
+                        1
                     }
-                }
+                };
 
-                exit(0);
+                exit(code);
             }
         }
     }

@@ -78,8 +78,8 @@ impl ObjectHttpTcpListener {
         let opts = async_h1::ServerOptions::default();
         let ret = async_h1::accept_with_opts(stream, |mut req| async move {
             info!(
-                "recv tcp http request: path={}, method={}, len={:?}, peer={}",
-                req.url().path(),
+                "recv tcp http request: url={}, method={}, len={:?}, peer={}",
+                req.url(),
                 req.method(),
                 req.len(),
                 peer_addr,

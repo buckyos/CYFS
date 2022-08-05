@@ -29,6 +29,9 @@ pub trait OpEnvInputProcessor: Sync + Send + 'static {
 
     async fn create_new(&self, req: OpEnvCreateNewInputRequest) -> BuckyResult<()>;
 
+    // get_current_root
+    async fn get_current_root(&self, req: OpEnvGetCurrentRootInputRequest) -> BuckyResult<OpEnvGetCurrentRootInputResponse>;
+
     // lock
     async fn lock(&self, req: OpEnvLockInputRequest) -> BuckyResult<()>;
 
@@ -62,6 +65,8 @@ pub trait OpEnvInputProcessor: Sync + Send + 'static {
 
     // iterator methods
     async fn next(&self, req: OpEnvNextInputRequest) -> BuckyResult<OpEnvNextInputResponse>;
+    async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()>;
+    async fn list(&self, req: OpEnvListInputRequest) -> BuckyResult<OpEnvListInputResponse>;
 
     // metadata
     async fn metadata(

@@ -92,7 +92,7 @@ async fn main() {
     };
     SERVICE_MANAGER.change_mode(mode.clone());
 
-    let mut daemon = Daemon::new(mode);
+    let mut daemon = Daemon::new(mode, no_monitor);
     if let Err(e) = daemon.run().await {
         error!("daemon run error! err={}", e);
     }

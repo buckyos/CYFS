@@ -3,7 +3,7 @@ use std::{vec::Vec, sync::atomic::{AtomicBool, Ordering}};
 
 use cyfs_base::*;
 use crate::{PerfDataAbstract, PerfData, StatisticTask, DynamicStatisticTask};
-use crate::channel::protocol::PieceData;
+use crate::channel::protocol::v0::PieceData;
 
 pub struct ChunkStatisticTask{
     data_caches: Vec<AtomicBool>,

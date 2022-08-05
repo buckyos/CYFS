@@ -12,7 +12,7 @@ use async_std::{
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*
+    protocol::{*, v0::*}
 };
 use super::{
     recv_queue::RecvQueue, 

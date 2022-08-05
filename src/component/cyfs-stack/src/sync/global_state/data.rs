@@ -1,11 +1,12 @@
 use super::super::client::SyncClientRequestor;
 use super::super::protocol::SyncChunksRequest;
 use super::cache::SyncObjectsStateCache;
+use super::dir_sync::DirListSync;
 use crate::ndn_api::ChunkManagerWriter;
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::*;
+use cyfs_chunk_cache::ChunkManager;
+use cyfs_lib::*;
 
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
 use std::collections::HashSet;
@@ -141,7 +142,10 @@ impl ChunksCollector {
                 self.append_impl(object_id).await?;
             }
             ObjectTypeCode::Chunk => {
-                self.chunks.lock().unwrap().append_chunk(object_id.as_chunk_id());
+                self.chunks
+                    .lock()
+                    .unwrap()
+                    .append_chunk(object_id.as_chunk_id());
             }
             _ => {}
         }
@@ -150,6 +154,7 @@ impl ChunksCollector {
     }
 
     pub fn append_chunk(&self, chunk_id: &ChunkId) {
+        // debug!("add assoc chunk: {}", chunk_id);
         self.chunks.lock().unwrap().append_chunk(chunk_id);
     }
 
@@ -299,6 +304,14 @@ impl DataSync {
         }
     }
 
+    pub fn create_dir_sync(&self) -> DirListSync {
+        DirListSync::new(
+            self.state_cache.clone(),
+            self.bdt_stack.clone(),
+            self.chunk_manager.clone(),
+        )
+    }
+
     async fn filter_exists_chunks(&self, chunk_list: Vec<ChunkId>) -> BuckyResult<Vec<ChunkId>> {
         let ndc = self.bdt_stack.ndn().chunk_manager().ndc();
         let mut sync_list = vec![];
@@ -412,9 +425,75 @@ impl DataSync {
             return Ok(());
         }
 
-        let count = chunk_list.len();
+        // TODO Balance between single chunk and bundle file mode
+        self.sync_chunks_with_single_chunk(chunk_list).await
+    }
 
-        debug!("will sync chunks: {:?}", chunk_list);
+    // in single chunk mode
+    async fn sync_chunks_with_single_chunk(&self, chunk_list: Vec<ChunkId>) -> BuckyResult<()> {
+        for chunk_id in chunk_list {
+            match self.sync_single_chunk(&chunk_id).await {
+                Ok(()) => continue,
+                Err(e) => match e.code() {
+                    BuckyErrorCode::NotFound => {
+                        self.state_cache.miss_object(chunk_id.as_object_id());
+                    }
+                    _ => {
+                        error!("sync single chunk but failed! now will stop sync chunk list! chunk={}, {}", chunk_id, e);
+                        return Err(e);
+                    }
+                },
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn sync_single_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<()> {
+        info!("will sync single chunk, chunk={}", chunk_id);
+
+        let task_id = format!("sync_chunk_{}", chunk_id);
+
+        let config = ChunkDownloadConfig::force_stream(self.ood_device_id.clone());
+        let writer = Box::new(ChunkManagerWriter::new(
+            self.chunk_manager.clone(),
+            self.bdt_stack.ndn().chunk_manager().ndc().clone(),
+            self.bdt_stack.ndn().chunk_manager().tracker().clone(),
+        ));
+
+        // used for waiting task finish or error
+        let waiter = WaitWriter::new(task_id.clone());
+
+        let _controller = cyfs_bdt::download::download_chunk(
+            &self.bdt_stack,
+            chunk_id.to_owned(),
+            config,
+            vec![writer, Box::new(waiter.clone())],
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "start bdt chunk sync session error! task_id={}, {}",
+                task_id, e
+            );
+            e
+        })?;
+
+        match waiter.wait_and_return().await {
+            Ok(()) => {
+                info!("sync single chunk success! chunk={}", chunk_id);
+                Ok(())
+            }
+            Err(e) => {
+                warn!("sync single chunk failed! chunk={}, {}", chunk_id, e);
+                Err(e)
+            }
+        }
+    }
+
+    // in bundle file mode
+    async fn sync_chunks_with_file(&self, chunk_list: Vec<ChunkId>) -> BuckyResult<()> {
+        let count = chunk_list.len();
 
         // create a bundle file to download the chunks
         let file = Self::create_file(chunk_list);

@@ -107,6 +107,17 @@ impl fmt::Display for OpEnvInputRequestCommon {
     }
 }
 
+pub struct OpEnvNoParamInputRequest {
+    pub common: OpEnvInputRequestCommon,
+}
+
+impl fmt::Display for OpEnvNoParamInputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)
+    }
+}
+
+
 /// single_op_env methods
 // load
 pub struct OpEnvLoadInputRequest {
@@ -177,29 +188,27 @@ impl fmt::Display for OpEnvLockInputRequest {
     }
 }
 
+// get_current_root
+pub type OpEnvGetCurrentRootInputRequest = OpEnvNoParamInputRequest;
+pub type OpEnvGetCurrentRootInputResponse = OpEnvCommitOutputResponse;
+
 // commit
 pub struct OpEnvCommitInputRequest {
     pub common: OpEnvInputRequestCommon,
+    pub op_type: Option<OpEnvCommitOpType>,
 }
 
 impl fmt::Display for OpEnvCommitInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "common: {}", self.common)
+        write!(f, "common: {}, op_type: {:?}", self.common, self.op_type)
     }
 }
 
 pub type OpEnvCommitInputResponse = OpEnvCommitOutputResponse;
 
 // abort
-pub struct OpEnvAbortInputRequest {
-    pub common: OpEnvInputRequestCommon,
-}
+pub type OpEnvAbortInputRequest = OpEnvNoParamInputRequest;
 
-impl fmt::Display for OpEnvAbortInputRequest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "common: {}", self.common)
-    }
-}
 
 // metadata
 pub struct OpEnvMetadataInputRequest {
@@ -350,7 +359,9 @@ pub type OpEnvInsertInputResponse = OpEnvSetInputResponse;
 pub type OpEnvRemoveInputRequest = OpEnvSetInputRequest;
 pub type OpEnvRemoveInputResponse = OpEnvSetInputResponse;
 
-// 迭代器next
+// 迭代器
+
+// next
 pub struct OpEnvNextInputRequest {
     pub common: OpEnvInputRequestCommon,
 
@@ -367,6 +378,28 @@ impl fmt::Display for OpEnvNextInputRequest {
 }
 
 pub type OpEnvNextInputResponse = OpEnvNextOutputResponse;
+
+// reset
+pub type OpEnvResetInputRequest = OpEnvNoParamInputRequest;
+
+// list
+// next
+pub struct OpEnvListInputRequest {
+    pub common: OpEnvInputRequestCommon,
+
+    // for path-op-env
+    pub path: Option<String>,
+}
+
+impl fmt::Display for OpEnvListInputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)?;
+
+        write!(f, ", path: {:?}", self.path)
+    }
+}
+
+pub type OpEnvListInputResponse = OpEnvNextOutputResponse;
 
 //////////////////////////
 /// root-state access requests

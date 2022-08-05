@@ -1,18 +1,23 @@
+use super::reader::ChunkStoreReader;
 use super::stream_writer::FileChunkListStreamWriter;
-use cyfs_chunk_cache::{ChunkManager, ChunkRead, ChunkType};
-use cyfs_chunk_lib::{Chunk, ChunkReadWithRanges};
 use cyfs_base::*;
+use cyfs_bdt::ChunkReader;
+use cyfs_chunk_cache::{ChunkManager, ChunkType};
+use cyfs_chunk_lib::{Chunk, ChunkReadWithRanges};
 use cyfs_lib::*;
-use std::sync::Arc;
+use cyfs_util::AsyncReadWithSeekAdapter;
 
 use async_std::io::{Cursor, Read};
 use std::convert::TryFrom;
 use std::ops::Range;
+use std::sync::Arc;
 
 pub(crate) struct LocalDataManager {
     chunk_manager: Arc<ChunkManager>,
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
+
+    reader: ChunkStoreReader,
 }
 
 impl LocalDataManager {
@@ -21,10 +26,13 @@ impl LocalDataManager {
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
     ) -> Self {
+        let reader = ChunkStoreReader::new(chunk_manager.clone(), ndc.clone(), tracker.clone());
         Self {
             chunk_manager,
             ndc,
             tracker,
+
+            reader,
         }
     }
 
@@ -52,10 +60,18 @@ impl LocalDataManager {
                 },
                 ChunkList::ChunkInBundle(bundle) => match ranges {
                     Some(ranges) => {
-                        self.get_chunks_with_range(&file_id, total_size, bundle.chunk_list(), ranges)
+                        self.get_chunks_with_range(
+                            &file_id,
+                            total_size,
+                            bundle.chunk_list(),
+                            ranges,
+                        )
+                        .await
+                    }
+                    None => {
+                        self.get_chunks(&file_id, total_size, bundle.chunk_list())
                             .await
                     }
-                    None => self.get_chunks(&file_id, total_size, bundle.chunk_list()).await,
                 },
                 ChunkList::ChunkInFile(id) => {
                     let msg = format!(
@@ -170,10 +186,7 @@ impl LocalDataManager {
         chunk_id: &ChunkId,
         ranges: Option<Vec<Range<u64>>>,
     ) -> BuckyResult<Option<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)>> {
-        let ret = self
-            .chunk_manager
-            .get_chunk(chunk_id, ChunkType::MMapChunk)
-            .await;
+        let ret = self.reader.read(chunk_id).await;
 
         if let Err(e) = ret {
             if e.code() == BuckyErrorCode::NotFound {
@@ -194,14 +207,14 @@ impl LocalDataManager {
 
         let ret = if let Some(ranges) = ranges {
             let length = RangeHelper::sum(&ranges);
-            let range_reader = ChunkReadWithRanges::new(ChunkRead::new(data), ranges);
+            let range_reader = ChunkReadWithRanges::new(data, ranges);
             (
                 Box::new(range_reader) as Box<dyn Read + Unpin + Send + Sync + 'static>,
                 length,
             )
         } else {
             (
-                Box::new(ChunkRead::new(data)) as Box<dyn Read + Unpin + Send + Sync + 'static>,
+                AsyncReadWithSeekAdapter::new(data).into_reader(),
                 chunk_id.len() as u64,
             )
         };
@@ -271,20 +284,27 @@ impl LocalDataManager {
                 continue;
             }
 
-            let reader = self
-                .chunk_manager
-                .get_chunk(chunk_id, ChunkType::MMapChunk)
-                .await
-                .map_err(|e| {
+            let reader = self.reader.read(chunk_id).await.map_err(|e| {
+                if e.code() == BuckyErrorCode::NotFound {
                     warn!(
                         "local get chunk but not found! chunk={}, len={}",
                         chunk_id,
                         chunk_id.len()
                     );
-                    e
-                })?;
+                } else {
+                    warn!(
+                        "local get chunk error! chunk={}, len={}, {}",
+                        chunk_id,
+                        chunk_id.len(),
+                        e,
+                    );
+                }
 
-            result.append(chunk_id, Box::new(ChunkRead::new(reader)));
+                e
+            })?;
+
+            let reader = AsyncReadWithSeekAdapter::new(reader).into_reader();
+            result.append(chunk_id, reader);
         }
 
         Ok((Box::new(result), total_size as u64))
@@ -351,12 +371,26 @@ impl LocalDataManager {
             }
             assert!(!ranges.is_empty());
 
-            let reader = self
-                .chunk_manager
-                .get_chunk(&chunk_id, ChunkType::MMapChunk)
-                .await?;
+            let reader = self.reader.read(&chunk_id).await.map_err(|e| {
+                if e.code() == BuckyErrorCode::NotFound {
+                    warn!(
+                        "local get chunk but not found! chunk={}, len={}",
+                        chunk_id,
+                        chunk_id.len()
+                    );
+                } else {
+                    warn!(
+                        "local get chunk error! chunk={}, len={}, {}",
+                        chunk_id,
+                        chunk_id.len(),
+                        e,
+                    );
+                }
 
-            let range_reader = ChunkReadWithRanges::new(ChunkRead::new(reader), ranges);
+                e
+            })?;
+
+            let range_reader = ChunkReadWithRanges::new(reader, ranges);
             result.append(&chunk_id, Box::new(range_reader));
         }
 

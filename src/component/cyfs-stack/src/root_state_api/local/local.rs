@@ -231,15 +231,58 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .await
     }
 
-    // transcation
-    async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
+    // get_current_root
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootInputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
         let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
 
         let dec_root = dec_root_manager
             .managed_envs()
-            .commit(req.common.sid)
+            .get_current_root(req.common.sid)
             .await?;
+
+        let resp = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
+            ObjectMapOpEnvType::Path => {
+                let (root, revision) = self.root_state.get_dec_relation_root_info(&dec_root);
+
+                OpEnvCommitInputResponse {
+                    root,
+                    revision,
+                    dec_root,
+                }
+            }
+            ObjectMapOpEnvType::Single => OpEnvCommitInputResponse {
+                root: dec_root.clone(),
+                revision: 0,
+                dec_root,
+            },
+        };
+
+        Ok(resp)
+    }
+
+    // transcation
+    async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
+        let dec_id = Self::get_dec_id(&req.common)?;
+        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+
+        let dec_root = match req.op_type {
+            Some(OpEnvCommitOpType::Update) => {
+                dec_root_manager
+                    .managed_envs()
+                    .update(req.common.sid)
+                    .await?
+            }
+            _ => {
+                dec_root_manager
+                    .managed_envs()
+                    .commit(req.common.sid)
+                    .await?
+            }
+        };
 
         let resp = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
@@ -520,6 +563,53 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .get_single_op_env(req.common.sid)?;
         let list = op_env.next(req.step as usize).await?;
         let resp = OpEnvNextInputResponse { list: list.list };
+
+        Ok(resp)
+    }
+
+    async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()> {
+        let dec_id = Self::get_dec_id(&req.common)?;
+
+        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let op_env = dec_root_manager
+            .managed_envs()
+            .get_single_op_env(req.common.sid)?;
+        op_env.reset().await;
+
+        Ok(())
+    }
+
+    async fn list(&self, req: OpEnvListInputRequest) -> BuckyResult<OpEnvListInputResponse> {
+        let dec_id = Self::get_dec_id(&req.common)?;
+
+        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+
+        let list = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
+            ObjectMapOpEnvType::Path => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_path_op_env(req.common.sid)?;
+
+                if req.path.is_none() {
+                    let msg = format!(
+                        "call list on path_op_env but path param not found! req={}",
+                        req
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+
+                op_env.list(req.path.as_ref().unwrap()).await
+            }
+            ObjectMapOpEnvType::Single => {
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_single_op_env(req.common.sid)?;
+                op_env.list().await
+            }
+        }?;
+
+        let resp = OpEnvListInputResponse { list: list.list };
 
         Ok(resp)
     }

@@ -4,7 +4,7 @@ mod dep {
     };
     pub use crate::{
         interface::*,
-        protocol::*,
+        protocol::{*, v0::*},
         stack::{Stack, WeakStack},
         tunnel::{
             self, AcceptReverseTcpStream, AcceptStreamBuilder, BuildTunnelAction,
@@ -774,7 +774,6 @@ impl StreamContainerImpl {
                 from_device_id: local_device.desc().device_id(),
                 from_device_desc: local_device,
                 to_device_id: self.tunnel().remote().clone(),
-                proxy_device_id: None,
                 reverse_endpoint: None,
                 payload: TailedOwnedData::from(question),
             }

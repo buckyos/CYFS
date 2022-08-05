@@ -18,6 +18,7 @@ cyfs-bdt = { path = "../../component/cyfs-bdt" }
 cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-stack-loader = { path = "../../component/cyfs-stack-loader" }
+cyfs-lib = { path = "../../component/cyfs-lib" }
 serde = "1.0"
 serde_json = "1.0"
 log = "0.4"

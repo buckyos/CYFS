@@ -1,8 +1,8 @@
 use super::super::{RouterEvent, RouterEventsManager};
 use super::ws_routine::RouterEventWebSocketRoutine;
 use cyfs_base::*;
-use cyfs_util::*;
 use cyfs_lib::*;
+use cyfs_util::*;
 
 use std::fmt;
 use std::sync::Arc;
@@ -63,14 +63,31 @@ impl RouterEventWSProcessor {
                 )?;
                 self.manager.events().test_event().add_event(event)
             }
+            RouterEventCategory::ZoneRoleChanged => {
+                let event = Self::create_event::<
+                    ZoneRoleChangedEventRequest,
+                    ZoneRoleChangedEventResponse,
+                >(session_requestor, &req)?;
+                self.manager
+                    .events()
+                    .zone_role_changed_event()
+                    .add_event(event)
+            }
         }
     }
 
     pub fn on_remove_event_request(&self, req: RouterWSRemoveEventParam) -> BuckyResult<bool> {
         let ret = match req.category {
-            RouterEventCategory::TestEvent => {
-                self.manager.events().test_event().remove_event(&req.id, req.dec_id)
-            }
+            RouterEventCategory::TestEvent => self
+                .manager
+                .events()
+                .test_event()
+                .remove_event(&req.id, req.dec_id),
+            RouterEventCategory::ZoneRoleChanged => self
+                .manager
+                .events()
+                .zone_role_changed_event()
+                .remove_event(&req.id, req.dec_id),
         };
 
         Ok(ret)

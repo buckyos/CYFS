@@ -2,7 +2,7 @@ use super::output_request::*;
 use super::processor::*;
 use cyfs_base::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct DecRootInfo {
     pub root: ObjectId,
     pub revision: u64,
@@ -104,6 +104,16 @@ impl SingleOpEnvStub {
         self.processor.load_by_path(req).await
     }
 
+    // get_current_root
+    pub async fn get_current_root(&self) -> BuckyResult<ObjectId> {
+        let mut req = OpEnvGetCurrentRootOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.get_current_root(req).await?;
+        Ok(resp.dec_root)
+    }
+
     // map methods
     pub async fn get_by_key(&self, key: impl Into<String>) -> BuckyResult<Option<ObjectId>> {
         let mut req = OpEnvGetByKeyOutputRequest::new_key(key);
@@ -189,6 +199,15 @@ impl SingleOpEnvStub {
     }
 
     // transcation
+    pub async fn update(&self) -> BuckyResult<ObjectId> {
+        let mut req = OpEnvCommitOutputRequest::new_update();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.commit(req).await?;
+        Ok(resp.dec_root)
+    }
+
     pub async fn commit(self) -> BuckyResult<ObjectId> {
         let mut req = OpEnvCommitOutputRequest::new();
         req.common.target = self.target.clone();
@@ -214,6 +233,23 @@ impl SingleOpEnvStub {
         req.common.dec_id = self.dec_id.clone();
 
         let resp = self.processor.next(req).await?;
+        Ok(resp.list)
+    }
+
+    pub async fn reset(&self) -> BuckyResult<()> {
+        let mut req = OpEnvResetOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        self.processor.reset(req).await
+    }
+
+    pub async fn list(&self) -> BuckyResult<Vec<ObjectMapContentItem>> {
+        let mut req = OpEnvListOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.list(req).await?;
         Ok(resp.list)
     }
 
@@ -246,6 +282,23 @@ pub struct PathOpEnvStub {
 impl PathOpEnvStub {
     pub(crate) fn new(processor: OpEnvOutputProcessorRef, target: Option<ObjectId>, dec_id: Option<ObjectId>) -> Self {
         Self { processor, target, dec_id }
+    }
+
+    // get_current_root
+    pub async fn get_current_root(&self) -> BuckyResult<DecRootInfo> {
+        let mut req = OpEnvGetCurrentRootOutputRequest::new();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.get_current_root(req).await?;
+
+        let info = DecRootInfo {
+            root: resp.root,
+            revision: resp.revision,
+            dec_root: resp.dec_root,
+        };
+
+        Ok(info)
     }
 
     // lock
@@ -445,6 +498,22 @@ impl PathOpEnvStub {
     }
 
     // transcation
+    pub async fn update(&self) -> BuckyResult<DecRootInfo> {
+        let mut req = OpEnvCommitOutputRequest::new_update();
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.commit(req).await?;
+
+        let info = DecRootInfo {
+            root: resp.root,
+            revision: resp.revision,
+            dec_root: resp.dec_root,
+        };
+
+        Ok(info)
+    }
+
     pub async fn commit(self) -> BuckyResult<DecRootInfo> {
         let mut req = OpEnvCommitOutputRequest::new();
         req.common.target = self.target.clone();
@@ -468,6 +537,16 @@ impl PathOpEnvStub {
 
         self.processor.abort(req).await?;
         Ok(())
+    }
+
+    // list
+    pub async fn list(&self, path: impl Into<String>) -> BuckyResult<Vec<ObjectMapContentItem>> {
+        let mut req = OpEnvListOutputRequest::new_path(path);
+        req.common.target = self.target.clone();
+        req.common.dec_id = self.dec_id.clone();
+
+        let resp = self.processor.list(req).await?;
+        Ok(resp.list)
     }
 
     // metadata

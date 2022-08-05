@@ -118,14 +118,43 @@ impl ZoneManager {
         Ok(())
     }
 
+    // check if zone info match with its owner, return true if matched
+    fn compare_zone_with_owner(zone: &Zone, owner: &AnyNamedObject) -> BuckyResult<bool> {
+        let ood_list = owner.ood_list()?;
+        if zone.ood_list() != ood_list {
+            warn!("zone ood_list changed! zone={:?}, owner={:?}", zone.ood_list(), ood_list);
+            return Ok(false);
+        }
+
+        let ood_work_mode = owner.ood_work_mode()?;
+        if *zone.ood_work_mode() != ood_work_mode {
+            warn!("zone ood_work_mode changed! zone={:?}, owner={:?}", zone.ood_work_mode(), ood_work_mode);
+            return Ok(false);
+        }
+
+        Ok(true)
+    }
+
     // 获取当前协议栈的zone信息
     pub async fn get_current_info(&self) -> BuckyResult<Arc<CurrentZoneInfo>> {
         // current_info只需要初始化一次即可
         let current_info = self.current_info.lock().unwrap().clone();
         if current_info.is_none() {
-            let zone = self.get_zone(&self.device_id, None).await?;
-
+            let mut zone = self.get_zone(&self.device_id, None).await?;
             let zone_id = zone.zone_id();
+
+            // load current zone's owner
+            let owner_id = zone.owner().to_owned();
+            let owner = self.search_object(&owner_id).await?;
+
+            info!("current zone owner: {}", owner.format_json().to_string());
+
+            // verify if owner object changed
+            if let Ok(false) = Self::compare_zone_with_owner(&zone, &owner) {
+                self.remove_zone(&zone_id).await;
+                zone = self.get_zone(&self.device_id, None).await?;
+            }
+
             let zone_device_ood_id = zone.ood().to_owned();
 
             let ood_work_mode = zone.ood_work_mode().to_owned();
@@ -139,12 +168,6 @@ impl ZoneManager {
             } else {
                 ZoneRole::Device
             };
-
-            // load current zone's owner
-            let owner_id = zone.owner().to_owned();
-            let owner = self.search_object(&owner_id).await?;
-
-            info!("current zone owner: {}", owner.format_json().to_string());
 
             let info = CurrentZoneInfo {
                 device_id: self.device_id.clone(),

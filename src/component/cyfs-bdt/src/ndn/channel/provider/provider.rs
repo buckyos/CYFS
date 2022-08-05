@@ -6,7 +6,7 @@ use super::super::super::{
     chunk::*
 };
 use super::super::{
-    protocol::*
+    protocol::v0::*
 };
 pub trait DownloadSessionProvider: Send + Sync {
     fn decoder(&self) -> &dyn ChunkDecoder;

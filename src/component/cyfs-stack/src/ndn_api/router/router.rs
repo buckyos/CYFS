@@ -10,10 +10,10 @@ use crate::non::*;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManager;
-use cyfs_util::cache::NamedDataCache;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::StackGuard;
+use cyfs_lib::*;
+use cyfs_util::cache::NamedDataCache;
 
 use cyfs_chunk_cache::ChunkManagerRef;
 use std::sync::Arc;
@@ -115,7 +115,6 @@ impl NDNRouter {
     }
 
     async fn get_data_forward(&self, target: DeviceId) -> BuckyResult<NDNInputProcessorRef> {
-        
         // ensure target device in local, used for bdt stack
         self.forward.get(&target).await?;
 
@@ -250,22 +249,30 @@ impl NDNRouter {
         if let Some(target) = &req.common.target {
             Some(target.to_owned())
         } else {
-            // 从目标对象解析target
-            if let Ok(list) = self.resolve_target_from_object(req).await {
-                info!(
-                    "ndn resolve get data target: object={}, targets={:?}",
-                    req.object_id, list
-                );
-                if list.len() > 0 {
-                    Some(list[0].object_id().to_owned())
-                } else {
+            match req.object_id.obj_type_code() {
+                ObjectTypeCode::Chunk => {
                     None
                 }
-            } else {
-                None
+                _ => {
+                    // 从目标对象解析target
+                    if let Ok(list) = self.resolve_target_from_object(req).await {
+                        info!(
+                            "ndn resolve get data target: object={}, targets={:?}",
+                            req.object_id, list
+                        );
+                        if list.len() > 0 {
+                            Some(list[0].object_id().to_owned())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
             }
         }
     }
+    
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
         debug!(
             "will get data from ndn: id={}, source={}, target={:?}, dec={:?}",

@@ -1,5 +1,5 @@
 use super::k_bucket::*;
-use crate::protocol::Datagram;
+use crate::protocol::v0::*;
 use async_std;
 use async_trait::async_trait;
 use cyfs_base::*;
