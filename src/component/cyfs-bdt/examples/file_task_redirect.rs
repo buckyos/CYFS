@@ -1,5 +1,5 @@
 use std::{
-    time::Duration, str::FromStr, 
+    time::Duration
 };
 use async_std::{
     future, 
@@ -16,7 +16,7 @@ use cyfs_bdt::{
     TaskControlState, 
     ChunkDownloadConfig, 
     download::*,
-    ndn::{NdnEventHandler, DefaultNdnEventHandler, channel::Channel, channel::protocol::Interest, channel::protocol::PieceData}, channel::UploadSession,
+    // ndn::{*, channel::{*, protocol::v0::*}}, 
     event_utils::*,
 };
 mod utils;

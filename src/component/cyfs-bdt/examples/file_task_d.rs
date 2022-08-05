@@ -5,11 +5,11 @@ use std::{
 };
 use async_std::{
     future, 
-    fs, 
-    io::prelude::*, 
+    // fs, 
+    // io::prelude::*, 
     task
 };
-use sha2::Digest;
+// use sha2::Digest;
 use cyfs_base::*;
 use cyfs_bdt::{
     Stack, 
@@ -57,7 +57,7 @@ impl ChunkWriter for TestWriter {
     }
 
     // 写入一组chunk到文件
-    async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
+    async fn write(&self, _chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
         println!("{}", content.len());
         Ok(())
     }
@@ -66,7 +66,7 @@ impl ChunkWriter for TestWriter {
         Ok(())
     }
 
-    async fn err(&self, e: BuckyErrorCode) -> BuckyResult<()> {
+    async fn err(&self, _err: BuckyErrorCode) -> BuckyResult<()> {
         Ok(())
     }
 
@@ -111,7 +111,7 @@ async fn main() {
     //     rn_params).await.unwrap();
     
     let down_dir = cyfs_util::get_named_data_root("bdt-example-file-task-downloader-downloader");
-    let down_path = down_dir.join("test-rediect-downloader.tmp");
+    // let down_path = down_dir.join("test-rediect-downloader.tmp");
 
     {
         let chunk = {

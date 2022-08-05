@@ -358,7 +358,6 @@ impl UploadSession {
                     Some(TaskState::Canceled(*err))
                 }
             },
-            _ => { unimplemented!() }
         }
     }
 }

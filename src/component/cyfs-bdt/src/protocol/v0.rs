@@ -31,7 +31,7 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for AckAckTun
     ) -> Result<&'a mut [u8], BuckyError> {
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Encode::<Self, Context>::new(enc_buf, merge_context)?;
-        let buf = context.check_encode(buf, "seq", &self.seq, flags.next())?;
+        let _buf = context.check_encode(buf, "seq", &self.seq, flags.next())?;
         context.finish(enc_buf)
     }
 }

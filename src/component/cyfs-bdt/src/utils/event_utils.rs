@@ -11,7 +11,7 @@ use crate::ndn::{
     // ChunkTask,
     // chunk::ChunkDownloadConfig,
     channel::{
-        protocol::*, 
+        protocol::v0::*, 
         Channel, 
         UploadSession, DownloadSession
     }, 
@@ -23,7 +23,7 @@ pub struct RedirectHandle {
 
 #[async_trait::async_trait]
 impl NdnEventHandler for RedirectHandle {
-    async fn on_newly_interest(&self, stack: &Stack, interest: &Interest, from: &Channel) -> BuckyResult<()> {
+    async fn on_newly_interest(&self, _stack: &Stack, interest: &Interest, from: &Channel) -> BuckyResult<()> {
         let resp_interest = 
             RespInterest { session_id: interest.session_id.clone(), 
                            chunk: interest.chunk.clone(), 
