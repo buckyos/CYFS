@@ -181,11 +181,10 @@ pub struct Interest {
     pub chunk: ChunkId,
     pub prefer_type: PieceSessionType, 
     pub referer: Option<String>,
-    pub from: Option<DeviceId>,
+    pub from: Option<DeviceId>, 
     // pub link_url: Option<String>,
     // flow_id:Option<u32>,
     // priority: Option<u8>,
-    // from : Option<DeviceId>,//如果信道可以说明来源，就去掉，但转发必须保留(RN1->RN2发生来自LN的包)
     // from_device_obj : Option<DeviceObject>,
     // token : Option<String>,//必要的验证token
     // sign : Option<Vec<u8>>,

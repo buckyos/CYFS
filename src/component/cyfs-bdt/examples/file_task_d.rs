@@ -110,7 +110,7 @@ async fn main() {
     //     rn_secret, 
     //     rn_params).await.unwrap();
     
-    let down_dir = cyfs_util::get_named_data_root("bdt-example-file-task-downloader-downloader");
+    let _down_dir = cyfs_util::get_named_data_root("bdt-example-file-task-downloader-downloader");
     // let down_path = down_dir.join("test-rediect-downloader.tmp");
 
     {

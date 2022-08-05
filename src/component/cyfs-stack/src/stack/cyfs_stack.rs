@@ -36,7 +36,7 @@ use cyfs_bdt::{
     StackOpenParams, 
     NdnEventHandler, 
     DefaultNdnEventHandler, 
-    ndn::channel::{Channel, UploadSession, protocol::{Interest, PieceData}}
+    ndn::channel::{Channel, UploadSession, protocol::v0::{Interest, PieceData}}
 };
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
