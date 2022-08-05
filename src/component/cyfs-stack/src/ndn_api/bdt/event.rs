@@ -3,7 +3,7 @@ use cyfs_bdt::{
     Stack, 
     NdnEventHandler, 
     DefaultNdnEventHandler, 
-    ndn::channel::{Channel, UploadSession, DownloadSession, protocol::{Interest, RespInterest, PieceData}}
+    ndn::channel::{Channel, UploadSession, DownloadSession, protocol::v0::*}
 };
 use cyfs_util::acl::*;
 use cyfs_lib::*;
