@@ -1,5 +1,5 @@
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown}, 
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path, 
     str::FromStr, 
     time::{Duration, Instant}
@@ -88,10 +88,10 @@ impl DebugStub {
                 match debug_tunnel.recv_v().await {
                     Ok(datagrams) => {
                         for datagram in datagrams {
-                            let resp = b"debug";
+                            //let resp = b"debug";
                             let mut options = datagram.options.clone();
                             let _ = debug_tunnel.send_to(
-                                resp.as_ref(), 
+                                datagram.data.as_ref(),//resp.as_ref(), 
                                 &mut options, 
                                 &datagram.source.remote, 
                                 datagram.source.vport);
@@ -120,6 +120,7 @@ impl DebugStub {
                     DebugCommand::PutChunk(command) => self.put_chunk(tunnel.clone(), command).await,
                     DebugCommand::PutFile(command) => self.put_file(tunnel.clone(), command).await,
                     DebugCommand::SnConnStatus(command) => self.sn_conn_status(tunnel.clone(), command).await,
+                    DebugCommand::BenchDatagram(command) => self.bench_datagram(tunnel.clone(), command).await,
                 } {
                     let _ = tunnel.write_all(err.as_ref()).await;
                 }
@@ -228,6 +229,75 @@ impl DebugStub {
                             if opt == options.sequence.unwrap() {
                                 let s = format!("respose. time: {:.1} ms\r\n", 
                                                     (cyfs_base::bucky_time_now() - ts) as f64 / 1000.0);
+                                let _ = tunnel.write_all(s.as_bytes()).await;
+                                break ;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn bench_datagram(&self, tunnel: TcpStream, command: DebugCommandBenchDatagram) -> Result<(), String> {
+        let mut tunnel = tunnel;
+
+        let from = 1;
+        let to = 65535;
+        let plaintext = command.plaintext;
+
+        let s = format!("bench_datagram: plaintext:{} timeout:{:?} from:{} to:{}\r\n",
+            plaintext, command.timeout, from, to);
+        let _ = tunnel.write_all(s.as_bytes()).await;
+
+        let mut n_ok = 0;
+        let stack = Stack::from(&self.0.stack);
+        let datagram = stack.datagram_manager().bind(0)
+            .map_err(|err| format!("deamon bind datagram tunnel failed for {}\r\n", err))?;
+        for i in from..to {
+            let mut options = DatagramOptions::default();
+            let _ = tunnel.write_all("send data.\r\n".as_ref()).await;
+
+            let data = rand_data_gen(i);
+            let ts = cyfs_base::bucky_time_now();
+            options.sequence = Some(TempSeq::from(ts as u32));
+            if i%2 == 0 {
+                options.create_time = Some(ts+10);
+            }
+            if i%4 == 0 {
+                options.send_time = Some(ts+20);
+            }
+            if i%8 == 0 {
+                options.author_id = Some(command.remote.desc().device_id().clone());
+            }
+            options.plaintext = plaintext;
+            let _ = datagram.send_to(
+                &data, 
+                &mut options, 
+                &command.remote.desc().device_id(), 
+                datagram::ReservedVPort::Debug.into());
+            match future::timeout(command.timeout, datagram.recv_v()).await {
+                Err(_err) => {
+                    let _ = tunnel.write_all("timeout\r\n".as_ref()).await;
+                },
+                Ok(res) => {
+                    let datagrams = res.unwrap();
+                    for datagram in datagrams {
+                        if let Some(opt) = datagram.options.sequence {
+                            if opt == options.sequence.unwrap() {
+                                let md5_recv = md5::compute(&datagram.data);
+                                let md5_send = md5::compute(&data);
+                                if md5_recv == md5_send {
+                                    n_ok += 1;
+                                }
+                                let s = format!("respose: plaintext: {} time: {:.1} ms, success {}/{}, fail {}\r\n", 
+                                                    options.plaintext,
+                                                    (cyfs_base::bucky_time_now() - ts) as f64 / 1000.0,
+                                                    n_ok,
+                                                    i,
+                                                    i-n_ok);
                                 let _ = tunnel.write_all(s.as_bytes()).await;
                                 break ;
                             }
@@ -495,4 +565,36 @@ fn get_filesize(path: &Path) -> u64 {
     }
 
     0
+}
+
+fn rand_data_gen(len: usize) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.resize(len, 0u8);
+
+    let mut r = 0;
+    for i in 0..len {
+        if i%10 == 0 {
+            r = rand::random::<u8>();
+        }
+        buf[i] = r;
+    }
+
+    buf
+}
+
+fn rand_data_gen_buf(len: usize) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.resize(len + 8, 0u8);
+
+    buf[0..8].copy_from_slice(&len.to_be_bytes());
+
+    let mut r = 0;
+    for i in 8..len {
+        if i%10 == 0 {
+            r = rand::random::<u8>();
+        }
+        buf[i] = r;
+    }
+
+    buf
 }

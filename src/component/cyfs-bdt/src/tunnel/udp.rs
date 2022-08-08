@@ -12,7 +12,8 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*,
-    protocol::{self, *, v0::*}, 
+    protocol::{self, *, v0::*},
+    MTU,
     interface::{*, udp::{PackageBoxEncodeContext, OnUdpPackageBox}}, 
 };
 use super::{
@@ -76,7 +77,8 @@ struct TunnelImpl {
     proxy: ProxyType, 
     state: RwLock<TunnelState>, 
     keeper_count: AtomicI32, 
-    last_active: AtomicU64
+    last_active: AtomicU64,
+    mtu: usize,
 }
 
 #[derive(Clone)]
@@ -103,6 +105,7 @@ impl Tunnel {
             waiter: StateWaiter::new()
         });
         let tunnel = Self(Arc::new(TunnelImpl {
+            mtu: MTU,
             local, 
             remote, 
             proxy, 
@@ -300,6 +303,10 @@ impl Tunnel {
 
 #[async_trait]
 impl tunnel::Tunnel for Tunnel {
+    fn mtu(&self) -> usize {
+        self.0.mtu
+    }
+
     fn ptr_eq(&self, other: &tunnel::DynamicTunnel) -> bool {
         *self.local() == *other.as_ref().local() 
         && *self.remote() == *other.as_ref().remote()
@@ -341,11 +348,12 @@ impl tunnel::Tunnel for Tunnel {
                 TunnelState::Dead => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel dead"))
             }
         }?;
+
         assert_eq!(data.len() > Self::raw_data_header_len_impl(), true);
         
         interface.send_raw_data_to(&key, data, tunnel::Tunnel::remote(self))
     }
-    
+
     fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
         let (tunnel_container, interface, key) = {
             if let TunnelState::Active(active_state) =  &*self.0.state.read().unwrap() {

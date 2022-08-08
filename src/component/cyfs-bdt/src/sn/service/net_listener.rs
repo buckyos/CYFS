@@ -606,7 +606,7 @@ impl TcpSender {
     pub async fn send(&mut self, pkg: DynamicPackage) -> BuckyResult<()> {
         let mut send_buf = [0; MTU];
 
-        match self.handle.send_package(&mut send_buf, pkg).await {
+        match self.handle.send_package(&mut send_buf, pkg, false).await {
             Ok(()) => Ok(()),
             Err(e) => {
                 error!("tcp({}) send-to({}) failed error({}).", self.local_str(), self.remote_str(), e);

@@ -210,7 +210,9 @@ impl Listener {
 type FirstBoxEncodeContext = udp::PackageBoxEncodeContext;
 type FirstBoxDecodeContext<'de> = udp::PackageBoxDecodeContext<'de>;
 
-pub(crate) struct OtherBoxEncodeContext {}
+pub(crate) struct OtherBoxEncodeContext {
+    pub plaintext: bool,
+}
 
 impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
     fn raw_measure_with_context(
@@ -241,9 +243,11 @@ impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
             let enc: &dyn RawEncodeWithContext<merge_context::OtherEncode> = p.as_ref();
             buf = enc.raw_encode_with_context(buf, &mut context, purpose)?;
         }
+
         encrypt_in_len -= buf.len();
         // 用aes 加密package的部分
         let len = self.key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?;
+
         Ok(&mut to_encrypt_buf[len..])
     }
 }
@@ -365,6 +369,8 @@ impl RawEncodeWithContext<PackageBoxEncodeContext<FirstBoxEncodeContext>> for Pa
             ));
         }
 
+        info!("packagebox FirstBoxEncodeContext buf_len={} box_header_len={}", buf.len(), box_header_len);
+
         let box_len = {
             let buf_ptr =
                 self.raw_encode_with_context(&mut buf[box_header_len..], &mut context.0, purpose)?;
@@ -397,6 +403,8 @@ impl RawEncodeWithContext<PackageBoxEncodeContext<OtherBoxEncodeContext>> for Pa
                 "buffer not enough",
             ));
         }
+
+        info!("packagebox FirstBoxEncodeContext buf_len={} box_header_len={}", buf.len(), box_header_len);
 
         let box_len = {
             let buf_ptr =
@@ -562,7 +570,9 @@ impl AcceptInterface {
 
     pub async fn confirm_accept(&self, packages: Vec<DynamicPackage>) -> Result<(), BuckyError> {
         let mut send_buffer = [0u8; udp::MTU];
-        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {});
+        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {
+            plaintext: false,
+        });
         let mut package_box =
             PackageBox::encrypt_box(self.remote_device_id().clone(), self.0.key.clone());
         package_box.append(packages);
@@ -825,11 +835,12 @@ impl PackageInterface {
         &self,
         send_buf: &'a mut [u8],
         package: DynamicPackage,
+        plaintext: bool,
     ) -> Result<(), BuckyError> {
         let mut socket = self.0.socket.clone();
         let package_box =
             PackageBox::from_package(self.0.remote_device_id.clone(), self.0.key.clone(), package);
-        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {});
+        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {plaintext});
         socket
             .write_all(package_box.raw_tail_encode_with_context(send_buf, &mut context, &None)?)
             .await?;

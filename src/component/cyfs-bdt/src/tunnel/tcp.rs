@@ -15,8 +15,9 @@ use async_trait::{async_trait};
 use ringbuf;
 use cyfs_base::*;
 use crate::{
-    types::*, 
+    types::*,
     protocol::{self, *, v0::*},
+    MTU,
     interface::{self, *, tcp::{OnTcpInterface, RecvBox, PackageInterface}}
 };
 use super::{tunnel::{self, DynamicTunnel, TunnelOwner, ProxyType}, TunnelContainer};
@@ -88,7 +89,8 @@ struct TunnelImpl {
     keeper_count: AtomicI32, 
     last_active: AtomicU64, 
     retain_connect_timestamp: AtomicU64, 
-    state: Mutex<TunnelState>
+    state: Mutex<TunnelState>,
+    mtu: usize,
 }
 
 #[derive(Clone)]
@@ -106,6 +108,7 @@ impl Tunnel {
         ep_pair: EndpointPair) -> Self {
         let remote_device_id = owner.remote().clone();
         let tunnel = Self(Arc::new(TunnelImpl {
+            mtu: MTU-12, 
             remote_device_id, 
             local_remote: ep_pair, 
             keeper_count: AtomicI32::new(0), 
@@ -754,7 +757,7 @@ impl Tunnel {
                     send_buf: &mut [u8], 
                     pkg: PackageElem) -> BuckyResult<()> {
                     match pkg {
-                        PackageElem::Package(package) => interface.send_package(send_buf, package).await, 
+                        PackageElem::Package(package) => interface.send_package(send_buf, package, false).await, 
                         PackageElem::RawData(data) => interface.send_raw_data(data).await
                     }
                 }
@@ -986,6 +989,10 @@ impl Tunnel {
 
 #[async_trait]
 impl tunnel::Tunnel for Tunnel {
+    fn mtu(&self) -> usize {
+        self.0.mtu
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
