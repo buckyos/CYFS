@@ -139,12 +139,12 @@ impl DatagramManager {
     }
 }
 
-impl OnPackage<Datagram, &TunnelContainer> for DatagramManager {
-    fn on_package(&self, pkg: &Datagram, from: &TunnelContainer) -> Result<OnPackageResult, BuckyError> {
+impl OnPackage<Datagram, (&TunnelContainer, bool)> for DatagramManager {
+    fn on_package(&self, pkg: &Datagram, context: (&TunnelContainer, bool)) -> Result<OnPackageResult, BuckyError> {
         if let Some(tunnel) = self.0.find_tunnel(pkg.to_vport) {
-            tunnel.on_package(pkg, from)
+            tunnel.on_package(pkg, context)
         } else {
-            log::warn!("datagram recv data to unknown vport: {}, from: {}.", pkg.to_vport, from);
+            log::warn!("datagram recv data to unknown vport: {}, from: {}.", pkg.to_vport, context.0);
             Err(BuckyError::new(BuckyErrorCode::ErrorState, "no datagram-tunnel bind"))
         }
     }

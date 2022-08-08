@@ -298,6 +298,7 @@ impl<'de> RawDecode<'de> for DatagramType {
     }
 }
 
+#[derive(Clone)]
 pub struct Datagram {
     pub to_vport: u16,
     pub from_vport: u16,
@@ -312,6 +313,61 @@ pub struct Datagram {
     // pub data_sign: Option<Signature>, // <TODO>暂时不清楚怎么签名，先把C版本搬过来
     pub inner_type: DatagramType,
     pub data: TailedOwnedData, // TailedSharedData<'a>,
+}
+
+impl Datagram {
+    pub fn fragment_len(&self, mtu: usize, plaintext: bool) -> usize {
+        let box_header_len = 8; //mixhash
+        let dynamic_header_len = 3;
+        let mut datagram_header_len = 0;
+        let mut dynamic_package_len;
+        let aes_width = 16;
+        let piece_field_len = 2;
+
+        datagram_header_len += 2;
+        datagram_header_len += 2;
+        if self.dest_zone.is_some() {
+            datagram_header_len += 4;
+        }
+        if self.hop_limit.is_some() {
+            datagram_header_len += 1;
+        }
+        if self.sequence.is_some() {
+            datagram_header_len += 4;
+        }
+        if self.piece.is_some() {//must be none
+            datagram_header_len += 2;
+        }
+        if self.send_time.is_some() {
+            datagram_header_len += 8;
+        }
+        if self.create_time.is_some() {
+            datagram_header_len += 8;
+        }
+        if self.author_id.is_some() {
+            datagram_header_len += std::mem::size_of::<DeviceId>();
+        }
+        if self.author.is_some() {
+            datagram_header_len += std::mem::size_of::<Device>();
+        }
+        datagram_header_len += 1;
+
+        dynamic_package_len = dynamic_header_len + datagram_header_len + self.data.as_ref().len();
+        if !plaintext {
+            dynamic_package_len = dynamic_package_len/aes_width*aes_width+aes_width;
+        }
+
+        if box_header_len + dynamic_package_len <= mtu {
+            0
+        } else {
+            dynamic_package_len = mtu-box_header_len;
+            if !plaintext {
+                dynamic_package_len = dynamic_package_len/aes_width*aes_width-aes_width;
+            }
+            let data_len = dynamic_package_len-dynamic_header_len-datagram_header_len-piece_field_len;
+            data_len
+        }
+    }
 }
 
 impl Package for Datagram {
@@ -947,10 +1003,17 @@ impl SessionData {
             Self::raw_decode_with_context(buf, &mut merge_context::OtherDecode::default())?;
         Ok(pkg)
     }
-}
+    pub fn clone_with_data(&self) -> SessionData {
+        let mut session = self.clone_without_data();
 
-impl Clone for SessionData {
-    fn clone(&self) -> Self {
+        let mut buf = vec![0; self.payload.as_ref().len()];
+        buf.copy_from_slice(self.payload.as_ref());
+        session.payload = TailedOwnedData::from(buf);
+
+        session
+    }
+    
+    pub fn clone_without_data(&self) -> SessionData {
         let mut session = SessionData::new();
         session.stream_pos = self.stream_pos;
         session.ack_stream_pos = self.ack_stream_pos;

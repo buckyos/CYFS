@@ -2,7 +2,8 @@ use crate::{
     protocol::{self, *},
     stack::{Stack, WeakStack},
     tunnel::{BuildTunnelParams, TunnelContainer, TunnelState},
-    types::*,
+    types::*, 
+    MTU
 };
 use async_std::{pin::Pin, sync::Arc, task};
 use cyfs_base::*;
@@ -18,7 +19,6 @@ use std::{
     task::Waker,
     time::Duration,
 };
-use crate::MTU;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DatagramSource {
@@ -65,7 +65,7 @@ struct DatagramFragment {
     sequence: TempSeq,
     to_vport: u16,
 	expire_time: u64,
-	datagrams: HashMap<u8, protocol::Datagram>,
+	datagrams: HashMap<u8, protocol::v0::Datagram>,
 	fragment_total: usize,
 }
 
@@ -206,12 +206,10 @@ impl DatagramTunnel {
 
     fn send_datagram(
         &self,
-        datagram: protocol::Datagram,
-        remote: &DeviceId,
+        datagram: protocol::v0::Datagram,
+        remote: &DeviceId, 
+        plaintext: bool
     ) -> Result<(), std::io::Error> {
-
-        let plaintext = datagram.plaintext;
-
         let stack = Stack::from(&self.as_ref().stack);
         let tunnel = stack.tunnel_manager().container_of(remote);
         if let Some(tunnel) = tunnel {
@@ -296,8 +294,8 @@ impl DatagramTunnel {
         remote: &DeviceId,
         vport: u16,
         piece: Option<(u8, u8)>,
-    ) -> protocol::Datagram {
-        let datagram = protocol::Datagram {
+    ) -> protocol::v0::Datagram {
+        let datagram = protocol::v0::Datagram {
             to_vport: vport,
             from_vport: self.0.vport,
             dest_zone: None,
@@ -325,9 +323,8 @@ impl DatagramTunnel {
             create_time: options.create_time,
             author_id: options.author_id.as_ref().map(|id| id.clone()),
             author: None,
-            inner_type: protocol::DatagramType::Data,
+            inner_type: protocol::v0::DatagramType::Data,
             data: TailedOwnedData::from(buf),
-            plaintext: options.plaintext,
         };
 
         trace!(
@@ -353,14 +350,14 @@ impl DatagramTunnel {
         let fragment_len = datagram.fragment_len(mtu, options.plaintext);
 
         if fragment_len == 0 {
-            self.send_datagram(datagram, remote)
+            self.send_datagram(datagram, remote, options.plaintext)
         } else {
             let count = (buf.len() as f64 / fragment_len as f64).ceil() as u8;
             let mut start = 0;
             let mut end = fragment_len;
             for i in 0..count {
                 let datagram = self.build_datagram(&buf[start..end], options, remote, vport, Some((i, count)));
-                let _ = self.send_datagram(datagram, remote);
+                let _ = self.send_datagram(datagram, remote, options.plaintext);
 
                 start += fragment_len;
                 end += fragment_len;
@@ -400,7 +397,8 @@ impl DatagramTunnel {
     fn on_datagram(
         &self,
         pkg: &protocol::v0::Datagram,
-        from: &TunnelContainer,
+        from: &TunnelContainer, 
+        plaintext: bool
     ) -> Result<OnPackageResult, BuckyError> {
         let datagram = Datagram {
             source: DatagramSource {
@@ -412,7 +410,7 @@ impl DatagramTunnel {
                 author_id: pkg.author_id.as_ref().map(|id| id.clone()),
                 create_time: pkg.create_time,
                 send_time: pkg.send_time,
-                plaintext: pkg.plaintext,
+                plaintext,
             },
             data: Vec::from(pkg.data.as_ref()),
         };
@@ -438,24 +436,25 @@ impl DatagramTunnel {
 }
 
 // FIXME: 整个 OnPackage体系的 package参数改成转移不是引用，这里就可以不用拷贝data
-impl OnPackage<protocol::Datagram, &TunnelContainer> for DatagramTunnel {
+impl OnPackage<protocol::v0::Datagram, (&TunnelContainer, bool)> for DatagramTunnel {
     fn on_package(
         &self,
-        pkg: &protocol::Datagram,
-        from: &TunnelContainer,
+        pkg: &protocol::v0::Datagram,
+        context: (&TunnelContainer, bool),
     ) -> Result<OnPackageResult, BuckyError> {
+        let (from, plaintext) = context;
         log::trace!("{} recv {} from {}", self.as_ref(), pkg, from);
         assert_eq!(pkg.to_vport, self.vport());
 
         if pkg.piece.is_some()  {
             let reassemble_result = {
                 let mut frag_buffer = self.0.frag_buffer.lock().unwrap();
-                frag_buffer.reassemble(pkg, from)
+                frag_buffer.reassemble(pkg, from, plaintext)
             };
             match reassemble_result {
                 Ok(ret) => {
                     if let Some(p) = ret {
-                        self.on_datagram(&p, from)
+                        self.on_datagram(&p, from, plaintext)
                     } else {
                         return Ok(OnPackageResult::Handled);
                     }
@@ -465,7 +464,7 @@ impl OnPackage<protocol::Datagram, &TunnelContainer> for DatagramTunnel {
                 }
             }
         } else {
-            self.on_datagram(pkg, from)
+            self.on_datagram(pkg, from, plaintext)
         }
     }
 }
@@ -543,12 +542,12 @@ impl DatagramFragments {
         }
     }
 
-    pub fn reassemble(&mut self, pkg: &protocol::Datagram, from: &TunnelContainer) -> BuckyResult<Option<protocol::Datagram>> {
+    pub fn reassemble(&mut self, pkg: &protocol::v0::Datagram, from: &TunnelContainer, plaintext: bool) -> BuckyResult<Option<protocol::v0::Datagram>> {
         if pkg.piece.is_none() || pkg.sequence.is_none() {
             return Ok(None);
         }
 
-        let mut fragment_add_check = |pkg: &protocol::Datagram, from: &TunnelContainer| -> bool {//check size
+        let mut fragment_add_check = |pkg: &protocol::v0::Datagram, from: &TunnelContainer| -> bool {//check size
             let payload_size = pkg.data.as_ref().len();
             if self.frag_data_size + payload_size > self.frag_data_max_size {
                 error!("fragment from={} from_vport={} to_vport={} sequence={:?} frage_data_size={} too many fragment, drop", 
@@ -565,11 +564,11 @@ impl DatagramFragments {
             return true;
         };
 
-        let datagram_key = |pkg: &protocol::Datagram, from: &TunnelContainer| -> String {
+        let datagram_key = |pkg: &protocol::v0::Datagram, from: &TunnelContainer| -> String {
             format!("{}:{}:{}", from.remote(), pkg.from_vport, pkg.sequence.unwrap().value())
         };
 
-        let payload_merge = |fragment: &DatagramFragment, plaintext: bool| -> protocol::Datagram { 
+        let payload_merge = |fragment: &DatagramFragment, plaintext: bool| -> protocol::v0::Datagram { 
             let mut payload_size = 0;
             for i in 0..fragment.fragment_total {
                 let n = i as u8;
@@ -588,7 +587,7 @@ impl DatagramFragments {
             }
 
             let pkg = fragment.datagrams.get(&0).unwrap();
-            protocol::Datagram {
+            protocol::v0::Datagram {
                 to_vport: pkg.to_vport,
                 from_vport: pkg.from_vport,
                 dest_zone: pkg.dest_zone.clone(),
@@ -601,11 +600,9 @@ impl DatagramFragments {
                 author: pkg.author.clone(),
                 inner_type: pkg.inner_type,
                 data: TailedOwnedData::from(payload),
-                plaintext
             }
         };
 
-        let plaintext = pkg.plaintext;
         let key = datagram_key(pkg, from);
         if let Some(fragment) = self.fragments.get_mut(&key) {
             let (fragment_index, _) = pkg.piece.unwrap();

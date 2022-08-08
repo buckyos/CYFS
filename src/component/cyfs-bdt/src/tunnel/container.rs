@@ -664,12 +664,7 @@ impl TunnelContainer {
         match cmd_code {
             PackageCmdCode::Datagram => {
                 let (pkg, _) = Datagram::raw_decode_with_context(buf, &mut merge_context::OtherDecode::default())?;
-
-                let mut pkg = pkg;
-                pkg.set_plaintext(true);
-
-                let _ = Stack::from(&tunnel_impl.stack).datagram_manager().on_package(&pkg, self);
-
+                let _ = Stack::from(&tunnel_impl.stack).datagram_manager().on_package(&pkg, (self, true));
                 Ok(())
             },
             PackageCmdCode::SessionData => unimplemented!(), 
@@ -1167,7 +1162,7 @@ impl OnPackage<TcpAckConnection, interface::tcp::AcceptInterface> for TunnelCont
 
 impl OnPackage<Datagram> for TunnelContainer {
     fn on_package(&self, pkg: &Datagram, _: Option<()>) -> Result<OnPackageResult, BuckyError> {
-        Stack::from(&self.0.stack).datagram_manager().on_package(pkg, self)
+        Stack::from(&self.0.stack).datagram_manager().on_package(pkg, (self, false))
             .map_err(|err| {
                 debug!("{} handle package {} error {}", self, pkg, err);
                 err
