@@ -4,6 +4,7 @@ use crate::non::NONInputProcessorRef;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DeviceId, NameInfo, NameState, ObjectId};
 use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
 use cyfs_lib::*;
+use cyfs_util::perf::*;
 
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
@@ -17,6 +18,8 @@ pub(crate) struct RawMetaCache {
 
     // 错误缓存，避免快速向链发起查询操作
     fail_cache: MetaFailCache,
+
+    perf: cyfs_util::PerfHolder,
 }
 
 impl RawMetaCache {
@@ -24,12 +27,20 @@ impl RawMetaCache {
         info!("raw meta cache: {}", target.to_string());
         let meta_client = MetaClient::new_target(target);
 
-        Self {
+        let ret = Self {
             noc: Arc::new(OnceCell::new()),
             meta_client: Arc::new(meta_client),
             device_id: DeviceId::default(),
             fail_cache: MetaFailCache::new(),
-        }
+            perf: cyfs_util::PerfHolder::new(),
+        };
+
+        ret.meta_client.perf().bind(&ret.perf);
+        ret
+    }
+
+    pub fn perf(&self) -> &PerfHolder {
+        &self.perf
     }
 
     pub(crate) fn bind_noc(&self, noc: NONInputProcessorRef) {

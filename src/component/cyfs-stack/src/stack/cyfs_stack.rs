@@ -33,6 +33,7 @@ use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
+use cyfs_util::*;
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
@@ -118,6 +119,9 @@ pub struct CyfsStackImpl {
 
     // local_cache
     local_cache: GlobalStateLocalService,
+
+    // perf
+    perf: PerfHolder,
 }
 
 impl CyfsStackImpl {
@@ -129,6 +133,8 @@ impl CyfsStackImpl {
     ) -> BuckyResult<Self> {
         Self::register_custom_objects_format();
         
+        let perf = cyfs_util::PerfHolder::new_isolate("cyfs-stack");
+
         let stack_params = param.clone();
         let config = StackGlobalConfig::new(stack_params);
 
@@ -142,7 +148,7 @@ impl CyfsStackImpl {
         };
 
         let noc =
-            Self::init_raw_noc(&device_id, param.noc.noc_type, isolate, known_objects).await?;
+            Self::init_raw_noc(&device_id, param.noc.noc_type, isolate, known_objects, &perf).await?;
 
         // 初始化data cache和tracker
         let ndc = Self::init_ndc(isolate)?;
@@ -155,6 +161,7 @@ impl CyfsStackImpl {
         // 不使用rules的meta_client
         // 内部依赖带rule-noc，需要使用延迟绑定策略
         let raw_meta_cache = RawMetaCache::new(param.meta.target);
+        raw_meta_cache.perf().bind(&perf);
 
         // init object searcher for global use
         let obj_searcher = CompoundObjectSearcher::new(
@@ -455,6 +462,8 @@ impl CyfsStackImpl {
             fail_handler,
 
             acl_manager,
+
+            perf,
         };
 
         // first init current zone info
@@ -744,19 +753,24 @@ impl CyfsStackImpl {
         noc_type: NamedObjectStorageType,
         isolate: &str,
         known_objects: Vec<KnownObject>,
+        perf: &PerfHolder,
     ) -> BuckyResult<ObjectCacheManager> {
         let mut noc = ObjectCacheManager::new(device_id);
 
         let isolate = isolate.to_owned();
 
         // 这里切换线程同步初始化，否则debug下可能会导致主线程调用栈过深
+        let pf = perf.clone();
         let noc = async_std::task::spawn(async move {
+            perf_begin_request!(pf, "init_noc");
             match noc.init(noc_type, &isolate).await {
                 Ok(_) => {
+                    perf_end_request!(pf, "init_noc");
                     info!("init object cache manager success!");
                     Ok(noc)
                 }
                 Err(e) => {
+                    perf_end_request!(pf, "init_noc", "", e.code());
                     error!("init object cache manager failed: {}", e);
                     Err(e)
                 }
@@ -767,8 +781,10 @@ impl CyfsStackImpl {
         // 这里异步的初始化一些已知对象
         let noc2 = noc.clone();
         let device_id = device_id.clone();
+        let pf = perf.clone();
         async_std::task::spawn(async move {
             // 初始化known_objects
+            perf_begin_request!(pf, "init_known_objects");
             for item in known_objects.into_iter() {
                 let req = NamedObjectCacheInsertObjectRequest {
                     protocol: NONProtocol::Native,
@@ -781,6 +797,7 @@ impl CyfsStackImpl {
                 };
                 let _ = noc2.insert_object_with_event(&req, None).await;
             }
+            perf_end_request!(pf, "init_known_objects");
         });
         Ok(noc)
     }
@@ -962,6 +979,10 @@ impl CyfsStack {
 
     pub fn local_device(&self) -> Device {
         self.stack.bdt_stack.local()
+    }
+
+    pub fn perf(&self) -> &PerfHolder {
+        &self.stack.perf
     }
 
     pub fn acl_manager(&self) -> &AclManager {
