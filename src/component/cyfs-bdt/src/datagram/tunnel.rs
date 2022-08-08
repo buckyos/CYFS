@@ -449,7 +449,7 @@ impl OnPackage<protocol::v0::Datagram, (&TunnelContainer, bool)> for DatagramTun
         if pkg.piece.is_some()  {
             let reassemble_result = {
                 let mut frag_buffer = self.0.frag_buffer.lock().unwrap();
-                frag_buffer.reassemble(pkg, from, plaintext)
+                frag_buffer.reassemble(pkg, from)
             };
             match reassemble_result {
                 Ok(ret) => {
@@ -542,7 +542,7 @@ impl DatagramFragments {
         }
     }
 
-    pub fn reassemble(&mut self, pkg: &protocol::v0::Datagram, from: &TunnelContainer, plaintext: bool) -> BuckyResult<Option<protocol::v0::Datagram>> {
+    pub fn reassemble(&mut self, pkg: &protocol::v0::Datagram, from: &TunnelContainer) -> BuckyResult<Option<protocol::v0::Datagram>> {
         if pkg.piece.is_none() || pkg.sequence.is_none() {
             return Ok(None);
         }
@@ -568,7 +568,7 @@ impl DatagramFragments {
             format!("{}:{}:{}", from.remote(), pkg.from_vport, pkg.sequence.unwrap().value())
         };
 
-        let payload_merge = |fragment: &DatagramFragment, plaintext: bool| -> protocol::v0::Datagram { 
+        let payload_merge = |fragment: &DatagramFragment| -> protocol::v0::Datagram { 
             let mut payload_size = 0;
             for i in 0..fragment.fragment_total {
                 let n = i as u8;
@@ -617,7 +617,7 @@ impl DatagramFragments {
             fragment.datagrams.insert(fragment_index, pkg.clone());
 
             if fragment.datagrams.len() == fragment.fragment_total {//complete
-                let pkg = payload_merge(fragment, plaintext);
+                let pkg = payload_merge(fragment);
                 self.fragments.remove(&key);
                 if self.frag_data_size < pkg.data.as_ref().len() {
                     error!("size wrong. frag_data_size={} pkg_data={}", self.frag_data_size, pkg.data.as_ref().len());
