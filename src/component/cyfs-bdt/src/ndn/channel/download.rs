@@ -1,7 +1,7 @@
 use log::*;
 use std::{
     time::Duration, 
-    sync::{RwLock, atomic::{AtomicU32, AtomicU64, Ordering}}
+    sync::{RwLock}
 };
 use async_std::{
     sync::Arc, 
@@ -17,7 +17,7 @@ use super::super::{
 };
 use super::{
     types::*, 
-    protocol::*, 
+    protocol::v0::*, 
     provider::*,
     channel::Channel, 
 };
@@ -58,12 +58,19 @@ struct CanceledState {
     err: BuckyError
 }
 
+struct RedirectState {
+    send_ctrl_time: Timestamp,
+    redirect: DeviceId,
+    redirect_referer: String,
+}
+
 enum StateImpl {
     Init(StateWaiter), 
     Interesting(InterestingState), 
     Downloading(DownloadingState),
     Finished(FinishedState), 
-    Canceled(CanceledState)
+    Canceled(CanceledState),
+    Redirect(RedirectState),
 } 
 
 impl StateImpl {
@@ -73,64 +80,12 @@ impl StateImpl {
             Self::Interesting(_) => TaskState::Running(0), 
             Self::Downloading(_) => TaskState::Running(0), 
             Self::Finished(_) => TaskState::Finished, 
-            Self::Canceled(canceled) => TaskState::Canceled(canceled.err.code())
+            Self::Canceled(canceled) => TaskState::Canceled(canceled.err.code()),
+            Self::Redirect(_) => TaskState::Canceled(BuckyErrorCode::Redirect),
         }
     }
 }
 
-struct SessionPPSImpl {
-    t: u64,
-    pps_mini: u32,
-    check_time: AtomicU64,
-    pps: AtomicU32,
-}
-
-#[derive(Clone)]
-pub struct SessionPPS(Arc<SessionPPSImpl>);
-
-impl SessionPPS {
-    pub fn default() -> Self {
-        let pps = 3;
-        let pps_def_t = 10;
-        let pps_def_pps_mini = pps_def_t*pps;
-
-        Self(Arc::new(SessionPPSImpl {
-            t: std::time::Duration::from_secs(pps_def_t).as_micros() as u64,
-            pps_mini: pps_def_pps_mini as u32,
-            check_time: AtomicU64::new(0),
-            pps: AtomicU32::new(0),
-        }))
-    }
-
-    pub fn new(t: u64, pps_mini: u32) -> Self {
-        Self(Arc::new(SessionPPSImpl {
-            t: std::time::Duration::from_secs(t).as_micros() as u64,
-            pps_mini,
-            check_time: AtomicU64::new(0),
-            pps: AtomicU32::new(0),
-        }))
-    }
-
-    pub fn new_package(&self) {
-        self.0.pps.fetch_add(1, Ordering::SeqCst);
-    }
-
-    pub fn check(&self) -> bool {
-        let mut less_than_pps_mini = false;
-        let now = bucky_time_now();
-        let check_time = self.0.check_time.load(Ordering::SeqCst);
-        if now > check_time {
-            if check_time > 0 {
-                let pps = self.0.pps.load(Ordering::SeqCst);
-                less_than_pps_mini = pps < self.0.pps_mini;
-            }
-            self.0.check_time.store(now + self.0.t, Ordering::SeqCst);
-            self.0.pps.store(0, Ordering::SeqCst);
-        }
-
-        less_than_pps_mini
-    }
-}
 
 struct SessionImpl {
     chunk: ChunkId, 
@@ -250,6 +205,7 @@ impl DownloadSession {
             session_id: self.session_id().clone(), 
             chunk: self.chunk().clone(), 
             prefer_type: self.prefer_type().clone(), 
+	    from: None,
             referer: self.referer().cloned()
         };
         info!("{} sent {:?}", self, interest);
@@ -269,7 +225,8 @@ impl DownloadSession {
                 StateImpl::Interesting(interesting) => NextStep::Wait(interesting.waiters.new_waiter()), 
                 StateImpl::Downloading(downloading) => NextStep::Wait(downloading.waiters.new_waiter()),
                 StateImpl::Finished(_) => NextStep::Return(TaskState::Finished), 
-                StateImpl::Canceled(canceled) => NextStep::Return(TaskState::Canceled(canceled.err.code()))
+                StateImpl::Canceled(canceled) => NextStep::Return(TaskState::Canceled(canceled.err.code())),
+                StateImpl::Redirect(_) => NextStep::Return(TaskState::Canceled(BuckyErrorCode::Redirect)),
             }
         };
         match next_step {
@@ -293,6 +250,16 @@ impl DownloadSession {
             }, 
             _ => None
         }
+    }
+
+    pub fn get_redirect(&self) -> Option<(DeviceId /* target-id */, String /* referer */)> {
+        match &*self.0.state.read().unwrap() {
+            StateImpl::Redirect(redirect) => {
+                Some((redirect.redirect.clone(), redirect.redirect_referer.clone()))
+            },
+            _ => { None }
+        }
+
     }
 
     pub(super) fn push_piece_data(&self, piece: &PieceData) {
@@ -333,7 +300,7 @@ impl DownloadSession {
                         Ignore
                     }
                 }, 
-                Init(_) => {
+                Init(_) | _ => {
                     unreachable!()
                 }
             }
@@ -444,10 +411,20 @@ impl DownloadSession {
     }
 
     pub(super) fn on_resp_interest(&self, resp_interest: &RespInterest) -> BuckyResult<()> {
-        if resp_interest.err != BuckyErrorCode::Ok {
-            self.cancel_by_error(BuckyError::new(resp_interest.err, "remote resp interest error"));
-        } else {
-            unimplemented!()
+        match &resp_interest.err {
+            BuckyErrorCode::Ok => unimplemented!(),
+            BuckyErrorCode::Redirect | BuckyErrorCode::NotConnected => {
+                if resp_interest.redirect.is_some() && resp_interest.redirect_referer.is_some() {
+                    let redirect_node = resp_interest.redirect.as_ref().unwrap();
+                    let referer = resp_interest.redirect_referer.as_ref().unwrap();
+                    self.redirect_interest(redirect_node, referer);
+                } else {
+                    self.cancel_by_error(BuckyError::new(resp_interest.err, "need redirect, but has not new node"));
+                }
+            },
+            _ => {
+                self.cancel_by_error(BuckyError::new(resp_interest.err, "remote resp interest error"));
+            }
         }
         Ok(())
     }
@@ -467,11 +444,48 @@ impl DownloadSession {
             session_id: self.session_id().clone(), 
             chunk: self.chunk().clone(), 
             prefer_type: self.prefer_type().clone(), 
+            from: None,
             referer: self.referer().cloned()
         };
         info!("{} sent {:?}", self, interest);
         self.channel().interest(interest);
         Ok(())
+    }
+
+    pub fn redirect_interest(&self, redirect_node: &DeviceId, referer: &String) {
+        info!("{} redirect to {} refer {}", self, redirect_node, referer);
+
+        let mut waiters = StateWaiter::new();
+        {
+            let state = &mut *self.0.state.write().unwrap();
+            match state {
+                StateImpl::Init(_waiters) => {
+                    std::mem::swap(&mut waiters, _waiters);
+                    *state = StateImpl::Redirect(RedirectState {send_ctrl_time: 0, 
+                                                                redirect: redirect_node.clone(),
+                                                                redirect_referer: referer.clone()});
+                },
+                StateImpl::Interesting(interesting) => {
+                    std::mem::swap(&mut waiters, &mut interesting.waiters);
+                    *state = StateImpl::Redirect(RedirectState {send_ctrl_time: 0, 
+                                                                redirect: redirect_node.clone(),
+                                                                redirect_referer: referer.clone()});
+                },
+                StateImpl::Downloading(downloading) => {
+                    std::mem::swap(&mut waiters, &mut downloading.waiters);
+                    *state = StateImpl::Redirect(RedirectState {send_ctrl_time: 0, 
+                                                                redirect: redirect_node.clone(),
+                                                                redirect_referer: referer.clone()});
+                },
+	    	    StateImpl::Finished(_) => {
+                    *state = StateImpl::Redirect(RedirectState {send_ctrl_time: 0, 
+                                                                redirect: redirect_node.clone(),
+                                                                redirect_referer: referer.clone()});
+                },
+                _ => {}
+            }
+        }
+        waiters.wake();
     }
 
     pub fn cancel_by_error(&self, err: BuckyError) {
@@ -540,7 +554,8 @@ impl DownloadSession {
                     NextStep::CallProvider(downloading.session_type.provider().clone_as_provider())
                 },
                 StateImpl::Finished(_) => NextStep::None, 
-                StateImpl::Canceled(_) => NextStep::None
+                StateImpl::Canceled(_) => NextStep::None,
+                StateImpl::Redirect(_) => NextStep::None,
             }
         };
         

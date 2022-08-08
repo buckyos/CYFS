@@ -15,7 +15,7 @@ use super::super::super::{
     chunk::*, 
 };
 use super::super::{
-    protocol::*, 
+    protocol::v0::*, 
     channel::Channel
 };
 use super::provider::*; 

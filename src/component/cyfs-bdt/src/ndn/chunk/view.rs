@@ -13,7 +13,7 @@ use crate::{
 use super::super::{
     scheduler::*, 
     channel::*,
-    channel::protocol::PieceData,
+    channel::protocol::v0::*,
 };
 use super::{
     storage::ChunkReader, 
@@ -163,7 +163,7 @@ impl ChunkView {
                     downloader: None, 
                     raptor_encoder: None,
                     raptor_decoder: None, 
-                    chunk_cache: None
+                    chunk_cache: None,
                 }),
                 resource_quota: ResourceQuota::new(),
                 statistic_task_cb: 
@@ -206,6 +206,7 @@ impl ChunkView {
 
         let stack = Stack::from(&self.0.stack);
         let view = self.clone();
+
         if stack.ndn().chunk_manager().store().exists(self.chunk()).await {
             let mut state = view.0.state.write().unwrap();
             if state.state == ChunkState::Unknown {
@@ -217,6 +218,7 @@ impl ChunkView {
                 state.state = ChunkState::NotFound;
             }
         }
+
         Ok(())
     }
 
@@ -227,7 +229,7 @@ impl ChunkView {
     pub fn start_download(
         &self, 
         config: Arc<ChunkDownloadConfig>, 
-        owner: ResourceManager
+        _owner: ResourceManager
     ) -> BuckyResult<ChunkDownloader> {
         let (downloader, newly) = {
             let mut state = self.0.state.write().unwrap();
@@ -236,8 +238,10 @@ impl ChunkView {
                     let newly = if state.downloader.is_none() {
                         info!("{} will create downloader", self);
                         state.downloader = Some(ChunkDownloader::new(
-                            self.clone(), 
-                            self.0.stack.clone()));
+			    self.clone(),
+                            self.0.stack.clone())
+                        );
+                        state.state = ChunkState::Pending;
                         true
                     }  else {
                         false
@@ -259,11 +263,16 @@ impl ChunkView {
                         reader
                     ), false)
                 }, 
+                ChunkState::Pending => {
+                    return Err(BuckyError::new(BuckyErrorCode::Pending, 
+                                               format!("{} is pending, please wait ...", self.chunk())));
+                }
                 _ => unreachable!()
             }
         };
-        let _ = downloader.add_config(config, owner);
+
         if newly {
+            let _ = downloader.add_config(config);
             let downloader = downloader.clone();
             let view = self.clone();
             task::spawn(async move {
@@ -283,7 +292,7 @@ impl ChunkView {
                     },
                     TaskState::Canceled(_) => {
                         // do nothing
-                    }, 
+                    },
                     _ => unimplemented!()
                 } 
             });
@@ -311,28 +320,23 @@ impl ChunkView {
                     }
                     Ok(state.uploader.as_ref().unwrap().clone())
                 }, 
+                ChunkState::Pending => Err(BuckyError::new(BuckyErrorCode::Pending, "chunk pending.")),
                 _ => unreachable!()
             }
         }?;
-
-        let remote = to.remote().clone();
-
-        self.upload_scheduler_event(&remote).unwrap();
-        let _ = self.0.resource_quota.add_child(&remote, self.as_statistic());
 
         let session = UploadSession::new(
             self.chunk().clone(), 
             session_id, 
             piece_type, 
             to, 
-            self.0.resource_quota.clone(),
+	    self.0.resource_quota.clone(),
             uploader.resource().clone()
         );
         match uploader.add_session(session.clone()) {
             Ok(_) => Ok(session), 
             Err(err) => {
                 let _ = uploader.resource().remove_child(session.resource());
-                let _ = self.0.resource_quota.remove_child(&remote);
                 Err(err)
             }
         }
@@ -395,25 +399,6 @@ impl Scheduler for ChunkView {
     }
 }
 
-impl EventScheduler for ChunkView {
-    fn upload_scheduler_event(&self, requester: &DeviceId) -> BuckyResult<()> {
-        let stack = Stack::from(&self.0.stack);
-        let limit_config = &stack.config().ndn.limit;
-        let connections = self.0.resource_quota.count() as u16;
-        // 单源配额逻辑
-        if connections >= limit_config.max_connections_per_source {
-            return Err(BuckyError::new(BuckyErrorCode::OutofSessionLimit, "session too many"));
-        }
-
-        // 总体配额逻辑
-        return stack.ndn().upload_scheduler_event(requester);
-    }
-
-    fn download_scheduler_event(&self, requester: &DeviceId) -> BuckyResult<()> {
-        Stack::from(&self.0.stack).ndn().download_scheduler_event(requester)
-    }
-
-}
 
 impl StatisticTask for ChunkView {
     fn reset(&self) {

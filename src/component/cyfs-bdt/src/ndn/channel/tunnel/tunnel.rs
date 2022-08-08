@@ -4,7 +4,7 @@ use crate::{
     tunnel::{DynamicTunnel, TunnelState}
 };
 use super::super::{
-    protocol::*, 
+    protocol::v0::*, 
     channel::Channel
 };
 use super::{

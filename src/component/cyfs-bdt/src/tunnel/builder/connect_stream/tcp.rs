@@ -7,7 +7,7 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::*, 
     stream::{StreamContainer, StreamProviderSelector}, 
     tunnel::{self, Tunnel, TunnelContainer, ProxyType}, 

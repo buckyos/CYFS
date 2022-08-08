@@ -1612,6 +1612,7 @@ dependencies = [
  "rand 0.7.3",
  "ringbuf",
  "rusqlite",
+ "serde_json",
  "sha2 0.8.2",
  "socket2 0.4.4",
  "winapi 0.3.9",
@@ -2529,6 +2530,29 @@ dependencies = [
  "log 0.4.16",
  "rand 0.8.5",
  "sha2 0.8.2",
+]
+
+[[package]]
+name = "dsg-test"
+version = "0.5.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-chunk-cache",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-dsg-client",
+ "cyfs-lib",
+ "cyfs-ndc",
+ "cyfs-stack",
+ "cyfs-tracker-cache",
+ "cyfs-util",
+ "dsg-service",
+ "futures",
+ "log 0.4.16",
+ "rand 0.8.5",
 ]
 
 [[package]]

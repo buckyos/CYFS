@@ -9,7 +9,7 @@ use async_std::{
 };
 use cyfs_base::*;
 use crate::{  
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::udp::*
 };
 use super::service::{Service, WeakService};

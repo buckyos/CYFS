@@ -14,7 +14,7 @@ mod stream;
 mod datagram;
 mod dht;
 mod stack;
-mod ndn;
+pub mod ndn;
 mod utils;
 pub mod debug;
 

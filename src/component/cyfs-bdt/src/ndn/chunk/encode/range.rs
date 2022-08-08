@@ -13,7 +13,7 @@ use crate::{
     types::*, 
 };
 use super::super::super::{
-    channel::protocol::*, 
+    channel::protocol::v0::*, 
 };
 use super::super::{
     storage::ChunkReader

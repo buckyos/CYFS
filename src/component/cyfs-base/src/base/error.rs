@@ -94,6 +94,8 @@ pub enum BuckySystemErrorCode {
 
     OutofSessionLimit = 60,
 
+    Redirect = 66,
+
     MongoDBError = 99,
     SqliteError = 100,
     UrlError = 101,
@@ -204,6 +206,8 @@ pub enum BuckyErrorCode {
 
     OutofSessionLimit,
 
+    Redirect,
+
     MongoDBError,
     SqliteError,
     UrlError,
@@ -291,6 +295,7 @@ impl Into<BuckySystemErrorCode> for BuckyErrorCode {
             Self::Conflict => BuckySystemErrorCode::Conflict,
 
             Self::OutofSessionLimit => BuckySystemErrorCode::OutofSessionLimit,
+            Self::Redirect => BuckySystemErrorCode::Redirect,
 
             Self::MongoDBError => BuckySystemErrorCode::MongoDBError,
             Self::SqliteError => BuckySystemErrorCode::SqliteError,
@@ -379,6 +384,8 @@ impl Into<BuckyErrorCode> for BuckySystemErrorCode {
 
             Self::OutofSessionLimit => BuckyErrorCode::OutofSessionLimit,
 
+            Self::Redirect => BuckyErrorCode::Redirect,
+            
             Self::MongoDBError => BuckyErrorCode::MongoDBError,
             Self::SqliteError => BuckyErrorCode::SqliteError,
             Self::UrlError => BuckyErrorCode::UrlError,

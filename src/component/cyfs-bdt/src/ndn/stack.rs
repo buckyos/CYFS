@@ -7,10 +7,9 @@ use async_std::{
     task,
     future
 };
-use cyfs_base::{bucky_time_now, BuckyResult, DeviceId};
+use cyfs_base::*;
 use cyfs_util::{
     cache::*, 
-    acl::*
 };
 use crate::{
     types::*, 
@@ -21,7 +20,7 @@ use super::{
     scheduler::*, 
     channel::{self, ChannelManager}, 
     chunk::{ChunkManager, ChunkReader}, 
-    event::{EventHandler}, 
+    event::*, 
     root::RootTask,
     task::DirConfig
 };
@@ -42,7 +41,7 @@ struct StackImpl {
     resource: ResourceManager, 
     chunk_manager: ChunkManager, 
     channel_manager: ChannelManager, 
-    event_handler: EventHandler, 
+    event_handler: Box<dyn NdnEventHandler>, 
     root_task: RootTask,
 }
 
@@ -55,12 +54,14 @@ impl NdnStack {
         ndc: Option<Box<dyn NamedDataCache>>,
         tracker: Option<Box<dyn TrackerCache>>, 
         store: Option<Box<dyn ChunkReader>>, 
-        acl: Option<Box<dyn BdtDataAclProcessor>>
+        event_handler: Option<Box<dyn NdnEventHandler>>, 
     ) -> Self {
+       
         let mem_tracker = MemTracker::new();
         let tracker = tracker.unwrap_or(TrackerCache::clone(&mem_tracker));
         let ndc = ndc.unwrap_or(NamedDataCache::clone(&mem_tracker));
         let store = store.unwrap_or(Box::new(LocalChunkReader::new(ndc.as_ref(), tracker.as_ref())));
+        let event_handler = event_handler.unwrap_or(Box::new(DefaultNdnEventHandler::new()));
         
         let resource = ResourceManager::new(None);
         Self(Arc::new(StackImpl {
@@ -74,7 +75,7 @@ impl NdnStack {
                 tracker, 
                 store), 
             channel_manager: ChannelManager::new(stack.clone()), 
-            event_handler: EventHandler::new(stack.clone(), acl), 
+            event_handler, 
             root_task: RootTask::new(resource.clone()),
         }))
     }
@@ -114,12 +115,12 @@ impl NdnStack {
         &self.0.root_task
     }
 
-    pub(crate) fn channel_manager(&self) -> &ChannelManager {
+    pub fn channel_manager(&self) -> &ChannelManager {
         &self.0.channel_manager
     }
 
-    pub(super) fn event_handler(&self) -> &EventHandler {
-        &self.0.event_handler
+    pub(super) fn event_handler(&self) -> &dyn NdnEventHandler {
+        self.0.event_handler.as_ref()
     }
 
 
@@ -142,14 +143,3 @@ impl Scheduler for NdnStack {
     }
 }
 
-impl EventScheduler for NdnStack {
-    fn upload_scheduler_event(&self, _requester: &DeviceId) -> BuckyResult<()> {
-        Ok(())
-    }
-
-    fn download_scheduler_event(&self, _requester: &DeviceId) -> BuckyResult<()> {
-        // unimplemented!("scheduler event for download");
-        Ok(())
-    }
-
-}

@@ -7,7 +7,7 @@ use std::time::{Instant, Duration};
 use crate::interface::{udp::{Interface, PackageBoxEncodeContext}, tcp};
 use std::pin::Pin;
 use async_std::task;
-use crate::protocol::{Exchange, SnCall, SnCallResp, PackageBox, PackageCmdCode, DynamicPackage};
+use crate::protocol::{*, v0::*};
 use crate::sn::client::{Config};
 use std::task::Waker;
 use futures::task::{Context, Poll};
@@ -183,6 +183,8 @@ impl CallSession {
                      is_always_call: bool,
                      seq: TempSeq) -> SnCall {
         SnCall {
+            protocol_version: 0, 
+            stack_version: 0, 
             seq: seq,
             to_peer_id: remote_peerid.clone(),
             from_peer_id: local_peerid.clone(),

@@ -179,6 +179,7 @@ impl TaskSchedule for ChunkTask {
             TaskStateImpl::Downloading(downloader) => downloader.schedule_state(), 
             TaskStateImpl::Canceled(err) => TaskState::Canceled(*err), 
             TaskStateImpl::Writting => TaskState::Running(0), 
+            // TaskStateImpl::Redirect(redirect_node, referer) => TaskState::Redirect(redirect_node.clone(), referer.clone()),
             TaskStateImpl::Finished => TaskState::Finished
         }
     }

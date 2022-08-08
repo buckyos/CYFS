@@ -1,7 +1,7 @@
 use super::super::acl::NDNAclInputProcessor;
 use super::super::handler::*;
 use super::cache::*;
-use super::echo::NDNBdtEchoProcessor;
+use super::echo::BdtNdnEchoProcessor;
 use crate::acl::*;
 use crate::ndn::*;
 use crate::router_handler::RouterHandlersManager;
@@ -10,15 +10,15 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 #[derive(Clone)]
-pub(crate) struct NDNBdtDataAclProcessor {
+pub struct BdtNdnDataAclProcessor {
     processor: NDNInputProcessorRef,
     cache: BdtDataAclCache,
 }
 
-impl NDNBdtDataAclProcessor {
+impl BdtNdnDataAclProcessor {
     pub fn new(acl: AclManagerRef, router_handlers: RouterHandlersManager) -> Self {
         // 最终的反射应答处理器
-        let echo = NDNBdtEchoProcessor::new();
+        let echo = BdtNdnEchoProcessor::new();
 
         // 添加pre-router的事件处理器
         let handler_processor =
@@ -60,11 +60,8 @@ impl NDNBdtDataAclProcessor {
 
         Ok(())
     }
-}
 
-#[async_trait::async_trait]
-impl BdtDataAclProcessor for NDNBdtDataAclProcessor {
-    async fn get_data(&self, req: BdtGetDataInputRequest) -> BuckyResult<()> {
+    pub async fn get_data(&self, req: BdtGetDataInputRequest) -> BuckyResult<()> {
         info!("will process bdt get_data acl request: {}", req);
 
         let key = BdtDataAclCacheKey {
@@ -123,7 +120,7 @@ impl BdtDataAclProcessor for NDNBdtDataAclProcessor {
         ret
     }
 
-    async fn put_data(&self, req: BdtPutDataInputRequest) -> BuckyResult<()> {
+    pub async fn put_data(&self, req: BdtPutDataInputRequest) -> BuckyResult<()> {
         info!("will process bdt put_data acl request: {}", req);
 
         let key = BdtDataAclCacheKey {
@@ -177,7 +174,7 @@ impl BdtDataAclProcessor for NDNBdtDataAclProcessor {
         ret
     }
 
-    async fn delete_data(&self, req: BdtDeleteDataInputRequest) -> BuckyResult<()> {
+    pub async fn delete_data(&self, req: BdtDeleteDataInputRequest) -> BuckyResult<()> {
         info!("will process bdt delete_data acl request: {}", req);
 
         let key = BdtDataAclCacheKey {

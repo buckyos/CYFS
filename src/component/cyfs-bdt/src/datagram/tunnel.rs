@@ -1,5 +1,5 @@
 use crate::{
-    protocol::{self, DynamicPackage, OnPackage, OnPackageResult},
+    protocol::{self, *},
     stack::{Stack, WeakStack},
     tunnel::{BuildTunnelParams, TunnelContainer, TunnelState},
     types::*,
@@ -168,7 +168,7 @@ impl DatagramTunnel {
         vport: u16,
     ) -> Result<(), std::io::Error> {
         assert_eq!(options.pieces.is_none(), true);
-        let datagram = protocol::Datagram {
+        let datagram = protocol::v0::Datagram {
             to_vport: vport,
             from_vport: self.0.vport,
             dest_zone: None,
@@ -196,7 +196,7 @@ impl DatagramTunnel {
             create_time: options.create_time,
             author_id: options.author_id.as_ref().map(|id| id.clone()),
             author: None,
-            inner_type: protocol::DatagramType::Data,
+            inner_type: protocol::v0::DatagramType::Data,
             data: TailedOwnedData::from(buf),
         };
         trace!(
@@ -288,10 +288,10 @@ impl DatagramTunnel {
 }
 
 // FIXME: 整个 OnPackage体系的 package参数改成转移不是引用，这里就可以不用拷贝data
-impl OnPackage<protocol::Datagram, &TunnelContainer> for DatagramTunnel {
+impl OnPackage<protocol::v0::Datagram, &TunnelContainer> for DatagramTunnel {
     fn on_package(
         &self,
-        pkg: &protocol::Datagram,
+        pkg: &protocol::v0::Datagram,
         from: &TunnelContainer,
     ) -> Result<OnPackageResult, BuckyError> {
         log::trace!("{} recv {} from {}", self.as_ref(), pkg, from);

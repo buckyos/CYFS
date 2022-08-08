@@ -2,6 +2,7 @@ use std::{
     convert::TryFrom, 
     ops::Range,
 };
+use serde_json::{Map, Value};
 use cyfs_base::*;
 use crate::{
     types::*, 
@@ -10,7 +11,7 @@ use crate::{
     tunnel::{udp::Tunnel as UdpTunnel, DynamicTunnel}, 
     datagram::DatagramOptions
 };
-use super::{
+use super::super::{
     types::*, 
 };
 
@@ -174,16 +175,16 @@ impl FlagsCounter {
 
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Interest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,
     pub prefer_type: PieceSessionType, 
     pub referer: Option<String>,
+    pub from: Option<DeviceId>, 
     // pub link_url: Option<String>,
     // flow_id:Option<u32>,
     // priority: Option<u8>,
-    // from : Option<DeviceId>,//如果信道可以说明来源，就去掉，但转发必须保留(RN1->RN2发生来自LN的包)
     // from_device_obj : Option<DeviceObject>,
     // token : Option<String>,//必要的验证token
     // sign : Option<Vec<u8>>,
@@ -209,7 +210,8 @@ impl RawEncodeWithContext<DatagramOptions> for Interest {
         let (mut context, buf) = FlagsEncodeContext::new(CommandCode::Interest as u8, enc_buf)?;
         let buf = context.encode(buf, &self.chunk)?;
         let buf = context.encode(buf, &self.prefer_type)?;
-        let _ = context.option_encode(buf, &self.referer, flags.next())?;
+        let buf = context.option_encode(buf, &self.referer, flags.next())?;
+        let _ = context.option_encode(buf, &self.from, flags.next())?;
         context.finish(enc_buf)
     }
 }
@@ -226,17 +228,43 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for Interest {
         let (chunk, buf) = context.decode(buf)?;
         let (prefer_type, buf) = context.decode(buf)?;
         let (referer, buf) = context.option_decode(buf, flags.next())?;
+        let (from, buf) = context.option_decode(buf, flags.next())?;
         Ok((
             Self {
                 session_id, 
                 chunk, 
                 prefer_type, 
-                referer
+                referer,
+                from,
             },
             buf,
         ))
     }
 }
+
+impl JsonCodec<Interest> for Interest {
+    fn encode_json(&self) -> Map<String, Value> {
+        let mut obj = Map::new();
+        JsonCodecHelper::encode_number_field(&mut obj, "session_id", self.session_id.value());
+        JsonCodecHelper::encode_string_field(&mut obj, "chunk", &self.chunk);
+        JsonCodecHelper::encode_field(&mut obj, "prefer_type", &self.prefer_type);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "referer", self.referer.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "from", self.from.as_ref());
+        obj
+    }
+
+    fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
+        let session_id: u32 = JsonCodecHelper::decode_int_field(obj, "session_id")?;
+        Ok(Self {
+            session_id: TempSeq::from(session_id), 
+            chunk: JsonCodecHelper::decode_string_field(obj, "chunk")?, 
+            prefer_type: JsonCodecHelper::decode_field(obj, "prefer_type")?, 
+            referer: JsonCodecHelper::decode_option_string_field(obj, "referer")?, 
+            from: JsonCodecHelper::decode_option_string_field(obj, "from")?, 
+        })
+    }
+}
+
 
 #[test]
 fn encode_protocol_ineterest() {
@@ -244,6 +272,7 @@ fn encode_protocol_ineterest() {
         session_id: TempSeq::from(123), 
         chunk: ChunkId::default(),
         prefer_type: PieceSessionType::Stream(0), 
+        from: None,
         referer: Some("referer".to_owned()),
     };
 
@@ -260,11 +289,14 @@ fn encode_protocol_ineterest() {
 
 
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RespInterest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,  
-    pub err: BuckyErrorCode
+    pub err: BuckyErrorCode,
+    pub redirect: Option<DeviceId>,
+    pub redirect_referer: Option<String>,
+    pub to: Option<DeviceId>,
 }
 
 
@@ -282,11 +314,16 @@ impl RawEncodeWithContext<DatagramOptions> for RespInterest {
         options: &mut DatagramOptions,
         _purpose: &Option<RawEncodePurpose>
     ) -> Result<&'a mut [u8], BuckyError> {
+        let mut flags = FlagsCounter::new();
+
         options.sequence = Some(self.session_id);
         // let mut flags = FlagsCounter::new();
         let (mut context, buf) = FlagsEncodeContext::new(CommandCode::RespInterest as u8, enc_buf)?;
         let buf = context.encode(buf, &self.chunk)?;
-        let _ = context.encode(buf, &(self.err.into_u16()));
+        let buf = context.encode(buf, &(self.err.into_u16()))?;
+        let buf = context.option_encode(buf, &(self.redirect), flags.next())?;
+        let buf = context.option_encode(buf, &(self.redirect_referer), flags.next())?;
+        let _ = context.option_encode(buf, &(self.to), flags.next())?;
         context.finish(enc_buf)
     }
 }
@@ -298,19 +335,54 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for RespInterest {
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let session_id = options.sequence.ok_or_else(|| 
             BuckyError::new(BuckyErrorCode::InvalidData, "RespInterest package should has sequence"))?;
-        // let mut flags = FlagsCounter::new();
+        let mut flags = FlagsCounter::new();
+
         let (mut context, buf) = FlagsDecodeContext::new(buf)?;
         let (chunk, buf) = context.decode(buf)?;
         let (err, buf) = context.decode::<u16>(buf)?;
         let err = BuckyErrorCode::from(err);
+        let (id, buf) = context.option_decode(buf, flags.next())?;
+        let (referer, buf) = context.option_decode(buf, flags.next())?;
+        let (to, buf) = context.option_decode(buf, flags.next())?;
+
         Ok((
             Self {
                 session_id, 
                 chunk, 
-                err
+                err,
+                redirect: id,
+                redirect_referer: referer,
+                to
             },
             buf,
         ))
+    }
+}
+
+impl JsonCodec<RespInterest> for RespInterest {
+    fn encode_json(&self) -> Map<String, Value> {
+        let mut obj = Map::new();
+        JsonCodecHelper::encode_number_field(&mut obj, "session_id", self.session_id.value());
+        JsonCodecHelper::encode_string_field(&mut obj, "chunk", &self.chunk);
+        let err: u32 = self.err.into();
+        JsonCodecHelper::encode_number_field(&mut obj, "err", err);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "redirect", self.redirect.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "redirect_referer", self.redirect_referer.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "to", self.to.as_ref());
+        obj
+    }
+
+    fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
+        let session_id: u32 = JsonCodecHelper::decode_int_field(obj, "session_id")?;
+        let err: u32 = JsonCodecHelper::decode_int_field(obj, "err")?;
+        Ok(Self {
+            session_id: TempSeq::from(session_id), 
+            chunk: JsonCodecHelper::decode_string_field(obj, "chunk")?, 
+            err: BuckyErrorCode::from(err), 
+            redirect: JsonCodecHelper::decode_option_string_field(obj, "redirect")?, 
+            redirect_referer: JsonCodecHelper::decode_option_string_field(obj, "redirect_referer")?, 
+            to: JsonCodecHelper::decode_option_string_field(obj, "to")?, 
+        })
     }
 }
 
@@ -412,6 +484,10 @@ pub struct PieceData {
 }
 
 impl Package for PieceData {
+    fn version(&self) -> u8 {
+        0
+    }
+    
     fn cmd_code() -> PackageCmdCode {
         PackageCmdCode::PieceData
     }
@@ -577,6 +653,10 @@ impl PieceControl {
 }
 
 impl Package for PieceControl {
+    fn version(&self) -> u8 {
+        0
+    }
+
     fn cmd_code() -> PackageCmdCode {
         PackageCmdCode::PieceControl
     }
@@ -641,6 +721,10 @@ impl Default for ChannelEstimate {
 }
 
 impl Package for ChannelEstimate {
+    fn version(&self) -> u8 {
+        0
+    }
+    
     fn cmd_code() -> PackageCmdCode {
         PackageCmdCode::ChannelEstimate
     }

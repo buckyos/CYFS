@@ -4,7 +4,7 @@ mod scheduler;
 mod statistic;
 mod limit;
 
-pub use scheduler::{Scheduler, EventScheduler};
+pub use scheduler::{Scheduler};
 pub use resource::{ResourceManager, ResourceQuota};
 pub use task::*;
 pub use statistic::*;

@@ -7,7 +7,7 @@ use async_std::sync::Arc;
 use rand::{thread_rng, Rng};
 use cyfs_base::*;
 use crate::{
-    protocol::{Datagram, OnPackage, OnPackageResult}, 
+    protocol::{*, v0::*}, 
     tunnel::TunnelContainer, 
     stack::{WeakStack, Stack}, 
 };

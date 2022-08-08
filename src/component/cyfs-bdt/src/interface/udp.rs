@@ -500,23 +500,34 @@ enum DecryptBuffer<'de> {
     Inplace(*mut u8, usize),
 }
 
+pub trait PackageBoxVersionGetter {
+    fn version_of(&self, remote: &DeviceId) -> u8; 
+}
+
 pub struct PackageBoxDecodeContext<'de> {
     decrypt_buf: DecryptBuffer<'de>,
-    keystore: &'de keystore::Keystore,
+    keystore: &'de keystore::Keystore, 
 }
 
 impl<'de> PackageBoxDecodeContext<'de> {
-    pub fn new_copy(decrypt_buf: &'de mut [u8], keystore: &'de keystore::Keystore) -> Self {
+    pub fn new_copy(
+        decrypt_buf: &'de mut [u8], 
+        keystore: &'de keystore::Keystore, 
+    ) -> Self {
         Self {
             decrypt_buf: DecryptBuffer::Copy(decrypt_buf),
-            keystore,
+            keystore, 
         }
     }
 
-    pub fn new_inplace(ptr: *mut u8, len: usize, keystore: &'de keystore::Keystore) -> Self {
+    pub fn new_inplace(
+        ptr: *mut u8, 
+        len: usize, 
+        keystore: &'de keystore::Keystore, 
+    ) -> Self {
         Self {
             decrypt_buf: DecryptBuffer::Inplace(ptr, len),
-            keystore,
+            keystore, 
         }
     }
 
@@ -546,6 +557,10 @@ impl<'de> PackageBoxDecodeContext<'de> {
         self.keystore
             .get_key_by_mix_hash(mix_hash, true, true)
             .map(|k| (k.peerid.clone(), k.aes_key.clone()))
+    }
+
+    pub fn version_of(&self, _remote: &DeviceId) -> u8 {
+        0
     }
 }
 
@@ -651,7 +666,7 @@ impl<'de>
             Option<merge_context::OtherDecode>,
         ),
     ) -> Result<(Self, &'de [u8]), BuckyError> {
-        let (context, mut merged_values) = c;
+        let (context, merged_values) = c;
         let (mix_hash, hash_buf) = KeyMixHash::raw_decode(buf)?;
         let ((remote, aes_key, _mix_hash), buf) = {
             match context.key_from_mixhash(&mix_hash) {
@@ -684,6 +699,12 @@ impl<'de>
                 }
             }
         }?;
+
+        let mut version = if let Some(remote) = &remote {
+            context.version_of(remote)
+        } else {
+            0
+        };
         // 把原数据拷贝到context 给的buffer上去
         let decrypt_buf = unsafe { context.decrypt_buf(buf) };
         // 用key 解密数据
@@ -695,33 +716,51 @@ impl<'de>
 
         //解码所有package
         if decrypt_len != 0 {
-            match merged_values.as_mut() {
-                Some(merged) => {
+            match merged_values {
+                Some(mut merged) => {
                     let (package, buf) =
-                        DynamicPackage::raw_decode_with_context(decrypt_buf, merged)?;
+                        DynamicPackage::raw_decode_with_context(decrypt_buf, (&mut merged, &mut version))?;
                     packages.push(package);
                     let mut buf_ptr = buf;
                     while buf_ptr.len() > 0 {
-                        let (package, buf) =
-                            DynamicPackage::raw_decode_with_context(buf_ptr, merged)?;
-                        buf_ptr = buf;
-                        packages.push(package);
+                        match DynamicPackage::raw_decode_with_context(buf_ptr, (&mut merged, &mut version)) {
+                            Ok((package, buf)) => {
+                                buf_ptr = buf;
+                                packages.push(package);
+                            }, 
+                            Err(err) => {
+                                if err.code() == BuckyErrorCode::NotSupport {
+                                    break;
+                                } else {
+                                    Err(err)?;
+                                }
+                            }
+                        };
                     }
                 }
                 None => {
                     let mut context = merge_context::FirstDecode::new();
                     let (package, buf) = DynamicPackage::raw_decode_with_context(
                         decrypt_buf[0..decrypt_len].as_ref(),
-                        &mut context,
+                        (&mut context, &mut version)
                     )?;
                     packages.push(package);
                     let mut context: merge_context::OtherDecode = context.into();
                     let mut buf_ptr = buf;
                     while buf_ptr.len() > 0 {
-                        let (package, buf) =
-                            DynamicPackage::raw_decode_with_context(buf_ptr, &mut context)?;
-                        buf_ptr = buf;
-                        packages.push(package);
+                        match DynamicPackage::raw_decode_with_context(buf_ptr, (&mut context, &mut version)) {
+                            Ok((package, buf)) => {
+                                buf_ptr = buf;
+                                packages.push(package);
+                            }, 
+                            Err(err) => {
+                                if err.code() == BuckyErrorCode::NotSupport {
+                                    break;
+                                } else {
+                                    Err(err)?;
+                                }
+                            }
+                        };
                     }
                 }
             }

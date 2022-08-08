@@ -119,6 +119,18 @@ impl DownloadSessions {
             }
         }
     }
+
+    fn get_redirect(&self) -> Option<(DeviceId, String)> {
+        match &self.0.session_type {
+            SessionType::Single(session) => {
+                session.get_redirect()
+            },
+            SessionType::Double(session) => {
+                session.get_redirect()
+            }
+        }
+    }
+
 }
 
 struct InitState {
@@ -195,8 +207,8 @@ impl ChunkDownloader {
 
     pub fn add_config(
         &self, 
-        config: Arc<ChunkDownloadConfig>, 
-        _owner: ResourceManager) -> BuckyResult<()> {
+        config: Arc<ChunkDownloadConfig>
+    ) -> BuckyResult<()> {
         // TODO：如果多个不同task传入不同的config，需要合并config中的源;
         // 并且合并resource manager
         self.0.configs.write().unwrap().push_back(config.clone());
@@ -213,7 +225,7 @@ impl ChunkDownloader {
                 self.0.stack.clone(), 
                 self.chunk(), 
                 stack.ndn().chunk_manager().gen_session_id(), 
-                config, 
+                config.clone(), 
                 view);
             let state = &mut *self.0.state.write().unwrap();
             match state {
@@ -236,38 +248,69 @@ impl ChunkDownloader {
 
         if let Some(sessions) = sessions { 
             let downloader = self.clone();
+            let stack = stack.clone();
+            let config = config.clone();
             task::spawn(async move {
-                let mut waiters = StateWaiter::new();
-                match sessions.start().await {
-                    TaskState::Finished => {
-                        let cache = sessions.take_chunk_content().unwrap();
-                        let state = &mut *downloader.0.state.write().unwrap();
-                        match state {
-                            StateImpl::Running(running) => {
-                                std::mem::swap(&mut waiters, &mut running.waiters);
-                                *state = StateImpl::Finished(Arc::new(Box::new(CacheReader {
-                                    cache
-                                })));
-                            },
-                            StateImpl::Finished(_) => {
-                                
-                            },
-                            _ => unreachable!()
-                        }
-                    }, 
-                    TaskState::Canceled(err) => {
-                        let state = &mut *downloader.0.state.write().unwrap();
-                        match state {
-                            StateImpl::Running(running) => {
-                                std::mem::swap(&mut waiters, &mut running.waiters);
-                                *state = StateImpl::Canceled(err);
-                            },
-                            _ => unreachable!()
-                        }
-                    }, 
-                    _ => unreachable!()
+                let waiters = {
+                    match sessions.start().await {
+                        TaskState::Finished => {
+                            let mut waiters = StateWaiter::new();
+                            let cache = sessions.take_chunk_content().unwrap();
+                            let state = &mut *downloader.0.state.write().unwrap();
+                            match state {
+                                StateImpl::Running(running) => {
+                                    std::mem::swap(&mut waiters, &mut running.waiters);
+                                    *state = StateImpl::Finished(Arc::new(Box::new(CacheReader {
+                                        cache
+                                    })));
+                                },
+                                StateImpl::Finished(_) => {
+                                    
+                                },
+                                _ => unreachable!()
+                            }
+                            Some(waiters)
+                        }, 
+                        TaskState::Canceled(err) => {
+                            match err {
+                                BuckyErrorCode::Redirect | BuckyErrorCode::NotConnected => {
+                                    if let Some((target_id, referer)) = sessions.get_redirect() {
+                                        let mut config = ChunkDownloadConfig::force_stream(target_id.clone());
+                                        config.referer = Some(referer);
+    
+                                        let _ = downloader.add_config(Arc::new(config));
+                                        None
+                                    } else {
+                                        unreachable!()
+                                    }
+                                },
+                                BuckyErrorCode::Pending => {
+                                    let _ = async_std::future::timeout(stack.config().ndn.channel.wait_redirect_timeout, 
+                                                                       async_std::future::pending::<()>());
+                                    // restart session
+                                    let _ = downloader.add_config(config);
+                                    None
+                                },
+                                _ => {
+                                    let mut waiters = StateWaiter::new();
+                                    let state = &mut *downloader.0.state.write().unwrap();
+                                    match state {
+                                        StateImpl::Running(running) => {
+                                            std::mem::swap(&mut waiters, &mut running.waiters);
+                                            *state = StateImpl::Canceled(err);
+                                        },
+                                        _ => unreachable!()
+                                    }
+                                    Some(waiters)
+                                }
+                            }
+                        }, 
+                        _ => unreachable!()
+                    }
+                };
+                if let Some(waiters) = waiters {
+                    waiters.wake();
                 }
-                waiters.wake();
             });
         }
         Ok(())

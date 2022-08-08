@@ -8,7 +8,7 @@ use cyfs_base::*;
 use cyfs_debug::Mutex;
 use crate::{
     types::*, 
-    protocol::*, 
+    protocol::{*, v0::*}, 
     cc::*
 };
 use super::{

@@ -6,7 +6,7 @@ use std::convert::TryFrom;
 use std::collections::hash_map::Entry;
 use std::time::{SystemTime, Instant, Duration, UNIX_EPOCH};
 use async_std::task;
-use crate::protocol::{SnPing, SnPingResp, Exchange, SnCalled, SnCalledResp, PackageBox};
+use crate::protocol::{*, v0::*};
 use crate::{TempSeqGenerator, TempSeq};
 use core::sync::atomic;
 use crate::interface::{NetListener, UpdateOuterResult, udp::{Interface, PackageBoxEncodeContext}};
@@ -703,6 +703,8 @@ impl ClientInner {
             let stack = Stack::from(&self.env.stack);
             let last_update_seq = self.last_update_seq.swap(seq.value(), atomic::Ordering::AcqRel);
             let mut ping_pkg = SnPing {
+                protocol_version: 0, 
+                stack_version: 0, 
                 seq,
                 from_peer_id: if self.aes_key.is_some() { Some(stack.local_device_id().clone()) } else { None }, // 加密通信，密钥就能代表deviceid
                 sn_peer_id: self.sn_peerid.clone(),

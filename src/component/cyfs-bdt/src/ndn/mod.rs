@@ -10,3 +10,4 @@ pub use chunk::{ChunkListDesc, ChunkDownloadConfig, ChunkReader, ChunkWriter, Ch
 pub use scheduler::*;
 pub use stack::{NdnStack, Config};
 pub use task::*;
+pub use event::*;

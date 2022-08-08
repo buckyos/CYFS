@@ -305,6 +305,7 @@ impl DirTask {
                 Ok(())
             }
 
+        
             async fn finish(&self) -> BuckyResult<()> {
                 self.0.dir.on_sub_task_finish(self.0.id);
 
@@ -380,6 +381,8 @@ impl DirTask {
                 self.0.dir.on_sub_task_finish(self.0.id);
                 Ok(())
             }
+
+
         }
 
         Box::new(Writer(Arc::new(WriterImpl {

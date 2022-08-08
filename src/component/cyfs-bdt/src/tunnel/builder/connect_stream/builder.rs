@@ -10,7 +10,7 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::*, 
     sn::client::PingClientCalledEvent, 
     stack::{WeakStack, Stack}, 
@@ -149,9 +149,10 @@ impl ConnectStreamBuilder {
         let mut first_box = PackageBox::encrypt_box(stream.as_ref().tunnel().remote().clone(), key_stub.aes_key.clone());
             
         let syn_tunnel = SynTunnel {
+            protocol_version: stream.as_ref().tunnel().protocol_version(), 
+            stack_version: stream.as_ref().tunnel().stack_version(), 
             from_device_id: local.desc().device_id(), 
             to_device_id: stream.as_ref().tunnel().remote().clone(), 
-            from_container_id: IncreaseId::default(),
             from_device_desc: local.clone(),
             sequence: syn_session_data.syn_info.as_ref().unwrap().sequence.clone(), 
             send_time: syn_session_data.send_time.clone()

@@ -200,6 +200,11 @@ impl RouterHandlerHttpProcessor {
             RouterHandlerCategory::Acl => {
                 let handler = Self::create_handler::<AclHandlerRequest, AclHandlerResponse>(req)?;
                 self.manager.handlers(&chain).acl().add_handler(handler)
+            }, 
+
+            RouterHandlerCategory::Interest => {
+                let handler = Self::create_handler::<InterestHandlerRequest, InterestHandlerResponse>(req)?;
+                self.manager.handlers(&chain).interest().add_handler(handler)
             }
         }
     }
@@ -266,6 +271,12 @@ impl RouterHandlerHttpProcessor {
                 .manager
                 .handlers(&req.chain)
                 .acl()
+                .remove_handler(&req.id, req.dec_id),
+
+            RouterHandlerCategory::Interest => self
+                .manager
+                .handlers(&req.chain)
+                .interest()
                 .remove_handler(&req.id, req.dec_id),
         };
 

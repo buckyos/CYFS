@@ -68,6 +68,32 @@ impl ExpReservedTokenTranslatorHelper {
         Some(ret)
     }
 
+    fn trans_bdt_interest_referer(
+        token: &str,
+        referer: &BdtDataRefererInfo
+    ) -> Option<ExpTokenEvalValue> {
+        let ret = match token {
+            "target" => ExpTokenEvalValue::from_opt_string(&referer.target),
+            "object_id" => ExpTokenEvalValue::from_string(&referer.object_id),
+            "inner_path" => ExpTokenEvalValue::from_opt_glob(&referer.inner_path),
+            "dec_id" => ExpTokenEvalValue::from_string(&referer.object_id),
+            "req_path" => ExpTokenEvalValue::from_opt_glob(&referer.inner_path),
+            "referer_object" => {
+                if referer.referer_object.len() > 0 {
+                    ExpTokenEvalValue::from_glob_list(&referer.referer_object)
+                } else {
+                    ExpTokenEvalValue::None
+                }
+            }, 
+            "flags" => ExpTokenEvalValue::U32(referer.flags),
+            _ => {
+                return None;
+            }
+        };
+
+        Some(ret)
+    }
+
     fn trans_ndn_input_request_common(
         token: &str,
         common: &NDNInputRequestCommon,
@@ -714,6 +740,47 @@ impl ExpReservedTokenTranslator for AclHandlerResponse {
     }
 }
 
+
+// interest
+impl ExpReservedTokenTranslator for InterestHandlerRequest {
+    fn trans(&self, token: &str) -> ExpTokenEvalValue {
+        match token {
+            "chunk" => ExpTokenEvalValue::from_string(&self.chunk), 
+            "from" => ExpTokenEvalValue::from_opt_string(&self.from), 
+            "from_channel" => ExpTokenEvalValue::from_string(&self.from_channel), 
+            _ => {
+                if let Some(referer) = &self.referer {
+                    if let Some(v) = ExpReservedTokenTranslatorHelper::trans_bdt_interest_referer(token, referer) {
+                        return v;
+                    }
+                }
+                unreachable!("unknown router interest request reserved token: {}", token);
+            }
+        }
+    }
+}
+
+impl ExpReservedTokenTranslator for InterestHandlerResponse {
+    fn trans(&self, token: &str) -> ExpTokenEvalValue {
+        match token {
+            "type" => ExpTokenEvalValue::String(self.type_str().to_owned()), 
+            "transmit_to" => ExpTokenEvalValue::from_opt_string(&self.transmit_to().clone()), 
+            "err" => {
+                if let Some(err) = self.resp_interest().map(|r| r.err.as_u16()) {
+                    ExpTokenEvalValue::U32(err as u32)
+                } else {
+                    ExpTokenEvalValue::None
+                }
+            }, 
+            "redirect" => ExpTokenEvalValue::from_opt_string(&self.resp_interest().and_then(|r| r.redirect.clone())), 
+            "redirect_referer_target" => ExpTokenEvalValue::from_opt_string(&self.resp_interest().and_then(|r| r.redirect_referer_target.clone())), 
+            _ => {
+                unreachable!("unknown router interest response reserved token: {}", token);
+            }, 
+        }
+    }
+}
+
 impl<REQ, RESP> ExpReservedTokenTranslator for RouterHandlerRequest<REQ, RESP>
 where
     REQ: Send + Sync + 'static + ExpReservedTokenTranslator + JsonCodec<REQ> + std::fmt::Display,
@@ -759,6 +826,7 @@ pub struct RouterHandlerReservedTokenList {
     pub verify_object: ExpReservedTokenList,
 
     pub acl: ExpReservedTokenList,
+    pub interest: ExpReservedTokenList, 
 }
 
 impl RouterHandlerReservedTokenList {
@@ -778,7 +846,18 @@ impl RouterHandlerReservedTokenList {
             verify_object: Self::gen_verify_object(),
 
             acl: Self::gen_acl(),
+            interest: Self::gen_interest(), 
         }
+    }
+
+    fn add_bdt_interest_referer_tokens(token_list: &mut ExpReservedTokenList) {
+        token_list.add_string("target");
+        token_list.add_string("object_id");
+        token_list.add_glob("inner_path");
+        token_list.add_string("dec_id");
+        token_list.add_glob("req_path");
+        token_list.add_glob("referer_object");
+        token_list.add_u32("flags");
     }
 
     fn add_non_input_request_common_tokens(token_list: &mut ExpReservedTokenList) {
@@ -1202,6 +1281,40 @@ impl RouterHandlerReservedTokenList {
         list
     }
 
+    // interest
+    fn gen_interest_request() -> ExpReservedTokenList {
+        let mut token_list = ExpReservedTokenList::new();
+        
+        token_list.add_string("chunk");
+        token_list.add_string("from");
+        Self::add_bdt_interest_referer_tokens(&mut token_list);
+        token_list.add_string("from_channel");
+
+        token_list
+    }
+
+    fn gen_interest_response() -> ExpReservedTokenList {
+        let mut token_list = ExpReservedTokenList::new();
+
+        token_list.add_string("type");
+        token_list.add_string("transmit_to");
+        token_list.add_u32("err");
+        token_list.add_glob("redirect");
+        token_list.add_string("redirect_referer_target");
+        
+        token_list.translate_resp();
+
+        token_list
+    }
+
+    fn gen_interest() -> ExpReservedTokenList {
+        let mut list = Self::gen_interest_request();
+        list.append(Self::gen_interest_response());
+
+        list
+    }
+
+
     pub fn select<REQ, RESP>(&self) -> &ExpReservedTokenList
     where
         REQ: Send + Sync + 'static + JsonCodec<REQ> + std::fmt::Display,
@@ -1223,7 +1336,8 @@ impl RouterHandlerReservedTokenList {
             RouterHandlerCategory::SignObject => &self.sign_object,
             RouterHandlerCategory::VerifyObject => &self.verify_object,
 
-            RouterHandlerCategory::Acl => &self.acl,
+            RouterHandlerCategory::Acl => &self.acl, 
+            RouterHandlerCategory::Interest => &self.interest, 
         }
     }
 }

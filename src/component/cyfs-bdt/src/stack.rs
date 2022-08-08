@@ -10,7 +10,7 @@ use crate::{
         tcp::{self, OnTcpInterface},
         udp::{self, OnUdpPackageBox, OnUdpRawData, UdpPackageBox},
     },
-    protocol::*,
+    protocol::{*, v0::*},
     sn::{
         self,
         client::{PingClientCalledEvent, PingClientStateEvent},
@@ -18,11 +18,10 @@ use crate::{
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
     pn::client::ProxyManager,
-    ndn::{self, NdnStack, ChunkReader}, 
+    ndn::{self, NdnStack, ChunkReader, NdnEventHandler}, 
     debug::{self, DebugStub}
 };
 use cyfs_util::{
-    acl::*, 
     cache::*
 };
 use async_std::{
@@ -143,6 +142,7 @@ impl StackConfig {
                     precoding_timeout: Duration::from_secs(900),
                     resend_interval: Duration::from_millis(500), 
                     resend_timeout: Duration::from_secs(5), 
+                    wait_redirect_timeout: Duration::from_millis(500),
                     msl: Duration::from_secs(60), 
                     udp: ndn::channel::tunnel::udp::Config {
                         no_resp_loss_count: 3, 
@@ -196,8 +196,8 @@ pub struct StackOpenParams {
     pub ndc: Option<Box<dyn NamedDataCache>>,
     pub tracker: Option<Box<dyn TrackerCache>>, 
     pub chunk_store: Option<Box<dyn ChunkReader>>, 
-    
-    pub ndn_acl: Option<Box<dyn BdtDataAclProcessor>>
+
+    pub ndn_event: Option<Box<dyn NdnEventHandler>>,
 }
 
 impl StackOpenParams {
@@ -208,12 +208,12 @@ impl StackOpenParams {
             known_sn: None, 
             known_device: None, 
             active_pn: None, 
-            passive_pn: None, 
+            passive_pn: None,
             outer_cache: None,
             ndc: None, 
             tracker: None, 
             chunk_store: None, 
-            ndn_acl: None 
+            ndn_event: None,
         }
     }
 }
@@ -316,7 +316,6 @@ impl Stack {
             proxy_manager.add_active_proxy(&pn);
         }
 
-
         for pn in passive_pn {
             proxy_manager.add_passive_proxy(&pn);
         }
@@ -342,16 +341,13 @@ impl Stack {
         std::mem::swap(&mut ndc, &mut params.ndc);
         let mut tracker = None;
         std::mem::swap(&mut tracker, &mut params.tracker);
-        let mut ndn_acl = None;
-        std::mem::swap(&mut ndn_acl, &mut params.ndn_acl);
+        let mut ndn_event = None;
+        std::mem::swap(&mut ndn_event, &mut params.ndn_event);
 
         let mut chunk_store = None;
         std::mem::swap(&mut chunk_store, &mut params.chunk_store);
 
-        let mut ndn_acl = None;
-        std::mem::swap(&mut ndn_acl, &mut params.ndn_acl);
-
-        let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_acl);
+        let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
         let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
         stack_impl.ndn = Some(ndn);
 
@@ -490,6 +486,7 @@ impl Stack {
 
         let mut passive_pn_list = self.proxy_manager().passive_proxies();
         std::mem::swap(local.mut_connect_info().mut_passive_pn_list(), &mut passive_pn_list);
+
          
         local
             .body_mut()

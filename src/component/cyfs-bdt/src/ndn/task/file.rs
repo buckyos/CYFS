@@ -1,5 +1,5 @@
 use std::{
-    sync::RwLock,
+    sync::{RwLock, Mutex},
     collections::BTreeMap, 
     ops::Range
 };
@@ -90,7 +90,7 @@ struct TaskImpl {
     file: File,
     chunk_list: ChunkListDesc, 
     ranges: Vec<(usize, Option<Range<u64>>)>, 
-    config: Arc<ChunkDownloadConfig>, 
+    config: Mutex<Arc<ChunkDownloadConfig>>, 
     resource: ResourceManager, 
     state: RwLock<StateImpl>,  
     writers: Vec<Box<dyn ChunkWriterExt>>,
@@ -124,7 +124,7 @@ impl FileTask {
             file: file.clone(), 
             ranges: (0..chunk_list.chunks().len()).into_iter().map(|i| (i, None)).collect(),  
             chunk_list, 
-            config, 
+            config : Mutex::new(Arc::new(config.as_ref().clone())),
             resource: ResourceManager::new(Some(owner)), 
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
@@ -171,7 +171,7 @@ impl FileTask {
             file: file.clone(), 
             chunk_list, 
             ranges, 
-            config, 
+            config: Mutex::new(Arc::new(config.as_ref().clone())),
             resource: ResourceManager::new(Some(owner)), 
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
@@ -195,8 +195,8 @@ impl FileTask {
         &self.0.ranges
     }
 
-    pub fn config(&self) -> &Arc<ChunkDownloadConfig> {
-        &self.0.config
+    pub fn config(&self) -> Arc<ChunkDownloadConfig> {
+        self.0.config.lock().unwrap().clone()
     }
 
     pub fn as_statistic(&self) -> Arc<dyn StatisticTask> {
@@ -220,6 +220,7 @@ impl ChunkWriterExt for FileTask {
         }
         Ok(())
     }
+
 
     async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>, range: Option<Range<u64>>) -> BuckyResult<()> {
         let (cur_task, next_task) = {

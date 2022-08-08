@@ -16,7 +16,7 @@ use super::super::{
 };
 use super::{
     types::*, 
-    protocol::*, 
+    protocol::v0::*, 
     provider::*, 
     channel::Channel, 
 };
@@ -29,7 +29,7 @@ enum StateImpl {
     Init, 
     Uploading(UploadingState),
     Finished, 
-    Canceled(BuckyErrorCode)
+    Canceled(BuckyErrorCode),
 }
 
 impl StateImpl {
@@ -38,7 +38,7 @@ impl StateImpl {
             StateImpl::Init => TaskState::Pending, 
             StateImpl::Uploading(_) => TaskState::Running(0), 
             StateImpl::Finished => TaskState::Finished, 
-            StateImpl::Canceled(err) => TaskState::Canceled(*err)
+            StateImpl::Canceled(err) => TaskState::Canceled(*err),
         }
     }
 }
@@ -232,7 +232,7 @@ impl UploadSession {
     }
 
     // 把第一个包加到重发队列里去
-    pub(super) fn on_interest(&self, interest: &Interest) -> BuckyResult<()> {
+    pub fn on_interest(&self, interest: &Interest) -> BuckyResult<()> {
         enum NextStep {
             CallProvider(Box<dyn UploadSessionProvider>), 
             RespInterest(BuckyErrorCode), 
@@ -261,6 +261,9 @@ impl UploadSession {
                     session_id: self.session_id().clone(), 
                     chunk: self.chunk().clone(), 
                     err, 
+                    redirect: None,
+                    redirect_referer: None,
+                    to: None,
                 };
                 self.channel().resp_interest(resp_interest);
                 Ok(())
@@ -313,7 +316,10 @@ impl UploadSession {
                 let resp_interest = RespInterest {
                     session_id: self.session_id().clone(), 
                     chunk: self.chunk().clone(), 
-                    err, 
+                    err: err,
+                    redirect: None,
+                    redirect_referer: None,
+                    to: None,
                 };
                 self.channel().resp_interest(resp_interest);
                 Ok(())
@@ -351,7 +357,7 @@ impl UploadSession {
                 } else {
                     Some(TaskState::Canceled(*err))
                 }
-            }
+            },
         }
     }
 }
