@@ -2,6 +2,7 @@ mod named_object_storage;
 mod object_cache_manager;
 mod common;
 mod blob;
+mod access;
 
 #[cfg(feature = "mongo")]
 mod mongodb;
