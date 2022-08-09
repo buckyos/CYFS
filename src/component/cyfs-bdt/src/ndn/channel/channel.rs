@@ -45,7 +45,6 @@ pub struct Config {
 struct ChannelActiveState {
     guard: TunnelGuard, 
     tunnel: DynamicChannelTunnel,
-    statistic_task: DynamicStatisticTask,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -238,7 +237,6 @@ struct ChannelImpl {
     downloaders: RwLock<BTreeMap<TempSeq, DownloadSession>>, 
     uploaders: Uploaders, 
     state: RwLock<StateImpl>, 
-    statistic_task: DynamicStatisticTask,
 }
 
 #[derive(Clone)]
@@ -266,7 +264,6 @@ impl Channel {
             downloaders: RwLock::new(BTreeMap::new()), 
             uploaders: Uploaders::new(), 
             state: RwLock::new(StateImpl::Unknown), 
-            statistic_task: DynamicStatisticTask::default(),
         }))
     }
 
@@ -313,7 +310,7 @@ impl Channel {
     pub fn download(&self, session: DownloadSession) -> BuckyResult<()> {
         self.insert_download(session.clone())?;
 
-        let r = session.start();
+        let _ = session.start();
         task::spawn(async move {
             let state = session.wait_finish().await;
             // 这里等待2*msl
@@ -337,7 +334,6 @@ impl Channel {
             let _ = channel.0.downloaders.write().unwrap().remove(session.session_id());
             debug!("{} remove session {}", session.channel(), session);
         });
-        assert!(r.is_ok());
         Ok(())
     } 
 
@@ -415,10 +411,6 @@ impl Channel {
 
     pub fn stack(&self) -> Stack {
         Stack::from(&self.0.stack)
-    }
-
-    pub fn statistic_task(&self) -> DynamicStatisticTask {
-        return self.0.statistic_task.clone();
     }
 
     pub fn state(&self) -> ChannelState {
@@ -523,14 +515,8 @@ impl OnUdpRawData<Option<()>> for Channel {
 impl Channel {
     fn on_piece_data(&self, piece: PieceData) -> BuckyResult<()> {
         trace!("{} got piece data est_seq:{:?} chunk:{} desc:{:?} data:{}", self, piece.est_seq, piece.chunk, piece.desc, piece.data.len());
-
-        let _ = self.0.statistic_task.on_stat(piece.data.len() as u64);
-
         {
             if let Some(session) = self.0.downloaders.read().unwrap().get(&piece.session_id).clone() {
-                if let Some(view) = Stack::from(&self.0.stack).ndn().chunk_manager().view_of(session.chunk()) {
-                    let _ = view.on_piece_stat(&piece);
-                }
                 session.push_piece_data(&piece);
                 return Ok(());
             }
@@ -546,6 +532,7 @@ impl Channel {
             Err(err) => {
                 // 通过新建一个canceled的session来回复piece control
                 let session = DownloadSession::canceled(
+                    self.0.stack.clone(), 
                     piece.chunk.clone(), 
                     piece.session_id.clone(), 
                     self.clone(),
@@ -689,7 +676,6 @@ impl Channel {
                                 *state = StateImpl::Active(ChannelActiveState {
                                     guard, 
                                     tunnel: tunnel.clone_as_tunnel(),
-                                    statistic_task: self.0.statistic_task.clone(),
                                 });
                             }
                             

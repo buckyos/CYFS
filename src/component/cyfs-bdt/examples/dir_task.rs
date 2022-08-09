@@ -16,10 +16,10 @@ async fn watch_task_finish(
 ) -> BuckyResult<()> {
     loop {
         match task.control_state() {
-            TaskControlState::Finished => {
-                debug!("dir task finished, exiting.");
-                break Ok(());
-            }
+            TaskControlState::Finished(speed) => {
+                debug!("dir task finished, exiting. {}", speed);
+                break Ok(())
+            },
             TaskControlState::Downloading(speed, progress) => {
                 debug!("watch_task_finish: {}-{}", speed, progress);
 

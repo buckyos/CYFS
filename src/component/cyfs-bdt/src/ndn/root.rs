@@ -115,6 +115,7 @@ impl Scheduler for RootDownloadTask {
                         _ => false 
                     } {
                         let _ = self.resource().remove_child(task.resource());
+                        task.resource().aggregate();
                         info!("{} remove task {} for finished/canceled", self, task);
                     } else {
                         remain.push_back(task);
@@ -125,8 +126,7 @@ impl Scheduler for RootDownloadTask {
             }
             *tasks = remain;
         }
-        
-        // TODO：自底向上收集所有task 的资源
+        self.resource().aggregate();
     }
 
     fn schedule_resource(&self) {

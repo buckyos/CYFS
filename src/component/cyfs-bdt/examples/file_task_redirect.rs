@@ -24,7 +24,7 @@ mod utils;
 async fn watch_task_finish(task: Box<dyn DownloadTaskControl>) -> BuckyResult<()> {
     loop {
         match task.control_state() {
-            TaskControlState::Finished => {
+            TaskControlState::Finished(_) => {
                 // log::info!("file task finish with avg speed {}", speed);
                 break Ok(());
             },

@@ -27,7 +27,6 @@ enum TaskStateImpl {
 struct StateImpl {
     control_state: TaskControlState, 
     schedule_state: TaskStateImpl,
-    chunk_statistic_task: DynamicStatisticTask,
 }
 
 struct ChunkTaskImpl {
@@ -38,7 +37,6 @@ struct ChunkTaskImpl {
     resource: ResourceManager, 
     state: RwLock<StateImpl>,  
     writers: Vec<Box <dyn ChunkWriterExt>>,
-    statistic_task_cb: Option<StatisticTaskPtr>,
 }
 
 #[derive(Clone)]
@@ -57,8 +55,8 @@ impl ChunkTask {
         chunk: ChunkId, 
         config: Arc<ChunkDownloadConfig>, 
         writers: Vec<Box <dyn ChunkWriter>>, 
-        owner: ResourceManager,
-        statistic_task_cb: Option<StatisticTaskPtr>) -> Self {
+        owner: ResourceManager
+    ) -> Self {
         Self(Arc::new(ChunkTaskImpl {
             stack, 
             chunk, 
@@ -68,10 +66,8 @@ impl ChunkTask {
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
                 control_state: TaskControlState::Downloading(0, 0),
-                chunk_statistic_task: DynamicStatisticTask::default(),
             }), 
             writers: writers.into_iter().map(|w| ChunkWriterExtWrapper::new(w).clone_as_writer()).collect(),
-            statistic_task_cb: statistic_task_cb
         }))
     } 
 
@@ -82,7 +78,7 @@ impl ChunkTask {
         config: Arc<ChunkDownloadConfig>, 
         writers: Vec<Box <dyn ChunkWriterExt>>, 
         owner: ResourceManager,
-        statistic_task_cb: Option<StatisticTaskPtr>) -> Self {
+    ) -> Self {
         Self(Arc::new(ChunkTaskImpl {
             stack, 
             chunk, 
@@ -92,10 +88,8 @@ impl ChunkTask {
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
                 control_state: TaskControlState::Downloading(0, 0),
-                chunk_statistic_task: DynamicStatisticTask::default(),
             }), 
             writers,
-            statistic_task_cb: statistic_task_cb
         }))
     } 
 
@@ -133,7 +127,7 @@ impl ChunkTask {
                             let mut state = self.0.state.write().unwrap();
                             info!("{} finished", self);
                             state.schedule_state = TaskStateImpl::Finished;
-                            state.control_state = TaskControlState::Finished;
+                            state.control_state = TaskControlState::Finished(self.resource().avg_usage().downstream_bandwidth());
                             break; 
                         }, 
                         Err(_err) => {
@@ -141,8 +135,8 @@ impl ChunkTask {
                             let downloader = stack.ndn().chunk_manager().start_download(
                                 self.chunk().clone(), 
                                 self.config().clone(), 
-                                self.resource().clone(),
-                                self.as_statistic()).await.unwrap();
+                                self.resource().clone()
+                            ).await.unwrap();
                             info!("{} reset downloader for read chunk failed", self);
                             let mut state = self.0.state.write().unwrap();
                             state.schedule_state = TaskStateImpl::Downloading(downloader.clone());
@@ -166,10 +160,6 @@ impl ChunkTask {
         }
     }
 
-    pub fn as_statistic(&self) -> Arc<dyn StatisticTask> {
-        Arc::from(self.clone())
-    }
-
 }
 
 impl TaskSchedule for ChunkTask {
@@ -188,10 +178,6 @@ impl TaskSchedule for ChunkTask {
         &self.0.resource
     }
 
-    fn statistic_task(&self) -> Option<DynamicStatisticTask> {
-        Some(self.0.state.read().unwrap().chunk_statistic_task.clone())
-    }
-
     //保证不会重复调用
     fn start(&self) -> TaskState {
         info!("{} started", self);
@@ -201,8 +187,8 @@ impl TaskSchedule for ChunkTask {
             let downloader = stack.ndn().chunk_manager().start_download(
                 task.chunk().clone(), 
                 task.config().clone(), 
-                task.resource().clone(),
-                task.as_statistic()).await.unwrap();
+                task.resource().clone()
+            ).await.unwrap();
         
             {
                 let mut state = task.0.state.write().unwrap();
@@ -222,7 +208,13 @@ impl TaskSchedule for ChunkTask {
 
 impl DownloadTaskControl for ChunkTask {
     fn control_state(&self) -> TaskControlState {
-        self.0.state.read().unwrap().control_state.clone()
+        let state = self.0.state.read().unwrap().control_state.clone();
+        match state {
+            TaskControlState::Downloading(..) => {
+                TaskControlState::Downloading(self.resource().latest_usage().downstream_bandwidth(), 0)
+            }, 
+            _ => state
+        }
     }
 
     fn pause(&self) -> BuckyResult<TaskControlState> {
@@ -242,29 +234,4 @@ impl DownloadTask for ChunkTask {
     fn clone_as_download_task(&self) -> Box<dyn DownloadTask> {
         Box::new(self.clone())
     }
-}
-
-impl StatisticTask for ChunkTask {
-    fn reset(&self) {
-        self.0.state.write().unwrap().chunk_statistic_task.reset();
-    }
-
-    fn stat(&self) -> BuckyResult<Box<dyn PerfDataAbstract>> {
-        if let Some(cb) = &self.0.statistic_task_cb {
-            cb.stat()
-        } else {
-            Ok(PerfData::default().clone_as_perfdata())
-        }
-    }
-
-    fn on_stat(&self, size: u64) -> BuckyResult<Box<dyn PerfDataAbstract>> {
-        let _ = self.0.state.write().unwrap().chunk_statistic_task.on_stat(size);
-
-        if let Some(cb) = &self.0.statistic_task_cb {
-            cb.on_stat(size)
-        } else {
-            Ok(PerfData::default().clone_as_perfdata())
-        }
-    }
-
 }

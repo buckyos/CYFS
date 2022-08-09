@@ -13,7 +13,6 @@ use crate::{
 use super::super::{
     scheduler::*, 
     channel::*,
-    channel::protocol::v0::*,
 };
 use super::{
     storage::ChunkReader, 
@@ -42,8 +41,6 @@ struct ViewImpl {
     chunk: ChunkId,  
     resource: ResourceManager, 
     state: RwLock<StateImpl>, 
-    resource_quota: ResourceQuota,
-    statistic_task_cb: ChunkStatisticTask,
 }
 
 struct ViewCacheReader {
@@ -134,25 +131,12 @@ impl ChunkView {
         }
     }
 
-    pub fn on_piece_stat(&self, data: &PieceData) -> BuckyResult<()> {
-        self.0.statistic_task_cb.on_data_stat(data)
-    }
-
     pub fn new(
         stack: WeakStack, 
         chunk: ChunkId,  
         init_state: &ChunkState,
-        task_cb: Option<Arc<dyn StatisticTask>>) -> Self {
-            let range_size = PieceData::max_payload();
-            let max_index = 
-                {
-                    if chunk.len() % range_size == 0 {
-                        chunk.len() / range_size
-                    } else {
-                        (chunk.len() / range_size) + 1
-                    }
-                } + 1;
-
+    ) -> Self {
+            
             Self(Arc::new(ViewImpl {
                 stack, 
                 chunk, 
@@ -165,18 +149,7 @@ impl ChunkView {
                     raptor_decoder: None, 
                     chunk_cache: None,
                 }),
-                resource_quota: ResourceQuota::new(),
-                statistic_task_cb: 
-                    {
-                        if let Some(cb) = task_cb {
-                            ChunkStatisticTask::new(max_index as u32, 
-                                                    Some(DynamicStatisticTask::from(cb)))
-                        } else {
-                            ChunkStatisticTask::new(max_index as u32, None)
-                        }
-                    }
-                }
-            ))
+            }))
     }
 
     pub fn ptr_eq(&self, other: &Self) -> bool {
@@ -189,14 +162,6 @@ impl ChunkView {
 
     pub fn resource(&self) -> &ResourceManager {
         &self.0.resource
-    }
-
-    pub fn resource_quoto(&self) -> &ResourceQuota {
-        &self.0.resource_quota
-    }
-
-    pub fn as_statistic(&self) -> StatisticTaskPtr {
-        Arc::from(self.clone())
     }
 
     pub async fn load(&self) -> BuckyResult<()> {
@@ -229,7 +194,7 @@ impl ChunkView {
     pub fn start_download(
         &self, 
         config: Arc<ChunkDownloadConfig>, 
-        _owner: ResourceManager
+        owner: ResourceManager
     ) -> BuckyResult<ChunkDownloader> {
         let (downloader, newly) = {
             let mut state = self.0.state.write().unwrap();
@@ -238,8 +203,8 @@ impl ChunkView {
                     let newly = if state.downloader.is_none() {
                         info!("{} will create downloader", self);
                         state.downloader = Some(ChunkDownloader::new(
-			    self.clone(),
-                            self.0.stack.clone())
+                            self.0.stack.clone(), 
+                            self.chunk().clone())
                         );
                         state.state = ChunkState::Pending;
                         true
@@ -259,7 +224,7 @@ impl ChunkView {
                     };
                     (ChunkDownloader::finished(
                         self.0.stack.clone(), 
-                        self, 
+                        self.chunk().clone(), 
                         reader
                     ), false)
                 }, 
@@ -272,7 +237,7 @@ impl ChunkView {
         };
 
         if newly {
-            let _ = downloader.add_config(config);
+            let _ = downloader.add_config(config, owner);
             let downloader = downloader.clone();
             let view = self.clone();
             task::spawn(async move {
@@ -330,7 +295,6 @@ impl ChunkView {
             session_id, 
             piece_type, 
             to, 
-	    self.0.resource_quota.clone(),
             uploader.resource().clone()
         );
         match uploader.add_session(session.clone()) {
@@ -399,18 +363,3 @@ impl Scheduler for ChunkView {
     }
 }
 
-
-impl StatisticTask for ChunkView {
-    fn reset(&self) {
-        self.0.statistic_task_cb.reset()
-    }
-
-    fn stat(&self) -> BuckyResult<Box<dyn PerfDataAbstract>> {
-        self.0.statistic_task_cb.stat()
-    }
-
-    fn on_stat(&self, size: u64) -> BuckyResult<Box<dyn PerfDataAbstract>> {
-        self.0.statistic_task_cb.on_stat(size)
-    }
-
-}

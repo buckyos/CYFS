@@ -21,8 +21,7 @@ use super::super::{
 };
 use super::{
     //encode::ChunkDecoder, 
-    storage::{ChunkReader}, 
-    view::ChunkView, 
+    storage::{ChunkReader},
 };
 pub use config::ChunkDownloadConfig;
 
@@ -55,7 +54,8 @@ enum SessionType {
 }
 
 struct SessionsImpl {
-    session_type: SessionType
+    session_type: SessionType, 
+    resource: ResourceManager
 }
 
 #[derive(Clone)]
@@ -67,31 +67,44 @@ impl DownloadSessions {
         chunk: &ChunkId, 
         session_id: TempSeq, 
         config: Arc<ChunkDownloadConfig>,
-        view: ChunkView) -> Self {
+        resource: ResourceManager
+    ) -> Self {
         if config.force_stream 
             || config.second_source.is_none() {
-            let stack = Stack::from(&stack);
-            let channel = stack.ndn().channel_manager().create_channel(&config.prefer_source);
+            let strong_stack = Stack::from(&stack);
+            let channel = strong_stack.ndn().channel_manager().create_channel(&config.prefer_source);
 
             Self(Arc::new(SessionsImpl {
                 session_type: SessionType::Single(
                     DownloadSession::new(
+                        stack.clone(), 
                         chunk.clone(), 
                         session_id, 
                         channel, 
                         PieceSessionType::Stream(0), 
-                        view,
-                        config.referer.clone()))
+                        config.referer.clone(), 
+                        resource.clone())), 
+                resource
                 }))
         } else if config.second_source.is_some() {
-            let double_session = DoubleSession::new(stack, &view, session_id, &config);
+            let double_session = DoubleSession::new(
+                stack, 
+                session_id, 
+                chunk.clone(), 
+                &config, 
+                resource.clone());
 
             Self(Arc::new(SessionsImpl {
-                session_type: SessionType::Double(double_session)
+                session_type: SessionType::Double(double_session), 
+                resource
             }))
         } else {
             unimplemented!()
         }
+    }
+
+    fn resource(&self) -> &ResourceManager {
+        &self.0.resource
     }
 
     async fn start(&self) -> TaskState {
@@ -134,12 +147,10 @@ impl DownloadSessions {
 }
 
 struct InitState {
-    view: ChunkView, 
     waiters: StateWaiter, 
 }
 
 struct RunningState {
-    view: ChunkView, 
     sessions: DownloadSessions, 
     waiters: StateWaiter, 
 }
@@ -177,13 +188,13 @@ pub struct ChunkDownloader(Arc<ChunkDowloaderImpl>);
 // 不同于Uploader，Downloader可以被多个任务复用；
 impl ChunkDownloader {
     pub fn new(
-        view: ChunkView, 
-        stack: WeakStack) -> Self {
+        stack: WeakStack,
+        chunk: ChunkId,  
+    ) -> Self {
         Self(Arc::new(ChunkDowloaderImpl {
             stack, 
-            chunk: view.chunk().clone(), 
+            chunk, 
             state: RwLock::new(StateImpl::Init(InitState {
-                view, 
                 waiters: StateWaiter::new()})), 
             configs: RwLock::new(LinkedList::new()), 
             resource: ResourceManager::new(None)
@@ -195,10 +206,10 @@ impl ChunkDownloader {
     }
 
     // 直接返回finished
-    pub fn finished(stack: WeakStack, view: &ChunkView, content: Arc<Box<dyn ChunkReader>>) -> Self {
+    pub fn finished(stack: WeakStack, chunk: ChunkId, content: Arc<Box<dyn ChunkReader>>) -> Self {
         Self(Arc::new(ChunkDowloaderImpl {
             stack, 
-            chunk: view.chunk().clone(), 
+            chunk, 
             state: RwLock::new(StateImpl::Finished(content)), 
             configs: RwLock::new(LinkedList::new()), 
             resource: ResourceManager::new(None)
@@ -207,31 +218,27 @@ impl ChunkDownloader {
 
     pub fn add_config(
         &self, 
-        config: Arc<ChunkDownloadConfig>
+        config: Arc<ChunkDownloadConfig>, 
+        owner: ResourceManager
     ) -> BuckyResult<()> {
         // TODO：如果多个不同task传入不同的config，需要合并config中的源;
         // 并且合并resource manager
+        let _ = owner.add_child(self.resource()).unwrap();
         self.0.configs.write().unwrap().push_back(config.clone());
         let stack = Stack::from(&self.0.stack);
-        let view = {
-            let state = &*self.0.state.read().unwrap();
-            match state {
-                StateImpl::Init(init) => Some(init.view.clone()),
-                _ => None 
-            }
-        };
-        let sessions = view.and_then(|view| {
+        let sessions = {
             let sessions = DownloadSessions::new(
                 self.0.stack.clone(), 
                 self.chunk(), 
                 stack.ndn().chunk_manager().gen_session_id(), 
                 config.clone(), 
-                view);
+                self.resource().clone());
+
             let state = &mut *self.0.state.write().unwrap();
             match state {
                 StateImpl::Init(init) => {
+                    
                     let mut running = RunningState {
-                        view: init.view.clone(), 
                         sessions: sessions.clone(), 
                         waiters: StateWaiter::new()
                     };
@@ -244,12 +251,13 @@ impl ChunkDownloader {
                     None
                 }
             }
-        });
+        };
 
         if let Some(sessions) = sessions { 
             let downloader = self.clone();
             let stack = stack.clone();
             let config = config.clone();
+            let owner = owner.clone();
             task::spawn(async move {
                 let waiters = {
                     match sessions.start().await {
@@ -278,7 +286,7 @@ impl ChunkDownloader {
                                         let mut config = ChunkDownloadConfig::force_stream(target_id.clone());
                                         config.referer = Some(referer);
     
-                                        let _ = downloader.add_config(Arc::new(config));
+                                        let _ = downloader.add_config(Arc::new(config), owner);
                                         None
                                     } else {
                                         unreachable!()
@@ -288,7 +296,7 @@ impl ChunkDownloader {
                                     let _ = async_std::future::timeout(stack.config().ndn.channel.wait_redirect_timeout, 
                                                                        async_std::future::pending::<()>());
                                     // restart session
-                                    let _ = downloader.add_config(config);
+                                    let _ = downloader.add_config(config, owner);
                                     None
                                 },
                                 _ => {
@@ -352,5 +360,9 @@ impl ChunkDownloader {
 
     pub fn schedule_state(&self) -> TaskState {
         self.0.state.read().unwrap().to_task_state()
+    }
+
+    fn resource(&self) -> &ResourceManager {
+        &self.0.resource
     }
 }

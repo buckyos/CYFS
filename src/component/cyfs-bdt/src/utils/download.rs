@@ -69,7 +69,6 @@ pub async fn download_chunk(
         Arc::new(config), 
         writers, 
         stack.ndn().root_task().download().resource().clone(),
-        None
     );
     let _ = stack.ndn().root_task().download().add_task(task.clone_as_download_task())?;
     Ok(Box::new(task))
@@ -91,7 +90,7 @@ pub async fn download_chunk_list(
         Arc::new(config), 
         writers, 
         stack.ndn().root_task().download().resource().clone(),
-        None);
+    );
     let _ = stack.ndn().root_task().download().add_task(task.clone_as_download_task())?;
     Ok(Box::new(task))
 }
@@ -126,7 +125,7 @@ pub async fn download_file(
         Arc::new(config), 
         writers, 
         stack.ndn().root_task().download().resource().clone(),
-        None);
+    );
     let _ = stack.ndn().root_task().download().add_task(task.clone_as_download_task())?;
     Ok(Box::new(task))
 }
@@ -148,7 +147,7 @@ pub async fn download_file_with_ranges(
         Arc::new(config), 
         writers, 
         stack.ndn().root_task().download().resource().clone(),
-        None);
+    );
     let _ = stack.ndn().root_task().download().add_task(task.clone_as_download_task())?;
     Ok(Box::new(task))
 }
@@ -325,7 +324,7 @@ pub fn download_dir_to_path(
         Arc::new(config), 
         vec![], 
         stack.ndn().root_task().download().resource().clone(),
-        None);
+    );
     let _ = stack.ndn().root_task().download().add_task(task.clone_as_download_task())?;
     Ok((
         Box::new(task.clone()), 

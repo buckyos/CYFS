@@ -48,7 +48,6 @@ struct SessionImpl {
     piece_type: PieceSessionType, 
     channel: Channel, 
     resource: ResourceManager, 
-    resource_quota: ResourceQuota,
     state: RwLock<StateImpl>, 
     last_active: AtomicU64, 
     pending_from: AtomicU64
@@ -71,7 +70,6 @@ impl UploadSession {
         session_id: TempSeq, 
         piece_type: PieceSessionType, 
         channel: Channel, 
-        quota: ResourceQuota,
         owner: ResourceManager) -> Self {
         Self(Arc::new(SessionImpl {
             chunk, 
@@ -79,7 +77,6 @@ impl UploadSession {
             piece_type, 
             channel, 
             resource: ResourceManager::new(Some(owner)), 
-            resource_quota: quota,
             state: RwLock::new(StateImpl::Init), 
             last_active: AtomicU64::new(0), 
             pending_from: AtomicU64::new(0)
@@ -99,7 +96,6 @@ impl UploadSession {
             piece_type, 
             channel, 
             resource: ResourceManager::new(None), 
-            resource_quota: ResourceQuota::new(),
             state: RwLock::new(StateImpl::Canceled(err)), 
             last_active: AtomicU64::new(0), 
             pending_from: AtomicU64::new(0)
@@ -325,7 +321,6 @@ impl UploadSession {
                 Ok(())
             }, 
             NextStep::None => {
-                let _ = self.0.resource_quota.remove_child(self.channel().remote());
                 Ok(())
             }
         }

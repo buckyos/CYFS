@@ -29,7 +29,6 @@ pub struct ChunkManager {
     ndc: Box<dyn NamedDataCache>, 
     tracker: Box<dyn TrackerCache>, 
     store: Box<dyn ChunkReader>, 
-    resource: ResourceManager, 
     gen_session_id: TempSeqGenerator, 
     views: RwLock<BTreeMap<ChunkId, ChunkView>>, 
 }
@@ -75,14 +74,12 @@ impl ChunkReader for EmptyChunkWrapper {
 impl ChunkManager {
     pub(crate) fn new(
         weak_stack: WeakStack, 
-        owner: ResourceManager, 
         ndc: Box<dyn NamedDataCache>, 
         tracker: Box<dyn TrackerCache>, 
         store: Box<dyn ChunkReader>
     ) -> Self {
         Self { 
             stack: weak_stack, 
-            resource: ResourceManager::new(Some(owner)), 
             gen_session_id: TempSeqGenerator::new(), 
             ndc, 
             tracker, 
@@ -173,7 +170,7 @@ impl ChunkManager {
         self.views.read().unwrap().get(chunk).cloned()
     }
 
-    async fn create_view(&self, chunk: ChunkId, statistic_task: Option<Arc<dyn StatisticTask>>, init_state: ChunkState) -> BuckyResult<ChunkView> {
+    async fn create_view(&self, chunk: ChunkId, init_state: ChunkState) -> BuckyResult<ChunkView> {
         let view = self.views.read().unwrap().get(&chunk).cloned();
         let view = match view {
             Some(view) => view, 
@@ -182,13 +179,11 @@ impl ChunkManager {
                 let view = ChunkView::new(
                     self.stack.clone(), 
                     chunk.clone(), 
-                    &init_state,
-                    statistic_task);
+                    &init_state);
                 let mut views = self.views.write().unwrap();
                 match views.get(&chunk) {
                     Some(view) => view.clone(), 
                     None => {
-                        let _ = self.resource().add_child(view.resource());
                         views.insert(chunk.clone(), view.clone());
                         view
                     }
@@ -203,10 +198,10 @@ impl ChunkManager {
         &self, 
         chunk: ChunkId, 
         config: Arc<ChunkDownloadConfig>, 
-        owner: ResourceManager,
-        statistic_task: Arc<dyn StatisticTask>) -> BuckyResult<ChunkDownloader> {
+        owner: ResourceManager
+    ) -> BuckyResult<ChunkDownloader> {
         info!("{} try start download config: {:?}", self, &*config);
-        let view = self.create_view(chunk, Some(statistic_task), ChunkState::Unknown).await?;
+        let view = self.create_view(chunk, ChunkState::Unknown).await?;
         view.start_download(config, owner)
     }
 
@@ -219,7 +214,7 @@ impl ChunkManager {
         owner: ResourceManager
     ) -> BuckyResult<UploadSession> {
         info!("{} try start upload type: {:?} to: {}", self, piece_type, to.remote());
-        let view = self.create_view(chunk, None, ChunkState::Unknown).await?;
+        let view = self.create_view(chunk, ChunkState::Unknown).await?;
         view.start_upload(session_id, piece_type, to, owner)
             .map_err(|err| {
                 error!("{} failed start upload for {}", self, err);
@@ -227,9 +222,6 @@ impl ChunkManager {
             })
     }
 
-    pub(super) fn resource(&self) -> &ResourceManager {
-        &self.resource
-    }
 
     pub(super) fn gen_session_id(&self) -> TempSeq {
         self.gen_session_id.generate()

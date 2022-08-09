@@ -11,9 +11,6 @@ use super::super::super::{
     scheduler::*, 
     channel::*, 
 };
-use super::super::{
-    view::ChunkView, 
-};
 use super::{
     config::ChunkDownloadConfig
 };
@@ -22,11 +19,11 @@ struct DoubleSessionImpl {
     download_session: RwLock<Option<DownloadSession>>, 
     src_ref: DeviceId,
     src_owner: DeviceId,
-    view: ChunkView,
     chunk_id: ChunkId,
     stack: WeakStack,
     session_id: TempSeq,
-    referer: Option<String>,
+    referer: Option<String>, 
+    resource: ResourceManager
 }
 
 #[derive(Clone)]
@@ -35,20 +32,27 @@ pub struct DoubleSession(Arc<DoubleSessionImpl>);
 impl DoubleSession {
     pub fn new(
         stack: WeakStack, 
-        view: &ChunkView,  
         session_id: TempSeq, 
-        config: &ChunkDownloadConfig) -> Self {
+        chunk: ChunkId,  
+        config: &ChunkDownloadConfig, 
+        owner: ResourceManager
+    ) -> Self {
         Self(Arc::new(DoubleSessionImpl{
                 download_session: RwLock::new(None),
                 src_ref: config.prefer_source.clone(),
                 src_owner: config.second_source.as_ref().unwrap().clone(),
-                view: view.clone(),
-                chunk_id: view.chunk().clone(),
-                stack: stack.clone(),
+                chunk_id: chunk, 
+                stack, 
                 session_id,
-                referer: config.referer.clone(),
+                referer: config.referer.clone(), 
+                resource: ResourceManager::new(Some(owner))
             }))
     }
+
+    fn resource(&self) -> &ResourceManager {
+        &self.0.resource
+    }
+
 
     pub fn take_chunk_content(&self) -> Option<Arc<Vec<u8>>> {
         let session = self.0.download_session.read().unwrap();
@@ -112,12 +116,13 @@ impl DoubleSession {
         let channel = stack.ndn().channel_manager().create_channel(device_id);
 
         DownloadSession::new(
+            self.0.stack.clone(), 
             self.0.chunk_id.clone(), 
             self.0.session_id, 
             channel, 
             PieceSessionType::Stream(0),
-            self.0.view.clone(),
-            self.0.referer.clone())
+            self.0.referer.clone(), 
+            self.resource().clone())
     }
 
     fn stack(&self) -> Stack {

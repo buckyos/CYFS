@@ -524,7 +524,7 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTaskControl>, timeout:
 
     loop {
         match task.control_state() {
-            TaskControlState::Finished => {
+            TaskControlState::Finished(_) => {
                 break Ok(());
             },
             TaskControlState::Downloading(speed, _) => {

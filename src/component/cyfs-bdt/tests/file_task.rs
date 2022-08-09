@@ -22,7 +22,7 @@ mod utils;
 async fn watch_task_finish(task: Box<dyn DownloadTaskControl>) -> BuckyResult<()> {
     loop {
         match task.control_state() {
-            TaskControlState::Finished => {
+            TaskControlState::Finished(_) => {
                 break Ok(());
             },
             _ => {}
@@ -222,7 +222,6 @@ async fn one_small_file_with_ranges() {
         async fn err(&self, _e: BuckyErrorCode) -> BuckyResult<()> {
             unreachable!()
         }
-
     }
     
     let task = download_file_with_ranges(

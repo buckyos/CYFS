@@ -10,10 +10,10 @@ use futures::future::AbortRegistration;
 use cyfs_base::*;
 use crate::{
     types::*, 
+    stack::{Stack, WeakStack} 
 };
 use super::super::{
     scheduler::*, 
-    chunk::*,
 };
 use super::{
     types::*, 
@@ -88,13 +88,14 @@ impl StateImpl {
 
 
 struct SessionImpl {
+    stack: WeakStack, 
     chunk: ChunkId, 
     session_id: TempSeq, 
     channel: Channel, 
     state: RwLock<StateImpl>, 
     prefer_type: PieceSessionType, 
-    view: Option<ChunkView>,
     referer: Option<String>,
+    resource: ResourceManager
 }
 
 #[derive(Clone)]
@@ -109,30 +110,35 @@ impl std::fmt::Display for DownloadSession {
 
 impl DownloadSession {
     pub fn new(
+        stack: WeakStack, 
         chunk: ChunkId, 
         session_id: TempSeq, 
         channel: Channel, 
         prefer_type: PieceSessionType,
-        view: ChunkView,
-	    referer: Option<String>) -> Self {
+	    referer: Option<String>, 
+        owner: ResourceManager
+    ) -> Self {
         Self(Arc::new(SessionImpl {
+            stack, 
             chunk, 
             session_id, 
             channel, 
             prefer_type, 
 	        referer, 
             state: RwLock::new(StateImpl::Init(StateWaiter::new())),
-            view: Some(view),
+            resource: ResourceManager::new(Some(owner))
         }))
     }
 
     pub fn canceled(
+        stack: WeakStack, 
         chunk: ChunkId, 
         session_id: TempSeq, 
         channel: Channel, 
         err: BuckyError
     ) -> Self {
         Self(Arc::new(SessionImpl {
+            stack, 
             chunk, 
             session_id, 
             channel, 
@@ -142,7 +148,7 @@ impl DownloadSession {
                 send_ctrl_time: 0, 
                 err
             })),
-            view: None,
+            resource: ResourceManager::new(None)
         }))
     }
 
@@ -174,44 +180,6 @@ impl DownloadSession {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    pub fn start(&self) -> BuckyResult<()> {
-        self.channel().clear_dead();
-
-        info!("{} try start", self);
-        {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                StateImpl::Init(waiters) => {
-                    let seq = self.channel().gen_command_seq();
-                    let now = bucky_time_now();
-                    let mut interesting = InterestingState {
-                        waiters: StateWaiter::new(), 
-                        start_send_time: now, 
-                        last_send_time: now, 
-                    };
-                    std::mem::swap(&mut interesting.waiters, waiters);
-                    *state = StateImpl::Interesting(interesting);
-                    Ok(seq)
-                }, 
-                _ => {
-                    let err = BuckyError::new(BuckyErrorCode::ErrorState, "not in init state");
-                    error!("{} try start failed for {}", self, err);
-                    Err(err)
-                }
-            }
-        }?;
-
-        let interest = Interest {
-            session_id: self.session_id().clone(), 
-            chunk: self.chunk().clone(), 
-            prefer_type: self.prefer_type().clone(), 
-	    from: None,
-            referer: self.referer().cloned()
-        };
-        info!("{} sent {:?}", self, interest);
-        self.channel().interest(interest);
-        Ok(())
-    }
 
     pub async fn wait_finish(&self) -> TaskState {
         enum NextStep {
@@ -230,7 +198,7 @@ impl DownloadSession {
             }
         };
         match next_step {
-            NextStep::Wait(waker) => StateWaiter::wait(waker, || self.task_state()).await,
+            NextStep::Wait(waker) => StateWaiter::wait(waker, || self.schedule_state()).await,
             NextStep::Return(state) => state
         }
     }
@@ -263,6 +231,8 @@ impl DownloadSession {
     }
 
     pub(super) fn push_piece_data(&self, piece: &PieceData) {
+        self.resource().use_downstream(piece.data.len());
+
         enum NextStep {
             EnterDownloading, 
             RespControl(PieceControlCommand), 
@@ -373,7 +343,8 @@ impl DownloadSession {
                         }
                     },
                     PieceSessionType::RaptorA(_) | PieceSessionType::RaptorB(_)  => {
-                        let view = self.0.view.as_ref().unwrap();
+                        let stack = Stack::from(&self.0.stack);
+                        let view = stack.ndn().chunk_manager().view_of(self.chunk()).unwrap();
                         let decoder = view.raptor_decoder();
                         let provider = RaptorDownload::new(decoder);
 
@@ -587,6 +558,59 @@ impl DownloadSession {
                 }
             }
         }
+    }
+}
+
+
+
+impl TaskSchedule for DownloadSession {
+    fn schedule_state(&self) -> TaskState {
+        (&self.0.state.read().unwrap()).to_task_state()
+    }
+
+    fn resource(&self) -> &ResourceManager {
+        &self.0.resource
+    }
+
+    fn start(&self) -> TaskState {
+        self.channel().clear_dead();
+
+        info!("{} try start", self);
+        let _continue = {
+            let state = &mut *self.0.state.write().unwrap();
+            match state {
+                StateImpl::Init(waiters) => {
+                    let now = bucky_time_now();
+                    let mut interesting = InterestingState {
+                        waiters: StateWaiter::new(), 
+                        start_send_time: now, 
+                        last_send_time: now, 
+                    };
+                    std::mem::swap(&mut interesting.waiters, waiters);
+                    *state = StateImpl::Interesting(interesting);
+                    true
+                }, 
+                _ => {
+                    let err = BuckyError::new(BuckyErrorCode::ErrorState, "not in init state");
+                    error!("{} try start failed for {}", self, err);
+                    false
+                }
+            }
+        };
+
+        if _continue {
+            let interest = Interest {
+                session_id: self.session_id().clone(), 
+                chunk: self.chunk().clone(), 
+                prefer_type: self.prefer_type().clone(), 
+                referer: self.referer().cloned(), 
+                from: None
+            };
+            info!("{} sent {:?}", self, interest);
+            self.channel().interest(interest);
+        }
+
+        self.schedule_state()
     }
 }
 

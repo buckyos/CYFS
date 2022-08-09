@@ -1,7 +1,5 @@
 
 use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
-use std::ptr::null_mut;
-use crate::{PerfData, PerfDataAbstract};
 
 pub struct ResourcePerfData {
     progress: AtomicUsize,

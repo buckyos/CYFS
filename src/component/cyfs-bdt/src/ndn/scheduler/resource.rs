@@ -1,6 +1,6 @@
 use std::{
-    sync::{RwLock, atomic::{AtomicU64, AtomicI32, AtomicU32, Ordering::*}}, 
-    collections::{LinkedList, BTreeMap}, 
+    sync::{RwLock, Mutex}, 
+    collections::{LinkedList}, 
     time::Duration
 };
 use async_std::{
@@ -11,164 +11,151 @@ use cyfs_base::*;
 use crate::{
     types::*
 };
-use super::StatisticTaskPtr;
 
-struct ResourceQuotaImpl {
-    children: RwLock<BTreeMap<DeviceId, StatisticTaskPtr>>,
+// struct ResourceQuotaImpl {
+//     children: RwLock<BTreeMap<DeviceId, StatisticTaskPtr>>,
+// }
+
+// impl ResourceQuotaImpl {
+//     fn add_child(&self, remote: &DeviceId, task: StatisticTaskPtr) -> BuckyResult<()> {
+//         {
+//             self.children.write().
+//                           unwrap().
+//                           entry(remote.clone()).
+//                           or_insert(task.clone());
+//         }
+//         Ok(())
+//     }
+
+//     fn remove_child(&self, remote: &DeviceId) -> BuckyResult<()> {
+//         {
+//             let _ = self.children.write().unwrap().remove(remote);
+//         }
+//         Ok(())
+//     }
+
+//     fn get_child(&self, remote: &DeviceId) -> Option<StatisticTaskPtr> {
+//         if let Some(task) = self.children.read().unwrap().get(remote) {
+//             Some(task.clone())
+//         } else {
+//             None
+//         }
+//     }
+
+//     fn count(&self) -> usize {
+//         self.children.read().unwrap().len()
+//     }
+// }
+
+// #[derive(Clone)]
+// pub struct ResourceQuota(Arc<ResourceQuotaImpl>);
+
+// impl ResourceQuota {
+//     pub fn new() -> Self {
+//         Self(Arc::new(ResourceQuotaImpl {
+//             children: RwLock::new(BTreeMap::new()),
+//         }))
+//     }
+
+//     pub fn add_child(&self, remote: &DeviceId, task: StatisticTaskPtr) -> BuckyResult<()> {
+//         self.0.add_child(remote, task)
+//     }
+
+//     pub fn remove_child(&self, remote: &DeviceId) -> BuckyResult<()> {
+//         self.0.remove_child(remote)
+//     }
+
+//     pub fn get_child(&self, remote: &DeviceId) -> Option<StatisticTaskPtr> {
+//         self.0.get_child(remote)
+//     }
+
+//     pub fn count(&self) -> usize {
+//         self.0.count()
+//     }
+// }
+
+pub struct DurationedResourceUsage {
+    start_at: Timestamp, 
+    duration: Duration, 
+    usage: ResourceUsage
 }
 
-impl ResourceQuotaImpl {
-    fn add_child(&self, remote: &DeviceId, task: StatisticTaskPtr) -> BuckyResult<()> {
-        {
-            self.children.write().
-                          unwrap().
-                          entry(remote.clone()).
-                          or_insert(task.clone());
-        }
-        Ok(())
+impl DurationedResourceUsage {
+    pub fn upstream(&self) -> u64 {
+        self.usage.upstream
     }
 
-    fn remove_child(&self, remote: &DeviceId) -> BuckyResult<()> {
-        {
-            let _ = self.children.write().unwrap().remove(remote);
-        }
-        Ok(())
+    pub fn downstream(&self) -> u64 {
+        self.usage.downstream
     }
 
-    fn get_child(&self, remote: &DeviceId) -> Option<StatisticTaskPtr> {
-        if let Some(task) = self.children.read().unwrap().get(remote) {
-            Some(task.clone())
-        } else {
-            None
-        }
+    pub fn upstream_bandwidth(&self) -> u32 {
+        (self.upstream() as f32 / self.duration.as_secs() as f32) as u32
     }
 
-    fn count(&self) -> usize {
-        self.children.read().unwrap().len()
+    pub fn downstream_bandwidth(&self) -> u32 {
+        (self.downstream() as f32 / self.duration.as_secs() as f32) as u32
     }
 }
 
 #[derive(Clone)]
-pub struct ResourceQuota(Arc<ResourceQuotaImpl>);
-
-impl ResourceQuota {
-    pub fn new() -> Self {
-        Self(Arc::new(ResourceQuotaImpl {
-            children: RwLock::new(BTreeMap::new()),
-        }))
-    }
-
-    pub fn add_child(&self, remote: &DeviceId, task: StatisticTaskPtr) -> BuckyResult<()> {
-        self.0.add_child(remote, task)
-    }
-
-    pub fn remove_child(&self, remote: &DeviceId) -> BuckyResult<()> {
-        self.0.remove_child(remote)
-    }
-
-    pub fn get_child(&self, remote: &DeviceId) -> Option<StatisticTaskPtr> {
-        self.0.get_child(remote)
-    }
-
-    pub fn count(&self) -> usize {
-        self.0.count()
-    }
-}
-
-#[derive(Clone)]
-pub struct ResourceUsage {
-    memory: u64, 
-    downstream_bandwidth: u32, 
-    upstream_bandwidth: u32, 
-    cpu_usage: f32
+struct ResourceUsage {
+    upstream: u64, 
+    downstream: u64, 
 }
 
 impl ResourceUsage {
     fn new() -> Self {
         Self {
-            memory: 0, 
-            downstream_bandwidth: 0, 
-            upstream_bandwidth: 0, 
-            cpu_usage: 0.0
+            upstream: 0, 
+            downstream: 0,
         }
+    }
+    fn reset(&mut self) {
+        self.upstream = 0;
+        self.downstream = 0;
+    }
+
+    fn use_upstream(&mut self, len: usize) -> &mut Self {
+        self.upstream += len as u64;
+        self
+    }
+
+    fn use_downstream(&mut self, len: usize) -> &mut Self {
+        self.downstream += len as u64;
+        self
     }
 
     fn plus(&mut self, other: &Self) -> &mut Self {
-        self.memory += other.memory;
-        self.downstream_bandwidth += other.downstream_bandwidth;
-        self.upstream_bandwidth += other.upstream_bandwidth;
-        self.cpu_usage += other.cpu_usage;
+        self.downstream += other.downstream;
+        self.upstream += other.upstream;
         self 
     }
 
     fn divide(&mut self, by: usize) -> &mut Self {
-        self.memory = self.memory / by as u64;
-        self.upstream_bandwidth = self.upstream_bandwidth / by as u32;
-        self.downstream_bandwidth = self.downstream_bandwidth / by as u32;
-        self.cpu_usage = self.cpu_usage / by as f32;
+        self.upstream = (self.upstream as f64 / by as f64) as u64;
+        self.downstream = (self.downstream as f64 / by as f64) as u64;
         self
     }
 }
 
+#[derive(Clone)]
 struct ResourceStatistic {
-    start: AtomicU64, 
-    memory: AtomicI32, 
-    downstream: AtomicU32, 
-    upstream: AtomicU32, 
-    cpu_epoch: AtomicU64
+    start_at: Timestamp, 
+    usage: ResourceUsage
 }
 
 impl ResourceStatistic {
-    fn new() -> Self {
+    fn new(when: Timestamp) -> Self {
         Self {
-            start: AtomicU64::new(0), 
-            memory: AtomicI32::new(0), 
-            downstream: AtomicU32::new(0), 
-            upstream: AtomicU32::new(0), 
-            cpu_epoch: AtomicU64::new(0), 
+            start_at: when, 
+            usage: ResourceUsage::new()
         }
     }
 
-    fn alloc_memory(&self, len: usize) {
-        self.memory.fetch_add(len as i32, SeqCst);
-    }
-
-    fn free_memory(&self, len: usize) {
-        self.memory.fetch_sub(len as i32, SeqCst);
-    }
-
-    fn use_downstream(&self, len: usize) {
-        self.downstream.fetch_add(len as u32, SeqCst);
-    }
-
-    fn use_upstream(&self, len: usize) {
-        self.upstream.fetch_add(len as u32, SeqCst);
-    }
-
-    fn use_cpu(&self, len: u64) {
-        self.cpu_epoch.fetch_add(len, SeqCst);
-    } 
-
-    fn aggregate(&self, now: Timestamp, usage: &mut ResourceUsage) {
-        let memory = self.memory.swap(0, SeqCst);
-        let downstream = self.downstream.swap(0, SeqCst);
-        let upstream = self.upstream.swap(0, SeqCst);
-        let cpu_epoch = self.cpu_epoch.swap(0, SeqCst);
-        let start = self.start.swap(now, SeqCst);
-        let duration = Duration::from_micros(now - start);
-        if memory > 0 {
-            usage.memory += memory as u64;
-        } else {
-            let free = (-memory) as u64;
-            if usage.memory > free {
-                usage.memory -= free;
-            } else {
-                usage.memory = 0;
-            } 
-        }
-        usage.downstream_bandwidth = (downstream as f32 / duration.as_secs_f32()) as u32;
-        usage.upstream_bandwidth = (upstream as f32 / duration.as_secs_f32()) as u32;
-        usage.cpu_usage = cpu_epoch as f32 / duration.as_micros() as f32;
+    fn reset(&mut self, when: Timestamp) {
+        self.start_at = when;
+        self.usage.reset();
     }
 }
 
@@ -200,17 +187,17 @@ struct Relation {
 }
 
 struct StateImpl {
-    quote: ResourceQuota, 
     aggregate_at: Timestamp, 
-    self_usage: ResourceUsage, 
-    total_usage: ResourceUsage
+    latest: ResourceStatistic, 
+    total: ResourceUsage
 }
 
 // 在多owner的情况下，owner遍历child时，child应当平分资源占用到不同的owner；
 // owner分配child额度时，叠加多个owner分配的额度
 struct ResourceManagerImpl {
+    start_at: Timestamp, 
     relation: RwLock<Relation>, 
-    statistic: ResourceStatistic, 
+    statistic: Mutex<ResourceStatistic>, 
     state: RwLock<StateImpl>
 }
 
@@ -225,18 +212,20 @@ impl ResourceManager {
 
 impl ResourceManager {
     pub fn new(owner: Option<ResourceManager>) -> Self {
+        let now =  bucky_time_now();
         let resource = Self(Arc::new(
             ResourceManagerImpl {
+                start_at: now, 
                 relation: RwLock::new(Relation {
                     owners: LinkedList::new(), 
                     children: LinkedList::new()
                 }), 
-                statistic: ResourceStatistic::new(), 
+                statistic: Mutex::new(ResourceStatistic::new(now)),  
                 state: RwLock::new(StateImpl {
-                    quote: ResourceQuota::new(), 
-                    aggregate_at: 0, 
-                    self_usage: ResourceUsage::new(), 
-                    total_usage: ResourceUsage::new()
+                    // quote: ResourceQuota::new(), 
+                    aggregate_at: now, 
+                    latest: ResourceStatistic::new(now), 
+                    total: ResourceUsage::new()
                 })
             }
         ));
@@ -246,57 +235,71 @@ impl ResourceManager {
         resource
     }
 
-    pub fn alloc_memory(&self, len: usize) {
-        self.0.statistic.alloc_memory(len)
-    }
-
-    pub fn free_memory(&self, len: usize) {
-        self.0.statistic.free_memory(len)
-    }
-
     pub fn use_downstream(&self, len: usize) {
-        self.0.statistic.use_downstream(len)
+        self.0.statistic.lock().unwrap().usage.use_downstream(len);
     }
 
     pub fn use_upstream(&self, len: usize) {
-        self.0.statistic.use_upstream(len)
+        self.0.statistic.lock().unwrap().usage.use_upstream(len);
     }
 
-    pub fn use_cpu(&self, len: u64) {
-        self.0.statistic.use_cpu(len)
+    pub fn latest_usage(&self) -> DurationedResourceUsage {
+        let state = self.0.state.read().unwrap();
+        let duration = Duration::from_micros(state.aggregate_at - state.latest.start_at);
+        DurationedResourceUsage {
+            start_at: state.latest.start_at, 
+            duration, 
+            usage: state.latest.usage.clone()
+        }
     }
 
-    pub fn usage(&self) -> ResourceUsage {
-        self.0.state.read().unwrap().total_usage.clone()
+    pub fn avg_usage(&self) -> DurationedResourceUsage {
+        let state = self.0.state.read().unwrap();
+        let duration = Duration::from_micros(state.aggregate_at - self.0.start_at);
+        DurationedResourceUsage {
+            start_at: self.0.start_at, 
+            duration, 
+            usage: state.total.clone()
+        }
     }
+
 
     fn owner_count(&self) -> usize {
         self.0.relation.read().unwrap().owners.len()
     }
 
-    pub fn quota(&self) -> ResourceQuota {
-        self.0.state.read().unwrap().quote.clone()
-    }
+    // pub fn quota(&self) -> ResourceQuota {
+    //     self.0.state.read().unwrap().quote.clone()
+    // }
 
     pub fn aggregate(&self) {
-        let now = bucky_time_now();
         let children = self.0.relation.read().unwrap().children.clone();
-
-        let mut state = self.0.state.write().unwrap();
-        self.0.statistic.aggregate(now, &mut state.self_usage);
-        
-        let mut total = state.self_usage.clone();
-        total.plus(&state.self_usage);
-        for c in children {
-            total.plus(&c.usage().divide(c.owner_count()));
+        for c in children.clone() {
+            c.aggregate();
         }
-        state.total_usage = total;
+
+
+        let now = bucky_time_now();
+        let mut latest = {
+            let mut statistic = self.0.statistic.lock().unwrap();
+            let latest = statistic.clone();
+            statistic.reset(now);
+            latest
+        };
+        
+        let mut state = self.0.state.write().unwrap();
+        for c in children {
+            latest.usage.plus(&c.latest_usage().usage.clone().divide(c.owner_count()));
+        }
+        state.total.plus(&latest.usage);
+        state.latest = latest;
+       
         state.aggregate_at = now;
     }
 
-    pub fn schedule(&self, _quota: ResourceQuota) -> BuckyResult<()> {
-        unimplemented!()
-    }
+    // pub fn schedule(&self, _quota: ResourceQuota) -> BuckyResult<()> {
+    //     unimplemented!()
+    // }
 
     pub fn add_child(&self, child: &ResourceManager) -> BuckyResult<()> {
         {
@@ -310,6 +313,7 @@ impl ResourceManager {
 
     pub fn remove_child(&self, child: &ResourceManager) -> BuckyResult<()> {
         let _ = {
+            self.aggregate();
             let mut relation = self.0.relation.write().unwrap();
             if let Some((i, _)) = relation.children.iter().enumerate().find(|(_, r)| r.ptr_eq(child)) {
                 let mut last_part = relation.children.split_off(i);
@@ -330,4 +334,21 @@ impl ResourceManager {
             unreachable!()
         }
     }
+}
+
+
+#[async_std::test]
+async fn resource_aggregate() {
+    use async_std::{task};
+
+    let owner = ResourceManager::new(None);
+    let child = ResourceManager::new(Some(owner.clone()));
+
+    child.use_downstream(1000);
+    let _ = task::sleep(Duration::from_secs(1)).await;
+    owner.aggregate();
+    assert!(child.latest_usage().downstream_bandwidth() > 0);
+    assert!(child.avg_usage().downstream_bandwidth() > 0);
+    assert!(owner.latest_usage().downstream_bandwidth() > 0);
+    assert!(owner.avg_usage().downstream_bandwidth() > 0);
 }

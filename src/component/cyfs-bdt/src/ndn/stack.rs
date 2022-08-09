@@ -70,7 +70,6 @@ impl NdnStack {
             resource: resource.clone(), 
             chunk_manager: ChunkManager::new(
                 stack.clone(), 
-                resource.clone(), 
                 ndc, 
                 tracker, 
                 store), 

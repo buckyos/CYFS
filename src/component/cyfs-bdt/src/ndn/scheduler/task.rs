@@ -2,7 +2,6 @@ use cyfs_base::*;
 use super::{
     resource::ResourceManager
 };
-use super::statistic::*;
 
 // 对scheduler的接口
 #[derive(Debug)]
@@ -17,18 +16,15 @@ pub enum TaskState {
 pub trait TaskSchedule {
     fn schedule_state(&self) -> TaskState;
     fn resource(&self) -> &ResourceManager;
-    fn statistic_task(&self) -> Option<DynamicStatisticTask> {
-        None
-    }
     fn start(&self) -> TaskState;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TaskControlState {
-    Downloading(usize/*速度*/, usize /*进度*/), 
+    Downloading(u32/*速度*/, u32 /*进度*/), 
     Paused, 
     Canceled, 
-    Finished, 
+    Finished(u32), 
     Err(BuckyErrorCode),
 }
 

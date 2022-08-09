@@ -20,8 +20,6 @@ use super::{
     chunk::ChunkTask, 
     chunk_list::ChunkListTask, 
     file::FileTask,
-    statistic::{SummaryStatisticTaskPtr, SummaryStatisticTaskImpl}
-
 };
 
 const TASK_COUNT_MAX_DEFAULT: usize = 5;
@@ -124,7 +122,6 @@ struct TaskImpl {
     sub_id: IncreaseIdGenerator, 
     state: RwLock<StateImpl>,  
     writers: Vec<Box<dyn ChunkWriter>>,
-    statistic_task: SummaryStatisticTaskPtr,
 }
 
 pub trait DirTaskControl: Send + Sync {
@@ -158,7 +155,7 @@ impl DirTask {
         config: Arc<ChunkDownloadConfig>, 
         writers: Vec<Box<dyn ChunkWriter>>,
         owner: ResourceManager,
-        task_cb: Option<StatisticTaskPtr>) -> Self {
+    ) -> Self {
         Self (Arc::new(TaskImpl {
             stack: stack,
             dir: dir,
@@ -172,14 +169,6 @@ impl DirTask {
                 control_state: TaskControlState::Downloading(0, 0),
             }),
             writers: writers,
-            statistic_task: 
-                {
-                    if let Some(cb) = task_cb {
-                        SummaryStatisticTaskImpl::new(Some(cb)).ptr()
-                    } else {
-                        SummaryStatisticTaskImpl::new(Some(DynamicStatisticTask::default().ptr())).ptr()
-                    }
-                }
         }))
     }
     
@@ -189,10 +178,6 @@ impl DirTask {
 
     pub fn config(&self) -> &Arc<ChunkDownloadConfig> {
         &self.0.config
-    }
-
-    pub fn as_statistic(&self) -> StatisticTaskPtr {
-        Arc::from(self.clone())
     }
 
     fn cancel_by_error(&self, _id: IncreaseId, _err: BuckyErrorCode) -> BuckyResult<()> {
@@ -238,9 +223,6 @@ impl DirTask {
         self.add_sub_task_inner(task.clone())
             .map(|start| {
                 if start {
-                    if let Some(size) = task.total_len() {
-                        self.0.statistic_task.add_total_size(size);
-                    }
                     let _ = self.start();
                 }
             })
@@ -402,8 +384,7 @@ impl DirTaskControl for DirTask {
                                                     chunk_list,
                                                     self.0.config.clone(),
                                                     vec![self.meta_writer(sub_id.clone(), writers)],
-                                                    self.resource().clone(),
-                                                    Some(self.as_statistic()));
+                                                    self.resource().clone());
 
         self.add_sub_task(SubTask::ChunkList(sub_id.clone(), task))
     }
@@ -414,8 +395,7 @@ impl DirTaskControl for DirTask {
                                                    chunk, 
                                                    self.config().clone(), 
                                                    vec![self.sub_writer(sub_id.clone(), writers)], 
-                                                   self.resource().clone(),
-                                                   Some(self.as_statistic()));
+                                                   self.resource().clone());
 
         self.add_sub_task(SubTask::Chunk(sub_id.clone(), chunk_task))
     }
@@ -427,8 +407,7 @@ impl DirTaskControl for DirTask {
                                                 None, 
                                                 self.config().clone(), 
                                                 vec![self.sub_writer(sub_id.clone(), writers)],
-                                                self.resource().clone(),
-                                                Some(self.as_statistic()));
+                                                self.resource().clone());
         self.add_sub_task(SubTask::File(sub_id.clone(), file_task))
     }
 
@@ -438,8 +417,7 @@ impl DirTaskControl for DirTask {
                                           dir, 
                                           self.config().clone(), 
                                           vec![self.sub_writer(sub_id, writers)],
-                                          self.resource().clone(),
-                                          Some(self.as_statistic()));
+                                          self.resource().clone());
     
         self.add_sub_task(SubTask::Dir(sub_id.clone(), dir_task.clone()))
             .map(|_| Box::new(dir_task) as Box<dyn DirTaskControl>)
@@ -518,7 +496,7 @@ impl TaskSchedule for DirTask {
             },
             NextStep::Pending => TaskState::Pending,
             _ =>{
-                self.0.state.write().unwrap().control_state = TaskControlState::Finished;
+                self.0.state.write().unwrap().control_state = TaskControlState::Finished(self.resource().avg_usage().downstream_bandwidth());
                 TaskState::Finished
             }
         }
@@ -552,26 +530,4 @@ impl DownloadTask for DirTask {
     }
 }
 
-impl StatisticTask for DirTask {
-    fn reset(&self) {
-        self.0.statistic_task.reset()
-    }
-
-    fn on_stat(&self, size: u64) -> BuckyResult<Box<dyn PerfDataAbstract>> {
-        let r = self.0.statistic_task.on_stat(size).unwrap();
-
-        {
-            let mut state = self.0.state.write().unwrap();
-            match state.control_state {
-                TaskControlState::Downloading(_, _) => {
-                    state.control_state = TaskControlState::Downloading(r.bandwidth() as usize, self.0.statistic_task.progress())
-                }
-                _ => {}
-            }
-        }
-
-        Ok(r)
-    }
-
-}
 
