@@ -23,11 +23,11 @@ const CHECK_STATUS_INTERVAL_IN_MICRO: u64 = 1 * 60 * 1000 * 1000; //2 * 60 * 100
 //中间状态最长保持时间:10分钟
 const STATUS_LASTED_TIME_LIMIT_IN_MICROS: u64 = 10 * 60 * 1000 * 1000;
 
-//每12小时检查一次app的新版本
-const CHECK_APP_UPDATE_INTERVAL_IN_SECS: u64 = 12 * 60 * 60;
+//每6小时检查一次app的新版本
+const CHECK_APP_UPDATE_INTERVAL_IN_SECS: u64 = 6 * 60 * 60;
 
-//get sys app list every 10 mins
-const CHECK_SYS_APP_INTERVAL_IN_SECS: u64 = 10 * 60;
+//get sys app list every 30 mins
+const CHECK_SYS_APP_INTERVAL_IN_SECS: u64 = 30 * 60;
 
 //sys app start retry count limit
 const START_RETRY_LIMIT: u8 = 3;
@@ -406,6 +406,8 @@ impl AppManager {
         let status_list = self.status_list.read().unwrap().clone();
         let sys_app_list = sys_app_list.app_list();
 
+        //if app not installed, install it
+        //if app install failed or start failed, retry. only if installed version == target version
         for (app_id, target_status) in sys_app_list {
             let target_version = target_status.version();
             let target_status = target_status.status();
@@ -419,98 +421,73 @@ impl AppManager {
             }
             let local_status = status_list.get(app_id);
             let mut need_install = false;
-            let mut reset_retry = false;
+            //let mut reset_retry = false;
+            let installed_version;
+            let status_code;
 
             if let Some(local_status) = local_status {
                 let local_status = local_status.lock().unwrap();
                 info!("### sys app status: {}", local_status.output());
-                let status_code = local_status.status();
-                if status_code == AppLocalStatusCode::Uninstalled {
-                    info!("### sys app is uninstalled, will skip it. app:{}", app_id);
-                    continue;
-                    //sys app被卸载了的话，就不要再安装了
-                }
-                if !local_status.auto_update() {
-                    info!(
-                        "### sys app auto update is turned off, will skip it. app:{}",
-                        app_id
-                    );
-                    continue;
-                }
-
-                if let Some(install_version) = local_status.version() {
-                    if install_version != target_version {
-                        //has new version, reset retry
-                        info!("### sys app has new version, reset retry count. app:{}, installed ver:{}, target ver:{}", 
-                        app_id, install_version, target_version);
-                        reset_retry = true;
-                    }
-                    //user maybe shutdown auto update? TODO
-                    if install_version != target_version
-                        || status_code == AppLocalStatusCode::InstallFailed
-                        || status_code == AppLocalStatusCode::StartFailed
-                        || status_code == AppLocalStatusCode::Init
-                    {
-                        warn!("### sys app is in error state or version is not match, will reinstall it. app:{}, target version:{}, status: {}, installed ver:{}", 
-                        app_id, target_version, status_code, install_version);
-                        need_install = true;
-                    }
-                } else {
-                    info!("### sys app is not installed, install it. app:{}", app_id);
-                    need_install = true;
-                }
+                status_code = local_status.status();
+                installed_version = local_status.version().map_or(None, |v| Some(v.to_owned()));
             } else {
                 info!("### sys app status is not found. app:{}", app_id);
                 //list里没有，直接取一次status
                 let local_status = self.non_helper.get_local_status(app_id).await;
-                if local_status.status() == AppLocalStatusCode::Uninstalled {
-                    info!("### sys app is uninstalled, will skip it. app:{}", app_id);
-                    continue;
-                    //sys app被卸载了的话，就不要再安装了
-                } else {
-                    info!(
-                        "### sys app is not added yet, will install it. app:{}, target version:{}",
-                        app_id, target_version
-                    );
-                    need_install = true;
-                }
+                status_code = local_status.status();
+                installed_version = local_status.version().map_or(None, |v| Some(v.to_owned()));
             }
 
-            if need_install || reset_retry {
-                let mut counters = self.start_couter.write().unwrap();
-                if reset_retry {
-                    counters.insert(app_id.clone(), 0);
-                }
-                if need_install {
-                    let cur_count = *counters.get(app_id).unwrap_or(&0);
-                    if cur_count > START_RETRY_LIMIT {
-                        need_install = false;
+            if status_code == AppLocalStatusCode::Init {
+                info!("### sys app is inited, will install it, app:{}", app_id);
+                need_install = true;
+            } else if status_code == AppLocalStatusCode::InstallFailed
+                || status_code == AppLocalStatusCode::StartFailed
+            {
+                if let Some(ver) = installed_version {
+                    if ver == target_version {
                         info!(
-                            "###sys app start retry count is out of limit! skip it. app:{}",
+                            "### sys app did not start correctly, will reinstall it, app:{}",
                             app_id
                         );
-                    } else {
-                        info!(
-                            "### start sys app:{}, retry count:{}",
-                            app_id,
-                            cur_count + 1
-                        );
-                        counters.insert(app_id.clone(), cur_count + 1);
+                        need_install = true
                     }
                 }
             }
 
-            if need_install {
-                info!(
-                    "### will install sys app:{}, ver:{}",
-                    app_id, target_version
-                );
-                // simulate user request, after install, will manager the app as a user app.
-                let _ = self.on_add_cmd(app_id).await;
-                let install_cmd =
-                    AppCmd::install(self.owner.clone(), app_id.clone(), target_version, true);
-                let _ = self.on_app_cmd(install_cmd, false).await;
+            if !need_install {
+                continue;
             }
+
+            {
+                let mut counters = self.start_couter.write().unwrap();
+
+                let cur_count = *counters.get(app_id).unwrap_or(&0);
+                if cur_count > START_RETRY_LIMIT {
+                    info!(
+                        "###sys app start retry count is out of limit! skip it. app:{}",
+                        app_id
+                    );
+                    continue;
+                } else {
+                    info!(
+                        "### start sys app:{}, retry count:{}",
+                        app_id,
+                        cur_count + 1
+                    );
+                    counters.insert(app_id.clone(), cur_count + 1);
+                }
+            }
+
+            info!(
+                "### will install sys app:{}, ver:{}",
+                app_id, target_version
+            );
+            // simulate user request, after install, will manager the app as a user app.
+            let _ = self.on_add_cmd(app_id).await;
+            let install_cmd =
+                AppCmd::install(self.owner.clone(), app_id.clone(), target_version, true);
+            let _ = self.on_app_cmd(install_cmd, false).await;
         }
     }
 
