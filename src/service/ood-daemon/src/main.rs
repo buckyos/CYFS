@@ -11,13 +11,14 @@ mod service;
 use clap::{App, Arg};
 use std::str::FromStr;
 
-use daemon::Daemon;
+use daemon::{Daemon, start_control};
 use service::{ServiceMode, SERVICE_MANAGER};
 
 #[macro_use]
 extern crate log;
 
 const SERVICE_NAME: &str = ::cyfs_base::OOD_DAEMON_NAME;
+
 
 #[async_std::main]
 async fn main() {
@@ -49,6 +50,36 @@ async fn main() {
                 .takes_value(true)
                 .default_value("daemon")
                 .help("Daemon service mode, daemon|installer|vood, default is daemon"),
+        )
+        .arg(
+            Arg::with_name("port")
+                .long("port")
+                .takes_value(true)
+                .help("Specify OOD bind service port"),
+        )
+        .arg(
+            Arg::with_name("host")
+                .long("host")
+                .takes_value(true)
+                .help("Specify OOD service public address for external services and tools, installer will bind 0 addr by default"),
+        )
+        .arg(
+            Arg::with_name("strict-host")
+                .long("strict-host")
+                .takes_value(true)
+                .help("Specify OOD bind service public address"),
+        )
+        .arg(
+            Arg::with_name("ipv4_only")
+                .long("ipv4-only")
+                .takes_value(false)
+                .help("Specify OOD bind service just use ipv4 address"),
+        )
+        .arg(
+            Arg::with_name("ipv6_only")
+                .long("ipv6-only")
+                .takes_value(false)
+                .help("Specify OOD bind service just use ipv6 address"),
         );
 
     let app = cyfs_util::process::prepare_args(app);
@@ -100,7 +131,16 @@ async fn main() {
 
     let no_ood_control = matches.is_present("no_ood_control");
 
-    let daemon = Daemon::new(mode, no_monitor, no_ood_control);
+    if !no_ood_control {
+        if let Err(e) = start_control(mode.clone(), &matches).await {
+            println!("start ood control failed! {}", e);
+            std::process::exit(-1);
+        }
+    } else {
+        info!("will run without ood control service");
+    }
+
+    let daemon = Daemon::new(mode, no_monitor);
     if let Err(e) = daemon.run().await {
         error!("daemon run error! err={}", e);
     }

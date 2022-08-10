@@ -1,13 +1,10 @@
+use super::gateway_monitor::GATEWAY_MONITOR;
 use crate::config::{init_system_config, DeviceConfigManager};
 use crate::service::ServiceMode;
 use crate::service::SERVICE_MANAGER;
 use cyfs_base::BuckyResult;
 use cyfs_util::*;
-use ood_control::{
-    ControlInterface, ControlInterfaceAddrType, ControlInterfaceParam, OODControlMode,
-    OOD_CONTROLLER,
-};
-use super::gateway_monitor::GATEWAY_MONITOR;
+use ood_control::OOD_CONTROLLER;
 
 use async_std::task;
 use futures::future::{AbortHandle, Abortable};
@@ -34,19 +31,17 @@ pub struct Daemon {
     mode: ServiceMode,
     device_config_manager: DeviceConfigManager,
     no_monitor: bool,
-    no_ood_control: bool,
 }
 
 impl Daemon {
     // add code here
-    pub fn new(mode: ServiceMode, no_monitor: bool, no_ood_control: bool) -> Self {
+    pub fn new(mode: ServiceMode, no_monitor: bool) -> Self {
         let device_config_manager = DeviceConfigManager::new();
 
         Self {
             mode,
             device_config_manager,
             no_monitor,
-            no_ood_control,
         }
     }
 
@@ -54,12 +49,6 @@ impl Daemon {
         init_system_config().await?;
 
         self.device_config_manager.init().await?;
-
-        if !self.no_ood_control {
-            self.start_control().await?;
-        } else {
-            info!("will run without ood control service");
-        }
 
         // 关注绑定事件
         let notify = BindNotify {
@@ -70,30 +59,6 @@ impl Daemon {
         let _ = GATEWAY_MONITOR.init().await;
 
         self.run_check_loop(notify).await;
-
-        Ok(())
-    }
-
-    async fn start_control(&self) -> BuckyResult<()> {
-        
-        let control_mode = match self.mode {
-            ServiceMode::Daemon => Some(OODControlMode::Daemon),
-            ServiceMode::Runtime => Some(OODControlMode::Runtime),
-            _ => None,
-        };
-
-        if let Some(mode) = control_mode {
-            let param = ControlInterfaceParam {
-                mode,
-                tcp_port: None,
-                require_access_token: false,
-                tcp_host: None,
-                addr_type: ControlInterfaceAddrType::All,
-            };
-
-            let control_interface = ControlInterface::new(param, &OOD_CONTROLLER);
-            control_interface.start().await?;
-        }
 
         Ok(())
     }
