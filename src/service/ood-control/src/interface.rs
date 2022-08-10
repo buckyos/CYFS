@@ -64,10 +64,21 @@ impl ControlInterface {
 
         let mut tcp_listeners = Vec::new();
         for addr in &bind_addrs {
-            if addr.ip().is_loopback() {
-                tcp_listeners.push(HttpTcpListener::new(addr.clone(), none_auth_server.clone()));
-            } else {
+            let need_auth = match addr.ip() {
+                IpAddr::V4(ip) => {
+                    if ip.is_loopback() || ip.is_private() {
+                        false
+                    } else {
+                        true
+                    }
+                }
+                IpAddr::V6(_) => true,
+            };
+
+            if need_auth {
                 tcp_listeners.push(HttpTcpListener::new(addr.clone(), auth_server.clone()));
+            } else {
+                tcp_listeners.push(HttpTcpListener::new(addr.clone(), none_auth_server.clone()));
             }
         }
 
