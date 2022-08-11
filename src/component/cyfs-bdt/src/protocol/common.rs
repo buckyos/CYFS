@@ -368,11 +368,16 @@ pub(super) mod context {
             name: &'static str, 
             check_flags: u16, 
         ) -> Result<(T, &'a [u8]), BuckyError> {
-            let (opt, buf) = self.option_decode(buf, check_flags)?;
-            Ok((
-                opt.ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidData, format!("field {} no merged", name)))?,
-                buf,
-            ))
+            if check_flags == FLAG_ALWAYS_DECODE {
+                T::raw_decode(buf).map(|(v, buf)| (v, buf))
+            } else {
+                let (opt, buf) = self.option_decode(buf, check_flags)?;
+                Ok((
+                    opt.ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidData, format!("field {} no merged", name)))?,
+                    buf,
+                ))
+            }
+           
         }
 
         pub fn option_decode<'a, T: RawDecode<'a>>(
