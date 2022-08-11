@@ -1,4 +1,5 @@
 use crate::app_controller::{AppActionResult, AppController};
+use crate::app_install_detail::AppInstallDetail;
 use crate::docker_api::*;
 use crate::docker_network_manager::{DockerNetworkManager, CYFS_BRIDGE_NAME};
 use crate::non_helper::*;
@@ -292,7 +293,12 @@ impl AppCmdExecutor {
             .install_internal(status.clone(), cmd, retry_count, &ver)
             .await
         {
-            Ok(v) => v,
+            Ok(v) => {
+                //save app install detail to local file when install successfully
+                let mut install_detail = AppInstallDetail::new(app_id);
+                let _ = install_detail.set_install_version(Some(&ver));
+                v
+            }
             Err(e) => {
                 sub_err = e;
                 AppLocalStatusCode::InstallFailed
@@ -393,6 +399,10 @@ impl AppCmdExecutor {
             false,
         )
         .await?;
+
+        //set install version to None when uninstall begin
+        let mut install_detail = AppInstallDetail::new(app_id);
+        let _ = install_detail.set_install_version(None);
 
         let web_id;
         let ver;

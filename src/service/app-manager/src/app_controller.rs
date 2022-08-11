@@ -4,9 +4,9 @@ use crate::package::AppPackage;
 use cyfs_base::*;
 use cyfs_client::NamedCacheClient;
 use cyfs_core::*;
-use log::*;
 use cyfs_lib::*;
 use cyfs_util::*;
+use log::*;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
@@ -159,7 +159,7 @@ impl AppController {
                 info!("run docker install!");
                 let id = app_id.to_string();
 
-                // 可执行命令，如果有，需要再docker里 chmod +x
+                // 可执行命令，如果有，需要在docker里 chmod +x
                 let executable = {
                     let res = dapp.get_executable_binary().map_err(|e| {
                         error!(
@@ -175,7 +175,9 @@ impl AppController {
                     }
                 };
                 let docker_api = self.docker_api.as_ref().unwrap();
-                docker_api.install(&id, version, executable).await
+                docker_api
+                    .install(&id, version, executable)
+                    .await
                     .map_err(|e| {
                         error!("docker install failed. app {} failed, {}", app_id, e);
                         SubErrorCode::DockerFailed

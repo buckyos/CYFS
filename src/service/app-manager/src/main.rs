@@ -2,8 +2,8 @@
 use cyfs_base::APP_MANAGER_NAME;
 use cyfs_client::NamedCacheClient;
 use cyfs_core::get_system_dec_app;
-use log::*;
 use cyfs_lib::SharedCyfsStack;
+use log::*;
 extern crate ood_daemon;
 use ood_daemon::init_system_config;
 
@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 mod app_cmd_executor;
 mod app_controller;
+mod app_install_detail;
 mod app_manager_ex;
 mod dapp;
 mod docker_api;

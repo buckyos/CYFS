@@ -162,6 +162,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tar",
+ "toml",
  "version-compare",
  "walkdir",
  "which",
