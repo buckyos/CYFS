@@ -365,11 +365,12 @@ pub(super) mod context {
         pub fn decode<'a, T: RawDecode<'a>>(
             &mut self,
             buf: &'a [u8],
-            check_flags: u16,
+            name: &'static str, 
+            check_flags: u16, 
         ) -> Result<(T, &'a [u8]), BuckyError> {
             let (opt, buf) = self.option_decode(buf, check_flags)?;
             Ok((
-                opt.ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidData, "no merged"))?,
+                opt.ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidData, format!("field {} no merged", name)))?,
                 buf,
             ))
         }
@@ -629,7 +630,7 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (sequence, buf) = context.check_decode(buf, "sequence", flags.next())?;
-        let (seq_key_sign, buf) = context.decode(buf, flags.next())?;
+        let (seq_key_sign, buf) = context.decode(buf, "Exchange.seq_key_sign", flags.next())?;
         let (from_device_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (send_time, buf) = context.check_decode(buf, "send_time", flags.next())?;
         let (from_device_desc, buf) = context.check_decode(buf, "device_desc", flags.next())?;
@@ -749,8 +750,8 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
-        let (protocol_version, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
-        let (stack_version, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
+        let (protocol_version, buf) = context.decode(buf, "SynTunnel.protocol_version", context::FLAG_ALWAYS_DECODE)?;
+        let (stack_version, buf) = context.decode(buf, "SynTunnel.stack_version", context::FLAG_ALWAYS_DECODE)?;
         let (from_device_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (to_device_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
         let (sequence, buf) = context.check_decode(buf, "sequence", flags.next())?;
@@ -892,12 +893,12 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
-        let (protocol_version, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
-        let (stack_version, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
+        let (protocol_version, buf) = context.decode(buf, "AckTunnel.protocol_version", context::FLAG_ALWAYS_DECODE)?;
+        let (stack_version, buf) = context.decode(buf, "AckTunnel.stack_version", context::FLAG_ALWAYS_DECODE)?;
         let (sequence, buf) = context.check_decode(buf, "sequence", flags.next())?;
-        let (result, buf) = context.decode(buf, flags.next())?;
+        let (result, buf) = context.decode(buf, "AckTunnel.result", flags.next())?;
         let (send_time, buf) = context.check_decode(buf, "send_time", flags.next())?;
-        let (mtu, buf) = context.decode(buf, flags.next())?;
+        let (mtu, buf) = context.decode(buf, "AckTunnel.mtu", flags.next())?;
         let (to_device_desc, buf) = context.check_decode(buf, "device_desc", flags.next())?;
         Ok((
             Self {
@@ -1055,17 +1056,17 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
-        let (protocol_version, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
-        let (stack_version, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
+        let (protocol_version, buf) = context.decode(buf, "SnCall.protocol_version", context::FLAG_ALWAYS_DECODE)?;
+        let (stack_version, buf) = context.decode(buf, "SnCall.stack_version", context::FLAG_ALWAYS_DECODE)?;
         let (seq, buf) = context.check_decode(buf, "sequence", flags.next())?;
         let (sn_peer_id, buf) = context.check_decode(buf, "sn_device_id", flags.next())?;
         let (to_peer_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
         let (from_peer_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
-        let (reverse_endpoint_array, buf) = context.decode(buf, flags.next())?;
-        let (active_pn_list, buf) = context.decode(buf, flags.next())?;
+        let (reverse_endpoint_array, buf) = context.decode(buf, "SnCall.reverse_endpoint_array", flags.next())?;
+        let (active_pn_list, buf) = context.decode(buf, "SnCall.active_pn_list", flags.next())?;
         let (peer_info, buf) = context.check_option_decode(buf, "device_desc", flags.next())?;
         let (send_time, buf) = context.check_decode(buf, "send_time", flags.next())?;
-        let (payload, buf) = context.decode(buf, flags.next())?;
+        let (payload, buf) = context.decode(buf, "SnCall.payload", flags.next())?;
         let is_always_call = context.check_flags(flags.next());
 
         Ok((
@@ -1253,8 +1254,8 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
-        let (protocol_version, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
-        let (stack_version, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
+        let (protocol_version, buf) = context.decode(buf, "SnPing.protocol_version", context::FLAG_ALWAYS_DECODE)?;
+        let (stack_version, buf) = context.decode(buf, "SnPing.stack_version", context::FLAG_ALWAYS_DECODE)?;
         let (seq, buf) = context.check_decode(buf, "seq", flags.next())?;
         let (sn_peer_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
         let (from_peer_id, buf) =
@@ -1447,14 +1448,14 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
-        let (protocol_version, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
-        let (stack_version, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
+        let (protocol_version, buf) = context.decode(buf, "SynProxy.protocol_version", context::FLAG_ALWAYS_DECODE)?;
+        let (stack_version, buf) = context.decode(buf, "SynProxy.stack_version", context::FLAG_ALWAYS_DECODE)?;
         let (seq, buf) = context.check_decode(buf, "seq", flags.next())?;
         let (to_peer_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
-        let (to_peer_timestamp, buf) = context.decode(buf, flags.next())?;
+        let (to_peer_timestamp, buf) = context.decode(buf, "SynProxy.to_peer_timestamp", flags.next())?;
         let (from_peer_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (from_peer_info, buf) = context.check_decode(buf, "device_desc", flags.next())?;
-        let (key_hash, buf) = context.decode(buf, flags.next())?;
+        let (key_hash, buf) = context.decode(buf, "SynProxy.key_hash", flags.next())?;
 
         Ok((
             Self {

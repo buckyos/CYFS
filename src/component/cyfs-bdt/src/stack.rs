@@ -394,6 +394,7 @@ impl Stack {
             }
         });
 
+        info!("{}: opened, version 0.5.4", stack); 
         Ok(StackGuard::from(stack))
     }
 

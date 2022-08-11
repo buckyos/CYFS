@@ -126,9 +126,9 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
-        let (package_id, buf) = context.decode(buf, flags.next())?;
-        let (send_time, buf) = context.decode(buf, flags.next())?;
-        let (recv_data, buf) = context.decode(buf, flags.next())?;
+        let (package_id, buf) = context.decode(buf, "PingTunnel.package_id", flags.next())?;
+        let (send_time, buf) = context.decode(buf, "PingTunnel.send_time", flags.next())?;
+        let (recv_data, buf) = context.decode(buf, "PingTunnel.recv_data", flags.next())?;
 
         Ok((
             Self {
@@ -220,9 +220,9 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
-        let (ack_package_id, buf) = context.decode(buf, flags.next())?;
-        let (send_time, buf) = context.decode(buf, flags.next())?;
-        let (recv_data, buf) = context.decode(buf, flags.next())?;
+        let (ack_package_id, buf) = context.decode(buf, "PingTunnelResp.ack_package_id", flags.next())?;
+        let (send_time, buf) = context.decode(buf, "PingTunnelResp.send_time", flags.next())?;
+        let (recv_data, buf) = context.decode(buf, "PingTunnelResp.recv_data", flags.next())?;
 
         Ok((
             Self {
@@ -492,8 +492,8 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
-        let (to_vport, buf) = context.decode(buf, flags.next())?;
-        let (from_vport, buf) = context.decode(buf, flags.next())?;
+        let (to_vport, buf) = context.decode(buf, "Datagram.to_vport", flags.next())?;
+        let (from_vport, buf) = context.decode(buf, "Datagram.from_vport", flags.next())?;
         let (dest_zone, buf) = context.option_decode(buf, flags.next())?;
         let (hop_limit, buf) = context.option_decode(buf, flags.next())?;
         let (sequence, buf) = context.option_decode(buf, flags.next())?;
@@ -502,8 +502,8 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (create_time, buf) = context.option_decode(buf, flags.next())?;
         let (author_id, buf) = context.option_decode(buf, flags.next())?;
         let (author, buf) = context.option_decode(buf, flags.next())?;
-        let (inner_type, buf) = context.decode(buf, flags.next())?;
-        let (data, buf) = context.decode(buf, flags.next())?;
+        let (inner_type, buf) = context.decode(buf, "Datagram.inner_type", flags.next())?;
+        let (data, buf) = context.decode(buf, "Datagram.data", flags.next())?;
 
         Ok((
             Self {
@@ -1093,10 +1093,10 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         merge_context: &mut Context,
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
-        let (stream_pos, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
-        let (ack_stream_pos, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
+        let (stream_pos, buf) = context.decode(buf, "SessionData.stream_pos", context::FLAG_ALWAYS_DECODE)?;
+        let (ack_stream_pos, buf) = context.decode(buf, "SessionData.ack_stream_pos", context::FLAG_ALWAYS_DECODE)?;
         let (sack, buf) = context.option_decode(buf, SESSIONDATA_FLAG_SACK)?;
-        let (session_id, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
+        let (session_id, buf) = context.decode(buf, "SessionData.session_id", context::FLAG_ALWAYS_DECODE)?;
         let (send_time, buf) = context.check_decode(buf, "send_time", SESSIONDATA_FLAG_SENDTIME)?;
         let (syn_info, buf) = context.option_decode(buf, SESSIONDATA_FLAG_SYN)?;
         let (to_session_id, buf) = context.option_decode(buf, SESSIONDATA_FLAG_TO_SESSION_ID)?;
@@ -1104,7 +1104,7 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
             buf,
             SESSIONDATA_FLAG_PACKAGEID | SESSIONDATA_FLAG_ACK_PACKAGEID,
         )?;
-        let (payload, buf) = context.decode(buf, context::FLAG_ALWAYS_DECODE)?;
+        let (payload, buf) = context.decode(buf, "SessionData.payload", context::FLAG_ALWAYS_DECODE)?;
 
         Ok((
             Self {
@@ -1286,14 +1286,14 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (sequence, buf) = context.check_decode(buf, "sequence", flags.next())?;
-        let (result, buf) = context.decode(buf, flags.next())?;
-        let (to_vport, buf) = context.decode(buf, flags.next())?;
-        let (from_session_id, buf) = context.decode(buf, flags.next())?;
+        let (result, buf) = context.decode(buf, "TcpSynConnection.result", flags.next())?;
+        let (to_vport, buf) = context.decode(buf, "TcpSynConnection.to_vport", flags.next())?;
+        let (from_session_id, buf) = context.decode(buf, "TcpSynConnection.from_session_id", flags.next())?;
         let (from_device_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (to_device_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
         let (from_device_desc, buf) = context.check_decode(buf, "device_desc", flags.next())?;
         let (reverse_endpoint, buf) = context.option_decode(buf, flags.next())?;
-        let (payload, buf) = context.decode(buf, flags.next())?;
+        let (payload, buf) = context.decode(buf, "TcpSynConnection.payload", flags.next())?;
 
         Ok((
             Self {
@@ -1473,10 +1473,10 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (sequence, buf) = context.check_decode(buf, "sequence", flags.next())?;
-        let (to_session_id, buf) = context.decode(buf, flags.next())?;
-        let (result, buf) = context.decode(buf, flags.next())?;
+        let (to_session_id, buf) = context.decode(buf, "TcpAckConnection.to_session_id", flags.next())?;
+        let (result, buf) = context.decode(buf, "TcpAckConnection.result", flags.next())?;
         let (to_device_desc, buf) = context.check_decode(buf, "device_desc", flags.next())?;
-        let (payload, buf) = context.decode(buf, flags.next())?;
+        let (payload, buf) = context.decode(buf, "TcpAckConnection.payload", flags.next())?;
 
         Ok((
             Self {
@@ -1600,7 +1600,7 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (sequence, buf) = context.check_decode(buf, "sequence", flags.next())?;
-        let (result, buf) = context.decode(buf, flags.next())?;
+        let (result, buf) = context.decode(buf, "TcpAckAckConnection.result", flags.next())?;
 
         Ok((Self { sequence, result }, buf))
     }
@@ -1692,7 +1692,7 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (seq, buf) = context.check_decode(buf, "seq", flags.next())?;
         let (sn_peer_id, buf) = context.check_decode(buf, "sn_peer_id", flags.next())?;
-        let (result, buf) = context.decode(buf, flags.next())?;
+        let (result, buf) = context.decode(buf, "SnCallResp.result", flags.next())?;
         let (to_peer_info, buf) = context.check_option_decode(buf, "to_peer_info", flags.next())?;
 
         Ok((
@@ -1833,12 +1833,12 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (sn_peer_id, buf) = context.check_decode(buf, "sn_device_id", flags.next())?;
         let (to_peer_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
         let (from_peer_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
-        let (reverse_endpoint_array, buf) = context.decode(buf, flags.next())?;
-        let (active_pn_list, buf) = context.decode(buf, flags.next())?;
+        let (reverse_endpoint_array, buf) = context.decode(buf, "SnCalled.reverse_endpoint_array", flags.next())?;
+        let (active_pn_list, buf) = context.decode(buf, "SnCalled.active_pn_list", flags.next())?;
         let (peer_info, buf) = context.check_decode(buf, "device_desc", flags.next())?;
         let (call_seq, buf) = context.check_decode(buf, "sequence", flags.next())?;
         let (call_send_time, buf) = context.check_decode(buf, "send_time", flags.next())?;
-        let (payload, buf) = context.decode(buf, flags.next())?;
+        let (payload, buf) = context.decode(buf, "SnCalled.payload", flags.next())?;
 
         Ok((
             Self {
@@ -2112,7 +2112,7 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (sn_peer_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (result, buf) = context.check_decode(buf, "result", flags.next())?;
         let (peer_info, buf) = context.check_option_decode(buf, "device_desc", flags.next())?;
-        let (end_point_array, buf) = context.decode(buf, flags.next())?;
+        let (end_point_array, buf) = context.decode(buf, "SnPingResp.end_point_array", flags.next())?;
         let (receipt, buf) = context.option_decode(buf, flags.next())?;
 
         Ok((
@@ -2265,8 +2265,8 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
-        let (seq, buf) = context.decode(buf, flags.next())?;
-        let (to_peer_id, buf) = context.decode(buf, flags.next())?;
+        let (seq, buf) = context.decode(buf, "AckProxy.seq", flags.next())?;
+        let (to_peer_id, buf) = context.decode(buf, "AckProxy.to_peer_id", flags.next())?;
         let (proxy_endpoint, buf) = context.option_decode(buf, flags.next())?;
         let (err, buf) = context.option_decode(buf, flags.next())?;
 
