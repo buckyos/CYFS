@@ -202,7 +202,7 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
         std::fs::create_dir_all(log_dir.clone())?;
     }
 
-    let app_data_dir = get_cyfs_root_path().join("data").join("app").join(id);
+    let app_data_dir = get_cyfs_root_path().join("data").join("app");
     if !app_data_dir.exists() {
         std::fs::create_dir_all(app_data_dir.clone())?;
     }
