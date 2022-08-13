@@ -170,7 +170,7 @@ impl ObjectHttpBdtListener {
             addr, remote_addr, seq,
         );
 
-        if let Err(e) = stream.confirm(&Vec::from("answer")).await {
+        if let Err(e) = stream.confirm(&vec![]).await {
             error!(
                 "bdt stream confirm error! remote={:?}, seq={:?}, {}",
                 remote_addr, seq, e

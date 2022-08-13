@@ -178,7 +178,7 @@ impl StreamBdtListener {
     }
 
     async fn process(proxy_pass: (String, u32), stream: BdtStream) {
-        if let Err(e) = stream.confirm(&Vec::from("answer")).await {
+        if let Err(e) = stream.confirm(&vec![]).await {
             error!(
                 "bdt stream confirm error! proxy_pass={:?}, remote={:?}, {}",
                 proxy_pass,

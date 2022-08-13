@@ -198,7 +198,7 @@ async fn main() {
                         println!("question len={} content={:?}", 
                             stream.question.len(), String::from_utf8(stream.question).expect(""));
 
-                        let _ = stream.stream.confirm(b"accepted!".as_ref()).await;
+                        let _ = stream.stream.confirm(&vec![]).await;
 
                         task::spawn(async move {
                             let mut buf = vec![];
