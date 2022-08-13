@@ -55,7 +55,7 @@ impl Storage {
         let _ = conn.execute("CREATE TABLE IF NOT EXISTS auth (
             device TEXT UNIQUE NOT NULL PRIMARY KEY,
             bandwidth INTEGER NOT NULL
-        );", rusqlite::NO_PARAMS)?;
+        );", [])?;
         Ok(())
     }
 
