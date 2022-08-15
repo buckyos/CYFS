@@ -194,7 +194,7 @@ fn get_dockerfile_gz_path(id: &str, version: &str) -> BuckyResult<PathBuf> {
 }
 
 fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
-    info!("start to handle container mount params of app {}", id);
+    info!("start to handle container mount params of app:{}", id);
 
     // mount log 目录
     let log_dir = get_cyfs_root_path().join("log").join("app").join(id);
@@ -436,7 +436,7 @@ impl DockerApi {
         config: RunConfig,
         command: Option<Vec<String>>,
     ) -> BuckyResult<()> {
-        info!("docker run dec app {}, config {:?}", id, config);
+        info!("docker run dec app:{}, config {:?}", id, config);
         if self.is_running(id).await.unwrap() {
             info!("docker container is alreay running   {}", id);
             return Ok(());
@@ -475,7 +475,7 @@ impl DockerApi {
             }),
             ..Default::default()
         };
-        info!("docker run dec app {}, host_config {:?}", id, host_config);
+        info!("docker run dec app:{}, host_config {:?}", id, host_config);
 
         // 内存限制
         if config.memory.is_some() {

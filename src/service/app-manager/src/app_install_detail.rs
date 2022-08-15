@@ -41,12 +41,12 @@ impl AppInstallDetail {
         ret
     }
 
-    pub fn get_install_version(&self) -> Option<String> {
+    pub fn get_install_version(&self) -> Option<&str> {
         self.detail
             .info
             .install_version
             .as_ref()
-            .map_or(None, |v| Some(v.to_owned()))
+            .map(|v| v.as_str())
     }
 
     pub fn set_install_version(&mut self, version: Option<&str>) -> BuckyResult<()> {

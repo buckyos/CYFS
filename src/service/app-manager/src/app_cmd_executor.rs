@@ -136,7 +136,7 @@ impl AppCmdExecutor {
     ) -> BuckyResult<()> {
         let app_id = cmd.app_id();
         let cmd_code = cmd.cmd();
-        //info!("will execute cmd, app: {}, cmd: {:?}", app_id, cmd_code);
+        //info!("will execute cmd, app:{}, cmd: {:?}", app_id, cmd_code);
 
         self.pre_change_status(
             app_id,
@@ -174,7 +174,7 @@ impl AppCmdExecutor {
             if self.use_docker {
                 match self.docker_network_manager.get_valid_app_ip(app_id) {
                     Ok(ip) => {
-                        info!("get ip for app: {}, ip: {}", app_id, ip);
+                        info!("get ip for app:{}, ip: {}", app_id, ip);
                         if let Err(e) = self.register_app(app_id, &ip).await {
                             error!("register app to stack failed, app:{}, err:{}", app_id, e);
                             sub_err = SubErrorCode::RegisterAppFailed;
@@ -553,7 +553,7 @@ impl AppCmdExecutor {
             if cur_status_code != pre_status {
                 //判断状态是否还是要求的前置状态，如果不是就不改变状态了
                 let err_msg = format!(
-                    "after execute cmd [{:?}], current status is [{}], app: {}, skip change status.",
+                    "after execute cmd [{:?}], current status is [{}], app:{}, skip change status.",
                     cmd_code, cur_status_code, app_id
                 );
                 warn!("{}", err_msg);
@@ -561,7 +561,7 @@ impl AppCmdExecutor {
             }
 
             info!(
-                "after execute cmd [{:?}], change app from [{}] to [{}], app: {}",
+                "after execute cmd [{:?}], change app from [{}] to [{}], app:{}",
                 cmd_code, cur_status_code, target_status_code, app_id
             );
             status.set_sub_error(sub_error);
@@ -639,7 +639,7 @@ impl AppCmdExecutor {
                 let next_status = Self::get_next_status_with_cmd(cmd_code);
                 if let Some(v) = next_status {
                     info!(
-                        "next cmd is {:?}, will change app {} to status: {}",
+                        "next cmd is {:?}, will change app:{} to status: {}",
                         cmd_code, app_id, v
                     );
                 }
@@ -658,7 +658,7 @@ impl AppCmdExecutor {
             let next_status = Self::get_next_status_with_cmd(cmd_code);
             if let Some(v) = next_status {
                 info!(
-                    "next cmd is {:?}, will change app {} to status: {}",
+                    "next cmd is {:?}, will change app:{} to status: {}",
                     cmd_code, app_id, v
                 );
             }

@@ -61,7 +61,7 @@ impl AppController {
         info!("try to install app:{}, ver:{}", app_id, version);
         let source_id = dec_app.find_source(version).map_err(|e| {
             error!(
-                "app {} cannot find source for ver {}, err: {}",
+                "app:{} cannot find source for ver {}, err: {}",
                 app_id, version, e
             );
             SubErrorCode::DownloadFailed
@@ -75,7 +75,7 @@ impl AppController {
         );
         // 返回了安装的service路径和web路径
         let (service_dir, web_dir) = pkg.install(&self.named_cache_client).await.map_err(|e| {
-            error!("install app {} failed, {}", app_id, e);
+            error!("install app:{} failed, {}", app_id, e);
             SubErrorCode::DownloadFailed
         })?;
 
@@ -101,7 +101,7 @@ impl AppController {
                 .await
                 .map_err(|e| {
                     error!(
-                        "pub web dir failed when install. app {} failed, err:,{}",
+                        "pub web dir failed when install. app:{} failed, err:,{}",
                         app_id, e
                     );
                     SubErrorCode::PubDirFailed
@@ -127,7 +127,7 @@ impl AppController {
                 })
                 .map_err(|e| {
                     error!(
-                        "trans objmap to dir failed when install. app {}, objmap id: {}, failed, {}",
+                        "trans objmap to dir failed when install. app:{}, objmap id: {}, failed, {}",
                         app_id, pub_resp.file_id, e
                     );
                     SubErrorCode::PubDirFailed
@@ -143,7 +143,7 @@ impl AppController {
             // serivce install. e.g. npm install
             let dapp = DApp::load_from_app_id(&app_id.to_string()).map_err(|e| {
                 error!(
-                    "get dapp instance failed when install. app {} failed, err:,{}",
+                    "get dapp instance failed when install. app:{} failed, err:,{}",
                     app_id, e
                 );
                 SubErrorCode::LoadFailed
@@ -163,7 +163,7 @@ impl AppController {
                 let executable = {
                     let res = dapp.get_executable_binary().map_err(|e| {
                         error!(
-                            "get executable failed when install. app {} failed, err:,{}",
+                            "get executable failed when install. app:{} failed, err:,{}",
                             app_id, e
                         );
                         SubErrorCode::LoadFailed
@@ -179,7 +179,7 @@ impl AppController {
                     .install(&id, version, executable)
                     .await
                     .map_err(|e| {
-                        error!("docker install failed. app {} failed, {}", app_id, e);
+                        error!("docker install failed. app:{} failed, {}", app_id, e);
                         SubErrorCode::DockerFailed
                     })?;
             }
@@ -210,7 +210,7 @@ impl AppController {
         // docker remove
         // 删除镜像
         if self.docker_api.is_some() {
-            info!("docker instance try to uninstall app {}", app_id);
+            info!("docker instance try to uninstall app:{}", app_id);
             let id = app_id.to_string();
             let docker_api = self.docker_api.as_ref().unwrap();
             // docker_api.volume_remove(&id).await; // 这里不用删除 volume 保留用户数据。
@@ -305,7 +305,7 @@ impl AppController {
     ) -> BuckyResult<Option<HashMap<String, String>>> {
         debug!("query app permission, {}-{}", app_id, version);
         let source_id = dec_app.find_source(version).map_err(|e| {
-            error!("app {} cannot find source for ver {}", app_id, version);
+            error!("app:{} cannot find source for ver {}", app_id, version);
             e
         })?;
         let owner_id_str = self.get_owner_id_str(&app_id).await;
@@ -325,14 +325,14 @@ impl AppController {
             Ok(dir) => acl_dir = dir,
             Err(e) => {
                 //下载acl失败，默认没有任何权限
-                warn!("download acl config failed. app: {}， err: {}", app_id, e);
+                warn!("download acl config failed. app:{}， err: {}", app_id, e);
                 return Ok(None);
             }
         }
 
         let acl_file = acl_dir.join("acl.cfg");
         if !acl_file.exists() {
-            info!("acl config not found. app: {}", app_id);
+            info!("acl config not found. app:{}", app_id);
             return Ok(None);
         }
         let acl = File::open(acl_file)?;
@@ -366,14 +366,14 @@ impl AppController {
         let dep_file = dep_dir.join("dependent.cfg");
         if dep_file.exists() {
             info!(
-                "dep config already exists. app: {}, ver:{}",
+                "dep config already exists. app:{}, ver:{}",
                 app_id, version
             );
             return self.parse_dep_config(app_id, dep_file);
         }
 
         let source_id = dec_app.find_source(version).map_err(|e| {
-            error!("app {} cannot find source for ver {}", app_id, version);
+            error!("app:{} cannot find source for ver {}", app_id, version);
             e
         })?;
         let owner_id_str = self.get_owner_id_str(&app_id).await;
@@ -404,7 +404,7 @@ impl AppController {
 
         if !dep_file.exists() {
             //没有设置兼容性的话，默认全匹配
-            info!("dep config not found. app: {}", app_id);
+            info!("dep config not found. app:{}", app_id);
             return Ok(default_ret);
         }
 

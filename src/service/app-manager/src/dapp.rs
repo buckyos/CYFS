@@ -226,7 +226,7 @@ impl DApp {
                 BuckyError::from(BuckyErrorCode::ExecuteError)
             })?;
             info!(
-                "start app {} {} success! and write pid {:?}",
+                "start app:{} {} success! and write pid {:?}",
                 self.dec_id, self.info.id, id
             );
 
@@ -242,7 +242,7 @@ impl DApp {
         let mut ret = DApp::run(&self.info.status, &self.work_dir, false, None)?;
         return match ret.wait()?.code() {
             None => {
-                error!("app {} get no ret", self.info.id);
+                error!("app:{} get no ret", self.info.id);
                 Err(BuckyError::from(BuckyErrorCode::ExecuteError))
             }
             Some(code) => Ok(code != 0),
@@ -360,7 +360,7 @@ impl DApp {
                 .arg(&pid)
                 .spawn()
                 .map_err(|e| {
-                    error!("kill app {} failed! err {}", pid, e);
+                    error!("kill app:{} failed! err {}", pid, e);
                     BuckyError::from(BuckyErrorCode::ExecuteError)
                 })?;
         }
@@ -371,7 +371,7 @@ impl DApp {
                 .arg(&pid)
                 .spawn()
                 .map_err(|e| {
-                    error!("kill app {} failed! err {}", pid, e);
+                    error!("kill app:{} failed! err {}", pid, e);
                     BuckyError::from(BuckyErrorCode::ExecuteError)
                 })?;
         }
@@ -401,7 +401,7 @@ impl DApp {
             let exit_code = child.wait()?;
             if !exit_code.success() {
                 error!(
-                    "run app {} install cmd {} err {}",
+                    "run app:{} install cmd {} err {}",
                     &self.info.id,
                     cmd,
                     exit_code.code().unwrap_or(-1)
