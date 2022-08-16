@@ -99,6 +99,7 @@ impl AppManager {
         let mut status_list = HashMap::new();
         for app_id in app_local_list.app_list() {
             let local_status = self.non_helper.get_local_status(app_id).await;
+            info!("[INIT] push status to list:{}", local_status.output());
             status_list.insert(app_id.clone(), Arc::new(Mutex::new(local_status)));
         }
 
