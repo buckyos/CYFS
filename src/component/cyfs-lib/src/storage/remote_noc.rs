@@ -59,7 +59,7 @@ impl NamedObjectCache for RemoteNamedObjectCache {
                     create_time: 0u64,
                     update_time: 0u64,
                     insert_time: 0u64,
-                    rank: OBJECT_RANK_NONE,
+                    rank: 100,
                 };
 
                 data.rebuild_object()?;
@@ -104,7 +104,7 @@ impl NamedObjectCache for RemoteNamedObjectCache {
                 create_time: 0u64,
                 update_time: 0u64,
                 insert_time: 0u64,
-                rank: OBJECT_RANK_NONE,
+                rank: 100,
             };
 
             if let Err(e) = data.rebuild_object() {
@@ -141,7 +141,7 @@ impl NamedObjectCache for RemoteNamedObjectCache {
                         create_time: 0u64,
                         update_time: 0u64,
                         insert_time: 0u64,
-                        rank: OBJECT_RANK_NONE,
+                        rank: 100,
                     };
                     data.rebuild_object()?;
 

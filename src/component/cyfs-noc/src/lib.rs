@@ -1,23 +1,10 @@
-mod named_object_storage;
-mod object_cache_manager;
-mod common;
+mod old;
+
 mod blob;
 mod access;
 mod meta;
 mod storage;
 
-#[cfg(feature = "mongo")]
-mod mongodb;
-
-#[cfg(feature = "memory")]
-mod memory;
-
-#[cfg(feature = "sqlite")]
-mod sqlite;
-
-
-pub use object_cache_manager::*;
-pub use named_object_storage::*;
 
 #[macro_use]
 extern crate log;

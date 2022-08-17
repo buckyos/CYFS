@@ -15,10 +15,7 @@ cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-core = { path = "../../component/cyfs-core" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-perf-client = { path = "../../component/cyfs-perf/cyfs-perf-client" }
-cyfs-stack-loader = { path = "../../component/cyfs-stack-loader", features = [
-    "mongo",
-    "sqlite",
-], default-features = false }
+cyfs-stack-loader = { path = "../../component/cyfs-stack-loader" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-chunk-lib = { path = "../../component/cyfs-chunk-lib" }
 cyfs-cip = { path = "../../component/cyfs-cip" }

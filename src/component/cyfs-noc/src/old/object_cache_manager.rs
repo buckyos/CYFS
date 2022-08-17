@@ -1,14 +1,7 @@
-use crate::named_object_storage::*;
+use super::mongodb::ObjectDBCache;
+use super::named_object_storage::*;
+use super::sqlite::SqliteDBCache;
 use lazy_static::lazy_static;
-
-#[cfg(feature = "mongo")]
-use crate::mongodb::ObjectDBCache;
-
-#[cfg(feature = "sqlite")]
-use crate::sqlite::SqliteDBCache;
-
-#[cfg(feature = "memory")]
-use crate::memory::ObjectMemCache;
 
 use cyfs_base::{BuckyResult, DeviceId, ObjectId};
 use cyfs_lib::*;
@@ -67,19 +60,11 @@ impl ObjectCacheManager {
         isolate: &str,
     ) -> BuckyResult<Box<dyn NamedObjectStorage>> {
         let ret = match cache_type {
-            #[cfg(feature = "memory")]
-            NamedObjectStorageType::Memory => Box::new(ObjectMemCache::new(
-                isolate,
-                self.insert_object_event.clone(),
-            )) as Box<dyn NamedObjectStorage>,
-
-            #[cfg(feature = "mongo")]
             NamedObjectStorageType::MongoDB => {
                 Box::new(ObjectDBCache::new(isolate, self.insert_object_event.clone()).await?)
                     as Box<dyn NamedObjectStorage>
             }
 
-            #[cfg(feature = "sqlite")]
             NamedObjectStorageType::Sqlite => Box::new(SqliteDBCache::new(
                 isolate,
                 self.insert_object_event.clone(),

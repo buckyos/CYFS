@@ -1,4 +1,4 @@
-use crate::named_object_storage::*;
+use super::super::named_object_storage::*;
 use cyfs_base::{bucky_time_now, BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
 use cyfs_lib::*;
 

@@ -8,19 +8,14 @@ description = "Rust cyfs-stack-loader package"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-default = ["mongo"]
-mongo = ["cyfs-noc/mongo", "cyfs-stack/mongo"]
-sqlite = ["cyfs-noc/sqlite", "cyfs-stack/sqlite"]
-
 [dependencies]
 cyfs-util = { path = "../cyfs-util" }
 cyfs-bdt = { path = "../cyfs-bdt" }
-cyfs-stack = { path = "../cyfs-stack", default-features = false }
+cyfs-stack = { path = "../cyfs-stack" }
 cyfs-lib = { path = "../cyfs-lib" }
 cyfs-base = { path = "../cyfs-base" }
 cyfs-debug = { path = "../cyfs-debug" }
-cyfs-noc = { path = "../cyfs-noc", default-features = false }
+cyfs-noc = { path = "../cyfs-noc" }
 cyfs-meta-lib = { path = "../cyfs-meta-lib" }
 serde = "1.0"
 log = "0.4"

@@ -1,6 +1,6 @@
 use super::object_db::ObjectDB;
-use crate::common::*;
-use crate::named_object_storage::*;
+use super::super::common::*;
+use super::super::named_object_storage::*;
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, DeviceId, ObjectId, RawDecode, RawEncode,
 };
@@ -552,7 +552,7 @@ impl ObjectDBCache {
         let dec_id: Option<ObjectId> = Self::get_opt_item_from_doc(&doc, "dec_id")?;
 
         // FIXME 为了兼容之前的没有rank的数据库，如果不存在的话先使用OBJECT_RANK_NONE
-        let rank = doc.get_i32("rank").unwrap_or(OBJECT_RANK_NONE as i32) as u8;
+        let rank = doc.get_i32("rank").unwrap_or(100) as u8;
         let mut data = ObjectCacheData {
             protocol,
             source,
@@ -680,10 +680,6 @@ impl ObjectDBCache {
         let value = bson!({ "$gte": begin_seq, "$lte": end_seq });
         doc.insert("insert_time".to_owned(), value);
 
-        // 通过rank过滤
-        let value = bson!({ "$gte": OBJECT_RANK_SYNC_LEVEL as i32 });
-        doc.insert("rank".to_owned(), value);
-
         Ok(doc)
     }
 
@@ -806,7 +802,7 @@ impl ObjectDBCache {
         // 只需要获取符合rank的第一个对象即可
 
         let mut filter = Document::new();
-        let value = bson!({ "$gte": OBJECT_RANK_SYNC_LEVEL as i32 });
+        let value = bson!({ "$gte": 60 as i32 });
         filter.insert("rank".to_owned(), value);
 
         let mut find_opt = FindOptions::default();

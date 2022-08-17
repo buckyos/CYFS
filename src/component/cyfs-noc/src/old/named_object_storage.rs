@@ -5,27 +5,13 @@ use cyfs_util::*;
 
 #[derive(Debug, Clone)]
 pub enum NamedObjectStorageType {
-    #[cfg(feature = "memory")]
-    Memory = 0,
-
-    #[cfg(feature = "mongo")]
     MongoDB = 1,
-
-    #[cfg(feature = "sqlite")]
     Sqlite = 2,
 }
 
 impl Default for NamedObjectStorageType {
     fn default() -> Self {
-        #[cfg(all(feature = "sqlite", not(feature = "mongo")))]
         let noc_type = NamedObjectStorageType::Sqlite;
-
-        #[cfg(all(feature = "mongo", not(feature = "sqlite")))]
-        let noc_type = NamedObjectStorageType::MongoDB;
-
-        // 如果同时开启了，那么优先使用mongo
-        #[cfg(all(feature = "mongo", feature = "sqlite"))]
-        let noc_type = NamedObjectStorageType::MongoDB;
 
         noc_type
     }
@@ -34,13 +20,7 @@ impl Default for NamedObjectStorageType {
 impl std::fmt::Display for NamedObjectStorageType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match *self {
-            #[cfg(feature = "memory")]
-            Self::Memory => "memory",
-
-            #[cfg(feature = "mongo")]
             Self::MongoDB => "mongodb",
-
-            #[cfg(feature = "sqlite")]
             Self::Sqlite => "sqlite",
         };
 

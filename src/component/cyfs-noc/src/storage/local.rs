@@ -1,4 +1,4 @@
-use super::cache::*;
+use super::storage::*;
 use crate::blob::*;
 use crate::meta::*;
 use cyfs_base::*;

@@ -8,10 +8,6 @@ description = "Rust cyfs-stack package"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-default = ["mongo"]
-mongo = ["cyfs-noc/mongo"]
-sqlite = ["cyfs-noc/sqlite"]
 
 [dependencies]
 cyfs-bdt = { path = "../../component/cyfs-bdt" }
@@ -20,7 +16,7 @@ cyfs-core = { path = "../../component/cyfs-core" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-chunk-lib = { path = "../../component/cyfs-chunk-lib" }
-cyfs-noc = { path = "../../component/cyfs-noc", default-features = false }
+cyfs-noc = { path = "../../component/cyfs-noc" }
 cyfs-ndc = { path = "../../component/cyfs-ndc" }
 cyfs-tracker-cache = { path = "../../component/cyfs-tracker-cache" }
 cyfs-task-manager = { path = "../../component/cyfs-task-manager" }

@@ -1,7 +1,7 @@
 use super::sqlite_data::*;
 use super::sqlite_sql::*;
-use crate::common::*;
-use crate::named_object_storage::*;
+use super::super::common::*;
+use super::super::named_object_storage::*;
 use async_trait::async_trait;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
 use cyfs_lib::*;
@@ -759,7 +759,7 @@ impl SqliteDBCache {
     fn get_latest_seq(&self) -> BuckyResult<u64> {
         let sql = format!(
             "SELECT insert_time FROM noc WHERE rank>={} ORDER BY insert_time DESC LIMIT 1",
-            OBJECT_RANK_SYNC_LEVEL
+            60
         );
 
         info!("will exec get_latest_seq: sql={}", sql);
@@ -802,7 +802,7 @@ impl SqliteDBCache {
         page_size: u16,
     ) -> BuckyResult<Vec<SyncObjectData>> {
         let sql = format!("SELECT object_id,insert_time,update_time FROM noc WHERE insert_time>={} AND insert_time<={} AND rank>={} ORDER BY insert_time ASC LIMIT {} OFFSET {}",
-            begin_seq, end_seq, OBJECT_RANK_SYNC_LEVEL, page_size, page_size * page_index);
+            begin_seq, end_seq, 60, page_size, page_size * page_index);
 
         info!("will exec list_objects: sql={}", sql);
 

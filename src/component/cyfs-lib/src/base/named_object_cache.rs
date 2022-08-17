@@ -337,14 +337,6 @@ impl ObjectCacheData {
             }
         }
 
-        // 对象评级
-        if self.rank == OBJECT_RANK_NONE {
-            let rank_data = ObjectRankData {
-                object: self.object.as_ref().unwrap().clone(),
-            };
-
-            self.rank = OBJECT_RANK_SCORER.get_rank(&rank_data);
-        }
 
         Ok(())
     }
@@ -383,7 +375,7 @@ impl From<NamedObjectCacheInsertObjectRequest> for ObjectCacheData {
             create_time: 0,
             update_time: 0,
             insert_time: 0,
-            rank: OBJECT_RANK_NONE,
+            rank: 100,
         }
     }
 }

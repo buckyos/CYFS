@@ -8,13 +8,8 @@ description = "Rust base package"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-default = ["mongo"]
-mongo = ["cyfs-noc/mongo", "cyfs-stack-loader/mongo"]
-sqlite = ["cyfs-noc/sqlite", "cyfs-stack-loader/sqlite"]
-
 [dependencies]
-cyfs-stack-loader = { path = "../../component/cyfs-stack-loader", default-features = false, optional = true }
+cyfs-stack-loader = { path = "../../component/cyfs-stack-loader" }
 cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
-cyfs-noc = { path = "../../component/cyfs-noc", default-features = false, optional = true }
+cyfs-noc = { path = "../../component/cyfs-noc" }
