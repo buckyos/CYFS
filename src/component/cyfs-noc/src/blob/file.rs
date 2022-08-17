@@ -1,8 +1,8 @@
-use super::blob::BlobStorage;
+use super::blob::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 
 pub struct FileBlobStorage {
     root: PathBuf,
@@ -46,6 +46,16 @@ impl FileBlobStorage {
         Ok(path)
     }
 
+    async fn load_object(&self, path: &Path) -> BuckyResult<NONObjectInfo> {
+        let object_raw = async_std::fs::read(&path).await.map_err(|e| {
+            let msg = format!("read object blob from file error! path={}, {}", path.display(), e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
+
+        let info = NONObjectInfo::new_from_object_raw(object_raw)?;
+        Ok(info)
+    }
 }
 
 #[async_trait::async_trait]
@@ -69,21 +79,25 @@ impl BlobStorage for FileBlobStorage {
             return Ok(None);
         }
 
-        let object_raw = async_std::fs::read(&path).await.map_err(|e| {
-            let msg = format!("read object blob from file error! path={}, {}", path.display(), e);
-            error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::IoError, msg)
-        })?;
+        let info = self.load_object(&path).await?;
 
-        let info = NONObjectInfo::new_from_object_raw(object_raw)?;
         Ok(Some(info))
     }
 
-    async fn delete_object(&self, object_id: &ObjectId) -> BuckyResult<bool> {
+    async fn delete_object(&self, object_id: &ObjectId) -> BuckyResult<Option<NONObjectInfo>> {
         let path = self.get_full_path(object_id, false).await?;
         if !path.exists() {
-            return Ok(false);
+            return Ok(None);
         }
+
+        let info = match self.load_object(&path).await {
+            Ok(info) => {
+                Some(info)
+            }
+            Err(_) => {
+                None
+            }
+        };
 
         async_std::fs::remove_file(&path).await.map_err(|e| {
             let msg = format!("remove object blob file error! path={}, {}", path.display(), e);
@@ -92,6 +106,21 @@ impl BlobStorage for FileBlobStorage {
         })?;
 
         info!("remove object blob file success! object={}", object_id);
-        Ok(true)
+        Ok(info)
+    }
+
+    async fn exists_object(&self, object_id: &ObjectId) -> BuckyResult<bool> {
+        let path = self.get_full_path(object_id, false).await?;
+        Ok(path.exists())
+    }
+
+    async fn stat(&self) -> BuckyResult<BlobStorageStat> {
+        // TODO
+        let resp = BlobStorageStat {
+            count: 0,
+            storage_size: 0,
+        };
+
+        Ok(resp)
     }
 }
