@@ -7,6 +7,7 @@ use cyfs_chunk_client::{ChunkClient, ChunkSourceContext};
 use http_types::{Method, Request, Response};
 use rand::{Rng, RngCore};
 use std::borrow::BorrowMut;
+use std::collections::HashMap;
 use std::io::{Read};
 use std::marker::Unpin;
 use std::option::Option;
@@ -23,6 +24,7 @@ use cyfs_base::*;
 use cyfs_base_meta::*;
 use std::str::FromStr;
 use std::convert::TryFrom;
+use std::sync::RwLock;
 
 pub struct NamedCacheClient {
     // 需要一个BDT栈，init时初始化
@@ -31,6 +33,8 @@ pub struct NamedCacheClient {
     secret: Option<PrivateKey>,
     meta_client: Option<MetaClient>,
     init_ret: Mutex<bool>,
+    object_cache: RwLock<HashMap<ObjectId, StandardObject>>,
+    conn_cache: RwLock<HashMap<(DeviceId, u16), StreamGuard>>,
 }
 
 impl NamedCacheClient {
@@ -41,6 +45,8 @@ impl NamedCacheClient {
             secret: None,
             meta_client: None,
             init_ret: Mutex::new(false),
+            object_cache: RwLock::new(HashMap::new()),
+            conn_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -206,6 +212,10 @@ impl NamedCacheClient {
     }
 
     async fn bdt_conn(&self, remote: &DeviceId, remote_vport: u16) -> BuckyResult<StreamGuard> {
+        if let Some(stream) = self.conn_cache.read().unwrap().get(&(remote.clone(), remote_vport)) {
+            return Ok(stream.clone());
+        }
+
         debug!("create bdt connection to {}:{}", remote, remote_vport);
         // 如何从peerid取到peerConstInfo?
         let remote_peer_desc = self.get_peer_desc(remote).await?;
@@ -229,6 +239,7 @@ impl NamedCacheClient {
             .stream_manager().connect(remote_vport, vec![], param).await?;
 
         debug!("connect to {}:{} success", remote, remote_vport);
+        self.conn_cache.write().unwrap().insert((remote.clone(), remote_vport), conn.clone());
         Ok(conn)
     }
 
@@ -386,6 +397,10 @@ impl NamedCacheClient {
         owner: Option<&ObjectId>,
     ) -> BuckyResult<StandardObject> {
         info!("get file desc for id {}", fileid);
+        //1. 尝试从内存cache里取
+        if let Some(obj) = self.object_cache.read().unwrap().get(fileid) {
+            return Ok(obj.clone());
+        }
         //1. 从FileManager取desc
         /*
         if let Ok(desc) = FileManager::get_desc(fileid).await {
@@ -396,24 +411,31 @@ impl NamedCacheClient {
         //2. 如果找不到，尝试用meta chain查找desc
         info!("try get file desc {} from meta", fileid);
         if let Ok(ret) = self.meta_client.as_ref().unwrap().get_desc(fileid).await {
-            match ret {
+            let obj = match ret {
                 SavedMetaObject::File(p) => {
                     info!("get file desc {} from meta success", fileid);
-                    return Ok(StandardObject::File(p));
+                    Ok(StandardObject::File(p))
                 },
                 SavedMetaObject::People(p) => {
                     info!("get people desc {} from meta success", fileid);
-                    return Ok(StandardObject::People(p));
+                    Ok(StandardObject::People(p))
                 },
                 SavedMetaObject::Device(p) => {
                     info!("get device desc {} from meta success", fileid);
-                    return Ok(StandardObject::Device(p));
+                    Ok(StandardObject::Device(p))
                 }
                 SavedMetaObject::Data(data) => {
                     info!("get desc {} from meta success", &data.id);
-                    return Ok(StandardObject::clone_from_slice(data.data.as_slice())?)
+                    Ok(StandardObject::clone_from_slice(data.data.as_slice())?)
                 }
-                _ => warn!("get desc {} but not file", fileid),
+                _ => {
+                    warn!("get desc {} but not file", fileid);
+                    Err(BuckyError::from(BuckyErrorCode::NotFound))
+                },
+            };
+            if let Ok(obj) = obj {
+                self.object_cache.write().unwrap().insert(fileid.clone(), obj.clone());
+                return Ok(obj);
             }
         }
 
@@ -436,7 +458,9 @@ impl NamedCacheClient {
                 //resp是async的，要转换成同步Read
                 let mut buf = Vec::new();
                 resp.read_to_end(&mut buf).await?;
-                return Ok(StandardObject::clone_from_slice(&buf)?);
+                let obj = StandardObject::clone_from_slice(&buf)?;
+                self.object_cache.write().unwrap().insert(fileid.clone(), obj.clone());
+                return Ok(obj);
             }
         }
 
@@ -502,8 +526,24 @@ impl NamedCacheClient {
                                 }
 
                                 let mut file = async_std::fs::File::create(actual_path).await?;
-                                self.get_file_by_id_obj(id, owner, &mut file).await?;
-                                file.flush().await?;
+                                match dir.body_expect("").content() {
+                                    DirBodyContent::Chunk(_) => {
+                                        error!("dir chunk body not support!");
+                                        return Err(BuckyError::from(BuckyErrorCode::NotSupport));
+                                    }
+                                    DirBodyContent::ObjList(list) => {
+                                        if let Some(buf) = list.get(id) {
+                                            let file_obj = File::clone_from_slice(buf)?;
+                                            self.get_file_by_obj(&file_obj, &mut file).await?;
+                                            file.flush().await?;
+                                        } else {
+                                            error!("cannot find id {} in dir obj!", id);
+                                            return Err(BuckyError::from(BuckyErrorCode::NotFound));
+                                        }
+                                    }
+                                }
+                                // self.get_file_by_id_obj(id, owner, &mut file).await?;
+                                // file.flush().await?;
                             }
                             _ => {
                                 warn!("cyfs client not support node type")
@@ -595,28 +635,37 @@ impl NamedCacheClient {
         let desc = self.get_desc(id, owner).await?;
         if let StandardObject::File(desc) = desc {
             info!("get file {} desc success", &id);
-            let owner = desc.desc().owner().unwrap();
-            let owner_device = self.get_device_from_owner_id(&owner).await?;
-            match desc.body().as_ref().unwrap().content().chunk_list() {
-                ChunkList::ChunkInList(list) => {
-                    info!("now get chunks for file {}:", &id);
-                    self.get_chunks(&list, &owner_device, writer).await?;
-                    Ok(desc.clone())
-                }
-                ChunkList::ChunkInFile(_fileid) => {
-                    warn!("chunk in file not supported");
-                    Err(BuckyError::new(BuckyErrorCode::UnSupport, "ChunkInFile"))
-                }
-                ChunkList::ChunkInBundle(bundle) => {
-                    info!("now get chunks for file {}:", &id);
-                    self.get_chunks(&bundle.chunk_list(), &owner_device, writer).await?;
-                    Ok(desc.clone())
-                }
-            }
+            self.get_file_by_obj(&desc, writer).await?;
+            Ok(desc.clone())
         } else {
             Err(BuckyError::from(BuckyErrorCode::NotMatch))
         }
+    }
 
+    pub async fn get_file_by_obj<W: ?Sized>(&self,
+         desc: &File,
+         writer: &mut W) -> BuckyResult<()>
+    where
+        W: AsyncWrite + Unpin,
+    {
+        let owner = desc.desc().owner().unwrap();
+        let owner_device = self.get_device_from_owner_id(&owner).await?;
+        match desc.body().as_ref().unwrap().content().chunk_list() {
+            ChunkList::ChunkInList(list) => {
+                info!("now get chunks for file {}:", desc.desc().calculate_id());
+                self.get_chunks(&list, &owner_device, writer).await?;
+                Ok(())
+            }
+            ChunkList::ChunkInFile(_fileid) => {
+                warn!("chunk in file not supported");
+                Err(BuckyError::new(BuckyErrorCode::UnSupport, "ChunkInFile"))
+            }
+            ChunkList::ChunkInBundle(bundle) => {
+                info!("now get chunks for file {}:", desc.desc().calculate_id());
+                self.get_chunks(&bundle.chunk_list(), &owner_device, writer).await?;
+                Ok(())
+            }
+        }
     }
 
     pub async fn put_from_file(
@@ -637,7 +686,7 @@ impl NamedCacheClient {
                 write_id_to_file(&file_id_file, &fileid);
             }
             let ffs_url = format!("cyfs://{}/{}", file_desc.desc().owner().unwrap(), &fileid);
-            let put_dur = self.put(source, &file_desc, owner_desc, owner_secret, save_to_meta).await?;
+            let put_dur = self.put(source, &file_desc, owner_desc, owner_secret, save_to_meta, true).await?;
             Ok((ffs_url, put_dur))
         } else if source.is_dir() {
             let (dir_desc, file_descs) = generate_dir_desc_2(source, owner_desc, owner_secret, chunk_size, None).await?;
@@ -649,9 +698,9 @@ impl NamedCacheClient {
             }
             let mut gen_dur = Duration::new(0, 0);
             let ffs_url = format!("cyfs://{}/{}", dir_desc.desc().owner().unwrap(), &dirid);
-            // 把每个文件put到ood上去
+            // 把每个文件put到ood上去，这里不需要把每个文件的desc都放到meta链上去
             for (file_desc, abs_path) in file_descs {
-                let put_dur = self.put(&abs_path, &file_desc, owner_desc, owner_secret, save_to_meta).await?;
+                let put_dur = self.put(&abs_path, &file_desc, owner_desc, owner_secret, false, false).await?;
                 gen_dur = gen_dur + put_dur;
             }
 
@@ -715,7 +764,8 @@ impl NamedCacheClient {
         file_desc: &File,
         owner_desc: &StandardObject,
         owner_secret: &PrivateKey,
-        save_to_meta: bool
+        save_to_meta: bool,
+        put_obj: bool,
     ) -> BuckyResult<Duration> {
         let owner_device = self.get_device_from_owner(owner_desc).await?;
         let start = Instant::now();
@@ -762,8 +812,11 @@ impl NamedCacheClient {
             }
         }
 
-        // 3. 把filedesc存入owner
-        self.put_obj(&AnyNamedObject::Standard(StandardObject::File(file_desc.clone()))).await?;
+        if put_obj {
+            // 3. 把filedesc存入owner
+            self.put_obj(&AnyNamedObject::Standard(StandardObject::File(file_desc.clone()))).await?;
+        }
+
 
         if save_to_meta {
             // 4. 把filedesc存入meta
