@@ -2232,6 +2232,7 @@ impl ObjectMapDescContent {
         if self.content.is_dirty() {
             self.size += raw_encode_size(key) + ObjectId::raw_bytes().unwrap() as u64;
             self.total += 1;
+            self.inflate_check_point(builder, cache).await?;
             self.mark_dirty();
         }
 
@@ -2477,8 +2478,16 @@ impl ObjectMapDescContent {
             self.mark_dirty();
         } else {
             // 只是发生了replace操作，元素个数不变，大小可能改变
+            let current = self.size;
             self.size += raw_encode_size(value);
             self.size -= raw_encode_size(ret.as_ref().unwrap());
+
+            if self.size > current {
+                self.inflate_check_point(builder, cache).await?;
+            } else if self.size < current {
+                self.deflate_check_point(cache).await?;
+            }
+
             if self.content.is_dirty() {
                 self.mark_dirty();
             }
