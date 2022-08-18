@@ -2,6 +2,46 @@ use crate::meta::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
+use std::sync::Arc;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NamedObjectStorageCategory {
+    Storage = 0,
+    Cache = 1,
+}
+
+// source device's zone info
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DeviceZoneCategory {
+    CurrentDevice,
+    CurrentZone,
+    FriendsZone,
+    OtherZone,
+}
+
+#[derive(Clone, Debug)]
+pub struct DeviceZoneInfo {
+    pub device_id: DeviceId,
+    pub zone_category: DeviceZoneCategory,
+}
+
+// The identy info of a request
+#[derive(Clone, Debug)]
+pub struct RequestSourceInfo {
+    device: DeviceZoneInfo,
+    dec: ObjectId,
+}
+
+impl std::fmt::Display for RequestSourceInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "device=({:?}-{}),dec={}",
+            self.device.zone_category, self.device.device_id, self.dec
+        )
+    }
+}
+
 pub struct NamedObjectCachePutObjectRequest {
     pub source: RequestSourceInfo,
     pub object: NONObjectInfo,
@@ -69,10 +109,10 @@ pub struct NamedObjectCacheStat1 {
 }
 
 #[async_trait::async_trait]
-pub trait NamedObjectStorage1: Sync + Send {
+pub trait NamedObjectCache1: Sync + Send {
     async fn put_object(
         &self,
-        request: &NamedObjectCachePutObjectRequest,
+        req: &NamedObjectCachePutObjectRequest,
     ) -> BuckyResult<NamedObjectCachePutObjectResponse>;
 
     async fn get_object(
@@ -92,3 +132,6 @@ pub trait NamedObjectStorage1: Sync + Send {
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat1>;
 }
+
+pub type NamedObjectCacheRef = Arc<Box<dyn NamedObjectCache1>>;
+

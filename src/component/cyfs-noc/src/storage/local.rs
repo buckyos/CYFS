@@ -1,4 +1,4 @@
-use super::storage::*;
+use crate::prelude::*;
 use crate::blob::*;
 use crate::meta::*;
 use cyfs_base::*;
@@ -6,12 +6,12 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
-struct NamedObjectStorage {
+struct NamedObjectLocalStorage {
     meta: Box<dyn NamedObjectMeta>,
     blob: Box<dyn BlobStorage>,
 }
 
-impl NamedObjectStorage {
+impl NamedObjectLocalStorage {
     async fn put_object(
         &self,
         request: &NamedObjectCachePutObjectRequest,
@@ -368,7 +368,7 @@ impl NamedObjectStorage {
 }
 
 #[async_trait::async_trait]
-impl NamedObjectStorage1 for NamedObjectStorage {
+impl NamedObjectCache1 for NamedObjectLocalStorage {
     async fn put_object(
         &self,
         req: &NamedObjectCachePutObjectRequest,

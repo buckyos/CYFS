@@ -4,7 +4,8 @@ mod blob;
 mod access;
 mod meta;
 mod storage;
-
+mod prelude;
+mod cache;
 
 #[macro_use]
 extern crate log;
