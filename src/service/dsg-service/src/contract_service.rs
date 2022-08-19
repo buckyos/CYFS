@@ -30,7 +30,7 @@ pub struct DsgServiceConfig {
 impl Default for DsgServiceConfig {
     fn default() -> Self {
         Self {
-            atomic_interval: Duration::from_secs(60),
+            atomic_interval: Duration::from_secs(660),
             initial_challenge: DsgChallengeOptions {
                 sample_count: 2,
                 sample_len: 16 * 1024,
@@ -41,7 +41,7 @@ impl Default for DsgServiceConfig {
                 sample_len: 16 * 1024,
                 live_time: Duration::from_secs(1 * 3600)
             },
-            repost_challenge_interval: Duration::from_secs(60),
+            repost_challenge_interval: Duration::from_secs(660),
             challenge_interval: Duration::from_secs(24 * 3600),
             merge_chunk_size: u32::MAX as u64,
             split_chunk_size: 18 * 1024 * 1024
