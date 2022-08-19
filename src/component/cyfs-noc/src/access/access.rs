@@ -80,7 +80,7 @@ pub struct AccessPair {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct AccessString(u32);
+pub struct AccessString(u32);
 
 impl AccessString {
     pub const fn new(bits: u32) -> Self {
