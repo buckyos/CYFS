@@ -251,7 +251,10 @@ impl NamedCacheClient {
         );
         let remote_port = req.url().port_or_known_default().unwrap_or(80);
         let conn = self.bdt_conn(remote, remote_port).await?;
-        let resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, std::time::Duration::from_secs(60 * 5)).await?;
+        let resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, std::time::Duration::from_secs(60 * 5)).await.map_err(|e| {
+            self.conn_cache.write().unwrap().remove(&(remote.clone(), remote_vport));
+            e
+        })?;
         if !resp.status().is_success() {
             Err(BuckyError::from(resp.status()))
         } else {
@@ -330,6 +333,7 @@ impl NamedCacheClient {
                 chunk_content = resp.raw().as_ref().unwrap().data().to_vec();
                 break;
             } else {
+                self.conn_cache.write().unwrap().remove(&(remote.clone(), remote_vport));
                 warn!("get chunk {} failed by err {}, may retry", chunk_id, chunk_ret.as_ref().err().unwrap());
             }
 
