@@ -3,11 +3,9 @@ use crate::app_controller::AppController;
 use crate::event_handler::EventListener;
 use crate::non_helper::*;
 use crate::app_install_detail::AppInstallDetail;
-use app_manager_lib::{AppManagerConfig, AppManagerHostMode};
 use async_std::channel::{Receiver, Sender};
 use async_std::stream::StreamExt;
 use cyfs_base::*;
-use cyfs_client::NamedCacheClient;
 use cyfs_core::*;
 use cyfs_lib::*;
 use log::*;
@@ -44,7 +42,7 @@ pub struct AppManager {
     cmd_list: Option<Arc<Mutex<AppCmdList>>>,
     status_list: Arc<RwLock<HashMap<DecAppId, Arc<Mutex<AppLocalStatus>>>>>,
     owner: ObjectId,
-    app_controller: Arc<AppController>,
+    app_controller: Option<Arc<AppController>>,
     sender: Sender<bool>,
     receiver: Receiver<bool>,
     cmd_executor: Option<AppCmdExecutor>,
@@ -54,7 +52,7 @@ pub struct AppManager {
 }
 
 impl AppManager {
-    pub fn new(shared_stack: SharedCyfsStack, named_cache_client: NamedCacheClient) -> Self {
+    pub fn new(shared_stack: SharedCyfsStack, use_docker: bool) -> Self {
         let device = shared_stack.local_device();
         let owner = device
             .desc()
@@ -62,10 +60,7 @@ impl AppManager {
             .to_owned()
             .unwrap_or_else(|| device.desc().calculate_id());
         let (sender, receiver) = async_std::channel::unbounded();
-        let app_config = AppManagerConfig::new();
-        let use_docker =
-            *app_config.host_mode() == AppManagerHostMode::Default && cfg!(target_os = "linux");
-        info!("app use docker:{}", use_docker);
+
         Self {
             shared_stack: shared_stack.clone(),
             app_local_list: Arc::new(RwLock::new(None)),
@@ -73,12 +68,7 @@ impl AppManager {
             cmd_list: None,
             status_list: Arc::new(RwLock::new(HashMap::new())),
             owner,
-            app_controller: Arc::new(AppController::new(
-                shared_stack.clone(),
-                owner.clone(),
-                named_cache_client,
-                use_docker,
-            )),
+            app_controller: None,
             sender,
             receiver,
             cmd_executor: None,
@@ -106,9 +96,13 @@ impl AppManager {
         *self.app_local_list.write().unwrap() = Some(app_local_list);
         *self.status_list.write().unwrap() = status_list;
 
+        let mut app_controller = AppController::new(self.use_docker);
+        app_controller.prepare_start(self.shared_stack.clone(), self.owner.clone()).await?;
+        self.app_controller = Some(Arc::new(app_controller));
+
         self.cmd_executor = Some(AppCmdExecutor::new(
             self.owner.clone(),
-            self.app_controller.clone(),
+            self.app_controller.as_ref().unwrap().clone(),
             //self.app_local_list.clone(),
             self.status_list.clone(),
             cmd_list,
@@ -310,32 +304,39 @@ impl AppManager {
         }
     }
 
-    fn fix_status_on_startup(&self) {
+    async fn fix_status_on_startup(&self) {
         let status_list = self.status_list.read().unwrap().clone();
         for (app_id, status) in status_list {
-            let mut status = status.lock().unwrap();
-            let status_code = status.status();
-            let fix_status = match status_code {
-                AppLocalStatusCode::Stopping => {
-                    Some(AppLocalStatusCode::StopFailed)
+            let mut status_clone = None;
+            {
+                let mut status = status.lock().unwrap();
+                let status_code = status.status();
+                let fix_status = match status_code {
+                    AppLocalStatusCode::Stopping => {
+                        Some(AppLocalStatusCode::StopFailed)
+                    }
+                    AppLocalStatusCode::Starting => {
+                        Some(AppLocalStatusCode::StartFailed)
+                    }
+                    AppLocalStatusCode::Installing => {
+                        Some(AppLocalStatusCode::InstallFailed)
+                    }
+                    AppLocalStatusCode::Uninstalling => {
+                        Some(AppLocalStatusCode::UninstallFailed)
+                    }
+                    _ => {
+                        None
+                    }
+                };
+                if fix_status.is_some() {
+                    let fix_code = fix_status.unwrap();
+                    status.set_status(fix_code);
+                    status_clone = Some(status.clone());
+                    info!("### fix app status on startup, app:{}, from {} to {}", app_id, status_code, fix_code);
                 }
-                AppLocalStatusCode::Starting => {
-                    Some(AppLocalStatusCode::StartFailed)
-                }
-                AppLocalStatusCode::Installing => {
-                    Some(AppLocalStatusCode::InstallFailed)
-                }
-                AppLocalStatusCode::Uninstalling => {
-                    Some(AppLocalStatusCode::UninstallFailed)
-                }
-                _ => {
-                    None
-                }
-            };
-            if fix_status.is_some() {
-                let fix_code = fix_status.unwrap();
-                status.set_status(fix_code);
-                info!("### fix app status on startup, app:{}, from {} to {}", app_id, status_code, fix_code);
+            }
+            if let Some(new_status) = status_clone {
+                let _ = self.non_helper.put_local_status(&new_status).await;
             }
         }
     }
@@ -344,7 +345,7 @@ impl AppManager {
     */
     async fn check_app_status_on_startup(&self) {
         info!("######[START] check app status on startup!");
-        self.fix_status_on_startup();
+        self.fix_status_on_startup().await;
 
         let status_list = self.status_list.read().unwrap().clone();
         for (app_id, status) in status_list {
@@ -582,7 +583,7 @@ impl AppManager {
         app_id: &DecAppId,
         status: Arc<Mutex<AppLocalStatus>>,
     ) {
-        match self.app_controller.is_app_running(app_id).await {
+        match self.app_controller.as_ref().unwrap().is_app_running(app_id).await {
             Ok(is_running) => {
                 info!(
                     "[RUNNING CHECK] running: [{}] app:{}",
@@ -1011,6 +1012,8 @@ impl AppManager {
             .await?;
         let ver_dep = self
             .app_controller
+            .as_ref()
+            .unwrap()
             .query_app_version_dep(app_id, app_version, &dec_app)
             .await?;
         if ver_dep.0 != "*" {

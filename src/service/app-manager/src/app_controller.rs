@@ -20,18 +20,15 @@ pub struct PermissionNode {
 }
 
 pub struct AppController {
-    shared_stack: SharedCyfsStack,
-    owner: ObjectId,
-    named_cache_client: NamedCacheClient,
+    shared_stack: Option<SharedCyfsStack>,
+    owner: Option<ObjectId>,
     docker_api: Option<DockerApi>,
+    named_cache_client: Option<NamedCacheClient>,
     use_docker: bool,
 }
 
 impl AppController {
     pub fn new(
-        shared_stack: SharedCyfsStack,
-        owner: ObjectId,
-        named_cache_client: NamedCacheClient,
         use_docker: bool,
     ) -> Self {
         // check platform
@@ -43,12 +40,26 @@ impl AppController {
         }
 
         Self {
-            shared_stack,
-            owner,
-            named_cache_client,
+            shared_stack: None,
+            owner: None,
+            named_cache_client: None,
             docker_api,
             use_docker,
         }
+    }
+
+    pub async fn prepare_start(
+        &mut self,
+        shared_stack: SharedCyfsStack,
+        owner: ObjectId,
+    ) -> BuckyResult<()> {
+        self.shared_stack = Some(shared_stack);
+        self.owner = Some(owner);
+        let mut named_cache_client = NamedCacheClient::new();
+        named_cache_client.init(None, None, None).await?;
+        self.named_cache_client = Some(named_cache_client);
+
+        Ok(())
     }
 
     //返回isNoService，还有webDir
@@ -74,7 +85,7 @@ impl AppController {
             version,
         );
         // 返回了安装的service路径和web路径
-        let (service_dir, web_dir) = pkg.install(&self.named_cache_client).await.map_err(|e| {
+        let (service_dir, web_dir) = pkg.install(self.named_cache_client.as_ref().unwrap()).await.map_err(|e| {
             error!("install app:{} failed, {}", app_id, e);
             SubErrorCode::DownloadFailed
         })?;
@@ -82,6 +93,8 @@ impl AppController {
         let web_dir_id = if web_dir.exists() {
             let pub_resp = self
                 .shared_stack
+                .as_ref()
+                .unwrap()
                 .trans()
                 .publish_file(&TransPublishFileOutputRequest {
                     common: NDNOutputRequestCommon {
@@ -92,7 +105,7 @@ impl AppController {
                         referer_object: vec![],
                         flags: 0,
                     },
-                    owner: self.owner,
+                    owner: self.owner.unwrap(),
                     local_path: web_dir,
                     chunk_size: 1024 * 1024,
                     file_id: None,
@@ -319,7 +332,7 @@ impl AppController {
         let acl_dir;
 
         match pkg
-            .download_permission_config(&self.named_cache_client)
+            .download_permission_config(self.named_cache_client.as_ref().unwrap())
             .await
         {
             Ok(dir) => acl_dir = dir,
@@ -385,7 +398,7 @@ impl AppController {
         );
 
         let _ = pkg
-            .download_dep_config(dep_dir, &self.named_cache_client)
+            .download_dep_config(dep_dir, self.named_cache_client.as_ref().unwrap())
             .await
             .map_err(|e| {
                 error!("download app dep {} failed, {}", app_id, e);
@@ -444,6 +457,8 @@ impl AppController {
         // DecApp会更新，这里要主动从远端获取
         let resp = self
             .shared_stack
+            .as_ref()
+            .unwrap()
             .non_service()
             .get_object(NONGetObjectRequest {
                 common: NONOutputRequestCommon {
@@ -467,6 +482,8 @@ impl AppController {
             ObjectTypeCode::People => {
                 match self
                     .shared_stack
+                    .as_ref()
+                    .unwrap()
                     .util_service()
                     .resolve_ood(UtilResolveOODOutputRequest::new(
                         app_id.object_id().to_owned(),
@@ -517,8 +534,13 @@ mod tests {
             .owner()
             .to_owned()
             .unwrap_or_else(|| device.desc().calculate_id());
-        let app_controller = AppController::new(stack, owner, named_cache_client, false);
+        
+        let mut app_controller = AppController::new(false);
+        app_controller.prepare_start(stack, owner).await;
+
         app_controller
+        //let app_controller = AppController::new(stack, owner, named_cache_client, false);
+        //app_controller
     }
 
     // 安装app
