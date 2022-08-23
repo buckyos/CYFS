@@ -15,7 +15,7 @@ use std::sync::{
 use std::time::Duration;
 
 // ws request的默认超时时间
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60 * 10);
+const WS_REQUEST_DEFAULT_TIMEOUT: Duration = Duration::from_secs(60 * 10 * 10);
 
 
 #[async_trait]
@@ -107,7 +107,7 @@ struct WebSocketRequestContainer {
 
 impl WebSocketRequestContainer {
     fn new() -> Self {
-        let list = LruCache::with_expiry_duration(DEFAULT_TIMEOUT);
+        let list = LruCache::with_expiry_duration(WS_REQUEST_DEFAULT_TIMEOUT);
 
         Self { list, next_seq: 1 }
     }
@@ -194,7 +194,7 @@ impl WebSocketRequestContainer {
         if self.list.is_empty() {
             Vec::new()
         } else {
-            let timeout_now = Instant::now().checked_add(Duration::from_secs(DEFAULT_TIMEOUT * 2)).unwrap();
+            let timeout_now = Instant::now().checked_add(Duration::from_secs(WS_REQUEST_DEFAULT_TIMEOUT * 2)).unwrap();
 
             for item in self.list.peek_iter().next() {
 
