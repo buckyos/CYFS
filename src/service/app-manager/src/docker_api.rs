@@ -554,9 +554,33 @@ impl DockerApi {
     }
 
     pub async fn stop(&self, id: &str) -> BuckyResult<()> {
-        let options = Some(StopContainerOptions { t: 30 });
         let container_name = format!("decapp-{}", id.to_lowercase());
         info!("try to stop container[{}]", container_name);
+
+        let mut filters = HashMap::new();
+        filters.insert("name", vec![container_name.as_str()]);
+        let options = Some(ListContainersOptions {
+            all: true,
+            filters,
+            ..Default::default()
+        });
+
+        // list container
+        let result = self
+            .docker
+            .list_containers(options)
+            .await
+            .map_err(to_bucky_error)?;
+        info!("list container status result {:?}", result);
+        if result.len() == 0 {
+            info!(
+                "container[{:?}] not found",
+                container_name
+            );
+            return Ok(());
+        }
+
+        let options = Some(StopContainerOptions { t: 30 });
 
         let _ = self.docker.stop_container(&container_name, options).await;
 
