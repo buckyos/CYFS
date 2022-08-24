@@ -254,6 +254,11 @@ impl Stack {
             local_secret.clone(),
         );
 
+        let mut known_sn = vec![];
+        if params.known_sn.is_some() {
+            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
+        }
+
         let mut passive_pn = vec![];
         if params.passive_pn.is_some() {
             std::mem::swap(&mut passive_pn, params.passive_pn.as_mut().unwrap());
@@ -266,6 +271,12 @@ impl Stack {
             let bound_endpoints = net_manager.listener().endpoints();
             for ep in bound_endpoints {
                 device_endpoints.push(ep);
+            }
+
+
+            let sn_list = device.mut_connect_info().mut_sn_list();
+            for sn in known_sn.iter().map(|d| d.desc().device_id()) {
+                sn_list.push(sn);
             }
             
             let passive_pn_list = device.mut_connect_info().mut_passive_pn_list();
@@ -356,10 +367,7 @@ impl Stack {
         stack_impl.ndn = Some(ndn);
 
 
-        let mut known_sn = vec![];
-        if params.known_sn.is_some() {
-            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
-        }
+       
         for sn in known_sn {
             stack.device_cache().add(&sn.desc().device_id(), &sn);
             stack.sn_client().add_sn_ping(&sn, true, None);
