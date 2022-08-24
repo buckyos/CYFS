@@ -91,13 +91,6 @@ async fn main() {
             .start();
     }
 
-    {
-        if let Err(e) = init_system_config().await {
-            error!("load system config err: {}", e);
-            std::process::exit(1);
-        }
-    }
-
     info!("app use docker:{}", use_docker);
 
     let _ = set_process_cmd_funcs(Box::new(AppManagerProcessFuncs {use_docker}));
@@ -105,6 +98,13 @@ async fn main() {
     
     if matches.is_present("stop") {
         unreachable!("Stop cmd should exit.");
+    }
+
+    {
+        if let Err(e) = init_system_config().await {
+            error!("load system config err: {}", e);
+            std::process::exit(1);
+        }
     }
 
     // if is_stop {
