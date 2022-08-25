@@ -145,6 +145,8 @@ impl AppManager {
                         .unwrap()
                         .execute_cmd()
                         .await;
+                } else {
+                    error!("executor recv failed!");
                 }
             }
         });
@@ -156,6 +158,9 @@ impl AppManager {
             let mut interval =
                 async_std::stream::interval(Duration::from_secs(CHECK_STATUS_INTERVAL_IN_SECS));
             while let Some(_) = interval.next().await {
+                if let Err(e) = manager_checker.sender.send(false).await {
+                    error!("active executor failed! err:{}", e);
+                }
                 manager_checker.check_app_status().await;
             }
         });
@@ -360,7 +365,7 @@ impl AppManager {
                 | AppLocalStatusCode::Uninstalled
                 | AppLocalStatusCode::InstallFailed
                 | AppLocalStatusCode::ErrStatus => {
-                    info!("### [STARTUP CEHCK] do nothin on startup, app:{}, status:{}", app_id, status_code);
+                    info!("### [STARTUP CEHCK] pass on startup, app:{}, status:{}", app_id, status_code);
                     continue;
                 }
                 AppLocalStatusCode::Running
@@ -1127,7 +1132,9 @@ impl AppManager {
             cmd_list_clone.output()
         );
         let _ = self.non_helper.put_cmd_list(&cmd_list_clone).await;
-        let _ = self.sender.send(false).await;
+        if let Err(e) = self.sender.send(false).await {
+            error!("active executor failed! err:{}", e);
+        }
 
         Ok(())
     }
@@ -1194,7 +1201,9 @@ impl AppManager {
             cmd_list_clone.output()
         );
         let _ = self.non_helper.put_cmd_list(&cmd_list_clone).await;
-        let _ = self.sender.send(false).await;
+        if let Err(e) = self.sender.send(false).await {
+            error!("active executor failed! err:{}", e);
+        }
 
         Ok(())
     }

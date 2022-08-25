@@ -7,7 +7,7 @@ use cyfs_base::*;
 use cyfs_core::*;
 use log::*;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock, atomic::AtomicBool, atomic::Ordering};
 
 const APP_DIR_MAIN_PATH: &str = "/app";
 
@@ -15,18 +15,17 @@ pub struct AppCmdExecutor {
     owner: ObjectId,
     app_controller: Arc<AppController>,
     docker_network_manager: DockerNetworkManager,
-    //app_local_list: Arc<RwLock<Option<AppLocalList>>>,
     status_list: Arc<RwLock<HashMap<DecAppId, Arc<Mutex<AppLocalStatus>>>>>,
     cmd_list: Arc<Mutex<AppCmdList>>,
     non_helper: Arc<NonHelper>,
     use_docker: bool,
+    is_idle: AtomicBool,
 }
 
 impl AppCmdExecutor {
     pub fn new(
         owner: ObjectId,
         app_controller: Arc<AppController>,
-        //app_local_list: Arc<RwLock<Option<AppLocalList>>>,
         status_list: Arc<RwLock<HashMap<DecAppId, Arc<Mutex<AppLocalStatus>>>>>,
         cmd_list: Arc<Mutex<AppCmdList>>,
         non_helper: Arc<NonHelper>,
@@ -41,6 +40,7 @@ impl AppCmdExecutor {
             cmd_list,
             non_helper,
             use_docker,
+            is_idle: AtomicBool::new(true),
         }
     }
 
@@ -56,6 +56,11 @@ impl AppCmdExecutor {
     }
 
     pub async fn execute_cmd(&self) {
+        if let Err(_) = self.is_idle.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) {
+            info!("executor is working, pass");
+            return;
+        }
+        
         loop {
             let cmd_item;
             let cmd_list_clone;
@@ -123,8 +128,17 @@ impl AppCmdExecutor {
                         }
                     };
                 }
-                None => break,
+                None => {
+                    info!(
+                        "cmd list is empty, executor idle",
+                    );
+                    break;
+                }
             }
+        }
+
+        if let Err(_) = self.is_idle.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
+            warn!("set executor to idle failed.");
         }
     }
 
