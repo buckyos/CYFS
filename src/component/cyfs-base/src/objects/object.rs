@@ -1849,7 +1849,12 @@ where
                 log::error!("ObjectMutBody<B, O>::raw_encode/content error:{}", e);
                 e
             })?;
-            assert!(left_buf.len() == 0);
+
+            if left_buf.len() != 0 {
+                warn!("encode body content by remaining buf is not empty! obj_type={}, body_size={}, remaining={}", O::obj_type(), body_size, left_buf.len());
+                // assert!(left_buf.len() == 0);
+            }
+            
             &mut buf[body_size..]
         };
 
@@ -1992,7 +1997,11 @@ where
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::InvalidData, msg)
             })?;
-            assert!(left_buf.len() == 0);
+
+            if left_buf.len() != 0 {
+                warn!("decode body content by remaining buf is not empty! obj_type={}, body_size={}, remaining={}", O::obj_type(), body_size, left_buf.len());
+                // assert!(left_buf.len() == 0);
+            }
 
             (content, &buf[body_size..])
         };
@@ -2071,7 +2080,11 @@ where
             error!("ObjectMutBody<B, O>::raw_encode/self.raw_encode_with_context error:{}, obj_type:{}, obj_type_code:{:?}", e, O::obj_type(), O::obj_type_code());
             e
         })?;
-        assert!(left_buf.len() == 0);
+
+        if left_buf.len() != 0 {
+            warn!("encode body content by remaining buf is not empty! obj_type={}, body_size={}, remaining={}", O::obj_type(), size, left_buf.len());
+            // assert!(left_buf.len() == 0);
+        }
 
         Ok(buf)
     }

@@ -340,7 +340,10 @@ impl RawEncode for TypelessObjectDesc {
             error!("TypelessObjectDesc::raw_encode/self.raw_encode_with_context error:{}, obj_type:{}", e, self.obj_type); 
             e
         })?;
-        assert!(left_buf.len() == 0);
+        if left_buf.len() != 0 {
+            warn!("encode body content by remaining buf is not empty! obj_type={}, body_size={}, remaining={}", self.obj_type, size, left_buf.len());
+            // assert!(left_buf.len() == 0);
+        }
 
         Ok(buf)
     }
@@ -370,7 +373,10 @@ impl RawEncode for TypelessObjectDesc {
             error!("NamedObjectDesc<T>::raw_hash_encode/self.raw_encode_with_context error:{}, obj_type:{}", e, self.obj_type()); 
             e
         })?;
-        assert!(left_buf.len() == 0);
+        if left_buf.len() != 0 {
+            warn!("decode body content by remaining buf is not empty! obj_type={}, body_size={}, remaining={}", self.obj_type, size, left_buf.len());
+            // assert!(left_buf.len() == 0);
+        }
 
         Ok(buf)
     }

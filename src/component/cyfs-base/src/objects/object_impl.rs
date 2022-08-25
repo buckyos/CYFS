@@ -1492,15 +1492,14 @@ where
 
             if left_buf.len() != 0 {
                 let msg = format!(
-                    "decode desc content buffer but left buf is not empty: desc_content_size={}, left={}",
+                    "decode desc content buffer but remaining buf is not empty: obj_type={}, desc_content_size={}, remaining={}",
+                    T::obj_type(),
                     desc_content_size,
                     left_buf.len()
                 );
-                error!("{}", msg);
-                return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+                warn!("{}", msg);
             }
 
-            assert!(left_buf.len() == 0);
             (desc_content, &buf[desc_content_size..])
         };
 
