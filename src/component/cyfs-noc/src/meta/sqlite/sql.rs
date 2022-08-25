@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS data_namedobject_meta (
 
     insert_time UNSIGNED BIG INT,
     update_time UNSIGNED BIG INT,
-    expired_time UNSIGNED BIG INT,
+    
+    object_update_time UNSIGNED BIG INT,
+    object_expired_time UNSIGNED BIG INT,
 
     storage_category SMALLINT,
 
@@ -37,3 +39,5 @@ pub(super) const INIT_NAMEDOBJECT_META_SQL_LIST: [&'static str; 3] = [
 ];
 
 
+// For all version upgrades, MAIN_TABLE_UPDATE_LIST[CURRENT_VERSION - 1] is the corresponding upgrade sql
+pub(super) const MAIN_TABLE_UPDATE_LIST: [[&'static str; 0]; CURRENT_VERSION as usize] = [];

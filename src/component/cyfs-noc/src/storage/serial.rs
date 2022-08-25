@@ -122,7 +122,7 @@ impl NamedObjectCache1 for NamedObjectCacheSerializer {
     async fn delete_object(
         &self,
         req: &NamedObjectCacheDeleteObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
+    ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         let lock = self.acquire_lock(&req.object_id);
         let ret = {
             let _guard = lock.lock.lock().await;

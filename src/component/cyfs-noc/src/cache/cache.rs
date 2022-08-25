@@ -130,7 +130,7 @@ impl NamedObjectCache1 for ObjectMapRootMemoryCache {
     async fn delete_object(
         &self,
         req: &NamedObjectCacheDeleteObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
+    ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         {
             let mut cache = self.cache.lock().unwrap();
             cache.remove(&req.object_id);

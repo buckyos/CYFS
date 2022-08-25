@@ -1,6 +1,6 @@
-use crate::prelude::*;
 use crate::blob::*;
 use crate::meta::*;
+use crate::prelude::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -101,6 +101,8 @@ impl NamedObjectLocalStorage {
             source: request.source.clone(),
             object_id: request.object.object_id.clone(),
             owner_id,
+
+            insert_time: bucky_time_now(),
             update_time,
             expired_time,
 
@@ -261,25 +263,29 @@ impl NamedObjectLocalStorage {
     async fn delete_object(
         &self,
         req: &NamedObjectCacheDeleteObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
+    ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         let meta_req = NamedObjectMetaDeleteObjectRequest {
             source: req.source.clone(),
             object_id: req.object_id.clone(),
+            flags: req.flags,
         };
 
-        let meta_ret = self.meta.delete_object(&meta_req).await?;
-        let resp = match meta_ret {
-            Some(meta) => {
+        let meta_resp = self.meta.delete_object(&meta_req).await?;
+        let resp = match meta_resp.deleted_count {
+            1 => {
                 // then remove object data from blob
-                let object = match self.blob.delete_object(&meta_req.object_id).await {
-                    Ok(Some(data)) => Some(data),
-                    Ok(None) => {
-                        warn!(
-                            "delete object but remove from blob not found! obj={}",
-                            req.object_id
-                        );
-                        None
-                    }
+                let object = match self.blob.delete_object(&meta_req.object_id, req.flags).await {
+                    Ok(resp) => match resp.delete_count {
+                        1 => resp.object,
+                        0 => {
+                            warn!(
+                                "delete object but remove from blob not found! obj={}",
+                                req.object_id
+                            );
+                            None
+                        }
+                        _ => unreachable!(),
+                    },
                     Err(e) => {
                         error!(
                             "delete object but remove from blob failed! obj={}, {}",
@@ -289,28 +295,42 @@ impl NamedObjectLocalStorage {
                     }
                 };
 
-                Some(NamedObjectCacheObjectData { meta, object })
+                NamedObjectCacheDeleteObjectResponse {
+                    deleted_count: meta_resp.deleted_count,
+                    meta: meta_resp.object,
+                    object,
+                }
             }
-            None => {
+            0 => {
                 // still try remove object data from blob
-                match self.blob.delete_object(&meta_req.object_id).await {
-                    Ok(Some(_data)) => {
-                        warn!(
-                            "delete object not exists in meta but exsits in blob! obj={}",
-                            meta_req.object_id
-                        );
+                let object = match self.blob.delete_object(&meta_req.object_id, req.flags).await {
+                    Ok(resp) => {
+                        if resp.delete_count > 0 {
+                            warn!(
+                                "delete object not exists in meta but exsits in blob! obj={}",
+                                meta_req.object_id
+                            );   
+                        }
+
+                        resp.object
                     }
-                    Ok(None) => {}
                     Err(e) => {
                         error!(
                             "try delete object from blob failed! obj={}, {}",
                             req.object_id, e
                         );
+                        None
                     }
                 };
 
-                None
+                NamedObjectCacheDeleteObjectResponse {
+                    deleted_count: 0,
+                    meta: None,
+                    object,
+                }
             }
+
+            _ => unreachable!(),
         };
 
         Ok(resp)
@@ -386,7 +406,7 @@ impl NamedObjectCache1 for NamedObjectLocalStorage {
     async fn delete_object(
         &self,
         req: &NamedObjectCacheDeleteObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
+    ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         Self::delete_object(&self, req).await
     }
 

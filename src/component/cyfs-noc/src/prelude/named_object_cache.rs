@@ -1,44 +1,46 @@
 use crate::meta::*;
+use crate::access::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
 use std::sync::Arc;
 
+// Whether the delete operation returns the original value, the default does not return
+pub const CYFS_NOC_FLAG_DELETE_WITH_QUERY: u32 = 0x01 << 1;
+
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NamedObjectStorageCategory {
     Storage = 0,
     Cache = 1,
 }
 
-// source device's zone info
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum DeviceZoneCategory {
-    CurrentDevice,
-    CurrentZone,
-    FriendsZone,
-    OtherZone,
+impl NamedObjectStorageCategory {
+    pub fn as_u8(&self) -> u8 {
+        *self as u8
+    }
 }
 
-#[derive(Clone, Debug)]
-pub struct DeviceZoneInfo {
-    pub device_id: DeviceId,
-    pub zone_category: DeviceZoneCategory,
+impl Default for NamedObjectStorageCategory {
+    fn default() -> Self {
+        Self::Cache
+    }
 }
 
-// The identy info of a request
-#[derive(Clone, Debug)]
-pub struct RequestSourceInfo {
-    device: DeviceZoneInfo,
-    dec: ObjectId,
-}
+impl TryFrom<u8> for NamedObjectStorageCategory {
+    type Error = BuckyError;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let v = match value {
+            0 => Self::Storage,
+            1 => Self::Cache,
+            _ => {
+                let msg = format!("invalid NamedObjectStorageCategory value: {}", value);
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+        };
 
-impl std::fmt::Display for RequestSourceInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "device=({:?}-{}),dec={}",
-            self.device.zone_category, self.device.device_id, self.dec
-        )
+        Ok(v)
     }
 }
 
@@ -74,6 +76,7 @@ pub struct NamedObjectCacheGetObjectRequest1 {
     pub last_access_rpath: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct NamedObjectCacheObjectData {
     // object maybe missing while meta info is still here
     pub object: Option<NONObjectInfo>,
@@ -87,6 +90,17 @@ pub struct NamedObjectCacheDeleteObjectRequest1 {
     pub source: RequestSourceInfo,
 
     pub object_id: ObjectId,
+    pub flags: u32,
+}
+
+#[derive(Clone)]
+pub struct NamedObjectCacheDeleteObjectResponse {
+    pub deleted_count: u32,
+    
+    // object maybe missing while meta info is still here
+    pub object: Option<NONObjectInfo>,
+
+    pub meta: Option<NamedObjectMetaData>,
 }
 
 // exists_object
@@ -123,7 +137,7 @@ pub trait NamedObjectCache1: Sync + Send {
     async fn delete_object(
         &self,
         req: &NamedObjectCacheDeleteObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>>;
+    ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse>;
 
     async fn exists_object(
         &self,

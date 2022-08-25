@@ -1,3 +1,5 @@
+use crate::prelude::CYFS_NOC_FLAG_DELETE_WITH_QUERY;
+
 use super::blob::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -84,21 +86,31 @@ impl BlobStorage for FileBlobStorage {
         Ok(Some(info))
     }
 
-    async fn delete_object(&self, object_id: &ObjectId) -> BuckyResult<Option<NONObjectInfo>> {
+    async fn delete_object(&self, object_id: &ObjectId, flags: u32) -> BuckyResult<BlobStorageDeleteObjectResponse> {
         let path = self.get_full_path(object_id, false).await?;
         if !path.exists() {
-            return Ok(None);
+            let resp = BlobStorageDeleteObjectResponse {
+                delete_count: 0,
+                object: None,
+            };
+
+            return Ok(resp);
         }
 
-        let info = match self.load_object(&path).await {
-            Ok(info) => {
-                Some(info)
+        let object = if flags & CYFS_NOC_FLAG_DELETE_WITH_QUERY != 0 {
+            match self.load_object(&path).await {
+                Ok(info) => {
+                    Some(info)
+                }
+                Err(_) => {
+                    // FIXME what to do if load error when delete object?
+                    None
+                }
             }
-            Err(_) => {
-                None
-            }
+        } else {
+            None
         };
-
+        
         async_std::fs::remove_file(&path).await.map_err(|e| {
             let msg = format!("remove object blob file error! path={}, {}", path.display(), e);
             error!("{}", msg);
@@ -106,7 +118,13 @@ impl BlobStorage for FileBlobStorage {
         })?;
 
         info!("remove object blob file success! object={}", object_id);
-        Ok(info)
+
+        let resp = BlobStorageDeleteObjectResponse {
+            delete_count: 1,
+            object,
+        };
+
+        Ok(resp)
     }
 
     async fn exists_object(&self, object_id: &ObjectId) -> BuckyResult<bool> {
