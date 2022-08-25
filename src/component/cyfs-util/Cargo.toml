@@ -1,7 +1,7 @@
 
 [package]
 name = 'cyfs-util'
-version = '0.5.1'
+version = '0.5.2'
 authors = ['weiqiushi <weiqiushi@buckyos.com>']
 edition = '2021'
 license = 'BSD-2-Clause'
