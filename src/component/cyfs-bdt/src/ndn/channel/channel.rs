@@ -443,7 +443,8 @@ impl Channel {
     }
 
     fn on_resp_interest(&self, command: &RespInterest) -> BuckyResult<()> {
-        if let Some(session) = self.0.downloaders.read().unwrap().get(&command.session_id).clone() {
+        let session = self.0.downloaders.read().unwrap().get(&command.session_id).cloned();
+        if let Some(session) = session {
             session.on_resp_interest(command)
         } else {
             Ok(())
@@ -485,7 +486,9 @@ impl Channel {
 
         let _ = self.0.statistic_task.on_stat(piece.data.len() as u64);
 
-        if let Some(session) = self.0.downloaders.read().unwrap().get(&piece.session_id).clone() {
+        let session = self.0.downloaders.read().unwrap().get(&piece.session_id).cloned();
+
+        if let Some(session) = session {
             if let Some(view) = Stack::from(&self.0.stack).ndn().chunk_manager().view_of(session.chunk()) {
                 let _ = view.on_piece_stat(&piece);
             }
