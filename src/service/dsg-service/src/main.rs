@@ -11,8 +11,12 @@ use contract_service::*;
 use cyfs_util::get_app_data_dir;
 
 
-#[async_std::main]
-async fn main() {
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+    async_std::task::block_on(main_run());
+}
+
+async fn main_run() {
     let status = cyfs_util::process::check_cmd_and_exec("cyfs dsg service");
     if status == ProcessAction::Install {
         std::process::exit(0);
