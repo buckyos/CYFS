@@ -69,8 +69,8 @@ impl BlockMonitor {
                                     }
                                 }
                                 Err(e) => {
-                                    error!("get block {} from meta err {}, stop syncing", i, e);
-                                    break;
+                                    error!("get block {} from meta err {}, skip syncing", i, e);
+                                    continue;
                                 }
                             }
                         }

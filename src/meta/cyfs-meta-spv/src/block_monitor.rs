@@ -50,7 +50,9 @@ impl BlockMonitor {
                         for i in local_height + 1..cur_height.unwrap() - 2 {
                             let block = self.meta_client.get_block(i).await;
                             if block.is_err() {
-                                break;
+                                log::error!("get block {} err {}", i, block.unwrap_err());
+                                continue;
+                                // break;
                             }
                             let block = block.unwrap();
                             log::info!("get block {} height {}", block.header().hash().to_string(), i);
