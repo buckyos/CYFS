@@ -148,4 +148,3 @@ pub trait NamedObjectCache1: Sync + Send {
 }
 
 pub type NamedObjectCacheRef = Arc<Box<dyn NamedObjectCache1>>;
-

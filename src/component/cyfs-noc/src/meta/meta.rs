@@ -2,6 +2,7 @@ use crate::access::*;
 use crate::prelude::*;
 use cyfs_base::*;
 
+use std::sync::Arc;
 
 // put_object
 #[derive(Clone, Debug)]
@@ -156,3 +157,5 @@ pub trait NamedObjectMeta: Sync + Send {
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat>;
 }
+
+pub type NamedObjectMetaRef = Arc<Box<dyn NamedObjectMeta>>;

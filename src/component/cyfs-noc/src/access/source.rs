@@ -40,7 +40,7 @@ impl Into<AccessGroup> for DeviceZoneCategory {
 
 #[derive(Clone, Debug)]
 pub struct DeviceZoneInfo {
-    pub device_id: DeviceId,
+    pub device_id: Option<DeviceId>,
     pub zone_category: DeviceZoneCategory,
 }
 
@@ -55,7 +55,7 @@ impl std::fmt::Display for RequestSourceInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "device=({:?}-{}),dec={}",
+            "device=({:?}-{:?}),dec={}",
             self.device.zone_category, self.device.device_id, self.dec
         )
     }

@@ -49,6 +49,13 @@ pub struct NamedObjectCacheSerializer {
 }
 
 impl NamedObjectCacheSerializer {
+    pub fn new(next: NamedObjectCacheRef) -> Self {
+        Self {
+            next,
+            locks: Mutex::new(HashMap::new()),
+        }
+    }
+
     fn acquire_lock(&self, object_id: &ObjectId) -> SerializeExecutorLockRef {
         let lock = {
             let mut locks = self.locks.lock().unwrap();
@@ -152,8 +159,4 @@ impl NamedObjectCache1 for NamedObjectCacheSerializer {
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat1> {
         self.next.stat().await
     }
-}
-
-pub struct NamedObjectCacheMemoryCache {
-    
 }

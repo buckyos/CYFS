@@ -1,20 +1,19 @@
-use crate::{access::RequestOpType, meta::*, prelude::*};
+use crate::{access::RequestOpType, prelude::*};
 use cyfs_base::*;
-use cyfs_lib::NONObjectInfo;
 
 use lru_time_cache::LruCache;
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 type NamedObjectCacheItem = NamedObjectCacheObjectData;
 
-pub struct ObjectMapRootMemoryCache {
+pub struct NamedObjectCacheMemoryCache {
     next: NamedObjectCacheRef,
     cache: Mutex<LruCache<ObjectId, NamedObjectCacheItem>>,
     missing_cache: Mutex<HashSet<ObjectId>>,
 }
 
-impl ObjectMapRootMemoryCache {
+impl NamedObjectCacheMemoryCache {
     pub fn new(next: NamedObjectCacheRef, timeout_in_secs: u64, capacity: usize) -> Self {
         let cache = lru_time_cache::LruCache::with_expiry_duration_and_capacity(
             std::time::Duration::from_secs(timeout_in_secs),
@@ -60,7 +59,7 @@ impl ObjectMapRootMemoryCache {
         }
 
         // TODO update the meta last_access_time & last_access_path
-        
+
         Ok(Some(item.to_owned()))
     }
 
@@ -87,7 +86,7 @@ impl ObjectMapRootMemoryCache {
 }
 
 #[async_trait::async_trait]
-impl NamedObjectCache1 for ObjectMapRootMemoryCache {
+impl NamedObjectCache1 for NamedObjectCacheMemoryCache {
     async fn put_object(
         &self,
         req: &NamedObjectCachePutObjectRequest,

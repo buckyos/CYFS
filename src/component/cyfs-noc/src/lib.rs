@@ -6,6 +6,7 @@ mod meta;
 mod storage;
 mod prelude;
 mod cache;
+mod noc;
 
 #[macro_use]
 extern crate log;

@@ -5,13 +5,66 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 use std::sync::Arc;
+use std::path::Path;
 
-struct NamedObjectLocalStorage {
+pub struct NamedObjectLocalStorage {
     meta: Box<dyn NamedObjectMeta>,
     blob: Box<dyn BlobStorage>,
 }
 
 impl NamedObjectLocalStorage {
+    pub async fn new(isolate: &str) -> BuckyResult<Self> {
+        let dir = cyfs_util::get_cyfs_root_path().join("data");
+        let dir = if isolate.len() > 0 {
+            dir.join(isolate)
+        } else {
+            dir
+        };
+        let dir = dir.join("named-object-cache");
+
+        if !dir.is_dir() {
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                let msg = format!("create noc data dir error! dir={}, {}", dir.display(), e);
+                error!("{}", msg);
+
+                return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
+            }
+        }
+
+        // Init blob module
+        let blob = Self::init_blob(&dir).await?;
+
+        let meta = Self::init_meta(&dir)?;
+
+        Ok(Self {
+            blob,
+            meta,
+        })
+    } 
+
+    async fn init_blob(root: &Path) -> BuckyResult<Box<dyn BlobStorage>> {
+        let dir = root.join("objects");
+
+        if !dir.is_dir() {
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                let msg = format!("create noc blob data dir error! dir={}, {}", dir.display(), e);
+                error!("{}", msg);
+
+                return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
+            }
+        }
+
+        let blob = FileBlobStorage::new(dir);
+        
+        Ok(Box::new(blob))
+    }
+
+    fn init_meta(root: &Path) -> BuckyResult<Box<dyn NamedObjectMeta>> {
+        let meta = SqliteMetaStorage::new(root)?;
+        // let ret=  Arc::new(Box::new(meta));
+        Ok(Box::new(meta))
+    }
+
     async fn put_object(
         &self,
         request: &NamedObjectCachePutObjectRequest,

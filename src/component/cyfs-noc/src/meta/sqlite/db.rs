@@ -4,13 +4,11 @@ use super::sql::*;
 use crate::access::*;
 use crate::prelude::*;
 use cyfs_base::*;
-use cyfs_lib::*;
 
-use rusqlite::named_params;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{named_params, Connection, OptionalExtension};
 use std::cell::RefCell;
 use std::convert::{TryFrom, TryInto};
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::sync::Arc;
 use thread_local::ThreadLocal;
 
@@ -22,25 +20,8 @@ pub(crate) struct SqliteMetaStorage {
 }
 
 impl SqliteMetaStorage {
-    pub fn new(isolate: &str) -> BuckyResult<Self> {
-        let dir = cyfs_util::get_cyfs_root_path().join("data");
-        let dir = if isolate.len() > 0 {
-            dir.join(isolate)
-        } else {
-            dir
-        };
-        let dir = dir.join("named-object-cache");
-
-        if !dir.is_dir() {
-            if let Err(e) = std::fs::create_dir_all(&dir) {
-                let msg = format!("create noc meta dir error! dir={}, {}", dir.display(), e);
-                error!("{}", msg);
-
-                return Err(BuckyError::from(msg));
-            }
-        }
-
-        let data_file = dir.join("meta.db");
+    pub fn new(root: &Path) -> BuckyResult<Self> {
+        let data_file = root.join("meta.db");
 
         // 需要在开启connection之前调用
         let file_exists = data_file.exists();
@@ -52,7 +33,7 @@ impl SqliteMetaStorage {
         );
 
         let ret = Self {
-            data_dir: dir,
+            data_dir: root.to_owned(),
             data_file,
             conn: Arc::new(ThreadLocal::new()),
         };
@@ -273,7 +254,7 @@ impl SqliteMetaStorage {
         Ok(stat)
     }
 
-    fn insert_new(&self, req: &NamedObjectMetaPutObjectRequest) -> BuckyResult<()> {
+    fn insert_new(&self, req: &NamedObjectMetaPutObjectRequest) -> BuckyResult<usize> {
         const INSERT_NEW_SQL: &str = r#"INSERT INTO data_namedobject_meta 
         (object_id, owner_id, create_dec_id, insert_time, update_time, 
             object_update_time, object_expired_time, storage_category, context, last_access_time, last_access_rpath, access)"#;
@@ -320,7 +301,7 @@ impl SqliteMetaStorage {
 
         debug!("insert new to noc success: obj={}", req.object_id);
 
-        Ok(())
+        Ok(count)
     }
 
     fn update(
@@ -343,7 +324,9 @@ impl SqliteMetaStorage {
 
             let ret = self.insert_new(req);
             match ret {
-                Ok(()) => {
+                Ok(count) => {
+                    assert_eq!(count, 1);
+
                     let resp = NamedObjectMetaPutObjectResponse {
                         result: NamedObjectMetaPutObjectResult::Accept,
                         update_time: req.update_time,
@@ -480,7 +463,7 @@ impl SqliteMetaStorage {
 
         let conn = self.get_conn()?.borrow();
         let ret = conn
-            .query_row(QUERY_UPDATE_SQL, params![object_id.to_string()], |row| {
+            .query_row(QUERY_UPDATE_SQL, params, |row| {
                 Ok(NamedObjectMetaUpdateInfoRaw::try_from(row)?)
             })
             .optional()

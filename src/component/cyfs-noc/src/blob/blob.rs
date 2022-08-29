@@ -1,6 +1,8 @@
 use cyfs_base::*;
 use cyfs_lib::*;
 
+use std::sync::Arc;
+
 #[derive(Debug, Clone)]
 pub struct BlobStorageStat {
     pub count: u64,
@@ -20,3 +22,5 @@ pub trait BlobStorage: Send + Sync {
     async fn exists_object(&self, object_id: &ObjectId) -> BuckyResult<bool>;
     async fn stat(&self) -> BuckyResult<BlobStorageStat>;
 }
+
+pub type BlobStorageRef = Arc<Box<dyn BlobStorage>>;
