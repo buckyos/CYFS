@@ -8,6 +8,8 @@ mod prelude;
 mod cache;
 mod noc;
 
+pub use old::*;
+
 #[macro_use]
 extern crate log;
 

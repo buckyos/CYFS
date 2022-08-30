@@ -214,14 +214,11 @@ impl CyfsStackConfigLoader {
 
                     let v = v.as_str().unwrap();
 
-                    #[cfg(feature = "mongo")]
+         
                     if v == "mongodb" || v == "mongo" {
                         noc_type = Some(NamedObjectStorageType::MongoDB);
                         continue;
-                    }
-
-                    #[cfg(feature = "sqlite")]
-                    if v == "sqlite" {
+                    } else if v == "sqlite" {
                         noc_type = Some(NamedObjectStorageType::Sqlite);
                         continue;
                     }
