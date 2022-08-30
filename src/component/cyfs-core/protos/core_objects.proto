@@ -3,6 +3,7 @@ syntax = "proto3";
 // StorageObject
 message StorageDescContent {
     string id = 1;
+    optional bytes hash = 2;
 }
 
 message StorageBodyContent {

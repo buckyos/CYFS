@@ -6,6 +6,7 @@ use serde::Serialize;
 #[cyfs_protobuf_type(crate::codec::protos::StorageDescContent)]
 pub struct StorageDescContent {
     id: String,
+    hash: Option<HashValue>,
 }
 
 impl DescContent for StorageDescContent {
@@ -44,7 +45,10 @@ pub type Storage = NamedObjectBase<StorageType>;
 
 pub trait StorageObj {
     fn create(id: &str, value: Vec<u8>) -> Self;
+    fn create_with_hash(id: &str, value: Vec<u8>) -> Self;
+
     fn id(&self) -> &str;
+    fn hash(&self) -> &Option<HashValue>;
 
     fn value(&self) -> &Vec<u8>;
     fn value_mut(&mut self) -> &mut Vec<u8>;
@@ -58,12 +62,28 @@ pub trait StorageObj {
 impl StorageObj for Storage {
     fn create(id: &str, value: Vec<u8>) -> Self {
         let body = StorageBodyContent { value };
-        let desc = StorageDescContent { id: id.to_owned() };
+        let desc = StorageDescContent {
+            id: id.to_owned(),
+            hash: None,
+        };
+        StorageBuilder::new(desc, body).no_create_time().build()
+    }
+
+    fn create_with_hash(id: &str, value: Vec<u8>) -> Self {
+        let desc = StorageDescContent {
+            id: id.to_owned(),
+            hash: Some(hash_data(&value)),
+        };
+        let body = StorageBodyContent { value };
         StorageBuilder::new(desc, body).no_create_time().build()
     }
 
     fn id(&self) -> &str {
         &self.desc().content().id
+    }
+
+    fn hash(&self) -> &Option<HashValue> {
+        &self.desc().content().hash
     }
 
     fn value(&self) -> &Vec<u8> {
@@ -79,13 +99,26 @@ impl StorageObj for Storage {
     }
 
     fn update_value(&mut self, value: Vec<u8>) -> bool {
-        let current_value = self.value_mut();
+        let need_hash = self.desc().content().hash.is_some();
 
-        if *current_value == value {
-            return false;
+        let mut hash = None;
+        {
+            let current_value = self.value_mut();
+
+            if *current_value == value {
+                return false;
+            }
+
+            if need_hash {
+                hash = Some(hash_data(&value));
+            }
+
+            *current_value = value;
         }
 
-        *current_value = value;
+        if hash.is_some() {
+            self.desc_mut().content_mut().hash = hash;
+        }
 
         self.body_mut()
             .as_mut()
