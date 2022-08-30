@@ -1,41 +1,34 @@
 use crate::base::*;
+use crate::root_state::*;
+use crate::UniObjectStackRef;
 use cyfs_base::*;
 use cyfs_core::*;
-use cyfs_debug::Mutex;
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-pub struct NOCStorage {
+struct NOCStorageRawHelper {
     id: String,
     noc: Box<dyn NamedObjectCache>,
-    storage_id: StorageId,
     last_update_time: AtomicU64,
-    device_id: DeviceId,
 }
 
-impl NOCStorage {
-    pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
-        let storage: Storage = StorageObj::create(id, Vec::new());
-
+impl NOCStorageRawHelper {
+    pub fn new(id: impl Into<String>, noc: Box<dyn NamedObjectCache>) -> Self {
         Self {
-            id: id.to_owned(),
+            id: id.into(),
             noc,
-            storage_id: storage.storage_id(),
             last_update_time: AtomicU64::new(0),
-            device_id: DeviceId::default(),
         }
     }
 
-    pub fn id(&self) -> &str {
-        &self.id
-    }
+    pub async fn load(&self, object_id: &ObjectId) -> BuckyResult<Option<Vec<u8>>> {
+        let device_id = DeviceId::default();
 
-    pub async fn load(&self) -> BuckyResult<Option<Vec<u8>>> {
         let req = NamedObjectCacheGetObjectRequest {
             protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
-            object_id: self.storage_id.object_id().to_owned(),
+            source: device_id,
+            object_id: object_id.to_owned(),
         };
 
         let resp = self.noc.get_object(&req).await?;
@@ -51,7 +44,7 @@ impl NOCStorage {
                 Err(e) => {
                     error!(
                         "decode storage object error: id={}, storage={}, {}",
-                        self.id, self.storage_id, e
+                        self.id, object_id, e
                     );
                     Err(e)
                 }
@@ -59,19 +52,19 @@ impl NOCStorage {
             None => {
                 info!(
                     "storage not found in noc: id={}, storage={}",
-                    self.id, self.storage_id
+                    self.id, object_id,
                 );
                 Ok(None)
             }
         }
     }
 
-    pub async fn save(&self, buf: Vec<u8>) -> BuckyResult<()> {
-        info!(
-            "now will save storage to noc: id={}, storage={}",
-            self.id, self.storage_id
-        );
-        let mut storage: Storage = StorageObj::create(&self.id, buf);
+    pub async fn save(&self, buf: Vec<u8>, with_hash: bool) -> BuckyResult<StorageId> {
+        let mut storage: Storage = if with_hash {
+            StorageObj::create_with_hash(&self.id, buf)
+        } else {
+            StorageObj::create(&self.id, buf)
+        };
 
         // 检查一下body的更新时间，确保更新
         let old_update_time = self.last_update_time.load(Ordering::Relaxed);
@@ -84,42 +77,48 @@ impl NOCStorage {
             now = old_update_time + 1;
             storage.body_mut().as_mut().unwrap().set_update_time(now);
         }
-        assert_eq!(self.storage_id, storage.storage_id());
 
         self.save_to_noc(storage).await
     }
 
-    async fn save_to_noc(&self, storage: Storage) -> BuckyResult<()> {
+    async fn save_to_noc(&self, storage: Storage) -> BuckyResult<StorageId> {
+        let storage_id = storage.storage_id();
+        info!(
+            "now will save storage to noc: id={}, storage={}",
+            self.id, storage_id
+        );
+
+        let device_id = DeviceId::default();
         let object_raw = storage.to_vec().unwrap();
         let (object, _) = AnyNamedObject::raw_decode(&object_raw).unwrap();
 
-        let info = NamedObjectCacheInsertObjectRequest {
+        let req = NamedObjectCacheInsertObjectRequest {
             protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
-            object_id: self.storage_id.object_id().to_owned(),
+            source: device_id,
+            object_id: storage_id.clone().into(),
             dec_id: None,
             object_raw,
             object: Arc::new(object),
             flags: 0u32,
         };
 
-        match self.noc.insert_object(&info).await {
+        match self.noc.insert_object(&req).await {
             Ok(resp) => {
                 match resp.result {
                     NamedObjectCacheInsertResult::Accept
                     | NamedObjectCacheInsertResult::Updated => {
                         info!(
                             "insert storage to noc success! id={}, storage={}",
-                            self.id, self.storage_id
+                            self.id, req.object_id
                         );
-                        Ok(())
+                        Ok(storage_id)
                     }
                     r @ _ => {
                         // 不应该到这里？因为修改后的update_time已经会被更新
                         // FIXME 如果触发了本地时间回滚之类的问题，这里是否需要强制delete然后再插入？
                         error!(
                             "update storage to noc but alreay exist! id={}, storage={}, result={:?}",
-                            self.id, self.storage_id, r
+                            self.id, req.object_id, r
                         );
 
                         Err(BuckyError::from(BuckyErrorCode::AlreadyExists))
@@ -129,7 +128,7 @@ impl NOCStorage {
             Err(e) => {
                 error!(
                     "insert storage to noc error! id={}, storage={}, {}",
-                    self.id, self.storage_id, e
+                    self.id, req.object_id, e
                 );
                 Err(e)
             }
@@ -137,11 +136,13 @@ impl NOCStorage {
     }
 
     // 从noc删除当前storage对象
-    pub async fn delete(&self) -> BuckyResult<()> {
+    pub async fn delete(&self, object_id: &ObjectId) -> BuckyResult<()> {
+        let device_id = DeviceId::default();
+
         let req = NamedObjectCacheDeleteObjectRequest {
             protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
-            object_id: self.storage_id.object_id().to_owned(),
+            source: device_id,
+            object_id: object_id.to_owned(),
             flags: 0,
         };
 
@@ -149,12 +150,12 @@ impl NOCStorage {
         if resp.deleted_count > 0 {
             info!(
                 "delete storage object from noc successs: id={}, storage={}",
-                self.id, self.storage_id
+                self.id, req.object_id
             );
         } else {
             warn!(
                 "delete storage object but not found: id={}, storage={}",
-                self.id, self.storage_id,
+                self.id, req.object_id,
             );
         }
 
@@ -162,601 +163,240 @@ impl NOCStorage {
     }
 }
 
-/*
-基于storage的编码兼容处理
-一般有三种编码格式：
-1. 使用jsoncodec手工编解码，对于增加的字段，自己手动处理
-2. 使用serde_json自动编解码，对于新增加的字段，要使用Option选项，否则会导致出现missing field导致无法解码
-3. 使用raw_codec自动编解码，不支持增删字段后的编解码，需要小心，改变结构定义后，需要处理解码失败导致load失败的情况
-*/
-pub trait CollectionCodec<T> {
-    fn encode(&self) -> BuckyResult<Vec<u8>>;
-    fn decode(buf: &[u8]) -> BuckyResult<T>;
+#[async_trait::async_trait]
+pub trait NOCStorage: Send + Sync {
+    fn id(&self) -> &str;
+    async fn load(&self) -> BuckyResult<Option<Vec<u8>>>;
+    async fn save(&self, buf: Vec<u8>) -> BuckyResult<()>;
+    async fn delete(&self) -> BuckyResult<()>;
 }
 
-impl<T> CollectionCodec<T> for T
-where
-    T: for<'de> RawDecode<'de> + RawEncode,
-{
-    fn encode(&self) -> BuckyResult<Vec<u8>> {
-        self.to_vec()
-    }
+pub struct NOCGlobalStateStorage {
+    stack: UniObjectStackRef,
 
-    fn decode(buf: &[u8]) -> BuckyResult<T> {
-        T::clone_from_slice(&buf)
-    }
+    category: GlobalStateCategory,
+    dec_id: Option<ObjectId>,
+    path: String,
+
+    target: Option<ObjectId>,
+    noc: NOCStorageRawHelper,
 }
 
-#[macro_export]
-macro_rules! declare_collection_codec_for_serde {
-    ($T:ty) => {
-        impl CollectionCodec<$T> for $T {
-            fn encode(&self) -> cyfs_base::BuckyResult<Vec<u8>> {
-                let body = serde_json::to_string(&self).map_err(|e| {
-                    let msg = format!("encode to json error! {}", e);
-                    log::error!("{}", msg);
-                    cyfs_base::BuckyError::new(cyfs_base::BuckyErrorCode::InvalidFormat, msg)
-                })?;
-                Ok(body.into_bytes())
-            }
-            fn decode(buf: &[u8]) -> cyfs_base::BuckyResult<$T> {
-                serde_json::from_slice(buf).map_err(|e| {
-                    let msg = format!("decode from json error! {}", e);
-                    log::error!("{}", msg);
-                    cyfs_base::BuckyError::new(cyfs_base::BuckyErrorCode::InvalidFormat, msg)
-                })
-            }
-        }
-    };
-}
+impl NOCGlobalStateStorage {
+    pub fn new(
+        stack: UniObjectStackRef,
+        category: GlobalStateCategory,
+        dec_id: Option<ObjectId>,
+        path: String,
+        target: Option<ObjectId>,
+        id: &str,
+        noc: Box<dyn NamedObjectCache>,
+    ) -> Self {
+        let noc = NOCStorageRawHelper::new(id, noc);
 
-#[macro_export]
-macro_rules! declare_collection_codec_for_json_codec {
-    ($T:ty) => {
-        impl CollectionCodec<$T> for $T {
-            fn encode(&self) -> cyfs_base::BuckyResult<Vec<u8>> {
-                Ok(self.encode_string().into())
-            }
-            fn decode(buf: &[u8]) -> cyfs_base::BuckyResult<$T> {
-                use std::str;
-                let str_value = str::from_utf8(buf).map_err(|e| {
-                    let msg = format!("not valid utf8 string format: {}", e);
-                    log::error!("{}", msg);
-                    cyfs_base::BuckyError::new(cyfs_base::BuckyErrorCode::InvalidFormat, msg)
-                })?;
-                Self::decode_string(str_value)
-            }
-        }
-    };
-}
-
-pub struct NOCStorageWrapper {
-    storage: NOCStorage,
-}
-
-impl NOCStorageWrapper {
-    pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
         Self {
-            storage: NOCStorage::new(id, noc),
+            stack,
+            category,
+            dec_id,
+            path,
+            target,
+            noc,
         }
     }
 
-    pub fn id(&self) -> &str {
-        self.storage.id()
+    fn create_global_stub(&self) -> GlobalStateStub {
+        let state = match self.category {
+            GlobalStateCategory::RootState => self.stack.root_state().clone(),
+            GlobalStateCategory::LocalCache => self.stack.local_cache().clone(),
+        };
+
+        let dec_id = match &self.dec_id {
+            Some(dec_id) => Some(dec_id.to_owned()),
+            None => Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        };
+
+        let stub = GlobalStateStub::new(state, self.target.clone(), dec_id);
+        stub
+    }
+}
+
+#[async_trait::async_trait]
+impl NOCStorage for NOCGlobalStateStorage {
+    fn id(&self) -> &str {
+        &self.noc.id
     }
 
-    pub async fn load<T>(&self) -> BuckyResult<Option<T>>
-    where
-        T: CollectionCodec<T>,
-    {
-        match self.storage.load().await? {
-            Some(buf) => {
-                let coll = T::decode(&buf).map_err(|e| {
-                    error!(
-                        "decode storage buf to collection failed! id={}, {}",
-                        self.id(),
-                        e
+    async fn load(&self) -> BuckyResult<Option<Vec<u8>>> {
+        let stub = self.create_global_stub();
+
+        let path_stub = stub.create_path_op_env().await?;
+        let current = path_stub.get_by_path(&self.path).await?;
+        match current {
+            Some(id) => {
+                let ret = self.noc.load(&id).await.map_err(|mut e| {
+                    let msg = format!(
+                        "load storage from noc failed! id={}, stroage={}, path={}, dec={:?}, {}",
+                        self.noc.id, id, self.path, self.dec_id, e,
                     );
+                    error!("{}", msg);
+                    e.set_msg(msg);
                     e
                 })?;
 
-                Ok(Some(coll))
+                match ret {
+                    Some(data) => Ok(Some(data)),
+                    None => {
+                        warn!("load storage from noc but not found! id={}, stroage={}, path={}, dec={:?}",
+                        self.noc.id, id, self.path, self.dec_id);
+
+                        Ok(None)
+                    }
+                }
             }
-            None => Ok(None),
+            None => {
+                warn!(
+                    "global state storage load from path but not found! id={}, path={}, dec={:?}",
+                    self.noc.id, self.path, self.dec_id
+                );
+                Ok(None)
+            }
         }
     }
 
-    pub async fn save<T>(&self, data: &T) -> BuckyResult<()>
-    where
-        T: CollectionCodec<T>,
-    {
-        let buf = data.encode().map_err(|e| {
-            error!(
-                "convert collection to buf failed! id={}, {}",
-                self.storage.id, e
+    async fn save(&self, buf: Vec<u8>) -> BuckyResult<()> {
+        // First save as storage object to noc
+        let storage_id = self.noc.save(buf, true).await.map_err(|mut e| {
+            let msg = format!(
+                "save storage to noc failed! id={}, path={}, dec={:?}, {}",
+                self.noc.id, self.path, self.dec_id, e,
             );
+            error!("{}", msg);
+            e.set_msg(msg);
             e
         })?;
 
-        self.storage.save(buf).await
-    }
+        // Then update the global state to save the object_id
+        let stub = self.create_global_stub();
+        let path_stub = stub.create_path_op_env().await?;
 
-    pub async fn delete(&self) -> BuckyResult<()> {
-        self.storage.delete().await
-    }
-}
-
-pub struct NOCCollection<T>
-where
-    T: Default + CollectionCodec<T>,
-{
-    coll: T,
-    storage: NOCStorageWrapper,
-    dirty: bool,
-}
-
-impl<T> NOCCollection<T>
-where
-    T: Default + CollectionCodec<T>,
-{
-    pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
-        Self {
-            coll: T::default(),
-            storage: NOCStorageWrapper::new(id, noc),
-            dirty: false,
-        }
-    }
-
-    pub fn id(&self) -> &str {
-        self.storage.id()
-    }
-
-    pub fn coll(&self) -> &T {
-        &self.coll
-    }
-
-    pub fn is_dirty(&self) -> bool {
-        self.dirty
-    }
-
-    pub fn set_dirty(&mut self, dirty: bool) {
-        self.dirty = dirty;
-    }
-
-    pub fn swap(&mut self, mut value: T) -> T {
-        std::mem::swap(&mut self.coll, &mut value);
-        value
-    }
-
-    pub async fn load(&mut self) -> BuckyResult<()> {
-        match self.storage.load().await? {
-            Some(coll) => {
-                self.coll = coll;
-                Ok(())
-            }
-            None => Ok(()),
-        }
-    }
-
-    pub async fn save(&mut self) -> BuckyResult<()> {
-        if self.is_dirty() {
-            self.set_dirty(false);
-
-            self.storage.save(&self.coll).await.map_err(|e| {
-                self.set_dirty(true);
-                e
-            })
-        } else {
-            Ok(())
-        }
-    }
-
-    pub async fn delete(&mut self) -> BuckyResult<()> {
-        self.storage.delete().await?;
-
-        // FIXME 删除后是否要置空?
-        // self.coll = T::default();
-
-        Ok(())
-    }
-}
-
-use std::ops::Deref;
-use std::ops::DerefMut;
-
-pub trait NOCCollectionWithLock<T>
-where
-    T: Default + ?Sized + Send + 'static,
-{
-    fn read(&self) -> Box<dyn Deref<Target = T> + '_>;
-    fn write(&self) -> Box<dyn DerefMut<Target = T> + '_>;
-    //fn replace(&self, value: T);
-}
-
-struct NOCCollectionWithMutex<T>
-where
-    T: Default + ?Sized + Send + 'static,
-{
-    coll: Mutex<T>,
-}
-
-impl<T> NOCCollectionWithMutex<T>
-where
-    T: Default + ?Sized + Send + 'static,
-{
-    fn new() -> Self {
-        Self {
-            coll: Mutex::new(T::default()),
-        }
-    }
-}
-
-impl<T> NOCCollectionWithLock<T> for NOCCollectionWithMutex<T>
-where
-    T: Default + ?Sized + Send + 'static,
-{
-    fn read(&self) -> Box<dyn Deref<Target = T> + '_> {
-        Box::new(self.coll.lock().unwrap())
-    }
-    fn write(&self) -> Box<dyn DerefMut<Target = T> + '_> {
-        Box::new(self.coll.lock().unwrap())
-    }
-}
-
-use std::sync::RwLock;
-
-struct NOCCollectionWithRWLock<T>
-where
-    T: Default + ?Sized + Send + 'static,
-{
-    coll: RwLock<T>,
-}
-
-impl<T> NOCCollectionWithRWLock<T>
-where
-    T: Default + ?Sized + Send + 'static,
-{
-    fn new() -> Self {
-        Self {
-            coll: RwLock::new(T::default()),
-        }
-    }
-}
-
-impl<T> NOCCollectionWithLock<T> for NOCCollectionWithRWLock<T>
-where
-    T: Default + ?Sized + Send + 'static,
-{
-    fn read(&self) -> Box<dyn Deref<Target = T> + '_> {
-        Box::new(self.coll.read().unwrap())
-    }
-    fn write(&self) -> Box<dyn DerefMut<Target = T> + '_> {
-        Box::new(self.coll.write().unwrap())
-    }
-}
-
-pub struct NOCCollectionSync<T>
-where
-    T: Default + CollectionCodec<T> + Send + 'static,
-{
-    coll: Arc<Mutex<T>>,
-    storage: Arc<NOCStorage>,
-
-    dirty: Arc<AtomicBool>,
-    auto_save: Arc<AtomicBool>,
-}
-
-impl<T> Clone for NOCCollectionSync<T>
-where
-    T: Default + CollectionCodec<T> + Send + 'static,
-{
-    fn clone(&self) -> Self {
-        Self {
-            coll: self.coll.clone(),
-            storage: self.storage.clone(),
-            dirty: self.dirty.clone(),
-            auto_save: self.auto_save.clone(),
-        }
-    }
-}
-
-impl<T> NOCCollectionSync<T>
-where
-    T: Default + CollectionCodec<T> + Send + 'static,
-{
-    pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
-        Self {
-            coll: Arc::new(Mutex::new(T::default())),
-            storage: Arc::new(NOCStorage::new(id, noc)),
-            dirty: Arc::new(AtomicBool::new(false)),
-            auto_save: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    pub fn is_dirty(&self) -> bool {
-        self.dirty.load(Ordering::SeqCst)
-    }
-
-    pub fn set_dirty(&self, dirty: bool) -> bool {
-        self.dirty.swap(dirty, Ordering::SeqCst)
-    }
-
-    pub fn coll(&self) -> &Arc<Mutex<T>> {
-        &self.coll
-    }
-
-    pub fn id(&self) -> &str {
-        self.storage.id()
-    }
-
-    pub fn swap(&mut self, mut value: T) -> T {
-        {
-            let mut cur = self.coll.lock().unwrap();
-            std::mem::swap(&mut *cur, &mut value);
-        }
-
-        self.set_dirty(true);
-        value
-    }
-
-    pub async fn load(&self) -> BuckyResult<()> {
-        match self.storage.load().await? {
-            Some(buf) => {
-                let coll = T::decode(&buf).map_err(|e| {
-                    error!(
-                        "decode storage buf to collection failed! id={}, {}",
-                        self.id(),
-                        e
-                    );
-                    e
-                })?;
-
-                *self.coll.lock().unwrap() = coll;
-                Ok(())
-            }
-            None => Ok(()),
-        }
-    }
-
-    // 保存，必须正确的调用set_dirty才会发起真正的保存操作
-    pub async fn save(&self) -> BuckyResult<()> {
-        if self.set_dirty(false) {
-            self.save_impl().await.map_err(|e| {
-                self.set_dirty(true);
-                e
-            })
-        } else {
-            Ok(())
-        }
-    }
-
-    // 异步的保存，必须正确的调用set_dirty才会发起真正的保存操作
-    pub fn async_save(&self) {
-        let this = self.clone();
-        async_std::task::spawn(async move {
-            let _r = this.save().await;
-        });
-    }
-
-    async fn save_impl(&self) -> BuckyResult<()> {
-        let buf = {
-            let coll = self.coll.lock().unwrap();
-            coll.encode().map_err(|e| {
-                error!(
-                    "convert collection to buf failed! id={}, {}",
-                    self.storage.id, e
+        path_stub
+            .set_with_path(&self.path, storage_id.object_id(), None, true)
+            .await
+            .map_err(|mut e| {
+                let msg = format!(
+                    "save storage to global state failed! id={}, path={}, dec={:?}, {}",
+                    self.noc.id, self.path, self.dec_id, e,
                 );
+                error!("{}", msg);
+                e.set_msg(msg);
                 e
-            })?
-        };
+            })?;
 
-        self.storage.save(buf).await
-    }
+        path_stub.commit().await.map_err(|mut e| {
+            let msg = format!(
+                "commit storage to global state failed! id={}, path={}, dec={:?}, {}",
+                self.noc.id, self.path, self.dec_id, e,
+            );
+            error!("{}", msg);
+            e.set_msg(msg);
+            e
+        })?;
 
-    pub async fn delete(&self) -> BuckyResult<()> {
-        self.storage.delete().await?;
-
-        // 删除后需要停止自动保存
-        self.stop_save();
-
-        // FIXME 删除后是否要置空?
-        // self.coll = T::default();
+        info!(
+            "save storage to global state success! id={}, path={}, dec={:?}",
+            self.noc.id, self.path, self.dec_id
+        );
 
         Ok(())
     }
 
-    // 开始定时保存操作
-    pub fn start_save(&self, dur: std::time::Duration) {
-        use async_std::prelude::*;
+    async fn delete(&self) -> BuckyResult<()> {
+        // First update the global state to save the object_id
+        let stub = self.create_global_stub();
+        let path_stub = stub.create_path_op_env().await?;
 
-        let ret = self
-            .auto_save
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire);
-        if ret.is_err() {
-            warn!("storage already in saving state! id={}", self.id());
-            return;
-        }
+        let ret = path_stub
+            .remove_with_path(&self.path, None)
+            .await
+            .map_err(|mut e| {
+                let msg = format!(
+                    "remove storage from global state failed! id={}, path={}, dec={:?}, {}",
+                    self.noc.id, self.path, self.dec_id, e,
+                );
+                error!("{}", msg);
+                e.set_msg(msg);
+                e
+            })?;
 
-        let this = self.clone();
-        async_std::task::spawn(async move {
-            let mut interval = async_std::stream::interval(dur);
-            while let Some(_) = interval.next().await {
-                if !this.auto_save.load(Ordering::SeqCst) {
-                    warn!("storage auto save stopped! id={}", this.id());
-                    break;
+        path_stub.commit().await.map_err(|mut e| {
+            let msg = format!(
+                "commit storage to global state failed! id={}, path={}, dec={:?}, {}",
+                self.noc.id, self.path, self.dec_id, e,
+            );
+            error!("{}", msg);
+            e.set_msg(msg);
+            e
+        })?;
+
+        match ret {
+            Some(object_id) => {
+                // Then delete object from noc
+                if let Err(e) = self.noc.delete(&object_id).await {
+                    error!("delete storage from noc but failed! id={}, path={}, dec={:?}, storage={}, {}", 
+                    self.noc.id, self.path, self.dec_id, object_id, e);
                 }
-                let _ = this.save().await;
             }
-        });
-    }
-
-    pub fn stop_save(&self) {
-        if let Ok(_) =
-            self.auto_save
-                .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
-        {
-            info!("will stop storage auto save! id={}", self.id());
+            None => {
+                info!(
+                    "delete storage from global state but not found! id={}, path={}, dec={:?}",
+                    self.noc.id, self.path, self.dec_id,
+                );
+            }
         }
+
+        Ok(())
     }
 }
 
-pub struct NOCCollectionRWSync<T>
-where
-    T: Default + CollectionCodec<T> + Send + Sync + 'static,
-{
-    coll: Arc<RwLock<T>>,
-    storage: Arc<NOCStorage>,
-
-    dirty: Arc<AtomicBool>,
-
-    auto_save: Arc<AtomicBool>,
+pub struct NOCRawStorage {
+    noc: NOCStorageRawHelper,
+    storage_id: StorageId,
 }
 
-impl<T> Clone for NOCCollectionRWSync<T>
-where
-    T: Default + CollectionCodec<T> + Send + Sync + 'static,
-{
-    fn clone(&self) -> Self {
-        Self {
-            coll: self.coll.clone(),
-            storage: self.storage.clone(),
-            dirty: self.dirty.clone(),
-            auto_save: self.auto_save.clone(),
-        }
-    }
-}
-
-impl<T> NOCCollectionRWSync<T>
-where
-    T: Default + CollectionCodec<T> + Send + Sync + 'static,
-{
+impl NOCRawStorage {
     pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
+        let storage: Storage = StorageObj::create(id, Vec::new());
+
+        let noc = NOCStorageRawHelper::new(id, noc);
+
         Self {
-            coll: Arc::new(RwLock::new(T::default())),
-            storage: Arc::new(NOCStorage::new(id, noc)),
-            dirty: Arc::new(AtomicBool::new(false)),
-            auto_save: Arc::new(AtomicBool::new(false)),
+            noc,
+            storage_id: storage.storage_id(),
         }
     }
+}
 
-    pub fn is_dirty(&self) -> bool {
-        self.dirty.load(Ordering::SeqCst)
+#[async_trait::async_trait]
+impl NOCStorage for NOCRawStorage {
+    fn id(&self) -> &str {
+        &self.noc.id
     }
 
-    pub fn set_dirty(&self, dirty: bool) {
-        self.dirty.store(dirty, Ordering::SeqCst);
+    async fn load(&self) -> BuckyResult<Option<Vec<u8>>> {
+        self.noc.load(self.storage_id.object_id()).await
     }
 
-    pub fn coll(&self) -> &Arc<RwLock<T>> {
-        &self.coll
-    }
-
-    pub fn id(&self) -> &str {
-        self.storage.id()
-    }
-
-    pub fn swap(&self, mut value: T) -> T {
-        {
-            let mut cur = self.coll.write().unwrap();
-            std::mem::swap(&mut *cur, &mut value);
-        }
-
-        self.set_dirty(true);
-
-        value
-    }
-
-    pub async fn load(&self) -> BuckyResult<()> {
-        match self.storage.load().await? {
-            Some(buf) => {
-                let coll = T::decode(&buf).map_err(|e| {
-                    error!(
-                        "decode storage buf to collection failed! id={}, {}",
-                        self.id(),
-                        e
-                    );
-                    e
-                })?;
-
-                *self.coll.write().unwrap() = coll;
+    async fn save(&self, buf: Vec<u8>) -> BuckyResult<()> {
+        match self.noc.save(buf, false).await {
+            Ok(id) => {
+                assert_eq!(id, self.storage_id);
                 Ok(())
             }
-            None => Ok(()),
+            Err(e) => Err(e),
         }
     }
 
-    pub async fn save(&self) -> BuckyResult<()> {
-        if self.is_dirty() {
-            self.set_dirty(false);
-
-            self.save_impl().await.map_err(|e| {
-                self.set_dirty(true);
-                e
-            })
-        } else {
-            Ok(())
-        }
-    }
-
-    pub async fn save_impl(&self) -> BuckyResult<()> {
-        let buf = {
-            let coll = self.coll.read().unwrap();
-            coll.encode().map_err(|e| {
-                error!(
-                    "convert collection to buf failed! id={}, {}",
-                    self.storage.id, e
-                );
-                e
-            })?
-        };
-
-        self.storage.save(buf).await
-    }
-
-    pub async fn delete(&mut self) -> BuckyResult<()> {
-        self.storage.delete().await?;
-
-        // 删除后需要停止自动保存
-        self.stop_save();
-
-        // FIXME 删除后是否要置空?
-        // self.coll = T::default();
-
-        Ok(())
-    }
-
-    // 开始定时保存操作
-    pub fn start_save(&self, dur: std::time::Duration) {
-        use async_std::prelude::*;
-
-        let ret = self
-            .auto_save
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire);
-        if ret.is_err() {
-            warn!("storage already in saving state! id={}", self.id());
-            return;
-        }
-
-        let this = self.clone();
-        async_std::task::spawn(async move {
-            let mut interval = async_std::stream::interval(dur);
-            while let Some(_) = interval.next().await {
-                if !this.auto_save.load(Ordering::SeqCst) {
-                    warn!("storage auto save stopped! id={}", this.id());
-                    break;
-                }
-
-                let _ = this.save().await;
-            }
-        });
-    }
-
-    pub fn stop_save(&self) {
-        if let Ok(_) =
-            self.auto_save
-                .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
-        {
-            info!("will stop storage auto save! id={}", self.id());
-        }
+    async fn delete(&self) -> BuckyResult<()> {
+        self.noc.delete(self.storage_id.object_id()).await
     }
 }

@@ -1,5 +1,5 @@
 use super::remote_noc::*;
-use super::storage::*;
+use super::collection::*;
 use crate::stack::*;
 
 pub struct RemoteNOCStorage;

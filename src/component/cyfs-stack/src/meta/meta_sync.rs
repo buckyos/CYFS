@@ -19,12 +19,12 @@ struct SyncState {
 struct MetaSync {
     noc: Box<dyn NamedObjectCache>,
     meta_cache: Box<dyn NamedObjectCache>,
-    state: NOCStorage<HashMap<ObjectId, SyncState>>,
+    state: NOCRawStorage<HashMap<ObjectId, SyncState>>,
 }
 
 impl MetaSync {
     pub fn new(noc: Box<dyn NamedObjectCache>, meta_cache: Box<dyn NamedObjectCache>) -> Self {
-        let state = NOCStorage::new("", noc.clone_noc());
+        let state = NOCRawStorage::new("", noc.clone_noc());
         Self {
             noc,
             meta_cache,
