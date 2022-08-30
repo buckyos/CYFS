@@ -20,6 +20,8 @@ mod dep {
     pub use std::{fmt, future::Future, net::Shutdown, ops::Deref, sync::RwLock, time::Duration};
 }
 
+const ANSWER_MAX_LEN: usize = 1380;
+
 mod connector {
     use super::dep::*;
     use super::StreamContainer;
@@ -918,6 +920,13 @@ pub struct StreamContainer(Arc<StreamContainerImpl>);
 
 impl StreamContainer {
     pub async fn confirm(&self, answer: &[u8]) -> Result<(), BuckyError> {
+        if answer.len() > ANSWER_MAX_LEN {
+            return Err(BuckyError::new(
+                BuckyErrorCode::Failed,
+                format!("answer's length large than {}", ANSWER_MAX_LEN),
+            ));
+        }
+
         let builder = {
             let state = &*self.0.state.read().unwrap();
             match state {
