@@ -354,6 +354,14 @@ impl WebSocketRequestManager {
             WebSocketRequestContainer::on_timeout(self.sid(), timeout_list);
         }
 
+        // Init waker before send the packet
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        {
+            let mut item = item.lock().unwrap();
+            assert!(item.waker.is_none());
+            item.waker = Some(abort_handle);
+        }
+
         let packet = WSPacket::new_from_bytes(seq, cmd, msg);
         let buf = packet.encode();
         if let Err(e) = self.post_to_session(buf).await {
@@ -361,14 +369,7 @@ impl WebSocketRequestManager {
 
             return Err(e);
         }
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-
-        {
-            let mut item = item.lock().unwrap();
-            assert!(item.waker.is_none());
-            item.waker = Some(abort_handle);
-        }
-
+        
         // 等待唤醒
         let future = Abortable::new(async_std::future::pending::<()>(), abort_registration);
         future.await.unwrap_err();
@@ -498,5 +499,37 @@ impl WebSocketRequestManager {
             info!("will stop ws request monitor: sid={}", self.sid());
             canceler.abort();
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use futures::future::{AbortHandle, Abortable};
+
+    async fn test_wakeup() {
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+
+        abort_handle.abort();
+
+        async_std::task::spawn(async move {
+            async_std::task::sleep(std::time::Duration::from_secs(2)).await;
+            abort_handle.abort();
+        });
+
+        // 等待唤醒
+        let future = Abortable::new(async_std::future::pending::<()>(), abort_registration);
+        future.await.unwrap_err();
+
+        println!("future wait complete!");
+
+        async_std::task::sleep(std::time::Duration::from_secs(3)).await;
+    }
+
+    #[test]
+    fn test() {
+        async_std::task::block_on(async move {
+            test_wakeup().await;
+        })
     }
 }
