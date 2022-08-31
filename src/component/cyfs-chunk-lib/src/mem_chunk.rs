@@ -109,15 +109,19 @@ impl Deref for MemChunk {
 #[async_trait::async_trait]
 impl Chunk for MemChunk {
     fn get_chunk_meta(&self) -> ChunkMeta {
-        ChunkMeta::MemChunk(self.buf.clone())
+        ChunkMeta::MemChunk(self.buf[..self.data_len].to_vec())
     }
 
     fn get_len(&self) -> usize {
-        self.buf.len()
+        self.data_len
     }
 
     fn into_vec(self: Box<Self>) -> Vec<u8> {
-        self.buf
+        if self.buf.len() == self.data_len {
+            self.buf
+        } else {
+            self.buf[..self.data_len].to_vec()
+        }
     }
 
     async fn read(&mut self, buf: &mut [u8]) -> BuckyResult<usize> {
