@@ -596,6 +596,10 @@ impl UdpSender {
                 self.to_addr
         )
     }
+
+    pub fn key(&self) -> &AesKey {
+        &self.aes_key
+    }
 }
 
 pub struct TcpSender {

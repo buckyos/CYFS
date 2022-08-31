@@ -200,7 +200,8 @@ impl PeerManager {
             }
             cached_peer.last_send_time = send_time;
             // 客户端被签名的地址才被更新，避免恶意伪装
-            if contain_addr(&cached_peer.desc, sender.remote()) {
+            if contain_addr(&cached_peer.desc, sender.remote()) 
+                || cached_peer.sender.key() != sender.key() {
                 cached_peer.sender = sender.clone();
             }
 
