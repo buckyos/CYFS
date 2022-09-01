@@ -6,7 +6,7 @@ use cyfs_core::NFTListDesc;
 pub enum NFTState {
     Normal,
     Auctioning((u64, CoinTokenId, u64)),
-    Selling((u64, CoinTokenId)),
+    Selling((u64, CoinTokenId, u64)),
 }
 
 #[derive(RawEncode, RawDecode, Clone, Debug)]
@@ -171,6 +171,7 @@ pub struct NFTSellTx {
     pub nft_id: ObjectId,
     pub price: u64,
     pub coin_id: CoinTokenId,
+    pub duration_block_num: u64,
 }
 
 #[derive(RawEncode, RawDecode, Clone, Debug)]

@@ -1,3 +1,5 @@
+extern crate core;
+
 pub use chain::{Chain, Miner};
 pub use creator::*;
 pub use cyfs_base_meta::*;

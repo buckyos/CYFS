@@ -55,6 +55,11 @@ pub struct NFTStopAuction {
 }
 
 #[derive(Clone, RawEncode, RawDecode)]
+pub struct NFTStopSell {
+    pub nft_id: ObjectId,
+}
+
+#[derive(Clone, RawEncode, RawDecode)]
 pub struct NFTCancelApplyBuyParam {
     pub nft_id: ObjectId,
     pub user_id: ObjectId,
@@ -72,6 +77,7 @@ pub enum EventType {
     Extension = 6,
     NFTStopAuction = 7,
     NFTCancelApplyBuy = 8,
+    NFTStopSell = 9,
 }
 
 #[derive(RawEncode, RawDecode, Clone)]
@@ -85,6 +91,7 @@ pub enum Event {
     Extension(ExtensionEvent),
     NFTStopAuction(NFTStopAuction),
     NFTCancelApplyBuy(NFTCancelApplyBuyParam),
+    NFTStopSell(NFTStopSell),
 }
 
 pub const EVENT_RESULT_SUCCESS: u8 = 0;
@@ -131,7 +138,8 @@ impl Event {
             Event::UnionWithdraw(_) => EventType::UnionWithdraw,
             Event::Extension(_) => EventType::Extension,
             Event::NFTStopAuction(_) => {EventType::NFTStopAuction},
-            Event::NFTCancelApplyBuy(_) => {EventType::NFTCancelApplyBuy}
+            Event::NFTCancelApplyBuy(_) => {EventType::NFTCancelApplyBuy},
+            Event::NFTStopSell(_) => {EventType::NFTStopSell},
         }
     }
 

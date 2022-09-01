@@ -1181,7 +1181,8 @@ impl MetaClient {
         secret: &PrivateKey,
         nft_id: ObjectId,
         price: u64,
-        coin_id: CoinTokenId
+        coin_id: CoinTokenId,
+        duration_block_num: u64,
     ) -> BuckyResult<TxId> {
         let req = self
             .commit_request_ex(
@@ -1191,6 +1192,7 @@ impl MetaClient {
                     nft_id,
                     price,
                     coin_id,
+                    duration_block_num
                 }),
                 10, 10,
                 Vec::new(),

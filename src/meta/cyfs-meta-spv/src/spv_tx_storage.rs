@@ -521,7 +521,7 @@ impl SPVTxStorage {
                             if let NFTDesc::ListDesc(sub_list) = &nft_create_tx.desc {
                                 for sub_nft in sub_list.content().nft_list.iter() {
                                     let sub_id = sub_nft.calculate_id();
-                                    if let NFTState::Selling((price, coin_id)) = &nft_create_tx.state {
+                                    if let NFTState::Selling((price, coin_id, stop_block)) = &nft_create_tx.state {
                                         if *price == 0 {
                                             self.nft_create(
                                                 &mut conn,
@@ -530,7 +530,7 @@ impl SPVTxStorage {
                                                 "",
                                                 &beneficiary,
                                                 block.desc().number(),
-                                                &NFTState::Selling((0, coin_id.clone()))
+                                                &NFTState::Selling((0, coin_id.clone(), *stop_block))
                                             ).await?;
                                         } else {
                                             self.nft_create(
@@ -540,7 +540,7 @@ impl SPVTxStorage {
                                                 "",
                                                 &beneficiary,
                                                 block.desc().number(),
-                                                &NFTState::Selling((0, coin_id.clone()))
+                                                &NFTState::Selling((0, coin_id.clone(), *stop_block))
                                             ).await?;
                                         }
                                     } else {
@@ -578,7 +578,7 @@ impl SPVTxStorage {
                             if let NFTDesc::ListDesc(sub_list) = &nft_create_tx.desc {
                                 for (index, sub_nft) in sub_list.content().nft_list.iter().enumerate() {
                                     let sub_id = sub_nft.calculate_id();
-                                    if let NFTState::Selling((price, coin_id)) = &nft_create_tx.state {
+                                    if let NFTState::Selling((price, coin_id, _)) = &nft_create_tx.state {
                                         if *price == 0 {
                                             self.nft_create(
                                                 &mut conn,
@@ -597,7 +597,7 @@ impl SPVTxStorage {
                                                 nft_create_tx.sub_names.get(index).unwrap(),
                                                 &beneficiary,
                                                 block.desc().number(),
-                                                &NFTState::Selling((0, coin_id.clone()))
+                                                &NFTState::Selling((0, coin_id.clone(), u64::MAX))
                                             ).await?;
                                         }
                                     } else {
@@ -654,13 +654,13 @@ impl SPVTxStorage {
                     }
                     MetaTxBody::NFTSell(nft_tx) => {
                         if receipt.result == 0 {
-                            self.nft_update_state(&mut conn, &nft_tx.nft_id, &NFTState::Selling((nft_tx.price, nft_tx.coin_id.clone()))).await?;
+                            self.nft_update_state(&mut conn, &nft_tx.nft_id, &NFTState::Selling((nft_tx.price, nft_tx.coin_id.clone(), nft_tx.duration_block_num))).await?;
                             self.nft_remove_all_apply_buy(&mut conn, &nft_tx.nft_id).await?;
                         }
                     }
                     MetaTxBody::NFTSell2(nft_tx) => {
                         if receipt.result == 0 {
-                            self.nft_update_state(&mut conn, &nft_tx.nft_id, &NFTState::Selling((nft_tx.price, nft_tx.coin_id.clone()))).await?;
+                            self.nft_update_state(&mut conn, &nft_tx.nft_id, &NFTState::Selling((nft_tx.price, nft_tx.coin_id.clone(), u64::MAX))).await?;
                             self.nft_remove_all_apply_buy(&mut conn, &nft_tx.nft_id).await?;
 
                             let nft_detail = self.nft_get2(&mut conn, &nft_tx.nft_id).await?;
@@ -669,13 +669,13 @@ impl SPVTxStorage {
                                     for (index, sub_nft) in sub_list.content().nft_list.iter().enumerate() {
                                         let sub_id = sub_nft.calculate_id();
                                         let (coin_id, price) = nft_tx.sub_sell_infos.get(index).unwrap();
-                                        self.nft_update_state(&mut conn, &sub_id, &NFTState::Selling((*price, coin_id.clone()))).await?;
+                                        self.nft_update_state(&mut conn, &sub_id, &NFTState::Selling((*price, coin_id.clone(), u64::MAX))).await?;
                                         self.nft_remove_all_apply_buy(&mut conn, &sub_id).await?;
                                     }
                                 } else {
                                     for sub_nft in sub_list.content().nft_list.iter() {
                                         let sub_id = sub_nft.calculate_id();
-                                        self.nft_update_state(&mut conn, &sub_id, &NFTState::Selling((0, nft_tx.coin_id.clone()))).await?;
+                                        self.nft_update_state(&mut conn, &sub_id, &NFTState::Selling((0, nft_tx.coin_id.clone(), u64::MAX))).await?;
                                         self.nft_remove_all_apply_buy(&mut conn, &sub_id).await?;
                                     }
                                 }
@@ -769,6 +769,11 @@ impl SPVTxStorage {
                     }
                 }
                 Event::NFTCancelApplyBuy(_) => {}
+                Event::NFTStopSell(params) => {
+                    if event.event_result.status == 0 {
+                        self.nft_update_state(&mut conn, &params.nft_id, &NFTState::Normal).await?;
+                    }
+                }
             }
         }
         Ok(())
@@ -1128,6 +1133,7 @@ pub mod spv_tx_storage_test {
         let public_key = private_key.public();
         StandardObject::Device(Device::new(None
                                            , UniqueId::default()
+                                           , Vec::new()
                                            , Vec::new()
                                            , Vec::new()
                                            , public_key

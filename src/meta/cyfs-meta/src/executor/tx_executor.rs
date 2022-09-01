@@ -51,6 +51,7 @@ impl TxExecutor {
             let weak_ref_state = weak_ref_state.clone();
             Box::pin(async move {
                 if let Event::NFTCancelApplyBuy(event) = event {
+                    log::info!("nft {} user {} cancel apply buy", event.nft_id.to_string(), event.user_id.to_string());
                     let ret = weak_ref_state.to_rc()?.nft_get_apply_buy(&event.nft_id, &event.user_id).await?;
                     if ret.is_some() {
                         let (price, coin_id) = ret.unwrap();
@@ -59,6 +60,23 @@ impl TxExecutor {
                     Ok(EventResult::new(0, Vec::new()))
                 } else {
                     Err(crate::meta_err!(ERROR_INVALID))
+                }
+            })
+        });
+        let weak_ref_state = StateRef::downgrade(state);
+        event_manager.register_listener(EventType::NFTStopSell, move |_cur_block: BlockDesc, event: Event| {
+            let weak_ref_state = weak_ref_state.clone();
+            Box::pin(async move {
+                if let Event::NFTStopSell(event) = event {
+                    log::info!("nft {} stop sell", event.nft_id.to_string());
+                    let (_, _, state) = weak_ref_state.to_rc()?.nft_get(&event.nft_id).await?;
+                    if let NFTState::Selling(_) = state {
+                        let new_state = NFTState::Normal;
+                        weak_ref_state.to_rc()?.nft_update_state(&event.nft_id, &new_state).await?;
+                    }
+                    Ok(EventResult::new(0, Vec::new()))
+                } else {
+                    Err(meta_err!(ERROR_INVALID))
                 }
             })
         });
