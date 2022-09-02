@@ -271,6 +271,8 @@ impl ObjectMapRootEvent for GlobalStateManager {
 
         self.global_root_state
             .update_dec_root(dec_id.as_ref().unwrap(), new_root_id, prev_id)
-            .await
+            .await?;
+
+        Ok(())
     }
 }
