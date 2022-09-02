@@ -64,8 +64,10 @@ impl ChannelTunnel for TcpTunnel {
     }
 
     fn send_piece_control(&self, control: PieceControl) {
-        debug!("{} will send piece control {:?}", self, control);
-        let _ = control.split_send(&DynamicTunnel::new(self.0.raw_tunnel.clone()));
+        if control.command != PieceControlCommand::Continue && ctrl.max_index.is_some() {
+            debug!("{} will send piece control {:?}", self, control);
+            let _ = control.split_send(&DynamicTunnel::new(self.0.raw_tunnel.clone()));
+        }
     }
 
     fn on_piece_data(&self, _piece: &PieceData) -> BuckyResult<()> {
