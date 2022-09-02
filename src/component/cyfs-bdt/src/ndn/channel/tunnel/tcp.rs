@@ -76,8 +76,11 @@ impl ChannelTunnel for TcpTunnel {
         unreachable!()
     }
 
-    fn on_piece_control(&self, _ctrl: &mut PieceControl) -> BuckyResult<()> {
-        // FIXME: 可能的实现是阻止重发 continue
+    fn on_piece_control(&self, ctrl: &mut PieceControl) -> BuckyResult<()> {
+        if PieceControlCommand::Continue == ctrl.command && ctrl.max_index.is_some() { 
+            info!("{} will discard send buffer to resend", self);
+            let _ = self.0.raw_tunnel.discard_data_piece();
+        }
         Ok(())
     }
 
