@@ -64,7 +64,7 @@ impl ChannelTunnel for TcpTunnel {
     }
 
     fn send_piece_control(&self, control: PieceControl) {
-        if control.command != PieceControlCommand::Continue && ctrl.max_index.is_some() {
+        if control.command != PieceControlCommand::Continue && control.max_index.is_some() {
             debug!("{} will send piece control {:?}", self, control);
             let _ = control.split_send(&DynamicTunnel::new(self.0.raw_tunnel.clone()));
         }
