@@ -63,6 +63,10 @@ impl ChannelTunnel for TcpTunnel {
         self.0.active_timestamp
     }
 
+    fn on_resent_interest(&self, _interest: &Interest) -> BuckyResult<()> {
+        Err(BuckyError::new(BuckyErrorCode::Ignored, ""))
+    }
+
     fn send_piece_control(&self, control: PieceControl) {
         if control.command != PieceControlCommand::Continue {
             debug!("{} will send piece control {:?}", self, control);

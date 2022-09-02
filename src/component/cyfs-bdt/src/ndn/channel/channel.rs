@@ -432,6 +432,16 @@ impl Channel {
         
         if let Some(session) = session {
             info!("{} ignore {:?} for upload session exists", self, command);
+            let tunnel = {
+                let state = &*self.0.state.read().unwrap();
+                match state {
+                    ChannelState::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
+                    _ => None
+                }
+            };
+            if let Some(tunnel) = tunnel {
+                let _ = tunnel.on_resent_interest(command)?;
+            } 
             session.on_interest(command)
         } else {
             let stack = self.stack();

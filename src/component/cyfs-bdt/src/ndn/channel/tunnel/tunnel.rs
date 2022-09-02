@@ -20,6 +20,7 @@ pub trait ChannelTunnel: std::fmt::Display + Send + Sync {
     fn active_timestamp(&self) -> Timestamp;
     fn start_at(&self) -> Timestamp;
 
+    fn on_resent_interest(&self, interest: &Interest) -> BuckyResult<()>;
     fn send_piece_control(&self, control: PieceControl);
     fn on_piece_data(&self, piece: &PieceData) -> BuckyResult<()>;
     fn on_resp_estimate(&self, est: &ChannelEstimate) -> BuckyResult<()>;

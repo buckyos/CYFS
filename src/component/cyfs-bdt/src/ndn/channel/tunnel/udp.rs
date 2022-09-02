@@ -201,6 +201,10 @@ impl ChannelTunnel for UdpTunnel {
         self.0.active_timestamp
     }
 
+    fn on_resent_interest(&self, _interest: &Interest) -> BuckyResult<()> {
+        Ok(())
+    }
+
     fn send_piece_control(&self, control: PieceControl) {
         debug!("{} will send piece control {:?}", self, control);
         let _ = control.split_send(&DynamicTunnel::new(self.0.raw_tunnel.clone()));
