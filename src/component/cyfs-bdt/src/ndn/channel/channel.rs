@@ -358,7 +358,7 @@ impl Channel {
     // 明文tunnel发送PieceControl
     pub(super) fn send_piece_control(&self, control: PieceControl) {
         if let Some(tunnel) = self.tunnel() {
-            debug!("{} will send piece control {:?}", self, control);
+            info!("{} will send piece control {:?}", self, control);
             tunnel.send_piece_control(control);
         } else {
             debug!("{} ignore send piece control {:?} for channel dead", self, control);
