@@ -20,6 +20,11 @@ impl AccessPermission {
             Self::Read => 2,
         }
     }
+
+    pub fn test(&self, access: u8) -> bool {
+        let b = *self as u8;
+        access & b == b
+    }
 }
 
 #[repr(u8)]

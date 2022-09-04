@@ -1,7 +1,6 @@
 use super::storage::*;
 use crate::base::*;
 use crate::root_state::*;
-use crate::UniObjectStackRef;
 use cyfs_base::*;
 use cyfs_debug::Mutex;
 
@@ -88,8 +87,7 @@ impl NOCStorageWrapper {
     }
 
     pub fn new_global_state(
-        stack: UniObjectStackRef,
-        category: GlobalStateCategory,
+        global_state: GlobalStateOutputProcessorRef,
         dec_id: Option<ObjectId>,
         path: String,
         target: Option<ObjectId>,
@@ -98,7 +96,7 @@ impl NOCStorageWrapper {
     ) -> Self {
         Self {
             storage: Box::new(NOCGlobalStateStorage::new(
-                stack, category, dec_id, path, target, id, noc,
+                global_state, dec_id, path, target, id, noc,
             )),
         }
     }
@@ -339,8 +337,7 @@ where
     }
 
     pub fn new_global_state(
-        stack: UniObjectStackRef,
-        category: GlobalStateCategory,
+        global_state: GlobalStateOutputProcessorRef,
         dec_id: Option<ObjectId>,
         path: String,
         target: Option<ObjectId>,
@@ -348,7 +345,7 @@ where
         noc: Box<dyn NamedObjectCache>,
     ) -> Self {
         let storage = NOCGlobalStateStorage::new(
-            stack, category, dec_id, path, target, id, noc,
+            global_state, dec_id, path, target, id, noc,
         );
 
         Self {
@@ -492,12 +489,13 @@ where
     T: Default + CollectionCodec<T> + Send + Sync + 'static,
 {
     coll: Arc<RwLock<T>>,
-    storage: Arc<NOCRawStorage>,
+    storage: Arc<Box<dyn NOCStorage>>,
 
     dirty: Arc<AtomicBool>,
 
     auto_save: Arc<AtomicBool>,
 }
+
 
 impl<T> Clone for NOCCollectionRWSync<T>
 where
@@ -518,9 +516,30 @@ where
     T: Default + CollectionCodec<T> + Send + Sync + 'static,
 {
     pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
+        let noc = NOCRawStorage::new(id, noc);
         Self {
             coll: Arc::new(RwLock::new(T::default())),
-            storage: Arc::new(NOCRawStorage::new(id, noc)),
+            storage: Arc::new(Box::new(noc)),
+            dirty: Arc::new(AtomicBool::new(false)),
+            auto_save: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn new_global_state(
+        global_state: GlobalStateOutputProcessorRef,
+        dec_id: Option<ObjectId>,
+        path: String,
+        target: Option<ObjectId>,
+        id: &str,
+        noc: Box<dyn NamedObjectCache>,
+    ) -> Self {
+        let storage = NOCGlobalStateStorage::new(
+            global_state, dec_id, path, target, id, noc,
+        );
+
+        Self {
+            coll: Arc::new(RwLock::new(T::default())),
+            storage: Arc::new(Box::new(storage)),
             dirty: Arc::new(AtomicBool::new(false)),
             auto_save: Arc::new(AtomicBool::new(false)),
         }

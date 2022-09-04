@@ -172,20 +172,16 @@ pub trait NOCStorage: Send + Sync {
 }
 
 pub struct NOCGlobalStateStorage {
-    stack: UniObjectStackRef,
-
-    category: GlobalStateCategory,
+    global_state: GlobalStateOutputProcessorRef,
     dec_id: Option<ObjectId>,
     path: String,
-
     target: Option<ObjectId>,
     noc: NOCStorageRawHelper,
 }
 
 impl NOCGlobalStateStorage {
     pub fn new(
-        stack: UniObjectStackRef,
-        category: GlobalStateCategory,
+        global_state: GlobalStateOutputProcessorRef,
         dec_id: Option<ObjectId>,
         path: String,
         target: Option<ObjectId>,
@@ -195,8 +191,7 @@ impl NOCGlobalStateStorage {
         let noc = NOCStorageRawHelper::new(id, noc);
 
         Self {
-            stack,
-            category,
+            global_state,
             dec_id,
             path,
             target,
@@ -205,17 +200,12 @@ impl NOCGlobalStateStorage {
     }
 
     fn create_global_stub(&self) -> GlobalStateStub {
-        let state = match self.category {
-            GlobalStateCategory::RootState => self.stack.root_state().clone(),
-            GlobalStateCategory::LocalCache => self.stack.local_cache().clone(),
-        };
-
         let dec_id = match &self.dec_id {
             Some(dec_id) => Some(dec_id.to_owned()),
             None => Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
         };
 
-        let stub = GlobalStateStub::new(state, self.target.clone(), dec_id);
+        let stub = GlobalStateStub::new(self.global_state.clone(), self.target.clone(), dec_id);
         stub
     }
 }
