@@ -88,6 +88,16 @@ pub struct NamedObjectMetaGetObjectRequest {
 
     pub last_access_rpath: Option<String>,
 }
+// update_last_access
+#[derive(Clone, Debug)]
+pub struct NamedObjectMetaUpdateLastAccessRequest {
+    // Shoule verify the access before call update_last_access!
+    // pub source: RequestSourceInfo,
+
+    pub object_id: ObjectId,
+    pub last_access_time: u64,
+    pub last_access_rpath: Option<String>,
+}
 
 // delete_object
 #[derive(Clone, Debug)]
@@ -154,6 +164,8 @@ pub trait NamedObjectMeta: Sync + Send {
     ) -> BuckyResult<NamedObjectMetaDeleteObjectResponse>;
 
     async fn exists_object(&self, req: &NamedObjectMetaExistsObjectRequest) -> BuckyResult<bool>;
+
+    async fn update_last_access(&self, req: &NamedObjectMetaUpdateLastAccessRequest) -> BuckyResult<bool>;
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat>;
 }

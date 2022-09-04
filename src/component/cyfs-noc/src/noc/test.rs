@@ -69,12 +69,30 @@ async fn test_noc() {
         unreachable!();
     }
     
+    // exists
+    let req = NamedObjectCacheExistsObjectRequest {
+        source: RequestSourceInfo::new_local_system(),
+        object_id: object_id.clone(),
+    };
+
+    let ret = noc.exists_object(&req).await.unwrap();
+    assert!(ret.meta);
+    assert!(ret.object);
+
+    let req = NamedObjectCacheExistsObjectRequest {
+        source: RequestSourceInfo::new_local_system(),
+        object_id: ObjectId::default(),
+    };
+
+    let ret = noc.exists_object(&req).await.unwrap();
+    assert!(!ret.meta);
+    assert!(!ret.object);
 
     // get by system
     let get_req = NamedObjectCacheGetObjectRequest1 {
         source: RequestSourceInfo::new_local_system(),
         object_id: object_id.to_owned(),
-        last_access_rpath: None,
+        last_access_rpath: Some("/test/dec1".to_owned()),
     };
 
     let ret = noc.get_object(&get_req).await.unwrap();
@@ -130,6 +148,19 @@ async fn test_noc() {
             unreachable!();
         }
     }
+
+     // delete by system
+     let delete_req = NamedObjectCacheDeleteObjectRequest1 {
+        source: RequestSourceInfo::new_local_system(),
+        object_id: object_id.to_owned(),
+        flags: CYFS_NOC_FLAG_DELETE_WITH_QUERY,
+    };
+
+    let ret = noc.delete_object(&delete_req).await.unwrap();
+    assert_eq!(ret.deleted_count, 1);
+    let got_update_time = ret.object.as_ref().unwrap().object.as_ref().unwrap().update_time().unwrap();
+    assert_eq!(got_update_time, update_time);
+
 }
 
 #[test]

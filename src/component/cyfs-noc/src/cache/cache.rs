@@ -1,4 +1,4 @@
-use crate::{access::RequestOpType, prelude::*};
+use crate::{access::RequestOpType, meta::*, prelude::*};
 use cyfs_base::*;
 
 use lru_time_cache::LruCache;
@@ -8,19 +8,26 @@ use std::sync::Mutex;
 type NamedObjectCacheItem = NamedObjectCacheObjectData;
 
 pub struct NamedObjectCacheMemoryCache {
+    meta: NamedObjectMetaRef,
     next: NamedObjectCacheRef,
     cache: Mutex<LruCache<ObjectId, NamedObjectCacheItem>>,
     missing_cache: Mutex<HashSet<ObjectId>>,
 }
 
 impl NamedObjectCacheMemoryCache {
-    pub fn new(next: NamedObjectCacheRef, timeout_in_secs: u64, capacity: usize) -> Self {
+    pub fn new(
+        meta: NamedObjectMetaRef,
+        next: NamedObjectCacheRef,
+        timeout_in_secs: u64,
+        capacity: usize,
+    ) -> Self {
         let cache = lru_time_cache::LruCache::with_expiry_duration_and_capacity(
             std::time::Duration::from_secs(timeout_in_secs),
             capacity,
         );
 
         Self {
+            meta,
             next,
             cache: Mutex::new(cache),
             missing_cache: Mutex::new(HashSet::new()),
@@ -57,8 +64,6 @@ impl NamedObjectCacheMemoryCache {
         if item.meta.last_access_rpath != req.last_access_rpath {
             item.meta.last_access_rpath = req.last_access_rpath.to_owned();
         }
-
-        // TODO update the meta last_access_time & last_access_path
 
         Ok(Some(item.to_owned()))
     }
@@ -112,6 +117,20 @@ impl NamedObjectCache1 for NamedObjectCacheMemoryCache {
     ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
         let cache_item = self.get(req)?;
         if cache_item.is_some() {
+            // Update the last access info
+            let update_req = NamedObjectMetaUpdateLastAccessRequest {
+                object_id: req.object_id.clone(),
+                last_access_time: bucky_time_now(),
+                last_access_rpath: req.last_access_rpath.clone(),
+            };
+
+            if let Err(e) = self.meta.update_last_access(&update_req).await {
+                error!(
+                    "noc got from cache but update last access to meta failed! obj={}, {}",
+                    req.object_id, e
+                );
+            }
+
             return Ok(cache_item);
         }
 

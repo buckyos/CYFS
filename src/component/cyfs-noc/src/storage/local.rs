@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::path::Path;
 
 pub struct NamedObjectLocalStorage {
-    meta: Box<dyn NamedObjectMeta>,
+    meta: NamedObjectMetaRef,
     blob: Box<dyn BlobStorage>,
 }
 
@@ -43,6 +43,10 @@ impl NamedObjectLocalStorage {
         })
     } 
 
+    pub fn meta(&self) -> &NamedObjectMetaRef {
+        &self.meta
+    }
+
     async fn init_blob(root: &Path) -> BuckyResult<Box<dyn BlobStorage>> {
         let dir = root.join("objects");
 
@@ -60,10 +64,10 @@ impl NamedObjectLocalStorage {
         Ok(Box::new(blob))
     }
 
-    fn init_meta(root: &Path) -> BuckyResult<Box<dyn NamedObjectMeta>> {
+    fn init_meta(root: &Path) -> BuckyResult<NamedObjectMetaRef> {
         let meta = SqliteMetaStorage::new(root)?;
-        // let ret=  Arc::new(Box::new(meta));
-        Ok(Box::new(meta))
+        let ret=  Arc::new(Box::new(meta) as Box<dyn NamedObjectMeta>);
+        Ok(ret)
     }
 
     async fn put_object(

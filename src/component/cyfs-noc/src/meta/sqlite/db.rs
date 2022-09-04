@@ -420,13 +420,11 @@ impl SqliteMetaStorage {
             AND insert_time = :current_insert_time
         "#;
 
-        let last_access_time = bucky_time_now();
-
         let params = named_params! {
             ":update_time": req.insert_time,
             ":object_update_time": req.object_update_time.unwrap_or(0),
             ":context": req.context,
-            ":last_access_time": last_access_time,
+            ":last_access_time": req.insert_time,
             ":last_access_rpath": req.last_access_rpath,
             ":object_id": req.object_id.to_string(),
             ":current_object_update_time": current_info.object_update_time.unwrap_or(0),
@@ -557,6 +555,15 @@ impl SqliteMetaStorage {
                     return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                 }
 
+                // Update the last access info
+                let update_req = NamedObjectMetaUpdateLastAccessRequest {
+                    object_id: req.object_id.clone(),
+                    last_access_time: bucky_time_now(),
+                    last_access_rpath: req.last_access_rpath.clone(),
+                };
+
+                let _ = self.update_last_access(&update_req);
+
                 Ok(Some(data))
             }
             None => Ok(None),
@@ -598,6 +605,49 @@ impl SqliteMetaStorage {
             }
             None => Ok(None),
         }
+    }
+
+    fn update_last_access(
+        &self,
+        req: &NamedObjectMetaUpdateLastAccessRequest,
+    ) -> BuckyResult<usize> {
+        const UPDATE_SQL: &str = r#"
+        UPDATE data_namedobject_meta SET last_access_time = :last_access_time, last_access_rpath = :last_access_rpath 
+            WHERE object_id = :object_id 
+            AND last_access_time <= :last_access_time
+        "#;
+
+        let params = named_params! {
+            ":last_access_time": req.last_access_time,
+            ":last_access_rpath": req.last_access_rpath,
+            ":object_id": req.object_id.to_string(),
+        };
+
+        let conn = self.get_conn()?.borrow();
+        let count = conn.execute(UPDATE_SQL, params).map_err(|e| {
+            let msg = format!("noc meta update last access error: {} {}", req.object_id, e);
+            error!("{}", msg);
+
+            warn!("{}", msg);
+            BuckyError::new(BuckyErrorCode::SqliteError, msg)
+        })?;
+
+        if count > 0 {
+            assert_eq!(count, 1);
+            info!(
+                "noc meta update last access success: obj={}, last_access_time={}, last_access_rpath={:?}",
+                req.object_id,
+                req.last_access_time,
+                req.last_access_rpath
+            );
+        } else {
+            warn!(
+                "noc meta update last access but not changed: obj={}, last_acecss_time={}",
+                req.object_id, req.last_access_time,
+            );
+        }
+
+        Ok(count)
     }
 
     fn delete(
@@ -787,8 +837,11 @@ impl SqliteMetaStorage {
         };
 
         let conn = self.get_conn()?.borrow();
-        let count = conn.execute(&EXISTS_SQL, params).map_err(|e| {
-            let msg = format!("noc meta exists error: obj={},  err={}", req.object_id, e);
+        let count = conn.query_row(&EXISTS_SQL, params, |row| {
+            let count: i64 = row.get(0).unwrap();
+            Ok(count)
+        }).map_err(|e| {
+            let msg = format!("noc meta exists error: obj={}, err={}", req.object_id, e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
@@ -799,7 +852,7 @@ impl SqliteMetaStorage {
             debug!("noc meta exists object success! obj={}", req.object_id);
             true
         } else {
-            info!(
+            debug!(
                 "noc meta exists object but not found or unmatch! obj={}",
                 req.object_id
             );
@@ -835,6 +888,16 @@ impl NamedObjectMeta for SqliteMetaStorage {
 
     async fn exists_object(&self, req: &NamedObjectMetaExistsObjectRequest) -> BuckyResult<bool> {
         self.exists(req)
+    }
+
+    async fn update_last_access(
+        &self,
+        req: &NamedObjectMetaUpdateLastAccessRequest,
+    ) -> BuckyResult<bool> {
+        match Self::update_last_access(&self, req)? {
+            n if n >= 1 => Ok(true),
+            _ => Ok(false),
+        }
     }
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat> {
