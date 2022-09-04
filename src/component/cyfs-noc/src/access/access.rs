@@ -63,7 +63,8 @@ pub enum AccessGroup {
     OthersZone = 9,
 
     OwnerDec = 12,
-    OthersDec = 15,
+    SystemDec = 15,
+    OthersDec = 18,
 }
 
 impl AccessGroup {
@@ -125,11 +126,8 @@ impl AccessString {
     pub fn clear_group_permissions(&mut self, group: AccessGroup) {
         self.0.set_bits(group.range(), 0);
     }
-}
 
-
-impl Default for AccessString {
-    fn default() -> Self {
+    pub fn dec_default() -> Self {
         Self::make(&[AccessPair {
             group: AccessGroup::CurrentDevice,
             permissions: AccessPermissions::Full,
@@ -138,24 +136,67 @@ impl Default for AccessString {
             permissions: AccessPermissions::Full,
         }, AccessPair {
             group: AccessGroup::FriendZone,
-            permissions: AccessPermissions::ReadAndCall,
+            permissions: AccessPermissions::Full,
         }, AccessPair {
             group: AccessGroup::OwnerDec,
-            permissions: AccessPermissions::ReadAndCall,
+            permissions: AccessPermissions::Full,
+        }, AccessPair {
+            group: AccessGroup::SystemDec,
+            permissions: AccessPermissions::Full,
         }])
+    }
+}
+
+
+impl Default for AccessString {
+    fn default() -> Self {
+        static D: once_cell::sync::OnceCell<AccessString> = once_cell::sync::OnceCell::new();
+        D.get_or_init(|| {
+            Self::dec_default()
+        }).to_owned()
     }
 }
 
 
 #[cfg(test)]
 mod test {
+    use crate::access::*;
     use super::*;
-    use cyfs_base::*;
+    use cyfs_core::*;
     
-    
+    fn new_dec(name: &str) -> ObjectId {
+        let owner_id = PeopleId::default();
+        let dec_id = DecApp::generate_id(owner_id.into(), name);
+
+        dec_id
+    }
+
+    fn other_dec_read() {
+        let dec = new_dec("test");
+        let source = RequestSourceInfo {
+            zone: DeviceZoneInfo {
+                device: None,
+                zone: None,
+                zone_category: DeviceZoneCategory::CurrentDevice,
+            },
+            dec,
+        };
+
+        let system = cyfs_core::get_system_dec_app().object_id();
+        let mask = source.mask(system, RequestOpType::Read);
+
+        let default = AccessString::default().value();
+        assert_ne!(default & mask, mask)
+    }
+
     #[test]
     fn main() {
+        other_dec_read();
+
         let mut access_string = AccessString::default();
+
+        let ret= access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Read);
+        assert!(ret);
 
         let ret= access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Call);
         assert!(ret);
