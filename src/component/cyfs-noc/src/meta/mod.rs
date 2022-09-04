@@ -2,4 +2,4 @@ mod meta;
 mod sqlite;
 
 pub use meta::*;
-pub use sqlite::*;
+pub(crate) use sqlite::*;

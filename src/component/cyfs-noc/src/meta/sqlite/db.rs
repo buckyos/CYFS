@@ -8,7 +8,7 @@ use cyfs_base::*;
 use rusqlite::{named_params, Connection, OptionalExtension};
 use std::cell::RefCell;
 use std::convert::{TryFrom, TryInto};
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thread_local::ThreadLocal;
 
@@ -257,19 +257,21 @@ impl SqliteMetaStorage {
     fn insert_new(&self, req: &NamedObjectMetaPutObjectRequest) -> BuckyResult<usize> {
         const INSERT_NEW_SQL: &str = r#"INSERT INTO data_namedobject_meta 
         (object_id, owner_id, create_dec_id, insert_time, update_time, 
-            object_update_time, object_expired_time, storage_category, context, last_access_time, last_access_rpath, access)"#;
+            object_update_time, object_expired_time, storage_category, context, last_access_time, last_access_rpath, access) VALUES
+            (:object_id, :owner_id, :create_dec_id, :insert_time, :update_time, :object_update_time, 
+            :object_expired_time, :storage_category, :context, :last_access_time, :last_access_rpath, :access) "#;
 
         let last_access_time = bucky_time_now();
         let params = named_params! {
             ":object_id": req.object_id.to_string(),
-            ":owner_id": req.owner_id.map(|v|v.to_string()),
+            ":owner_id": req.owner_id.map(|v| v.to_string()),
             ":create_dec_id": req.source.dec.to_string(),
 
             ":insert_time": req.insert_time,
             ":update_time": req.insert_time,  // Will not update if object_id already exists!
 
-            ":object_update_time": req.update_time.unwrap_or(0),
-            ":object_expired_time": req.expired_time.unwrap_or(0),
+            ":object_update_time": req.object_update_time.unwrap_or(0),
+            ":object_expired_time": req.object_expired_time.unwrap_or(0),
 
             ":storage_category": req.storage_category.as_u8(),
 
@@ -308,6 +310,8 @@ impl SqliteMetaStorage {
         &self,
         req: &NamedObjectMetaPutObjectRequest,
     ) -> BuckyResult<NamedObjectMetaPutObjectResponse> {
+        info!("noc meta will update: {}", req);
+
         let mut retry_count = 0;
         loop {
             // In order to avoid some extreme cases into an infinite loop
@@ -329,8 +333,8 @@ impl SqliteMetaStorage {
 
                     let resp = NamedObjectMetaPutObjectResponse {
                         result: NamedObjectMetaPutObjectResult::Accept,
-                        update_time: req.update_time,
-                        expired_time: req.expired_time,
+                        object_update_time: req.object_update_time,
+                        object_expired_time: req.object_expired_time,
                     };
 
                     break Ok(resp);
@@ -344,6 +348,7 @@ impl SqliteMetaStorage {
                         }
 
                         let current_info = ret.unwrap();
+                        // info!("noc meta current info: {:?}", current_info);
 
                         // Check permission first
                         let mask = req
@@ -358,7 +363,7 @@ impl SqliteMetaStorage {
 
                         // Check object_update_time
                         let current_update_time = current_info.object_update_time.unwrap_or(0);
-                        let new_update_time = req.update_time.unwrap_or(0);
+                        let new_update_time = req.object_update_time.unwrap_or(0);
 
                         if current_update_time >= new_update_time {
                             let msg = format!("noc meta update object but object's update time is same or older! obj={}, current={}, new={}", 
@@ -367,8 +372,8 @@ impl SqliteMetaStorage {
 
                             let resp = NamedObjectMetaPutObjectResponse {
                                 result: NamedObjectMetaPutObjectResult::AlreadyExists,
-                                update_time: current_info.object_update_time,
-                                expired_time: current_info.object_expired_time,
+                                object_update_time: current_info.object_update_time,
+                                object_expired_time: current_info.object_expired_time,
                             };
 
                             break Ok(resp);
@@ -378,15 +383,15 @@ impl SqliteMetaStorage {
                         if count == 0 {
                             warn!(
                                 "noc meta update existing but not found, now will retry! obj={}, incoming object's update_time={:?}, current object's update_time={:?}",
-                                req.object_id, req.update_time, current_info.object_update_time,
+                                req.object_id, req.object_update_time, current_info.object_update_time,
                             );
                             continue;
                         }
 
                         let resp = NamedObjectMetaPutObjectResponse {
                             result: NamedObjectMetaPutObjectResult::Updated,
-                            update_time: req.update_time,
-                            expired_time: req.expired_time,
+                            object_update_time: req.object_update_time,
+                            object_expired_time: req.object_expired_time,
                         };
 
                         break Ok(resp);
@@ -404,11 +409,13 @@ impl SqliteMetaStorage {
         req: &NamedObjectMetaPutObjectRequest,
         current_info: &NamedObjectMetaUpdateInfo,
     ) -> BuckyResult<usize> {
+        // debug!("noc meta update existing: {}", req);
+
         const UPDATE_SQL: &str = r#"
-        UPDATE data_namedobject_meta SET update_time = :update_time AND object_update_time = :object_udpate_time AND 
-            context = ?:context AND last_access_time = :last_access_time AND last_access_rpath = :last_access_rpath 
+        UPDATE data_namedobject_meta SET update_time = :update_time, object_update_time = :object_update_time, 
+            context = :context, last_access_time = :last_access_time, last_access_rpath = :last_access_rpath 
             WHERE object_id = :object_id 
-            AND object_update_time = :object_current_update_time 
+            AND object_update_time = :current_object_update_time 
             AND update_time = :current_update_time 
             AND insert_time = :current_insert_time
         "#;
@@ -417,12 +424,12 @@ impl SqliteMetaStorage {
 
         let params = named_params! {
             ":update_time": req.insert_time,
-            ":object_update_time": req.update_time.unwrap_or(0),
+            ":object_update_time": req.object_update_time.unwrap_or(0),
             ":context": req.context,
             ":last_access_time": last_access_time,
             ":last_access_rpath": req.last_access_rpath,
             ":object_id": req.object_id.to_string(),
-            ":object_current_update_time": current_info.object_update_time.unwrap_or(0),
+            ":current_object_update_time": current_info.object_update_time.unwrap_or(0),
             ":current_update_time": current_info.update_time,
             ":current_insert_time": current_info.insert_time,
         };
@@ -438,7 +445,12 @@ impl SqliteMetaStorage {
 
         if count > 0 {
             assert_eq!(count, 1);
-            debug!("noc meta update existsing success: obj={}", req.object_id);
+            info!(
+                "noc meta update existsing success: obj={}, update_time={} -> {}",
+                req.object_id,
+                current_info.update_time,
+                current_info.object_update_time.unwrap_or(0),
+            );
         } else {
             warn!(
                 "noc meta update existsing but not changed: obj={}",
@@ -454,7 +466,7 @@ impl SqliteMetaStorage {
         object_id: &ObjectId,
     ) -> BuckyResult<Option<NamedObjectMetaUpdateInfo>> {
         const QUERY_UPDATE_SQL: &str = r#"
-            SELECT (create_dec_id, insert_time, update_time, object_update_time, object_expired_time, access) FROM data_namedobject_meta WHERE object_id = :object_id;
+            SELECT create_dec_id, insert_time, update_time, object_update_time, object_expired_time, access FROM data_namedobject_meta WHERE object_id = :object_id;
         "#;
 
         let params = named_params! {
@@ -535,6 +547,8 @@ impl SqliteMetaStorage {
             Some(data) => {
                 // Check permission first
                 let mask = req.source.mask(&data.create_dec_id, RequestOpType::Read);
+
+                // debug!("get meta data={:?}, access={:o}, mask={:o}", data, data.access_string, mask);
 
                 if data.access_string & mask != mask {
                     let msg = format!("noc meta get object but access been rejected! obj={}, access={:#o}, req access={:#o}", 

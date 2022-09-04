@@ -11,6 +11,7 @@ mod noc;
 pub use old::*;
 pub use access::*;
 pub use noc::*;
+pub use prelude::*;
 
 #[macro_use]
 extern crate log;

@@ -21,8 +21,8 @@ pub struct NamedObjectMetaPutObjectRequest {
     pub owner_id: Option<ObjectId>,
 
     pub insert_time: u64,
-    pub update_time: Option<u64>,
-    pub expired_time: Option<u64>,
+    pub object_update_time: Option<u64>,
+    pub object_expired_time: Option<u64>,
 
     pub storage_category: NamedObjectStorageCategory,
     pub context: Option<String>,
@@ -41,11 +41,11 @@ impl std::fmt::Display for NamedObjectMetaPutObjectRequest {
         if let Some(owner) = &self.owner_id {
             write!(f, ", owner={}", owner)?;
         }
-        if let Some(update_time) = &self.update_time {
-            write!(f, ", update_time={}", update_time)?;
+        if let Some(update_time) = &self.object_update_time {
+            write!(f, ", object_update_time={}", update_time)?;
         }
-        if let Some(expired_time) = &self.expired_time {
-            write!(f, ", expired_time={}", expired_time)?;
+        if let Some(expired_time) = &self.object_expired_time {
+            write!(f, ", object_expired_time={}", expired_time)?;
         }
         if let Some(context) = &self.context {
             write!(f, ", context={}", context)?;
@@ -60,19 +60,19 @@ impl std::fmt::Display for NamedObjectMetaPutObjectRequest {
 
 pub struct NamedObjectMetaPutObjectResponse {
     pub result: NamedObjectMetaPutObjectResult,
-    pub update_time: Option<u64>,
-    pub expired_time: Option<u64>,
+    pub object_update_time: Option<u64>,
+    pub object_expired_time: Option<u64>,
 }
 
 impl std::fmt::Display for NamedObjectMetaPutObjectResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "result={:?}", self.result,)?;
 
-        if let Some(update_time) = &self.update_time {
-            write!(f, ", update_time={}", update_time)?;
+        if let Some(update_time) = &self.object_update_time {
+            write!(f, ", object_update_time={}", update_time)?;
         }
-        if let Some(expired_time) = &self.expired_time {
-            write!(f, ", expired_time={}", expired_time)?;
+        if let Some(expired_time) = &self.object_expired_time {
+            write!(f, ", object_expired_time={}", expired_time)?;
         }
 
         Ok(())

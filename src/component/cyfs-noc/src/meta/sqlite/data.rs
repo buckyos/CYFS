@@ -45,15 +45,16 @@ fn column_to_option_value<T: FromStr<Err = BuckyError>>(
 pub(super) struct NamedObjectMetaUpdateInfoRaw {
     pub create_dec_id: String,
 
-    pub insert_time: u64,
-    pub update_time: u64,
+    pub insert_time: i64,
+    pub update_time: i64,
 
-    pub object_update_time: Option<u64>,
-    pub object_expired_time: Option<u64>,
+    pub object_update_time: Option<i64>,
+    pub object_expired_time: Option<i64>,
 
     pub access_string: u32,
 }
 
+#[derive(Debug)]
 pub(super) struct NamedObjectMetaUpdateInfo {
     pub create_dec_id: ObjectId,
 
@@ -70,16 +71,18 @@ impl TryFrom<&Row<'_>> for NamedObjectMetaUpdateInfoRaw {
     type Error = rusqlite::Error;
 
     fn try_from(row: &Row<'_>) -> Result<Self, Self::Error> {
+        // trace!("will covert raw to NamedObjectMetaUpdateInfoRaw...");
+
         let data = Self {
-            create_dec_id: row.get(1)?,
+            create_dec_id: row.get(0)?,
 
-            insert_time: row.get(2)?,
-            update_time: row.get(3)?,
+            insert_time: row.get(1)?,
+            update_time: row.get(2)?,
 
-            object_update_time: row.get(4)?,
-            object_expired_time: row.get(5)?,
+            object_update_time: row.get(3)?,
+            object_expired_time: row.get(4)?,
 
-            access_string: row.get(6)?,
+            access_string: row.get(5)?,
         };
 
         Ok(data)
@@ -91,11 +94,11 @@ impl TryInto<NamedObjectMetaUpdateInfo> for NamedObjectMetaUpdateInfoRaw {
     fn try_into(self) -> Result<NamedObjectMetaUpdateInfo, Self::Error> {
         Ok(NamedObjectMetaUpdateInfo {
             create_dec_id: ObjectId::from_str(&self.create_dec_id)?,
-            insert_time: self.insert_time,
-            update_time: self.update_time,
+            insert_time: self.insert_time as u64,
+            update_time: self.update_time as u64,
 
-            object_update_time: self.object_update_time,
-            object_expired_time: self.object_expired_time,
+            object_update_time: self.object_update_time.map(|v| v as u64),
+            object_expired_time: self.object_expired_time.map(|v| v as u64),
 
             access_string: self.access_string,
         })
@@ -162,9 +165,9 @@ impl TryFrom<&Row<'_>> for NamedObjectMetaDataRaw {
 
     fn try_from(row: &Row<'_>) -> Result<Self, Self::Error> {
         Ok(Self {
-            object_id: row.get(1)?,
-            owner_id: row.get(2)?,
-            create_dec_id: row.get(3)?,
+            object_id: row.get(0)?,
+            owner_id: row.get(1)?,
+            create_dec_id: row.get(2)?,
 
             update_time: row.get(5)?,
             expired_time: row.get(6)?,
@@ -172,7 +175,7 @@ impl TryFrom<&Row<'_>> for NamedObjectMetaDataRaw {
             storage_category: row.get(7)?,
             context: row.get(8)?,
 
-            last_access_rpath: row.get(9)?,
+            last_access_rpath: row.get(10)?,
             access_string: row.get(11)?,
         })
     }

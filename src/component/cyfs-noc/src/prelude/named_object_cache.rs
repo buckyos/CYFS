@@ -50,6 +50,7 @@ pub struct NamedObjectCachePutObjectRequest {
     pub storage_category: NamedObjectStorageCategory,
     pub context: Option<String>,
     pub last_access_rpath: Option<String>,
+    pub access_string: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug)]

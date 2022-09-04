@@ -1,7 +1,7 @@
 // 当前的数据库版本
 pub(super) const CURRENT_VERSION: i32 = 0;
 
-pub(super) const DATA_NAMEDOBJECT_META: &'static str = r#"
+pub(super) const DATA_NAMEDOBJECT_META_INIT: &'static str = r#"
 CREATE TABLE IF NOT EXISTS data_namedobject_meta (
     object_id TEXT PRIMARY KEY NOT NULL UNIQUE, 
     
@@ -16,13 +16,13 @@ CREATE TABLE IF NOT EXISTS data_namedobject_meta (
 
     storage_category SMALLINT,
 
-    context: TEXT,
+    context TEXT,
 
     last_access_time UNSIGNED BIG INT,
     last_access_rpath TEXT,
 
-    access: INTEGER,
-)"#;
+    access INTEGER
+);"#;
 
 pub(super) const DATA_NAMEDOBJECT_META_INSERT_TIME_INDEX: &'static str = r#"
 CREATE INDEX IF NOT EXISTS `data_namedobject_meta_insert_time_index` on `data_namedobject_meta` (`insert_time`);
@@ -33,7 +33,7 @@ CREATE INDEX IF NOT EXISTS `data_namedobject_meta_last_access_time_index` on `da
 "#;
 
 pub(super) const INIT_NAMEDOBJECT_META_SQL_LIST: [&'static str; 3] = [
-    DATA_NAMEDOBJECT_META,
+    DATA_NAMEDOBJECT_META_INIT,
     DATA_NAMEDOBJECT_META_INSERT_TIME_INDEX,
     DATA_NAMEDOBJECT_META_INSERT_LAST_ACCESS_INDEX,
 ];

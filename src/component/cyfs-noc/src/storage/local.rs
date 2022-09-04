@@ -1,3 +1,4 @@
+use crate::access::*;
 use crate::blob::*;
 use crate::meta::*;
 use crate::prelude::*;
@@ -133,8 +134,8 @@ impl NamedObjectLocalStorage {
 
         let resp = NamedObjectCachePutObjectResponse {
             result: put_ret,
-            update_time: meta_ret.update_time,
-            expires_time: meta_ret.expired_time,
+            update_time: meta_ret.object_update_time,
+            expires_time: meta_ret.object_expired_time,
         };
 
         Ok(resp)
@@ -146,23 +147,34 @@ impl NamedObjectLocalStorage {
     ) -> NamedObjectMetaPutObjectRequest {
         let obj = request.object.object.as_ref().unwrap();
 
-        let update_time = obj.update_time();
-        let expired_time = obj.expired_time();
+        let object_update_time = obj.update_time();
+        let object_expired_time = obj.expired_time();
         let owner_id = obj.owner().to_owned();
 
+        // If the request does not specify an access string then try to use the default
+        let access_string = match request.access_string {
+            Some(v) => {
+                v
+            },
+            None => {
+                AccessString::default().value()
+            }
+        };
+
+        
         NamedObjectMetaPutObjectRequest {
             source: request.source.clone(),
             object_id: request.object.object_id.clone(),
             owner_id,
 
             insert_time: bucky_time_now(),
-            update_time,
-            expired_time,
+            object_update_time,
+            object_expired_time,
 
             storage_category: request.storage_category,
             context: request.context.clone(),
             last_access_rpath: request.last_access_rpath.clone(),
-            access_string: 0,
+            access_string,
         }
     }
 
