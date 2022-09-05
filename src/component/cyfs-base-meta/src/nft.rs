@@ -231,6 +231,8 @@ pub struct NFTData {
     pub block_number: i64,
     pub parent_id: Option<String>,
     pub sub_list: Option<Vec<String>>,
+    pub price: u64,
+    pub coin_id: CoinTokenId,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -259,6 +261,8 @@ pub struct NFTDetail {
     pub state: NFTState,
     pub like_count: i64,
     pub block_number: i64,
+    pub price: u64,
+    pub coin_id: CoinTokenId,
 }
 
 pub struct NFTTransRecord {

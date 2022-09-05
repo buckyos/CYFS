@@ -271,7 +271,9 @@ impl SPVHttpServer {
                                 state: nft_detail.state,
                                 block_number: nft_detail.block_number,
                                 parent_id: nft_detail.desc.parent_id().map(|item| item.to_string()),
-                                sub_list: nft_detail.desc.sub_list().map(|item| item.iter().map(|sub| sub.to_string()).collect())
+                                sub_list: nft_detail.desc.sub_list().map(|item| item.iter().map(|sub| sub.to_string()).collect()),
+                                price: nft_detail.price,
+                                coin_id: nft_detail.coin_id
                             }
                         },
                         Err(e) => {
@@ -289,7 +291,9 @@ impl SPVHttpServer {
                                     state: NFTState::Normal,
                                     block_number: 0,
                                     parent_id: None,
-                                    sub_list: None
+                                    sub_list: None,
+                                    price: 0,
+                                    coin_id: CoinTokenId::Coin(0)
                                 }
                             } else {
                                 return Err(e);
@@ -298,6 +302,72 @@ impl SPVHttpServer {
                     };
 
                     Ok(nft_data)
+                }.await;
+
+                let result = match ret {
+                    Ok(ret) => {
+                        RequestResult::from(ret)
+                    },
+                    Err(e) => {
+                        RequestResult::from_err(e)
+                    }
+                };
+
+                let body_str = serde_json::to_string(&result).unwrap();
+                let mut resp = Response::new(tide::http::StatusCode::Ok);
+                resp.set_content_type("application/json");
+                resp.set_body(body_str);
+                Ok(resp)
+            }
+        });
+
+        let tmp_storage = storage.clone();
+        app.at("/nft_get_price/:nft_id").get(move |req: Request<()>| {
+            let storage = tmp_storage.clone();
+            async move {
+                let ret: BuckyResult<(u64, CoinTokenId)> = async move {
+                    let nft_id_str = req.param("nft_id")?;
+
+                    let tx_storage = storage.create_tx_storage().await?;
+
+                    let file_amount = match tx_storage.nft_get_price(nft_id_str).await {
+                        Ok(ret) => ret,
+                        Err(_) => (0, CoinTokenId::Coin(0))
+                    };
+
+                    Ok(file_amount)
+                }.await;
+
+                let result = match ret {
+                    Ok(ret) => {
+                        RequestResult::from(ret)
+                    },
+                    Err(e) => {
+                        RequestResult::from_err(e)
+                    }
+                };
+
+                let body_str = serde_json::to_string(&result).unwrap();
+                let mut resp = Response::new(tide::http::StatusCode::Ok);
+                resp.set_content_type("application/json");
+                resp.set_body(body_str);
+                Ok(resp)
+            }
+        });
+
+        let tmp_storage = storage.clone();
+        app.at("/nft_get_changed_price_of_creator/:creator/:latest_height").get(move |req: Request<()>| {
+            let storage = tmp_storage.clone();
+            async move {
+                let ret: BuckyResult<Vec<(String, u64, CoinTokenId, u64)>> = async move {
+                    let creator_str = req.param("creator")?;
+                    let latest_height: u64 = req.param("latest_height")?.parse()?;
+
+                    let tx_storage = storage.create_tx_storage().await?;
+
+                    let file_amount = tx_storage.nft_get_changed_price_of_creator(creator_str, latest_height).await?;
+
+                    Ok(file_amount)
                 }.await;
 
                 let result = match ret {
@@ -415,7 +485,9 @@ impl SPVHttpServer {
                                 state: nft_detail.state.clone(),
                                 block_number: nft_detail.block_number,
                                 parent_id: nft_detail.desc.parent_id().map(|i| i.to_string()),
-                                sub_list: nft_detail.desc.sub_list().map(|i| i.iter().map(|x| x.to_string()).collect())
+                                sub_list: nft_detail.desc.sub_list().map(|i| i.iter().map(|x| x.to_string()).collect()),
+                                price: nft_detail.price,
+                                coin_id: nft_detail.coin_id.clone()
                             });
                     }
                     Ok(data_list)
@@ -448,6 +520,50 @@ impl SPVHttpServer {
 
                     let tx_storage = storage.create_tx_storage().await?;
                     let list = tx_storage.nft_get_latest_transfer(nft_id_str, latest_height).await?;
+                    let mut data_list = Vec::new();
+                    for nft_detail in list.iter() {
+                        data_list.push(
+                            NFTTransferRecord {
+                                nft_id: nft_detail.desc.nft_id().to_string(),
+                                create_time: nft_detail.desc.nft_create_time(),
+                                owner_id: nft_detail.desc.owner_id().as_ref().unwrap().to_string(),
+                                author_id: nft_detail.desc.author_id().as_ref().unwrap().to_string(),
+                                name: nft_detail.name.clone(),
+                                block_number: nft_detail.block_number,
+                                from: nft_detail.from.clone(),
+                                to: nft_detail.to.clone()
+                            });
+                    }
+                    Ok(data_list)
+                }.await;
+
+                let result = match ret {
+                    Ok(ret) => {
+                        RequestResult::from(ret)
+                    },
+                    Err(e) => {
+                        RequestResult::from_err(e)
+                    }
+                };
+
+                let body_str = serde_json::to_string(&result).unwrap();
+                let mut resp = Response::new(tide::http::StatusCode::Ok);
+                resp.set_content_type("application/json");
+                resp.set_body(body_str);
+                Ok(resp)
+            }
+        });
+
+        let tmp_storage = storage.clone();
+        app.at("/nft_get_creator_latest_transfer/:user_id/:latest_height").get(move |req: Request<()>| {
+            let storage = tmp_storage.clone();
+            async move {
+                let ret: BuckyResult<Vec<NFTTransferRecord>> = async move {
+                    let nft_id_str = req.param("user_id")?;
+                    let latest_height: i64 = req.param("latest_height")?.parse()?;
+
+                    let tx_storage = storage.create_tx_storage().await?;
+                    let list = tx_storage.nft_get_creator_latest_transfer(nft_id_str, latest_height).await?;
                     let mut data_list = Vec::new();
                     for nft_detail in list.iter() {
                         data_list.push(

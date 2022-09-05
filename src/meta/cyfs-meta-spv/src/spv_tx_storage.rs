@@ -619,6 +619,7 @@ impl SPVTxStorage {
                         if receipt.result == 0 {
                             self.nft_update_state(&mut conn, &nft_tx.nft_id, &NFTState::Auctioning((nft_tx.price, nft_tx.coin_id.clone(), nft_tx.duration_block_num + block.desc().number() as u64))).await?;
                             self.nft_remove_all_apply_buy(&mut conn, &nft_tx.nft_id).await?;
+                            self.nft_update_price(&mut conn, &nft_tx.nft_id, nft_tx.price, &nft_tx.coin_id, block.header().number() as u64).await?;
 
                             let nft_detail = self.nft_get2(&mut conn, &nft_tx.nft_id).await?;
                             if let NFTDesc::ListDesc(sub_list) = &nft_detail.desc {
@@ -634,20 +635,22 @@ impl SPVTxStorage {
                         if receipt.result == 0 {
                             let beneficiary = content.caller.id()?;
                             self.nft_add_bid(&mut conn, &nft_tx.nft_id, &beneficiary, nft_tx.price, &nft_tx.coin_id, block.desc().number()).await?;
+                            self.nft_update_price(&mut conn, &nft_tx.nft_id, nft_tx.price, &nft_tx.coin_id, block.header().number() as u64).await?;
                         }
                     }
                     MetaTxBody::NFTBuy(nft_tx) => {
                         if receipt.result == 0 {
                             let beneficiary = content.caller.id()?.clone();
                             self.nft_update_state(&mut conn, &nft_tx.nft_id, &NFTState::Normal).await?;
-                            self.nft_change_beneficiary(&mut conn, &nft_tx.nft_id, &beneficiary, block.desc().number(), true).await?;
+                            self.nft_update_price(&mut conn, &nft_tx.nft_id, nft_tx.price, &nft_tx.coin_id, block.header().number() as u64).await?;
 
                             let nft_detail = self.nft_get2(&mut conn, &nft_tx.nft_id).await?;
+                            self.nft_change_beneficiary(&mut conn, &nft_tx.nft_id, nft_detail.desc.owner_id().as_ref().unwrap(), &beneficiary, block.desc().number(), true).await?;
                             if let NFTDesc::ListDesc(sub_list) = &nft_detail.desc {
                                 for sub_nft in sub_list.content().nft_list.iter() {
                                     let sub_id = sub_nft.calculate_id();
                                     let _ = self.nft_update_state(&mut conn, &sub_id, &NFTState::Normal).await;
-                                    let _ = self.nft_change_beneficiary(&mut conn, &sub_id, &beneficiary, block.desc().number(), false).await;
+                                    let _ = self.nft_change_beneficiary(&mut conn, &sub_id, sub_nft.owner().as_ref().unwrap(), &beneficiary, block.desc().number(), false).await;
                                 }
                             }
                         }
@@ -656,12 +659,14 @@ impl SPVTxStorage {
                         if receipt.result == 0 {
                             self.nft_update_state(&mut conn, &nft_tx.nft_id, &NFTState::Selling((nft_tx.price, nft_tx.coin_id.clone(), nft_tx.duration_block_num))).await?;
                             self.nft_remove_all_apply_buy(&mut conn, &nft_tx.nft_id).await?;
+                            self.nft_update_price(&mut conn, &nft_tx.nft_id, nft_tx.price, &nft_tx.coin_id, block.header().number() as u64).await?;
                         }
                     }
                     MetaTxBody::NFTSell2(nft_tx) => {
                         if receipt.result == 0 {
                             self.nft_update_state(&mut conn, &nft_tx.nft_id, &NFTState::Selling((nft_tx.price, nft_tx.coin_id.clone(), u64::MAX))).await?;
                             self.nft_remove_all_apply_buy(&mut conn, &nft_tx.nft_id).await?;
+                            self.nft_update_price(&mut conn, &nft_tx.nft_id, nft_tx.price, &nft_tx.coin_id, block.header().number() as u64).await?;
 
                             let nft_detail = self.nft_get2(&mut conn, &nft_tx.nft_id).await?;
                             if let NFTDesc::ListDesc(sub_list) = &nft_detail.desc {
@@ -685,6 +690,7 @@ impl SPVTxStorage {
                     MetaTxBody::NFTApplyBuy(nft_tx) => {
                         if receipt.result == 0 {
                             self.nft_add_apply_buy(&mut conn, &nft_tx.nft_id, &content.caller.id()?, nft_tx.price, &nft_tx.coin_id).await?;
+                            self.nft_update_price(&mut conn, &nft_tx.nft_id, nft_tx.price, &nft_tx.coin_id, block.header().number() as u64).await?;
                         }
                     }
                     MetaTxBody::NFTCancelApplyBuyTx(nft_tx) => {
@@ -695,14 +701,14 @@ impl SPVTxStorage {
                     MetaTxBody::NFTAgreeApply(nft_tx) => {
                         if receipt.result == 0 {
                             self.nft_update_state(&mut conn, &nft_tx.nft_id, &NFTState::Normal).await?;
-                            self.nft_change_beneficiary(&mut conn, &nft_tx.nft_id, &nft_tx.user_id, block.desc().number(), true).await?;
 
                             let nft_detail = self.nft_get2(&mut conn, &nft_tx.nft_id).await?;
+                            self.nft_change_beneficiary(&mut conn, &nft_tx.nft_id, nft_detail.desc.owner_id().as_ref().unwrap(), &nft_tx.user_id, block.desc().number(), true).await?;
                             if let NFTDesc::ListDesc(sub_list) = &nft_detail.desc {
                                 for sub_nft in sub_list.content().nft_list.iter() {
                                     let sub_id = sub_nft.calculate_id();
                                     self.nft_update_state(&mut conn, &sub_id, &NFTState::Normal).await?;
-                                    self.nft_change_beneficiary(&mut conn, &sub_id, &nft_tx.user_id, block.desc().number(), false).await?;
+                                    self.nft_change_beneficiary(&mut conn, &sub_id, sub_nft.owner().as_ref().unwrap(), &nft_tx.user_id, block.desc().number(), false).await?;
                                 }
                             }
                         }
@@ -755,13 +761,14 @@ impl SPVTxStorage {
                         if event.event_result.data.len() > 0 {
                             let beneficiary = ObjectId::clone_from_slice(event.event_result.data.as_slice());
                             self.nft_remove_all_bid(&mut conn, &params.nft_id).await?;
-                            self.nft_change_beneficiary(&mut conn, &params.nft_id, &beneficiary, block.desc().number(), true).await?;
 
                             let nft_detail = self.nft_get2(&mut conn, &params.nft_id).await?;
+                            self.nft_change_beneficiary(&mut conn, &params.nft_id, nft_detail.desc.owner_id().as_ref().unwrap(), &beneficiary, block.desc().number(), true).await?;
+
                             if let NFTDesc::ListDesc(sub_list) = &nft_detail.desc {
                                 for sub_nft in sub_list.content().nft_list.iter() {
                                     let sub_id = sub_nft.calculate_id();
-                                    self.nft_change_beneficiary(&mut conn, &sub_id, &beneficiary, block.desc().number(), false).await?;
+                                    self.nft_change_beneficiary(&mut conn, &sub_id, sub_nft.owner().as_ref().unwrap(), &beneficiary, block.desc().number(), false).await?;
                                 }
                             }
                         }

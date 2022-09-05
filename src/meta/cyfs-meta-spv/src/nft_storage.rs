@@ -13,7 +13,7 @@ pub trait NFTStorage {
     async fn nft_get2(&self, conn: &mut MetaConnection, object_id: &ObjectId) -> BuckyResult<NFTDetail>;
     async fn nft_get_of_user(&self, user_id: &ObjectId) -> BuckyResult<Vec<NFTDetail>>;
     async fn nft_get_latest_of_user(&self, user_id: &ObjectId, block_number: i64) -> BuckyResult<Vec<NFTDetail>>;
-    async fn nft_change_beneficiary(&self, conn: &mut MetaConnection, nft_id: &ObjectId, beneficiary: &ObjectId, block_number: i64, record_transfer: bool) -> BuckyResult<()>;
+    async fn nft_change_beneficiary(&self, conn: &mut MetaConnection, nft_id: &ObjectId, creator_id: &ObjectId, beneficiary: &ObjectId, block_number: i64, record_transfer: bool) -> BuckyResult<()>;
     async fn nft_update_state(&self, conn: &mut MetaConnection, object_id: &ObjectId, state: &NFTState) -> BuckyResult<()>;
     async fn nft_add_apply_buy(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId, price: u64, coin_id: &CoinTokenId) -> BuckyResult<()>;
     async fn nft_get_apply_buy(&self, nft_id: &ObjectId, buyer_id: &ObjectId) -> BuckyResult<Option<(u64, CoinTokenId)>>;
@@ -30,6 +30,10 @@ pub trait NFTStorage {
     async fn nft_get_latest_likes(&self, nft_id: &ObjectId, count: u64) -> BuckyResult<Vec<(ObjectId, u64, u64)>>;
     async fn nft_get_likes_count(&self, nft_id: &ObjectId) -> BuckyResult<u64>;
     async fn nft_get_latest_transfer(&self, user_id: &str, block_number: i64) -> BuckyResult<Vec<NFTTransRecord>>;
+    async fn nft_get_creator_latest_transfer(&self, creator_id: &str, block_number: i64) -> BuckyResult<Vec<NFTTransRecord>>;
+    async fn nft_get_price(&self, nft_id: &str) -> BuckyResult<(u64, CoinTokenId)>;
+    async fn nft_update_price(&self, conn: &mut MetaConnection, nft_id: &ObjectId, price: u64, coin_id: &CoinTokenId, height: u64) -> BuckyResult<()>;
+    async fn nft_get_changed_price_of_creator(&self, creator: &str, height: u64) -> BuckyResult<Vec<(String, u64, CoinTokenId, u64)>>;
 }
 
 #[async_trait::async_trait]
@@ -47,6 +51,22 @@ impl NFTStorage for SPVTxStorage {
             "like_count" integer DEFAULT 0
         )"#;
         conn.execute_sql(sqlx::query(sql)).await?;
+
+        let sql = r#"select type, name, tbl_name, sql from sqlite_master where type = "table" and name = "nft""#;
+        let row = conn.query_one(sqlx::query(sql)).await?;
+        let sql: String = row.get("sql");
+        if sql.find("price").is_none() {
+            let sql = r#"alter table nft add column "price" INTEGER default 0"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+            let sql = r#"alter table nft add column "coin_id" BLOB default NULL"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+            let sql = r#"alter table nft add column "creator" char(45) NOT NULL"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+            let sql = r#"alter table nft add column "price_change_height" INTEGER default 0"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+            let sql = r#"create index if not exists price_height_i on nft(creator, price_change_height)"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+        }
 
         let sql = r#"create unique index if not exists nft_label_index on nft(nft_label)"#;
         conn.execute_sql(sqlx::query(sql)).await?;
@@ -108,6 +128,15 @@ impl NFTStorage for SPVTxStorage {
         let sql = r#"create index if not exists nft_transfers_to on nft_transfers("to", block_number)"#;
         conn.execute_sql(sqlx::query(sql)).await?;
 
+        let sql = r#"select type, name, tbl_name, sql from sqlite_master where type = "table" and name = "nft_transfers""#;
+        let row = conn.query_one(sqlx::query(sql)).await?;
+        let sql: String = row.get("sql");
+        if sql.find("creator_id").is_none() {
+            let sql = r#"alter table nft_transfers add column "creator_id" char(45)"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+            let sql = r#"create index if not exists nft_transfers_creator on nft_transfers("creator_id", block_number)"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+        }
         Ok(())
     }
 
@@ -122,9 +151,10 @@ impl NFTStorage for SPVTxStorage {
             .bind(desc.nft_label().to_base58())).await;
         if let Err(err) = ret {
             if ERROR_NOT_FOUND == get_meta_err_code(&err)? {
-                let sql = "insert into nft (object_id, nft_label, desc ,name, beneficiary, beneficiary_get_block, state, like_count) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)";
+                let sql = "insert into nft (object_id, creator, nft_label, desc ,name, beneficiary, beneficiary_get_block, state, like_count, coin_id, price_change_height) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)";
                 conn.execute_sql(sqlx::query(sql)
                     .bind(object_id.to_string())
+                    .bind(desc.owner_id().as_ref().unwrap().to_string())
                     .bind(desc.nft_label().to_base58())
                     .bind(desc.to_vec()?)
                     .bind(name)
@@ -132,12 +162,15 @@ impl NFTStorage for SPVTxStorage {
                     .bind(block_number)
                     .bind(state.to_vec()?)
                     .bind(likes_count as i64)
+                    .bind(CoinTokenId::Coin(0).to_vec()?)
+                    .bind(block_number)
                 ).await?;
 
-                let sql = r#"insert into nft_transfers (nft_id, "from", "to", block_number) values (?1, ?2, ?3, ?4)"#;
+                let sql = r#"insert into nft_transfers (nft_id, creator_id, "from", "to", block_number) values (?1, ?2, ?3, ?4, ?5)"#;
                 conn.execute_sql(
                     sqlx::query(sql)
                         .bind(object_id.to_string())
+                        .bind(desc.owner_id().map_or("".to_string(), |v| v.to_string()))
                         .bind("")
                         .bind(beneficiary.to_string())
                         .bind(block_number)).await?;
@@ -173,6 +206,8 @@ impl NFTStorage for SPVTxStorage {
             state: NFTState::clone_from_slice(ret.get("state"))?,
             like_count: ret.get("like_count"),
             block_number: ret.get("beneficiary_get_block"),
+            price: ret.get::<i64, _>("price") as u64,
+            coin_id: CoinTokenId::clone_from_slice(ret.get("coin_id")).unwrap_or(CoinTokenId::Coin(0))
         })
     }
 
@@ -189,6 +224,8 @@ impl NFTStorage for SPVTxStorage {
                 state: NFTState::clone_from_slice(row.get("state"))?,
                 like_count: row.get("like_count"),
                 block_number: row.get("beneficiary_get_block"),
+                price: row.get::<i64, _>("price") as u64,
+                coin_id: CoinTokenId::clone_from_slice(row.get("coin_id")).unwrap_or(CoinTokenId::Coin(0))
             });
         }
         Ok(list)
@@ -207,12 +244,14 @@ impl NFTStorage for SPVTxStorage {
                 state: NFTState::clone_from_slice(row.get("state"))?,
                 like_count: row.get("like_count"),
                 block_number: row.get("beneficiary_get_block"),
+                price: row.get::<i64, _>("price") as u64,
+                coin_id: CoinTokenId::clone_from_slice(row.get("coin_id")).unwrap_or(CoinTokenId::Coin(0))
             });
         }
         Ok(list)
     }
 
-    async fn nft_change_beneficiary(&self, conn: &mut MetaConnection, nft_id: &ObjectId, beneficiary: &ObjectId, block_number: i64, record_transfer: bool) -> BuckyResult<()> {
+    async fn nft_change_beneficiary(&self, conn: &mut MetaConnection, nft_id: &ObjectId, creator_id: &ObjectId, beneficiary: &ObjectId, block_number: i64, record_transfer: bool) -> BuckyResult<()> {
         let sql = "select beneficiary from nft where object_id = ?1";
         let row = conn.query_one(sqlx::query(sql).bind(nft_id.to_string())).await?;
         let old_beneficiary: String = row.get("beneficiary");
@@ -221,8 +260,8 @@ impl NFTStorage for SPVTxStorage {
         conn.execute_sql(sqlx::query(sql).bind(beneficiary.to_string()).bind(nft_id.to_string()).bind(block_number)).await?;
 
         if record_transfer {
-            let sql = r#"insert into nft_transfers (nft_id, "from", "to", block_number) values (?1, ?2, ?3, ?4)"#;
-            conn.execute_sql(sqlx::query(sql).bind(nft_id.to_string()).bind(old_beneficiary).bind(beneficiary.to_string()).bind(block_number)).await?;
+            let sql = r#"insert into nft_transfers (nft_id, creator_id, "from", "to", block_number) values (?1, ?2, ?3, ?4, ?5)"#;
+            conn.execute_sql(sqlx::query(sql).bind(nft_id.to_string()).bind(creator_id.to_string()).bind(old_beneficiary).bind(beneficiary.to_string()).bind(block_number)).await?;
         }
 
         Ok(())
@@ -453,6 +492,59 @@ impl NFTStorage for SPVTxStorage {
             });
         }
 
+        Ok(list)
+    }
+
+    async fn nft_get_creator_latest_transfer(&self, creator_id: &str, block_number: i64) -> BuckyResult<Vec<NFTTransRecord>> {
+        let mut conn = self.get_conn().await?;
+        let sql = r#"select nft_id, "from", "to", block_number from nft_transfers where creator_id = ?1 and block_number > ?2 order by block_number desc"#;
+        let rows = conn.query_all(sqlx::query(sql).bind(creator_id).bind(block_number)).await?;
+
+        let mut list = Vec::new();
+        for row in rows {
+            let nft_id: String = row.get("nft_id");
+            let sql = "select * from nft where object_id = ?1";
+            let ret = conn.query_one(sqlx::query(sql).bind(nft_id)).await?;
+            list.push(NFTTransRecord {
+                desc: NFTDesc::clone_from_slice(ret.get("desc"))?,
+                name: ret.get("name"),
+                block_number: row.get("block_number"),
+                from: row.get("from"),
+                to: row.get("to")
+            });
+        }
+
+        Ok(list)
+    }
+
+    async fn nft_get_price(&self, nft_id: &str) -> BuckyResult<(u64, CoinTokenId)> {
+        let mut conn = self.get_conn().await?;
+        let sql = r#"select price, coin_id from nft where object_id = ?"#;
+        let row = conn.query_one(sqlx::query(sql).bind(nft_id)).await?;
+        Ok((
+            row.get::<i64, _>("price") as u64, CoinTokenId::clone_from_slice(row.get("coin_id"))?
+            ))
+    }
+
+    async fn nft_update_price(&self, conn: &mut MetaConnection, nft_id: &ObjectId, price: u64, coin_id: &CoinTokenId, height: u64) -> BuckyResult<()> {
+        let sql = r#"update nft set price = ?, coin_id = ?, price_change_height = ? where object_id = ?"#;
+        conn.execute_sql(sqlx::query(sql).bind(price as i64).bind(coin_id.to_vec()?).bind(height as i64).bind(nft_id.to_string())).await?;
+        Ok(())
+    }
+
+    async fn nft_get_changed_price_of_creator(&self, creator: &str, height: u64) -> BuckyResult<Vec<(String, u64, CoinTokenId, u64)>> {
+        let sql = r#"select object_id, price, coin_id, price_change_height from nft where creator = ?1 and price_change_height > ?2"#;
+        let mut conn = self.get_conn().await?;
+        let rows = conn.query_all(sqlx::query(sql).bind(creator).bind(height as i64)).await?;
+        let mut list = Vec::new();
+        for row in rows {
+            list.push((
+                row.get::<String, _>("object_id"),
+                row.get::<i64, _>("price") as u64,
+                CoinTokenId::clone_from_slice(row.get("coin_id")).unwrap_or(CoinTokenId::Coin(0)),
+                row.get::<i64, _>("price_change_height") as u64
+                ));
+        }
         Ok(list)
     }
 }
