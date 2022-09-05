@@ -103,6 +103,10 @@ impl RequestSourceInfo {
             || self.zone.zone.as_ref() == Some(zone)
     }
 
+    pub fn compare_dec(&self, dec: &ObjectId) -> bool {
+        self.dec == *dec
+    }
+
     pub fn mask(&self, dec_id: &ObjectId, op_type: RequestOpType) -> u32 {
         let permissions = op_type.into();
 

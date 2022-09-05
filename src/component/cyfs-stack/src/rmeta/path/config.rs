@@ -1,5 +1,3 @@
-use cyfs_base::*;
-
 use serde::{Deserialize, Serialize};
 
 #[repr(u8)]

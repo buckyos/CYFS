@@ -41,7 +41,7 @@ impl GlobalStatePathLinkList {
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
         }
 
-        // 末尾的/需要去除
+        // 确保末尾以/结束
         let ret = match path.ends_with("/") {
             true => path.into(),
             false => format!("{}/", path.as_ref() as &str),
@@ -54,7 +54,7 @@ impl GlobalStatePathLinkList {
         &mut self,
         source: impl Into<String> + AsRef<str>,
         target: impl Into<String> + AsRef<str>,
-    ) -> BuckyResult<()> {
+    ) -> BuckyResult<bool> {
         let source = Self::fix_path(source)?;
         let target = Self::fix_path(target)?;
 
@@ -62,7 +62,7 @@ impl GlobalStatePathLinkList {
             if item.source == source {
                 if item.target == target {
                     warn!("path link already exists! {} -> {}", source, target);
-                    return Ok(());
+                    return Ok(false);
                 } else {
                     let msg = format!("path link already exists but target is different! source={}, current={}, new={}", 
                     source, target, item.target);
@@ -77,7 +77,7 @@ impl GlobalStatePathLinkList {
         self.list.push(item);
         self.sort();
 
-        Ok(())
+        Ok(true)
     }
 
     pub fn remove(&mut self, source: &str) -> BuckyResult<()> {
@@ -96,6 +96,15 @@ impl GlobalStatePathLinkList {
         }
     }
 
+    pub fn clear(&mut self) -> bool {
+        if self.list.is_empty() {
+            return false;
+        }
+
+        self.list.clear();
+        true
+    }
+    
     fn translate_once(&self, source: &str) -> Option<String> {
         assert!(source.ends_with('/'));
 
