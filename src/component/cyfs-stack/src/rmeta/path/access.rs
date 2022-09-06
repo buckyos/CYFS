@@ -273,6 +273,10 @@ impl GlobalStatePathAccessList {
         true
     }
 
+    pub fn get(&self) -> Vec<GlobalStatePathAccessItem> {
+        self.list.clone()
+    }
+
     pub fn check<'d, 'a, 'b>(&self, req: GlobalStateAccessRequest<'d, 'a, 'b>) -> BuckyResult<()> {
         assert!(req.path.ends_with('/'));
 

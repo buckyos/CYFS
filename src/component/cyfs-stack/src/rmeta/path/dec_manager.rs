@@ -1,4 +1,5 @@
 use super::meta::*;
+use super::storage::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::ReenterCallManager;
@@ -15,22 +16,28 @@ struct GlobalStateDecPathMetaHolder {
     meta: Arc<OnceCell<BuckyResult<GlobalStatePathMetaSyncCollection>>>,
     noc: Arc<Box<dyn NamedObjectCache>>,
 
+    storage: Arc<GlobalStatePathMetaStorage>,
+
     load_reenter_manager: ReenterCallManager<(), ()>,
 }
 
 impl GlobalStateDecPathMetaHolder {
     pub fn new(
+        isolate: &str,
         global_state: GlobalStateOutputProcessorRef,
         category: GlobalStateCategory,
         dec_id: Option<ObjectId>,
         noc: Arc<Box<dyn NamedObjectCache>>,
     ) -> Self {
+        let storage = GlobalStatePathMetaStorage::new(isolate, &dec_id);
+
         Self {
             global_state,
             category,
             dec_id,
             meta: Arc::new(OnceCell::new()),
             noc,
+            storage: Arc::new(storage),
             load_reenter_manager: ReenterCallManager::new(),
         }
     }
@@ -52,10 +59,11 @@ impl GlobalStateDecPathMetaHolder {
         let dec_id = self.dec_id.clone();
         let noc = self.noc.clone();
         let meta = self.meta.clone();
+        let storage = self.storage.clone();
 
         self.load_reenter_manager
             .call(&(), async move {
-                let ret = Self::load(global_state, category, dec_id, noc).await;
+                let ret = Self::load(global_state, category, dec_id, noc, storage).await;
                 if let Err(_) = meta.set(ret) {
                     unreachable!();
                 }
@@ -72,6 +80,7 @@ impl GlobalStateDecPathMetaHolder {
         category: GlobalStateCategory,
         dec_id: Option<ObjectId>,
         noc: Arc<Box<dyn NamedObjectCache>>,
+        storage: Arc<GlobalStatePathMetaStorage>,
     ) -> BuckyResult<GlobalStatePathMetaSyncCollection> {
         let meta_path = format!("{}/{}", CYFS_GLOBAL_STATE_PATH_META, category.as_str());
 
@@ -99,7 +108,7 @@ impl GlobalStateDecPathMetaHolder {
             return Err(e);
         }
 
-        let ret = GlobalStatePathMetaSyncCollection::new(data);
+        let ret = GlobalStatePathMetaSyncCollection::new(storage, data);
         Ok(ret)
     }
 }
@@ -112,18 +121,21 @@ pub struct GlobalStateDecPathMetaManager {
 
 impl GlobalStateDecPathMetaManager {
     pub fn new(
+        isolate: &str,
         root_state: GlobalStateOutputProcessorRef,
         local_cache: GlobalStateOutputProcessorRef,
         dec_id: Option<ObjectId>,
         noc: Arc<Box<dyn NamedObjectCache>>,
     ) -> Self {
         let root_state = GlobalStateDecPathMetaHolder::new(
+            isolate,
             root_state,
             GlobalStateCategory::RootState,
             dec_id.clone(),
             noc.clone(),
         );
         let local_cache = GlobalStateDecPathMetaHolder::new(
+            isolate,
             local_cache,
             GlobalStateCategory::LocalCache,
             dec_id.clone(),

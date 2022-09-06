@@ -12,6 +12,7 @@ pub struct GlobalStatePathMetaItem {
 }
 
 pub struct GlobalStatePathMetaManager {
+    isolate: String,
     root_state: GlobalStateOutputProcessorRef,
     local_cache: GlobalStateOutputProcessorRef,
     noc: Arc<Box<dyn NamedObjectCache>>,
@@ -21,11 +22,13 @@ pub struct GlobalStatePathMetaManager {
 
 impl GlobalStatePathMetaManager {
     pub fn new(
+        isotate: &str,
         root_state: GlobalStateOutputProcessorRef,
         local_cache: GlobalStateOutputProcessorRef,
         noc: Arc<Box<dyn NamedObjectCache>>,
     ) -> Self {
         Self {
+            isolate: isotate.to_owned(),
             root_state,
             local_cache,
             noc,
@@ -35,6 +38,7 @@ impl GlobalStatePathMetaManager {
 
     fn new_dec_meta(&self, dec_id: ObjectId) -> GlobalStateDecPathMetaManagerRef {
         let raw = GlobalStateDecPathMetaManager::new(
+            &self.isolate,
             self.root_state.clone(),
             self.local_cache.clone(),
             Some(dec_id),

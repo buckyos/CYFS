@@ -105,6 +105,10 @@ impl GlobalStatePathLinkList {
         true
     }
     
+    pub fn get(&self) -> Vec<GlobalStatePathLinkItem> {
+        self.list.clone()
+    }
+
     fn translate_once(&self, source: &str) -> Option<String> {
         assert!(source.ends_with('/'));
 
