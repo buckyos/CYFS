@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Error};
 
-use cyfs_base::{ChunkId};
+use cyfs_base::{BuckyResult, ChunkId};
 
 use std::path::PathBuf;
 use async_std::fs::File;
@@ -88,6 +88,14 @@ impl ChunkStore {
         let file = File::open(chunk_path.as_path()).await?;
         let reader = BufReader::new(file);
         Ok(reader)
+    }
+
+    pub fn delete(&self, chunk_id: &ChunkId) -> BuckyResult<()> {
+        let chunk_path = self.chunk_dir.join(chunk_id.to_string());
+        if chunk_path.exists() {
+            std::fs::remove_file(chunk_path)?;
+        }
+        Ok(())
     }
 
     pub async fn set(&self, chunk_id: &ChunkId, chunk: &[u8])->Result<(), Error>{

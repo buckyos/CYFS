@@ -213,9 +213,17 @@ impl NamedCacheClient {
 
     async fn bdt_conn(&self, remote: &DeviceId, remote_vport: u16) -> BuckyResult<StreamGuard> {
         if let Some(stream) = self.conn_cache.read().unwrap().get(&(remote.clone(), remote_vport)) {
-            return Ok(stream.clone());
+            match stream.state() {
+                StreamState::Establish(_) => {
+                    return Ok(stream.clone())
+                }
+                v@_ => {
+                    warn!("get stream status {}, create new one", v)
+                }
+            }
         }
 
+        self.conn_cache.write().unwrap().remove(&(remote.clone(), remote_vport));
         debug!("create bdt connection to {}:{}", remote, remote_vport);
         // 如何从peerid取到peerConstInfo?
         let remote_peer_desc = self.get_peer_desc(remote).await?;
@@ -235,6 +243,7 @@ impl NamedCacheClient {
             remote_sn: vec![sn.desc().device_id()],
             remote_desc: if need_peerdesc {Some(remote_peer_desc) } else {None}
         };
+        self.bdt_stack.as_ref().unwrap().stream_manager().
         let conn = self.bdt_stack.as_ref().unwrap()
             .stream_manager().connect(remote_vport, vec![], param).await?;
 
@@ -323,7 +332,7 @@ impl NamedCacheClient {
         // 这里重试3次，3次还得不到chunk就返回错误
         let mut chunk_content = Vec::new();
         let mut chunk_ret = Err(BuckyError::new(BuckyErrorCode::NotInit, ""));
-        for _ in [0..2] {
+        for _ in 0..2 {
             let bdt_stream = self.get_bdt_stream(&owner, 80).await?;
             let ctx = ChunkSourceContext::source_http_bdt_remote(&peer_id, bdt_stream);
             // get_from_source在udp被阻断的情况下可能会超时，这里超时后返回Timeout错误，再试一次

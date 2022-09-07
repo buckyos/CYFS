@@ -47,6 +47,10 @@ impl ChunkManager {
         Ok(reader)
     }
 
+    pub fn delete(&self, chunk_id: &ChunkId) -> BuckyResult<()> {
+        self.chunk_store.delete(chunk_id)
+    }
+
     pub async fn set(&self, chunk_id: &ChunkId, data: &[u8])->BuckyResult<()>{
         info!("[set_chunk], begin set:{}", chunk_id);
 
