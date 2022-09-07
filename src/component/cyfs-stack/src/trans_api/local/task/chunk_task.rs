@@ -4,7 +4,7 @@ use crate::trans_api::TransStore;
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::*;
 use cyfs_bdt::{
-    ChunkDownloadConfig, ChunkWriter, DownloadTaskControl, StackGuard, TaskControlState,
+    SingleDownloadContext, ChunkWriter, DownloadTaskControl, StackGuard, TaskControlState,
 };
 use cyfs_task_manager::*;
 
@@ -89,16 +89,20 @@ impl Task for DownloadChunkTask {
             }
         }
 
-        let mut config = ChunkDownloadConfig::force_stream(self.device_list[0].clone());
-        if self.referer.len() > 0 {
-            config.referer = Some(self.referer.to_owned());
-        }
+        let context = SingleDownloadContext::streams(
+            if self.referer.len() > 0 {
+                referer = Some(self.referer.to_owned());
+            } else {
+                None
+            }, 
+            vec![self.device_list[0].clone()]);
+        
         // 创建bdt层的传输任务
         *session = Some(
             cyfs_bdt::download::download_chunk(
                 &self.bdt_stack,
                 self.chunk_id.clone(),
-                config,
+                context,
                 vec![self.writer.clone_as_writer()],
             )
             .await

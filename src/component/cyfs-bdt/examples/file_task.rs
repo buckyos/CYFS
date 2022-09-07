@@ -1,7 +1,7 @@
 use async_std::{fs, future, io::prelude::*};
 use cyfs_base::*;
 use cyfs_bdt::{
-    download::*, ChunkDownloadConfig, DownloadTaskControl, Stack, StackOpenParams, TaskControlState,
+    download::*, SingleDownloadContext, DownloadTaskControl, Stack, StackOpenParams, TaskControlState,
 };
 use sha2::Digest;
 use std::time::Duration;
@@ -104,7 +104,7 @@ async fn main() {
     let task = download_file_to_path(
         &*ln_stack,
         file,
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()),
+        SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]), 
         down_path.as_path(),
     )
     .await

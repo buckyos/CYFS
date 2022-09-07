@@ -2,7 +2,7 @@ use async_std::{fs, future, io::prelude::*};
 use cyfs_base::*;
 use log::debug;
 use cyfs_bdt::{
-    download::*, ChunkDownloadConfig, DownloadTaskControl, Stack, StackOpenParams, TaskControlState,
+    download::*, SingleDownloadContext, DownloadTaskControl, Stack, StackOpenParams, TaskControlState,
 };
 use sha2::Digest;
 #[warn(unused_mut)]
@@ -166,7 +166,7 @@ async fn main() {
     match download_dir_to_path(
         &*ln_stack,
         dir.desc().dir_id(),
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()),
+        SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]), 
         down_dir.as_path(),
     ) {
         Ok((task, dir_task_control)) => {

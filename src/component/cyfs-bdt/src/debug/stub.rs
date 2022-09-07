@@ -23,7 +23,7 @@ use crate::{
     DownloadTaskControl, 
     TaskControlState,
     types::*,
-    ChunkDownloadConfig,
+    SingleDownloadContext
 };
 use super::command::*;
 use super::super::sn::client::SnStatus;
@@ -375,7 +375,7 @@ impl DebugStub {
         let _ = tunnel.write_all("start downloading chunk..\r\n".as_ref()).await;
         let task = download_chunk_to_path(&stack,
             chunk_id,
-            ChunkDownloadConfig::from(remotes),
+            SingleDownloadContext::streams(None, remotes),
             &local_path).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
 
@@ -403,7 +403,7 @@ impl DebugStub {
 
         let _ = tunnel.write_all("start downloading file..\r\n".as_ref()).await;
         let task = download_file_to_path(&stack, file_id, 
-            ChunkDownloadConfig::from(remotes), 
+            SingleDownloadContext::streams(None, remotes),
             &local_path).await.map_err(|e| {
                 format!("download err: {}\r\n", e)
         })?;

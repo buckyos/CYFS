@@ -13,6 +13,7 @@ use crate::{
 use super::super::{
     chunk::*, 
     scheduler::*, 
+    download::*
 };
 
 
@@ -33,7 +34,7 @@ struct ChunkTaskImpl {
     stack: WeakStack, 
     chunk: ChunkId, 
     range: Option<Range<u64>>, 
-    config: Arc<ChunkDownloadConfig>, 
+    context: SingleDownloadContext, 
     resource: ResourceManager, 
     state: RwLock<StateImpl>,  
     writers: Vec<Box <dyn ChunkWriterExt>>,
@@ -45,7 +46,7 @@ pub struct ChunkTask(Arc<ChunkTaskImpl>);
 
 impl std::fmt::Display for ChunkTask {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ChunkTask{{chunk:{}, range:{:?}, config:{:?}}}", self.chunk(), self.range(), self.config())
+        write!(f, "ChunkTask{{chunk:{}, range:{:?}}}", self.chunk(), self.range())
     }
 }
 
@@ -53,7 +54,7 @@ impl ChunkTask {
     pub fn new(
         stack: WeakStack, 
         chunk: ChunkId, 
-        config: Arc<ChunkDownloadConfig>, 
+        context: SingleDownloadContext, 
         writers: Vec<Box <dyn ChunkWriter>>, 
         owner: ResourceManager
     ) -> Self {
@@ -61,7 +62,7 @@ impl ChunkTask {
             stack, 
             chunk, 
             range: None, 
-            config, 
+            context, 
             resource: ResourceManager::new(Some(owner)), 
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
@@ -75,7 +76,7 @@ impl ChunkTask {
         stack: WeakStack, 
         chunk: ChunkId, 
         range: Option<Range<u64>>, 
-        config: Arc<ChunkDownloadConfig>, 
+        context: SingleDownloadContext, 
         writers: Vec<Box <dyn ChunkWriterExt>>, 
         owner: ResourceManager,
     ) -> Self {
@@ -83,7 +84,7 @@ impl ChunkTask {
             stack, 
             chunk, 
             range, 
-            config, 
+            context, 
             resource: ResourceManager::new(Some(owner)), 
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
@@ -102,8 +103,8 @@ impl ChunkTask {
         self.0.range.clone()
     }
 
-    pub fn config(&self) -> &Arc<ChunkDownloadConfig> {
-        &self.0.config
+    pub fn context(&self) -> &SingleDownloadContext  {
+        &self.0.context
     }
 
     async fn sync_chunk_state(&self) {
@@ -134,7 +135,7 @@ impl ChunkTask {
                             let stack = Stack::from(&self.0.stack);
                             let downloader = stack.ndn().chunk_manager().start_download(
                                 self.chunk().clone(), 
-                                self.config().clone(), 
+                                self.context().clone(), 
                                 self.resource().clone()
                             ).await.unwrap();
                             info!("{} reset downloader for read chunk failed", self);
@@ -186,7 +187,7 @@ impl TaskSchedule for ChunkTask {
         task::spawn(async move {
             let downloader = stack.ndn().chunk_manager().start_download(
                 task.chunk().clone(), 
-                task.config().clone(), 
+                task.context().clone(), 
                 task.resource().clone()
             ).await.unwrap();
         

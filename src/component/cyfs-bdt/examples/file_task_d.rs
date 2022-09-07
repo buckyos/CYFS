@@ -16,7 +16,7 @@ use cyfs_bdt::{
     StackOpenParams, 
     DownloadTaskControl, 
     TaskControlState, 
-    ChunkDownloadConfig, 
+    SingleDownloadContext, 
     download::*,
     ndn::ChunkWriter,
 };
@@ -132,12 +132,9 @@ async fn main() {
         let task = 
             download_chunk(&*ln_stack, 
                         chunk, 
-                        ChunkDownloadConfig::force_stream(rn_dev.desc().device_id().clone()), 
+                        SingleDownloadContext::streams(None, vec![rn_dev.desc().device_id().clone()]), 
                         vec![Box::new(writer)]).await.unwrap();
-        // let task = download_file_to_path(
-        //     &*ln_stack, file, 
-        //     ChunkDownloadConfig::force_stream(rn_dev.desc().device_id().clone()), 
-        //     down_path.as_path()).await.unwrap();
+
 
         let _ = future::timeout(Duration::from_secs(1), watch_task_finish(task)).await.unwrap();
     }
@@ -163,12 +160,8 @@ async fn main() {
         let task = 
             download_chunk(&*ln_stack, 
                         chunk, 
-                        ChunkDownloadConfig::force_stream(rn_dev.desc().device_id().clone()), 
+                        SingleDownloadContext::streams(None, vec![rn_dev.desc().device_id().clone()]), 
                         vec![Box::new(writer)]).await.unwrap();
-        // let task = download_file_to_path(
-        //     &*ln_stack, file, 
-        //     ChunkDownloadConfig::force_stream(rn_dev.desc().device_id().clone()), 
-        //     down_path.as_path()).await.unwrap();
 
         let _ = future::timeout(Duration::from_secs(1), watch_task_finish(task)).await.unwrap();
     }

@@ -6,10 +6,8 @@ use crate::{
     stack::{Stack}, 
 };
 use crate::ndn::{
-    DefaultNdnEventHandler, NdnEventHandler,
-    // event::*,
-    // ChunkTask,
-    // chunk::ChunkDownloadConfig,
+    DefaultNdnEventHandler, 
+    NdnEventHandler,
     channel::{
         protocol::v0::*, 
         Channel, 

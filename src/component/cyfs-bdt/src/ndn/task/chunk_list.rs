@@ -13,6 +13,7 @@ use crate::{
 use super::super::{
     chunk::*, 
     scheduler::*, 
+    download::*
 };
 use super::{
     chunk::ChunkTask,
@@ -41,7 +42,7 @@ struct TaskImpl {
     name: String, 
     chunk_list: ChunkListDesc, 
     ranges: Vec<(usize, Option<Range<u64>>)>, 
-    config: Arc<ChunkDownloadConfig>, 
+    context: SingleDownloadContext, 
     resource: ResourceManager, 
     state: RwLock<StateImpl>,  
     writers: Vec<Box<dyn ChunkWriterExt>>,
@@ -61,7 +62,7 @@ impl ChunkListTask {
         stack: WeakStack,
         name: String, 
         chunk_list: ChunkListDesc, 
-        config: Arc<ChunkDownloadConfig>, 
+        context: SingleDownloadContext, 
         writers: Vec<Box <dyn ChunkWriter>>, 
         owner: ResourceManager
     ) -> Self {
@@ -71,7 +72,7 @@ impl ChunkListTask {
             name, 
             ranges: (0..chunk_list.chunks().len()).into_iter().map(|i| (i, None)).collect(), 
             chunk_list, 
-            config, 
+            context, 
             resource: ResourceManager::new(Some(owner)), 
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
@@ -86,7 +87,7 @@ impl ChunkListTask {
         name: String, 
         chunk_list: ChunkListDesc, 
         ranges: Option<Vec<Range<u64>>>, 
-        config: Arc<ChunkDownloadConfig>, 
+        context: SingleDownloadContext, 
         writers: Vec<Box <dyn ChunkWriterExt>>, 
         owner: ResourceManager,
     ) -> Self {
@@ -107,7 +108,7 @@ impl ChunkListTask {
             name, 
             chunk_list, 
             ranges, 
-            config, 
+            context, 
             resource: ResourceManager::new(Some(owner)), 
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
@@ -125,8 +126,8 @@ impl ChunkListTask {
         &self.0.ranges
     }
 
-    pub fn config(&self) -> &Arc<ChunkDownloadConfig> {
-        &self.0.config
+    pub fn context(&self) -> &SingleDownloadContext {
+        &self.0.context
     }
 }
 
@@ -162,7 +163,7 @@ impl ChunkWriterExt for ChunkListTask {
                             self.0.stack.clone(), 
                             self.chunk_list().chunks()[index].clone(), 
                             range, 
-                            self.config().clone(), 
+                            self.context().clone(), 
                             vec![self.clone_as_writer()], 
                             self.resource().clone(),
                         );
@@ -232,7 +233,7 @@ impl TaskSchedule for ChunkListTask {
                 self.0.stack.clone(), 
                 self.chunk_list().chunks()[index].clone(),
                 range,  
-                self.config().clone(), 
+                self.context().clone(), 
                 vec![self.clone_as_writer()], 
                 self.resource().clone());
             let mut state = self.0.state.write().unwrap();

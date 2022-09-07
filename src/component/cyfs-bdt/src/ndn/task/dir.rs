@@ -15,6 +15,7 @@ use crate::{
 use super::super::{
     chunk::*, 
     scheduler::*, 
+    download::*, 
 };
 use super::{
     chunk::ChunkTask, 
@@ -117,7 +118,7 @@ struct StateImpl {
 struct TaskImpl {
     stack: WeakStack, 
     dir: DirId, 
-    config: Arc<ChunkDownloadConfig>, 
+    context: SingleDownloadContext, 
     resource: ResourceManager, 
     sub_id: IncreaseIdGenerator, 
     state: RwLock<StateImpl>,  
@@ -152,14 +153,14 @@ impl std::fmt::Display for DirTask {
 impl DirTask {
     pub fn new(stack: WeakStack, 
         dir: DirId, 
-        config: Arc<ChunkDownloadConfig>, 
+        context: SingleDownloadContext, 
         writers: Vec<Box<dyn ChunkWriter>>,
         owner: ResourceManager,
     ) -> Self {
         Self (Arc::new(TaskImpl {
             stack: stack,
             dir: dir,
-            config: config,
+            context, 
             resource: owner,
             sub_id: IncreaseIdGenerator::new(),
             state: RwLock::new(StateImpl{
@@ -176,8 +177,8 @@ impl DirTask {
         &self.0.dir
     }
 
-    pub fn config(&self) -> &Arc<ChunkDownloadConfig> {
-        &self.0.config
+    pub fn context(&self) -> &SingleDownloadContext  {
+        &self.0.context
     }
 
     fn cancel_by_error(&self, _id: IncreaseId, _err: BuckyErrorCode) -> BuckyResult<()> {
@@ -382,7 +383,7 @@ impl DirTaskControl for DirTask {
         let task = ChunkListTask::new(self.0.stack.clone(),
                                                     format!("DirMeta:{}", self.dir_id()).to_owned(),
                                                     chunk_list,
-                                                    self.0.config.clone(),
+                                                    self.context().clone(),
                                                     vec![self.meta_writer(sub_id.clone(), writers)],
                                                     self.resource().clone());
 
@@ -393,7 +394,7 @@ impl DirTaskControl for DirTask {
         let sub_id = self.0.sub_id.generate();
         let chunk_task = ChunkTask::new(self.0.stack.clone(), 
                                                    chunk, 
-                                                   self.config().clone(), 
+                                                   self.context().clone(), 
                                                    vec![self.sub_writer(sub_id.clone(), writers)], 
                                                    self.resource().clone());
 
@@ -405,7 +406,7 @@ impl DirTaskControl for DirTask {
         let file_task = FileTask::new(self.0.stack.clone(), 
                                                 file, 
                                                 None, 
-                                                self.config().clone(), 
+                                                self.context().clone(), 
                                                 vec![self.sub_writer(sub_id.clone(), writers)],
                                                 self.resource().clone());
         self.add_sub_task(SubTask::File(sub_id.clone(), file_task))
@@ -415,7 +416,7 @@ impl DirTaskControl for DirTask {
         let sub_id = self.0.sub_id.generate();
         let dir_task = Self::new(self.0.stack.clone(), 
                                           dir, 
-                                          self.config().clone(), 
+                                          self.context().clone(), 
                                           vec![self.sub_writer(sub_id, writers)],
                                           self.resource().clone());
     

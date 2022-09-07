@@ -1,5 +1,5 @@
 use std::{
-    sync::{RwLock, Mutex},
+    sync::{RwLock},
     ops::Range
 };
 use async_std::{
@@ -13,6 +13,7 @@ use crate::{
 use super::super::{
     chunk::*, 
     scheduler::*, 
+    download::*
 };
 use super::{
     chunk::ChunkTask, 
@@ -40,7 +41,7 @@ struct TaskImpl {
     file: File,
     chunk_list: ChunkListDesc, 
     ranges: Vec<(usize, Option<Range<u64>>)>, 
-    config: Mutex<Arc<ChunkDownloadConfig>>, 
+    context: SingleDownloadContext, 
     resource: ResourceManager, 
     state: RwLock<StateImpl>,  
     writers: Vec<Box<dyn ChunkWriterExt>>,
@@ -51,7 +52,7 @@ pub struct FileTask(Arc<TaskImpl>);
 
 impl std::fmt::Display for FileTask {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "FileTask::{{file:{}, config:{:?}}}", self.file().desc().file_id(), self.config())
+        write!(f, "FileTask::{{file:{}}}", self.file().desc().file_id())
     }
 }
 
@@ -60,7 +61,7 @@ impl FileTask {
         stack: WeakStack,  
         file: File,  
         chunk_list: Option<ChunkListDesc>, 
-        config: Arc<ChunkDownloadConfig>, 
+        context: SingleDownloadContext, 
         writers: Vec<Box <dyn ChunkWriter>>, 
         owner: ResourceManager,
     ) -> Self {
@@ -71,7 +72,7 @@ impl FileTask {
             file: file.clone(), 
             ranges: (0..chunk_list.chunks().len()).into_iter().map(|i| (i, None)).collect(),  
             chunk_list, 
-            config : Mutex::new(Arc::new(config.as_ref().clone())),
+            context, 
             resource: ResourceManager::new(Some(owner)), 
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
@@ -87,7 +88,7 @@ impl FileTask {
         file: File,  
         chunk_list: Option<ChunkListDesc>, 
         ranges: Option<Vec<Range<u64>>>, 
-        config: Arc<ChunkDownloadConfig>, 
+        context: SingleDownloadContext, 
         writers: Vec<Box <dyn ChunkWriterExt>>, 
         owner: ResourceManager,
     ) -> Self {
@@ -110,7 +111,7 @@ impl FileTask {
             file: file.clone(), 
             chunk_list, 
             ranges, 
-            config: Mutex::new(Arc::new(config.as_ref().clone())),
+            context, 
             resource: ResourceManager::new(Some(owner)), 
             state: RwLock::new(StateImpl {
                 schedule_state: TaskStateImpl::Pending, 
@@ -132,8 +133,8 @@ impl FileTask {
         &self.0.ranges
     }
 
-    pub fn config(&self) -> Arc<ChunkDownloadConfig> {
-        self.0.config.lock().unwrap().clone()
+    pub fn context(&self) -> &SingleDownloadContext {
+        &self.0.context
     }
 }
 
@@ -170,7 +171,7 @@ impl ChunkWriterExt for FileTask {
                             self.0.stack.clone(), 
                             self.chunk_list().chunks()[index].clone(), 
                             range, 
-                            self.config().clone(), 
+                            self.context().clone(), 
                             vec![self.clone_as_writer()], 
                             self.resource().clone());
                         downloading.cur_index = next_index;
@@ -242,7 +243,7 @@ impl TaskSchedule for FileTask {
                 self.0.stack.clone(), 
                 self.chunk_list().chunks()[index].clone(),
                 range,  
-                self.config().clone(), 
+                self.context().clone(), 
                 vec![self.clone_as_writer()], 
                 self.resource().clone());
             let mut state = self.0.state.write().unwrap();

@@ -14,7 +14,7 @@ use cyfs_bdt::{
     StackOpenParams, 
     DownloadTaskControl, 
     TaskControlState, 
-    ChunkDownloadConfig, 
+    SingleDownloadContext, 
     download::*,
     // ndn::{*, channel::{*, protocol::v0::*}}, 
     event_utils::*,
@@ -144,7 +144,7 @@ async fn main() {
     let down_path = down_dir.join(file.desc().file_id().to_string().as_str());
     let task = download_file_to_path(
         &*ln_stack, file, 
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()), 
+        SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]), 
         down_path.as_path()).await.unwrap();
 
     let recv = future::timeout(Duration::from_secs(1), watch_task_finish(task)).await.unwrap();

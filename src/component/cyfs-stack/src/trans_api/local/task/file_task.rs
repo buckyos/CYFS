@@ -5,7 +5,7 @@ use crate::trans_api::{DownloadTaskTracker, TransStore};
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::*;
 use cyfs_bdt::{
-    ChunkDownloadConfig, ChunkWriter, DownloadTaskControl, StackGuard, TaskControlState,
+    SingleDownloadContext, ChunkWriter, DownloadTaskControl, StackGuard, TaskControlState,
 };
 use cyfs_task_manager::*;
 
@@ -123,7 +123,7 @@ impl Task for DownloadFileTask {
                 return Ok(());
             }
         }
-        let mut config = ChunkDownloadConfig::force_stream(self.device_list[0].clone());
+        let mut config = SingleDownloadContext::force_stream(self.device_list[0].clone());
         if self.referer.len() > 0 {
             config.referer = Some(self.referer.to_owned());
         }

@@ -3,7 +3,7 @@ use cyfs_base::*;
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
     download::*,
-    ChunkDownloadConfig,
+    SingleDownloadContext, 
     ChunkReader,
     ChunkWriter,
     MemChunkStore,
@@ -93,7 +93,7 @@ async fn main() {
         let task = download_chunk(
             &*ln_stack, 
             chunkid.clone(), 
-            ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()), 
+            SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]), 
             vec![ln_store.clone_as_writer()]).await.unwrap();
         
         watch_resource(task);

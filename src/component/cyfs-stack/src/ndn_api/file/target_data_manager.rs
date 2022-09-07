@@ -1,7 +1,7 @@
 use super::super::cache::ChunkManagerWriter;
 use super::stream_writer::*;
 use cyfs_base::*;
-use cyfs_bdt::{ChunkDownloadConfig, ChunkWriter, ChunkWriterExt, StackGuard};
+use cyfs_bdt::{SingleDownloadContext, ChunkWriter, ChunkWriterExt, StackGuard};
 use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 
@@ -68,9 +68,7 @@ impl TargetDataManager {
             self.target, file_id, file_obj.len(), total_size, ranges, referer
         );
 
-        let mut config = ChunkDownloadConfig::force_stream(self.target.clone());
-        let referer = referer.encode_string();
-        config.referer = Some(referer);
+        let mut context = SingleDownloadContext::streams(Some(referer.encode_string()), vec![self.target.clone()]);
 
         let resp = if let Some(ranges) = ranges {
             assert!(ranges.len() > 0);
@@ -83,7 +81,7 @@ impl TargetDataManager {
                 &self.bdt_stack,
                 file_obj.to_owned(),
                 Some(ranges),
-                config,
+                context,
                 writers,
             )
             .await?;
@@ -135,9 +133,8 @@ impl TargetDataManager {
             self.target, chunk_id, total_size, ranges, referer
         );
 
-        let mut config = ChunkDownloadConfig::force_stream(self.target.clone());
-        let referer = referer.encode_string();
-        config.referer = Some(referer);
+        let context = SingleDownloadContext::streams(Some(referer.encode_string()), vec![self.target.clone()]);
+      
 
         let (writers, waker, resp) = self
             .create_chunk_writers(&chunk_id, ranges, total_size)
@@ -146,7 +143,7 @@ impl TargetDataManager {
         let controller = cyfs_bdt::download::download_chunk(
             &self.bdt_stack,
             chunk_id.to_owned(),
-            config,
+            context,
             writers,
         )
         .await?;

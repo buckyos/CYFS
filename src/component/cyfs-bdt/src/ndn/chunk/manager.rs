@@ -10,15 +10,16 @@ use cyfs_base::*;
 use cyfs_util::cache::*;
 use crate::{
     types::*, 
-    stack::{WeakStack, Stack}
+    stack::{WeakStack, Stack},
 };
 use super::super::{
     scheduler::*, 
-    channel::{PieceSessionType, Channel, UploadSession}
+    channel::{PieceSessionType, Channel, UploadSession}, 
+    download::*
 };
 use super::{
     storage::*,  
-    download::{ChunkDownloader, ChunkDownloadConfig}, 
+    download::{ChunkDownloader}, 
     view::ChunkView
 };
 
@@ -197,12 +198,12 @@ impl ChunkManager {
     pub(crate) async fn start_download(
         &self, 
         chunk: ChunkId, 
-        config: Arc<ChunkDownloadConfig>, 
+        context: SingleDownloadContext, 
         owner: ResourceManager
     ) -> BuckyResult<ChunkDownloader> {
-        info!("{} try start download config: {:?}", self, &*config);
+        info!("{} try start download", self);
         let view = self.create_view(chunk, ChunkState::Unknown).await?;
-        view.start_download(config, owner)
+        view.start_download(context, owner)
     }
 
     pub(crate) async fn start_upload(

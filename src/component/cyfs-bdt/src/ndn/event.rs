@@ -70,23 +70,6 @@ impl NdnEventHandler for DefaultNdnEventHandler {
         from: &Channel
     ) -> BuckyResult<()> {
 
-        // let session = match self.acl.get_data(
-        //     BdtGetDataInputRequest {
-        //         object_id: interest.chunk.object_id(), 
-        //         source: from.remote().clone(), 
-        //         referer: interest.referer.clone() 
-        //     }).await {
-        //     Ok(_) => {
-                
-        //     }, 
-        //     Err(err) => {
-        //         Ok(UploadSession::canceled(interest.chunk.clone(), 
-        //                                           interest.session_id.clone(), 
-        //                                           interest.prefer_type.clone(), 
-        //                                           from.clone(), 
-        //                                           err.code()))
-        //     }
-        // }?;
         let requestor = {
             if let Some(requestor) = &interest.from {
                 if let Some(requestor) = stack.ndn().channel_manager().channel_of(&requestor) {
@@ -146,50 +129,5 @@ impl NdnEventHandler for DefaultNdnEventHandler {
         let _ = requestor.upload(session.clone());
         session.on_interest(interest)
 
-        // let stack = self.stack();
-        // match r {
-        //     BdtEventResult::UploadProcess => {
-                
-        //     },
-        //     BdtEventResult::RedirectProcess(target_id, referer) => {
-        //         return Ok(UploadSession::redirect(interest.chunk.clone(), 
-        //                                           interest.session_id.clone(),
-        //                                           interest.prefer_type.clone(),
-        //                                           from.clone(),
-        //                                           target_id.clone(),
-        //                                           referer));
-        //     },
-        //     BdtEventResult::WaitRedirectProcess(target_id) => {
-        //         let config = Arc::new(ChunkDownloadConfig::force_stream(target_id));
-        //         let chunk = interest.chunk.clone();
-        //         let stack = stack.clone();
-        //         // download process will be initialized from the source node, and channel will wait
-        //         async_std::task::spawn( async move {
-        //             let config = config.clone();
-        //             let chunk = chunk.clone();
-        //             let ndc = stack.ndn().chunk_manager().ndc();
-        //             let chunk_task = ChunkTask::new(stack.to_weak(),
-        //                                             chunk,
-        //                                             config,
-        //                                             vec![Box::new(MemChunkStore::new(ndc))],
-        //                                             stack.ndn().root_task().download().resource().clone(),
-		// 				    None);
-        //             chunk_task.start();
-
-        //             loop {
-        //                 match chunk_task.schedule_state() {
-        //                     TaskState::Pending | TaskState::Running(_) => {
-        //                         let _ = async_std::future::timeout(std::time::Duration::from_secs(1), async_std::future::pending::<()>()).await;
-        //                     },
-        //                     _ => { break; }
-        //                 }
-        //             }
-        //         });
-        //         return Ok(UploadSession::wait_redirect(interest.chunk.clone(),
-        //                                                 interest.session_id.clone(),
-        //                                                 interest.prefer_type.clone(),
-        //                                                 from.clone()));
-
-        //     }
     }
 }

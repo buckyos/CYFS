@@ -13,6 +13,7 @@ use crate::{
 use super::super::{
     scheduler::*, 
     channel::*,
+    download::*, 
 };
 use super::{
     storage::ChunkReader, 
@@ -193,7 +194,7 @@ impl ChunkView {
 
     pub fn start_download(
         &self, 
-        config: Arc<ChunkDownloadConfig>, 
+        context: SingleDownloadContext, 
         owner: ResourceManager
     ) -> BuckyResult<ChunkDownloader> {
         let (downloader, newly) = {
@@ -235,9 +236,9 @@ impl ChunkView {
                 _ => unreachable!()
             }
         };
-
+        downloader.context().add_context(context);
         if newly {
-            let _ = downloader.add_config(config, owner);
+            let _ = downloader.on_drain();
             let downloader = downloader.clone();
             let view = self.clone();
             task::spawn(async move {
