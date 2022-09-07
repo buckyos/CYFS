@@ -25,7 +25,7 @@ async fn get_chunk_data(trace:&str, chunk_manager: &ChunkManager, chunk_get_req:
 
     // verify chunk id
     let actual_id = ChunkId::calculate_sync(&chunk_data)?;
-    if actual_id != chunk_get_req.chunk_id() {
+    if &actual_id != chunk_get_req.chunk_id() {
         error!("local chunk id mismatch! actual {}, except {}", &actual_id, chunk_get_req.chunk_id());
         chunk_manager.delete(chunk_get_req.chunk_id())?;
         return Err(BuckyError::from(BuckyErrorCode::NotMatch));
