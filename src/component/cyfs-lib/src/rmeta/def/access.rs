@@ -10,7 +10,7 @@ pub struct GlobalStatePathSpecifiedGroup {
     // device/device's owner(as zone id), None for any zone
     pub zone: Option<ObjectId>,
 
-    // specified dec, Noen for any dec
+    // specified dec, None for any dec
     pub dec: Option<ObjectId>,
 
     pub access: u8,
@@ -79,22 +79,6 @@ impl PartialOrd for GlobalStatePathGroupAccess {
     }
 }
 
-/*
-impl PartialEq for GlobalStatePathGroupAccess {
-    fn eq(&self, other: &Self) -> bool {
-        match &self {
-            Self::Specified(left) => match other {
-                Self::Specified(right) => left.zone.eq(&right.zone),
-                Self::Default(_) => false,
-            },
-            Self::Default(_) => match other {
-                Self::Specified(_) => false,
-                Self::Default(_) => true,
-            },
-        }
-    }
-}
-*/
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct GlobalStatePathAccessItem {
@@ -164,13 +148,13 @@ impl std::fmt::Display for GlobalStatePathAccessItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.access {
             GlobalStatePathGroupAccess::Default(p) => {
-                writeln!(f, "({}, {:o})", self.path, p)
+                writeln!(f, "({}, {})", self.path, AccessString::new(*p))
             }
             GlobalStatePathGroupAccess::Specified(s) => {
                 writeln!(
                     f,
-                    "({}, zone={:?}, dec={:?}, {:o})",
-                    self.path, s.zone, s.dec, s.access
+                    "({}, zone={:?}, dec={:?}, {})",
+                    self.path, s.zone, s.dec, AccessPermissions::format_u8(s.access),
                 )
             }
         }
@@ -191,11 +175,3 @@ impl Ord for GlobalStatePathAccessItem {
         self.partial_cmp(other).unwrap()
     }
 }
-
-/*
-impl PartialEq for GlobalStatePathAccessItem {
-    fn eq(&self, other: &Self) -> bool {
-        self.path == other.path && self.access == other.access
-    }
-}
-*/

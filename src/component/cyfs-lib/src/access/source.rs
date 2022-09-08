@@ -41,7 +41,7 @@ impl Into<AccessGroup> for DeviceZoneCategory {
     fn into(self) -> AccessGroup {
         match self {
             DeviceZoneCategory::CurrentDevice => AccessGroup::CurrentDevice,
-            DeviceZoneCategory::CurrentZone => AccessGroup::CurentZone,
+            DeviceZoneCategory::CurrentZone => AccessGroup::CurrentZone,
             DeviceZoneCategory::FriendsZone => AccessGroup::FriendZone,
             DeviceZoneCategory::OtherZone => AccessGroup::OthersZone,
         }

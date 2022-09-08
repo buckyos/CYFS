@@ -1,6 +1,6 @@
-
 use cyfs_base::*;
 use intbits::Bits;
+use std::convert::TryInto;
 
 const ACCESS_GROUP_MASK: u32 = 0b111 << 29;
 
@@ -40,6 +40,33 @@ pub enum AccessPermissions {
     Full = 0b111,
 }
 
+impl AccessPermissions {
+    pub fn as_str(&self) -> &'static str {
+        match &self {
+            Self::None => "---",
+            Self::CallOnly => "--x",
+            Self::WriteOnly => "-w-",
+            Self::WirteAndCall => "-wx",
+            Self::ReadOnly => "r--",
+            Self::ReadAndCall => "r-x",
+            Self::ReadAndWrite => "rw-",
+            Self::Full => "rwx",
+        }
+    }
+
+    pub fn format_u8(v: u8) -> std::borrow::Cow<'static, str> {
+        match TryInto::<AccessPermissions>::try_into(v) {
+            Ok(v) => {
+                std::borrow::Cow::Borrowed(v.as_str())
+            }
+            Err(_) => {
+                let s = format!("{:o}", v);
+                std::borrow::Cow::Owned(s)
+            }
+        }
+    }
+}
+
 impl TryFrom<u8> for AccessPermissions {
     type Error = BuckyError;
     fn try_from(v: u8) -> BuckyResult<Self> {
@@ -54,11 +81,17 @@ impl TryFrom<u8> for AccessPermissions {
     }
 }
 
+impl std::fmt::Display for AccessPermissions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccessGroup {
     CurrentDevice = 0,
-    CurentZone = 3,
+    CurrentZone = 3,
     FriendZone = 6,
     OthersZone = 9,
 
@@ -66,6 +99,16 @@ pub enum AccessGroup {
     SystemDec = 15,
     OthersDec = 18,
 }
+
+pub const ACCESS_GROUP_LIST: &[AccessGroup; 7] = &[
+    AccessGroup::CurrentDevice,
+    AccessGroup::CurrentZone, 
+    AccessGroup::FriendZone, 
+    AccessGroup::OthersZone, 
+    AccessGroup::OwnerDec, 
+    AccessGroup::SystemDec, 
+    AccessGroup::OthersDec,
+];
 
 impl AccessGroup {
     pub fn range(&self) -> std::ops::Range<u32> {
@@ -96,7 +139,7 @@ impl AccessString {
     pub const fn value(&self) -> u32 {
         self.0
     }
-    
+
     pub fn make(list: &[AccessPair]) -> Self {
         let mut ret = Self(0);
         list.iter().for_each(|p| ret.set_group_permissions(p.group, p.permissions));
@@ -132,7 +175,7 @@ impl AccessString {
             group: AccessGroup::CurrentDevice,
             permissions: AccessPermissions::Full,
         }, AccessPair {
-            group: AccessGroup::CurentZone,
+            group: AccessGroup::CurrentZone,
             permissions: AccessPermissions::Full,
         }, AccessPair {
             group: AccessGroup::FriendZone,
@@ -145,6 +188,12 @@ impl AccessString {
             permissions: AccessPermissions::Full,
         }])
     }
+
+    fn to_string(&self) -> String {
+        ACCESS_GROUP_LIST.iter().map(|v| {
+            self.get_group_permissions(*v).as_str()
+        }).collect()
+    }
 }
 
 
@@ -154,6 +203,12 @@ impl Default for AccessString {
         D.get_or_init(|| {
             Self::dec_default()
         }).to_owned()
+    }
+}
+
+impl std::fmt::Display for AccessString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", Self::to_string(&self))
     }
 }
 
@@ -194,6 +249,7 @@ mod test {
         other_dec_read();
 
         let mut access_string = AccessString::default();
+        println!("default={}", access_string);
 
         let ret= access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Read);
         assert!(ret);
@@ -221,17 +277,24 @@ mod test {
         assert!(!ret);
 
 
-        let c = access_string.get_group_permissions(AccessGroup::CurentZone);
+        let c = access_string.get_group_permissions(AccessGroup::CurrentZone);
         assert_eq!(c, AccessPermissions::Full);
 
-        access_string.clear_group_permissions(AccessGroup::CurentZone);
-        let c = access_string.get_group_permissions(AccessGroup::CurentZone);
+        println!("{}", c);
+
+
+        access_string.clear_group_permissions(AccessGroup::CurrentZone);
+        let c = access_string.get_group_permissions(AccessGroup::CurrentZone);
         assert_eq!(c, AccessPermissions::None);
 
-        access_string.set_group_permission(AccessGroup::CurentZone, AccessPermission::Call);
-        access_string.set_group_permission(AccessGroup::CurentZone, AccessPermission::Read);
-        let c = access_string.get_group_permissions(AccessGroup::CurentZone);
+        access_string.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Call);
+        access_string.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
+
+        println!("{}", access_string);
+
+        let c = access_string.get_group_permissions(AccessGroup::CurrentZone);
         assert_eq!(c, AccessPermissions::ReadAndCall);
+        println!("{}", c);
 
     }
 }
