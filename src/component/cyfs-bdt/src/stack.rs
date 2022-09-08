@@ -18,7 +18,7 @@ use crate::{
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
     pn::client::ProxyManager,
-    ndn::{self, NdnStack, ChunkReader, NdnEventHandler}, 
+    ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler}, 
     debug::{self, DebugStub}
 };
 use cyfs_util::{
@@ -155,6 +155,11 @@ impl StackConfig {
                             min_rto: Duration::from_millis(200),
                             cc_impl: cc::ImplConfig::BBR(Default::default()),
                         }
+                    }, 
+                    history_speed: HistorySpeedConfig {
+                        attenuation: 0.5, 
+                        expire: Duration::from_secs(20),  
+                        atomic: Duration::from_secs(1)
                     }
                 },
                 limit: ndn::LimitConfig {

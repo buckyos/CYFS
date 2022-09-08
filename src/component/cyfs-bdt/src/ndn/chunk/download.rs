@@ -142,7 +142,7 @@ impl ChunkDownloader {
                     channel, 
                     PieceSessionType::Stream(0), 
                     source.referer, 
-                    ResourceManager::new(None));
+                );
 
                 let state = &mut *self.0.state.write().unwrap();
                 match state {
@@ -173,7 +173,7 @@ impl ChunkDownloader {
                 let waiters = {
                     let _ = session.channel().download(session.clone());
                     match session.wait_finish().await {
-                        TaskState::Finished => {
+                        DownloadSessionState::Finished => {
                             let mut waiters = StateWaiter::new();
                             let cache = session.take_chunk_content().unwrap();
                             let state = &mut *downloader.0.state.write().unwrap();
@@ -191,7 +191,7 @@ impl ChunkDownloader {
                             }
                             Some(waiters)
                         }, 
-                        TaskState::Canceled(err) => {
+                        DownloadSessionState::Canceled(err) => {
                             let mut waiters = StateWaiter::new();
                             let state = &mut *downloader.0.state.write().unwrap();
                             match state {

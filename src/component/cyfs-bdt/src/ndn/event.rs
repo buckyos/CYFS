@@ -51,15 +51,7 @@ impl NdnEventHandler for DefaultNdnEventHandler {
         _piece: &PieceData, 
         _from: &Channel
     ) -> BuckyResult<DownloadSession> {
-        //FIXME: 也有可能向上传递新建task
-        let session = _stack.ndn().channel_manager().downloadsession_of(&_piece.session_id);
-        if session.is_none() {
-            return Err(BuckyError::new(BuckyErrorCode::Interrupted, "no session downloading"));
-        }
-        let session = session.unwrap();
-        _from.insert_download(session.clone())?;
-
-        Ok(session)
+        Err(BuckyError::new(BuckyErrorCode::Interrupted, "no session downloading"))
     }
 
     // 处理全新的interest请求;已经正在上传的interest请求不会传递到这里;

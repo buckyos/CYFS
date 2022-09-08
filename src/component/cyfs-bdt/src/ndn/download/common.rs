@@ -1,8 +1,12 @@
 use std::{
     collections::{LinkedList}, 
-    sync::{Arc, RwLock}
+    sync::{Arc, RwLock}, 
+    time::Duration
 };
 use cyfs_base::*;
+use crate::{
+    types::*
+};
 use super::super::{
     channel::*
 };
@@ -107,3 +111,135 @@ impl MultiDownloadContext {
     }
 }
 
+
+
+#[derive(Clone)]
+pub struct HistorySpeedConfig {
+    pub attenuation: f64, 
+    pub atomic: Duration, 
+    pub expire: Duration
+}
+
+#[derive(Clone)]
+// 计算历史速度的方法， 在过去的一段时间内，  Sum(speed(t)*(衰减^t))/样本数
+pub struct HistorySpeed {
+    expire_count: usize, 
+    config: HistorySpeedConfig, 
+    intermediate: LinkedList<f64>, 
+    last_update: Timestamp
+}
+
+impl HistorySpeed {
+    pub fn new(initial: u32, config: HistorySpeedConfig) -> Self {
+        let mut intermediate = LinkedList::new();
+        intermediate.push_back(initial as f64);
+
+        Self {
+            expire_count: (config.expire.as_micros() / config.atomic.as_micros()) as usize, 
+            config, 
+            intermediate, 
+            last_update: bucky_time_now() 
+        }   
+    }
+
+    pub fn update(&mut self, cur_speed: Option<u32>, when: Timestamp) {
+        let cur_speed = cur_speed.unwrap_or(self.latest());
+
+        if when > self.last_update {
+            let count = ((when - self.last_update) / self.config.atomic.as_micros() as u64) as usize;
+
+            for _ in 0..count {
+                self.intermediate.iter_mut().for_each(|v| *v = (*v) * self.config.attenuation);
+                self.intermediate.push_back(cur_speed as f64);
+                if self.intermediate.len() > self.expire_count {
+                    self.intermediate.pop_front();
+                }
+            }
+        };
+    }
+
+    pub fn average(&self) -> u32 {
+        let total: f64 = self.intermediate.iter().sum();
+        (total / self.intermediate.len() as f64) as u32
+    }
+
+    pub fn latest(&self) -> u32 {
+        self.intermediate.back().cloned().unwrap() as u32
+    }
+
+    pub fn config(&self) -> &HistorySpeedConfig {
+        &self.config
+    }
+}
+
+
+pub struct SpeedCounter {
+    last_recv: u64, 
+    last_update: Timestamp, 
+    cur_speed: u32
+}
+
+
+impl SpeedCounter {
+    pub fn new(init_recv: usize) -> Self {
+        Self {
+            last_recv: init_recv as u64, 
+            last_update: bucky_time_now(), 
+            cur_speed: 0
+        }
+    }
+
+    pub fn on_recv(&mut self, recv: usize) {
+        self.last_recv += recv as u64;
+    }
+
+    pub fn update(&mut self, when: Timestamp) -> u32 {
+        if when > self.last_update {
+            let last_recv = self.last_recv;
+            self.last_recv = 0;
+            self.cur_speed = (self.last_recv / Duration::from_micros(when - self.last_update).as_secs()) as u32;
+            self.cur_speed
+        } else {
+            self.cur_speed
+        }
+    }
+
+    pub fn cur(&self) -> u32 {
+        self.cur_speed
+    }
+}
+
+
+
+#[derive(Clone, Copy)]
+pub enum DownloadTaskPriority {
+    Backgroud = 1, 
+    Normal = 2, 
+    Realtime = 4,
+}
+
+impl Default for DownloadTaskPriority {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
+
+pub trait DownloadTask2 {
+    fn clone_as_task(&self) -> Box<dyn DownloadTask2>;
+    fn priority_score(&self) -> u8 {
+        DownloadTaskPriority::Normal as u8
+    }
+    fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask2>> {
+        None
+    }
+
+    fn calc_speed(&self, when: Timestamp) -> u32;
+    fn cur_speed(&self) -> u32;
+    fn history_speed(&self) -> u32;
+
+    fn drain_score(&self) -> i64 {
+        0
+    }
+    fn on_drain(&self, expect_speed: u32) -> u32;
+}

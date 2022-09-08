@@ -14,12 +14,23 @@ use crate::{
     datagram::{self, DatagramTunnelGuard},
     stack::{WeakStack, Stack}
 };
-use super::channel::Channel;
-use super::download::*;
+use super::super::{
+    download::*
+};
+use super::{
+    channel::Channel,
+};
+
+struct Channels {
+    download_history_speed: HistorySpeed, 
+    download_cur_speed: u32, 
+    entries: BTreeMap<DeviceId, Channel>, 
+}
+
 struct ManagerImpl {
     stack: WeakStack, 
     command_tunnel: DatagramTunnelGuard, 
-    entries: RwLock<BTreeMap<DeviceId, Channel>>, 
+    channels: RwLock<Channels>
 }
 
 #[derive(Clone)]
@@ -37,8 +48,12 @@ impl ChannelManager {
         let command_tunnel = stack.datagram_manager().bind_reserved(datagram::ReservedVPort::Channel).unwrap();
         let manager = Self(Arc::new(ManagerImpl {
             stack: weak_stack.clone(), 
-            entries: RwLock::new(BTreeMap::new()), 
-            command_tunnel
+            command_tunnel, 
+            channels: RwLock::new(Channels {
+                download_history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
+                download_cur_speed: 0, 
+                entries: BTreeMap::new()
+            }), 
         }));
         
         {
@@ -51,39 +66,38 @@ impl ChannelManager {
         manager
     }
 
-    pub fn downloadsession_of(&self, session_id: &TempSeq) -> Option<DownloadSession> {
-        let state = &*self.0.entries.read().unwrap();
-
-        for (_, channel) in state {
-            match channel.downloadsession_of(session_id) {
-                Some(r) => { return Some(r); }
-                None => {},
-            }
-        }
-
-        None
-    }
-
     pub fn channel_of(&self, remote: &DeviceId) -> Option<Channel> {
-        self.0.entries.read().unwrap().get(remote).cloned()
+        self.0.channels.read().unwrap().entries.get(remote).cloned()
     }
 
     pub fn create_channel(&self, remote: &DeviceId) -> Channel {
-        let mut entries = self.0.entries.write().unwrap();
-        entries.get(remote).map(|c| c.clone()).map_or_else(|| {
-            trace!("{} create channel on {}", self, remote);
+        let mut channels = self.0.channels.write().unwrap();
+
+        channels.entries.get(remote).map(|c| c.clone()).map_or_else(|| {
+            info!("{} create channel on {}", self, remote);
+            let initial_download_speed = channels.download_history_speed.average() / (channels.entries.len() as u32 + 1);
             let channel = Channel::new(
                 self.0.stack.clone(), 
                 remote.clone(), 
-                self.0.command_tunnel.clone());
-            entries.insert(remote.clone(), channel.clone());
+                self.0.command_tunnel.clone(), 
+                HistorySpeed::new(initial_download_speed, channels.download_history_speed.config().clone())
+            );
+            channels.entries.insert(remote.clone(), channel.clone());
 
             channel
         }, |c| c)
     } 
 
+    fn download_cur_speed(&self) -> u32 {
+        self.0.channels.read().unwrap().download_cur_speed
+    }
+
+    fn download_history_speed(&self) -> u32 {
+        self.0.channels.read().unwrap().download_history_speed.average()
+    }
+
     pub(crate) fn on_time_escape(&self, now: Timestamp) {
-        let channels: Vec<Channel> = self.0.entries.read().unwrap().values().cloned().collect();
+        let channels: Vec<Channel> = self.0.channels.read().unwrap().entries.values().cloned().collect();
         for channel in channels {
             channel.on_time_escape(now);
         }
