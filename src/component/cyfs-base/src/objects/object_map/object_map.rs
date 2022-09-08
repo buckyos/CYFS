@@ -2127,7 +2127,10 @@ impl ObjectMapDescContent {
     }
 
     pub fn set_class(&mut self, class: ObjectMapClass) {
-        self.class = class;
+        if self.class != class {
+            self.class = class;
+            self.mark_dirty();
+        }
     }
 
     pub fn content(&self) -> &ObjectMapContent {
