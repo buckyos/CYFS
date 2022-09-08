@@ -1,3 +1,5 @@
+use crate::GlobalStateCategory;
+
 use super::output_request::*;
 use cyfs_base::*;
 
@@ -5,6 +7,8 @@ use std::sync::Arc;
 
 #[async_trait::async_trait]
 pub trait GlobalStateOutputProcessor: Sync + Send + 'static {
+    fn get_category(&self) -> GlobalStateCategory;
+    
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootOutputRequest,

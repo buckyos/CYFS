@@ -1,13 +1,9 @@
 use cyfs_base::*;
+use cyfs_lib::*;
 
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct GlobalStatePathLinkItem {
-    pub source: String,
-    pub target: String,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GlobalStatePathLinkList {
@@ -80,29 +76,30 @@ impl GlobalStatePathLinkList {
         Ok(true)
     }
 
-    pub fn remove(&mut self, source: &str) -> BuckyResult<()> {
+    pub fn remove(&mut self, source: &str) -> BuckyResult<Option<GlobalStatePathLinkItem>> {
         let source = Self::fix_path(source)?;
         match self.list.binary_search_by(|item| item.source.cmp(&source)) {
             Ok(index) => {
                 let item = self.list.remove(index);
                 info!("remove path link: {} -> {}", source, item.target);
-                Ok(())
+                Ok(Some(item))
             }
             Err(_) => {
                 let msg = format!("remove path link but not found! {}", source);
                 warn!("{}", msg);
-                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
+                Ok(None)
             }
         }
     }
 
-    pub fn clear(&mut self) -> bool {
+    pub fn clear(&mut self) -> usize {
         if self.list.is_empty() {
-            return false;
+            return 0;
         }
 
+        let count = self.list.len();
         self.list.clear();
-        true
+        count
     }
     
     pub fn get(&self) -> Vec<GlobalStatePathLinkItem> {

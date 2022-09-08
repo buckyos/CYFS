@@ -1,9 +1,9 @@
 use super::super::meta::*;
 use super::data::*;
 use super::sql::*;
-use crate::access::*;
 use crate::prelude::*;
 use cyfs_base::*;
+use cyfs_lib::*;
 
 use rusqlite::{named_params, Connection, OptionalExtension};
 use std::cell::RefCell;
@@ -837,15 +837,17 @@ impl SqliteMetaStorage {
         };
 
         let conn = self.get_conn()?.borrow();
-        let count = conn.query_row(&EXISTS_SQL, params, |row| {
-            let count: i64 = row.get(0).unwrap();
-            Ok(count)
-        }).map_err(|e| {
-            let msg = format!("noc meta exists error: obj={}, err={}", req.object_id, e);
-            error!("{}", msg);
+        let count = conn
+            .query_row(&EXISTS_SQL, params, |row| {
+                let count: i64 = row.get(0).unwrap();
+                Ok(count)
+            })
+            .map_err(|e| {
+                let msg = format!("noc meta exists error: obj={}, err={}", req.object_id, e);
+                error!("{}", msg);
 
-            BuckyError::new(BuckyErrorCode::SqliteError, msg)
-        })?;
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?;
 
         let ret = if count > 0 {
             assert!(count == 1);

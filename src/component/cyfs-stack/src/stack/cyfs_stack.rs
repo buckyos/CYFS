@@ -19,6 +19,8 @@ use crate::ndn_api::{ChunkStoreReader, NDNBdtDataAclProcessor, NDNService};
 use crate::non::NONOutputTransformer;
 use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
+use crate::rmeta::GlobalStateMetaOutputTransformer;
+use crate::rmeta_api::GlobalStateMetaService;
 use crate::root_state::{GlobalStateAccessOutputTransformer, GlobalStateOutputTransformer};
 use crate::root_state_api::{GlobalStateLocalService, GlobalStateService};
 use crate::router_handler::RouterHandlersManager;
@@ -62,6 +64,9 @@ struct CyfsStackProcessors {
 
     pub local_cache: GlobalStateOutputProcessorRef,
     pub local_cache_access: GlobalStateAccessOutputProcessorRef,
+
+    pub root_state_meta: GlobalStateMetaOutputProcessorRef,
+    pub local_cache_meta: GlobalStateMetaOutputProcessorRef,
 }
 
 #[derive(Clone)]
@@ -118,6 +123,9 @@ pub struct CyfsStackImpl {
 
     // local_cache
     local_cache: GlobalStateLocalService,
+
+    // global_state_meta
+    global_state_meta: GlobalStateMetaService,
 }
 
 impl CyfsStackImpl {
@@ -128,7 +136,7 @@ impl CyfsStackImpl {
         known_objects: Vec<KnownObject>,
     ) -> BuckyResult<Self> {
         Self::register_custom_objects_format();
-        
+
         let stack_params = param.clone();
         let config = StackGlobalConfig::new(stack_params);
 
@@ -339,6 +347,18 @@ impl CyfsStackImpl {
         .await?;
         let current_root = root_state.local_service().state().get_current_root();
 
+        // load global-state meta
+        let global_state_meta = Self::load_global_state_meta(
+            isolate,
+            root_state.local_service(),
+            noc.clone_noc(),
+            acl_manager.clone(),
+            forward_manager.clone(),
+            zone_manager.clone(),
+            fail_handler.clone(),
+        )
+        .await;
+
         let front_service = if param.front.enable {
             let app_service =
                 AppService::new(&zone_manager, root_state.clone_global_state_processor()).await?;
@@ -413,6 +433,15 @@ impl CyfsStackImpl {
                 local_cache.clone_access_processor(),
                 device_id.clone(),
             ),
+
+            root_state_meta: GlobalStateMetaOutputTransformer::new(
+                global_state_meta.clone_processor(GlobalStateCategory::RootState),
+                device_id.clone(),
+            ),
+            local_cache_meta: GlobalStateMetaOutputTransformer::new(
+                global_state_meta.clone_processor(GlobalStateCategory::LocalCache),
+                device_id.clone(),
+            ),
         };
 
         let admin_manager = AdminManager::new(
@@ -430,6 +459,8 @@ impl CyfsStackImpl {
 
             root_state,
             local_cache,
+
+            global_state_meta,
 
             device_manager,
             zone_manager,
@@ -538,6 +569,7 @@ impl CyfsStackImpl {
             &stack.zone_role_manager,
             &stack.root_state,
             &stack.local_cache,
+            &stack.global_state_meta,
         );
 
         let interface = Arc::new(interface);
@@ -664,6 +696,34 @@ impl CyfsStackImpl {
         );
 
         Ok((root_state, local_state))
+    }
+
+    async fn load_global_state_meta(
+        isolate: &str,
+        root_state: &GlobalStateLocalService,
+        noc: Box<dyn NamedObjectCache>,
+        acl: AclManagerRef,
+        forward: ForwardProcessorManager,
+        zone_manager: ZoneManager,
+        fail_handler: ObjectFailHandler,
+    ) -> GlobalStateMetaService {
+        let root_state = root_state.clone_global_state_processor();
+        let root_state = GlobalStateOutputTransformer::new(
+            root_state,
+            zone_manager.get_current_device_id().to_owned(),
+        );
+
+        let global_state_meta = GlobalStateMetaService::new(
+            isolate,
+            root_state,
+            Arc::new(noc),
+            acl,
+            forward,
+            zone_manager,
+            fail_handler,
+        );
+
+        global_state_meta
     }
 
     async fn init_bdt_stack(
@@ -923,14 +983,13 @@ impl CyfsStackImpl {
 
     fn register_custom_objects_format() {
         use std::sync::atomic::{AtomicBool, Ordering};
-    
+
         static INIT_DONE: AtomicBool = AtomicBool::new(false);
         if !INIT_DONE.swap(true, Ordering::SeqCst) {
             cyfs_core::register_core_objects_format();
             cyfs_lib::register_core_objects_format();
         }
     }
-    
 }
 
 #[derive(Clone)]
@@ -1122,5 +1181,13 @@ impl UniCyfsStack for CyfsStack {
 
     fn local_cache_access(&self) -> &GlobalStateAccessOutputProcessorRef {
         &self.stack.processors.local_cache_access
+    }
+
+    fn root_state_meta(&self) -> &GlobalStateMetaOutputProcessorRef {
+        &self.stack.processors.root_state_meta
+    }
+
+    fn local_cache_meta(&self) -> &GlobalStateMetaOutputProcessorRef {
+        &self.stack.processors.local_cache_meta
     }
 }

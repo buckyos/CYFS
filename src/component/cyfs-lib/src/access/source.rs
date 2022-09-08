@@ -1,4 +1,4 @@
-use super::access::*;
+use super::access_string::*;
 use cyfs_base::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

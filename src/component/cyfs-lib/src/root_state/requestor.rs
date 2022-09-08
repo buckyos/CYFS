@@ -175,6 +175,10 @@ impl GlobalStateRequestor {
 
 #[async_trait::async_trait]
 impl GlobalStateOutputProcessor for GlobalStateRequestor {
+    fn get_category(&self) -> GlobalStateCategory {
+        self.category
+    }
+    
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootOutputRequest,

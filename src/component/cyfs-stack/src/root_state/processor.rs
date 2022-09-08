@@ -7,6 +7,8 @@ use std::sync::Arc;
 pub trait GlobalStateInputProcessor: Sync + Send + 'static {
     fn create_op_env_processor(&self) -> OpEnvInputProcessorRef;
 
+    fn get_category(&self) -> GlobalStateCategory;
+
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootInputRequest,

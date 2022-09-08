@@ -58,6 +58,10 @@ impl GlobalStateManager {
         Ok(ret)
     }
 
+    pub fn category(&self) -> GlobalStateCategory {
+        self.category
+    }
+
     pub fn access_mode(&self) -> GlobalStateAccessMode {
         self.global_root_state.access_mode()
     }

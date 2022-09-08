@@ -27,7 +27,6 @@ cyfs-core = { path = "../../component/cyfs-core" }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 thread_local = "1.1"
 hex = "0.4"
-intbits = "0.2"
 once_cell = "1.12"
 
 [dev-dependencies]

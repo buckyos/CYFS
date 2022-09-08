@@ -82,3 +82,6 @@ pub const CYFS_OP_ENV_TYPE: &str = "cyfs-op-env-type";
 pub const CYFS_OP_ENV_PATH: &str = "cyfs-op-env-path";
 pub const CYFS_OP_ENV_KEY: &str = "cyfs-op-env-key";
 pub const CYFS_OP_ENV_VALUE: &str = "cyfs-op-env-value";
+
+// meta
+pub const CYFS_META_ACTION: &str = "cyfs-meta-aciton";

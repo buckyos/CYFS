@@ -9,6 +9,7 @@ use crate::app::AuthenticatedAppList;
 use crate::events::RouterEventsManager;
 use crate::interface::http_ws_listener::ObjectHttpWSService;
 use crate::name::NameResolver;
+use crate::rmeta_api::GlobalStateMetaService;
 use crate::root_state_api::*;
 use crate::router_handler::RouterHandlersManager;
 use crate::stack::ObjectServices;
@@ -125,9 +126,9 @@ impl ObjectListenerManager {
         role_manager: &ZoneRoleManager,
         root_state: &GlobalStateService,
         local_cache: &GlobalStateLocalService,
+        global_state_meta: &GlobalStateMetaService,
     ) {
         assert!(self.listeners.is_empty());
-
 
         let default_handler = HttpDefaultHandler::default();
 
@@ -143,15 +144,13 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                global_state_meta,
                 name_resolver,
                 role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
-            let http_server = DefaultHttpServer::new(
-                raw_handler.into(),
-                default_handler.clone(),
-            );
+            let http_server = DefaultHttpServer::new(raw_handler.into(), default_handler.clone());
             self.http_bdt_server = Some(http_server.into());
         }
 
@@ -166,15 +165,13 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                global_state_meta,
                 name_resolver,
                 role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
-            let http_server = DefaultHttpServer::new(
-                raw_handler.into(),
-                default_handler.clone(),
-            );
+            let http_server = DefaultHttpServer::new(raw_handler.into(), default_handler.clone());
             self.http_tcp_server = Some(http_server.into());
         }
 
@@ -189,6 +186,7 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                global_state_meta,
                 name_resolver,
                 role_manager.zone_manager(),
             );

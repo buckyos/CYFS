@@ -1,8 +1,7 @@
-use cyfs_lib::NONObjectInfo;
-use cyfs_core::*;
-use cyfs_base::*;
 use crate::*;
-
+use cyfs_base::*;
+use cyfs_core::*;
+use cyfs_lib::*;
 
 fn new_object(id: &str) -> NONObjectInfo {
     let obj = Text::create(id, "", "");
@@ -13,10 +12,7 @@ fn new_dec(name: &str) -> ObjectId {
     let owner_id = PeopleId::default();
     let dec_id = DecApp::generate_id(owner_id.into(), name);
 
-    info!(
-        "generage random name={}, dec_id={}",
-        name, dec_id
-    );
+    info!("generage random name={}, dec_id={}", name, dec_id);
 
     dec_id
 }
@@ -68,7 +64,7 @@ async fn test_noc() {
     } else {
         unreachable!();
     }
-    
+
     // exists
     let req = NamedObjectCacheExistsObjectRequest {
         source: RequestSourceInfo::new_local_system(),
@@ -98,7 +94,15 @@ async fn test_noc() {
     let ret = noc.get_object(&get_req).await.unwrap();
     assert!(ret.is_some());
     let data = ret.unwrap();
-    let got_update_time = data.object.as_ref().unwrap().object.as_ref().unwrap().update_time().unwrap();
+    let got_update_time = data
+        .object
+        .as_ref()
+        .unwrap()
+        .object
+        .as_ref()
+        .unwrap()
+        .update_time()
+        .unwrap();
     assert_eq!(got_update_time, update_time);
 
     // get by unknown device
@@ -149,8 +153,8 @@ async fn test_noc() {
         }
     }
 
-     // delete by system
-     let delete_req = NamedObjectCacheDeleteObjectRequest1 {
+    // delete by system
+    let delete_req = NamedObjectCacheDeleteObjectRequest1 {
         source: RequestSourceInfo::new_local_system(),
         object_id: object_id.to_owned(),
         flags: CYFS_NOC_FLAG_DELETE_WITH_QUERY,
@@ -158,9 +162,16 @@ async fn test_noc() {
 
     let ret = noc.delete_object(&delete_req).await.unwrap();
     assert_eq!(ret.deleted_count, 1);
-    let got_update_time = ret.object.as_ref().unwrap().object.as_ref().unwrap().update_time().unwrap();
+    let got_update_time = ret
+        .object
+        .as_ref()
+        .unwrap()
+        .object
+        .as_ref()
+        .unwrap()
+        .update_time()
+        .unwrap();
     assert_eq!(got_update_time, update_time);
-
 }
 
 #[test]

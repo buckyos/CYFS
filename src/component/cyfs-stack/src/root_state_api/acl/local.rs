@@ -29,6 +29,10 @@ impl GlobalStateInputProcessor for GlobalStateAclInnerInputProcessor {
         OpEnvAclInnerInputProcessor::new(self.acl.clone(), processor)
     }
 
+    fn get_category(&self) -> GlobalStateCategory {
+        self.next.get_category()
+    }
+
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootInputRequest,

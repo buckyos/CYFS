@@ -4,6 +4,7 @@ use crate::front::{FrontProtocolHandler, FrontRequestHandlerEndpoint};
 use crate::name::NameResolver;
 use crate::ndn_api::*;
 use crate::non_api::*;
+use crate::rmeta_api::*;
 use crate::root_state_api::*;
 use crate::router_handler::{
     RouterHandlerHttpHandler, RouterHandlerRequestHandlerEndpoint, RouterHandlersManager,
@@ -71,6 +72,7 @@ impl ObjectHttpListener {
         sync_client: Option<&Arc<DeviceSyncClient>>,
         root_state: &GlobalStateService,
         local_cache: &GlobalStateLocalService,
+        global_state_meta: &GlobalStateMetaService,
         name_resolver: &NameResolver,
         zone_manager: &ZoneManager,
     ) -> Self {
@@ -151,6 +153,28 @@ impl ObjectHttpListener {
 
         let handler = GlobalStateAccessRequestHandler::new(root_state.clone_access_processor());
         GlobalStateAccessRequestHandlerEndpoint::register_server(
+            &protocol,
+            GlobalStateCategory::LocalCache.as_str(),
+            &handler,
+            &mut server,
+        );
+
+        // root-state meta
+        let handler = GlobalStateMetaRequestHandler::new(
+            global_state_meta.clone_processor(GlobalStateCategory::RootState),
+        );
+        GlobalStateMetaRequestHandlerEndpoint::register_server(
+            &protocol,
+            GlobalStateCategory::RootState.as_str(),
+            &handler,
+            &mut server,
+        );
+
+        // local-cache meta
+        let handler = GlobalStateMetaRequestHandler::new(
+            global_state_meta.clone_processor(GlobalStateCategory::LocalCache),
+        );
+        GlobalStateMetaRequestHandlerEndpoint::register_server(
             &protocol,
             GlobalStateCategory::LocalCache.as_str(),
             &handler,

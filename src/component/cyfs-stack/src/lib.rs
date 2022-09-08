@@ -27,6 +27,7 @@ mod root_state;
 mod root_state_api;
 mod config;
 mod front;
+mod rmeta_api;
 mod rmeta;
 
 pub use stack::*;

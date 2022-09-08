@@ -1,7 +1,6 @@
+use super::super::meta::NamedObjectMetaData;
 use crate::prelude::NamedObjectStorageCategory;
 use cyfs_base::*;
-
-use super::super::meta::NamedObjectMetaData;
 
 use rusqlite::{types::FromSql, Row};
 use std::str::FromStr;
@@ -105,7 +104,6 @@ impl TryInto<NamedObjectMetaUpdateInfo> for NamedObjectMetaUpdateInfoRaw {
     }
 }
 
-
 pub(super) struct NamedObjectMetaAccessInfoRaw {
     pub create_dec_id: String,
 
@@ -181,19 +179,18 @@ impl TryFrom<&Row<'_>> for NamedObjectMetaDataRaw {
     }
 }
 
-fn convert_option_value<T: FromStr<Err = BuckyError>>(s: &Option<String>) -> BuckyResult<Option<T>> {
+fn convert_option_value<T: FromStr<Err = BuckyError>>(
+    s: &Option<String>,
+) -> BuckyResult<Option<T>> {
     match s {
-        Some(s) => {
-            Ok(Some(T::from_str(s)?))
-        }
-        None => Ok(None)
+        Some(s) => Ok(Some(T::from_str(s)?)),
+        None => Ok(None),
     }
 }
 
 impl TryInto<NamedObjectMetaData> for NamedObjectMetaDataRaw {
     type Error = BuckyError;
     fn try_into(self) -> Result<NamedObjectMetaData, Self::Error> {
-
         Ok(NamedObjectMetaData {
             object_id: ObjectId::from_str(&self.object_id)?,
             owner_id: convert_option_value(&self.owner_id)?,
@@ -202,7 +199,8 @@ impl TryInto<NamedObjectMetaData> for NamedObjectMetaDataRaw {
             update_time: self.update_time,
             expired_time: self.expired_time,
 
-            storage_category: NamedObjectStorageCategory::try_from(self.storage_category).unwrap_or(NamedObjectStorageCategory::default()),
+            storage_category: NamedObjectStorageCategory::try_from(self.storage_category)
+                .unwrap_or(NamedObjectStorageCategory::default()),
 
             context: self.context,
 

@@ -34,6 +34,10 @@ impl GlobalStateOutputTransformer {
 
 #[async_trait::async_trait]
 impl GlobalStateOutputProcessor for GlobalStateOutputTransformer {
+    fn get_category(&self) -> GlobalStateCategory {
+        self.processor.get_category()
+    }
+
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootOutputRequest,
@@ -351,6 +355,10 @@ impl GlobalStateInputTransformer {
 impl GlobalStateInputProcessor for GlobalStateInputTransformer {
     fn create_op_env_processor(&self) -> OpEnvInputProcessorRef {
         unreachable!();
+    }
+
+    fn get_category(&self) -> GlobalStateCategory {
+        self.processor.get_category()
     }
 
     async fn get_current_root(

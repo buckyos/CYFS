@@ -1,7 +1,6 @@
 mod old;
 
 mod blob;
-mod access;
 mod meta;
 mod storage;
 mod prelude;
@@ -9,7 +8,6 @@ mod cache;
 mod noc;
 
 pub use old::*;
-pub use access::*;
 pub use noc::*;
 pub use prelude::*;
 

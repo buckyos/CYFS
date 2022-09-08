@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GlobalStateLocalService {
-    root_state: Arc<GlobalStateManager>,
+    global_state: Arc<GlobalStateManager>,
 
-    // only valid for root_state category
+    // only valid for global_state category
     access_service: Arc<GlobalStateAccessService>,
 }
 
@@ -23,15 +23,15 @@ impl GlobalStateLocalService {
         noc: Box<dyn NamedObjectCache>,
         config: StackGlobalConfig,
     ) -> BuckyResult<Self> {
-        let root_state =
+        let global_state =
             GlobalStateManager::load(category, device_id, owner, noc.clone_noc(), config).await?;
-        let root_state = Arc::new(root_state);
+        let global_state = Arc::new(global_state);
 
         let access_service =
-            GlobalStateAccessService::new(device_id.to_owned(), root_state.clone(), noc);
+            GlobalStateAccessService::new(device_id.to_owned(), global_state.clone(), noc);
 
         let ret = Self {
-            root_state,
+            global_state,
             access_service: Arc::new(access_service),
         };
 
@@ -39,7 +39,7 @@ impl GlobalStateLocalService {
     }
 
     pub fn state(&self) -> &Arc<GlobalStateManager> {
-        &self.root_state
+        &self.global_state
     }
 
     pub fn clone_global_state_processor(&self) -> GlobalStateInputProcessorRef {
@@ -72,13 +72,17 @@ impl GlobalStateInputProcessor for GlobalStateLocalService {
         Self::clone_op_env_processor(&self)
     }
 
+    fn get_category(&self) -> GlobalStateCategory {
+        self.global_state.category()
+    }
+
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootInputRequest,
     ) -> BuckyResult<RootStateGetCurrentRootInputResponse> {
         let resp = match req.root_type {
             RootStateRootType::Global => {
-                let (root, revision) = self.root_state.get_current_root();
+                let (root, revision) = self.global_state.get_current_root();
 
                 RootStateGetCurrentRootInputResponse {
                     root,
@@ -97,7 +101,7 @@ impl GlobalStateInputProcessor for GlobalStateLocalService {
                     }
                 };
 
-                let ret = self.root_state.get_dec_root(&dec_id).await?;
+                let ret = self.global_state.get_dec_root(&dec_id).await?;
                 if ret.is_none() {
                     let msg = format!("get_dec_root but not found! dec={}", dec_id);
                     error!("{}", msg);
@@ -129,7 +133,7 @@ impl GlobalStateInputProcessor for GlobalStateLocalService {
             }
         };
 
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, true).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, true).await?;
 
         let sid = match req.op_env_type {
             ObjectMapOpEnvType::Path => {
@@ -164,7 +168,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
     async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()> {
         let dec_id = Self::get_dec_id(&req.common)?;
 
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
         let op_env = dec_root_manager
             .managed_envs()
             .get_single_op_env(req.common.sid)?;
@@ -174,7 +178,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
     async fn load_by_path(&self, req: OpEnvLoadByPathInputRequest) -> BuckyResult<()> {
         let dec_id = Self::get_dec_id(&req.common)?;
 
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
         let op_env = dec_root_manager
             .managed_envs()
             .get_single_op_env(req.common.sid)?;
@@ -186,7 +190,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
     async fn create_new(&self, req: OpEnvCreateNewInputRequest) -> BuckyResult<()> {
         let dec_id = Self::get_dec_id(&req.common)?;
 
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let resp = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
@@ -222,7 +226,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
     async fn lock(&self, req: OpEnvLockInputRequest) -> BuckyResult<()> {
         let dec_id = Self::get_dec_id(&req.common)?;
 
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
         let op_env = dec_root_manager
             .managed_envs()
             .get_path_op_env(req.common.sid)?;
@@ -237,7 +241,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         req: OpEnvGetCurrentRootInputRequest,
     ) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let dec_root = dec_root_manager
             .managed_envs()
@@ -246,7 +250,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
 
         let resp = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
-                let (root, revision) = self.root_state.get_dec_relation_root_info(&dec_root);
+                let (root, revision) = self.global_state.get_dec_relation_root_info(&dec_root);
 
                 OpEnvCommitInputResponse {
                     root,
@@ -267,7 +271,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
     // transcation
     async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let dec_root = match req.op_type {
             Some(OpEnvCommitOpType::Update) => {
@@ -286,7 +290,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
 
         let resp = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
-                let (root, revision) = self.root_state.get_dec_relation_root_info(&dec_root);
+                let (root, revision) = self.global_state.get_dec_relation_root_info(&dec_root);
 
                 OpEnvCommitInputResponse {
                     root,
@@ -306,7 +310,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
 
     async fn abort(&self, req: OpEnvAbortInputRequest) -> BuckyResult<()> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         dec_root_manager.managed_envs().abort(req.common.sid)
     }
@@ -317,7 +321,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         req: OpEnvGetByKeyInputRequest,
     ) -> BuckyResult<OpEnvGetByKeyInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let value = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
@@ -344,7 +348,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
 
     async fn insert_with_key(&self, req: OpEnvInsertWithKeyInputRequest) -> BuckyResult<()> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let value = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
@@ -372,7 +376,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         req: OpEnvSetWithKeyInputRequest,
     ) -> BuckyResult<OpEnvSetWithKeyInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let prev_value = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
@@ -418,7 +422,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         req: OpEnvRemoveWithKeyInputRequest,
     ) -> BuckyResult<OpEnvRemoveWithKeyInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let value = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
@@ -453,7 +457,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         req: OpEnvContainsInputRequest,
     ) -> BuckyResult<OpEnvContainsInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let result = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
@@ -487,7 +491,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
 
     async fn insert(&self, req: OpEnvInsertInputRequest) -> BuckyResult<OpEnvInsertInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let result = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
@@ -521,7 +525,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
 
     async fn remove(&self, req: OpEnvRemoveInputRequest) -> BuckyResult<OpEnvRemoveInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let result = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
@@ -557,7 +561,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
     async fn next(&self, req: OpEnvNextInputRequest) -> BuckyResult<OpEnvNextInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
 
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
         let op_env = dec_root_manager
             .managed_envs()
             .get_single_op_env(req.common.sid)?;
@@ -570,7 +574,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
     async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()> {
         let dec_id = Self::get_dec_id(&req.common)?;
 
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
         let op_env = dec_root_manager
             .managed_envs()
             .get_single_op_env(req.common.sid)?;
@@ -582,7 +586,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
     async fn list(&self, req: OpEnvListInputRequest) -> BuckyResult<OpEnvListInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
 
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let list = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
@@ -620,7 +624,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         req: OpEnvMetadataInputRequest,
     ) -> BuckyResult<OpEnvMetadataInputResponse> {
         let dec_id = Self::get_dec_id(&req.common)?;
-        let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
+        let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, false).await?;
 
         let value = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {

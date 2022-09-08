@@ -215,6 +215,10 @@ impl GlobalStateInputProcessor for GlobalStateRouter {
         self.clone_op_env_processor()
     }
 
+    fn get_category(&self) -> GlobalStateCategory {
+        self.category
+    }
+
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootInputRequest,

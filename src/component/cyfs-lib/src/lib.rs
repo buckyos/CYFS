@@ -1,3 +1,4 @@
+mod access;
 mod acl;
 mod admin;
 mod base;
@@ -15,7 +16,9 @@ mod trans;
 mod util;
 mod ws;
 mod zone;
+mod rmeta;
 
+pub use access::*;
 pub use crate::util::*;
 pub use acl::*;
 pub use admin::*;
@@ -33,6 +36,7 @@ pub use sync::*;
 pub use trans::*;
 pub use ws::*;
 pub use zone::*;
+pub use rmeta::*;
 
 // 重新导出cache相关接口，由于bdt层的依赖关系，只能放在util工程
 pub use cyfs_util::cache::*;

@@ -7,7 +7,6 @@ use super::storage::*;
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GlobalStatePathMeta {
@@ -47,8 +46,10 @@ impl GlobalStatePathMetaSyncCollection {
     }
 
     fn dump(&self) {
-        let meta = self.meta.coll().read().unwrap();
-        let data = serde_json::to_string(&meta).unwrap();
+        let data = {
+            let meta = self.meta.coll().read().unwrap();
+            serde_json::to_string(&meta as &GlobalStatePathMeta).unwrap()
+        };
 
         let storage = self.storage.clone();
         async_std::task::spawn(async move {
@@ -56,7 +57,7 @@ impl GlobalStatePathMetaSyncCollection {
         });
     }
 
-    pub async fn add_access(&mut self, item: GlobalStatePathAccessItem) -> BuckyResult<bool> {
+    pub async fn add_access(&self, item: GlobalStatePathAccessItem) -> BuckyResult<bool> {
         {
             let mut meta = self.meta.coll().write().unwrap();
             let ret = meta.access.add(item);
@@ -74,7 +75,7 @@ impl GlobalStatePathMetaSyncCollection {
     }
 
     pub async fn remove_access(
-        &mut self,
+        &self,
         item: GlobalStatePathAccessItem,
     ) -> BuckyResult<Option<GlobalStatePathAccessItem>> {
         let ret = {
@@ -96,14 +97,15 @@ impl GlobalStatePathMetaSyncCollection {
     }
 
     pub async fn clear_access(
-        &mut self,
-    ) -> BuckyResult<bool> {
-        {
+        &self,
+    ) -> BuckyResult<usize> {
+        let ret = {
             let mut meta = self.meta.coll().write().unwrap();
-            let ret = meta.access.clear();
-            if !ret {
-                return Ok(ret);
-            }
+            meta.access.clear()
+        };
+
+        if ret == 0 {
+            return Ok(ret);
         }
 
         self.meta.set_dirty(true);
@@ -111,16 +113,16 @@ impl GlobalStatePathMetaSyncCollection {
 
         self.dump();
 
-        Ok(true)
+        Ok(ret)
     }
 
-    pub fn check_access(&self, req: GlobalStateAccessRequest<'d, 'a, 'b>) -> BuckyResult<()> {
+    pub fn check_access<'d, 'a, 'b>(&self, req: GlobalStateAccessRequest<'d, 'a, 'b>) -> BuckyResult<()> {
         let meta = self.meta.coll().read().unwrap();
         meta.access.check(req)
     }
 
     pub async fn add_link(
-        &mut self,
+        &self,
         source: impl Into<String> + AsRef<str>,
         target: impl Into<String> + AsRef<str>,
     ) -> BuckyResult<bool> {
@@ -140,35 +142,40 @@ impl GlobalStatePathMetaSyncCollection {
         Ok(true)
     }
 
-    pub async fn remove_link(&mut self, source: &str) -> BuckyResult<()> {
-        {
+    pub async fn remove_link(&self, source: &str) -> BuckyResult<Option<GlobalStatePathLinkItem>> {
+        let ret = {
             let mut meta = self.meta.coll().write().unwrap();
-            meta.link.remove(source)?;
-        }
+            meta.link.remove(source)?
+        };
 
+        if ret.is_none() {
+            return Ok(None);
+        }
+        
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
         self.dump();
 
-        Ok(())
+        Ok(ret)
     }
 
-    pub async fn clear_link(&mut self) -> BuckyResult<bool> {
-        {
+    pub async fn clear_link(&self) -> BuckyResult<usize> {
+        let ret = {
             let mut meta = self.meta.coll().write().unwrap();
-            let ret = meta.link.clear();
-            if !ret {
-                return Ok(ret);
-            }
+            meta.link.clear()
+        };
+
+        if ret == 0 {
+            return Ok(ret);
         }
 
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
         self.dump();
-        
-        Ok(true)
+
+        Ok(ret)
     }
 
     pub fn resolve_link(&self, source: &str) -> BuckyResult<Option<String>> {
