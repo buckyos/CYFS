@@ -71,9 +71,9 @@ impl PartialOrd for GlobalStatePathGroupAccess {
                 Self::Specified(right) => left.partial_cmp(&right),
                 Self::Default(_) => Some(Ordering::Less),
             },
-            Self::Default(left) => match other {
+            Self::Default(_left) => match other {
                 Self::Specified(_) => Some(Ordering::Greater),
-                Self::Default(right) => left.partial_cmp(&right),
+                Self::Default(_right) => Some(Ordering::Equal),
             },
         }
     }

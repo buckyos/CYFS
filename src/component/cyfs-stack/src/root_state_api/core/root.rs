@@ -92,11 +92,13 @@ impl GlobalStateRoot {
         } else {
             info!("load global state success! category={}, root={}", category, root.as_ref().unwrap());
 
-            // FIXME Compatibility code, remove later
+            /*
+            // Compatibility code, remove later
             match Self::try_update_root_class(&noc_cache, root.as_ref().unwrap(), ObjectMapClass::GlobalRoot).await {
                 Some(id) => root = Some(id),
                 None => {},
             }
+            */
         }
 
         // 创建基于global root的管理器，用以操作所有dec root状态的改变
@@ -180,6 +182,7 @@ impl GlobalStateRoot {
                     self.category, dec_id, dec_root
                 );
 
+                /*
                 // FIXME Compatibility code, remove later
                 let info = match self.try_update_dec_root_class(dec_id, &dec_root).await {
                     Some(info) => info,
@@ -190,13 +193,12 @@ impl GlobalStateRoot {
                         }
                     },
                 };
+                */
 
-                /* 
                 let info = DecRootInfo {
                     dec_root,
                     root: env.root().to_owned(),
                 };
-                */
 
                 Ok(Some(info))
             }
@@ -305,6 +307,7 @@ impl GlobalStateRoot {
         Ok(global_root_id)
     }
 
+    /*
     // FIXME for beta version compatible, remove the two function later
     async fn try_update_root_class(noc_cache: &ObjectMapNOCCacheRef, root: &ObjectId, class: ObjectMapClass) -> Option<ObjectId> {
         let ret = noc_cache.get_object_map(root).await.unwrap();
@@ -342,6 +345,8 @@ impl GlobalStateRoot {
             root: global_root_id,
         })
     }
+
+    */
 }
 
 pub(crate) type GlobalStateRootRef = Arc<GlobalStateRoot>;

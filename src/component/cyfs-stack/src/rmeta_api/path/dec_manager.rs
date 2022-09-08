@@ -7,7 +7,7 @@ use cyfs_util::ReenterCallManager;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
-const CYFS_GLOBAL_STATE_PATH_META: &str = ".cyfs/meta";
+const CYFS_GLOBAL_STATE_PATH_META: &str = "/.cyfs/meta";
 
 struct GlobalStateDecPathMetaHolder {
     root_state: GlobalStateOutputProcessorRef,
@@ -107,6 +107,12 @@ impl GlobalStateDecPathMetaHolder {
 
             return Err(e);
         }
+
+        info!("load global state meta success! dec={}, category={}, content={}", 
+            GlobalStatePathMetaStorage::get_dec_string(&dec_id),
+            category,
+            serde_json::to_string(&data.coll().read().unwrap() as &GlobalStatePathMeta).unwrap(),
+        );
 
         let ret = GlobalStatePathMetaSyncCollection::new(storage, data);
         Ok(ret)

@@ -21,6 +21,8 @@ mod test_drive;
 mod test_obj_searcher;
 mod zone;
 mod role;
+mod storage;
+mod meta;
 
 pub async fn test_restart() {
     let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
@@ -32,6 +34,9 @@ pub async fn test_restart() {
 pub async fn test() {
     // role::test().await;
 
+    meta::test().await;
+    return;
+    
     codec::test().await;
     test_restart().await;
 

@@ -80,14 +80,13 @@ impl GlobalStatePathMetaSyncCollection {
     ) -> BuckyResult<Option<GlobalStatePathAccessItem>> {
         let ret = {
             let mut meta = self.meta.coll().write().unwrap();
-            let ret = meta.access.remove(item);
-            if !ret.is_none() {
-                return Ok(None);
-            }
-
-            ret
+            meta.access.remove(item)
         };
 
+        if ret.is_none() {
+            return Ok(None);
+        }
+        
         self.meta.set_dirty(true);
         self.meta.save().await?;
 
