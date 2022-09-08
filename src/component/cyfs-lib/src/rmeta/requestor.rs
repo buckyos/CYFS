@@ -56,7 +56,7 @@ impl GlobalStateMetaRequestor {
     ) -> Self {
         let addr = requestor.remote_addr();
 
-        let url = format!("http://{}/{}/meta", addr, category.as_str());
+        let url = format!("http://{}/{}/meta/", addr, category.as_str());
         let url = Url::parse(&url).unwrap();
 
         let ret = Self {
