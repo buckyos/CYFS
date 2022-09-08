@@ -28,3 +28,4 @@ cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
 hex = "0.4"
 walkdir = "2.3"
 async-trait = "0.1.53"
+once_cell = "1.13"
