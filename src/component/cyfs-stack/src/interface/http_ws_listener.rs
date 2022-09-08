@@ -83,12 +83,15 @@ impl ObjectHttpWSService {
         // http请求都是同机请求，需要设定为当前device
         req.insert_header(cyfs_base::CYFS_REMOTE_DEVICE, self.device_id.to_string());
 
-        let remote = session_requestor
-            .session()
-            .unwrap()
-            .conn_info()
-            .1
-            .to_owned();
+        let session = session_requestor.session();
+        if session.is_none() {
+            let msg = format!("ws http request but session is closed, sid={}", sid,);
+            warn!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::ConnectionReset, msg));
+        }
+
+        let remote = session.unwrap().conn_info().1.to_owned();
         let source = HttpRequestSource::Local(remote);
 
         let method = req.method();
