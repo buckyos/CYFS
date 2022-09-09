@@ -7,8 +7,6 @@ use cyfs_util::ReenterCallManager;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
-const CYFS_GLOBAL_STATE_PATH_META: &str = "/.cyfs/meta";
-
 struct GlobalStateDecPathMetaHolder {
     root_state: GlobalStateOutputProcessorRef,
     category: GlobalStateCategory,
@@ -82,7 +80,7 @@ impl GlobalStateDecPathMetaHolder {
         noc: Arc<Box<dyn NamedObjectCache>>,
         storage: Arc<GlobalStatePathMetaStorage>,
     ) -> BuckyResult<GlobalStatePathMetaSyncCollection> {
-        let meta_path = format!("{}/{}", CYFS_GLOBAL_STATE_PATH_META, category.as_str());
+        let meta_path = format!("{}/{}", CYFS_GLOBAL_STATE_META_PATH, category.as_str());
 
         let id = match category {
             GlobalStateCategory::RootState => "cyfs-root-state-path-meta",
@@ -108,7 +106,8 @@ impl GlobalStateDecPathMetaHolder {
             return Err(e);
         }
 
-        info!("load global state meta success! dec={}, category={}, content={}", 
+        info!(
+            "load global state meta success! dec={}, category={}, content={}",
             GlobalStatePathMetaStorage::get_dec_string(&dec_id),
             category,
             serde_json::to_string(&data.coll().read().unwrap() as &GlobalStatePathMeta).unwrap(),
@@ -140,10 +139,7 @@ impl GlobalStateDecPathMetaManager {
             noc.clone(),
         );
 
-        Self {
-            dec_id,
-            meta,
-        }
+        Self { dec_id, meta }
     }
 
     pub async fn get_global_state_meta(&self) -> BuckyResult<GlobalStatePathMetaSyncCollection> {
