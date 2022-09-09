@@ -235,14 +235,31 @@ pub struct ZoneContainer {
     device_id: DeviceId,
     noc: Arc<Box<dyn NamedObjectCache>>,
     inner: Arc<Mutex<ZoneContainerInner>>,
+    state: Arc<StateStorageSet>,
 }
 
 impl ZoneContainer {
-    pub fn new(device_id: DeviceId, noc: Arc<Box<dyn NamedObjectCache>>) -> Self {
+    pub fn new(
+        device_id: DeviceId,
+        global_state: GlobalStateOutputProcessorRef,
+        noc: Arc<Box<dyn NamedObjectCache>>,
+    ) -> Self {
+        let storage = StateStorage::new(
+            global_state,
+            CYFS_KNOWN_ZONES_PATH,
+            ObjectMapSimpleContentType::Set,
+            None,
+            None,
+        );
+
+        storage.start_save(std::time::Duration::from_secs(60 * 5));
+        let state = StateStorageSet::new(storage);
+
         Self {
             device_id,
             noc,
             inner: Arc::new(Mutex::new(ZoneContainerInner::new())),
+            state: Arc::new(state),
         }
     }
 
@@ -332,6 +349,41 @@ impl ZoneContainer {
     }
 
     pub async fn load_from_noc(&self) -> BuckyResult<()> {
+        self.state.storage().init().await?;
+
+        let list = self.state.list().await?;
+
+        // load all zones
+        for zone_id in list {
+            let req = NamedObjectCacheGetObjectRequest {
+                protocol: NONProtocol::Native,
+                source: DeviceId::default(),
+                object_id: zone_id,
+            };
+
+            match self.noc.get_object(&req).await {
+                Ok(Some(obj_info)) => {
+                    let buf = obj_info.object_raw.unwrap();
+                    let zone_id = obj_info.object_id.try_into().unwrap();
+                    match Zone::raw_decode(&buf) {
+                        Ok((zone, _)) => {
+                            let mut zone_container = self.inner.lock().unwrap();
+                            zone_container.on_new_zone(zone_id, zone);
+                        }
+                        Err(e) => {
+                            error!("decode zone object error: zone={}, {}", zone_id, e);
+                        }
+                    }
+                }
+                Ok(None) => {
+                    warn!("load zone from noc but not found! zone={}", zone_id);
+                }
+                Err(e) => {
+                    error!("load zone from noc but failed! zone={}, {}", zone_id, e);
+                }
+            }
+        }
+
         // 过滤noc里面管理的所有的zone对象
         let mut filter = NamedObjectCacheSelectObjectFilter::default();
         filter.obj_type = Some(CoreObjectType::Zone.into());
@@ -379,6 +431,19 @@ impl ZoneContainer {
 
     // 保存zone对象到本地noc
     async fn update_noc(&self, zone_id: &ZoneId, zone: &Zone) {
+        match self.state.insert(zone_id.object_id()).await {
+            Ok(true) => {
+                info!("insert zone to global state success! zone={}", zone_id);
+            }
+            Ok(false) => {}
+            Err(e) => {
+                error!(
+                    "insert zone to global state failed! zone={}, {}",
+                    zone_id, e
+                );
+            }
+        }
+
         let object_raw = zone.to_vec().unwrap();
         let (object, _) = AnyNamedObject::raw_decode(&object_raw).unwrap();
 
@@ -416,6 +481,15 @@ impl ZoneContainer {
     }
 
     async fn remove_from_noc(&self, zone_id: &ZoneId) {
+        if let Err(e) = self.state.remove(zone_id.object_id()).await {
+            error!(
+                "remove zone from global state failed! zone={}, {}",
+                zone_id, e
+            );
+        } else {
+            info!("remove zone from global state success! zone={}", zone_id);
+        }
+
         let info = NamedObjectCacheDeleteObjectRequest {
             protocol: NONProtocol::Native,
             source: self.device_id.clone(),

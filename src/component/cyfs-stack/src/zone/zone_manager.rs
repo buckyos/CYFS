@@ -1,4 +1,4 @@
-use super::failed_cache::ZoneFailedCache;
+use super::{failed_cache::ZoneFailedCache, friends::FriendsManager};
 use super::zone_container::ZoneContainer;
 use crate::meta::*;
 use crate::resolver::DeviceCache;
@@ -70,6 +70,8 @@ pub struct ZoneManager {
 
     fail_handler: ObjectFailHandler,
 
+    friends_manager: FriendsManager,
+
     search_zone_reenter_call_manager: ReenterCallManager<DeviceId, BuckyResult<Zone>>,
     search_zone_ood_by_owner_reenter_call_manager:
         ReenterCallManager<ObjectId, BuckyResult<(ObjectId, OODWorkMode, Vec<DeviceId>)>>,
@@ -83,6 +85,8 @@ impl ZoneManager {
         device_category: DeviceCategory,
         meta_cache: Box<dyn MetaCache>,
         fail_handler: ObjectFailHandler,
+        root_state: GlobalStateOutputProcessorRef,
+        local_cache: GlobalStateOutputProcessorRef,
     ) -> Self {
         let noc = Arc::new(noc);
         let device_manager = Arc::new(device_manager);
@@ -93,7 +97,7 @@ impl ZoneManager {
             device_manager,
             device_id: device_id.clone(),
             device_category,
-            zones: ZoneContainer::new(device_id, noc),
+            zones: ZoneContainer::new(device_id, local_cache, noc),
             current_info: Arc::new(Mutex::new(None)),
             meta_cache,
             zone_changed_event: ZoneChangeEventManager::new(),
@@ -101,6 +105,7 @@ impl ZoneManager {
             fail_handler,
             search_zone_reenter_call_manager: ReenterCallManager::new(),
             search_zone_ood_by_owner_reenter_call_manager: ReenterCallManager::new(),
+            friends_manager: FriendsManager::new(root_state),
         }
     }
 
@@ -113,6 +118,8 @@ impl ZoneManager {
     }
 
     pub async fn init(&self) -> BuckyResult<()> {
+        self.friends_manager.init().await?;
+    
         self.zones.load_from_noc().await?;
 
         Ok(())

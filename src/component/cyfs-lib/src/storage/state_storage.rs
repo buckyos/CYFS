@@ -208,8 +208,11 @@ impl StateStorage {
     }
 
     pub async fn save(&self) -> BuckyResult<()> {
-        let op_data = self.op_data.get().unwrap();
-        Self::save_impl(&self.path, &self.dirty, op_data).await
+        if let Some(op_data) = self.op_data.get() {
+            Self::save_impl(&self.path, &self.dirty, op_data).await
+        } else {
+            Ok(())
+        }
     }
 
     async fn save_impl(
