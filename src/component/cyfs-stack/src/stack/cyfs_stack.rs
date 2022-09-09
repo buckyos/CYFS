@@ -152,6 +152,11 @@ impl CyfsStackImpl {
         let noc =
             Self::init_raw_noc(&device_id, param.noc.noc_type, isolate, known_objects).await?;
 
+        // 加载全局状态
+        let (local_root_state, local_cache) =
+            Self::load_global_state(&device_id, &device, noc.clone_noc(), &config).await?;
+        let current_root = local_root_state.state().get_current_root();
+
         // 初始化data cache和tracker
         let ndc = Self::init_ndc(isolate)?;
         let tracker = Self::init_tracker(isolate)?;
@@ -193,6 +198,16 @@ impl CyfsStackImpl {
         let fail_handler =
             ObjectFailHandler::new(raw_meta_cache.clone_meta(), device_manager.clone_cache());
 
+        // Init zone manager
+        let root_state_processor = GlobalStateOutputTransformer::new(
+            local_root_state.clone_global_state_processor(),
+            device_id.clone(),
+        );
+        let local_cache_processor = GlobalStateOutputTransformer::new(
+            local_cache.clone_global_state_processor(),
+            device_id.clone(),
+        );
+
         let zone_manager = ZoneManager::new(
             noc.clone_noc(),
             device_manager.clone_cache(),
@@ -200,6 +215,8 @@ impl CyfsStackImpl {
             device_category,
             raw_meta_cache.clone_meta(),
             fail_handler.clone(),
+            root_state_processor,
+            local_cache_processor,
         );
         zone_manager.init().await?;
 
@@ -331,21 +348,17 @@ impl CyfsStackImpl {
         let crypto_service = Arc::new(crypto_service);
         let util_service = Arc::new(util_service);
 
-        // 加载全局状态
-        let (root_state, local_cache) = Self::load_global_state(
-            &device_id,
-            &device,
-            noc.clone_noc(),
+        // load root-state service
+        let root_state = Self::load_root_state_service(
+            local_root_state,
             acl_manager.clone(),
             forward_manager.clone(),
             zone_manager.clone(),
             fail_handler.clone(),
             &non_service,
             &ndn_service,
-            &config,
         )
         .await?;
-        let current_root = root_state.local_service().state().get_current_root();
 
         // load global-state meta
         let global_state_meta = Self::load_global_state_meta(
@@ -632,14 +645,8 @@ impl CyfsStackImpl {
         device_id: &DeviceId,
         device: &Device,
         noc: Box<dyn NamedObjectCache>,
-        acl: AclManagerRef,
-        forward: ForwardProcessorManager,
-        zone_manager: ZoneManager,
-        fail_handler: ObjectFailHandler,
-        non_service: &Arc<NONService>,
-        ndn_service: &Arc<NDNService>,
         config: &StackGlobalConfig,
-    ) -> BuckyResult<(GlobalStateService, GlobalStateLocalService)> {
+    ) -> BuckyResult<(GlobalStateLocalService, GlobalStateLocalService)> {
         let owner = match device.desc().owner() {
             Some(owner) => owner.to_owned(),
             None => {
@@ -651,51 +658,65 @@ impl CyfsStackImpl {
             }
         };
 
-        let ndn_processor = ndn_service.get_api(&NDNAPILevel::Router).clone();
-
-        let noc_processor = non_service.raw_noc_processor().clone();
-
-        // root_state
-        let root_state = GlobalStateService::load(
+        let root_state = GlobalStateLocalService::load(
             GlobalStateCategory::RootState,
-            acl,
-            &device_id,
-            Some(owner),
+            device_id,
+            Some(owner.clone()),
             noc.clone_noc(),
-            forward,
-            zone_manager,
-            fail_handler,
-            noc_processor,
-            ndn_processor,
             config.clone(),
         )
         .await?;
-        info!(
-            "load root state success! device={}, owner={}",
-            device_id, owner
-        );
 
-        // local_state
-        let local_state = GlobalStateLocalService::load(
+        let local_cache = GlobalStateLocalService::load(
             GlobalStateCategory::LocalCache,
-            &device_id,
+            device_id,
             Some(owner),
             noc,
             config.clone(),
         )
         .await?;
-        info!(
-            "load local cache success! device={}, owner={}",
-            device_id, owner
-        );
 
-        // local state always writable
+        // local cache always writable
         config.change_access_mode(
             GlobalStateCategory::LocalCache,
             GlobalStateAccessMode::Write,
         );
 
-        Ok((root_state, local_state))
+        info!(
+            "load lcoal global state success! device={}, owner={}",
+            device_id, owner
+        );
+
+        Ok((root_state, local_cache))
+    }
+
+    async fn load_root_state_service(
+        local_service: GlobalStateLocalService,
+        acl: AclManagerRef,
+        forward: ForwardProcessorManager,
+        zone_manager: ZoneManager,
+        fail_handler: ObjectFailHandler,
+        non_service: &Arc<NONService>,
+        ndn_service: &Arc<NDNService>,
+    ) -> BuckyResult<GlobalStateService> {
+        let ndn_processor = ndn_service.get_api(&NDNAPILevel::Router).clone();
+        let noc_processor = non_service.raw_noc_processor().clone();
+
+        // root_state
+        let root_state = GlobalStateService::load(
+            GlobalStateCategory::RootState,
+            local_service,
+            acl,
+            forward,
+            zone_manager,
+            fail_handler,
+            noc_processor,
+            ndn_processor,
+        )
+        .await?;
+        info!("load root state service success!",);
+
+        Ok(root_state)
     }
 
     async fn load_global_state_meta(

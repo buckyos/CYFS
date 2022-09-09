@@ -1,7 +1,6 @@
 use super::super::local::GlobalStateLocalService;
 use super::super::router::GlobalStateRouter;
 use crate::acl::AclManagerRef;
-use crate::config::StackGlobalConfig;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::ndn::NDNInputProcessorRef;
@@ -23,21 +22,15 @@ pub struct GlobalStateService {
 impl GlobalStateService {
     pub(crate) async fn load(
         category: GlobalStateCategory,
+        local_service: GlobalStateLocalService,
         acl: AclManagerRef,
-        device_id: &DeviceId,
-        owner: Option<ObjectId>,
-        noc: Box<dyn NamedObjectCache>,
         forward: ForwardProcessorManager,
         zone_manager: ZoneManager,
         fail_handler: ObjectFailHandler,
         noc_processor: NONInputProcessorRef,
         ndn_processor: NDNInputProcessorRef,
-        config: StackGlobalConfig,
     ) -> BuckyResult<Self> {
         assert_eq!(category, GlobalStateCategory::RootState);
-
-        let local_service =
-            GlobalStateLocalService::load(category.clone(), device_id, owner, noc, config).await?;
 
         let router = GlobalStateRouter::new(
             category,
