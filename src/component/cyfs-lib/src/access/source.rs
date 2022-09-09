@@ -33,7 +33,7 @@ impl Into<AccessPermission> for RequestOpType {
 pub enum DeviceZoneCategory {
     CurrentDevice,
     CurrentZone,
-    FriendsZone,
+    FriendZone,
     OtherZone,
 }
 
@@ -42,7 +42,7 @@ impl Into<AccessGroup> for DeviceZoneCategory {
         match self {
             DeviceZoneCategory::CurrentDevice => AccessGroup::CurrentDevice,
             DeviceZoneCategory::CurrentZone => AccessGroup::CurrentZone,
-            DeviceZoneCategory::FriendsZone => AccessGroup::FriendZone,
+            DeviceZoneCategory::FriendZone => AccessGroup::FriendZone,
             DeviceZoneCategory::OtherZone => AccessGroup::OthersZone,
         }
     }
