@@ -560,7 +560,7 @@ impl SharedCyfsStack {
         path: impl Into<String>,
         content_type: ObjectMapSimpleContentType,
     ) -> StateStorage {
-        StateStorage::new(
+        StateStorage::new_with_stack(
             self.uni_stack().clone(),
             category,
             path,
@@ -578,7 +578,7 @@ impl SharedCyfsStack {
         target: Option<ObjectId>,
         dec_id: Option<ObjectId>,
     ) -> StateStorage {
-        StateStorage::new(
+        StateStorage::new_with_stack(
             self.uni_stack().clone(),
             category,
             path,
