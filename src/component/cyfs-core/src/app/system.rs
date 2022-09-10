@@ -6,7 +6,11 @@ pub(crate) static SYSTEM_DEC_APP: OnceCell<DecAppId> = OnceCell::new();
 
 // get the default dec_app id for all the system service and system core
 pub fn get_system_dec_app() -> &'static DecAppId {
-    SYSTEM_DEC_APP.get_or_init(|| SystemDecApp::gen_system_dec_id())
+    SYSTEM_DEC_APP.get_or_init(|| {
+        let id = SystemDecApp::gen_system_dec_id();
+        info!("init system dec_id as {}", id);
+        id
+    })
 }
 
 pub(crate) struct SystemDecApp {}

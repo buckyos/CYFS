@@ -658,6 +658,7 @@ impl CyfsStackImpl {
             }
         };
 
+        // load root state
         let root_state = GlobalStateLocalService::load(
             GlobalStateCategory::RootState,
             device_id,
@@ -667,6 +668,18 @@ impl CyfsStackImpl {
         )
         .await?;
 
+        // make sure the system dec root state is created
+        config.change_access_mode(
+            GlobalStateCategory::RootState,
+            GlobalStateAccessMode::Write,
+        );
+        root_state.state().get_dec_root_manager(cyfs_core::get_system_dec_app().object_id(), true).await?;
+        config.change_access_mode(
+            GlobalStateCategory::RootState,
+            GlobalStateAccessMode::Read,
+        );
+
+        // load local cache
         let local_cache = GlobalStateLocalService::load(
             GlobalStateCategory::LocalCache,
             device_id,
@@ -683,7 +696,7 @@ impl CyfsStackImpl {
         );
 
         info!(
-            "load lcoal global state success! device={}, owner={}",
+            "load local global state success! device={}, owner={}",
             device_id, owner
         );
 

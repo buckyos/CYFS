@@ -252,7 +252,6 @@ impl ZoneContainer {
             None,
         );
 
-        storage.start_save(std::time::Duration::from_secs(60 * 5));
         let state = StateStorageSet::new(storage);
 
         Self {
@@ -350,6 +349,7 @@ impl ZoneContainer {
 
     pub async fn load_from_noc(&self) -> BuckyResult<()> {
         self.state.storage().init().await?;
+        self.state.storage().start_save(std::time::Duration::from_secs(60 * 5));
 
         let list = self.state.list().await?;
 
