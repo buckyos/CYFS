@@ -85,7 +85,7 @@ async fn test_noc() {
     assert!(!ret.object);
 
     // get by system
-    let get_req = NamedObjectCacheGetObjectRequest1 {
+    let get_req = NamedObjectCacheGetObjectRequest {
         source: RequestSourceInfo::new_local_system(),
         object_id: object_id.to_owned(),
         last_access_rpath: Some("/test/dec1".to_owned()),
@@ -115,7 +115,7 @@ async fn test_noc() {
         dec: cyfs_core::get_system_dec_app().object_id().to_owned(),
     };
 
-    let get_req = NamedObjectCacheGetObjectRequest1 {
+    let get_req = NamedObjectCacheGetObjectRequest {
         source,
         object_id: object_id.to_owned(),
         last_access_rpath: None,
@@ -137,7 +137,7 @@ async fn test_noc() {
         },
         dec: dec1,
     };
-    let get_req = NamedObjectCacheGetObjectRequest1 {
+    let get_req = NamedObjectCacheGetObjectRequest {
         source,
         object_id: object_id.to_owned(),
         last_access_rpath: None,
@@ -154,7 +154,7 @@ async fn test_noc() {
     }
 
     // delete by system
-    let delete_req = NamedObjectCacheDeleteObjectRequest1 {
+    let delete_req = NamedObjectCacheDeleteObjectRequest {
         source: RequestSourceInfo::new_local_system(),
         object_id: object_id.to_owned(),
         flags: CYFS_NOC_FLAG_DELETE_WITH_QUERY,

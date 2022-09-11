@@ -1,6 +1,5 @@
-use super::super::meta::NamedObjectMetaData;
-use crate::prelude::NamedObjectStorageCategory;
 use cyfs_base::*;
+use cyfs_lib::*;
 
 use rusqlite::{types::FromSql, Row};
 use std::str::FromStr;

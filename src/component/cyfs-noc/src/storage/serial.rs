@@ -1,10 +1,10 @@
-use crate::prelude::*;
 use cyfs_base::*;
+use cyfs_lib::*;
 
 use async_std::sync::Mutex as AsyncMutex;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 
 struct SerializeExecutorLock {
     lock: AsyncMutex<u32>,
@@ -95,7 +95,7 @@ impl NamedObjectCacheSerializer {
 }
 
 #[async_trait::async_trait]
-impl NamedObjectCache1 for NamedObjectCacheSerializer {
+impl NamedObjectCache for NamedObjectCacheSerializer {
     async fn put_object(
         &self,
         req: &NamedObjectCachePutObjectRequest,
@@ -111,14 +111,14 @@ impl NamedObjectCache1 for NamedObjectCacheSerializer {
         ret
     }
 
-    async fn get_object(
+    async fn get_object_raw(
         &self,
-        req: &NamedObjectCacheGetObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
+        req: &NamedObjectCacheGetObjectRequest,
+    ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
         let lock = self.acquire_lock(&req.object_id);
         let ret = {
             let _guard = lock.lock.lock().await;
-            self.next.get_object(req).await
+            self.next.get_object_raw(req).await
         };
 
         self.leave_lock(&req.object_id, lock);
@@ -128,7 +128,7 @@ impl NamedObjectCache1 for NamedObjectCacheSerializer {
 
     async fn delete_object(
         &self,
-        req: &NamedObjectCacheDeleteObjectRequest1,
+        req: &NamedObjectCacheDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         let lock = self.acquire_lock(&req.object_id);
         let ret = {
@@ -156,7 +156,7 @@ impl NamedObjectCache1 for NamedObjectCacheSerializer {
         ret
     }
 
-    async fn stat(&self) -> BuckyResult<NamedObjectCacheStat1> {
+    async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         self.next.stat().await
     }
 }

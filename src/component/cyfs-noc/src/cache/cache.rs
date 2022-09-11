@@ -1,4 +1,4 @@
-use crate::{meta::*, prelude::*};
+use crate::meta::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -6,7 +6,7 @@ use lru_time_cache::LruCache;
 use std::collections::HashSet;
 use std::sync::Mutex;
 
-type NamedObjectCacheItem = NamedObjectCacheObjectData;
+type NamedObjectCacheItem = NamedObjectCacheObjectRawData;
 
 pub struct NamedObjectCacheMemoryCache {
     meta: NamedObjectMetaRef,
@@ -35,15 +35,15 @@ impl NamedObjectCacheMemoryCache {
         }
     }
 
-    pub fn is_missing(&self, req: &NamedObjectCacheGetObjectRequest1) -> bool {
+    pub fn is_missing(&self, req: &NamedObjectCacheGetObjectRequest) -> bool {
         let cache = self.missing_cache.lock().unwrap();
         cache.contains(&req.object_id)
     }
 
     pub fn get(
         &self,
-        req: &NamedObjectCacheGetObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
+        req: &NamedObjectCacheGetObjectRequest,
+    ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
         let mut cache = self.cache.lock().unwrap();
         let ret = cache.get_mut(&req.object_id);
         if ret.is_none() {
@@ -71,8 +71,8 @@ impl NamedObjectCacheMemoryCache {
 
     pub fn cache(
         &self,
-        req: &NamedObjectCacheGetObjectRequest1,
-        data: &Option<NamedObjectCacheObjectData>,
+        req: &NamedObjectCacheGetObjectRequest,
+        data: &Option<NamedObjectCacheObjectRawData>,
     ) {
         match data {
             Some(data) => {
@@ -92,7 +92,7 @@ impl NamedObjectCacheMemoryCache {
 }
 
 #[async_trait::async_trait]
-impl NamedObjectCache1 for NamedObjectCacheMemoryCache {
+impl NamedObjectCache for NamedObjectCacheMemoryCache {
     async fn put_object(
         &self,
         req: &NamedObjectCachePutObjectRequest,
@@ -112,10 +112,10 @@ impl NamedObjectCache1 for NamedObjectCacheMemoryCache {
         ret
     }
 
-    async fn get_object(
+    async fn get_object_raw(
         &self,
-        req: &NamedObjectCacheGetObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
+        req: &NamedObjectCacheGetObjectRequest,
+    ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
         let cache_item = self.get(req)?;
         if cache_item.is_some() {
             // Update the last access info
@@ -139,7 +139,7 @@ impl NamedObjectCache1 for NamedObjectCacheMemoryCache {
             return Ok(None);
         }
 
-        let ret = self.next.get_object(req).await?;
+        let ret = self.next.get_object_raw(req).await?;
 
         self.cache(req, &ret);
 
@@ -148,7 +148,7 @@ impl NamedObjectCache1 for NamedObjectCacheMemoryCache {
 
     async fn delete_object(
         &self,
-        req: &NamedObjectCacheDeleteObjectRequest1,
+        req: &NamedObjectCacheDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         {
             let mut cache = self.cache.lock().unwrap();
@@ -165,7 +165,7 @@ impl NamedObjectCache1 for NamedObjectCacheMemoryCache {
         self.next.exists_object(req).await
     }
 
-    async fn stat(&self) -> BuckyResult<NamedObjectCacheStat1> {
+    async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         self.next.stat().await
     }
 }

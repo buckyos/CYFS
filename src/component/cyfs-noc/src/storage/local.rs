@@ -1,11 +1,10 @@
 use crate::blob::*;
 use crate::meta::*;
-use crate::prelude::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::sync::Arc;
 use std::path::Path;
+use std::sync::Arc;
 
 pub struct NamedObjectLocalStorage {
     meta: NamedObjectMetaRef,
@@ -36,11 +35,8 @@ impl NamedObjectLocalStorage {
 
         let meta = Self::init_meta(&dir)?;
 
-        Ok(Self {
-            blob,
-            meta,
-        })
-    } 
+        Ok(Self { blob, meta })
+    }
 
     pub fn meta(&self) -> &NamedObjectMetaRef {
         &self.meta
@@ -51,7 +47,11 @@ impl NamedObjectLocalStorage {
 
         if !dir.is_dir() {
             if let Err(e) = std::fs::create_dir_all(&dir) {
-                let msg = format!("create noc blob data dir error! dir={}, {}", dir.display(), e);
+                let msg = format!(
+                    "create noc blob data dir error! dir={}, {}",
+                    dir.display(),
+                    e
+                );
                 error!("{}", msg);
 
                 return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
@@ -59,13 +59,13 @@ impl NamedObjectLocalStorage {
         }
 
         let blob = FileBlobStorage::new(dir);
-        
+
         Ok(Box::new(blob))
     }
 
     fn init_meta(root: &Path) -> BuckyResult<NamedObjectMetaRef> {
         let meta = SqliteMetaStorage::new(root)?;
-        let ret=  Arc::new(Box::new(meta) as Box<dyn NamedObjectMeta>);
+        let ret = Arc::new(Box::new(meta) as Box<dyn NamedObjectMeta>);
         Ok(ret)
     }
 
@@ -156,15 +156,10 @@ impl NamedObjectLocalStorage {
 
         // If the request does not specify an access string then try to use the default
         let access_string = match request.access_string {
-            Some(v) => {
-                v
-            },
-            None => {
-                AccessString::default().value()
-            }
+            Some(v) => v,
+            None => AccessString::default().value(),
         };
 
-        
         NamedObjectMetaPutObjectRequest {
             source: request.source.clone(),
             object_id: request.object.object_id.clone(),
@@ -283,10 +278,10 @@ impl NamedObjectLocalStorage {
         }
     }
 
-    async fn get_object(
+    async fn get_object_raw(
         &self,
-        req: &NamedObjectCacheGetObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
+        req: &NamedObjectCacheGetObjectRequest,
+    ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
         let meta_req = NamedObjectMetaGetObjectRequest {
             source: req.source.clone(),
             object_id: req.object_id.clone(),
@@ -320,7 +315,7 @@ impl NamedObjectLocalStorage {
             warn!("object blob missing! obj={}", req.object_id);
         }
 
-        let resp = NamedObjectCacheObjectData {
+        let resp = NamedObjectCacheObjectRawData {
             object: blob_ret,
             meta,
         };
@@ -330,7 +325,7 @@ impl NamedObjectLocalStorage {
 
     async fn delete_object(
         &self,
-        req: &NamedObjectCacheDeleteObjectRequest1,
+        req: &NamedObjectCacheDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         let meta_req = NamedObjectMetaDeleteObjectRequest {
             source: req.source.clone(),
@@ -342,7 +337,11 @@ impl NamedObjectLocalStorage {
         let resp = match meta_resp.deleted_count {
             1 => {
                 // then remove object data from blob
-                let object = match self.blob.delete_object(&meta_req.object_id, req.flags).await {
+                let object = match self
+                    .blob
+                    .delete_object(&meta_req.object_id, req.flags)
+                    .await
+                {
                     Ok(resp) => match resp.delete_count {
                         1 => resp.object,
                         0 => {
@@ -371,13 +370,17 @@ impl NamedObjectLocalStorage {
             }
             0 => {
                 // still try remove object data from blob
-                let object = match self.blob.delete_object(&meta_req.object_id, req.flags).await {
+                let object = match self
+                    .blob
+                    .delete_object(&meta_req.object_id, req.flags)
+                    .await
+                {
                     Ok(resp) => {
                         if resp.delete_count > 0 {
                             warn!(
                                 "delete object not exists in meta but exsits in blob! obj={}",
                                 meta_req.object_id
-                            );   
+                            );
                         }
 
                         resp.object
@@ -442,11 +445,11 @@ impl NamedObjectLocalStorage {
         Ok(resp)
     }
 
-    async fn stat(&self) -> BuckyResult<NamedObjectCacheStat1> {
+    async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         let meta = self.meta.stat().await?;
         let blob = self.blob.stat().await?;
 
-        let resp = NamedObjectCacheStat1 {
+        let resp = NamedObjectCacheStat {
             count: meta.count,
             storage_size: meta.storage_size + blob.storage_size,
         };
@@ -456,7 +459,7 @@ impl NamedObjectLocalStorage {
 }
 
 #[async_trait::async_trait]
-impl NamedObjectCache1 for NamedObjectLocalStorage {
+impl NamedObjectCache for NamedObjectLocalStorage {
     async fn put_object(
         &self,
         req: &NamedObjectCachePutObjectRequest,
@@ -464,16 +467,16 @@ impl NamedObjectCache1 for NamedObjectLocalStorage {
         Self::put_object(&self, req).await
     }
 
-    async fn get_object(
+    async fn get_object_raw(
         &self,
-        req: &NamedObjectCacheGetObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
-        Self::get_object(&self, req).await
+        req: &NamedObjectCacheGetObjectRequest,
+    ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
+        Self::get_object_raw(&self, req).await
     }
 
     async fn delete_object(
         &self,
-        req: &NamedObjectCacheDeleteObjectRequest1,
+        req: &NamedObjectCacheDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         Self::delete_object(&self, req).await
     }
@@ -485,7 +488,7 @@ impl NamedObjectCache1 for NamedObjectLocalStorage {
         Self::exists_object(&self, req).await
     }
 
-    async fn stat(&self) -> BuckyResult<NamedObjectCacheStat1> {
+    async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         Self::stat(&self).await
     }
 }

@@ -1,5 +1,4 @@
 use super::blob::*;
-use crate::prelude::CYFS_NOC_FLAG_DELETE_WITH_QUERY;
 use cyfs_base::*;
 use cyfs_lib::*;
 

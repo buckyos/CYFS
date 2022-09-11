@@ -1,4 +1,3 @@
-use crate::prelude::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -115,22 +114,6 @@ pub struct NamedObjectMetaDeleteObjectResponse {
     pub object: Option<NamedObjectMetaData>,
 }
 
-#[derive(Clone, Debug)]
-pub struct NamedObjectMetaData {
-    pub object_id: ObjectId,
-
-    pub owner_id: Option<ObjectId>,
-    pub create_dec_id: ObjectId,
-
-    pub update_time: Option<u64>,
-    pub expired_time: Option<u64>,
-
-    pub storage_category: NamedObjectStorageCategory,
-    pub context: Option<String>,
-
-    pub last_access_rpath: Option<String>,
-    pub access_string: u32,
-}
 
 // exists_object
 #[derive(Clone, Debug)]
