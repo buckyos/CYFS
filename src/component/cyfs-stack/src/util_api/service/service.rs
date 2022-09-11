@@ -20,7 +20,7 @@ pub struct UtilService {
 impl UtilService {
     pub(crate) fn new(
         acl: AclManagerRef,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
         bdt_stack: StackGuard,
         forward: ForwardProcessorManager,

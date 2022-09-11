@@ -51,7 +51,7 @@ struct DeviceCacheList {
 }
 
 impl DeviceCacheList {
-    pub fn new(noc: Box<dyn NamedObjectCache>, device_id: &DeviceId) -> Self {
+    pub fn new(noc: NamedObjectCacheRef, device_id: &DeviceId) -> Self {
         // 需要用device_id加以区分，避免出现更换device后复用数据库导致的不一致问题
         let id = format!("access-control-device-list-{}", device_id.to_string());
         let list = NOCCollectionSync::new(&id, noc);
@@ -134,7 +134,6 @@ impl DeviceCacheList {
     }
 }
 
-
 #[derive(Clone)]
 pub(crate) struct LocalZoneCache {
     zone_manager: ZoneManager,
@@ -145,10 +144,7 @@ pub(crate) struct LocalZoneCache {
 }
 
 impl LocalZoneCache {
-    pub fn new(
-        zone_manager: ZoneManager,
-        noc: Box<dyn NamedObjectCache>,
-    ) -> Self {
+    pub fn new(zone_manager: ZoneManager, noc: NamedObjectCacheRef) -> Self {
         let current_device_id = zone_manager.get_current_device_id().to_owned();
         let device_cache_list = DeviceCacheList::new(noc, &current_device_id);
         Self {
@@ -178,7 +174,6 @@ impl LocalZoneCache {
     }
 
     async fn get_device_zone_pos(&self, device_id: &DeviceId) -> BuckyResult<DeviceZonePos> {
-
         // 首先从缓存查询
         match self.device_cache_list.get_zone_pos(device_id) {
             Some(Ok(pos)) => Ok(pos),

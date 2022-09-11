@@ -338,7 +338,7 @@ impl AclRequestWrapper {
     // 从noc加载对象
     async fn load_object(&self, object_id: &ObjectId) -> BuckyResult<Arc<AnyNamedObject>> {
         let data = self.match_instance.load_object(object_id).await?;
-        Ok(data.object.unwrap())
+        Ok(data.object.object.unwrap())
     }
 
     async fn init_location(&self) -> BuckyResult<AclGroupLocation> {

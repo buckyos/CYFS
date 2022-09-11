@@ -38,7 +38,7 @@ impl GlobalRootIndex {
     pub fn new(
         category: GlobalStateCategory,
         device_id: &DeviceId,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         revision: RevisionList,
     ) -> Self {
         let id = match category {
@@ -93,7 +93,11 @@ impl GlobalRootIndex {
     }
 
     // direct set the root and revision, always during the zone sync requests
-    pub(crate) async fn direct_set_root_state(&self, new_root_info: RootInfo, prev_root_id: Option<ObjectId>) -> BuckyResult<()> {
+    pub(crate) async fn direct_set_root_state(
+        &self,
+        new_root_info: RootInfo,
+        prev_root_id: Option<ObjectId>,
+    ) -> BuckyResult<()> {
         assert!(new_root_info.root_state.is_some());
 
         let _update_lock = self.update_lock.lock().await;
@@ -134,10 +138,8 @@ impl GlobalRootIndex {
         })?;
 
         // 保存revision->root的映射
-        self.revision.insert_revision(
-            new_root_info.revision, 
-            new_root_info.root_state.unwrap()
-        );
+        self.revision
+            .insert_revision(new_root_info.revision, new_root_info.root_state.unwrap());
 
         Ok(())
     }

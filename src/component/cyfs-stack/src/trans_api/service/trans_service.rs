@@ -1,16 +1,16 @@
 use crate::resolver::OodResolver;
+use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
-use cyfs_bdt::{StackGuard};
 
-use std::sync::Arc;
-use cyfs_chunk_cache::ChunkManager;
-use cyfs_task_manager::{TaskManager};
-use crate::AclManagerRef;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::trans::TransInputProcessorRef;
 use crate::trans_api::{LocalTransService, TransServiceRouter, TransStore};
 use crate::zone::ZoneManager;
+use crate::AclManagerRef;
+use cyfs_chunk_cache::ChunkManager;
+use cyfs_task_manager::TaskManager;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct TransService {
@@ -20,7 +20,7 @@ pub struct TransService {
 
 impl TransService {
     pub(crate) fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
@@ -33,19 +33,27 @@ impl TransService {
         fail_handler: ObjectFailHandler,
         trans_store: Arc<TransStore>,
     ) -> Self {
-        let local_service = Arc::new(LocalTransService::new(noc.clone_noc(),
-                                                            bdt_stack.clone(),
-                                                            ndc.clone(),
-                                                            tracker.clone(),
-                                                            ood_resolver.clone(),
-                                                            chunk_manager.clone(),
-                                                            task_manager.clone(),
-                                                            trans_store));
-        let router = Arc::new(TransServiceRouter::new(acl, forward, zone_manager, fail_handler, local_service.clone()));
+        let local_service = Arc::new(LocalTransService::new(
+            noc.clone(),
+            bdt_stack.clone(),
+            ndc.clone(),
+            tracker.clone(),
+            ood_resolver.clone(),
+            chunk_manager.clone(),
+            task_manager.clone(),
+            trans_store,
+        ));
+        let router = Arc::new(TransServiceRouter::new(
+            acl,
+            forward,
+            zone_manager,
+            fail_handler,
+            local_service.clone(),
+        ));
 
         Self {
             router,
-            local_service
+            local_service,
         }
     }
 

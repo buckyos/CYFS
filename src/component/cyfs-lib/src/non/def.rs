@@ -1,4 +1,4 @@
-use crate::ndn::*;
+use crate::{ndn::*, NamedObjectCachePutObjectResult};
 use cyfs_base::*;
 
 use serde_json::{Map, Value};
@@ -189,6 +189,27 @@ impl FromStr for NONPutObjectResult {
     }
 }
 
+impl Into<NONPutObjectResult> for NamedObjectCachePutObjectResult {
+    fn into(self) -> NONPutObjectResult {
+        match self {
+            Self::Accept => NONPutObjectResult::Accept,
+            Self::AlreadyExists => NONPutObjectResult::AlreadyExists,
+            Self::Updated => NONPutObjectResult::Updated,
+            Self::Merged => NONPutObjectResult::Merged,
+        }
+    }
+}
+
+impl Into<NamedObjectCachePutObjectResult> for NONPutObjectResult {
+    fn into(self) -> NamedObjectCachePutObjectResult {
+        match self {
+            Self::Accept | Self::AcceptWithSign => NamedObjectCachePutObjectResult::Accept,
+            Self::AlreadyExists => NamedObjectCachePutObjectResult::AlreadyExists,
+            Self::Updated => NamedObjectCachePutObjectResult::Updated,
+            Self::Merged => NamedObjectCachePutObjectResult::Merged,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct NONObjectInfo {

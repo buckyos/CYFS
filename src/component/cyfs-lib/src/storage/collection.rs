@@ -1,5 +1,5 @@
 use super::storage::*;
-use crate::base::*;
+use crate::prelude::NamedObjectCacheRef;
 use crate::root_state::*;
 use cyfs_base::*;
 use cyfs_debug::Mutex;
@@ -80,7 +80,7 @@ pub struct NOCStorageWrapper {
 }
 
 impl NOCStorageWrapper {
-    pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
+    pub fn new(id: &str, noc: NamedObjectCacheRef) -> Self {
         Self {
             storage: Box::new(NOCRawStorage::new(id, noc)),
         }
@@ -92,7 +92,7 @@ impl NOCStorageWrapper {
         path: String,
         target: Option<ObjectId>,
         id: &str,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         Self {
             storage: Box::new(NOCGlobalStateStorage::new(
@@ -160,7 +160,7 @@ impl<T> NOCCollection<T>
 where
     T: Default + CollectionCodec<T>,
 {
-    pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
+    pub fn new(id: &str, noc: NamedObjectCacheRef) -> Self {
         Self {
             coll: T::default(),
             storage: NOCStorageWrapper::new(id, noc),
@@ -325,7 +325,7 @@ impl<T> NOCCollectionSync<T>
 where
     T: Default + CollectionCodec<T> + Send + 'static,
 {
-    pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
+    pub fn new(id: &str, noc: NamedObjectCacheRef) -> Self {
         let storage = NOCRawStorage::new(id, noc);
 
         Self {
@@ -342,7 +342,7 @@ where
         path: String,
         target: Option<ObjectId>,
         id: &str,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         let storage = NOCGlobalStateStorage::new(
             global_state, dec_id, path, target, id, noc,
@@ -515,7 +515,7 @@ impl<T> NOCCollectionRWSync<T>
 where
     T: Default + CollectionCodec<T> + Send + Sync + 'static,
 {
-    pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
+    pub fn new(id: &str, noc: NamedObjectCacheRef) -> Self {
         let noc = NOCRawStorage::new(id, noc);
         Self {
             coll: Arc::new(RwLock::new(T::default())),
@@ -531,7 +531,7 @@ where
         path: String,
         target: Option<ObjectId>,
         id: &str,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         let storage = NOCGlobalStateStorage::new(
             global_state, dec_id, path, target, id, noc,

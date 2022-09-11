@@ -7,8 +7,8 @@ use super::request::AclRequest;
 use super::request::AclRequestWrapper;
 use super::table::{AclItemPosition, AclTableContainer};
 use super::{zone_cache::*, AclRequestParams};
-use crate::router_handler::RouterHandlersManager;
 use crate::resolver::DeviceCache;
+use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManager;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -17,17 +17,20 @@ use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
 pub(crate) struct AclMatchInstance {
-    pub noc: Box<dyn NamedObjectCache>,
+    pub noc: NamedObjectCacheRef,
     pub device_manager: Box<dyn DeviceCache>,
     pub zone_manager: ZoneManager,
 }
 
 impl AclMatchInstance {
-    pub async fn load_object(&self, object_id: &ObjectId) -> BuckyResult<ObjectCacheData> {
+    pub async fn load_object(
+        &self,
+        object_id: &ObjectId,
+    ) -> BuckyResult<NamedObjectCacheObjectData> {
         let noc_req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.zone_manager.get_current_device_id().clone(),
+            source: RequestSourceInfo::new_local_system(),
             object_id: object_id.to_owned(),
+            last_access_rpath: None,
         };
 
         match self.noc.get_object(&noc_req).await {
@@ -61,7 +64,7 @@ impl AclMatchInstance {
     ) -> BuckyResult<T> {
         let data = self.load_object(object_id).await?;
 
-        let (obj, _) = T::raw_decode(&data.object_raw.unwrap())?;
+        let (obj, _) = T::raw_decode(&data.object.object_raw)?;
         Ok(obj)
     }
 }
@@ -82,13 +85,13 @@ pub struct AclManager {
 
 impl AclManager {
     pub(crate) fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         config_isolate: Option<String>,
         device_manager: Box<dyn DeviceCache>,
         zone_manager: ZoneManager,
         router_handlers: RouterHandlersManager,
     ) -> Self {
-        let local_zone_cache = LocalZoneCache::new(zone_manager.clone(), noc.clone_noc());
+        let local_zone_cache = LocalZoneCache::new(zone_manager.clone(), noc.clone());
 
         let match_instance = Arc::new(AclMatchInstance {
             noc,
@@ -124,11 +127,7 @@ impl AclManager {
 
     async fn load(&self) {
         let mut config = AclConfig::default();
-        let mut loader = AclLoader::new(
-            self.file_loader.clone(),
-            &mut config,
-            self.acl.clone(),
-        );
+        let mut loader = AclLoader::new(self.file_loader.clone(), &mut config, self.acl.clone());
 
         // 加载外部配置
         if let Err(e) = loader.load().await {

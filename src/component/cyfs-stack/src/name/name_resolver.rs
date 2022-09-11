@@ -13,7 +13,6 @@ use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-
 // name缓存超时时间，默认一天
 // const NAME_CACHE_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60 * 24;
 const NAME_CACHE_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
@@ -55,7 +54,7 @@ pub struct NameResolver {
 }
 
 impl NameResolver {
-    pub fn new(meta_cache: Box<dyn MetaCache>, noc: Box<dyn NamedObjectCache>) -> Self {
+    pub fn new(meta_cache: Box<dyn MetaCache>, noc: NamedObjectCacheRef) -> Self {
         let id = "cyfs-name-cache";
         Self {
             meta_cache: Arc::new(meta_cache),

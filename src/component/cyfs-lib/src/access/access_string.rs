@@ -60,9 +60,7 @@ impl AccessPermissions {
 
     pub fn format_u8(v: u8) -> std::borrow::Cow<'static, str> {
         match TryInto::<AccessPermissions>::try_into(v) {
-            Ok(v) => {
-                std::borrow::Cow::Borrowed(v.as_str())
-            }
+            Ok(v) => std::borrow::Cow::Borrowed(v.as_str()),
             Err(_) => {
                 let s = format!("{:o}", v);
                 std::borrow::Cow::Owned(s)
@@ -125,11 +123,11 @@ pub enum AccessGroup {
 
 pub const ACCESS_GROUP_LIST: &[AccessGroup; 7] = &[
     AccessGroup::CurrentDevice,
-    AccessGroup::CurrentZone, 
-    AccessGroup::FriendZone, 
-    AccessGroup::OthersZone, 
-    AccessGroup::OwnerDec, 
-    AccessGroup::SystemDec, 
+    AccessGroup::CurrentZone,
+    AccessGroup::FriendZone,
+    AccessGroup::OthersZone,
+    AccessGroup::OwnerDec,
+    AccessGroup::SystemDec,
     AccessGroup::OthersDec,
 ];
 
@@ -137,7 +135,7 @@ impl AccessGroup {
     pub fn range(&self) -> std::ops::Range<u32> {
         let index = *self as u32;
         // println!("index={}, {:?}", index, self);
-        index .. index + 3
+        index..index + 3
     }
 
     pub fn bit(&self, permission: AccessPermission) -> u32 {
@@ -165,7 +163,7 @@ impl TryFrom<&str> for AccessGroup {
 
 pub struct AccessPair {
     group: AccessGroup,
-    permissions: AccessPermissions, 
+    permissions: AccessPermissions,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -182,7 +180,8 @@ impl AccessString {
 
     pub fn make(list: &[AccessPair]) -> Self {
         let mut ret = Self(0);
-        list.iter().for_each(|p| ret.set_group_permissions(p.group, p.permissions));
+        list.iter()
+            .for_each(|p| ret.set_group_permissions(p.group, p.permissions));
         ret
     }
 
@@ -210,29 +209,110 @@ impl AccessString {
         self.0.set_bits(group.range(), 0);
     }
 
+    pub fn full_except_write() -> Self {
+        static D: once_cell::sync::OnceCell<AccessString> = once_cell::sync::OnceCell::new();
+        D.get_or_init(|| {
+            Self::make(&[
+                AccessPair {
+                    group: AccessGroup::CurrentDevice,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::CurrentZone,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::FriendZone,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::OthersZone,
+                    permissions: AccessPermissions::ReadAndCall,
+                },
+                AccessPair {
+                    group: AccessGroup::OwnerDec,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::SystemDec,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::OthersDec,
+                    permissions: AccessPermissions::ReadAndCall,
+                },
+            ])
+        })
+        .to_owned()
+    }
+
+    pub fn full() -> Self {
+        static D: once_cell::sync::OnceCell<AccessString> = once_cell::sync::OnceCell::new();
+        D.get_or_init(|| {
+            Self::make(&[
+                AccessPair {
+                    group: AccessGroup::CurrentDevice,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::CurrentZone,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::FriendZone,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::OthersZone,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::OwnerDec,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::SystemDec,
+                    permissions: AccessPermissions::Full,
+                },
+                AccessPair {
+                    group: AccessGroup::OthersDec,
+                    permissions: AccessPermissions::Full,
+                },
+            ])
+        })
+        .to_owned()
+    }
+
     pub fn dec_default() -> Self {
-        Self::make(&[AccessPair {
-            group: AccessGroup::CurrentDevice,
-            permissions: AccessPermissions::Full,
-        }, AccessPair {
-            group: AccessGroup::CurrentZone,
-            permissions: AccessPermissions::Full,
-        }, AccessPair {
-            group: AccessGroup::FriendZone,
-            permissions: AccessPermissions::Full,
-        }, AccessPair {
-            group: AccessGroup::OwnerDec,
-            permissions: AccessPermissions::Full,
-        }, AccessPair {
-            group: AccessGroup::SystemDec,
-            permissions: AccessPermissions::Full,
-        }])
+        Self::make(&[
+            AccessPair {
+                group: AccessGroup::CurrentDevice,
+                permissions: AccessPermissions::Full,
+            },
+            AccessPair {
+                group: AccessGroup::CurrentZone,
+                permissions: AccessPermissions::Full,
+            },
+            AccessPair {
+                group: AccessGroup::FriendZone,
+                permissions: AccessPermissions::Full,
+            },
+            AccessPair {
+                group: AccessGroup::OwnerDec,
+                permissions: AccessPermissions::Full,
+            },
+            AccessPair {
+                group: AccessGroup::SystemDec,
+                permissions: AccessPermissions::Full,
+            },
+        ])
     }
 
     fn to_string(&self) -> String {
-        ACCESS_GROUP_LIST.iter().map(|v| {
-            self.get_group_permissions(*v).as_str()
-        }).collect()
+        ACCESS_GROUP_LIST
+            .iter()
+            .map(|v| self.get_group_permissions(*v).as_str())
+            .collect()
     }
 }
 
@@ -252,9 +332,7 @@ impl TryFrom<&str> for AccessString {
 impl Default for AccessString {
     fn default() -> Self {
         static D: once_cell::sync::OnceCell<AccessString> = once_cell::sync::OnceCell::new();
-        D.get_or_init(|| {
-            Self::dec_default()
-        }).to_owned()
+        D.get_or_init(|| Self::dec_default()).to_owned()
     }
 }
 
@@ -310,10 +388,10 @@ impl<'de> Deserialize<'de> for AccessString {
 
 #[cfg(test)]
 mod test {
-    use crate::access::*;
     use super::*;
+    use crate::access::*;
     use cyfs_core::*;
-    
+
     fn new_dec(name: &str) -> ObjectId {
         let owner_id = PeopleId::default();
         let dec_id = DecApp::generate_id(owner_id.into(), name);
@@ -346,37 +424,35 @@ mod test {
         let mut access_string = AccessString::default();
         println!("default={}", access_string);
 
-        let ret= access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Read);
+        let ret = access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Read);
         assert!(ret);
 
-        let ret= access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Call);
+        let ret = access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Call);
         assert!(ret);
-        let ret= access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Read);
+        let ret = access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Read);
         assert!(ret);
-        let ret= access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Write);
+        let ret = access_string.is_accessable(AccessGroup::CurrentDevice, AccessPermission::Write);
         assert!(ret);
 
-        let ret= access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Call);
+        let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Call);
         assert!(!ret);
-        let ret= access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Read);
+        let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Read);
         assert!(!ret);
-        let ret= access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Write);
+        let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Write);
         assert!(!ret);
 
         access_string.set_group_permission(AccessGroup::OthersDec, AccessPermission::Call);
-        let ret= access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Call);
+        let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Call);
         assert!(ret);
 
         access_string.clear_group_permission(AccessGroup::OthersDec, AccessPermission::Call);
-        let ret= access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Call);
+        let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Call);
         assert!(!ret);
-
 
         let c = access_string.get_group_permissions(AccessGroup::CurrentZone);
         assert_eq!(c, AccessPermissions::Full);
 
         println!("{}", c);
-
 
         access_string.clear_group_permissions(AccessGroup::CurrentZone);
         let c = access_string.get_group_permissions(AccessGroup::CurrentZone);
@@ -394,6 +470,5 @@ mod test {
         let c = access_string.get_group_permissions(AccessGroup::CurrentZone);
         assert_eq!(c, AccessPermissions::ReadAndCall);
         println!("{}", c);
-
     }
 }

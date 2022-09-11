@@ -3,8 +3,8 @@ use crate::root_state_api::*;
 use crate::zone::*;
 use cyfs_base::*;
 use cyfs_core::*;
-use cyfs_util::*;
 use cyfs_lib::*;
+use cyfs_util::*;
 
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
@@ -116,7 +116,7 @@ impl ZoneStateManager {
         zone_id: &ZoneId,
         root_state: GlobalStateLocalService,
         zone_manager: ZoneManager,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         let id = format!("zone-sync-state-{}", zone_id.to_string());
         let state = NOCCollectionSync::new(&id, noc);
@@ -253,10 +253,7 @@ impl ZoneStateManager {
         self.state.set_dirty(true);
     }
 
-    pub fn device_online(
-        &self,
-        ping_req: &SyncPingRequest,
-    ) -> BuckyResult<ZoneDeviceState> {
+    pub fn device_online(&self, ping_req: &SyncPingRequest) -> BuckyResult<ZoneDeviceState> {
         let ret = {
             let mut state = self.state.coll().lock().unwrap();
 
@@ -290,10 +287,7 @@ impl ZoneStateManager {
         Ok(ret)
     }
 
-    pub fn device_offline(
-        &self,
-        ping_req: &SyncPingRequest,
-    ) -> BuckyResult<ZoneDeviceState> {
+    pub fn device_offline(&self, ping_req: &SyncPingRequest) -> BuckyResult<ZoneDeviceState> {
         let device_state = match self
             .state
             .coll()
@@ -336,10 +330,7 @@ impl ZoneStateManager {
         Ok(device_state)
     }
 
-    pub fn device_update(
-        &self,
-        ping_req: &SyncPingRequest,
-    ) -> BuckyResult<ZoneDeviceState> {
+    pub fn device_update(&self, ping_req: &SyncPingRequest) -> BuckyResult<ZoneDeviceState> {
         let mut changed = false;
         let mut zone_state = self.state.coll().lock().unwrap();
         let device_state = match zone_state.device_list.get_mut(&ping_req.device_id) {

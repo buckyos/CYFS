@@ -1,4 +1,4 @@
-use super::{state_manager::*};
+use super::state_manager::*;
 use crate::config::StackGlobalConfig;
 use crate::stack::CyfsStackParams;
 use cyfs_base::*;
@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct MemoryNOC {
-    all: Arc<Mutex<HashMap<ObjectId, ObjectCacheData>>>,
+    all: Arc<Mutex<HashMap<ObjectId, NamedObjectCacheObjectRawData>>>,
 }
 
 impl MemoryNOC {
@@ -20,45 +20,47 @@ impl MemoryNOC {
         }
     }
 
-    fn req_to_data(obj_info: &NamedObjectCacheInsertObjectRequest) -> ObjectCacheData {
-        let now = bucky_time_now();
-
-        let mut data = ObjectCacheData {
-            protocol: obj_info.protocol.clone(),
-            source: obj_info.source.clone(),
-            object_id: obj_info.object_id,
-            dec_id: obj_info.dec_id,
-            object_raw: Some(obj_info.object_raw.clone()),
-            object: None,
-            flags: obj_info.flags,
-            create_time: now,
-            update_time: now,
-            insert_time: now,
-            rank: 10,
+    fn req_to_data(req: &NamedObjectCachePutObjectRequest) -> NamedObjectCacheObjectRawData {
+        let access_string = match &req.access_string {
+            Some(v) => *v,
+            None => AccessString::default().value(),
         };
 
-        data.rebuild_object().unwrap();
+        let meta = NamedObjectMetaData {
+            object_id: req.object.object_id.clone(),
+            owner_id: req.object.object().owner().to_owned(),
+            create_dec_id: req.source.dec.clone(),
+            update_time: req.object.object().update_time().to_owned(),
+            expired_time: req.object.object().update_time().to_owned(),
+            storage_category: req.storage_category,
+            context: req.context,
+            last_access_rpath: req.last_access_rpath,
+            access_string,
+        };
 
-        data
+        NamedObjectCacheObjectRawData {
+            object: Some(req.object.clone()),
+            meta,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl NamedObjectCache for MemoryNOC {
-    async fn insert_object(
+    async fn put_object(
         &self,
-        obj_info: &NamedObjectCacheInsertObjectRequest,
-    ) -> BuckyResult<NamedObjectCacheInsertResponse> {
+        req: &NamedObjectCachePutObjectRequest,
+    ) -> BuckyResult<NamedObjectCachePutObjectResponse> {
         let mut all = self.all.lock().unwrap();
 
-        match all.entry(obj_info.object_id.clone()) {
+        match all.entry(req.object.object_id.clone()) {
             Entry::Vacant(v) => {
                 info!(
                     "noc first insert object: id={}, type={:?}",
-                    obj_info.object_id,
-                    obj_info.object_id.obj_type_code()
+                    req.object.object_id,
+                    req.object.object_id.obj_type_code()
                 );
-                let data = Self::req_to_data(obj_info);
+                let data = Self::req_to_data(req);
 
                 v.insert(data);
             }
@@ -66,16 +68,16 @@ impl NamedObjectCache for MemoryNOC {
                 let value = o.into_mut();
                 info!(
                     "noc will replace object: id={}, type={:?}",
-                    obj_info.object_id,
-                    obj_info.object_id.obj_type_code()
+                    value.object.as_ref().unwrap().object_id,
+                    value.object.as_ref().unwrap().object_id.obj_type_code()
                 );
-                let data = Self::req_to_data(obj_info);
+                let data = Self::req_to_data(req);
                 *value = data;
             }
         }
 
         let resp = NamedObjectCacheInsertResponse {
-            result: NamedObjectCacheInsertResult::Accept,
+            result: NamedObjectCachePutObjectResult::Accept,
             object_update_time: None,
             object_expires_time: None,
         };
@@ -83,10 +85,10 @@ impl NamedObjectCache for MemoryNOC {
         Ok(resp)
     }
 
-    async fn get_object(
+    async fn get_object_raw(
         &self,
         req: &NamedObjectCacheGetObjectRequest,
-    ) -> BuckyResult<Option<ObjectCacheData>> {
+    ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
         let all = self.all.lock().unwrap();
 
         let ret = all.get(&req.object_id);
@@ -97,34 +99,36 @@ impl NamedObjectCache for MemoryNOC {
         Ok(Some(ret.unwrap().clone()))
     }
 
-    async fn select_object(
-        &self,
-        _req: &NamedObjectCacheSelectObjectRequest,
-    ) -> BuckyResult<Vec<ObjectCacheData>> {
-        unreachable!();
-    }
-
     async fn delete_object(
         &self,
         _req: &NamedObjectCacheDeleteObjectRequest,
-    ) -> BuckyResult<NamedObjectCacheDeleteObjectResult> {
+    ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         unreachable!();
+    }
+
+    async fn exists_object(
+        &self,
+        req: &NamedObjectCacheExistsObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheExistsObjectResponse> {
+        let all = self.all.lock().unwrap();
+
+        let ret = if all.contains_key(&req.object_id) {
+            NamedObjectCacheExistsObjectResponse {
+                object: true,
+                meta: true,
+            }
+        } else {
+            NamedObjectCacheExistsObjectResponse {
+                object: false,
+                meta: false,
+            }
+        };
+
+        Ok(ret)
     }
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         unreachable!();
-    }
-
-    fn sync_server(&self) -> Option<Box<dyn NamedObjectCacheSyncServer>> {
-        unreachable!();
-    }
-
-    fn sync_client(&self) -> Option<Box<dyn NamedObjectCacheSyncClient>> {
-        unreachable!();
-    }
-
-    fn clone_noc(&self) -> Box<dyn NamedObjectCache> {
-        Box::new(Clone::clone(&self as &MemoryNOC)) as Box<dyn NamedObjectCache>
     }
 }
 
@@ -135,7 +139,7 @@ pub static GLOBAL_NOC: OnceCell<Box<dyn NamedObjectCache>> = OnceCell::new();
 
 fn init_noc() {
     let device_id = DeviceId::from_str("5aSixgPXvhR4puWzFCHqvUXrjFWjxbq4y3thJVgZg6ty").unwrap();
-    let noc = MemoryNOC::new().clone_noc();
+    let noc = MemoryNOC::new().clone();
     if let Err(_) = GLOBAL_NOC.set(noc) {
         unreachable!();
     }
@@ -153,7 +157,7 @@ async fn create_global_state_manager() -> GlobalStateManager {
         GlobalStateCategory::RootState,
         &device_id,
         Some(owner),
-        noc.clone_noc(),
+        noc.clone(),
         config.clone(),
     )
     .await
@@ -264,7 +268,7 @@ async fn test_update(global_state_manager: &GlobalStateManager, dec_id: &ObjectI
 
     let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
     let x2_value = ObjectId::from_str("95RvaS5aZKKM8ghTYmsTyhSEWD4pAmALoUSJx1yNxSx5").unwrap();
-    
+
     let path = "/x/y";
     let path2 = "/x/y/z";
 
@@ -272,7 +276,6 @@ async fn test_update(global_state_manager: &GlobalStateManager, dec_id: &ObjectI
         .insert_with_key(path, "test1", &x1_value)
         .await
         .unwrap();
-
 
     let current_value = op_env.get_by_key(path, "test1").await.unwrap();
     assert_eq!(current_value, Some(x1_value));
@@ -289,19 +292,22 @@ async fn test_update(global_state_manager: &GlobalStateManager, dec_id: &ObjectI
 
     // new op_env
     let op_env2 = root_manager.create_op_env().await.unwrap();
-    assert_eq!(op_env2.root(),  root);
+    assert_eq!(op_env2.root(), root);
 
     let current_value = op_env2.get_by_key(path, "test1").await.unwrap();
     assert_eq!(current_value, Some(x1_value));
 
     {
         let c_root = op_env2.update().await.unwrap();
-        assert_eq!(op_env2.root(),  c_root);
-        assert_eq!(root,  c_root);
+        assert_eq!(op_env2.root(), c_root);
+        assert_eq!(root, c_root);
     }
-    
+
     // modify again
-    let prev = op_env.set_with_key(path, "test1", &x2_value, &Some(x1_value), false).await.unwrap();
+    let prev = op_env
+        .set_with_key(path, "test1", &x2_value, &Some(x1_value), false)
+        .await
+        .unwrap();
     assert_eq!(Some(x1_value), prev);
 
     let root = op_env.update().await.unwrap();
@@ -315,7 +321,7 @@ async fn test_update(global_state_manager: &GlobalStateManager, dec_id: &ObjectI
 
     // new op_env again
     let op_env3 = root_manager.create_op_env().await.unwrap();
-    assert_eq!(op_env3.root(),  root2);
+    assert_eq!(op_env3.root(), root2);
 
     let current_value = op_env3.get_by_key(path, "test1").await.unwrap();
     assert_eq!(current_value, Some(x2_value));
@@ -325,7 +331,6 @@ async fn test_update(global_state_manager: &GlobalStateManager, dec_id: &ObjectI
         global_state_manager.get_current_root().0
     );
 }
-
 
 async fn test_single_env(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
     let root = global_state_manager

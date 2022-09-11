@@ -31,10 +31,10 @@ impl GlobalStateManager {
         category: GlobalStateCategory,
         device_id: &DeviceId,
         owner: Option<ObjectId>,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         config: StackGlobalConfig,
     ) -> BuckyResult<Self> {
-        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone_noc());
+        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone());
         let global_root_state = GlobalStateRoot::load(
             category.clone(),
             device_id,
@@ -72,7 +72,10 @@ impl GlobalStateManager {
         new_root_info: RootInfo,
         prev_root_id: Option<ObjectId>,
     ) -> BuckyResult<()> {
-        info!("will direct set root state: category={}, {:?} -> {:?}", self.category, prev_root_id, new_root_info);
+        info!(
+            "will direct set root state: category={}, {:?} -> {:?}",
+            self.category, prev_root_id, new_root_info
+        );
 
         // should keep the lock during the whole func
         // Prevent inconsistencies in the instantaneous state caused by the successive setting of global_root and dec_root

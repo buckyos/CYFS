@@ -56,7 +56,7 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
 pub struct ZoneRoleManager {
     device_id: DeviceId,
     zone_manager: ZoneManager,
-    noc: Arc<Box<dyn NamedObjectCache>>,
+    noc: NamedObjectCacheRef,
     raw_meta_cache: RawMetaCache,
     acl_manager: AclManagerRef,
 
@@ -75,7 +75,7 @@ impl ZoneRoleManager {
     pub(crate) fn new(
         device_id: DeviceId,
         zone_manager: ZoneManager,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         raw_meta_cache: RawMetaCache,
         acl_manager: AclManagerRef,
         event_manager: RouterEventsManager,
@@ -84,7 +84,7 @@ impl ZoneRoleManager {
         Self {
             device_id,
             zone_manager,
-            noc: Arc::new(noc),
+            noc,
             raw_meta_cache,
             acl_manager,
             event_manager,
@@ -181,32 +181,31 @@ impl ZoneRoleManager {
         let owner_id = object.object_id.clone();
 
         // save to noc...
-        let req = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
-            object_id: object.object_id,
-            dec_id: None,
-            object: object.object.unwrap(),
-            object_raw: object.object_raw,
-            flags: 0,
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_system(),
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: Some(AccessString::full_except_write().value()),
         };
 
-        match self.noc.insert_object(&req).await {
+        match self.noc.put_object(&req).await {
             Ok(resp) => {
                 let updated = match resp.result {
-                    NamedObjectCacheInsertResult::Accept
-                    | NamedObjectCacheInsertResult::Updated => {
+                    NamedObjectCachePutObjectResult::Accept
+                    | NamedObjectCachePutObjectResult::Updated => {
                         info!("device update owner object to noc success: {}", owner_id);
                         true
                     }
-                    NamedObjectCacheInsertResult::AlreadyExists => {
+                    NamedObjectCachePutObjectResult::AlreadyExists => {
                         warn!(
                             "device update owner object but already exists: {}",
                             owner_id
                         );
                         false
                     }
-                    NamedObjectCacheInsertResult::Merged => {
+                    NamedObjectCachePutObjectResult::Merged => {
                         warn!(
                             "device update owner object but signs merged success: {}",
                             owner_id
@@ -442,15 +441,13 @@ impl ZoneRoleManager {
         people_id: &ObjectId,
     ) -> BuckyResult<Option<Arc<AnyNamedObject>>> {
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
+            source: RequestSourceInfo::new_local_system(),
             object_id: people_id.to_owned(),
-            source: self.device_id.clone(),
+            last_access_rpath: None,
         };
 
-        if let Ok(Some(obj)) = self.noc.get_object(&req).await {
-            let object = obj.object.unwrap();
-
-            return Ok(Some(object));
+        if let Ok(Some(data)) = self.noc.get_object(&req).await {
+            Ok(data.object.object)
         } else {
             error!("load people from noc but not found! id={}", people_id);
             Ok(None)
@@ -571,12 +568,6 @@ impl ZoneRoleManager {
             current_zone_info.zone_role,
         );
 
-        let noc_sync_server = self.noc.sync_server().ok_or_else(|| {
-            let msg = format!("noc sync server not support for client!");
-            error!("{}", msg);
-
-            BuckyError::new(BuckyErrorCode::NotSupport, msg)
-        })?;
 
         let server = ZoneSyncServer::new(
             &self.device_id,
@@ -584,8 +575,7 @@ impl ZoneRoleManager {
             self.clone(),
             self.zone_manager.clone(),
             root_state.clone(),
-            self.noc.clone_noc(),
-            noc_sync_server,
+            self.noc.clone(),
             bdt_stack.clone(),
             cyfs_base::NON_STACK_SYNC_BDT_VPORT,
             device_manager.clone_cache(),
@@ -628,7 +618,7 @@ impl ZoneRoleManager {
             bdt_stack,
             cyfs_base::NON_STACK_SYNC_BDT_VPORT,
             device_manager.clone_cache(),
-            self.noc.clone_noc(),
+            self.noc.clone(),
             self.acl_manager.clone(),
             chunk_manager,
         )

@@ -1,19 +1,21 @@
-use crate::base::*;
+use crate::prelude::*;
 use crate::root_state::*;
+use crate::AccessString;
+use crate::NONObjectInfo;
+use crate::RequestSourceInfo;
 use cyfs_base::*;
 use cyfs_core::*;
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 
 struct NOCStorageRawHelper {
     id: String,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     last_update_time: AtomicU64,
 }
 
 impl NOCStorageRawHelper {
-    pub fn new(id: impl Into<String>, noc: Box<dyn NamedObjectCache>) -> Self {
+    pub fn new(id: impl Into<String>, noc: NamedObjectCacheRef) -> Self {
         Self {
             id: id.into(),
             noc,
@@ -22,32 +24,33 @@ impl NOCStorageRawHelper {
     }
 
     pub async fn load(&self, object_id: &ObjectId) -> BuckyResult<Option<Vec<u8>>> {
-        let device_id = DeviceId::default();
-
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
-            source: device_id,
+            source: RequestSourceInfo::new_local_system(),
             object_id: object_id.to_owned(),
+            last_access_rpath: None,
         };
 
         let resp = self.noc.get_object(&req).await?;
         match resp {
-            Some(data) => match Storage::raw_decode(data.object_raw.as_ref().unwrap()) {
-                Ok((storage, _)) => {
-                    // 缓存当前object的修改时间
-                    let update_time = storage.body().as_ref().unwrap().update_time();
-                    self.last_update_time.store(update_time, Ordering::Relaxed);
+            Some(data) => {
+                match Storage::raw_decode(&data.object.object_raw) {
+                    Ok((storage, _)) => {
+                        // 缓存当前object的修改时间
+                        let update_time = storage.body().as_ref().unwrap().update_time();
+                        self.last_update_time.store(update_time, Ordering::Relaxed);
 
-                    Ok(Some(storage.into_value()))
+                        Ok(Some(storage.into_value()))
+                    }
+                    Err(e) => {
+                        error!(
+                            "decode storage object error: id={}, storage={}, {}",
+                            self.id, object_id, e
+                        );
+                        Err(e)
+                    }
                 }
-                Err(e) => {
-                    error!(
-                        "decode storage object error: id={}, storage={}, {}",
-                        self.id, object_id, e
-                    );
-                    Err(e)
-                }
-            },
+            }
+
             None => {
                 info!(
                     "storage not found in noc: id={}, storage={}",
@@ -87,28 +90,26 @@ impl NOCStorageRawHelper {
             self.id, storage_id
         );
 
-        let device_id = DeviceId::default();
         let object_raw = storage.to_vec().unwrap();
-        let (object, _) = AnyNamedObject::raw_decode(&object_raw).unwrap();
+        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
 
-        let req = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: device_id,
-            object_id: storage_id.clone().into(),
-            dec_id: None,
-            object_raw,
-            object: Arc::new(object),
-            flags: 0u32,
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_system(),
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            last_access_rpath: None,
+            context: None,
+            access_string: Some(AccessString::dec_default().value()),
         };
 
-        match self.noc.insert_object(&req).await {
+        match self.noc.put_object(&req).await {
             Ok(resp) => {
                 match resp.result {
-                    NamedObjectCacheInsertResult::Accept
-                    | NamedObjectCacheInsertResult::Updated => {
+                    NamedObjectCachePutObjectResult::Accept
+                    | NamedObjectCachePutObjectResult::Updated => {
                         info!(
                             "insert storage to noc success! id={}, storage={}",
-                            self.id, req.object_id
+                            self.id, req.object.object_id
                         );
                         Ok(storage_id)
                     }
@@ -117,7 +118,7 @@ impl NOCStorageRawHelper {
                         // FIXME 如果触发了本地时间回滚之类的问题，这里是否需要强制delete然后再插入？
                         error!(
                             "update storage to noc but alreay exist! id={}, storage={}, result={:?}",
-                            self.id, req.object_id, r
+                            self.id, req.object.object_id, r
                         );
 
                         Err(BuckyError::from(BuckyErrorCode::AlreadyExists))
@@ -127,7 +128,7 @@ impl NOCStorageRawHelper {
             Err(e) => {
                 error!(
                     "insert storage to noc error! id={}, storage={}, {}",
-                    self.id, req.object_id, e
+                    self.id, req.object.object_id, e
                 );
                 Err(e)
             }
@@ -136,11 +137,8 @@ impl NOCStorageRawHelper {
 
     // 从noc删除当前storage对象
     pub async fn delete(&self, object_id: &ObjectId) -> BuckyResult<()> {
-        let device_id = DeviceId::default();
-
         let req = NamedObjectCacheDeleteObjectRequest {
-            protocol: NONProtocol::Native,
-            source: device_id,
+            source: RequestSourceInfo::new_local_system(),
             object_id: object_id.to_owned(),
             flags: 0,
         };
@@ -185,7 +183,7 @@ impl NOCGlobalStateStorage {
         path: String,
         target: Option<ObjectId>,
         id: &str,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         let noc = NOCStorageRawHelper::new(id, noc);
 
@@ -353,7 +351,7 @@ pub struct NOCRawStorage {
 }
 
 impl NOCRawStorage {
-    pub fn new(id: &str, noc: Box<dyn NamedObjectCache>) -> Self {
+    pub fn new(id: &str, noc: NamedObjectCacheRef) -> Self {
         let storage: Storage = StorageObj::create(id, Vec::new());
 
         let noc = NOCStorageRawHelper::new(id, noc);

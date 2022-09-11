@@ -12,7 +12,7 @@ struct GlobalStateDecPathMetaHolder {
     category: GlobalStateCategory,
     dec_id: Option<ObjectId>,
     meta: Arc<OnceCell<BuckyResult<GlobalStatePathMetaSyncCollection>>>,
-    noc: Arc<Box<dyn NamedObjectCache>>,
+    noc: NamedObjectCacheRef,
 
     storage: Arc<GlobalStatePathMetaStorage>,
 
@@ -25,7 +25,7 @@ impl GlobalStateDecPathMetaHolder {
         root_state: GlobalStateOutputProcessorRef,
         category: GlobalStateCategory,
         dec_id: Option<ObjectId>,
-        noc: Arc<Box<dyn NamedObjectCache>>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         let storage = GlobalStatePathMetaStorage::new(isolate, &dec_id);
 
@@ -77,7 +77,7 @@ impl GlobalStateDecPathMetaHolder {
         root_state: GlobalStateOutputProcessorRef,
         category: GlobalStateCategory,
         dec_id: Option<ObjectId>,
-        noc: Arc<Box<dyn NamedObjectCache>>,
+        noc: NamedObjectCacheRef,
         storage: Arc<GlobalStatePathMetaStorage>,
     ) -> BuckyResult<GlobalStatePathMetaSyncCollection> {
         let meta_path = format!("{}/{}", CYFS_GLOBAL_STATE_META_PATH, category.as_str());
@@ -93,7 +93,7 @@ impl GlobalStateDecPathMetaHolder {
             meta_path,
             None,
             id,
-            noc.clone_noc(),
+            noc.clone(),
         );
 
         if let Err(e) = data.load().await {
@@ -129,7 +129,7 @@ impl GlobalStateDecPathMetaManager {
         root_state: GlobalStateOutputProcessorRef,
         category: GlobalStateCategory,
         dec_id: Option<ObjectId>,
-        noc: Arc<Box<dyn NamedObjectCache>>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         let meta = GlobalStateDecPathMetaHolder::new(
             isolate,

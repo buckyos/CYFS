@@ -4,7 +4,7 @@ mod crypto_api;
 mod interface;
 mod meta;
 mod name;
-mod default_app;
+//mod default_app;
 mod router_handler;
 mod stack;
 mod storage;

@@ -6,9 +6,8 @@ use crate::resolver::OodResolver;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-
-use std::sync::Arc;
 use cyfs_chunk_cache::ChunkManager;
+use std::sync::Arc;
 
 pub(crate) struct MetaInputProcessor {
     next: Option<NONInputProcessorRef>,
@@ -16,7 +15,10 @@ pub(crate) struct MetaInputProcessor {
 }
 
 impl MetaInputProcessor {
-    fn new_raw(next: Option<NONInputProcessorRef>, meta_cache: Box<dyn MetaCache>) -> NONInputProcessorRef {
+    fn new_raw(
+        next: Option<NONInputProcessorRef>,
+        meta_cache: Box<dyn MetaCache>,
+    ) -> NONInputProcessorRef {
         let ret = Self { next, meta_cache };
         Arc::new(Box::new(ret))
     }
@@ -29,11 +31,12 @@ impl MetaInputProcessor {
         tracker: Box<dyn TrackerCache>,
         ood_resolver: OodResolver,
         chunk_manager: Arc<ChunkManager>,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
     ) -> NONInputProcessorRef {
         let meta_processor = Self::new_raw(noc_processor, meta_cache);
 
-        let ndc_processor = NDCLevelInputProcessor::new_raw(chunk_manager, ndc, tracker, meta_processor.clone());
+        let ndc_processor =
+            NDCLevelInputProcessor::new_raw(chunk_manager, ndc, tracker, meta_processor.clone());
 
         let file_processor = NONFileServiceProcessor::new(
             NONAPILevel::NOC,

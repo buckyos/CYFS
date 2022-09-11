@@ -60,7 +60,7 @@ impl GlobalStateRoot {
         category: GlobalStateCategory,
         device_id: &DeviceId,
         owner: Option<ObjectId>,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         noc_cache: ObjectMapNOCCacheRef,
         config: StackGlobalConfig,
     ) -> BuckyResult<Self> {

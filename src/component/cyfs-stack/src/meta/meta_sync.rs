@@ -4,8 +4,8 @@ use cyfs_base::{
     RawDecode, RawEncode,
 };
 
-use cyfs_noc::*;
 use cyfs_lib::*;
+use cyfs_noc::*;
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -17,14 +17,14 @@ struct SyncState {
 }
 
 struct MetaSync {
-    noc: Box<dyn NamedObjectCache>,
-    meta_cache: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
+    meta_cache: NamedObjectCacheRef,
     state: NOCRawStorage<HashMap<ObjectId, SyncState>>,
 }
 
 impl MetaSync {
-    pub fn new(noc: Box<dyn NamedObjectCache>, meta_cache: Box<dyn NamedObjectCache>) -> Self {
-        let state = NOCRawStorage::new("", noc.clone_noc());
+    pub fn new(noc: NamedObjectCacheRef, meta_cache: NamedObjectCacheRef) -> Self {
+        let state = NOCRawStorage::new("", noc.clone());
         Self {
             noc,
             meta_cache,

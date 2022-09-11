@@ -9,19 +9,19 @@ use std::sync::Arc;
 pub struct GlobalStateAccessService {
     device_id: DeviceId,
     root_state: Arc<GlobalStateManager>,
-    noc: Arc<Box<dyn NamedObjectCache>>,
+    noc: NamedObjectCacheRef,
 }
 
 impl GlobalStateAccessService {
     pub fn new(
         device_id: DeviceId,
         root_state: Arc<GlobalStateManager>,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         Self {
             device_id,
             root_state,
-            noc: Arc::new(noc),
+            noc,
         }
     }
 
@@ -139,9 +139,9 @@ impl GlobalStateAccessService {
         object_id: &ObjectId,
     ) -> BuckyResult<Option<(Arc<AnyNamedObject>, Vec<u8>)>> {
         let noc_req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
             object_id: object_id.clone(),
-            source: self.device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
+            last_access_rpath: None,
         };
 
         let resp = self.noc.get_object(&noc_req).await.map_err(|e| {
@@ -151,10 +151,7 @@ impl GlobalStateAccessService {
 
         match resp {
             Some(resp) => {
-                assert!(resp.object.is_some());
-                assert!(resp.object_raw.is_some());
-
-                Ok(Some((resp.object.unwrap(), resp.object_raw.unwrap())))
+                Ok(Some((resp.object.object.unwrap(), resp.object.object_raw)))
             }
             None => Ok(None),
         }

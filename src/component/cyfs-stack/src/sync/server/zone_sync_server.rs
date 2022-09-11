@@ -6,9 +6,9 @@ use super::zone_state::*;
 use crate::root_state_api::*;
 use crate::zone::*;
 use cyfs_base::*;
+use cyfs_bdt::{DeviceCache, StackGuard};
 use cyfs_core::ZoneId;
 use cyfs_lib::*;
-use cyfs_bdt::{DeviceCache, StackGuard};
 
 use std::sync::Arc;
 
@@ -16,7 +16,7 @@ pub(crate) struct ZoneSyncServer {
     ping_server: SyncPingServer,
     zone_state: Arc<ZoneStateManager>,
 
-    noc_sync_server: Box<dyn NamedObjectCacheSyncServer>,
+    noc: NamedObjectCacheRef,
 
     state_sync_server: GlobalStateSyncServer,
 
@@ -32,14 +32,13 @@ impl ZoneSyncServer {
         role_manager: ZoneRoleManager,
         zone_manager: ZoneManager,
         root_state: GlobalStateLocalService,
-        noc: Box<dyn NamedObjectCache>,
-        noc_sync_server: Box<dyn NamedObjectCacheSyncServer>,
+        noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
         ood_sync_vport: u16,
         device_manager: Box<dyn DeviceCache>,
     ) -> Self {
         let zone_state =
-            ZoneStateManager::new(zone_id, root_state.clone(), zone_manager, noc.clone_noc());
+            ZoneStateManager::new(zone_id, root_state.clone(), zone_manager, noc.clone());
         let zone_state = Arc::new(zone_state);
 
         let ping_server = SyncPingServer::new(zone_state.clone(), role_manager);
@@ -49,13 +48,13 @@ impl ZoneSyncServer {
         let requestor = SyncServerRequestorManager::new(bdt_stack, device_manager, ood_sync_vport);
         let requestor = Arc::new(requestor);
 
-        let state_sync_server = GlobalStateSyncServer::new(root_state, &device_id, Arc::new(noc));
+        let state_sync_server = GlobalStateSyncServer::new(root_state, &device_id, noc.clone());
 
         Self {
             ping_server,
             zone_state,
 
-            noc_sync_server,
+            noc,
             state_sync_server,
 
             requestor,
@@ -154,19 +153,15 @@ impl ZoneSyncServer {
 
         self.zone_state.verify_source(&source).await?;
 
-        let list = self
-            .noc_sync_server
-            .get_objects(get_req.begin_seq, get_req.end_seq, &get_req.list)
-            .await?;
+        let list = self.load_objects(&get_req.list).await;
 
         // 对所有结果转换为目标类型
         let mut ret_objects: Vec<SelectResponseObjectInfo> = Vec::new();
         for item in list.into_iter() {
-            let object = NONObjectInfo::new(item.object_id, item.object_raw.unwrap(), item.object);
             let resp_info = SelectResponseObjectInfo {
-                size: object.object_raw.len() as u32,
-                insert_time: item.insert_time,
-                object: Some(object),
+                size: item.object.object_raw.len() as u32,
+                insert_time: 0,
+                object: Some(item.object),
             };
 
             ret_objects.push(resp_info);
@@ -175,6 +170,31 @@ impl ZoneSyncServer {
         Ok(SyncObjectsResponse {
             objects: ret_objects,
         })
+    }
+
+    async fn load_objects(&self, list: &Vec<ObjectId>) -> Vec<NamedObjectCacheObjectData> {
+        let mut result = vec![];
+        for id in list {
+            let req = NamedObjectCacheGetObjectRequest {
+                source: RequestSourceInfo::new_local_system(),
+                object_id: id.to_owned(),
+                last_access_rpath: None,
+            };
+
+            match self.noc.get_object(&req).await {
+                Ok(Some(data)) => {
+                    result.push(data);
+                }
+                Ok(None) => {
+                    warn!("sync get object but not exists! {}", id);
+                }
+                Err(e) => {
+                    error!("sync get object got error! {}, {}", id, e);
+                }
+            }
+        }
+
+        result
     }
 
     pub async fn chunks(
@@ -192,8 +212,6 @@ impl ZoneSyncServer {
         };
 
         let result = self.ndc.exists_chunks(&req).await?;
-        Ok(SyncChunksResponse {
-            result,
-        })
+        Ok(SyncChunksResponse { result })
     }
 }

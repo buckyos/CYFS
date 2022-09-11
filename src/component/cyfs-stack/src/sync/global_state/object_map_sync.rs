@@ -3,10 +3,10 @@ use super::super::protocol::*;
 use super::assoc::AssociationObjects;
 use super::cache::SyncObjectsStateCache;
 use super::data::{ChunksCollector, DataSync};
+use super::dir_sync::*;
 use super::walker::*;
 use cyfs_base::*;
 use cyfs_lib::*;
-use super::dir_sync::*;
 
 use futures::future::{AbortHandle, Abortable};
 use std::sync::{Arc, Mutex};
@@ -21,7 +21,7 @@ pub(super) struct ObjectMapSync {
     cache: ObjectMapOpEnvCacheRef,
     state_cache: SyncObjectsStateCache,
     requestor: Arc<SyncClientRequestor>,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     device_id: DeviceId,
 
     sync_waker: Mutex<Option<AbortHandle>>,
@@ -36,11 +36,11 @@ impl ObjectMapSync {
         cache: ObjectMapOpEnvCacheRef,
         state_cache: SyncObjectsStateCache,
         requestor: Arc<SyncClientRequestor>,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         device_id: DeviceId,
         data_sync: DataSync,
     ) -> Self {
-        let chunks_collector = ChunksCollector::new(noc.clone_noc(), device_id.clone());
+        let chunks_collector = ChunksCollector::new(noc.clone(), device_id.clone());
 
         Self {
             target,
@@ -96,13 +96,19 @@ impl ObjectMapSync {
 
         loop {
             if list.is_empty() && self.chunks_collector.is_empty() && dir_sync.is_empty() {
-                info!("sync object & chunk list & dir list complete! target={}", self.target);
+                info!(
+                    "sync object & chunk list & dir list complete! target={}",
+                    self.target
+                );
                 break Ok(());
             }
 
             // sync objects
             let sync_list = self.state_cache.filter_missing(list);
-            match self.sync_objects_with_assoc_once(sync_list, &mut dir_sync, had_err).await {
+            match self
+                .sync_objects_with_assoc_once(sync_list, &mut dir_sync, had_err)
+                .await
+            {
                 Ok(assoc_objects) => {
                     list = assoc_objects;
                 }
@@ -132,7 +138,7 @@ impl ObjectMapSync {
     async fn sync_objects_with_assoc_once(
         &self,
         list: Vec<ObjectId>,
-        dir_sync: &mut DirListSync, 
+        dir_sync: &mut DirListSync,
         had_err: &mut bool,
     ) -> BuckyResult<Vec<ObjectId>> {
         let mut assoc = AssociationObjects::new(self.chunks_collector.clone());
@@ -149,7 +155,7 @@ impl ObjectMapSync {
                 return Err(e);
             }
         }
-        
+
         // then sync dirs once
         // dir_sync will try to parse dir and extract all relative objects and chunks
         dir_sync.sync_once(&mut assoc).await;
@@ -186,7 +192,7 @@ impl ObjectMapSync {
         list: Vec<ObjectId>,
         had_err: &mut bool,
         assoc_objects: &mut AssociationObjects,
-        dir_sync: &mut DirListSync, 
+        dir_sync: &mut DirListSync,
     ) -> BuckyResult<()> {
         // 重试间隔
         let mut retry_interval = SYNC_RETRY_MIN_INTERVAL_SECS;
@@ -354,36 +360,35 @@ impl ObjectMapSync {
     }
 
     async fn put_others(&self, object: NONObjectInfo) -> BuckyResult<()> {
-        let req = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
-            object_id: object.object_id.clone(),
-            dec_id: None,
-            object: object.object.unwrap(),
-            object_raw: object.object_raw,
-            flags: 0,
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_system(),
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: None,
         };
 
-        match self.noc.insert_object(&req).await {
+        match self.noc.put_object(&req).await {
             Ok(resp) => {
                 match resp.result {
-                    NamedObjectCacheInsertResult::Accept
-                    | NamedObjectCacheInsertResult::Updated => {
+                    NamedObjectCachePutObjectResult::Accept
+                    | NamedObjectCachePutObjectResult::Updated => {
                         info!(
                             "sync diff insert object to noc success: {}",
-                            object.object_id
+                            req.object.object_id
                         );
                     }
-                    NamedObjectCacheInsertResult::AlreadyExists => {
+                    NamedObjectCachePutObjectResult::AlreadyExists => {
                         warn!(
                             "sync diff insert object but already exists: {}",
-                            object.object_id
+                            req.object.object_id
                         );
                     }
-                    NamedObjectCacheInsertResult::Merged => {
+                    NamedObjectCachePutObjectResult::Merged => {
                         warn!(
                             "sync diff insert object but signs merged success: {}",
-                            object.object_id
+                            req.object.object_id
                         );
                     }
                 }
@@ -393,7 +398,7 @@ impl ObjectMapSync {
             Err(e) => {
                 error!(
                     "sync diff insert object to noc failed: {} {}",
-                    object.object_id, e
+                    req.object.object_id, e
                 );
                 Err(e)
             }

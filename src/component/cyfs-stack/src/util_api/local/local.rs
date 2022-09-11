@@ -21,11 +21,11 @@ use std::sync::Arc;
 
 struct NOCObjectCache {
     device_id: DeviceId,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
 }
 
 impl NOCObjectCache {
-    pub fn new(device_id: DeviceId, noc: Box<dyn NamedObjectCache>) -> ObjectCacheRef {
+    pub fn new(device_id: DeviceId, noc: NamedObjectCacheRef) -> ObjectCacheRef {
         Arc::new(Self { device_id, noc })
     }
 }
@@ -36,31 +36,31 @@ impl ObjectCache for NOCObjectCache {
         let resp = self
             .noc
             .get_object(&NamedObjectCacheGetObjectRequest {
-                protocol: NONProtocol::Native,
-                source: self.device_id.clone(),
+                source: RequestSourceInfo::new_local_system(),
                 object_id,
+                last_access_rpath: None,
             })
             .await?;
         if resp.is_none() {
             Ok(None)
         } else {
-            Ok(Some(resp.unwrap().object_raw.unwrap()))
+            Ok(Some(resp.unwrap().object.object_raw))
         }
     }
 
     async fn put_value(&self, object_id: ObjectId, object_raw: Vec<u8>) -> BuckyResult<()> {
-        let object = AnyNamedObject::clone_from_slice(object_raw.as_slice())?;
-        let req = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
-            object_id,
-            dec_id: None,
-            object_raw,
-            object: Arc::new(object),
-            flags: 0u32,
+        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
+
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_system(),
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: None,
         };
 
-        self.noc.insert_object(&req).await.map_err(|e| {
+        self.noc.put_object(&req).await.map_err(|e| {
             error!("insert object map to noc error! id={}, {}", object_id, e);
             e
         })?;
@@ -68,26 +68,22 @@ impl ObjectCache for NOCObjectCache {
     }
 
     async fn is_exist(&self, object_id: ObjectId) -> BuckyResult<bool> {
-        let noc_req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
+        let noc_req = NamedObjectCacheExistsObjectRequest {
             object_id: object_id.clone(),
-            source: self.device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
         };
 
-        let resp = self.noc.get_object(&noc_req).await.map_err(|e| {
+        let resp = self.noc.exists_object(&noc_req).await.map_err(|e| {
             error!("load object map from noc error! id={}, {}", object_id, e);
             e
         })?;
 
-        match resp {
-            Some(_) => Ok(true),
-            None => Ok(false),
-        }
+        Ok(resp.meta && resp.object)
     }
 }
 
 pub(crate) struct UtilLocalService {
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     bdt_stack: StackGuard,
     zone_manager: ZoneManager,
 
@@ -105,7 +101,7 @@ pub(crate) struct UtilLocalService {
 impl Clone for UtilLocalService {
     fn clone(&self) -> Self {
         Self {
-            noc: self.noc.clone_noc(),
+            noc: self.noc.clone(),
             bdt_stack: self.bdt_stack.clone(),
             zone_manager: self.zone_manager.clone(),
             ood_resolver: self.ood_resolver.clone(),
@@ -119,7 +115,7 @@ impl Clone for UtilLocalService {
 
 impl UtilLocalService {
     pub(crate) fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
         bdt_stack: StackGuard,
         zone_manager: ZoneManager,
@@ -130,12 +126,12 @@ impl UtilLocalService {
         let access_info_manager = BdtNetworkAccessInfoManager::new(bdt_stack.clone());
 
         task_manager
-            .register_task_factory(BuildFileTaskFactory::new(noc.clone_noc(), ndc))
+            .register_task_factory(BuildFileTaskFactory::new(noc.clone(), ndc))
             .unwrap();
         task_manager
             .register_task_factory(BuildDirTaskFactory::new(
                 Arc::downgrade(&task_manager),
-                noc.clone_noc(),
+                noc.clone(),
             ))
             .unwrap();
 
@@ -441,10 +437,8 @@ impl UtilLocalService {
         &self,
         req: UtilBuildDirFromObjectMapInputRequest,
     ) -> BuckyResult<UtilBuildDirFromObjectMapInputResponse> {
-        let object_cache = NOCObjectCache::new(
-            self.bdt_stack.local_device_id().clone(),
-            self.noc.clone_noc(),
-        );
+        let object_cache =
+            NOCObjectCache::new(self.bdt_stack.local_device_id().clone(), self.noc.clone());
         let dir_id =
             DirHelper::build_zip_dir_from_object_map(object_cache, &req.object_map_id).await?;
         Ok(UtilBuildDirFromObjectMapInputResponse { object_id: dir_id })

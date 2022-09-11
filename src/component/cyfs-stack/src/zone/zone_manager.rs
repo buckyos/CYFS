@@ -1,5 +1,5 @@
-use super::{failed_cache::ZoneFailedCache, friends::FriendsManager};
 use super::zone_container::ZoneContainer;
+use super::{failed_cache::ZoneFailedCache, friends::FriendsManager};
 use crate::meta::*;
 use crate::resolver::DeviceCache;
 use cyfs_base::*;
@@ -51,7 +51,7 @@ pub type CurrentZoneInfoRef = Arc<CurrentZoneInfo>;
 
 #[derive(Clone)]
 pub struct ZoneManager {
-    noc: Arc<Box<dyn NamedObjectCache>>,
+    noc: NamedObjectCacheRef,
     device_manager: Arc<Box<dyn DeviceCache>>,
     device_id: DeviceId,
     device_category: DeviceCategory,
@@ -79,7 +79,7 @@ pub struct ZoneManager {
 
 impl ZoneManager {
     pub fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         device_manager: Box<dyn DeviceCache>,
         device_id: DeviceId,
         device_category: DeviceCategory,
@@ -88,7 +88,6 @@ impl ZoneManager {
         root_state: GlobalStateOutputProcessorRef,
         local_cache: GlobalStateOutputProcessorRef,
     ) -> Self {
-        let noc = Arc::new(noc);
         let device_manager = Arc::new(device_manager);
         let meta_cache = Arc::new(meta_cache);
 
@@ -119,7 +118,7 @@ impl ZoneManager {
 
     pub async fn init(&self) -> BuckyResult<()> {
         self.friends_manager.init().await?;
-    
+
         self.zones.load_from_noc().await?;
 
         Ok(())
@@ -129,13 +128,21 @@ impl ZoneManager {
     fn compare_zone_with_owner(zone: &Zone, owner: &AnyNamedObject) -> BuckyResult<bool> {
         let ood_list = owner.ood_list()?;
         if zone.ood_list() != ood_list {
-            warn!("zone ood_list changed! zone={:?}, owner={:?}", zone.ood_list(), ood_list);
+            warn!(
+                "zone ood_list changed! zone={:?}, owner={:?}",
+                zone.ood_list(),
+                ood_list
+            );
             return Ok(false);
         }
 
         let ood_work_mode = owner.ood_work_mode()?;
         if *zone.ood_work_mode() != ood_work_mode {
-            warn!("zone ood_work_mode changed! zone={:?}, owner={:?}", zone.ood_work_mode(), ood_work_mode);
+            warn!(
+                "zone ood_work_mode changed! zone={:?}, owner={:?}",
+                zone.ood_work_mode(),
+                ood_work_mode
+            );
             return Ok(false);
         }
 
@@ -188,7 +195,6 @@ impl ZoneManager {
             };
 
             info!("current zone info: {}", info,);
-
 
             let info = Arc::new(info);
             {
@@ -735,13 +741,13 @@ impl ZoneManager {
     // 查找一个owner对象，先从本地查找，再从meta-chain查找
     async fn search_object_raw(&self, object_id: &ObjectId) -> BuckyResult<Vec<u8>> {
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
             object_id: object_id.clone(),
-            source: self.device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
+            last_access_rpath: None,
         };
         if let Ok(Some(obj)) = self.noc.get_object(&req).await {
             debug!("get object from noc: {}", object_id);
-            return Ok(obj.object_raw.unwrap());
+            return Ok(obj.object.object_raw);
         }
 
         // 从meta查询

@@ -98,6 +98,20 @@ impl RequestSourceInfo {
         }
     }
 
+    pub fn new_local_dec(dec: Option<ObjectId>) -> Self {
+        Self {
+            zone: DeviceZoneInfo::new_local(),
+            dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        }
+    }
+
+    pub fn new_zone_dec(dec: Option<ObjectId>) -> Self {
+        Self {
+            zone: DeviceZoneInfo::new_current_zone(),
+            dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        }
+    }
+    
     pub fn compare_zone(&self, zone: &ObjectId) -> bool {
         self.zone.device.as_ref().map(|v| v.object_id()) == Some(zone)
             || self.zone.zone.as_ref() == Some(zone)

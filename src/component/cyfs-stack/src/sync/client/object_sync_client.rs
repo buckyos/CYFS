@@ -3,11 +3,11 @@ use super::super::protocol::*;
 use super::device_state::*;
 use super::requestor::SyncClientRequestor;
 use crate::root_state_api::{GlobalStateLocalService, RootInfo};
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::*;
+use cyfs_bdt::StackGuard;
+use cyfs_chunk_cache::ChunkManager;
 use cyfs_debug::Mutex;
 use cyfs_lib::*;
-use cyfs_bdt::StackGuard;
 
 use futures::future::{AbortHandle, Abortable};
 use std::sync::{
@@ -43,11 +43,11 @@ impl ObjectSyncClient {
         root_state: GlobalStateLocalService,
         state_manager: Arc<DeviceStateManager>,
         requestor: Arc<SyncClientRequestor>,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
         chunk_manager: Arc<ChunkManager>,
     ) -> Self {
-        let state_sync_helper = GlobalStateSyncHelper::new(root_state, device_id, Arc::new(noc));
+        let state_sync_helper = GlobalStateSyncHelper::new(root_state, device_id, noc);
 
         // TODO 目前state_cache只在一次协议栈进程周期有效，不做持久化缓存
         let state_cache = SyncObjectsStateCache::new();

@@ -16,7 +16,7 @@ pub struct GlobalStatePathMetaManager {
     isolate: String,
     root_state: GlobalStateOutputProcessorRef,
     category: GlobalStateCategory,
-    noc: Arc<Box<dyn NamedObjectCache>>,
+    noc: NamedObjectCacheRef,
 
     all: Arc<Mutex<HashMap<ObjectId, GlobalStatePathMetaItem>>>,
 }
@@ -26,7 +26,7 @@ impl GlobalStatePathMetaManager {
         isotate: &str,
         root_state: GlobalStateOutputProcessorRef,
         category: GlobalStateCategory,
-        noc: Arc<Box<dyn NamedObjectCache>>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         Self {
             isolate: isotate.to_owned(),

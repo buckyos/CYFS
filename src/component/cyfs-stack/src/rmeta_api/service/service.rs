@@ -21,7 +21,7 @@ impl GlobalStateMetaService {
     pub(crate) fn new(
         isolate: &str,
         root_state: GlobalStateOutputProcessorRef,
-        noc: Arc<Box<dyn NamedObjectCache>>,
+        noc: NamedObjectCacheRef,
         acl: AclManagerRef,
         forward: ForwardProcessorManager,
         zone_manager: ZoneManager,

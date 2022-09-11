@@ -21,7 +21,7 @@ impl NONFileServiceProcessor {
         non_processor: NONInputProcessorRef,
         ndn_processor: NDNInputProcessorRef,
         ood_resolver: OodResolver,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
     ) -> NONInputProcessorRef {
         let objectmap_loader = NONObjectMapLoader::new(ood_resolver.device_id().clone(), noc);
 
@@ -106,7 +106,6 @@ impl NONInputProcessor for NONFileServiceProcessor {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        
         // 对objectmap+inner_path情况下
         if req.object_id.obj_type_code() == ObjectTypeCode::ObjectMap && req.inner_path.is_some() {
             return self.get_objectmap(req).await;

@@ -1,19 +1,19 @@
 use crate::resolver::OodResolver;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::StackGuard;
+use cyfs_lib::*;
 
 use crate::trans::TransInputProcessor;
 use crate::trans_api::local::FileRecorder;
 use crate::trans_api::{DownloadTaskManager, PublishManager, TransStore};
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::File;
+use cyfs_chunk_cache::ChunkManager;
 use cyfs_core::{TransContext, TransContextObject};
+use cyfs_task_manager::{TaskId, TaskManager, TaskStatus};
 use std::convert::TryFrom;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use cyfs_task_manager::{TaskId, TaskManager, TaskStatus};
 
 fn trans_task_status_to_task_status(task_status: TransTaskStatus) -> TaskStatus {
     match task_status {
@@ -36,7 +36,7 @@ fn task_status_to_trans_task_status(task_status: TaskStatus) -> TransTaskStatus 
 pub(crate) struct LocalTransService {
     download_tasks: Arc<DownloadTaskManager>,
     publish_manager: Arc<PublishManager>,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     bdt_stack: StackGuard,
 
     file_recorder: FileRecorder,
@@ -51,7 +51,7 @@ impl Clone for LocalTransService {
         Self {
             download_tasks: self.download_tasks.clone(),
             publish_manager: self.publish_manager.clone(),
-            noc: self.noc.clone_noc(),
+            noc: self.noc.clone(),
             bdt_stack: self.bdt_stack.clone(),
             file_recorder: self.file_recorder.clone(),
             ood_resolver: self.ood_resolver.clone(),
@@ -64,7 +64,7 @@ impl Clone for LocalTransService {
 
 impl LocalTransService {
     pub fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
@@ -83,14 +83,14 @@ impl LocalTransService {
             task_manager.clone(),
             ndc.clone(),
             tracker.clone(),
-            noc.clone_noc(),
+            noc.clone(),
             bdt_stack.local_device_id().clone(),
         );
 
         let file_recorder = FileRecorder::new(
             ndc.clone(),
             tracker.clone(),
-            noc.clone_noc(),
+            noc.clone(),
             bdt_stack.local_device_id().to_owned(),
         );
 
@@ -155,20 +155,18 @@ impl LocalTransService {
             let file = match self
                 .noc
                 .get_object(&NamedObjectCacheGetObjectRequest {
-                    protocol: NONProtocol::Native,
-                    source: self.bdt_stack.local_device_id().clone(),
+                    source: RequestSourceInfo::new_local_dec(req.common.dec_id),
                     object_id: req.file_id.unwrap(),
+                    last_access_rpath: None,
                 })
                 .await?
             {
                 Some(resp) => {
-                    if resp.object_raw.is_some() {
-                        match File::clone_from_slice(resp.object_raw.as_ref().unwrap().as_slice()) {
-                            Ok(file) => Some(file),
-                            Err(_) => None,
-                        }
-                    } else {
-                        None
+                    match File::clone_from_slice(
+                        resp.object.object_raw.as_slice(),
+                    ) {
+                        Ok(file) => Some(file),
+                        Err(_) => None,
                     }
                 }
                 None => None,
@@ -178,7 +176,7 @@ impl LocalTransService {
                 let file_recorder = FileRecorder::new(
                     self.ndc.clone(),
                     self.tracker.clone(),
-                    self.noc.clone_noc(),
+                    self.noc.clone(),
                     self.bdt_stack.local_device_id().clone(),
                 );
                 file_recorder
@@ -231,20 +229,18 @@ impl LocalTransService {
             match self
                 .noc
                 .get_object(&NamedObjectCacheGetObjectRequest {
-                    protocol: NONProtocol::Native,
-                    source: self.bdt_stack.local_device_id().clone(),
+                    source: RequestSourceInfo::new_local_dec(req.common.dec_id),
                     object_id: req.file_id.unwrap(),
+                    last_access_rpath: None,
                 })
                 .await?
             {
                 Some(resp) => {
-                    if resp.object_raw.is_some() {
-                        match File::clone_from_slice(resp.object_raw.as_ref().unwrap().as_slice()) {
-                            Ok(file) => Some(file),
-                            Err(_) => None,
-                        }
-                    } else {
-                        None
+                    match File::clone_from_slice(
+                        resp.object.object_raw.as_slice(),
+                    ) {
+                        Ok(file) => Some(file),
+                        Err(_) => None,
                     }
                 }
                 None => None,
@@ -535,16 +531,14 @@ impl LocalTransService {
         // 如果没指定flags，那么使用默认值
         // let flags = req.flags.unwrap_or(0);
         let noc_req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
+            source: RequestSourceInfo::new_local_system(),
             object_id: object_id.to_owned(),
-            source: self.bdt_stack.local_device_id().to_owned(),
+            last_access_rpath: None,
         };
 
         match self.noc.get_object(&noc_req).await {
             Ok(Some(resp)) => {
-                assert!(resp.object.is_some());
-                assert!(resp.object_raw.is_some());
-                Ok(resp.object.unwrap())
+                Ok(resp.object.object.unwrap())
             }
             Ok(None) => {
                 let msg = format!("noc get object but not found: {}", object_id);
@@ -566,16 +560,14 @@ impl TransInputProcessor for LocalTransService {
         }
 
         let noc_req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.bdt_stack.local_device_id().to_owned(),
+            source: RequestSourceInfo::new_local_system(),
             object_id: TransContext::gen_context_id(req.common.dec_id.unwrap(), req.context_name),
+            last_access_rpath: None,
         };
         match self.noc.get_object(&noc_req).await {
             Ok(Some(resp)) => {
-                assert!(resp.object.is_some());
-                assert!(resp.object_raw.is_some());
                 Ok(TransContext::clone_from_slice(
-                    resp.object_raw.unwrap().as_slice(),
+                    resp.object.object_raw.as_slice(),
                 )?)
             }
             Ok(None) => {
@@ -589,18 +581,18 @@ impl TransInputProcessor for LocalTransService {
 
     async fn put_context(&self, req: TransUpdateContextInputRequest) -> BuckyResult<()> {
         let object_raw = req.context.to_vec()?;
-        let object = AnyNamedObject::clone_from_slice(object_raw.as_slice())?;
-        let noc_req = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.bdt_stack.local_device_id().clone(),
-            object_id: req.context.desc().calculate_id(),
-            dec_id: req.common.dec_id,
-            object_raw,
-            object: Arc::new(object),
-            flags: 0,
+        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
+
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_system(),
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: None,
         };
 
-        self.noc.insert_object(&noc_req).await?;
+        self.noc.put_object(&req).await?;
         Ok(())
     }
 

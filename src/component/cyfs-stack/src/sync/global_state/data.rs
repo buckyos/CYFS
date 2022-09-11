@@ -114,15 +114,15 @@ impl AssociationChunks {
 
 #[derive(Clone)]
 pub(super) struct ChunksCollector {
-    noc: Arc<Box<dyn NamedObjectCache>>,
+    noc: NamedObjectCacheRef,
     device_id: DeviceId,
     chunks: Arc<Mutex<AssociationChunks>>,
 }
 
 impl ChunksCollector {
-    pub fn new(noc: Box<dyn NamedObjectCache>, device_id: DeviceId) -> Self {
+    pub fn new(noc: NamedObjectCacheRef, device_id: DeviceId) -> Self {
         Self {
-            noc: Arc::new(noc),
+            noc,
             device_id,
             chunks: Arc::new(Mutex::new(AssociationChunks::new())),
         }
@@ -160,16 +160,16 @@ impl ChunksCollector {
 
     async fn append_impl(&self, object_id: &ObjectId) -> BuckyResult<()> {
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
             object_id: object_id.to_owned(),
+            last_access_rpath: None,
         };
 
         let resp = self.noc.get_object(&req).await?;
         match resp {
             Some(data) => {
-                let object = data.object.as_ref().unwrap();
-                self.append_object(object_id, object);
+                let object = data.object.object.unwrap();
+                self.append_object(object_id, &object);
             }
             None => {
                 debug!("file or dir not found in noc: id={}", object_id,);

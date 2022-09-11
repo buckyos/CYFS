@@ -26,7 +26,7 @@ pub struct NONService {
 
 impl NONService {
     pub(crate) fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
@@ -42,7 +42,7 @@ impl NONService {
     ) -> (NONService, NDNService) {
         // 带file服务的无权限的noc processor
         let raw_noc_processor = NOCLevelInputProcessor::new_raw_with_file_service(
-            noc.clone_noc(),
+            noc.clone(),
             ndc.clone(),
             tracker.clone(),
             ood_resovler.clone(),
@@ -58,7 +58,7 @@ impl NONService {
             tracker.clone(),
             ood_resovler.clone(),
             chunk_manager.clone(),
-            noc.clone_noc(),
+            noc.clone(),
         );
 
         // 带本地权限的noc processor

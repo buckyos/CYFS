@@ -1,6 +1,5 @@
 use cyfs_base::*;
 use cyfs_meta_lib::MetaMinerTarget;
-use cyfs_noc::*;
 
 use async_std::net::SocketAddr;
 
@@ -14,7 +13,6 @@ pub struct CyfsStackConfigParams {
 
     // 是否开启shared_object_stack服务，默认为true
     pub shared_stack: bool,
-
 }
 
 impl Default for CyfsStackConfigParams {
@@ -27,7 +25,6 @@ impl Default for CyfsStackConfigParams {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct CyfsStackFrontParams {
     // if enable the front module
@@ -36,9 +33,7 @@ pub struct CyfsStackFrontParams {
 
 impl Default for CyfsStackFrontParams {
     fn default() -> Self {
-        Self {
-            enable: true,
-        }
+        Self { enable: true }
     }
 }
 
@@ -57,19 +52,13 @@ impl Default for CyfsStackMetaParams {
 }
 
 #[derive(Debug, Clone)]
-pub struct CyfsStackNOCParams {
-    // Internally used noc storage type
-    pub noc_type: NamedObjectStorageType,
-}
+pub struct CyfsStackNOCParams {}
 
 impl Default for CyfsStackNOCParams {
     fn default() -> Self {
-        Self {
-            noc_type: NamedObjectStorageType::default(),
-        }
+        Self {}
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct CyfsStackInterfaceParams {
@@ -85,7 +74,6 @@ pub struct CyfsStackInterfaceParams {
 
 impl Default for CyfsStackInterfaceParams {
     fn default() -> Self {
-
         // 初始化两个标准地址
         let bdt_listeners = vec![cyfs_base::NON_STACK_BDT_VPORT];
         let tcp_listener: SocketAddr = format!("127.0.0.1:{}", cyfs_base::NON_STACK_HTTP_PORT)

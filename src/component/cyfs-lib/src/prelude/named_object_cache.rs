@@ -1,7 +1,7 @@
-use crate::meta::*;
+use crate::*;
 use cyfs_base::*;
-use cyfs_lib::*;
 
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 // Whether the delete operation returns the original value, the default does not return
@@ -68,7 +68,7 @@ pub struct NamedObjectCachePutObjectResponse {
 
 // get_object
 #[derive(Clone)]
-pub struct NamedObjectCacheGetObjectRequest1 {
+pub struct NamedObjectCacheGetObjectRequest {
     pub source: RequestSourceInfo,
 
     pub object_id: ObjectId,
@@ -76,17 +76,42 @@ pub struct NamedObjectCacheGetObjectRequest1 {
     pub last_access_rpath: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct NamedObjectMetaData {
+    pub object_id: ObjectId,
+
+    pub owner_id: Option<ObjectId>,
+    pub create_dec_id: ObjectId,
+
+    pub update_time: Option<u64>,
+    pub expired_time: Option<u64>,
+
+    pub storage_category: NamedObjectStorageCategory,
+    pub context: Option<String>,
+
+    pub last_access_rpath: Option<String>,
+    pub access_string: u32,
+}
+
 #[derive(Clone)]
-pub struct NamedObjectCacheObjectData {
+pub struct NamedObjectCacheObjectRawData {
     // object maybe missing while meta info is still here
     pub object: Option<NONObjectInfo>,
 
     pub meta: NamedObjectMetaData,
 }
 
+#[derive(Clone)]
+pub struct NamedObjectCacheObjectData {
+    // object must be there
+    pub object: NONObjectInfo,
+
+    pub meta: NamedObjectMetaData,
+}
+
 // delete_object
 #[derive(Clone)]
-pub struct NamedObjectCacheDeleteObjectRequest1 {
+pub struct NamedObjectCacheDeleteObjectRequest {
     pub source: RequestSourceInfo,
 
     pub object_id: ObjectId,
@@ -96,7 +121,7 @@ pub struct NamedObjectCacheDeleteObjectRequest1 {
 #[derive(Clone)]
 pub struct NamedObjectCacheDeleteObjectResponse {
     pub deleted_count: u32,
-    
+
     // object maybe missing while meta info is still here
     pub object: Option<NONObjectInfo>,
 
@@ -116,14 +141,14 @@ pub struct NamedObjectCacheExistsObjectResponse {
 }
 
 // stat
-#[derive(Debug, Clone)]
-pub struct NamedObjectCacheStat1 {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NamedObjectCacheStat {
     pub count: u64,
     pub storage_size: u64,
 }
 
 #[async_trait::async_trait]
-pub trait NamedObjectCache1: Sync + Send {
+pub trait NamedObjectCache: Sync + Send {
     async fn put_object(
         &self,
         req: &NamedObjectCachePutObjectRequest,
@@ -131,12 +156,34 @@ pub trait NamedObjectCache1: Sync + Send {
 
     async fn get_object(
         &self,
-        req: &NamedObjectCacheGetObjectRequest1,
-    ) -> BuckyResult<Option<NamedObjectCacheObjectData>>;
+        req: &NamedObjectCacheGetObjectRequest,
+    ) -> BuckyResult<Option<NamedObjectCacheObjectData>> {
+        match self.get_object_raw(req).await? {
+            Some(ret) => match ret.object {
+                Some(object) => Ok(Some(NamedObjectCacheObjectData {
+                    object,
+                    meta: ret.meta,
+                })),
+                None => {
+                    warn!(
+                        "get object meta from noc but object missing! {}",
+                        req.object_id
+                    );
+                    Ok(None)
+                }
+            },
+            None => Ok(None),
+        }
+    }
+
+    async fn get_object_raw(
+        &self,
+        req: &NamedObjectCacheGetObjectRequest,
+    ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>>;
 
     async fn delete_object(
         &self,
-        req: &NamedObjectCacheDeleteObjectRequest1,
+        req: &NamedObjectCacheDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse>;
 
     async fn exists_object(
@@ -144,7 +191,7 @@ pub trait NamedObjectCache1: Sync + Send {
         req: &NamedObjectCacheExistsObjectRequest,
     ) -> BuckyResult<NamedObjectCacheExistsObjectResponse>;
 
-    async fn stat(&self) -> BuckyResult<NamedObjectCacheStat1>;
+    async fn stat(&self) -> BuckyResult<NamedObjectCacheStat>;
 }
 
-pub type NamedObjectCacheRef = Arc<Box<dyn NamedObjectCache1>>;
+pub type NamedObjectCacheRef = Arc<Box<dyn NamedObjectCache>>;

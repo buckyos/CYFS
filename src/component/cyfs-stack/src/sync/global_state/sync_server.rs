@@ -4,8 +4,6 @@ use crate::root_state_api::GlobalStateLocalService;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::sync::Arc;
-
 pub(crate) struct GlobalStateSyncServer {
     state: GlobalStateSyncHelper,
 }
@@ -14,7 +12,7 @@ impl GlobalStateSyncServer {
     pub fn new(
         state: GlobalStateLocalService,
         device_id: &DeviceId,
-        noc: Arc<Box<dyn NamedObjectCache>>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         let state = GlobalStateSyncHelper::new(state, device_id, noc);
 
