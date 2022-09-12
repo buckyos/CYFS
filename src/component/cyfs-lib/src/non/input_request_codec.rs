@@ -10,6 +10,7 @@ impl JsonCodec<NONInputRequestCommon> for NONInputRequestCommon {
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "req_path", self.req_path.as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "target_dec_id", self.target_dec_id.as_ref());
         JsonCodecHelper::encode_string_field(&mut obj, "source", &self.source);
         JsonCodecHelper::encode_string_field(&mut obj, "protocol", &self.protocol);
         JsonCodecHelper::encode_string_field(&mut obj, "level", &self.level);
@@ -23,6 +24,7 @@ impl JsonCodec<NONInputRequestCommon> for NONInputRequestCommon {
         Ok(Self {
             req_path: JsonCodecHelper::decode_option_string_field(obj, "req_path")?,
             dec_id: JsonCodecHelper::decode_option_string_field(obj, "dec_id")?,
+            target_dec_id: JsonCodecHelper::decode_option_string_field(obj, "target_dec_id")?,
 
             source: JsonCodecHelper::decode_string_field(obj, "source")?,
             protocol: JsonCodecHelper::decode_string_field(obj, "protocol")?,

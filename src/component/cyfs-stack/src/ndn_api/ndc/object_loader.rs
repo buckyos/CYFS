@@ -142,6 +142,7 @@ impl NDNObjectLoader {
             common: NONInputRequestCommon {
                 req_path,
                 dec_id: req.common.dec_id.clone(),
+                target_dec_id: None,
                 source: req.common.source.clone(),
                 protocol: req.common.protocol.clone(),
 

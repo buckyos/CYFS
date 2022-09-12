@@ -238,6 +238,7 @@ impl ZoneSearcher {
             common: NONOutputRequestCommon {
                 req_path: None,
                 dec_id: None,
+                target_dec_id: None,
                 level: NONAPILevel::NON,
 
                 // 用以处理默认行为

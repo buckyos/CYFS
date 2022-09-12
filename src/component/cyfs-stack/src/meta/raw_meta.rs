@@ -98,6 +98,7 @@ impl RawMetaCache {
             common: NONInputRequestCommon {
                 req_path: None,
                 dec_id: None,
+                target_dec_id: None,
                 source: self.device_id.clone(),
                 protocol: NONProtocol::Meta,
                 level: NONAPILevel::NOC,

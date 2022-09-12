@@ -36,6 +36,8 @@ impl GlobalStateRequestHandler {
         // 尝试提取dec字段
         let dec_id: Option<ObjectId> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
+        let target_dec_id: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET_DEC_ID)?;
 
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
@@ -45,6 +47,7 @@ impl GlobalStateRequestHandler {
             protocol: req.protocol.clone(),
 
             dec_id,
+            target_dec_id,
             target,
 
             flags: flags.unwrap_or(0),
@@ -970,6 +973,8 @@ impl GlobalStateAccessRequestHandler {
         // 尝试提取dec字段
         let dec_id: Option<ObjectId> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
+        let target_dec_id: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET_DEC_ID)?;
 
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
@@ -979,6 +984,7 @@ impl GlobalStateAccessRequestHandler {
             protocol: req.protocol.clone(),
 
             dec_id,
+            target_dec_id,
             target,
 
             flags: flags.unwrap_or(0),

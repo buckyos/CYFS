@@ -8,6 +8,7 @@ impl JsonCodec<RootStateOutputRequestCommon> for RootStateOutputRequestCommon {
         let mut obj = Map::new();
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "target_dec_id", self.target_dec_id.as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "target", self.target.as_ref());
         JsonCodecHelper::encode_number_field(&mut obj, "flags", self.flags);
 
@@ -17,6 +18,7 @@ impl JsonCodec<RootStateOutputRequestCommon> for RootStateOutputRequestCommon {
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<RootStateOutputRequestCommon> {
         Ok(Self {
             dec_id: JsonCodecHelper::decode_option_string_field(obj, "dec_id")?,
+            target_dec_id: JsonCodecHelper::decode_option_string_field(obj, "target_dec_id")?,
             target: JsonCodecHelper::decode_option_string_field(obj, "target")?,
             flags: JsonCodecHelper::decode_int_field(obj, "flags")?,
         })

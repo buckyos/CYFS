@@ -40,6 +40,9 @@ impl NONRequestHandler {
         let dec_id: Option<ObjectId> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
 
+        let target_dec_id: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET_DEC_ID)?;
+
         // 尝试提取default_action字段
         let level =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_API_LEVEL)?;
@@ -54,6 +57,8 @@ impl NONRequestHandler {
             protocol: req.protocol.clone(),
 
             dec_id,
+            target_dec_id,
+            
             level: level.unwrap_or_default(),
             target,
             flags: flags.unwrap_or(0),

@@ -9,8 +9,11 @@ pub struct NONInputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
 
-    // 来源DEC
+    // 来源DEC,如果为None，默认为system-dec
     pub dec_id: Option<ObjectId>,
+
+    // 目标DEC，如果为None，默认等价于dec_id
+    pub target_dec_id: Option<ObjectId>,
 
     // 来源设备和协议
     pub source: DeviceId,
@@ -31,6 +34,9 @@ impl fmt::Display for NONInputRequestCommon {
 
         if let Some(dec_id) = &self.dec_id {
             write!(f, ", dec_id: {}", dec_id)?;
+        }
+        if let Some(dec_id) = &self.target_dec_id {
+            write!(f, ", target_dec_id: {}", dec_id)?;
         }
         write!(f, ", source: {}", self.source.to_string())?;
         write!(f, ", protocol: {}", self.protocol.to_string())?;

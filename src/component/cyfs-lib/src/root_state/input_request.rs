@@ -9,6 +9,9 @@ pub struct RootStateInputRequestCommon {
     // 来源DEC
     pub dec_id: Option<ObjectId>,
 
+    // 目标DEC，如果为None，默认等价于dec_id
+    pub target_dec_id: Option<ObjectId>,
+
     // 来源设备和协议
     pub source: DeviceId,
     pub protocol: NONProtocol,
@@ -22,6 +25,9 @@ impl fmt::Display for RootStateInputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(dec_id) = &self.dec_id {
             write!(f, "dec_id: {}", dec_id)?;
+        }
+        if let Some(dec_id) = &self.target_dec_id {
+            write!(f, ", target_dec_id: {}", dec_id)?;
         }
         write!(f, ", source: {}", self.source.to_string())?;
         write!(f, ", protocol: {}", self.protocol.to_string())?;

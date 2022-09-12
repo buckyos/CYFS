@@ -37,6 +37,7 @@ impl GlobalStateAccessCacheProcessor {
             common: NONInputRequestCommon {
                 req_path: Some(req.inner_path),
                 dec_id: req.common.dec_id,
+                target_dec_id: req.common.target_dec_id,
 
                 source: self.device_id.clone(),
                 protocol: req.common.protocol,

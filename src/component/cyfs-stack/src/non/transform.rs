@@ -23,6 +23,9 @@ impl NONInputTransformer {
             // 来源DEC
             dec_id: common.dec_id,
 
+            // 目标DEC
+            target_dec_id: common.target_dec_id,
+
             // 默认行为
             level: common.level,
 
@@ -194,6 +197,9 @@ impl NONOutputTransformer {
 
             // 来源DEC
             dec_id: common.dec_id,
+
+            // 目标DEC
+            target_dec_id: common.target_dec_id,
 
             // 默认行为
             level: common.level,

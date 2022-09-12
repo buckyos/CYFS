@@ -112,6 +112,7 @@ impl FrontService {
         let common = NONInputRequestCommon {
             req_path: None,
             dec_id: req.dec_id,
+            target_dec_id: req.target_dec_id,
             source: req.source,
             protocol: req.protocol,
             level: NONAPILevel::Router,
@@ -413,6 +414,7 @@ impl FrontService {
     ) -> BuckyResult<GlobalStateResponse> {
         let common = RootStateInputRequestCommon {
             dec_id: req.dec_id,
+            target_dec_id: req.target_dec_id,
             source: req.source,
             protocol: req.protocol,
             target: req.target,
@@ -472,6 +474,8 @@ impl FrontService {
                             target,
 
                             dec_id: Some(dec_id),
+                            target_dec_id: None,
+
                             object_id: dir_id,
                             inner_path: web_req.inner_path,
                             range: None,
@@ -511,6 +515,8 @@ impl FrontService {
                             target,
 
                             dec_id: Some(dec_id),
+                            target_dec_id: None,
+                            
                             object_id: local_status_id,
                             inner_path: None,
                             range: None,

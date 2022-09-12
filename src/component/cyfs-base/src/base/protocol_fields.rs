@@ -9,6 +9,8 @@ pub const CYFS_NON_ACTION: &str = "cyfs-non-action";
 pub const CYFS_NDN_ACTION: &str = "cyfs-ndn-action";
 
 pub const CYFS_DEC_ID: &str = "cyfs-dec-id";
+pub const CYFS_TARGET_DEC_ID: &str = "cyfs-target-dec-id";
+
 // select请求的filter内部的dec-id，和请求本身的dec-id区分
 pub const CYFS_FILTER_DEC_ID: &str = "cyfs-filter-dec-id";
 

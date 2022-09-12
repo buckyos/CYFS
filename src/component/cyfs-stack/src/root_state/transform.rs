@@ -23,6 +23,8 @@ impl GlobalStateOutputTransformer {
         RootStateInputRequestCommon {
             // 来源DEC
             dec_id: common.dec_id,
+            target_dec_id: common.target_dec_id,
+
             target: common.target,
             flags: common.flags,
 
@@ -345,6 +347,7 @@ impl GlobalStateInputTransformer {
         RootStateOutputRequestCommon {
             // 来源DEC
             dec_id: common.dec_id,
+            target_dec_id: common.target_dec_id,
             target: common.target,
             flags: common.flags,
         }
@@ -645,6 +648,7 @@ impl GlobalStateAccessOutputTransformer {
         RootStateInputRequestCommon {
             // 来源DEC
             dec_id: common.dec_id,
+            target_dec_id: common.target_dec_id,
             target: common.target,
             flags: common.flags,
 
@@ -713,6 +717,7 @@ impl GlobalStateAccessInputTransformer {
         RootStateOutputRequestCommon {
             // 来源DEC
             dec_id: common.dec_id,
+            target_dec_id: common.target_dec_id,
             target: common.target,
             flags: common.flags,
         }

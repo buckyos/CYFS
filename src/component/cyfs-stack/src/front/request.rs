@@ -10,6 +10,7 @@ pub struct FrontORequest {
     pub target: Vec<ObjectId>,
 
     pub dec_id: Option<ObjectId>,
+    pub target_dec_id: Option<ObjectId>,
 
     pub object_id: ObjectId,
     pub inner_path: Option<String>,
@@ -36,6 +37,7 @@ pub struct FrontRRequest {
     pub target: Option<ObjectId>,
 
     pub dec_id: Option<ObjectId>,
+    pub target_dec_id: Option<ObjectId>,
 
     pub action: RootStateAccessAction,
     pub inner_path: Option<String>,
@@ -65,6 +67,7 @@ pub struct FrontNDNRequest {
 
     pub target: Vec<ObjectId>,
     pub dec_id: Option<ObjectId>,
+    pub target_dec_id: Option<ObjectId>,
 
     pub object: NONObjectInfo,
     pub range: Option<NDNDataRequestRange>,
@@ -82,6 +85,7 @@ impl FrontNDNRequest {
 
             target: req.target,
             dec_id: req.dec_id,
+            target_dec_id: req.target_dec_id,
 
             object: NONObjectInfo::new(req.object_id, vec![], None),
             range: req.range,
@@ -98,6 +102,7 @@ impl FrontNDNRequest {
 
             target: req.target,
             dec_id: req.dec_id,
+            target_dec_id: req.target_dec_id,
 
             object,
             range: req.range,
@@ -117,6 +122,7 @@ impl FrontNDNRequest {
 
             target,
             dec_id: req.dec_id,
+            target_dec_id: req.target_dec_id,
 
             object,
             range: req.range,

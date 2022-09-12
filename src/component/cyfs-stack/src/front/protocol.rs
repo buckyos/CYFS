@@ -200,6 +200,30 @@ impl FrontProtocolHandler {
         }
     }
 
+    fn target_dec_id_from_request(req: &http_types::Request) -> BuckyResult<Option<ObjectId>> {
+        // first extract dec_id from headers
+        match RequestorHelper::decode_optional_header(req, cyfs_base::CYFS_TARGET_DEC_ID)? {
+            Some(dec_id) => Ok(Some(dec_id)),
+            None => {
+                // try extract dec_id from query pairs
+                let dec_id = match RequestorHelper::value_from_querys("target_dec_id", req.url()) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let msg = format!(
+                            "invalid request url target_dec_id query param! {}, {}",
+                            req.url(),
+                            e
+                        );
+                        error!("{}", msg);
+                        return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                    }
+                };
+
+                Ok(dec_id)
+            }
+        }
+    }
+
     fn range_from_request(req: &http_types::Request) -> BuckyResult<Option<NDNDataRequestRange>> {
         // first extract dec_id from headers
         let s: Option<String> = match RequestorHelper::decode_optional_header(req, "Range")? {
@@ -360,8 +384,10 @@ impl FrontProtocolHandler {
 
         let mode = Self::mode_from_request(url)?;
 
-        // try extract dec_id from headers or query pairs
+        // try extract dec_id & target_dec_id from headers or query pairs
         let dec_id = Self::dec_id_from_request(req.request.as_ref())?;
+        let target_dec_id = Self::target_dec_id_from_request(req.request.as_ref())?;
+
         let flags = Self::flags_from_request(url)?;
 
         let range = Self::range_from_request(req.request.as_ref())?;
@@ -399,6 +425,7 @@ impl FrontProtocolHandler {
 
                     target: roots,
                     dec_id,
+                    target_dec_id,
 
                     object_id: id,
                     inner_path,
@@ -431,6 +458,7 @@ impl FrontProtocolHandler {
 
                     target: vec![],
                     dec_id,
+                    target_dec_id,
 
                     object_id: roots[0],
                     inner_path,
@@ -602,6 +630,7 @@ impl FrontProtocolHandler {
 
         // try extract dec_id from headers or query pairs
         let extra_dec_id = Self::dec_id_from_request(req.request.as_ref())?;
+        let target_dec_id = Self::target_dec_id_from_request(req.request.as_ref())?;
 
         // header or params dec_id has higher priority
         let dec_id = extra_dec_id.or(dec_id);
@@ -669,6 +698,7 @@ impl FrontProtocolHandler {
 
             target,
             dec_id,
+            target_dec_id,
 
             action,
             inner_path,

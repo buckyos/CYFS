@@ -149,7 +149,7 @@ impl CyfsStackImpl {
             None => "",
         };
 
-        let noc = Self::init_raw_noc(&device_id, isolate, known_objects).await?;
+        let noc = Self::init_raw_noc(isolate, known_objects).await?;
 
         // 加载全局状态
         let (local_root_state, local_cache) =
@@ -830,7 +830,6 @@ impl CyfsStackImpl {
     }
 
     async fn init_raw_noc(
-        device_id: &DeviceId,
         isolate: &str,
         known_objects: Vec<KnownObject>,
     ) -> BuckyResult<NamedObjectCacheRef> {

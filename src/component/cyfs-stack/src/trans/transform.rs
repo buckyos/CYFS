@@ -26,10 +26,11 @@ impl TransInputTransformer {
 
     fn convert_non_common(common: NONInputRequestCommon) -> NONOutputRequestCommon {
         NONOutputRequestCommon {
-            req_path: common.req_path.clone(),
-            dec_id: common.dec_id.clone(),
-            level: common.level.clone(),
-            target: common.target.clone(),
+            req_path: common.req_path,
+            dec_id: common.dec_id,
+            target_dec_id: common.target_dec_id,
+            level: common.level,
+            target: common.target,
             flags: common.flags,
         }
     }
@@ -183,6 +184,7 @@ impl TransOutputTransformer {
         NONInputRequestCommon {
             req_path: common.req_path.clone(),
             dec_id: common.dec_id.clone(),
+            target_dec_id: common.target_dec_id.clone(),
             source: self.source.clone(),
             protocol,
             level: common.level.clone(),

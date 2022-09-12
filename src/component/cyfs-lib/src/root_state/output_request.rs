@@ -9,6 +9,9 @@ pub struct RootStateOutputRequestCommon {
     // 来源DEC
     pub dec_id: Option<ObjectId>,
 
+    // 目标DEC，如果为None，默认等价于dec_id
+    pub target_dec_id: Option<ObjectId>,
+
     // 用以默认行为
     pub target: Option<ObjectId>,
 
@@ -19,6 +22,7 @@ impl RootStateOutputRequestCommon {
     pub fn new() -> Self {
         Self {
             dec_id: None,
+            target_dec_id: None,
             target: None,
             flags: 0,
         }
@@ -29,6 +33,9 @@ impl fmt::Display for RootStateOutputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(dec_id) = &self.dec_id {
             write!(f, "dec_id: {}", dec_id)?;
+        }
+        if let Some(dec_id) = &self.target_dec_id {
+            write!(f, "target_dec_id: {}", dec_id)?;
         }
 
         if let Some(target) = &self.target {
