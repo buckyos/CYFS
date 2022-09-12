@@ -866,4 +866,89 @@ impl ZoneManager {
             }
         }
     }
+
+    pub async fn resolve_source_info(
+        &self,
+        dec: &Option<ObjectId>,
+        source: DeviceId,
+    ) -> BuckyResult<RequestSourceInfo> {
+        let ret = loop {
+            let current_info = self.get_current_info().await?;
+            if source == self.device_id {
+                let mut ret = RequestSourceInfo::new_local_dec(dec.to_owned());
+                ret.zone.zone = Some(current_info.owner_id.clone());
+                break ret;
+            }
+
+            let current_zone = self.get_current_zone().await?;
+            if current_zone.is_known_device(&source) {
+                let mut ret = RequestSourceInfo::new_zone_dec(dec.to_owned());
+                ret.zone.zone = Some(current_info.owner_id.clone());
+                break ret;
+            }
+
+            let zone = self.zones.get_zone(&source);
+            if let Some(zone) = zone {
+                let mut ret = if self.friends_manager.is_friend(zone.owner()) {
+                    RequestSourceInfo::new_friend_zone_dec(dec.to_owned())
+                } else {
+                    RequestSourceInfo::new_other_zone_dec(dec.to_owned())
+                };
+
+                ret.zone.zone = Some(zone.owner().clone());
+                break ret;
+            }
+
+            // get device to check owner if friend
+            let ret = self.device_manager.get(&source).await;
+            if let Some(device) = ret {
+                let owner = match device.desc().owner().as_ref() {
+                    Some(id) => id.to_owned(),
+                    None => {
+                        warn!(
+                            "source device has not owner, now will treat as orphan zone! {}",
+                            source
+                        );
+                        source.object_id().to_owned()
+                    }
+                };
+
+                if self.friends_manager.is_friend(&owner) {
+                    // need resolve zone!
+                    match self.get_zone(&source, Some(device)).await {
+                        Ok(zone) => {
+                            assert!(zone.is_known_device(&source));
+                            let mut ret = RequestSourceInfo::new_friend_zone_dec(dec.to_owned());
+                            ret.zone.zone = Some(zone.owner().clone());
+                            break ret;
+                        }
+                        Err(e) => {
+                            // FIXME add black list to block the error friend requests
+                            error!(
+                                "resolve friend zone from source but failed! source={}, {}",
+                                source, e
+                            );
+                            let mut ret = RequestSourceInfo::new_other_zone_dec(dec.to_owned());
+                            ret.zone.zone = Some(owner);
+                            break ret;
+                        }
+                    }
+                } else {
+                    let mut ret = RequestSourceInfo::new_other_zone_dec(dec.to_owned());
+                    ret.zone.zone = Some(owner.to_owned());
+                    break ret;
+                }
+            } else {
+                warn!(
+                    "get device from local but not found! now will treat as other zone! {}",
+                    source
+                );
+                let mut ret = RequestSourceInfo::new_other_zone_dec(dec.to_owned());
+                ret.zone.zone = Some(source.object_id().to_owned());
+                break ret;
+            }
+        };
+
+        Ok(ret)
+    }
 }

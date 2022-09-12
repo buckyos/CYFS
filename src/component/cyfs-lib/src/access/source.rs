@@ -71,6 +71,22 @@ impl DeviceZoneInfo {
             zone_category: DeviceZoneCategory::CurrentZone,
         }
     }
+
+    pub fn new_friend_zone() -> Self {
+        Self {
+            device: None,
+            zone: None,
+            zone_category: DeviceZoneCategory::FriendZone,
+        }
+    }
+
+    pub fn new_other_zone() -> Self {
+        Self {
+            device: None,
+            zone: None,
+            zone_category: DeviceZoneCategory::OtherZone,
+        }
+    }
 }
 
 // The identy info of a request
@@ -112,6 +128,20 @@ impl RequestSourceInfo {
         }
     }
     
+    pub fn new_friend_zone_dec(dec: Option<ObjectId>) -> Self {
+        Self {
+            zone: DeviceZoneInfo::new_friend_zone(),
+            dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        }
+    }
+
+    pub fn new_other_zone_dec(dec: Option<ObjectId>) -> Self {
+        Self {
+            zone: DeviceZoneInfo::new_other_zone(),
+            dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+        }
+    }
+
     pub fn compare_zone(&self, zone: &ObjectId) -> bool {
         self.zone.device.as_ref().map(|v| v.object_id()) == Some(zone)
             || self.zone.zone.as_ref() == Some(zone)
