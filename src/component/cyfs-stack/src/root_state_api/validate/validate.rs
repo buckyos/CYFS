@@ -40,7 +40,8 @@ enum CheckRoot {
     None,
 }
 
-struct GlobalStateValidator {
+#[derive(Clone)]
+pub struct GlobalStateValidator {
     root_state: Arc<GlobalStateManager>,
     op_env_cache: ObjectMapOpEnvCacheRef,
 
@@ -57,25 +58,32 @@ impl GlobalStateValidator {
         }
     }
 
-    async fn validate(
+    pub async fn validate(
         &self,
-        req: &GlobalStateValidateRequest,
+        req: GlobalStateValidateRequest,
     ) -> BuckyResult<GlobalStateValidateResponse> {
         let dec_root_id;
         let root_id;
         let check_root;
 
+        let debug_info = req.to_string();
+
         // First try find the target from cache
-        let cache_key = match &req.root {
+        let cache_key = match req.root {
             GlobalStateValidateRoot::GlobalRoot(global_root) => {
                 dec_root_id = None;
-                root_id = Some(global_root.to_owned());
+                root_id = Some(global_root.clone());
 
                 check_root = CheckRoot::GlobalRoot;
 
-                let inner_path = format!("{}/{}", req.dec_id, req.inner_path);
+                let inner_path = if req.inner_path == "/" {
+                    format!("/{}", req.dec_id)
+                } else {
+                    format!("/{}/{}", req.dec_id, req.inner_path)
+                };
+                
                 GlobalStatePathCacheKey {
-                    root: global_root.clone(),
+                    root: global_root,
                     inner_path,
                 }
             }
@@ -83,11 +91,11 @@ impl GlobalStateValidator {
                 dec_root_id = Some(dec_root.to_owned());
                 root_id = None;
 
-                check_root = CheckRoot::DecRoot(req.dec_id.clone());
+                check_root = CheckRoot::DecRoot(req.dec_id);
 
                 GlobalStatePathCacheKey {
-                    root: dec_root.clone(),
-                    inner_path: req.inner_path.clone(),
+                    root: dec_root,
+                    inner_path: req.inner_path,
                 }
             }
             GlobalStateValidateRoot::None => {
@@ -107,7 +115,7 @@ impl GlobalStateValidator {
 
                 GlobalStatePathCacheKey {
                     root: info.2,
-                    inner_path: req.inner_path.clone(),
+                    inner_path: req.inner_path,
                 }
             }
         };
@@ -116,7 +124,7 @@ impl GlobalStateValidator {
         let target = if ret.is_none() {
             let ret = self.load_target(&cache_key, check_root).await?;
             if ret.is_none() {
-                let msg = format!("the object referenced by path was not found! req={}", req);
+                let msg = format!("the object referenced by path was not found! req={}", debug_info);
                 warn!("{}", msg);
                 let err = BuckyError::new(BuckyErrorCode::NotFound, msg);
                 self.cache.on_failed(cache_key, err.clone());
@@ -137,18 +145,18 @@ impl GlobalStateValidator {
                 if target != *id {
                     let msg = format!(
                         "global state path validate unmatch! req={}, expect={}, got={}",
-                        req, id, target
+                        debug_info, id, target
                     );
                     warn!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
                 }
 
-                info!("global state path validate success! req={}", req);
+                info!("global state path validate success! req={}", debug_info);
             }
             None => {
                 info!(
                     "get object by global state path success! req={}, target={}",
-                    req, target
+                    debug_info, target
                 );
             }
         }
