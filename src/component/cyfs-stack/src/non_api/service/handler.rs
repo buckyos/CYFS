@@ -1,4 +1,3 @@
-use super::url::*;
 use crate::front::FrontRequestObjectFormat;
 use crate::non::*;
 use cyfs_base::*;
@@ -32,6 +31,10 @@ impl NONRequestHandler {
     fn decode_common_headers<State>(
         req: &NONInputHttpRequest<State>,
     ) -> BuckyResult<NONInputRequestCommon> {
+        // req_path
+        let req_path =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_REQ_PATH)?;
+
         // 尝试提取flags
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
@@ -51,14 +54,14 @@ impl NONRequestHandler {
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
         let ret = NONInputRequestCommon {
-            req_path: None,
+            req_path,
 
             source: req.source.clone(),
             protocol: req.protocol.clone(),
 
             dec_id,
             target_dec_id,
-            
+
             level: level.unwrap_or_default(),
             target,
             flags: flags.unwrap_or(0),
@@ -125,13 +128,8 @@ impl NONRequestHandler {
             return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
         }
 
-        let param = NONRequestUrlParser::parse_put_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-
+        let common = Self::decode_common_headers(&req)?;
         let object = NONRequestorHelper::decode_object_info(&mut req.request).await?;
-
-        common.req_path = param.req_path;
-        // common.request = Some(req.request.into());
 
         let put_req = NONPutObjectInputRequest { common, object };
 
@@ -242,25 +240,17 @@ impl NONRequestHandler {
         &self,
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        let param = NONRequestUrlParser::parse_get_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
+        let common = Self::decode_common_headers(&req)?;
 
-        // 优先尝试从header里面提取
-        let inner_path = match RequestorHelper::decode_optional_header(
-            &req.request,
-            cyfs_base::CYFS_INNER_PATH,
-        )? {
-            Some(v) => Some(v),
-            None => param.inner_path,
-        };
+        let object_id =
+            RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
 
-        common.req_path = param.req_path;
-        //common.request = Some(req.request.into());
+        let inner_path =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_INNER_PATH)?;
 
         let get_req = NONGetObjectInputRequest {
             common,
-            object_id: param.object_id,
-
+            object_id,
             inner_path,
         };
 
@@ -302,13 +292,8 @@ impl NONRequestHandler {
             return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
         }
 
-        let param = NONRequestUrlParser::parse_put_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-
+        let common = Self::decode_common_headers(&req)?;
         let object = NONRequestorHelper::decode_object_info(&mut req.request).await?;
-
-        common.req_path = param.req_path;
-        // common.request = Some(req.request.into());
 
         let post_req = NONPostObjectInputRequest { common, object };
 
@@ -329,16 +314,11 @@ impl NONRequestHandler {
         &self,
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<NONSelectObjectInputResponse> {
-        let param = NONRequestUrlParser::parse_select_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-
+        let common = Self::decode_common_headers(&req)?;
         let filter = SelectFilterUrlCodec::decode(req.request.url())?;
 
         let http_req: Request = req.request.into();
         let opt = SelectOptionCodec::decode(&http_req)?;
-
-        common.req_path = param.req_path;
-        // common.request = Some(http_req);
 
         let select_req = NONSelectObjectInputRequest {
             common,
@@ -385,16 +365,15 @@ impl NONRequestHandler {
             return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
         }
 
-        let param = NONRequestUrlParser::parse_get_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-
-        common.req_path = param.req_path;
-        // common.request = Some(req.request.into());
+        let common = Self::decode_common_headers(&req)?;
+        let object_id = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
+        let inner_path =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_INNER_PATH)?;
 
         let delete_req = NONDeleteObjectInputRequest {
             common,
-            object_id: param.object_id,
-            inner_path: param.inner_path,
+            object_id,
+            inner_path,
         };
 
         info!("recv delete_object request: {}", delete_req);

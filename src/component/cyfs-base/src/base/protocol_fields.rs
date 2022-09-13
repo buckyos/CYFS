@@ -14,6 +14,7 @@ pub const CYFS_TARGET_DEC_ID: &str = "cyfs-target-dec-id";
 // select请求的filter内部的dec-id，和请求本身的dec-id区分
 pub const CYFS_FILTER_DEC_ID: &str = "cyfs-filter-dec-id";
 
+pub const CYFS_REQ_PATH: &str = "cyfs-req-path";
 pub const CYFS_INNER_PATH: &str = "cyfs-inner-path";
 
 pub const CYFS_OWNER_ID: &str = "cyfs-owner-id";
