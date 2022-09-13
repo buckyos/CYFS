@@ -14,30 +14,15 @@ use crate::{
 };
 use super::super::{
     chunk::*, 
-    scheduler::*, 
-    download::*, 
 };
 use super::{
+    common::*, 
     chunk::ChunkTask, 
     chunk_list::ChunkListTask, 
     file::FileTask,
 };
 
-const TASK_COUNT_MAX_DEFAULT: usize = 5;
 
-#[derive(Clone)]
-pub struct Config { 
-    pub task_count_max: usize,
-}
-
-impl std::default::Default for Config {
-    fn default() -> Self {
-        Self {
-            task_count_max: TASK_COUNT_MAX_DEFAULT,
-        }
-    }
-   
-}
 
 // 因为按路径加入可能出现同一个object被多次下载的情况；
 // 所以需要一个单独的id 而不是 object id标识 sub task
@@ -82,7 +67,7 @@ impl SubTask {
         }
     }
 
-    fn as_task(&self) -> Option<&dyn DownloadTask> {
+    fn as_task(&self) -> Option<&dyn DownloadTask2> {
         match self {
             Self::ChunkList(_, task) => Some(task),
             Self::Chunk(_, task) => Some(task),
@@ -90,6 +75,10 @@ impl SubTask {
             Self::Dir(_, task) => Some(task), 
             _ => None
         }
+    }
+
+    fn clone_as_task(&self) -> Box<dyn DownloadTask2> {
+        self.as_task().unwrap().clone_as_task()
     }
 
     fn total_len(&self) -> Option<u64> {
@@ -103,23 +92,26 @@ impl SubTask {
 }
 
 enum TaskStateImpl {
-    Downloading(LinkedList<SubTask>),
+    Downloading(DownloadingState),
     Finished, 
-    Canceled(BuckyErrorCode)
+    Error(BuckyErrorCode)
+}
+
+struct DownloadingState {
+    pending_tasks: LinkedList<SubTask>, 
+    cur_task: Option<SubTask>, 
+    history_speed: HistorySpeed, 
 }
 
 struct StateImpl {
     schedule_state: TaskStateImpl, 
-    downloading_state: Vec<SubTask>,
-    downloaded_state: Vec<SubTask>,
-    control_state: TaskControlState
+    control_state: DownloadTaskControlState
 }
 
 struct TaskImpl {
     stack: WeakStack, 
     dir: DirId, 
     context: SingleDownloadContext, 
-    resource: ResourceManager, 
     sub_id: IncreaseIdGenerator, 
     state: RwLock<StateImpl>,  
     writers: Vec<Box<dyn ChunkWriter>>,
@@ -151,23 +143,25 @@ impl std::fmt::Display for DirTask {
 }
 
 impl DirTask {
-    pub fn new(stack: WeakStack, 
+    pub fn new(
+        stack: WeakStack, 
         dir: DirId, 
         context: SingleDownloadContext, 
         writers: Vec<Box<dyn ChunkWriter>>,
-        owner: ResourceManager,
     ) -> Self {
+        let strong_stack = Stack::from(&stack);
         Self (Arc::new(TaskImpl {
             stack: stack,
             dir: dir,
             context, 
-            resource: owner,
             sub_id: IncreaseIdGenerator::new(),
             state: RwLock::new(StateImpl{
-                schedule_state: TaskStateImpl::Downloading(LinkedList::new()),
-                downloading_state: Vec::new(),
-                downloaded_state: Vec::new(),
-                control_state: TaskControlState::Downloading(0, 0),
+                schedule_state: TaskStateImpl::Downloading(DownloadingState {
+                    pending_tasks: LinkedList::new(), 
+                    cur_task: None, 
+                    history_speed: HistorySpeed::new(0, strong_stack.config().ndn.channel.history_speed.clone()), 
+                }),
+                control_state: DownloadTaskControlState::Normal,
             }),
             writers: writers,
         }))
@@ -189,30 +183,26 @@ impl DirTask {
     }
 
     fn on_sub_task_finish(&self, id: IncreaseId) {
-        {
+        if let Some(expect_speed) = {
             let mut state = self.0.state.write().unwrap();
 
-            for i in 0..state.downloading_state.len() {
-                let downloading_task = &state.downloading_state[i];
-
-                if downloading_task.id() == id {
-                    let downloading_task = state.downloading_state.remove(i);
-                    state.downloaded_state.push(downloading_task.clone());
-                    break;
-                }
-            }
-        }
-
-        match self.start() {
-            TaskState::Finished => {
-                let task = self.clone();
-                task::spawn(async move {
-                    for w in &task.0.writers {
-                        let _ = w.finish().await;
+            match &mut state.schedule_state {
+                TaskStateImpl::Downloading(downloading) => {
+                    if let Some(cur_task) = &downloading.cur_task {
+                        if cur_task.id() == id {
+                            downloading.cur_task = None;
+                            Some(downloading.history_speed.average())
+                        } else {
+                            None
+                        } 
+                    } else {
+                        None
                     }
-                });
+                },
+                _ => None
             }
-            _ => {}
+        } {
+            let _ = self.on_drain(expect_speed);
         }
 
     }
@@ -224,14 +214,8 @@ impl DirTask {
         self.add_sub_task_inner(task.clone())
             .map(|start| {
                 if start {
-                    let _ = self.start();
+                    let _ = self.on_drain(0);
                 }
-            })
-            .map_err(|err| {
-                if let Some(task) = task.as_task() {
-                    let _ = self.resource().remove_child(task.resource());
-                }
-                err
             })
     }
 
@@ -239,14 +223,14 @@ impl DirTask {
         let mut state = self.0.state.write().unwrap();
 
         match &mut state.schedule_state {
-            TaskStateImpl::Downloading(tasks) => {
-                if let Some(back) = tasks.back() {
+            TaskStateImpl::Downloading(downloading) => {
+                if let Some(back) = downloading.pending_tasks.back() {
                     if back.is_end() {
                         return Err(BuckyError::new(BuckyErrorCode::ErrorState, "task is waiting finish."));
                     }
                 }
 
-                tasks.push_back(task.clone());
+                downloading.pending_tasks.push_back(task.clone());
 
                 return Ok(true);
             }
@@ -381,11 +365,11 @@ impl DirTaskControl for DirTask {
     fn add_meta(&self, chunk_list: ChunkListDesc, writers: Vec<Box<dyn ChunkWriter>>) -> BuckyResult<()> {
         let sub_id = self.0.sub_id.generate();
         let task = ChunkListTask::new(self.0.stack.clone(),
-                                                    format!("DirMeta:{}", self.dir_id()).to_owned(),
-                                                    chunk_list,
-                                                    self.context().clone(),
-                                                    vec![self.meta_writer(sub_id.clone(), writers)],
-                                                    self.resource().clone());
+                                        format!("DirMeta:{}", self.dir_id()).to_owned(),
+                                        chunk_list,
+                                        self.context().clone(),
+                                        vec![self.meta_writer(sub_id.clone(), writers)]
+                                    );
 
         self.add_sub_task(SubTask::ChunkList(sub_id.clone(), task))
     }
@@ -395,8 +379,8 @@ impl DirTaskControl for DirTask {
         let chunk_task = ChunkTask::new(self.0.stack.clone(), 
                                                    chunk, 
                                                    self.context().clone(), 
-                                                   vec![self.sub_writer(sub_id.clone(), writers)], 
-                                                   self.resource().clone());
+                                                   vec![self.sub_writer(sub_id.clone(), writers)]
+                                                );
 
         self.add_sub_task(SubTask::Chunk(sub_id.clone(), chunk_task))
     }
@@ -407,8 +391,8 @@ impl DirTaskControl for DirTask {
                                                 file, 
                                                 None, 
                                                 self.context().clone(), 
-                                                vec![self.sub_writer(sub_id.clone(), writers)],
-                                                self.resource().clone());
+                                                vec![self.sub_writer(sub_id.clone(), writers)]
+                                            );
         self.add_sub_task(SubTask::File(sub_id.clone(), file_task))
     }
 
@@ -417,8 +401,8 @@ impl DirTaskControl for DirTask {
         let dir_task = Self::new(self.0.stack.clone(), 
                                           dir, 
                                           self.context().clone(), 
-                                          vec![self.sub_writer(sub_id, writers)],
-                                          self.resource().clone());
+                                          vec![self.sub_writer(sub_id, writers)]
+                                        );
     
         self.add_sub_task(SubTask::Dir(sub_id.clone(), dir_task.clone()))
             .map(|_| Box::new(dir_task) as Box<dyn DirTaskControl>)
@@ -430,104 +414,136 @@ impl DirTaskControl for DirTask {
 }
 
 
-impl TaskSchedule for DirTask {
-    fn schedule_state(&self) -> TaskState {
+impl DownloadTask2 for DirTask {
+    fn clone_as_task(&self) -> Box<dyn DownloadTask2> {
+        Box::new(self.clone())
+    }
+
+    fn state(&self) -> DownloadTaskState {
         match &self.0.state.read().unwrap().schedule_state {
-            TaskStateImpl::Downloading(_) => TaskState::Running(0), 
-            TaskStateImpl::Finished => TaskState::Finished, 
-            TaskStateImpl::Canceled(err) => TaskState::Canceled(*err)
+            TaskStateImpl::Downloading(_) => DownloadTaskState::Downloading(0, 0.0), 
+            TaskStateImpl::Finished => DownloadTaskState::Finished, 
+            TaskStateImpl::Error(err) => DownloadTaskState::Error(*err)
         }
     }
 
-    fn resource(&self) -> &ResourceManager {
-        &self.0.resource
+
+    fn control_state(&self) -> DownloadTaskControlState {
+        self.0.state.read().unwrap().control_state.clone()
+    }
+
+    fn calc_speed(&self, when: Timestamp) -> u32 {
+        let mut state = self.0.state.write().unwrap();
+
+        if let TaskStateImpl::Downloading(downloading) = &mut state.schedule_state {
+            let cur_speed = if let Some(cur_task) = &downloading.cur_task {
+                cur_task.as_task().unwrap().calc_speed(when)
+            } else {
+                0
+            };
+            downloading.history_speed.update(Some(cur_speed), when);
+            cur_speed
+        } else {
+            0
+        }
+        
+    }
+
+    fn cur_speed(&self) -> u32 {
+        if let Some(task) = {
+            let state = self.0.state.read().unwrap();
+
+            if let TaskStateImpl::Downloading(downloading) = &state.schedule_state {
+                downloading.cur_task.as_ref().map(|t| t.clone_as_task())
+            } else {
+                None
+            }
+        } {
+            task.cur_speed()
+        } else {
+            0
+        }
+    }
+
+    fn history_speed(&self) -> u32 {
+        let state = self.0.state.read().unwrap();
+
+        if let TaskStateImpl::Downloading(downloading) = &state.schedule_state {
+            downloading.history_speed.average()
+        } else {
+            0
+        }
+    }
+
+    fn drain_score(&self) -> i64 {
+        if let Some(task) = {
+            let state = self.0.state.read().unwrap();
+
+            if let TaskStateImpl::Downloading(downloading) = &state.schedule_state {
+                downloading.cur_task.as_ref().map(|t| t.clone_as_task())
+            } else {
+                None
+            }
+        } {
+            task.drain_score()
+        } else {
+            0
+        }
     }
 
     //保证不会重复调用
-    fn start(&self) -> TaskState {
+    fn on_drain(&self, expect_speed: u32) -> u32 {
         enum NextStep {
-            Content(Box<dyn DownloadTask>),
+            Content(Box<dyn DownloadTask2>),
             Pending,
             Finish,
         }
 
         let step = {
-            let dir_config = Stack::from(&self.0.stack).config().ndn.dir.clone();
-
-            let mut state = self.0.state.write().unwrap();
-
-            if state.downloading_state.len() >= dir_config.task_count_max {
-                NextStep::Pending
-            } else {
-                match &mut state.schedule_state {
-                    TaskStateImpl::Downloading(content) => {
-                        if let Some(task) = content.front() {
+            let mut state = self.0.state.write().unwrap();           
+            match &mut state.schedule_state {
+                TaskStateImpl::Downloading(downloading) => {
+                    if let Some(cur_task) = &downloading.cur_task {
+                        NextStep::Content(cur_task.clone_as_task())
+                    } else {
+                        if let Some(task) = downloading.pending_tasks.front() {
                             if task.is_end() {
-                                if state.downloading_state.len() > 0 {
-                                    NextStep::Pending
-                                } else {
-                                    NextStep::Finish
-                                }
+                                NextStep::Finish
                             } else {
-                                if let Some(task) = content.pop_front() {
-                                    state.downloading_state.push(task.clone());
-                                    if let Some(task_impl) = task.as_task() {
-                                        NextStep::Content(task_impl.clone_as_download_task())
-                                    } else {
-                                        NextStep::Pending
-                                    }
+                                if let Some(task) = downloading.pending_tasks.pop_front() {
+                                    downloading.cur_task = Some(task.clone());
+                                    NextStep::Content(task.clone_as_task())
                                 } else {
-                                    unreachable!();
+                                    unreachable!()
                                 }
                             }
                         } else {
                             NextStep::Pending
                         }
-                    },
-                    _ => {
-                        NextStep::Finish
                     }
+                },
+                _ => {
+                    NextStep::Finish
                 }
             }
+            
         };
 
         match step {
-            NextStep::Content(task) => {
-                task.start()
-            },
-            NextStep::Pending => TaskState::Pending,
-            _ =>{
-                self.0.state.write().unwrap().control_state = TaskControlState::Finished(self.resource().avg_usage().downstream_bandwidth());
-                TaskState::Finished
+            NextStep::Content(task) => task.on_drain(expect_speed),
+            NextStep::Pending => 0, 
+            NextStep::Finish => {
+                self.0.state.write().unwrap().schedule_state = TaskStateImpl::Finished;
+
+                let task = self.clone();
+                task::spawn(async move {
+                    for w in &task.0.writers {
+                        let _ = w.finish().await;
+                    }
+                });
+                0
             }
         }
-    }
-}
-
-impl DownloadTaskControl for DirTask {
-    fn control_state(&self) -> TaskControlState {
-        self.0.state.read().unwrap().control_state.clone()
-    }
-
-    fn pause(&self) -> BuckyResult<TaskControlState> {
-        Ok(self.control_state())
-        //unimplemented!()
-    }
-
-    fn resume(&self) -> BuckyResult<TaskControlState> {
-        Ok(self.control_state())
-        //unimplemented!()
-    }
-
-    fn cancel(&self) -> BuckyResult<TaskControlState> {
-        Ok(self.control_state())
-        //unimplemented!()
-    }
-}
-
-impl DownloadTask for DirTask {
-    fn clone_as_download_task(&self) -> Box<dyn DownloadTask> {
-        Box::new(self.clone())
     }
 }
 

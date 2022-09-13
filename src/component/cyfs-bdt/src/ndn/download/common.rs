@@ -197,7 +197,7 @@ impl SpeedCounter {
         if when > self.last_update {
             let last_recv = self.last_recv;
             self.last_recv = 0;
-            self.cur_speed = (self.last_recv / Duration::from_micros(when - self.last_update).as_secs()) as u32;
+            self.cur_speed = ((last_recv * 1000 * 1000) as f64 / (when - self.last_update) as f64) as u32;
             self.cur_speed
         } else {
             self.cur_speed
@@ -225,8 +225,30 @@ impl Default for DownloadTaskPriority {
 }
 
 
-pub trait DownloadTask2 {
+// 对scheduler的接口
+#[derive(Debug)]
+pub enum DownloadTaskState {
+    Pending, 
+    Downloading(u32/*速度*/, f32/*进度*/),
+    Paused,
+    Error(BuckyErrorCode/*被cancel的原因*/), 
+    Finished
+}
+
+#[derive(Clone, Debug)]
+pub enum DownloadTaskControlState {
+    Normal, 
+    Paused, 
+    Canceled, 
+}
+
+
+
+pub trait DownloadTask2: Send + Sync {
     fn clone_as_task(&self) -> Box<dyn DownloadTask2>;
+    fn state(&self) -> DownloadTaskState;
+    fn control_state(&self) -> DownloadTaskControlState;
+
     fn priority_score(&self) -> u8 {
         DownloadTaskPriority::Normal as u8
     }

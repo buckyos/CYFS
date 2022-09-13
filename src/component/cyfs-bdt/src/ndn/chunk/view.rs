@@ -194,8 +194,7 @@ impl ChunkView {
 
     pub fn start_download(
         &self, 
-        context: SingleDownloadContext, 
-        owner: ResourceManager
+        context: SingleDownloadContext
     ) -> BuckyResult<ChunkDownloader> {
         let (downloader, newly) = {
             let mut state = self.0.state.write().unwrap();
@@ -238,13 +237,12 @@ impl ChunkView {
         };
         downloader.context().add_context(context);
         if newly {
-            let _ = downloader.on_drain();
             let downloader = downloader.clone();
             let view = self.clone();
             task::spawn(async move {
                 info!("{} begin wait downloader finish", view);
                 match downloader.wait_finish().await {
-                    TaskState::Finished => {
+                    DownloadTaskState::Finished => {
                         let chunk_content = downloader.reader().unwrap().get(view.chunk()).await.unwrap();
                         let mut state = view.0.state.write().unwrap();
                         state.state = ChunkState::Ready;
@@ -256,7 +254,7 @@ impl ChunkView {
                             state.downloader = None;
                         } 
                     },
-                    TaskState::Canceled(_) => {
+                    DownloadTaskState::Error(_) => {
                         // do nothing
                     },
                     _ => unimplemented!()
@@ -330,10 +328,10 @@ impl Scheduler for ChunkView {
         let mut state = self.0.state.write().unwrap();
         if state.state != ChunkState::Unknown {
             if let Some(downloader) = state.downloader.as_ref() {
-                let task_state = downloader.schedule_state();
+                let task_state = downloader.state();
                 if match task_state {
-                    TaskState::Finished => true, 
-                    TaskState::Canceled(_) => true, 
+                    DownloadTaskState::Finished => true, 
+                    DownloadTaskState::Error(_) => true, 
                     _ => false 
                 } {
                     info!("{} remove downloader for finished/canceled", self);

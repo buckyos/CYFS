@@ -22,7 +22,6 @@ use super::{
     chunk::{ChunkManager, ChunkReader}, 
     event::*, 
     root::RootTask,
-    task::DirConfig
 };
 
 #[derive(Clone)]
@@ -30,8 +29,6 @@ pub struct Config {
     pub atomic_interval: Duration, 
     pub schedule_interval: Duration, 
     pub channel: channel::Config,
-    pub limit: LimitConfig,
-    pub dir: DirConfig,
 }
 
 
@@ -62,7 +59,8 @@ impl NdnStack {
         let ndc = ndc.unwrap_or(NamedDataCache::clone(&mem_tracker));
         let store = store.unwrap_or(Box::new(LocalChunkReader::new(ndc.as_ref(), tracker.as_ref())));
         let event_handler = event_handler.unwrap_or(Box::new(DefaultNdnEventHandler::new()));
-        
+        let strong_stack = Stack::from(&stack);
+
         let resource = ResourceManager::new(None);
         Self(Arc::new(StackImpl {
             stack: stack.clone(), 
@@ -75,7 +73,7 @@ impl NdnStack {
                 store), 
             channel_manager: ChannelManager::new(stack.clone()), 
             event_handler, 
-            root_task: RootTask::new(resource.clone()),
+            root_task: RootTask::new(100000, strong_stack.config().ndn.channel.history_speed.clone()),
         }))
     }
 
@@ -98,6 +96,8 @@ impl NdnStack {
         let last_schedule = self.0.last_schedule.load(Ordering::SeqCst);
         if now > last_schedule 
             && Duration::from_millis(now - last_schedule) > stack.config().ndn.schedule_interval {
+            self.channel_manager().calc_speed(now);
+            self.root_task().on_schedule(now);
             self.collect_resource_usage();
             self.schedule_resource();
             self.apply_scheduled_resource();

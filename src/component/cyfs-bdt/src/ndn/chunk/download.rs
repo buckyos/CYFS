@@ -12,7 +12,6 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::super::{ 
-    scheduler::*, 
     channel::*, 
     download::*,
 };
@@ -59,12 +58,12 @@ enum StateImpl {
 }
 
 impl StateImpl {
-    pub fn to_task_state(&self) -> TaskState {
+    pub fn to_task_state(&self) -> DownloadTaskState {
         match self {
-            Self::Init(_) => TaskState::Running(0), 
-            Self::Running(_) => TaskState::Running(0), 
-            Self::Canceled(err) => TaskState::Canceled(*err), 
-            Self::Finished(_) => TaskState::Finished
+            Self::Init(_) => DownloadTaskState::Downloading(0, 0.0), 
+            Self::Running(_) => DownloadTaskState::Downloading(0, 0.0), 
+            Self::Canceled(err) => DownloadTaskState::Error(*err), 
+            Self::Finished(_) => DownloadTaskState::Finished
         }
     }
 }
@@ -116,11 +115,101 @@ impl ChunkDownloader {
         &self.0.context
     }
 
-    pub fn on_drain(
-        &self, 
-    ) -> BuckyResult<()> {
-        // TODO：如果多个不同task传入不同的config，需要合并config中的源;
-        // 并且合并resource manager
+    pub fn chunk(&self) -> &ChunkId {
+        &self.0.chunk
+    }
+
+    pub async fn wait_finish(&self) -> DownloadTaskState {
+        enum NextStep {
+            Wait(AbortRegistration), 
+            Return(DownloadTaskState)
+        }
+        let next_step = {
+            let state = &mut *self.0.state.write().unwrap();
+            match state {
+                StateImpl::Init(init) => NextStep::Wait(init.waiters.new_waiter()), 
+                StateImpl::Running(running) => NextStep::Wait(running.waiters.new_waiter()), 
+                StateImpl::Finished(_) => NextStep::Return(DownloadTaskState::Finished), 
+                StateImpl::Canceled(err) => NextStep::Return(DownloadTaskState::Error(*err)),
+            }
+        };
+        match next_step {
+            NextStep::Wait(waiter) => {
+                StateWaiter::wait(waiter, | | self.state()).await
+            }, 
+            NextStep::Return(state) => state
+        }
+    }
+
+    pub fn reader(&self) -> Option<Arc<Box<dyn ChunkReader>>> {
+        let state = &*self.0.state.read().unwrap();
+        match state {
+            StateImpl::Finished(reader) => Some(reader.clone()), 
+            _ => None
+        }
+    } 
+
+    pub fn state(&self) -> DownloadTaskState {
+        self.0.state.read().unwrap().to_task_state()
+    }
+
+
+    pub fn calc_speed(&self, when: Timestamp) -> u32 {
+        if let Some(session) = {
+            match &*self.0.state.read().unwrap() {
+                StateImpl::Running(running) => Some(running.session.clone()), 
+                _ => None
+            }
+        } {
+            session.calc_speed(when)
+        } else {
+            0
+        }
+    } 
+
+    pub fn cur_speed(&self) -> u32 {
+        if let Some(session) = {
+            match &*self.0.state.read().unwrap() {
+                StateImpl::Running(running) => Some(running.session.clone()), 
+                _ => None
+            }
+        } {
+            session.cur_speed()
+        } else {
+            0
+        }
+    }
+
+    pub fn history_speed(&self) -> u32 {
+        if let Some(session) = {
+            match &*self.0.state.read().unwrap() {
+                StateImpl::Running(running) => Some(running.session.clone()), 
+                _ => None
+            }
+        } {
+            session.history_speed()
+        } else {
+            0
+        }
+    }
+
+    pub fn drain_score(&self) -> i64 {
+        0
+    }
+
+    pub fn on_drain(&self, _: u32) -> u32 {
+        if let Some(cur_speed) = {
+            let state = &*self.0.state.read().unwrap();
+            match state {
+                StateImpl::Init(_) => None,
+                StateImpl::Running(running) => Some(running.session.cur_speed()),  
+                _ => Some(0)
+            }
+        } {
+            return cur_speed;
+        }
+       
+
         let strong_stack = Stack::from(&self.0.stack);
         let session = {
             let mut sources = self.context().sources_of(|source| {
@@ -211,44 +300,6 @@ impl ChunkDownloader {
                 }
             });
         }
-        Ok(())
-    }
-
-    pub fn chunk(&self) -> &ChunkId {
-        &self.0.chunk
-    }
-
-    pub async fn wait_finish(&self) -> TaskState {
-        enum NextStep {
-            Wait(AbortRegistration), 
-            Return(TaskState)
-        }
-        let next_step = {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                StateImpl::Init(init) => NextStep::Wait(init.waiters.new_waiter()), 
-                StateImpl::Running(running) => NextStep::Wait(running.waiters.new_waiter()), 
-                StateImpl::Finished(_) => NextStep::Return(TaskState::Finished), 
-                StateImpl::Canceled(err) => NextStep::Return(TaskState::Canceled(*err)),
-            }
-        };
-        match next_step {
-            NextStep::Wait(waiter) => {
-                StateWaiter::wait(waiter, | | self.schedule_state()).await
-            }, 
-            NextStep::Return(state) => state
-        }
-    }
-
-    pub fn reader(&self) -> Option<Arc<Box<dyn ChunkReader>>> {
-        let state = &*self.0.state.read().unwrap();
-        match state {
-            StateImpl::Finished(reader) => Some(reader.clone()), 
-            _ => None
-        }
-    } 
-
-    pub fn schedule_state(&self) -> TaskState {
-        self.0.state.read().unwrap().to_task_state()
+        0
     }
 }

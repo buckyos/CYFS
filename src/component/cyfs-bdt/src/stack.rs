@@ -162,16 +162,6 @@ impl StackConfig {
                         atomic: Duration::from_secs(1)
                     }
                 },
-                limit: ndn::LimitConfig {
-                    max_connections_per_source: 8u16,
-
-                    max_connections: 512u16,
-                    max_cpu_usage: 100u8,
-                    max_memory_usage: 100u8,
-                    max_upstream_bandwidth: 0u32,
-                    max_downstream_bandwidth: 0u32,
-                },
-                dir: ndn::DirConfig::default(),
             }, 
             debug: None
         }

@@ -12,8 +12,8 @@ use cyfs_base::*;
 use cyfs_bdt::{
     Stack, 
     StackOpenParams, 
-    DownloadTaskControl, 
-    TaskControlState, 
+    DownloadTask2, 
+    DownloadTaskState, 
     SingleDownloadContext, 
     download::*,
     // ndn::{*, channel::{*, protocol::v0::*}}, 
@@ -21,10 +21,10 @@ use cyfs_bdt::{
 };
 mod utils;
 
-async fn watch_task_finish(task: Box<dyn DownloadTaskControl>) -> BuckyResult<()> {
+async fn watch_task_finish(task: Box<dyn DownloadTask2>) -> BuckyResult<()> {
     loop {
-        match task.control_state() {
-            TaskControlState::Finished(_) => {
+        match task.state() {
+            DownloadTaskState::Finished => {
                 // log::info!("file task finish with avg speed {}", speed);
                 break Ok(());
             },

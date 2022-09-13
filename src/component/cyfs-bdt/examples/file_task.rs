@@ -1,16 +1,21 @@
 use async_std::{fs, future, io::prelude::*};
 use cyfs_base::*;
 use cyfs_bdt::{
-    download::*, SingleDownloadContext, DownloadTaskControl, Stack, StackOpenParams, TaskControlState,
+    download::*, 
+    SingleDownloadContext,  
+    Stack, 
+    StackOpenParams, 
+    DownloadTask2, 
+    DownloadTaskState, 
 };
 use sha2::Digest;
 use std::time::Duration;
 mod utils;
 
-async fn watch_task_finish(task: Box<dyn DownloadTaskControl>) -> BuckyResult<()> {
+async fn watch_task_finish(task: Box<dyn DownloadTask2>) -> BuckyResult<()> {
     loop {
-        match task.control_state() {
-            TaskControlState::Finished(_) => {
+        match task.state() {
+            DownloadTaskState::Finished => {
                 break Ok(());
             }
             _ => {}

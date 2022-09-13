@@ -247,6 +247,16 @@ impl Downloaders {
         }))
     }
 
+    fn session_count(&self) -> u32 {
+        let downloaders = self.0.read().unwrap();
+        downloaders.sessions.values().map(|session| {
+            match session.state() {
+                DownloadSessionState::Downloading(_) => 1, 
+                _ => 0
+            }
+        }).sum()
+    }
+
     fn initial_speed(&self) -> u32 {
         let downloaders = self.0.read().unwrap();
         let session_count: u32 = downloaders.sessions.values().map(|session| {
@@ -539,8 +549,12 @@ impl Channel {
         }
     }
 
-    fn calc_speed(&self, when: Timestamp) {
-        let _ = self.0.downloaders.calc_speed(when);
+    pub fn calc_speed(&self, when: Timestamp) -> u32 {
+        self.0.downloaders.calc_speed(when)
+    }
+
+    pub fn download_session_count(&self) -> u32 {
+        self.0.downloaders.session_count()
     }
 
     pub fn initial_download_session_speed(&self) -> u32 {

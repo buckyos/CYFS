@@ -46,7 +46,7 @@ pub async fn download_chunk_to_path(
     chunk: ChunkId, 
     context: SingleDownloadContext, 
     path: &Path
-) -> BuckyResult<Box<dyn DownloadTaskControl>> {
+) -> BuckyResult<Box<dyn DownloadTask2>> {
     let writer = LocalChunkWriter::from_path(
         path, &chunk, 
         stack.ndn().chunk_manager().ndc(), 
@@ -60,17 +60,16 @@ pub async fn download_chunk(
     chunk: ChunkId, 
     context: SingleDownloadContext, 
     writers: Vec<Box<dyn ChunkWriter>>
-) -> BuckyResult<Box<dyn DownloadTaskControl>> {
+) -> BuckyResult<Box<dyn DownloadTask2>> {
     let _ = stack.ndn().chunk_manager().track_chunk(&chunk).await?;
     // 默认写到cache里面去
     let task = ChunkTask::new(
         stack.to_weak(), 
         chunk, 
         context, 
-        writers, 
-        stack.ndn().root_task().download().resource().clone(),
+        writers,
     );
-    let _ = stack.ndn().root_task().download().add_task(task.clone_as_download_task())?;
+    let _ = stack.ndn().root_task().download().add(None, task.clone_as_task())?;
     Ok(Box::new(task))
 }
 
@@ -80,7 +79,7 @@ pub async fn download_chunk_list(
     chunks: &Vec<ChunkId>, 
     context: SingleDownloadContext, 
     writers: Vec<Box<dyn ChunkWriter>>
-) -> BuckyResult<Box<dyn DownloadTaskControl>> {
+) -> BuckyResult<Box<dyn DownloadTask2>> {
     let chunk_list = ChunkListDesc::from_chunks(chunks);
     let _ = futures::future::try_join_all(chunks.iter().map(|chunk| stack.ndn().chunk_manager().track_chunk(chunk))).await?;
     let task = ChunkListTask::new(
@@ -89,9 +88,8 @@ pub async fn download_chunk_list(
         chunk_list, 
         context, 
         writers, 
-        stack.ndn().root_task().download().resource().clone(),
     );
-    let _ = stack.ndn().root_task().download().add_task(task.clone_as_download_task())?;
+    let _ = stack.ndn().root_task().download().add(None, task.clone_as_task())?;
     Ok(Box::new(task))
 }
 
@@ -115,7 +113,7 @@ pub async fn download_file(
     file: File, 
     context: SingleDownloadContext, 
     writers: Vec<Box<dyn ChunkWriter>>
-) -> BuckyResult<Box<dyn DownloadTaskControl>> {
+) -> BuckyResult<Box<dyn DownloadTask2>> {
     stack.ndn().chunk_manager().track_file(&file).await?;
     let chunk_list = ChunkListDesc::from_file(&file)?;
     let task = FileTask::new(
@@ -124,9 +122,8 @@ pub async fn download_file(
         Some(chunk_list), 
         context, 
         writers, 
-        stack.ndn().root_task().download().resource().clone(),
     );
-    let _ = stack.ndn().root_task().download().add_task(task.clone_as_download_task())?;
+    let _ = stack.ndn().root_task().download().add(None, task.clone_as_task())?;
     Ok(Box::new(task))
 }
 
@@ -136,7 +133,7 @@ pub async fn download_file_with_ranges(
     ranges: Option<Vec<Range<u64>>>, 
     context: SingleDownloadContext, 
     writers: Vec<Box<dyn ChunkWriterExt>>
-) -> BuckyResult<Box<dyn DownloadTaskControl>> {
+) -> BuckyResult<Box<dyn DownloadTask2>> {
     stack.ndn().chunk_manager().track_file(&file).await?;
     let chunk_list = ChunkListDesc::from_file(&file)?;
     let task = FileTask::with_ranges(
@@ -146,9 +143,8 @@ pub async fn download_file_with_ranges(
         ranges, 
         context, 
         writers, 
-        stack.ndn().root_task().download().resource().clone(),
     );
-    let _ = stack.ndn().root_task().download().add_task(task.clone_as_download_task())?;
+    let _ = stack.ndn().root_task().download().add(None, task.clone_as_task())?;
     Ok(Box::new(task))
 }
 
@@ -157,7 +153,8 @@ pub async fn download_file_to_path(
     stack: &Stack, 
     file: File, 
     context: SingleDownloadContext, 
-    path: &Path) -> BuckyResult<Box<dyn DownloadTaskControl>> {
+    path: &Path
+) -> BuckyResult<Box<dyn DownloadTask2>> {
     let chunk_list = ChunkListDesc::from_file(&file)?;
     let writer = LocalChunkListWriter::new(
         path.to_owned(), &chunk_list, 
@@ -317,15 +314,14 @@ pub fn download_dir_to_path(
     dir: DirId, 
     context: SingleDownloadContext, 
     path: &Path
-) -> BuckyResult<(Box<dyn DownloadTaskControl>, DirTaskPathControl)> {
+) -> BuckyResult<(Box<dyn DownloadTask2>, DirTaskPathControl)> {
     let task = DirTask::new(
         stack.to_weak(), 
         dir, 
         context, 
         vec![], 
-        stack.ndn().root_task().download().resource().clone(),
     );
-    let _ = stack.ndn().root_task().download().add_task(task.clone_as_download_task())?;
+    let _ = stack.ndn().root_task().download().add(None, task.clone_as_task())?;
     Ok((
         Box::new(task.clone()), 
         DirTaskPathControl {

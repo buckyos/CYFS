@@ -20,8 +20,8 @@ use crate::{
     tunnel::{BuildTunnelParams}, 
     datagram::{self, DatagramOptions},
     download::*,
-    DownloadTaskControl, 
-    TaskControlState,
+    DownloadTask2, 
+    DownloadTaskState, 
     types::*,
     SingleDownloadContext
 };
@@ -518,16 +518,16 @@ impl DebugStub {
     }
 }
 
-async fn watchdog_download_finished(task: Box<dyn DownloadTaskControl>, timeout: u32) -> Result<(), String> {
+async fn watchdog_download_finished(task: Box<dyn DownloadTask2>, timeout: u32) -> Result<(), String> {
     let mut _timeout = 1800; //todo: when bdt support download speed, use timeout instead
     let mut i = 0;
 
     loop {
-        match task.control_state() {
-            TaskControlState::Finished(_) => {
+        match task.state() {
+            DownloadTaskState::Finished => {
                 break Ok(());
             },
-            TaskControlState::Downloading(speed, _) => {
+            DownloadTaskState::Downloading(speed, _) => {
                 if speed > 0 {
                     i = 0;
 
@@ -538,18 +538,15 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTaskControl>, timeout:
                     i += 1;
                 }
             },
-            TaskControlState::Canceled => {
-                break Err(format!("download canceled\r\n"));
-            },
-            TaskControlState::Paused => {
-            },
-            TaskControlState::Err(e) => {
+            DownloadTaskState::Error(e) => {
                 break Err(format!("download err, code: {:?}\r\n", e));
             },
+            _ => {
+
+            }
         }
 
         if i >= _timeout {
-            let _ = task.cancel();
             break Err(format!("download timeout\r\n"));
         }
 

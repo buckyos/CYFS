@@ -198,12 +198,11 @@ impl ChunkManager {
     pub(crate) async fn start_download(
         &self, 
         chunk: ChunkId, 
-        context: SingleDownloadContext, 
-        owner: ResourceManager
+        context: SingleDownloadContext
     ) -> BuckyResult<ChunkDownloader> {
         info!("{} try start download", self);
         let view = self.create_view(chunk, ChunkState::Unknown).await?;
-        view.start_download(context, owner)
+        view.start_download(context)
     }
 
     pub(crate) async fn start_upload(

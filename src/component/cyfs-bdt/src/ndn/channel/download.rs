@@ -308,7 +308,7 @@ impl DownloadSession {
                         Ignore
                     }
                 }, 
-                Init(_) | _ => {
+                _ => {
                     unreachable!()
                 }
             }
@@ -554,6 +554,44 @@ impl DownloadSession {
                     }
                 }
             }
+        }
+    }
+
+    pub fn calc_speed(&self, when: Timestamp) -> u32 {
+        let state = &mut *self.0.state.write().unwrap();
+        match state {
+            StateImpl::Init(init) => {
+                init.history_speed.update(Some(0), when);
+                0
+            },
+            StateImpl::Interesting(interesting) => {
+                interesting.history_speed.update(Some(0), when);
+                0
+            },
+            StateImpl::Downloading(downloading) => {
+                let cur_speed = downloading.speed_counter.update(when);
+                downloading.history_speed.update(Some(cur_speed), when);
+                cur_speed
+            },
+            _ => 0
+        }
+    }
+
+    pub fn cur_speed(&self) -> u32 {
+        let state = &*self.0.state.read().unwrap();
+        match state {
+            StateImpl::Downloading(downloading) => downloading.history_speed.latest(),
+            _ => 0
+        }
+    }
+
+    pub fn history_speed(&self) -> u32 {
+        let state = &*self.0.state.read().unwrap();
+        match state {
+            StateImpl::Init(init) => init.history_speed.average(),
+            StateImpl::Interesting(interesting) => interesting.history_speed.average(),
+            StateImpl::Downloading(downloading) => downloading.history_speed.average(),
+            _ => 0
         }
     }
 }

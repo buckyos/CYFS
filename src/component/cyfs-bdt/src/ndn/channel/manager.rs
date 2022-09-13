@@ -88,6 +88,23 @@ impl ChannelManager {
         }, |c| c)
     } 
 
+    pub fn calc_speed(&self, when: Timestamp) {
+        let mut channels = self.0.channels.write().unwrap();
+        let mut download_cur_speed = 0;
+        let mut download_session_count = 0;
+        for channel in channels.entries.values() {
+            let d = channel.calc_speed(when);
+            download_cur_speed += d;
+            download_session_count += channel.download_session_count();
+        }
+        channels.download_cur_speed = download_cur_speed;
+        if download_session_count > 0 {
+            channels.download_history_speed.update(Some(download_cur_speed), when);
+        } else {
+            channels.download_history_speed.update(None, when);
+        }
+    }
+
     fn download_cur_speed(&self) -> u32 {
         self.0.channels.read().unwrap().download_cur_speed
     }
