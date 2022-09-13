@@ -87,6 +87,13 @@ impl DeviceZoneInfo {
             zone_category: DeviceZoneCategory::OtherZone,
         }
     }
+
+    pub fn is_current_zone(&self) -> bool {
+        match self.zone_category {
+            DeviceZoneCategory::CurrentDevice | DeviceZoneCategory::CurrentZone => true,
+            _ => false,
+        }
+    }
 }
 
 // The identy info of a request
@@ -142,6 +149,10 @@ impl RequestSourceInfo {
         }
     }
 
+    pub fn is_current_zone(&self) -> bool {
+        self.zone.is_current_zone()
+    }
+    
     pub fn compare_zone(&self, zone: &ObjectId) -> bool {
         self.zone.device.as_ref().map(|v| v.object_id()) == Some(zone)
             || self.zone.zone.as_ref() == Some(zone)

@@ -18,7 +18,7 @@ impl Default for GlobalStatePathAccessList {
 
 pub struct GlobalStateAccessRequest<'d, 'a, 'b> {
     pub dec: Cow<'d, ObjectId>,
-    pub path: Cow<'a, String>,
+    pub path: Cow<'a, str>,
     pub source: Cow<'b, RequestSourceInfo>,
     pub op_type: RequestOpType,
 }
@@ -28,7 +28,7 @@ impl<'d, 'a, 'b> std::fmt::Display for GlobalStateAccessRequest<'d, 'a, 'b> {
         write!(
             f,
             "path={}, {}, op={:?}",
-            self.path.as_str(),
+            self.path,
             self.source,
             self.op_type
         )

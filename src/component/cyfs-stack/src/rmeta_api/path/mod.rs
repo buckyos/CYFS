@@ -7,3 +7,4 @@ mod storage;
 
 pub use meta::*;
 pub use dec_manager::*;
+pub use access::*;

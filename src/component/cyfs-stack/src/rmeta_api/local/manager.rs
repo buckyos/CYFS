@@ -186,4 +186,4 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
     }
 }
 
-pub type GlobalStatePathMetaManagerRef = Arc<GlobalStateDecPathMetaManager>;
+pub type GlobalStatePathMetaManagerRef = Arc<GlobalStatePathMetaManager>;

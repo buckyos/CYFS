@@ -1,4 +1,4 @@
-use super::super::local::GlobalStatePathMetaManager;
+use super::super::local::*;
 use super::super::router::GlobalStateMetaServiceRouter;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -9,12 +9,13 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct GlobalStateMetaService {
     root_state_meta_router: Arc<GlobalStateMetaServiceRouter>,
-    root_state_meta: Arc<GlobalStatePathMetaManager>,
-
+    root_state_meta: GlobalStatePathMetaManagerRef,
+    
     local_cache_meta_router: Arc<GlobalStateMetaServiceRouter>,
-    local_cache_meta: Arc<GlobalStatePathMetaManager>,
+    local_cache_meta: GlobalStatePathMetaManagerRef,
 }
 
 impl GlobalStateMetaService {
@@ -73,6 +74,13 @@ impl GlobalStateMetaService {
 
             local_cache_meta,
             local_cache_meta_router,
+        }
+    }
+
+    pub(crate) fn get_meta_manager(&self,  category: GlobalStateCategory,) -> &GlobalStatePathMetaManagerRef {
+        match category {
+            GlobalStateCategory::RootState => &self.root_state_meta,
+            GlobalStateCategory::LocalCache => &self.local_cache_meta,
         }
     }
 
