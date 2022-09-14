@@ -69,8 +69,14 @@ impl GlobalStateAccessService {
     ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
         info!("on access get_object_by_path request: {}", req);
 
+        let dec_id = if req.common.target_dec_id.is_some() {
+            req.common.target_dec_id
+        } else {
+            Some(req.common.source.dec)
+        };
+
         let resp = self
-            .get_by_path_impl(&req.common.dec_id, &req.inner_path)
+            .get_by_path_impl(&dec_id, &req.inner_path)
             .await?;
 
         Ok(resp)
@@ -163,15 +169,22 @@ impl GlobalStateAccessService {
     ) -> BuckyResult<RootStateAccessListInputResponse> {
         info!("on access list request: {}", req);
 
+        let dec_id = if req.common.target_dec_id.is_some() {
+            req.common.target_dec_id
+        } else {
+            Some(req.common.source.dec)
+        };
+
+
         let (target, root_cache, root_info) = self
-            .get_object_id(&req.common.dec_id, &req.inner_path)
+            .get_object_id(&dec_id, &req.inner_path)
             .await?;
 
         if target.obj_type_code() != ObjectTypeCode::ObjectMap {
             let msg =
                 format!(
-                "list but target object is not objectmap! dec={:?}, path={}, target={}, type={:?}",
-                req.common.dec_id, req.inner_path, target, target.obj_type_code(),
+                "list but target object is not objectmap! {}, path={}, target={}, type={:?}",
+                req.common.source, req.inner_path, target, target.obj_type_code(),
             );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
@@ -180,8 +193,8 @@ impl GlobalStateAccessService {
         let obj = root_cache.get_object_map(&target).await?;
         if obj.is_none() {
             let msg = format!(
-                "list but target object not found! dec={:?}, path={}, target={}",
-                req.common.dec_id, req.inner_path, target,
+                "list but target object not found! {}, path={}, target={}",
+                req.common.source, req.inner_path, target,
             );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));

@@ -6,7 +6,7 @@ use crate::meta::ObjectFailHandler;
 use crate::ndn::NDNInputProcessorRef;
 use crate::non::NONInputProcessorRef;
 use crate::root_state::*;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -25,7 +25,7 @@ impl GlobalStateService {
         local_service: GlobalStateLocalService,
         acl: AclManagerRef,
         forward: ForwardProcessorManager,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         fail_handler: ObjectFailHandler,
         noc_processor: NONInputProcessorRef,
         ndn_processor: NDNInputProcessorRef,

@@ -153,6 +153,10 @@ impl GlobalStateInputProcessor for GlobalStateLocalService {
 
 #[async_trait::async_trait]
 impl OpEnvInputProcessor for GlobalStateLocalService {
+    fn get_category(&self) -> GlobalStateCategory {
+        self.global_state.category()
+    }
+
     // single_op_env methods
     async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()> {
         let dec_id = Self::get_op_env_target_dec_id(&req.common)?;

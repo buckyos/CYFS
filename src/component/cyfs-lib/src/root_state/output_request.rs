@@ -140,6 +140,9 @@ pub struct OpEnvOutputRequestCommon {
     // 来源DEC
     pub dec_id: Option<ObjectId>,
 
+    // 目标DEC，如果为None，默认等价于dec_id
+    pub target_dec_id: Option<ObjectId>,
+
     // 用以默认行为
     pub target: Option<ObjectId>,
 
@@ -153,6 +156,7 @@ impl OpEnvOutputRequestCommon {
     pub fn new_empty() -> Self {
         Self {
             dec_id: None,
+            target_dec_id: None,
             target: None,
             flags: 0,
             sid: 0,
@@ -167,6 +171,10 @@ impl fmt::Display for OpEnvOutputRequestCommon {
         if let Some(dec_id) = &self.dec_id {
             write!(f, ", dec_id: {}", dec_id)?;
         }
+        if let Some(target_dec_id) = &self.target_dec_id {
+            write!(f, ", target_dec_id: {}", target_dec_id)?;
+        }
+
 
         if let Some(target) = &self.target {
             write!(f, ", target: {}", target)?;
@@ -242,7 +250,10 @@ impl OpEnvCreateNewOutputRequest {
         }
     }
 
-    pub fn new_with_full_path(full_path: impl Into<String>, content_type: ObjectMapSimpleContentType) -> Self {
+    pub fn new_with_full_path(
+        full_path: impl Into<String>,
+        content_type: ObjectMapSimpleContentType,
+    ) -> Self {
         let full_path = full_path.into();
         assert!(full_path.len() > 0);
 
@@ -254,7 +265,11 @@ impl OpEnvCreateNewOutputRequest {
         }
     }
 
-    pub fn new_with_path_and_key(path: impl Into<String>, key: impl Into<String>, content_type: ObjectMapSimpleContentType) -> Self {
+    pub fn new_with_path_and_key(
+        path: impl Into<String>,
+        key: impl Into<String>,
+        content_type: ObjectMapSimpleContentType,
+    ) -> Self {
         let path = path.into();
         let key = key.into();
         assert!(OpEnvPathHelper::check_valid(&path, &key));
@@ -379,7 +394,6 @@ pub struct OpEnvCommitOutputResponse {
 
 // abort
 pub type OpEnvAbortOutputRequest = OpEnvNoParamOutputRequest;
-
 
 pub struct OpEnvPathHelper {}
 
@@ -784,7 +798,6 @@ pub struct OpEnvNextOutputResponse {
 // reset
 pub type OpEnvResetOutputRequest = OpEnvNoParamOutputRequest;
 
-
 // list
 pub struct OpEnvListOutputRequest {
     pub common: OpEnvOutputRequestCommon,
@@ -810,7 +823,6 @@ impl OpEnvListOutputRequest {
 }
 
 pub type OpEnvListOutputResponse = OpEnvNextOutputResponse;
-
 
 //////////////////////////
 /// root-state access requests

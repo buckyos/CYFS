@@ -7,29 +7,29 @@ use std::sync::Arc;
 // 实现从output到input的转换
 pub(crate) struct GlobalStateOutputTransformer {
     processor: GlobalStateInputProcessorRef,
-    source: DeviceId,
+    source: RequestSourceInfo,
 }
 
 impl GlobalStateOutputTransformer {
     pub fn new(
         processor: GlobalStateInputProcessorRef,
-        source: DeviceId,
+        source: RequestSourceInfo,
     ) -> GlobalStateOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: RootStateOutputRequestCommon) -> RootStateInputRequestCommon {
+        let mut source = self.source.clone();
+        source.set_dec(common.dec_id);
+
         RootStateInputRequestCommon {
-            // 来源DEC
-            dec_id: common.dec_id,
             target_dec_id: common.target_dec_id,
 
             target: common.target,
             flags: common.flags,
 
-            source: self.source.clone(),
-            protocol: NONProtocol::Native,
+            source,
         }
     }
 }
@@ -74,14 +74,14 @@ impl GlobalStateOutputProcessor for GlobalStateOutputTransformer {
 pub(crate) struct OpEnvOutputTransformer {
     sid: u64,
     processor: OpEnvInputProcessorRef,
-    source: DeviceId,
+    source: RequestSourceInfo,
 }
 
 impl OpEnvOutputTransformer {
     pub fn new(
         sid: u64,
         processor: OpEnvInputProcessorRef,
-        source: DeviceId,
+        source: RequestSourceInfo,
     ) -> OpEnvOutputProcessorRef {
         let ret = Self {
             sid,
@@ -92,16 +92,14 @@ impl OpEnvOutputTransformer {
     }
 
     fn convert_common(&self, common: OpEnvOutputRequestCommon) -> OpEnvInputRequestCommon {
+        let mut source = self.source.clone();
+        source.set_dec(common.dec_id);
+
         OpEnvInputRequestCommon {
-            // 来源DEC
-            dec_id: common.dec_id,
             target: common.target,
-
             flags: common.flags,
-
-            source: self.source.clone(),
-            protocol: NONProtocol::Native,
-
+            target_dec_id: common.target_dec_id,
+            source,
             sid: self.sid,
         }
     }
@@ -111,6 +109,10 @@ impl OpEnvOutputTransformer {
 impl OpEnvOutputProcessor for OpEnvOutputTransformer {
     fn get_sid(&self) -> u64 {
         self.sid
+    }
+
+    fn get_category(&self) -> GlobalStateCategory {
+        self.processor.get_category()
     }
 
     async fn load(&self, req: OpEnvLoadOutputRequest) -> BuckyResult<()> {
@@ -346,7 +348,7 @@ impl GlobalStateInputTransformer {
     fn convert_common(&self, common: RootStateInputRequestCommon) -> RootStateOutputRequestCommon {
         RootStateOutputRequestCommon {
             // 来源DEC
-            dec_id: common.dec_id,
+            dec_id: common.source.get_opt_dec().cloned(),
             target_dec_id: common.target_dec_id,
             target: common.target,
             flags: common.flags,
@@ -409,7 +411,8 @@ impl OpEnvInputTransformer {
     fn convert_common(&self, common: OpEnvInputRequestCommon) -> OpEnvOutputRequestCommon {
         OpEnvOutputRequestCommon {
             // 来源DEC
-            dec_id: common.dec_id,
+            dec_id: common.source.get_opt_dec().cloned(),
+            target_dec_id: common.target_dec_id,
             target: common.target,
 
             flags: common.flags,
@@ -421,6 +424,10 @@ impl OpEnvInputTransformer {
 
 #[async_trait::async_trait]
 impl OpEnvInputProcessor for OpEnvInputTransformer {
+    fn get_category(&self) -> GlobalStateCategory {
+        self.processor.get_category()
+    }
+
     async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()> {
         let in_req = OpEnvLoadOutputRequest {
             common: self.convert_common(req.common),
@@ -632,28 +639,29 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
 // 实现从output到input的转换
 pub(crate) struct GlobalStateAccessOutputTransformer {
     processor: GlobalStateAccessInputProcessorRef,
-    source: DeviceId,
+    source: RequestSourceInfo,
 }
 
 impl GlobalStateAccessOutputTransformer {
     pub fn new(
         processor: GlobalStateAccessInputProcessorRef,
-        source: DeviceId,
+        source: RequestSourceInfo,
     ) -> GlobalStateAccessOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: RootStateOutputRequestCommon) -> RootStateInputRequestCommon {
+        let mut source = self.source.clone();
+        source.set_dec(common.dec_id);
+
         RootStateInputRequestCommon {
             // 来源DEC
-            dec_id: common.dec_id,
             target_dec_id: common.target_dec_id,
             target: common.target,
             flags: common.flags,
 
-            source: self.source.clone(),
-            protocol: NONProtocol::Native,
+            source,
         }
     }
 }
@@ -716,7 +724,7 @@ impl GlobalStateAccessInputTransformer {
     fn convert_common(&self, common: RootStateInputRequestCommon) -> RootStateOutputRequestCommon {
         RootStateOutputRequestCommon {
             // 来源DEC
-            dec_id: common.dec_id,
+            dec_id: common.source.get_opt_dec().cloned(),
             target_dec_id: common.target_dec_id,
             target: common.target,
             flags: common.flags,

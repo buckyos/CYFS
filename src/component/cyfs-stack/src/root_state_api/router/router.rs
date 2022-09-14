@@ -1,13 +1,13 @@
 use super::super::acl::*;
 use super::super::local::GlobalStateLocalService;
 use super::cache_access::GlobalStateAccessCacheProcessor;
-use crate::rmeta_api::GlobalStateMetaService;
+use crate::acl::AclManagerRef;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::ndn::NDNInputProcessorRef;
 use crate::non::NONInputProcessorRef;
 use crate::root_state::*;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -21,7 +21,7 @@ pub struct GlobalStateRouter {
     op_env_processor: OpEnvInputProcessorRef,
     access_processor: GlobalStateAccessInputProcessorRef,
 
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 
     forward: ForwardProcessorManager,
 
@@ -34,9 +34,9 @@ pub struct GlobalStateRouter {
 impl GlobalStateRouter {
     pub(crate) fn new(
         category: GlobalStateCategory,
-        global_state_meta: GlobalStateMetaService,
+        acl: AclManagerRef,
         local_service: GlobalStateLocalService,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
         noc_processor: NONInputProcessorRef,
@@ -49,11 +49,15 @@ impl GlobalStateRouter {
         let access_processor = local_service.clone_access_processor();
 
         // acl limit processors
-        let global_state_processor =
-            GlobalStateAclInnerInputProcessor::new(acl.clone(), global_state_processor);
-        let op_env_processor = OpEnvAclInnerInputProcessor::new(global_state_meta.clone(), op_env_processor);
+        let global_state_processor = GlobalStateAclInnerInputProcessor::new(
+            acl.clone(),
+            global_state_processor,
+        );
+        let op_env_processor =
+            OpEnvAclInnerInputProcessor::new(acl.clone(), op_env_processor);
 
-        let access_processor = GlobalStateAccessAclInputProcessor::new(global_state_meta, access_processor);
+        let access_processor =
+            GlobalStateAccessAclInputProcessor::new(acl, access_processor);
 
         Self {
             category,
@@ -194,7 +198,7 @@ impl GlobalStateRouter {
                 target, device_id
             );
             let processor = self.get_global_state_access_forward(device_id).await?;
-            
+
             // insert a cache level
             let processor = GlobalStateAccessCacheProcessor::new(
                 processor,
@@ -242,6 +246,10 @@ impl GlobalStateInputProcessor for GlobalStateRouter {
 
 #[async_trait::async_trait]
 impl OpEnvInputProcessor for GlobalStateRouter {
+    fn get_category(&self) -> GlobalStateCategory {
+        self.category
+    }
+
     // single_op_env methods
     async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()> {
         let processor = self

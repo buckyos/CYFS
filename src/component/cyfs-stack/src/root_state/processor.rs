@@ -24,6 +24,8 @@ pub type GlobalStateInputProcessorRef = Arc<Box<dyn GlobalStateInputProcessor>>;
 
 #[async_trait::async_trait]
 pub trait OpEnvInputProcessor: Sync + Send + 'static {
+    fn get_category(&self) -> GlobalStateCategory;
+    
     // single_op_env methods
     async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()>;
 

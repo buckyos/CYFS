@@ -829,6 +829,10 @@ impl OpEnvOutputProcessor for OpEnvRequestor {
         self.sid
     }
 
+    fn get_category(&self) -> GlobalStateCategory {
+        self.category
+    }
+
     async fn load(&self, req: OpEnvLoadOutputRequest) -> BuckyResult<()> {
         Self::load(&self, req).await
     }

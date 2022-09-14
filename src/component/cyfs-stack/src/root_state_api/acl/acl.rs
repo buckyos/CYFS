@@ -1,4 +1,4 @@
-use crate::rmeta_api::*;
+use crate::acl::AclManagerRef;
 use crate::root_state::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -6,19 +6,16 @@ use cyfs_lib::*;
 use std::sync::Arc;
 
 pub(crate) struct GlobalStateAccessAclInputProcessor {
-    global_state_meta: GlobalStateMetaService,
+    acl: AclManagerRef,
     next: GlobalStateAccessInputProcessorRef,
 }
 
 impl GlobalStateAccessAclInputProcessor {
     pub(crate) fn new(
-        global_state_meta: GlobalStateMetaService,
+        acl: AclManagerRef,
         next: GlobalStateAccessInputProcessorRef,
     ) -> GlobalStateAccessInputProcessorRef {
-        let ret = Self {
-            global_state_meta,
-            next,
-        };
+        let ret = Self { acl, next };
 
         Arc::new(Box::new(ret))
     }
@@ -39,7 +36,7 @@ impl GlobalStateAccessAclInputProcessor {
 
         let dec_id = match &common.target_dec_id {
             Some(dec_id) => dec_id.clone(),
-            None => req.source.dec.clone(),
+            None => common.source.dec.clone(),
         };
 
         let global_state = RequestGlobalStateCommon {
@@ -49,9 +46,10 @@ impl GlobalStateAccessAclInputProcessor {
             req_path: Some(path.to_owned()),
         };
 
-        self.global_state_meta
+        self.acl
+            .global_state_meta()
             .check_access(&common.source, &global_state, RequestOpType::Read)
-            .await?
+            .await
     }
 }
 

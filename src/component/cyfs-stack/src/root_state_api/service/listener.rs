@@ -34,7 +34,10 @@ impl GlobalStateRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = RootStateInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await?;
+        let req = match RootStateInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
 
         match self.req_type {
             GlobalStateRequestType::GetCurrentRoot => {
@@ -151,7 +154,10 @@ impl OpEnvRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = OpEnvInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await?;
+        let req = match OpEnvInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
 
         match self.req_type {
             OpEnvRequestType::Load => self.handler.process_load_request(req).await,
@@ -378,7 +384,10 @@ impl GlobalStateAccessRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = RootStateInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await?;
+        let req = match RootStateInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
 
         self.handler.process_access_request(req).await
     }

@@ -27,6 +27,8 @@ pub trait OpEnvOutputProcessor: Sync + Send + 'static {
     // 获取当前op_env的托管sid
     fn get_sid(&self) -> u64;
 
+    fn get_category(&self) -> GlobalStateCategory;
+    
     // single_op_env methods
     async fn load(&self, req: OpEnvLoadOutputRequest) -> BuckyResult<()>;
 

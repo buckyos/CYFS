@@ -2,22 +2,23 @@ use crate::rmeta_api::*;
 use crate::root_state::*;
 use cyfs_base::*;
 use cyfs_lib::*;
+use crate::acl::AclManagerRef;
 
 use std::sync::Arc;
 
 // 限定在同zone内操作
 pub(crate) struct GlobalStateAclInnerInputProcessor {
-    global_state_meta: GlobalStateMetaService,
+    acl: AclManagerRef,
     next: GlobalStateInputProcessorRef,
 }
 
 impl GlobalStateAclInnerInputProcessor {
     pub(crate) fn new(
-        global_state_meta: GlobalStateMetaService,
+        acl: AclManagerRef,
         next: GlobalStateInputProcessorRef,
     ) -> GlobalStateInputProcessorRef {
         let ret = Self {
-            global_state_meta,
+            acl,
             next,
         };
 
@@ -29,7 +30,7 @@ impl GlobalStateAclInnerInputProcessor {
 impl GlobalStateInputProcessor for GlobalStateAclInnerInputProcessor {
     fn create_op_env_processor(&self) -> OpEnvInputProcessorRef {
         let processor = self.next.create_op_env_processor();
-        OpEnvAclInnerInputProcessor::new(self.global_state_meta.clone(), processor)
+        OpEnvAclInnerInputProcessor::new(self.acl.clone(), processor)
     }
 
     fn get_category(&self) -> GlobalStateCategory {
@@ -57,7 +58,7 @@ impl GlobalStateInputProcessor for GlobalStateAclInnerInputProcessor {
             };
 
             self.global_state_meta
-                .check_access(&req.common, &global_state, RequestOpType::Read)
+                .check_access(&req.common.source, &global_state, RequestOpType::Read)
                 .await?;
         }
 
@@ -93,17 +94,17 @@ impl GlobalStateInputProcessor for GlobalStateAclInnerInputProcessor {
 }
 
 pub(crate) struct OpEnvAclInnerInputProcessor {
-    global_state_meta: GlobalStateMetaService,
+    acl: AclManagerRef,
     next: OpEnvInputProcessorRef,
 }
 
 impl OpEnvAclInnerInputProcessor {
     pub(crate) fn new(
-        global_state_meta: GlobalStateMetaService,
+        acl: AclManagerRef,
         next: OpEnvInputProcessorRef,
     ) -> OpEnvInputProcessorRef {
         let ret = Self {
-            global_state_meta,
+            acl,
             next,
         };
 
@@ -141,6 +142,10 @@ impl OpEnvAclInnerInputProcessor {
 
 #[async_trait::async_trait]
 impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
+    fn get_category(&self) -> GlobalStateCategory {
+        self.next.get_category()
+    }
+
     // single_op_env methods
     async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()> {
         self.check_access("op_env.load", &req.common);
@@ -158,14 +163,14 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
             .check_target_dec_permission(&req.common.target_dec_id)
         {
             let global_state = RequestGlobalStateCommon {
-                global_state_category: Some(self.get_category()),
+                global_state_category: Some(self.next.get_category()),
                 global_state_root: None,
                 dec_id: req.common.target_dec_id.as_ref().unwrap().clone(),
                 req_path: Some(req.path.clone()),
             };
 
-            self.global_state_meta
-                .check_access(&req.common, &global_state, RequestOpType::Read)
+            self.acl.global_state_meta()
+                .check_access(&req.common.source, &global_state, RequestOpType::Read)
                 .await?;
         }
 
