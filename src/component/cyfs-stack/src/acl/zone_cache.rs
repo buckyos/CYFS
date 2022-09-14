@@ -1,4 +1,4 @@
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_core::ZoneObj;
 use cyfs_lib::*;
@@ -136,7 +136,7 @@ impl DeviceCacheList {
 
 #[derive(Clone)]
 pub(crate) struct LocalZoneCache {
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
     device_cache_list: DeviceCacheList,
 
     // 当前设备id
@@ -144,7 +144,7 @@ pub(crate) struct LocalZoneCache {
 }
 
 impl LocalZoneCache {
-    pub fn new(zone_manager: ZoneManager, noc: NamedObjectCacheRef) -> Self {
+    pub fn new(zone_manager: ZoneManagerRef, noc: NamedObjectCacheRef) -> Self {
         let current_device_id = zone_manager.get_current_device_id().to_owned();
         let device_cache_list = DeviceCacheList::new(noc, &current_device_id);
         Self {
