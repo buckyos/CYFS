@@ -37,3 +37,4 @@ percent-encoding = '2.1'
 http-range = '0.1.5'
 protobuf = { version = '2', features = ['with-bytes'] }
 intbits = "0.2"
+itertools = "0.10"

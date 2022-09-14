@@ -1,6 +1,10 @@
 use cyfs_base::*;
 use intbits::Bits;
 use std::convert::TryInto;
+use std::fmt::{Formatter};
+use itertools::Itertools;
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::de::{Error, Visitor};
 
 const ACCESS_GROUP_MASK: u32 = 0b111 << 29;
 
@@ -33,7 +37,7 @@ pub enum AccessPermissions {
     None = 0,
     CallOnly = 0b001,
     WriteOnly = 0b010,
-    WirteAndCall = 0b011,
+    WriteAndCall = 0b011,
     ReadOnly = 0b100,
     ReadAndCall = 0b101,
     ReadAndWrite = 0b110,
@@ -46,7 +50,7 @@ impl AccessPermissions {
             Self::None => "---",
             Self::CallOnly => "--x",
             Self::WriteOnly => "-w-",
-            Self::WirteAndCall => "-wx",
+            Self::WriteAndCall => "-wx",
             Self::ReadOnly => "r--",
             Self::ReadAndCall => "r-x",
             Self::ReadAndWrite => "rw-",
@@ -78,6 +82,25 @@ impl TryFrom<u8> for AccessPermissions {
 
         let ret: Self = unsafe { ::std::mem::transmute(v) };
         Ok(ret)
+    }
+}
+
+impl TryFrom<&str> for AccessPermissions {
+    type Error = BuckyError;
+    fn try_from(value: &str) -> BuckyResult<Self> {
+        match value {
+            "---" => Ok(AccessPermissions::None),
+            "--x" => Ok(AccessPermissions::CallOnly),
+            "-w-" => Ok(AccessPermissions::WriteOnly),
+            "-wx" => Ok(AccessPermissions::WriteAndCall),
+            "r--" => Ok(AccessPermissions::ReadOnly),
+            "r-x" => Ok(AccessPermissions::ReadAndCall),
+            "rw-" => Ok(AccessPermissions::ReadAndWrite),
+            "rwx" => Ok(AccessPermissions::Full),
+            v @ _ => {
+                Err(BuckyError::new(BuckyErrorCode::InvalidFormat, format!("invalid access permissions {}", v)))
+            }
+        }
     }
 }
 
@@ -196,6 +219,18 @@ impl AccessString {
     }
 }
 
+impl TryFrom<&str> for AccessString {
+    type Error = BuckyError;
+
+    fn try_from(value: &str) -> BuckyResult<Self> {
+        let mut access = AccessString::new(0);
+        for (mut chunk, group) in value.chars().filter(|c|c != &'_' && c != &' ').chunks(3).into_iter().zip(ACCESS_GROUP_LIST) {
+            access.set_group_permissions(*group, AccessPermissions::try_from(chunk.join("").as_str())?);
+        }
+
+        Ok(access)
+    }
+}
 
 impl Default for AccessString {
     fn default() -> Self {
@@ -212,6 +247,33 @@ impl std::fmt::Display for AccessString {
     }
 }
 
+impl Serialize for AccessString {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_str())
+    }
+}
+
+struct AccessStringVisitor;
+
+impl<'de> Visitor<'_> for AccessStringVisitor {
+    type Value = AccessString;
+
+    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        formatter.write_str("a string represent access string")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: Error {
+        AccessString::try_from(v).map_err(Error::custom)
+    }
+}
+
+impl<'de> Deserialize<'de> for AccessString {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        deserializer.deserialize_str(AccessStringVisitor)
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -291,6 +353,10 @@ mod test {
         access_string.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
 
         println!("{}", access_string);
+
+        let access_string2 = AccessString::try_from(access_string.to_string().as_str());
+        assert!(access_string2.is_ok());
+        assert_eq!(access_string.value(), access_string2.unwrap().value());
 
         let c = access_string.get_group_permissions(AccessGroup::CurrentZone);
         assert_eq!(c, AccessPermissions::ReadAndCall);
