@@ -6,7 +6,7 @@ use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::trans::TransInputProcessorRef;
 use crate::trans_api::{LocalTransService, TransServiceRouter, TransStore};
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use crate::AclManagerRef;
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_task_manager::TaskManager;
@@ -29,7 +29,7 @@ impl TransService {
         task_manager: Arc<TaskManager>,
         acl: AclManagerRef,
         forward: ForwardProcessorManager,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         fail_handler: ObjectFailHandler,
         trans_store: Arc<TransStore>,
     ) -> Self {
@@ -44,7 +44,6 @@ impl TransService {
             trans_store,
         ));
         let router = Arc::new(TransServiceRouter::new(
-            acl,
             forward,
             zone_manager,
             fail_handler,

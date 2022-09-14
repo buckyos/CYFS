@@ -1,5 +1,5 @@
 use crate::trans::{TransInputProcessor, TransInputProcessorRef};
-use cyfs_base::{BuckyResult, DeviceId};
+use cyfs_base::*;
 use cyfs_core::TransContext;
 use cyfs_lib::*;
 use std::sync::Arc;
@@ -16,7 +16,7 @@ impl TransInputTransformer {
     fn convert_common(common: NDNInputRequestCommon) -> NDNOutputRequestCommon {
         NDNOutputRequestCommon {
             req_path: common.req_path,
-            dec_id: common.dec_id,
+            dec_id: Some(common.source.dec),
             level: common.level,
             target: common.target,
             referer_object: common.referer_object,
@@ -27,8 +27,7 @@ impl TransInputTransformer {
     fn convert_non_common(common: NONInputRequestCommon) -> NONOutputRequestCommon {
         NONOutputRequestCommon {
             req_path: common.req_path,
-            dec_id: common.dec_id,
-            target_dec_id: common.target_dec_id,
+            dec_id: Some(common.source.dec),
             level: common.level,
             target: common.target,
             flags: common.flags,
@@ -139,34 +138,27 @@ impl TransInputProcessor for TransInputTransformer {
 
 pub(crate) struct TransOutputTransformer {
     processor: TransInputProcessorRef,
-    source: DeviceId,
-    protocol: Option<NONProtocol>,
+    source: RequestSourceInfo,
 }
 
 impl TransOutputTransformer {
     pub(crate) fn new(
         processor: TransInputProcessorRef,
-        source: DeviceId,
-        protocol: Option<NONProtocol>,
+        source: RequestSourceInfo,
     ) -> TransOutputProcessorRef {
         Arc::new(Self {
             processor,
             source,
-            protocol,
         })
     }
 
     fn convert_common(&self, common: &NDNOutputRequestCommon) -> NDNInputRequestCommon {
-        let protocol = if self.protocol.is_some() {
-            self.protocol.clone().unwrap()
-        } else {
-            NONProtocol::Native
-        };
+        let mut source = self.source.clone();
+        source.set_dec(common.dec_id);
+
         NDNInputRequestCommon {
             req_path: common.req_path.clone(),
-            dec_id: common.dec_id,
-            source: self.source.clone(),
-            protocol,
+            source,
             level: common.level.clone(),
             referer_object: common.referer_object.clone(),
             target: common.target,
@@ -176,17 +168,12 @@ impl TransOutputTransformer {
     }
 
     fn convert_non_common(&self, common: &NONOutputRequestCommon) -> NONInputRequestCommon {
-        let protocol = if self.protocol.is_some() {
-            self.protocol.clone().unwrap()
-        } else {
-            NONProtocol::Native
-        };
+        let mut source = self.source.clone();
+        source.set_dec(common.dec_id);
+
         NONInputRequestCommon {
             req_path: common.req_path.clone(),
-            dec_id: common.dec_id.clone(),
-            target_dec_id: common.target_dec_id.clone(),
-            source: self.source.clone(),
-            protocol,
+            source,
             level: common.level.clone(),
             target: common.target.clone(),
             flags: common.flags,

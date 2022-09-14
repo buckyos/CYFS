@@ -7,14 +7,13 @@ use std::sync::Arc;
 use crate::forward::ForwardProcessorManager;
 use crate::trans::{TransInputProcessor, TransInputProcessorRef, TransInputTransformer};
 use crate::trans_api::TransAclInnerInputProcessor;
-use crate::zone::ZoneManager;
-use crate::AclManagerRef;
+use crate::zone::ZoneManagerRef;
 
 pub struct TransServiceRouter {
     processor: TransInputProcessorRef,
     forward: ForwardProcessorManager,
     fail_handler: ObjectFailHandler,
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 }
 
 impl Clone for TransServiceRouter {
@@ -30,13 +29,12 @@ impl Clone for TransServiceRouter {
 
 impl TransServiceRouter {
     pub(crate) fn new(
-        acl: AclManagerRef,
         forward: ForwardProcessorManager,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         fail_handler: ObjectFailHandler,
         processor: TransInputProcessorRef,
     ) -> Self {
-        let processor = TransAclInnerInputProcessor::new(acl, processor);
+        let processor = TransAclInnerInputProcessor::new(processor);
         Self {
             processor,
             zone_manager,

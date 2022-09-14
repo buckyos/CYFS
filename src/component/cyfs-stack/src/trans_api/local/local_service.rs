@@ -155,20 +155,16 @@ impl LocalTransService {
             let file = match self
                 .noc
                 .get_object(&NamedObjectCacheGetObjectRequest {
-                    source: RequestSourceInfo::new_local_dec(req.common.dec_id),
+                    source: req.common.source,
                     object_id: req.file_id.unwrap(),
                     last_access_rpath: None,
                 })
                 .await?
             {
-                Some(resp) => {
-                    match File::clone_from_slice(
-                        resp.object.object_raw.as_slice(),
-                    ) {
-                        Ok(file) => Some(file),
-                        Err(_) => None,
-                    }
-                }
+                Some(resp) => match File::clone_from_slice(resp.object.object_raw.as_slice()) {
+                    Ok(file) => Some(file),
+                    Err(_) => None,
+                },
                 None => None,
             };
 
@@ -214,35 +210,20 @@ impl LocalTransService {
     ) -> BuckyResult<TransPublishFileInputResponse> {
         info!("trans recv add file request: {:?}", req);
 
-        let dec_id = if req.common.dec_id.is_some() {
-            req.common.dec_id.as_ref().unwrap().clone()
-        } else {
-            let msg = format!(
-                "trans add file dec id is none! file={}",
-                req.local_path.to_string_lossy().to_string()
-            );
-            error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        };
-
         let file = if req.file_id.is_some() {
             match self
                 .noc
                 .get_object(&NamedObjectCacheGetObjectRequest {
-                    source: RequestSourceInfo::new_local_dec(req.common.dec_id),
+                    source: req.common.source.clone(),
                     object_id: req.file_id.unwrap(),
                     last_access_rpath: None,
                 })
                 .await?
             {
-                Some(resp) => {
-                    match File::clone_from_slice(
-                        resp.object.object_raw.as_slice(),
-                    ) {
-                        Ok(file) => Some(file),
-                        Err(_) => None,
-                    }
-                }
+                Some(resp) => match File::clone_from_slice(resp.object.object_raw.as_slice()) {
+                    Ok(file) => Some(file),
+                    Err(_) => None,
+                },
                 None => None,
             }
         } else {
@@ -251,8 +232,8 @@ impl LocalTransService {
         let file_id = self
             .publish_manager
             .publish_local_file(
-                req.common.source,
-                dec_id,
+                req.common.source.zone.device.unwrap(),
+                req.common.source.dec,
                 req.local_path.to_string_lossy().to_string(),
                 req.owner.clone(),
                 file,
@@ -274,22 +255,11 @@ impl LocalTransService {
     ) -> BuckyResult<TransPublishFileInputResponse> {
         info!("trans recv add dir request: {:?}", req);
 
-        let dec_id = if req.common.dec_id.is_some() {
-            req.common.dec_id.as_ref().unwrap().clone()
-        } else {
-            let msg = format!(
-                "trans add dir dec id is none! file={}",
-                req.local_path.to_string_lossy().to_string()
-            );
-            error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        };
-
         let dir_id = self
             .publish_manager
             .publish_local_dir(
-                req.common.source,
-                dec_id,
+                req.common.source.zone.device.unwrap(),
+                req.common.source.dec,
                 req.local_path.to_string_lossy().to_string(),
                 req.owner.clone(),
                 req.file_id,
@@ -349,30 +319,20 @@ impl LocalTransService {
         let referer = BdtDataRefererInfo {
             object_id: req.object_id,
             inner_path: None, // trans-task都是file为粒度
-            dec_id: req.common.dec_id,
+            dec_id: Some(req.common.source.dec.clone()),
             req_path: req.common.req_path,
             referer_object: req.common.referer_object,
             flags: req.common.flags,
         };
 
-        let dec_id = if req.common.dec_id.is_some() {
-            req.common.dec_id.as_ref().unwrap().clone()
-        } else {
-            let msg = format!(
-                "trans create task dec id is none! file_id={}",
-                req.object_id.to_string()
-            );
-            error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        };
         let task_id = if req.object_id.obj_type_code() == ObjectTypeCode::File {
             let object = self.get_object_from_noc(&req.object_id).await?;
             if let AnyNamedObject::Standard(StandardObject::File(file_obj)) = object.as_ref() {
                 let task_id = self
                     .download_tasks
                     .create_file_task(
-                        req.common.source,
-                        dec_id,
+                        req.common.source.zone.device.unwrap(),
+                        req.common.source.dec,
                         req.context_id,
                         file_obj.clone(),
                         Some(local_path.to_string()),
@@ -393,8 +353,8 @@ impl LocalTransService {
             let task_id = self
                 .download_tasks
                 .create_chunk_task(
-                    req.common.source,
-                    dec_id,
+                    req.common.source.zone.device.unwrap(),
+                    req.common.source.dec,
                     req.context_id,
                     ChunkId::try_from(&req.object_id)?,
                     Some(local_path.to_string()),
@@ -439,17 +399,6 @@ impl LocalTransService {
             task_id, req
         );
 
-        let dec_id = if req.common.dec_id.is_some() {
-            req.common.dec_id.as_ref().unwrap().clone()
-        } else {
-            let msg = format!(
-                "trans control task dec id is none! task={}",
-                req.task_id.to_string()
-            );
-            error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        };
-
         let _state = match req.action {
             TransTaskControlAction::Start => {
                 self.download_tasks.start_task(&task_id).await?;
@@ -459,7 +408,11 @@ impl LocalTransService {
             }
             TransTaskControlAction::Delete => {
                 self.download_tasks
-                    .remove_task(&req.common.source, &dec_id, &task_id)
+                    .remove_task(
+                        req.common.source.zone.device.as_ref().unwrap(),
+                        &req.common.source.dec,
+                        &task_id,
+                    )
                     .await?;
             }
         };
@@ -504,11 +457,6 @@ impl LocalTransService {
         &self,
         req: TransQueryTasksInputRequest,
     ) -> BuckyResult<TransQueryTasksInputResponse> {
-        if req.common.dec_id.is_none() {
-            let msg = format!("query tasks need dec_id");
-            log::error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        }
         let task_status = if req.task_status.is_some() {
             Some(trans_task_status_to_task_status(req.task_status.unwrap()))
         } else {
@@ -517,8 +465,8 @@ impl LocalTransService {
         let task_list = self
             .download_tasks
             .get_tasks(
-                &req.common.source,
-                req.common.dec_id.as_ref().unwrap(),
+                req.common.source.zone.device.as_ref().unwrap(),
+                &req.common.source.dec,
                 &req.context_id,
                 task_status,
                 req.range,
@@ -537,9 +485,7 @@ impl LocalTransService {
         };
 
         match self.noc.get_object(&noc_req).await {
-            Ok(Some(resp)) => {
-                Ok(resp.object.object.unwrap())
-            }
+            Ok(Some(resp)) => Ok(resp.object.object.unwrap()),
             Ok(None) => {
                 let msg = format!("noc get object but not found: {}", object_id);
                 debug!("{}", msg);
@@ -553,23 +499,16 @@ impl LocalTransService {
 #[async_trait::async_trait]
 impl TransInputProcessor for LocalTransService {
     async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext> {
-        if req.common.dec_id.is_none() {
-            let msg = format!("get context need dec_id");
-            log::error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        }
-
         let noc_req = NamedObjectCacheGetObjectRequest {
-            source: RequestSourceInfo::new_local_system(),
-            object_id: TransContext::gen_context_id(req.common.dec_id.unwrap(), req.context_name),
+            object_id: TransContext::gen_context_id(req.common.source.dec.clone(), req.context_name),
+            source: req.common.source,
             last_access_rpath: None,
         };
+
         match self.noc.get_object(&noc_req).await {
-            Ok(Some(resp)) => {
-                Ok(TransContext::clone_from_slice(
-                    resp.object.object_raw.as_slice(),
-                )?)
-            }
+            Ok(Some(resp)) => Ok(TransContext::clone_from_slice(
+                resp.object.object_raw.as_slice(),
+            )?),
             Ok(None) => {
                 let msg = format!("noc get object but not found: {}", noc_req.object_id);
                 debug!("{}", msg);
@@ -584,7 +523,7 @@ impl TransInputProcessor for LocalTransService {
         let object = NONObjectInfo::new_from_object_raw(object_raw)?;
 
         let req = NamedObjectCachePutObjectRequest {
-            source: RequestSourceInfo::new_local_system(),
+            source: req.common.source,
             object,
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
