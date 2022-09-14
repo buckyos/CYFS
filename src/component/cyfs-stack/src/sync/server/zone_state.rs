@@ -105,7 +105,7 @@ impl EventListenerSyncRoutine<ZoneId, ()> for ZoneChangedNotify {
 pub(crate) struct ZoneStateManager {
     zone_id: ZoneId,
 
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
     root_state: GlobalStateLocalService,
 
     state: NOCCollectionSync<ZoneInfo>,
@@ -115,7 +115,7 @@ impl ZoneStateManager {
     pub fn new(
         zone_id: &ZoneId,
         root_state: GlobalStateLocalService,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         noc: NamedObjectCacheRef,
     ) -> Self {
         let id = format!("zone-sync-state-{}", zone_id.to_string());

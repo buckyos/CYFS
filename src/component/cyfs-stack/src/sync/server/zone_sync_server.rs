@@ -30,7 +30,7 @@ impl ZoneSyncServer {
         device_id: &DeviceId,
         zone_id: &ZoneId,
         role_manager: ZoneRoleManager,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         root_state: GlobalStateLocalService,
         noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,

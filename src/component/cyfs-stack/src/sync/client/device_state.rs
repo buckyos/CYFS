@@ -1,5 +1,5 @@
 use crate::root_state_api::GlobalStateLocalService;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -77,7 +77,7 @@ pub(crate) struct DeviceStateManager {
     device_id: DeviceId,
 
     root_state: GlobalStateLocalService,
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 
     state: NOCCollectionSync<DeviceLocalState>,
 
@@ -91,7 +91,7 @@ impl DeviceStateManager {
         device_id: &DeviceId,
         noc: NamedObjectCacheRef,
         root_state: GlobalStateLocalService,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         event: Box<dyn DeviceStateManagerEvent>,
     ) -> Self {
         let id = format!("device-sync-state-{}", device_id.to_string());

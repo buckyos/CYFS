@@ -77,6 +77,8 @@ pub struct ZoneManager {
         ReenterCallManager<ObjectId, BuckyResult<(ObjectId, OODWorkMode, Vec<DeviceId>)>>,
 }
 
+pub type ZoneManagerRef = Arc<ZoneManager>;
+
 impl ZoneManager {
     pub fn new(
         noc: NamedObjectCacheRef,
@@ -865,6 +867,14 @@ impl ZoneManager {
                 }
             }
         }
+    }
+
+    pub async fn get_current_source_info(&self, dec: &Option<ObjectId>,) -> BuckyResult<RequestSourceInfo> {
+        let current_info = self.get_current_info().await?;
+        let mut ret = RequestSourceInfo::new_local_dec(dec.to_owned());
+        ret.zone.zone = Some(current_info.owner_id.clone());
+
+        Ok(ret)
     }
 
     pub async fn resolve_source_info(

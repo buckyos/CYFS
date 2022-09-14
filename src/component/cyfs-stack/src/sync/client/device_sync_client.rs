@@ -72,7 +72,7 @@ pub(crate) struct DeviceSyncClient {
     device_id: DeviceId,
     ood_device_id: RwLock<DeviceId>,
 
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
     state_manager: Arc<DeviceStateManager>,
     acl_manager: AclManagerRef,
 
@@ -88,7 +88,7 @@ pub(crate) struct DeviceSyncClient {
 impl DeviceSyncClient {
     pub async fn new(
         role_manager: ZoneRoleManager,
-        zone_manager: &ZoneManager,
+        zone_manager: &ZoneManagerRef,
         root_state: GlobalStateLocalService,
         bdt_stack: &StackGuard,
         ood_sync_vport: u16,

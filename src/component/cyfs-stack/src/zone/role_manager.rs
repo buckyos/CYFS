@@ -55,7 +55,7 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
 #[derive(Clone)]
 pub struct ZoneRoleManager {
     device_id: DeviceId,
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
     noc: NamedObjectCacheRef,
     raw_meta_cache: RawMetaCache,
     acl_manager: AclManagerRef,
@@ -74,7 +74,7 @@ pub struct ZoneRoleManager {
 impl ZoneRoleManager {
     pub(crate) fn new(
         device_id: DeviceId,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         noc: NamedObjectCacheRef,
         raw_meta_cache: RawMetaCache,
         acl_manager: AclManagerRef,
@@ -97,7 +97,7 @@ impl ZoneRoleManager {
         }
     }
 
-    pub fn zone_manager(&self) -> &ZoneManager {
+    pub fn zone_manager(&self) -> &ZoneManagerRef {
         &self.zone_manager
     }
 
@@ -567,7 +567,6 @@ impl ZoneRoleManager {
             current_zone_info.zone_device_ood_id,
             current_zone_info.zone_role,
         );
-
 
         let server = ZoneSyncServer::new(
             &self.device_id,
