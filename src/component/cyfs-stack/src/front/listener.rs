@@ -1,11 +1,9 @@
+use super::http_request::FrontInputHttpRequest;
 use super::protocol::FrontProtocolHandlerRef;
-/// use super::handler::*;
+use crate::zone::ZoneManagerRef;
 use cyfs_lib::*;
 
 use async_trait::async_trait;
-
-
-pub(crate) type FrontInputHttpRequest<State> = crate::non::NONInputHttpRequest<State>;
 
 #[derive(Clone, Copy)]
 pub enum FrontRequestType {
@@ -19,6 +17,7 @@ pub enum FrontRequestType {
 }
 
 pub(crate) struct FrontRequestHandlerEndpoint {
+    zone_manager: ZoneManagerRef,
     protocol: NONProtocol,
     req_type: FrontRequestType,
     handler: FrontProtocolHandlerRef,
@@ -26,11 +25,13 @@ pub(crate) struct FrontRequestHandlerEndpoint {
 
 impl FrontRequestHandlerEndpoint {
     fn new(
+        zone_manager: ZoneManagerRef,
         protocol: NONProtocol,
         req_type: FrontRequestType,
         handler: FrontProtocolHandlerRef,
     ) -> Self {
         Self {
+            zone_manager,
             protocol,
             req_type,
             handler,
@@ -38,18 +39,23 @@ impl FrontRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: tide::Request<State>) -> tide::Response {
-        let req = FrontInputHttpRequest::new(&self.protocol, req);
-
+        let req = match FrontInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
+        
         self.handler.process_request(self.req_type, req).await
     }
 
     pub fn register_server(
+        zone_manager: &ZoneManagerRef,
         protocol: &NONProtocol,
         handler: &FrontProtocolHandlerRef,
         server: &mut ::tide::Server<()>,
     ) {
         // o protocol
         server.at("/o/*must").get(FrontRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             FrontRequestType::O,
             handler.clone(),
@@ -57,11 +63,13 @@ impl FrontRequestHandlerEndpoint {
 
         // r protocol
         server.at("/r/*must").get(FrontRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             FrontRequestType::R,
             handler.clone(),
         ));
         server.at("/l/*must").get(FrontRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             FrontRequestType::L,
             handler.clone(),
@@ -69,24 +77,28 @@ impl FrontRequestHandlerEndpoint {
 
         // a
         server.at("/a/*must").get(FrontRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             FrontRequestType::A,
             handler.clone(),
         ));
 
         // any
-        server.at("/:name/*must").get(FrontRequestHandlerEndpoint::new(
-            protocol.to_owned(),
-            FrontRequestType::Any,
-            handler.clone(),
-        ));
+        server
+            .at("/:name/*must")
+            .get(FrontRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                FrontRequestType::Any,
+                handler.clone(),
+            ));
 
         server.at("/:name").get(FrontRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             FrontRequestType::Any,
             handler.clone(),
         ));
-
     }
 }
 

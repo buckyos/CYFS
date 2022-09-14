@@ -1,12 +1,12 @@
 use super::def::*;
-use super::listener::FrontInputHttpRequest;
+use super::http_request::FrontInputHttpRequest;
 use super::listener::FrontRequestType;
 use super::request::*;
 use super::service::*;
 use crate::name::*;
 use crate::ndn_api::NDNRequestHandler;
 use crate::non_api::NONRequestHandler;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -37,7 +37,7 @@ const KNOWN_ROOTS: &[&str] = &[
 
 pub(crate) struct FrontProtocolHandler {
     name_resolver: NameResolver,
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
     service: Arc<FrontService>,
 }
 
@@ -46,7 +46,7 @@ pub(crate) type FrontProtocolHandlerRef = Arc<FrontProtocolHandler>;
 impl FrontProtocolHandler {
     pub fn new(
         name_resolver: NameResolver,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         service: Arc<FrontService>,
     ) -> Self {
         Self {
@@ -172,54 +172,6 @@ impl FrontProtocolHandler {
                 let msg = format!("invalid request url format query param! {}, {}", url, e);
                 error!("{}", msg);
                 Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
-            }
-        }
-    }
-
-    fn dec_id_from_request(req: &http_types::Request) -> BuckyResult<Option<ObjectId>> {
-        // first extract dec_id from headers
-        match RequestorHelper::decode_optional_header(req, cyfs_base::CYFS_DEC_ID)? {
-            Some(dec_id) => Ok(Some(dec_id)),
-            None => {
-                // try extract dec_id from query pairs
-                let dec_id = match RequestorHelper::value_from_querys("dec_id", req.url()) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        let msg = format!(
-                            "invalid request url dec_id query param! {}, {}",
-                            req.url(),
-                            e
-                        );
-                        error!("{}", msg);
-                        return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-                    }
-                };
-
-                Ok(dec_id)
-            }
-        }
-    }
-
-    fn target_dec_id_from_request(req: &http_types::Request) -> BuckyResult<Option<ObjectId>> {
-        // first extract dec_id from headers
-        match RequestorHelper::decode_optional_header(req, cyfs_base::CYFS_TARGET_DEC_ID)? {
-            Some(dec_id) => Ok(Some(dec_id)),
-            None => {
-                // try extract dec_id from query pairs
-                let dec_id = match RequestorHelper::value_from_querys("target_dec_id", req.url()) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        let msg = format!(
-                            "invalid request url target_dec_id query param! {}, {}",
-                            req.url(),
-                            e
-                        );
-                        error!("{}", msg);
-                        return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-                    }
-                };
-
-                Ok(dec_id)
             }
         }
     }
@@ -383,11 +335,6 @@ impl FrontProtocolHandler {
         }
 
         let mode = Self::mode_from_request(url)?;
-
-        // try extract dec_id & target_dec_id from headers or query pairs
-        let dec_id = Self::dec_id_from_request(req.request.as_ref())?;
-        let target_dec_id = Self::target_dec_id_from_request(req.request.as_ref())?;
-
         let flags = Self::flags_from_request(url)?;
 
         let range = Self::range_from_request(req.request.as_ref())?;
@@ -420,12 +367,9 @@ impl FrontProtocolHandler {
                 };
 
                 FrontORequest {
-                    protocol: req.protocol,
                     source: req.source,
 
                     target: roots,
-                    dec_id,
-                    target_dec_id,
 
                     object_id: id,
                     inner_path,
@@ -453,12 +397,8 @@ impl FrontProtocolHandler {
                 };
 
                 FrontORequest {
-                    protocol: req.protocol,
                     source: req.source,
-
                     target: vec![],
-                    dec_id,
-                    target_dec_id,
 
                     object_id: roots[0],
                     inner_path,
@@ -543,13 +483,13 @@ impl FrontProtocolHandler {
         }
 
         let target;
-        let dec_id;
+        let target_dec_id;
         let inner_path_pos;
         match root {
             "$" => {
                 // treat as two seg mode
                 target = None;
-                dec_id = Self::parse_dec_seg(url, &segs, 1)?;
+                target_dec_id = Self::parse_dec_seg(url, &segs, 1)?;
                 inner_path_pos = 2;
             }
             "$$" => {
@@ -562,19 +502,19 @@ impl FrontProtocolHandler {
                     .object_id()
                     .clone();
                 target = Some(ood_id);
-                dec_id = Self::parse_dec_seg(url, &segs, 1)?;
+                target_dec_id = Self::parse_dec_seg(url, &segs, 1)?;
                 inner_path_pos = 2;
             }
             "system" => {
                 // treat as one seg mode
                 target = None;
-                dec_id = Some(cyfs_core::get_system_dec_app().object_id().to_owned());
+                target_dec_id = Some(cyfs_core::get_system_dec_app().object_id().to_owned());
                 inner_path_pos = 1;
             }
             "root" => {
                 // treat as one seg mode
                 target = None;
-                dec_id = None;
+                target_dec_id = None;
                 inner_path_pos = 1;
             }
             _ => {
@@ -594,13 +534,13 @@ impl FrontProtocolHandler {
                     | ObjectTypeCode::SimpleGroup => {
                         // treat as two seg mode
                         target = Some(seg_object);
-                        dec_id = Self::parse_dec_seg(url, &segs, 1)?;
+                        target_dec_id = Self::parse_dec_seg(url, &segs, 1)?;
                         inner_path_pos = 2;
                     }
                     ObjectTypeCode::Custom => {
                         // treat as one seg mode
                         target = None;
-                        dec_id = Some(seg_object);
+                        target_dec_id = Some(seg_object);
                         inner_path_pos = 1;
                     }
                     _ => {
@@ -627,13 +567,6 @@ impl FrontProtocolHandler {
             FrontRequestType::L => GlobalStateCategory::LocalCache,
             _ => unreachable!(),
         };
-
-        // try extract dec_id from headers or query pairs
-        let extra_dec_id = Self::dec_id_from_request(req.request.as_ref())?;
-        let target_dec_id = Self::target_dec_id_from_request(req.request.as_ref())?;
-
-        // header or params dec_id has higher priority
-        let dec_id = extra_dec_id.or(dec_id);
 
         let range = Self::range_from_request(req.request.as_ref())?;
 
@@ -691,13 +624,11 @@ impl FrontProtocolHandler {
         }
 
         let r_req = FrontRRequest {
-            protocol: req.protocol,
             source: req.source,
 
             category,
 
             target,
-            dec_id,
             target_dec_id,
 
             action,
@@ -785,9 +716,7 @@ impl FrontProtocolHandler {
             .clone();
 
         let a_req = FrontARequest {
-            protocol: req.protocol,
             source: req.source,
-
             target: Some(target.into()),
 
             dec,
