@@ -1,8 +1,7 @@
-mod non;
 mod non_inner;
 mod non_local;
 mod switcher;
-mod non_rmeta;
+mod non;
 
 pub(crate) use non::*;
 pub(crate) use non_inner::*;

@@ -1,8 +1,11 @@
-use crate::acl::*;
+use crate::acl::AclManagerRef;
 use crate::non::*;
+use crate::rmeta_api::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
+use std::borrow::Cow;
+use std::str::FromStr;
 use std::sync::Arc;
 
 pub(crate) struct NONAclInputProcessor {
@@ -15,6 +18,42 @@ impl NONAclInputProcessor {
         let ret = Self { acl, next };
         Arc::new(Box::new(ret))
     }
+
+    async fn check_access(
+        &self,
+        req_path: &str,
+        source: &RequestSourceInfo,
+        op_type: RequestOpType,
+    ) -> BuckyResult<()> {
+        let global_state_common = RequestGlobalStateCommon::from_str(req_path)?;
+
+        let rmeta = self
+            .acl
+            .global_state_meta()
+            .get_meta_manager(global_state_common.category());
+        let dec_rmeta = rmeta.get_global_state_meta(&Some(global_state_common.dec_id), false).await.map_err(|e| {
+            let msg = format!("non check rmeta but target dec rmeta not found or with error! {}, target_dec={}, {}", req_path, global_state_common.dec_id, e);
+            warn!("{}", msg);
+            BuckyError::new(BuckyErrorCode::PermissionDenied, msg)
+        })?;
+
+        let check_req = GlobalStateAccessRequest {
+            dec: Cow::Borrowed(&global_state_common.dec_id),
+            path: global_state_common.req_path(),
+            source: Cow::Borrowed(source),
+            op_type,
+        };
+
+        if let Err(e) = dec_rmeta.check_access(check_req) {
+            error!(
+                "get_object check rmeta but been rejected! {}, {}",
+                req_path, e
+            );
+            return Err(e);
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -23,25 +62,21 @@ impl NONInputProcessor for NONAclInputProcessor {
         &self,
         req: NONPutObjectInputRequest,
     ) -> BuckyResult<NONPutObjectInputResponse> {
-        let params = AclRequestParams {
-            protocol: req.common.protocol.clone(),
+        if !req.common.source.is_current_zone() {
+            let msg = format!(
+                "put_object only allow within the same zone! {}",
+                req.object.object_id
+            );
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+        }
 
-            direction: AclDirection::In,
-            operation: AclOperation::PutObject,
+        // FIXME put_object should use the rmeta acl system?
+        if let Some(req_path) = &req.common.req_path {
+            self.check_access(req_path, &req.common.source, RequestOpType::Write)
+                .await?;
+        }
 
-            object_id: Some(req.object.object_id.clone()),
-            object: Some(req.object.clone_object()),
-            device_id: AclRequestDevice::Source(req.common.source.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: None,
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
         self.next.put_object(req).await
     }
 
@@ -49,26 +84,11 @@ impl NONInputProcessor for NONAclInputProcessor {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        let params = AclRequestParams {
-            protocol: req.common.protocol.clone(),
+        if let Some(req_path) = &req.common.req_path {
+            self.check_access(req_path, &req.common.source, RequestOpType::Read)
+                .await?;
+        }
 
-            direction: AclDirection::In,
-            operation: AclOperation::GetObject,
-
-            object_id: Some(req.object_id.clone()),
-            object: None,
-            device_id: AclRequestDevice::Source(req.common.source.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: req.inner_path.clone(),
-
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
         self.next.get_object(req).await
     }
 
@@ -76,26 +96,11 @@ impl NONInputProcessor for NONAclInputProcessor {
         &self,
         req: NONPostObjectInputRequest,
     ) -> BuckyResult<NONPostObjectInputResponse> {
-        let params = AclRequestParams {
-            protocol: req.common.protocol.clone(),
+        if let Some(req_path) = &req.common.req_path {
+            self.check_access(req_path, &req.common.source, RequestOpType::Call)
+                .await?;
+        }
 
-            direction: AclDirection::In,
-            operation: AclOperation::PostObject,
-
-            object_id: Some(req.object.object_id.clone()),
-            object: Some(req.object.clone_object()),
-            device_id: AclRequestDevice::Source(req.common.source.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: None,
-
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
         self.next.post_object(req).await
     }
 
@@ -103,11 +108,6 @@ impl NONInputProcessor for NONAclInputProcessor {
         &self,
         req: NONSelectObjectInputRequest,
     ) -> BuckyResult<NONSelectObjectInputResponse> {
-        // TODO select暂时只允许同zone内使用
-        self.acl
-            .check_local_zone_permit("non in select_object", &req.common.source)
-            .await?;
-
         self.next.select_object(req).await
     }
 
@@ -115,171 +115,21 @@ impl NONInputProcessor for NONAclInputProcessor {
         &self,
         req: NONDeleteObjectInputRequest,
     ) -> BuckyResult<NONDeleteObjectInputResponse> {
-        let params = AclRequestParams {
-            protocol: req.common.protocol.clone(),
+        if !req.common.source.is_current_zone() {
+            let msg = format!(
+                "delete_object only allow within the same zone! {}",
+                req.object_id
+            );
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+        }
 
-            direction: AclDirection::In,
-            operation: AclOperation::DeleteObject,
+        // FIXME delete_object should use the rmeta acl system?
+        if let Some(req_path) = &req.common.req_path {
+            self.check_access(req_path, &req.common.source, RequestOpType::Write)
+                .await?;
+        }
 
-            object_id: Some(req.object_id.clone()),
-            object: None,
-            device_id: AclRequestDevice::Source(req.common.source.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: None,
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
-        self.next.delete_object(req).await
-    }
-}
-
-pub(crate) struct NONAclOutputProcessor {
-    protocol: NONProtocol,
-    acl: AclManagerRef,
-    target: DeviceId,
-    next: NONOutputProcessorRef,
-}
-
-impl NONAclOutputProcessor {
-    pub fn new(
-        protocol: NONProtocol,
-        acl: AclManagerRef,
-        target: DeviceId,
-        next: NONOutputProcessorRef,
-    ) -> NONOutputProcessorRef {
-        let ret = Self {
-            protocol,
-            acl,
-            target,
-            next,
-        };
-        Arc::new(Box::new(ret))
-    }
-}
-
-#[async_trait::async_trait]
-impl NONOutputProcessor for NONAclOutputProcessor {
-    async fn put_object(
-        &self,
-        req: NONPutObjectOutputRequest,
-    ) -> BuckyResult<NONPutObjectOutputResponse> {
-        // stack内部发起的output操作，一定存在object缓存字段
-        let object = req.object.clone_object();
-
-        let params = AclRequestParams {
-            protocol: self.protocol.clone(),
-
-            direction: AclDirection::Out,
-            operation: AclOperation::PutObject,
-
-            object_id: Some(req.object.object_id.clone()),
-            object: Some(object),
-            device_id: AclRequestDevice::Target(self.target.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: None,
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
-
-        self.next.put_object(req).await
-    }
-
-    async fn get_object(
-        &self,
-        req: NONGetObjectOutputRequest,
-    ) -> BuckyResult<NONGetObjectOutputResponse> {
-        let params = AclRequestParams {
-            protocol: self.protocol.clone(),
-
-            direction: AclDirection::Out,
-            operation: AclOperation::GetObject,
-
-            object_id: Some(req.object_id.clone()),
-            object: None,
-            device_id: AclRequestDevice::Target(self.target.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: req.inner_path.clone(),
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
-        self.next.get_object(req).await
-    }
-
-    async fn post_object(
-        &self,
-        req: NONPostObjectOutputRequest,
-    ) -> BuckyResult<NONPostObjectOutputResponse> {
-        // stack内部发起的output操作，一定存在object缓存字段
-        let object = req.object.clone_object();
-
-        let params = AclRequestParams {
-            protocol: self.protocol.clone(),
-
-            direction: AclDirection::Out,
-            operation: AclOperation::PostObject,
-
-            object_id: Some(req.object.object_id.clone()),
-            object: Some(object),
-            device_id: AclRequestDevice::Target(self.target.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: None,
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
-        self.next.post_object(req).await
-    }
-
-    async fn select_object(
-        &self,
-        req: NONSelectObjectOutputRequest,
-    ) -> BuckyResult<NONSelectObjectOutputResponse> {
-        // 对于output请求，select暂时不做限制
-        self.next.select_object(req).await
-    }
-
-    async fn delete_object(
-        &self,
-        req: NONDeleteObjectOutputRequest,
-    ) -> BuckyResult<NONDeleteObjectOutputResponse> {
-        let params = AclRequestParams {
-            protocol: self.protocol.clone(),
-
-            direction: AclDirection::Out,
-            operation: AclOperation::DeleteObject,
-
-            object_id: Some(req.object_id.clone()),
-            object: None,
-            device_id: AclRequestDevice::Target(self.target.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: None,
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
         self.next.delete_object(req).await
     }
 }

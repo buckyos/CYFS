@@ -36,7 +36,7 @@ pub trait RequestDecChecker {
 
 impl RequestDecChecker for NONPutObjectInputRequest {
     fn check(&self, dec_id: &ObjectId) -> RequestDecType {
-        let source = self.common.dec_id.as_ref() == Some(dec_id);
+        let source = self.common.source.dec == *dec_id;
         let target = self.object.object().dec_id().as_ref() == Some(dec_id);
 
         RequestDecType::new(source, target)
@@ -51,7 +51,7 @@ impl RequestDecChecker for NONPutObjectInputResponse {
 
 impl RequestDecChecker for NONGetObjectInputRequest {
     fn check(&self, dec_id: &ObjectId) -> RequestDecType {
-        let source = self.common.dec_id.as_ref() == Some(dec_id);
+        let source = self.common.source.dec == *dec_id;
 
         RequestDecType::new(source, false)
     }
@@ -68,7 +68,7 @@ impl RequestDecChecker for NONGetObjectInputResponse {
 
 impl RequestDecChecker for NONPostObjectInputRequest {
     fn check(&self, dec_id: &ObjectId) -> RequestDecType {
-        let source = self.common.dec_id.as_ref() == Some(dec_id);
+        let source = self.common.source.dec == *dec_id;
         let target = self.object.object().dec_id().as_ref() == Some(dec_id);
 
         RequestDecType::new(source, target)
@@ -92,7 +92,7 @@ impl RequestDecChecker for NONPostObjectInputResponse {
 
 impl RequestDecChecker for NONSelectObjectInputRequest {
     fn check(&self, dec_id: &ObjectId) -> RequestDecType {
-        let source = self.common.dec_id.as_ref() == Some(dec_id);
+        let source = self.common.source.dec == *dec_id;
         let target = self.filter.dec_id.as_ref() == Some(dec_id);
 
         RequestDecType::new(source, target)
@@ -117,7 +117,7 @@ impl RequestDecChecker for NONSelectObjectInputResponse {
 
 impl RequestDecChecker for NONDeleteObjectInputRequest {
     fn check(&self, dec_id: &ObjectId) -> RequestDecType {
-        let source = self.common.dec_id.as_ref() == Some(dec_id);
+        let source = self.common.source.dec == *dec_id;
 
         RequestDecType::new(source, false)
     }
@@ -141,7 +141,7 @@ impl RequestDecChecker for NONDeleteObjectInputResponse {
 
 impl RequestDecChecker for NDNPutDataInputRequest {
     fn check(&self, dec_id: &ObjectId) -> RequestDecType {
-        let source = self.common.dec_id.as_ref() == Some(dec_id);
+        let source = self.common.source.dec == *dec_id;
 
         RequestDecType::new(source, false)
     }
@@ -155,7 +155,7 @@ impl RequestDecChecker for NDNPutDataInputResponse {
 
 impl RequestDecChecker for NDNGetDataInputRequest {
     fn check(&self, dec_id: &ObjectId) -> RequestDecType {
-        let source = self.common.dec_id.as_ref() == Some(dec_id);
+        let source = self.common.source.dec == *dec_id;
 
         RequestDecType::new(source, false)
     }
@@ -169,7 +169,7 @@ impl RequestDecChecker for NDNGetDataInputResponse {
 
 impl RequestDecChecker for NDNDeleteDataInputRequest {
     fn check(&self, dec_id: &ObjectId) -> RequestDecType {
-        let source = self.common.dec_id.as_ref() == Some(dec_id);
+        let source = self.common.source.dec == *dec_id;
 
         RequestDecType::new(source, false)
     }
@@ -183,7 +183,7 @@ impl RequestDecChecker for NDNDeleteDataInputResponse {
 
 impl RequestDecChecker for CryptoSignObjectInputRequest {
     fn check(&self, dec_id: &ObjectId) -> RequestDecType {
-        let source = self.common.dec_id.as_ref() == Some(dec_id);
+        let source = self.common.source.dec == *dec_id;
         let target = self.object.object().dec_id().as_ref() == Some(dec_id);
 
         RequestDecType::new(source, target)
@@ -207,7 +207,7 @@ impl RequestDecChecker for CryptoSignObjectInputResponse {
 
 impl RequestDecChecker for CryptoVerifyObjectInputRequest {
     fn check(&self, dec_id: &ObjectId) -> RequestDecType {
-        let source = self.common.dec_id.as_ref() == Some(dec_id);
+        let source = self.common.source.dec == *dec_id;
         let target = self.object.object().dec_id().as_ref() == Some(dec_id);
 
         RequestDecType::new(source, target)

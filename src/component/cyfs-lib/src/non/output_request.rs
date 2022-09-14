@@ -12,9 +12,6 @@ pub struct NONOutputRequestCommon {
     // 来源DEC,如果为None，默认为system-dec
     pub dec_id: Option<ObjectId>,
 
-    // 目标DEC，如果为None，默认等价于dec_id
-    pub target_dec_id: Option<ObjectId>,
-
     // api级别
     pub level: NONAPILevel,
 
@@ -29,7 +26,6 @@ impl NONOutputRequestCommon {
         Self {
             req_path: None,
             dec_id: None,
-            target_dec_id: None,
             level,
             target: None,
             flags: 0,
@@ -44,10 +40,6 @@ impl fmt::Display for NONOutputRequestCommon {
 
         if let Some(dec_id) = &self.dec_id {
             write!(f, ", dec_id: {}", dec_id)?;
-        }
-
-        if let Some(dec_id) = &self.target_dec_id {
-            write!(f, ", target_dec_id: {}", dec_id)?;
         }
 
         if let Some(target) = &self.target {

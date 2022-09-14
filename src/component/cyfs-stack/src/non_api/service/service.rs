@@ -7,7 +7,7 @@ use crate::meta::{MetaCache, ObjectFailHandler};
 use crate::ndn_api::*;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use crate::{acl::*, non::*};
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
@@ -32,7 +32,7 @@ impl NONService {
         tracker: Box<dyn TrackerCache>,
         forward_manager: ForwardProcessorManager,
         acl: AclManagerRef,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         ood_resovler: OodResolver,
 
         router_handlers: RouterHandlersManager,
@@ -63,7 +63,7 @@ impl NONService {
 
         // 带本地权限的noc processor
         let local_noc_processor =
-            NOCLevelInputProcessor::new_local(acl.clone(), raw_noc_processor.clone());
+            NOCLevelInputProcessor::new_local(raw_noc_processor.clone());
 
         // 同zone权限的non processor
         let non_processor = NONLevelInputProcessor::new_zone(

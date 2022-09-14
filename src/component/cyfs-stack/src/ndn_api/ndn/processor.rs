@@ -111,7 +111,7 @@ impl NDNLevelInputProcessor {
         );
 
         // 带同zone input acl的处理器
-        let acl_processor = NDNAclInnerInputProcessor::new(acl, raw_processor.clone());
+        let acl_processor = NDNAclInnerInputProcessor::new(raw_processor.clone());
 
         // 使用acl switcher连接
         let processor = NDNInputAclSwitcher::new(acl_processor, raw_processor);
@@ -129,10 +129,6 @@ impl NDNLevelInputProcessor {
             self.chunk_manager.clone(),
             target.clone(),
         );
-
-        // 限定同zone output权限
-        let processor =
-            NDNAclInnerOutputProcessor::new(self.acl.clone(), target.clone(), processor);
 
         // 增加前置的object加载器
         // 先尝试从本地加载, 再通过non从远程加载
@@ -175,14 +171,11 @@ impl NDNLevelInputProcessor {
         // 转换为input processor
         let input_processor = NDNInputTransformer::new(processor);
 
-        // 限定同zone output权限
-        let processor =
-            NDNAclInnerOutputProcessor::new(self.acl.clone(), target.clone(), input_processor);
 
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(
             RouterHandlerChain::PreForward,
-            processor,
+            input_processor,
             self.router_handlers.clone(),
         );
 

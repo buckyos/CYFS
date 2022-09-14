@@ -2,8 +2,8 @@ use super::fail_cache::*;
 use super::meta_cache::*;
 use crate::non::NONInputProcessorRef;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DeviceId, NameInfo, NameState, ObjectId};
-use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
 use cyfs_lib::*;
+use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
 
 use async_trait::async_trait;
 use once_cell::sync::OnceCell;
@@ -49,12 +49,8 @@ impl RawMetaCache {
         let key = MetaCacheKey::Object(object_id.to_owned());
         if let Some(e) = self.fail_cache.get(&key) {
             let ret = match e.code() {
-                BuckyErrorCode::NotFound => {
-                    Ok(None)
-                }
-                _ => {
-                    Err(e)
-                }
+                BuckyErrorCode::NotFound => Ok(None),
+                _ => Err(e),
             };
 
             return ret;
@@ -71,7 +67,8 @@ impl RawMetaCache {
                         Some(resp)
                     }
                     None => {
-                        self.fail_cache.add(key.clone(), BuckyError::from(BuckyErrorCode::NotFound));
+                        self.fail_cache
+                            .add(key.clone(), BuckyError::from(BuckyErrorCode::NotFound));
                         None
                     }
                 }
@@ -97,10 +94,7 @@ impl RawMetaCache {
         let req = NONPutObjectInputRequest {
             common: NONInputRequestCommon {
                 req_path: None,
-                dec_id: None,
-                target_dec_id: None,
-                source: self.device_id.clone(),
-                protocol: NONProtocol::Meta,
+                source: RequestSourceInfo::new_local_system().protocol(NONProtocol::Meta),
                 level: NONAPILevel::NOC,
                 target: None,
                 flags: 0,
@@ -197,13 +191,17 @@ impl RawMetaCache {
             return Err(e);
         }
 
-        self.meta_client.get_name(name).await.map_err(|e| {
-            self.fail_cache.add(key, e.clone());
-            e
-        }).map(|v| {
-            self.fail_cache.on_success();
-            v
-        })
+        self.meta_client
+            .get_name(name)
+            .await
+            .map_err(|e| {
+                self.fail_cache.add(key, e.clone());
+                e
+            })
+            .map(|v| {
+                self.fail_cache.on_success();
+                v
+            })
     }
 }
 

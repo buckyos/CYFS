@@ -108,7 +108,7 @@ impl AdminManager {
         Ok(())
     }
 
-    async fn on_admin_command(&self, source: &DeviceId, object: &NONObjectInfo) -> BuckyResult<()> {
+    async fn on_admin_command(&self, source: &RequestSourceInfo, object: &NONObjectInfo) -> BuckyResult<()> {
         // decode to AdminObject
         let admin_object = AdminObject::clone_from_slice(&object.object_raw).map_err(|e| {
             let msg = format!(
@@ -132,8 +132,7 @@ impl AdminManager {
         }
 
         // check if command source'device is current zone's device
-        let zone = self.role_manager.zone_manager().get_current_zone().await?;
-        if !zone.is_known_device(source) {
+        if !source.is_current_zone() {
             let msg = format!(
                 "command source device is not in current zone! device={}",
                 source,

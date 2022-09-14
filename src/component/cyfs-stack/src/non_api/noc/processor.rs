@@ -2,9 +2,9 @@ use super::super::acl::*;
 use super::super::file::NONFileServiceProcessor;
 use super::super::handler::*;
 use crate::ndn_api::NDCLevelInputProcessor;
+use crate::non::*;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
-use crate::{acl::*, non::*};
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -56,12 +56,9 @@ impl NOCLevelInputProcessor {
     }
 
     // 创建一个带本地权限的processor
-    pub(crate) fn new_local(
-        acl: AclManagerRef,
-        raw_processor: NONInputProcessorRef,
-    ) -> NONInputProcessorRef {
+    pub(crate) fn new_local(raw_processor: NONInputProcessorRef) -> NONInputProcessorRef {
         // 带local input acl的处理器
-        let acl_processor = NONAclLocalInputProcessor::new(acl, raw_processor.clone());
+        let acl_processor = NONAclLocalInputProcessor::new(raw_processor.clone());
 
         // 使用acl switcher连接
         let processor = NONInputAclSwitcher::new(acl_processor, raw_processor);
@@ -74,14 +71,12 @@ impl NOCLevelInputProcessor {
         req: NONPutObjectInputRequest,
     ) -> BuckyResult<NONPutObjectInputResponse> {
         debug!(
-            "will put object to local noc: id={}, source={}, dec={:?}",
-            req.object.object_id, req.common.source, req.common.dec_id,
+            "will put object to local noc: id={}, {}",
+            req.object.object_id, req.common.source,
         );
 
-        let source = RequestSourceInfo::new_local_dec(req.common.dec_id);
-
         let noc_req = NamedObjectCachePutObjectRequest {
-            source,
+            source: req.common.source,
             object: req.object,
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
@@ -99,7 +94,10 @@ impl NOCLevelInputProcessor {
                         );
                     }
                     NamedObjectCachePutObjectResult::Updated => {
-                        info!("object alreay in noc and updated: {}", noc_req.object.object_id);
+                        info!(
+                            "object alreay in noc and updated: {}",
+                            noc_req.object.object_id
+                        );
                     }
                     NamedObjectCachePutObjectResult::AlreadyExists => {
                         // 对象已经在noc里面了
@@ -155,10 +153,8 @@ impl NOCLevelInputProcessor {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        let source = RequestSourceInfo::new_local_dec(req.common.dec_id);
-
         let noc_req = NamedObjectCacheGetObjectRequest {
-            source,
+            source: req.common.source,
             object_id: req.object_id.clone(),
             last_access_rpath: None,
         };
@@ -194,7 +190,7 @@ impl NOCLevelInputProcessor {
     ) -> BuckyResult<NONDeleteObjectInputResponse> {
         let noc_req = NamedObjectCacheDeleteObjectRequest {
             object_id: req.object_id.clone(),
-            source: RequestSourceInfo::new_local_dec(req.common.dec_id),
+            source: req.common.source,
             flags: req.common.flags,
         };
 

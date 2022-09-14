@@ -26,10 +26,10 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
         );
 
         // only req post through http-local interface is valid!
-        if param.request.common.protocol != NONProtocol::HttpLocal {
+        if param.request.common.source.protocol != NONProtocol::HttpLocal {
             let msg = format!(
                 "app_manager action only valid on http-local interface! req protocol={:?}",
-                param.request.common.protocol
+                param.request.common.source.protocol
             );
             error!("{}", msg);
 

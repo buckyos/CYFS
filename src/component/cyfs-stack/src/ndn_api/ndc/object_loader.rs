@@ -141,14 +141,9 @@ impl NDNObjectLoader {
         let get_req = NONGetObjectInputRequest {
             common: NONInputRequestCommon {
                 req_path,
-                dec_id: req.common.dec_id.clone(),
-                target_dec_id: None,
                 source: req.common.source.clone(),
-                protocol: req.common.protocol.clone(),
-
                 level: req.common.level.clone().into(),
                 target: target.map(|v| v.object_id().to_owned()),
-
                 flags: req.common.flags,
             },
 

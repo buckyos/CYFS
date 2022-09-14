@@ -1,5 +1,5 @@
 use crate::meta::MetaCache;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
@@ -136,9 +136,7 @@ impl NOCSearcher {
         };
 
         match self.noc.get_object(&req).await? {
-            Some(info) => {
-                Ok(info.object)
-            }
+            Some(info) => Ok(info.object),
             None => Err(BuckyError::from(BuckyErrorCode::NotFound)),
         }
     }
@@ -156,7 +154,7 @@ impl ObjectSearcher for NOCSearcher {
 }
 
 struct ZoneSearcher {
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
     noc: NamedObjectCacheRef,
     bdt_stack: StackGuard,
 
@@ -165,7 +163,7 @@ struct ZoneSearcher {
 
 impl ZoneSearcher {
     pub fn new(
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
     ) -> Self {
@@ -238,7 +236,6 @@ impl ZoneSearcher {
             common: NONOutputRequestCommon {
                 req_path: None,
                 dec_id: None,
-                target_dec_id: None,
                 level: NONAPILevel::NON,
 
                 // 用以处理默认行为
@@ -341,7 +338,7 @@ impl CompoundObjectSearcher {
 
     pub fn init_zone_searcher(
         &self,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
     ) {

@@ -1,6 +1,7 @@
 use super::handler::*;
 use crate::non::*;
 use cyfs_lib::*;
+use crate::zone::ZoneManagerRef;
 
 use async_trait::async_trait;
 use tide::Response;
@@ -13,14 +14,16 @@ enum NONRequestType {
 }
 
 pub(crate) struct NONRequestHandlerEndpoint {
+    zone_manager: ZoneManagerRef,
     protocol: NONProtocol,
     req_type: NONRequestType,
     handler: NONRequestHandler,
 }
 
 impl NONRequestHandlerEndpoint {
-    fn new(protocol: NONProtocol, req_type: NONRequestType, handler: NONRequestHandler) -> Self {
+    fn new(zone_manager: ZoneManagerRef, protocol: NONProtocol, req_type: NONRequestType, handler: NONRequestHandler) -> Self {
         Self {
+            zone_manager,
             protocol,
             req_type,
             handler,
@@ -28,7 +31,10 @@ impl NONRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = NONInputHttpRequest::new(&self.protocol, req);
+        let req = match NONInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
 
         match self.req_type {
             NONRequestType::Get => self.handler.process_get_request(req).await,
@@ -39,23 +45,27 @@ impl NONRequestHandlerEndpoint {
     }
 
     pub fn register_server(
+        zone_manager: &ZoneManagerRef,
         protocol: &NONProtocol,
         handler: &NONRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {
         // get_object/select_object
         server.at("/non/*must").get(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::Get,
             handler.clone(),
         ));
         // select_object在没req_path情况下，url只有/non段
         server.at("/non").get(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::Get,
             handler.clone(),
         ));
         server.at("/non/").get(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::Get,
             handler.clone(),
@@ -63,6 +73,7 @@ impl NONRequestHandlerEndpoint {
 
         // put_object
         server.at("/non/*must").put(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::PutObject,
             handler.clone(),
@@ -70,6 +81,7 @@ impl NONRequestHandlerEndpoint {
 
         // post_object
         server.at("/non/*must").post(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::PostObject,
             handler.clone(),
@@ -79,6 +91,7 @@ impl NONRequestHandlerEndpoint {
         server
             .at("/non/*must")
             .delete(NONRequestHandlerEndpoint::new(
+                zone_manager.clone(),
                 protocol.to_owned(),
                 NONRequestType::DeleteObject,
                 handler.clone(),

@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct NONRouter {
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 
     // meta的处理器，处理get请求，底层会依赖noc
     meta_processor: NONInputProcessorRef,
@@ -47,7 +47,7 @@ impl NONRouter {
         forward: ForwardProcessorManager,
         acl: AclManagerRef,
 
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
 
         router_handlers: RouterHandlersManager,
 
@@ -81,7 +81,7 @@ impl NONRouter {
         forward: ForwardProcessorManager,
         acl: AclManagerRef,
 
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
 
         router_handlers: RouterHandlersManager,
         meta_processor: NONInputProcessorRef,
@@ -127,7 +127,7 @@ impl NONRouter {
     async fn resolve_router_info(
         &self,
         op: AclOperation,
-        source: &DeviceId,
+        source: &RequestSourceInfo,
         target: Option<&ObjectId>,
     ) -> BuckyResult<RouterHandlerRequestRouterInfo> {
         let current_info = self.zone_manager.get_current_info().await?;
@@ -246,14 +246,6 @@ impl NONRouter {
         // 增加一层错误监测处理
         let processor =
             NONOutputFailHandleProcessor::new(target.clone(), self.fail_handler.clone(), processor);
-
-        // 标准acl output权限
-        let processor = NONAclOutputProcessor::new(
-            NONProtocol::HttpBdt,
-            self.acl.clone(),
-            target.to_owned(),
-            processor,
-        );
 
         // 转换为input processor
         let input_processor = NONInputTransformer::new(processor);
@@ -540,8 +532,8 @@ impl NONRouter {
         req: NONGetObjectInputRequest,
     ) {
         info!(
-            "router will save object to noc on get object handler resp: obj={}, dec={:?}",
-            resp.object.object_id, req.common.dec_id
+            "router will save object to noc on get object handler resp: obj={}, {}",
+            resp.object.object_id, req.common.source
         );
 
         let put_req = NONPutObjectInputRequest {
@@ -591,7 +583,6 @@ impl NONRouter {
 
         let object_id = std::borrow::Cow::Borrowed(&req.object.object_id);
         if router_info.next_hop.is_none() {
-
             // 没有下一跳了，交由handler处理器
             return self.handler.post_object(req).await;
         }
