@@ -591,19 +591,24 @@ impl TunnelContainer {
                         Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel's connecting"))
                     }, 
                     TunnelStateImpl::Active(active) => {
-                        let cur_timestamp = active.remote_timestamp;
-                        if cur_timestamp == active_timestamp {
-                            info!("{} Active({})=>Dead", self, cur_timestamp);
-                            state.last_update = bucky_time_now();
-                            state.tunnel_state = TunnelStateImpl::Dead(TunnelDeadState {
-                                former_state: TunnelState::Active(cur_timestamp), 
-                                when: bucky_time_now()
-                            });
-                            let mut tunnel_entries = BTreeMap::new();
-                            std::mem::swap(&mut tunnel_entries, &mut state.tunnel_entries);
-                            Ok(tunnel_entries.into_iter().map(|(_, tunnel)| tunnel).collect())
+                        if active.default_tunnel.as_ref().local().is_tcp() {
+                            info!("{} ignore mark dead for tcp default", self);
+                            Err(BuckyError::new(BuckyErrorCode::ErrorState, "default tcp tunnel"))
                         } else {
-                            Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel's active"))
+                            let cur_timestamp = active.remote_timestamp;
+                            if cur_timestamp == active_timestamp {
+                                info!("{} Active({})=>Dead", self, cur_timestamp);
+                                state.last_update = bucky_time_now();
+                                state.tunnel_state = TunnelStateImpl::Dead(TunnelDeadState {
+                                    former_state: TunnelState::Active(cur_timestamp), 
+                                    when: bucky_time_now()
+                                });
+                                let mut tunnel_entries = BTreeMap::new();
+                                std::mem::swap(&mut tunnel_entries, &mut state.tunnel_entries);
+                                Ok(tunnel_entries.into_iter().map(|(_, tunnel)| tunnel).collect())
+                            } else {
+                                Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel's active"))
+                            }
                         }
                     }, 
                     TunnelStateImpl::Dead(_) => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel's dead"))
