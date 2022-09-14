@@ -1,5 +1,5 @@
 use super::output_request::*;
-use crate::base::*;
+use crate::access::*;
 use crate::non::*;
 use cyfs_base::*;
 
@@ -10,12 +10,7 @@ pub struct CryptoInputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
 
-    // 来源DEC
-    pub dec_id: Option<ObjectId>,
-
-    // 来源设备和协议
-    pub source: DeviceId,
-    pub protocol: NONProtocol,
+    pub source: RequestSourceInfo,
 
     // 用以默认行为
     pub target: Option<ObjectId>,
@@ -26,12 +21,7 @@ pub struct CryptoInputRequestCommon {
 impl fmt::Display for CryptoInputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "req_path: {:?}", self.req_path)?;
-
-        if let Some(dec_id) = &self.dec_id {
-            write!(f, ", dec_id: {}", dec_id)?;
-        }
-        write!(f, ", source: {}", self.source.to_string())?;
-        write!(f, ", protocol: {}", self.protocol.to_string())?;
+        write!(f, ", {}", self.source)?;
 
         if let Some(target) = &self.target {
             write!(f, ", target: {}", target.to_string())?;

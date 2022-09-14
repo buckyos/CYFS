@@ -22,20 +22,13 @@ impl CryptoRequestHandler {
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
 
-        // 尝试提取dec字段
-        let dec_id: Option<ObjectId> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
 
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
         let ret = CryptoInputRequestCommon {
             req_path: None,
-
             source: req.source.clone(),
-            protocol: req.protocol.clone(),
-
-            dec_id,
             target,
             flags: flags.unwrap_or(0),
         };

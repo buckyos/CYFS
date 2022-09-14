@@ -1,6 +1,5 @@
 use super::super::local::UtilLocalService;
 use super::super::router::UtilRouter;
-use crate::acl::AclManagerRef;
 use crate::config::StackGlobalConfig;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -19,12 +18,11 @@ pub struct UtilService {
 
 impl UtilService {
     pub(crate) fn new(
-        acl: AclManagerRef,
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
         bdt_stack: StackGuard,
         forward: ForwardProcessorManager,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         fail_handler: ObjectFailHandler,
         ood_resolver: OodResolver,
         task_manager: Arc<TaskManager>,
@@ -41,7 +39,6 @@ impl UtilService {
         );
 
         let router = UtilRouter::new(
-            acl,
             local_service.clone(),
             zone_manager,
             forward,

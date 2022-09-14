@@ -4,9 +4,8 @@ use crate::acl::AclManagerRef;
 use crate::crypto::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
-use crate::zone::ZoneManager;
 use crate::router_handler::RouterHandlersManager;
-
+use crate::zone::ZoneManagerRef;
 
 pub struct CryptoService {
     crypto: ObjectCrypto,
@@ -17,7 +16,7 @@ impl CryptoService {
     pub(crate) fn new(
         crypto: ObjectCrypto,
         acl: AclManagerRef,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
         router_handlers: RouterHandlersManager,
@@ -28,7 +27,7 @@ impl CryptoService {
             zone_manager,
             forward,
             fail_handler,
-            router_handlers
+            router_handlers,
         );
 
         Self { crypto, router }

@@ -21,7 +21,7 @@ impl UtilInputTransformer {
             req_path: common.req_path,
 
             // 来源DEC
-            dec_id: common.dec_id,
+            dec_id: common.source.get_opt_dec().cloned(),
 
             // 用以处理默认行为
             target: common.target,
@@ -297,30 +297,29 @@ impl UtilInputProcessor for UtilInputTransformer {
 
 pub(crate) struct UtilOutputTransformer {
     processor: UtilInputProcessorRef,
-    source: DeviceId,
+    source: RequestSourceInfo,
 }
 
 impl UtilOutputTransformer {
-    pub fn new(processor: UtilInputProcessorRef, source: DeviceId) -> UtilOutputProcessorRef {
+    pub fn new(processor: UtilInputProcessorRef, source: RequestSourceInfo) -> UtilOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: UtilOutputRequestCommon) -> UtilInputRequestCommon {
+        let mut source = self.source.clone();
+        source.set_dec(common.dec_id);
+
         UtilInputRequestCommon {
             // 请求路径，可为空
             req_path: common.req_path,
-
-            // 来源DEC
-            dec_id: common.dec_id,
 
             // 用以处理默认行为
             target: common.target,
 
             flags: common.flags,
 
-            source: self.source.clone(),
-            protocol: NONProtocol::Native,
+            source,
         }
     }
 }

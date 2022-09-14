@@ -85,7 +85,7 @@ impl ObjectCache for NOCObjectCache {
 pub(crate) struct UtilLocalService {
     noc: NamedObjectCacheRef,
     bdt_stack: StackGuard,
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 
     ood_resolver: OodResolver,
 
@@ -118,7 +118,7 @@ impl UtilLocalService {
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
         bdt_stack: StackGuard,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         ood_resolver: OodResolver,
         task_manager: Arc<TaskManager>,
         config: StackGlobalConfig,
@@ -357,12 +357,6 @@ impl UtilLocalService {
         &self,
         req: UtilBuildFileInputRequest,
     ) -> BuckyResult<UtilBuildFileInputResponse> {
-        if req.common.dec_id.is_none() {
-            let msg = format!("build_file_object need dec_id");
-            log::error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        }
-
         if req.local_path.is_file() {
             let params = BuildFileParams {
                 local_path: req.local_path.to_string_lossy().to_string(),
@@ -372,8 +366,8 @@ impl UtilLocalService {
             let task_id = self
                 .task_manager
                 .create_task(
-                    req.common.dec_id.unwrap(),
-                    req.common.source,
+                    req.common.source.dec,
+                    req.common.source.zone.device.unwrap(),
                     BUILD_FILE_TASK,
                     params,
                 )
@@ -406,8 +400,8 @@ impl UtilLocalService {
             let task_id = self
                 .task_manager
                 .create_task(
-                    req.common.dec_id.unwrap(),
-                    req.common.source,
+                    req.common.source.dec,
+                    req.common.source.zone.device.unwrap(),
                     BUILD_DIR_TASK,
                     params,
                 )

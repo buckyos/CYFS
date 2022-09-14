@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use super::output_request::*;
-use crate::base::*;
+use crate::access::*;
 use cyfs_base::*;
 
 
@@ -8,12 +8,7 @@ pub struct UtilInputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
 
-    // 来源DEC
-    pub dec_id: Option<ObjectId>,
-
-    // 来源设备和协议
-    pub source: DeviceId,
-    pub protocol: NONProtocol,
+    pub source: RequestSourceInfo,
 
     // 用以默认行为
     pub target: Option<ObjectId>,
