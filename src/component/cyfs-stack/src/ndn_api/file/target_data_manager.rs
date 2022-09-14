@@ -68,7 +68,7 @@ impl TargetDataManager {
             self.target, file_id, file_obj.len(), total_size, ranges, referer
         );
 
-        let mut context = SingleDownloadContext::streams(Some(referer.encode_string()), vec![self.target.clone()]);
+        let context = SingleDownloadContext::streams(Some(referer.encode_string()), vec![self.target.clone()]);
 
         let resp = if let Some(ranges) = ranges {
             assert!(ranges.len() > 0);
@@ -96,7 +96,7 @@ impl TargetDataManager {
             let controller = cyfs_bdt::download::download_file(
                 &self.bdt_stack,
                 file_obj.to_owned(),
-                config,
+                context,
                 writers,
             )
             .await?;

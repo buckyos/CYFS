@@ -61,19 +61,19 @@ impl ChunkReader for DsgStackChunkReader {
 
 /**
  * # DSG backup storage
-+ ĞèÒª±¸·İµÄdata source chunk listÓ¦µ±±»¼ÓÃÜÎªÁíÒ»×ébackup chunk listÂäµØµ½contract miner£»minerÎŞ·¨»¹Ô­ÂäµØµÄbackup chunk listÎªdata source chunk list£»
-+ ÌØ¶¨dec app/serviceÔÚÒª±¸·İµÄdata source¸üĞÂÊ±£¬Í¨¹ıdsg clientÏòdsg service·¢Æğcontract sync data source changed state£»dsg service½«data source chunk list±àÂëÎªbackup chunk list£¬²¢ÇÒ±£Áôdata source stub£¬contract½øÈëdata source prepared state;Ïòdsg miner·¢³ö¶Ôbackup chunk listµÄinitial challenge£»
-+ dsg minerÔÚÊÕµ½initial challengeºó£¬Í¨¹ındnÍ¬²½backup chunk list£»Íê³Éºó»Ø¸´initial proof£»
-+ dsg service½ÓÊÕ²¢ÑéÖ¤initial proofÖ®ºó£¬¿ÉÒÔÑ¡ÔñÉ¾³ıbackup chunk list£»´ËºóÔÚdec app/serviceÔÚ¸üĞÂdata source chunk listÖ®Ç°£¬dsg service¶¨ÆÚÉú³Éstorage challenge£¬Éú³ÉchallengeµÄ¹ı³ÌÒÀÀµdata source stub£»miner½ÓÊÕµ½storage challengeÖ®ºó£¬Í¨¹ı¶ÁÈ¡ÂäµØµ½minerÉÏµÄbackup chunk listÉú³Éproof£»dsg serviceÔÚÑéÖ¤proofÊ±£¬Í¨¹ıdata source stubºÍdata source chunk listÀ´ÑéÖ¤proof£»
-+ dsg serviceÓ¦µ±±£Áôdata source chunk list£¬·ñÔòÎŞ·¨½øĞĞstorage challengeµÄÉú³ÉºÍÑéÖ¤£»Èç¹ûdsg serviceÎŞ·¨¶ÁÈ¡data source chunk list£¬Ó¦µ±½øÈëbackup restore¹ı³Ì£¬ÎŞÂÛdata source stubÊÇ·ñ¿É¶Á£¬Ö»Òª³ÖÓĞconsumer secret key£¬¶¼Ó¦µ±¿ÉÒÔrestore data source chunk list£»
++ éœ€è¦å¤‡ä»½çš„data source chunk liståº”å½“è¢«åŠ å¯†ä¸ºå¦ä¸€ç»„backup chunk listè½åœ°åˆ°contract minerï¼›mineræ— æ³•è¿˜åŸè½åœ°çš„backup chunk listä¸ºdata source chunk listï¼›
++ ç‰¹å®šdec app/serviceåœ¨è¦å¤‡ä»½çš„data sourceæ›´æ–°æ—¶ï¼Œé€šè¿‡dsg clientå‘dsg serviceå‘èµ·contract sync data source changed stateï¼›dsg serviceå°†data source chunk listç¼–ç ä¸ºbackup chunk listï¼Œå¹¶ä¸”ä¿ç•™data source stubï¼Œcontractè¿›å…¥data source prepared state;å‘dsg minerå‘å‡ºå¯¹backup chunk listçš„initial challengeï¼›
++ dsg mineråœ¨æ”¶åˆ°initial challengeåï¼Œé€šè¿‡ndnåŒæ­¥backup chunk listï¼›å®Œæˆåå›å¤initial proofï¼›
++ dsg serviceæ¥æ”¶å¹¶éªŒè¯initial proofä¹‹åï¼Œå¯ä»¥é€‰æ‹©åˆ é™¤backup chunk listï¼›æ­¤ååœ¨dec app/serviceåœ¨æ›´æ–°data source chunk listä¹‹å‰ï¼Œdsg serviceå®šæœŸç”Ÿæˆstorage challengeï¼Œç”Ÿæˆchallengeçš„è¿‡ç¨‹ä¾èµ–data source stubï¼›mineræ¥æ”¶åˆ°storage challengeä¹‹åï¼Œé€šè¿‡è¯»å–è½åœ°åˆ°minerä¸Šçš„backup chunk listç”Ÿæˆproofï¼›dsg serviceåœ¨éªŒè¯proofæ—¶ï¼Œé€šè¿‡data source stubå’Œdata source chunk listæ¥éªŒè¯proofï¼›
++ dsg serviceåº”å½“ä¿ç•™data source chunk listï¼Œå¦åˆ™æ— æ³•è¿›è¡Œstorage challengeçš„ç”Ÿæˆå’ŒéªŒè¯ï¼›å¦‚æœdsg serviceæ— æ³•è¯»å–data source chunk listï¼Œåº”å½“è¿›å…¥backup restoreè¿‡ç¨‹ï¼Œæ— è®ºdata source stubæ˜¯å¦å¯è¯»ï¼Œåªè¦æŒæœ‰consumer secret keyï¼Œéƒ½åº”å½“å¯ä»¥restore data source chunk listï¼›
 
-## Éú³Ébackup chunk list 
-+ backup chunk µÄ¸ñÊ½
+## ç”Ÿæˆbackup chunk list 
++ backup chunk çš„æ ¼å¼
 
 |field|version|aes key|padding|range count|[ranges]|padding|data|padding| 
 |-----|:----:|----|----|:----:|----|----|----|----|
-|bytes|1|¹«Ô¿³¤¶È ||4|8 * range count||¼ÓÃÜºó³¤¶È||
-|ËµÃ÷|°æ±¾ºÅ|¹²Ô¿¼ÓÃÜºóµÄaes key|0Ìî³äaes block|u32Ô´Êı¾İchunkÇø¼äÊıÄ¿|[u32;u32]Ô´Êı¾İÇø¼ä|0Ìî³äaes block|aes¼ÓÃÜÔ´Êı¾İ|0Ìî³äaes block|
+|bytes|1|å…¬é’¥é•¿åº¦ ||4|8 * range count||åŠ å¯†åé•¿åº¦||
+|è¯´æ˜|ç‰ˆæœ¬å·|å…±é’¥åŠ å¯†åçš„aes key|0å¡«å……aes block|u32æºæ•°æ®chunkåŒºé—´æ•°ç›®|[u32;u32]æºæ•°æ®åŒºé—´|0å¡«å……aes block|aesåŠ å¯†æºæ•°æ®|0å¡«å……aes block|
  */
 
 #[derive(Clone, Debug)]

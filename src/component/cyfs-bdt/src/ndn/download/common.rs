@@ -128,7 +128,6 @@ impl Default for DownloadTaskPriority {
 // 对scheduler的接口
 #[derive(Debug)]
 pub enum DownloadTaskState {
-    Pending, 
     Downloading(u32/*速度*/, f32/*进度*/),
     Paused,
     Error(BuckyErrorCode/*被cancel的原因*/), 
@@ -147,6 +146,16 @@ pub trait DownloadTask: Send + Sync {
     fn clone_as_task(&self) -> Box<dyn DownloadTask>;
     fn state(&self) -> DownloadTaskState;
     fn control_state(&self) -> DownloadTaskControlState;
+
+    fn resume(&self) -> BuckyResult<DownloadTaskControlState> {
+        Ok(DownloadTaskControlState::Normal)
+    }
+    fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
+        Ok(DownloadTaskControlState::Normal)
+    }
+    fn pause(&self) -> BuckyResult<DownloadTaskControlState> {
+        Ok(DownloadTaskControlState::Normal)
+    }
 
     fn priority_score(&self) -> u8 {
         DownloadTaskPriority::Normal as u8

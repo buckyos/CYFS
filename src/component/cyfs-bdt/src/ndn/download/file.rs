@@ -222,7 +222,7 @@ impl DownloadTask for FileTask {
 
     fn state(&self) -> DownloadTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Pending => DownloadTaskState::Pending,
+            TaskStateImpl::Pending => DownloadTaskState::Downloading(0 ,0.0), 
             TaskStateImpl::Downloading(_) => DownloadTaskState::Downloading(0 ,0.0), 
             TaskStateImpl::Finished => DownloadTaskState::Finished, 
             TaskStateImpl::Error(err) => DownloadTaskState::Error(*err), 

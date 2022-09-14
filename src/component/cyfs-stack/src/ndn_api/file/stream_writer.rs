@@ -1,6 +1,6 @@
 use cyfs_base::*;
 use cyfs_debug::Mutex;
-use cyfs_bdt::{ChunkWriter, ChunkWriterExt, DownloadTaskControl};
+use cyfs_bdt::{ChunkWriter, ChunkWriterExt, DownloadTask};
 
 use async_std::io::{Read, Result};
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
@@ -353,11 +353,11 @@ impl Read for FileChunkListStreamWriter {
 
 pub struct FileChunkListStreamReader {
     writer: FileChunkListStreamWriter,
-    task: Box<dyn DownloadTaskControl>,
+    task: Box<dyn DownloadTask>,
 }
 
 impl FileChunkListStreamReader {
-    pub fn new(writer: FileChunkListStreamWriter, task: Box<dyn DownloadTaskControl>) -> Self {
+    pub fn new(writer: FileChunkListStreamWriter, task: Box<dyn DownloadTask>) -> Self {
         Self { writer, task }
     }
 }
