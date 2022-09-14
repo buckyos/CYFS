@@ -69,5 +69,5 @@ async fn main() {
 
     TestLoader::load_stack(user1, user2).await;
 
-    async_std::task::sleep(std::time::Duration::from_millis(u64::MAX)).await;
+    async_std::future::pending::<u8>().await;
 }
