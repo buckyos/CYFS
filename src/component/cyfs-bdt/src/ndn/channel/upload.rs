@@ -12,7 +12,7 @@ use crate::{
 };
 use super::super::{
     chunk::*, 
-    download::*
+    upload::*
 };
 use super::{
     types::*, 
@@ -28,29 +28,19 @@ struct UploadingState {
     provider: Box<dyn UploadSessionProvider>
 }
 
-enum StateImpl {
+struct StateImpl {
+    task_state: TaskStateImpl, 
+    control_state: UploadTaskControlState, 
+}
+
+enum TaskStateImpl {
     Init, 
     Uploading(UploadingState),
     Finished, 
-    Canceled(BuckyErrorCode),
+    Error(BuckyErrorCode),
 }
 
-pub enum UploadSessionState {
-    Uploading(u32), 
-    Finished,
-    Canceled(BuckyErrorCode),
-}
 
-impl StateImpl {
-    fn to_session_state(&self) -> UploadSessionState {
-        match self {
-            StateImpl::Init => UploadSessionState::Uploading(0), 
-            StateImpl::Uploading(_) => UploadSessionState::Uploading(0), 
-            StateImpl::Finished => UploadSessionState::Finished, 
-            StateImpl::Canceled(err) => UploadSessionState::Canceled(*err),
-        }
-    }
-}
 struct SessionImpl {
     chunk: ChunkId, 
     session_id: TempSeq, 
@@ -59,8 +49,6 @@ struct SessionImpl {
     state: RwLock<StateImpl>, 
     last_active: AtomicU64, 
 }
-
-
 
 #[derive(Clone)]
 pub struct UploadSession(Arc<SessionImpl>);
@@ -83,13 +71,12 @@ impl UploadSession {
             session_id, 
             piece_type, 
             channel, 
-            state: RwLock::new(StateImpl::Init), 
+            state: RwLock::new(StateImpl{
+                task_state: TaskStateImpl::Init, 
+                control_state: UploadTaskControlState::Normal
+            }), 
             last_active: AtomicU64::new(0), 
         }))
-    }
-
-    pub fn state(&self) -> UploadSessionState {
-        self.0.state.read().unwrap().to_session_state()
     }
 
     pub fn chunk(&self) -> &ChunkId {
@@ -110,16 +97,16 @@ impl UploadSession {
 
     pub fn start(&self, chunk_encoder: TypedChunkEncoder) {
         info!("{} started", self);
-        let state = &mut *self.0.state.write().unwrap();
-        match state {
-            StateImpl::Init => {
-                *state = match *self.piece_type() {
+        let mut state = self.0.state.write().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Init => {
+                state.task_state = match *self.piece_type() {
                     PieceSessionType::Stream(..) => {
                         let encoder = match chunk_encoder {
                             TypedChunkEncoder::Range(encoder) => encoder,
                             _ => unreachable!()
                         };
-                        StateImpl::Uploading(
+                        TaskStateImpl::Uploading(
                             UploadingState {
                                 pending_from: 0, 
                                 history_speed: HistorySpeed::new(0, self.channel().config().history_speed.clone()), 
@@ -134,7 +121,7 @@ impl UploadSession {
                             TypedChunkEncoder::Range(encoder) => encoder,
                             _ => unreachable!()
                         };
-                        StateImpl::Uploading(
+                        TaskStateImpl::Uploading(
                             UploadingState {
                                 pending_from: 0, 
                                 history_speed: HistorySpeed::new(0, self.channel().config().history_speed.clone()), 
@@ -152,9 +139,9 @@ impl UploadSession {
 
     pub(super) fn next_piece(&self, buf: &mut [u8]) -> BuckyResult<usize> {
         let provider = {
-            let state = &*self.0.state.read().unwrap();
-            match state {
-                StateImpl::Uploading(uploading) => {
+            let state = self.0.state.read().unwrap();
+            match &state.task_state {
+                TaskStateImpl::Uploading(uploading) => {
                     Some(uploading.provider.clone_as_provider())
                 }, 
                 _ => None
@@ -163,9 +150,9 @@ impl UploadSession {
         if let Some(provider) = provider {
             match provider.next_piece(buf) {
                 Ok(len) => {
-                    let state = &mut *self.0.state.write().unwrap();
-                    match state {
-                        StateImpl::Uploading(uploading) => {
+                    let mut state = self.0.state.write().unwrap();
+                    match &mut state.task_state {
+                        TaskStateImpl::Uploading(uploading) => {
                             if len > 0 {
                                 uploading.speed_counter.on_recv(len);
                                 uploading.pending_from = 0;
@@ -198,12 +185,12 @@ impl UploadSession {
     }
 
     pub(super) fn cancel_by_error(&self, err: BuckyError) {
-        let state = &mut *self.0.state.write().unwrap();
-        match state {
-            StateImpl::Canceled(_) => {}, 
+        let mut state = self.0.state.write().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Error(_) => {}, 
             _ => {
                 info!("{} canceled by err:{}", self, err);
-                *state = StateImpl::Canceled(err.code());
+                state.task_state = TaskStateImpl::Error(err.code());
             }
         }
     }
@@ -217,12 +204,12 @@ impl UploadSession {
         }
         self.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
         let next_step = {
-            let state = &*self.0.state.read().unwrap();
-            match state {
-                StateImpl::Uploading(uploading) => {
+            let state = self.0.state.read().unwrap();
+            match &state.task_state {
+                TaskStateImpl::Uploading(uploading) => {
                     NextStep::CallProvider(uploading.provider.clone_as_provider())
                 }, 
-                StateImpl::Canceled(err) => {
+                TaskStateImpl::Error(err) => {
                     NextStep::RespInterest(*err)
                 }, 
                 _ => {
@@ -259,11 +246,11 @@ impl UploadSession {
 
         let next_step = match ctrl.command {
             PieceControlCommand::Finish => {
-                let state = &mut *self.0.state.write().unwrap();
-                match state {
-                    StateImpl::Uploading(_) => {
+                let mut state = self.0.state.write().unwrap();
+                match &state.task_state {
+                    TaskStateImpl::Uploading(_) => {
                         info!("{} finished", self);
-                        *state = StateImpl::Finished;
+                        state.task_state = TaskStateImpl::Finished;
                     }, 
                     _ => {
 
@@ -272,15 +259,15 @@ impl UploadSession {
                 NextStep::None
             }, 
             PieceControlCommand::Cancel => {
-                *self.0.state.write().unwrap() = StateImpl::Canceled(BuckyErrorCode::Interrupted);
+                self.0.state.write().unwrap().task_state = TaskStateImpl::Error(BuckyErrorCode::Interrupted);
                 info!("{} canceled by remote", self);
                 NextStep::None
             }, 
             PieceControlCommand::Continue => {
-                let state = &*self.0.state.read().unwrap();
-                match state {
-                    StateImpl::Uploading(uploading) => NextStep::CallProvider(uploading.provider.clone_as_provider()),
-                    StateImpl::Canceled(err) => NextStep::RespInterest(*err),  
+                let state = self.0.state.read().unwrap();
+                match &state.task_state {
+                    TaskStateImpl::Uploading(uploading) => NextStep::CallProvider(uploading.provider.clone_as_provider()),
+                    TaskStateImpl::Error(err) => NextStep::RespInterest(*err),  
                     _ => NextStep::None
                 }
             },
@@ -307,31 +294,80 @@ impl UploadSession {
         }
     }
 
-    pub(super) fn on_time_escape(&self, now: Timestamp) -> Option<UploadSessionState> {
-        let state = &mut *self.0.state.write().unwrap();
-        match state {
-            StateImpl::Init => Some(UploadSessionState::Uploading(0)), 
-            StateImpl::Uploading(uploading) => {
+    pub(super) fn on_time_escape(&self, now: Timestamp) -> Option<UploadTaskState> {
+        let mut state = self.0.state.write().unwrap();
+        match &mut state.task_state {
+            TaskStateImpl::Init => Some(UploadTaskState::Uploading(0)), 
+            TaskStateImpl::Uploading(uploading) => {
                 if uploading.pending_from > 0 
                     && now > uploading.pending_from 
                     && Duration::from_micros(now - uploading.pending_from) > self.channel().config().resend_timeout {
                     error!("{} canceled for pending timeout", self);
-                    *state = StateImpl::Canceled(BuckyErrorCode::Timeout);
-                    Some(UploadSessionState::Canceled(BuckyErrorCode::Timeout))
+                    state.task_state = TaskStateImpl::Error(BuckyErrorCode::Timeout);
+                    Some(UploadTaskState::Error(BuckyErrorCode::Timeout))
                 } else {
-                    Some(UploadSessionState::Uploading(0))
+                    Some(UploadTaskState::Uploading(0))
                 }
             }, 
-            StateImpl::Finished => None,
-            StateImpl::Canceled(err) => {
+            TaskStateImpl::Finished => None,
+            TaskStateImpl::Error(err) => {
                 let last_active = self.0.last_active.load(Ordering::SeqCst);
                 if now > last_active 
                     && Duration::from_micros(now - last_active) > 2 * self.channel().config().msl {
                     None
                 } else {
-                    Some(UploadSessionState::Canceled(*err))
+                    Some(UploadTaskState::Error(*err))
                 }
             },
+        }
+    }
+}
+
+
+impl UploadTask for UploadSession {
+    fn clone_as_task(&self) -> Box<dyn UploadTask> {
+        Box::new(self.clone())
+    }
+
+    fn state(&self) -> UploadTaskState {
+        match &self.0.state.read().unwrap().task_state {
+            TaskStateImpl::Init => UploadTaskState::Uploading(0), 
+            TaskStateImpl::Uploading(_) => UploadTaskState::Uploading(0), 
+            TaskStateImpl::Finished => UploadTaskState::Finished, 
+            TaskStateImpl::Error(err) => UploadTaskState::Error(*err),
+        }
+    }
+
+    fn control_state(&self) -> UploadTaskControlState {
+        self.0.state.read().unwrap().control_state.clone()
+    }
+
+    fn calc_speed(&self, when: Timestamp) -> u32 {
+        match &mut self.0.state.write().unwrap().task_state {
+            TaskStateImpl::Uploading(uploading) => {
+                let cur_speed = uploading.speed_counter.update(when);
+                uploading.history_speed.update(Some(cur_speed), when);
+                cur_speed
+            }, 
+            _ => 0
+        }
+    }
+
+    fn cur_speed(&self) -> u32 {
+        match &self.0.state.read().unwrap().task_state {
+            TaskStateImpl::Uploading(uploading) => {
+                uploading.history_speed.latest()
+            }, 
+            _ => 0
+        }
+    }
+
+    fn history_speed(&self) -> u32 {
+        match &self.0.state.read().unwrap().task_state {
+            TaskStateImpl::Uploading(uploading) => {
+                uploading.history_speed.average()
+            }, 
+            _ => 0
         }
     }
 }

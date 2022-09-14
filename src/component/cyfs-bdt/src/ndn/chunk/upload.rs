@@ -10,11 +10,8 @@ use crate::{
     types::*
 };
 use super::super::{
-    channel::{
-        UploadSession, 
-        UploadSessionState, 
-        PieceSessionType
-    }, 
+    upload::*,
+    channel::*, 
 };
 use super::{
     encode::*,
@@ -59,7 +56,7 @@ impl ChunkUploader {
 
         for session in &*sessions {
             match session.state() {
-                UploadSessionState::Uploading(_) => {
+                UploadTaskState::Uploading(_) => {
                     remain.push_back(session.clone());
                     active = true
                 }, 

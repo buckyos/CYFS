@@ -14,6 +14,7 @@ use crate::{
 };
 use super::super::{
     chunk::*, 
+    channel::*
 };
 use super::{
     common::*, 

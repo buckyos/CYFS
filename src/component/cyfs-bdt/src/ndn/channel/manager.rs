@@ -14,10 +14,8 @@ use crate::{
     datagram::{self, DatagramTunnelGuard},
     stack::{WeakStack, Stack}
 };
-use super::super::{
-    download::*
-};
 use super::{
+    types::*, 
     channel::Channel,
 };
 

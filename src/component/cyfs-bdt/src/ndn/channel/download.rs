@@ -12,9 +12,6 @@ use crate::{
     types::*, 
     stack::{Stack, WeakStack} 
 };
-use super::super::{
-    download::*, 
-};
 use super::{
     types::*, 
     protocol::v0::*, 

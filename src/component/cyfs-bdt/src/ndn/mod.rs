@@ -1,12 +1,14 @@
 mod download;
+mod upload;
 pub mod channel;
 pub mod chunk;
 mod event;
 mod root;
 mod stack;
 
-pub use download::*;
+pub use channel::{HistorySpeedConfig};
 pub use chunk::{ChunkListDesc, ChunkReader, ChunkWriter, ChunkWriterExt};
 pub use download::*;
+pub use upload::*;
 pub use stack::{NdnStack, Config};
 pub use event::*;

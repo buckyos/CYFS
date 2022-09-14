@@ -14,36 +14,34 @@ use super::{
 };
 
 struct StateImpl {
-    entries: HashMap<String, Box<dyn DownloadTask>>, 
-    running: Vec<Box<dyn DownloadTask>>, 
+    entries: HashMap<String, Box<dyn UploadTask>>, 
+    running: Vec<Box<dyn UploadTask>>, 
     history_speed: HistorySpeed, 
-    drain_score: i64, 
-    control_state: DownloadTaskControlState
+    control_state: UploadTaskControlState
 }
 
 struct TaskImpl {
-    priority: DownloadTaskPriority, 
+    priority: UploadTaskPriority, 
     state: RwLock<StateImpl>
 }
 
 #[derive(Clone)]
-pub struct DownloadGroup(Arc<TaskImpl>);
+pub struct UploadGroup(Arc<TaskImpl>);
 
-impl DownloadGroup {
-    pub fn new(history_speed: HistorySpeedConfig, priority: Option<DownloadTaskPriority>) -> Self {
+impl UploadGroup {
+    pub fn new(history_speed: HistorySpeedConfig, priority: Option<UploadTaskPriority>) -> Self {
         Self(Arc::new(TaskImpl {
             priority: priority.unwrap_or_default(), 
             state: RwLock::new(StateImpl { 
                 entries: Default::default(), 
                 running: Default::default(), 
                 history_speed: HistorySpeed::new(0, history_speed), 
-                drain_score: 0, 
-                control_state: DownloadTaskControlState::Normal
+                control_state: UploadTaskControlState::Normal
             })
         }))
     }
 
-    pub fn add(&self, path: Option<String>, sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
+    pub fn add(&self, path: Option<String>, sub: Box<dyn UploadTask>) -> BuckyResult<()> {
         let mut state = self.0.state.write().unwrap();
         state.running.push(sub.clone_as_task());
         if let Some(path) = path {
@@ -53,16 +51,16 @@ impl DownloadGroup {
     }
 }
 
-impl DownloadTask for DownloadGroup {
-    fn clone_as_task(&self) -> Box<dyn DownloadTask> {
+impl UploadTask for UploadGroup {
+    fn clone_as_task(&self) -> Box<dyn UploadTask> {
         Box::new(self.clone())
     }
 
-    fn state(&self) -> DownloadTaskState {
-        DownloadTaskState::Downloading(0, 0.0)
+    fn state(&self) -> UploadTaskState {
+        UploadTaskState::Uploading(0)
     }
 
-    fn control_state(&self) -> DownloadTaskControlState {
+    fn control_state(&self) -> UploadTaskControlState {
         self.0.state.read().unwrap().control_state.clone()
     }
 
@@ -70,7 +68,7 @@ impl DownloadTask for DownloadGroup {
         self.0.priority as u8
     }
 
-    fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {
+    fn sub_task(&self, path: &str) -> Option<Box<dyn UploadTask>> {
         let mut names = path.split("::");
         let name = names.next().unwrap();
 
@@ -102,28 +100,5 @@ impl DownloadTask for DownloadGroup {
 
     fn history_speed(&self) -> u32 {
         self.0.state.read().unwrap().history_speed.average()
-    }
-
-    fn drain_score(&self) -> i64 {
-        self.0.state.read().unwrap().drain_score
-    }
-
-    fn on_drain(&self, expect_speed: u32) -> u32 {
-        let running: Vec<Box<dyn DownloadTask>> = {
-            self.0.state.read().unwrap().running.iter().map(|t| t.clone_as_task()).collect()
-        };
-        let mut new_expect = 0;
-        let total: f64 = running.iter().map(|t| t.drain_score() as f64).sum();
-        let score_cent = expect_speed as f64 / total;
-        for task in running {
-            new_expect += task.on_drain((task.priority_score() as f64 * score_cent) as u32);
-        }
-
-        {
-            let mut state = self.0.state.write().unwrap();
-            state.drain_score += new_expect as i64 - expect_speed as i64;
-            state.running.sort_by(|l, r| r.drain_score().cmp(&l.drain_score()));
-        }
-        new_expect
     }
 }

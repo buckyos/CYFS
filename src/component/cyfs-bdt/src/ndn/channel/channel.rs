@@ -20,9 +20,10 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::super::{
-    download::*
+    upload::*,
 };
 use super::{
+    types::*, 
     download::*, 
     upload::*, 
     protocol::v0::*, 
@@ -96,7 +97,7 @@ impl Uploaders {
 
     fn add(&self, session: UploadSession) {
         match session.state() {
-            UploadSessionState::Canceled(_) => {
+            UploadTaskState::Error(_) => {
                 let mut sessions = self.sessions.write().unwrap();
                 if sessions.canceled.iter().find(|s| session.session_id().eq(s.session_id())).is_none() {
                     info!("{} add canceled upload session {}", session.channel(), session);
@@ -195,10 +196,10 @@ impl Uploaders {
         for session in uploading {
             if let Some(state) = session.on_time_escape(now) {
                 match state {
-                    UploadSessionState::Finished => {
+                    UploadTaskState::Finished => {
                         sessions.canceled.push_back(session);
                     },
-                    UploadSessionState::Canceled(_) => {
+                    UploadTaskState::Error(_) => {
                         sessions.canceled.push_back(session);
                     }, 
                     _ => {
