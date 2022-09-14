@@ -1,7 +1,7 @@
 use super::super::acl::*;
 use super::super::local::GlobalStateLocalService;
 use super::cache_access::GlobalStateAccessCacheProcessor;
-use crate::acl::AclManagerRef;
+use crate::rmeta_api::GlobalStateMetaService;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::ndn::NDNInputProcessorRef;
@@ -34,7 +34,7 @@ pub struct GlobalStateRouter {
 impl GlobalStateRouter {
     pub(crate) fn new(
         category: GlobalStateCategory,
-        acl: AclManagerRef,
+        global_state_meta: GlobalStateMetaService,
         local_service: GlobalStateLocalService,
         zone_manager: ZoneManager,
         forward: ForwardProcessorManager,
@@ -48,12 +48,12 @@ impl GlobalStateRouter {
 
         let access_processor = local_service.clone_access_processor();
 
-        // zone limit processors
+        // acl limit processors
         let global_state_processor =
             GlobalStateAclInnerInputProcessor::new(acl.clone(), global_state_processor);
-        let op_env_processor = OpEnvAclInnerInputProcessor::new(acl.clone(), op_env_processor);
+        let op_env_processor = OpEnvAclInnerInputProcessor::new(global_state_meta.clone(), op_env_processor);
 
-        let access_processor = GlobalStateAccessAclInputProcessor::new(acl, access_processor);
+        let access_processor = GlobalStateAccessAclInputProcessor::new(global_state_meta, access_processor);
 
         Self {
             category,

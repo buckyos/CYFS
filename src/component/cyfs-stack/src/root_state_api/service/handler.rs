@@ -33,23 +33,16 @@ impl GlobalStateRequestHandler {
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
 
-        // 尝试提取dec字段
-        let dec_id: Option<ObjectId> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
-        let target_dec_id: Option<ObjectId> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET_DEC_ID)?;
-
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
+        let target_dec_id: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET_DEC_ID)?;
+
         let ret = RootStateInputRequestCommon {
             source: req.source.clone(),
-            protocol: req.protocol.clone(),
-
-            dec_id,
             target_dec_id,
             target,
-
             flags: flags.unwrap_or(0),
         };
 
@@ -166,23 +159,19 @@ impl OpEnvRequestHandler {
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
 
-        // 尝试提取dec字段
-        let dec_id: Option<ObjectId> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
-
         // 提取sid
         let sid: u64 = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OP_ENV_SID)?;
 
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
+        let target_dec_id: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET_DEC_ID)?;
+
         let ret = OpEnvInputRequestCommon {
             source: req.source.clone(),
-            protocol: req.protocol.clone(),
-
-            dec_id,
+            target_dec_id,
             target,
-
             flags: flags.unwrap_or(0),
             sid,
         };
@@ -428,7 +417,10 @@ impl OpEnvRequestHandler {
         let output_req: OpEnvCommitOutputRequest =
             RequestorHelper::decode_json_body(&mut req.request).await?;
 
-        let req = OpEnvCommitInputRequest { common, op_type: output_req.op_type };
+        let req = OpEnvCommitInputRequest {
+            common,
+            op_type: output_req.op_type,
+        };
 
         info!("recv op_env commit request: {}", req);
 
@@ -881,10 +873,7 @@ impl OpEnvRequestHandler {
         }
     }
 
-    async fn on_reset<State: Send>(
-        &self,
-        req: OpEnvInputHttpRequest<State>,
-    ) -> BuckyResult<()> {
+    async fn on_reset<State: Send>(&self, req: OpEnvInputHttpRequest<State>) -> BuckyResult<()> {
         // 检查action
         let action = Self::decode_action(&req)?;
         if action != OpEnvAction::Reset {
@@ -896,10 +885,7 @@ impl OpEnvRequestHandler {
 
         let common = Self::decode_common_headers(&req)?;
 
-
-        let req = OpEnvResetInputRequest {
-            common,
-        };
+        let req = OpEnvResetInputRequest { common };
 
         debug!("recv op_env reset request: {}", req);
 
@@ -941,10 +927,7 @@ impl OpEnvRequestHandler {
             cyfs_base::CYFS_OP_ENV_PATH,
         )?;
 
-        let req = OpEnvListInputRequest {
-            common,
-            path,
-        };
+        let req = OpEnvListInputRequest { common, path };
 
         debug!("recv op_env list request: {}", req);
 

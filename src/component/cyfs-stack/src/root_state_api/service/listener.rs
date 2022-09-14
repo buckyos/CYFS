@@ -1,10 +1,10 @@
 use super::handler::*;
 use crate::root_state::*;
+use crate::zone::ZoneManagerRef;
 use cyfs_lib::*;
 
 use async_trait::async_trait;
 use tide::Response;
-
 
 enum GlobalStateRequestType {
     GetCurrentRoot,
@@ -12,6 +12,7 @@ enum GlobalStateRequestType {
 }
 
 pub(crate) struct GlobalStateRequestHandlerEndpoint {
+    zone_manager: ZoneManagerRef,
     protocol: NONProtocol,
     req_type: GlobalStateRequestType,
     handler: GlobalStateRequestHandler,
@@ -19,11 +20,13 @@ pub(crate) struct GlobalStateRequestHandlerEndpoint {
 
 impl GlobalStateRequestHandlerEndpoint {
     fn new(
+        zone_manager: ZoneManagerRef,
         protocol: NONProtocol,
         req_type: GlobalStateRequestType,
         handler: GlobalStateRequestHandler,
     ) -> Self {
         Self {
+            zone_manager,
             protocol,
             req_type,
             handler,
@@ -31,7 +34,7 @@ impl GlobalStateRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = RootStateInputHttpRequest::new(&self.protocol, req);
+        let req = RootStateInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await?;
 
         match self.req_type {
             GlobalStateRequestType::GetCurrentRoot => {
@@ -44,6 +47,7 @@ impl GlobalStateRequestHandlerEndpoint {
     }
 
     pub fn register_server(
+        zone_manager: &ZoneManagerRef,
         protocol: &NONProtocol,
         root_seg: &str,
         handler: &GlobalStateRequestHandler,
@@ -52,7 +56,8 @@ impl GlobalStateRequestHandlerEndpoint {
         let path = format!("/{}/root", root_seg);
 
         // get_current_root
-        server.at(&path).post(GlobalStateRequestHandlerEndpoint::new(
+        server.at(&path).post(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             GlobalStateRequestType::GetCurrentRoot,
             handler.clone(),
@@ -60,7 +65,8 @@ impl GlobalStateRequestHandlerEndpoint {
 
         // create_op_env
         let path = format!("/{}/op-env", root_seg);
-        server.at(&path).post(GlobalStateRequestHandlerEndpoint::new(
+        server.at(&path).post(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             GlobalStateRequestType::CreateOpEnv,
             handler.clone(),
@@ -123,6 +129,7 @@ GET get_by_key contains
 */
 
 pub(crate) struct OpEnvRequestHandlerEndpoint {
+    zone_manager: ZoneManagerRef,
     protocol: NONProtocol,
     req_type: OpEnvRequestType,
     handler: OpEnvRequestHandler,
@@ -130,11 +137,13 @@ pub(crate) struct OpEnvRequestHandlerEndpoint {
 
 impl OpEnvRequestHandlerEndpoint {
     fn new(
+        zone_manager: ZoneManagerRef,
         protocol: NONProtocol,
         req_type: OpEnvRequestType,
         handler: OpEnvRequestHandler,
     ) -> Self {
         Self {
+            zone_manager,
             protocol,
             req_type,
             handler,
@@ -142,7 +151,7 @@ impl OpEnvRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = OpEnvInputHttpRequest::new(&self.protocol, req);
+        let req = OpEnvInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await?;
 
         match self.req_type {
             OpEnvRequestType::Load => self.handler.process_load_request(req).await,
@@ -151,7 +160,9 @@ impl OpEnvRequestHandlerEndpoint {
 
             OpEnvRequestType::Lock => self.handler.process_lock_request(req).await,
 
-            OpEnvRequestType::GetCurrentRoot => self.handler.process_get_current_root_request(req).await,
+            OpEnvRequestType::GetCurrentRoot => {
+                self.handler.process_get_current_root_request(req).await
+            }
 
             OpEnvRequestType::Commit => self.handler.process_commit_request(req).await,
             OpEnvRequestType::Abort => self.handler.process_abort_request(req).await,
@@ -178,6 +189,7 @@ impl OpEnvRequestHandlerEndpoint {
     }
 
     pub fn register_server(
+        zone_manager: &ZoneManagerRef,
         protocol: &NONProtocol,
         root_seg: &str,
         handler: &OpEnvRequestHandler,
@@ -186,6 +198,7 @@ impl OpEnvRequestHandlerEndpoint {
         // load
         let path = format!("/{}/op-env/init/target", root_seg);
         server.at(&path).post(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::Load,
             handler.clone(),
@@ -194,6 +207,7 @@ impl OpEnvRequestHandlerEndpoint {
         // load_by_path
         let path = format!("/{}/op-env/init/path", root_seg);
         server.at(&path).post(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::LoadByPath,
             handler.clone(),
@@ -202,6 +216,7 @@ impl OpEnvRequestHandlerEndpoint {
         // create_new
         let path = format!("/{}/op-env/init/new", root_seg);
         server.at(&path).post(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::CreateNew,
             handler.clone(),
@@ -210,6 +225,7 @@ impl OpEnvRequestHandlerEndpoint {
         // lock
         let path = format!("/{}/op-env/lock", root_seg);
         server.at(&path).post(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::Lock,
             handler.clone(),
@@ -218,6 +234,7 @@ impl OpEnvRequestHandlerEndpoint {
         // get_current_root
         let path = format!("/{}/op-env/root", root_seg);
         server.at(&path).get(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::GetCurrentRoot,
             handler.clone(),
@@ -226,12 +243,14 @@ impl OpEnvRequestHandlerEndpoint {
         // commit
         let path = format!("/{}/op-env/transaction", root_seg);
         server.at(&path).post(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::Commit,
             handler.clone(),
         ));
         // abort
         server.at(&path).delete(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::Abort,
             handler.clone(),
@@ -240,24 +259,28 @@ impl OpEnvRequestHandlerEndpoint {
         // get_by_key
         let path = format!("/{}/op-env/map", root_seg);
         server.at(&path).get(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::GetByKey,
             handler.clone(),
         ));
         // insert_with_key
         server.at(&path).post(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::InsertWithKey,
             handler.clone(),
         ));
         // set_with_key
         server.at(&path).put(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::SetWithKey,
             handler.clone(),
         ));
         // remove_with_key
         server.at(&path).delete(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::RemoveWithKey,
             handler.clone(),
@@ -266,18 +289,21 @@ impl OpEnvRequestHandlerEndpoint {
         // contains
         let path = format!("/{}/op-env/set", root_seg);
         server.at(&path).get(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::Contains,
             handler.clone(),
         ));
         // insert
         server.at(&path).post(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::Insert,
             handler.clone(),
         ));
         // remove
         server.at(&path).delete(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::Remove,
             handler.clone(),
@@ -286,12 +312,14 @@ impl OpEnvRequestHandlerEndpoint {
         // next
         let path = format!("/{}/op-env/iterator", root_seg);
         server.at(&path).post(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::Next,
             handler.clone(),
         ));
 
         server.at(&path).delete(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::Reset,
             handler.clone(),
@@ -300,6 +328,7 @@ impl OpEnvRequestHandlerEndpoint {
         // list
         let path = format!("/{}/op-env/list", root_seg);
         server.at(&path).get(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::List,
             handler.clone(),
@@ -308,6 +337,7 @@ impl OpEnvRequestHandlerEndpoint {
         // metadata
         let path = format!("/{}/op-env/metadata", root_seg);
         server.at(&path).get(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             OpEnvRequestType::Metadata,
             handler.clone(),
@@ -326,48 +356,51 @@ where
     }
 }
 
-
 ////// access
 
 pub(crate) struct GlobalStateAccessRequestHandlerEndpoint {
+    zone_manager: ZoneManagerRef,
     protocol: NONProtocol,
     handler: GlobalStateAccessRequestHandler,
 }
 
 impl GlobalStateAccessRequestHandlerEndpoint {
     fn new(
+        zone_manager: ZoneManagerRef,
         protocol: NONProtocol,
         handler: GlobalStateAccessRequestHandler,
     ) -> Self {
         Self {
+            zone_manager,
             protocol,
             handler,
         }
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = RootStateInputHttpRequest::new(&self.protocol, req);
-
+        let req = RootStateInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await?;
 
         self.handler.process_access_request(req).await
     }
 
     pub fn register_server(
+        zone_manager: &ZoneManagerRef,
         protocol: &NONProtocol,
         root_seg: &str,
         handler: &GlobalStateAccessRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {
-       
         // get_object_by_path & list
         let path = format!("/{}/*inner_path", root_seg);
         server.at(&path).get(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             handler.clone(),
         ));
 
         let path = format!("/{}/", root_seg);
         server.at(&path).get(Self::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             handler.clone(),
         ));
