@@ -4,7 +4,7 @@ use std::convert::TryInto;
 use std::fmt::{Formatter};
 use itertools::Itertools;
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use serde::de::{Error, Visitor};
+use serde::de::{Error, SeqAccess, Visitor};
 
 const ACCESS_GROUP_MASK: u32 = 0b111 << 29;
 
@@ -146,6 +146,23 @@ impl AccessGroup {
     }
 }
 
+impl TryFrom<&str> for AccessGroup {
+    type Error = BuckyError;
+
+    fn try_from(value: &str) -> BuckyResult<Self> {
+        match value {
+            "CurrentDevice" => Ok(AccessGroup::CurrentDevice),
+            "CurrentZone" => Ok(AccessGroup::CurrentZone),
+            "FriendZone" => Ok(AccessGroup::FriendZone),
+            "OthersZone" => Ok(AccessGroup::OthersZone),
+            "OwnerDec" => Ok(AccessGroup::OwnerDec),
+            "SystemDec" => Ok(AccessGroup::SystemDec),
+            "OthersDec" => Ok(AccessGroup::OthersDec),
+            v @ _ => Err(BuckyError::new(BuckyErrorCode::InvalidParam, format!("invalid access group {}", v)))
+        }
+    }
+}
+
 pub struct AccessPair {
     group: AccessGroup,
     permissions: AccessPermissions, 
@@ -255,9 +272,15 @@ impl Serialize for AccessString {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct AccessGroupStruct {
+    group: String,
+    access: String
+}
+
 struct AccessStringVisitor;
 
-impl<'de> Visitor<'_> for AccessStringVisitor {
+impl<'de> Visitor<'de> for AccessStringVisitor {
     type Value = AccessString;
 
     fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
@@ -267,11 +290,21 @@ impl<'de> Visitor<'_> for AccessStringVisitor {
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: Error {
         AccessString::try_from(v).map_err(Error::custom)
     }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
+        let mut ret = AccessString::default();
+        while let Some(value) = seq.next_element::<AccessGroupStruct>()? {
+            ret.set_group_permissions(AccessGroup::try_from(value.group.as_str()).map_err(Error::custom)?,
+                                      AccessPermissions::try_from(value.access.as_str()).map_err(Error::custom)?);
+        }
+
+        Ok(ret)
+    }
 }
 
 impl<'de> Deserialize<'de> for AccessString {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
-        deserializer.deserialize_str(AccessStringVisitor)
+        deserializer.deserialize_any(AccessStringVisitor)
     }
 }
 
