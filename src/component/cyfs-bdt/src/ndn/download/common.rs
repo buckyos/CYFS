@@ -36,7 +36,7 @@ impl SingleDownloadContext {
             sources.push_back(DownloadSource {
                 target: remote, 
                 object_id: None, 
-                encode_desc: PieceSessionType::Stream(0), 
+                encode_desc: PieceSessionType::Stream(None, None, None), 
                 referer: None
             });
         } 
@@ -244,15 +244,15 @@ pub enum DownloadTaskControlState {
 
 
 
-pub trait DownloadTask2: Send + Sync {
-    fn clone_as_task(&self) -> Box<dyn DownloadTask2>;
+pub trait DownloadTask: Send + Sync {
+    fn clone_as_task(&self) -> Box<dyn DownloadTask>;
     fn state(&self) -> DownloadTaskState;
     fn control_state(&self) -> DownloadTaskControlState;
 
     fn priority_score(&self) -> u8 {
         DownloadTaskPriority::Normal as u8
     }
-    fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask2>> {
+    fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask>> {
         None
     }
 

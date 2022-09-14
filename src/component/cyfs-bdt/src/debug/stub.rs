@@ -20,7 +20,7 @@ use crate::{
     tunnel::{BuildTunnelParams}, 
     datagram::{self, DatagramOptions},
     download::*,
-    DownloadTask2, 
+    DownloadTask, 
     DownloadTaskState, 
     types::*,
     SingleDownloadContext
@@ -518,7 +518,7 @@ impl DebugStub {
     }
 }
 
-async fn watchdog_download_finished(task: Box<dyn DownloadTask2>, timeout: u32) -> Result<(), String> {
+async fn watchdog_download_finished(task: Box<dyn DownloadTask>, timeout: u32) -> Result<(), String> {
     let mut _timeout = 1800; //todo: when bdt support download speed, use timeout instead
     let mut i = 0;
 

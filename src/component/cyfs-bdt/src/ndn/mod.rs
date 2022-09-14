@@ -1,7 +1,6 @@
 mod download;
 pub mod channel;
 pub mod chunk;
-mod scheduler;
 mod event;
 mod root;
 mod stack;

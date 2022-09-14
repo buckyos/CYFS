@@ -158,8 +158,8 @@ impl ChunkTask {
     }
 }
 
-impl DownloadTask2 for ChunkTask {
-    fn clone_as_task(&self) -> Box<dyn DownloadTask2> {
+impl DownloadTask for ChunkTask {
+    fn clone_as_task(&self) -> Box<dyn DownloadTask> {
         Box::new(self.clone())
     }
 
@@ -182,7 +182,7 @@ impl DownloadTask2 for ChunkTask {
         DownloadTaskPriority::Normal as u8
     }
 
-    fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask2>> {
+    fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask>> {
         None
     }
 

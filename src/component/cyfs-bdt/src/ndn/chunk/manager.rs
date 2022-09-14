@@ -13,7 +13,6 @@ use crate::{
     stack::{WeakStack, Stack},
 };
 use super::super::{
-    scheduler::*, 
     channel::{PieceSessionType, Channel, UploadSession}, 
     download::*
 };
@@ -211,11 +210,10 @@ impl ChunkManager {
         chunk: ChunkId, 
         piece_type: PieceSessionType, 
         to: Channel, 
-        owner: ResourceManager
     ) -> BuckyResult<UploadSession> {
         info!("{} try start upload type: {:?} to: {}", self, piece_type, to.remote());
         let view = self.create_view(chunk, ChunkState::Unknown).await?;
-        view.start_upload(session_id, piece_type, to, owner)
+        view.start_upload(session_id, piece_type, to)
             .map_err(|err| {
                 error!("{} failed start upload for {}", self, err);
                 err
@@ -226,14 +224,12 @@ impl ChunkManager {
     pub(super) fn gen_session_id(&self) -> TempSeq {
         self.gen_session_id.generate()
     }
-}
 
-impl Scheduler for ChunkManager {
-    fn collect_resource_usage(&self) {
+    pub fn on_schedule(&self, now: Timestamp) {
         let views: Vec<ChunkView> = self.views.read().unwrap().values().cloned().collect();
         let mut to_recycle = LinkedList::new();
         for view in views {
-            view.collect_resource_usage();
+            view.on_schedule(now);
             if view.recyclable(2) {
                 to_recycle.push_back(view);
             }
@@ -251,13 +247,5 @@ impl Scheduler for ChunkManager {
                 }
             }
         }
-    }
-
-    fn schedule_resource(&self) {
-        //TODO
-    }
-
-    fn apply_scheduled_resource(&self) {
-        //TODO
     }
 }

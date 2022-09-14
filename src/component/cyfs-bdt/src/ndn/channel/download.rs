@@ -352,8 +352,8 @@ impl DownloadSession {
         match next_step {
             EnterDownloading => {
                 match *self.prefer_type() {
-			//TODO: 其他session type支持
-                    PieceSessionType::Stream(_) => {
+			    //TODO: 其他session type支持
+                    PieceSessionType::Stream(..) => {
                         let provider = StreamDownload::new(
                             self.chunk(), 
                             self.session_id().clone(), 
@@ -382,7 +382,7 @@ impl DownloadSession {
                             push_to_decoder(provider);
                         }
                     },
-                    PieceSessionType::RaptorA(_) | PieceSessionType::RaptorB(_)  => {
+                    PieceSessionType::Raptor(..)  => {
                         let stack = Stack::from(&self.0.stack);
                         let view = stack.ndn().chunk_manager().view_of(self.chunk()).unwrap();
                         let decoder = view.raptor_decoder();
@@ -538,12 +538,6 @@ impl DownloadSession {
                 Ok(())
             }, 
             NextStep::CallProvider(provider) => {
-                match self.0.prefer_type {
-                    PieceSessionType::RaptorA(_) => {
-                    },
-                    _ => {}
-                }
-
                 match provider.on_time_escape(now) {
                     Ok(_) => {
                         Ok(())

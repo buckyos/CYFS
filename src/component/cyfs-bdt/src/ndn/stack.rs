@@ -17,7 +17,6 @@ use crate::{
     utils::{mem_tracker::MemTracker, local_chunk_store::LocalChunkReader}
 };
 use super::{
-    scheduler::*, 
     channel::{self, ChannelManager}, 
     chunk::{ChunkManager, ChunkReader}, 
     event::*, 
@@ -35,7 +34,6 @@ pub struct Config {
 struct StackImpl {
     stack: WeakStack, 
     last_schedule: AtomicU64, 
-    resource: ResourceManager, 
     chunk_manager: ChunkManager, 
     channel_manager: ChannelManager, 
     event_handler: Box<dyn NdnEventHandler>, 
@@ -61,11 +59,9 @@ impl NdnStack {
         let event_handler = event_handler.unwrap_or(Box::new(DefaultNdnEventHandler::new()));
         let strong_stack = Stack::from(&stack);
 
-        let resource = ResourceManager::new(None);
         Self(Arc::new(StackImpl {
             stack: stack.clone(), 
             last_schedule: AtomicU64::new(0), 
-            resource: resource.clone(), 
             chunk_manager: ChunkManager::new(
                 stack.clone(), 
                 ndc, 
@@ -96,11 +92,9 @@ impl NdnStack {
         let last_schedule = self.0.last_schedule.load(Ordering::SeqCst);
         if now > last_schedule 
             && Duration::from_millis(now - last_schedule) > stack.config().ndn.schedule_interval {
-            self.channel_manager().calc_speed(now);
+            self.channel_manager().on_schedule(now);
+            self.chunk_manager().on_schedule(now);
             self.root_task().on_schedule(now);
-            self.collect_resource_usage();
-            self.schedule_resource();
-            self.apply_scheduled_resource();
             self.0.last_schedule.store(now, Ordering::SeqCst);
         }
         self.channel_manager().on_time_escape(now);
@@ -123,22 +117,5 @@ impl NdnStack {
     }
 
 
-}
-
-impl Scheduler for NdnStack {
-    fn collect_resource_usage(&self) {
-        self.chunk_manager().collect_resource_usage();
-        self.root_task().collect_resource_usage();
-    }
-
-    fn schedule_resource(&self) {
-        self.chunk_manager().schedule_resource();
-        self.root_task().schedule_resource();
-    }
-
-    fn apply_scheduled_resource(&self) {
-        self.chunk_manager().apply_scheduled_resource();
-        self.root_task().apply_scheduled_resource();
-    }
 }
 

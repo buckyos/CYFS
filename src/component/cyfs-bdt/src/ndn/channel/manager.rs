@@ -88,7 +88,7 @@ impl ChannelManager {
         }, |c| c)
     } 
 
-    pub fn calc_speed(&self, when: Timestamp) {
+    pub fn on_schedule(&self, when: Timestamp) {
         let mut channels = self.0.channels.write().unwrap();
         let mut download_cur_speed = 0;
         let mut download_session_count = 0;

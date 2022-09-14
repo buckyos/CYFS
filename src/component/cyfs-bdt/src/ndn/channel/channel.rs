@@ -20,7 +20,6 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::super::{
-    scheduler::*, 
     download::*
 };
 use super::{
@@ -96,19 +95,12 @@ impl Uploaders {
     }
 
     fn add(&self, session: UploadSession) {
-        match session.schedule_state() {
-            TaskState::Canceled(err) => {
-                match err {
-                    BuckyErrorCode::Redirect | BuckyErrorCode::Pending => {
-                        info!("{} session need redirect or wait-redirect opertator", session.channel());
-                    }, 
-                    _ => {
-                        let mut sessions = self.sessions.write().unwrap();
-                        if sessions.canceled.iter().find(|s| session.session_id().eq(s.session_id())).is_none() {
-                            info!("{} add canceled upload session {}", session.channel(), session);
-                            sessions.canceled.push_back(session);
-                        }
-                    }
+        match session.state() {
+            UploadSessionState::Canceled(_) => {
+                let mut sessions = self.sessions.write().unwrap();
+                if sessions.canceled.iter().find(|s| session.session_id().eq(s.session_id())).is_none() {
+                    info!("{} add canceled upload session {}", session.channel(), session);
+                    sessions.canceled.push_back(session);
                 }
             }, 
             _ => {
@@ -203,10 +195,10 @@ impl Uploaders {
         for session in uploading {
             if let Some(state) = session.on_time_escape(now) {
                 match state {
-                    TaskState::Finished => {
+                    UploadSessionState::Finished => {
                         sessions.canceled.push_back(session);
                     },
-                    TaskState::Canceled(_) => {
+                    UploadSessionState::Canceled(_) => {
                         sessions.canceled.push_back(session);
                     }, 
                     _ => {

@@ -12,7 +12,7 @@ use cyfs_base::*;
 use cyfs_bdt::{
     Stack, 
     StackOpenParams, 
-    DownloadTask2, 
+    DownloadTask, 
     DownloadTaskState, 
     SingleDownloadContext, 
     download::*,
@@ -21,7 +21,7 @@ use cyfs_bdt::{
 };
 mod utils;
 
-async fn watch_task_finish(task: Box<dyn DownloadTask2>) -> BuckyResult<()> {
+async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {
     loop {
         match task.state() {
             DownloadTaskState::Finished => {

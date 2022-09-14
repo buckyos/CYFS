@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use sha2::Digest;
 use cyfs_base::*;
 use cyfs_bdt::{
-    DownloadTask2, 
+    DownloadTask, 
     DownloadTaskState, 
     SingleDownloadContext, 
     ChunkWriter, 
@@ -19,7 +19,7 @@ use cyfs_bdt::{
 };
 mod utils;
 
-async fn watch_task_finish(task: Box<dyn DownloadTask2>) -> BuckyResult<()> {
+async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {
     loop {
         match task.state() {
             DownloadTaskState::Finished => {

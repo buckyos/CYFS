@@ -12,7 +12,7 @@ use cyfs_bdt::{
     Stack,
     StackGuard,
     StackOpenParams,
-    DownloadTask2, 
+    DownloadTask, 
 };
 use std::{sync::Arc, time::Duration};
 mod utils;
@@ -31,7 +31,7 @@ async fn watch_recv_chunk(stack: StackGuard, chunkid: ChunkId) -> BuckyResult<Ch
     }
 }
 
-fn watch_resource(task: Box<dyn DownloadTask2>) {
+fn watch_resource(task: Box<dyn DownloadTask>) {
     task::spawn(async move {
         loop {
             log::info!("task state: {:?}", task.state());

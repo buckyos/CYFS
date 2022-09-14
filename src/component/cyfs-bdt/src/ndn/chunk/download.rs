@@ -229,7 +229,7 @@ impl ChunkDownloader {
                     self.chunk().clone(), 
                     strong_stack.ndn().chunk_manager().gen_session_id(), 
                     channel, 
-                    PieceSessionType::Stream(0), 
+                    PieceSessionType::Stream(None, None, None), 
                     source.referer, 
                 );
 

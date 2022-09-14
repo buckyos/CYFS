@@ -214,8 +214,8 @@ impl ChunkWriterExt for FileTask {
 
 
 
-impl DownloadTask2 for FileTask {
-    fn clone_as_task(&self) -> Box<dyn DownloadTask2> {
+impl DownloadTask for FileTask {
+    fn clone_as_task(&self) -> Box<dyn DownloadTask> {
         Box::new(self.clone())
     }
 

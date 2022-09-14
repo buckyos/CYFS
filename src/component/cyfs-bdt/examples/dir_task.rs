@@ -6,7 +6,7 @@ use cyfs_bdt::{
     SingleDownloadContext, 
     Stack, 
     StackOpenParams, 
-    DownloadTask2, 
+    DownloadTask, 
     DownloadTaskState, 
 };
 use sha2::Digest;
@@ -16,7 +16,7 @@ use std::{collections::HashMap, path::PathBuf, time::Duration};
 mod utils;
 
 async fn watch_task_finish(
-    task: Box<dyn DownloadTask2>
+    task: Box<dyn DownloadTask>
 ) -> BuckyResult<()> {
     loop {
         match task.state() {

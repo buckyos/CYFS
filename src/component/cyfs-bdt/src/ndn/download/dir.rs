@@ -67,7 +67,7 @@ impl SubTask {
         }
     }
 
-    fn as_task(&self) -> Option<&dyn DownloadTask2> {
+    fn as_task(&self) -> Option<&dyn DownloadTask> {
         match self {
             Self::ChunkList(_, task) => Some(task),
             Self::Chunk(_, task) => Some(task),
@@ -77,7 +77,7 @@ impl SubTask {
         }
     }
 
-    fn clone_as_task(&self) -> Box<dyn DownloadTask2> {
+    fn clone_as_task(&self) -> Box<dyn DownloadTask> {
         self.as_task().unwrap().clone_as_task()
     }
 
@@ -414,8 +414,8 @@ impl DirTaskControl for DirTask {
 }
 
 
-impl DownloadTask2 for DirTask {
-    fn clone_as_task(&self) -> Box<dyn DownloadTask2> {
+impl DownloadTask for DirTask {
+    fn clone_as_task(&self) -> Box<dyn DownloadTask> {
         Box::new(self.clone())
     }
 
@@ -494,7 +494,7 @@ impl DownloadTask2 for DirTask {
     //保证不会重复调用
     fn on_drain(&self, expect_speed: u32) -> u32 {
         enum NextStep {
-            Content(Box<dyn DownloadTask2>),
+            Content(Box<dyn DownloadTask>),
             Pending,
             Finish,
         }

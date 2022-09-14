@@ -11,8 +11,8 @@ use super::{
 };
 
 struct StateImpl {
-    entries: HashMap<String, Box<dyn DownloadTask2>>, 
-    running: Vec<Box<dyn DownloadTask2>>, 
+    entries: HashMap<String, Box<dyn DownloadTask>>, 
+    running: Vec<Box<dyn DownloadTask>>, 
     history_speed: HistorySpeed, 
     drain_score: i64, 
     control_state: DownloadTaskControlState
@@ -40,7 +40,7 @@ impl DownloadGroup {
         }))
     }
 
-    pub fn add(&self, path: Option<String>, sub: Box<dyn DownloadTask2>) -> BuckyResult<()> {
+    pub fn add(&self, path: Option<String>, sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
         let mut state = self.0.state.write().unwrap();
         state.running.push(sub.clone_as_task());
         if let Some(path) = path {
@@ -50,8 +50,8 @@ impl DownloadGroup {
     }
 }
 
-impl DownloadTask2 for DownloadGroup {
-    fn clone_as_task(&self) -> Box<dyn DownloadTask2> {
+impl DownloadTask for DownloadGroup {
+    fn clone_as_task(&self) -> Box<dyn DownloadTask> {
         Box::new(self.clone())
     }
 
@@ -67,7 +67,7 @@ impl DownloadTask2 for DownloadGroup {
         self.0.priority as u8
     }
 
-    fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask2>> {
+    fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {
         let mut names = path.split("::");
         let name = names.next().unwrap();
 
@@ -106,7 +106,7 @@ impl DownloadTask2 for DownloadGroup {
     }
 
     fn on_drain(&self, expect_speed: u32) -> u32 {
-        let running: Vec<Box<dyn DownloadTask2>> = {
+        let running: Vec<Box<dyn DownloadTask>> = {
             self.0.state.read().unwrap().running.iter().map(|t| t.clone_as_task()).collect()
         };
         let mut new_expect = 0;

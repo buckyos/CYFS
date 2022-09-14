@@ -3,11 +3,10 @@ use crate::{
     stack::{Stack}, 
 };
 use super::{
-    scheduler::*, 
     channel::{
         protocol::v0::*, 
         Channel, 
-        UploadSession, DownloadSession
+        DownloadSession
     }, 
 };
 
@@ -89,33 +88,11 @@ impl NdnEventHandler for DefaultNdnEventHandler {
         //  如果还有空间或者透支不大，可以新建上传；
         //  否则拒绝或者给出其他源，回复RespInterest
 
-        let session = {
-            match stack.ndn().chunk_manager().start_upload(
-                interest.session_id.clone(), 
-                interest.chunk.clone(), 
-                interest.prefer_type.clone(), 
-                requestor.clone(), 
-                stack.ndn().root_task().upload().resource().clone()).await {
-                Ok(session) => {
-                    // do nothing
-                    Ok(session)
-                }, 
-                Err(err) => {
-                    match err.code() {
-                        BuckyErrorCode::AlreadyExists => {
-                            //do nothing
-                            Err(err)
-                        },
-                        _ => Ok(UploadSession::canceled(
-                            interest.chunk.clone(), 
-                            interest.session_id.clone(), 
-                            interest.prefer_type.clone(), 
-                            from.clone(), 
-                            err.code()))
-                    }
-                }
-            }?
-        };
+        let session = stack.ndn().chunk_manager().start_upload(
+            interest.session_id.clone(), 
+            interest.chunk.clone(), 
+            interest.prefer_type.clone(), 
+            requestor.clone()).await?;
 
         // 加入到channel的 upload sessions中
         let _ = requestor.upload(session.clone());
