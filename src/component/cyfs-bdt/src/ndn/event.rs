@@ -3,10 +3,12 @@ use crate::{
     stack::{Stack}, 
 };
 use super::{
+    upload::*, 
     channel::{
         protocol::v0::*, 
         Channel, 
-        DownloadSession
+        DownloadSession, 
+        UploadSession
     }, 
 };
 
@@ -39,6 +41,25 @@ impl DefaultNdnEventHandler {
         Self {
            
         }
+    }
+
+    pub async fn start_upload_task(
+        stack: &Stack, 
+        interest: &Interest, 
+        to: &Channel, 
+        group: &UploadGroup, 
+        path: Option<String>, 
+    ) -> BuckyResult<UploadSession> {
+        let session = stack.ndn().chunk_manager().start_upload(
+            interest.session_id.clone(), 
+            interest.chunk.clone(), 
+            interest.prefer_type.clone(), 
+            to.clone()).await?;
+        let _ = group.add(path, session.clone_as_task());
+        // 加入到channel的 upload sessions中
+        let _ = to.upload(session.clone());
+        let _ = session.on_interest(interest)?;
+        Ok(session)
     }
 }
 
@@ -84,19 +105,13 @@ impl NdnEventHandler for DefaultNdnEventHandler {
             }
         };
 
-        //TODO: 这里的逻辑可能是：根据当前 root uploader的resource情况，
-        //  如果还有空间或者透支不大，可以新建上传；
-        //  否则拒绝或者给出其他源，回复RespInterest
+        let _ = Self::start_upload_task(
+            stack, 
+            interest, 
+            &requestor, 
+            stack.ndn().root_task().upload(), 
+            None).await?;
 
-        let session = stack.ndn().chunk_manager().start_upload(
-            interest.session_id.clone(), 
-            interest.chunk.clone(), 
-            interest.prefer_type.clone(), 
-            requestor.clone()).await?;
-
-        // 加入到channel的 upload sessions中
-        let _ = requestor.upload(session.clone());
-        session.on_interest(interest)
-
+        Ok(())
     }
 }
