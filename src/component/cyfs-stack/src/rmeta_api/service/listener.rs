@@ -1,6 +1,7 @@
 use super::handler::*;
 use crate::non::*;
 use cyfs_lib::*;
+use crate::zone::ZoneManagerRef;
 
 use async_trait::async_trait;
 use tide::Response;
@@ -16,6 +17,7 @@ enum GlobalStateMetaRequestType {
 }
 
 pub(crate) struct GlobalStateMetaRequestHandlerEndpoint {
+    zone_manager: ZoneManagerRef,
     protocol: NONProtocol,
     req_type: GlobalStateMetaRequestType,
     handler: GlobalStateMetaRequestHandler,
@@ -23,11 +25,13 @@ pub(crate) struct GlobalStateMetaRequestHandlerEndpoint {
 
 impl GlobalStateMetaRequestHandlerEndpoint {
     fn new(
+        zone_manager: ZoneManagerRef,
         protocol: NONProtocol,
         req_type: GlobalStateMetaRequestType,
         handler: GlobalStateMetaRequestHandler,
     ) -> Self {
         Self {
+            zone_manager,
             protocol,
             req_type,
             handler,
@@ -35,7 +39,10 @@ impl GlobalStateMetaRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = NONInputHttpRequest::new(&self.protocol, req);
+        let req = match NONInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
 
         match self.req_type {
             GlobalStateMetaRequestType::AddAccess => {
@@ -59,6 +66,7 @@ impl GlobalStateMetaRequestHandlerEndpoint {
     }
 
     pub fn register_server(
+        zone_manager: &ZoneManagerRef,
         protocol: &NONProtocol,
         root_seg: &str,
         handler: &GlobalStateMetaRequestHandler,
@@ -68,6 +76,7 @@ impl GlobalStateMetaRequestHandlerEndpoint {
 
         // add_access
         server.at(&path).put(GlobalStateMetaRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             GlobalStateMetaRequestType::AddAccess,
             handler.clone(),
@@ -75,6 +84,7 @@ impl GlobalStateMetaRequestHandlerEndpoint {
 
         // remove_access
         server.at(&path).delete(GlobalStateMetaRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             GlobalStateMetaRequestType::RemoveAccess,
             handler.clone(),
@@ -83,6 +93,7 @@ impl GlobalStateMetaRequestHandlerEndpoint {
         // clear_access
         let path = format!("/{}/meta/accesses", root_seg);
         server.at(&path).delete(GlobalStateMetaRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             GlobalStateMetaRequestType::ClearAccess,
             handler.clone(),
@@ -92,6 +103,7 @@ impl GlobalStateMetaRequestHandlerEndpoint {
 
         // add_link
         server.at(&path).put(GlobalStateMetaRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             GlobalStateMetaRequestType::AddLink,
             handler.clone(),
@@ -99,6 +111,7 @@ impl GlobalStateMetaRequestHandlerEndpoint {
 
         // remove_link
         server.at(&path).delete(GlobalStateMetaRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             GlobalStateMetaRequestType::RemoveLink,
             handler.clone(),
@@ -107,6 +120,7 @@ impl GlobalStateMetaRequestHandlerEndpoint {
         // clear_link
         let path = format!("/{}/meta/links", root_seg);
         server.at(&path).delete(GlobalStateMetaRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             GlobalStateMetaRequestType::ClearLink,
             handler.clone(),

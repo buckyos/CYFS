@@ -6,7 +6,7 @@ use cyfs_base::*;
 
 pub struct GlobalStateMetaStub {
     target: Option<ObjectId>,
-    dec_id: Option<ObjectId>,
+    target_dec_id: Option<ObjectId>,
     processor: GlobalStateMetaOutputProcessorRef,
 }
 
@@ -14,12 +14,12 @@ impl GlobalStateMetaStub {
     pub fn new(
         processor: GlobalStateMetaOutputProcessorRef,
         target: Option<ObjectId>,
-        dec_id: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
     ) -> Self {
         Self {
             processor,
             target,
-            dec_id,
+            target_dec_id,
         }
     }
 
@@ -27,7 +27,8 @@ impl GlobalStateMetaStub {
     pub async fn add_access(&self, item: GlobalStatePathAccessItem) -> BuckyResult<bool> {
         let req = GlobalStateMetaAddAccessRequest {
             common: MetaOutputRequestCommon {
-                dec_id: self.dec_id.clone(),
+                dec_id: None,
+                target_dec_id: self.target_dec_id.clone(),
                 target: self.target.clone(),
                 flags: 0,
             },
@@ -44,7 +45,8 @@ impl GlobalStateMetaStub {
     ) -> BuckyResult<Option<GlobalStatePathAccessItem>> {
         let req = GlobalStateMetaRemoveAccessRequest {
             common: MetaOutputRequestCommon {
-                dec_id: self.dec_id.clone(),
+                dec_id: None,
+                target_dec_id: self.target_dec_id.clone(),
                 target: self.target.clone(),
                 flags: 0,
             },
@@ -58,7 +60,8 @@ impl GlobalStateMetaStub {
     pub async fn clear_access(&self) -> BuckyResult<u32> {
         let req = GlobalStateMetaClearAccessRequest {
             common: MetaOutputRequestCommon {
-                dec_id: self.dec_id.clone(),
+                dec_id: None,
+                target_dec_id: self.target_dec_id.clone(),
                 target: self.target.clone(),
                 flags: 0,
             },
@@ -75,7 +78,8 @@ impl GlobalStateMetaStub {
     ) -> BuckyResult<bool> {
         let req = GlobalStateMetaAddLinkRequest {
             common: MetaOutputRequestCommon {
-                dec_id: self.dec_id.clone(),
+                dec_id: None,
+                target_dec_id: self.target_dec_id.clone(),
                 target: self.target.clone(),
                 flags: 0,
             },
@@ -93,7 +97,8 @@ impl GlobalStateMetaStub {
     ) -> BuckyResult<Option<GlobalStatePathLinkItem>> {
         let req = GlobalStateMetaRemoveLinkRequest {
             common: MetaOutputRequestCommon {
-                dec_id: self.dec_id.clone(),
+                dec_id: None,
+                target_dec_id: self.target_dec_id.clone(),
                 target: self.target.clone(),
                 flags: 0,
             },
@@ -107,7 +112,8 @@ impl GlobalStateMetaStub {
     pub async fn clear_link(&self) -> BuckyResult<u32> {
         let req = GlobalStateMetaClearLinkRequest {
             common: MetaOutputRequestCommon {
-                dec_id: self.dec_id.clone(),
+                dec_id: None,
+                target_dec_id: self.target_dec_id.clone(),
                 target: self.target.clone(),
                 flags: 0,
             },

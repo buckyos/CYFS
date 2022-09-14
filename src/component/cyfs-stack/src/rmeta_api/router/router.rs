@@ -2,8 +2,7 @@ use super::super::acl::GlobalStateMetaAclInnerInputProcessor;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::rmeta::*;
-use crate::zone::ZoneManager;
-use crate::AclManagerRef;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -14,7 +13,7 @@ pub struct GlobalStateMetaServiceRouter {
     processor: GlobalStateMetaInputProcessorRef,
     forward: ForwardProcessorManager,
     fail_handler: ObjectFailHandler,
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 }
 
 impl Clone for GlobalStateMetaServiceRouter {
@@ -32,13 +31,12 @@ impl Clone for GlobalStateMetaServiceRouter {
 impl GlobalStateMetaServiceRouter {
     pub(crate) fn new(
         category: GlobalStateCategory,
-        acl: AclManagerRef,
         forward: ForwardProcessorManager,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         fail_handler: ObjectFailHandler,
         processor: GlobalStateMetaInputProcessorRef,
     ) -> Self {
-        let processor = GlobalStateMetaAclInnerInputProcessor::new(acl, processor);
+        let processor = GlobalStateMetaAclInnerInputProcessor::new(processor);
         Self {
             category,
             processor,

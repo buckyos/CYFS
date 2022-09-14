@@ -96,7 +96,7 @@ impl GlobalStatePathMetaManager {
 
     pub async fn get_global_state_meta(
         &self,
-        dec_id: Option<ObjectId>,
+        dec_id: &Option<ObjectId>,
         auto_create: bool,
     ) -> BuckyResult<GlobalStatePathMetaSyncCollection> {
         let ret = self.get_dec_meta(&dec_id, auto_create);
@@ -113,6 +113,14 @@ impl GlobalStatePathMetaManager {
         let manager = ret.unwrap();
         manager.get_global_state_meta().await
     }
+
+    fn get_dec_id(common: &MetaInputRequestCommon) -> &Option<ObjectId> {
+        if common.target_dec_id.is_some() {
+            &common.target_dec_id
+        } else {
+            &None
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -121,7 +129,7 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaAddAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaAddAccessInputResponse> {
-        let meta = self.get_global_state_meta(req.common.dec_id, true).await?;
+        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), true).await?;
         let updated = meta.add_access(req.item).await?;
 
         let resp = GlobalStateMetaAddAccessInputResponse { updated };
@@ -132,7 +140,7 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaRemoveAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaRemoveAccessInputResponse> {
-        let meta = self.get_global_state_meta(req.common.dec_id, false).await?;
+        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), false).await?;
         let item = meta.remove_access(req.item).await?;
 
         let resp = GlobalStateMetaRemoveAccessInputResponse { item };
@@ -144,7 +152,7 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaClearAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearAccessInputResponse> {
-        let meta = self.get_global_state_meta(req.common.dec_id, false).await?;
+        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), false).await?;
         let count = meta.clear_access().await? as u32;
 
         let resp = GlobalStateMetaClearAccessInputResponse { count };
@@ -155,7 +163,7 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaAddLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaAddLinkInputResponse> {
-        let meta = self.get_global_state_meta(req.common.dec_id, true).await?;
+        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), true).await?;
         let updated = meta.add_link(req.source, req.target).await?;
 
         let resp = GlobalStateMetaAddLinkInputResponse { updated };
@@ -166,7 +174,7 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaRemoveLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaRemoveLinkInputResponse> {
-        let meta = self.get_global_state_meta(req.common.dec_id, false).await?;
+        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), false).await?;
         let item = meta.remove_link(&req.source).await?;
 
         let resp = GlobalStateMetaRemoveLinkInputResponse { item };
@@ -178,7 +186,7 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaClearLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearLinkInputResponse> {
-        let meta = self.get_global_state_meta(req.common.dec_id, false).await?;
+        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), false).await?;
         let count = meta.clear_link().await? as u32;
 
         let resp = GlobalStateMetaClearLinkInputResponse { count };

@@ -1,8 +1,7 @@
-use crate::rmeta_api::*;
+use crate::acl::AclManagerRef;
 use crate::root_state::*;
 use cyfs_base::*;
 use cyfs_lib::*;
-use crate::acl::AclManagerRef;
 
 use std::sync::Arc;
 
@@ -17,10 +16,7 @@ impl GlobalStateAclInnerInputProcessor {
         acl: AclManagerRef,
         next: GlobalStateInputProcessorRef,
     ) -> GlobalStateInputProcessorRef {
-        let ret = Self {
-            acl,
-            next,
-        };
+        let ret = Self { acl, next };
 
         Arc::new(Box::new(ret))
     }
@@ -57,7 +53,8 @@ impl GlobalStateInputProcessor for GlobalStateAclInnerInputProcessor {
                 req_path: None, // None will treat as /
             };
 
-            self.global_state_meta
+            self.acl
+                .global_state_meta()
                 .check_access(&req.common.source, &global_state, RequestOpType::Read)
                 .await?;
         }
@@ -99,14 +96,8 @@ pub(crate) struct OpEnvAclInnerInputProcessor {
 }
 
 impl OpEnvAclInnerInputProcessor {
-    pub(crate) fn new(
-        acl: AclManagerRef,
-        next: OpEnvInputProcessorRef,
-    ) -> OpEnvInputProcessorRef {
-        let ret = Self {
-            acl,
-            next,
-        };
+    pub(crate) fn new(acl: AclManagerRef, next: OpEnvInputProcessorRef) -> OpEnvInputProcessorRef {
+        let ret = Self { acl, next };
 
         Arc::new(Box::new(ret))
     }
@@ -148,13 +139,13 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
 
     // single_op_env methods
     async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()> {
-        self.check_access("op_env.load", &req.common);
+        self.check_access("op_env.load", &req.common)?;
 
         self.next.load(req).await
     }
 
     async fn load_by_path(&self, req: OpEnvLoadByPathInputRequest) -> BuckyResult<()> {
-        self.check_access("op_env.load_by_path", &req.common);
+        self.check_access("op_env.load_by_path", &req.common)?;
 
         // 如果是跨dec加载path，那么需要额外的rmeta校验权限
         if !req
@@ -169,7 +160,8 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
                 req_path: Some(req.path.clone()),
             };
 
-            self.acl.global_state_meta()
+            self.acl
+                .global_state_meta()
                 .check_access(&req.common.source, &global_state, RequestOpType::Read)
                 .await?;
         }
@@ -178,14 +170,14 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
     }
 
     async fn create_new(&self, req: OpEnvCreateNewInputRequest) -> BuckyResult<()> {
-        self.check_access("op_env.create_new", &req.common);
+        self.check_access("op_env.create_new", &req.common)?;
 
         self.next.create_new(req).await
     }
 
     // lock
     async fn lock(&self, req: OpEnvLockInputRequest) -> BuckyResult<()> {
-        self.check_access("op_env.lock", &req.common);
+        self.check_access("op_env.lock", &req.common)?;
 
         self.next.lock(req).await
     }
@@ -195,20 +187,20 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
         &self,
         req: OpEnvGetCurrentRootInputRequest,
     ) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
-        self.check_access("op_env.get_current_root", &req.common);
+        self.check_access("op_env.get_current_root", &req.common)?;
 
         self.next.get_current_root(req).await
     }
 
     // transcation
     async fn commit(&self, req: OpEnvCommitInputRequest) -> BuckyResult<OpEnvCommitInputResponse> {
-        self.check_access("op_env.commit", &req.common);
+        self.check_access("op_env.commit", &req.common)?;
 
         self.next.commit(req).await
     }
 
     async fn abort(&self, req: OpEnvAbortInputRequest) -> BuckyResult<()> {
-        self.check_access("op_env.abort", &req.common);
+        self.check_access("op_env.abort", &req.common)?;
 
         self.next.abort(req).await
     }
@@ -218,13 +210,13 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
         &self,
         req: OpEnvGetByKeyInputRequest,
     ) -> BuckyResult<OpEnvGetByKeyInputResponse> {
-        self.check_access("op_env.get_by_key", &req.common);
+        self.check_access("op_env.get_by_key", &req.common)?;
 
         self.next.get_by_key(req).await
     }
 
     async fn insert_with_key(&self, req: OpEnvInsertWithKeyInputRequest) -> BuckyResult<()> {
-        self.check_access("op_env.insert_with_key", &req.common);
+        self.check_access("op_env.insert_with_key", &req.common)?;
 
         self.next.insert_with_key(req).await
     }
@@ -233,7 +225,7 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
         &self,
         req: OpEnvSetWithKeyInputRequest,
     ) -> BuckyResult<OpEnvSetWithKeyInputResponse> {
-        self.check_access("op_env.set_with_key", &req.common);
+        self.check_access("op_env.set_with_key", &req.common)?;
 
         self.next.set_with_key(req).await
     }
@@ -242,7 +234,7 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
         &self,
         req: OpEnvRemoveWithKeyInputRequest,
     ) -> BuckyResult<OpEnvRemoveWithKeyInputResponse> {
-        self.check_access("op_env.remove_with_key", &req.common);
+        self.check_access("op_env.remove_with_key", &req.common)?;
 
         self.next.remove_with_key(req).await
     }
@@ -252,38 +244,38 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
         &self,
         req: OpEnvContainsInputRequest,
     ) -> BuckyResult<OpEnvContainsInputResponse> {
-        self.check_access("op_env.contains", &req.common);
+        self.check_access("op_env.contains", &req.common)?;
 
         self.next.contains(req).await
     }
 
     async fn insert(&self, req: OpEnvInsertInputRequest) -> BuckyResult<OpEnvInsertInputResponse> {
-        self.check_access("op_env.insert", &req.common);
+        self.check_access("op_env.insert", &req.common)?;
 
         self.next.insert(req).await
     }
 
     async fn remove(&self, req: OpEnvRemoveInputRequest) -> BuckyResult<OpEnvRemoveInputResponse> {
-        self.check_access("op_env.remove", &req.common);
+        self.check_access("op_env.remove", &req.common)?;
 
         self.next.remove(req).await
     }
 
     // iterator methods
     async fn next(&self, req: OpEnvNextInputRequest) -> BuckyResult<OpEnvNextInputResponse> {
-        self.check_access("op_env.next", &req.common);
+        self.check_access("op_env.next", &req.common)?;
 
         self.next.next(req).await
     }
 
     async fn reset(&self, req: OpEnvResetInputRequest) -> BuckyResult<()> {
-        self.check_access("op_env.reset", &req.common);
+        self.check_access("op_env.reset", &req.common)?;
 
         self.next.reset(req).await
     }
 
     async fn list(&self, req: OpEnvListInputRequest) -> BuckyResult<OpEnvListInputResponse> {
-        self.check_access("op_env.list", &req.common);
+        self.check_access("op_env.list", &req.common)?;
 
         self.next.list(req).await
     }
@@ -293,7 +285,7 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
         &self,
         req: OpEnvMetadataInputRequest,
     ) -> BuckyResult<OpEnvMetadataInputResponse> {
-        self.check_access("op_env.metadata", &req.common);
+        self.check_access("op_env.metadata", &req.common)?;
 
         self.next.metadata(req).await
     }

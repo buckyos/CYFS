@@ -5,12 +5,11 @@ use cyfs_base::*;
 
 #[derive(Clone, Debug)]
 pub struct MetaInputRequestCommon {
-    // 来源DEC
-    pub dec_id: Option<ObjectId>,
+    // 来源
+    pub source: RequestSourceInfo,
 
-    // 来源设备和协议
-    pub source: DeviceId,
-    pub protocol: NONProtocol,
+    // 目标DEC
+    pub target_dec_id: Option<ObjectId>,
 
     // 用以默认行为
     pub target: Option<ObjectId>,
@@ -20,11 +19,11 @@ pub struct MetaInputRequestCommon {
 
 impl std::fmt::Display for MetaInputRequestCommon {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(dec_id) = &self.dec_id {
-            write!(f, "dec_id: {}", dec_id)?;
+        write!(f, "{}", self.source)?;
+
+        if let Some(target_dec_id) = &self.target_dec_id {
+            write!(f, ", target_dec_id: {}", target_dec_id)?;
         }
-        write!(f, ", source: {}", self.source.to_string())?;
-        write!(f, ", protocol: {}", self.protocol.to_string())?;
 
         if let Some(target) = &self.target {
             write!(f, ", target: {}", target)?;

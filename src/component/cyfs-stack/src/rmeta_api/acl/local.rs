@@ -1,4 +1,3 @@
-use crate::acl::*;
 use crate::rmeta::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -7,18 +6,33 @@ use std::sync::Arc;
 
 // 限定在同zone内操作
 pub(crate) struct GlobalStateMetaAclInnerInputProcessor {
-    acl: AclManagerRef,
     next: GlobalStateMetaInputProcessorRef,
 }
 
 impl GlobalStateMetaAclInnerInputProcessor {
-    pub(crate) fn new(
-        acl: AclManagerRef,
-        next: GlobalStateMetaInputProcessorRef,
-    ) -> GlobalStateMetaInputProcessorRef {
-        let ret = Self { acl, next };
+    pub(crate) fn new(next: GlobalStateMetaInputProcessorRef) -> GlobalStateMetaInputProcessorRef {
+        let ret = Self { next };
 
         Arc::new(Box::new(ret))
+    }
+
+    fn check_access(&self, service: &str, common: &MetaInputRequestCommon) -> BuckyResult<()> {
+        common.source.check_current_zone(service)?;
+
+        if common
+            .source
+            .check_target_dec_permission(&common.target_dec_id)
+        {
+            return Ok(());
+        }
+
+        let msg = format!(
+            "global state meta access can't be used between different dec! {}, source={}, target={:?}",
+            service, common.source, common.target_dec_id,
+        );
+        error!("{}", msg);
+
+        Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
     }
 }
 
@@ -28,9 +42,7 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaAclInnerInputProcessor {
         &self,
         req: GlobalStateMetaAddAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaAddAccessInputResponse> {
-        self.acl
-            .check_local_zone_permit("global_state.meta.add_access", &req.common.source)
-            .await?;
+        self.check_access("global_state.meta.add_access", &req.common)?;
 
         self.next.add_access(req).await
     }
@@ -39,9 +51,7 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaAclInnerInputProcessor {
         &self,
         req: GlobalStateMetaRemoveAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaRemoveAccessInputResponse> {
-        self.acl
-            .check_local_zone_permit("global_state.meta.remove_access", &req.common.source)
-            .await?;
+        self.check_access("global_state.meta.remove_access", &req.common)?;
 
         self.next.remove_access(req).await
     }
@@ -50,9 +60,7 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaAclInnerInputProcessor {
         &self,
         req: GlobalStateMetaClearAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearAccessInputResponse> {
-        self.acl
-            .check_local_zone_permit("global_state.meta.clear_access", &req.common.source)
-            .await?;
+        self.check_access("global_state.meta.clear_access", &req.common)?;
 
         self.next.clear_access(req).await
     }
@@ -61,9 +69,7 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaAclInnerInputProcessor {
         &self,
         req: GlobalStateMetaAddLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaAddLinkInputResponse> {
-        self.acl
-            .check_local_zone_permit("global_state.meta.add_link", &req.common.source)
-            .await?;
+        self.check_access("global_state.meta.add_link", &req.common)?;
 
         self.next.add_link(req).await
     }
@@ -72,9 +78,7 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaAclInnerInputProcessor {
         &self,
         req: GlobalStateMetaRemoveLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaRemoveLinkInputResponse> {
-        self.acl
-            .check_local_zone_permit("global_state.meta.remove_link", &req.common.source)
-            .await?;
+        self.check_access("global_state.meta.remove_link", &req.common)?;
 
         self.next.remove_link(req).await
     }
@@ -83,9 +87,7 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaAclInnerInputProcessor {
         &self,
         req: GlobalStateMetaClearLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearLinkInputResponse> {
-        self.acl
-            .check_local_zone_permit("global_state.meta.clear_link", &req.common.source)
-            .await?;
+        self.check_access("global_state.meta.clear_link", &req.common)?;
 
         self.next.clear_link(req).await
     }

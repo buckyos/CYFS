@@ -7,27 +7,27 @@ use std::sync::Arc;
 // 实现从output到input的转换
 pub(crate) struct GlobalStateMetaOutputTransformer {
     processor: GlobalStateMetaInputProcessorRef,
-    source: DeviceId,
+    source: RequestSourceInfo,
 }
 
 impl GlobalStateMetaOutputTransformer {
     pub fn new(
         processor: GlobalStateMetaInputProcessorRef,
-        source: DeviceId,
+        source: RequestSourceInfo,
     ) -> GlobalStateMetaOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: MetaOutputRequestCommon) -> MetaInputRequestCommon {
+        let mut source = self.source.clone();
+        source.set_dec(common.dec_id);
+
         MetaInputRequestCommon {
-            // 来源DEC
-            dec_id: common.dec_id,
             target: common.target,
             flags: common.flags,
-
-            source: self.source.clone(),
-            protocol: NONProtocol::Native,
+            target_dec_id: common.target_dec_id,
+            source,
         }
     }
 }
@@ -122,7 +122,8 @@ impl GlobalStateMetaInputTransformer {
     fn convert_common(&self, common: MetaInputRequestCommon) -> MetaOutputRequestCommon {
         MetaOutputRequestCommon {
             // 来源DEC
-            dec_id: common.dec_id,
+            dec_id: Some(common.source.dec),
+            target_dec_id: common.target_dec_id,
             target: common.target,
             flags: common.flags,
         }
