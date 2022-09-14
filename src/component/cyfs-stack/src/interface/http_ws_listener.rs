@@ -20,8 +20,8 @@ pub(super) struct ObjectHttpWSService {
 
 #[async_trait]
 impl ObjectListener for ObjectHttpWSService {
-    fn get_protocol(&self) -> NONProtocol {
-        NONProtocol::HttpLocal
+    fn get_protocol(&self) -> RequestProtocol {
+        RequestProtocol::HttpLocal
     }
 
     fn get_addr(&self) -> SocketAddr {

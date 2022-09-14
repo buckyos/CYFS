@@ -3,9 +3,8 @@ use super::processor::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-
 pub(crate) struct RouterHandlerHttpHandler {
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
 
     processor: RouterHandlerHttpProcessor,
 }
@@ -20,7 +19,7 @@ impl Clone for RouterHandlerHttpHandler {
 }
 
 impl RouterHandlerHttpHandler {
-    pub fn new(protocol: NONProtocol, manager: RouterHandlersManager) -> Self {
+    pub fn new(protocol: RequestProtocol, manager: RouterHandlersManager) -> Self {
         let processor = RouterHandlerHttpProcessor::new(manager);
         Self {
             protocol,
@@ -32,27 +31,35 @@ impl RouterHandlerHttpHandler {
         req: &tide::Request<State>,
     ) -> BuckyResult<(RouterHandlerChain, RouterHandlerCategory, String)> {
         // 提取路径上的handler_chain+handler_category+handler_id
-        let handler_chain: RouterHandlerChain = req.param("handler_chain").map_err(|e| {
-            let msg = format!("invalid handler_chain: {}", e);
-            error!("{}", msg);
+        let handler_chain: RouterHandlerChain = req
+            .param("handler_chain")
+            .map_err(|e| {
+                let msg = format!("invalid handler_chain: {}", e);
+                error!("{}", msg);
 
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        })?.parse()?;
+                BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+            })?
+            .parse()?;
 
-        let handler_category: RouterHandlerCategory =
-            req.param("handler_category").map_err(|e| {
+        let handler_category: RouterHandlerCategory = req
+            .param("handler_category")
+            .map_err(|e| {
                 let msg = format!("invalid handler_category: {}", e);
                 error!("{}", msg);
 
                 BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-            })?.parse()?;
+            })?
+            .parse()?;
 
-        let handler_id: String = req.param("handler_id").map_err(|e| {
-            let msg = format!("invalid handler_id: {}", e);
-            error!("{}", msg);
+        let handler_id: String = req
+            .param("handler_id")
+            .map_err(|e| {
+                let msg = format!("invalid handler_id: {}", e);
+                error!("{}", msg);
 
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        })?.to_owned();
+                BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+            })?
+            .to_owned();
 
         Ok((handler_chain, handler_category, handler_id))
     }
@@ -64,9 +71,7 @@ impl RouterHandlerHttpHandler {
     ) -> tide::Response {
         let ret = self.on_add_handler_request(req, body).await;
         match ret {
-            Ok(_) => {
-                RequestorHelper::new_ok_response()
-            }
+            Ok(_) => RequestorHelper::new_ok_response(),
             Err(e) => {
                 error!("router add handler error: {}", e);
                 RequestorHelper::trans_error(e)

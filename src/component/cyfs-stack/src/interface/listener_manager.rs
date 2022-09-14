@@ -16,7 +16,7 @@ use crate::stack::ObjectServices;
 use crate::zone::ZoneRoleManager;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_lib::NONProtocol;
+use cyfs_lib::RequestProtocol;
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -89,7 +89,7 @@ impl ObjectListenerManager {
     pub fn get_available_http_listener(&self) -> Option<SocketAddr> {
         use cyfs_lib::*;
         for listener in &self.listeners {
-            if listener.get_protocol() == NONProtocol::HttpLocal {
+            if listener.get_protocol() == RequestProtocol::HttpLocal {
                 return Some(listener.get_addr());
             }
         }
@@ -136,7 +136,7 @@ impl ObjectListenerManager {
         {
             assert!(self.http_bdt_server.is_none());
             let server = ObjectHttpListener::new(
-                NONProtocol::HttpBdt,
+                RequestProtocol::HttpBdt,
                 services,
                 router_handlers,
                 acl.clone(),
@@ -157,7 +157,7 @@ impl ObjectListenerManager {
         {
             assert!(self.http_tcp_server.is_none());
             let server = ObjectHttpListener::new(
-                NONProtocol::HttpLocal,
+                RequestProtocol::HttpLocal,
                 services,
                 router_handlers,
                 acl.clone(),
@@ -178,7 +178,7 @@ impl ObjectListenerManager {
         {
             assert!(self.http_auth_raw_server.is_none());
             let server = ObjectHttpListener::new(
-                NONProtocol::HttpLocalAuth,
+                RequestProtocol::HttpLocalAuth,
                 services,
                 router_handlers,
                 acl.clone(),

@@ -11,13 +11,13 @@ pub(crate) struct FrontInputHttpRequest<State> {
 impl<State> FrontInputHttpRequest<State> {
     pub async fn new(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         request: tide::Request<State>,
     ) -> Result<Self, tide::Response> {
         let source: DeviceId =
             RequestorHelper::decode_header(&request, ::cyfs_base::CYFS_REMOTE_DEVICE).unwrap();
-        let dec_id: Option<ObjectId> =
-            Self::dec_id_from_request(&request).map_err(|e| RequestorHelper::trans_error::<tide::Response>(e))?;
+        let dec_id: Option<ObjectId> = Self::dec_id_from_request(&request)
+            .map_err(|e| RequestorHelper::trans_error::<tide::Response>(e))?;
 
         let mut source = zone_manager
             .resolve_source_info(&dec_id, source)
@@ -26,9 +26,7 @@ impl<State> FrontInputHttpRequest<State> {
 
         source.protocol = *protocol;
 
-        Ok(Self {
-            source, request,
-        })
+        Ok(Self { source, request })
     }
 
     fn dec_id_from_request(req: &tide::Request<State>) -> BuckyResult<Option<ObjectId>> {

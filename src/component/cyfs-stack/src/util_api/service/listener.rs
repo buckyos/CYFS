@@ -22,13 +22,18 @@ enum UtilRequestType {
 
 pub(crate) struct UtilRequestHandlerEndpoint {
     zone_manager: ZoneManagerRef,
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     req_type: UtilRequestType,
     handler: UtilRequestHandler,
 }
 
 impl UtilRequestHandlerEndpoint {
-    fn new(zone_manager: ZoneManagerRef, protocol: NONProtocol, req_type: UtilRequestType, handler: UtilRequestHandler) -> Self {
+    fn new(
+        zone_manager: ZoneManagerRef,
+        protocol: RequestProtocol,
+        req_type: UtilRequestType,
+        handler: UtilRequestHandler,
+    ) -> Self {
         Self {
             zone_manager,
             protocol,
@@ -76,7 +81,7 @@ impl UtilRequestHandlerEndpoint {
 
     pub fn register_server(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         handler: &UtilRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {

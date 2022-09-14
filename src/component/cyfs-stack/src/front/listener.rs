@@ -18,7 +18,7 @@ pub enum FrontRequestType {
 
 pub(crate) struct FrontRequestHandlerEndpoint {
     zone_manager: ZoneManagerRef,
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     req_type: FrontRequestType,
     handler: FrontProtocolHandlerRef,
 }
@@ -26,7 +26,7 @@ pub(crate) struct FrontRequestHandlerEndpoint {
 impl FrontRequestHandlerEndpoint {
     fn new(
         zone_manager: ZoneManagerRef,
-        protocol: NONProtocol,
+        protocol: RequestProtocol,
         req_type: FrontRequestType,
         handler: FrontProtocolHandlerRef,
     ) -> Self {
@@ -43,13 +43,13 @@ impl FrontRequestHandlerEndpoint {
             Ok(v) => v,
             Err(resp) => return resp,
         };
-        
+
         self.handler.process_request(self.req_type, req).await
     }
 
     pub fn register_server(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         handler: &FrontProtocolHandlerRef,
         server: &mut ::tide::Server<()>,
     ) {

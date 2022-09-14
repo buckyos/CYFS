@@ -1,7 +1,7 @@
 use super::http_server::{HttpRequestSource, HttpServerHandlerRef};
 use super::ObjectListener;
 use cyfs_base::{BuckyError, BuckyResult};
-use cyfs_lib::NONProtocol;
+use cyfs_lib::RequestProtocol;
 use cyfs_bdt::{StackGuard, StreamGuard as BdtStream, StreamListenerGuard};
 
 use async_std::stream::StreamExt;
@@ -40,8 +40,8 @@ pub(super) struct ObjectHttpBdtListener(Arc<Mutex<ObjectHttpBdtListenerImpl>>);
 
 #[async_trait]
 impl ObjectListener for ObjectHttpBdtListener {
-    fn get_protocol(&self) -> NONProtocol {
-        NONProtocol::HttpBdt
+    fn get_protocol(&self) -> RequestProtocol {
+        RequestProtocol::HttpBdt
     }
 
     fn get_addr(&self) -> SocketAddr {

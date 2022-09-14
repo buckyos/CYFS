@@ -86,7 +86,7 @@ impl DefaultAppManager {
             DEVICE_DEFAULT_APP_LIST_ID,
         );
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
+            protocol: RequestProtocol::Native,
             object_id,
             source: self.device_id.clone(),
         };
@@ -121,7 +121,7 @@ impl DefaultAppManager {
             (object_id, object_raw, object)
         };
         let info = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
+            protocol: RequestProtocol::Native,
             source: self.device_id.to_owned(),
             object_id,
             dec_id: None,

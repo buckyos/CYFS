@@ -408,6 +408,7 @@ mod test {
                 zone_category: DeviceZoneCategory::CurrentDevice,
             },
             dec,
+            protocol: RequestProtocol::Native,
         };
 
         let system = cyfs_core::get_system_dec_app().object_id();

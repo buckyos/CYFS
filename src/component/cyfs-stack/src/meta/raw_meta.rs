@@ -94,7 +94,7 @@ impl RawMetaCache {
         let req = NONPutObjectInputRequest {
             common: NONInputRequestCommon {
                 req_path: None,
-                source: RequestSourceInfo::new_local_system().protocol(NONProtocol::Meta),
+                source: RequestSourceInfo::new_local_system().protocol(RequestProtocol::Meta),
                 level: NONAPILevel::NOC,
                 target: None,
                 flags: 0,

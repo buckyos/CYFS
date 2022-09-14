@@ -2,8 +2,8 @@ use super::state_storage::*;
 use crate::interface::ObjectListenerManagerRef;
 use cyfs_base::*;
 use cyfs_core::*;
-use cyfs_util::*;
 use cyfs_lib::*;
+use cyfs_util::*;
 
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, RwLock};
@@ -26,7 +26,7 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
         );
 
         // only req post through http-local interface is valid!
-        if param.request.common.source.protocol != NONProtocol::HttpLocal {
+        if param.request.common.source.protocol != RequestProtocol::HttpLocal {
             let msg = format!(
                 "app_manager action only valid on http-local interface! req protocol={:?}",
                 param.request.common.source.protocol

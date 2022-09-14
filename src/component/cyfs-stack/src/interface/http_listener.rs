@@ -15,7 +15,7 @@ use crate::trans_api::{TransRequestHandler, TransRequestHandlerEndpoint};
 use crate::util_api::*;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
-use cyfs_lib::{GlobalStateCategory, NONProtocol, RequestorHelper};
+use cyfs_lib::{GlobalStateCategory, RequestProtocol, RequestorHelper};
 
 use std::sync::Arc;
 
@@ -64,7 +64,7 @@ pub(super) struct ObjectHttpListener {
 
 impl ObjectHttpListener {
     pub fn new(
-        protocol: NONProtocol,
+        protocol: RequestProtocol,
         services: &ObjectServices,
         router_handlers: &RouterHandlersManager,
         _acl: AclManagerRef,
@@ -80,13 +80,13 @@ impl ObjectHttpListener {
 
         default_handler(&mut server);
 
-        if protocol == NONProtocol::HttpLocal || protocol == NONProtocol::HttpLocalAuth {
+        if protocol == RequestProtocol::HttpLocal || protocol == RequestProtocol::HttpLocalAuth {
             // router handlers
             let handler = RouterHandlerHttpHandler::new(protocol.clone(), router_handlers.clone());
             RouterHandlerRequestHandlerEndpoint::register_server(&handler, &mut server);
         }
 
-        if protocol == NONProtocol::HttpLocal {
+        if protocol == RequestProtocol::HttpLocal {
             // front service
             if let Some(front) = &services.front_service {
                 let handler = FrontProtocolHandler::new(
@@ -234,7 +234,7 @@ pub(super) struct SyncHttpListener {
 
 impl SyncHttpListener {
     pub fn new(
-        protocol: NONProtocol,
+        protocol: RequestProtocol,
         sync_server: Option<&Arc<ZoneSyncServer>>,
         sync_client: Option<&Arc<DeviceSyncClient>>,
     ) -> Self {
@@ -242,7 +242,7 @@ impl SyncHttpListener {
 
         // sync只支持bdt协议
         match protocol {
-            NONProtocol::HttpBdt => {
+            RequestProtocol::HttpBdt => {
                 if let Some(sync_server) = sync_server {
                     let handler =
                         ZoneSyncRequestHandler::new(protocol.clone(), sync_server.clone());

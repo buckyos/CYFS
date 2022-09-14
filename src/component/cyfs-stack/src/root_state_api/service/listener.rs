@@ -13,7 +13,7 @@ enum GlobalStateRequestType {
 
 pub(crate) struct GlobalStateRequestHandlerEndpoint {
     zone_manager: ZoneManagerRef,
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     req_type: GlobalStateRequestType,
     handler: GlobalStateRequestHandler,
 }
@@ -21,7 +21,7 @@ pub(crate) struct GlobalStateRequestHandlerEndpoint {
 impl GlobalStateRequestHandlerEndpoint {
     fn new(
         zone_manager: ZoneManagerRef,
-        protocol: NONProtocol,
+        protocol: RequestProtocol,
         req_type: GlobalStateRequestType,
         handler: GlobalStateRequestHandler,
     ) -> Self {
@@ -34,10 +34,11 @@ impl GlobalStateRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = match RootStateInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
-            Ok(v) => v,
-            Err(resp) => return resp,
-        };
+        let req =
+            match RootStateInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
 
         match self.req_type {
             GlobalStateRequestType::GetCurrentRoot => {
@@ -51,7 +52,7 @@ impl GlobalStateRequestHandlerEndpoint {
 
     pub fn register_server(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         root_seg: &str,
         handler: &GlobalStateRequestHandler,
         server: &mut ::tide::Server<()>,
@@ -133,7 +134,7 @@ GET get_by_key contains
 
 pub(crate) struct OpEnvRequestHandlerEndpoint {
     zone_manager: ZoneManagerRef,
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     req_type: OpEnvRequestType,
     handler: OpEnvRequestHandler,
 }
@@ -141,7 +142,7 @@ pub(crate) struct OpEnvRequestHandlerEndpoint {
 impl OpEnvRequestHandlerEndpoint {
     fn new(
         zone_manager: ZoneManagerRef,
-        protocol: NONProtocol,
+        protocol: RequestProtocol,
         req_type: OpEnvRequestType,
         handler: OpEnvRequestHandler,
     ) -> Self {
@@ -196,7 +197,7 @@ impl OpEnvRequestHandlerEndpoint {
 
     pub fn register_server(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         root_seg: &str,
         handler: &OpEnvRequestHandler,
         server: &mut ::tide::Server<()>,
@@ -366,14 +367,14 @@ where
 
 pub(crate) struct GlobalStateAccessRequestHandlerEndpoint {
     zone_manager: ZoneManagerRef,
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     handler: GlobalStateAccessRequestHandler,
 }
 
 impl GlobalStateAccessRequestHandlerEndpoint {
     fn new(
         zone_manager: ZoneManagerRef,
-        protocol: NONProtocol,
+        protocol: RequestProtocol,
         handler: GlobalStateAccessRequestHandler,
     ) -> Self {
         Self {
@@ -384,17 +385,18 @@ impl GlobalStateAccessRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = match RootStateInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
-            Ok(v) => v,
-            Err(resp) => return resp,
-        };
+        let req =
+            match RootStateInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
 
         self.handler.process_access_request(req).await
     }
 
     pub fn register_server(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         root_seg: &str,
         handler: &GlobalStateAccessRequestHandler,
         server: &mut ::tide::Server<()>,

@@ -13,7 +13,7 @@ enum CryptoRequestType {
 
 pub(crate) struct CryptoRequestHandlerEndpoint {
     zone_manager: ZoneManagerRef,
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     req_type: CryptoRequestType,
     handler: CryptoRequestHandler,
 }
@@ -21,7 +21,7 @@ pub(crate) struct CryptoRequestHandlerEndpoint {
 impl CryptoRequestHandlerEndpoint {
     fn new(
         zone_manager: ZoneManagerRef,
-        protocol: NONProtocol,
+        protocol: RequestProtocol,
         req_type: CryptoRequestType,
         handler: CryptoRequestHandler,
     ) -> Self {
@@ -34,7 +34,8 @@ impl CryptoRequestHandlerEndpoint {
     }
 
     async fn process_request<State>(&self, req: ::tide::Request<State>) -> Response {
-        let mut req = match NONInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+        let mut req = match NONInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await
+        {
             Ok(v) => v,
             Err(resp) => return resp,
         };
@@ -63,7 +64,7 @@ impl CryptoRequestHandlerEndpoint {
 
     pub fn register_server(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         handler: &CryptoRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {

@@ -4,18 +4,17 @@ use cyfs_lib::*;
 
 use crate::trans::{TransInputProcessorRef, TransOutputTransformer};
 
-
 // FIXME 临时保留旧代码
 pub(crate) struct TransInputHttpRequest<State> {
     pub request: tide::Request<State>,
 
     // 来源设备和协议
     pub source: DeviceId,
-    pub protocol: NONProtocol,
+    pub protocol: RequestProtocol,
 }
 
 impl<State> TransInputHttpRequest<State> {
-    pub fn new(protocol: &NONProtocol, request: tide::Request<State>) -> Self {
+    pub fn new(protocol: &RequestProtocol, request: tide::Request<State>) -> Self {
         let source =
             RequestorHelper::decode_header(&request, ::cyfs_base::CYFS_REMOTE_DEVICE).unwrap();
         Self {
@@ -26,18 +25,14 @@ impl<State> TransInputHttpRequest<State> {
     }
 }
 
-
 #[derive(Clone)]
 pub(crate) struct TransRequestHandler {
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     processor: TransInputProcessorRef,
 }
 
 impl TransRequestHandler {
-    pub fn new(
-        protocol: NONProtocol,
-        processor: TransInputProcessorRef,
-    ) -> Self {
+    pub fn new(protocol: RequestProtocol, processor: TransInputProcessorRef) -> Self {
         Self {
             protocol,
             processor,
@@ -45,9 +40,11 @@ impl TransRequestHandler {
     }
 
     fn get_processor<State>(&self, req: &TransInputHttpRequest<State>) -> TransOutputProcessorRef {
-
         // FIXME 重构trans，这里不能使用outputprocessor
-        TransOutputTransformer::new(self.processor.clone(), RequestSourceInfo::new_local_system())
+        TransOutputTransformer::new(
+            self.processor.clone(),
+            RequestSourceInfo::new_local_system(),
+        )
     }
 
     // trans/start
@@ -107,8 +104,8 @@ impl TransRequestHandler {
                 let body = resp.to_hex().unwrap();
                 http_resp.set_body(body);
                 http_resp
-            },
-            Err(e) => RequestorHelper::trans_error(e)
+            }
+            Err(e) => RequestorHelper::trans_error(e),
         }
     }
 
@@ -123,7 +120,10 @@ impl TransRequestHandler {
         }
     }
 
-    pub async fn process_query_tasks_context<State>(&self, req: tide::Request<State>) -> tide::Response {
+    pub async fn process_query_tasks_context<State>(
+        &self,
+        req: tide::Request<State>,
+    ) -> tide::Response {
         match self.on_query_tasks_context(req).await {
             Ok(resp) => {
                 let mut http_resp: tide::Response = RequestorHelper::new_ok_response();
@@ -137,7 +137,10 @@ impl TransRequestHandler {
         }
     }
 
-    async fn on_create_task<State>(&self, req: tide::Request<State>) -> BuckyResult<TransCreateTaskOutputResponse> {
+    async fn on_create_task<State>(
+        &self,
+        req: tide::Request<State>,
+    ) -> BuckyResult<TransCreateTaskOutputResponse> {
         let mut http_req = TransInputHttpRequest::new(&self.protocol, req);
 
         // 提取body里面的object对象，如果有的话
@@ -168,14 +171,29 @@ impl TransRequestHandler {
 
         match req.action {
             TransTaskControlAction::Stop => {
-                self.get_processor(&http_req).stop_task(&TransTaskOutputRequest {common: req.common, task_id: req.task_id}).await
-            },
+                self.get_processor(&http_req)
+                    .stop_task(&TransTaskOutputRequest {
+                        common: req.common,
+                        task_id: req.task_id,
+                    })
+                    .await
+            }
             TransTaskControlAction::Start => {
-                self.get_processor(&http_req).start_task(&TransTaskOutputRequest {common: req.common, task_id: req.task_id}).await
-            },
+                self.get_processor(&http_req)
+                    .start_task(&TransTaskOutputRequest {
+                        common: req.common,
+                        task_id: req.task_id,
+                    })
+                    .await
+            }
             TransTaskControlAction::Delete => {
-                self.get_processor(&http_req).delete_task(&TransTaskOutputRequest {common: req.common, task_id: req.task_id}).await
-            },
+                self.get_processor(&http_req)
+                    .delete_task(&TransTaskOutputRequest {
+                        common: req.common,
+                        task_id: req.task_id,
+                    })
+                    .await
+            }
         }
     }
 
@@ -244,7 +262,10 @@ impl TransRequestHandler {
         self.get_processor(&http_req).put_context(&req).await
     }
 
-    async fn on_query_tasks_context<State>(&self, req: tide::Request<State>) -> BuckyResult<TransQueryTasksOutputResponse> {
+    async fn on_query_tasks_context<State>(
+        &self,
+        req: tide::Request<State>,
+    ) -> BuckyResult<TransQueryTasksOutputResponse> {
         let mut http_req = TransInputHttpRequest::new(&self.protocol, req);
 
         let body = http_req.request.body_string().await.map_err(|e| {

@@ -1,6 +1,6 @@
 use super::handler::*;
-use cyfs_lib::*;
 use crate::zone::ZoneManagerRef;
+use cyfs_lib::*;
 
 use async_trait::async_trait;
 use tide::Response;
@@ -14,13 +14,18 @@ enum NDNRequestType {
 
 pub(crate) struct NDNRequestHandlerEndpoint {
     zone_manager: ZoneManagerRef,
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     req_type: NDNRequestType,
     handler: NDNRequestHandler,
 }
 
 impl NDNRequestHandlerEndpoint {
-    fn new(zone_manager: ZoneManagerRef, protocol: NONProtocol, req_type: NDNRequestType, handler: NDNRequestHandler) -> Self {
+    fn new(
+        zone_manager: ZoneManagerRef,
+        protocol: RequestProtocol,
+        req_type: NDNRequestType,
+        handler: NDNRequestHandler,
+    ) -> Self {
         Self {
             zone_manager,
             protocol,
@@ -45,7 +50,7 @@ impl NDNRequestHandlerEndpoint {
 
     pub fn register_server(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         handler: &NDNRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {

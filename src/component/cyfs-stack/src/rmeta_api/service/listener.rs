@@ -1,7 +1,7 @@
 use super::handler::*;
 use crate::non::*;
-use cyfs_lib::*;
 use crate::zone::ZoneManagerRef;
+use cyfs_lib::*;
 
 use async_trait::async_trait;
 use tide::Response;
@@ -18,7 +18,7 @@ enum GlobalStateMetaRequestType {
 
 pub(crate) struct GlobalStateMetaRequestHandlerEndpoint {
     zone_manager: ZoneManagerRef,
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     req_type: GlobalStateMetaRequestType,
     handler: GlobalStateMetaRequestHandler,
 }
@@ -26,7 +26,7 @@ pub(crate) struct GlobalStateMetaRequestHandlerEndpoint {
 impl GlobalStateMetaRequestHandlerEndpoint {
     fn new(
         zone_manager: ZoneManagerRef,
-        protocol: NONProtocol,
+        protocol: RequestProtocol,
         req_type: GlobalStateMetaRequestType,
         handler: GlobalStateMetaRequestHandler,
     ) -> Self {
@@ -67,7 +67,7 @@ impl GlobalStateMetaRequestHandlerEndpoint {
 
     pub fn register_server(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         root_seg: &str,
         handler: &GlobalStateMetaRequestHandler,
         server: &mut ::tide::Server<()>,
@@ -75,56 +75,68 @@ impl GlobalStateMetaRequestHandlerEndpoint {
         let path = format!("/{}/meta/access", root_seg);
 
         // add_access
-        server.at(&path).put(GlobalStateMetaRequestHandlerEndpoint::new(
-            zone_manager.clone(),
-            protocol.to_owned(),
-            GlobalStateMetaRequestType::AddAccess,
-            handler.clone(),
-        ));
+        server
+            .at(&path)
+            .put(GlobalStateMetaRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                GlobalStateMetaRequestType::AddAccess,
+                handler.clone(),
+            ));
 
         // remove_access
-        server.at(&path).delete(GlobalStateMetaRequestHandlerEndpoint::new(
-            zone_manager.clone(),
-            protocol.to_owned(),
-            GlobalStateMetaRequestType::RemoveAccess,
-            handler.clone(),
-        ));
+        server
+            .at(&path)
+            .delete(GlobalStateMetaRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                GlobalStateMetaRequestType::RemoveAccess,
+                handler.clone(),
+            ));
 
         // clear_access
         let path = format!("/{}/meta/accesses", root_seg);
-        server.at(&path).delete(GlobalStateMetaRequestHandlerEndpoint::new(
-            zone_manager.clone(),
-            protocol.to_owned(),
-            GlobalStateMetaRequestType::ClearAccess,
-            handler.clone(),
-        ));
+        server
+            .at(&path)
+            .delete(GlobalStateMetaRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                GlobalStateMetaRequestType::ClearAccess,
+                handler.clone(),
+            ));
 
         let path = format!("/{}/meta/link", root_seg);
 
         // add_link
-        server.at(&path).put(GlobalStateMetaRequestHandlerEndpoint::new(
-            zone_manager.clone(),
-            protocol.to_owned(),
-            GlobalStateMetaRequestType::AddLink,
-            handler.clone(),
-        ));
+        server
+            .at(&path)
+            .put(GlobalStateMetaRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                GlobalStateMetaRequestType::AddLink,
+                handler.clone(),
+            ));
 
         // remove_link
-        server.at(&path).delete(GlobalStateMetaRequestHandlerEndpoint::new(
-            zone_manager.clone(),
-            protocol.to_owned(),
-            GlobalStateMetaRequestType::RemoveLink,
-            handler.clone(),
-        ));
+        server
+            .at(&path)
+            .delete(GlobalStateMetaRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                GlobalStateMetaRequestType::RemoveLink,
+                handler.clone(),
+            ));
 
         // clear_link
         let path = format!("/{}/meta/links", root_seg);
-        server.at(&path).delete(GlobalStateMetaRequestHandlerEndpoint::new(
-            zone_manager.clone(),
-            protocol.to_owned(),
-            GlobalStateMetaRequestType::ClearLink,
-            handler.clone(),
-        ));
+        server
+            .at(&path)
+            .delete(GlobalStateMetaRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                GlobalStateMetaRequestType::ClearLink,
+                handler.clone(),
+            ));
     }
 }
 

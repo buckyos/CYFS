@@ -10,7 +10,7 @@ use toml::Value as Toml;
 pub(crate) enum AclGroupProtocol {
     Any,
 
-    // from NONProtocol
+    // from RequestProtocol
     Native,
     Meta,
     Sync,
@@ -65,13 +65,13 @@ impl AclGroupProtocol {
             Self::Local => req.protocol().is_local(),
             Self::Remote => req.protocol().is_remote(),
 
-            Self::HttpLocal => *req.protocol() == NONProtocol::HttpLocal,
-            Self::HttpBdt => *req.protocol() == NONProtocol::HttpBdt,
-            Self::DataBdt => *req.protocol() == NONProtocol::DataBdt,
-            Self::Native => *req.protocol() == NONProtocol::Native,
-            Self::Meta => *req.protocol() == NONProtocol::Meta,
-            Self::Sync => *req.protocol() == NONProtocol::Sync,
-            Self::DatagramBdt => *req.protocol() == NONProtocol::DatagramBdt,
+            Self::HttpLocal => *req.protocol() == RequestProtocol::HttpLocal,
+            Self::HttpBdt => *req.protocol() == RequestProtocol::HttpBdt,
+            Self::DataBdt => *req.protocol() == RequestProtocol::DataBdt,
+            Self::Native => *req.protocol() == RequestProtocol::Native,
+            Self::Meta => *req.protocol() == RequestProtocol::Meta,
+            Self::Sync => *req.protocol() == RequestProtocol::Sync,
+            Self::DatagramBdt => *req.protocol() == RequestProtocol::DatagramBdt,
         }
     }
 }

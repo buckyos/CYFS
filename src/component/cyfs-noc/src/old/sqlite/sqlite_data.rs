@@ -66,9 +66,9 @@ impl TryInto<ObjectCacheData> for SqliteObjectCacheData {
         };
 
         // TODO 移除protocol字段
-        let protocol = match NONProtocol::from_str(self.protocol.as_str()) {
+        let protocol = match RequestProtocol::from_str(self.protocol.as_str()) {
             Ok(v) => v,
-            Err(_e) => NONProtocol::Native,
+            Err(_e) => RequestProtocol::Native,
         };
 
         let mut ret = ObjectCacheData {

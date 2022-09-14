@@ -1,7 +1,7 @@
 use super::handler::*;
 use crate::non::*;
-use cyfs_lib::*;
 use crate::zone::ZoneManagerRef;
+use cyfs_lib::*;
 
 use async_trait::async_trait;
 use tide::Response;
@@ -15,13 +15,18 @@ enum NONRequestType {
 
 pub(crate) struct NONRequestHandlerEndpoint {
     zone_manager: ZoneManagerRef,
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     req_type: NONRequestType,
     handler: NONRequestHandler,
 }
 
 impl NONRequestHandlerEndpoint {
-    fn new(zone_manager: ZoneManagerRef, protocol: NONProtocol, req_type: NONRequestType, handler: NONRequestHandler) -> Self {
+    fn new(
+        zone_manager: ZoneManagerRef,
+        protocol: RequestProtocol,
+        req_type: NONRequestType,
+        handler: NONRequestHandler,
+    ) -> Self {
         Self {
             zone_manager,
             protocol,
@@ -46,7 +51,7 @@ impl NONRequestHandlerEndpoint {
 
     pub fn register_server(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         handler: &NONRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {

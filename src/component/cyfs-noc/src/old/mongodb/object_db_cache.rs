@@ -530,9 +530,9 @@ impl ObjectDBCache {
         })?;
 
         // TODO 移除protocol字段
-        let protocol = match NONProtocol::from_str(protocol) {
+        let protocol = match RequestProtocol::from_str(protocol) {
             Ok(v) => v,
-            Err(_e) => NONProtocol::Native,
+            Err(_e) => RequestProtocol::Native,
         };
 
         let source: DeviceId = Self::get_item_from_doc(&doc, "device_id")?;

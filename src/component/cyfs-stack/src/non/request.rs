@@ -11,7 +11,7 @@ pub(crate) struct NONInputHttpRequest<State> {
 impl<State> NONInputHttpRequest<State> {
     pub async fn new(
         zone_manager: &ZoneManagerRef,
-        protocol: &NONProtocol,
+        protocol: &RequestProtocol,
         request: tide::Request<State>,
     ) -> Result<Self, tide::Response> {
         let source: DeviceId =

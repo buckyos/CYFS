@@ -1,7 +1,7 @@
 use super::http_server::{HttpServerHandlerRef, HttpRequestSource};
 use super::ObjectListener;
 use cyfs_base::*;
-use cyfs_lib::{BaseTcpListener, BaseTcpListenerHandler, NONProtocol};
+use cyfs_lib::{BaseTcpListener, BaseTcpListenerHandler, RequestProtocol};
 
 use async_std::net::TcpStream;
 use async_trait::async_trait;
@@ -20,8 +20,8 @@ pub(super) struct ObjectHttpTcpListener {
 
 #[async_trait]
 impl ObjectListener for ObjectHttpTcpListener {
-    fn get_protocol(&self) -> NONProtocol {
-        NONProtocol::HttpLocal
+    fn get_protocol(&self) -> RequestProtocol {
+        RequestProtocol::HttpLocal
     }
 
     fn get_addr(&self) -> SocketAddr {
