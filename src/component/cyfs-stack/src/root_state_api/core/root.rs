@@ -234,8 +234,8 @@ impl GlobalStateRoot {
                 env.insert_with_key("/", &key, &root_id).await?;
                 let global_root_id = env.commit().await.map_err(|e| {
                     error!(
-                        "first create dec root but commit to global state root error! category={}, dec={}, dec_root={}",
-                        self.category, dec_id, root_id
+                        "first create dec root but commit to global state root error! category={}, dec={}, dec_root={}, {}",
+                        self.category, dec_id, root_id, e
                     );
                     e
                 })?;

@@ -215,7 +215,7 @@ impl EventListenerAsyncRoutine<RouterHandlerGetDataRequest, RouterHandlerGetData
         assert!(param.response.is_none());
 
         // 根据来源设备，判断是accept还是reject
-        let action = if param.request.common.source == self.reject_device {
+        let action = if param.request.common.source.zone.device == Some(self.reject_device.clone()) {
             RouterHandlerAction::Reject
         } else {
             RouterHandlerAction::Default

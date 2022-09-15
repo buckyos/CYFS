@@ -391,77 +391,21 @@ async fn test_sign_by_owner(dec_id: &ObjectId) {
 
     // 动态添加verify权限
     {
-        {
-            let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
-            let acl = r#"test.crypto.out = {action = "out-verify-object", access = "accept"}"#;
-            stack
-                .acl_manager()
-                .add_item(AclItemPosition::End, acl)
-                .unwrap();
-        }
-        {
-            let stack = TestLoader::get_stack(DeviceIndex::User2OOD);
-            let acl = r#"
-                test.crypto.in = {action = "in-verify-object", access = "accept"}
-            "#;
-            stack
-                .acl_manager()
-                .add_item(AclItemPosition::End, acl)
-                .unwrap();
-        }
-
         let resp = stack
             .crypto()
             .verify_object(verify_req.clone())
             .await
             .unwrap();
         assert!(!resp.result.valid);
-
-        {
-            let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
-            stack.acl_manager().remove_item("test.crypto.out").unwrap();
-        }
-        {
-            let stack = TestLoader::get_stack(DeviceIndex::User2OOD);
-            stack.acl_manager().remove_item("test.crypto.in").unwrap();
-        }
     }
 
     // 动态添加verify权限，基于handler回调
     {
-        {
-            let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
-            let acl = r#"test.crypto.out = {action = "out-verify-object", access = "handler"}"#;
-            stack
-                .acl_manager()
-                .add_item(AclItemPosition::End, acl)
-                .unwrap();
-        }
-        {
-            let stack = TestLoader::get_stack(DeviceIndex::User2OOD);
-            let acl = r#"
-                test.crypto.in = {action = "in-verify-object", access = "handler"}
-            "#;
-            stack
-                .acl_manager()
-                .add_item(AclItemPosition::End, acl)
-                .unwrap();
-        }
-
         let resp = stack
             .crypto()
             .verify_object(verify_req.clone())
             .await
             .unwrap();
         assert!(!resp.result.valid);
-
-        {
-            let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
-            stack.acl_manager().remove_item("test.crypto.out").unwrap();
-        }
-        {
-            let stack = TestLoader::get_stack(DeviceIndex::User2OOD);
-            stack.acl_manager().remove_item("test.crypto.in").unwrap();
-        }
     }
 }
