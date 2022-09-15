@@ -64,7 +64,9 @@ enum StateImpl {
 
 struct UploadSessions {
     uploading: Vec<UploadSession>, 
-    canceled: LinkedList<UploadSession>
+    canceled: LinkedList<UploadSession>, 
+    speed_counter: SpeedCounter, 
+    history_speed: HistorySpeed, 
 } 
 
 struct Uploaders {
@@ -74,9 +76,11 @@ struct Uploaders {
 
 
 impl Uploaders {
-    fn new() -> Self {
+    fn new(history_speed: HistorySpeed) -> Self {
         Self {
             sessions: RwLock::new(UploadSessions {
+                history_speed, 
+                speed_counter: SpeedCounter::new(0), 
                 uploading: vec![], 
                 canceled: LinkedList::new()
             }), 
@@ -141,7 +145,7 @@ impl Uploaders {
 
     fn next_piece(&self, buf: &mut [u8]) -> usize {
         let mut try_count = 0;
-        loop {
+        let len = loop {
             let ret = {
                 let sessions = self.sessions.read().unwrap();
                 if sessions.uploading.len() > 0 {
@@ -184,7 +188,13 @@ impl Uploaders {
             } else {
                 break 0;
             }
-        } 
+        };
+
+        if len > 0 {
+            self.sessions.write().unwrap().speed_counter.on_recv(len);
+        }
+
+        len
     }
 
     fn on_time_escape(&self, now: Timestamp) {
@@ -221,6 +231,34 @@ impl Uploaders {
             }
         }
     }
+
+    fn session_count(&self) -> u32 {
+        self.sessions.read().unwrap().uploading.len() as u32 
+    }
+
+    fn calc_speed(&self, when: Timestamp) -> u32 {
+        let mut sessions = self.sessions.write().unwrap();
+
+        let session_count: u32 = sessions.uploading.len() as u32;
+
+        let cur_speed = sessions.speed_counter.update(when);
+        if cur_speed > 0 || session_count > 0 {
+            sessions.history_speed.update(Some(cur_speed), when);
+            cur_speed
+        } else {
+            sessions.history_speed.update(None, when);
+            0
+        }
+    }
+
+    fn cur_speed(&self) -> u32 {
+        self.sessions.read().unwrap().history_speed.latest()
+    }
+    
+    fn history_speed(&self) -> u32 {
+        self.sessions.read().unwrap().history_speed.average()
+    }
+
 }
 
 
@@ -287,9 +325,7 @@ impl Downloaders {
             let state = session.wait_finish().await;
             // 这里等待2*msl
             if match state {
-                DownloadSessionState::Finished => {
-                    true
-                }, 
+                DownloadSessionState::Finished => true, 
                 DownloadSessionState::Canceled(err) => {
                     if err == BuckyErrorCode::Interrupted {
                         true 
@@ -401,7 +437,8 @@ impl Channel {
         weak_stack: WeakStack, 
         remote: DeviceId, 
         command_tunnel: DatagramTunnelGuard, 
-        history_speed: HistorySpeed 
+        initial_download_speed: HistorySpeed, 
+        initial_upload_speed: HistorySpeed 
     ) -> Self {
         let stack = Stack::from(&weak_stack);
         let config = stack.config().ndn.channel.clone();
@@ -411,8 +448,8 @@ impl Channel {
             remote, 
             command_tunnel, 
             command_seq: TempSeqGenerator::new(), 
-            downloaders: Downloaders::new(history_speed), 
-            uploaders: Uploaders::new(), 
+            downloaders: Downloaders::new(initial_download_speed), 
+            uploaders: Uploaders::new(initial_upload_speed), 
             state: RwLock::new(StateImpl::Unknown), 
         }))
     }
@@ -542,8 +579,9 @@ impl Channel {
         }
     }
 
-    pub fn calc_speed(&self, when: Timestamp) -> u32 {
-        self.0.downloaders.calc_speed(when)
+    pub fn calc_speed(&self, when: Timestamp) -> (u32, u32) {
+        (self.0.downloaders.calc_speed(when), 
+            self.0.uploaders.calc_speed(when))
     }
 
     pub fn download_session_count(&self) -> u32 {
@@ -554,12 +592,24 @@ impl Channel {
         self.0.downloaders.initial_speed()
     }
 
-    fn download_cur_speed(&self) -> u32 {
+    pub fn download_cur_speed(&self) -> u32 {
         self.0.downloaders.cur_speed()
     }
 
-    fn download_history_speed(&self) -> u32 {
+    pub fn download_history_speed(&self) -> u32 {
         self.0.downloaders.history_speed()
+    }
+
+    pub fn upload_session_count(&self) -> u32 {
+        self.0.uploaders.session_count()
+    }
+
+    pub fn upload_cur_speed(&self) -> u32 {
+        self.0.uploaders.cur_speed()
+    }
+
+    pub fn upload_history_speed(&self) -> u32 {
+        self.0.uploaders.history_speed()
     }
 
 

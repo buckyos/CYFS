@@ -91,8 +91,19 @@ impl DownloadTask for DownloadGroup {
 
     fn calc_speed(&self, when: Timestamp) -> u32 {
         let mut state = self.0.state.write().unwrap();
-        let cur_speed = state.running.iter().map(|t| t.calc_speed(when)).sum();
+        let mut running = vec![];
+        let mut cur_speed = 0;
+        for sub in &state.running {
+            match sub.state() {
+                DownloadTaskState::Finished | DownloadTaskState::Error(_) => continue, 
+                _ => {
+                    cur_speed += sub.calc_speed(when);
+                    running.push(sub.clone_as_task());
+                }
+            }  
+        }
         state.history_speed.update(Some(cur_speed), when);
+        state.running = running;
         cur_speed
     }
 

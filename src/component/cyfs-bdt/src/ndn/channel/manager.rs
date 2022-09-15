@@ -22,6 +22,8 @@ use super::{
 struct Channels {
     download_history_speed: HistorySpeed, 
     download_cur_speed: u32, 
+    upload_history_speed: HistorySpeed, 
+    upload_cur_speed: u32, 
     entries: BTreeMap<DeviceId, Channel>, 
 }
 
@@ -50,6 +52,8 @@ impl ChannelManager {
             channels: RwLock::new(Channels {
                 download_history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
                 download_cur_speed: 0, 
+                upload_history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
+                upload_cur_speed: 0, 
                 entries: BTreeMap::new()
             }), 
         }));
@@ -74,11 +78,14 @@ impl ChannelManager {
         channels.entries.get(remote).map(|c| c.clone()).map_or_else(|| {
             info!("{} create channel on {}", self, remote);
             let initial_download_speed = channels.download_history_speed.average() / (channels.entries.len() as u32 + 1);
+            let initial_upload_speed = channels.upload_history_speed.average() / (channels.entries.len() as u32 + 1);
+
             let channel = Channel::new(
                 self.0.stack.clone(), 
                 remote.clone(), 
                 self.0.command_tunnel.clone(), 
-                HistorySpeed::new(initial_download_speed, channels.download_history_speed.config().clone())
+                HistorySpeed::new(initial_download_speed, channels.download_history_speed.config().clone()), 
+                HistorySpeed::new(initial_upload_speed, channels.download_history_speed.config().clone()), 
             );
             channels.entries.insert(remote.clone(), channel.clone());
 
@@ -88,19 +95,36 @@ impl ChannelManager {
 
     pub fn on_schedule(&self, when: Timestamp) {
         let mut channels = self.0.channels.write().unwrap();
+
         let mut download_cur_speed = 0;
         let mut download_session_count = 0;
+        let mut upload_cur_speed = 0;
+        let mut upload_session_count = 0;
+
         for channel in channels.entries.values() {
-            let d = channel.calc_speed(when);
+            let (d, u) = channel.calc_speed(when);
             download_cur_speed += d;
+            upload_cur_speed += u;
+
             download_session_count += channel.download_session_count();
+            upload_session_count += channel.upload_session_count();
         }
+
         channels.download_cur_speed = download_cur_speed;
+        channels.upload_cur_speed = upload_cur_speed;
+
         if download_session_count > 0 {
             channels.download_history_speed.update(Some(download_cur_speed), when);
         } else {
             channels.download_history_speed.update(None, when);
         }
+
+        if upload_session_count > 0 {
+            channels.upload_history_speed.update(Some(upload_cur_speed), when);
+        } else {
+            channels.upload_history_speed.update(None, when);
+        }
+
     }
 
     fn download_cur_speed(&self) -> u32 {
@@ -109,6 +133,14 @@ impl ChannelManager {
 
     fn download_history_speed(&self) -> u32 {
         self.0.channels.read().unwrap().download_history_speed.average()
+    }
+
+    fn upload_cur_speed(&self) -> u32 {
+        self.0.channels.read().unwrap().upload_cur_speed
+    }
+
+    fn upload_history_speed(&self) -> u32 {
+        self.0.channels.read().unwrap().upload_history_speed.average()
     }
 
     pub(crate) fn on_time_escape(&self, now: Timestamp) {
