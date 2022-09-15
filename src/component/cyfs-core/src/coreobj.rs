@@ -16,7 +16,9 @@ pub enum CoreObjectType {
     Text = 41,
 
     // 通讯录
-    FriendList = 130,
+    // FriendList = 130,
+    FriendOption = 131,
+    FriendProperty = 132,
 
     //meta相关
     BlockV1 = 300,
@@ -60,7 +62,6 @@ pub enum CoreObjectType {
 
     // IM通用对象
     AddFriend = 1001,
-    FriendOption = 1002,
     Msg = 1003,
     RemoveFriend = 1004,
 
@@ -69,13 +70,13 @@ pub enum CoreObjectType {
     ErrObjType = 32767,
 }
 
-impl std::convert::Into<u16> for CoreObjectType {
+impl Into<u16> for CoreObjectType {
     fn into(self) -> u16 {
         self as u16
     }
 }
 
-impl std::convert::From<u16> for CoreObjectType {
+impl From<u16> for CoreObjectType {
     fn from(value: u16) -> Self {
         match Self::from_int(value) {
             Ok(v) => v,

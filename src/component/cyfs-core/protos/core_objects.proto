@@ -248,18 +248,6 @@ message DecAppContent {
     repeated StringStringMapItem tags = 5;
 }
 
-// FriendList
-message FriendItem {
-    bytes id = 1;
-    bytes content = 2;
-}
-
-message FriendListContent {
-    repeated FriendItem friends = 1;
-    uint32 auto_confirm = 2;
-    string auto_msg = 3;
-}
-
 // AddFriend
 message AddFriendDescContent {
     bytes to = 1;
@@ -274,6 +262,11 @@ message RemoveFriendDescContent {
 message FriendOptionContent {
     optional uint32 auto_confirm = 1;
     optional string msg = 2;
+}
+
+// FriendPropety
+message FriendPropetyContent {
+    
 }
 
 // Msg
