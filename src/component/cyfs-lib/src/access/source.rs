@@ -81,7 +81,6 @@ impl FromStr for RequestProtocol {
     }
 }
 
-
 // source device's zone info
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DeviceZoneCategory {
@@ -314,9 +313,8 @@ impl RequestSourceInfo {
         self.dec == *dec
     }
 
-    pub fn mask(&self, dec_id: &ObjectId, op_type: RequestOpType) -> u32 {
-        let permissions = op_type.into();
-
+    pub fn mask(&self, dec_id: &ObjectId, permissions: impl Into<AccessPermissions>) -> u32 {
+        let permissions = permissions.into();
         let mut access = AccessString::new(0);
         if self.dec == *dec_id {
             access.set_group_permissions(AccessGroup::OwnerDec, permissions);
@@ -330,8 +328,8 @@ impl RequestSourceInfo {
         access.value()
     }
 
-    pub fn owner_dec_mask(&self, op_type: RequestOpType) -> u32 {
-        let permissions = op_type.into();
+    pub fn owner_dec_mask(&self, permissions: impl Into<AccessPermissions>) -> u32 {
+        let permissions = permissions.into();
 
         let mut access = AccessString::new(0);
         access.set_group_permissions(AccessGroup::OwnerDec, permissions);
@@ -342,8 +340,8 @@ impl RequestSourceInfo {
         access.value()
     }
 
-    pub fn other_dec_mask(&self, op_type: RequestOpType) -> u32 {
-        let permissions = op_type.into();
+    pub fn other_dec_mask(&self, permissions: impl Into<AccessPermissions>) -> u32 {
+        let permissions = permissions.into();
 
         let mut access = AccessString::new(0);
         access.set_group_permissions(AccessGroup::OthersDec, permissions);
@@ -429,7 +427,6 @@ impl JsonCodec<Self> for RequestSourceInfo {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -461,5 +458,4 @@ mod test {
         let default = AccessString::default().value();
         assert_ne!(default & mask, mask)
     }
-
 }

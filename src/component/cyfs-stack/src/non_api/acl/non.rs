@@ -1,10 +1,8 @@
 use crate::acl::AclManagerRef;
 use crate::non::*;
-use crate::rmeta_api::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::borrow::Cow;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -33,32 +31,9 @@ impl NONAclInputProcessor {
             }
         }
 
-        let rmeta = self
-            .acl
+        self.acl
             .global_state_meta()
-            .get_meta_manager(global_state_common.category());
-        let dec_rmeta = rmeta.get_global_state_meta(&global_state_common.dec_id, false).await.map_err(|e| {
-            let msg = format!("non check rmeta but target dec rmeta not found or with error! {}, target_dec={:?}, {}", req_path, global_state_common.dec_id, e);
-            warn!("{}", msg);
-            BuckyError::new(BuckyErrorCode::PermissionDenied, msg)
-        })?;
-
-        let check_req = GlobalStateAccessRequest {
-            dec: Cow::Borrowed(&global_state_common.dec()),
-            path: global_state_common.req_path(),
-            source: Cow::Borrowed(source),
-            op_type: RequestOpType::Call,
-        };
-
-        if let Err(e) = dec_rmeta.check_access(check_req) {
-            error!(
-                "get_object check rmeta but been rejected! {}, {}",
-                req_path, e
-            );
-            return Err(e);
-        }
-
-        Ok(())
+            .check_access(source, &global_state_common, RequestOpType::Call).await
     }
 }
 

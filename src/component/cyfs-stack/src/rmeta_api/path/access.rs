@@ -4,7 +4,6 @@ use cyfs_lib::*;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GlobalStatePathAccessList {
     list: Vec<GlobalStatePathAccessItem>,
@@ -20,17 +19,15 @@ pub struct GlobalStateAccessRequest<'d, 'a, 'b> {
     pub dec: Cow<'d, ObjectId>,
     pub path: Cow<'a, str>,
     pub source: Cow<'b, RequestSourceInfo>,
-    pub op_type: RequestOpType,
+    pub permissions: AccessPermissions,
 }
 
 impl<'d, 'a, 'b> std::fmt::Display for GlobalStateAccessRequest<'d, 'a, 'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "path={}, {}, op={:?}",
-            self.path,
-            self.source,
-            self.op_type
+            "path={}, {}, permissions={}",
+            self.path, self.source, self.permissions.as_str()
         )
     }
 }
@@ -41,9 +38,11 @@ impl GlobalStatePathAccessList {
     }
 
     // return true if any changed
-    pub fn add(&mut self, item: GlobalStatePathAccessItem) -> bool {
+    pub fn add(&mut self, mut item: GlobalStatePathAccessItem) -> bool {
+        item.try_fix_path();
+
         if let Ok(i) = self.list.binary_search(&item) {
-            if item ==  self.list[i] {
+            if item == self.list[i] {
                 return false;
             }
 
@@ -58,7 +57,12 @@ impl GlobalStatePathAccessList {
         true
     }
 
-    pub fn remove(&mut self, item: GlobalStatePathAccessItem) -> Option<GlobalStatePathAccessItem> {
+    pub fn remove(
+        &mut self,
+        mut item: GlobalStatePathAccessItem,
+    ) -> Option<GlobalStatePathAccessItem> {
+        item.try_fix_path();
+
         if let Ok(i) = self.list.binary_search(&item) {
             let item = self.list.remove(i);
             info!("raccess remove item: {}", item);
@@ -84,13 +88,17 @@ impl GlobalStatePathAccessList {
     }
 
     pub fn check<'d, 'a, 'b>(&self, req: GlobalStateAccessRequest<'d, 'a, 'b>) -> BuckyResult<()> {
-        assert!(req.path.ends_with('/'));
+        let req_path = if req.path.ends_with('/') {
+            req.path.clone()
+        } else {
+            Cow::Owned(format!("{}/", req.path))
+        };
 
         for item in &self.list {
-            if req.path.starts_with(item.path.as_str()) {
+            if req_path.starts_with(item.path.as_str()) {
                 match &item.access {
                     GlobalStatePathGroupAccess::Default(access) => {
-                        let mask = req.source.mask(&req.dec, req.op_type);
+                        let mask = req.source.mask(&req.dec, req.permissions);
                         if mask & access == mask {
                             info!("raccess match item: req={}, access={}", req, item);
                             return Ok(());
@@ -103,8 +111,8 @@ impl GlobalStatePathAccessList {
                     }
                     GlobalStatePathGroupAccess::Specified(user) => {
                         if user.compare(&req.source) {
-                            let permission: AccessPermission = req.op_type.into();
-                            if permission.test(user.access) {
+                            let permissons = req.permissions as u8;
+                            if permissons & user.access == permissons {
                                 info!("raccess match item: req={}, access={}", req, item);
                                 return Ok(());
                             } else {
@@ -136,12 +144,9 @@ mod test_path_access {
     fn new_dec(name: &str) -> ObjectId {
         let owner_id = PeopleId::default();
         let dec_id = DecApp::generate_id(owner_id.into(), name);
-    
-        info!(
-            "generage random dec: name={}, dec_id={}",
-            name, dec_id
-        );
-    
+
+        info!("generage random dec: name={}, dec_id={}", name, dec_id);
+
         dec_id
     }
 
@@ -164,12 +169,22 @@ mod test_path_access {
         list.add(item);
 
         let dec = new_dec("test");
-        let item = GlobalStatePathAccessItem::new_group("/d/a", None, Some(dec.clone()), AccessPermissions::ReadOnly as u8);
+        let item = GlobalStatePathAccessItem::new_group(
+            "/d/a",
+            None,
+            Some(dec.clone()),
+            AccessPermissions::ReadOnly as u8,
+        );
 
         list.add(item);
 
         let device = DeviceId::default();
-        let item = GlobalStatePathAccessItem::new_group("/d/a", Some(device.object_id().clone()), None, AccessPermissions::ReadOnly as u8);
+        let item = GlobalStatePathAccessItem::new_group(
+            "/d/a",
+            Some(device.object_id().clone()),
+            None,
+            AccessPermissions::ReadOnly as u8,
+        );
 
         list.add(item);
 
@@ -235,18 +250,24 @@ mod test_path_access {
 
         // test remove
         let device = DeviceId::default();
-        let item = GlobalStatePathAccessItem::new_group("/d/a", Some(device.object_id().clone()), None, 0);
+        let item =
+            GlobalStatePathAccessItem::new_group("/d/a", Some(device.object_id().clone()), None, 0);
         list.remove(item).unwrap();
 
         let device = DeviceId::default();
-        let item = GlobalStatePathAccessItem::new_group("/a/b", Some(device.object_id().clone()), None, 0);
+        let item =
+            GlobalStatePathAccessItem::new_group("/a/b", Some(device.object_id().clone()), None, 0);
         let ret = list.remove(item);
         assert!(ret.is_none());
 
         let device = DeviceId::default();
-        let item = GlobalStatePathAccessItem::new_group("/d/a/c", Some(device.object_id().clone()), None, 0);
+        let item = GlobalStatePathAccessItem::new_group(
+            "/d/a/c",
+            Some(device.object_id().clone()),
+            None,
+            0,
+        );
         let ret = list.remove(item);
         assert!(ret.is_none());
-
     }
 }

@@ -94,8 +94,20 @@ impl GlobalStatePathAccessItem {
         let path = path.as_ref().trim();
 
         let ret = match path.ends_with("/") {
-            true => path.into(),
-            false => format!("{}/", path.as_ref() as &str),
+            true => {
+                if path.starts_with('/') {
+                    path.into() 
+                } else {
+                    format!("/{}", path.as_ref() as &str)
+                }
+            }
+            false => {
+                if path.starts_with('/') {
+                    format!("{}/", path.as_ref() as &str)
+                } else {
+                    format!("/{}/", path.as_ref() as &str)
+                }
+            }
         };
 
         ret
@@ -141,6 +153,10 @@ impl GlobalStatePathAccessItem {
                 access,
             }),
         }
+    }
+
+    pub fn try_fix_path(&mut self) {
+        self.path = Self::fix_path(&self.path);
     }
 }
 

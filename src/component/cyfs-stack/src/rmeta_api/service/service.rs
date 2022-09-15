@@ -74,7 +74,7 @@ impl GlobalStateMetaLocalService {
         &self,
         source: &RequestSourceInfo,
         global_state: &RequestGlobalStatePath,
-        op_type: RequestOpType,
+        permissions: impl Into<AccessPermissions>,
     ) -> BuckyResult<()> {
         let rmeta = self.get_meta_manager(global_state.category());
         let dec_rmeta = rmeta.get_global_state_meta(&global_state.dec_id, false).await.map_err(|e| {
@@ -83,17 +83,18 @@ impl GlobalStateMetaLocalService {
             BuckyError::new(BuckyErrorCode::PermissionDenied, msg)
         })?;
 
+        let permissions = permissions.into();
         let check_req = GlobalStateAccessRequest {
             dec: Cow::Borrowed(global_state.dec()),
             path: global_state.req_path(),
             source: Cow::Borrowed(source),
-            op_type,
+            permissions,
         };
 
         if let Err(e) = dec_rmeta.check_access(check_req) {
             error!(
-                "global check check rmeta but been rejected! source={}, state={}, op={:?}, {}",
-                source, global_state, op_type, e
+                "global check check rmeta but been rejected! source={}, state={}, permissons={}, {}",
+                source, global_state, permissions.as_str(), e
             );
             return Err(e);
         }
