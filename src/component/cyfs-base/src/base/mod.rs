@@ -1,3 +1,4 @@
+mod access_string;
 mod channel;
 mod constants;
 pub mod endpoint;
@@ -8,6 +9,7 @@ mod ports;
 mod protocol_fields;
 mod time;
 
+pub use access_string::*;
 pub use channel::*;
 pub use constants::*;
 pub use endpoint::*;

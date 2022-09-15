@@ -1,4 +1,4 @@
-use cyfs_base::*;
+use crate::*;
 use intbits::Bits;
 use std::convert::TryInto;
 use std::fmt::{Formatter};
@@ -7,6 +7,33 @@ use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{Error, SeqAccess, Visitor};
 
 const ACCESS_GROUP_MASK: u32 = 0b111 << 29;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RequestOpType {
+    Read,
+    Write,
+    Call,
+}
+
+impl Into<AccessPermissions> for RequestOpType {
+    fn into(self) -> AccessPermissions {
+        match self {
+            Self::Read => AccessPermissions::ReadOnly,
+            Self::Write => AccessPermissions::WriteOnly,
+            Self::Call => AccessPermissions::CallOnly,
+        }
+    }
+}
+
+impl Into<AccessPermission> for RequestOpType {
+    fn into(self) -> AccessPermission {
+        match self {
+            Self::Read => AccessPermission::Read,
+            Self::Write => AccessPermission::Write,
+            Self::Call => AccessPermission::Call,
+        }
+    }
+}
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -66,6 +93,11 @@ impl AccessPermissions {
                 std::borrow::Cow::Owned(s)
             }
         }
+    }
+
+    pub fn test_op(&self, op_type: RequestOpType) -> bool {
+        let access = Into::<AccessPermission>::into(op_type);
+        access.test(*self as u8)
     }
 }
 
@@ -290,6 +322,10 @@ impl AccessString {
                 group: AccessGroup::OwnerDec,
                 permissions: AccessPermissions::Full,
             },
+            AccessPair {
+                group: AccessGroup::OthersDec,
+                permissions: AccessPermissions::Full,
+            },
         ])
     }
 
@@ -374,38 +410,27 @@ impl<'de> Deserialize<'de> for AccessString {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::access::*;
-    use cyfs_core::*;
 
-    fn new_dec(name: &str) -> ObjectId {
-        let owner_id = PeopleId::default();
-        let dec_id = DecApp::generate_id(owner_id.into(), name);
+    #[test]
+    fn test_access_permissons() {
+        let perm = AccessPermissions::ReadAndCall;
+        assert!(perm.test_op(RequestOpType::Read));
+        assert!(perm.test_op(RequestOpType::Call));
+        assert!(!perm.test_op(RequestOpType::Write));
 
-        dec_id
-    }
+        let perm = AccessPermissions::None;
+        assert!(!perm.test_op(RequestOpType::Read));
+        assert!(!perm.test_op(RequestOpType::Call));
+        assert!(!perm.test_op(RequestOpType::Write));
 
-    fn other_dec_read() {
-        let dec = new_dec("test");
-        let source = RequestSourceInfo {
-            zone: DeviceZoneInfo {
-                device: None,
-                zone: None,
-                zone_category: DeviceZoneCategory::CurrentDevice,
-            },
-            dec,
-            protocol: RequestProtocol::Native,
-        };
-
-        let system = cyfs_core::get_system_dec_app().object_id();
-        let mask = source.mask(system, RequestOpType::Read);
-
-        let default = AccessString::default().value();
-        assert_ne!(default & mask, mask)
+        let perm = AccessPermissions::Full;
+        assert!(perm.test_op(RequestOpType::Read));
+        assert!(perm.test_op(RequestOpType::Call));
+        assert!(perm.test_op(RequestOpType::Write));
     }
 
     #[test]
     fn main() {
-        other_dec_read();
 
         let mut access_string = AccessString::default();
         println!("default={}", access_string);
@@ -421,15 +446,15 @@ mod test {
         assert!(ret);
 
         let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Call);
-        assert!(!ret);
+        assert!(ret);
+        let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Read);
+        assert!(ret);
+        let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Write);
+        assert!(ret);
+
+        access_string.clear_group_permission(AccessGroup::OthersDec, AccessPermission::Read);
         let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Read);
         assert!(!ret);
-        let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Write);
-        assert!(!ret);
-
-        access_string.set_group_permission(AccessGroup::OthersDec, AccessPermission::Call);
-        let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Call);
-        assert!(ret);
 
         access_string.clear_group_permission(AccessGroup::OthersDec, AccessPermission::Call);
         let ret = access_string.is_accessable(AccessGroup::OthersDec, AccessPermission::Call);

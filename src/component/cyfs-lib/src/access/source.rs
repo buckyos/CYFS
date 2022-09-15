@@ -1,4 +1,3 @@
-use super::access_string::*;
 use cyfs_base::*;
 
 use serde_json::{Map, Value};
@@ -82,32 +81,6 @@ impl FromStr for RequestProtocol {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RequestOpType {
-    Read,
-    Write,
-    Call,
-}
-
-impl Into<AccessPermissions> for RequestOpType {
-    fn into(self) -> AccessPermissions {
-        match self {
-            Self::Read => AccessPermissions::ReadOnly,
-            Self::Write => AccessPermissions::WriteOnly,
-            Self::Call => AccessPermissions::CallOnly,
-        }
-    }
-}
-
-impl Into<AccessPermission> for RequestOpType {
-    fn into(self) -> AccessPermission {
-        match self {
-            Self::Read => AccessPermission::Read,
-            Self::Write => AccessPermission::Write,
-            Self::Call => AccessPermission::Call,
-        }
-    }
-}
 
 // source device's zone info
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -454,4 +427,39 @@ impl JsonCodec<Self> for RequestSourceInfo {
             protocol: JsonCodecHelper::decode_string_field(obj, "protocol")?,
         })
     }
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use cyfs_core::*;
+    use cyfs_lib::*;
+
+    fn new_dec(name: &str) -> ObjectId {
+        let owner_id = PeopleId::default();
+        let dec_id = DecApp::generate_id(owner_id.into(), name);
+
+        dec_id
+    }
+
+    fn other_dec_read() {
+        let dec = new_dec("test");
+        let source = RequestSourceInfo {
+            zone: DeviceZoneInfo {
+                device: None,
+                zone: None,
+                zone_category: DeviceZoneCategory::CurrentDevice,
+            },
+            dec,
+            protocol: RequestProtocol::Native,
+        };
+
+        let system = cyfs_core::get_system_dec_app().object_id();
+        let mask = source.mask(system, RequestOpType::Read);
+
+        let default = AccessString::default().value();
+        assert_ne!(default & mask, mask)
+    }
+
 }
