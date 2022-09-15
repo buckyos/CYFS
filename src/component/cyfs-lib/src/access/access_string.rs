@@ -117,17 +117,15 @@ pub enum AccessGroup {
     OthersZone = 9,
 
     OwnerDec = 12,
-    SystemDec = 15,
-    OthersDec = 18,
+    OthersDec = 15,
 }
 
-pub const ACCESS_GROUP_LIST: &[AccessGroup; 7] = &[
+pub const ACCESS_GROUP_LIST: &[AccessGroup; 6] = &[
     AccessGroup::CurrentDevice,
     AccessGroup::CurrentZone,
     AccessGroup::FriendZone,
     AccessGroup::OthersZone,
     AccessGroup::OwnerDec,
-    AccessGroup::SystemDec,
     AccessGroup::OthersDec,
 ];
 
@@ -154,7 +152,6 @@ impl TryFrom<&str> for AccessGroup {
             "FriendZone" => Ok(AccessGroup::FriendZone),
             "OthersZone" => Ok(AccessGroup::OthersZone),
             "OwnerDec" => Ok(AccessGroup::OwnerDec),
-            "SystemDec" => Ok(AccessGroup::SystemDec),
             "OthersDec" => Ok(AccessGroup::OthersDec),
             v @ _ => Err(BuckyError::new(BuckyErrorCode::InvalidParam, format!("invalid access group {}", v)))
         }
@@ -234,10 +231,6 @@ impl AccessString {
                     permissions: AccessPermissions::Full,
                 },
                 AccessPair {
-                    group: AccessGroup::SystemDec,
-                    permissions: AccessPermissions::Full,
-                },
-                AccessPair {
                     group: AccessGroup::OthersDec,
                     permissions: AccessPermissions::ReadAndCall,
                 },
@@ -271,10 +264,6 @@ impl AccessString {
                     permissions: AccessPermissions::Full,
                 },
                 AccessPair {
-                    group: AccessGroup::SystemDec,
-                    permissions: AccessPermissions::Full,
-                },
-                AccessPair {
                     group: AccessGroup::OthersDec,
                     permissions: AccessPermissions::Full,
                 },
@@ -299,10 +288,6 @@ impl AccessString {
             },
             AccessPair {
                 group: AccessGroup::OwnerDec,
-                permissions: AccessPermissions::Full,
-            },
-            AccessPair {
-                group: AccessGroup::SystemDec,
                 permissions: AccessPermissions::Full,
             },
         ])

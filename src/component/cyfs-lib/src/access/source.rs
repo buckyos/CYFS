@@ -347,8 +347,6 @@ impl RequestSourceInfo {
         let mut access = AccessString::new(0);
         if self.dec == *dec_id {
             access.set_group_permissions(AccessGroup::OwnerDec, permissions);
-        } else if self.dec == *cyfs_core::get_system_dec_app().object_id() {
-            access.set_group_permissions(AccessGroup::SystemDec, permissions);
         } else {
             access.set_group_permissions(AccessGroup::OthersDec, permissions);
         }
