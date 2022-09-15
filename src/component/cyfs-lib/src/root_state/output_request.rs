@@ -114,12 +114,35 @@ pub struct RootStateGetCurrentRootOutputResponse {
     pub dec_root: Option<ObjectId>,
 }
 
+#[derive(Clone)]
+pub struct RootStateOpEnvAccess {
+    pub path: String,
+    pub access: AccessPermissions,
+}
+
+impl fmt::Display for RootStateOpEnvAccess {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "path: {}, access: {}", self.path, self.access.as_str())
+    }
+}
+
+
+impl RootStateOpEnvAccess {
+    pub fn new(path: impl Into<String>, access: AccessPermissions) -> Self {
+        Self {
+            path: path.into(),
+            access,
+        }
+    }
+}
+
 // create_op_env
 #[derive(Clone)]
 pub struct RootStateCreateOpEnvOutputRequest {
     pub common: RootStateOutputRequestCommon,
 
     pub op_env_type: ObjectMapOpEnvType,
+    pub access: Option<RootStateOpEnvAccess>,
 }
 
 impl RootStateCreateOpEnvOutputRequest {
@@ -127,6 +150,15 @@ impl RootStateCreateOpEnvOutputRequest {
         Self {
             common: RootStateOutputRequestCommon::new(),
             op_env_type,
+            access: None,
+        }
+    }
+
+    pub fn new_with_access(op_env_type: ObjectMapOpEnvType, access: RootStateOpEnvAccess) -> Self {
+        Self {
+            common: RootStateOutputRequestCommon::new(),
+            op_env_type,
+            access: Some(access),
         }
     }
 }

@@ -52,18 +52,26 @@ impl fmt::Display for RootStateGetCurrentRootInputRequest {
 
 pub type RootStateGetCurrentRootInputResponse = RootStateGetCurrentRootOutputResponse;
 
+
 // create_op_env
 #[derive(Clone)]
 pub struct RootStateCreateOpEnvInputRequest {
     pub common: RootStateInputRequestCommon,
 
     pub op_env_type: ObjectMapOpEnvType,
+
+    pub access: Option<RootStateOpEnvAccess>,
 }
 
 impl fmt::Display for RootStateCreateOpEnvInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
-        write!(f, ", op_env_type: {}", self.op_env_type.to_string())
+        write!(f, ", op_env_type: {}", self.op_env_type.to_string())?;
+        if let Some(access) = &self.access {
+            write!(f, ", access: {}", access)?;
+        }
+
+        Ok(())
     }
 }
 

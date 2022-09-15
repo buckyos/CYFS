@@ -42,7 +42,7 @@ impl GlobalStateAccessService {
             }
             Some(dec_id) => {
                 let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
-                let op_env = dec_root_manager.create_op_env().await?;
+                let op_env = dec_root_manager.create_op_env(None).await?;
                 let ret = op_env.get_by_path(inner_path).await?;
                 if ret.is_none() {
                     let msg = format!(

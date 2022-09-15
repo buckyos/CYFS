@@ -124,9 +124,15 @@ impl GlobalStateInputProcessor for GlobalStateLocalService {
 
         let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, true).await?;
 
+        let access = if let Some(access) = req.access {
+            Some(OpEnvPathAccess::new(&access.path, access.access))
+        } else {
+            None
+        };
+
         let sid = match req.op_env_type {
             ObjectMapOpEnvType::Path => {
-                let env = dec_root_manager.create_managed_op_env().await?;
+                let env = dec_root_manager.create_managed_op_env(access).await?;
                 info!(
                     "create_path_op_env success! dec_id={}, sid={}",
                     dec_id,
@@ -136,7 +142,7 @@ impl GlobalStateInputProcessor for GlobalStateLocalService {
             }
 
             ObjectMapOpEnvType::Single => {
-                let env = dec_root_manager.create_managed_single_op_env()?;
+                let env = dec_root_manager.create_managed_single_op_env(access)?;
                 info!(
                     "create_single_op_env success! dec_id={}, sid={}",
                     dec_id,

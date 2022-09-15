@@ -75,15 +75,29 @@ impl GlobalStateInputProcessor for GlobalStateAclInnerInputProcessor {
             .source
             .check_target_dec_permission(&req.common.target_dec_id)
         {
-            if req.op_env_type != ObjectMapOpEnvType::Single {
+            if req.access.is_none() {
                 let msg = format!(
-                    "only single op_env could be used between different dec! source={}, target={:?}",
+                    "op_env between different dec should specified the access param! source={}, target={:?}",
                     req.common.source, req.common.target_dec_id,
                 );
                 error!("{}", msg);
 
                 return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
             }
+
+            let access = req.access.as_ref().unwrap();
+
+            let global_state = RequestGlobalStatePath {
+                global_state_category: Some(self.get_category()),
+                global_state_root: None,
+                dec_id: req.common.target_dec_id.clone(),
+                req_path: Some(access.path.clone()),
+            };
+
+            self.acl
+                .global_state_meta()
+                .check_access(&req.common.source, &global_state, access.access)
+                .await?;
         }
 
         self.next.create_op_env(req).await

@@ -128,6 +128,7 @@ impl GlobalStateRequestHandler {
         let req = RootStateCreateOpEnvInputRequest {
             common,
             op_env_type: output_req.op_env_type,
+            access: output_req.access,
         };
 
         info!("recv create_op_env request: {}", req);

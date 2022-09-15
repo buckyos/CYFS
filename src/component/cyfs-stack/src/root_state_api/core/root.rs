@@ -166,7 +166,7 @@ impl GlobalStateRoot {
         auto_create: bool,
     ) -> BuckyResult<Option<DecRootInfo>> {
         let key = dec_id.to_string();
-        let env = self.root.create_op_env().await?;
+        let env = self.root.create_op_env(None).await?;
         let root_id = env.get_by_key("/", &key).await.map_err(|e| {
             error!(
                 "get dec root from global state error! category={}, dec={}, {}",
@@ -274,7 +274,7 @@ impl GlobalStateRoot {
         }
 
         let key = dec_id.to_string();
-        let env = self.root.create_op_env().await?;
+        let env = self.root.create_op_env(None).await?;
         
         env.set_with_key("/", &key, &new_root_id, &Some(prev_id), false)
             .await

@@ -60,6 +60,7 @@ impl GlobalStateOutputProcessor for GlobalStateOutputTransformer {
             common: self.convert_common(req.common),
 
             op_env_type: req.op_env_type,
+            access: req.access,
         };
 
         let resp = self.processor.create_op_env(in_req).await?;
@@ -386,6 +387,7 @@ impl GlobalStateInputProcessor for GlobalStateInputTransformer {
             common: self.convert_common(req.common),
 
             op_env_type: req.op_env_type,
+            access: req.access,
         };
 
         let processor = self.processor.create_op_env(in_req).await?;
