@@ -11,6 +11,8 @@ mod root;
 mod single_env;
 mod visitor;
 mod op_env;
+mod access;
+mod check;
 
 pub use cache::*;
 pub use iterator::*;

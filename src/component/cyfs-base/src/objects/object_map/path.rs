@@ -3,6 +3,7 @@ use super::iterator::*;
 use super::object_map::*;
 use super::op::*;
 use crate::*;
+use super::check::*;
 
 use std::sync::{Arc, Mutex};
 
@@ -38,27 +39,6 @@ impl ObjectMapPath {
     // 获取当前的root
     pub fn root(&self) -> ObjectId {
         self.root.lock().unwrap().clone()
-    }
-
-    fn check_key_value(key: &str) -> BuckyResult<()> {
-        if key.len() == 0 {
-            let msg = format!("empty objectmap key is invalid!");
-            error!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
-        }
-
-        if key.len() > OBJECT_MAP_KEY_MAX_LEN {
-            let msg = format!(
-                "objectmap key extend limit: key={}, len={}, maxlen={}",
-                key,
-                key.len(),
-                OBJECT_MAP_KEY_MAX_LEN
-            );
-            error!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
-        }
-
-        Ok(())
     }
 
     pub fn update_root(&self, root_id: ObjectId, prev_id: &ObjectId) -> BuckyResult<()> {
@@ -123,7 +103,7 @@ impl ObjectMapPath {
         // 依次获取每级子路径
         let parts = path.split("/").skip(1);
         for part in parts {
-            Self::check_key_value(part)?;
+            ObjectMapChecker::check_key_value(part)?;
 
             let sub = current
                 .lock()
@@ -192,7 +172,7 @@ impl ObjectMapPath {
         // 依次获取每级子路径
         let parts: Vec<&str> = path.split("/").skip(1).collect();
         for (index, &part) in parts.iter().enumerate() {
-            Self::check_key_value(part)?;
+            ObjectMapChecker::check_key_value(part)?;
 
             let is_last_part = index == parts.len() - 1;
             // 最后一级使用目标类型， 中间子目录统一使用map

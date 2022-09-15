@@ -1,3 +1,4 @@
+use super::access::OpEnvPathAccess;
 use super::cache::*;
 use super::lock::*;
 use super::path_env::*;
@@ -234,7 +235,6 @@ impl ObjectMapOpEnvHolder {
     }
 }
 
-
 #[derive(Clone)]
 pub struct ObjectMapOpEnvContainer {
     all: Arc<Mutex<HashMap<u64, ObjectMapOpEnvHolder>>>,
@@ -421,23 +421,32 @@ impl ObjectMapRootManager {
         &self.all_envs
     }
 
-    pub async fn create_op_env(&self) -> BuckyResult<ObjectMapPathOpEnvRef> {
+    pub async fn create_op_env(
+        &self,
+        access: Option<OpEnvPathAccess>,
+    ) -> BuckyResult<ObjectMapPathOpEnvRef> {
         let sid = self.next_sid(ObjectMapOpEnvType::Path);
-        let env = ObjectMapPathOpEnv::new(sid, &self.root, &self.lock, &self.cache).await;
+        let env = ObjectMapPathOpEnv::new(sid, &self.root, &self.lock, &self.cache, access).await;
         let env = ObjectMapPathOpEnvRef::new(env);
 
         Ok(env)
     }
 
-    pub async fn create_managed_op_env(&self) -> BuckyResult<ObjectMapPathOpEnvRef> {
-        let env = self.create_op_env().await?;
+    pub async fn create_managed_op_env(
+        &self,
+        access: Option<OpEnvPathAccess>,
+    ) -> BuckyResult<ObjectMapPathOpEnvRef> {
+        let env = self.create_op_env(access).await?;
 
         self.all_envs.add_env(ObjectMapOpEnv::Path(env.clone()));
 
         Ok(env)
     }
 
-    pub fn create_single_op_env(&self) -> BuckyResult<ObjectMapSingleOpEnvRef> {
+    pub fn create_single_op_env(
+        &self,
+        access: Option<OpEnvPathAccess>,
+    ) -> BuckyResult<ObjectMapSingleOpEnvRef> {
         let sid = self.next_sid(ObjectMapOpEnvType::Single);
         let env = ObjectMapSingleOpEnv::new(
             sid,
@@ -445,14 +454,18 @@ impl ObjectMapRootManager {
             &self.cache,
             self.owner.clone(),
             self.dec_id.clone(),
+            access,
         );
         let env = ObjectMapSingleOpEnvRef::new(env);
 
         Ok(env)
     }
 
-    pub fn create_managed_single_op_env(&self) -> BuckyResult<ObjectMapSingleOpEnvRef> {
-        let env = self.create_single_op_env()?;
+    pub fn create_managed_single_op_env(
+        &self,
+        access: Option<OpEnvPathAccess>,
+    ) -> BuckyResult<ObjectMapSingleOpEnvRef> {
+        let env = self.create_single_op_env(access)?;
         self.all_envs.add_env(ObjectMapOpEnv::Single(env.clone()));
 
         Ok(env)
