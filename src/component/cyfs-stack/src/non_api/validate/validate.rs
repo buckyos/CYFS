@@ -12,7 +12,10 @@ pub struct NONGlobalStateValidator {
 }
 
 impl NONGlobalStateValidator {
-    pub(crate) fn new(validator: GlobalStateValidatorManager, next: NONInputProcessorRef) -> NONInputProcessorRef {
+    pub(crate) fn new(
+        validator: GlobalStateValidatorManager,
+        next: NONInputProcessorRef,
+    ) -> NONInputProcessorRef {
         let ret = Self { validator, next };
         Arc::new(Box::new(ret))
     }
@@ -22,7 +25,7 @@ impl NONGlobalStateValidator {
         req_path: &str,
         object_id: &ObjectId,
     ) -> BuckyResult<GlobalStateValidateResponse> {
-        let global_state_common = RequestGlobalStateCommon::from_str(req_path)?;
+        let global_state_common = RequestGlobalStatePath::from_str(req_path)?;
         let category = global_state_common.category();
         let dec_id = global_state_common.dec().to_owned();
 
@@ -43,7 +46,10 @@ impl NONGlobalStateValidator {
             inner_path,
         };
 
-        self.validator.get_validator(category).validate(validate_req).await
+        self.validator
+            .get_validator(category)
+            .validate(validate_req)
+            .await
     }
 }
 

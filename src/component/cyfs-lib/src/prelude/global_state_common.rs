@@ -1,16 +1,14 @@
-use cyfs_base::*;
 use crate::GlobalStateCategory;
+use cyfs_base::*;
 
-use std::{fmt, str::FromStr};
 use std::borrow::Cow;
-
+use std::{fmt, str::FromStr};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RequestGlobalStateRoot {
     GlobalRoot(ObjectId),
     DecRoot(ObjectId),
 }
-
 
 impl fmt::Display for RequestGlobalStateRoot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -26,27 +24,36 @@ impl fmt::Display for RequestGlobalStateRoot {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RequestGlobalStateCommon {
+pub struct RequestGlobalStatePath {
     // default is root-state, can be local-cache
     pub global_state_category: Option<GlobalStateCategory>,
 
     // root or dec-root object-id
     pub global_state_root: Option<RequestGlobalStateRoot>,
 
-    // target DEC，if is none then equal as source dec-id
-    pub dec_id: ObjectId,
+    // target DEC，if is none then equal as system dec-id
+    pub dec_id: Option<ObjectId>,
 
     // inernal path of global-state, without the dec-id segment
     pub req_path: Option<String>,
 }
 
-impl fmt::Display for RequestGlobalStateCommon {
+impl fmt::Display for RequestGlobalStatePath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.format_string())
     }
 }
 
-impl RequestGlobalStateCommon {
+impl RequestGlobalStatePath {
+    pub fn new(dec_id: Option<ObjectId>, req_path: Option<impl Into<String>>) -> Self {
+        Self {
+            global_state_category: None,
+            global_state_root: None,
+            dec_id,
+            req_path: req_path.map(|v| v.into()),
+        }
+    }
+
     pub fn category(&self) -> GlobalStateCategory {
         match &self.global_state_category {
             Some(v) => *v,
@@ -58,6 +65,13 @@ impl RequestGlobalStateCommon {
         match &self.req_path {
             Some(v) => Cow::Borrowed(v.as_str()),
             None => Cow::Borrowed("/"),
+        }
+    }
+
+    pub fn dec(&self) -> &ObjectId {
+        match &self.dec_id {
+            Some(id) => id,
+            None => cyfs_core::get_system_dec_app().object_id(),
         }
     }
 
@@ -141,11 +155,17 @@ impl RequestGlobalStateCommon {
         }
 
         let seg = segs[index];
-        let dec_id = ObjectId::from_str(seg).map_err(|e| {
-            let msg = format!("invalid req_path's dec root id: {}, {}", seg, e);
-            error!("{msg}");
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        })?;
+        let dec_id = match seg {
+            "system" => None,
+            _ => {
+                let dec_id = ObjectId::from_str(seg).map_err(|e| {
+                    let msg = format!("invalid req_path's dec root id: {}, {}", seg, e);
+                    error!("{msg}");
+                    BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+                })?;
+                Some(dec_id)
+            }
+        };
         index += 1;
 
         let req_path = if index < segs.len() {
@@ -164,7 +184,6 @@ impl RequestGlobalStateCommon {
     }
 
     pub fn format_string(&self) -> String {
-
         let mut segs: Vec<Cow<str>> = vec![];
         if let Some(v) = &self.global_state_category {
             segs.push(Cow::Borrowed(v.as_str()));
@@ -174,7 +193,18 @@ impl RequestGlobalStateCommon {
             segs.push(Cow::Owned(root.to_string()));
         }
 
-        segs.push(Cow::Owned(self.dec_id.to_string()));
+        let seg = match &self.dec_id {
+            Some(id) => {
+                if id == cyfs_core::get_system_dec_app().object_id() {
+                    Cow::Borrowed("system")
+                } else {
+                    Cow::Owned(id.to_string())
+                }
+            }
+            None => Cow::Borrowed("system"),
+        };
+
+        segs.push(seg);
 
         if let Some(path) = &self.req_path {
             segs.push(Cow::Borrowed(path.trim_start_matches('/')));
@@ -184,7 +214,7 @@ impl RequestGlobalStateCommon {
     }
 }
 
-impl FromStr for RequestGlobalStateCommon {
+impl FromStr for RequestGlobalStatePath {
     type Err = BuckyError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -198,40 +228,46 @@ mod test {
 
     #[test]
     fn test() {
-        let mut root = RequestGlobalStateCommon {
+        let mut root = RequestGlobalStatePath {
             global_state_category: None,
             global_state_root: None,
-            dec_id: ObjectId::default(),
+            dec_id: None,
             req_path: Some("/a/b".to_owned()),
         };
 
         let s = root.format_string();
         println!("{}", s);
-        let r = RequestGlobalStateCommon::parse(&s).unwrap();
+        let r = RequestGlobalStatePath::parse(&s).unwrap();
         assert_eq!(root, r);
 
         root.global_state_category = Some(GlobalStateCategory::RootState);
         let s = root.format_string();
         println!("{}", s);
-        let r = RequestGlobalStateCommon::parse(&s).unwrap();
+        let r = RequestGlobalStatePath::parse(&s).unwrap();
         assert_eq!(root, r);
 
         root.global_state_root = Some(RequestGlobalStateRoot::DecRoot(ObjectId::default()));
         let s = root.format_string();
         println!("{}", s);
-        let r = RequestGlobalStateCommon::parse(&s).unwrap();
+        let r = RequestGlobalStatePath::parse(&s).unwrap();
         assert_eq!(root, r);
 
         root.req_path = None;
         let s = root.format_string();
         println!("{}", s);
-        let r = RequestGlobalStateCommon::parse(&s).unwrap();
+        let r = RequestGlobalStatePath::parse(&s).unwrap();
         assert_eq!(root, r);
 
-        root.req_path = Some("/a/".to_owned());
+        root.req_path = Some("/a".to_owned());
         let s = root.format_string();
         println!("{}", s);
-        let r = RequestGlobalStateCommon::parse(&s).unwrap();
+        let r = RequestGlobalStatePath::parse(&s).unwrap();
         assert_eq!(root, r);
+
+        root.dec_id = Some(cyfs_core::get_system_dec_app().object_id().to_owned());
+        let s = root.format_string();
+        println!("{}", s);
+        let r = RequestGlobalStatePath::parse(&s).unwrap();
+        assert_eq!(r.dec_id, None);
     }
 }

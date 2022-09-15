@@ -24,7 +24,7 @@ impl NONAclInputProcessor {
         req_path: &str,
         source: &RequestSourceInfo,
     ) -> BuckyResult<()> {
-        let global_state_common = RequestGlobalStateCommon::from_str(req_path)?;
+        let global_state_common = RequestGlobalStatePath::from_str(req_path)?;
 
         // 同zone+同dec，或者同zone+system，那么不需要校验rmeta权限
         if source.is_current_zone() {

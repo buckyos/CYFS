@@ -310,11 +310,11 @@ impl RequestSourceInfo {
         }
     }
 
-    pub fn check_target_dec_permission(&self, op_target: &Option<ObjectId>) -> bool {
+    pub fn check_target_dec_permission(&self, op_target_dec: &Option<ObjectId>) -> bool {
         if self.is_system_dec() {
             true
         } else {
-            match op_target {
+            match op_target_dec {
                 Some(target) => self.compare_dec(target),
                 None => {
                     // target_dec_id is none then equal as current dec

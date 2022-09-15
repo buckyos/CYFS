@@ -25,7 +25,7 @@ impl NONGlobalStateMetaAclInputProcessor {
         source: &RequestSourceInfo,
         op_type: RequestOpType,
     ) -> BuckyResult<()> {
-        let global_state_common = RequestGlobalStateCommon::from_str(req_path)?;
+        let global_state_common = RequestGlobalStatePath::from_str(req_path)?;
 
         let rmeta = self
             .acl

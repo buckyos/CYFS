@@ -46,10 +46,10 @@ impl GlobalStateInputProcessor for GlobalStateAclInnerInputProcessor {
             .source
             .check_target_dec_permission(&req.common.target_dec_id)
         {
-            let global_state = RequestGlobalStateCommon {
+            let global_state = RequestGlobalStatePath {
                 global_state_category: Some(self.get_category()),
                 global_state_root: None,
-                dec_id: req.common.target_dec_id.as_ref().unwrap().clone(),
+                dec_id: req.common.target_dec_id.clone(),
                 req_path: None, // None will treat as /
             };
 
@@ -153,10 +153,10 @@ impl OpEnvInputProcessor for OpEnvAclInnerInputProcessor {
             .source
             .check_target_dec_permission(&req.common.target_dec_id)
         {
-            let global_state = RequestGlobalStateCommon {
+            let global_state = RequestGlobalStatePath {
                 global_state_category: Some(self.next.get_category()),
                 global_state_root: None,
-                dec_id: req.common.target_dec_id.as_ref().unwrap().clone(),
+                dec_id: req.common.target_dec_id.clone(),
                 req_path: Some(req.path.clone()),
             };
 

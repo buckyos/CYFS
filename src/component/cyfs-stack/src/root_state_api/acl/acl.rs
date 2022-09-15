@@ -35,11 +35,12 @@ impl GlobalStateAccessAclInputProcessor {
         }
 
         let dec_id = match &common.target_dec_id {
-            Some(dec_id) => dec_id.clone(),
-            None => common.source.dec.clone(),
-        };
+            Some(dec_id) => Some(dec_id),
+            None => common.source.get_opt_dec(),
+        }
+        .cloned();
 
-        let global_state = RequestGlobalStateCommon {
+        let global_state = RequestGlobalStatePath {
             global_state_category: None,
             global_state_root: None,
             dec_id,
