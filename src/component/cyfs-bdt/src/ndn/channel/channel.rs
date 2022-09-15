@@ -20,10 +20,10 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::super::{
+    types::*, 
     upload::*,
 };
 use super::{
-    types::*, 
     download::*, 
     upload::*, 
     protocol::v0::*, 

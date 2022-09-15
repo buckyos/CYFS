@@ -1,3 +1,4 @@
+mod types;
 mod download;
 mod upload;
 pub mod channel;
@@ -6,7 +7,7 @@ mod event;
 mod root;
 mod stack;
 
-pub use channel::{HistorySpeedConfig};
+pub use types::*;
 pub use chunk::{ChunkListDesc, ChunkReader, ChunkWriter, ChunkWriterExt};
 pub use download::*;
 pub use upload::*;

@@ -12,8 +12,10 @@ use crate::{
     types::*, 
     stack::{Stack, WeakStack} 
 };
+use super::super::{
+    types::*
+};
 use super::{
-    types::*, 
     protocol::v0::*, 
     provider::*,
     channel::Channel, 
@@ -96,7 +98,7 @@ struct SessionImpl {
     session_id: TempSeq, 
     channel: Channel, 
     state: RwLock<StateImpl>, 
-    prefer_type: PieceSessionType, 
+    prefer_type: ChunkEncodeDesc, 
     referer: Option<String>,
 }
 
@@ -116,7 +118,7 @@ impl DownloadSession {
         chunk: ChunkId, 
         session_id: TempSeq, 
         channel: Channel, 
-        prefer_type: PieceSessionType,
+        prefer_type: ChunkEncodeDesc,
 	    referer: Option<String>, 
     ) -> Self {
         let strong_stack = Stack::from(&stack);
@@ -148,7 +150,7 @@ impl DownloadSession {
             chunk, 
             session_id, 
             channel, 
-            prefer_type: PieceSessionType::Unknown, 
+            prefer_type: ChunkEncodeDesc::Unknown, 
             referer: None, 
             state: RwLock::new(StateImpl::Canceled(CanceledState {
                 send_ctrl_time: 0, 
@@ -161,7 +163,7 @@ impl DownloadSession {
         &self.0.chunk
     }
 
-    pub fn prefer_type(&self) -> &PieceSessionType {
+    pub fn prefer_type(&self) -> &ChunkEncodeDesc {
         &self.0.prefer_type
     }
 
@@ -350,7 +352,7 @@ impl DownloadSession {
             EnterDownloading => {
                 match *self.prefer_type() {
 			    //TODO: 其他session type支持
-                    PieceSessionType::Stream(..) => {
+                    ChunkEncodeDesc::Stream(..) => {
                         let provider = StreamDownload::new(
                             self.chunk(), 
                             self.session_id().clone(), 
@@ -379,7 +381,7 @@ impl DownloadSession {
                             push_to_decoder(provider);
                         }
                     },
-                    PieceSessionType::Raptor(..)  => {
+                    ChunkEncodeDesc::Raptor(..)  => {
                         let stack = Stack::from(&self.0.stack);
                         let view = stack.ndn().chunk_manager().view_of(self.chunk()).unwrap();
                         let decoder = view.raptor_decoder();

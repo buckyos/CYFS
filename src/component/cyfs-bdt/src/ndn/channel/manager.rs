@@ -14,8 +14,10 @@ use crate::{
     datagram::{self, DatagramTunnelGuard},
     stack::{WeakStack, Stack}
 };
+use super::super::{
+    types::*
+};
 use super::{
-    types::*, 
     channel::Channel,
 };
 

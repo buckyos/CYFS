@@ -12,6 +12,7 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::super::{ 
+    types::*, 
     channel::*, 
     download::*,
 };
@@ -229,7 +230,7 @@ impl ChunkDownloader {
                     self.chunk().clone(), 
                     strong_stack.ndn().chunk_manager().gen_session_id(), 
                     channel, 
-                    PieceSessionType::Stream(None, None, None), 
+                    ChunkEncodeDesc::Stream(None, None, None), 
                     source.referer, 
                 );
 

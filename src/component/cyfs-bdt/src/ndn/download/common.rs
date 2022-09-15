@@ -7,14 +7,14 @@ use crate::{
     types::*
 };
 use super::super::{
-    channel::*
+    types::*
 };
 
 #[derive(Clone)]
 pub struct DownloadSource {
     pub target: DeviceId, 
     pub object_id: Option<ObjectId>, 
-    pub encode_desc: PieceSessionType, 
+    pub encode_desc: ChunkEncodeDesc, 
     pub referer: Option<String>
 }
 
@@ -35,7 +35,7 @@ impl SingleDownloadContext {
             sources.push_back(DownloadSource {
                 target: remote, 
                 object_id: None, 
-                encode_desc: PieceSessionType::Stream(None, None, None), 
+                encode_desc: ChunkEncodeDesc::Stream(None, None, None), 
                 referer: None
             });
         } 

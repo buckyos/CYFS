@@ -11,6 +11,7 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::super::{
+    types::*, 
     channel::*,
     download::*, 
 };
@@ -260,7 +261,7 @@ impl ChunkView {
     pub fn start_upload(
         &self, 
         session_id: TempSeq, 
-        piece_type: PieceSessionType, 
+        piece_type: ChunkEncodeDesc, 
         to: Channel
     ) -> BuckyResult<UploadSession> {
         let uploader = {
