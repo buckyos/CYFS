@@ -62,7 +62,7 @@ async fn test_meta(stack: &SharedCyfsStack) {
     let ret = meta.remove_access(item).await.unwrap();
     assert!(ret.is_some());
     let current = ret.unwrap();
-    assert_eq!(current.path, "/a/b");
+    assert_eq!(current.path, "/a/b/");
     if let GlobalStatePathGroupAccess::Specified(value) =  current.access {
         assert_eq!(value.access, perm);
         assert_eq!(value.dec, Some(other_dec.clone()));
@@ -79,7 +79,7 @@ async fn test_meta(stack: &SharedCyfsStack) {
     let ret = meta.remove_access(item).await.unwrap();
     assert!(ret.is_some());
     let current = ret.unwrap();
-    assert_eq!(current.path, "/a/b");
+    assert_eq!(current.path, "/a/b/");
 
     if let GlobalStatePathGroupAccess::Default(value) =  current.access {
         assert_eq!(value, access.value());

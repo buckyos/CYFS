@@ -92,9 +92,9 @@ impl NamedObjectLocalStorage {
                 match ret {
                     Some(data) => {
                         let ret = self.merge_body_and_signs(data, &request.object)?;
-                        if let Some(data) = ret {
+                        if let Some((result, data)) = ret {
                             self.blob.put_object(data).await?;
-                            put_ret = NamedObjectCachePutObjectResult::Merged;
+                            put_ret = result;
                         } else {
                             put_ret = NamedObjectCachePutObjectResult::AlreadyExists;
                         }
@@ -115,9 +115,9 @@ impl NamedObjectLocalStorage {
                 match ret {
                     Some(data) => {
                         let ret = self.merge_body_and_signs(data, &request.object)?;
-                        if let Some(data) = ret {
+                        if let Some((result, data)) = ret {
                             self.blob.put_object(data).await?;
-                            put_ret = NamedObjectCachePutObjectResult::Merged;
+                            put_ret = result;
                         } else {
                             put_ret = NamedObjectCachePutObjectResult::Updated;
                         }
@@ -180,11 +180,12 @@ impl NamedObjectLocalStorage {
         &self,
         current: NONObjectInfo,
         new: &NONObjectInfo,
-    ) -> BuckyResult<Option<NONObjectInfo>> {
+    ) -> BuckyResult<Option<(NamedObjectCachePutObjectResult, NONObjectInfo)>> {
         let mut current_obj: AnyNamedObject = current.object.unwrap().into();
         let new_obj = new.object.as_ref().unwrap();
 
         let mut changed = false;
+        let mut result = NamedObjectCachePutObjectResult::AlreadyExists;
         match current_obj.update_time() {
             None => {
                 match new_obj.update_time() {
@@ -196,6 +197,7 @@ impl NamedObjectLocalStorage {
                             false,
                         );
                         if count > 0 {
+                            result = NamedObjectCachePutObjectResult::Merged;
                             changed = true;
                         }
                     }
@@ -212,6 +214,7 @@ impl NamedObjectLocalStorage {
                             true,
                         );
                         changed = true;
+                        result = NamedObjectCachePutObjectResult::Updated;
                     }
                 }
             }
@@ -226,6 +229,7 @@ impl NamedObjectLocalStorage {
                         );
                         if count > 0 {
                             changed = true;
+                            result = NamedObjectCachePutObjectResult::Merged;
                         }
                     }
                     Some(new_update_time) => {
@@ -241,6 +245,7 @@ impl NamedObjectLocalStorage {
                             );
 
                             changed = true;
+                            result = NamedObjectCachePutObjectResult::Updated;
                         } else if current_update_time == new_update_time {
                             // FIXME should we check the body hash?
                             let count = current_obj.signs_mut().unwrap().merge_ex(
@@ -251,6 +256,7 @@ impl NamedObjectLocalStorage {
                             if count > 0 {
                                 info!("object body update time is the same! now will merge desc signs! obj={}, update_time={}", current.object_id, current_update_time);
                                 changed = true;
+                                result = NamedObjectCachePutObjectResult::Merged;
                             }
                         } else {
                             info!("object body update time is older! now will keep body and merge desc signs! obj={}, current={}, new={}", current.object_id, current_update_time, new_update_time);
@@ -261,6 +267,7 @@ impl NamedObjectLocalStorage {
                             );
                             if count > 0 {
                                 changed = true;
+                                result = NamedObjectCachePutObjectResult::Merged;
                             }
                         }
                     }
@@ -274,7 +281,7 @@ impl NamedObjectLocalStorage {
             let object_raw = current_obj.to_vec()?;
             let info =
                 NONObjectInfo::new(current.object_id, object_raw, Some(Arc::new(current_obj)));
-            Ok(Some(info))
+            Ok(Some((result, info)))
         }
     }
 
