@@ -4,16 +4,17 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 use std::str::FromStr;
-
+use std::sync::Arc;
 
 pub struct NONGlobalStateValidator {
-    validator: GlobalStateValidator,
+    validator: GlobalStateValidatorManager,
     next: NONInputProcessorRef,
 }
 
 impl NONGlobalStateValidator {
-    pub(crate) fn new(validator: GlobalStateValidator, next: NONInputProcessorRef) -> Self {
-        Self { validator, next }
+    pub(crate) fn new(validator: GlobalStateValidatorManager, next: NONInputProcessorRef) -> NONInputProcessorRef {
+        let ret = Self { validator, next };
+        Arc::new(Box::new(ret))
     }
 
     async fn validate(
@@ -22,6 +23,7 @@ impl NONGlobalStateValidator {
         object_id: &ObjectId,
     ) -> BuckyResult<GlobalStateValidateResponse> {
         let global_state_common = RequestGlobalStateCommon::from_str(req_path)?;
+        let category = global_state_common.category();
 
         let root = match global_state_common.global_state_root {
             Some(root) => match root {
@@ -40,7 +42,7 @@ impl NONGlobalStateValidator {
             inner_path,
         };
 
-        self.validator.validate(validate_req).await
+        self.validator.get_validator(category).validate(validate_req).await
     }
 }
 

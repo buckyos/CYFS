@@ -42,17 +42,17 @@ enum CheckRoot {
 
 #[derive(Clone)]
 pub struct GlobalStateValidator {
-    root_state: Arc<GlobalStateManager>,
+    global_state: Arc<GlobalStateManager>,
     op_env_cache: ObjectMapOpEnvCacheRef,
 
     cache: GlobalStatePathCache,
 }
 
 impl GlobalStateValidator {
-    pub fn new(root_state: Arc<GlobalStateManager>) -> Self {
-        let op_env_cache = ObjectMapOpEnvMemoryCache::new_ref(root_state.root_cache().clone());
+    pub fn new(global_state: Arc<GlobalStateManager>) -> Self {
+        let op_env_cache = ObjectMapOpEnvMemoryCache::new_ref(global_state.root_cache().clone());
         Self {
-            root_state,
+            global_state,
             op_env_cache,
             cache: GlobalStatePathCache::new(),
         }
@@ -99,7 +99,7 @@ impl GlobalStateValidator {
                 }
             }
             GlobalStateValidateRoot::None => {
-                let ret = self.root_state.get_dec_root(&req.dec_id).await?;
+                let ret = self.global_state.get_dec_root(&req.dec_id).await?;
                 if ret.is_none() {
                     let msg = format!("current dec root was not found! {}", req.dec_id);
                     error!("{}", msg);
@@ -172,7 +172,7 @@ impl GlobalStateValidator {
 
     async fn check_global_root(&self, key: &GlobalStatePathCacheKey) -> BuckyResult<()> {
         let ret = self
-            .root_state
+            .global_state
             .root_cache()
             .get_object_map(&key.root)
             .await?;
@@ -214,7 +214,7 @@ impl GlobalStateValidator {
         dec_id: &ObjectId,
     ) -> BuckyResult<()> {
         let ret = self
-            .root_state
+            .global_state
             .root_cache()
             .get_object_map(&key.root)
             .await?;

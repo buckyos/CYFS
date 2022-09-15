@@ -22,7 +22,7 @@ use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
 use crate::rmeta::GlobalStateMetaOutputTransformer;
 use crate::rmeta_api::{GlobalStateMetaLocalService, GlobalStateMetaService};
 use crate::root_state::{GlobalStateAccessOutputTransformer, GlobalStateOutputTransformer};
-use crate::root_state_api::{GlobalStateLocalService, GlobalStateService};
+use crate::root_state_api::{GlobalStateLocalService, GlobalStateService, GlobalStateValidatorManager};
 use crate::router_handler::RouterHandlersManager;
 use crate::trans::TransOutputTransformer;
 use crate::trans_api::{create_trans_store, TransService};
@@ -227,9 +227,13 @@ impl CyfsStackImpl {
         let local_global_state_meta =
             Self::load_global_state_meta(isolate, &local_root_state, noc.clone(), &source);
 
+        // init global-state validator
+        let validator = GlobalStateValidatorManager::new(&local_root_state, &local_cache);
+
         // acl
         let acl_manager = Arc::new(AclManager::new(
             local_global_state_meta.clone(),
+            validator,
             noc.clone(),
             param.config.isolate.clone(),
             zone_manager.clone(),

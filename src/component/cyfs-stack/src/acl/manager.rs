@@ -7,6 +7,7 @@ use crate::rmeta_api::GlobalStateMetaLocalService;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
+use crate::root_state_api::GlobalStateValidatorManager;
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
@@ -68,6 +69,7 @@ pub(crate) type AclMatchInstanceRef = Arc<AclMatchInstance>;
 
 pub struct AclManager {
     local_global_state_meta: GlobalStateMetaLocalService,
+    global_state_validator: GlobalStateValidatorManager,
 
     zone_manager: ZoneManagerRef,
     file_loader: AclFileLoader,
@@ -80,6 +82,7 @@ pub struct AclManager {
 impl AclManager {
     pub(crate) fn new(
         local_global_state_meta: GlobalStateMetaLocalService,
+        global_state_validator: GlobalStateValidatorManager,
         noc: NamedObjectCacheRef,
         config_isolate: Option<String>,
         zone_manager: ZoneManagerRef,
@@ -90,6 +93,7 @@ impl AclManager {
 
         Self {
             local_global_state_meta,
+            global_state_validator,
             zone_manager,
             file_loader,
             local_zone_cache,
@@ -125,6 +129,10 @@ impl AclManager {
 
     pub fn global_state_meta(&self) -> &GlobalStateMetaLocalService {
         &self.local_global_state_meta
+    }
+
+    pub fn global_state_validator(&self) -> &GlobalStateValidatorManager {
+        &self.global_state_validator
     }
 
     pub fn get_current_device_id(&self) -> &DeviceId {
