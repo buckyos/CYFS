@@ -8,30 +8,24 @@ use std::borrow::Cow;
 use std::str::FromStr;
 use std::sync::Arc;
 
-pub(crate) struct NONAclInputProcessor {
+pub(crate) struct NONGlobalStateMetaAclInputProcessor {
     acl: AclManagerRef,
     next: NONInputProcessorRef,
 }
 
-impl NONAclInputProcessor {
+impl NONGlobalStateMetaAclInputProcessor {
     pub fn new(acl: AclManagerRef, next: NONInputProcessorRef) -> NONInputProcessorRef {
         let ret = Self { acl, next };
         Arc::new(Box::new(ret))
     }
 
-    async fn check_call_access(
+    async fn check_access(
         &self,
         req_path: &str,
         source: &RequestSourceInfo,
+        op_type: RequestOpType,
     ) -> BuckyResult<()> {
         let global_state_common = RequestGlobalStateCommon::from_str(req_path)?;
-
-        // 同zone+同dec，或者同zone+system，那么不需要校验rmeta权限
-        if source.is_current_zone() {
-            if source.check_target_dec_permission(&global_state_common.dec_id) {
-                return Ok(());
-            }
-        }
 
         let rmeta = self
             .acl
@@ -47,7 +41,7 @@ impl NONAclInputProcessor {
             dec: Cow::Borrowed(&global_state_common.dec()),
             path: global_state_common.req_path(),
             source: Cow::Borrowed(source),
-            op_type: RequestOpType::Call,
+            op_type,
         };
 
         if let Err(e) = dec_rmeta.check_access(check_req) {
@@ -63,18 +57,17 @@ impl NONAclInputProcessor {
 }
 
 #[async_trait::async_trait]
-impl NONInputProcessor for NONAclInputProcessor {
+impl NONInputProcessor for NONGlobalStateMetaAclInputProcessor {
     async fn put_object(
         &self,
         req: NONPutObjectInputRequest,
     ) -> BuckyResult<NONPutObjectInputResponse> {
         if !req.common.source.is_current_zone() {
-            let msg = format!(
-                "put_object only allow within the same zone! {}",
-                req.object.object_id
-            );
-            warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+            // FIXME put_object should use the rmeta acl system?
+            if let Some(req_path) = &req.common.req_path {
+                self.check_access(req_path, &req.common.source, RequestOpType::Write)
+                    .await?;
+            }
         }
 
         self.next.put_object(req).await
@@ -84,6 +77,13 @@ impl NONInputProcessor for NONAclInputProcessor {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
+        if !req.common.source.is_current_zone() {
+            if let Some(req_path) = &req.common.req_path {
+                self.check_access(req_path, &req.common.source, RequestOpType::Read)
+                    .await?;
+            }
+        }
+
         self.next.get_object(req).await
     }
 
@@ -91,8 +91,11 @@ impl NONInputProcessor for NONAclInputProcessor {
         &self,
         req: NONPostObjectInputRequest,
     ) -> BuckyResult<NONPostObjectInputResponse> {
-        if let Some(req_path) = &req.common.req_path {
-            self.check_call_access(req_path, &req.common.source).await?;
+        if !req.common.source.is_current_zone() {
+            if let Some(req_path) = &req.common.req_path {
+                self.check_access(req_path, &req.common.source, RequestOpType::Call)
+                    .await?;
+            }
         }
 
         self.next.post_object(req).await
@@ -102,12 +105,6 @@ impl NONInputProcessor for NONAclInputProcessor {
         &self,
         req: NONSelectObjectInputRequest,
     ) -> BuckyResult<NONSelectObjectInputResponse> {
-        if !req.common.source.is_current_zone() {
-            let msg = format!("select_object only allow within the same zone! {}", req);
-            warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
-        }
-
         self.next.select_object(req).await
     }
 
@@ -116,12 +113,10 @@ impl NONInputProcessor for NONAclInputProcessor {
         req: NONDeleteObjectInputRequest,
     ) -> BuckyResult<NONDeleteObjectInputResponse> {
         if !req.common.source.is_current_zone() {
-            let msg = format!(
-                "delete_object only allow within the same zone! {}",
-                req.object_id
-            );
-            warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+            if let Some(req_path) = &req.common.req_path {
+                self.check_access(req_path, &req.common.source, RequestOpType::Write)
+                    .await?;
+            }
         }
 
         self.next.delete_object(req).await

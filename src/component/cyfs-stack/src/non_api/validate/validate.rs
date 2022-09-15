@@ -24,6 +24,7 @@ impl NONGlobalStateValidator {
     ) -> BuckyResult<GlobalStateValidateResponse> {
         let global_state_common = RequestGlobalStateCommon::from_str(req_path)?;
         let category = global_state_common.category();
+        let dec_id = global_state_common.dec().to_owned();
 
         let root = match global_state_common.global_state_root {
             Some(root) => match root {
@@ -36,7 +37,7 @@ impl NONGlobalStateValidator {
         let inner_path = global_state_common.req_path.unwrap_or("/".to_owned());
 
         let validate_req = GlobalStateValidateRequest {
-            dec_id: global_state_common.dec_id,
+            dec_id,
             root,
             object_id: Some(object_id.clone()),
             inner_path,
@@ -59,8 +60,10 @@ impl NONInputProcessor for NONGlobalStateValidator {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        if let Some(req_path) = &req.common.req_path {
-            let _resp = self.validate(req_path, &req.object_id).await?;
+        if !req.common.source.is_current_zone() {
+            if let Some(req_path) = &req.common.req_path {
+                let _resp = self.validate(req_path, &req.object_id).await?;
+            }
         }
 
         self.next.get_object(req).await
@@ -84,8 +87,10 @@ impl NONInputProcessor for NONGlobalStateValidator {
         &self,
         req: NONDeleteObjectInputRequest,
     ) -> BuckyResult<NONDeleteObjectInputResponse> {
-        if let Some(req_path) = &req.common.req_path {
-            let _resp = self.validate(req_path, &req.object_id).await?;
+        if !req.common.source.is_current_zone() {
+            if let Some(req_path) = &req.common.req_path {
+                let _resp = self.validate(req_path, &req.object_id).await?;
+            }
         }
 
         self.next.delete_object(req).await

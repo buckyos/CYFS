@@ -56,7 +56,7 @@ impl NONLevelInputProcessor {
         );
 
         // 带同zone input acl的处理器
-        let acl_processor = NONAclInnerInputProcessor::new(raw_processor.clone());
+        let acl_processor = NONZoneAclInputProcessor::new(raw_processor.clone());
 
         // 使用acl switcher连接
         let processor = NONInputAclSwitcher::new(acl_processor, raw_processor);

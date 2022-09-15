@@ -4,13 +4,12 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
-
 // 限定在同device协议栈内操作
-pub(crate) struct NONAclLocalInputProcessor {
+pub(crate) struct NONLocalAclInputProcessor {
     next: NONInputProcessorRef,
 }
 
-impl NONAclLocalInputProcessor {
+impl NONLocalAclInputProcessor {
     pub fn new(next: NONInputProcessorRef) -> NONInputProcessorRef {
         let ret = Self { next };
         Arc::new(Box::new(ret))
@@ -22,7 +21,7 @@ impl NONAclLocalInputProcessor {
 }
 
 #[async_trait::async_trait]
-impl NONInputProcessor for NONAclLocalInputProcessor {
+impl NONInputProcessor for NONLocalAclInputProcessor {
     async fn put_object(
         &self,
         req: NONPutObjectInputRequest,

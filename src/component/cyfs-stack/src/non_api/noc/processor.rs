@@ -58,7 +58,7 @@ impl NOCLevelInputProcessor {
     // 创建一个带本地权限的processor
     pub(crate) fn new_local(raw_processor: NONInputProcessorRef) -> NONInputProcessorRef {
         // 带local input acl的处理器
-        let acl_processor = NONAclLocalInputProcessor::new(raw_processor.clone());
+        let acl_processor = NONLocalAclInputProcessor::new(raw_processor.clone());
 
         // 使用acl switcher连接
         let processor = NONInputAclSwitcher::new(acl_processor, raw_processor);

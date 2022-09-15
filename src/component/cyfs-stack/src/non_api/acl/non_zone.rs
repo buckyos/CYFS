@@ -4,13 +4,12 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
-
 // 限定在同zone内操作
-pub(crate) struct NONAclInnerInputProcessor {
+pub(crate) struct NONZoneAclInputProcessor {
     next: NONInputProcessorRef,
 }
 
-impl NONAclInnerInputProcessor {
+impl NONZoneAclInputProcessor {
     pub fn new_raw(next: NONInputProcessorRef) -> Self {
         Self { next }
     }
@@ -26,7 +25,7 @@ impl NONAclInnerInputProcessor {
 }
 
 #[async_trait::async_trait]
-impl NONInputProcessor for NONAclInnerInputProcessor {
+impl NONInputProcessor for NONZoneAclInputProcessor {
     async fn put_object(
         &self,
         req: NONPutObjectInputRequest,
