@@ -1742,6 +1742,7 @@ dependencies = [
  "hex",
  "http-types",
  "log 0.4.16",
+ "once_cell",
  "rand 0.7.3",
  "serde_json",
  "url 2.2.2",

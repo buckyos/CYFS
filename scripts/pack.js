@@ -85,11 +85,10 @@ function meta_url(channel) {
 
 let version = `1.0.${version_from_channel(channel)}.${buildnumber}`;
 
-let repo_path;
-if (channel === "nightly") {
-    repo_path = process.env.FFS_SERVICE_NIGHTLY_REPO_DESC;
-} else {
-    repo_path = process.env.FFS_SERVICE_REPO_DESC;
+let repo_path = process.env.FFS_SERVICE_REPO_DESC;
+if (!repo_path) {
+    console.error('no service repo desc path, please set env FFS_SERVICE_REPO_DESC')
+    process.exit(1)
 }
 
 function get_obj_id(desc_file) {

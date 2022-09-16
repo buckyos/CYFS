@@ -114,12 +114,7 @@ impl OODAsset {
             .join("etc")
             .join("desc")
             .join("pn.desc");
-        let default_pn_desc = match cyfs_base::get_channel() {
-            CyfsChannel::Nightly => "nightly-pn.desc",
-            CyfsChannel::Beta => "beta-pn.desc",
-            CyfsChannel::Stable => "stable-pn.desc",
-        };
-        self.extract_from_asset(&root, default_pn_desc)
+        self.extract_from_asset(&root, "pn.desc")
     }
 
     fn extract_debug_config(&self) -> BuckyResult<()> {
@@ -180,8 +175,13 @@ impl OODAsset {
             _ => self.target.clone(),
         };
 
-        let full_path = format!("{}/{}", target_dir.as_str(), asset_path);
-        let ret = Asset::get(&full_path).unwrap();
+        // 检查两次，如果{target}/{channel}/{asset}有文件，优先用这里的
+        // 如果没有，再用{target}/{asset}取
+        let full_path = format!("{}/{}/{}", target_dir.as_str(), cyfs_base::get_channel().to_string(), asset_path);
+        let ret = Asset::get(&full_path).or_else(||{
+            let full_path = format!("{}/{}", target_dir.as_str(), asset_path);
+            Asset::get(&full_path)
+        }).unwrap();
 
         if let Err(e) = std::fs::write(dest_path.clone(), ret.data) {
             let msg = format!(
