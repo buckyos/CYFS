@@ -551,7 +551,6 @@ impl OnUdpPackageBox for Stack {
             self.keystore().add_key(
                 package_box.as_ref().key(),
                 package_box.as_ref().remote(),
-                true,
             );
         }
         if package_box.as_ref().is_tunnel() {
@@ -587,7 +586,7 @@ impl OnTcpInterface for Stack {
         //FIXME: 用sequence 和 send time 过滤
         if first_box.has_exchange() {
             self.keystore()
-                .add_key(first_box.key(), first_box.remote(), true);
+                .add_key(first_box.key(), first_box.remote());
         }
         if first_box.is_tunnel() {
             self.tunnel_manager().on_tcp_interface(interface, first_box)
@@ -607,9 +606,10 @@ impl PingClientStateEvent for Stack {
         // unimplemented!()
     }
 
-    fn offline(&self, _sn: &Device) {
+    fn offline(&self, sn: &Device) {
         info!("{} sn offline, please implement it if not.", self.local_device_id());
         // unimplemented!()
+        self.keystore().reset_peer(&sn.desc().device_id());
     }
 }
 
@@ -632,7 +632,7 @@ impl PingClientCalledEvent for Stack {
         })?;
         if caller_box.has_exchange() {
             self.keystore()
-                .add_key(caller_box.key(), caller_box.remote(), true);
+                .add_key(caller_box.key(), caller_box.remote());
         }
         self.tunnel_manager().on_called(called, caller_box)
     }

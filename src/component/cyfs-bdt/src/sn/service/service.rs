@@ -221,7 +221,7 @@ impl SnService {
                 let exchg = <Box<dyn Any + Send>>::downcast::<Exchange>(first_pkg.into_any()); // pkg.into_any().downcast::<Exchange>();
                 if let Ok(_exchg) = exchg {
                     self.key_store()
-                        .add_key(pkg_box.key(), pkg_box.remote(), true);
+                        .add_key(pkg_box.key(), pkg_box.remote());
                 } else {
                     warn!("fetch exchange failed, from: {:?}.", resp_sender.remote());
                     return;

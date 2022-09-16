@@ -116,14 +116,13 @@ impl CommandTunnel {
                 if package_box.has_exchange() {
                     async_std::task::spawn(async move {
                         let exchange: &Exchange = package_box.packages()[0].as_ref();
-                        if !exchange.verify(package_box.key()).await {
+                        if !exchange.verify().await {
                             warn!("{} exchg verify failed, from {}.", tunnel, from);
                             return;
                         }
                         service.keystore().add_key(
                             package_box.key(),
                             package_box.remote(),
-                            true,
                         );
                         let _ = tunnel.on_package_box(package_box, from);
                     });
@@ -161,7 +160,7 @@ impl CommandTunnel {
             key.clone());
         package_box.append(vec![DynamicPackage::from(ack_proxy)]);
         
-        let mut context = PackageBoxEncodeContext::from(syn_proxy.from_peer_info.desc());
+        let mut context = PackageBoxEncodeContext::default();
         let _ = BOX_CRYPTO_BUFFER.with(|thread_crypto_buf| {
             let crypto_buf = &mut thread_crypto_buf.borrow_mut()[..];
             let buf_len = crypto_buf.len();

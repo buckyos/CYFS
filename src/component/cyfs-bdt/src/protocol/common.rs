@@ -529,7 +529,8 @@ pub trait Package {
 
 #[derive(Clone)]
 pub struct Exchange {
-    pub sequence: TempSeq,
+    pub sequence: TempSeq, 
+    pub key_encrypted: Vec<u8>, 
     pub seq_key_sign: Signature,
     pub from_device_id: DeviceId,
     pub send_time: Timestamp,
@@ -537,30 +538,31 @@ pub struct Exchange {
 }
 
 impl Exchange {
-    pub async fn sign(&mut self, key: &AesKey, signer: &impl Signer) -> BuckyResult<()> {
+    pub async fn sign(&mut self, signer: &impl Signer) -> BuckyResult<()> {
         self.seq_key_sign = signer
             .sign(
-                self.seq_key_hash(key).as_slice(),
+                self.seq_key_hash().as_slice(),
                 &SignatureSource::RefIndex(0),
             )
             .await?;
         Ok(())
     }
 
-    pub async fn verify(&self, key: &AesKey) -> bool {
+    pub async fn verify(&self) -> bool {
         let verifier = RsaCPUObjectVerifier::new(self.from_device_desc.desc().public_key().clone());
         verifier
-            .verify(self.seq_key_hash(key).as_slice(), &self.seq_key_sign)
+            .verify(self.seq_key_hash().as_slice(), &self.seq_key_sign)
             .await
     }
 
-    fn seq_key_hash(&self, key: &AesKey) -> HashValue {
-        let mut buf = [0u8; 128];
-        let len = buf.len();
-        let remain = self.sequence.raw_encode(&mut buf, &None).unwrap();
-        let remain = key.raw_encode(remain, &None).unwrap();
-        let len = len - remain.len();
-        hash_data(&buf[..len])
+    fn seq_key_hash(&self) -> HashValue {
+        let seq = self.sequence.raw_encode_to_buffer().unwrap();
+        
+        use sha2::Digest;
+        let mut sha256 = sha2::Sha256::new();
+        sha256.input(&seq);
+        sha256.input(&self.key_encrypted);
+        sha256.result().into()
     }
 }
 
@@ -575,10 +577,12 @@ impl Package for Exchange {
 }
 
 
-impl From<&SynTunnel> for Exchange {
-    fn from(syn_tunnel: &SynTunnel) -> Self {
+impl From<(&SynTunnel, Vec<u8>)> for Exchange {
+    fn from(context: (&SynTunnel, Vec<u8>)) -> Self {
+        let (syn_tunnel, key_encrypted) = context;
         Exchange {
             sequence: syn_tunnel.sequence.clone(),
+            key_encrypted, 
             seq_key_sign: Signature::default(),
             from_device_id: syn_tunnel.from_device_id.clone(),
             send_time: syn_tunnel.send_time.clone(),
@@ -588,10 +592,12 @@ impl From<&SynTunnel> for Exchange {
 }
 
 
-impl From<&SynProxy> for Exchange {
-    fn from(syn_proxy: &SynProxy) -> Self {
+impl From<(&SynProxy, Vec<u8>)> for Exchange {
+    fn from(context: (&SynProxy, Vec<u8>)) -> Self {
+        let (syn_proxy, key_encrypted) = context;
         Exchange {
             sequence: syn_proxy.seq,
+            key_encrypted, 
             seq_key_sign: Signature::default(),
             from_device_id: syn_proxy.from_peer_id.clone(),
             send_time: bucky_time_now(),
@@ -642,7 +648,8 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
 
         Ok((
             Self {
-                sequence,
+                sequence, 
+                key_encrypted: vec![], 
                 seq_key_sign,
                 from_device_id,
                 send_time,
@@ -670,8 +677,10 @@ fn encode_protocol_exchange() {
     )
     .build();
 
+    let (_key, key_encrypted) = private_key.public().gen_aeskey_and_encrypt().unwrap();
     let src = Exchange {
-        sequence: TempSeq::from(rand::random::<u32>()),
+        sequence: TempSeq::from(rand::random::<u32>()), 
+        key_encrypted: key_encrypted.clone(), 
         seq_key_sign: Signature::default(),
         from_device_id: device.desc().device_id(),
         send_time: bucky_time_now(),
@@ -684,13 +693,16 @@ fn encode_protocol_exchange() {
         .unwrap();
     let remain = remain.len();
 
+
     let dec = &buf[..buf.len() - remain];
     let (cmd, dec) = u8::raw_decode(dec)
         .map(|(code, dec)| (PackageCmdCode::try_from(code).unwrap(), dec))
         .unwrap();
     assert_eq!(cmd, PackageCmdCode::Exchange);
+
+    let mut dec_ctx = merge_context::OtherDecode::default();
     let (dst, _) =
-        Exchange::raw_decode_with_context(dec, &mut merge_context::OtherDecode::default()).unwrap();
+        Exchange::raw_decode_with_context(dec, &mut dec_ctx).unwrap();
 
     assert_eq!(dst.sequence, src.sequence);
     assert_eq!(dst.from_device_id, src.from_device_id);

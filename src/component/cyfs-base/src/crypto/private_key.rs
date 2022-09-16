@@ -158,9 +158,25 @@ impl PrivateKey {
         }
     }
 
-    pub fn decrypt_aeskey(&self, input: &[u8], output: &mut [u8]) -> BuckyResult<usize> {
+    pub fn decrypt_aeskey<'dec>(&self, input: &'dec [u8], output: &mut [u8]) -> BuckyResult<(&'dec [u8], usize)> {
         match self {
-            Self::Rsa(_) => self.decrypt(input, output),
+            Self::Rsa(_) => {
+                let key_size = self.public().key_size();
+                if input.len() < key_size {
+                    let msg = format!(
+                        "not enough buffer for secp256k1 private key, except={}, got={}",
+                        key_size,
+                        input.len()
+                    );
+                    error!("{}", msg);
+
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+                }
+
+                let len = self.decrypt(&input[..key_size], output)?;
+
+                Ok((&input[key_size..], len))
+            },
 
             Self::Secp256k1(private_key) => {
                 if input.len() < ::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE {
@@ -198,7 +214,7 @@ impl PrivateKey {
 
                 output.copy_from_slice(&aes_key);
 
-                Ok(aes_key.len())
+                Ok((&input[::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE..], aes_key.len()))
             }
         }
     }
