@@ -7,6 +7,7 @@ use cyfs_core::*;
 use cyfs_lib::*;
 use cyfs_util::*;
 use log::*;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
@@ -19,6 +20,15 @@ pub struct PermissionNode {
     reason: String,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+struct AclConfig {
+    access: Option<HashMap<String, AccessString>>,
+    link: Option<HashMap<String, String>>,
+    config: Option<HashMap<String, String>>,
+}
+
+type AclConfigs = HashMap<String, AclConfig>;
+
 pub struct AppController {
     shared_stack: Option<SharedCyfsStack>,
     owner: Option<ObjectId>,
@@ -28,9 +38,7 @@ pub struct AppController {
 }
 
 impl AppController {
-    pub fn new(
-        use_docker: bool,
-    ) -> Self {
+    pub fn new(use_docker: bool) -> Self {
         // check platform
         let docker_api;
         if use_docker {
@@ -85,10 +93,13 @@ impl AppController {
             version,
         );
         // 返回了安装的service路径和web路径
-        let (service_dir, web_dir) = pkg.install(self.named_cache_client.as_ref().unwrap()).await.map_err(|e| {
-            error!("install app:{} failed, {}", app_id, e);
-            SubErrorCode::DownloadFailed
-        })?;
+        let (service_dir, web_dir) = pkg
+            .install(self.named_cache_client.as_ref().unwrap())
+            .await
+            .map_err(|e| {
+                error!("install app:{} failed, {}", app_id, e);
+                SubErrorCode::DownloadFailed
+            })?;
 
         let web_dir_id = if web_dir.exists() {
             let pub_resp = self
@@ -348,7 +359,27 @@ impl AppController {
             info!("acl config not found. app:{}", app_id);
             return Ok(None);
         }
-        let acl = File::open(acl_file)?;
+
+        let contents = std::fs::read_to_string(acl_file).map_err(|e| {
+            let msg = format!("read acl config failed! app={}, err={}", app_id, e);
+            warn!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
+
+        info!("read acl config:{}", contents);
+
+        let acl_config: AclConfigs = toml::from_str(&contents).map_err(|e| {
+            let msg = format!("parse acl config failed! app={}, err={}", app_id, e);
+            warn!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::ParseError, msg)
+        })?;
+
+        //TODO: Requires users to agree to permissions, not automatic settings
+        Ok(None)
+
+        /*let acl = File::open(acl_file)?;
         let acl_info: Value = serde_json::from_reader(acl)?;
         let acl_map = acl_info.as_object().ok_or_else(|| {
             let msg = format!("invalid acl file format: {}", acl_info);
@@ -364,7 +395,7 @@ impl AppController {
             permissions.insert(k.to_string(), v.to_string());
         }
 
-        Ok(Some(permissions))
+        Ok(Some(permissions))*/
     }
 
     // 查询app对stack的版本依赖，返回（minVer，maxVer）
@@ -378,10 +409,7 @@ impl AppController {
         let dep_dir = get_app_dep_dir(&app_id.to_string(), version);
         let dep_file = dep_dir.join("dependent.cfg");
         if dep_file.exists() {
-            info!(
-                "dep config already exists. app:{}, ver:{}",
-                app_id, version
-            );
+            info!("dep config already exists. app:{}, ver:{}", app_id, version);
             return self.parse_dep_config(app_id, dep_file);
         }
 
@@ -534,7 +562,7 @@ mod tests {
             .owner()
             .to_owned()
             .unwrap_or_else(|| device.desc().calculate_id());
-        
+
         let mut app_controller = AppController::new(false);
         app_controller.prepare_start(stack, owner).await;
 
