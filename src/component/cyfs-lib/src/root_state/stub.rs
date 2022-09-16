@@ -49,7 +49,13 @@ impl GlobalStateStub {
     }
 
     pub async fn create_path_op_env(&self) -> BuckyResult<PathOpEnvStub> {
-        let mut req = RootStateCreateOpEnvOutputRequest::new(ObjectMapOpEnvType::Path);
+        self.create_path_op_env_with_access(None).await
+    }
+
+    pub async fn create_path_op_env_with_access(&self, access: Option<RootStateOpEnvAccess>) -> BuckyResult<PathOpEnvStub> {
+        let mut req = RootStateCreateOpEnvOutputRequest::new(
+            ObjectMapOpEnvType::Path);
+        req.access = access;
         req.common.target = self.target.clone();
         req.common.target_dec_id = self.target_dec_id.clone();
 
@@ -59,7 +65,12 @@ impl GlobalStateStub {
     }
 
     pub async fn create_single_op_env(&self) -> BuckyResult<SingleOpEnvStub> {
+        self.create_single_op_env_with_access(None).await
+    }
+
+    pub async fn create_single_op_env_with_access(&self, access: Option<RootStateOpEnvAccess>) -> BuckyResult<SingleOpEnvStub> {
         let mut req = RootStateCreateOpEnvOutputRequest::new(ObjectMapOpEnvType::Single);
+        req.access = access;
         req.common.target = self.target.clone();
         req.common.target_dec_id = self.target_dec_id.clone();
 

@@ -511,9 +511,9 @@ impl SharedCyfsStack {
     pub fn root_state_stub(
         &self,
         target: Option<ObjectId>,
-        dec_id: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
     ) -> GlobalStateStub {
-        GlobalStateStub::new(self.services.root_state.clone_processor(), target, dec_id)
+        GlobalStateStub::new(self.services.root_state.clone_processor(), target, target_dec_id)
     }
 
     pub fn root_state_meta(&self) -> &GlobalStateMetaRequestor {
@@ -537,8 +537,8 @@ impl SharedCyfsStack {
         &self.services.local_cache
     }
 
-    pub fn local_cache_stub(&self, dec_id: Option<ObjectId>) -> GlobalStateStub {
-        GlobalStateStub::new(self.services.local_cache.clone_processor(), None, dec_id)
+    pub fn local_cache_stub(&self, target_dec_id: Option<ObjectId>) -> GlobalStateStub {
+        GlobalStateStub::new(self.services.local_cache.clone_processor(), None, target_dec_id)
     }
 
     pub fn local_cache_meta(&self) -> &GlobalStateMetaRequestor {
