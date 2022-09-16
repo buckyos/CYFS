@@ -95,7 +95,7 @@ impl AdminManager {
                 RouterHandlerChain::Handler,
                 ADMIN_MANAGER_HANDLER_ID,
                 1,
-                &filter,
+                Some(filter),
                 None,
                 RouterHandlerAction::Default,
                 Some(Box::new(routine)),

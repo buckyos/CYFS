@@ -1,13 +1,12 @@
 use super::super::*;
 use crate::base::*;
-use cyfs_debug::Mutex;
 use cyfs_base::*;
+use cyfs_debug::Mutex;
 
 use async_std::prelude::*;
 use http_types::{Method, Request, Url};
 use std::sync::Arc;
 use std::time::Duration;
-
 
 struct RouterHandlerRegisterHelper {
     chain: RouterHandlerChain,
@@ -103,7 +102,7 @@ impl RouterHandlerRegisterHelper {
 
 struct RouterHandlerRegisterInner {
     index: i32,
-    filter: String,
+    filter: Option<String>,
     req_path: Option<String>,
     default_action: RouterHandlerAction,
     routine: Option<String>,
@@ -115,14 +114,14 @@ struct RouterHandlerRegisterInner {
 impl RouterHandlerRegisterInner {
     pub fn new(
         index: i32,
-        filter: &str,
+        filter: Option<String>,
         req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<String>,
     ) -> Self {
         Self {
             index,
-            filter: filter.to_owned(),
+            filter,
             req_path,
             default_action,
             routine,
@@ -155,13 +154,14 @@ impl RouterHandlerRegister {
         id: &str,
         dec_id: Option<ObjectId>,
         index: i32,
-        filter: &str,
+        filter: Option<String>,
         req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<String>,
         service_url: &str,
     ) -> Self {
-        let inner = RouterHandlerRegisterInner::new(index, filter, req_path, default_action, routine);
+        let inner =
+            RouterHandlerRegisterInner::new(index, filter, req_path, default_action, routine);
         let helper = RouterHandlerRegisterHelper::new(chain, category, id, dec_id, service_url);
 
         Self {
@@ -274,11 +274,8 @@ impl RouterHandlerUnregister {
     pub async fn unregister(&self) -> BuckyResult<bool> {
         let req = {
             let url = self.helper.gen_handler_url();
-            self.helper.gen_http_request::<RouterRemoveHandlerParam>(
-                Method::Delete,
-                url,
-                None,
-            )
+            self.helper
+                .gen_http_request::<RouterRemoveHandlerParam>(Method::Delete, url, None)
         };
 
         let url = req.url().clone();

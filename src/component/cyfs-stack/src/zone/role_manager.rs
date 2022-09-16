@@ -540,7 +540,7 @@ impl ZoneRoleManager {
                 RouterHandlerChain::Handler,
                 ROLE_MANAGER_HANDLER_ID,
                 1,
-                &filter,
+                Some(filter),
                 None,
                 RouterHandlerAction::Default,
                 Some(Box::new(routine)),

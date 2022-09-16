@@ -248,7 +248,7 @@ impl AppController {
                 RouterHandlerChain::Handler,
                 APP_MANAGER_CONTROLLER_HANDLER_ID,
                 1,
-                &filter,
+                Some(filter.clone()),
                 None,
                 RouterHandlerAction::Reject,
                 Some(Box::new(routine)),

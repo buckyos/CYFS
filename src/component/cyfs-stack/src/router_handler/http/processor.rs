@@ -79,7 +79,7 @@ impl RouterHandlerHttpProcessor {
         };
 
         info!(
-            "new router handler: category: {}, id: {}, dec: {:?} filter: {}, req_path: {:?} default action: {}, routine: {:?}",
+            "new router handler: category: {}, id: {}, dec: {:?} filter: {:?}, req_path: {:?} default action: {}, routine: {:?}",
             req.category.to_string(), req.id, req.dec_id, req.param.filter, req.param.req_path, req.param.default_action, req.param.routine
         );
 
@@ -87,7 +87,7 @@ impl RouterHandlerHttpProcessor {
             req.id,
             req.dec_id,
             req.param.index,
-            &req.param.filter,
+            req.param.filter,
             req.param.req_path,
             req.param.default_action,
             routine,
@@ -106,7 +106,7 @@ impl RouterHandlerHttpProcessor {
                 &req.id,
                 &req.dec_id,
                 &req.param.req_path,
-                &Some(req.param.filter.clone()),
+                &req.param.filter,
             )
             .await?;
 

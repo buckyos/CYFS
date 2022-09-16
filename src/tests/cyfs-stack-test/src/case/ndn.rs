@@ -245,7 +245,7 @@ async fn add_get_file_handler(dec_id: &ObjectId, stack: &SharedCyfsStack) {
             RouterHandlerChain::PreRouter,
             "process_shared",
             0,
-            &filter,
+            Some(filter.clone()), None,
             RouterHandlerAction::Reject,
             Some(Box::new(listener)),
         )

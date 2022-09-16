@@ -1141,6 +1141,14 @@ pub struct ExpEvaluator {
     rpn: Vec<ExpEvalItem>,
 }
 
+impl std::fmt::Debug for ExpEvaluator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}, ", self.exp)?;
+
+        Ok(())
+    }
+}
+
 impl std::fmt::Display for ExpEvaluator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}, ", self.exp)?;
@@ -1148,6 +1156,13 @@ impl std::fmt::Display for ExpEvaluator {
         Ok(())
     }
 }
+
+impl PartialEq for ExpEvaluator {
+    fn eq(&self, other: &Self) -> bool {
+        self.exp() == other.exp()
+    }
+}
+impl Eq for ExpEvaluator {}
 
 impl ExpEvaluator {
     pub fn new(exp: &str, reserved_token_list: &ExpReservedTokenList) -> BuckyResult<Self> {

@@ -19,7 +19,7 @@ struct RouterHandlerItem {
     id: String,
     dec_id: Option<ObjectId>,
     index: i32,
-    filter: String,
+    filter: Option<String>,
     req_path: Option<String>,
     default_action: RouterHandlerAction,
     routine: Option<Box<dyn RouterHandlerAnyRoutine>>,
@@ -500,7 +500,7 @@ impl RouterWSHandlerManager {
         id: &str,
         dec_id: Option<ObjectId>,
         index: i32,
-        filter: &str,
+        filter: Option<String>,
         req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<

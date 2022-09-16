@@ -8,7 +8,7 @@ use std::sync::Mutex;
 pub(crate) struct RouterHandlerSavedData {
     pub index: i32,
 
-    pub filter: String,
+    pub filter: Option<String>,
 
     pub req_path: Option<String>,
 

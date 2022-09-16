@@ -1,8 +1,8 @@
 use super::handler::RouterHandler;
 use super::handler_manager::*;
 use cyfs_base::*;
-use cyfs_util::*;
 use cyfs_lib::*;
+use cyfs_util::*;
 
 macro_rules! declare_router_handler_processor {
     ($REQ:ty, $RESP:ty, $func:ident) => {
@@ -13,7 +13,7 @@ macro_rules! declare_router_handler_processor {
                 chain: RouterHandlerChain,
                 id: &str,
                 index: i32,
-                filter: &str,
+                filter: Option<String>,
                 req_path: Option<String>,
                 default_action: RouterHandlerAction,
                 routine: Option<
@@ -25,8 +25,15 @@ macro_rules! declare_router_handler_processor {
                     >,
                 >,
             ) -> BuckyResult<()> {
-                let handler =
-                    RouterHandler::new(id.to_owned(), None, index, filter, req_path, default_action, routine)?;
+                let handler = RouterHandler::new(
+                    id.to_owned(),
+                    None,
+                    index,
+                    filter,
+                    req_path,
+                    default_action,
+                    routine,
+                )?;
 
                 self.handlers(&chain).$func().add_handler(handler)
             }

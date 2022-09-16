@@ -23,7 +23,7 @@ where
         chain: RouterHandlerChain,
         id: &str,
         index: i32,
-        filter: &str,
+        filter: Option<String>,
         req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<

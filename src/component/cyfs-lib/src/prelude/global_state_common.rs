@@ -23,7 +23,7 @@ impl fmt::Display for RequestGlobalStateRoot {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct RequestGlobalStatePath {
     // default is root-state, can be local-cache
     pub global_state_category: Option<GlobalStateCategory>,
@@ -43,6 +43,12 @@ impl fmt::Display for RequestGlobalStatePath {
         write!(f, "{}", self.format_string())
     }
 }
+impl fmt::Debug for RequestGlobalStatePath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.format_string())
+    }
+}
+
 
 impl RequestGlobalStatePath {
     pub fn new(dec_id: Option<ObjectId>, req_path: Option<impl Into<String>>) -> Self {

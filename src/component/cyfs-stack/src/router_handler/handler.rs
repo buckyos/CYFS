@@ -24,7 +24,7 @@ where
 
     pub req_path: Option<RequestGlobalStatePath>,
 
-    pub filter: ExpEvaluator,
+    pub filter: Option<ExpEvaluator>,
 
     pub default_action: RouterHandlerAction,
 
@@ -52,7 +52,7 @@ where
         self.index == other.index
             && self.id == other.id
             && self.dec_id == other.dec_id
-            && self.filter.exp() == other.filter.exp()
+            && self.filter == other.filter
             && self.req_path == other.req_path
             && self.default_action == other.default_action
     }
@@ -61,7 +61,7 @@ where
         id: impl Into<String>,
         dec_id: Option<ObjectId>,
         index: i32,
-        filter: &str,
+        filter: Option<String>,
         req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<
@@ -74,16 +74,30 @@ where
         >,
     ) -> BuckyResult<Self> {
         // 解析filter表达式
-        let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
-        let filter = ExpEvaluator::new(filter, reserved_token_list)?;
-    
+        let filter = if let Some(filter) = filter {
+            let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
+            Some(ExpEvaluator::new(&filter, reserved_token_list)?)
+        } else {
+            None
+        };
+        
         let req_path = match req_path {
             Some(v) => Some(RequestGlobalStatePath::from_str(&v)?),
             None => None,
         };
 
+        let id = id.into();
+        if req_path.is_none() && filter.is_none() {
+            let msg = format!(
+                "handler's req_path or filter should specify at least one! id={}",
+                id,
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
         let handler = RouterHandler::<REQ, RESP> {
-            id: id.into(),
+            id,
             dec_id,
             index,
             filter,
@@ -147,13 +161,13 @@ where
                         changed = false;
                     } else {
                         info!(
-                            "will replace router handler: chain={}, category={}, id={}, dec={:?}, index={}, filter={}, req_path={:?}, default_action={}, routine={}",
+                            "will replace router handler: chain={}, category={}, id={}, dec={:?}, index={}, filter={:?}, req_path={:?}, default_action={}, routine={}",
                             self.chain,
                             Self::category(),
                             handler.id,
                             handler.dec_id,
                             handler.index,
-                            handler.filter.exp(),
+                            handler.filter,
                             handler.req_path,
                             handler.default_action,
                             handler.routine.is_some(),
@@ -167,13 +181,13 @@ where
             }
 
             info!(
-                "new router handler: chain={}, category={}, id={}, dec={:?}, index={}, filter={}, req_path={:?}, default_action={}, routine={}",
+                "new router handler: chain={}, category={}, id={}, dec={:?}, index={}, filter={:?}, req_path={:?}, default_action={}, routine={}",
                 self.chain,
                 Self::category(),
                 handler.id,
                 handler.dec_id,
                 handler.index,
-                handler.filter.exp(),
+                handler.filter,
                 handler.req_path,
                 handler.default_action,
                 handler.routine.is_some(),
@@ -296,8 +310,8 @@ where
             let data = RouterHandlerSavedData {
                 index: item.index,
                 dec_id: item.dec_id.clone(),
-                filter: item.filter.exp().to_owned(),
-                req_path: item.req_path.as_ref().map(|v| v.to_string()),
+                filter: item.filter.as_ref().map(|v| v.exp().to_owned()),
+                req_path: item.req_path.as_ref().map(|v| v.format_string()),
                 default_action: item.default_action.to_string(),
             };
 
@@ -329,8 +343,13 @@ where
             return Ok(false);
         }
 
-        let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
-        let filter = ExpEvaluator::new(&data.filter, reserved_token_list)?;
+        let filter = if let Some(filter) = &data.filter {
+            let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
+            Some(ExpEvaluator::new(&filter, reserved_token_list)?)
+        } else {
+            None
+        };
+        
 
         info!(
             "new handler from saved data: chain={}, category={}, {:?}",
@@ -390,9 +409,7 @@ where
         inner.listener_count()
     }
 
-
     pub fn add_handler(&self, handler: RouterHandler<REQ, RESP>) -> BuckyResult<()> {
-
         if let Some(dec_id) = &handler.dec_id {
             self.storage.on_dec_register(dec_id);
         }
@@ -415,7 +432,7 @@ where
         ret
     }
 
-    pub fn clear_dec_handlers(&self, dec_id:& Option<ObjectId>) -> bool {
+    pub fn clear_dec_handlers(&self, dec_id: &Option<ObjectId>) -> bool {
         let mut inner = self.handlers.lock().unwrap();
         inner.clear_dec_handlers(dec_id)
     }
@@ -501,13 +518,16 @@ where
             self.next_index += 1;
 
             trace!(
-                "will eval: chain={}, category={}, id={}, filter={}, req_path={:?}",
+                "will eval: chain={}, category={}, id={}, filter={:?}, req_path={:?}",
                 self.chain,
                 self.category,
                 handler.id,
                 handler.filter,
-                handler.req_path.as_ref().map(|v| v.to_string()),
+                handler.req_path,
             );
+
+            // execute at least one condition!!
+            let mut exec = false;
 
             // first match req_path
             if let Some(handler_req_path) = &handler.req_path {
@@ -515,19 +535,25 @@ where
                     if !handler_req_path.match_target(req_path) {
                         continue;
                     }
+                    exec = true;
                 }
             }
 
-            // then match the dynamic filter
-            if !handler.filter.eval(param).unwrap() {
-                continue;
+            if let Some(filter) = &handler.filter {
+                // then match the dynamic filter
+                if !filter.eval(param).unwrap() {
+                    continue;
+                } 
+                exec = true;
             }
-
-            debug!(
-                "router handler select filter: chain={}, category={}, param={}, handler={}",
-                self.chain, self.category, param, handler.id
-            );
-            return Some(handler.clone());
+            
+            if exec {
+                debug!(
+                    "router handler select filter: chain={}, category={}, param={}, handler={}",
+                    self.chain, self.category, param, handler.id
+                );
+                return Some(handler.clone());
+            }
         }
 
         None

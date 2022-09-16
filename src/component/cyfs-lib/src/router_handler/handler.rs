@@ -87,7 +87,6 @@ impl RouterHandlerManager {
         })
     }
 
-    
     fn get_dec_id(&self) -> Option<ObjectId> {
         self.dec_id.as_ref().map(|v| v.get().cloned()).flatten()
     }
@@ -101,7 +100,7 @@ impl RouterHandlerManager {
         chain: RouterHandlerChain,
         id: &str,
         index: i32,
-        filter: &str,
+        filter: Option<String>,
         req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<
@@ -119,12 +118,26 @@ impl RouterHandlerManager {
         RouterHandlerRequest<REQ, RESP>: RouterHandlerCategoryInfo,
     {
         match self.inner.as_ref() {
-            RouterHandlerManagerInner::Http(inner) => {
-                inner.add_handler(chain, id, self.get_dec_id(), index, filter, req_path, default_action, routine)
-            }
-            RouterHandlerManagerInner::WS(inner) => {
-                inner.add_handler(chain, id, self.get_dec_id(), index, filter, req_path, default_action, routine)
-            }
+            RouterHandlerManagerInner::Http(inner) => inner.add_handler(
+                chain,
+                id,
+                self.get_dec_id(),
+                index,
+                filter,
+                req_path,
+                default_action,
+                routine,
+            ),
+            RouterHandlerManagerInner::WS(inner) => inner.add_handler(
+                chain,
+                id,
+                self.get_dec_id(),
+                index,
+                filter,
+                req_path,
+                default_action,
+                routine,
+            ),
         }
     }
 
@@ -136,9 +149,15 @@ impl RouterHandlerManager {
     ) -> BuckyResult<bool> {
         match self.inner.as_ref() {
             RouterHandlerManagerInner::Http(inner) => {
-                inner.remove_handler(chain, category, id, self.get_dec_id()).await
+                inner
+                    .remove_handler(chain, category, id, self.get_dec_id())
+                    .await
             }
-            RouterHandlerManagerInner::WS(inner) => inner.remove_handler(chain, category, id, self.get_dec_id()).await,
+            RouterHandlerManagerInner::WS(inner) => {
+                inner
+                    .remove_handler(chain, category, id, self.get_dec_id())
+                    .await
+            }
         }
     }
 }
@@ -157,7 +176,7 @@ where
         chain: RouterHandlerChain,
         id: &str,
         index: i32,
-        filter: &str,
+        filter: Option<String>,
         req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<
@@ -169,7 +188,16 @@ where
             >,
         >,
     ) -> BuckyResult<()> {
-        Self::add_handler(&self, chain, id, index, filter, req_path, default_action, routine)
+        Self::add_handler(
+            &self,
+            chain,
+            id,
+            index,
+            filter,
+            req_path,
+            default_action,
+            routine,
+        )
     }
 
     async fn remove_handler(&self, chain: RouterHandlerChain, id: &str) -> BuckyResult<bool> {

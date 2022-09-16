@@ -196,7 +196,8 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
             RouterHandlerChain::PreCrypto,
             "pre-crypto",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )
@@ -213,7 +214,8 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
             RouterHandlerChain::PostCrypto,
             "post-crypto",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )
@@ -230,7 +232,8 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
             RouterHandlerChain::PostCrypto,
             "post-verify",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )
@@ -247,7 +250,8 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
             RouterHandlerChain::Acl,
             "acl",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )
@@ -271,7 +275,8 @@ fn add_acl_handlers_for_stack(name: &str, acl: &str, stack: &SharedCyfsStack, de
             RouterHandlerChain::Acl,
             acl,
             0,
-            &filter,
+            Some(filter),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )

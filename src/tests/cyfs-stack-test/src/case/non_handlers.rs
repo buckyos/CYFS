@@ -241,7 +241,8 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
             RouterHandlerChain::PreNOC,
             "pre-noc",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )
@@ -258,7 +259,8 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
             RouterHandlerChain::PostNOC,
             "post-noc",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )
@@ -275,7 +277,8 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
             RouterHandlerChain::PreForward,
             "pre-forward",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )
@@ -292,7 +295,8 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
             RouterHandlerChain::PostForward,
             "post-forward",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )
@@ -309,7 +313,8 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
             RouterHandlerChain::PreRouter,
             "pre-router",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )
@@ -326,7 +331,8 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
             RouterHandlerChain::PostRouter,
             "post-router",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )

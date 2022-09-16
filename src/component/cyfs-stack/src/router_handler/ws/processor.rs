@@ -27,8 +27,8 @@ impl RouterHandlerWSProcessor {
         RouterHandlerRequest<REQ, RESP>: RouterHandlerCategoryInfo,
     {
         info!(
-            "new router ws handler: sid={}, chain={}, category={}, id={}, filter={}, req_path={:?}, default_action={}, routine={:?}",
-            session_requestor.sid(), req.chain.to_string(), req.category.to_string(), req.id, req.param.filter, req.param.req_path, req.param.default_action, req.param.routine
+            "new router ws handler: sid={}, chain={}, category={}, id={}, filter={:?}, req_path={:?}, default_action={}, routine={:?}",
+            session_requestor.sid(), req.chain, req.category, req.id, req.param.filter, req.param.req_path, req.param.default_action, req.param.routine
         );
 
         let routine = if req.param.routine.is_some() {
@@ -53,7 +53,7 @@ impl RouterHandlerWSProcessor {
             req.id.clone(),
             req.dec_id,
             req.param.index,
-            &req.param.filter,
+            req.param.filter.clone(),
             req.param.req_path.clone(),
             req.param.default_action.clone(),
             routine,
@@ -78,7 +78,7 @@ impl RouterHandlerWSProcessor {
                 &req.id,
                 &req.dec_id,
                 &req.param.req_path,
-                &Some(req.param.filter.clone()),
+                &req.param.filter,
             )
             .await?;
 

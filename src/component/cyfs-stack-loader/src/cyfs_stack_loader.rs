@@ -201,7 +201,7 @@ impl CyfsStackConfigLoader {
     }
 
     fn load_noc(&mut self, node: &toml::value::Table) -> BuckyResult<()> {
-        for (k, v) in node {
+        for (k, _v) in node {
             match k.as_str() {
                 _ => {
                     warn!("unknown object stack noc field: {}", k.as_str());
