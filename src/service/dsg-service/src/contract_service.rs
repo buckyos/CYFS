@@ -216,7 +216,8 @@ impl DsgService {
                         log::error!("{} OnSyncContractState failed, id={} from={} err=decode state object {}", self.service, param.request.object.object_id, param.request.common.source, err);
                         err
                     })?;
-                let new_state = self.service.sync_contract_state(state, Some(param.request.common.source.object_id().clone())).await?;
+                // TODO： 这里需要一个来源设备，但是新的RequestSourceInfo可能没有来源Device信息了，先改的能通过编译, 逻辑可能不对
+                let new_state = self.service.sync_contract_state(state, param.request.common.source.zone.device.as_ref().map(|d|d.object_id().clone())).await?;
                 Ok(RouterHandlerPostObjectResult {
                     action: RouterHandlerAction::Response,
                     request: None,
