@@ -5,14 +5,10 @@ use log::*;
 use std::fmt::Formatter;
 
 const DEV_SERVICE_URL: &str = "http://154.31.50.111:1423";
-const TEST_SERVICE_URL: [&str; 3] = [
-    "http://106.75.156.225:1523",
-    "http://106.75.152.253:1523",
-    "http://106.75.136.42:1523",
-];
+const TEST_SERVICE_URL: &str = "http://112.74.105.75:1423";
 
 const DEV_SPV_URL: &str = "http://154.31.50.111:3516";
-const TEST_SPV_URL: &str = "http://106.75.152.253:1563";
+const TEST_SPV_URL: &str = "http://112.74.105.75:3516";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MetaMinerTarget {
@@ -48,10 +44,7 @@ impl MetaMinerTarget {
     pub fn miner_url(&self) -> String {
         match self {
             Self::Dev => DEV_SERVICE_URL.to_owned(),
-            Self::Test => {
-                let index = rand::random::<usize>() % TEST_SERVICE_URL.len();
-                TEST_SERVICE_URL[index].to_owned()
-            }
+            Self::Test => TEST_SERVICE_URL.to_owned(),
             Self::Formal => {
                 unimplemented!();
             }

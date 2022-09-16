@@ -431,7 +431,7 @@ impl JsonCodec<Self> for RequestSourceInfo {
 mod test {
     use super::*;
     use cyfs_core::*;
-    use cyfs_lib::*;
+    use crate::*;
 
     fn new_dec(name: &str) -> ObjectId {
         let owner_id = PeopleId::default();
