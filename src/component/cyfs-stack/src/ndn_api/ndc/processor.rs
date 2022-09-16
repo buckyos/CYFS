@@ -1,7 +1,6 @@
 use super::super::acl::{NDNAclLocalInputProcessor, NDNInputAclSwitcher};
 use super::super::file::{zero_bytes_reader, LocalDataManager};
 use super::object_loader::NDNObjectLoader;
-use crate::acl::*;
 use crate::ndn::*;
 use crate::non::*;
 use cyfs_base::*;
@@ -41,7 +40,6 @@ impl NDCLevelInputProcessor {
 
     // 创建一个带本地权限的processor
     pub fn new_local(
-        acl: AclManagerRef,
         chunk_manager: Arc<ChunkManager>,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
@@ -51,7 +49,7 @@ impl NDCLevelInputProcessor {
         let raw_processor = Self::new_raw(chunk_manager, ndc, tracker, raw_noc_processor);
 
         // 带local input acl的处理器
-        let acl_processor = NDNAclLocalInputProcessor::new(acl, raw_processor.clone());
+        let acl_processor = NDNAclLocalInputProcessor::new(raw_processor.clone());
 
         // 使用acl switcher连接
         let processor = NDNInputAclSwitcher::new(acl_processor, raw_processor);

@@ -80,15 +80,15 @@ impl NDNRequestHandler {
             }
         }
 
+        // FIXME header dec_id vs query pairs dec_id? 
+        let source = req.source.clone().dec(dec_id);
+
         let common = NDNInputRequestCommon {
             req_path: None,
 
-            source: req.source.clone(),
-            protocol: req.protocol.clone(),
-
+            source,
             level: level.unwrap_or_default(),
 
-            dec_id,
             target,
 
             referer_object,
@@ -114,11 +114,7 @@ impl NDNRequestHandler {
         // 尝试提取flags
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
-
-        // 尝试提取dec字段
-        let dec_id: Option<ObjectId> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
-
+            
         // 提取api level字段
         let level =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_API_LEVEL)?;
@@ -134,11 +130,7 @@ impl NDNRequestHandler {
             req_path: None,
 
             source: req.source.clone(),
-            protocol: req.protocol.clone(),
-
             level: level.unwrap_or_default(),
-
-            dec_id,
             target,
 
             referer_object: referer_object.unwrap_or(vec![]),

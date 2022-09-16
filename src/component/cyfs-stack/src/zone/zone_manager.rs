@@ -1,5 +1,5 @@
-use super::failed_cache::ZoneFailedCache;
 use super::zone_container::ZoneContainer;
+use super::{failed_cache::ZoneFailedCache, friends::FriendsManager};
 use crate::meta::*;
 use crate::resolver::DeviceCache;
 use cyfs_base::*;
@@ -51,7 +51,7 @@ pub type CurrentZoneInfoRef = Arc<CurrentZoneInfo>;
 
 #[derive(Clone)]
 pub struct ZoneManager {
-    noc: Arc<Box<dyn NamedObjectCache>>,
+    noc: NamedObjectCacheRef,
     device_manager: Arc<Box<dyn DeviceCache>>,
     device_id: DeviceId,
     device_category: DeviceCategory,
@@ -70,21 +70,26 @@ pub struct ZoneManager {
 
     fail_handler: ObjectFailHandler,
 
+    friends_manager: FriendsManager,
+
     search_zone_reenter_call_manager: ReenterCallManager<DeviceId, BuckyResult<Zone>>,
     search_zone_ood_by_owner_reenter_call_manager:
         ReenterCallManager<ObjectId, BuckyResult<(ObjectId, OODWorkMode, Vec<DeviceId>)>>,
 }
 
+pub type ZoneManagerRef = Arc<ZoneManager>;
+
 impl ZoneManager {
     pub fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         device_manager: Box<dyn DeviceCache>,
         device_id: DeviceId,
         device_category: DeviceCategory,
         meta_cache: Box<dyn MetaCache>,
         fail_handler: ObjectFailHandler,
+        root_state: GlobalStateOutputProcessorRef,
+        local_cache: GlobalStateOutputProcessorRef,
     ) -> Self {
-        let noc = Arc::new(noc);
         let device_manager = Arc::new(device_manager);
         let meta_cache = Arc::new(meta_cache);
 
@@ -93,7 +98,7 @@ impl ZoneManager {
             device_manager,
             device_id: device_id.clone(),
             device_category,
-            zones: ZoneContainer::new(device_id, noc),
+            zones: ZoneContainer::new(device_id, local_cache, noc),
             current_info: Arc::new(Mutex::new(None)),
             meta_cache,
             zone_changed_event: ZoneChangeEventManager::new(),
@@ -101,6 +106,7 @@ impl ZoneManager {
             fail_handler,
             search_zone_reenter_call_manager: ReenterCallManager::new(),
             search_zone_ood_by_owner_reenter_call_manager: ReenterCallManager::new(),
+            friends_manager: FriendsManager::new(root_state),
         }
     }
 
@@ -113,6 +119,8 @@ impl ZoneManager {
     }
 
     pub async fn init(&self) -> BuckyResult<()> {
+        self.friends_manager.init().await?;
+
         self.zones.load_from_noc().await?;
 
         Ok(())
@@ -122,13 +130,21 @@ impl ZoneManager {
     fn compare_zone_with_owner(zone: &Zone, owner: &AnyNamedObject) -> BuckyResult<bool> {
         let ood_list = owner.ood_list()?;
         if zone.ood_list() != ood_list {
-            warn!("zone ood_list changed! zone={:?}, owner={:?}", zone.ood_list(), ood_list);
+            warn!(
+                "zone ood_list changed! zone={:?}, owner={:?}",
+                zone.ood_list(),
+                ood_list
+            );
             return Ok(false);
         }
 
         let ood_work_mode = owner.ood_work_mode()?;
         if *zone.ood_work_mode() != ood_work_mode {
-            warn!("zone ood_work_mode changed! zone={:?}, owner={:?}", zone.ood_work_mode(), ood_work_mode);
+            warn!(
+                "zone ood_work_mode changed! zone={:?}, owner={:?}",
+                zone.ood_work_mode(),
+                ood_work_mode
+            );
             return Ok(false);
         }
 
@@ -181,7 +197,6 @@ impl ZoneManager {
             };
 
             info!("current zone info: {}", info,);
-
 
             let info = Arc::new(info);
             {
@@ -728,13 +743,13 @@ impl ZoneManager {
     // 查找一个owner对象，先从本地查找，再从meta-chain查找
     async fn search_object_raw(&self, object_id: &ObjectId) -> BuckyResult<Vec<u8>> {
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
             object_id: object_id.clone(),
-            source: self.device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
+            last_access_rpath: None,
         };
         if let Ok(Some(obj)) = self.noc.get_object(&req).await {
             debug!("get object from noc: {}", object_id);
-            return Ok(obj.object_raw.unwrap());
+            return Ok(obj.object.object_raw);
         }
 
         // 从meta查询
@@ -852,5 +867,98 @@ impl ZoneManager {
                 }
             }
         }
+    }
+
+    pub async fn get_current_source_info(&self, dec: &Option<ObjectId>,) -> BuckyResult<RequestSourceInfo> {
+        let current_info = self.get_current_info().await?;
+        let mut ret = RequestSourceInfo::new_local_dec(dec.to_owned());
+        ret.zone.zone = Some(current_info.owner_id.clone());
+
+        Ok(ret)
+    }
+
+    pub async fn resolve_source_info(
+        &self,
+        dec: &Option<ObjectId>,
+        source: DeviceId,
+    ) -> BuckyResult<RequestSourceInfo> {
+        let ret = loop {
+            let current_info = self.get_current_info().await?;
+            if source == self.device_id {
+                let mut ret = RequestSourceInfo::new_local_dec(dec.to_owned());
+                ret.zone.zone = Some(current_info.owner_id.clone());
+                break ret;
+            }
+
+            let current_zone = self.get_current_zone().await?;
+            if current_zone.is_known_device(&source) {
+                let mut ret = RequestSourceInfo::new_zone_dec(dec.to_owned());
+                ret.zone.zone = Some(current_info.owner_id.clone());
+                break ret;
+            }
+
+            let zone = self.zones.get_zone(&source);
+            if let Some(zone) = zone {
+                let mut ret = if self.friends_manager.is_friend(zone.owner()) {
+                    RequestSourceInfo::new_friend_zone_dec(dec.to_owned())
+                } else {
+                    RequestSourceInfo::new_other_zone_dec(dec.to_owned())
+                };
+
+                ret.zone.zone = Some(zone.owner().clone());
+                break ret;
+            }
+
+            // get device to check owner if friend
+            let ret = self.device_manager.get(&source).await;
+            if let Some(device) = ret {
+                let owner = match device.desc().owner().as_ref() {
+                    Some(id) => id.to_owned(),
+                    None => {
+                        warn!(
+                            "source device has not owner, now will treat as orphan zone! {}",
+                            source
+                        );
+                        source.object_id().to_owned()
+                    }
+                };
+
+                if self.friends_manager.is_friend(&owner) {
+                    // need resolve zone!
+                    match self.get_zone(&source, Some(device)).await {
+                        Ok(zone) => {
+                            assert!(zone.is_known_device(&source));
+                            let mut ret = RequestSourceInfo::new_friend_zone_dec(dec.to_owned());
+                            ret.zone.zone = Some(zone.owner().clone());
+                            break ret;
+                        }
+                        Err(e) => {
+                            // FIXME add black list to block the error friend requests
+                            error!(
+                                "resolve friend zone from source but failed! source={}, {}",
+                                source, e
+                            );
+                            let mut ret = RequestSourceInfo::new_other_zone_dec(dec.to_owned());
+                            ret.zone.zone = Some(owner);
+                            break ret;
+                        }
+                    }
+                } else {
+                    let mut ret = RequestSourceInfo::new_other_zone_dec(dec.to_owned());
+                    ret.zone.zone = Some(owner.to_owned());
+                    break ret;
+                }
+            } else {
+                warn!(
+                    "get device from local but not found! now will treat as other zone! {}",
+                    source
+                );
+                let mut ret = RequestSourceInfo::new_other_zone_dec(dec.to_owned());
+                ret.zone.zone = Some(source.object_id().to_owned());
+                break ret;
+            }
+        };
+
+        Ok(ret)
     }
 }

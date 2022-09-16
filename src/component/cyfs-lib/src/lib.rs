@@ -1,3 +1,4 @@
+mod access;
 mod acl;
 mod admin;
 mod base;
@@ -6,6 +7,8 @@ mod default_app;
 mod events;
 mod ndn;
 mod non;
+mod prelude;
+mod rmeta;
 mod root_state;
 mod router_handler;
 mod stack;
@@ -17,6 +20,7 @@ mod ws;
 mod zone;
 
 pub use crate::util::*;
+pub use access::*;
 pub use acl::*;
 pub use admin::*;
 pub use base::*;
@@ -25,6 +29,8 @@ pub use default_app::*;
 pub use events::*;
 pub use ndn::*;
 pub use non::*;
+pub use prelude::*;
+pub use rmeta::*;
 pub use root_state::*;
 pub use router_handler::*;
 pub use stack::*;
@@ -41,8 +47,8 @@ pub use cyfs_util::cache::*;
 extern crate log;
 
 pub fn register_core_objects_format() {
-    use cyfs_base::*;
     use crate::admin::*;
+    use cyfs_base::*;
 
     FORMAT_FACTORY.register(cyfs_core::CoreObjectType::Admin, format_json::<AdminObject>);
 }

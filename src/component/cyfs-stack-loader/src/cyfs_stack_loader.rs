@@ -3,7 +3,6 @@ use crate::ListenerUtil;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_stack::CyfsStackParams;
 use cyfs_util::TomlHelper;
-use cyfs_noc::NamedObjectStorageType;
 
 use std::net::SocketAddr;
 
@@ -202,43 +201,12 @@ impl CyfsStackConfigLoader {
     }
 
     fn load_noc(&mut self, node: &toml::value::Table) -> BuckyResult<()> {
-        let mut noc_type = None;
-
         for (k, v) in node {
             match k.as_str() {
-                "type" => {
-                    if !v.is_str() {
-                        error!("invalid object stack noc type field format: {:?}", v);
-                        return Err(BuckyError::from(BuckyErrorCode::InvalidFormat));
-                    }
-
-                    let v = v.as_str().unwrap();
-
-                    #[cfg(feature = "mongo")]
-                    if v == "mongodb" || v == "mongo" {
-                        noc_type = Some(NamedObjectStorageType::MongoDB);
-                        continue;
-                    }
-
-                    #[cfg(feature = "sqlite")]
-                    if v == "sqlite" {
-                        noc_type = Some(NamedObjectStorageType::Sqlite);
-                        continue;
-                    }
-
-                    error!("unsupport noc type: {}", v);
-                    return Err(BuckyError::from(BuckyErrorCode::UnSupport));
-                }
-
                 _ => {
                     warn!("unknown object stack noc field: {}", k.as_str());
                 }
             }
-        }
-
-        // 如果提供了配置，那么才需要覆盖默认的配置
-        if let Some(noc_type) = noc_type {
-            self.params.cyfs_stack_params.noc.noc_type = noc_type;
         }
 
         Ok(())

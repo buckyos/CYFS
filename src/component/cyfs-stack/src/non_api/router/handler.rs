@@ -1,6 +1,6 @@
 use super::super::handler::*;
 use crate::router_handler::{RouterHandlersContainer, RouterHandlersManager};
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -9,11 +9,14 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(crate) struct NONRouterHandler {
     handlers: Arc<RouterHandlersContainer>,
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 }
 
 impl NONRouterHandler {
-    pub(crate) fn new(router_handlers: &RouterHandlersManager, zone_manager: ZoneManager) -> Self {
+    pub(crate) fn new(
+        router_handlers: &RouterHandlersManager,
+        zone_manager: ZoneManagerRef,
+    ) -> Self {
         let handlers = router_handlers
             .handlers(&RouterHandlerChain::Handler)
             .clone();

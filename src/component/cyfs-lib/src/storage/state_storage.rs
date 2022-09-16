@@ -19,8 +19,7 @@ struct StorageOpData {
 pub struct StateStorage {
     path: String,
     content_type: ObjectMapSimpleContentType,
-    stack: UniObjectStackRef,
-    category: GlobalStateCategory,
+    global_state: GlobalStateOutputProcessorRef,
     target: Option<ObjectId>,
     dec_id: Option<ObjectId>,
 
@@ -39,6 +38,26 @@ impl Drop for StateStorage {
 
 impl StateStorage {
     pub fn new(
+        global_state: GlobalStateOutputProcessorRef,
+        path: impl Into<String>,
+        content_type: ObjectMapSimpleContentType,
+        target: Option<ObjectId>,
+        dec_id: Option<ObjectId>,
+    ) -> Self {
+        Self {
+            global_state,
+            path: path.into(),
+            content_type,
+            target,
+            dec_id,
+
+            dirty: Arc::new(AtomicBool::new(false)),
+            auto_save: Arc::new(AtomicBool::new(false)),
+            op_data: OnceCell::new(),
+        }
+    }
+
+    pub fn new_with_stack(
         stack: UniObjectStackRef,
         category: GlobalStateCategory,
         path: impl Into<String>,
@@ -46,9 +65,13 @@ impl StateStorage {
         target: Option<ObjectId>,
         dec_id: Option<ObjectId>,
     ) -> Self {
+        let global_state = match category {
+            GlobalStateCategory::RootState => stack.root_state().clone(),
+            GlobalStateCategory::LocalCache => stack.local_cache().clone(),
+        };
+
         Self {
-            stack,
-            category,
+            global_state,
             path: path.into(),
             content_type,
             target,
@@ -126,17 +149,12 @@ impl StateStorage {
     }
 
     async fn load(&self) -> BuckyResult<StorageOpData> {
-        let state = match self.category {
-            GlobalStateCategory::RootState => self.stack.root_state().clone(),
-            GlobalStateCategory::LocalCache => self.stack.local_cache().clone(),
-        };
-
         let dec_id = match &self.dec_id {
             Some(dec_id) => Some(dec_id.to_owned()),
             None => Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
         };
 
-        let stub = GlobalStateStub::new(state, self.target.clone(), dec_id);
+        let stub = GlobalStateStub::new(self.global_state.clone(), self.target.clone(), dec_id);
 
         let path_stub = stub.create_path_op_env().await?;
         path_stub
@@ -165,9 +183,36 @@ impl StateStorage {
         Ok(op_data)
     }
 
-    pub async fn save(&self) -> BuckyResult<()> {
+    // reload the target object and ignore all the unsaved changes!
+    pub async fn reload(&self) -> BuckyResult<bool> {
         let op_data = self.op_data.get().unwrap();
-        Self::save_impl(&self.path, &self.dirty, op_data).await
+
+        let new = op_data.path_stub.get_by_path(&self.path).await?;
+
+        let mut current = op_data.current.lock().await;
+        if *current == new {
+            return  Ok(false);
+        }
+
+        match new {
+            Some(ref obj) => {
+                op_data.single_stub.load(obj.clone()).await?;
+            }
+            None => {
+                op_data.single_stub.create_new(self.content_type).await?;
+            }
+        }
+
+        *current = new;
+        Ok(true)
+    }
+
+    pub async fn save(&self) -> BuckyResult<()> {
+        if let Some(op_data) = self.op_data.get() {
+            Self::save_impl(&self.path, &self.dirty, op_data).await
+        } else {
+            Ok(())
+        }
     }
 
     async fn save_impl(

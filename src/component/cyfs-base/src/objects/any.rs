@@ -226,6 +226,38 @@ impl AnyNamedObject {
         }
     }
 
+    // reset the object's body with the same obj_type object
+    pub fn set_body_expect(&mut self, other: &Self) {
+        assert_eq!(self.obj_type(), other.obj_type());
+        
+        match self {
+            Self::Standard(o) => {
+                match other {
+                    Self::Standard(other) => {
+                        o.set_body_expect(other);
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            Self::Core(o) => {
+                match other {
+                    Self::Core(other) => {
+                        *o.body_mut() = other.body().to_owned();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            Self::DECApp(o) => {
+                match other {
+                    Self::DECApp(other) => {
+                        *o.body_mut() = other.body().to_owned();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+
     // 设置对象body的修改时间
     pub fn set_body_update_time(&mut self, time: u64) {
         match_any_obj!(

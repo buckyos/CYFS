@@ -3,7 +3,7 @@ use super::manager::AclMatchInstanceRef;
 use super::res::AclResource;
 use cyfs_base::*;
 use cyfs_lib::*;
-use cyfs_lib::{NDNDataRefererObject, NONProtocol};
+use cyfs_lib::{NDNDataRefererObject, RequestProtocol};
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 #[async_trait::async_trait]
 pub(crate) trait AclRequest: Send + Sync {
     // 来源protocol
-    fn protocol(&self) -> &NONProtocol;
+    fn protocol(&self) -> &RequestProtocol;
 
     // 请求动作
     fn action(&self) -> &AclAction;
@@ -46,7 +46,7 @@ pub(crate) struct AclRequestWrapper {
     match_instance: AclMatchInstanceRef,
 
     // 来源协议
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
 
     // 动作
     action: AclAction,
@@ -88,7 +88,7 @@ pub(crate) enum AclRequestDevice {
 }
 
 pub(crate) struct AclRequestParams {
-    pub protocol: NONProtocol,
+    pub protocol: RequestProtocol,
 
     pub direction: AclDirection,
     pub operation: AclOperation,
@@ -338,7 +338,7 @@ impl AclRequestWrapper {
     // 从noc加载对象
     async fn load_object(&self, object_id: &ObjectId) -> BuckyResult<Arc<AnyNamedObject>> {
         let data = self.match_instance.load_object(object_id).await?;
-        Ok(data.object.unwrap())
+        Ok(data.object.object.unwrap())
     }
 
     async fn init_location(&self) -> BuckyResult<AclGroupLocation> {
@@ -419,7 +419,7 @@ impl AclRequestWrapper {
 
 #[async_trait::async_trait]
 impl AclRequest for AclRequestWrapper {
-    fn protocol(&self) -> &NONProtocol {
+    fn protocol(&self) -> &RequestProtocol {
         &self.protocol
     }
 

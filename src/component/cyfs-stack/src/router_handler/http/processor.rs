@@ -1,8 +1,8 @@
 use super::super::{RouterHandler, RouterHandlersManager};
 use super::http_routine::RouterHandlerHttpRoutine;
 use cyfs_base::*;
-use cyfs_util::*;
 use cyfs_lib::*;
+use cyfs_util::*;
 
 pub(crate) struct RouterAddHandlerRequest {
     pub param: RouterAddHandlerParam,
@@ -12,7 +12,7 @@ pub(crate) struct RouterAddHandlerRequest {
 
     pub id: String,
 
-    pub protocol: NONProtocol,
+    pub protocol: RequestProtocol,
 
     // source device
     pub source: Option<DeviceId>,
@@ -27,7 +27,7 @@ pub(crate) struct RouterRemoveHandlerRequest {
 
     pub id: String,
 
-    pub protocol: NONProtocol,
+    pub protocol: RequestProtocol,
 
     // source device
     pub source: Option<DeviceId>,

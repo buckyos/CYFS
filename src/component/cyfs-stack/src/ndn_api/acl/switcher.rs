@@ -23,7 +23,7 @@ impl NDNInputAclSwitcher {
     }
 
     pub fn is_require_acl(&self, req_common: &NDNInputRequestCommon) -> bool {
-        req_common.protocol.is_require_acl()
+        req_common.source.protocol.is_require_acl()
     }
 
     pub fn get_processor(&self, req_common: &NDNInputRequestCommon) -> &NDNInputProcessorRef {

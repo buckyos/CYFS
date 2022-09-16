@@ -1,8 +1,8 @@
 use crate::meta::MetaCache;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::StackGuard;
+use cyfs_lib::*;
 
 use async_std::sync::Mutex as AsyncMutex;
 use async_trait::async_trait;
@@ -115,12 +115,12 @@ impl ObjectSearcher for MetaSearcher {
 }
 
 struct NOCSearcher {
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     local_device_id: DeviceId,
 }
 
 impl NOCSearcher {
-    pub fn new(noc: Box<dyn NamedObjectCache>, local_device_id: DeviceId) -> Self {
+    pub fn new(noc: NamedObjectCacheRef, local_device_id: DeviceId) -> Self {
         Self {
             noc,
             local_device_id,
@@ -130,17 +130,13 @@ impl NOCSearcher {
     // 直接从本地noc查询
     async fn search_from_noc(&self, object_id: &ObjectId) -> BuckyResult<NONObjectInfo> {
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
             object_id: object_id.clone(),
-            source: self.local_device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
+            last_access_rpath: None,
         };
 
         match self.noc.get_object(&req).await? {
-            Some(info) => {
-                let ret = NONObjectInfo::new(info.object_id, info.object_raw.unwrap(), info.object);
-
-                Ok(ret)
-            }
+            Some(info) => Ok(info.object),
             None => Err(BuckyError::from(BuckyErrorCode::NotFound)),
         }
     }
@@ -158,8 +154,8 @@ impl ObjectSearcher for NOCSearcher {
 }
 
 struct ZoneSearcher {
-    zone_manager: ZoneManager,
-    noc: Box<dyn NamedObjectCache>,
+    zone_manager: ZoneManagerRef,
+    noc: NamedObjectCacheRef,
     bdt_stack: StackGuard,
 
     non_processor: AsyncMutex<Option<(DeviceId, NONOutputProcessorRef)>>,
@@ -167,8 +163,8 @@ struct ZoneSearcher {
 
 impl ZoneSearcher {
     pub fn new(
-        zone_manager: ZoneManager,
-        noc: Box<dyn NamedObjectCache>,
+        zone_manager: ZoneManagerRef,
+        noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
     ) -> Self {
         Self {
@@ -253,31 +249,33 @@ impl ZoneSearcher {
 
         let resp = non_processor.get_object(req).await?;
 
-        info!("get object from current zone's ood: obj={}, ood={}", object_id, zone_info.zone_device_ood_id);
+        info!(
+            "get object from current zone's ood: obj={}, ood={}",
+            object_id, zone_info.zone_device_ood_id
+        );
 
-        let _ = self.update_noc(&zone_info.device_id, &resp.object).await;
+        let _ = self.update_noc(&resp.object).await;
 
         Ok(resp.object)
     }
 
-    async fn update_noc(&self, device_id: &DeviceId, object: &NONObjectInfo) -> BuckyResult<()> {
-        let info = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: device_id.clone(),
-            object_id: object.object_id.clone(),
-            dec_id: None,
-            object_raw: object.object_raw.clone(),
-            object: object.object.as_ref().unwrap().clone(),
-            flags: 0u32,
+    async fn update_noc(&self, object: &NONObjectInfo) -> BuckyResult<()> {
+        let info = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_system(),
+            object: object.clone(),
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: Some(AccessString::full_except_write().value()),
         };
 
-        match self.noc.insert_object(&info).await {
+        match self.noc.put_object(&info).await {
             Ok(resp) => {
                 match resp.result {
-                    NamedObjectCacheInsertResult::AlreadyExists => {
+                    NamedObjectCachePutObjectResult::AlreadyExists => {
                         info!("object already in noc: {}", object.object_id);
                     }
-                    NamedObjectCacheInsertResult::Merged => {
+                    NamedObjectCachePutObjectResult::Merged => {
                         info!(
                             "object already in noc and signs updated: {}",
                             object.object_id
@@ -321,7 +319,7 @@ pub struct CompoundObjectSearcher {
 
 impl CompoundObjectSearcher {
     pub fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         local_device_id: DeviceId,
         meta_cache: Box<dyn MetaCache>,
     ) -> Self {
@@ -340,8 +338,8 @@ impl CompoundObjectSearcher {
 
     pub fn init_zone_searcher(
         &self,
-        zone_manager: ZoneManager,
-        noc: Box<dyn NamedObjectCache>,
+        zone_manager: ZoneManagerRef,
+        noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
     ) {
         let zone: ObjectSearcherRef =

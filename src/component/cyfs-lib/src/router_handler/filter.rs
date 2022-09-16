@@ -1,5 +1,6 @@
 use super::category::*;
 use super::request::*;
+use crate::access::*;
 use crate::acl::*;
 use crate::base::*;
 use crate::crypto::*;
@@ -46,18 +47,35 @@ impl ExpReservedTokenTranslatorHelper {
         token.trim_start_matches("resp.")
     }
 
+    fn trans_request_source(token: &str, source: &RequestSourceInfo) -> Option<ExpTokenEvalValue> {
+        let ret = match token {
+            "source.protocol" => ExpTokenEvalValue::from_string(&source.protocol),
+            "source.dec_id" => ExpTokenEvalValue::from_string(&source.dec),
+            "source.zone" => ExpTokenEvalValue::from_opt_string(&source.zone.zone),
+            "source.device" => ExpTokenEvalValue::from_opt_string(&source.zone.device),
+            "source.zone_category" => ExpTokenEvalValue::from_string(&source.zone.zone_category),
+            _ => {
+                return None;
+            }
+        };
+
+        Some(ret)
+    }
+
     fn trans_non_input_request_common(
         token: &str,
         common: &NONInputRequestCommon,
     ) -> Option<ExpTokenEvalValue> {
+        if let Some(v) =
+            ExpReservedTokenTranslatorHelper::trans_request_source(token, &common.source)
+        {
+            return Some(v);
+        }
+
+
         let ret = match token {
             "req_path" => ExpTokenEvalValue::from_opt_glob(&common.req_path),
-            "dec_id" => ExpTokenEvalValue::from_opt_string(&common.dec_id),
-            "source" => ExpTokenEvalValue::from_string(&common.source),
-            "protocol" => ExpTokenEvalValue::from_string(&common.protocol),
-
             "level" => ExpTokenEvalValue::from_string(&common.level),
-
             "target" => ExpTokenEvalValue::from_opt_string(&common.target),
             "flags" => ExpTokenEvalValue::U32(common.flags),
             _ => {
@@ -72,14 +90,15 @@ impl ExpReservedTokenTranslatorHelper {
         token: &str,
         common: &NDNInputRequestCommon,
     ) -> Option<ExpTokenEvalValue> {
+        if let Some(v) =
+            ExpReservedTokenTranslatorHelper::trans_request_source(token, &common.source)
+        {
+            return Some(v);
+        }
+
         let ret = match token {
             "req_path" => ExpTokenEvalValue::from_opt_glob(&common.req_path),
-            "dec_id" => ExpTokenEvalValue::from_opt_string(&common.dec_id),
-            "source" => ExpTokenEvalValue::from_string(&common.source),
-            "protocol" => ExpTokenEvalValue::from_string(&common.protocol),
-
             "level" => ExpTokenEvalValue::from_string(&common.level),
-
             "referer_object" => {
                 if common.referer_object.len() > 0 {
                     ExpTokenEvalValue::from_glob_list(&common.referer_object)
@@ -101,12 +120,14 @@ impl ExpReservedTokenTranslatorHelper {
         token: &str,
         common: &CryptoInputRequestCommon,
     ) -> Option<ExpTokenEvalValue> {
+        if let Some(v) =
+            ExpReservedTokenTranslatorHelper::trans_request_source(token, &common.source)
+        {
+            return Some(v);
+        }
+
         let ret = match token {
             "req_path" => ExpTokenEvalValue::from_opt_glob(&common.req_path),
-            "dec_id" => ExpTokenEvalValue::from_opt_string(&common.dec_id),
-            "source" => ExpTokenEvalValue::from_string(&common.source),
-            "protocol" => ExpTokenEvalValue::from_string(&common.protocol),
-
             "target" => ExpTokenEvalValue::from_opt_string(&common.target),
             "flags" => ExpTokenEvalValue::U32(common.flags),
             _ => {
@@ -694,7 +715,11 @@ impl ExpReservedTokenTranslator for AclHandlerRequest {
                     return v;
                 }
 
-                let object = self.object.as_ref().map(|item| item.object.as_deref()).flatten();
+                let object = self
+                    .object
+                    .as_ref()
+                    .map(|item| item.object.as_deref())
+                    .flatten();
                 if let Some(v) = ExpReservedTokenTranslatorHelper::trans_object(token, object) {
                     return v;
                 }
@@ -783,9 +808,13 @@ impl RouterHandlerReservedTokenList {
 
     fn add_non_input_request_common_tokens(token_list: &mut ExpReservedTokenList) {
         token_list.add_glob("req_path");
-        token_list.add_string("dec_id");
-        token_list.add_string("source");
-        token_list.add_string("protocol");
+
+        token_list.add_string("source.dec_id");
+        token_list.add_string("source.device");
+        token_list.add_string("source.zone_category");
+        token_list.add_string("source.zone");
+        token_list.add_string("source.protocol");
+
         token_list.add_string("level");
         token_list.add_string("target");
         token_list.add_u32("flags");
@@ -793,9 +822,13 @@ impl RouterHandlerReservedTokenList {
 
     fn add_ndn_input_request_common_tokens(token_list: &mut ExpReservedTokenList) {
         token_list.add_glob("req_path");
-        token_list.add_string("dec_id");
-        token_list.add_string("source");
-        token_list.add_string("protocol");
+        
+        token_list.add_string("source.dec_id");
+        token_list.add_string("source.device");
+        token_list.add_string("source.zone_category");
+        token_list.add_string("source.zone");
+        token_list.add_string("source.protocol");
+
         token_list.add_string("level");
         token_list.add_glob("referer_object");
         token_list.add_string("target");
@@ -804,9 +837,13 @@ impl RouterHandlerReservedTokenList {
 
     fn add_crypto_input_request_common_tokens(token_list: &mut ExpReservedTokenList) {
         token_list.add_glob("req_path");
-        token_list.add_string("dec_id");
-        token_list.add_string("source");
-        token_list.add_string("protocol");
+        
+        token_list.add_string("source.dec_id");
+        token_list.add_string("source.device");
+        token_list.add_string("source.zone_category");
+        token_list.add_string("source.zone");
+        token_list.add_string("source.protocol");
+        
         token_list.add_string("target");
         token_list.add_u32("flags");
     }

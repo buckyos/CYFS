@@ -1,0 +1,21 @@
+use super::output_request::*;
+
+pub type MetaRequestCommon = MetaOutputRequestCommon;
+
+pub type GlobalStateMetaAddAccessRequest = GlobalStateMetaAddAccessOutputRequest;
+pub type GlobalStateMetaAddAccessResponse =GlobalStateMetaAddAccessOutputResponse;
+
+pub type GlobalStateMetaRemoveAccessRequest = GlobalStateMetaRemoveAccessOutputRequest;
+pub type GlobalStateMetaRemoveAccessResponse = GlobalStateMetaRemoveAccessOutputResponse;
+
+pub type GlobalStateMetaClearAccessRequest = GlobalStateMetaClearAccessOutputRequest;
+pub type GlobalStateMetaClearAccessResponse = GlobalStateMetaClearAccessOutputResponse;
+
+pub type GlobalStateMetaAddLinkRequest = GlobalStateMetaAddLinkOutputRequest;
+pub type GlobalStateMetaAddLinkResponse = GlobalStateMetaAddLinkOutputResponse;
+
+pub type GlobalStateMetaRemoveLinkRequest = GlobalStateMetaRemoveLinkOutputRequest;
+pub type GlobalStateMetaRemoveLinkResponse = GlobalStateMetaRemoveLinkOutputResponse;
+
+pub type GlobalStateMetaClearLinkRequest = GlobalStateMetaClearLinkOutputRequest;
+pub type GlobalStateMetaClearLinkResponse = GlobalStateMetaClearLinkOutputResponse;

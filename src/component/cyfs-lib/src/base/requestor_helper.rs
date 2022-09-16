@@ -5,6 +5,7 @@ use http_types::{
     headers::{HeaderName, HeaderValue, HeaderValues, ToHeaderValues},
     Body, Mime, Request, Response, StatusCode,
 };
+use serde::Deserialize;
 use std::borrow::Cow;
 use std::str::FromStr;
 
@@ -587,6 +588,28 @@ impl RequestorHelper {
         })?;
 
         let value = T::decode_string(&body).map_err(|e| {
+            let msg = format!("invalid json body format: {} {}", body, e);
+            error!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+
+        Ok(value)
+    }
+
+    pub async fn decode_serde_json_body<R, T>(resp: &mut R) -> BuckyResult<T>
+    where
+        R: BodyOp,
+        T: for <'de> Deserialize<'de>,
+    {
+        let body = resp.body_string().await.map_err(|e| {
+            let msg = format!("read body string error: {}", e);
+            error!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
+
+        let value: T = serde_json::from_str(&body).map_err(|e| {
             let msg = format!("invalid json body format: {} {}", body, e);
             error!("{}", msg);
 

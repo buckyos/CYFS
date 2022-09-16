@@ -3,10 +3,9 @@ use super::obj_verifier::*;
 use crate::crypto::*;
 use crate::resolver::*;
 use crate::zone::*;
-use cyfs_lib::*;
-use cyfs_bdt::StackGuard;
 use cyfs_base::*;
-
+use cyfs_bdt::StackGuard;
+use cyfs_lib::*;
 
 use std::sync::Arc;
 
@@ -19,7 +18,7 @@ pub struct ObjectCrypto {
 impl ObjectCrypto {
     pub(crate) fn new(
         verifier: Arc<ObjectVerifier>,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         device_manager: Box<dyn DeviceCache>,
         bdt_stack: StackGuard,
     ) -> Self {

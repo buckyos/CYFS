@@ -142,7 +142,12 @@ impl StandardObject {
                     Ok(b.content().ood_list())
                 }
             },
-            { Err(BuckyError::new(BuckyErrorCode::NotSupport, "ood_list not support")) }
+            {
+                Err(BuckyError::new(
+                    BuckyErrorCode::NotSupport,
+                    "ood_list not support",
+                ))
+            }
         )
     }
 
@@ -159,8 +164,105 @@ impl StandardObject {
                     Ok(b.content().ood_work_mode())
                 }
             },
-            { Err(BuckyError::new(BuckyErrorCode::NotSupport, "ood_work_mode not support")) }
+            {
+                Err(BuckyError::new(
+                    BuckyErrorCode::NotSupport,
+                    "ood_work_mode not support",
+                ))
+            }
         )
+    }
+
+    pub fn set_body_expect(&mut self, other: &Self) {
+        match self {
+            Self::Device(o) => match other {
+                Self::Device(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::People(o) => match other {
+                Self::People(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::SimpleGroup(o) => match other {
+                Self::SimpleGroup(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::Org(o) => match other {
+                Self::Org(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::AppGroup(o) => match other {
+                Self::AppGroup(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::UnionAccount(o) => match other {
+                Self::UnionAccount(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::File(o) => match other {
+                Self::File(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::Dir(o) => match other {
+                Self::Dir(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::Diff(o) => match other {
+                Self::Diff(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::ProofOfService(o) => match other {
+                Self::ProofOfService(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::Tx(o) => match other {
+                Self::Tx(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::Action(o) => match other {
+                Self::Action(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::ObjectMap(o) => match other {
+                Self::ObjectMap(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::Contract(o) => match other {
+                Self::Contract(other) => {
+                    *o.body_mut() = other.body().clone();
+                }
+                _ => unreachable!(),
+            },
+            Self::ChunkId(_) => {
+                unreachable!();
+            }
+        }
     }
 }
 

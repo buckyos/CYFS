@@ -590,9 +590,7 @@ impl NONDirLoader {
     ) -> BuckyResult<Vec<u8>> {
         let ndn_common = NDNInputRequestCommon {
             req_path: common.req_path.clone(),
-            dec_id: common.dec_id.clone(),
             source: common.source.clone(),
-            protocol: common.protocol.clone(),
             target: target.cloned(),
             level: self.non_api_level.clone().into(),
             referer_object,

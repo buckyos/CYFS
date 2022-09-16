@@ -8,12 +8,12 @@ use tide::Response;
 
 #[derive(Clone)]
 pub(crate) struct DeviceSyncRequestHandler {
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     client: Arc<DeviceSyncClient>,
 }
 
 impl DeviceSyncRequestHandler {
-    pub fn new(protocol: NONProtocol, client: Arc<DeviceSyncClient>) -> Self {
+    pub fn new(protocol: RequestProtocol, client: Arc<DeviceSyncClient>) -> Self {
         Self { protocol, client }
     }
 
@@ -34,7 +34,6 @@ impl DeviceSyncRequestHandler {
     }
 
     pub async fn process_state_request<State>(&self, req: tide::Request<State>) -> Response {
-       
         let ret = self.on_get_sync_state(req).await;
         match ret {
             Ok(status) => {
@@ -58,7 +57,10 @@ impl DeviceSyncRequestHandler {
         self.client.zone_update(source, zone_req).await
     }
 
-    async fn on_get_sync_state<State>(&self, req: tide::Request<State>) -> BuckyResult<DeviceSyncStatus> {
+    async fn on_get_sync_state<State>(
+        &self,
+        req: tide::Request<State>,
+    ) -> BuckyResult<DeviceSyncStatus> {
         let flush = match req.method() {
             http_types::Method::Post => true,
             http_types::Method::Get => false,

@@ -8,9 +8,7 @@ impl JsonCodec<CryptoInputRequestCommon> for CryptoInputRequestCommon {
         let mut obj = Map::new();
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "req_path", self.req_path.as_ref());
-        JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
-        JsonCodecHelper::encode_string_field(&mut obj, "source", &self.source);
-        JsonCodecHelper::encode_string_field(&mut obj, "protocol", &self.protocol);
+        JsonCodecHelper::encode_field(&mut obj, "source", &self.source);
         JsonCodecHelper::encode_option_string_field(&mut obj, "target", self.target.as_ref());
         JsonCodecHelper::encode_number_field(&mut obj, "flags", self.flags);
 
@@ -20,11 +18,7 @@ impl JsonCodec<CryptoInputRequestCommon> for CryptoInputRequestCommon {
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<CryptoInputRequestCommon> {
         Ok(Self {
             req_path: JsonCodecHelper::decode_option_string_field(obj, "req_path")?,
-            dec_id: JsonCodecHelper::decode_option_string_field(obj, "dec_id")?,
-
-            source: JsonCodecHelper::decode_string_field(obj, "source")?,
-            protocol: JsonCodecHelper::decode_string_field(obj, "protocol")?,
-
+            source: JsonCodecHelper::decode_field(obj, "source")?,
             target: JsonCodecHelper::decode_option_string_field(obj, "target")?,
             flags: JsonCodecHelper::decode_int_field(obj, "flags")?,
         })

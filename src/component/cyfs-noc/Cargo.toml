@@ -8,22 +8,14 @@ description = "Rust cyfs-noc package"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-default = ["mongo"]
-mongo = ["mongodb", "bson"]
-sqlite = ["rusqlite"]
-memory = ["lru_time_cache"]
 
 [dependencies]
 mongodb = { version = "1.2", default-features = false, features = [
     "async-std-runtime",
-], optional = true }
-bson = { version = "1.1", optional = true }
-lru_time_cache = { version = "0.11", optional = true }
-rusqlite = { version = "0.27.0", features = [
-    "bundled",
-    "blob",
-], optional = true }
+] }
+bson = { version = "1.1" }
+lru_time_cache = { version = "0.11" }
+rusqlite = { version = "0.27.0", features = ["bundled", "blob"] }
 log = "0.4"
 async-trait = "0.1.53"
 lazy_static = "1.4"
@@ -31,5 +23,10 @@ cyfs-util = { path = "../../component/cyfs-util" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
+cyfs-core = { path = "../../component/cyfs-core" }
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 thread_local = "1.1"
+hex = "0.4"
+once_cell = "1.12"
+
+[dev-dependencies]

@@ -1989,13 +1989,20 @@ impl ObjectMapContentHashCache {
 }
 
 // ObjectMap对象的分类
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ObjectMapClass {
     // 根节点
     Root = 0,
 
     // hub模式下的子节点
     Sub = 1,
+
+    // DecRoot
+    DecRoot = 2,
+
+    // GlobalRoot
+    GlobalRoot = 3,
 }
 
 impl ObjectMapClass {
@@ -2003,6 +2010,8 @@ impl ObjectMapClass {
         match self {
             Self::Root => "root",
             Self::Sub => "sub",
+            Self::DecRoot => "dec-root",
+            Self::GlobalRoot => "global-root",
         }
     }
 }
@@ -2021,6 +2030,8 @@ impl TryFrom<u8> for ObjectMapClass {
         let ret = match value {
             0 => Self::Root,
             1 => Self::Sub,
+            2 => Self::DecRoot,
+            3 => Self::GlobalRoot,
 
             _ => {
                 let msg = format!("unknown objectmap class: {}", value);
@@ -2113,6 +2124,13 @@ impl ObjectMapDescContent {
 
     pub fn class(&self) -> ObjectMapClass {
         self.class.clone()
+    }
+
+    pub fn set_class(&mut self, class: ObjectMapClass) {
+        if self.class != class {
+            self.class = class;
+            self.mark_dirty();
+        }
     }
 
     pub fn content(&self) -> &ObjectMapContent {

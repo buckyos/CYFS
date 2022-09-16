@@ -1,4 +1,4 @@
-use crate::{base::*, GlobalStateAccessMode};
+use crate::{prelude::*, GlobalStateAccessMode};
 use crate::zone::ZoneRole;
 use cyfs_base::*;
 use cyfs_core::ZoneId;

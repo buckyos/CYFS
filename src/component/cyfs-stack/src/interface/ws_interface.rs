@@ -103,9 +103,9 @@ impl WebSocketEventInterface {
         auth: Option<InterfaceAuth>,
     ) -> Self {
         let router_handlers_handler =
-            RouterHandlerWebSocketHandler::new(NONProtocol::HttpLocal, router_handlers_manager);
+            RouterHandlerWebSocketHandler::new(RequestProtocol::HttpLocal, router_handlers_manager);
         let router_events_handler =
-            RouterEventWebSocketHandler::new(NONProtocol::HttpLocal, router_events_manager);
+            RouterEventWebSocketHandler::new(RequestProtocol::HttpLocal, router_events_manager);
 
         let handler = WebSocketRequestInnerHandler {
             http_ws_service,

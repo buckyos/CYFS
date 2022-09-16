@@ -3,6 +3,7 @@ use crate::*;
 use base58::{FromBase58, ToBase58};
 use generic_array::typenum::{marker_traits::Unsigned, U32};
 use generic_array::GenericArray;
+use protobuf::Clear;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt;
@@ -2288,6 +2289,14 @@ impl ObjectSigns {
         ObjectSignsHelper::push_sign(&mut self.body_signs, sign)
     }
 
+    pub fn clear_desc_signs(&mut self) {
+        self.desc_signs.clear();
+    }
+
+    pub fn clear_body_signs(&mut self) {
+        self.body_signs.clear();
+    }
+
     pub fn latest_body_sign_time(&self) -> u64 {
         ObjectSignsHelper::latest_sign_time(&self.body_signs)
     }
@@ -2303,6 +2312,18 @@ impl ObjectSigns {
     pub fn merge(&mut self, other: &ObjectSigns) -> usize {
         ObjectSignsHelper::merge(&mut self.desc_signs, &other.desc_signs)
             + ObjectSignsHelper::merge(&mut self.body_signs, &other.body_signs)
+    }
+
+    pub fn merge_ex(&mut self, other: &ObjectSigns, desc: bool, body: bool) -> usize {
+        let mut ret = 0;
+        if desc {
+            ret += ObjectSignsHelper::merge(&mut self.desc_signs, &other.desc_signs);
+        }
+        if body {
+            ret += ObjectSignsHelper::merge(&mut self.body_signs, &other.body_signs);
+        }
+        
+        ret
     }
 }
 

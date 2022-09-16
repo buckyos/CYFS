@@ -1,4 +1,5 @@
 use super::handler::*;
+use crate::zone::ZoneManagerRef;
 use cyfs_lib::*;
 
 use async_trait::async_trait;
@@ -12,14 +13,21 @@ enum NDNRequestType {
 }
 
 pub(crate) struct NDNRequestHandlerEndpoint {
-    protocol: NONProtocol,
+    zone_manager: ZoneManagerRef,
+    protocol: RequestProtocol,
     req_type: NDNRequestType,
     handler: NDNRequestHandler,
 }
 
 impl NDNRequestHandlerEndpoint {
-    fn new(protocol: NONProtocol, req_type: NDNRequestType, handler: NDNRequestHandler) -> Self {
+    fn new(
+        zone_manager: ZoneManagerRef,
+        protocol: RequestProtocol,
+        req_type: NDNRequestType,
+        handler: NDNRequestHandler,
+    ) -> Self {
         Self {
+            zone_manager,
             protocol,
             req_type,
             handler,
@@ -27,7 +35,10 @@ impl NDNRequestHandlerEndpoint {
     }
 
     async fn process_request<State>(&self, req: ::tide::Request<State>) -> Response {
-        let req = NDNInputHttpRequest::new(&self.protocol, req);
+        let req = match NDNInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
 
         match self.req_type {
             NDNRequestType::Get => self.handler.process_get_request(req).await,
@@ -38,24 +49,28 @@ impl NDNRequestHandlerEndpoint {
     }
 
     pub fn register_server(
-        protocol: &NONProtocol,
+        zone_manager: &ZoneManagerRef,
+        protocol: &RequestProtocol,
         handler: &NDNRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {
         // get_data/query_file
         server.at("/ndn/*must").post(NDNRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NDNRequestType::Get,
             handler.clone(),
         ));
 
         server.at("/ndn/").post(NDNRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NDNRequestType::Get,
             handler.clone(),
         ));
 
         server.at("/ndn/*must").get(NDNRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NDNRequestType::DownloadData,
             handler.clone(),
@@ -63,6 +78,7 @@ impl NDNRequestHandlerEndpoint {
 
         // put_data
         server.at("/ndn/*must").put(NDNRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NDNRequestType::PutData,
             handler.clone(),
@@ -72,6 +88,7 @@ impl NDNRequestHandlerEndpoint {
         server
             .at("/ndn/*must")
             .delete(NDNRequestHandlerEndpoint::new(
+                zone_manager.clone(),
                 protocol.to_owned(),
                 NDNRequestType::DeleteData,
                 handler.clone(),

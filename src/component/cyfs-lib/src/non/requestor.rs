@@ -1,9 +1,9 @@
 use super::def::*;
-use super::processor::*;
 use super::output_request::*;
+use super::processor::*;
 use crate::base::*;
-use cyfs_base::*;
 use crate::stack::SharedObjectStackDecID;
+use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};
 use std::sync::Arc;
@@ -11,7 +11,10 @@ use std::sync::Arc;
 pub struct NONRequestorHelper;
 
 impl NONRequestorHelper {
-    async fn decode_object_info_from_body<T>(object_id: ObjectId, req: &mut T) -> BuckyResult<NONObjectInfo>
+    async fn decode_object_info_from_body<T>(
+        object_id: ObjectId,
+        req: &mut T,
+    ) -> BuckyResult<NONObjectInfo>
     where
         T: BodyOp + HeaderOp,
     {
@@ -46,7 +49,8 @@ impl NONRequestorHelper {
         T: BodyOp + HeaderOp,
     {
         // 头部必须有object-id字段
-        let ret: Option<ObjectId> = RequestorHelper::decode_optional_header(req, cyfs_base::CYFS_OBJECT_ID)?;
+        let ret: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(req, cyfs_base::CYFS_OBJECT_ID)?;
         if ret.is_none() {
             return Ok(None);
         }
@@ -99,7 +103,6 @@ pub struct NONRequestor {
     service_url: Url,
 }
 
-
 impl NONRequestor {
     pub fn new_default_tcp(dec_id: Option<SharedObjectStackDecID>) -> Self {
         let service_addr = format!("127.0.0.1:{}", cyfs_base::NON_STACK_HTTP_PORT);
@@ -134,36 +137,6 @@ impl NONRequestor {
         self.clone().into_processor()
     }
 
-    /*
-    pub fn new_processor(dec_id: Option<SharedObjectStackDecID>, requestor: HttpRequestorRef) -> NONOutputProcessorRef {
-        let ret = Self::new(dec_id, requestor);
-        Arc::new(Box::new(ret))
-    }
-    */
-
-    // url支持下面的格式，其中device_id是可选
-    // {host:port}/non/[req_path/]object_id[/inner_path]
-    fn format_url(
-        &self,
-        req_path: Option<&String>,
-        object_id: &ObjectId,
-        inner_path: Option<&String>,
-    ) -> Url {
-        let mut parts = vec![];
-        if let Some(req_path) = req_path {
-            parts.push(req_path.as_str().trim_start_matches('/').trim_end_matches('/'));
-        }
-
-        let object_id = object_id.to_string();
-        parts.push(object_id.as_str());
-        if let Some(inner_path) = inner_path {
-            parts.push(inner_path.as_str().trim_start_matches('/').trim_end_matches('/'));
-        }
-
-        let p = parts.join("/");
-        self.service_url.join(&p).unwrap()
-    }
-
     fn encode_common_headers(
         &self,
         action: NONAction,
@@ -175,9 +148,12 @@ impl NONRequestor {
         } else if let Some(dec_id) = &self.dec_id {
             if let Some(dec_id) = dec_id.get() {
                 http_req.insert_header(cyfs_base::CYFS_DEC_ID, dec_id.to_string());
-            } 
+            }
         }
 
+        if let Some(req_path) = &com_req.req_path {
+            http_req.insert_header(cyfs_base::CYFS_REQ_PATH, req_path);
+        }
         http_req.insert_header(cyfs_base::CYFS_NON_ACTION, action.to_string());
 
         http_req.insert_header(cyfs_base::CYFS_API_LEVEL, com_req.level.to_string());
@@ -199,9 +175,7 @@ impl NONRequestor {
             ));
         }
 
-        let url = self.format_url(req.common.req_path.as_ref(), &req.object.object_id, None);
-
-        let mut http_req = Request::new(Method::Put, url);
+        let mut http_req = Request::new(Method::Put, self.service_url.clone());
         self.encode_common_headers(NONAction::PutObject, &req.common, &mut http_req);
 
         http_req
@@ -243,24 +217,26 @@ impl NONRequestor {
             self.decode_put_object_response(&resp).await
         } else {
             let e = RequestorHelper::error_from_resp(&mut resp).await;
-            error!("put object to non service error! object={}, {}", object_id, e);
+            error!(
+                "put object to non service error! object={}, {}",
+                object_id, e
+            );
             Err(e)
         }
     }
 
     fn encode_get_object_request(&self, req: &NONGetObjectOutputRequest) -> Request {
-        let url = self.format_url(
-            req.common.req_path.as_ref(),
-            &req.object_id,
-            req.inner_path.as_ref(),
-        );
-
-        let mut http_req = Request::new(Method::Get, url);
+        let mut http_req = Request::new(Method::Get, self.service_url.clone());
         self.encode_common_headers(NONAction::GetObject, &req.common, &mut http_req);
+
+        http_req.insert_header(cyfs_base::CYFS_OBJECT_ID, req.object_id.to_string());
+
+        if let Some(inner_path) = &req.inner_path {
+            http_req.insert_header(cyfs_base::CYFS_INNER_PATH, inner_path);
+        }
 
         http_req
     }
-
 
     pub async fn get_object(
         &self,
@@ -271,19 +247,24 @@ impl NONRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         if resp.status().is_success() {
-            info!("get object from non service success: {}", req.object_id);
+            info!(
+                "get object from non service success: {}",
+                req.object_debug_info()
+            );
             NONRequestorHelper::decode_get_object_response(&mut resp).await
         } else {
             let e = RequestorHelper::error_from_resp(&mut resp).await;
-            error!("get object from non service error! object={}, {}", req.object_id, e);
+            error!(
+                "get object from non service error! object={}, {}",
+                req.object_debug_info(),
+                e
+            );
             Err(e)
         }
     }
 
     fn encode_post_object_request(&self, req: &NONPostObjectOutputRequest) -> Request {
-        let url = self.format_url(req.common.req_path.as_ref(), &req.object.object_id, None);
-
-        let mut http_req = Request::new(Method::Post, url);
+        let mut http_req = Request::new(Method::Post, self.service_url.clone());
         self.encode_common_headers(NONAction::PostObject, &req.common, &mut http_req);
 
         http_req
@@ -316,7 +297,10 @@ impl NONRequestor {
             match status {
                 http_types::StatusCode::NoContent => {
                     let e = RequestorHelper::error_from_resp(&mut resp).await;
-                    info!("post object to non service but empty response! obj={}, {}", object_id, e);
+                    info!(
+                        "post object to non service but empty response! obj={}, {}",
+                        object_id, e
+                    );
                     Err(e)
                 }
                 _ => {
@@ -326,14 +310,19 @@ impl NONRequestor {
             }
         } else {
             let e = RequestorHelper::error_from_resp(&mut resp).await;
-            error!("post object to non service error! object={}, {}", object_id, e);
+            error!(
+                "post object to non service error! object={}, {}",
+                object_id, e
+            );
             Err(e)
         }
     }
 
     fn format_select_url(&self, req_path: Option<&String>, filter: &SelectFilter) -> Url {
         let mut url = if let Some(req_path) = req_path {
-            self.service_url.join(req_path.trim_start_matches('/').trim_end_matches('/')).unwrap()
+            self.service_url
+                .join(req_path.trim_start_matches('/').trim_end_matches('/'))
+                .unwrap()
         } else {
             self.service_url.clone()
         };
@@ -375,10 +364,14 @@ impl NONRequestor {
     }
 
     fn encode_delete_object_request(&self, req: &NONDeleteObjectOutputRequest) -> Request {
-        let url = self.format_url(req.common.req_path.as_ref(), &req.object_id, req.inner_path.as_ref());
-
-        let mut http_req = Request::new(Method::Delete, url);
+        let mut http_req = Request::new(Method::Delete, self.service_url.clone());
         self.encode_common_headers(NONAction::DeleteObject, &req.common, &mut http_req);
+
+        http_req.insert_header(cyfs_base::CYFS_OBJECT_ID, req.object_id.to_string());
+
+        if let Some(inner_path) = &req.inner_path {
+            http_req.insert_header(cyfs_base::CYFS_INNER_PATH, inner_path);
+        }
 
         http_req
     }
@@ -411,7 +404,10 @@ impl NONRequestor {
             self.decode_delete_object_response(&req, &mut resp).await
         } else {
             let e = RequestorHelper::error_from_resp(&mut resp).await;
-            error!("delete object from non failed: object={}, {}", req.object_id, e);
+            error!(
+                "delete object from non failed: object={}, {}",
+                req.object_id, e
+            );
             Err(e)
         }
     }

@@ -6,7 +6,7 @@ use cyfs_base::*;
 
 pub struct AclHandlerRequest {
     // 来源协议
-    pub protocol: NONProtocol,
+    pub protocol: RequestProtocol,
 
     // 动作
     pub action: AclAction,
@@ -37,7 +37,7 @@ impl std::fmt::Display for AclHandlerRequest {
         if let Some(object) = &self.object {
             write!(f, ", object: {:?}", object)?;
         }
-        
+
         if let Some(inner_path) = &self.inner_path {
             write!(f, ", inner_path: {}", inner_path)?;
         }

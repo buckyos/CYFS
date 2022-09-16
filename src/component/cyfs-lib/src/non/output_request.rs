@@ -9,7 +9,7 @@ pub struct NONOutputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
 
-    // 来源DEC
+    // 来源DEC,如果为None，默认为system-dec
     pub dec_id: Option<ObjectId>,
 
     // api级别
@@ -153,6 +153,22 @@ impl NONGetObjectOutputRequest {
         ret.common.target = target;
 
         ret
+    }
+
+    pub fn object_debug_info(&self) -> String {
+        if let Some(req_path) = &self.common.req_path {
+            if let Some(inner_path) = &self.inner_path {
+                format!("{}:{}:{}", req_path, self.object_id, inner_path)
+            } else {
+                format!("{}:{}", req_path, self.object_id)
+            }
+        } else {
+            if let Some(inner_path) = &self.inner_path {
+                format!("{}:{}", self.object_id, inner_path)
+            } else {
+                self.object_id.to_string()
+            }
+        }
     }
 }
 

@@ -9,7 +9,7 @@ use crate::ndn::*;
 use crate::non::*;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
@@ -32,7 +32,7 @@ pub(crate) struct NDNRouter {
     object_loader: NDNObjectLoader,
 
     ood_resolver: OodResolver,
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 
     router_handlers: RouterHandlersManager,
 
@@ -49,7 +49,7 @@ impl NDNRouter {
         tracker: Box<dyn TrackerCache>,
         non_router: NONInputProcessorRef,
         ood_resolver: OodResolver,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
         chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
@@ -84,7 +84,7 @@ impl NDNRouter {
         tracker: Box<dyn TrackerCache>,
         non_router: NONInputProcessorRef,
         ood_resolver: OodResolver,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
         chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
@@ -124,9 +124,6 @@ impl NDNRouter {
             self.chunk_manager.clone(),
             target.clone(),
         );
-
-        // 限定标准acl权限
-        let processor = NDNAclOutputProcessor::new(self.acl.clone(), target.clone(), processor);
 
         // 使用non router加载file
         let processor =
@@ -236,8 +233,8 @@ impl NDNRouter {
     // put_data 直接put到target目标设备(如果=None则put到本地)
     async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
         debug!(
-            "will put data to ndn: id={}, source={}, target={:?} dec={:?}",
-            req.object_id, req.common.source, req.common.target, req.common.dec_id,
+            "will put data to ndn: id={}, {}, target={:?}",
+            req.object_id, req.common.source, req.common.target,
         );
 
         let processor = self.get_data_processor(req.common.target.as_ref()).await?;
@@ -250,9 +247,7 @@ impl NDNRouter {
             Some(target.to_owned())
         } else {
             match req.object_id.obj_type_code() {
-                ObjectTypeCode::Chunk => {
-                    None
-                }
+                ObjectTypeCode::Chunk => None,
                 _ => {
                     // 从目标对象解析target
                     if let Ok(list) = self.resolve_target_from_object(req).await {
@@ -272,11 +267,11 @@ impl NDNRouter {
             }
         }
     }
-    
+
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
         debug!(
-            "will get data from ndn: id={}, source={}, target={:?}, dec={:?}",
-            req.object_id, req.common.source, req.common.target, req.common.dec_id,
+            "will get data from ndn: id={}, {}, target={:?}",
+            req.object_id, req.common.source, req.common.target
         );
 
         // 从req.target和目标对象，解析出所在的ood
@@ -301,14 +296,10 @@ impl NDNRouter {
         // 转换为input processor
         let input_processor = NDNInputTransformer::new(processor);
 
-        // 限定标准acl权限
-        let processor =
-            NDNAclOutputProcessor::new(self.acl.clone(), target.clone(), input_processor);
-
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(
             RouterHandlerChain::PreForward,
-            processor,
+            input_processor,
             self.router_handlers.clone(),
         );
 
@@ -336,8 +327,8 @@ impl NDNRouter {
         req: NDNDeleteDataInputRequest,
     ) -> BuckyResult<NDNDeleteDataInputResponse> {
         debug!(
-            "will delete data from ndn: id={}, source={}, target={:?} dec={:?}",
-            req.object_id, req.common.source, req.common.target, req.common.dec_id,
+            "will delete data from ndn: id={}, {}, target={:?}",
+            req.object_id, req.common.source, req.common.target,
         );
 
         let processor = self.get_processor(req.common.target.as_ref()).await?;
@@ -349,8 +340,8 @@ impl NDNRouter {
         req: NDNQueryFileInputRequest,
     ) -> BuckyResult<NDNQueryFileInputResponse> {
         debug!(
-            "will query file from ndn: param={}, source={}, target={:?} dec={:?}",
-            req.param, req.common.source, req.common.target, req.common.dec_id,
+            "will query file from ndn: param={}, {}, target={:?}",
+            req.param, req.common.source, req.common.target,
         );
 
         let processor = self.get_processor(req.common.target.as_ref()).await?;

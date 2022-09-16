@@ -9,19 +9,19 @@ use std::sync::Arc;
 pub struct GlobalStateAccessService {
     device_id: DeviceId,
     root_state: Arc<GlobalStateManager>,
-    noc: Arc<Box<dyn NamedObjectCache>>,
+    noc: NamedObjectCacheRef,
 }
 
 impl GlobalStateAccessService {
     pub fn new(
         device_id: DeviceId,
         root_state: Arc<GlobalStateManager>,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         Self {
             device_id,
             root_state,
-            noc: Arc::new(noc),
+            noc,
         }
     }
 
@@ -42,7 +42,7 @@ impl GlobalStateAccessService {
             }
             Some(dec_id) => {
                 let dec_root_manager = self.root_state.get_dec_root_manager(dec_id, false).await?;
-                let op_env = dec_root_manager.create_op_env().await?;
+                let op_env = dec_root_manager.create_op_env(None).await?;
                 let ret = op_env.get_by_path(inner_path).await?;
                 if ret.is_none() {
                     let msg = format!(
@@ -69,8 +69,14 @@ impl GlobalStateAccessService {
     ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
         info!("on access get_object_by_path request: {}", req);
 
+        let dec_id = if req.common.target_dec_id.is_some() {
+            req.common.target_dec_id
+        } else {
+            Some(req.common.source.dec)
+        };
+
         let resp = self
-            .get_by_path_impl(&req.common.dec_id, &req.inner_path)
+            .get_by_path_impl(&dec_id, &req.inner_path)
             .await?;
 
         Ok(resp)
@@ -139,9 +145,9 @@ impl GlobalStateAccessService {
         object_id: &ObjectId,
     ) -> BuckyResult<Option<(Arc<AnyNamedObject>, Vec<u8>)>> {
         let noc_req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
             object_id: object_id.clone(),
-            source: self.device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
+            last_access_rpath: None,
         };
 
         let resp = self.noc.get_object(&noc_req).await.map_err(|e| {
@@ -151,10 +157,7 @@ impl GlobalStateAccessService {
 
         match resp {
             Some(resp) => {
-                assert!(resp.object.is_some());
-                assert!(resp.object_raw.is_some());
-
-                Ok(Some((resp.object.unwrap(), resp.object_raw.unwrap())))
+                Ok(Some((resp.object.object.unwrap(), resp.object.object_raw)))
             }
             None => Ok(None),
         }
@@ -166,15 +169,22 @@ impl GlobalStateAccessService {
     ) -> BuckyResult<RootStateAccessListInputResponse> {
         info!("on access list request: {}", req);
 
+        let dec_id = if req.common.target_dec_id.is_some() {
+            req.common.target_dec_id
+        } else {
+            Some(req.common.source.dec)
+        };
+
+
         let (target, root_cache, root_info) = self
-            .get_object_id(&req.common.dec_id, &req.inner_path)
+            .get_object_id(&dec_id, &req.inner_path)
             .await?;
 
         if target.obj_type_code() != ObjectTypeCode::ObjectMap {
             let msg =
                 format!(
-                "list but target object is not objectmap! dec={:?}, path={}, target={}, type={:?}",
-                req.common.dec_id, req.inner_path, target, target.obj_type_code(),
+                "list but target object is not objectmap! {}, path={}, target={}, type={:?}",
+                req.common.source, req.inner_path, target, target.obj_type_code(),
             );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
@@ -183,8 +193,8 @@ impl GlobalStateAccessService {
         let obj = root_cache.get_object_map(&target).await?;
         if obj.is_none() {
             let msg = format!(
-                "list but target object not found! dec={:?}, path={}, target={}",
-                req.common.dec_id, req.inner_path, target,
+                "list but target object not found! {}, path={}, target={}",
+                req.common.source, req.inner_path, target,
             );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));

@@ -9,12 +9,8 @@ pub struct NONInputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
 
-    // 来源DEC
-    pub dec_id: Option<ObjectId>,
-
-    // 来源设备和协议
-    pub source: DeviceId,
-    pub protocol: NONProtocol,
+    // the request source info in bundle
+    pub source: RequestSourceInfo,
 
     // api级别
     pub level: NONAPILevel,
@@ -29,11 +25,7 @@ impl fmt::Display for NONInputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "req_path: {:?}", self.req_path)?;
 
-        if let Some(dec_id) = &self.dec_id {
-            write!(f, ", dec_id: {}", dec_id)?;
-        }
-        write!(f, ", source: {}", self.source.to_string())?;
-        write!(f, ", protocol: {}", self.protocol.to_string())?;
+        write!(f, ", {}", self.source)?;
         write!(f, ", level: {}", self.level.to_string())?;
 
         if let Some(target) = &self.target {

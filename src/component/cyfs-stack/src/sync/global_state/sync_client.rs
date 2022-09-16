@@ -4,9 +4,9 @@ use super::cache::SyncObjectsStateCache;
 use super::data::DataSync;
 use super::object_map_sync::*;
 use super::sync_helper::*;
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
+use cyfs_chunk_cache::ChunkManager;
 
 use std::sync::Arc;
 
@@ -107,7 +107,7 @@ impl GlobalStateSyncClient {
             self.state.new_op_env_cache(),
             self.state_cache.clone(),
             self.requestor.clone(),
-            self.state.noc().clone_noc(),
+            self.state.noc().clone(),
             self.state.device_id().clone(),
             data_sync,
         );

@@ -1,15 +1,15 @@
 use super::obj_searcher::*;
 use crate::crypto_api::*;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::DeviceCache;
+use cyfs_lib::*;
 
 use async_trait::async_trait;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, RwLock};
 
 pub(crate) struct DeviceInfoManagerImpl {
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
 
     obj_verifier: Arc<ObjectVerifier>,
 
@@ -26,7 +26,7 @@ pub(crate) struct DeviceInfoManagerImpl {
 
 impl DeviceInfoManagerImpl {
     pub fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         obj_verifier: Arc<ObjectVerifier>,
         local_device: Device,
         obj_searcher: ObjectSearcherRef,
@@ -240,23 +240,28 @@ impl DeviceInfoManagerImpl {
         let object_raw = device.to_vec()?;
         let object = AnyNamedObject::Standard(StandardObject::Device(device));
 
-        let info = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.local_device_id.clone(),
-            object_id: device_id.object_id().clone(),
-            dec_id: None,
+        let object = NONObjectInfo::new(
+            device_id.object_id().clone(),
             object_raw,
-            object: Arc::new(object),
-            flags: 0u32,
+            Some(Arc::new(object)),
+        );
+
+        let info = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_system(),
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            last_access_rpath: None,
+            context: None,
+            access_string: Some(AccessString::full_except_write().value()),
         };
 
-        match self.noc.insert_object(&info).await {
+        match self.noc.put_object(&info).await {
             Ok(resp) => {
                 match resp.result {
-                    NamedObjectCacheInsertResult::AlreadyExists => {
+                    NamedObjectCachePutObjectResult::AlreadyExists => {
                         info!("device already in noc: {}", device_id);
                     }
-                    NamedObjectCacheInsertResult::Merged => {
+                    NamedObjectCachePutObjectResult::Merged => {
                         info!("device already in noc and signs updated: {}", device_id);
                     }
                     _ => {
@@ -275,12 +280,13 @@ impl DeviceInfoManagerImpl {
 
     async fn get_from_noc(&self, device_id: &DeviceId) -> BuckyResult<Option<Device>> {
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
             object_id: device_id.object_id().clone(),
-            source: self.local_device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
+            last_access_rpath: None,
         };
+
         match self.noc.get_object(&req).await? {
-            Some(info) => match Device::raw_decode(info.object_raw.as_ref().unwrap()) {
+            Some(info) => match Device::raw_decode(&info.object.object_raw) {
                 Ok((device, _)) => {
                     debug!("get device object from noc: {}", device_id);
                     Ok(Some(device))
@@ -304,9 +310,17 @@ impl DeviceInfoManagerImpl {
     async fn search(&self, device_id: &DeviceId) -> BuckyResult<Device> {
         let mut ret = self
             .obj_searcher
-            .search_ex(None, device_id.object_id(), ObjectSearcherFlags::none_local())
-            .await.map_err(|e| {
-                let msg = format!("search target device but not found! target={}, {}", device_id, e);
+            .search_ex(
+                None,
+                device_id.object_id(),
+                ObjectSearcherFlags::none_local(),
+            )
+            .await
+            .map_err(|e| {
+                let msg = format!(
+                    "search target device but not found! target={}, {}",
+                    device_id, e
+                );
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::TargetNotFound, msg)
             })?;
@@ -355,7 +369,7 @@ pub struct DeviceInfoManager(Arc<DeviceInfoManagerImpl>);
 
 impl DeviceInfoManager {
     pub(crate) fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         obj_verifier: Arc<ObjectVerifier>,
         obj_searcher: ObjectSearcherRef,
         local_device: Device,

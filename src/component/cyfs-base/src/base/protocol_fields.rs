@@ -9,9 +9,12 @@ pub const CYFS_NON_ACTION: &str = "cyfs-non-action";
 pub const CYFS_NDN_ACTION: &str = "cyfs-ndn-action";
 
 pub const CYFS_DEC_ID: &str = "cyfs-dec-id";
+pub const CYFS_TARGET_DEC_ID: &str = "cyfs-target-dec-id";
+
 // select请求的filter内部的dec-id，和请求本身的dec-id区分
 pub const CYFS_FILTER_DEC_ID: &str = "cyfs-filter-dec-id";
 
+pub const CYFS_REQ_PATH: &str = "cyfs-req-path";
 pub const CYFS_INNER_PATH: &str = "cyfs-inner-path";
 
 pub const CYFS_OWNER_ID: &str = "cyfs-owner-id";
@@ -82,3 +85,6 @@ pub const CYFS_OP_ENV_TYPE: &str = "cyfs-op-env-type";
 pub const CYFS_OP_ENV_PATH: &str = "cyfs-op-env-path";
 pub const CYFS_OP_ENV_KEY: &str = "cyfs-op-env-key";
 pub const CYFS_OP_ENV_VALUE: &str = "cyfs-op-env-value";
+
+// meta
+pub const CYFS_META_ACTION: &str = "cyfs-meta-aciton";

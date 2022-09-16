@@ -24,20 +24,12 @@ impl UtilRequestHandler {
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
 
-        // 尝试提取dec字段
-        let dec_id: Option<ObjectId> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
-
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
         let ret = UtilInputRequestCommon {
             req_path: None,
-
             source: req.source.clone(),
-            protocol: req.protocol.clone(),
-
-            dec_id,
             target,
             flags: flags.unwrap_or(0),
         };
@@ -419,9 +411,7 @@ impl UtilRequestHandler {
         let in_req = UtilBuildFileInputRequest {
             common: UtilInputRequestCommon {
                 req_path: out_req.common.req_path,
-                dec_id: out_req.common.dec_id,
                 source: req.source,
-                protocol: req.protocol,
                 target: out_req.common.target,
                 flags: out_req.common.flags
             },
@@ -467,9 +457,7 @@ impl UtilRequestHandler {
         let in_req = UtilBuildDirFromObjectMapInputRequest {
             common: UtilInputRequestCommon {
                 req_path: out_req.common.req_path,
-                dec_id: out_req.common.dec_id,
                 source: req.source,
-                protocol: req.protocol,
                 target: out_req.common.target,
                 flags: out_req.common.flags
             },

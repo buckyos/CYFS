@@ -1,22 +1,32 @@
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
 pub(crate) struct NONInputHttpRequest<State> {
     pub request: tide::Request<State>,
 
-    // 来源设备和协议
-    pub source: DeviceId,
-    pub protocol: NONProtocol,
+    pub source: RequestSourceInfo,
 }
 
 impl<State> NONInputHttpRequest<State> {
-    pub fn new(protocol: &NONProtocol, request: tide::Request<State>) -> Self {
-        let source =
+    pub async fn new(
+        zone_manager: &ZoneManagerRef,
+        protocol: &RequestProtocol,
+        request: tide::Request<State>,
+    ) -> Result<Self, tide::Response> {
+        let source: DeviceId =
             RequestorHelper::decode_header(&request, ::cyfs_base::CYFS_REMOTE_DEVICE).unwrap();
-        Self {
-            request,
-            source,
-            protocol: protocol.to_owned(),
-        }
+        let dec_id: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(&request, cyfs_base::CYFS_DEC_ID)
+                .map_err(|e| RequestorHelper::trans_error::<tide::Response>(e))?;
+
+        let mut source = zone_manager
+            .resolve_source_info(&dec_id, source)
+            .await
+            .map_err(|e| RequestorHelper::trans_error::<tide::Response>(e))?;
+
+        source.protocol = *protocol;
+
+        Ok(Self { request, source })
     }
 }

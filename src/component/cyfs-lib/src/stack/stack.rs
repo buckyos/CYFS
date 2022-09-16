@@ -6,6 +6,7 @@ use crate::crypto::*;
 use crate::events::*;
 use crate::ndn::*;
 use crate::non::*;
+use crate::rmeta::*;
 use crate::root_state::*;
 use crate::router_handler::*;
 use crate::storage::StateStorage;
@@ -36,6 +37,9 @@ struct CyfsStackProcessors {
 
     pub local_cache: GlobalStateOutputProcessorRef,
     pub local_cache_access: GlobalStateAccessOutputProcessorRef,
+
+    pub root_state_meta: GlobalStateMetaOutputProcessorRef,
+    pub local_cache_meta: GlobalStateMetaOutputProcessorRef,
 }
 
 pub(crate) struct ObjectServices {
@@ -53,6 +57,9 @@ pub(crate) struct ObjectServices {
 
     local_cache: GlobalStateRequestor,
     local_cache_access: GlobalStateAccessRequestor,
+
+    root_state_meta: GlobalStateMetaRequestor,
+    local_cache_meta: GlobalStateMetaRequestor,
 }
 
 #[derive(Clone)]
@@ -314,7 +321,10 @@ impl SharedCyfsStack {
             GlobalStateRequestor::new_root_state(Some(dec_id.clone()), requestor.clone());
 
         let root_state_access =
-            GlobalStateAccessRequestor::new_root_state(Some(dec_id.clone()), requestor);
+            GlobalStateAccessRequestor::new_root_state(Some(dec_id.clone()), requestor.clone());
+
+        let root_state_meta =
+            GlobalStateMetaRequestor::new_root_state(Some(dec_id.clone()), requestor.clone());
 
         // local_cache
         let requestor = Self::select_requestor(&param, &param.requestor_config.local_cache);
@@ -322,7 +332,10 @@ impl SharedCyfsStack {
             GlobalStateRequestor::new_local_cache(Some(dec_id.clone()), requestor.clone());
 
         let local_cache_access =
-            GlobalStateAccessRequestor::new_local_cache(Some(dec_id.clone()), requestor);
+            GlobalStateAccessRequestor::new_local_cache(Some(dec_id.clone()), requestor.clone());
+
+        let local_cache_meta =
+            GlobalStateMetaRequestor::new_local_cache(Some(dec_id.clone()), requestor);
 
         let services = Arc::new(ObjectServices {
             non_service,
@@ -338,6 +351,9 @@ impl SharedCyfsStack {
 
             local_cache,
             local_cache_access,
+
+            root_state_meta,
+            local_cache_meta,
         });
 
         // 初始化对应的事件处理器，二选一
@@ -368,6 +384,8 @@ impl SharedCyfsStack {
             root_state_access: services.root_state_access.clone_processor(),
             local_cache: services.local_cache.clone_processor(),
             local_cache_access: services.local_cache_access.clone_processor(),
+            root_state_meta: services.root_state_meta.clone_processor(),
+            local_cache_meta: services.local_cache_meta.clone_processor(),
         });
 
         let ret = Self {
@@ -493,9 +511,25 @@ impl SharedCyfsStack {
     pub fn root_state_stub(
         &self,
         target: Option<ObjectId>,
-        dec_id: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
     ) -> GlobalStateStub {
-        GlobalStateStub::new(self.services.root_state.clone_processor(), target, dec_id)
+        GlobalStateStub::new(self.services.root_state.clone_processor(), target, target_dec_id)
+    }
+
+    pub fn root_state_meta(&self) -> &GlobalStateMetaRequestor {
+        &self.services.root_state_meta
+    }
+
+    pub fn root_state_meta_stub(
+        &self,
+        target: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
+    ) -> GlobalStateMetaStub {
+        GlobalStateMetaStub::new(
+            self.services.root_state_meta.clone_processor(),
+            target,
+            target_dec_id,
+        )
     }
 
     // local_cache
@@ -503,8 +537,20 @@ impl SharedCyfsStack {
         &self.services.local_cache
     }
 
-    pub fn local_cache_stub(&self, dec_id: Option<ObjectId>) -> GlobalStateStub {
-        GlobalStateStub::new(self.services.local_cache.clone_processor(), None, dec_id)
+    pub fn local_cache_stub(&self, target_dec_id: Option<ObjectId>) -> GlobalStateStub {
+        GlobalStateStub::new(self.services.local_cache.clone_processor(), None, target_dec_id)
+    }
+
+    pub fn local_cache_meta(&self) -> &GlobalStateMetaRequestor {
+        &self.services.local_cache_meta
+    }
+
+    pub fn local_cache_meta_stub(&self, target_dec_id: Option<ObjectId>) -> GlobalStateMetaStub {
+        GlobalStateMetaStub::new(
+            self.services.local_cache_meta.clone_processor(),
+            None,
+            target_dec_id,
+        )
     }
 
     // state_storage
@@ -514,7 +560,7 @@ impl SharedCyfsStack {
         path: impl Into<String>,
         content_type: ObjectMapSimpleContentType,
     ) -> StateStorage {
-        StateStorage::new(
+        StateStorage::new_with_stack(
             self.uni_stack().clone(),
             category,
             path,
@@ -532,7 +578,7 @@ impl SharedCyfsStack {
         target: Option<ObjectId>,
         dec_id: Option<ObjectId>,
     ) -> StateStorage {
-        StateStorage::new(
+        StateStorage::new_with_stack(
             self.uni_stack().clone(),
             category,
             path,
@@ -595,6 +641,14 @@ impl UniCyfsStack for SharedCyfsStack {
 
     fn local_cache_access(&self) -> &GlobalStateAccessOutputProcessorRef {
         &self.processors.local_cache_access
+    }
+
+    fn root_state_meta(&self) -> &GlobalStateMetaOutputProcessorRef {
+        &self.processors.root_state_meta
+    }
+
+    fn local_cache_meta(&self) -> &GlobalStateMetaOutputProcessorRef {
+        &self.processors.local_cache_meta
     }
 }
 

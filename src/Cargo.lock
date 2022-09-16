@@ -1540,6 +1540,8 @@ dependencies = [
  "hex",
  "http-types",
  "int-enum",
+ "intbits",
+ "itertools",
  "lazy_static",
  "libc",
  "libsecp256k1",
@@ -2056,13 +2058,16 @@ dependencies = [
  "async-trait",
  "bson 1.2.4",
  "cyfs-base",
+ "cyfs-core",
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-util",
+ "hex",
  "lazy_static",
  "log 0.4.16",
  "lru_time_cache",
  "mongodb 1.2.5",
+ "once_cell",
  "rusqlite",
  "thread_local",
 ]
@@ -2245,6 +2250,7 @@ dependencies = [
  "cyfs-core",
  "cyfs-debug",
  "cyfs-lib",
+ "cyfs-noc",
  "cyfs-perf-client",
  "cyfs-stack-loader",
  "cyfs-util",
@@ -2253,6 +2259,7 @@ dependencies = [
  "log 0.4.16",
  "once_cell",
  "rand 0.8.5",
+ "serde",
  "serde_json",
  "zone-simulator",
 ]
@@ -3777,6 +3784,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "intbits"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5170c2c8ecda29c1bccb9d95ccbe107bc75fa084dc0c9c6087e719f9d46330e5"
 
 [[package]]
 name = "inventory"

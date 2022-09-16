@@ -7,6 +7,8 @@ use std::sync::Arc;
 pub trait GlobalStateInputProcessor: Sync + Send + 'static {
     fn create_op_env_processor(&self) -> OpEnvInputProcessorRef;
 
+    fn get_category(&self) -> GlobalStateCategory;
+
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootInputRequest,
@@ -22,6 +24,8 @@ pub type GlobalStateInputProcessorRef = Arc<Box<dyn GlobalStateInputProcessor>>;
 
 #[async_trait::async_trait]
 pub trait OpEnvInputProcessor: Sync + Send + 'static {
+    fn get_category(&self) -> GlobalStateCategory;
+    
     // single_op_env methods
     async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()>;
 

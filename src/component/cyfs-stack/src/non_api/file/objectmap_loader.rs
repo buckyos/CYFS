@@ -6,14 +6,14 @@ use std::sync::Arc;
 
 pub(crate) struct NONObjectMapLoader {
     device_id: DeviceId,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     root_cache: ObjectMapRootCacheRef,
     op_env_cache: ObjectMapOpEnvCacheRef,
 }
 
 impl NONObjectMapLoader {
-    pub fn new(device_id: DeviceId, noc: Box<dyn NamedObjectCache>) -> Self {
-        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone_noc());
+    pub fn new(device_id: DeviceId, noc: NamedObjectCacheRef) -> Self {
+        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone());
         let root_cache = ObjectMapRootMemoryCache::new_ref(noc_cache, 60 * 5, 1024);
         let op_env_cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
@@ -26,7 +26,10 @@ impl NONObjectMapLoader {
     }
 
     pub async fn load(&self, object_id: &ObjectId, inner_path: &str) -> BuckyResult<NONObjectInfo> {
-        info!("will get objectmap with inner path: {}, {}", object_id, inner_path);
+        info!(
+            "will get objectmap with inner path: {}, {}",
+            object_id, inner_path
+        );
 
         assert_eq!(object_id.obj_type_code(), ObjectTypeCode::ObjectMap);
 
@@ -88,9 +91,9 @@ impl NONObjectMapLoader {
         object_id: &ObjectId,
     ) -> BuckyResult<Option<(Arc<AnyNamedObject>, Vec<u8>)>> {
         let noc_req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
             object_id: object_id.clone(),
-            source: self.device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
+            last_access_rpath: None,
         };
 
         let resp = self.noc.get_object(&noc_req).await.map_err(|e| {
@@ -100,10 +103,7 @@ impl NONObjectMapLoader {
 
         match resp {
             Some(resp) => {
-                assert!(resp.object.is_some());
-                assert!(resp.object_raw.is_some());
-
-                Ok(Some((resp.object.unwrap(), resp.object_raw.unwrap())))
+                Ok(Some((resp.object.object.unwrap(), resp.object.object_raw)))
             }
             None => Ok(None),
         }

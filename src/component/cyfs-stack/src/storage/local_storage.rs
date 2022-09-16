@@ -8,20 +8,20 @@ impl LocalNOCStorage {
     where
         T: Default + CollectionCodec<T> + Send,
     {
-        NOCCollection::new(id, stack.noc_manager().clone_noc())
+        NOCCollection::new(id, stack.noc_manager().clone())
     }
 
     pub fn new_noc_collection_sync<T>(id: &str, stack: &CyfsStack) -> NOCCollectionSync<T>
     where
         T: Default + CollectionCodec<T> + Send,
     {
-        NOCCollectionSync::new(id, stack.noc_manager().clone_noc())
+        NOCCollectionSync::new(id, stack.noc_manager().clone())
     }
 
     pub fn new_noc_collection_rw_sync<T>(id: &str, stack: &CyfsStack) -> NOCCollectionRWSync<T>
     where
         T: Default + CollectionCodec<T> + Send + Sync,
     {
-        NOCCollectionRWSync::new(id, stack.noc_manager().clone_noc())
+        NOCCollectionRWSync::new(id, stack.noc_manager().clone())
     }
 }

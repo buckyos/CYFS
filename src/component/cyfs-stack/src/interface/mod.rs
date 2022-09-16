@@ -18,14 +18,14 @@ pub(crate) use sync_interface::*;
 use ws_interface::*;
 
 use cyfs_base::BuckyResult;
-use cyfs_lib::NONProtocol;
+use cyfs_lib::RequestProtocol;
 
 use async_std::net::SocketAddr;
 use async_trait::async_trait;
 
 #[async_trait]
 trait ObjectListener: Send + Sync {
-    fn get_protocol(&self) -> NONProtocol;
+    fn get_protocol(&self) -> RequestProtocol;
 
     fn get_addr(&self) -> SocketAddr;
 

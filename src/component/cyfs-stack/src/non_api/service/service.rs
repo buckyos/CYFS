@@ -7,7 +7,7 @@ use crate::meta::{MetaCache, ObjectFailHandler};
 use crate::ndn_api::*;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use crate::{acl::*, non::*};
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
@@ -26,13 +26,13 @@ pub struct NONService {
 
 impl NONService {
     pub(crate) fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         forward_manager: ForwardProcessorManager,
         acl: AclManagerRef,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         ood_resovler: OodResolver,
 
         router_handlers: RouterHandlersManager,
@@ -42,7 +42,7 @@ impl NONService {
     ) -> (NONService, NDNService) {
         // 带file服务的无权限的noc processor
         let raw_noc_processor = NOCLevelInputProcessor::new_raw_with_file_service(
-            noc.clone_noc(),
+            noc.clone(),
             ndc.clone(),
             tracker.clone(),
             ood_resovler.clone(),
@@ -58,12 +58,12 @@ impl NONService {
             tracker.clone(),
             ood_resovler.clone(),
             chunk_manager.clone(),
-            noc.clone_noc(),
+            noc.clone(),
         );
 
         // 带本地权限的noc processor
         let local_noc_processor =
-            NOCLevelInputProcessor::new_local(acl.clone(), raw_noc_processor.clone());
+            NOCLevelInputProcessor::new_local(raw_noc_processor.clone());
 
         // 同zone权限的non processor
         let non_processor = NONLevelInputProcessor::new_zone(

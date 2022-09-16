@@ -21,7 +21,7 @@ impl NONInputTransformer {
             req_path: common.req_path,
 
             // 来源DEC
-            dec_id: common.dec_id,
+            dec_id: Some(common.source.dec),
 
             // 默认行为
             level: common.level,
@@ -178,22 +178,24 @@ impl NONInputProcessor for NONInputTransformer {
 // 实现从output到input的转换
 pub(crate) struct NONOutputTransformer {
     processor: NONInputProcessorRef,
-    source: DeviceId,
+    source: RequestSourceInfo,
 }
 
 impl NONOutputTransformer {
-    pub fn new(processor: NONInputProcessorRef, source: DeviceId) -> NONOutputProcessorRef {
+    pub fn new(processor: NONInputProcessorRef, source: RequestSourceInfo) -> NONOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: NONOutputRequestCommon) -> NONInputRequestCommon {
+        let mut source = self.source.clone();
+        source.set_dec(common.dec_id);
+
         NONInputRequestCommon {
             // 请求路径，可为空
             req_path: common.req_path,
 
-            // 来源DEC
-            dec_id: common.dec_id,
+            source,
 
             // 默认行为
             level: common.level,
@@ -202,9 +204,6 @@ impl NONOutputTransformer {
             target: common.target,
 
             flags: common.flags,
-
-            source: self.source.clone(),
-            protocol: NONProtocol::Native,
         }
     }
 

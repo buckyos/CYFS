@@ -96,6 +96,10 @@ impl GlobalStateRequestor {
             }
         }
 
+        if let Some(target_dec_id) = &com_req.target_dec_id {
+            http_req.insert_header(cyfs_base::CYFS_TARGET_DEC_ID, target_dec_id.to_string());
+        }
+
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
         }
@@ -175,6 +179,10 @@ impl GlobalStateRequestor {
 
 #[async_trait::async_trait]
 impl GlobalStateOutputProcessor for GlobalStateRequestor {
+    fn get_category(&self) -> GlobalStateCategory {
+        self.category
+    }
+    
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootOutputRequest,
@@ -823,6 +831,10 @@ impl OpEnvRequestor {
 impl OpEnvOutputProcessor for OpEnvRequestor {
     fn get_sid(&self) -> u64 {
         self.sid
+    }
+
+    fn get_category(&self) -> GlobalStateCategory {
+        self.category
     }
 
     async fn load(&self, req: OpEnvLoadOutputRequest) -> BuckyResult<()> {

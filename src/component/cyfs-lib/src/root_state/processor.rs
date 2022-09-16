@@ -1,3 +1,5 @@
+use crate::GlobalStateCategory;
+
 use super::output_request::*;
 use cyfs_base::*;
 
@@ -5,6 +7,8 @@ use std::sync::Arc;
 
 #[async_trait::async_trait]
 pub trait GlobalStateOutputProcessor: Sync + Send + 'static {
+    fn get_category(&self) -> GlobalStateCategory;
+    
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootOutputRequest,
@@ -23,6 +27,8 @@ pub trait OpEnvOutputProcessor: Sync + Send + 'static {
     // 获取当前op_env的托管sid
     fn get_sid(&self) -> u64;
 
+    fn get_category(&self) -> GlobalStateCategory;
+    
     // single_op_env methods
     async fn load(&self, req: OpEnvLoadOutputRequest) -> BuckyResult<()>;
 

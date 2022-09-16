@@ -22,7 +22,7 @@ pub struct ObjectSignRequest {
 }
 
 pub struct ObjectSigner {
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
     device_manager: Box<dyn DeviceCache>,
 
     signer: Box<dyn Signer>,
@@ -32,7 +32,7 @@ pub struct ObjectSigner {
 
 impl ObjectSigner {
     pub(crate) fn new(
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         device_manager: Box<dyn DeviceCache>,
         bdt_stack: &StackGuard,
     ) -> Self {
