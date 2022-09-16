@@ -11,8 +11,8 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::super::{
-    scheduler::*, 
     channel::*,
+    download::*, 
 };
 use super::{
     storage::ChunkReader, 
@@ -38,8 +38,7 @@ struct StateImpl {
 
 struct ViewImpl {
     stack: WeakStack,
-    chunk: ChunkId,  
-    resource: ResourceManager, 
+    chunk: ChunkId,
     state: RwLock<StateImpl>, 
 }
 
@@ -140,7 +139,6 @@ impl ChunkView {
             Self(Arc::new(ViewImpl {
                 stack, 
                 chunk, 
-                resource: ResourceManager::new(None), 
                 state: RwLock::new(StateImpl {
                     state: *init_state, 
                     uploader: None, 
@@ -158,10 +156,6 @@ impl ChunkView {
 
     pub fn recyclable(&self, expect_ref: usize) -> bool {
         Arc::strong_count(&self.0) == expect_ref
-    }
-
-    pub fn resource(&self) -> &ResourceManager {
-        &self.0.resource
     }
 
     pub async fn load(&self) -> BuckyResult<()> {
@@ -193,8 +187,7 @@ impl ChunkView {
 
     pub fn start_download(
         &self, 
-        config: Arc<ChunkDownloadConfig>, 
-        owner: ResourceManager
+        context: SingleDownloadContext
     ) -> BuckyResult<ChunkDownloader> {
         let (downloader, newly) = {
             let mut state = self.0.state.write().unwrap();
@@ -235,15 +228,14 @@ impl ChunkView {
                 _ => unreachable!()
             }
         };
-
+        downloader.context().add_context(context);
         if newly {
-            let _ = downloader.add_config(config, owner);
             let downloader = downloader.clone();
             let view = self.clone();
             task::spawn(async move {
                 info!("{} begin wait downloader finish", view);
                 match downloader.wait_finish().await {
-                    TaskState::Finished => {
+                    DownloadTaskState::Finished => {
                         let chunk_content = downloader.reader().unwrap().get(view.chunk()).await.unwrap();
                         let mut state = view.0.state.write().unwrap();
                         state.state = ChunkState::Ready;
@@ -255,7 +247,7 @@ impl ChunkView {
                             state.downloader = None;
                         } 
                     },
-                    TaskState::Canceled(_) => {
+                    DownloadTaskState::Error(_) => {
                         // do nothing
                     },
                     _ => unimplemented!()
@@ -269,8 +261,8 @@ impl ChunkView {
         &self, 
         session_id: TempSeq, 
         piece_type: PieceSessionType, 
-        to: Channel, 
-        owner: ResourceManager) -> BuckyResult<UploadSession> {
+        to: Channel
+    ) -> BuckyResult<UploadSession> {
         let uploader = {
             let mut state = self.0.state.write().unwrap();
             match &state.state {
@@ -280,7 +272,6 @@ impl ChunkView {
                         info!("{} will create uploader", self);
                         state.uploader = Some(ChunkUploader::new(
                             self.clone(), 
-                            owner
                         ));
                     }
                     Ok(state.uploader.as_ref().unwrap().clone())
@@ -295,15 +286,9 @@ impl ChunkView {
             session_id, 
             piece_type, 
             to, 
-            uploader.resource().clone()
         );
-        match uploader.add_session(session.clone()) {
-            Ok(_) => Ok(session), 
-            Err(err) => {
-                let _ = uploader.resource().remove_child(session.resource());
-                Err(err)
-            }
-        }
+        let _ = uploader.add_session(session.clone())?;
+        Ok(session)
     }
 
     pub fn reader(&self) -> Option<Arc<Box<dyn ChunkReader>>> {
@@ -322,17 +307,15 @@ impl ChunkView {
             _ => None
         }
     }
-}
 
-impl Scheduler for ChunkView {
-    fn collect_resource_usage(&self) {
+    pub fn on_schedule(&self, now: Timestamp) {
         let mut state = self.0.state.write().unwrap();
         if state.state != ChunkState::Unknown {
             if let Some(downloader) = state.downloader.as_ref() {
-                let task_state = downloader.schedule_state();
+                let task_state = downloader.state();
                 if match task_state {
-                    TaskState::Finished => true, 
-                    TaskState::Canceled(_) => true, 
+                    DownloadTaskState::Finished => true, 
+                    DownloadTaskState::Error(_) => true, 
                     _ => false 
                 } {
                     info!("{} remove downloader for finished/canceled", self);
@@ -341,25 +324,11 @@ impl Scheduler for ChunkView {
             } 
 
             if let Some(uploader) = state.uploader.as_ref() {
-                let task_state = uploader.schedule_state();
-                if match task_state {
-                    TaskState::Finished => true, 
-                    TaskState::Canceled(_) => true, 
-                    _ => false 
-                } {
+                if !uploader.on_schedule(now) {
                     info!("{} remove uploader for finished/canceled", self);
                     state.uploader = None;
                 }
             }
         }
     }
-
-    fn schedule_resource(&self) {
-
-    }
-
-    fn apply_scheduled_resource(&self) {
-
-    }
 }
-

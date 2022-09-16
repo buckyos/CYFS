@@ -3,7 +3,7 @@ use cyfs_base::*;
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
     download::*,
-    ChunkDownloadConfig,
+    SingleDownloadContext, 
     ChunkReader,
     ChunkWriter,
     MemChunkStore,
@@ -12,7 +12,7 @@ use cyfs_bdt::{
     Stack,
     StackGuard,
     StackOpenParams, 
-    DownloadTaskControl
+    DownloadTask, 
 };
 use std::{sync::Arc, time::Duration};
 mod utils;
@@ -31,10 +31,10 @@ async fn watch_recv_chunk(stack: StackGuard, chunkid: ChunkId) -> BuckyResult<Ch
     }
 }
 
-fn watch_resource(task: Box<dyn DownloadTaskControl>) {
+fn watch_resource(task: Box<dyn DownloadTask>) {
     task::spawn(async move {
         loop {
-            log::info!("task state: {:?}", task.control_state());
+            log::info!("task state: {:?}", task.state());
             task::sleep(Duration::from_millis(500)).await;
         }
     });   
@@ -93,7 +93,7 @@ async fn main() {
         let task = download_chunk(
             &*ln_stack, 
             chunkid.clone(), 
-            ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()), 
+            SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]), 
             vec![ln_store.clone_as_writer()]).await.unwrap();
         
         watch_resource(task);

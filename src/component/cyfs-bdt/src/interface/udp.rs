@@ -296,7 +296,7 @@ impl Interface {
                 if package_box.has_exchange() {
                     async_std::task::spawn(async move {
                         let exchange: &Exchange = package_box.packages()[0].as_ref();
-                        if !exchange.verify(package_box.key()).await {
+                        if !exchange.verify().await {
                             warn!("{} exchg verify failed, from {}.", local_interface, from);
                             return;
                         }
@@ -438,7 +438,6 @@ impl Interface {
 pub struct PackageBoxEncodeContext {
     plaintext: bool,
     ignore_exchange: bool, 
-    remote_const: Option<DeviceDesc>,
     fixed_values: merge_context::FixedValues,
     merged_values: Option<merge_context::ContextNames>,
 }
@@ -457,27 +456,14 @@ impl PackageBoxEncodeContext {
     }
 }
 
-impl From<&DeviceDesc> for PackageBoxEncodeContext {
-    fn from(remote_const: &DeviceDesc) -> Self {
-        Self {
-            plaintext: false,
-            ignore_exchange: false, 
-            remote_const: Some(remote_const.clone()),
-            fixed_values: merge_context::FixedValues::new(),
-            merged_values: None,
-        }
-    }
-}
-
 // 编码SnCall::payload
-impl From<(&DeviceDesc, &SnCall)> for PackageBoxEncodeContext {
-    fn from(params: (&DeviceDesc, &SnCall)) -> Self {
-        let fixed_values: merge_context::FixedValues = params.1.into();
+impl From<&SnCall> for PackageBoxEncodeContext {
+    fn from(sn_call: &SnCall) -> Self {
+        let fixed_values: merge_context::FixedValues = sn_call.into();
         let merged_values = fixed_values.clone_merged();
         Self {
             plaintext: false,
             ignore_exchange: false, 
-            remote_const: Some(params.0.clone()),
             fixed_values,
             merged_values: Some(merged_values),
         }
@@ -502,7 +488,6 @@ impl Default for PackageBoxEncodeContext {
         Self {
             plaintext: false,
             ignore_exchange: false, 
-            remote_const: None,
             fixed_values: merge_context::FixedValues::new(),
             merged_values: None,
         }
@@ -596,25 +581,18 @@ impl RawEncodeWithContext<PackageBoxEncodeContext> for PackageBox {
     ) -> Result<&'a mut [u8], BuckyError> {
         let mut buf = buf;
         if self.has_exchange() && !context.ignore_exchange {
-            let remote_const = match context.remote_const.as_ref() {
-                Some(c) => c,
-                None => {
-                    log::error!("try encode exchange without public-key");
+            let exchange: &Exchange = self.packages()[0].as_ref();
+            if buf.len() < exchange.key_encrypted.len() {
+                log::error!("try encode exchange without public-key");
                     assert!(false);
                     return Err(BuckyError::new(
                         BuckyErrorCode::Failed,
                         "try encode exchange without public-key",
                     ));
-                }
-            };
+            }
             // 首先用对端的const info加密aes key
-            let key_len = self.key().raw_measure(purpose)?;
-            let mut key_buf = vec![0; key_len];
-            self.key().raw_encode(key_buf.as_mut_slice(), &None)?;
-            let encrypt_len = remote_const
-                .public_key()
-                .encrypt(&key_buf.as_slice(), buf)?;
-            buf = &mut buf[encrypt_len..];
+            buf[..exchange.key_encrypted.len()].copy_from_slice(&exchange.key_encrypted[..]);
+            buf = &mut buf[exchange.key_encrypted.len()..];
         }
 
         // 写入 key的mixhash
@@ -696,39 +674,39 @@ impl<'de>
         let (context, merged_values) = c;
         let (mix_hash, hash_buf) = KeyMixHash::raw_decode(buf)?;
 
-        let ((remote, aes_key, _mix_hash), buf) = {
-            match context.key_from_mixhash(&mix_hash) {
-                Some((remote, key)) => Ok(((Some(remote), key, mix_hash), hash_buf)),
-                None => {
-                    let encrypt_key_size = context.local_public_key().key_size();
-                    if buf.len() < encrypt_key_size {
-                        let msg = format!("not enough buffer for encrypt_key_size, except={}, got={}", encrypt_key_size, buf.len());
-                        error!("{}", msg);
+        enum KeyStub {
+            Exist(DeviceId), 
+            Exchange(Vec<u8>)
+        }
 
-                        Err(BuckyError::new(
-                            BuckyErrorCode::InvalidData,
-                            msg,
-                        ))
-                    } else {
-                        let mut key = AesKey::default();
-                        let aeskey_len = context
-                            .local_secret()
-                            .decrypt(&buf[..encrypt_key_size], key.as_mut_slice())?;
-                        if aeskey_len < key.raw_measure(&None).unwrap() {
-                            Err(BuckyError::new(
-                                BuckyErrorCode::InvalidData,
-                                "invalid aeskey",
-                            ))
-                        } else {
-                            let (mix_hash, buf) = KeyMixHash::raw_decode(&buf[encrypt_key_size..])?;
-                            Ok(((None, key, mix_hash), buf))
-                        }
-                    }
+        struct KeyInfo {
+            key: AesKey, 
+            mix_hash: KeyMixHash, 
+            stub: KeyStub
+        }
+
+        let (key_info, buf) = {
+            match context.key_from_mixhash(&mix_hash) {
+                Some((remote, key)) => (KeyInfo {
+                    stub: KeyStub::Exist(remote), 
+                    key, 
+                    mix_hash, 
+                }, hash_buf), 
+                None => {
+                    let mut key = AesKey::default();
+                    let (remain, _) = context.local_secret().decrypt_aeskey(buf, key.as_mut_slice())?;
+                    let encrypted = Vec::from(&buf[..buf.len() - remain.len()]);
+                    let (mix_hash, remain) = KeyMixHash::raw_decode(remain)?;
+                    (KeyInfo {
+                        stub: KeyStub::Exchange(encrypted), 
+                        key, 
+                        mix_hash, 
+                    }, remain)
                 }
             }
-        }?;
+        };
 
-        let mut version = if let Some(remote) = &remote {
+        let mut version = if let KeyStub::Exist(remote) = &key_info.stub {
             context.version_of(remote)
         } else {
             0
@@ -736,7 +714,7 @@ impl<'de>
         // 把原数据拷贝到context 给的buffer上去
         let decrypt_buf = unsafe { context.decrypt_buf(buf) };
         // 用key 解密数据
-        let decrypt_len =  aes_key.inplace_decrypt(decrypt_buf, buf.len())?;
+        let decrypt_len =  key_info.key.inplace_decrypt(decrypt_buf, buf.len())?;
         let remain_buf = &buf[buf.len()..];
         let decrypt_buf = &decrypt_buf[..decrypt_len];
 
@@ -794,17 +772,18 @@ impl<'de>
             }
         }
 
-        match remote {
-            Some(remote) => {
-                let mut package_box = PackageBox::encrypt_box(remote, aes_key);
+        match key_info.stub {
+            KeyStub::Exist(remote) => {
+                let mut package_box = PackageBox::encrypt_box(remote, key_info.key);
                 package_box.append(packages);
                 Ok((package_box, remain_buf))
             }
-            None => {
+            KeyStub::Exchange(encrypted) => {
                 if packages.len() > 0 && packages[0].cmd_code().is_exchange() {
-                    let exchange: &Exchange = packages[0].as_ref();
+                    let exchange: &mut Exchange = packages[0].as_mut();
+                    exchange.key_encrypted = encrypted;
                     let mut package_box =
-                        PackageBox::encrypt_box(exchange.from_device_id.clone(), aes_key);
+                        PackageBox::encrypt_box(exchange.from_device_id.clone(), key_info.key);
                     package_box.append(packages);
                     Ok((package_box, remain_buf))
                 } else {

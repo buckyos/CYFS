@@ -6,14 +6,12 @@ use crate::{
     stack::{Stack}, 
 };
 use crate::ndn::{
-    DefaultNdnEventHandler, NdnEventHandler,
-    // event::*,
-    // ChunkTask,
-    // chunk::ChunkDownloadConfig,
+    DefaultNdnEventHandler, 
+    NdnEventHandler,
     channel::{
         protocol::v0::*, 
         Channel, 
-        UploadSession, DownloadSession
+        DownloadSession
     }, 
 };
 
@@ -86,13 +84,15 @@ impl NdnEventHandler for ForwardEventHandle {
                 Ok(())
                 
             } else {
-                let session = UploadSession::canceled(interest.chunk.clone(), 
-                                                                     interest.session_id.clone(),
-                                                                     interest.prefer_type.clone(),
-                                                                     from.clone(),
-                                                                     BuckyErrorCode::ConnectionAborted);
-                let _ = from.upload(session.clone());
-                session.on_interest(interest)
+                from.resp_interest(RespInterest {
+                    session_id: interest.session_id.clone(),
+                    chunk: interest.chunk.clone(), 
+                    err: BuckyErrorCode::ConnectionAborted,
+                    redirect: None,
+                    redirect_referer: None,
+                    to: None
+                });
+                Ok(())
             }
         } else {
             self.default_handle.on_newly_interest(stack, interest, from).await

@@ -625,7 +625,7 @@ impl OnPackage<TcpSynConnection> for AcceptStreamBuilder {
         let key_stub = if let Some(key_stub) = stack.keystore().get_key_by_remote(stream.remote().0, true) {
             key_stub
         } else {
-            stack.keystore().create_key(stream.remote().0, false)
+            stack.keystore().create_key(stream.as_ref().tunnel().remote_const(), false)
         };
         let remote_desc = pkg.from_device_desc.desc().clone();
         let remote_timestamp = pkg.from_device_desc.body().as_ref().unwrap().update_time();

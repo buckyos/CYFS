@@ -1232,10 +1232,12 @@ impl Package for TcpSynConnection {
 }
 
 
-impl From<&TcpSynConnection> for Exchange {
-    fn from(tcp_syn: &TcpSynConnection) -> Self {
+impl From<(&TcpSynConnection, Vec<u8>)> for Exchange {
+    fn from(context: (&TcpSynConnection, Vec<u8>)) -> Self {
+        let (tcp_syn, key_encrypted) = context;
         Exchange {
             sequence: tcp_syn.sequence.clone(),
+            key_encrypted, 
             seq_key_sign: Signature::default(),
             from_device_id: tcp_syn.from_device_id.clone(),
             send_time: bucky_time_now(),
@@ -1424,10 +1426,12 @@ impl Package for TcpAckConnection {
     }
 }
 
-impl From<&TcpAckConnection> for Exchange {
-    fn from(tcp_ack: &TcpAckConnection) -> Self {
+impl From<(&TcpAckConnection, Vec<u8>)> for Exchange {
+    fn from(context: (&TcpAckConnection, Vec<u8>)) -> Self {
+        let (tcp_ack, key_encrypted) = context;
         Exchange {
             sequence: tcp_ack.sequence.clone(),
+            key_encrypted, 
             seq_key_sign: Signature::default(),
             from_device_id: tcp_ack.to_device_desc.desc().device_id(),
             send_time: bucky_time_now(),

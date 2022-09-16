@@ -264,15 +264,15 @@ impl Tunnel {
     }
 
     pub fn send_box(&self, package_box: &PackageBox) -> Result<(), BuckyError> {
-        let (interface, tunnel_container) = {
+        let interface = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                TunnelState::Connecting(connecting) => Ok((connecting.interface.clone(), connecting.container.clone())), 
-                TunnelState::Active(active) => Ok((active.interface.clone(), active.container.clone())), 
+                TunnelState::Connecting(connecting) => Ok(connecting.interface.clone()), 
+                TunnelState::Active(active) => Ok(active.interface.clone()), 
                 TunnelState::Dead => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel dead"))
             }
         }?;
-        let mut context = PackageBoxEncodeContext::from(tunnel_container.remote_const());
+        let mut context = PackageBoxEncodeContext::default();
         context.set_ignore_exchange(ProxyType::None != self.0.proxy);
         interface.send_box_to(&mut context, package_box, tunnel::Tunnel::remote(self))?;
         Ok(())
@@ -363,7 +363,7 @@ impl tunnel::Tunnel for Tunnel {
         }}?;
         trace!("{} send packages with key {}", self, key.mix_hash(None).to_string());
         let package_box = PackageBox::from_package(tunnel_container.remote().clone(), key, package);
-        let mut context = PackageBoxEncodeContext::from(tunnel_container.remote_const());
+        let mut context = PackageBoxEncodeContext::default();
         context.set_ignore_exchange(ProxyType::None != self.0.proxy);
         interface.send_box_to(&mut context, &package_box, tunnel::Tunnel::remote(self))?;
         Ok(())

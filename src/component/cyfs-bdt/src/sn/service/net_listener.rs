@@ -39,7 +39,7 @@ impl NetListener {
             if let PackageCmdCode::Exchange = first_pkg.cmd_code() {
                 let exchg = first_pkg.as_any().downcast_ref::<Exchange>();
                 if let Some(exchg) = exchg {
-                    if !exchg.verify(pkg_box.key()).await {
+                    if !exchg.verify().await {
                         warn!("exchange sign-verify failed, from: {:?}.", resp_sender.remote());
                         return;
                     }

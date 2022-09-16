@@ -17,12 +17,10 @@ use crate::{
     utils::{mem_tracker::MemTracker, local_chunk_store::LocalChunkReader}
 };
 use super::{
-    scheduler::*, 
     channel::{self, ChannelManager}, 
     chunk::{ChunkManager, ChunkReader}, 
     event::*, 
     root::RootTask,
-    task::DirConfig
 };
 
 #[derive(Clone)]
@@ -30,15 +28,12 @@ pub struct Config {
     pub atomic_interval: Duration, 
     pub schedule_interval: Duration, 
     pub channel: channel::Config,
-    pub limit: LimitConfig,
-    pub dir: DirConfig,
 }
 
 
 struct StackImpl {
     stack: WeakStack, 
     last_schedule: AtomicU64, 
-    resource: ResourceManager, 
     chunk_manager: ChunkManager, 
     channel_manager: ChannelManager, 
     event_handler: Box<dyn NdnEventHandler>, 
@@ -62,12 +57,11 @@ impl NdnStack {
         let ndc = ndc.unwrap_or(NamedDataCache::clone(&mem_tracker));
         let store = store.unwrap_or(Box::new(LocalChunkReader::new(ndc.as_ref(), tracker.as_ref())));
         let event_handler = event_handler.unwrap_or(Box::new(DefaultNdnEventHandler::new()));
-        
-        let resource = ResourceManager::new(None);
+        let strong_stack = Stack::from(&stack);
+
         Self(Arc::new(StackImpl {
             stack: stack.clone(), 
             last_schedule: AtomicU64::new(0), 
-            resource: resource.clone(), 
             chunk_manager: ChunkManager::new(
                 stack.clone(), 
                 ndc, 
@@ -75,7 +69,7 @@ impl NdnStack {
                 store), 
             channel_manager: ChannelManager::new(stack.clone()), 
             event_handler, 
-            root_task: RootTask::new(resource.clone()),
+            root_task: RootTask::new(100000, strong_stack.config().ndn.channel.history_speed.clone()),
         }))
     }
 
@@ -98,9 +92,9 @@ impl NdnStack {
         let last_schedule = self.0.last_schedule.load(Ordering::SeqCst);
         if now > last_schedule 
             && Duration::from_millis(now - last_schedule) > stack.config().ndn.schedule_interval {
-            self.collect_resource_usage();
-            self.schedule_resource();
-            self.apply_scheduled_resource();
+            self.channel_manager().on_schedule(now);
+            self.chunk_manager().on_schedule(now);
+            self.root_task().on_schedule(now);
             self.0.last_schedule.store(now, Ordering::SeqCst);
         }
         self.channel_manager().on_time_escape(now);
@@ -123,22 +117,5 @@ impl NdnStack {
     }
 
 
-}
-
-impl Scheduler for NdnStack {
-    fn collect_resource_usage(&self) {
-        self.chunk_manager().collect_resource_usage();
-        self.root_task().collect_resource_usage();
-    }
-
-    fn schedule_resource(&self) {
-        self.chunk_manager().schedule_resource();
-        self.root_task().schedule_resource();
-    }
-
-    fn apply_scheduled_resource(&self) {
-        self.chunk_manager().apply_scheduled_resource();
-        self.root_task().apply_scheduled_resource();
-    }
 }
 

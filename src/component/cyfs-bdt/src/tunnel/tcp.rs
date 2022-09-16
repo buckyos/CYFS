@@ -17,6 +17,7 @@ use cyfs_base::*;
 use crate::{
     types::*,
     protocol::{self, *, v0::*},
+    history::keystore, 
     MTU,
     interface::{self, *, tcp::{OnTcpInterface, RecvBox, PackageInterface}}
 };
@@ -590,7 +591,7 @@ impl Tunnel {
     async fn connect_inner(&self, owner: TunnelContainer, interface: Option<tcp::Interface>) -> Result<(tcp::PackageInterface, Timestamp, TempSeq), BuckyError> {
         info!("{} connect interface", self);
         let stack = owner.stack();
-        let key_stub = stack.keystore().create_key(owner.remote(), true);
+        let key_stub = stack.keystore().create_key(owner.remote_const(), true);
         let interface = if let Some(interface) = interface {
             Ok(interface)
         } else {
@@ -638,7 +639,7 @@ impl Tunnel {
         let sn_id = remote.connect_info().sn_list().get(0).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "device no sn"))?;
         let sn = stack.device_cache().get(sn_id).await.ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "sn not cached"))?;
 
-        let key_stub = stack.keystore().create_key(owner.remote(), true);
+        let key_stub = stack.keystore().create_key(owner.remote_const(), true);
         let mut syn_box = PackageBox::encrypt_box(owner.remote().clone(), key_stub.aes_key.clone());
         let syn_tunnel = SynTunnel {
             protocol_version: owner.protocol_version(), 
@@ -649,9 +650,9 @@ impl Tunnel {
             from_device_desc: stack.local().clone(),
             send_time: bucky_time_now()
         };
-        if !key_stub.is_confirmed {
-            let mut exchg = Exchange::from(&syn_tunnel);
-            exchg.sign(&key_stub.aes_key, stack.keystore().signer()).await?;
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
+            let mut exchg = Exchange::from((&syn_tunnel, encrypted));
+            exchg.sign(stack.keystore().signer()).await?;
             syn_box.push(exchg);
         }
         syn_box.push(syn_tunnel);
@@ -679,7 +680,7 @@ impl Tunnel {
             true,
             false,
             |sn_call| {
-                let mut context = udp::PackageBoxEncodeContext::from((owner.remote_const(), sn_call));
+                let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 let mut buf = vec![0u8; interface::udp::MTU];
                 let enc_len = syn_box.raw_tail_encode_with_context(&mut buf, &mut context, &None).unwrap().len();
                 buf.truncate(enc_len);
@@ -857,7 +858,7 @@ impl Tunnel {
                             let stack = owner.stack();
                             if package_box.has_exchange() {
                                 stack.keystore()
-                                    .add_key(package_box.key(), package_box.remote(), true);
+                                    .add_key(package_box.key(), package_box.remote());
                             }
                             if let Err(err) = package_box.packages().iter().try_for_each(|pkg| {
                                 if pkg.cmd_code() == PackageCmdCode::PingTunnel {

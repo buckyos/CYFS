@@ -10,15 +10,15 @@ use cyfs_base::*;
 use cyfs_util::cache::*;
 use crate::{
     types::*, 
-    stack::{WeakStack, Stack}
+    stack::{WeakStack, Stack},
 };
 use super::super::{
-    scheduler::*, 
-    channel::{PieceSessionType, Channel, UploadSession}
+    channel::{PieceSessionType, Channel, UploadSession}, 
+    download::*
 };
 use super::{
     storage::*,  
-    download::{ChunkDownloader, ChunkDownloadConfig}, 
+    download::{ChunkDownloader}, 
     view::ChunkView
 };
 
@@ -197,12 +197,11 @@ impl ChunkManager {
     pub(crate) async fn start_download(
         &self, 
         chunk: ChunkId, 
-        config: Arc<ChunkDownloadConfig>, 
-        owner: ResourceManager
+        context: SingleDownloadContext
     ) -> BuckyResult<ChunkDownloader> {
-        info!("{} try start download config: {:?}", self, &*config);
+        info!("{} try start download", self);
         let view = self.create_view(chunk, ChunkState::Unknown).await?;
-        view.start_download(config, owner)
+        view.start_download(context)
     }
 
     pub(crate) async fn start_upload(
@@ -211,11 +210,10 @@ impl ChunkManager {
         chunk: ChunkId, 
         piece_type: PieceSessionType, 
         to: Channel, 
-        owner: ResourceManager
     ) -> BuckyResult<UploadSession> {
         info!("{} try start upload type: {:?} to: {}", self, piece_type, to.remote());
         let view = self.create_view(chunk, ChunkState::Unknown).await?;
-        view.start_upload(session_id, piece_type, to, owner)
+        view.start_upload(session_id, piece_type, to)
             .map_err(|err| {
                 error!("{} failed start upload for {}", self, err);
                 err
@@ -226,14 +224,12 @@ impl ChunkManager {
     pub(super) fn gen_session_id(&self) -> TempSeq {
         self.gen_session_id.generate()
     }
-}
 
-impl Scheduler for ChunkManager {
-    fn collect_resource_usage(&self) {
+    pub fn on_schedule(&self, now: Timestamp) {
         let views: Vec<ChunkView> = self.views.read().unwrap().values().cloned().collect();
         let mut to_recycle = LinkedList::new();
         for view in views {
-            view.collect_resource_usage();
+            view.on_schedule(now);
             if view.recyclable(2) {
                 to_recycle.push_back(view);
             }
@@ -251,13 +247,5 @@ impl Scheduler for ChunkManager {
                 }
             }
         }
-    }
-
-    fn schedule_resource(&self) {
-        //TODO
-    }
-
-    fn apply_scheduled_resource(&self) {
-        //TODO
     }
 }

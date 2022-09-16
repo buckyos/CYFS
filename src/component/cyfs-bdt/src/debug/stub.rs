@@ -20,10 +20,10 @@ use crate::{
     tunnel::{BuildTunnelParams}, 
     datagram::{self, DatagramOptions},
     download::*,
-    DownloadTaskControl, 
-    TaskControlState,
+    DownloadTask, 
+    DownloadTaskState, 
     types::*,
-    ChunkDownloadConfig,
+    SingleDownloadContext
 };
 use super::command::*;
 use super::super::sn::client::SnStatus;
@@ -375,7 +375,7 @@ impl DebugStub {
         let _ = tunnel.write_all("start downloading chunk..\r\n".as_ref()).await;
         let task = download_chunk_to_path(&stack,
             chunk_id,
-            ChunkDownloadConfig::from(remotes),
+            SingleDownloadContext::streams(None, remotes),
             &local_path).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
 
@@ -403,7 +403,7 @@ impl DebugStub {
 
         let _ = tunnel.write_all("start downloading file..\r\n".as_ref()).await;
         let task = download_file_to_path(&stack, file_id, 
-            ChunkDownloadConfig::from(remotes), 
+            SingleDownloadContext::streams(None, remotes),
             &local_path).await.map_err(|e| {
                 format!("download err: {}\r\n", e)
         })?;
@@ -518,16 +518,16 @@ impl DebugStub {
     }
 }
 
-async fn watchdog_download_finished(task: Box<dyn DownloadTaskControl>, timeout: u32) -> Result<(), String> {
+async fn watchdog_download_finished(task: Box<dyn DownloadTask>, timeout: u32) -> Result<(), String> {
     let mut _timeout = 1800; //todo: when bdt support download speed, use timeout instead
     let mut i = 0;
 
     loop {
-        match task.control_state() {
-            TaskControlState::Finished(_) => {
+        match task.state() {
+            DownloadTaskState::Finished => {
                 break Ok(());
             },
-            TaskControlState::Downloading(speed, _) => {
+            DownloadTaskState::Downloading(speed, _) => {
                 if speed > 0 {
                     i = 0;
 
@@ -538,18 +538,15 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTaskControl>, timeout:
                     i += 1;
                 }
             },
-            TaskControlState::Canceled => {
-                break Err(format!("download canceled\r\n"));
-            },
-            TaskControlState::Paused => {
-            },
-            TaskControlState::Err(e) => {
+            DownloadTaskState::Error(e) => {
                 break Err(format!("download err, code: {:?}\r\n", e));
             },
+            _ => {
+
+            }
         }
 
         if i >= _timeout {
-            let _ = task.cancel();
             break Err(format!("download timeout\r\n"));
         }
 

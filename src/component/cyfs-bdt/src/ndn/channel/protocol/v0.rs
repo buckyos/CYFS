@@ -173,8 +173,6 @@ impl FlagsCounter {
 }
 
 
-
-
 #[derive(Debug, Clone)]
 pub struct Interest {
     pub session_id: TempSeq, 
@@ -271,7 +269,7 @@ fn encode_protocol_ineterest() {
     let src = Interest {
         session_id: TempSeq::from(123), 
         chunk: ChunkId::default(),
-        prefer_type: PieceSessionType::Stream(0), 
+        prefer_type: PieceSessionType::Stream(None, None, None), 
         from: None,
         referer: Some("referer".to_owned()),
     };

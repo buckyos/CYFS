@@ -18,11 +18,34 @@ pub struct Keystore {
 unsafe impl Send for Keystore {}
 unsafe impl Sync for Keystore {}
 
+#[derive(Clone)]
+pub enum EncryptedKey {
+    None, 
+    Confirmed, 
+    Unconfirmed(Vec<u8>)
+}
+
+impl EncryptedKey {
+    pub fn is_local(&self) -> bool {
+        match self {
+            Self::None => false, 
+            _ => true
+        }
+    }
+
+    pub fn is_unconfirmed(&self) -> bool {
+        match self {
+            Self::Unconfirmed(_) => true, 
+            _ => false
+        }
+    }
+}
+
 pub struct FoundKey {
     pub aes_key: AesKey,
     pub peerid: DeviceId,
     pub hash: KeyMixHash,
-    pub is_confirmed: bool,
+    pub encrypted: EncryptedKey,
 }
 
 #[derive(Clone)]
@@ -63,27 +86,28 @@ impl Keystore {
         mgr.find_by_mix_hash(mix_hash, is_touch, is_confirmed).map(|found| found.as_ref().borrow().found())
     }
 
-    pub fn create_key(&self, peerid: &DeviceId, is_touch: bool) -> FoundKey {
+    pub fn create_key(&self, peer_desc: &DeviceDesc, is_touch: bool) -> FoundKey {
         let mut mgr = self.key_manager.lock().unwrap();
-        match mgr.find_by_peerid(peerid, is_touch) {
+        match mgr.find_by_peerid(&peer_desc.device_id(), is_touch) {
             Some(found) => found.as_ref().borrow().found(),
             None => {
-                let new_key = AesKey::random();
-                mgr.add_key(&new_key, peerid, false, true);
+                let (new_key, encrypted) = peer_desc.public_key().gen_aeskey_and_encrypt().unwrap();
+                let encrypted = EncryptedKey::Unconfirmed(encrypted);
+                mgr.add_key(&new_key, &peer_desc.device_id(), encrypted.clone());
                 let hash = new_key.mix_hash(None);
                 FoundKey {
                     aes_key: new_key,
-                    peerid: peerid.clone(),
+                    peerid: peer_desc.device_id(),
                     hash,
-                    is_confirmed: false
+                    encrypted
                 }
             }
         }
     }
 
-    pub fn add_key(&self, key: &AesKey, remote: &DeviceId, is_confirmed: bool) {
+    pub fn add_key(&self, key: &AesKey, remote: &DeviceId) {
         let mut mgr = self.key_manager.lock().unwrap();
-        mgr.add_key(key, remote, is_confirmed, false)
+        mgr.add_key(key, remote, EncryptedKey::None)
     }
 
     pub fn reset_peer(&self, device_id: &DeviceId) {
@@ -222,14 +246,14 @@ impl KeyManager {
         }
     }
 
-    fn add_key(&mut self, aes_key: &AesKey, peerid: &DeviceId, is_confirmed: bool, is_new_key: bool) {
+    fn add_key(&mut self, aes_key: &AesKey, peerid: &DeviceId, encrypted: EncryptedKey) {
         let now = SystemTime::now();
         let expire_time = now + self.config.active_time;
 
         let target_peer_key_list = self.peerid_key_map.entry(peerid.clone()).or_insert(Vec::default());
 
         let mut target_key = None;
-        if !is_new_key { // 确定是新key就不搜索了
+        if !encrypted.is_unconfirmed() { // 确定是新key就不搜索了
             target_key = target_peer_key_list.iter().find(|k| k.as_ref().borrow().info.aes == *aes_key).map(|f| f.clone());
         }
 
@@ -240,7 +264,7 @@ impl KeyManager {
                 let mut exist = exist.as_ref().borrow_mut();
                 let info = &mut exist.info;
                 info.last_access_time = now;
-                let _is_changed = info.update(is_confirmed, expire_time);
+                let _is_changed = info.update(false, expire_time);
                 // <TODO>持久化
                 target
             },
@@ -248,7 +272,7 @@ impl KeyManager {
                 let new_key = KeyInfo {
                     aes: aes_key.clone(),
                     peerid: peerid.clone(),
-                    is_confirmed,
+                    encrypted,
                     is_storaged: false,
                     expire_time: expire_time,
                     last_access_time: now
@@ -351,11 +375,17 @@ impl KeyManager {
     fn reset_peer(&mut self, device_id: &DeviceId) {
         let found_map = self.peerid_key_map.get_mut(device_id);
         if let Some(found_key_list) = found_map {
-            for exist in found_key_list {
-                let mut exist = exist.as_ref().borrow_mut();
-                let info = &mut exist.info;
-                info.is_confirmed = false;
+            let mut remain = vec![];
+            for exist in found_key_list.iter() {
+                if match &exist.borrow().info.encrypted {
+                    EncryptedKey::Unconfirmed(_) => true, 
+                    EncryptedKey::Confirmed => false, 
+                    EncryptedKey::None => true
+                } {
+                    remain.push(exist.clone());
+                }
             }   
+            std::mem::swap(&mut remain, found_key_list);
         }
     }
 }
@@ -455,7 +485,7 @@ impl HashedKeyInfo {
             aes_key: self.info.aes.clone(),
             peerid: self.info.peerid.clone(),
             hash: self.original_hash.clone(), // <TODO>暂时固定hash
-            is_confirmed: self.info.is_confirmed
+            encrypted: self.info.encrypted.clone()
         }
     }
 }
@@ -463,7 +493,7 @@ impl HashedKeyInfo {
 struct KeyInfo {
     aes: AesKey,
     peerid: DeviceId,
-    is_confirmed: bool,
+    encrypted: EncryptedKey,
     is_storaged: bool,
     expire_time: SystemTime,
     last_access_time: SystemTime,
@@ -472,8 +502,8 @@ struct KeyInfo {
 impl KeyInfo {
     fn update(&mut self, is_confirmed: bool, expire_time: SystemTime) -> bool {
         let mut is_changed = false;
-        if is_confirmed && !self.is_confirmed {
-            self.is_confirmed = true;
+        if is_confirmed && self.encrypted.is_unconfirmed() {
+            self.encrypted = EncryptedKey::Confirmed;
             is_changed = true;
         }
 
@@ -529,7 +559,7 @@ fn add_key() {
     );
 
     let key_store = Keystore::new(
-        private_key, 
+        private_key.clone(), 
         device.desc().clone(), 
         signer, 
         Config {
@@ -537,8 +567,8 @@ fn add_key() {
             capacity: 5,
         });
     
-    let key_for_id0_first = key_store.create_key(&sim_device_id, true);
-    assert!(!key_for_id0_first.is_confirmed);
+    let key_for_id0_first = key_store.create_key(device.desc(), true);
+    assert!(key_for_id0_first.encrypted.is_unconfirmed());
     assert_eq!(key_for_id0_first.peerid, sim_device_id);
     
     fn found_key_is_same(left: &FoundKey, right: &FoundKey) -> bool {
@@ -549,46 +579,46 @@ fn add_key() {
     assert!(found_key_is_same(&key_store.get_key_by_remote(&sim_device_id, true).unwrap(), &key_for_id0_first));
     assert!(found_key_is_same(&key_store.get_key_by_mix_hash(&key_for_id0_first.hash, true, false).unwrap(), &key_for_id0_first));
     
-    let key_for_id0_twice = key_store.create_key(&sim_device_id, true); // 不重复构造key
-    assert!(!key_for_id0_twice.is_confirmed);
+    let key_for_id0_twice = key_store.create_key(device.desc(), true); // 不重复构造key
+    assert!(key_for_id0_twice.encrypted.is_unconfirmed());
     assert!(found_key_is_same(&key_for_id0_twice, &key_for_id0_first));
     
     let found_by_hash = key_store.get_key_by_mix_hash(&key_for_id0_first.hash, true, true).unwrap(); // confirm: false->true
-    assert!(found_by_hash.is_confirmed);
+    assert!(!found_by_hash.encrypted.is_unconfirmed());
     assert!(found_key_is_same(&found_by_hash, &key_for_id0_first));
     
     let found_by_hash = key_store.get_key_by_mix_hash(&key_for_id0_first.hash, true, false).unwrap(); // confirm不能从true->false
-    assert!(found_by_hash.is_confirmed);
+    assert!(!found_by_hash.encrypted.is_unconfirmed());
     assert!(found_key_is_same(&found_by_hash, &key_for_id0_first));
     
-    let key_random = AesKey::random();
+    let (key_random, key_encrypted) = private_key.public().gen_aeskey_and_encrypt().unwrap();
     let found_key_for_random = FoundKey {
         aes_key: key_random.clone(),
         hash: key_random.mix_hash(None),
         peerid: sim_device_id.clone(),
-        is_confirmed: false
+        encrypted: EncryptedKey::Unconfirmed(key_encrypted)
     };
-    key_store.add_key(&key_random, &sim_device_id, false);
+    key_store.add_key(&key_random, &sim_device_id);
     let found_after_add = key_store.get_key_by_remote(&sim_device_id, true).unwrap();
     assert!(found_key_is_same(&found_after_add, &key_for_id0_first) || found_key_is_same(&found_after_add, &found_key_for_random)); // 没有明显的时间先后，不能确定返回哪个
     let found_by_hash_after_add = key_store.get_key_by_mix_hash(&found_key_for_random.hash, true, false).unwrap();
-    assert!(!found_by_hash_after_add.is_confirmed);
+    assert!(!found_by_hash_after_add.encrypted.is_unconfirmed());
     assert!(found_key_is_same(&found_by_hash_after_add, &found_key_for_random));
     
-    key_store.add_key(&key_random, &sim_device_id, true); // confirm: false->true
+    key_store.add_key(&key_random, &sim_device_id); // confirm: false->true
     let found_by_hash_after_add_with_confirm = key_store.get_key_by_mix_hash(&found_key_for_random.hash, true, false).unwrap();
-    assert!(found_by_hash_after_add_with_confirm.is_confirmed);
+    assert!(!found_by_hash_after_add_with_confirm.encrypted.is_unconfirmed());
     assert!(found_key_is_same(&found_by_hash_after_add_with_confirm, &found_key_for_random));
     
-    let key_random2 = AesKey::random();
+    let (key_random2, key_encrypted2) = private_key.public().gen_aeskey_and_encrypt().unwrap();
     let found_key_for_random2 = FoundKey {
         aes_key: key_random2.clone(),
         hash: key_random2.mix_hash(None),
         peerid: sim_device_id.clone(),
-        is_confirmed: false
+        encrypted: EncryptedKey::Unconfirmed(key_encrypted2)
     };
-    key_store.add_key(&key_random2, &sim_device_id, true); // 直接在add里confirm
+    key_store.add_key(&key_random2, &sim_device_id); // 直接在add里confirm
     let found_by_hash_after_add2_with_confirm = key_store.get_key_by_mix_hash(&found_key_for_random2.hash, true, false).unwrap();
-    assert!(found_by_hash_after_add2_with_confirm.is_confirmed);
+    assert!(!found_by_hash_after_add2_with_confirm.encrypted.is_unconfirmed());
     assert!(found_key_is_same(&found_by_hash_after_add2_with_confirm, &found_key_for_random2));
 }

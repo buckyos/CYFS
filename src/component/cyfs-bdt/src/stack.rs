@@ -18,7 +18,7 @@ use crate::{
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
     pn::client::ProxyManager,
-    ndn::{self, NdnStack, ChunkReader, NdnEventHandler}, 
+    ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler}, 
     debug::{self, DebugStub}
 };
 use cyfs_util::{
@@ -155,18 +155,13 @@ impl StackConfig {
                             min_rto: Duration::from_millis(200),
                             cc_impl: cc::ImplConfig::BBR(Default::default()),
                         }
+                    }, 
+                    history_speed: HistorySpeedConfig {
+                        attenuation: 0.5, 
+                        expire: Duration::from_secs(20),  
+                        atomic: Duration::from_secs(1)
                     }
                 },
-                limit: ndn::LimitConfig {
-                    max_connections_per_source: 8u16,
-
-                    max_connections: 512u16,
-                    max_cpu_usage: 100u8,
-                    max_memory_usage: 100u8,
-                    max_upstream_bandwidth: 0u32,
-                    max_downstream_bandwidth: 0u32,
-                },
-                dir: ndn::DirConfig::default(),
             }, 
             debug: None
         }
@@ -556,7 +551,6 @@ impl OnUdpPackageBox for Stack {
             self.keystore().add_key(
                 package_box.as_ref().key(),
                 package_box.as_ref().remote(),
-                true,
             );
         }
         if package_box.as_ref().is_tunnel() {
@@ -592,7 +586,7 @@ impl OnTcpInterface for Stack {
         //FIXME: 用sequence 和 send time 过滤
         if first_box.has_exchange() {
             self.keystore()
-                .add_key(first_box.key(), first_box.remote(), true);
+                .add_key(first_box.key(), first_box.remote());
         }
         if first_box.is_tunnel() {
             self.tunnel_manager().on_tcp_interface(interface, first_box)
@@ -612,9 +606,10 @@ impl PingClientStateEvent for Stack {
         // unimplemented!()
     }
 
-    fn offline(&self, _sn: &Device) {
+    fn offline(&self, sn: &Device) {
         info!("{} sn offline, please implement it if not.", self.local_device_id());
         // unimplemented!()
+        self.keystore().reset_peer(&sn.desc().device_id());
     }
 }
 
@@ -637,7 +632,7 @@ impl PingClientCalledEvent for Stack {
         })?;
         if caller_box.has_exchange() {
             self.keystore()
-                .add_key(caller_box.key(), caller_box.remote(), true);
+                .add_key(caller_box.key(), caller_box.remote());
         }
         self.tunnel_manager().on_called(called, caller_box)
     }

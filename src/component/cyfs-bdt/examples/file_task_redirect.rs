@@ -12,19 +12,19 @@ use cyfs_base::*;
 use cyfs_bdt::{
     Stack, 
     StackOpenParams, 
-    DownloadTaskControl, 
-    TaskControlState, 
-    ChunkDownloadConfig, 
+    DownloadTask, 
+    DownloadTaskState, 
+    SingleDownloadContext, 
     download::*,
     // ndn::{*, channel::{*, protocol::v0::*}}, 
     event_utils::*,
 };
 mod utils;
 
-async fn watch_task_finish(task: Box<dyn DownloadTaskControl>) -> BuckyResult<()> {
+async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {
     loop {
-        match task.control_state() {
-            TaskControlState::Finished(_) => {
+        match task.state() {
+            DownloadTaskState::Finished => {
                 // log::info!("file task finish with avg speed {}", speed);
                 break Ok(());
             },
@@ -144,7 +144,7 @@ async fn main() {
     let down_path = down_dir.join(file.desc().file_id().to_string().as_str());
     let task = download_file_to_path(
         &*ln_stack, file, 
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()), 
+        SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]), 
         down_path.as_path()).await.unwrap();
 
     let recv = future::timeout(Duration::from_secs(1), watch_task_finish(task)).await.unwrap();

@@ -14,18 +14,18 @@ use cyfs_base::*;
 use cyfs_bdt::{
     Stack, 
     StackOpenParams, 
-    DownloadTaskControl, 
-    TaskControlState, 
-    ChunkDownloadConfig, 
+    DownloadTask, 
+    DownloadTaskState, 
+    SingleDownloadContext, 
     download::*,
     ndn::ChunkWriter,
 };
 mod utils;
 
-async fn watch_task_finish(task: Box<dyn DownloadTaskControl>) -> BuckyResult<()> {
+async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {
     loop {
-        match task.control_state() {
-            TaskControlState::Finished(_) => {
+        match task.state() {
+            DownloadTaskState::Finished => {
                 // log::info!("file task finish with avg speed {}", speed);
                 break Ok(());
             },
@@ -132,12 +132,9 @@ async fn main() {
         let task = 
             download_chunk(&*ln_stack, 
                         chunk, 
-                        ChunkDownloadConfig::force_stream(rn_dev.desc().device_id().clone()), 
+                        SingleDownloadContext::streams(None, vec![rn_dev.desc().device_id().clone()]), 
                         vec![Box::new(writer)]).await.unwrap();
-        // let task = download_file_to_path(
-        //     &*ln_stack, file, 
-        //     ChunkDownloadConfig::force_stream(rn_dev.desc().device_id().clone()), 
-        //     down_path.as_path()).await.unwrap();
+
 
         let _ = future::timeout(Duration::from_secs(1), watch_task_finish(task)).await.unwrap();
     }
@@ -163,12 +160,8 @@ async fn main() {
         let task = 
             download_chunk(&*ln_stack, 
                         chunk, 
-                        ChunkDownloadConfig::force_stream(rn_dev.desc().device_id().clone()), 
+                        SingleDownloadContext::streams(None, vec![rn_dev.desc().device_id().clone()]), 
                         vec![Box::new(writer)]).await.unwrap();
-        // let task = download_file_to_path(
-        //     &*ln_stack, file, 
-        //     ChunkDownloadConfig::force_stream(rn_dev.desc().device_id().clone()), 
-        //     down_path.as_path()).await.unwrap();
 
         let _ = future::timeout(Duration::from_secs(1), watch_task_finish(task)).await.unwrap();
     }

@@ -7,7 +7,7 @@ use async_std::{
     future
 };
 use cyfs_base::*;
-use cyfs_bdt::{download::download_chunk, ChunkDownloadConfig, ChunkWriter};
+use cyfs_bdt::{download::download_chunk, SingleDownloadContext, ChunkWriter};
 use cyfs_lib::*;
 use cyfs_dsg_client::*;
 use dsg_test::*;
@@ -122,21 +122,23 @@ async fn download_from_cache_miner() {
 
     {
         let chunk = chunks[0].clone();
-        let mut config = ChunkDownloadConfig::force_stream(dsg.stack().local_device_id());
-        config.referer = Some(BdtDataRefererInfo {
-            target: Some(contract_ref.id()), 
-            object_id: chunk.object_id().clone(), 
-            inner_path: None,
-            dec_id: None, 
-            req_path: None, 
-            referer_object: vec![],
-            flags: 0,
-        }.encode_string());
+        let context = SingleDownloadContext::streams(
+            Some(BdtDataRefererInfo {
+                target: Some(contract_ref.id()), 
+                object_id: chunk.object_id().clone(), 
+                inner_path: None,
+                dec_id: None, 
+                req_path: None, 
+                referer_object: vec![],
+                flags: 0,
+            }.encode_string(), 
+            vec![dsg.stack().local_device_id()]);
+        
         
         let _ = download_chunk(
             &*requester,
             chunk.clone(),
-            config, 
+            context, 
             vec![store.clone_as_writer()],
         )
         .await;
@@ -230,21 +232,23 @@ async fn download_from_embed_bdt() {
 
     for i in 0..2 {
         let chunk = chunks[i].clone();
-        let mut config = ChunkDownloadConfig::force_stream(dsg.stack().local_device_id());
-        config.referer = Some(BdtDataRefererInfo {
-            target: Some(contract_ref.id()), 
-            object_id: chunk.object_id().clone(), 
-            inner_path: None,
-            dec_id: None, 
-            req_path: None, 
-            referer_object: vec![],
-            flags: 0,
-        }.encode_string());
+        let context = SingleDownloadContext::streams(
+            Some(BdtDataRefererInfo {
+                target: Some(contract_ref.id()), 
+                object_id: chunk.object_id().clone(), 
+                inner_path: None,
+                dec_id: None, 
+                req_path: None, 
+                referer_object: vec![],
+                flags: 0,
+            }.encode_string(),
+            vec![dsg.stack().local_device_id()]
+        );
         
         let _ = download_chunk(
             &*requester,
             chunk.clone(),
-            config, 
+            context, 
             vec![store.clone_as_writer()],
         )
         .await;

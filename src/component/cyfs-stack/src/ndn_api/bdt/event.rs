@@ -3,7 +3,7 @@ use cyfs_bdt::{
     Stack, 
     NdnEventHandler, 
     DefaultNdnEventHandler, 
-    ndn::channel::{Channel, UploadSession, DownloadSession, protocol::v0::*}
+    ndn::channel::{Channel, DownloadSession, protocol::v0::*}
 };
 use cyfs_util::acl::*;
 use cyfs_lib::*;
@@ -43,13 +43,14 @@ impl BdtNdnEventHandler {
                 let _ = self.default.on_newly_interest(stack, interest, from).await?;
             }, 
             Err(err) => {
-                let session = UploadSession::canceled(interest.chunk.clone(), 
-                                                interest.session_id.clone(), 
-                                                interest.prefer_type.clone(), 
-                                                from.clone(), 
-                                                err.code());
-                let _ = from.upload(session.clone());
-                let _ = session.on_interest(interest)?;
+                from.resp_interest(RespInterest {
+                    session_id: interest.session_id.clone(), 
+                    chunk: interest.chunk.clone(),  
+                    err: err.code(),
+                    redirect: None,
+                    redirect_referer: None,
+                    to: None,
+                });
             }
         }
         Ok(())

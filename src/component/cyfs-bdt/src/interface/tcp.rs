@@ -13,7 +13,7 @@ use std::{
 // use socket2;
 use super::{manager::UpdateOuterResult, udp};
 use crate::{
-    history::keystore,
+    history::{keystore},
     protocol::*,
     stack::{Stack, WeakStack},
 };
@@ -527,7 +527,7 @@ impl AcceptInterface {
             None => return Err(BuckyError::new(BuckyErrorCode::InvalidData, "no package")),
         };
         if let Some(exchg) = exchg {
-            if !exchg.verify(first_box.key()).await {
+            if !exchg.verify().await {
                 warn!("tcp exchg verify failed.");
                 return Err(BuckyError::new(
                     BuckyErrorCode::InvalidData,
@@ -678,13 +678,13 @@ impl Interface {
         let mut buffer = [0u8; udp::MTU];
         let mut package_box =
             PackageBox::encrypt_box(self.0.remote_device_id.clone(), self.0.key.clone());
-        if !key_stub.is_confirmed {
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
             if let PackageCmdCode::Exchange = packages[0].cmd_code() {
                 let exchg: &mut Exchange = packages[0].as_mut();
-                exchg.sign(&self.0.key, stack.keystore().signer()).await?;
+                exchg.sign(stack.keystore().signer()).await?;
             } else {
-                let mut exchg = Exchange::try_from(&packages[0])?;
-                exchg.sign(&self.0.key, stack.keystore().signer()).await?;
+                let mut exchg = Exchange::try_from((&packages[0], encrypted))?;
+                exchg.sign(stack.keystore().signer()).await?;
                 package_box.push(exchg);
             }
         }
@@ -692,7 +692,7 @@ impl Interface {
 
         let send_buf = {
             let mut context =
-                PackageBoxEncodeContext(FirstBoxEncodeContext::from(&self.0.remote_device_desc));
+                PackageBoxEncodeContext(FirstBoxEncodeContext::default());
             package_box.raw_tail_encode_with_context(&mut buffer, &mut context, &None)?
         };
 
