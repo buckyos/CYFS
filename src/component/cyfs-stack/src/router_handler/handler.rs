@@ -22,6 +22,8 @@ where
 
     pub dec_id: Option<ObjectId>,
 
+    pub req_path: Option<RequestGlobalStatePath>,
+
     pub filter: ExpEvaluator,
 
     pub default_action: RouterHandlerAction,
@@ -51,6 +53,7 @@ where
             && self.id == other.id
             && self.dec_id == other.dec_id
             && self.filter.exp() == other.filter.exp()
+            && self.req_path == other.req_path
             && self.default_action == other.default_action
     }
 
@@ -59,6 +62,7 @@ where
         dec_id: Option<ObjectId>,
         index: i32,
         filter: &str,
+        req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<
             Box<
@@ -72,12 +76,18 @@ where
         // 解析filter表达式
         let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
         let filter = ExpEvaluator::new(filter, reserved_token_list)?;
+    
+        let req_path = match req_path {
+            Some(v) => Some(RequestGlobalStatePath::from_str(&v)?),
+            None => None,
+        };
 
         let handler = RouterHandler::<REQ, RESP> {
             id: id.into(),
             dec_id,
             index,
             filter,
+            req_path,
             default_action,
             routine,
         };
@@ -137,13 +147,14 @@ where
                         changed = false;
                     } else {
                         info!(
-                            "will replace router handler: chain={}, category={}, id={}, dec={:?}, index={}, filter={}, default_action={}, routine={}",
+                            "will replace router handler: chain={}, category={}, id={}, dec={:?}, index={}, filter={}, req_path={:?}, default_action={}, routine={}",
                             self.chain,
                             Self::category(),
                             handler.id,
                             handler.dec_id,
                             handler.index,
                             handler.filter.exp(),
+                            handler.req_path,
                             handler.default_action,
                             handler.routine.is_some(),
                         );
@@ -156,13 +167,14 @@ where
             }
 
             info!(
-                "new router handler: chain={}, category={}, id={}, dec={:?}, index={}, filter={}, default_action={}, routine={}",
+                "new router handler: chain={}, category={}, id={}, dec={:?}, index={}, filter={}, req_path={:?}, default_action={}, routine={}",
                 self.chain,
                 Self::category(),
                 handler.id,
                 handler.dec_id,
                 handler.index,
                 handler.filter.exp(),
+                handler.req_path,
                 handler.default_action,
                 handler.routine.is_some(),
             );
@@ -205,29 +217,6 @@ where
         );
 
         false
-    }
-
-    pub fn get_handler(&self, param: &REQ) -> Option<Arc<RouterHandler<REQ, RESP>>> {
-        for handler in &self.handler_list {
-            trace!(
-                "will eval: chain={}, category={}, exp={}",
-                self.chain,
-                Self::category(),
-                handler.filter
-            );
-            if handler.filter.eval(param).unwrap() {
-                debug!(
-                    "router handler select filter: chain={}, category={}, param={}, handler={}",
-                    self.chain,
-                    Self::category(),
-                    param,
-                    handler.id
-                );
-                return Some(handler.clone());
-            }
-        }
-
-        None
     }
 
     pub fn clear_dec_handlers(&mut self, dec_id: &Option<ObjectId>) -> bool {
@@ -308,6 +297,7 @@ where
                 index: item.index,
                 dec_id: item.dec_id.clone(),
                 filter: item.filter.exp().to_owned(),
+                req_path: item.req_path.as_ref().map(|v| v.to_string()),
                 default_action: item.default_action.to_string(),
             };
 
@@ -349,11 +339,17 @@ where
             data
         );
 
+        let req_path = match &data.req_path {
+            Some(v) => Some(RequestGlobalStatePath::from_str(&v)?),
+            None => None,
+        };
+
         let handler = RouterHandler::<REQ, RESP> {
             id,
             dec_id: data.dec_id,
             index: data.index,
             filter,
+            req_path,
             default_action: RouterHandlerAction::from_str(&data.default_action)?,
             routine: None,
         };
@@ -497,6 +493,7 @@ where
 
     fn next_handler(
         &mut self,
+        req_path: &Option<RequestGlobalStatePath>,
         param: &RouterHandlerRequest<REQ, RESP>,
     ) -> Option<Arc<RouterHandler<REQ, RESP>>> {
         while self.next_index < self.handler_list.len() {
@@ -504,20 +501,33 @@ where
             self.next_index += 1;
 
             trace!(
-                "will eval: chain={}, category={}, id={}, exp={}",
+                "will eval: chain={}, category={}, id={}, filter={}, req_path={:?}",
                 self.chain,
                 self.category,
                 handler.id,
-                handler.filter
+                handler.filter,
+                handler.req_path.as_ref().map(|v| v.to_string()),
             );
 
-            if handler.filter.eval(param).unwrap() {
-                debug!(
-                    "router handler select filter: chain={}, category={}, param={}, handler={}",
-                    self.chain, self.category, param, handler.id
-                );
-                return Some(handler.clone());
+            // first match req_path
+            if let Some(handler_req_path) = &handler.req_path {
+                if let Some(req_path) = req_path {
+                    if !handler_req_path.match_target(req_path) {
+                        continue;
+                    }
+                }
             }
+
+            // then match the dynamic filter
+            if !handler.filter.eval(param).unwrap() {
+                continue;
+            }
+
+            debug!(
+                "router handler select filter: chain={}, category={}, param={}, handler={}",
+                self.chain, self.category, param, handler.id
+            );
+            return Some(handler.clone());
         }
 
         None
@@ -525,12 +535,13 @@ where
 
     pub async fn next(
         &mut self,
+        req_path: &Option<RequestGlobalStatePath>,
         param: &RouterHandlerRequest<REQ, RESP>,
         default_action: &RouterHandlerAction,
     ) -> RouterHandlerResponse<REQ, RESP> {
         // assert_ne!(*default_action, RouterHandlerAction::Pass);
 
-        match self.next_handler(&param) {
+        match self.next_handler(req_path, &param) {
             Some(handler) => {
                 RouterHandlersImpl::emit(&self.chain, &self.category, handler, &param).await
             }

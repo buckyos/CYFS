@@ -102,6 +102,7 @@ impl RouterHandlerManager {
         id: &str,
         index: i32,
         filter: &str,
+        req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<
             Box<
@@ -119,10 +120,10 @@ impl RouterHandlerManager {
     {
         match self.inner.as_ref() {
             RouterHandlerManagerInner::Http(inner) => {
-                inner.add_handler(chain, id, self.get_dec_id(), index, filter, default_action, routine)
+                inner.add_handler(chain, id, self.get_dec_id(), index, filter, req_path, default_action, routine)
             }
             RouterHandlerManagerInner::WS(inner) => {
-                inner.add_handler(chain, id, self.get_dec_id(), index, filter, default_action, routine)
+                inner.add_handler(chain, id, self.get_dec_id(), index, filter, req_path, default_action, routine)
             }
         }
     }
@@ -157,6 +158,7 @@ where
         id: &str,
         index: i32,
         filter: &str,
+        req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<
             Box<
@@ -167,7 +169,7 @@ where
             >,
         >,
     ) -> BuckyResult<()> {
-        Self::add_handler(&self, chain, id, index, filter, default_action, routine)
+        Self::add_handler(&self, chain, id, index, filter, req_path, default_action, routine)
     }
 
     async fn remove_handler(&self, chain: RouterHandlerChain, id: &str) -> BuckyResult<bool> {

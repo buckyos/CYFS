@@ -240,7 +240,7 @@ impl CyfsStackImpl {
         ));
 
         // handlers
-        let router_handlers = RouterHandlersManager::new(param.config.isolate.clone());
+        let router_handlers = RouterHandlersManager::new(param.config.isolate.clone(), acl_manager.clone());
         if let Err(e) = router_handlers.load().await {
             error!("load router handlers error! {}", e);
         }

@@ -128,7 +128,10 @@ impl RouterHandlerHttpHandler {
             source,
         };
 
-        self.processor.on_add_handler_request(add_req).await
+        let mut source = RequestSourceInfo::new_local_dec(add_req.dec_id.clone());
+        source.protocol = self.protocol;
+
+        self.processor.on_add_handler_request(source, add_req).await
     }
 
     async fn on_remove_handler_request<State>(

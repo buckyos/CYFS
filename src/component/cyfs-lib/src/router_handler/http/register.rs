@@ -104,6 +104,7 @@ impl RouterHandlerRegisterHelper {
 struct RouterHandlerRegisterInner {
     index: i32,
     filter: String,
+    req_path: Option<String>,
     default_action: RouterHandlerAction,
     routine: Option<String>,
 
@@ -115,12 +116,14 @@ impl RouterHandlerRegisterInner {
     pub fn new(
         index: i32,
         filter: &str,
+        req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<String>,
     ) -> Self {
         Self {
             index,
             filter: filter.to_owned(),
+            req_path,
             default_action,
             routine,
 
@@ -131,6 +134,7 @@ impl RouterHandlerRegisterInner {
     fn gen_add_handler_param(&self) -> RouterAddHandlerParam {
         RouterAddHandlerParam {
             filter: self.filter.clone(),
+            req_path: self.req_path.clone(),
             index: self.index,
             default_action: self.default_action.clone(),
             routine: self.routine.clone(),
@@ -152,11 +156,12 @@ impl RouterHandlerRegister {
         dec_id: Option<ObjectId>,
         index: i32,
         filter: &str,
+        req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<String>,
         service_url: &str,
     ) -> Self {
-        let inner = RouterHandlerRegisterInner::new(index, filter, default_action, routine);
+        let inner = RouterHandlerRegisterInner::new(index, filter, req_path, default_action, routine);
         let helper = RouterHandlerRegisterHelper::new(chain, category, id, dec_id, service_url);
 
         Self {

@@ -4,6 +4,7 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 use std::fmt;
+use std::str::FromStr;
 
 pub(super) struct NDNHandlerCaller<REQ, RESP>
 where
@@ -54,9 +55,16 @@ where
         param: &mut RouterHandlerRequest<REQ, RESP>,
     ) -> BuckyResult<Option<BuckyResult<RESP>>> {
         let default_action = RouterHandlerAction::Default;
+
+        let req_path = if let Some(req_path) = param.request.req_path() {
+            Some(RequestGlobalStatePath::from_str(&req_path)?)
+        } else {
+            None
+        };
+
         loop {
             // 最终会返回非pass的default_action，结束循环
-            let resp = self.emitter.next(&param, &default_action).await;
+            let resp = self.emitter.next(&req_path, &param, &default_action).await;
             info!(
                 "ndn {} handler resp: chain={}, categroy={}, req={}, {}",
                 name,

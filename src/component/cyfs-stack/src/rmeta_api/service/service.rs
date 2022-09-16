@@ -73,28 +73,28 @@ impl GlobalStateMetaLocalService {
     pub async fn check_access(
         &self,
         source: &RequestSourceInfo,
-        global_state: &RequestGlobalStatePath,
+        req_path: &RequestGlobalStatePath,
         permissions: impl Into<AccessPermissions>,
     ) -> BuckyResult<()> {
-        let rmeta = self.get_meta_manager(global_state.category());
-        let dec_rmeta = rmeta.get_global_state_meta(&global_state.dec_id, false).await.map_err(|e| {
-            let msg = format!("global state check rmeta but target dec rmeta not found or with error! state={}, {}", global_state, e);
+        let rmeta = self.get_meta_manager(req_path.category());
+        let dec_rmeta = rmeta.get_global_state_meta(&req_path.dec_id, false).await.map_err(|e| {
+            let msg = format!("global state check rmeta but target dec rmeta not found or with error! req_path={}, {}", req_path, e);
             warn!("{}", msg);
             BuckyError::new(BuckyErrorCode::PermissionDenied, msg)
         })?;
 
         let permissions = permissions.into();
         let check_req = GlobalStateAccessRequest {
-            dec: Cow::Borrowed(global_state.dec()),
-            path: global_state.req_path(),
+            dec: Cow::Borrowed(req_path.dec()),
+            path: req_path.req_path(),
             source: Cow::Borrowed(source),
             permissions,
         };
 
         if let Err(e) = dec_rmeta.check_access(check_req) {
             error!(
-                "global check check rmeta but been rejected! source={}, state={}, permissons={}, {}",
-                source, global_state, permissions.as_str(), e
+                "global check check rmeta but been rejected! source={}, req_path={}, permissons={}, {}",
+                source, req_path, permissions.as_str(), e
             );
             return Err(e);
         }
@@ -177,11 +177,11 @@ impl GlobalStateMetaService {
     pub async fn check_access(
         &self,
         source: &RequestSourceInfo,
-        global_state: &RequestGlobalStatePath,
+        req_path: &RequestGlobalStatePath,
         op_type: RequestOpType,
     ) -> BuckyResult<()> {
         self.local_service
-            .check_access(source, global_state, op_type)
+            .check_access(source, req_path, op_type)
             .await
     }
 }

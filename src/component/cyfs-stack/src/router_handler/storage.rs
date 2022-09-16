@@ -10,6 +10,8 @@ pub(crate) struct RouterHandlerSavedData {
 
     pub filter: String,
 
+    pub req_path: Option<String>,
+
     pub default_action: String,
 
     pub dec_id: Option<ObjectId>,

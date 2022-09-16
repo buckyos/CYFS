@@ -69,6 +69,10 @@ impl RequestHandlerHelper<NDNPutDataInputRequest> for NDNPutDataInputRequest {
     fn debug_info(&self) -> String {
         self.object_id.to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
 }
 impl RequestHandlerHelper<NDNPutDataInputResponse> for NDNPutDataInputResponse {
     fn update(&mut self, handler: NDNPutDataInputResponse) {
@@ -76,6 +80,10 @@ impl RequestHandlerHelper<NDNPutDataInputResponse> for NDNPutDataInputResponse {
     }
 
     fn debug_info(&self) -> String {
+        unimplemented!();
+    }
+
+    fn req_path(&self) -> &Option<String> {
         unimplemented!();
     }
 }
@@ -89,6 +97,10 @@ impl RequestHandlerHelper<NDNGetDataInputRequest> for NDNGetDataInputRequest {
     fn debug_info(&self) -> String {
         self.object_id.to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
 }
 impl RequestHandlerHelper<NDNGetDataInputResponse> for NDNGetDataInputResponse {
     fn update(&mut self, handler: Self) {
@@ -96,6 +108,10 @@ impl RequestHandlerHelper<NDNGetDataInputResponse> for NDNGetDataInputResponse {
     }
 
     fn debug_info(&self) -> String {
+        unimplemented!();
+    }
+
+    fn req_path(&self) -> &Option<String> {
         unimplemented!();
     }
 }
@@ -111,6 +127,10 @@ impl RequestHandlerHelper<NDNDeleteDataInputRequest> for NDNDeleteDataInputReque
     fn debug_info(&self) -> String {
         self.object_id.to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
 }
 
 impl RequestHandlerHelper<NDNDeleteDataInputResponse> for NDNDeleteDataInputResponse {
@@ -119,6 +139,10 @@ impl RequestHandlerHelper<NDNDeleteDataInputResponse> for NDNDeleteDataInputResp
     }
 
     fn debug_info(&self) -> String {
+        unimplemented!();
+    }
+
+    fn req_path(&self) -> &Option<String> {
         unimplemented!();
     }
 }

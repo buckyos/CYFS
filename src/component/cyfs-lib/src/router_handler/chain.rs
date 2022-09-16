@@ -5,7 +5,7 @@ use std::fmt;
 use std::str::FromStr;
 
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum RouterHandlerChain {
     PreNOC,
     PostNOC,

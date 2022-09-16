@@ -1,4 +1,5 @@
 use super::dec_app::*;
+use cyfs_base::ObjectId;
 
 use once_cell::sync::OnceCell;
 
@@ -11,6 +12,17 @@ pub fn get_system_dec_app() -> &'static DecAppId {
         info!("init system dec_id as {}", id);
         id
     })
+}
+
+pub fn is_system_dec_app(dec_id: &Option<ObjectId>) -> bool {
+    match dec_id {
+        Some(id) => {
+            id == get_system_dec_app().object_id()
+        }
+        None => {
+            true
+        }
+    }
 }
 
 pub(crate) struct SystemDecApp {}

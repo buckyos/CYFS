@@ -95,6 +95,7 @@ impl RequestUtil {
 pub(crate) trait RequestHandlerHelper<REQ> {
     fn update(&mut self, handler: REQ);
     fn debug_info(&self) -> String;
+    fn req_path(&self) -> &Option<String>;
 }
 
 // put_object
@@ -106,6 +107,10 @@ impl RequestHandlerHelper<NONPutObjectInputRequest> for NONPutObjectInputRequest
     fn debug_info(&self) -> String {
         self.object.object_id.to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
 }
 impl RequestHandlerHelper<NONPutObjectInputResponse> for NONPutObjectInputResponse {
     fn update(&mut self, handler: NONPutObjectInputResponse) {
@@ -113,6 +118,10 @@ impl RequestHandlerHelper<NONPutObjectInputResponse> for NONPutObjectInputRespon
     }
 
     fn debug_info(&self) -> String {
+        unimplemented!();
+    }
+
+    fn req_path(&self) -> &Option<String> {
         unimplemented!();
     }
 }
@@ -126,6 +135,10 @@ impl RequestHandlerHelper<NONGetObjectInputRequest> for NONGetObjectInputRequest
     fn debug_info(&self) -> String {
         self.object_id.to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
 }
 impl RequestHandlerHelper<NONGetObjectInputResponse> for NONGetObjectInputResponse {
     fn update(&mut self, handler: Self) {
@@ -133,6 +146,10 @@ impl RequestHandlerHelper<NONGetObjectInputResponse> for NONGetObjectInputRespon
     }
 
     fn debug_info(&self) -> String {
+        unimplemented!();
+    }
+
+    fn req_path(&self) -> &Option<String> {
         unimplemented!();
     }
 }
@@ -146,6 +163,10 @@ impl RequestHandlerHelper<NONPostObjectInputRequest> for NONPostObjectInputReque
     fn debug_info(&self) -> String {
         self.object.object_id.to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
 }
 
 impl RequestHandlerHelper<NONPostObjectInputResponse> for NONPostObjectInputResponse {
@@ -154,6 +175,10 @@ impl RequestHandlerHelper<NONPostObjectInputResponse> for NONPostObjectInputResp
     }
 
     fn debug_info(&self) -> String {
+        unimplemented!();
+    }
+
+    fn req_path(&self) -> &Option<String> {
         unimplemented!();
     }
 }
@@ -167,6 +192,10 @@ impl RequestHandlerHelper<NONSelectObjectInputRequest> for NONSelectObjectInputR
     fn debug_info(&self) -> String {
         format!("{}", self.filter)
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
 }
 impl RequestHandlerHelper<NONSelectObjectInputResponse> for NONSelectObjectInputResponse {
     fn update(&mut self, handler: Self) {
@@ -174,6 +203,10 @@ impl RequestHandlerHelper<NONSelectObjectInputResponse> for NONSelectObjectInput
     }
 
     fn debug_info(&self) -> String {
+        unimplemented!();
+    }
+
+    fn req_path(&self) -> &Option<String> {
         unimplemented!();
     }
 }
@@ -187,6 +220,10 @@ impl RequestHandlerHelper<NONDeleteObjectInputRequest> for NONDeleteObjectInputR
     fn debug_info(&self) -> String {
         self.object_id.to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
 }
 
 impl RequestHandlerHelper<NONDeleteObjectInputResponse> for NONDeleteObjectInputResponse {
@@ -195,6 +232,10 @@ impl RequestHandlerHelper<NONDeleteObjectInputResponse> for NONDeleteObjectInput
     }
 
     fn debug_info(&self) -> String {
+        unimplemented!();
+    }
+
+    fn req_path(&self) -> &Option<String> {
         unimplemented!();
     }
 }
@@ -219,6 +260,10 @@ where
     }
 
     fn debug_info(&self) -> String {
+        unimplemented!();
+    }
+
+    fn req_path(&self) -> &Option<String> {
         unimplemented!();
     }
 }

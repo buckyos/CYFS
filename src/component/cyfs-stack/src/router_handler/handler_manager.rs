@@ -1,5 +1,6 @@
 use super::handler::*;
 use super::storage::*;
+use crate::acl::AclManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -355,6 +356,7 @@ impl RouterHandlersContainer {
 #[derive(Clone)]
 pub struct RouterHandlersManager {
     storage: RouterHandlersStorage,
+    acl_manager: AclManagerRef,
 
     pre_noc: Arc<RouterHandlersContainer>,
     post_noc: Arc<RouterHandlersContainer>,
@@ -374,10 +376,11 @@ pub struct RouterHandlersManager {
 }
 
 impl RouterHandlersManager {
-    pub fn new(config_isolate: Option<String>) -> Self {
+    pub fn new(config_isolate: Option<String>, acl_manager: AclManagerRef) -> Self {
         let storage = RouterHandlersStorage::new(config_isolate);
         let ret = Self {
             storage: storage.clone(),
+            acl_manager,
 
             pre_noc: Arc::new(RouterHandlersContainer::new(
                 RouterHandlerChain::PreNOC,
@@ -429,6 +432,10 @@ impl RouterHandlersManager {
         storage.bind(ret.clone());
 
         ret
+    }
+
+    pub fn acl_manager(&self) -> &AclManagerRef {
+        &self.acl_manager
     }
 
     pub fn clone_processor(&self) -> RouterHandlerManagerProcessorRef {
@@ -570,5 +577,52 @@ impl RouterHandlersManager {
         if let Some(data) = list.acl {
             self.acl.load_data(data);
         }
+    }
+
+    pub async fn check_access(
+        &self,
+        source: &RequestSourceInfo,
+        chain: RouterHandlerChain,
+        category: RouterHandlerCategory,
+        id: &str,
+        dec_id: &Option<ObjectId>,
+        req_path: &Option<String>,
+        filter: &Option<String>,
+    ) -> BuckyResult<()> {
+        if req_path.is_none() && filter.is_none() {
+            let msg = format!(
+                "{} {} handler's req_path or filter should specify at least one! id={}",
+                chain, category, id,
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
+        if cyfs_core::is_system_dec_app(dec_id) {
+            return Ok(());
+        }
+
+        let req_path = if chain == RouterHandlerChain::Handler {
+            // Handler must specified valid req_path
+            if req_path.is_none() {
+                let msg = format!(
+                    "{} {} handler's req_path should specify! id={}",
+                    chain, category, id,
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+
+            use std::str::FromStr;
+            RequestGlobalStatePath::from_str(&req_path.as_ref().unwrap())?
+        } else {
+            let path = format!("{}/{}/{}/", CYFS_HANDLER_VIRTUAL_PATH, chain, category);
+            RequestGlobalStatePath::new_system_dec(Some(path))
+        };
+
+        self.acl_manager
+            .global_state_meta()
+            .check_access(source, &req_path, RequestOpType::Call)
+            .await
     }
 }

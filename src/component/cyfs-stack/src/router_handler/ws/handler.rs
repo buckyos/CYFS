@@ -49,7 +49,10 @@ impl RouterHandlerWebSocketHandler {
                         auth.check_option_dec(req.dec_id.as_ref(), &source)?;
                     }
 
-                    self.on_add_handler_request(session_requestor, req)
+                    let mut source = RequestSourceInfo::new_local_dec(req.dec_id.clone());
+                    source.protocol = self.protocol;
+
+                    self.on_add_handler_request(session_requestor, source, req)
                         .await
                         .map(|v| Some(v))
                 } else {
@@ -81,11 +84,12 @@ impl RouterHandlerWebSocketHandler {
     async fn on_add_handler_request(
         &self,
         session_requestor: Arc<WebSocketRequestManager>,
+        source: RequestSourceInfo,
         req: RouterWSAddHandlerParam,
     ) -> BuckyResult<String> {
         let resp = match self
             .processor
-            .on_add_handler_request(session_requestor, &req)
+            .on_add_handler_request(session_requestor, source, &req)
             .await
         {
             Ok(_) => RouterWSHandlerResponse {

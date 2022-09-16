@@ -6,6 +6,7 @@ use serde_json::{Map, Value};
 #[derive(Debug)]
 pub struct RouterAddHandlerParam {
     pub filter: String,
+    pub req_path: Option<String>,
     pub index: i32,
 
     pub default_action: RouterHandlerAction,
@@ -21,19 +22,13 @@ impl JsonCodec<RouterAddHandlerParam> for RouterAddHandlerParam {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
 
-        /*
-        obj.insert(
-            "category".to_string(),
-            Value::Object(self.category.encode_json()),
-        );
-
-        obj.insert("id".to_string(), Value::String(self.id.clone()));
-        */
-
         obj.insert(
             "filter".to_string(),
             Value::String(self.filter.clone()),
         );
+
+        JsonCodecHelper::encode_option_string_field(&mut obj, "req_path", self.req_path.as_ref());
+
         obj.insert(
             "index".to_string(),
             Value::String(self.index.to_string()),
@@ -54,9 +49,8 @@ impl JsonCodec<RouterAddHandlerParam> for RouterAddHandlerParam {
     }
 
     fn decode_json(req_obj: &Map<String, Value>) -> BuckyResult<Self> {
-        //let mut category: Option<RouterRuleCategory> = None;
-        //let mut id: Option<String> = None;
         let mut filter: Option<String> = None;
+        let mut req_path: Option<String> = None;
         let mut default_action: Option<RouterHandlerAction> = None;
         let mut routine: Option<String> = None;
         let mut index: Option<i32> = None;
@@ -65,6 +59,9 @@ impl JsonCodec<RouterAddHandlerParam> for RouterAddHandlerParam {
             match k.as_str() {
                 "filter" => {
                     filter = Some(JsonCodecHelper::decode_from_string(&v)?);
+                }
+                "req_path" => {
+                    req_path = Some(JsonCodecHelper::decode_from_string(&v)?);
                 }
 
                 "index" => {
@@ -116,6 +113,7 @@ impl JsonCodec<RouterAddHandlerParam> for RouterAddHandlerParam {
 
         let req = Self {
             filter: filter.unwrap(),
+            req_path,
             index: index.unwrap(),
             default_action: default_action.unwrap(),
             routine,

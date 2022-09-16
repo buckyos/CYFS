@@ -24,6 +24,7 @@ where
         id: &str,
         index: i32,
         filter: &str,
+        req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<
             Box<

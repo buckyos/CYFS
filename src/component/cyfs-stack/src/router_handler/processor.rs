@@ -14,6 +14,7 @@ macro_rules! declare_router_handler_processor {
                 id: &str,
                 index: i32,
                 filter: &str,
+                req_path: Option<String>,
                 default_action: RouterHandlerAction,
                 routine: Option<
                     Box<
@@ -25,7 +26,7 @@ macro_rules! declare_router_handler_processor {
                 >,
             ) -> BuckyResult<()> {
                 let handler =
-                    RouterHandler::new(id.to_owned(), None, index, filter, default_action, routine)?;
+                    RouterHandler::new(id.to_owned(), None, index, filter, req_path, default_action, routine)?;
 
                 self.handlers(&chain).$func().add_handler(handler)
             }

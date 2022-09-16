@@ -249,6 +249,7 @@ impl AppController {
                 APP_MANAGER_CONTROLLER_HANDLER_ID,
                 1,
                 &filter,
+                None,
                 RouterHandlerAction::Reject,
                 Some(Box::new(routine)),
             )

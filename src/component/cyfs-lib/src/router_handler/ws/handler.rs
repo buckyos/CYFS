@@ -20,6 +20,7 @@ struct RouterHandlerItem {
     dec_id: Option<ObjectId>,
     index: i32,
     filter: String,
+    req_path: Option<String>,
     default_action: RouterHandlerAction,
     routine: Option<Box<dyn RouterHandlerAnyRoutine>>,
 }
@@ -53,6 +54,7 @@ impl RouterHandlerItem {
 
         let mut param = RouterAddHandlerParam {
             filter: self.filter.clone(),
+            req_path: self.req_path.clone(),
             index: self.index,
             default_action: self.default_action.clone(),
             routine: None,
@@ -499,6 +501,7 @@ impl RouterWSHandlerManager {
         dec_id: Option<ObjectId>,
         index: i32,
         filter: &str,
+        req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<
             Box<
@@ -523,6 +526,7 @@ impl RouterWSHandlerManager {
             dec_id,
             index,
             filter: filter.to_owned(),
+            req_path,
             default_action: default_action.clone(),
             routine: None,
         };

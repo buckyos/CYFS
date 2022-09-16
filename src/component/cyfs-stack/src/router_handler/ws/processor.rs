@@ -1,8 +1,8 @@
 use super::super::{RouterHandler, RouterHandlersManager};
 use super::ws_routine::RouterHandlerWebSocketRoutine;
 use cyfs_base::*;
-use cyfs_util::*;
 use cyfs_lib::*;
+use cyfs_util::*;
 
 use std::fmt;
 use std::sync::Arc;
@@ -27,8 +27,8 @@ impl RouterHandlerWSProcessor {
         RouterHandlerRequest<REQ, RESP>: RouterHandlerCategoryInfo,
     {
         info!(
-            "new router ws handler: sid={}, chain={}, category={}, id={}, filter={}, default_action={}, routine={:?}",
-            session_requestor.sid(), req.chain.to_string(), req.category.to_string(), req.id, req.param.filter, req.param.default_action, req.param.routine
+            "new router ws handler: sid={}, chain={}, category={}, id={}, filter={}, req_path={:?}, default_action={}, routine={:?}",
+            session_requestor.sid(), req.chain.to_string(), req.category.to_string(), req.id, req.param.filter, req.param.req_path, req.param.default_action, req.param.routine
         );
 
         let routine = if req.param.routine.is_some() {
@@ -54,6 +54,7 @@ impl RouterHandlerWSProcessor {
             req.dec_id,
             req.param.index,
             &req.param.filter,
+            req.param.req_path.clone(),
             req.param.default_action.clone(),
             routine,
         )?;
@@ -64,8 +65,23 @@ impl RouterHandlerWSProcessor {
     pub async fn on_add_handler_request(
         &self,
         session_requestor: Arc<WebSocketRequestManager>,
+        source: RequestSourceInfo,
         req: &RouterWSAddHandlerParam,
     ) -> BuckyResult<()> {
+
+        // check access
+        self.manager
+            .check_access(
+                &source,
+                req.chain,
+                req.category,
+                &req.id,
+                &req.dec_id,
+                &req.param.req_path,
+                &Some(req.param.filter.clone()),
+            )
+            .await?;
+
         match req.category {
             RouterHandlerCategory::PutObject => {
                 let handler = Self::create_handler::<

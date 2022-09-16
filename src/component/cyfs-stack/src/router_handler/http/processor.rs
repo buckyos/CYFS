@@ -79,8 +79,8 @@ impl RouterHandlerHttpProcessor {
         };
 
         info!(
-            "new router handler: category: {}, id: {}, dec: {:?} filter: {}, default action: {}, routine: {:?}",
-            req.category.to_string(), req.id, req.dec_id, req.param.filter, req.param.default_action, req.param.routine
+            "new router handler: category: {}, id: {}, dec: {:?} filter: {}, req_path: {:?} default action: {}, routine: {:?}",
+            req.category.to_string(), req.id, req.dec_id, req.param.filter, req.param.req_path, req.param.default_action, req.param.routine
         );
 
         let handler = RouterHandler::new(
@@ -88,6 +88,7 @@ impl RouterHandlerHttpProcessor {
             req.dec_id,
             req.param.index,
             &req.param.filter,
+            req.param.req_path,
             req.param.default_action,
             routine,
         )?;
@@ -95,7 +96,20 @@ impl RouterHandlerHttpProcessor {
         Ok(handler)
     }
 
-    pub async fn on_add_handler_request(&self, req: RouterAddHandlerRequest) -> BuckyResult<()> {
+    pub async fn on_add_handler_request(&self, source: RequestSourceInfo, req: RouterAddHandlerRequest) -> BuckyResult<()> {
+        // check access
+        self.manager
+            .check_access(
+                &source,
+                req.chain,
+                req.category,
+                &req.id,
+                &req.dec_id,
+                &req.param.req_path,
+                &Some(req.param.filter.clone()),
+            )
+            .await?;
+
         let chain = req.chain.clone();
         match req.category {
             RouterHandlerCategory::PutObject => {

@@ -54,6 +54,10 @@ impl RequestGlobalStatePath {
         }
     }
 
+    pub fn new_system_dec(req_path: Option<impl Into<String>>) -> Self {
+        Self::new(None, req_path)
+    }
+
     pub fn category(&self) -> GlobalStateCategory {
         match &self.global_state_category {
             Some(v) => *v,
@@ -170,7 +174,7 @@ impl RequestGlobalStatePath {
 
         let req_path = if index < segs.len() {
             let path = segs[index..].join("/");
-            Some(format!("/{}", path))
+            Some(format!("/{}/", path))
         } else {
             None
         };
@@ -211,6 +215,22 @@ impl RequestGlobalStatePath {
         }
 
         format!("/{}", segs.join("/"))
+    }
+
+    pub fn match_target(&self, target: &Self) -> bool {
+        if self.category() != target.category() {
+            return false;
+        }
+
+        if self.global_state_root != target.global_state_root {
+            return false;
+        }
+
+        if self.dec() != target.dec() {
+            return false;
+        }
+
+        target.req_path().starts_with(&*self.req_path())
     }
 }
 
