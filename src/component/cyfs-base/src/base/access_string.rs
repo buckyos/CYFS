@@ -195,8 +195,14 @@ pub struct AccessPair {
     permissions: AccessPermissions,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct AccessString(u32);
+
+impl std::fmt::Debug for AccessString {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
 
 impl AccessString {
     pub const fn new(bits: u32) -> Self {

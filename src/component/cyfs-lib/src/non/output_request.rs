@@ -58,6 +58,7 @@ pub struct NONPutObjectOutputRequest {
     pub common: NONOutputRequestCommon,
 
     pub object: NONObjectInfo,
+    pub access: Option<AccessString>,
 }
 
 impl NONPutObjectOutputRequest {
@@ -65,6 +66,7 @@ impl NONPutObjectOutputRequest {
         Self {
             common: NONOutputRequestCommon::new(level),
             object: NONObjectInfo::new(object_id, object_raw, None),
+            access: None,
         }
     }
 
@@ -90,7 +92,12 @@ impl NONPutObjectOutputRequest {
 impl fmt::Display for NONPutObjectOutputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
-        write!(f, ", object: {}", self.object)
+        write!(f, ", object: {}", self.object)?;
+        if let Some(access) = &self.access {
+            write!(f, ", access: {}", access.to_string())?;
+        }
+
+        Ok(())
     }
 }
 

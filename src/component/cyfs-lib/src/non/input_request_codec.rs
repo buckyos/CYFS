@@ -3,7 +3,6 @@ use cyfs_base::*;
 
 use serde_json::{Map, Value};
 
-
 impl JsonCodec<NONInputRequestCommon> for NONInputRequestCommon {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
@@ -79,7 +78,7 @@ impl JsonCodec<NONGetObjectInputResponse> for NONGetObjectInputResponse {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<NONGetObjectInputResponse> {
-        let attr = JsonCodecHelper::decode_option_int_filed(obj, "attr")?;
+        let attr = JsonCodecHelper::decode_option_int_field(obj, "attr")?;
 
         Ok(Self {
             object: JsonCodecHelper::decode_field(obj, "object")?,
@@ -102,15 +101,21 @@ impl JsonCodec<NONPutObjectInputRequest> for NONPutObjectInputRequest {
         let mut obj = Map::new();
 
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
-
         JsonCodecHelper::encode_field(&mut obj, "object", &self.object);
+        if let Some(access) = &self.access {
+            JsonCodecHelper::encode_number_field(&mut obj, "access", access.value());
+        }
         obj
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<NONPutObjectInputRequest> {
+        let access: Option<u32> = JsonCodecHelper::decode_option_int_field(obj, "access")?;
+        let access = access.map(|v| AccessString::new(v));
+
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             object: JsonCodecHelper::decode_field(obj, "object")?,
+            access,
         })
     }
 }
@@ -228,7 +233,11 @@ impl JsonCodec<NONDeleteObjectInputRequest> for NONDeleteObjectInputRequest {
 
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
         JsonCodecHelper::encode_string_field(&mut obj, "object_id", &self.object_id);
-        JsonCodecHelper::encode_option_string_field(&mut obj, "inner_path", self.inner_path.as_ref());
+        JsonCodecHelper::encode_option_string_field(
+            &mut obj,
+            "inner_path",
+            self.inner_path.as_ref(),
+        );
 
         obj
     }
@@ -237,7 +246,7 @@ impl JsonCodec<NONDeleteObjectInputRequest> for NONDeleteObjectInputRequest {
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             object_id: JsonCodecHelper::decode_string_field(obj, "object_id")?,
-            inner_path:  JsonCodecHelper::decode_option_string_field(obj, "inner_path")?,
+            inner_path: JsonCodecHelper::decode_option_string_field(obj, "inner_path")?,
         })
     }
 }
@@ -254,8 +263,8 @@ impl JsonCodec<NONDeleteObjectInputResponse> for NONDeleteObjectInputResponse {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<NONDeleteObjectInputResponse> {
-        Ok(Self { 
-            object: JsonCodecHelper::decode_option_field(obj, "object")?
-         })
+        Ok(Self {
+            object: JsonCodecHelper::decode_option_field(obj, "object")?,
+        })
     }
 }

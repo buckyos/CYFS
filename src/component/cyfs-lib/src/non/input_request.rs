@@ -122,12 +122,18 @@ pub struct NONPutObjectInputRequest {
     pub common: NONInputRequestCommon,
 
     pub object: NONObjectInfo,
+    pub access: Option<AccessString>,
 }
 
 impl fmt::Display for NONPutObjectInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
-        write!(f, ", object: {}", self.object)
+        write!(f, ", object: {}", self.object)?;
+        if let Some(access) = &self.access {
+            write!(f, ", access: {}", access.to_string())?;
+        }
+
+        Ok(())
     }
 }
 

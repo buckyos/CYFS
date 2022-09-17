@@ -528,6 +528,7 @@ impl NONRouter {
             let put_req = NONPutObjectInputRequest {
                 common: req.common.clone(),
                 object: resp.object.clone(),
+                access: None,
             };
 
             let _r = self.noc_processor.put_object(put_req).await;
@@ -549,6 +550,7 @@ impl NONRouter {
         let put_req = NONPutObjectInputRequest {
             common: req.common,
             object: resp.object.clone(),
+            access: None,
         };
 
         let _r = self.noc_processor.put_object(put_req).await;
@@ -710,6 +712,7 @@ impl NONRouter {
             let req = NONPutObjectInputRequest {
                 common: common.clone(),
                 object: object.to_owned(),
+                access: None,
             };
 
             req_list.push(req);

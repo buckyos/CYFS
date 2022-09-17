@@ -1,6 +1,6 @@
 use super::input_request::*;
-use cyfs_base::*;
 use crate::base::NDNDataRequestRange;
+use cyfs_base::*;
 
 use serde_json::{Map, Value};
 
@@ -41,13 +41,9 @@ impl JsonCodec<NDNGetDataInputRequest> for NDNGetDataInputRequest {
         JsonCodecHelper::encode_string_field(&mut obj, "data_type", &self.data_type);
 
         if let Some(range) = &self.range {
-            JsonCodecHelper::encode_string_field_2(
-                &mut obj,
-                "range",
-                range.encode_string(),
-            );
+            JsonCodecHelper::encode_string_field_2(&mut obj, "range", range.encode_string());
         }
-        
+
         JsonCodecHelper::encode_option_string_field(
             &mut obj,
             "inner_path",
@@ -58,9 +54,8 @@ impl JsonCodec<NDNGetDataInputRequest> for NDNGetDataInputRequest {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let range = JsonCodecHelper::decode_option_string_field(obj, "range")?.map(|s: String| {
-            NDNDataRequestRange::new_unparsed(s)
-        });
+        let range = JsonCodecHelper::decode_option_string_field(obj, "range")?
+            .map(|s: String| NDNDataRequestRange::new_unparsed(s));
 
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
@@ -91,7 +86,7 @@ impl JsonCodec<NDNGetDataInputResponse> for NDNGetDataInputResponse {
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
         let attr =
-            JsonCodecHelper::decode_option_int_filed(obj, "attr")?.map(|v| Attributes::new(v));
+            JsonCodecHelper::decode_option_int_field(obj, "attr")?.map(|v| Attributes::new(v));
 
         // 现在事件不支持data的返回和修改
         let data = Box::new(async_std::io::Cursor::new(vec![]));
@@ -210,7 +205,6 @@ impl JsonCodec<Self> for NDNQueryFileParam {
     }
 }
 
-
 impl JsonCodec<Self> for NDNQueryFileInfo {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
@@ -259,4 +253,3 @@ impl JsonCodec<Self> for NDNQueryFileInputResponse {
         })
     }
 }
-

@@ -42,6 +42,7 @@ impl GlobalStateAccessCacheProcessor {
                 flags: 0,
             },
             object: object.clone(),
+            access: None,
         };
 
         let _r = self.noc.put_object(put_req).await;

@@ -1,10 +1,9 @@
 use crate::*;
 use serde_json::{Map, Value};
 
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::str::FromStr;
-use serde::{Serialize, Deserialize};
-
 
 pub trait JsonCodec<T> {
     fn encode_json(&self) -> Map<String, Value> {
@@ -46,7 +45,7 @@ pub trait JsonCodecAutoWithSerde {}
 
 impl<T> JsonCodec<T> for T
 where
-    T: Serialize + for <'d> Deserialize<'d> + JsonCodecAutoWithSerde,
+    T: Serialize + for<'d> Deserialize<'d> + JsonCodecAutoWithSerde,
 {
     fn encode_json(&self) -> Map<String, Value> {
         unimplemented!();
@@ -69,7 +68,6 @@ where
     }
 }
 
-
 pub struct JsonCodecHelper;
 
 impl JsonCodecHelper {
@@ -89,15 +87,21 @@ impl JsonCodecHelper {
         Value::Object(obj)
     }
 
-    pub fn encode_string_field<T: ?Sized>(obj: &mut Map<String, Value>, key: impl ToString, value: &T)
-    where
+    pub fn encode_string_field<T: ?Sized>(
+        obj: &mut Map<String, Value>,
+        key: impl ToString,
+        value: &T,
+    ) where
         T: ToString,
     {
         obj.insert(key.to_string(), Value::String(value.to_string()));
     }
 
-    pub fn encode_string_field_2(obj: &mut Map<String, Value>, key: impl ToString, value: impl ToString)
-    {
+    pub fn encode_string_field_2(
+        obj: &mut Map<String, Value>,
+        key: impl ToString,
+        value: impl ToString,
+    ) {
         obj.insert(key.to_string(), Value::String(value.to_string()));
     }
 
@@ -120,8 +124,7 @@ impl JsonCodecHelper {
         obj.insert(key.to_string(), Value::Number(value.into()));
     }
 
-    pub fn encode_bool_field(obj: &mut Map<String, Value>, key: impl ToString, value: bool)
-    {
+    pub fn encode_bool_field(obj: &mut Map<String, Value>, key: impl ToString, value: bool) {
         obj.insert(key.to_string(), Value::Bool(value));
     }
 
@@ -186,7 +189,7 @@ impl JsonCodecHelper {
         Self::decode_to_int(v)
     }
 
-    pub fn decode_option_int_filed<T>(obj: &Map<String, Value>, key: &str) -> BuckyResult<Option<T>>
+    pub fn decode_option_int_field<T>(obj: &Map<String, Value>, key: &str) -> BuckyResult<Option<T>>
     where
         T: FromStr + TryFrom<u64> + TryFrom<i64>,
         <T as FromStr>::Err: std::fmt::Display,
@@ -311,8 +314,7 @@ impl JsonCodecHelper {
         Ok(v)
     }
 
-    pub fn decode_bool_field(obj: &Map<String, Value>, key: &str) -> BuckyResult<bool>
-    {
+    pub fn decode_bool_field(obj: &Map<String, Value>, key: &str) -> BuckyResult<bool> {
         let v = obj.get(key).ok_or_else(|| {
             let msg = format!("field not found: {}", key);
             warn!("{}", msg);
@@ -467,8 +469,11 @@ impl JsonCodecHelper {
         obj.insert(key.to_owned(), Self::encode_to_str_array(value));
     }
 
-    pub fn encode_option_str_array_field<T>(obj: &mut Map<String, Value>, key: &str, value: Option<&Vec<T>>)
-    where
+    pub fn encode_option_str_array_field<T>(
+        obj: &mut Map<String, Value>,
+        key: &str,
+        value: Option<&Vec<T>>,
+    ) where
         T: ToString,
     {
         if let Some(value) = value {
@@ -500,7 +505,10 @@ impl JsonCodecHelper {
         }
     }
 
-    pub fn decode_option_str_array_field<T>(obj: &Map<String, Value>, key: &str) -> BuckyResult<Option<Vec<T>>>
+    pub fn decode_option_str_array_field<T>(
+        obj: &Map<String, Value>,
+        key: &str,
+    ) -> BuckyResult<Option<Vec<T>>>
     where
         T: FromStr,
         <T as FromStr>::Err: std::fmt::Display,
@@ -575,7 +583,10 @@ impl JsonCodecHelper {
         Self::decode_from_array(v)
     }
 
-    pub fn decode_option_array_field<T>(obj: &Map<String, Value>, key: &str) -> BuckyResult<Option<Vec<T>>>
+    pub fn decode_option_array_field<T>(
+        obj: &Map<String, Value>,
+        key: &str,
+    ) -> BuckyResult<Option<Vec<T>>>
     where
         T: JsonCodec<T>,
     {
@@ -586,7 +597,6 @@ impl JsonCodecHelper {
 
         Ok(ret)
     }
-
 
     pub fn decode_from_array<T>(v: &Value) -> BuckyResult<Vec<T>>
     where

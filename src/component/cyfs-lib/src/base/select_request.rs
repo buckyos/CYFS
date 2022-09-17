@@ -315,9 +315,7 @@ impl SelectResponse {
             if let Some(obj) = &item.object {
                 debug!(
                     "encode selected object: {}, size={}, insert_time={}",
-                    obj,
-                    item.size,
-                    item.insert_time,
+                    obj, item.size, item.insert_time,
                 );
             } else {
                 warn!(
@@ -724,8 +722,8 @@ impl JsonCodec<SelectTimeRange> for SelectTimeRange {
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<SelectTimeRange> {
         Ok(Self {
-            begin: JsonCodecHelper::decode_option_int_filed(obj, "begin")?,
-            end: JsonCodecHelper::decode_option_int_filed(obj, "end")?,
+            begin: JsonCodecHelper::decode_option_int_field(obj, "begin")?,
+            end: JsonCodecHelper::decode_option_int_field(obj, "end")?,
         })
     }
 }
@@ -756,9 +754,9 @@ impl JsonCodec<SelectFilter> for SelectFilter {
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<SelectFilter> {
         let obj_type_code: Option<u16> =
-            JsonCodecHelper::decode_option_int_filed(obj, "obj_type_code")?;
+            JsonCodecHelper::decode_option_int_field(obj, "obj_type_code")?;
         Ok(Self {
-            obj_type: JsonCodecHelper::decode_option_int_filed(obj, "obj_type")?,
+            obj_type: JsonCodecHelper::decode_option_int_field(obj, "obj_type")?,
             obj_type_code: obj_type_code.map(|v| v.into()),
 
             dec_id: JsonCodecHelper::decode_option_string_field(obj, "dec_id")?,
@@ -769,7 +767,7 @@ impl JsonCodec<SelectFilter> for SelectFilter {
             update_time: JsonCodecHelper::decode_option_field(obj, "update_time")?,
             insert_time: JsonCodecHelper::decode_option_field(obj, "insert_time")?,
 
-            flags: JsonCodecHelper::decode_option_int_filed(obj, "flags")?,
+            flags: JsonCodecHelper::decode_option_int_field(obj, "flags")?,
         })
     }
 }

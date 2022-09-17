@@ -178,6 +178,10 @@ impl NONRequestor {
         let mut http_req = Request::new(Method::Put, self.service_url.clone());
         self.encode_common_headers(NONAction::PutObject, &req.common, &mut http_req);
 
+        if let Some(access) = &req.access {
+            http_req.insert_header(cyfs_base::CYFS_ACCESS, access.value().to_string());
+        }
+
         http_req
     }
 

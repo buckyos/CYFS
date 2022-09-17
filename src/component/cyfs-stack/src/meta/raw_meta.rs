@@ -100,6 +100,7 @@ impl RawMetaCache {
                 flags: 0,
             },
             object,
+            access: None,
         };
 
         match self.noc().put_object(req).await {

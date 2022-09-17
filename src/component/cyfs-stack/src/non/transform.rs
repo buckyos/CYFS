@@ -41,6 +41,7 @@ impl NONInputTransformer {
             common: Self::convert_common(req.common),
 
             object: req.object,
+            access: req.access,
         };
 
         let out_resp = self.processor.put_object(out_req).await?;
@@ -215,6 +216,7 @@ impl NONOutputTransformer {
             common: self.convert_common(req.common),
 
             object: req.object,
+            access: req.access,
         };
 
         let in_resp = self.processor.put_object(in_req).await?;

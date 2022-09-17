@@ -71,8 +71,8 @@ impl NOCLevelInputProcessor {
         req: NONPutObjectInputRequest,
     ) -> BuckyResult<NONPutObjectInputResponse> {
         debug!(
-            "will put object to local noc: id={}, {}",
-            req.object.object_id, req.common.source,
+            "will put object to local noc: id={}, access={:?}, {}",
+            req.object.object_id, req.access, req.common.source,
         );
 
         let noc_req = NamedObjectCachePutObjectRequest {
@@ -81,7 +81,7 @@ impl NOCLevelInputProcessor {
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
             last_access_rpath: None,
-            access_string: None,
+            access_string: req.access.as_ref().map(|v| v.value()),
         };
 
         let resp = match self.noc.put_object(&noc_req).await {
@@ -89,24 +89,24 @@ impl NOCLevelInputProcessor {
                 match resp.result {
                     NamedObjectCachePutObjectResult::Accept => {
                         info!(
-                            "put object to local noc success: id={}",
-                            noc_req.object.object_id
+                            "put object to local noc success: id={}, access={:?}",
+                            noc_req.object.object_id, req.access,
                         );
                     }
                     NamedObjectCachePutObjectResult::Updated => {
                         info!(
-                            "object alreay in noc and updated: {}",
-                            noc_req.object.object_id
+                            "object alreay in noc and updated: id={}, access={:?}",
+                            noc_req.object.object_id, req.access
                         );
                     }
                     NamedObjectCachePutObjectResult::AlreadyExists => {
                         // 对象已经在noc里面了
-                        info!("object alreay in noc: {}", noc_req.object.object_id);
+                        info!("object alreay in noc: id={}, access={:?}", noc_req.object.object_id, req.access);
                     }
                     NamedObjectCachePutObjectResult::Merged => {
                         info!(
-                            "object alreay in noc and signs merged: {}",
-                            noc_req.object.object_id
+                            "object alreay in noc and signs merged: id={}, access={:?}",
+                            noc_req.object.object_id, req.access,
                         );
                     }
                 }
@@ -117,22 +117,22 @@ impl NOCLevelInputProcessor {
                 match e.code() {
                     BuckyErrorCode::Ignored => {
                         warn!(
-                            "put object to local noc but been ignored: id={}, {}",
-                            noc_req.object.object_id, e
+                            "put object to local noc but been ignored: id={}, access={:?}, {}",
+                            noc_req.object.object_id, req.access, e
                         );
                     }
 
                     BuckyErrorCode::Reject => {
                         warn!(
-                            "put object to local noc but been rejected: id={}, {}",
-                            noc_req.object.object_id, e
+                            "put object to local noc but been rejected: id={}, access={:?}, {}",
+                            noc_req.object.object_id, req.access, e
                         );
                     }
 
                     _ => {
                         error!(
-                            "put object to local noc failed: id={}, {}",
-                            noc_req.object.object_id, e
+                            "put object to local noc failed: id={}, access={:?}, {}",
+                            noc_req.object.object_id, req.access, e
                         );
                     }
                 }

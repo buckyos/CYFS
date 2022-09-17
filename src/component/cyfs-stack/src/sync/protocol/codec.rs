@@ -3,7 +3,6 @@ use cyfs_base::*;
 
 use serde_json::{Map, Value};
 
-
 // device ping
 impl JsonCodec<SyncPingRequest> for SyncPingRequest {
     fn encode_json(&self) -> Map<String, Value> {
@@ -12,9 +11,17 @@ impl JsonCodec<SyncPingRequest> for SyncPingRequest {
         JsonCodecHelper::encode_string_field(&mut obj, "device_id", &self.device_id);
         JsonCodecHelper::encode_string_field(&mut obj, "zone_role", &self.zone_role);
         JsonCodecHelper::encode_string_field(&mut obj, "root_state", &self.root_state);
-        JsonCodecHelper::encode_string_field(&mut obj, "root_state_revision", &self.root_state_revision);
+        JsonCodecHelper::encode_string_field(
+            &mut obj,
+            "root_state_revision",
+            &self.root_state_revision,
+        );
         JsonCodecHelper::encode_string_field(&mut obj, "state", &self.state);
-        JsonCodecHelper::encode_string_field(&mut obj, "owner_update_time", &self.owner_update_time);
+        JsonCodecHelper::encode_string_field(
+            &mut obj,
+            "owner_update_time",
+            &self.owner_update_time,
+        );
 
         obj
     }
@@ -26,7 +33,8 @@ impl JsonCodec<SyncPingRequest> for SyncPingRequest {
             root_state: JsonCodecHelper::decode_string_field(obj, "root_state")?,
             root_state_revision: JsonCodecHelper::decode_string_field(obj, "root_state_revision")?,
             state: JsonCodecHelper::decode_string_field(obj, "state")?,
-            owner_update_time: JsonCodecHelper::decode_option_int_filed(obj, "owner_update_time")?.unwrap_or(0),
+            owner_update_time: JsonCodecHelper::decode_option_int_field(obj, "owner_update_time")?
+                .unwrap_or(0),
         })
     }
 }
@@ -34,15 +42,20 @@ impl JsonCodec<SyncPingRequest> for SyncPingRequest {
 impl JsonCodec<SyncPingResponse> for SyncPingResponse {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
-        
+
         JsonCodecHelper::encode_string_field(&mut obj, "zone_root_state", &self.zone_root_state);
-        JsonCodecHelper::encode_string_field(&mut obj, "zone_root_state_revision", &self.zone_root_state_revision);
+        JsonCodecHelper::encode_string_field(
+            &mut obj,
+            "zone_root_state_revision",
+            &self.zone_root_state_revision,
+        );
         JsonCodecHelper::encode_string_field(&mut obj, "zone_role", &self.zone_role);
         JsonCodecHelper::encode_string_field(&mut obj, "ood_work_mode", &self.ood_work_mode);
 
-        let owner = self.owner.as_ref().map(|object_raw| {
-            hex::encode(&object_raw)
-        });
+        let owner = self
+            .owner
+            .as_ref()
+            .map(|object_raw| hex::encode(&object_raw));
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "owner", owner.as_ref());
 
@@ -50,7 +63,6 @@ impl JsonCodec<SyncPingResponse> for SyncPingResponse {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-
         let owner: Option<String> = JsonCodecHelper::decode_option_string_field(obj, "owner")?;
         let owner = match owner {
             Some(s) => {
@@ -66,7 +78,10 @@ impl JsonCodec<SyncPingResponse> for SyncPingResponse {
 
         Ok(Self {
             zone_root_state: JsonCodecHelper::decode_string_field(obj, "zone_root_state")?,
-            zone_root_state_revision: JsonCodecHelper::decode_string_field(obj, "zone_root_state_revision")?,
+            zone_root_state_revision: JsonCodecHelper::decode_string_field(
+                obj,
+                "zone_root_state_revision",
+            )?,
             zone_role: JsonCodecHelper::decode_string_field(obj, "zone_role")?,
             ood_work_mode: JsonCodecHelper::decode_string_field(obj, "ood_work_mode")?,
             owner,
@@ -82,10 +97,7 @@ impl JsonCodec<Self> for SyncDiffRequest {
             "category".to_owned(),
             Value::String(self.category.to_string()),
         );
-        obj.insert(
-            "path".to_owned(),
-            Value::String(self.path.clone()),
-        );
+        obj.insert("path".to_owned(), Value::String(self.path.clone()));
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "current", self.current.as_ref());
@@ -102,7 +114,6 @@ impl JsonCodec<Self> for SyncDiffRequest {
         })
     }
 }
-
 
 impl JsonCodec<SyncObjectsRequest> for SyncObjectsRequest {
     fn encode_json(&self) -> Map<String, Value> {
