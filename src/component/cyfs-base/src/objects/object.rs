@@ -49,6 +49,15 @@ impl FromStr for ObjectCategory {
     }
 }
 
+use std::ops::Range;
+
+// roundup(32 * log(256) / log(58)) 43.7
+pub const OBJECT_ID_BASE58_RANGE: Range<usize> = 43..45;
+
+// roundup(32 * log(256) / log(36)) 49.5
+pub const OBJECT_ID_BASE36_RANGE: Range<usize> = 49..51;
+
+
 // 包含objec type的 object id
 #[derive(Copy, Clone, PartialOrd, PartialEq, Ord, Eq)]
 pub struct ObjectId(GenericArray<u8, U32>);
@@ -456,6 +465,51 @@ impl ObjectId {
         self.0.as_slice().into()
     }
 
+    pub fn from_base58(s: &str) -> BuckyResult<Self> {
+        let buf = s.from_base58().map_err(|e| {
+            let msg = format!("convert base58 str to object id failed, str={}, {:?}", s, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+
+        if buf.len() != 32 {
+            let msg = format!(
+                "convert base58 str to object id failed, len unmatch: str={}",
+                s
+            );
+            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+        }
+
+        let mut id = Self::default();
+        unsafe {
+            std::ptr::copy(buf.as_ptr(), id.as_mut_slice().as_mut_ptr(), buf.len());
+        }
+
+        Ok(id)
+    }
+
+    pub fn to_base36(&self) -> String {
+        self.0.as_slice().to_base36()
+    }
+
+    pub fn from_base36(s: &str) -> BuckyResult<Self> {
+        let buf = s.from_base36()?;
+        if buf.len() != 32 {
+            let msg = format!(
+                "convert base36 str to object id failed, len unmatch: str={}",
+                s
+            );
+            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+        }
+
+        let mut id = Self::default();
+        unsafe {
+            std::ptr::copy(buf.as_ptr(), id.as_mut_slice().as_mut_ptr(), buf.len());
+        }
+
+        Ok(id)
+    }
+
     pub fn object_category(&self) -> ObjectCategory {
         if self.is_stand_object() {
             ObjectCategory::Standard
@@ -562,26 +616,11 @@ impl<'de> RawDecode<'de> for ObjectId {
 impl FromStr for ObjectId {
     type Err = BuckyError;
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let buf = s.from_base58().map_err(|_e| {
-            error!("convert base58 str to object id failed, str:{}", s);
-            let msg = format!("convert base58 str to object id failed, str={}", s);
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        })?;
-
-        if buf.len() != 32 {
-            let msg = format!(
-                "convert base58 str to object id failed, len unmatch: str={}",
-                s
-            );
-            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+        if OBJECT_ID_BASE36_RANGE.contains(&s.len()) {
+            Self::from_base36(s)
+        } else {
+            Self::from_base58(s)
         }
-
-        let mut id = Self::default();
-        unsafe {
-            std::ptr::copy(buf.as_ptr(), id.as_mut_slice().as_mut_ptr(), buf.len());
-        }
-
-        Ok(id)
     }
 }
 

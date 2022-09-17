@@ -8,6 +8,7 @@ mod paths;
 mod ports;
 mod protocol_fields;
 mod time;
+mod base36;
 
 pub use access_string::*;
 pub use channel::*;
@@ -19,3 +20,4 @@ pub use paths::*;
 pub use ports::*;
 pub use protocol_fields::*;
 pub use time::*;
+pub use base36::*;

@@ -44,27 +44,11 @@ impl std::fmt::Display for ChunkId {
 impl FromStr for ChunkId {
     type Err = BuckyError;
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let buf = s.from_base58().map_err(|_e| {
-            log::error!("convert base58 str to object id failed, str:{}", s);
-            let msg = format!("convert base58 str to object id failed, str:{}", s);
-            BuckyError::new(BuckyErrorCode::ParseError, msg)
-        })?;
-
-        if buf.len() != 32 {
-            let msg = format!(
-                "convert base58 str to chunk id failed, str is too long:{}, len:{}",
-                s,
-                buf.len()
-            );
-            return Err(BuckyError::new(BuckyErrorCode::ParseError, msg));
+        if OBJECT_ID_BASE36_RANGE.contains(&s.len()) {
+            Self::from_base36(s)
+        } else {
+            Self::from_base58(s)
         }
-
-        let mut id = Self::default();
-        unsafe {
-            std::ptr::copy(buf.as_ptr(), id.as_mut_slice().as_mut_ptr(), buf.len());
-        }
-
-        Ok(id)
     }
 }
 
@@ -157,6 +141,58 @@ impl ChunkId {
 
     pub fn to_string(&self) -> String {
         self.0.as_slice().to_base58()
+    }
+
+    pub fn to_base36(&self) -> String {
+        self.0.as_slice().to_base36()
+    }
+
+    pub fn from_base58(s: &str) -> BuckyResult<Self> {
+        let buf = s.from_base58().map_err(|e| {
+            let msg = format!("convert base58 str to object id failed, str:{}, {:?}", s, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::ParseError, msg)
+        })?;
+
+        if buf.len() != 32 {
+            let msg = format!(
+                "convert base58 str to chunk id failed, str's len not matched:{}, len:{}",
+                s,
+                buf.len()
+            );
+            return Err(BuckyError::new(BuckyErrorCode::ParseError, msg));
+        }
+
+        let mut id = Self::default();
+        unsafe {
+            std::ptr::copy(buf.as_ptr(), id.as_mut_slice().as_mut_ptr(), buf.len());
+        }
+
+        Ok(id)
+    }
+
+    pub fn from_base36(s: &str) -> BuckyResult<Self> {
+        let buf = s.from_base36().map_err(|_e| {
+            log::error!("convert base36 str to object id failed, str:{}", s);
+            let msg = format!("convert base36 str to object id failed, str:{}", s);
+            BuckyError::new(BuckyErrorCode::ParseError, msg)
+        })?;
+
+        if buf.len() != 32 {
+            let msg = format!(
+                "convert base36 str to chunk id failed, str's len not matched:{}, len:{}",
+                s,
+                buf.len()
+            );
+            return Err(BuckyError::new(BuckyErrorCode::ParseError, msg));
+        }
+
+        let mut id = Self::default();
+        unsafe {
+            std::ptr::copy(buf.as_ptr(), id.as_mut_slice().as_mut_ptr(), buf.len());
+        }
+
+        Ok(id)
     }
 
     pub async fn calculate(data: &[u8]) -> BuckyResult<Self> {
