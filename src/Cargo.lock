@@ -1531,6 +1531,7 @@ dependencies = [
  "async-recursion",
  "async-std",
  "async-trait",
+ "base-x",
  "base58",
  "block-modes",
  "chrono",

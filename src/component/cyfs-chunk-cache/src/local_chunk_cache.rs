@@ -505,7 +505,7 @@ impl SingleDiskChunkCache {
     fn get_file_path(&self, file_id: &ChunkId, is_create: bool) -> PathBuf {
         #[cfg(target_os = "windows")]
         {
-            let hash_str = hex::encode(file_id.as_slice());
+            let hash_str = file_id.to_base36();
             let (tmp, last) = hash_str.split_at(hash_str.len() - 3);
             let (first, mid) = tmp.split_at(tmp.len() - 3);
             let path = self.path.join(last).join(mid);
