@@ -18,7 +18,7 @@ impl FileBlobStorage {
         let len;
         #[cfg(target_os = "windows")]
         {
-            hash_str = hex::encode(object_id.as_slice());
+            hash_str = object_id.to_base36();
             len = 3;
         }
         #[cfg(not(target_os = "windows"))]

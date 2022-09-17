@@ -55,7 +55,7 @@ impl JsonCodec<SyncPingResponse> for SyncPingResponse {
         let owner = self
             .owner
             .as_ref()
-            .map(|object_raw| hex::encode(&object_raw));
+            .map(|object_raw| object_raw.as_slice().to_base58());
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "owner", owner.as_ref());
 
@@ -66,8 +66,8 @@ impl JsonCodec<SyncPingResponse> for SyncPingResponse {
         let owner: Option<String> = JsonCodecHelper::decode_option_string_field(obj, "owner")?;
         let owner = match owner {
             Some(s) => {
-                let v = hex::decode(&s).map_err(|e| {
-                    let msg = format!("decode owner from object_raw string error! s={}, {}", s, e);
+                let v = s.as_str().from_base58().map_err(|e| {
+                    let msg = format!("decode owner from object_raw string error! s={}, {:?}", s, e);
                     error!("{}", msg);
                     BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
                 })?;

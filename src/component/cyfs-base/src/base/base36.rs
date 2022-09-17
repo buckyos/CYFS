@@ -1,5 +1,6 @@
 use crate::{BuckyError, BuckyErrorCode, BuckyResult};
 
+pub use base58::{FromBase58, ToBase58};
 pub trait ToBase36 {
     fn to_base36(&self) -> String;
 }

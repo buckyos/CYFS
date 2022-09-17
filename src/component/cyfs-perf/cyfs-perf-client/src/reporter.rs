@@ -170,6 +170,7 @@ impl PerfReporterInner {
                     object_raw: raw,
                     object: None,
                 },
+                access: None,
             })
             .await
         {
