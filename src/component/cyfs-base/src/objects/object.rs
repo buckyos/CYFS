@@ -57,7 +57,6 @@ pub const OBJECT_ID_BASE58_RANGE: Range<usize> = 43..45;
 // roundup(32 * log(256) / log(36)) 49.5
 pub const OBJECT_ID_BASE36_RANGE: Range<usize> = 49..51;
 
-
 // 包含objec type的 object id
 #[derive(Copy, Clone, PartialOrd, PartialEq, Ord, Eq)]
 pub struct ObjectId(GenericArray<u8, U32>);
@@ -65,6 +64,26 @@ pub struct ObjectId(GenericArray<u8, U32>);
 impl std::fmt::Debug for ObjectId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_string())
+    }
+}
+
+impl From<[u8; 32]> for ObjectId {
+    fn from(v: [u8; 32]) -> Self {
+        Self(GenericArray::from(v))
+    }
+}
+
+impl From<Vec<u8>> for ObjectId {
+    fn from(v: Vec<u8>) -> Self {
+        let ar: [u8; 32] = v.try_into().unwrap_or_else(|v: Vec<u8>| {
+            panic!(
+                "ObjectId expected a Vec of length {} but it was {}",
+                32,
+                v.len()
+            )
+        });
+
+        Self(GenericArray::from(ar))
     }
 }
 
@@ -480,12 +499,7 @@ impl ObjectId {
             return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
         }
 
-        let mut id = Self::default();
-        unsafe {
-            std::ptr::copy(buf.as_ptr(), id.as_mut_slice().as_mut_ptr(), buf.len());
-        }
-
-        Ok(id)
+        Ok(Self::from(buf))
     }
 
     pub fn to_base36(&self) -> String {
@@ -502,12 +516,7 @@ impl ObjectId {
             return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
         }
 
-        let mut id = Self::default();
-        unsafe {
-            std::ptr::copy(buf.as_ptr(), id.as_mut_slice().as_mut_ptr(), buf.len());
-        }
-
-        Ok(id)
+        Ok(Self::from(buf))
     }
 
     pub fn object_category(&self) -> ObjectCategory {
@@ -1894,7 +1903,7 @@ where
                 warn!("encode body content by remaining buf is not empty! obj_type={}, body_size={}, remaining={}", O::obj_type(), body_size, left_buf.len());
                 // assert!(left_buf.len() == 0);
             }
-            
+
             &mut buf[body_size..]
         };
 
@@ -2361,7 +2370,7 @@ impl ObjectSigns {
         if body {
             ret += ObjectSignsHelper::merge(&mut self.body_signs, &other.body_signs);
         }
-        
+
         ret
     }
 }
