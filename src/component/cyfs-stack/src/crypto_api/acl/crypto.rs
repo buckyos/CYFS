@@ -15,6 +15,21 @@ impl CryptoAclInputProcessor {
         let ret = Self { acl, next };
         Arc::new(Box::new(ret))
     }
+
+    async fn check_access(
+        &self,
+        name: &str,
+        source: &RequestSourceInfo,
+        op_type: RequestOpType,
+    ) -> BuckyResult<()> {
+        let path = format!("{}/{}/", CYFS_CRYPTO_VIRTUAL_PATH, name);
+        let req_path = RequestGlobalStatePath::new_system_dec(Some(path));
+
+        self.acl
+            .global_state_meta()
+            .check_access(source, &req_path, op_type)
+            .await
+    }
 }
 
 #[async_trait::async_trait]
@@ -25,6 +40,8 @@ impl CryptoInputProcessor for CryptoAclInputProcessor {
     ) -> BuckyResult<CryptoVerifyObjectInputResponse> {
         req.common.source.check_current_zone("crypto.verify_object")?;
 
+        self.check_access("verify_object", &req.common.source, RequestOpType::Read).await?;
+
         self.next.verify_object(req).await
     }
 
@@ -32,8 +49,9 @@ impl CryptoInputProcessor for CryptoAclInputProcessor {
         &self,
         req: CryptoSignObjectInputRequest,
     ) -> BuckyResult<CryptoSignObjectInputResponse> {
-        // FIXME crypto使用system的.api/crypto/虚路径权限
         req.common.source.check_current_zone("crypto.sign_object")?;
+
+        self.check_access("sign_object", &req.common.source, RequestOpType::Write).await?;
 
         self.next.sign_object(req).await
     }

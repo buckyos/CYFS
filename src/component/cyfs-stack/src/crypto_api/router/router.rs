@@ -94,9 +94,7 @@ impl CryptoRouter {
 
         let acl_router = CryptoAclInputProcessor::new(acl, raw_router.clone());
 
-        let processor = CryptoInputAclSwitcher::new(acl_router, raw_router);
-
-        processor
+        acl_router
     }
 
     async fn get_forward(&self, target: DeviceId) -> BuckyResult<CryptoInputProcessorRef> {

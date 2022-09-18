@@ -17,3 +17,4 @@ pub const CYFS_KNOWN_ZONES_PATH: &str = "/data/known-zones";
 // Virtual path for handler and api 
 pub const CYFS_API_VIRTUAL_PATH: &str = "/.cyfs/api";
 pub const CYFS_HANDLER_VIRTUAL_PATH: &str = "/.cyfs/api/handler";
+pub const CYFS_CRYPTO_VIRTUAL_PATH: &str = "/.cyfs/api/crypto";
