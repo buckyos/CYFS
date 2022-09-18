@@ -5,7 +5,7 @@ use serde::ser::{Serialize, Serializer};
 use std::str::FromStr;
 
 // T with impl FromStr
-struct TStringVisitor<T>
+pub struct TStringVisitor<T>
 where
     T: FromStr,
 {

@@ -1,5 +1,5 @@
-use cyfs_base::*;
 use crate::access::*;
+use cyfs_base::*;
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -10,6 +10,9 @@ pub struct GlobalStatePathSpecifiedGroup {
     // device/device's owner(as zone id), None for any zone
     pub zone: Option<ObjectId>,
 
+    // Choose one between zone and zone_category
+    pub zone_category: Option<DeviceZoneCategory>,
+
     // specified dec, None for any dec
     pub dec: Option<ObjectId>,
 
@@ -17,6 +20,10 @@ pub struct GlobalStatePathSpecifiedGroup {
 }
 
 impl GlobalStatePathSpecifiedGroup {
+    pub fn is_empty(&self) -> bool {
+        self.zone.is_none() && self.zone_category.is_none() && self.dec.is_none()
+    }
+    
     fn compare_opt_item(left: &Option<ObjectId>, right: &Option<ObjectId>) -> Option<Ordering> {
         match left {
             Some(left) => match right {
@@ -31,16 +38,33 @@ impl GlobalStatePathSpecifiedGroup {
     }
 
     pub fn compare(&self, source: &RequestSourceInfo) -> bool {
+        let mut is_empty = true;
+        if let Some(zone_category) = &self.zone_category {
+            if !source.compare_zone_category(*zone_category) {
+                return false;
+            }
+            is_empty = false;
+        }
+
+        // FIXME if zone_category exists already, then should try to compare zone field is still exists?
         if let Some(zone) = &self.zone {
             if !source.compare_zone(&zone) {
                 return false;
             }
+            is_empty = false;
         }
 
         if let Some(dec) = &self.dec {
             if !source.compare_dec(dec) {
                 return false;
             }
+            is_empty = false;
+        }
+
+        // should not been empty!
+        if is_empty {
+            warn!("access specified group is empty!");
+            return false;
         }
 
         true
@@ -49,6 +73,11 @@ impl GlobalStatePathSpecifiedGroup {
 
 impl PartialOrd for GlobalStatePathSpecifiedGroup {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let ret = self.zone_category.partial_cmp(&other.zone_category);
+        if ret.is_some() && ret != Some(Ordering::Equal) {
+            return ret;
+        }
+
         let ret = Self::compare_opt_item(&self.zone, &other.zone);
         if ret.is_some() && ret != Some(Ordering::Equal) {
             return ret;
@@ -79,8 +108,7 @@ impl PartialOrd for GlobalStatePathGroupAccess {
     }
 }
 
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct GlobalStatePathAccessItem {
     // GlobalState path, must end with /
     pub path: String,
@@ -90,13 +118,24 @@ pub struct GlobalStatePathAccessItem {
 }
 
 impl GlobalStatePathAccessItem {
+    pub fn check_valid(&self) -> bool {
+        match &self.access {
+            GlobalStatePathGroupAccess::Default(_) => {},
+            GlobalStatePathGroupAccess::Specified(v) => if v.is_empty() {
+                return false;
+            }
+        }
+
+        true    
+    }
+
     pub fn fix_path(path: impl Into<String> + AsRef<str>) -> String {
         let path = path.as_ref().trim();
 
         let ret = match path.ends_with("/") {
             true => {
                 if path.starts_with('/') {
-                    path.into() 
+                    path.into()
                 } else {
                     format!("/{}", path.as_ref() as &str)
                 }
@@ -138,6 +177,7 @@ impl GlobalStatePathAccessItem {
     pub fn new_group(
         path: impl Into<String> + AsRef<str>,
         zone: Option<ObjectId>,
+        zone_category: Option<DeviceZoneCategory>,
         dec: Option<ObjectId>,
         access: u8,
     ) -> Self {
@@ -149,6 +189,7 @@ impl GlobalStatePathAccessItem {
             path,
             access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
                 zone,
+                zone_category,
                 dec,
                 access,
             }),
@@ -160,6 +201,7 @@ impl GlobalStatePathAccessItem {
     }
 }
 
+
 impl std::fmt::Display for GlobalStatePathAccessItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.access {
@@ -169,11 +211,21 @@ impl std::fmt::Display for GlobalStatePathAccessItem {
             GlobalStatePathGroupAccess::Specified(s) => {
                 writeln!(
                     f,
-                    "({}, zone={:?}, dec={:?}, {})",
-                    self.path, s.zone, s.dec, AccessPermissions::format_u8(s.access),
+                    "({}, zone={:?}, zone_category={:?} dec={:?}, {})",
+                    self.path,
+                    s.zone,
+                    s.zone_category,
+                    s.dec,
+                    AccessPermissions::format_u8(s.access),
                 )
             }
         }
+    }
+}
+
+impl std::fmt::Debug for GlobalStatePathAccessItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self, f)
     }
 }
 
@@ -189,5 +241,31 @@ impl PartialOrd for GlobalStatePathAccessItem {
 impl Ord for GlobalStatePathAccessItem {
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::*;
+    use cyfs_core::*;
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+    struct Temp {
+        zone: Option<GlobalStatePathSpecifiedGroupZone>,
+    }
+
+    #[test]
+    fn test() {
+        let t = Temp {
+            zone: Some(GlobalStatePathSpecifiedGroupZone::Category(
+                DeviceZoneCategory::CurrentZone,
+            )),
+        };
+
+        let s = serde_json::to_string(&t).unwrap();
+        print!("{}", s);
     }
 }

@@ -1,7 +1,9 @@
 use cyfs_base::*;
 
+use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde_json::{Map, Value};
 use std::str::FromStr;
+
 
 #[derive(Clone, Copy, Eq, Debug, PartialEq)]
 pub enum RequestProtocol {
@@ -81,13 +83,15 @@ impl FromStr for RequestProtocol {
     }
 }
 
+
 // source device's zone info
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum DeviceZoneCategory {
-    CurrentDevice,
-    CurrentZone,
-    FriendZone,
-    OtherZone,
+    CurrentDevice = 0,
+    CurrentZone = 1,
+    FriendZone = 2,
+    OtherZone = 3,
 }
 
 impl DeviceZoneCategory {
@@ -98,6 +102,10 @@ impl DeviceZoneCategory {
             Self::FriendZone => "friend-zone",
             Self::OtherZone => "other-zone",
         }
+    }
+
+    pub fn is_included(&self, target: Self) -> bool {
+        *self as u8 <= target as u8
     }
 }
 
@@ -187,6 +195,13 @@ impl DeviceZoneInfo {
     pub fn is_current_zone(&self) -> bool {
         match self.zone_category {
             DeviceZoneCategory::CurrentDevice | DeviceZoneCategory::CurrentZone => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_friend_zone(&self) -> bool {
+        match self.zone_category {
+            DeviceZoneCategory::CurrentDevice | DeviceZoneCategory::CurrentZone | DeviceZoneCategory::FriendZone => true,
             _ => false,
         }
     }
@@ -302,6 +317,10 @@ impl RequestSourceInfo {
 
     pub fn is_current_zone(&self) -> bool {
         self.zone.is_current_zone()
+    }
+
+    pub fn compare_zone_category(&self, zone_category: DeviceZoneCategory) -> bool {
+        self.zone.zone_category.is_included(zone_category)
     }
 
     pub fn compare_zone(&self, zone: &ObjectId) -> bool {
@@ -424,6 +443,24 @@ impl JsonCodec<Self> for RequestSourceInfo {
             dec: JsonCodecHelper::decode_string_field(obj, "dec")?,
             protocol: JsonCodecHelper::decode_string_field(obj, "protocol")?,
         })
+    }
+}
+
+impl Serialize for DeviceZoneCategory {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for DeviceZoneCategory {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(TStringVisitor::<Self>::new())
     }
 }
 

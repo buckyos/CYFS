@@ -102,7 +102,7 @@ impl GlobalStatePathMetaManager {
         let ret = self.get_dec_meta(&dec_id, auto_create);
         if ret.is_none() {
             let msg = format!(
-                "global state path meta from dec not found! {}, dec={:?}",
+                "global state path meta for dec not found! {}, dec={:?}",
                 self.root_state.get_category(),
                 dec_id
             );

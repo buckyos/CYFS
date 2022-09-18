@@ -58,6 +58,12 @@ impl GlobalStatePathMetaSyncCollection {
     }
 
     pub async fn add_access(&self, item: GlobalStatePathAccessItem) -> BuckyResult<bool> {
+        if !item.check_valid() {
+            let msg  = format!("invalid access item! {}", item);
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+        
         {
             let mut meta = self.meta.coll().write().unwrap();
             let ret = meta.access.add(item);
