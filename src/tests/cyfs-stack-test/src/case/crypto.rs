@@ -297,6 +297,8 @@ async fn test_sign(dec_id: &ObjectId) {
     req.common.req_path = Some("测试签名/tests".to_owned());
 
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    open_access(&stack, dec_id).await;
+
     let resp = stack.crypto().sign_object(req).await.unwrap();
     let object_info = resp.object.unwrap();
     assert_eq!(object_info.object_id, *id.object_id());
@@ -329,6 +331,29 @@ async fn test_sign(dec_id: &ObjectId) {
     assert!(resp.is_err());
 }
 
+async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId) {
+    // 开启权限
+    let meta = stack.root_state_meta_stub(None, None);
+    let mut access = AccessString::new(0);
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Write);
+    let item = GlobalStatePathAccessItem {
+        path: CYFS_CRYPTO_VIRTUAL_PATH.to_owned(),
+        access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
+            zone: None,
+            zone_category: Some(DeviceZoneCategory::CurrentZone),
+            dec: Some(dec_id.clone()),
+            access: AccessPermissions::ReadAndWrite as u8,
+        }),
+    };
+
+    meta.add_access(item).await.unwrap();
+
+}
 async fn test_sign_by_owner(dec_id: &ObjectId) {
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
     let stack2 = TestLoader::get_shared_stack(DeviceIndex::User2OOD);

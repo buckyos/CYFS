@@ -35,6 +35,8 @@ pub async fn test() {
     // role::test().await;
 
     meta::test().await;
+
+    crypto::test().await;
     return;
     
     codec::test().await;
