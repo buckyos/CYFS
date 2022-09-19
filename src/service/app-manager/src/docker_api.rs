@@ -46,7 +46,6 @@ impl Default for RunConfig {
     }
 }
 
-
 // entry strip content
 // 有些配置需要在docker run之后处理
 // start script 注入docker entrypoint, app run的命令设置在docker run cmd(作为首个参数)
@@ -405,7 +404,10 @@ impl DockerApi {
         self.docker
             .remove_image(&image_name, remove_options, None)
             .await
-            .map_err(to_bucky_error)?;
+            .map_err(|e| {
+                warn!("remove image failed, name:{}, err:{}", image_name, e);
+                to_bucky_error(e)
+            })?;
 
         Ok(())
     }
@@ -538,7 +540,7 @@ impl DockerApi {
         if run_result.is_some() {
             if let Some(bollard::errors::Error::DockerResponseConflictError { .. }) = run_result {
             } else {
-                info!("create error ");
+                info!("create container error, id:{}", id);
                 return Err(to_bucky_error(run_result.unwrap()));
             }
         }
@@ -548,7 +550,10 @@ impl DockerApi {
             .docker
             .start_container(&container_name, None::<StartContainerOptions<String>>)
             .await
-            .map_err(to_bucky_error)?;
+            .map_err(|e| {
+                warn!("start container failed, id:{}, err:{}", id, e);
+                to_bucky_error(e)
+            })?;
 
         Ok(())
     }
@@ -566,17 +571,13 @@ impl DockerApi {
         });
 
         // list container
-        let result = self
-            .docker
-            .list_containers(options)
-            .await
-            .map_err(to_bucky_error)?;
+        let result = self.docker.list_containers(options).await.map_err(|e| {
+            warn!("list containers failed, err:{}", e);
+            to_bucky_error(e)
+        })?;
         info!("list container status result {:?}", result);
         if result.len() == 0 {
-            info!(
-                "container[{:?}] not found",
-                container_name
-            );
+            info!("container[{:?}] not found", container_name);
             return Ok(());
         }
 
@@ -592,7 +593,10 @@ impl DockerApi {
         self.docker
             .remove_container(&container_name, remove_options)
             .await
-            .map_err(to_bucky_error)?;
+            .map_err(|e| {
+                warn!("remove container failed, id:{}, err:{}", id, e);
+                to_bucky_error(e)
+            })?;
         Ok(())
     }
 
@@ -608,11 +612,10 @@ impl DockerApi {
         });
 
         // list container
-        let result = self
-            .docker
-            .list_containers(options)
-            .await
-            .map_err(to_bucky_error)?;
+        let result = self.docker.list_containers(options).await.map_err(|e| {
+            warn!("list containers failed, err:{}", e);
+            to_bucky_error(e)
+        })?;
         info!("check container status result {:?}", result);
         if result.len() == 0 {
             info!(
@@ -647,11 +650,10 @@ impl DockerApi {
             ..Default::default()
         };
         //
-        let _result = self
-            .docker
-            .create_volume(config)
-            .await
-            .map_err(to_bucky_error)?;
+        let _result = self.docker.create_volume(config).await.map_err(|e| {
+            warn!("create volume failed, id: {}, err:{}", id, e);
+            to_bucky_error(e)
+        })?;
         info!("docker create volume finish: {}", id);
         Ok(())
     }
@@ -662,7 +664,10 @@ impl DockerApi {
         self.docker
             .remove_volume(id, Some(options))
             .await
-            .map_err(to_bucky_error)?;
+            .map_err(|e| {
+                warn!("remove volume failed, id:{}, err:{}", id, e);
+                to_bucky_error(e)
+            })?;
         Ok(())
     }
 
