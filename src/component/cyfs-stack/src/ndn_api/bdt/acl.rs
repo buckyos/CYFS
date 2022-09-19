@@ -2,7 +2,6 @@ use super::super::acl::NDNAclInputProcessor;
 use super::super::handler::*;
 use super::cache::*;
 use super::echo::BdtNdnEchoProcessor;
-use crate::acl::*;
 use crate::ndn::*;
 use crate::acl::AclManagerRef;
 use crate::router_handler::RouterHandlersManager;
@@ -209,11 +208,8 @@ impl BdtNdnDataAclProcessor {
         let resp = self.processor.delete_data(ndn_req).await;
         Self::process_resp(resp)
     }
-}
 
-#[async_trait::async_trait]
-impl BdtDataAclProcessor for NDNBdtDataAclProcessor {
-    async fn get_data(&self, mut req: BdtGetDataInputRequest) -> BuckyResult<()> {
+    pub async fn get_data(&self, mut req: BdtGetDataInputRequest) -> BuckyResult<()> {
         let key = BdtDataAclCacheKey {
             source: req.source.clone(),
             referer: req.referer,
@@ -235,7 +231,7 @@ impl BdtDataAclProcessor for NDNBdtDataAclProcessor {
         ret
     }
 
-    async fn put_data(&self, mut req: BdtPutDataInputRequest) -> BuckyResult<()> {
+    pub async fn put_data(&self, mut req: BdtPutDataInputRequest) -> BuckyResult<()> {
         info!("will process bdt put_data acl request: {}", req);
 
         let key = BdtDataAclCacheKey {
@@ -259,7 +255,7 @@ impl BdtDataAclProcessor for NDNBdtDataAclProcessor {
         ret
     }
 
-    async fn delete_data(&self, mut req: BdtDeleteDataInputRequest) -> BuckyResult<()> {
+    pub async fn delete_data(&self, mut req: BdtDeleteDataInputRequest) -> BuckyResult<()> {
         info!("will process bdt delete_data acl request: {}", req);
 
         let key = BdtDataAclCacheKey {

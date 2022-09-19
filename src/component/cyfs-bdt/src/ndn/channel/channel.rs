@@ -633,7 +633,7 @@ impl Channel {
             let tunnel = {
                 let state = &*self.0.state.read().unwrap();
                 match state {
-                    ChannelState::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
+                    StateImpl::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
                     _ => None
                 }
             };

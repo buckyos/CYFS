@@ -796,9 +796,7 @@ impl CyfsStackImpl {
         bdt_params.outer_cache = Some(device_cache);
         bdt_params.chunk_store = Some(chunk_store);
 
- 		let acl = NDNBdtDataAclProcessor::new(zone_manager, acl, router_handlers);
-        
-        bdt_params.ndn_event = Some(Box::new(BdtNdnEventHandler::new(acl, router_handlers)));
+        bdt_params.ndn_event = Some(Box::new(BdtNdnEventHandler::new(zone_manager, acl, router_handlers)));
 
 
         let ret = Stack::open(params.device, params.secret, bdt_params).await;

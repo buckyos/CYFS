@@ -158,9 +158,17 @@ impl RequestHandlerHelper<InterestHandlerRequest> for InterestHandlerRequest {
     fn debug_info(&self) -> String {
         self.session_id.value().to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        unimplemented!();
+    }
 }
 
 impl RequestHandlerHelper<InterestHandlerResponse> for InterestHandlerResponse {
+    fn req_path(&self) -> &Option<String> {
+        unimplemented!()
+    }
+
     fn update(&mut self, handler: Self) {
         *self = handler.clone(); 
     }

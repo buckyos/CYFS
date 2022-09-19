@@ -184,15 +184,15 @@ impl JsonCodec<PieceSessionType> for PieceSessionType {
         match prefer_type.as_str() {
             "Unknown" => Ok(Self::Unknown), 
             "Stream" => {
-                let start = JsonCodecHelper::decode_option_int_filed(obj, "stream_start")?;
-                let end = JsonCodecHelper::decode_option_int_filed(obj, "stream_end")?;
-                let step = JsonCodecHelper::decode_option_int_filed(obj, "stream_step")?;
+                let start = JsonCodecHelper::decode_option_int_field(obj, "stream_start")?;
+                let end = JsonCodecHelper::decode_option_int_field(obj, "stream_end")?;
+                let step = JsonCodecHelper::decode_option_int_field(obj, "stream_step")?;
                 Ok(Self::Stream(start, end, step))
             },
             "Raptor" => {
-                let k = JsonCodecHelper::decode_option_int_filed(obj, "raptor_k")?;
-                let seq = JsonCodecHelper::decode_option_int_filed(obj, "raptor_seq")?;
-                let step = JsonCodecHelper::decode_option_int_filed(obj, "raptor_step")?;
+                let k = JsonCodecHelper::decode_option_int_field(obj, "raptor_k")?;
+                let seq = JsonCodecHelper::decode_option_int_field(obj, "raptor_seq")?;
+                let step = JsonCodecHelper::decode_option_int_field(obj, "raptor_step")?;
                 Ok(Self::Raptor(k, seq, step))
             },
             _ => Err(BuckyError::new(BuckyErrorCode::InvalidInput, format!("invalid type {}", prefer_type)))

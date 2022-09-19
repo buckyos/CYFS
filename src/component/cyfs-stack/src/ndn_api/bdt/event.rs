@@ -9,6 +9,7 @@ use cyfs_util::acl::*;
 use cyfs_lib::*;
 use crate::{
     acl::*, 
+    zone::*, 
     router_handler::{RouterHandlers, RouterHandlersManager}, 
     non_api::NONHandlerCaller
 };
@@ -24,9 +25,9 @@ pub struct BdtNdnEventHandler {
 }
 
 impl BdtNdnEventHandler {
-    pub fn new(acl: AclManagerRef, handlers: RouterHandlersManager) -> Self {
+    pub fn new(zone_manager: ZoneManagerRef, acl: AclManagerRef, handlers: RouterHandlersManager) -> Self {
         Self { 
-            acl: BdtNdnDataAclProcessor::new(acl, handlers.clone()), 
+            acl: BdtNdnDataAclProcessor::new(zone_manager, acl, handlers.clone()), 
             handlers, 
             default: DefaultNdnEventHandler::new()
         }
