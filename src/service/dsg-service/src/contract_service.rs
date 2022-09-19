@@ -236,7 +236,8 @@ impl DsgService {
             RouterHandlerChain::Handler,
             "OnSyncContractState",
             0,
-            format!("obj_type == {} && object.dec_id == {}",  DsgContractStateDesc::obj_type(), dsg_dec_id()).as_str(),
+            Some(format!("obj_type == {} && object.dec_id == {}",  DsgContractStateDesc::obj_type(), dsg_dec_id())),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(OnSyncContractState {service: self.clone()})))
             .map_err(|err| {
@@ -279,7 +280,8 @@ impl DsgService {
             RouterHandlerChain::Handler,
             "OnProof",
             0,
-            format!("obj_type == {} && object.dec_id == {}",  DsgProofDesc::obj_type(), dsg_dec_id()).as_str(),
+            Some(format!("obj_type == {} && object.dec_id == {}",  DsgProofDesc::obj_type(), dsg_dec_id())),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(OnProof {service: self.clone()})))
             .map_err(|err| {
@@ -317,7 +319,8 @@ impl DsgService {
             RouterHandlerChain::Handler,
             "OnQuery",
             0,
-            format!("obj_type == {} && object.dec_id == {}",  DsgQueryDesc::obj_type(), dsg_dec_id()).as_str(),
+            Some(format!("obj_type == {} && object.dec_id == {}",  DsgQueryDesc::obj_type(), dsg_dec_id())),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(OnQuery {service: self.clone()})))
             .map_err(|err| {
