@@ -47,32 +47,6 @@ impl CryptoRequestor {
         self.clone().into_processor()
     }
 
-    // url支持下面的格式，其中device_id是可选
-    // {host:port}/crypto/verify|sign/[req_path/]object_id
-    fn format_url(&self, sign: bool, req_path: Option<&String>, object_id: &ObjectId) -> Url {
-        let mut parts = vec![];
-
-        let seg = match sign {
-            true => "sign",
-            false => "verify",
-        };
-        parts.push(seg);
-
-        if let Some(req_path) = req_path {
-            parts.push(
-                req_path
-                    .as_str()
-                    .trim_start_matches('/')
-                    .trim_end_matches('/'),
-            );
-        }
-        let object_id = object_id.to_string();
-        parts.push(&object_id);
-
-        let p = parts.join("/");
-        self.service_url.join(&p).unwrap()
-    }
-
     fn encode_common_headers(&self, com_req: &CryptoOutputRequestCommon, http_req: &mut Request) {
         if let Some(dec_id) = &com_req.dec_id {
             http_req.insert_header(cyfs_base::CYFS_DEC_ID, dec_id.to_string());
@@ -80,6 +54,10 @@ impl CryptoRequestor {
             if let Some(dec_id) = dec_id.get() {
                 http_req.insert_header(cyfs_base::CYFS_DEC_ID, dec_id.to_string());
             }
+        }
+
+        if let Some(req_path) = &com_req.req_path {
+            http_req.insert_header(cyfs_base::CYFS_REQ_PATH, req_path.clone());
         }
 
         if let Some(target) = &com_req.target {
@@ -90,7 +68,7 @@ impl CryptoRequestor {
     }
 
     fn encode_verify_object_request(&self, req: &CryptoVerifyObjectOutputRequest) -> Request {
-        let url = self.format_url(false, req.common.req_path.as_ref(), &req.object.object_id);
+        let url = self.service_url.join("verify").unwrap();
 
         let mut http_req = Request::new(Method::Post, url);
         self.encode_common_headers(&req.common, &mut http_req);
@@ -163,7 +141,7 @@ impl CryptoRequestor {
     }
 
     fn encode_sign_object_request(&self, req: &CryptoSignObjectRequest) -> Request {
-        let url = self.format_url(true, req.common.req_path.as_ref(), &req.object.object_id);
+        let url = self.service_url.join("sign").unwrap();
 
         let mut http_req = Request::new(Method::Post, url);
         self.encode_common_headers(&req.common, &mut http_req);
