@@ -20,6 +20,10 @@ impl UtilRequestHandler {
     fn decode_common_headers<State>(
         req: &NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilInputRequestCommon> {
+        // req_path
+        let req_path =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_REQ_PATH)?;
+
         // 尝试提取flags
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
@@ -28,7 +32,7 @@ impl UtilRequestHandler {
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
         let ret = UtilInputRequestCommon {
-            req_path: None,
+            req_path,
             source: req.source.clone(),
             target,
             flags: flags.unwrap_or(0),
@@ -64,9 +68,7 @@ impl UtilRequestHandler {
         &self,
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilGetDeviceInputResponse> {
-        let param = NONRequestUrlParser::parse_select_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
 
         let req = UtilGetDeviceInputRequest { common };
 
@@ -97,16 +99,15 @@ impl UtilRequestHandler {
         &self,
         mut req: NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilGetZoneInputResponse> {
-        let param = NONRequestUrlParser::parse_option_object_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
         let mut ret = UtilGetZoneInputRequest {
             common,
             object_id: None,
             object_raw: None,
         };
 
-        if let Some(object_id) = param.object_id {
+        let object_id: Option<ObjectId> = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
+        if let Some(object_id) = object_id {
             ret.object_id = Some(object_id);
 
             let object_raw = req.request.body_bytes().await.map_err(|e| {
@@ -150,24 +151,14 @@ impl UtilRequestHandler {
         &self,
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilResolveOODInputResponse> {
-        let param = NONRequestUrlParser::parse_put_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
-        let mut owner_id = None;
-        for (k, v) in req.request.url().query_pairs() {
-            match k.as_ref() {
-                "owner" => {
-                    owner_id = Some(RequestorHelper::decode_url_param(k, v)?);
-                }
-                _ => {
-                    warn!("unknown resolve ood param: {} = {}", k, v);
-                }
-            }
-        }
+        let common = Self::decode_common_headers(&req)?;
+
+        let object_id = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
+        let owner_id = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_OWNER_ID)?;
 
         let req = UtilResolveOODInputRequest {
             common,
-            object_id: param.object_id,
+            object_id,
             owner_id,
         };
 
@@ -199,9 +190,7 @@ impl UtilRequestHandler {
         &self,
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilGetOODStatusInputResponse> {
-        let param = NONRequestUrlParser::parse_select_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
         let req = UtilGetOODStatusInputRequest { common };
 
         self.processor.get_ood_status(req).await
@@ -234,9 +223,7 @@ impl UtilRequestHandler {
         &self,
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilGetDeviceStaticInfoInputResponse> {
-        let param = NONRequestUrlParser::parse_select_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
         let req = UtilGetDeviceStaticInfoInputRequest { common };
 
         self.processor.get_device_static_info(req).await
@@ -267,9 +254,7 @@ impl UtilRequestHandler {
         &self,
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilGetSystemInfoInputResponse> {
-        let param = NONRequestUrlParser::parse_select_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
         let req = UtilGetSystemInfoInputRequest { common };
 
         self.processor.get_system_info(req).await
@@ -300,9 +285,8 @@ impl UtilRequestHandler {
         &self,
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilGetNOCInfoInputResponse> {
-        let param = NONRequestUrlParser::parse_select_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
+    
         let req = UtilGetNOCInfoInputRequest { common };
 
         self.processor.get_noc_info(req).await
@@ -335,9 +319,7 @@ impl UtilRequestHandler {
         &self,
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilGetNetworkAccessInfoInputResponse> {
-        let param = NONRequestUrlParser::parse_select_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
         let req = UtilGetNetworkAccessInfoInputRequest { common };
 
         self.processor.get_network_access_info(req).await
@@ -368,9 +350,7 @@ impl UtilRequestHandler {
         &self,
         req: NONInputHttpRequest<State>,
     ) -> BuckyResult<UtilGetVersionInfoInputResponse> {
-        let param = NONRequestUrlParser::parse_select_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
         let req = UtilGetVersionInfoInputRequest { common };
 
         self.processor.get_version_info(req).await

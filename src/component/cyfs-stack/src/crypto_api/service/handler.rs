@@ -1,5 +1,5 @@
 use crate::crypto::*;
-use crate::{non::NONInputHttpRequest, non_api::NONRequestUrlParser};
+use crate::non::NONInputHttpRequest;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -18,16 +18,19 @@ impl CryptoRequestHandler {
     fn decode_common_headers<State>(
         req: &NONInputHttpRequest<State>,
     ) -> BuckyResult<CryptoInputRequestCommon> {
+        // req_path
+        let req_path =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_REQ_PATH)?;
+
         // 尝试提取flags
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
-
 
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
         let ret = CryptoInputRequestCommon {
-            req_path: None,
+            req_path,
             source: req.source.clone(),
             target,
             flags: flags.unwrap_or(0),
@@ -65,12 +68,9 @@ impl CryptoRequestHandler {
         req: NONInputHttpRequest<State>,
         body: Vec<u8>,
     ) -> BuckyResult<CryptoVerifyObjectInputResponse> {
-        let param = NONRequestUrlParser::parse_put_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
 
-        let mut object = NONObjectInfo::new(param.object_id, body, None);
-        object.decode_and_verify()?;
+        let object = NONObjectInfo::new_from_object_raw(body)?;
 
         let sign_type: VerifySignType =
             RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_SIGN_TYPE)?;
@@ -88,7 +88,7 @@ impl CryptoRequestHandler {
                     cyfs_base::CYFS_SIGN_OBJ,
                 )?;
 
-                let mut sign_object = NONSlimObjectInfo::new(object_id, object_raw,None);
+                let mut sign_object = NONSlimObjectInfo::new(object_id, object_raw, None);
                 sign_object.decode_and_verify()?;
 
                 VerifyObjectType::Object(sign_object)
@@ -147,12 +147,9 @@ impl CryptoRequestHandler {
         req: NONInputHttpRequest<State>,
         body: Vec<u8>,
     ) -> BuckyResult<CryptoSignObjectInputResponse> {
-        let param = NONRequestUrlParser::parse_put_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
 
-        let mut object = NONObjectInfo::new(param.object_id, body, None);
-        object.decode_and_verify()?;
+        let object = NONObjectInfo::new_from_object_raw(body)?;
 
         let flags = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_SIGN_FLAGS)?;
 
