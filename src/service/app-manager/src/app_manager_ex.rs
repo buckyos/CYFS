@@ -126,7 +126,8 @@ impl AppManager {
                 RouterHandlerChain::Handler,
                 "app_manager_ex_pre_post_to_noc",
                 0,
-                &filter,
+                Some(filter.clone()),
+                None,
                 RouterHandlerAction::Default,
                 Some(Box::new(listener)),
             )

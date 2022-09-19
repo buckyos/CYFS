@@ -254,15 +254,16 @@ mod test {
 
     #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
     struct Temp {
-        zone: Option<GlobalStatePathSpecifiedGroupZone>,
+        zone: Option<GlobalStatePathSpecifiedGroup>,
     }
 
     #[test]
     fn test() {
-        let t = Temp {
-            zone: Some(GlobalStatePathSpecifiedGroupZone::Category(
-                DeviceZoneCategory::CurrentZone,
-            )),
+        let t = GlobalStatePathSpecifiedGroup {
+            zone: None,
+            zone_category: Some(DeviceZoneCategory::CurrentZone),
+            dec: Some(get_system_dec_app().object_id().clone()),
+            access: 5
         };
 
         let s = serde_json::to_string(&t).unwrap();
