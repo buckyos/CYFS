@@ -4,7 +4,7 @@ mod dep {
     };
     pub use crate::{
         interface::*,
-        protocol::*,
+        protocol::{*, v0::*},
         stack::{Stack, WeakStack},
         tunnel::{
             self, AcceptReverseTcpStream, AcceptStreamBuilder, BuildTunnelAction,
@@ -19,6 +19,8 @@ mod dep {
     pub use futures::future::{AbortHandle, Abortable, Aborted};
     pub use std::{fmt, future::Future, net::Shutdown, ops::Deref, sync::RwLock, time::Duration};
 }
+
+const ANSWER_MAX_LEN: usize = 1380;
 
 mod connector {
     use super::dep::*;
@@ -810,7 +812,6 @@ impl StreamContainerImpl {
                 from_device_id: local_device.desc().device_id(),
                 from_device_desc: local_device,
                 to_device_id: self.tunnel().remote().clone(),
-                proxy_device_id: None,
                 reverse_endpoint: None,
                 payload: TailedOwnedData::from(question),
             }
@@ -919,6 +920,13 @@ pub struct StreamContainer(Arc<StreamContainerImpl>);
 
 impl StreamContainer {
     pub async fn confirm(&self, answer: &[u8]) -> Result<(), BuckyError> {
+        if answer.len() > ANSWER_MAX_LEN {
+            return Err(BuckyError::new(
+                BuckyErrorCode::Failed,
+                format!("answer's length large than {}", ANSWER_MAX_LEN),
+            ));
+        }
+
         let builder = {
             let state = &*self.0.state.read().unwrap();
             match state {

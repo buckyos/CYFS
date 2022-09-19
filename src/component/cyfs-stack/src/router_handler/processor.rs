@@ -102,6 +102,9 @@ declare_router_handler_processor!(
 // acl handlers
 declare_router_handler_processor!(AclHandlerRequest, AclHandlerResponse, acl);
 
+// interest handlers
+declare_router_handler_processor!(InterestHandlerRequest, InterestHandlerResponse, interest);
+
 impl RouterHandlerManagerProcessor for RouterHandlersManager {
     fn get_object(
         &self,
@@ -165,6 +168,10 @@ impl RouterHandlerManagerProcessor for RouterHandlersManager {
     }
 
     fn acl(&self) -> &dyn RouterHandlerProcessor<AclHandlerRequest, AclHandlerResponse> {
+        self
+    }
+
+    fn interest(&self) -> &dyn RouterHandlerProcessor<InterestHandlerRequest, InterestHandlerResponse> {
         self
     }
 }

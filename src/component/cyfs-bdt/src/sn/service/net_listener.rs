@@ -39,7 +39,7 @@ impl NetListener {
             if let PackageCmdCode::Exchange = first_pkg.cmd_code() {
                 let exchg = first_pkg.as_any().downcast_ref::<Exchange>();
                 if let Some(exchg) = exchg {
-                    if !exchg.verify(pkg_box.key()).await {
+                    if !exchg.verify().await {
                         warn!("exchange sign-verify failed, from: {:?}.", resp_sender.remote());
                         return;
                     }
@@ -610,7 +610,7 @@ impl TcpSender {
     pub async fn send(&mut self, pkg: DynamicPackage) -> BuckyResult<()> {
         let mut send_buf = [0; MTU];
 
-        match self.handle.send_package(&mut send_buf, pkg).await {
+        match self.handle.send_package(&mut send_buf, pkg, false).await {
             Ok(()) => Ok(()),
             Err(e) => {
                 error!("tcp({}) send-to({}) failed error({}).", self.local_str(), self.remote_str(), e);

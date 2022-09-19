@@ -21,7 +21,8 @@ pub enum RouterHandlerCategory {
     SignObject,
     VerifyObject,
 
-    Acl,
+    Acl, 
+    Interest, 
 }
 
 impl fmt::Display for RouterHandlerCategory {
@@ -42,7 +43,8 @@ impl fmt::Display for RouterHandlerCategory {
             Self::SignObject => "sign_object",
             Self::VerifyObject => "verify_object",
 
-            Self::Acl => "acl",
+            Self::Acl => "acl", 
+            Self::Interest => "interest", 
         };
 
         fmt::Display::fmt(s, f)
@@ -69,6 +71,8 @@ impl FromStr for RouterHandlerCategory {
             "verify_object" => Self::VerifyObject,
 
             "acl" => Self::Acl,
+
+            "interest" => Self::Interest, 
 
             v @ _ => {
                 let msg = format!("unknown router handler category: {}", v);
@@ -150,6 +154,12 @@ impl RouterHandlerCategoryInfo for RouterHandlerVerifyObjectRequest {
 impl RouterHandlerCategoryInfo for RouterHandlerAclRequest {
     fn category() -> RouterHandlerCategory {
         RouterHandlerCategory::Acl
+    }
+}
+
+impl RouterHandlerCategoryInfo for RouterHandlerInterestRequest {
+    fn category() -> RouterHandlerCategory {
+        RouterHandlerCategory::Interest
     }
 }
 

@@ -39,7 +39,7 @@ impl TransRequestHandler {
         }
     }
 
-    fn get_processor<State>(&self, req: &TransInputHttpRequest<State>) -> TransOutputProcessorRef {
+    fn get_processor<State>(&self, _req: &TransInputHttpRequest<State>) -> TransOutputProcessorRef {
         // FIXME 重构trans，这里不能使用outputprocessor
         TransOutputTransformer::new(
             self.processor.clone(),

@@ -31,7 +31,8 @@ pub struct RouterHandlersContainer {
     pub verify_object:
         OnceCell<RouterHandlers<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse>>,
 
-    pub acl: OnceCell<RouterHandlers<AclHandlerRequest, AclHandlerResponse>>,
+    pub acl: OnceCell<RouterHandlers<AclHandlerRequest, AclHandlerResponse>>, 
+    pub interest: OnceCell<RouterHandlers<InterestHandlerRequest, InterestHandlerResponse>>, 
 }
 
 pub type RouterHandlersContainerRef = Arc<RouterHandlersContainer>;
@@ -55,7 +56,8 @@ impl RouterHandlersContainer {
             sign_object: OnceCell::new(),
             verify_object: OnceCell::new(),
 
-            acl: OnceCell::new(),
+            acl: OnceCell::new(), 
+            interest: OnceCell::new(), 
         }
     }
 
@@ -229,6 +231,20 @@ impl RouterHandlersContainer {
         self.acl.get()
     }
 
+    // interest
+    pub fn interest(&self) -> &RouterHandlers<InterestHandlerRequest, InterestHandlerResponse> {
+        self.interest.get_or_init(|| {
+            RouterHandlers::<InterestHandlerRequest, InterestHandlerResponse>::new(
+                self.chain.clone(),
+                self.storage.clone(),
+            )
+        })
+    }
+    pub fn try_interest(&self) -> Option<&RouterHandlers<InterestHandlerRequest, InterestHandlerResponse>> {
+        self.interest.get()
+    }
+
+
     pub(crate) fn clear_dec_handlers(&self, dec_id: &Option<ObjectId>) -> bool {
         let mut changed = false;
         if let Some(container) = self.get_object.get() {
@@ -265,6 +281,10 @@ impl RouterHandlersContainer {
         }
 
         if let Some(container) = self.acl.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+
+        if let Some(container) = self.interest.get() {
             changed |= container.clear_dec_handlers(dec_id)
         }
 
@@ -310,6 +330,11 @@ impl RouterHandlersContainer {
             result.acl = container.dump_data();
         }
 
+        if let Some(container) = self.interest.get() {
+            result.interest = container.dump_data();
+        }
+
+
         result
     }
 
@@ -350,6 +375,10 @@ impl RouterHandlersContainer {
         if let Some(list) = data.acl {
             self.acl().load_data(list);
         }
+
+        if let Some(list) = data.interest {
+            self.interest().load_data(list);
+        }
     }
 }
 
@@ -372,7 +401,9 @@ pub struct RouterHandlersManager {
 
     handler: Arc<RouterHandlersContainer>,
 
-    acl: Arc<RouterHandlersContainer>,
+    acl: Arc<RouterHandlersContainer>, 
+
+    ndn: Arc<RouterHandlersContainer>
 }
 
 impl RouterHandlersManager {
@@ -426,7 +457,12 @@ impl RouterHandlersManager {
             acl: Arc::new(RouterHandlersContainer::new(
                 RouterHandlerChain::Acl,
                 storage.clone(),
-            )),
+            )), 
+            
+            ndn: Arc::new(RouterHandlersContainer::new(
+                RouterHandlerChain::NDN,
+                storage.clone(),
+            ))
         };
 
         storage.bind(ret.clone());
@@ -463,6 +499,8 @@ impl RouterHandlersManager {
             RouterHandlerChain::Handler => &self.handler,
 
             RouterHandlerChain::Acl => &self.acl,
+
+            RouterHandlerChain::NDN => &self.ndn,  
         }
     }
 
@@ -482,6 +520,8 @@ impl RouterHandlersManager {
         changed |= self.handler.clear_dec_handlers(dec_id);
 
         changed |= self.acl.clear_dec_handlers(dec_id);
+
+        changed |= self.ndn.clear_dec_handlers(dec_id);
 
         if changed {
             self.storage.async_save();
@@ -538,6 +578,11 @@ impl RouterHandlersManager {
             list.acl = Some(data);
         }
 
+        let data = self.ndn.dump_data();
+        if !data.is_empty() {
+            list.ndn = Some(data);
+        }
+
         list
     }
 
@@ -576,6 +621,10 @@ impl RouterHandlersManager {
 
         if let Some(data) = list.acl {
             self.acl.load_data(data);
+        }
+
+        if let Some(data) = list.ndn {
+            self.ndn.load_data(data);
         }
     }
 

@@ -41,6 +41,7 @@ pub trait Tunnel: Send + Sync + std::fmt::Display {
     fn retain_keeper(&self);
     fn release_keeper(&self);
     fn reset(&self);
+    fn mtu(&self) -> usize;
 }
 
 
@@ -52,6 +53,10 @@ impl DynamicTunnel {
 
     pub fn clone_as_tunnel<T: 'static + Tunnel + Clone>(&self) -> T {
         self.0.as_any().downcast_ref::<T>().unwrap().clone()
+    }
+
+    pub fn mtu(&self) -> usize {
+        self.0.mtu()
     }
 }
 

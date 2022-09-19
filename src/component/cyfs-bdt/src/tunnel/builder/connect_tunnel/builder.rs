@@ -7,8 +7,9 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*,
+    protocol::{*, v0::*},
     interface::*, 
+    history::keystore, 
     sn::client::PingClientCalledEvent, 
     tunnel::{TunnelState, TunnelContainer, ProxyType, BuildTunnelParams}, 
     stack::{Stack, WeakStack}
@@ -198,7 +199,7 @@ impl ConnectTunnelBuilder {
             true,
             false,
             |sn_call| {
-                let mut context = udp::PackageBoxEncodeContext::from((tunnel.remote_const(), sn_call));
+                let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 //FIXME 先不调用raw_measure_with_context
                 //let len = first_box.raw_measure_with_context(&mut context).unwrap();
                 let mut buf = vec![0u8; 2048];
@@ -278,27 +279,29 @@ impl ConnectTunnelBuilder {
         let stack = Stack::from(&self.0.stack);
         let tunnel = &self.0.tunnel;
 
-        let key_stub = stack.keystore().create_key(tunnel.remote(), true);
+        let key_stub = stack.keystore().create_key(tunnel.remote_const(), true);
         // 生成第一个package box
         let mut first_box = PackageBox::encrypt_box(tunnel.remote().clone(), key_stub.aes_key.clone());
             
         let syn_tunnel = SynTunnel {
+            protocol_version: self.0.tunnel.protocol_version(), 
+            stack_version: self.0.tunnel.stack_version(), 
             from_device_id: local.desc().device_id(), 
             to_device_id: tunnel.remote().clone(), 
-            from_container_id: IncreaseId::default(),
             from_device_desc: local.clone(),
             sequence: self.sequence(), 
             send_time: bucky_time_now()
         };
-        if !key_stub.is_confirmed {
+        if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
             let mut exchange = Exchange {
                 sequence: syn_tunnel.sequence.clone(), 
+                key_encrypted, 
                 seq_key_sign: Signature::default(),
                 from_device_id: syn_tunnel.from_device_id.clone(),
                 send_time: syn_tunnel.send_time.clone(),
                 from_device_desc: syn_tunnel.from_device_desc.clone(),
             };
-            let _ = exchange.sign(&key_stub.aes_key, stack.keystore().signer()).await;
+            let _ = exchange.sign(stack.keystore().signer()).await;
             first_box.push(exchange);
         }
         first_box.push(syn_tunnel);

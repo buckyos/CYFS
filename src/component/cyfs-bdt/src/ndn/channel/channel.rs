@@ -20,14 +20,14 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::super::{
-    scheduler::*
+    upload::*,
 };
 use super::{
+    types::*, 
     download::*, 
     upload::*, 
-    protocol::*, 
+    protocol::v0::*, 
     tunnel::*,
-    
 };
 
 
@@ -36,8 +36,10 @@ pub struct Config {
     pub precoding_timeout: Duration,
     pub resend_interval: Duration, 
     pub resend_timeout: Duration,  
+    pub wait_redirect_timeout: Duration,
     pub msl: Duration, 
-    pub udp: udp::Config
+    pub udp: udp::Config, 
+    pub history_speed: HistorySpeedConfig
 }
 
 
@@ -45,24 +47,26 @@ pub struct Config {
 struct ChannelActiveState {
     guard: TunnelGuard, 
     tunnel: DynamicChannelTunnel,
-    statistic_task: DynamicStatisticTask,
 }
 
-enum ChannelState {
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ChannelState {
+    Unknown, 
+    Active, 
+    Dead
+}
+
+enum StateImpl {
     Unknown, 
     Active(ChannelActiveState), 
     Dead(Option<Timestamp>)
 }
 
-pub enum ChannelConnectionState {
-    Unknown,
-    Active,
-    Dead(Option<Timestamp>),
-}
-
 struct UploadSessions {
     uploading: Vec<UploadSession>, 
-    canceled: LinkedList<UploadSession>
+    canceled: LinkedList<UploadSession>, 
+    speed_counter: SpeedCounter, 
+    history_speed: HistorySpeed, 
 } 
 
 struct Uploaders {
@@ -72,9 +76,11 @@ struct Uploaders {
 
 
 impl Uploaders {
-    fn new() -> Self {
+    fn new(history_speed: HistorySpeed) -> Self {
         Self {
             sessions: RwLock::new(UploadSessions {
+                history_speed, 
+                speed_counter: SpeedCounter::new(0), 
                 uploading: vec![], 
                 canceled: LinkedList::new()
             }), 
@@ -94,14 +100,14 @@ impl Uploaders {
     }
 
     fn add(&self, session: UploadSession) {
-        match session.schedule_state() {
-            TaskState::Canceled(_) => {
+        match session.state() {
+            UploadTaskState::Error(_) => {
                 let mut sessions = self.sessions.write().unwrap();
                 if sessions.canceled.iter().find(|s| session.session_id().eq(s.session_id())).is_none() {
                     info!("{} add canceled upload session {}", session.channel(), session);
                     sessions.canceled.push_back(session);
                 }
-            },  
+            }, 
             _ => {
                 let mut sessions = self.sessions.write().unwrap();
                 if sessions.uploading.iter().find(|s| session.session_id().eq(s.session_id())).is_none() {
@@ -139,7 +145,7 @@ impl Uploaders {
 
     fn next_piece(&self, buf: &mut [u8]) -> usize {
         let mut try_count = 0;
-        loop {
+        let len = loop {
             let ret = {
                 let sessions = self.sessions.read().unwrap();
                 if sessions.uploading.len() > 0 {
@@ -182,7 +188,13 @@ impl Uploaders {
             } else {
                 break 0;
             }
-        } 
+        };
+
+        if len > 0 {
+            self.sessions.write().unwrap().speed_counter.on_recv(len);
+        }
+
+        len
     }
 
     fn on_time_escape(&self, now: Timestamp) {
@@ -194,10 +206,10 @@ impl Uploaders {
         for session in uploading {
             if let Some(state) = session.on_time_escape(now) {
                 match state {
-                    TaskState::Finished => {
+                    UploadTaskState::Finished => {
                         sessions.canceled.push_back(session);
                     },
-                    TaskState::Canceled(_) => {
+                    UploadTaskState::Error(_) => {
                         sessions.canceled.push_back(session);
                     }, 
                     _ => {
@@ -219,7 +231,186 @@ impl Uploaders {
             }
         }
     }
+
+    fn session_count(&self) -> u32 {
+        self.sessions.read().unwrap().uploading.len() as u32 
+    }
+
+    fn calc_speed(&self, when: Timestamp) -> u32 {
+        let mut sessions = self.sessions.write().unwrap();
+
+        let session_count: u32 = sessions.uploading.len() as u32;
+
+        let cur_speed = sessions.speed_counter.update(when);
+        if cur_speed > 0 || session_count > 0 {
+            sessions.history_speed.update(Some(cur_speed), when);
+            cur_speed
+        } else {
+            sessions.history_speed.update(None, when);
+            0
+        }
+    }
+
+    fn cur_speed(&self) -> u32 {
+        self.sessions.read().unwrap().history_speed.latest()
+    }
+    
+    fn history_speed(&self) -> u32 {
+        self.sessions.read().unwrap().history_speed.average()
+    }
+
 }
+
+
+struct DownloadState {
+    sessions: BTreeMap<TempSeq, DownloadSession>, 
+    speed_counter: SpeedCounter, 
+    history_speed: HistorySpeed, 
+}
+struct Downloaders(RwLock<DownloadState>);
+
+impl Downloaders {
+    fn new(history_speed: HistorySpeed) -> Self {
+        Self(RwLock::new(DownloadState {
+            sessions: BTreeMap::new(), 
+            speed_counter: SpeedCounter::new(0), 
+            history_speed
+        }))
+    }
+
+    fn session_count(&self) -> u32 {
+        let downloaders = self.0.read().unwrap();
+        downloaders.sessions.values().map(|session| {
+            match session.state() {
+                DownloadSessionState::Downloading(_) => 1, 
+                _ => 0
+            }
+        }).sum()
+    }
+
+    fn initial_speed(&self) -> u32 {
+        let downloaders = self.0.read().unwrap();
+        let session_count: u32 = downloaders.sessions.values().map(|session| {
+            match session.state() {
+                DownloadSessionState::Downloading(_) => 1, 
+                _ => 0
+            }
+        }).sum();
+        downloaders.history_speed.average() / (session_count + 1)
+    }
+   
+    fn is_empty(&self) -> bool {
+        self.0.read().unwrap().sessions.is_empty()
+    }
+
+    fn remove(&self, id: &TempSeq) {
+        let _ = self.0.write().unwrap().sessions.remove(id);
+    }
+
+    fn find(&self, id: &TempSeq) -> Option<DownloadSession> {
+        self.0.read().unwrap().sessions.get(id).cloned()
+    }
+
+    fn add(&self, session: DownloadSession) -> BuckyResult<()> {
+        let mut downloaders = self.0.write().unwrap();
+        let _ = if downloaders.sessions.get(session.session_id()).is_some() {
+            Err(BuckyError::new(BuckyErrorCode::AlreadyExists, "duplicated"))
+        } else {
+            downloaders.sessions.insert(session.session_id().clone(), session.clone());
+            Ok(())
+        }?;
+
+        let _ = session.start();
+        task::spawn(async move {
+            let state = session.wait_finish().await;
+            // 这里等待2*msl
+            if match state {
+                DownloadSessionState::Finished => true, 
+                DownloadSessionState::Canceled(err) => {
+                    if err == BuckyErrorCode::Interrupted {
+                        true 
+                    } else {
+                        false
+                    }
+                }, 
+                _ => unreachable!()
+            } {
+                let _ = future::timeout(2 * session.channel().config().msl, future::pending::<()>()).await;
+            }
+            
+            let _ = session.channel().0.downloaders.remove(session.session_id());
+            debug!("{} remove session {}", session.channel(), session);
+        });
+        Ok(())
+    } 
+
+    fn calc_speed(&self, when: Timestamp) -> u32 {
+        let mut downloaders = self.0.write().unwrap();
+
+        let session_count: u32 = downloaders.sessions.values().map(|session| {
+            match session.state() {
+                DownloadSessionState::Downloading(_) => 1, 
+                _ => 0
+            }
+        }).sum();
+        let cur_speed = downloaders.speed_counter.update(when);
+        if cur_speed > 0 || session_count > 0 {
+            downloaders.history_speed.update(Some(cur_speed), when);
+            cur_speed
+        } else {
+            downloaders.history_speed.update(None, when);
+            0
+        }
+    }
+
+    fn cur_speed(&self) -> u32 {
+        self.0.read().unwrap().history_speed.latest()
+    }
+    
+    fn history_speed(&self) -> u32 {
+        self.0.read().unwrap().history_speed.average()
+    }
+
+    fn on_piece_data(&self, piece: &PieceData) -> BuckyResult<()> {
+        if let Some(session) = {
+            let mut downloaders = self.0.write().unwrap();
+            downloaders.speed_counter.on_recv(piece.data.len());
+            downloaders.sessions.get(&piece.session_id).cloned()
+        } {
+            session.push_piece_data(piece);
+            Ok(())
+        } else {
+            Err(BuckyError::new(BuckyErrorCode::NotFound, "no session"))
+        }
+    }
+
+    fn on_time_escape(&self, now: Timestamp) -> bool {
+        let mut income_dead = true;
+        let downloaders: Vec<DownloadSession> = self.0.read().unwrap().sessions.values().cloned().collect();
+        if downloaders.len() == 0 {
+            income_dead = false;
+        } else {
+            for d in downloaders {
+                match d.on_time_escape(now) {
+                    Ok(_) => {
+                        income_dead = false;
+                    },
+                    _ => {}
+                }
+            }
+        }
+
+        income_dead
+    }
+
+    fn cancel_by_error(&self, err: BuckyError) {
+        let downloaders: Vec<DownloadSession> = self.0.read().unwrap().sessions.values().cloned().collect();
+        for session in downloaders {
+            session.cancel_by_error(BuckyError::new(err.code(), err.msg().to_string()));
+        }
+    }
+}
+
 
 struct ChannelImpl {
     config: Config, 
@@ -227,10 +418,9 @@ struct ChannelImpl {
     remote: DeviceId, 
     command_tunnel: DatagramTunnelGuard, 
     command_seq: TempSeqGenerator,  
-    downloaders: RwLock<BTreeMap<TempSeq, DownloadSession>>, 
+    downloaders: Downloaders, 
     uploaders: Uploaders, 
-    state: RwLock<ChannelState>, 
-    statistic_task: DynamicStatisticTask,
+    state: RwLock<StateImpl>, 
 }
 
 #[derive(Clone)]
@@ -246,7 +436,10 @@ impl Channel {
     pub fn new(
         weak_stack: WeakStack, 
         remote: DeviceId, 
-        command_tunnel: DatagramTunnelGuard) -> Self {
+        command_tunnel: DatagramTunnelGuard, 
+        initial_download_speed: HistorySpeed, 
+        initial_upload_speed: HistorySpeed 
+    ) -> Self {
         let stack = Stack::from(&weak_stack);
         let config = stack.config().ndn.channel.clone();
         Self(Arc::new(ChannelImpl {
@@ -255,17 +448,16 @@ impl Channel {
             remote, 
             command_tunnel, 
             command_seq: TempSeqGenerator::new(), 
-            downloaders: RwLock::new(BTreeMap::new()), 
-            uploaders: Uploaders::new(), 
-            state: RwLock::new(ChannelState::Unknown), 
-            statistic_task: DynamicStatisticTask::default(),
+            downloaders: Downloaders::new(initial_download_speed), 
+            uploaders: Uploaders::new(initial_upload_speed), 
+            state: RwLock::new(StateImpl::Unknown), 
         }))
     }
 
     pub fn reset(&self) {
         assert!(self.0.uploaders.is_empty());
-        assert!(self.0.downloaders.read().unwrap().is_empty());
-        *self.0.state.write().unwrap() = ChannelState::Unknown;
+        assert!(self.0.downloaders.is_empty());
+        *self.0.state.write().unwrap() = StateImpl::Unknown;
     }
 
     pub fn remote(&self) -> &DeviceId {
@@ -276,44 +468,18 @@ impl Channel {
         &self.0.config
     }
 
-    pub fn download(&self, session: DownloadSession) -> BuckyResult<()> {
-        {
-            let mut downloaders = self.0.downloaders.write().unwrap();
-            let _ = if downloaders.get(session.session_id()).is_some() {
-                debug!("{} ignore session {} for duplicated", self, session);
-                Err(BuckyError::new(BuckyErrorCode::AlreadyExists, "duplicated"))
-            } else {
-                downloaders.insert(session.session_id().clone(), session.clone());
-                debug!("{} add session {}", self, session);
-                Ok(())
-            }?;
-        }
+    pub fn upload(&self, session: UploadSession) -> BuckyResult<()> {
+        self.0.uploaders.add(session);
+        Ok(())
+    }
 
-        let r = session.start();
-        task::spawn(async move {
-            let state = session.wait_finish().await;
-            // 这里等待2*msl
-            if match state {
-                TaskState::Finished => {
-                    true
-                }, 
-                TaskState::Canceled(err) => {
-                    if err == BuckyErrorCode::Interrupted {
-                        true 
-                    } else {
-                        false
-                    }
-                }, 
-                _ => unreachable!()
-            } {
-                let _ = future::timeout(2 * session.channel().config().msl, future::pending::<()>()).await;
-            }
-            
-            let channel = session.channel();
-            let _ = channel.0.downloaders.write().unwrap().remove(session.session_id());
-            debug!("{} remove session {}", session.channel(), session);
-        });
-        assert!(r.is_ok());
+    pub fn download(&self, session: DownloadSession) -> BuckyResult<()> {
+        let _ = self.0.downloaders.add(session.clone()).map_err(|err| {
+            debug!("{} add session {} failed for {}", self, session, err);
+            err
+        })?;
+
+        debug!("{} add session {}", self, session);
         Ok(())
     } 
 
@@ -322,7 +488,7 @@ impl Channel {
     }
 
     // 从 datagram tunnel 发送控制命令
-    pub(in crate::ndn) fn interest(&self, interest: Interest) {
+    pub fn interest(&self, interest: Interest) {
         let mut buf = vec![0u8; MTU];
         let mut options = DatagramOptions::default();
         let tail = interest.raw_encode_with_context(
@@ -338,7 +504,7 @@ impl Channel {
 
     } 
 
-    pub(in crate::ndn) fn resp_interest(&self, resp: RespInterest) {
+    pub fn resp_interest(&self, resp: RespInterest) {
         debug!("{} will send resp interest {:?}", self, resp);
         let mut buf = vec![0u8; MTU];
         let mut options = DatagramOptions::default();
@@ -389,41 +555,73 @@ impl Channel {
         }
     }
 
-    fn stack(&self) -> Stack {
+    pub fn stack(&self) -> Stack {
         Stack::from(&self.0.stack)
     }
 
-    pub fn statistic_task(&self) -> DynamicStatisticTask {
-        return self.0.statistic_task.clone();
-    }
-
-    pub fn connection_state(&self) -> ChannelConnectionState {
+    pub fn state(&self) -> ChannelState {
         let state = &*self.0.state.read().unwrap();
         match state {
-            ChannelState::Unknown => ChannelConnectionState::Unknown,
-            ChannelState::Active(_) => ChannelConnectionState::Active,
-            ChannelState::Dead(t) => ChannelConnectionState::Dead(*t),
+            StateImpl::Unknown => ChannelState::Unknown,
+            StateImpl::Active(_) => ChannelState::Active,
+            StateImpl::Dead(_) => ChannelState::Dead,
         }
     }
 
     pub fn clear_dead(&self) {
         let state = &mut *self.0.state.write().unwrap();
         match state {
-            ChannelState::Dead(_) => {
+            StateImpl::Dead(_) => {
                 info!("{} Dead=>Unknown", self);
-                *state = ChannelState::Unknown;
+                *state = StateImpl::Unknown;
             },
             _ => {},
         }
     }
 
+    pub fn calc_speed(&self, when: Timestamp) -> (u32, u32) {
+        (self.0.downloaders.calc_speed(when), 
+            self.0.uploaders.calc_speed(when))
+    }
+
+    pub fn download_session_count(&self) -> u32 {
+        self.0.downloaders.session_count()
+    }
+
+    pub fn initial_download_session_speed(&self) -> u32 {
+        self.0.downloaders.initial_speed()
+    }
+
+    pub fn download_cur_speed(&self) -> u32 {
+        self.0.downloaders.cur_speed()
+    }
+
+    pub fn download_history_speed(&self) -> u32 {
+        self.0.downloaders.history_speed()
+    }
+
+    pub fn upload_session_count(&self) -> u32 {
+        self.0.uploaders.session_count()
+    }
+
+    pub fn upload_cur_speed(&self) -> u32 {
+        self.0.uploaders.cur_speed()
+    }
+
+    pub fn upload_history_speed(&self) -> u32 {
+        self.0.uploaders.history_speed()
+    }
+
+
     fn tunnel(&self) -> Option<DynamicChannelTunnel> {
         let state = &*self.0.state.read().unwrap();
         match state {
-            ChannelState::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
+            StateImpl::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
             _ => None
         }
     }
+
+
 
     async fn on_interest(&self, command: &Interest) -> BuckyResult<()> {
         info!("{} got interest {:?}", self, command);
@@ -445,19 +643,33 @@ impl Channel {
             session.on_interest(command)
         } else {
             let stack = self.stack();
-            let session = stack.ndn().event_handler().on_newly_interest(command, self).await?;
-            // 加入到channel的 upload sessions中
-            self.0.uploaders.add(session.clone());
-            session.on_interest(command)
+            stack.ndn().event_handler().on_newly_interest(&self.stack(), command, self).await
         }
     }
 
     fn on_resp_interest(&self, command: &RespInterest) -> BuckyResult<()> {
-        let session = self.0.downloaders.read().unwrap().get(&command.session_id).cloned();
-        if let Some(session) = session {
-            session.on_resp_interest(command)
-        } else {
-            Ok(())
+        match command.err {
+            BuckyErrorCode::NotConnected => {
+                let to = command.to.as_ref().unwrap();
+                if let Some(requestor) = self.stack().ndn().channel_manager().channel_of(to) {
+                    requestor.resp_interest(RespInterest { session_id: command.session_id.clone(),
+                                                                 chunk: command.chunk.clone(),
+                                                                 err: BuckyErrorCode::Redirect,
+                                                                 redirect: command.redirect.clone(),
+                                                                 redirect_referer: command.redirect_referer.clone(),
+                                                                 to: None });
+                } else {
+                    error!("{} not found requestor channel {}", self, to);
+                }
+                Ok(())
+            },
+            _ => {
+                if let Some(session) = self.0.downloaders.find(&command.session_id) {
+                    session.on_resp_interest(command)
+                } else {
+                    Ok(())
+                }
+            }
         }
     }
 }
@@ -493,32 +705,23 @@ impl OnUdpRawData<Option<()>> for Channel {
 impl Channel {
     fn on_piece_data(&self, piece: PieceData) -> BuckyResult<()> {
         trace!("{} got piece data est_seq:{:?} chunk:{} desc:{:?} data:{}", self, piece.est_seq, piece.chunk, piece.desc, piece.data.len());
-
-        let _ = self.0.statistic_task.on_stat(piece.data.len() as u64);
-
-        let session = self.0.downloaders.read().unwrap().get(&piece.session_id).cloned();
-
-        if let Some(session) = session {
-            if let Some(view) = Stack::from(&self.0.stack).ndn().chunk_manager().view_of(session.chunk()) {
-                let _ = view.on_piece_stat(&piece);
-            }
-            session.push_piece_data(&piece);
-        } else {
-            let stack = Stack::from(&self.0.stack);
+        if self.0.downloaders.on_piece_data(&piece).is_err() {
+            let strong_stack = Stack::from(&self.0.stack);
             // 这里可能要保证同步到同线程处理,重入会比较麻烦
-            match stack.ndn().event_handler().on_unknown_piece_data(&piece, self) {
-                Ok(_session) => {
-                    unimplemented!()
+            match strong_stack.ndn().event_handler().on_unknown_piece_data(&self.stack(), &piece, self) {
+                Ok(session) => {
+                    session.push_piece_data(&piece);
                     //FIXME： 如果新建了任务，这里应当继续接受piece data
                 },
                 Err(err) => {
                     // 通过新建一个canceled的session来回复piece control
                     let session = DownloadSession::canceled(
+                        self.0.stack.clone(), 
                         piece.chunk.clone(), 
                         piece.session_id.clone(), 
                         self.clone(),
                         err);
-                    let _ = self.download(session.clone());
+                    let _ = self.0.downloaders.add(session.clone());
                     session.push_piece_data(&piece);
                 }  
             }
@@ -552,30 +755,15 @@ impl Channel {
         let tunnel = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                ChannelState::Unknown => None, 
-                ChannelState::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
+                StateImpl::Unknown => None, 
+                StateImpl::Active(active) => Some(active.tunnel.clone_as_tunnel()), 
                 _ => {
                     return;
                 }
             }
         };
        
-        let mut income_dead = true;
-        let downloaders: Vec<DownloadSession> = self.0.downloaders.read().unwrap().values().cloned().collect();
-        if downloaders.len() == 0 {
-            income_dead = false;
-        } else {
-            for d in downloaders {
-                match d.on_time_escape(now) {
-                    Ok(_) => {
-                        income_dead = false;
-                    },
-                    _ => {}
-                }
-            }
-        }
-
-        if income_dead {
+        if self.0.downloaders.on_time_escape(now) {
             error!("income break, channel:{}", self);
             self.mark_dead();
             return ;
@@ -612,7 +800,7 @@ impl Channel {
             }
            
             let state = &*self.0.state.read().unwrap();
-            if let ChannelState::Active(active) = state {
+            if let StateImpl::Active(active) = state {
                 if let TunnelState::Active(_) = active.tunnel.state() {
                     if active.tunnel.raw_ptr_eq(&default_tunnel) {
                         return Some(active.tunnel.clone_as_tunnel());
@@ -627,10 +815,10 @@ impl Channel {
 
         let former_state = {
             match &*self.0.state.read().unwrap() {
-                ChannelState::Unknown => {
+                StateImpl::Unknown => {
                     Some("Unknown")
                 }, 
-                ChannelState::Active(active) => {
+                StateImpl::Active(active) => {
                     // do nothing
                     if let TunnelState::Active(_) = active.tunnel.state() {
                         unreachable!()
@@ -638,7 +826,7 @@ impl Channel {
                         Some("Active")
                     }   
                 }, 
-                ChannelState::Dead(_) => {
+                StateImpl::Dead(_) => {
                     Some("Dead")
                 }
             }
@@ -655,10 +843,9 @@ impl Channel {
                         Ok(tunnel) => {
                             {
                                 let state = &mut *self.0.state.write().unwrap();
-                                *state = ChannelState::Active(ChannelActiveState {
+                                *state = StateImpl::Active(ChannelActiveState {
                                     guard, 
                                     tunnel: tunnel.clone_as_tunnel(),
-                                    statistic_task: self.0.statistic_task.clone(),
                                 });
                             }
                             
@@ -686,21 +873,18 @@ impl Channel {
         let tunnel_state = {
             let state = &mut *self.0.state.write().unwrap();
             let tunnel_state = match state {
-                ChannelState::Unknown => None, 
-                ChannelState::Active(active) => Some((
+                StateImpl::Unknown => None, 
+                StateImpl::Active(active) => Some((
                     active.guard.clone(), 
                     active.tunnel.start_at(), 
                     active.tunnel.active_timestamp())), 
-                ChannelState::Dead(_) => None
+                    StateImpl::Dead(_) => None
             };
-            *state = ChannelState::Dead(tunnel_state.clone().map(|(_, _, r)| r));
+            *state = StateImpl::Dead(tunnel_state.clone().map(|(_, _, r)| r));
             tunnel_state
         };
 
-        let downloaders: Vec<DownloadSession> = self.0.downloaders.read().unwrap().values().cloned().collect();
-        for session in downloaders {
-            session.cancel_by_error(BuckyError::new(BuckyErrorCode::Timeout, "channel's dead"));
-        }
+        self.0.downloaders.cancel_by_error(BuckyError::new(BuckyErrorCode::Timeout, "channel's dead"));
         self.0.uploaders.cancel_by_error(BuckyError::new(BuckyErrorCode::Timeout, "channel's dead"));
 
 

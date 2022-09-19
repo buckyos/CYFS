@@ -8,7 +8,7 @@ use crate::{
     interface
 };
 use super::super::{
-    protocol::*, 
+    protocol::v0::*, 
     channel::Channel
 };
 use super::{

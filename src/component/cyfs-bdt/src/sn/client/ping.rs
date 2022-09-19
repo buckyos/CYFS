@@ -1,20 +1,29 @@
+use std::{
+    sync::{Arc, RwLock, atomic::{AtomicU8, AtomicU32, AtomicU64, AtomicBool}}, 
+    collections::{HashMap, hash_map::Entry},
+    convert::TryFrom, 
+    time::{SystemTime, Instant, Duration, UNIX_EPOCH}
+};
+use async_std::{
+    task
+};
+use core::{
+    sync::atomic
+};
+
 use cyfs_base::*;
-use std::sync::{Arc, RwLock};
-use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, AtomicBool};
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::collections::hash_map::Entry;
-use std::time::{SystemTime, Instant, Duration, UNIX_EPOCH};
-use async_std::task;
-use crate::protocol::{SnPing, SnPingResp, Exchange, SnCalled, SnCalledResp, PackageBox};
-use crate::{TempSeqGenerator, TempSeq};
-use core::sync::atomic;
-use crate::interface::{NetListener, UpdateOuterResult, udp::{Interface, PackageBoxEncodeContext}};
-use crate::sn::client::{Config};
-// use std::net::{SocketAddr, Ipv6Addr};
-use crate::sn::types::{SnServiceReceiptVersion, SnServiceGrade, SnServiceReceipt, ReceiptWithSignature};
-use crate::stack::{WeakStack, Stack};
 use cyfs_debug::Mutex;
+use crate::{
+    types::{TempSeqGenerator, TempSeq}, 
+    protocol::{*, v0::*}, 
+    interface::{NetListener, UpdateOuterResult, udp::{Interface, PackageBoxEncodeContext}}, 
+    history::keystore, 
+    sn::{
+        types::{SnServiceReceiptVersion, SnServiceGrade, SnServiceReceipt, ReceiptWithSignature}, 
+        client::{Config},
+    },  
+    stack::{WeakStack, Stack}
+};
 
 
 const INVALID_CALL_DELAY: u16 = 0xFFFF;
@@ -375,7 +384,7 @@ impl Client {
         };
 
         if is_encrypto {
-            let found_key = Stack::from(&mgr.env.stack).keystore().create_key(&inner.sn_peerid, false);
+            let found_key = Stack::from(&mgr.env.stack).keystore().create_key(sn.desc(), false);
             inner.aes_key = Some(found_key.aes_key.clone());
         }
 
@@ -666,15 +675,23 @@ impl ClientInner {
 
         let last_resp_time = self.last_resp_time.load(atomic::Ordering::Acquire);
         let to_session_index = if (last_resp_time == 0 || (now < last_resp_time || now - last_resp_time > 1000)) && self.aes_key.is_some() {
-            let mut exchg = Exchange {
-                sequence: seq,
-                seq_key_sign: Signature::default(),
-                from_device_id: local_deviceid,
-                send_time: now_abs_u64,
-                from_device_desc: local_peer.clone(),
-            };
-            let _ = exchg.sign(self.aes_key.as_ref().unwrap(), stack.keystore().signer()).await;
-            pkg_box.push(exchg);
+            let key_stub = stack
+                .keystore()
+                .get_key_by_mix_hash(&self.aes_key.as_ref().unwrap().mix_hash(None), false, false)
+                .ok_or_else(|| BuckyError::new(BuckyErrorCode::CryptoError, "key not exists"))?;
+            if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
+                let mut exchg = Exchange {
+                    sequence: seq, 
+                    key_encrypted, 
+                    seq_key_sign: Signature::default(),
+                    from_device_id: local_deviceid,
+                    send_time: now_abs_u64,
+                    from_device_desc: local_peer.clone(),
+                };
+                let _ = exchg.sign(stack.keystore().signer()).await;
+                pkg_box.push(exchg);
+            }
+           
             self.active_session_index.store(std::u32::MAX, atomic::Ordering::Release);
             std::u32::MAX
         } else {
@@ -703,6 +720,8 @@ impl ClientInner {
             let stack = Stack::from(&self.env.stack);
             let last_update_seq = self.last_update_seq.swap(seq.value(), atomic::Ordering::AcqRel);
             let mut ping_pkg = SnPing {
+                protocol_version: 0, 
+                stack_version: 0, 
                 seq,
                 from_peer_id: if self.aes_key.is_some() { Some(stack.local_device_id().clone()) } else { None }, // 加密通信，密钥就能代表deviceid
                 sn_peer_id: self.sn_peerid.clone(),
@@ -724,7 +743,7 @@ impl ClientInner {
         let ping_seq = ping_pkg.seq.clone();
         pkg_box.push(ping_pkg);
 
-        let mut context = PackageBoxEncodeContext::from(self.sn.desc());
+        let mut context = PackageBoxEncodeContext::default();
 
         self.last_ping_time.store(now, atomic::Ordering::Release);
 
@@ -783,7 +802,7 @@ impl ClientInner {
         let mut pkg_box = PackageBox::encrypt_box(self.sn_peerid.clone(), self.aes_key.as_ref().unwrap().clone());
         pkg_box.push(resp);
 
-        let mut context = PackageBoxEncodeContext::from(self.sn.desc());
+        let mut context = PackageBoxEncodeContext::default();
         let _ = from_interface.send_box_to(&mut context, &pkg_box, from)?;
 
         self.contract.on_called(called, call_seq, call_time);

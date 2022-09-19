@@ -15,7 +15,7 @@ use crate::interface::{
 use crate::meta::*;
 use crate::name::NameResolver;
 use crate::ndn::NDNOutputTransformer;
-use crate::ndn_api::{ChunkStoreReader, NDNBdtDataAclProcessor, NDNService};
+use crate::ndn_api::{ChunkStoreReader, NDNService, BdtNdnEventHandler};
 use crate::non::NONOutputTransformer;
 use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
@@ -30,7 +30,13 @@ use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use cyfs_base::*;
-use cyfs_bdt::{ChunkReader, DeviceCache, Stack, StackGuard, StackOpenParams};
+use cyfs_bdt::{
+    ChunkReader, 
+    DeviceCache, 
+    Stack, 
+    StackGuard, 
+    StackOpenParams
+};
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 use cyfs_noc::*;
@@ -790,8 +796,10 @@ impl CyfsStackImpl {
         bdt_params.outer_cache = Some(device_cache);
         bdt_params.chunk_store = Some(chunk_store);
 
-        let acl = NDNBdtDataAclProcessor::new(zone_manager, acl, router_handlers);
-        bdt_params.ndn_acl = Some(Box::new(acl));
+ 		let acl = NDNBdtDataAclProcessor::new(zone_manager, acl, router_handlers);
+        
+        bdt_params.ndn_event = Some(Box::new(BdtNdnEventHandler::new(acl, router_handlers)));
+
 
         let ret = Stack::open(params.device, params.secret, bdt_params).await;
 

@@ -10,7 +10,7 @@ use crate::{
         tcp::{self, OnTcpInterface},
         udp::{self, OnUdpPackageBox, OnUdpRawData, UdpPackageBox},
     },
-    protocol::*,
+    protocol::{*, v0::*},
     sn::{
         self,
         client::{PingClientCalledEvent, PingClientStateEvent},
@@ -18,11 +18,10 @@ use crate::{
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
     pn::client::ProxyManager,
-    ndn::{self, NdnStack, ChunkReader}, 
+    ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler}, 
     debug::{self, DebugStub}
 };
 use cyfs_util::{
-    acl::*, 
     cache::*
 };
 use async_std::{
@@ -135,6 +134,9 @@ impl StackConfig {
                 max_try_random_vport_times: 5,
                 piece_cache_duration: Duration::from_millis(1000),
                 recv_cache_count: 16,
+                expired_tick_sec: 10,
+                fragment_cache_size: 100 *1024*1024,
+                fragment_expired_us: 30 *1000*1000,
             },
             ndn: ndn::Config {
                 atomic_interval: Duration::from_millis(1), 
@@ -143,6 +145,7 @@ impl StackConfig {
                     precoding_timeout: Duration::from_secs(900),
                     resend_interval: Duration::from_millis(500), 
                     resend_timeout: Duration::from_secs(5), 
+                    wait_redirect_timeout: Duration::from_millis(500),
                     msl: Duration::from_secs(60), 
                     udp: ndn::channel::tunnel::udp::Config {
                         no_resp_loss_count: 3, 
@@ -152,18 +155,13 @@ impl StackConfig {
                             min_rto: Duration::from_millis(200),
                             cc_impl: cc::ImplConfig::BBR(Default::default()),
                         }
+                    }, 
+                    history_speed: HistorySpeedConfig {
+                        attenuation: 0.5, 
+                        expire: Duration::from_secs(20),  
+                        atomic: Duration::from_secs(1)
                     }
                 },
-                limit: ndn::LimitConfig {
-                    max_connections_per_source: 8u16,
-
-                    max_connections: 512u16,
-                    max_cpu_usage: 100u8,
-                    max_memory_usage: 100u8,
-                    max_upstream_bandwidth: 0u32,
-                    max_downstream_bandwidth: 0u32,
-                },
-                dir: ndn::DirConfig::default(),
             }, 
             debug: None
         }
@@ -196,8 +194,8 @@ pub struct StackOpenParams {
     pub ndc: Option<Box<dyn NamedDataCache>>,
     pub tracker: Option<Box<dyn TrackerCache>>, 
     pub chunk_store: Option<Box<dyn ChunkReader>>, 
-    
-    pub ndn_acl: Option<Box<dyn BdtDataAclProcessor>>
+
+    pub ndn_event: Option<Box<dyn NdnEventHandler>>,
 }
 
 impl StackOpenParams {
@@ -208,12 +206,12 @@ impl StackOpenParams {
             known_sn: None, 
             known_device: None, 
             active_pn: None, 
-            passive_pn: None, 
+            passive_pn: None,
             outer_cache: None,
             ndc: None, 
             tracker: None, 
             chunk_store: None, 
-            ndn_acl: None 
+            ndn_event: None,
         }
     }
 }
@@ -327,7 +325,6 @@ impl Stack {
             proxy_manager.add_active_proxy(&pn);
         }
 
-
         for pn in passive_pn {
             proxy_manager.add_passive_proxy(&pn);
         }
@@ -353,16 +350,13 @@ impl Stack {
         std::mem::swap(&mut ndc, &mut params.ndc);
         let mut tracker = None;
         std::mem::swap(&mut tracker, &mut params.tracker);
-        let mut ndn_acl = None;
-        std::mem::swap(&mut ndn_acl, &mut params.ndn_acl);
+        let mut ndn_event = None;
+        std::mem::swap(&mut ndn_event, &mut params.ndn_event);
 
         let mut chunk_store = None;
         std::mem::swap(&mut chunk_store, &mut params.chunk_store);
 
-        let mut ndn_acl = None;
-        std::mem::swap(&mut ndn_acl, &mut params.ndn_acl);
-
-        let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_acl);
+        let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
         let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
         stack_impl.ndn = Some(ndn);
 
@@ -403,6 +397,7 @@ impl Stack {
             }
         });
 
+        info!("{}: opened, version 0.5.4", stack); 
         Ok(StackGuard::from(stack))
     }
 
@@ -498,6 +493,7 @@ impl Stack {
 
         let mut passive_pn_list = self.proxy_manager().passive_proxies();
         std::mem::swap(local.mut_connect_info().mut_passive_pn_list(), &mut passive_pn_list);
+
          
         local
             .body_mut()
@@ -563,7 +559,6 @@ impl OnUdpPackageBox for Stack {
             self.keystore().add_key(
                 package_box.as_ref().key(),
                 package_box.as_ref().remote(),
-                true,
             );
         }
         if package_box.as_ref().is_tunnel() {
@@ -599,7 +594,7 @@ impl OnTcpInterface for Stack {
         //FIXME: 用sequence 和 send time 过滤
         if first_box.has_exchange() {
             self.keystore()
-                .add_key(first_box.key(), first_box.remote(), true);
+                .add_key(first_box.key(), first_box.remote());
         }
         if first_box.is_tunnel() {
             self.tunnel_manager().on_tcp_interface(interface, first_box)
@@ -619,9 +614,10 @@ impl PingClientStateEvent for Stack {
         // unimplemented!()
     }
 
-    fn offline(&self, _sn: &Device) {
+    fn offline(&self, sn: &Device) {
         info!("{} sn offline, please implement it if not.", self.local_device_id());
         // unimplemented!()
+        self.keystore().reset_peer(&sn.desc().device_id());
     }
 }
 
@@ -644,7 +640,7 @@ impl PingClientCalledEvent for Stack {
         })?;
         if caller_box.has_exchange() {
             self.keystore()
-                .add_key(caller_box.key(), caller_box.remote(), true);
+                .add_key(caller_box.key(), caller_box.remote());
         }
         self.tunnel_manager().on_called(called, caller_box)
     }

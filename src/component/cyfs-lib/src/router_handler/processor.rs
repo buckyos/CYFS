@@ -74,6 +74,8 @@ pub trait RouterHandlerManagerProcessor: Send + Sync {
     ) -> &dyn RouterHandlerProcessor<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse>;
 
     fn acl(&self) -> &dyn RouterHandlerProcessor<AclHandlerRequest, AclHandlerResponse>;
+
+    fn interest(&self) -> &dyn RouterHandlerProcessor<InterestHandlerRequest, InterestHandlerResponse>;
 }
 
 pub type RouterHandlerManagerProcessorRef = Arc<Box<dyn RouterHandlerManagerProcessor>>;

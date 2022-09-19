@@ -10,8 +10,9 @@ use async_std::{
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::{udp::{Interface, PackageBoxEncodeContext}}, 
+    history::keystore
 };
 use super::super::*;
 use super::{
@@ -79,8 +80,8 @@ impl SynProxyTunnel {
         &self.0.local
     }
 
-    fn send_box_to_proxy(&self, pkg_box: &PackageBox, interface: &Interface, proxy_desc: &DeviceDesc) -> BuckyResult<usize> {
-        let mut context = PackageBoxEncodeContext::from(proxy_desc);
+    fn send_box_to_proxy(&self, pkg_box: &PackageBox, interface: &Interface) -> BuckyResult<usize> {
+        let mut context = PackageBoxEncodeContext::default();
         interface.send_box_to(&mut context, pkg_box, self.remote())
     }
 
@@ -111,6 +112,8 @@ impl SynProxyTunnel {
         
         let stack = self.tunnel().stack();
         let syn_proxy = SynProxy {
+            protocol_version: 0, 
+            stack_version: 0, 
             seq,
             to_peer_id: self.tunnel().remote().clone(),
             to_peer_timestamp: remote_timestamp, 
@@ -119,13 +122,13 @@ impl SynProxyTunnel {
             key_hash: first_box.key().mix_hash(None)
         };
         let proxy_id = proxy_desc.device_id();
-        let key_stub = stack.keystore().create_key(&proxy_id, true);
+        let key_stub = stack.keystore().create_key(&proxy_desc, true);
         // 生成第一个package box
         let mut syn_box = PackageBox::encrypt_box(proxy_id.clone(), key_stub.aes_key.clone());
 
-        if !key_stub.is_confirmed {
-            let mut exchg = Exchange::from(&syn_proxy);
-            let _ = exchg.sign(&key_stub.aes_key, stack.keystore().signer()).await?;
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
+            let mut exchg = Exchange::from((&syn_proxy, encrypted));
+            let _ = exchg.sign(stack.keystore().signer()).await?;
             syn_box.push(exchg);
         }
         syn_box.push(syn_proxy);
@@ -143,7 +146,7 @@ impl SynProxyTunnel {
                     }
                 };
                 debug!("{} send SynProxy with seq {:?}", action, seq);
-                let _ = action.send_box_to_proxy(&syn_box, action.local(), &proxy_desc);
+                let _ = action.send_box_to_proxy(&syn_box, action.local());
                 let _ = future::timeout(action.tunnel().config().udp.holepunch_interval, future::pending::<()>()).await.err();
             }
         }).await {

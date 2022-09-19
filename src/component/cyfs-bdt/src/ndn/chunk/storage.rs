@@ -77,6 +77,8 @@ impl ChunkWriterExt for ChunkWriterExtWrapper {
     async fn err(&self, e: BuckyErrorCode) -> BuckyResult<()> {
         self.writer.err(e).await
     }
+
+
 }
 
 

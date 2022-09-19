@@ -272,8 +272,10 @@ impl Interface {
                         if self.0.config.sn_only {
                             return; 
                         }
-                        let _ =
+
+                        let _ = 
                             stack.on_udp_raw_data(raw_data, (self.clone(), found_key.peerid, found_key.aes_key, from));
+
                         return;
                     }
                 }
@@ -294,7 +296,7 @@ impl Interface {
                 if package_box.has_exchange() {
                     async_std::task::spawn(async move {
                         let exchange: &Exchange = package_box.packages()[0].as_ref();
-                        if !exchange.verify(package_box.key()).await {
+                        if !exchange.verify().await {
                             warn!("{} exchg verify failed, from {}.", local_interface, from);
                             return;
                         }
@@ -411,7 +413,7 @@ impl Interface {
     ) -> Result<usize, BuckyError> {
         if self.0.config.sn_only {
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, "interface is only for sn"));
-        } 
+        }
         let mix_hash = key.mix_hash(None);
         let _ = mix_hash.raw_encode(data, &None)?;
         data[0] |= 0x80;
@@ -434,37 +436,34 @@ impl Interface {
 }
 
 pub struct PackageBoxEncodeContext {
+    plaintext: bool,
     ignore_exchange: bool, 
-    remote_const: Option<DeviceDesc>,
     fixed_values: merge_context::FixedValues,
     merged_values: Option<merge_context::ContextNames>,
 }
 
 impl PackageBoxEncodeContext {
+    pub fn plaintext(&self) -> bool {
+        self.plaintext
+    }
+
+    pub fn set_plaintext(&mut self, b: bool) {
+        self.plaintext = b
+    }
+
     pub fn set_ignore_exchange(&mut self, b: bool) {
         self.ignore_exchange = b
     }
 }
 
-impl From<&DeviceDesc> for PackageBoxEncodeContext {
-    fn from(remote_const: &DeviceDesc) -> Self {
-        Self {
-            ignore_exchange: false, 
-            remote_const: Some(remote_const.clone()),
-            fixed_values: merge_context::FixedValues::new(),
-            merged_values: None,
-        }
-    }
-}
-
 // 编码SnCall::payload
-impl From<(&DeviceDesc, &SnCall)> for PackageBoxEncodeContext {
-    fn from(params: (&DeviceDesc, &SnCall)) -> Self {
-        let fixed_values: merge_context::FixedValues = params.1.into();
+impl From<&SnCall> for PackageBoxEncodeContext {
+    fn from(sn_call: &SnCall) -> Self {
+        let fixed_values: merge_context::FixedValues = sn_call.into();
         let merged_values = fixed_values.clone_merged();
         Self {
+            plaintext: false,
             ignore_exchange: false, 
-            remote_const: Some(params.0.clone()),
             fixed_values,
             merged_values: Some(merged_values),
         }
@@ -487,8 +486,8 @@ impl From<(&DeviceDesc, &SnCall)> for PackageBoxEncodeContext {
 impl Default for PackageBoxEncodeContext {
     fn default() -> Self {
         Self {
+            plaintext: false,
             ignore_exchange: false, 
-            remote_const: None,
             fixed_values: merge_context::FixedValues::new(),
             merged_values: None,
         }
@@ -500,23 +499,34 @@ enum DecryptBuffer<'de> {
     Inplace(*mut u8, usize),
 }
 
+pub trait PackageBoxVersionGetter {
+    fn version_of(&self, remote: &DeviceId) -> u8; 
+}
+
 pub struct PackageBoxDecodeContext<'de> {
     decrypt_buf: DecryptBuffer<'de>,
-    keystore: &'de keystore::Keystore,
+    keystore: &'de keystore::Keystore, 
 }
 
 impl<'de> PackageBoxDecodeContext<'de> {
-    pub fn new_copy(decrypt_buf: &'de mut [u8], keystore: &'de keystore::Keystore) -> Self {
+    pub fn new_copy(
+        decrypt_buf: &'de mut [u8], 
+        keystore: &'de keystore::Keystore, 
+    ) -> Self {
         Self {
             decrypt_buf: DecryptBuffer::Copy(decrypt_buf),
-            keystore,
+            keystore, 
         }
     }
 
-    pub fn new_inplace(ptr: *mut u8, len: usize, keystore: &'de keystore::Keystore) -> Self {
+    pub fn new_inplace(
+        ptr: *mut u8, 
+        len: usize, 
+        keystore: &'de keystore::Keystore, 
+    ) -> Self {
         Self {
             decrypt_buf: DecryptBuffer::Inplace(ptr, len),
-            keystore,
+            keystore, 
         }
     }
 
@@ -547,6 +557,10 @@ impl<'de> PackageBoxDecodeContext<'de> {
             .get_key_by_mix_hash(mix_hash, true, true)
             .map(|k| (k.peerid.clone(), k.aes_key.clone()))
     }
+
+    pub fn version_of(&self, _remote: &DeviceId) -> u8 {
+        0
+    }
 }
 
 impl RawEncodeWithContext<PackageBoxEncodeContext> for PackageBox {
@@ -558,6 +572,7 @@ impl RawEncodeWithContext<PackageBoxEncodeContext> for PackageBox {
         //TODO
         Ok(2048)
     }
+
     fn raw_encode_with_context<'a>(
         &self,
         buf: &'a mut [u8],
@@ -566,30 +581,27 @@ impl RawEncodeWithContext<PackageBoxEncodeContext> for PackageBox {
     ) -> Result<&'a mut [u8], BuckyError> {
         let mut buf = buf;
         if self.has_exchange() && !context.ignore_exchange {
-            let remote_const = match context.remote_const.as_ref() {
-                Some(c) => c,
-                None => {
-                    log::error!("try encode exchange without public-key");
+            let exchange: &Exchange = self.packages()[0].as_ref();
+            if buf.len() < exchange.key_encrypted.len() {
+                log::error!("try encode exchange without public-key");
                     assert!(false);
                     return Err(BuckyError::new(
                         BuckyErrorCode::Failed,
                         "try encode exchange without public-key",
                     ));
-                }
-            };
+            }
             // 首先用对端的const info加密aes key
-            let key_len = self.key().raw_measure(purpose)?;
-            let mut key_buf = vec![0; key_len];
-            self.key().raw_encode(key_buf.as_mut_slice(), &None)?;
-            let encrypt_len = remote_const
-                .public_key()
-                .encrypt(&key_buf.as_slice(), buf)?;
-            buf = &mut buf[encrypt_len..];
+            buf[..exchange.key_encrypted.len()].copy_from_slice(&exchange.key_encrypted[..]);
+            buf = &mut buf[exchange.key_encrypted.len()..];
         }
 
         // 写入 key的mixhash
         let mixhash = self.key().mix_hash(None);
-        let buf = mixhash.raw_encode(buf, purpose)?;
+        let _ = mixhash.raw_encode(buf, purpose)?;
+        if context.plaintext {
+            buf[0] |= 0x80;
+        }
+        let buf = &mut buf[8..];
 
         let mut encrypt_in_len = buf.len();
         let to_encrypt_buf = buf;
@@ -614,14 +626,22 @@ impl RawEncodeWithContext<PackageBoxEncodeContext> for PackageBox {
                 (first_context.into(), buf, &packages[1..])
             }
         };
-
         for p in packages {
             let enc: &dyn RawEncodeWithContext<merge_context::OtherEncode> = p.as_ref();
             buf = enc.raw_encode_with_context(buf, &mut other_context, purpose)?;
         }
+        //let buf_len = buf.len();
         encrypt_in_len -= buf.len();
         // 用aes 加密package的部分
-        let len = self.key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?;
+        let len = if context.plaintext {
+            encrypt_in_len
+        } else {
+            self.key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?
+        };
+
+        //info!("package_box udp encode: encrypt_in_len={} len={} buf_len={} plaintext={}", 
+        //    encrypt_in_len, len, buf_len, context.plaintext);
+
         Ok(&mut to_encrypt_buf[len..])
     }
 }
@@ -651,43 +671,50 @@ impl<'de>
             Option<merge_context::OtherDecode>,
         ),
     ) -> Result<(Self, &'de [u8]), BuckyError> {
-        let (context, mut merged_values) = c;
+        let (context, merged_values) = c;
         let (mix_hash, hash_buf) = KeyMixHash::raw_decode(buf)?;
-        let ((remote, aes_key, _mix_hash), buf) = {
-            match context.key_from_mixhash(&mix_hash) {
-                Some((remote, key)) => Ok(((Some(remote), key, mix_hash), hash_buf)),
-                None => {
-                    let encrypt_key_size = context.local_public_key().key_size();
-                    if buf.len() < encrypt_key_size {
-                        let msg = format!("not enough buffer for encrypt_key_size, except={}, got={}", encrypt_key_size, buf.len());
-                        error!("{}", msg);
 
-                        Err(BuckyError::new(
-                            BuckyErrorCode::InvalidData,
-                            msg,
-                        ))
-                    } else {
-                        let mut key = AesKey::default();
-                        let aeskey_len = context
-                            .local_secret()
-                            .decrypt(&buf[..encrypt_key_size], key.as_mut_slice())?;
-                        if aeskey_len < key.raw_measure(&None).unwrap() {
-                            Err(BuckyError::new(
-                                BuckyErrorCode::InvalidData,
-                                "invalid aeskey",
-                            ))
-                        } else {
-                            let (mix_hash, buf) = KeyMixHash::raw_decode(&buf[encrypt_key_size..])?;
-                            Ok(((None, key, mix_hash), buf))
-                        }
-                    }
+        enum KeyStub {
+            Exist(DeviceId), 
+            Exchange(Vec<u8>)
+        }
+
+        struct KeyInfo {
+            key: AesKey, 
+            mix_hash: KeyMixHash, 
+            stub: KeyStub
+        }
+
+        let (key_info, buf) = {
+            match context.key_from_mixhash(&mix_hash) {
+                Some((remote, key)) => (KeyInfo {
+                    stub: KeyStub::Exist(remote), 
+                    key, 
+                    mix_hash, 
+                }, hash_buf), 
+                None => {
+                    let mut key = AesKey::default();
+                    let (remain, _) = context.local_secret().decrypt_aeskey(buf, key.as_mut_slice())?;
+                    let encrypted = Vec::from(&buf[..buf.len() - remain.len()]);
+                    let (mix_hash, remain) = KeyMixHash::raw_decode(remain)?;
+                    (KeyInfo {
+                        stub: KeyStub::Exchange(encrypted), 
+                        key, 
+                        mix_hash, 
+                    }, remain)
                 }
             }
-        }?;
+        };
+
+        let mut version = if let KeyStub::Exist(remote) = &key_info.stub {
+            context.version_of(remote)
+        } else {
+            0
+        };
         // 把原数据拷贝到context 给的buffer上去
         let decrypt_buf = unsafe { context.decrypt_buf(buf) };
         // 用key 解密数据
-        let decrypt_len = aes_key.inplace_decrypt(decrypt_buf, buf.len())?;
+        let decrypt_len =  key_info.key.inplace_decrypt(decrypt_buf, buf.len())?;
         let remain_buf = &buf[buf.len()..];
         let decrypt_buf = &decrypt_buf[..decrypt_len];
 
@@ -695,49 +722,68 @@ impl<'de>
 
         //解码所有package
         if decrypt_len != 0 {
-            match merged_values.as_mut() {
-                Some(merged) => {
+            match merged_values {
+                Some(mut merged) => {
                     let (package, buf) =
-                        DynamicPackage::raw_decode_with_context(decrypt_buf, merged)?;
+                        DynamicPackage::raw_decode_with_context(decrypt_buf, (&mut merged, &mut version))?;
                     packages.push(package);
                     let mut buf_ptr = buf;
                     while buf_ptr.len() > 0 {
-                        let (package, buf) =
-                            DynamicPackage::raw_decode_with_context(buf_ptr, merged)?;
-                        buf_ptr = buf;
-                        packages.push(package);
+                        match DynamicPackage::raw_decode_with_context(buf_ptr, (&mut merged, &mut version)) {
+                            Ok((package, buf)) => {
+                                buf_ptr = buf;
+                                packages.push(package);
+                            }, 
+                            Err(err) => {
+                                if err.code() == BuckyErrorCode::NotSupport {
+                                    break;
+                                } else {
+                                    Err(err)?;
+                                }
+                            }
+                        };
                     }
                 }
                 None => {
                     let mut context = merge_context::FirstDecode::new();
                     let (package, buf) = DynamicPackage::raw_decode_with_context(
                         decrypt_buf[0..decrypt_len].as_ref(),
-                        &mut context,
+                        (&mut context, &mut version)
                     )?;
                     packages.push(package);
                     let mut context: merge_context::OtherDecode = context.into();
                     let mut buf_ptr = buf;
                     while buf_ptr.len() > 0 {
-                        let (package, buf) =
-                            DynamicPackage::raw_decode_with_context(buf_ptr, &mut context)?;
-                        buf_ptr = buf;
-                        packages.push(package);
+                        match DynamicPackage::raw_decode_with_context(buf_ptr, (&mut context, &mut version)) {
+                            Ok((package, buf)) => {
+                                buf_ptr = buf;
+                                packages.push(package);
+                            }, 
+                            Err(err) => {
+                                if err.code() == BuckyErrorCode::NotSupport {
+                                    break;
+                                } else {
+                                    Err(err)?;
+                                }
+                            }
+                        };
                     }
                 }
             }
         }
 
-        match remote {
-            Some(remote) => {
-                let mut package_box = PackageBox::encrypt_box(remote, aes_key);
+        match key_info.stub {
+            KeyStub::Exist(remote) => {
+                let mut package_box = PackageBox::encrypt_box(remote, key_info.key);
                 package_box.append(packages);
                 Ok((package_box, remain_buf))
             }
-            None => {
+            KeyStub::Exchange(encrypted) => {
                 if packages.len() > 0 && packages[0].cmd_code().is_exchange() {
-                    let exchange: &Exchange = packages[0].as_ref();
+                    let exchange: &mut Exchange = packages[0].as_mut();
+                    exchange.key_encrypted = encrypted;
                     let mut package_box =
-                        PackageBox::encrypt_box(exchange.from_device_id.clone(), aes_key);
+                        PackageBox::encrypt_box(exchange.from_device_id.clone(), key_info.key);
                     package_box.append(packages);
                     Ok((package_box, remain_buf))
                 } else {

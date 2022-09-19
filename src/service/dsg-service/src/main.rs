@@ -6,7 +6,7 @@ use config::builder::DefaultState;
 use config::ConfigBuilder;
 use cyfs_lib::*;
 use cyfs_util::process::ProcessAction;
-use dsg_client::*;
+use cyfs_dsg_client::*;
 use contract_service::*;
 use cyfs_util::get_app_data_dir;
 

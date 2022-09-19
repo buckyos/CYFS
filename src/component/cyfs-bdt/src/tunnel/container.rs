@@ -15,7 +15,7 @@ use std::{
 use cyfs_base::*;
 use crate::{
     types::*,
-    protocol::*,
+    protocol::{*, v0::*},
     interface::{
         self, 
         udp::{
@@ -28,7 +28,8 @@ use crate::{
     },
     sn::client::PingClientCalledEvent, 
     stream::{StreamContainer, RemoteSequence}, 
-    stack::{Stack, WeakStack}
+    stack::{Stack, WeakStack},
+    MTU
 };
 use super::{
     tunnel::*, 
@@ -41,7 +42,7 @@ use super::{
 pub struct BuildTunnelParams {
     pub remote_const: DeviceDesc, 
     pub remote_sn: Vec<DeviceId>, 
-    pub remote_desc: Option<Device>
+    pub remote_desc: Option<Device>,
 }
 
 #[derive(Clone)]
@@ -134,6 +135,14 @@ impl TunnelContainer {
         }))
     }
 
+    pub fn mtu(&self) -> usize {
+        if let Ok(tunnel) = self.default_tunnel() {
+            tunnel.mtu()
+        } else {
+            MTU-12
+        }
+    }
+
     fn mark_in_use(&self) {
         let mut state = self.0.state.write().unwrap();
         state.recyle_state = TunnelRecycleState::InUse;
@@ -203,6 +212,14 @@ impl TunnelContainer {
         &self.0.remote_const
     }
 
+    pub fn protocol_version(&self) -> u8 {
+        0
+    }
+
+    pub fn stack_version(&self) -> u32 {
+        0
+    }
+
     pub fn default_tunnel(&self) -> BuckyResult<DynamicTunnel> {
         let state = self.0.state.read().unwrap();
         match &state.tunnel_state {
@@ -253,7 +270,27 @@ impl TunnelContainer {
         tunnel.as_ref().send_package(package)
     }
 
-    pub fn build_send(&self, package: DynamicPackage, build_params: BuildTunnelParams) -> BuckyResult<()> {
+    pub fn send_plaintext(&self, package: DynamicPackage) -> Result<(), BuckyError> {
+        let tunnel = self.default_tunnel()?;
+
+        let mut buf = vec![0u8; MTU];
+
+        let buf_len = buf.len();
+        let enc_from = tunnel.as_ref().raw_data_header_len();
+
+        let mut context = merge_context::FirstEncode::new();
+        let enc: &dyn RawEncodeWithContext<merge_context::FirstEncode> = package.as_ref();
+        let buf_ptr = enc.raw_encode_with_context(&mut buf[enc_from..], &mut context, &None)?;
+
+        let len = buf_len - buf_ptr.len();
+
+        match tunnel.as_ref().send_raw_data(&mut buf[..len]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(BuckyError::new(BuckyErrorCode::Failed, format!("{}", e)))
+        }
+    }
+
+    pub fn build_send(&self, package: DynamicPackage, build_params: BuildTunnelParams, plaintext: bool) -> BuckyResult<()> {
         let (tunnel, builder) = {
             let mut state = self.0.state.write().unwrap();
             match &mut state.tunnel_state {
@@ -288,7 +325,11 @@ impl TunnelContainer {
 
         if let Some(tunnel) = tunnel {
             trace!("{} send packages from {}", self, tunnel.as_ref().as_ref());
-            tunnel.as_ref().send_package(package)
+            if plaintext {
+                self.send_plaintext(package)
+            } else {
+                tunnel.as_ref().send_package(package)
+            }
         } else if let Some(builder) = builder {
             //FIXME: 加入到connecting的 send 缓存里面去  
             self.stack().keystore().reset_peer(self.remote());
@@ -623,13 +664,50 @@ impl TunnelContainer {
 
     pub(super) fn on_raw_data(&self, data: &[u8]) -> BuckyResult<()> {
         let tunnel_impl = &self.0;
-        let (cmd_code, _) = u8::raw_decode(data)?;
+        let (cmd_code, buf) = u8::raw_decode(data)?;
         let cmd_code = PackageCmdCode::try_from(cmd_code)?;
         match cmd_code {
+            PackageCmdCode::Datagram => {
+                let (pkg, _) = Datagram::raw_decode_with_context(buf, &mut merge_context::OtherDecode::default())?;
+                let _ = Stack::from(&tunnel_impl.stack).datagram_manager().on_package(&pkg, (self, true));
+                Ok(())
+            },
             PackageCmdCode::SessionData => unimplemented!(), 
-            _ => Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_udp_raw_data(data, self), 
+            _ => {
+                Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_udp_raw_data(data, self)
+            }, 
         }
     }
+
+
+    
+    // 注意R端的打洞包要用SynTunnel不能用AckTunnel
+    // 因为可能出现如下时序：L端收到R端的打洞包，停止继续发送打洞包；但是R端没有收到L端的打洞包，继续发送打洞包；
+    //   如果R端发的是AckTunnel，L端收到之后不会回复；如果L端改成对AckTunnel回复SynTunnel/AckTunnel都不合适，会导致循环回复
+    //   R端发SynTunnel的话，L端收到之后可以回复复AckTunnel 
+    // pub(super) fn syn_tunnel_package(&self, syn_tunnel: &SynTunnel, local: Device) -> SynTunnel {
+    //     SynTunnel {
+    //         protocol_version: self.protocol_version(), 
+    //         stack_version: self.stack_version(), 
+    //         from_device_id: local.desc().device_id(),
+    //         to_device_id: syn_tunnel.from_device_id.clone(),
+    //         sequence: syn_tunnel.sequence,
+    //         from_device_desc: local,
+    //         send_time: 0
+    //     }
+    // }
+
+    // pub(super) fn ack_tunnel_package(&self, syn_tunnel: &SynTunnel, local: Device) -> AckTunnel {
+    //     AckTunnel {
+    //         protocol_version: self.protocol_version(), 
+    //         stack_version: self.stack_version(), 
+    //         sequence: syn_tunnel.sequence,
+    //         result: 0,
+    //         send_time: 0,
+    //         mtu: c::MTU as u16,
+    //         to_device_desc: local       
+    //     }
+    // }
 }
 
 impl fmt::Display for TunnelContainer {
@@ -1089,7 +1167,7 @@ impl OnPackage<TcpAckConnection, interface::tcp::AcceptInterface> for TunnelCont
 
 impl OnPackage<Datagram> for TunnelContainer {
     fn on_package(&self, pkg: &Datagram, _: Option<()>) -> Result<OnPackageResult, BuckyError> {
-        Stack::from(&self.0.stack).datagram_manager().on_package(pkg, self)
+        Stack::from(&self.0.stack).datagram_manager().on_package(pkg, (self, false))
             .map_err(|err| {
                 debug!("{} handle package {} error {}", self, pkg, err);
                 err

@@ -7,7 +7,7 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::*, 
     stream::{StreamContainer, StreamProviderSelector}, 
     tunnel::{self, Tunnel, TunnelContainer, ProxyType}, 
@@ -119,7 +119,7 @@ impl ConnectTcpStream {
             task::spawn(async move {
                 let tunnel_container: &TunnelContainer = ca.0.stream.as_ref().tunnel();
                 let keystore = tunnel_container.stack().keystore().clone();
-                let key = keystore.create_key(tunnel_container.remote(), false);
+                let key = keystore.create_key(tunnel_container.remote_const(), false);
                 let connect_result = tcp::Interface::connect(/*ca.local().addr().ip(),*/
                                                                     *ca.remote(),
                                                                     tunnel_container.remote().clone(),

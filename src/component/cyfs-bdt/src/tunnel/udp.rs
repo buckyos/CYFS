@@ -12,7 +12,8 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*,
-    protocol::{*, self}, 
+    protocol::{self, *, v0::*},
+    MTU,
     interface::{*, udp::{PackageBoxEncodeContext, OnUdpPackageBox}}, 
 };
 use super::{
@@ -76,7 +77,8 @@ struct TunnelImpl {
     proxy: ProxyType, 
     state: RwLock<TunnelState>, 
     keeper_count: AtomicI32, 
-    last_active: AtomicU64
+    last_active: AtomicU64,
+    mtu: usize,
 }
 
 #[derive(Clone)]
@@ -103,6 +105,7 @@ impl Tunnel {
             waiter: StateWaiter::new()
         });
         let tunnel = Self(Arc::new(TunnelImpl {
+            mtu: MTU,
             local, 
             remote, 
             proxy, 
@@ -261,15 +264,15 @@ impl Tunnel {
     }
 
     pub fn send_box(&self, package_box: &PackageBox) -> Result<(), BuckyError> {
-        let (interface, tunnel_container) = {
+        let interface = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                TunnelState::Connecting(connecting) => Ok((connecting.interface.clone(), connecting.container.clone())), 
-                TunnelState::Active(active) => Ok((active.interface.clone(), active.container.clone())), 
+                TunnelState::Connecting(connecting) => Ok(connecting.interface.clone()), 
+                TunnelState::Active(active) => Ok(active.interface.clone()), 
                 TunnelState::Dead => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel dead"))
             }
         }?;
-        let mut context = PackageBoxEncodeContext::from(tunnel_container.remote_const());
+        let mut context = PackageBoxEncodeContext::default();
         context.set_ignore_exchange(ProxyType::None != self.0.proxy);
         interface.send_box_to(&mut context, package_box, tunnel::Tunnel::remote(self))?;
         Ok(())
@@ -287,36 +290,23 @@ impl Tunnel {
         Self::raw_data_max_len() - Self::raw_data_header_len_impl()
     }
 
-    // 注意R端的打洞包要用SynTunnel不能用AckTunnel
-    // 因为可能出现如下时序：L端收到R端的打洞包，停止继续发送打洞包；但是R端没有收到L端的打洞包，继续发送打洞包；
-    //   如果R端发的是AckTunnel，L端收到之后不会回复；如果L端改成对AckTunnel回复SynTunnel/AckTunnel都不合适，会导致循环回复
-    //   R端发SynTunnel的话，L端收到之后可以回复复AckTunnel 
-    pub fn syn_tunnel(syn_tunnel: &SynTunnel, local: Device) -> SynTunnel {
-        SynTunnel {
-            from_device_id: local.desc().device_id(),
-            to_device_id: syn_tunnel.from_device_id.clone(),
-            sequence: syn_tunnel.sequence,
-            from_container_id: IncreaseId::default(),
-            from_device_desc: local,
-            send_time: 0
-        }
-    }
 
-    pub fn ack_tunnel(syn_tunnel: &SynTunnel, local: Device) -> AckTunnel {
-        AckTunnel {
-            sequence: syn_tunnel.sequence,
-            from_container_id: IncreaseId::default(),
-            to_container_id: syn_tunnel.from_container_id,
-            result: 0,
-            send_time: 0,
-            mtu: udp::MTU as u16,
-            to_device_desc: local       
+    fn owner(&self) -> Option<TunnelContainer> {
+        let state = &*self.0.state.read().unwrap();
+        match state {
+            TunnelState::Connecting(connecting) => Some(connecting.container.clone()),  
+            TunnelState::Active(active) => Some(active.container.clone()), 
+            TunnelState::Dead => None
         }
     }
 }
 
 #[async_trait]
 impl tunnel::Tunnel for Tunnel {
+    fn mtu(&self) -> usize {
+        self.0.mtu
+    }
+
     fn ptr_eq(&self, other: &tunnel::DynamicTunnel) -> bool {
         *self.local() == *other.as_ref().local() 
         && *self.remote() == *other.as_ref().remote()
@@ -358,11 +348,12 @@ impl tunnel::Tunnel for Tunnel {
                 TunnelState::Dead => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel dead"))
             }
         }?;
+
         assert_eq!(data.len() > Self::raw_data_header_len_impl(), true);
         
         interface.send_raw_data_to(&key, data, tunnel::Tunnel::remote(self))
     }
-    
+
     fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
         let (tunnel_container, interface, key) = {
             if let TunnelState::Active(active_state) =  &*self.0.state.read().unwrap() {
@@ -372,7 +363,7 @@ impl tunnel::Tunnel for Tunnel {
         }}?;
         trace!("{} send packages with key {}", self, key.mix_hash(None).to_string());
         let package_box = PackageBox::from_package(tunnel_container.remote().clone(), key, package);
-        let mut context = PackageBoxEncodeContext::from(tunnel_container.remote_const());
+        let mut context = PackageBoxEncodeContext::default();
         context.set_ignore_exchange(ProxyType::None != self.0.proxy);
         interface.send_box_to(&mut context, &package_box, tunnel::Tunnel::remote(self))?;
         Ok(())
@@ -417,7 +408,6 @@ impl tunnel::Tunnel for Tunnel {
                                 debug!("{} send ping", tunnel);
                                 let ping = PingTunnel {
                                     package_id: 0,
-                                    to_container_id: IncreaseId::default(),
                                     send_time: now,
                                     recv_data: 0,
                                 };
@@ -466,7 +456,16 @@ impl OnPackage<SynTunnel, &PackageBox> for Tunnel {
         let container = self.active_by_package(in_box, Some(syn_tunnel.from_device_desc.body().as_ref().unwrap().update_time()))?;
         // TODO: 考虑合并ack 和 session data
         // 回复ack tunnel
-        let ack = Self::ack_tunnel(syn_tunnel, container.stack().device_cache().local());
+        let ack = AckTunnel {
+            protocol_version: container.protocol_version(), 
+            stack_version: container.stack_version(), 
+            sequence: syn_tunnel.sequence,
+            result: 0,
+            send_time: 0,
+            mtu: udp::MTU as u16,
+            to_device_desc: container.stack().device_cache().local()       
+        };
+
         let mut package_box = PackageBox::encrypt_box(container.remote().clone(), in_box.key().clone());
         package_box.append(vec![DynamicPackage::from(ack)]);
         let _ = self.send_box(&package_box);
@@ -496,7 +495,6 @@ impl OnPackage<PingTunnel, &PackageBox> for Tunnel {
         let _ = self.active_by_package(in_box, None)?;
         let ping_resp = PingTunnelResp {
             ack_package_id: ping.package_id,
-            to_container_id: IncreaseId::default(),
             send_time: bucky_time_now(),
             recv_data: 0,
         };

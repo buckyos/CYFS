@@ -54,7 +54,7 @@ impl ChunkStub {
                 }).collect())
             } else {
                 None
-            }
+            },
         }
     }
 }

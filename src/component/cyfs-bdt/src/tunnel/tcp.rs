@@ -15,8 +15,10 @@ use async_trait::{async_trait};
 use ringbuf;
 use cyfs_base::*;
 use crate::{
-    types::*, 
-    protocol::{self, *},
+    types::*,
+    protocol::{self, *, v0::*},
+    history::keystore, 
+    MTU,
     interface::{self, *, tcp::{OnTcpInterface, RecvBox, PackageInterface}}
 };
 use super::{tunnel::{self, DynamicTunnel, TunnelOwner, ProxyType}, TunnelContainer};
@@ -100,7 +102,8 @@ struct TunnelImpl {
     keeper_count: AtomicI32, 
     last_active: AtomicU64, 
     retain_connect_timestamp: AtomicU64, 
-    state: Mutex<TunnelState>
+    state: Mutex<TunnelState>,
+    mtu: usize,
 }
 
 #[derive(Clone)]
@@ -118,6 +121,7 @@ impl Tunnel {
         ep_pair: EndpointPair) -> Self {
         let remote_device_id = owner.remote().clone();
         let tunnel = Self(Arc::new(TunnelImpl {
+            mtu: MTU-12, 
             remote_device_id, 
             local_remote: ep_pair, 
             keeper_count: AtomicI32::new(0), 
@@ -614,7 +618,7 @@ impl Tunnel {
     async fn connect_inner(&self, owner: TunnelContainer, interface: Option<tcp::Interface>) -> Result<(tcp::PackageInterface, Timestamp, TempSeq), BuckyError> {
         info!("{} connect interface", self);
         let stack = owner.stack();
-        let key_stub = stack.keystore().create_key(owner.remote(), true);
+        let key_stub = stack.keystore().create_key(owner.remote_const(), true);
         let interface = if let Some(interface) = interface {
             Ok(interface)
         } else {
@@ -628,10 +632,11 @@ impl Tunnel {
         }?;
         let syn_seq = owner.generate_sequence();
         let syn_tunnel = SynTunnel {
+            protocol_version: owner.protocol_version(), 
+            stack_version: owner.stack_version(),  
             from_device_id: stack.local_device_id().clone(),
             to_device_id: owner.remote().clone(),
             sequence: syn_seq.clone(),
-            from_container_id: IncreaseId::default(),
             from_device_desc: stack.local().clone(),
             send_time: bucky_time_now()
         };
@@ -661,19 +666,20 @@ impl Tunnel {
         let sn_id = remote.connect_info().sn_list().get(0).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "device no sn"))?;
         let sn = stack.device_cache().get(sn_id).await.ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "sn not cached"))?;
 
-        let key_stub = stack.keystore().create_key(owner.remote(), true);
+        let key_stub = stack.keystore().create_key(owner.remote_const(), true);
         let mut syn_box = PackageBox::encrypt_box(owner.remote().clone(), key_stub.aes_key.clone());
         let syn_tunnel = SynTunnel {
+            protocol_version: owner.protocol_version(), 
+            stack_version: owner.stack_version(),  
             from_device_id: stack.local_device_id().clone(),
             to_device_id: owner.remote().clone(),
             sequence: owner.generate_sequence(),
-            from_container_id: IncreaseId::default(),
             from_device_desc: stack.local().clone(),
             send_time: bucky_time_now()
         };
-        if !key_stub.is_confirmed {
-            let mut exchg = Exchange::from(&syn_tunnel);
-            exchg.sign(&key_stub.aes_key, stack.keystore().signer()).await?;
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
+            let mut exchg = Exchange::from((&syn_tunnel, encrypted));
+            exchg.sign(stack.keystore().signer()).await?;
             syn_box.push(exchg);
         }
         syn_box.push(syn_tunnel);
@@ -701,7 +707,7 @@ impl Tunnel {
             true,
             false,
             |sn_call| {
-                let mut context = udp::PackageBoxEncodeContext::from((owner.remote_const(), sn_call));
+                let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 let mut buf = vec![0u8; interface::udp::MTU];
                 let enc_len = syn_box.raw_tail_encode_with_context(&mut buf, &mut context, &None).unwrap().len();
                 buf.truncate(enc_len);
@@ -789,7 +795,7 @@ impl Tunnel {
                     send_buf: &mut [u8], 
                     pkg: PackageElem) -> BuckyResult<()> {
                     match pkg {
-                        PackageElem::Package(package) => interface.send_package(send_buf, package).await, 
+                        PackageElem::Package(package) => interface.send_package(send_buf, package, false).await, 
                         PackageElem::RawData(data) => interface.send_raw_data(data).await
                     }
                 }
@@ -902,7 +908,7 @@ impl Tunnel {
                             let stack = owner.stack();
                             if package_box.has_exchange() {
                                 stack.keystore()
-                                    .add_key(package_box.key(), package_box.remote(), true);
+                                    .add_key(package_box.key(), package_box.remote());
                             }
                             if let Err(err) = package_box.packages().iter().try_for_each(|pkg| {
                                 if pkg.cmd_code() == PackageCmdCode::PingTunnel {
@@ -1013,7 +1019,6 @@ impl Tunnel {
                                     info!("send ping, tunnel:{}", tunnel);
                                     let ping = PingTunnel {
                                         package_id: 0,
-                                        to_container_id: IncreaseId::default(),
                                         send_time: now,
                                         recv_data: 0,
                                     };
@@ -1035,6 +1040,10 @@ impl Tunnel {
 
 #[async_trait]
 impl tunnel::Tunnel for Tunnel {
+    fn mtu(&self) -> usize {
+        self.0.mtu
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -1180,7 +1189,6 @@ impl OnPackage<PingTunnel> for Tunnel {
     fn on_package(&self, ping: &PingTunnel, _context: Option<()>) -> Result<OnPackageResult, BuckyError> {
         let ping_resp = PingTunnelResp {
             ack_package_id: ping.package_id,
-            to_container_id: IncreaseId::default(),
             send_time: bucky_time_now(),
             recv_data: 0,
         };
@@ -1236,9 +1244,9 @@ impl OnTcpInterface for Tunnel {
             if let Some(owner) = owner {
                 owner.on_package(syn_tunnel, None)?;
                 let ack_tunnel = AckTunnel {
+                    protocol_version: owner.protocol_version(), 
+                    stack_version: owner.stack_version(),  
                     sequence: syn_tunnel.sequence,
-                    from_container_id: IncreaseId::default(),
-                    to_container_id: IncreaseId::default(),
                     result: ret,
                     send_time: bucky_time_now(),
                     mtu: udp::MTU as u16,

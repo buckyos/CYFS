@@ -268,6 +268,7 @@ impl TryFrom<&DeviceBodyContent> for protos::DeviceBodyContent {
         ret.set_passive_pn_list(ProtobufCodecHelper::encode_buf_list(
             &value.passive_pn_list,
         )?);
+
         if let Some(name) = &value.name {
             ret.set_name(name.to_owned());
         }
@@ -472,6 +473,7 @@ mod test {
             endpoints,
             sn_list,
             Vec::new(),
+            Vec::new(),
             pubic_key,
             area,
             DeviceCategory::Server,
@@ -497,6 +499,7 @@ mod test {
             device_unique_id,
             device_endpoints,
             device_sn_list,
+            Vec::new(),
             Vec::new(),
             device_public_key,
             device_area,

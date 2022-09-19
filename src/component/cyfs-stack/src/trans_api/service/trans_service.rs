@@ -27,7 +27,7 @@ impl TransService {
         ood_resolver: OodResolver,
         chunk_manager: Arc<ChunkManager>,
         task_manager: Arc<TaskManager>,
-        acl: AclManagerRef,
+        _acl: AclManagerRef,
         forward: ForwardProcessorManager,
         zone_manager: ZoneManagerRef,
         fail_handler: ObjectFailHandler,

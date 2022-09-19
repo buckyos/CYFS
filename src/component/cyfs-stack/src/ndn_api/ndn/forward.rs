@@ -85,6 +85,8 @@ impl NDNForwardDataOutputProcessor {
 
         let (data, length) = if need_process {
             let meta = BdtDataRefererInfo {
+                // FIXME: set target field from o link
+                target: None, 
                 object_id: req.object_id.clone(),
                 inner_path: req.inner_path.clone(),
                 dec_id: req.common.source.get_opt_dec().cloned(),
@@ -139,6 +141,8 @@ impl NDNForwardDataOutputProcessor {
 
         let (data, length) = if need_process {
             let meta = BdtDataRefererInfo {
+                // FIXME: set target field from o link
+                target: None, 
                 object_id: req.object_id.clone(),
                 inner_path: None, // 直接获取chunk不存在inner_path
                 dec_id: req.common.source.get_opt_dec().cloned(),

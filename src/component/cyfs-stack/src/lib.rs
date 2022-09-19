@@ -18,7 +18,7 @@ mod acl;
 mod app;
 mod forward;
 mod ndn;
-mod ndn_api;
+pub mod ndn_api;
 mod non;
 mod non_api;
 mod resolver;

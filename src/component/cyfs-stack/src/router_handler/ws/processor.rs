@@ -196,6 +196,14 @@ impl RouterHandlerWSProcessor {
                     &req,
                 )?;
                 self.manager.handlers(&req.chain).acl().add_handler(handler)
+            }, 
+
+            RouterHandlerCategory::Interest => {
+                let handler = Self::create_handler::<InterestHandlerRequest, InterestHandlerResponse>(
+                    session_requestor,
+                    &req,
+                )?;
+                self.manager.handlers(&req.chain).interest().add_handler(handler)
             }
         }
     }
@@ -263,6 +271,12 @@ impl RouterHandlerWSProcessor {
                 .manager
                 .handlers(&req.chain)
                 .acl()
+                .remove_handler(&req.id, req.dec_id),
+
+            RouterHandlerCategory::Interest => self
+                .manager
+                .handlers(&req.chain)
+                .interest()
                 .remove_handler(&req.id, req.dec_id),
         };
 

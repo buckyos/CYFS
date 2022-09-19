@@ -10,7 +10,7 @@ use async_std::{
 };
 use cyfs_base::*;
 use crate::{
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::{*, udp::{self, OnUdpPackageBox, OnUdpRawData}, tcp::{OnTcpInterface}}, 
     sn::client::PingClientCalledEvent, 
     stack::{Stack, WeakStack}

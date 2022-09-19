@@ -4,7 +4,10 @@ use crate::trans_api::TransStore;
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::*;
 use cyfs_bdt::{
-    ChunkDownloadConfig, ChunkWriter, DownloadTaskControl, StackGuard, TaskControlState,
+    self, 
+    SingleDownloadContext, 
+    ChunkWriter, 
+    StackGuard, 
 };
 use cyfs_task_manager::*;
 
@@ -19,7 +22,7 @@ pub struct DownloadChunkTask {
     device_list: Vec<DeviceId>,
     referer: String,
     context_id: Option<ObjectId>,
-    session: async_std::sync::Mutex<Option<Box<dyn DownloadTaskControl>>>,
+    session: async_std::sync::Mutex<Option<Box<dyn cyfs_bdt::DownloadTask>>>,
     writer: Box<dyn ChunkWriter>,
     task_store: Option<Arc<dyn TaskStore>>,
     task_status: Mutex<TaskStatus>,
@@ -89,16 +92,20 @@ impl Task for DownloadChunkTask {
             }
         }
 
-        let mut config = ChunkDownloadConfig::force_stream(self.device_list[0].clone());
-        if self.referer.len() > 0 {
-            config.referer = Some(self.referer.to_owned());
-        }
+        let context = SingleDownloadContext::streams(
+            if self.referer.len() > 0 {
+                Some(self.referer.to_owned())
+            } else {
+                None
+            }, 
+            vec![self.device_list[0].clone()]);
+        
         // 创建bdt层的传输任务
         *session = Some(
             cyfs_bdt::download::download_chunk(
                 &self.bdt_stack,
                 self.chunk_id.clone(),
-                config,
+                context,
                 vec![self.writer.clone_as_writer()],
             )
             .await
@@ -165,9 +172,9 @@ impl Task for DownloadChunkTask {
     async fn get_task_detail_status(&self) -> BuckyResult<Vec<u8>> {
         let session = self.session.lock().await;
         let task_state = if session.is_some() {
-            let control_state = session.as_ref().unwrap().control_state();
-            match control_state {
-                TaskControlState::Downloading(speed, progress) => DownloadTaskState {
+            let state = session.as_ref().unwrap().state();
+            match state {
+                cyfs_bdt::DownloadTaskState::Downloading(speed, progress) => DownloadTaskState {
                     task_status: TaskStatus::Running,
                     err_code: None,
                     speed: speed as u64,
@@ -175,7 +182,7 @@ impl Task for DownloadChunkTask {
                     downloaded_progress: progress as u64,
                     sum_size: self.chunk_id.len() as u64,
                 },
-                TaskControlState::Paused => DownloadTaskState {
+                cyfs_bdt::DownloadTaskState::Paused => DownloadTaskState {
                     task_status: TaskStatus::Paused,
                     err_code: None,
                     speed: 0,
@@ -183,15 +190,34 @@ impl Task for DownloadChunkTask {
                     downloaded_progress: 0,
                     sum_size: self.chunk_id.len() as u64,
                 },
-                TaskControlState::Canceled => DownloadTaskState {
-                    task_status: TaskStatus::Stopped,
-                    err_code: None,
-                    speed: 0,
-                    upload_speed: 0,
-                    downloaded_progress: 0,
-                    sum_size: self.chunk_id.len() as u64,
-                },
-                TaskControlState::Finished => {
+                cyfs_bdt::DownloadTaskState::Error(err) => {
+                    if err == BuckyErrorCode::Interrupted {
+                        DownloadTaskState {
+                            task_status: TaskStatus::Stopped,
+                            err_code: None,
+                            speed: 0,
+                            upload_speed: 0,
+                            downloaded_progress: 0,
+                            sum_size: self.chunk_id.len() as u64,
+                        }
+                    } else {
+                        *self.task_status.lock().unwrap() = TaskStatus::Failed;
+                        self.task_store
+                            .as_ref()
+                            .unwrap()
+                            .save_task_status(&self.task_id, TaskStatus::Failed)
+                            .await?;
+                        DownloadTaskState {
+                            task_status: TaskStatus::Failed,
+                            err_code: Some(err),
+                            speed: 0,
+                            upload_speed: 0,
+                            downloaded_progress: 0,
+                            sum_size: 0,
+                        }
+                    } 
+                }
+                cyfs_bdt::DownloadTaskState::Finished => {
                     *self.task_status.lock().unwrap() = TaskStatus::Finished;
                     self.task_store
                         .as_ref()
@@ -205,22 +231,6 @@ impl Task for DownloadChunkTask {
                         upload_speed: 0,
                         downloaded_progress: 100,
                         sum_size: self.chunk_id.len() as u64,
-                    }
-                }
-                TaskControlState::Err(err) => {
-                    *self.task_status.lock().unwrap() = TaskStatus::Failed;
-                    self.task_store
-                        .as_ref()
-                        .unwrap()
-                        .save_task_status(&self.task_id, TaskStatus::Failed)
-                        .await?;
-                    DownloadTaskState {
-                        task_status: TaskStatus::Failed,
-                        err_code: Some(err),
-                        speed: 0,
-                        upload_speed: 0,
-                        downloaded_progress: 0,
-                        sum_size: 0,
                     }
                 }
             }

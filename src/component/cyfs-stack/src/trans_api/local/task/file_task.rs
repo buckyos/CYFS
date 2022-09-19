@@ -5,7 +5,10 @@ use crate::trans_api::{DownloadTaskTracker, TransStore};
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::*;
 use cyfs_bdt::{
-    ChunkDownloadConfig, ChunkWriter, DownloadTaskControl, StackGuard, TaskControlState,
+    self, 
+    SingleDownloadContext, 
+    ChunkWriter, 
+    StackGuard, 
 };
 use cyfs_task_manager::*;
 
@@ -27,7 +30,7 @@ pub struct DownloadFileTask {
     file: File,
     save_path: Option<String>,
     context_id: Option<ObjectId>,
-    session: async_std::sync::Mutex<Option<Box<dyn DownloadTaskControl>>>,
+    session: async_std::sync::Mutex<Option<Box<dyn cyfs_bdt::DownloadTask>>>,
     verify_task: async_std::sync::Mutex<Option<RunnableTask<VerifyFileRunnable>>>,
     task_status: Mutex<DownloadFileTaskStatus>,
     trans_store: Arc<TransStore>,
@@ -123,10 +126,13 @@ impl Task for DownloadFileTask {
                 return Ok(());
             }
         }
-        let mut config = ChunkDownloadConfig::force_stream(self.device_list[0].clone());
-        if self.referer.len() > 0 {
-            config.referer = Some(self.referer.to_owned());
-        }
+        let context = SingleDownloadContext::streams(
+            if self.referer.len() > 0 {
+                Some(self.referer.to_owned())
+            } else {
+                None
+            }, vec![self.device_list[0].clone()]);
+        
 
         let writers: Box<dyn ChunkWriter> =
             if self.save_path.is_some() && !self.save_path.as_ref().unwrap().is_empty() {
@@ -152,7 +158,7 @@ impl Task for DownloadFileTask {
             cyfs_bdt::download::download_file(
                 &self.bdt_stack,
                 self.file.clone(),
-                config,
+                context,
                 vec![writers],
             )
             .await
@@ -219,9 +225,9 @@ impl Task for DownloadFileTask {
     async fn get_task_detail_status(&self) -> BuckyResult<Vec<u8>> {
         let session = self.session.lock().await;
         let task_state = if session.is_some() {
-            let control_state = session.as_ref().unwrap().control_state();
-            match control_state {
-                TaskControlState::Downloading(speed, progress) => {
+            let state = session.as_ref().unwrap().state();
+            match state {
+                cyfs_bdt::DownloadTaskState::Downloading(speed, progress) => {
                     log::info!("downloading speed {} progress {}", speed, progress);
                     {
                         let mut task_status = self.task_status.lock().unwrap();
@@ -238,7 +244,7 @@ impl Task for DownloadFileTask {
                         sum_size: self.file.desc().content().len() as u64,
                     }
                 }
-                TaskControlState::Paused => {
+                cyfs_bdt::DownloadTaskState::Paused => {
                     {
                         let mut status = self.task_status.lock().unwrap();
                         status.status = TaskStatus::Paused;
@@ -252,21 +258,7 @@ impl Task for DownloadFileTask {
                         sum_size: self.file.desc().content().len() as u64,
                     }
                 }
-                TaskControlState::Canceled => {
-                    {
-                        let mut status = self.task_status.lock().unwrap();
-                        status.status = TaskStatus::Stopped;
-                    };
-                    DownloadTaskState {
-                        task_status: TaskStatus::Stopped,
-                        err_code: None,
-                        speed: 0,
-                        upload_speed: 0,
-                        downloaded_progress: 100,
-                        sum_size: self.file.desc().content().len() as u64,
-                    }
-                }
-                TaskControlState::Finished => {
+                cyfs_bdt::DownloadTaskState::Finished => {
                     let mut verify_task = self.verify_task.lock().await;
                     if verify_task.is_some() {
                         let task = verify_task.as_ref().unwrap();
@@ -341,17 +333,33 @@ impl Task for DownloadFileTask {
                         }
                     }
                 }
-                TaskControlState::Err(err) => {
-                    self.task_status.lock().unwrap().status = TaskStatus::Failed;
-                    self.save_task_status().await?;
-                    DownloadTaskState {
-                        task_status: TaskStatus::Failed,
-                        err_code: Some(err),
-                        speed: 0,
-                        upload_speed: 0,
-                        downloaded_progress: 0,
-                        sum_size: self.file.desc().content().len() as u64,
+                cyfs_bdt::DownloadTaskState::Error(err) => {
+                    if err == BuckyErrorCode::Interrupted {
+                        {
+                            let mut status = self.task_status.lock().unwrap();
+                            status.status = TaskStatus::Stopped;
+                        };
+                        DownloadTaskState {
+                            task_status: TaskStatus::Stopped,
+                            err_code: None,
+                            speed: 0,
+                            upload_speed: 0,
+                            downloaded_progress: 100,
+                            sum_size: self.file.desc().content().len() as u64,
+                        }
+                    } else {
+                        self.task_status.lock().unwrap().status = TaskStatus::Failed;
+                        self.save_task_status().await?;
+                        DownloadTaskState {
+                            task_status: TaskStatus::Failed,
+                            err_code: Some(err),
+                            speed: 0,
+                            upload_speed: 0,
+                            downloaded_progress: 0,
+                            sum_size: self.file.desc().content().len() as u64,
+                        }
                     }
+                   
                 }
             }
         } else {

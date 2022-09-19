@@ -30,8 +30,9 @@ socket2 = '0.4.4'
 generic-array = { version = '0.12', default-features = false, features = [
 	'serde',
 ] }
-sha2 = '0.8'
-clap = '2.34.0'
-
+sha2 = "0.8"
+clap = "2.34.0"
+serde_json = "1.0"
+md5 = "0.7.0"
 [target.'cfg(unix)'.dependencies]
 nix = '0.24'

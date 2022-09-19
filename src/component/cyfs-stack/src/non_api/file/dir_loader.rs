@@ -82,6 +82,7 @@ impl NONDirLoader {
 
         // 从请求的dir开始的根引用
         let mut root_referer_object = NDNDataRefererObject {
+            target: None, 
             object_id: req.object_id.clone(),
             inner_path: None,
         };
@@ -570,6 +571,7 @@ impl NONDirLoader {
         // 直接从源发起查找
         // 添加最近的refer
         let latest_referer_object = NDNDataRefererObject {
+            target: None, 
             object_id: dir_id.object_id().to_owned(),
             inner_path: None,
         };
@@ -669,6 +671,7 @@ impl NONDirLoader {
 
                         // 加入最近一级引用
                         let latest_referer_object = NDNDataRefererObject {
+                            target: None, 
                             object_id: dir_id.object_id().to_owned(),
                             inner_path: None,
                         };

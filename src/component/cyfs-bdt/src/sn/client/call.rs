@@ -1,17 +1,22 @@
-use cyfs_base::*;
-use std::collections::HashMap;
-use std::sync::{Arc, atomic, atomic::{AtomicU64, AtomicU32}, RwLock};
-use std::future::Future;
-use crate::{TempSeqGenerator, TempSeq};
-use std::time::{Instant, Duration};
-use crate::interface::{udp::{Interface, PackageBoxEncodeContext}, tcp};
-use std::pin::Pin;
+use std::{
+    sync::{Arc, atomic, atomic::{AtomicU64, AtomicU32}, RwLock}, 
+    collections::HashMap, 
+    time::{Instant, Duration}, 
+    future::Future, 
+    pin::Pin, 
+    task::Waker
+};
 use async_std::task;
-use crate::protocol::{Exchange, SnCall, SnCallResp, PackageBox, PackageCmdCode, DynamicPackage};
-use crate::sn::client::{Config};
-use std::task::Waker;
 use futures::task::{Context, Poll};
-use crate::stack::{WeakStack, Stack};
+use cyfs_base::*;
+use crate::{
+    types::{TempSeqGenerator, TempSeq},
+    interface::{udp::{Interface, PackageBoxEncodeContext}, tcp}, 
+    protocol::{*, v0::*}, 
+    sn::client::{Config},
+    history::keystore, 
+    stack::{WeakStack, Stack}
+};
 
 pub struct CallManager {
     stack: WeakStack,
@@ -183,6 +188,8 @@ impl CallSession {
                      is_always_call: bool,
                      seq: TempSeq) -> SnCall {
         SnCall {
+            protocol_version: 0, 
+            stack_version: 0, 
             seq: seq,
             to_peer_id: remote_peerid.clone(),
             from_peer_id: local_peerid.clone(),
@@ -348,30 +355,28 @@ struct CallClientInner {
     stack: WeakStack,
     sn_peerid: DeviceId,
     sn: Device,
-    aes_key: Option<(AesKey, bool)>, // <key,exchange>
+    aes_key: keystore::FoundKey, 
     pkgs: Vec<SendPackage>,
     last_resp_time: AtomicU64,
 }
 
 impl CallClientInner {
     fn init_pkgs(&mut self, mut call_pkg: SnCall) {
-        match self.aes_key.as_ref() {
-            Some((_, is_exchange)) if *is_exchange => {
-                let stack = Stack::from(&self.stack);
-                let exchg = Exchange {
-                    sequence: call_pkg.seq,
-                    seq_key_sign: Signature::default(),
-                    from_device_id: stack.local_device_id().clone(),
-                    send_time: 0,
-                    from_device_desc: match call_pkg.peer_info.as_ref() {
-                        Some(from) => from.clone(),
-                        None => stack.device_cache().local()
-                    },
-                };
-                self.pkgs.push(SendPackage::Exchange(exchg));
-            }
-            _ => {}
-        };
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = &self.aes_key.encrypted {
+            let stack = Stack::from(&self.stack);
+            let exchg = Exchange {
+                sequence: call_pkg.seq, 
+                key_encrypted: encrypted.clone(), 
+                seq_key_sign: Signature::default(),
+                from_device_id: stack.local_device_id().clone(),
+                send_time: 0,
+                from_device_desc: match call_pkg.peer_info.as_ref() {
+                    Some(from) => from.clone(),
+                    None => stack.device_cache().local()
+                },
+            };
+            self.pkgs.push(SendPackage::Exchange(exchg));
+        }
 
         call_pkg.sn_peer_id = self.sn_peerid.clone();
         self.pkgs.push(SendPackage::Call(call_pkg));
@@ -379,7 +384,7 @@ impl CallClientInner {
 
     async fn sign_exchange(&mut self) {
         if let SendPackage::Exchange(exchg) = self.pkgs.get_mut(0).unwrap() {
-            let _ = exchg.sign(&self.aes_key.as_ref().unwrap().0, Stack::from(&self.stack).keystore().signer()).await;
+            let _ = exchg.sign(Stack::from(&self.stack).keystore().signer()).await;
         }
     }
 }
@@ -390,19 +395,12 @@ struct CallClient {
 }
 
 impl CallClient {
-    fn create(mgr: &CallManager, sn_peerid: &DeviceId, sn: &Device, is_encrypto: bool, call_pkg: SnCall) -> CallClient {
-        let key = if is_encrypto {
-            let key = Stack::from(&mgr.stack).keystore().create_key(&sn_peerid, false);
-            Some((key.aes_key.clone(), !key.is_confirmed))
-        } else {
-            None
-        };
-
+    fn create(mgr: &CallManager, sn_peerid: &DeviceId, sn: &Device, _is_encrypto: bool, call_pkg: SnCall) -> CallClient {
         let mut inner = CallClientInner {
             stack: mgr.stack.clone(),
             sn_peerid: sn_peerid.clone(),
             sn: sn.clone(),
-            aes_key: key,
+            aes_key: Stack::from(&mgr.stack).keystore().create_key(sn.desc(), false),
             pkgs: vec![],
             last_resp_time: AtomicU64::new(0)
         };
@@ -420,9 +418,8 @@ impl CallClient {
     }
 
     fn prepare_pkgs_to_send(&self) -> Result<PackageBox, BuckyError> {
-        assert!(self.inner.aes_key.is_some());
         // <TODO>暂时不支持明文
-        let mut pkg_box = PackageBox::encrypt_box(self.inner.sn_peerid.clone(), self.inner.aes_key.as_ref().unwrap().0.clone());
+        let mut pkg_box = PackageBox::encrypt_box(self.inner.sn_peerid.clone(), self.inner.aes_key.aes_key.clone());
         let now_abs = bucky_time_now();
         for pkg in self.inner.pkgs.as_slice() {
             match pkg {
@@ -454,7 +451,7 @@ impl CallClient {
         }
 
         if let Ok(pkg_box) = self.prepare_pkgs_to_send() {
-            let mut context = PackageBoxEncodeContext::from(self.inner.sn.desc());
+            let mut context = PackageBoxEncodeContext::default();
 
             struct SendIter<'a> {
                 from: &'a Vec<Interface>,

@@ -10,8 +10,9 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::*, 
+    history::keystore, 
     sn::client::PingClientCalledEvent, 
     stack::{WeakStack, Stack}, 
     stream::{StreamContainer}
@@ -144,21 +145,22 @@ impl ConnectStreamBuilder {
             return None;
         }
         let syn_session_data = syn_session_data.unwrap();
-        let key_stub = stack.keystore().create_key(stream.as_ref().tunnel().remote(), true);
+        let key_stub = stack.keystore().create_key(stream.as_ref().tunnel().remote_const(), true);
         // 生成第一个package box
         let mut first_box = PackageBox::encrypt_box(stream.as_ref().tunnel().remote().clone(), key_stub.aes_key.clone());
             
         let syn_tunnel = SynTunnel {
+            protocol_version: stream.as_ref().tunnel().protocol_version(), 
+            stack_version: stream.as_ref().tunnel().stack_version(), 
             from_device_id: local.desc().device_id(), 
             to_device_id: stream.as_ref().tunnel().remote().clone(), 
-            from_container_id: IncreaseId::default(),
             from_device_desc: local.clone(),
             sequence: syn_session_data.syn_info.as_ref().unwrap().sequence.clone(), 
             send_time: syn_session_data.send_time.clone()
         };
-        if !key_stub.is_confirmed {
-            let mut exchg = Exchange::from(&syn_tunnel);
-            let _ = exchg.sign(&key_stub.aes_key, stack.keystore().signer()).await;
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
+            let mut exchg = Exchange::from((&syn_tunnel, encrypted));
+            let _ = exchg.sign(stack.keystore().signer()).await;
             first_box.push(exchg);
         }
         first_box.push(syn_tunnel).push(syn_session_data.clone_with_data());
@@ -177,7 +179,7 @@ impl ConnectStreamBuilder {
             true,
             false,
             |sn_call| {
-                let mut context = udp::PackageBoxEncodeContext::from((tunnel.remote_const(), sn_call));
+                let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 //FIXME 先不调用raw_measure_with_context
                 //let len = first_box.raw_measure_with_context(&mut context).unwrap();
                 let mut buf = vec![0u8; 2048];

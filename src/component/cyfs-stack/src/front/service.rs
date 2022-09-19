@@ -460,7 +460,7 @@ impl FrontService {
             FrontARequestGoal::Web(web_req) => {
                 let ret = self.app.get_app_web_dir(&req.dec, &web_req.version).await?;
                 match ret {
-                    AppInstallStatus::Installed((dec_id, dir_id)) => {
+                    AppInstallStatus::Installed((_dec_id, dir_id)) => {
                         let o_req = FrontORequest {
                             source: req.source,
                             target,
@@ -496,7 +496,7 @@ impl FrontService {
             FrontARequestGoal::LocalStatus => {
                 let ret = self.app.get_app_local_status(&req.dec).await?;
                 match ret {
-                    AppInstallStatus::Installed((dec_id, local_status_id)) => {
+                    AppInstallStatus::Installed((_dec_id, local_status_id)) => {
                         let o_req = FrontORequest {
                             source: req.source,
                             target,

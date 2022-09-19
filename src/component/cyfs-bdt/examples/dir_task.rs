@@ -2,7 +2,12 @@ use async_std::{fs, future, io::prelude::*};
 use cyfs_base::*;
 use log::debug;
 use cyfs_bdt::{
-    download::*, ChunkDownloadConfig, DownloadTaskControl, Stack, StackOpenParams, TaskControlState,
+    download::*, 
+    SingleDownloadContext, 
+    Stack, 
+    StackOpenParams, 
+    DownloadTask, 
+    DownloadTaskState, 
 };
 use sha2::Digest;
 #[warn(unused_mut)]
@@ -11,21 +16,16 @@ use std::{collections::HashMap, path::PathBuf, time::Duration};
 mod utils;
 
 async fn watch_task_finish(
-    task: Box<dyn DownloadTaskControl>,
-    dir_task_control: &DirTaskPathControl,
+    task: Box<dyn DownloadTask>
 ) -> BuckyResult<()> {
     loop {
-        match task.control_state() {
-            TaskControlState::Finished => {
+        match task.state() {
+            DownloadTaskState::Finished => {
                 debug!("dir task finished, exiting.");
-                break Ok(());
-            }
-            TaskControlState::Downloading(speed, progress) => {
+                break Ok(())
+            },
+            DownloadTaskState::Downloading(speed, progress) => {
                 debug!("watch_task_finish: {}-{}", speed, progress);
-
-                if progress == 100 {
-                    let _ = dir_task_control.finish();
-                }
             }
             _ => {}
         }
@@ -166,7 +166,7 @@ async fn main() {
     match download_dir_to_path(
         &*ln_stack,
         dir.desc().dir_id(),
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()),
+        SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]), 
         down_dir.as_path(),
     ) {
         Ok((task, dir_task_control)) => {
@@ -180,7 +180,7 @@ async fn main() {
 
             let recv = future::timeout(
                 Duration::from_secs(1),
-                watch_task_finish(task, &dir_task_control),
+                watch_task_finish(task),
             )
             .await
             .unwrap();

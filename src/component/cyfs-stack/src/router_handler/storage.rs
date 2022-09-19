@@ -32,7 +32,8 @@ pub(crate) struct RouterHandlerContainerSavedData {
     pub sign_object: Option<BTreeMap<String, RouterHandlerSavedData>>,
     pub verify_object: Option<BTreeMap<String, RouterHandlerSavedData>>,
 
-    pub acl: Option<BTreeMap<String, RouterHandlerSavedData>>,
+    pub acl: Option<BTreeMap<String, RouterHandlerSavedData>>, 
+    pub interest: Option<BTreeMap<String, RouterHandlerSavedData>>, 
 }
 
 impl RouterHandlerContainerSavedData {
@@ -52,6 +53,7 @@ impl RouterHandlerContainerSavedData {
             verify_object: None,
 
             acl: None,
+            interest: None
         }
     }
 
@@ -74,6 +76,7 @@ impl RouterHandlerContainerSavedData {
             && Self::is_container_empty(&self.sign_object)
             && Self::is_container_empty(&self.verify_object)
             && Self::is_container_empty(&self.acl)
+            && Self::is_container_empty(&self.interest)
     }
 }
 
@@ -93,7 +96,9 @@ pub(crate) struct RouterHandlersSavedData {
 
     pub handler: Option<RouterHandlerContainerSavedData>,
 
-    pub acl: Option<RouterHandlerContainerSavedData>,
+    pub acl: Option<RouterHandlerContainerSavedData>, 
+
+    pub ndn: Option<RouterHandlerContainerSavedData>
 }
 
 impl RouterHandlersSavedData {
@@ -112,6 +117,8 @@ impl RouterHandlersSavedData {
             handler: None,
 
             acl: None,
+
+            ndn: None
         }
     }
 }

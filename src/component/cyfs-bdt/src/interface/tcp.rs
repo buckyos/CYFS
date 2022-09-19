@@ -13,7 +13,7 @@ use std::{
 // use socket2;
 use super::{manager::UpdateOuterResult, udp};
 use crate::{
-    history::keystore,
+    history::{keystore},
     protocol::*,
     stack::{Stack, WeakStack},
 };
@@ -210,7 +210,9 @@ impl Listener {
 type FirstBoxEncodeContext = udp::PackageBoxEncodeContext;
 type FirstBoxDecodeContext<'de> = udp::PackageBoxDecodeContext<'de>;
 
-pub(crate) struct OtherBoxEncodeContext {}
+pub(crate) struct OtherBoxEncodeContext {
+    pub plaintext: bool,
+}
 
 impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
     fn raw_measure_with_context(
@@ -241,9 +243,11 @@ impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
             let enc: &dyn RawEncodeWithContext<merge_context::OtherEncode> = p.as_ref();
             buf = enc.raw_encode_with_context(buf, &mut context, purpose)?;
         }
+
         encrypt_in_len -= buf.len();
         // 用aes 加密package的部分
         let len = self.key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?;
+
         Ok(&mut to_encrypt_buf[len..])
     }
 }
@@ -316,16 +320,18 @@ impl<'de> RawDecodeWithContext<'de, OtherBoxDecodeContext<'de>> for PackageBox {
 
         {
             let mut context = merge_context::FirstDecode::new();
+            let mut version = 0;
             let (package, buf) = DynamicPackage::raw_decode_with_context(
                 decrypt_buf[0..decrypt_len].as_ref(),
-                &mut context,
+                (&mut context, &mut version),
             )?;
+            
             packages.push(package);
             let mut context: merge_context::OtherDecode = context.into();
             let mut buf_ptr = buf;
             while buf_ptr.len() > 0 {
                 let (package, buf) =
-                    DynamicPackage::raw_decode_with_context(buf_ptr, &mut context)?;
+                    DynamicPackage::raw_decode_with_context(buf_ptr, (&mut context, &mut version))?;
                 buf_ptr = buf;
                 packages.push(package);
             }
@@ -363,6 +369,8 @@ impl RawEncodeWithContext<PackageBoxEncodeContext<FirstBoxEncodeContext>> for Pa
             ));
         }
 
+        info!("packagebox FirstBoxEncodeContext buf_len={} box_header_len={}", buf.len(), box_header_len);
+
         let box_len = {
             let buf_ptr =
                 self.raw_encode_with_context(&mut buf[box_header_len..], &mut context.0, purpose)?;
@@ -395,6 +403,8 @@ impl RawEncodeWithContext<PackageBoxEncodeContext<OtherBoxEncodeContext>> for Pa
                 "buffer not enough",
             ));
         }
+
+        info!("packagebox FirstBoxEncodeContext buf_len={} box_header_len={}", buf.len(), box_header_len);
 
         let box_len = {
             let buf_ptr =
@@ -517,7 +527,7 @@ impl AcceptInterface {
             None => return Err(BuckyError::new(BuckyErrorCode::InvalidData, "no package")),
         };
         if let Some(exchg) = exchg {
-            if !exchg.verify(first_box.key()).await {
+            if !exchg.verify().await {
                 warn!("tcp exchg verify failed.");
                 return Err(BuckyError::new(
                     BuckyErrorCode::InvalidData,
@@ -560,7 +570,9 @@ impl AcceptInterface {
 
     pub async fn confirm_accept(&self, packages: Vec<DynamicPackage>) -> Result<(), BuckyError> {
         let mut send_buffer = [0u8; udp::MTU];
-        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {});
+        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {
+            plaintext: false,
+        });
         let mut package_box =
             PackageBox::encrypt_box(self.remote_device_id().clone(), self.0.key.clone());
         package_box.append(packages);
@@ -666,13 +678,13 @@ impl Interface {
         let mut buffer = [0u8; udp::MTU];
         let mut package_box =
             PackageBox::encrypt_box(self.0.remote_device_id.clone(), self.0.key.clone());
-        if !key_stub.is_confirmed {
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
             if let PackageCmdCode::Exchange = packages[0].cmd_code() {
                 let exchg: &mut Exchange = packages[0].as_mut();
-                exchg.sign(&self.0.key, stack.keystore().signer()).await?;
+                exchg.sign(stack.keystore().signer()).await?;
             } else {
-                let mut exchg = Exchange::try_from(&packages[0])?;
-                exchg.sign(&self.0.key, stack.keystore().signer()).await?;
+                let mut exchg = Exchange::try_from((&packages[0], encrypted))?;
+                exchg.sign(stack.keystore().signer()).await?;
                 package_box.push(exchg);
             }
         }
@@ -680,7 +692,7 @@ impl Interface {
 
         let send_buf = {
             let mut context =
-                PackageBoxEncodeContext(FirstBoxEncodeContext::from(&self.0.remote_device_desc));
+                PackageBoxEncodeContext(FirstBoxEncodeContext::default());
             package_box.raw_tail_encode_with_context(&mut buffer, &mut context, &None)?
         };
 
@@ -823,11 +835,12 @@ impl PackageInterface {
         &self,
         send_buf: &'a mut [u8],
         package: DynamicPackage,
+        plaintext: bool,
     ) -> Result<(), BuckyError> {
         let mut socket = self.0.socket.clone();
         let package_box =
             PackageBox::from_package(self.0.remote_device_id.clone(), self.0.key.clone(), package);
-        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {});
+        let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {plaintext});
         socket
             .write_all(package_box.raw_tail_encode_with_context(send_buf, &mut context, &None)?)
             .await?;

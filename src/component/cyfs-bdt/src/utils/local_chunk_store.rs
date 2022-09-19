@@ -362,7 +362,6 @@ impl ChunkWriter for LocalChunkWriter {
     async fn err(&self, _e: BuckyErrorCode) -> BuckyResult<()> {
         Ok(())
     }
-
     async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
         assert!(chunk.eq(self.chunk()));
 
@@ -812,6 +811,7 @@ impl ChunkWriterExt for LocalChunkListWriter {
 
         Ok(())
     }
+
 
     async fn finish(&self) -> BuckyResult<()> {
 
