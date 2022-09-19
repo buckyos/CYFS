@@ -338,9 +338,9 @@ async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId) {
     access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
     access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Read);
     access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Read);
-    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Write);
-    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Write);
-    access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Call);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Call);
+    access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Call);
     let item = GlobalStatePathAccessItem {
         path: CYFS_CRYPTO_VIRTUAL_PATH.to_owned(),
         access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {

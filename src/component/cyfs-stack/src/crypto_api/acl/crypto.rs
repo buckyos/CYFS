@@ -40,7 +40,7 @@ impl CryptoInputProcessor for CryptoAclInputProcessor {
     ) -> BuckyResult<CryptoVerifyObjectInputResponse> {
         req.common.source.check_current_zone("crypto.verify_object")?;
 
-        self.check_access("verify_object", &req.common.source, RequestOpType::Read).await?;
+        self.check_access("verify_object", &req.common.source, RequestOpType::Call).await?;
 
         self.next.verify_object(req).await
     }
@@ -51,7 +51,7 @@ impl CryptoInputProcessor for CryptoAclInputProcessor {
     ) -> BuckyResult<CryptoSignObjectInputResponse> {
         req.common.source.check_current_zone("crypto.sign_object")?;
 
-        self.check_access("sign_object", &req.common.source, RequestOpType::Write).await?;
+        self.check_access("sign_object", &req.common.source, RequestOpType::Call).await?;
 
         self.next.sign_object(req).await
     }
