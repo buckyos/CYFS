@@ -19,7 +19,7 @@ const protocols = {
     'http:': require('http'),
     'https:': require('https')
 }
-const ding_url = 'https://oapi.dingtalk.com/robot/send?access_token=0ff780cd471efaa32596dc1463b9ddaa761f61eba918312f2de976f54479ea31'
+const ding_url = `https://oapi.dingtalk.com/robot/send?access_token=${process.env.DING_TOKEN}`
 
 async function post(url, body) {
     let url_obj = new URL(url)
@@ -69,12 +69,7 @@ function meta_url(channel) {
     if (channel === "nightly") {
         return 'http://154.31.50.111:1423'
     } else if (channel === "beta") {
-        const urls = [
-            "http://106.75.156.225:1523",
-            "http://106.75.152.253:1523",
-            "http://106.75.136.42:1523",
-        ];
-        return urls[Math.floor(Math.random() * urls.length)];
+        return "http://120.24.6.201:1423";
     } else if (channel === "stable") {
         return ""
     } else {
@@ -109,7 +104,7 @@ async function run() {
     let out = JSON.parse(await post(meta_url(channel)+"/balance", [[0, repo_id]]));
     let balance = BigInt(out.result[0])
     if (balance < 10000) {
-        let msg = `repo account ${repo_id} balance ${balance} less then 10000!!`;
+        let msg = `repo account ${repo_id} balance ${balance} less then 10000!! channel ${channel}`;
         await send_msg(msg)
         console.error(msg)
         process.exit(1)
