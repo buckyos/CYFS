@@ -52,14 +52,16 @@ impl NamedObjectCacheMemoryCache {
 
         let item = ret.unwrap();
 
-        // first check the access permissions
-        let mask = req
-            .source
-            .mask(&item.meta.create_dec_id, RequestOpType::Read);
-        if item.meta.access_string & mask != mask {
-            let msg = format!("get object from cache but access been rejected! obj={}, access={:#o}, req access={:#o}", req.object_id, item.meta.access_string, mask);
-            warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+        if !req.source.is_verified() {
+            // first check the access permissions
+            let mask = req
+                .source
+                .mask(&item.meta.create_dec_id, RequestOpType::Read);
+            if item.meta.access_string & mask != mask {
+                let msg = format!("get object from cache but access been rejected! obj={}, access={:#o}, req access={:#o}", req.object_id, item.meta.access_string, mask);
+                warn!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+            }
         }
 
         if item.meta.last_access_rpath != req.last_access_rpath {

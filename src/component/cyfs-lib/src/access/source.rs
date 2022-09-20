@@ -213,18 +213,22 @@ pub struct RequestSourceInfo {
     pub protocol: RequestProtocol,
     pub zone: DeviceZoneInfo,
     pub dec: ObjectId,
+
+    // is passed the acl verified
+    pub verified: bool,
 }
 
 impl std::fmt::Display for RequestSourceInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "protocol={}, zone=({:?}-{:?}-{:?}), dec={}",
+            "protocol={}, zone=({:?}-{:?}-{:?}), dec={}, verified={}",
             self.protocol.as_str(),
             self.zone.zone_category,
             self.zone.device,
             self.zone.zone,
-            self.dec
+            self.dec,
+            self.verified,
         )
     }
 }
@@ -235,6 +239,7 @@ impl RequestSourceInfo {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_local(),
             dec: cyfs_core::get_system_dec_app().object_id().to_owned(),
+            verified: false,
         }
     }
 
@@ -243,6 +248,7 @@ impl RequestSourceInfo {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_local(),
             dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            verified: false,
         }
     }
 
@@ -251,6 +257,7 @@ impl RequestSourceInfo {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_current_zone(),
             dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            verified: false,
         }
     }
 
@@ -259,6 +266,7 @@ impl RequestSourceInfo {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_friend_zone(),
             dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            verified: false,
         }
     }
 
@@ -267,6 +275,7 @@ impl RequestSourceInfo {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_other_zone(),
             dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            verified: false,
         }
     }
 
@@ -295,6 +304,15 @@ impl RequestSourceInfo {
         } else {
             Some(&self.dec)
         }
+    }
+
+    pub fn set_verified(&mut self) {
+        assert!(!self.verified);
+        self.verified = true;
+    }
+
+    pub fn is_verified(&self) -> bool {
+        self.verified
     }
 
     pub fn check_target_dec_permission(&self, op_target_dec: &Option<ObjectId>) -> bool {
@@ -433,6 +451,7 @@ impl JsonCodec<Self> for RequestSourceInfo {
         JsonCodecHelper::encode_field(&mut obj, "zone", &self.zone);
         JsonCodecHelper::encode_string_field(&mut obj, "dec", &self.dec);
         JsonCodecHelper::encode_string_field(&mut obj, "protocol", &self.protocol);
+        JsonCodecHelper::encode_bool_field(&mut obj, "verified", self.verified);
 
         obj
     }
@@ -442,6 +461,7 @@ impl JsonCodec<Self> for RequestSourceInfo {
             zone: JsonCodecHelper::decode_field(obj, "zone")?,
             dec: JsonCodecHelper::decode_string_field(obj, "dec")?,
             protocol: JsonCodecHelper::decode_string_field(obj, "protocol")?,
+            verified: JsonCodecHelper::decode_bool_field(obj, "verified")?,
         })
     }
 }
