@@ -57,7 +57,11 @@ where
         let default_action = RouterHandlerAction::Default;
 
         let req_path = if let Some(req_path) = param.request.req_path() {
-            Some(RequestGlobalStatePath::from_str(&req_path)?)
+            let mut req_path = RequestGlobalStatePath::from_str(&req_path)?;
+            if req_path.dec_id.is_none() {
+                req_path.dec_id = Some(param.request.source().dec.clone());
+            }
+            Some(req_path)
         } else {
             None
         };

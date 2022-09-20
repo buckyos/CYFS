@@ -59,18 +59,14 @@ impl RequestHandlerHelper<CryptoSignObjectInputRequest> for CryptoSignObjectInpu
     fn req_path(&self) -> &Option<String> {
         &self.common.req_path
     }
+
+    fn source(&self) -> &RequestSourceInfo {
+        &self.common.source
+    }
 }
 impl RequestHandlerHelper<CryptoSignObjectInputResponse> for CryptoSignObjectInputResponse {
     fn update(&mut self, handler: CryptoSignObjectInputResponse) {
         CryptoRequestUtil::update_sign_object_response(self, handler)
-    }
-
-    fn debug_info(&self) -> String {
-        unimplemented!();
-    }
-
-    fn req_path(&self) -> &Option<String> {
-        unimplemented!();
     }
 }
 
@@ -87,17 +83,14 @@ impl RequestHandlerHelper<CryptoVerifyObjectInputRequest> for CryptoVerifyObject
     fn req_path(&self) -> &Option<String> {
         &self.common.req_path
     }
+
+    fn source(&self) -> &RequestSourceInfo {
+        &self.common.source
+    }
 }
+
 impl RequestHandlerHelper<CryptoVerifyObjectInputResponse> for CryptoVerifyObjectInputResponse {
     fn update(&mut self, handler: Self) {
         CryptoRequestUtil::update_verify_object_response(self, handler)
-    }
-
-    fn debug_info(&self) -> String {
-        unimplemented!();
-    }
-
-    fn req_path(&self) -> &Option<String> {
-        unimplemented!();
     }
 }

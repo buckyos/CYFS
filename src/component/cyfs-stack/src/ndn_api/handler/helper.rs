@@ -73,18 +73,14 @@ impl RequestHandlerHelper<NDNPutDataInputRequest> for NDNPutDataInputRequest {
     fn req_path(&self) -> &Option<String> {
         &self.common.req_path
     }
+
+    fn source(&self) -> &RequestSourceInfo {
+        &self.common.source
+    }
 }
 impl RequestHandlerHelper<NDNPutDataInputResponse> for NDNPutDataInputResponse {
     fn update(&mut self, handler: NDNPutDataInputResponse) {
         NDNRequestUtil::update_put_data_response(self, handler)
-    }
-
-    fn debug_info(&self) -> String {
-        unimplemented!();
-    }
-
-    fn req_path(&self) -> &Option<String> {
-        unimplemented!();
     }
 }
 
@@ -101,18 +97,14 @@ impl RequestHandlerHelper<NDNGetDataInputRequest> for NDNGetDataInputRequest {
     fn req_path(&self) -> &Option<String> {
         &self.common.req_path
     }
+
+    fn source(&self) -> &RequestSourceInfo {
+        &self.common.source
+    }
 }
 impl RequestHandlerHelper<NDNGetDataInputResponse> for NDNGetDataInputResponse {
     fn update(&mut self, handler: Self) {
         NDNRequestUtil::update_get_data_response(self, handler)
-    }
-
-    fn debug_info(&self) -> String {
-        unimplemented!();
-    }
-
-    fn req_path(&self) -> &Option<String> {
-        unimplemented!();
     }
 }
 
@@ -131,19 +123,15 @@ impl RequestHandlerHelper<NDNDeleteDataInputRequest> for NDNDeleteDataInputReque
     fn req_path(&self) -> &Option<String> {
         &self.common.req_path
     }
+
+    fn source(&self) -> &RequestSourceInfo {
+        &self.common.source
+    }
 }
 
 impl RequestHandlerHelper<NDNDeleteDataInputResponse> for NDNDeleteDataInputResponse {
     fn update(&mut self, handler: Self) {
         NDNRequestUtil::update_delete_data_response(self, handler)
-    }
-
-    fn debug_info(&self) -> String {
-        unimplemented!();
-    }
-
-    fn req_path(&self) -> &Option<String> {
-        unimplemented!();
     }
 }
 
@@ -160,20 +148,16 @@ impl RequestHandlerHelper<InterestHandlerRequest> for InterestHandlerRequest {
     }
 
     fn req_path(&self) -> &Option<String> {
+        &None
+    }
+
+    fn source(&self) -> &RequestSourceInfo {
         unimplemented!();
     }
 }
 
 impl RequestHandlerHelper<InterestHandlerResponse> for InterestHandlerResponse {
-    fn req_path(&self) -> &Option<String> {
-        unimplemented!()
-    }
-
     fn update(&mut self, handler: Self) {
         *self = handler.clone(); 
-    }
-
-    fn debug_info(&self) -> String {
-        unimplemented!()
     }
 }
