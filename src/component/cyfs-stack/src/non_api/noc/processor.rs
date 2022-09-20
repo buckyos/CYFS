@@ -2,7 +2,7 @@ use super::super::acl::*;
 use super::super::file::NONFileServiceProcessor;
 use super::super::handler::*;
 use crate::ndn_api::NDCLevelInputProcessor;
-use crate::non::*;
+use crate::{non::*, AclManagerRef};
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
 use cyfs_base::*;
@@ -56,14 +56,14 @@ impl NOCLevelInputProcessor {
     }
 
     // 创建一个带本地权限的processor
-    pub(crate) fn new_local(raw_processor: NONInputProcessorRef) -> NONInputProcessorRef {
-        // 带local input acl的处理器
-        let acl_processor = NONLocalAclInputProcessor::new(raw_processor.clone());
+    pub(crate) fn new_local(acl: AclManagerRef, raw_processor: NONInputProcessorRef) -> NONInputProcessorRef {
+        // should process with rmeta
+        let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl, raw_processor);
 
-        // 使用acl switcher连接
-        let processor = NONInputAclSwitcher::new(acl_processor, raw_processor);
+        // only allowed in current device
+        let acl_processor = NONLocalAclInputProcessor::new(rmeta_processor);
 
-        processor
+        acl_processor
     }
 
     pub async fn put_object(

@@ -55,13 +55,13 @@ impl NONLevelInputProcessor {
             router_handlers,
         );
 
+         // should process with rmeta
+         let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl.clone(), raw_processor);
+
         // 带同zone input acl的处理器
-        let acl_processor = NONZoneAclInputProcessor::new(raw_processor.clone());
+        let acl_processor = NONZoneAclInputProcessor::new(rmeta_processor);
 
-        // 使用acl switcher连接
-        let processor = NONInputAclSwitcher::new(acl_processor, raw_processor);
-
-        processor
+        acl_processor
     }
 
     async fn get_forward(&self, target: DeviceId) -> BuckyResult<NONInputProcessorRef> {

@@ -99,8 +99,6 @@ impl NONRouter {
         meta_processor: NONInputProcessorRef,
         fail_handler: ObjectFailHandler,
     ) -> NONInputProcessorRef {
-        // 使用acl switcher连接(本地调用不经过acl)
-        // let processor = NONInputAclSwitcher::new(acl_router, post_processor);
 
         // 不带input acl的处理器
         let raw_router = Self::new_raw(

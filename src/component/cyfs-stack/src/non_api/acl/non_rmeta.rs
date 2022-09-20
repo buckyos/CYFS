@@ -25,6 +25,13 @@ impl NONGlobalStateMetaAclInputProcessor {
     ) -> BuckyResult<()> {
         let global_state_common = RequestGlobalStatePath::from_str(req_path)?;
 
+        // 同zone+同dec，或者同zone+system，那么不需要校验rmeta权限
+        if source.is_current_zone() {
+            if source.check_target_dec_permission(&global_state_common.dec_id) {
+                return Ok(());
+            }
+        }
+
         self.acl
             .global_state_meta()
             .check_access(source, &global_state_common, op_type)
@@ -36,14 +43,12 @@ impl NONGlobalStateMetaAclInputProcessor {
 impl NONInputProcessor for NONGlobalStateMetaAclInputProcessor {
     async fn put_object(
         &self,
-        req: NONPutObjectInputRequest,
+        mut req: NONPutObjectInputRequest,
     ) -> BuckyResult<NONPutObjectInputResponse> {
-        if !req.common.source.is_current_zone() {
-            // FIXME put_object should use the rmeta acl system?
-            if let Some(req_path) = &req.common.req_path {
-                self.check_access(req_path, &req.common.source, RequestOpType::Write)
-                    .await?;
-            }
+        if let Some(req_path) = &req.common.req_path {
+            self.check_access(req_path, &req.common.source, RequestOpType::Write)
+                .await?;
+            req.common.source.set_verified();
         }
 
         self.next.put_object(req).await
@@ -51,13 +56,12 @@ impl NONInputProcessor for NONGlobalStateMetaAclInputProcessor {
 
     async fn get_object(
         &self,
-        req: NONGetObjectInputRequest,
+        mut req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        if !req.common.source.is_current_zone() {
-            if let Some(req_path) = &req.common.req_path {
-                self.check_access(req_path, &req.common.source, RequestOpType::Read)
-                    .await?;
-            }
+        if let Some(req_path) = &req.common.req_path {
+            self.check_access(req_path, &req.common.source, RequestOpType::Read)
+                .await?;
+            req.common.source.set_verified();
         }
 
         self.next.get_object(req).await
@@ -65,13 +69,12 @@ impl NONInputProcessor for NONGlobalStateMetaAclInputProcessor {
 
     async fn post_object(
         &self,
-        req: NONPostObjectInputRequest,
+        mut req: NONPostObjectInputRequest,
     ) -> BuckyResult<NONPostObjectInputResponse> {
-        if !req.common.source.is_current_zone() {
-            if let Some(req_path) = &req.common.req_path {
-                self.check_access(req_path, &req.common.source, RequestOpType::Call)
-                    .await?;
-            }
+        if let Some(req_path) = &req.common.req_path {
+            self.check_access(req_path, &req.common.source, RequestOpType::Call)
+                .await?;
+            req.common.source.set_verified();
         }
 
         self.next.post_object(req).await
@@ -86,13 +89,12 @@ impl NONInputProcessor for NONGlobalStateMetaAclInputProcessor {
 
     async fn delete_object(
         &self,
-        req: NONDeleteObjectInputRequest,
+        mut req: NONDeleteObjectInputRequest,
     ) -> BuckyResult<NONDeleteObjectInputResponse> {
-        if !req.common.source.is_current_zone() {
-            if let Some(req_path) = &req.common.req_path {
-                self.check_access(req_path, &req.common.source, RequestOpType::Write)
-                    .await?;
-            }
+        if let Some(req_path) = &req.common.req_path {
+            self.check_access(req_path, &req.common.source, RequestOpType::Write)
+                .await?;
+            req.common.source.set_verified();
         }
 
         self.next.delete_object(req).await

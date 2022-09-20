@@ -63,7 +63,7 @@ impl NONService {
 
         // 带本地权限的noc processor
         let local_noc_processor =
-            NOCLevelInputProcessor::new_local(raw_noc_processor.clone());
+            NOCLevelInputProcessor::new_local(acl.clone(), raw_noc_processor.clone());
 
         // 同zone权限的non processor
         let non_processor = NONLevelInputProcessor::new_zone(
