@@ -99,19 +99,32 @@ impl GlobalStatePathMetaManager {
         dec_id: &Option<ObjectId>,
         auto_create: bool,
     ) -> BuckyResult<GlobalStatePathMetaSyncCollection> {
-        let ret = self.get_dec_meta(&dec_id, auto_create);
+        let ret = self.get_option_global_state_meta(dec_id, auto_create).await?;
         if ret.is_none() {
             let msg = format!(
                 "global state path meta for dec not found! {}, dec={:?}",
                 self.root_state.get_category(),
                 dec_id
             );
-            error!("{}", msg);
+            warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
+        Ok(ret.unwrap())
+    }
+
+    pub async fn get_option_global_state_meta(
+        &self,
+        dec_id: &Option<ObjectId>,
+        auto_create: bool,
+    ) -> BuckyResult<Option<GlobalStatePathMetaSyncCollection>> {
+        let ret = self.get_dec_meta(&dec_id, auto_create);
+        if ret.is_none() {
+            return Ok(None);
+        }
+
         let manager = ret.unwrap();
-        manager.get_global_state_meta().await
+        manager.get_global_state_meta().await.map(|v| Some(v))
     }
 
     fn get_dec_id(common: &MetaInputRequestCommon) -> &Option<ObjectId> {
@@ -140,7 +153,14 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaRemoveAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaRemoveAccessInputResponse> {
-        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        let ret = self.get_option_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        if ret.is_none() {
+            let resp = GlobalStateMetaRemoveAccessInputResponse { item: None };
+
+            return Ok(resp)
+        }
+
+        let meta = ret.unwrap();
         let item = meta.remove_access(req.item).await?;
 
         let resp = GlobalStateMetaRemoveAccessInputResponse { item };
@@ -152,7 +172,13 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaClearAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearAccessInputResponse> {
-        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        let ret = self.get_option_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        if ret.is_none() {
+            let resp = GlobalStateMetaClearAccessInputResponse { count: 0 };
+            return Ok(resp)
+        }
+
+        let meta = ret.unwrap();
         let count = meta.clear_access().await? as u32;
 
         let resp = GlobalStateMetaClearAccessInputResponse { count };
@@ -174,7 +200,14 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaRemoveLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaRemoveLinkInputResponse> {
-        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        let ret = self.get_option_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        if ret.is_none() {
+            let resp = GlobalStateMetaRemoveLinkInputResponse { item: None };
+
+            return Ok(resp)
+        }
+
+        let meta = ret.unwrap();
         let item = meta.remove_link(&req.source).await?;
 
         let resp = GlobalStateMetaRemoveLinkInputResponse { item };
@@ -186,7 +219,13 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaClearLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearLinkInputResponse> {
-        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        let ret = self.get_option_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        if ret.is_none() {
+            let resp = GlobalStateMetaClearLinkInputResponse { count: 0 };
+            return Ok(resp)
+        }
+
+        let meta = ret.unwrap();
         let count = meta.clear_link().await? as u32;
 
         let resp = GlobalStateMetaClearLinkInputResponse { count };
