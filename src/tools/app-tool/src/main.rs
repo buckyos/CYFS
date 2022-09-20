@@ -15,8 +15,6 @@ use log::*;
 use std::path::Path;
 use std::str::FromStr;
 
-// put: 运行在一个跨进程non stack后边，通过PutApp对象添加/改变一个App状态
-// remove: 运行在一个跨进程non stack后边，通过RemoveApp对象移除一个App
 // app create: 创建一个App对象，通过参数指定是否上链
 // app set: 给App对象set一个source，App对象可以是文件也可以是链上ID
 // app remove: 移除一个App对象的指定source
@@ -74,6 +72,7 @@ where
         .put_object(NONPutObjectRequest {
             common: NONOutputRequestCommon::new(NONAPILevel::Router),
             object: NONObjectInfo::new_from_object_raw(obj.to_vec().unwrap()).unwrap(),
+            access: None
         })
         .await
     {
