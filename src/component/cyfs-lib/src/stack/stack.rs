@@ -262,6 +262,17 @@ impl SharedCyfsStack {
         Self::open(SharedCyfsStackParam::default_runtime(dec_id)).await
     }
 
+    pub fn fork_with_new_dec(&self, dec_id: Option<ObjectId>) -> Self {
+        let mut this = self.clone();
+
+        let slot = Arc::new(OnceCell::new());
+        if let Some(id) = dec_id {
+            slot.set(id).unwrap();
+        }
+        this.dec_id = slot;
+        this
+    }
+
     fn select_requestor(
         param: &SharedCyfsStackParam,
         requestor_type: &CyfsStackRequestorType,
