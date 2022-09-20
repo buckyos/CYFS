@@ -40,6 +40,37 @@ impl NamedObjectCacheMemoryCache {
         cache.contains(&req.object_id)
     }
 
+    fn check_access(
+        object_id: &ObjectId,
+        access_string: u32,
+        source: &RequestSourceInfo,
+        create_dec_id: &ObjectId,
+        op_type: RequestOpType,
+    ) -> BuckyResult<()> {
+        // system dec in current zone is always allowed
+        if source.is_current_zone() {
+            if source.is_system_dec() {
+                return Ok(());
+            }
+        }
+
+        // Check permission first
+        let mask = source.mask(create_dec_id, op_type);
+
+        if access_string & mask != mask {
+            let msg = format!(
+                "noc cache object access been rejected! obj={}, access={}, require access={}",
+                object_id,
+                AccessString::new(access_string),
+                AccessString::new(mask)
+            );
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+        }
+
+        Ok(())
+    }
+
     pub fn get(
         &self,
         req: &NamedObjectCacheGetObjectRequest,
@@ -52,16 +83,15 @@ impl NamedObjectCacheMemoryCache {
 
         let item = ret.unwrap();
 
+        // first check the access permissions
         if !req.source.is_verified() {
-            // first check the access permissions
-            let mask = req
-                .source
-                .mask(&item.meta.create_dec_id, RequestOpType::Read);
-            if item.meta.access_string & mask != mask {
-                let msg = format!("get object from cache but access been rejected! obj={}, access={:#o}, req access={:#o}", req.object_id, item.meta.access_string, mask);
-                warn!("{}", msg);
-                return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
-            }
+            Self::check_access(
+                &req.object_id,
+                item.meta.access_string,
+                &req.source,
+                &item.meta.create_dec_id,
+                RequestOpType::Read,
+            )?;
         }
 
         if item.meta.last_access_rpath != req.last_access_rpath {

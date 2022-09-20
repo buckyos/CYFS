@@ -253,6 +253,37 @@ impl SqliteMetaStorage {
         Ok(stat)
     }
 
+    fn check_access(
+        object_id: &ObjectId,
+        access_string: u32,
+        source: &RequestSourceInfo,
+        create_dec_id: &ObjectId,
+        op_type: RequestOpType,
+    ) -> BuckyResult<()> {
+        // system dec in current zone is always allowed
+        if source.is_current_zone() {
+            if source.is_system_dec() {
+                return Ok(());
+            }
+        }
+
+        // Check permission first
+        let mask = source.mask(create_dec_id, op_type);
+
+        if access_string & mask != mask {
+            let msg = format!(
+                "noc meta object access been rejected! obj={}, access={}, require access={}",
+                object_id,
+                AccessString::new(access_string),
+                AccessString::new(mask)
+            );
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+        }
+
+        Ok(())
+    }
+
     fn insert_new(&self, req: &NamedObjectMetaPutObjectRequest) -> BuckyResult<usize> {
         const INSERT_NEW_SQL: &str = r#"INSERT INTO data_namedobject_meta 
         (object_id, owner_id, create_dec_id, insert_time, update_time, 
@@ -350,16 +381,13 @@ impl SqliteMetaStorage {
                         // info!("noc meta current info: {:?}", current_info);
 
                         if !req.source.is_verified() {
-                            // Check permission first
-                            let mask = req
-                                .source
-                                .mask(&current_info.create_dec_id, RequestOpType::Write);
-                            if current_info.access_string & mask != mask {
-                                let msg = format!("noc meta update object but access been rejected! obj={}, access={:#o}, req access={:#o}", 
-                                req.object_id, current_info.access_string, mask);
-                                warn!("{}", msg);
-                                break Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
-                            }
+                            Self::check_access(
+                                &req.object_id,
+                                current_info.access_string,
+                                &req.source,
+                                &current_info.create_dec_id,
+                                RequestOpType::Write,
+                            )?;
                         }
 
                         // Check object_update_time
@@ -545,17 +573,13 @@ impl SqliteMetaStorage {
         match self.get_raw(&conn, &req.object_id)? {
             Some(data) => {
                 if !req.source.is_verified() {
-                    // Check permission first
-                    let mask = req.source.mask(&data.create_dec_id, RequestOpType::Read);
-
-                    // debug!("get meta data={:?}, access={:o}, mask={:o}", data, data.access_string, mask);
-
-                    if data.access_string & mask != mask {
-                        let msg = format!("noc meta get object but access been rejected! obj={}, access={:#o}, req access={:#o}", 
-                            req.object_id, data.access_string, mask);
-                        warn!("{}", msg);
-                        return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
-                    }
+                    Self::check_access(
+                        &req.object_id,
+                        data.access_string,
+                        &req.source,
+                        &data.create_dec_id,
+                        RequestOpType::Read,
+                    )?;
                 }
 
                 // Update the last access info
@@ -687,15 +711,13 @@ impl SqliteMetaStorage {
             match self.get_raw(&conn, &req.object_id)? {
                 Some(data) => {
                     if !req.source.is_verified() {
-                        // Check permission first
-                        let mask = req.source.mask(&data.create_dec_id, RequestOpType::Write);
-
-                        if data.access_string & mask != mask {
-                            let msg = format!("noc meta delete object but access been rejected! obj={}, access={:#o}, req access={:#o}", 
-    req.object_id, data.access_string, mask);
-                            warn!("{}", msg);
-                            break Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
-                        }
+                        Self::check_access(
+                            &req.object_id,
+                            data.access_string,
+                            &req.source,
+                            &data.create_dec_id,
+                            RequestOpType::Write,
+                        )?;
                     }
 
                     let access_info = NamedObjectMetaAccessInfo {
@@ -774,15 +796,13 @@ impl SqliteMetaStorage {
 
             // Check permission first
             assert!(!req.source.is_verified());
-            let mask = req
-                .source
-                .mask(&access_info.create_dec_id, RequestOpType::Write);
-
-            if access_info.access_string & mask != mask {
-                let msg = format!("noc meta delete object but access been rejected! obj={}, access={:#o}, req access={:#o}", req.object_id, access_info.access_string, mask);
-                warn!("{}", msg);
-                break Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
-            }
+            Self::check_access(
+                &req.object_id,
+                access_info.access_string,
+                &req.source,
+                &access_info.create_dec_id,
+                RequestOpType::Write,
+            )?;
 
             let count = Self::try_delete(&conn, &req.object_id, &access_info)?;
             if count > 0 {
