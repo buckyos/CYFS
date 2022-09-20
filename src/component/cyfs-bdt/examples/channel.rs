@@ -93,7 +93,8 @@ async fn main() {
         let task = download_chunk(
             &*ln_stack, 
             chunkid.clone(), 
-            SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]), 
+            None, 
+            Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
             vec![ln_store.clone_as_writer()]).await.unwrap();
         
         watch_resource(task);

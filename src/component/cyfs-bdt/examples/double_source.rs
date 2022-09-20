@@ -133,11 +133,12 @@ async fn main() {
 
         let task = download_chunk(
             &*down_stack,
-            chunkid.clone(),
-            SingleDownloadContext::streams(None, vec![
+            chunkid.clone(), 
+            None, 
+            Some(SingleDownloadContext::streams(None, vec![
                 ref_stack.local_device_id().clone(),
                 src_stack.local_device_id().clone(),]
-            ),
+            )),
             vec![down_store.clone_as_writer()],
         )
         .await.unwrap();

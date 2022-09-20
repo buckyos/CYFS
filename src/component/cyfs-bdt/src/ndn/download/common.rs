@@ -28,6 +28,15 @@ struct SingleContextImpl {
 #[derive(Clone)]
 pub struct SingleDownloadContext(Arc<SingleContextImpl>);
 
+impl Default for SingleDownloadContext {
+    fn default() -> Self {
+        Self(Arc::new(SingleContextImpl {
+            referer: None, 
+            sources: RwLock::new(Default::default()), 
+        }))
+    }
+}
+
 impl SingleDownloadContext {
     pub fn streams(referer: Option<String>, remotes: Vec<DeviceId>) -> Self {
         let mut sources = LinkedList::new();
@@ -143,6 +152,7 @@ pub enum DownloadTaskControlState {
 
 
 pub trait DownloadTask: Send + Sync {
+    fn context(&self) -> &SingleDownloadContext;
     fn clone_as_task(&self) -> Box<dyn DownloadTask>;
     fn state(&self) -> DownloadTaskState;
     fn control_state(&self) -> DownloadTaskControlState;
@@ -159,6 +169,9 @@ pub trait DownloadTask: Send + Sync {
 
     fn priority_score(&self) -> u8 {
         DownloadTaskPriority::Normal as u8
+    }
+    fn add_task(&self, _path: Option<String>, _sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
+        Err(BuckyError::new(BuckyErrorCode::NotSupport, "no implement"))
     }
     fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask>> {
         None

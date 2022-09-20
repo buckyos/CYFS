@@ -157,8 +157,9 @@ impl Task for DownloadFileTask {
         *session = Some(
             cyfs_bdt::download::download_file(
                 &self.bdt_stack,
-                self.file.clone(),
-                context,
+                self.file.clone(), 
+                None, 
+                Some(context),
                 vec![writers],
             )
             .await

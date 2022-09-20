@@ -216,6 +216,10 @@ impl ChunkWriterExt for FileTask {
 
 
 impl DownloadTask for FileTask {
+    fn context(&self) -> &SingleDownloadContext {
+        &self.0.context
+    }
+
     fn clone_as_task(&self) -> Box<dyn DownloadTask> {
         Box::new(self.clone())
     }

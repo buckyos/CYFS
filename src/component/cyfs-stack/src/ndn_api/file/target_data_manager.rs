@@ -80,8 +80,9 @@ impl TargetDataManager {
             let controller = cyfs_bdt::download::download_file_with_ranges(
                 &self.bdt_stack,
                 file_obj.to_owned(),
-                Some(ranges),
-                context,
+                Some(ranges), 
+                None, 
+                Some(context),
                 writers,
             )
             .await?;
@@ -95,8 +96,9 @@ impl TargetDataManager {
 
             let controller = cyfs_bdt::download::download_file(
                 &self.bdt_stack,
-                file_obj.to_owned(),
-                context,
+                file_obj.to_owned(), 
+                None, 
+                Some(context),
                 writers,
             )
             .await?;
@@ -142,8 +144,9 @@ impl TargetDataManager {
 
         let controller = cyfs_bdt::download::download_chunk(
             &self.bdt_stack,
-            chunk_id.to_owned(),
-            context,
+            chunk_id.to_owned(), 
+            None, 
+            Some(context),
             writers,
         )
         .await?;

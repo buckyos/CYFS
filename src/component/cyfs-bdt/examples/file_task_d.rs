@@ -132,7 +132,8 @@ async fn main() {
         let task = 
             download_chunk(&*ln_stack, 
                         chunk, 
-                        SingleDownloadContext::streams(None, vec![rn_dev.desc().device_id().clone()]), 
+                        None,  
+                        Some(SingleDownloadContext::streams(None, vec![rn_dev.desc().device_id().clone()])), 
                         vec![Box::new(writer)]).await.unwrap();
 
 
@@ -160,7 +161,8 @@ async fn main() {
         let task = 
             download_chunk(&*ln_stack, 
                         chunk, 
-                        SingleDownloadContext::streams(None, vec![rn_dev.desc().device_id().clone()]), 
+                        None, 
+                        Some(SingleDownloadContext::streams(None, vec![rn_dev.desc().device_id().clone()])), 
                         vec![Box::new(writer)]).await.unwrap();
 
         let _ = future::timeout(Duration::from_secs(1), watch_task_finish(task)).await.unwrap();

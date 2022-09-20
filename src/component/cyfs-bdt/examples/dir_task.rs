@@ -165,8 +165,9 @@ async fn main() {
 
     match download_dir_to_path(
         &*ln_stack,
-        dir.desc().dir_id(),
-        SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]), 
+        dir.desc().dir_id(), 
+        None, 
+        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
         down_dir.as_path(),
     ) {
         Ok((task, dir_task_control)) => {

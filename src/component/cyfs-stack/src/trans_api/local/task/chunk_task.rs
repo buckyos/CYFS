@@ -104,8 +104,9 @@ impl Task for DownloadChunkTask {
         *session = Some(
             cyfs_bdt::download::download_chunk(
                 &self.bdt_stack,
-                self.chunk_id.clone(),
-                context,
+                self.chunk_id.clone(), 
+                None, 
+                Some(context),
                 vec![self.writer.clone_as_writer()],
             )
             .await

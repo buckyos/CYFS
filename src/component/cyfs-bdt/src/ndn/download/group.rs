@@ -22,6 +22,7 @@ struct StateImpl {
 }
 
 struct TaskImpl {
+    context: SingleDownloadContext, 
     priority: DownloadTaskPriority, 
     state: RwLock<StateImpl>
 }
@@ -30,9 +31,14 @@ struct TaskImpl {
 pub struct DownloadGroup(Arc<TaskImpl>);
 
 impl DownloadGroup {
-    pub fn new(history_speed: HistorySpeedConfig, priority: Option<DownloadTaskPriority>) -> Self {
+    pub fn new(
+        history_speed: HistorySpeedConfig, 
+        priority: Option<DownloadTaskPriority>, 
+        context: SingleDownloadContext
+    ) -> Self {
         Self(Arc::new(TaskImpl {
             priority: priority.unwrap_or_default(), 
+            context, 
             state: RwLock::new(StateImpl { 
                 entries: Default::default(), 
                 running: Default::default(), 
@@ -42,18 +48,13 @@ impl DownloadGroup {
             })
         }))
     }
-
-    pub fn add(&self, path: Option<String>, sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
-        let mut state = self.0.state.write().unwrap();
-        state.running.push(sub.clone_as_task());
-        if let Some(path) = path {
-            state.entries.insert(path, sub);
-        }
-        Ok(())
-    }
 }
 
 impl DownloadTask for DownloadGroup {
+    fn context(&self) -> &SingleDownloadContext {
+        &self.0.context
+    }
+
     fn clone_as_task(&self) -> Box<dyn DownloadTask> {
         Box::new(self.clone())
     }
@@ -70,23 +71,37 @@ impl DownloadTask for DownloadGroup {
         self.0.priority as u8
     }
 
-    fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {
-        let mut names = path.split("::");
-        let name = names.next().unwrap();
-
-        let mut sub = self.0.state.read().unwrap().entries.get(name).map(|t| t.clone_as_task());
-        if sub.is_none() {
-            sub 
-        } else {
-            for name in names {
-                sub = sub.and_then(|t| t.sub_task(name));
-                if sub.is_none() {
-                    break;
-                }
-            }
-            
-            sub
+    fn add_task(&self, path: Option<String>, sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
+        let mut state = self.0.state.write().unwrap();
+        state.running.push(sub.clone_as_task());
+        if let Some(path) = path {
+            state.entries.insert(path, sub);
         }
+        Ok(())
+    }
+
+    fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {
+        if path.len() == 0 {
+            Some(self.clone_as_task())
+        } else {
+            let mut names = path.split("::");
+            let name = names.next().unwrap();
+    
+            let mut sub = self.0.state.read().unwrap().entries.get(name).map(|t| t.clone_as_task());
+            if sub.is_none() {
+                sub 
+            } else {
+                for name in names {
+                    sub = sub.and_then(|t| t.sub_task(name));
+                    if sub.is_none() {
+                        break;
+                    }
+                }
+                
+                sub
+            }
+        }
+       
     }
 
     fn calc_speed(&self, when: Timestamp) -> u32 {

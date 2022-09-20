@@ -454,7 +454,7 @@ impl DataSync {
 
         let task_id = format!("sync_chunk_{}", chunk_id);
 
-        let config = SingleDownloadContext::streams(None, vec![self.ood_device_id.clone()]);
+        let context = SingleDownloadContext::streams(None, vec![self.ood_device_id.clone()]);
         let writer = Box::new(ChunkManagerWriter::new(
             self.chunk_manager.clone(),
             self.bdt_stack.ndn().chunk_manager().ndc().clone(),
@@ -467,7 +467,8 @@ impl DataSync {
         let _controller = cyfs_bdt::download::download_chunk(
             &self.bdt_stack,
             chunk_id.to_owned(),
-            config,
+            None, 
+            Some(context),
             vec![writer, Box::new(waiter.clone())],
         )
         .await
@@ -519,7 +520,8 @@ impl DataSync {
         let _controller = cyfs_bdt::download::download_file(
             &self.bdt_stack,
             file,
-            context,
+            None, 
+            Some(context),
             vec![writer, Box::new(waiter.clone())],
         )
         .await
