@@ -4,7 +4,7 @@ use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
 pub enum RouterHandlerCategory {
     PutObject,
     GetObject,
@@ -25,9 +25,9 @@ pub enum RouterHandlerCategory {
     Interest, 
 }
 
-impl fmt::Display for RouterHandlerCategory {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match &*self {
+impl RouterHandlerCategory {
+    pub fn as_str(&self) -> &str {
+        match &*self {
             Self::PutObject => "put_object",
             Self::GetObject => "get_object",
 
@@ -45,9 +45,19 @@ impl fmt::Display for RouterHandlerCategory {
 
             Self::Acl => "acl", 
             Self::Interest => "interest", 
-        };
+        }
+    }
+}
 
-        fmt::Display::fmt(s, f)
+impl fmt::Debug for RouterHandlerCategory {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl fmt::Display for RouterHandlerCategory {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
