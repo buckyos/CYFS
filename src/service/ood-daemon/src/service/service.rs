@@ -309,7 +309,11 @@ impl Service {
             return;
         }
 
-        assert!(self.state.lock().unwrap().process.is_none());
+        if self.state.lock().unwrap().process.is_some() {
+            warn!("start process but state.process is not empty! name={}", self.name());
+            return;
+        }
+
         assert_eq!(self.state(), ServiceState::STOP);
 
         let v = start_script.as_ref().unwrap();
