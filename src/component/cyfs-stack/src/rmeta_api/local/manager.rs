@@ -55,14 +55,10 @@ impl GlobalStatePathMetaManager {
 
     fn get_dec_meta(
         &self,
-        dec_id: &Option<ObjectId>,
+        dec_id: &ObjectId,
         auto_create: bool,
     ) -> Option<GlobalStateDecPathMetaManagerRef> {
-        let dec_id = match dec_id {
-            Some(id) => id,
-            None => cyfs_core::get_system_dec_app().object_id(),
-        };
-
+        
         if auto_create {
             let mut list = self.all.lock().unwrap();
             match list.entry(dec_id.to_owned()) {
@@ -115,10 +111,10 @@ impl GlobalStatePathMetaManager {
 
     pub async fn get_option_global_state_meta(
         &self,
-        dec_id: &Option<ObjectId>,
+        dec_id: &ObjectId,
         auto_create: bool,
     ) -> BuckyResult<Option<GlobalStatePathMetaSyncCollection>> {
-        let ret = self.get_dec_meta(&dec_id, auto_create);
+        let ret = self.get_dec_meta(dec_id, auto_create);
         if ret.is_none() {
             return Ok(None);
         }
@@ -127,11 +123,11 @@ impl GlobalStatePathMetaManager {
         manager.get_global_state_meta().await.map(|v| Some(v))
     }
 
-    fn get_dec_id(common: &MetaInputRequestCommon) -> &Option<ObjectId> {
-        if common.target_dec_id.is_some() {
-            &common.target_dec_id
+    fn get_dec_id(common: &MetaInputRequestCommon) -> &ObjectId {
+        if let Some(dec_id) = &common.target_dec_id {
+            dec_id
         } else {
-            &None
+            &common.source.dec
         }
     }
 }

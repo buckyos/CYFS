@@ -8,7 +8,7 @@ pub struct MetaInputRequestCommon {
     // 来源
     pub source: RequestSourceInfo,
 
-    // 目标DEC
+    // 目标DEC，如果为空，则默认等价于source-dec-id
     pub target_dec_id: Option<ObjectId>,
 
     // 用以默认行为

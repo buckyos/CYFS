@@ -488,7 +488,6 @@ impl<'de> Deserialize<'de> for DeviceZoneCategory {
 mod test {
     use super::*;
     use cyfs_core::*;
-    use crate::*;
 
     fn new_dec(name: &str) -> ObjectId {
         let owner_id = PeopleId::default();
@@ -507,6 +506,7 @@ mod test {
             },
             dec,
             protocol: RequestProtocol::Native,
+            verified: false,
         };
 
         let system = cyfs_core::get_system_dec_app().object_id();

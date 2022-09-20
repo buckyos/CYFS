@@ -77,9 +77,16 @@ impl GlobalStateMetaLocalService {
         permissions: impl Into<AccessPermissions>,
     ) -> BuckyResult<()> {
         let rmeta = self.get_meta_manager(req_path.category());
-        let ret = rmeta.get_option_global_state_meta(&req_path.dec_id, false).await?;
+
+        // 如果req_path没有指定target_dec_id，那么使用source_dec_id
+        let target_dec_id = match &req_path.dec_id {
+            Some(dec_id) => dec_id,
+            None => &source.dec,
+        };
+
+        let ret = rmeta.get_option_global_state_meta(target_dec_id, false).await?;
         if ret.is_none() {
-            let msg = format!("global state check rmeta but target dec rmeta not found! req_path={}", req_path);
+            let msg = format!("global state check rmeta but target dec rmeta not found! target_dec={}, req_path={}", target_dec_id, req_path);
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
         }
@@ -87,7 +94,7 @@ impl GlobalStateMetaLocalService {
         let dec_rmeta = ret.unwrap();
         let permissions = permissions.into();
         let check_req = GlobalStateAccessRequest {
-            dec: Cow::Borrowed(req_path.dec()),
+            dec: Cow::Borrowed(target_dec_id),
             path: req_path.req_path(),
             source: Cow::Borrowed(source),
             permissions,
