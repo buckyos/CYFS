@@ -620,10 +620,21 @@ impl State for SqlState {
             if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
                 Ok(0)
             } else {
-                Err(crate::meta_err!(ERROR_EXCEPTION))
+                Err(meta_err!(ERROR_EXCEPTION))
             }
         } else {
-            Ok(query_result.unwrap().get::<i64, &str>("balance"))
+            let ret = query_result.unwrap();
+            let mut balance = ret.try_get::<i64, &str>("balance");
+            if balance.is_err() {
+                balance = ret.try_get::<f64, &str>("balance").and_then(|v| {
+                    Ok(v as i64)
+                });
+            }
+
+            balance.map_err(|e|{
+                error!("get {} balance err {}", account, e);
+                meta_err!(ERROR_EXCEPTION)
+            })
         }
     }
 
