@@ -69,13 +69,14 @@ impl CryptoRequestHandlerEndpoint {
         server: &mut ::tide::Server<()>,
     ) {
         // verify_object
-        let mut route = server.at("/crypto/verify/*must");
-        route.get(CryptoRequestHandlerEndpoint::new(
+        let mut route = server.at("/crypto/verify/");
+        route.post(CryptoRequestHandlerEndpoint::new(
             zone_manager.clone(),
             protocol.to_owned(),
             CryptoRequestType::VerifyObject,
             handler.clone(),
         ));
+        let mut route = server.at("/crypto/verify");
         route.post(CryptoRequestHandlerEndpoint::new(
             zone_manager.clone(),
             protocol.to_owned(),
@@ -84,13 +85,14 @@ impl CryptoRequestHandlerEndpoint {
         ));
 
         // sign_object
-        let mut route = server.at("/crypto/sign/*must");
-        route.get(CryptoRequestHandlerEndpoint::new(
+        let mut route = server.at("/crypto/sign/");
+        route.post(CryptoRequestHandlerEndpoint::new(
             zone_manager.clone(),
             protocol.to_owned(),
             CryptoRequestType::SignObject,
             handler.clone(),
         ));
+        let mut route = server.at("/crypto/sign");
         route.post(CryptoRequestHandlerEndpoint::new(
             zone_manager.clone(),
             protocol.to_owned(),
