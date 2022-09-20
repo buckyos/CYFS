@@ -92,7 +92,7 @@ impl GlobalStatePathMetaManager {
 
     pub async fn get_global_state_meta(
         &self,
-        dec_id: &Option<ObjectId>,
+        dec_id: &ObjectId,
         auto_create: bool,
     ) -> BuckyResult<GlobalStatePathMetaSyncCollection> {
         let ret = self.get_option_global_state_meta(dec_id, auto_create).await?;

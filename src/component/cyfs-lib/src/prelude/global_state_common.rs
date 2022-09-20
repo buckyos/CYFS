@@ -1,4 +1,4 @@
-use crate::GlobalStateCategory;
+use crate::{GlobalStateCategory, RequestSourceInfo};
 use cyfs_base::*;
 
 use std::borrow::Cow;
@@ -77,6 +77,14 @@ impl RequestGlobalStatePath {
         match &self.req_path {
             Some(v) => Cow::Borrowed(v.as_str()),
             None => Cow::Borrowed("/"),
+        }
+    }
+
+     // 如果req_path没有指定target_dec_id，那么使用source_dec_id
+    pub fn dec<'a>(&'a self, source: &'a RequestSourceInfo) -> &ObjectId {
+        match &self.dec_id {
+            Some(id) => id,
+            None => &source.dec,
         }
     }
 
@@ -213,7 +221,7 @@ impl RequestGlobalStatePath {
             return false;
         }
 
-        if self.dec() != target.dec() {
+        if self.dec_id != target.dec_id {
             return false;
         }
 

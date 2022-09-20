@@ -23,18 +23,18 @@ impl NONGlobalStateMetaAclInputProcessor {
         source: &RequestSourceInfo,
         op_type: RequestOpType,
     ) -> BuckyResult<()> {
-        let global_state_common = RequestGlobalStatePath::from_str(req_path)?;
+        let req_path = RequestGlobalStatePath::from_str(req_path)?;
 
         // 同zone+同dec，或者同zone+system，那么不需要校验rmeta权限
         if source.is_current_zone() {
-            if source.check_target_dec_permission(&global_state_common.dec_id) {
+            if source.check_target_dec_permission(&req_path.dec_id) {
                 return Ok(());
             }
         }
 
         self.acl
             .global_state_meta()
-            .check_access(source, &global_state_common, op_type)
+            .check_access(source, &req_path, op_type)
             .await
     }
 }

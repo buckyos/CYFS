@@ -22,14 +22,15 @@ impl NONGlobalStateValidator {
 
     async fn validate(
         &self,
+        source: &RequestSourceInfo,
         req_path: &str,
         object_id: &ObjectId,
     ) -> BuckyResult<GlobalStateValidateResponse> {
-        let global_state_common = RequestGlobalStatePath::from_str(req_path)?;
-        let category = global_state_common.category();
-        let dec_id = global_state_common.dec().to_owned();
+        let req_path = RequestGlobalStatePath::from_str(req_path)?;
+        let category = req_path.category();
+        let dec_id = req_path.dec(source).to_owned();
 
-        let root = match global_state_common.global_state_root {
+        let root = match req_path.global_state_root {
             Some(root) => match root {
                 RequestGlobalStateRoot::GlobalRoot(id) => GlobalStateValidateRoot::GlobalRoot(id),
                 RequestGlobalStateRoot::DecRoot(id) => GlobalStateValidateRoot::DecRoot(id),
@@ -37,7 +38,7 @@ impl NONGlobalStateValidator {
             None => GlobalStateValidateRoot::None,
         };
 
-        let inner_path = global_state_common.req_path.unwrap_or("/".to_owned());
+        let inner_path = req_path.req_path.unwrap_or("/".to_owned());
 
         let validate_req = GlobalStateValidateRequest {
             dec_id,
@@ -68,7 +69,7 @@ impl NONInputProcessor for NONGlobalStateValidator {
     ) -> BuckyResult<NONGetObjectInputResponse> {
         if !req.common.source.is_current_zone() {
             if let Some(req_path) = &req.common.req_path {
-                let _resp = self.validate(req_path, &req.object_id).await?;
+                let _resp = self.validate(&req.common.source, req_path, &req.object_id).await?;
             }
         }
 
@@ -95,7 +96,7 @@ impl NONInputProcessor for NONGlobalStateValidator {
     ) -> BuckyResult<NONDeleteObjectInputResponse> {
         if !req.common.source.is_current_zone() {
             if let Some(req_path) = &req.common.req_path {
-                let _resp = self.validate(req_path, &req.object_id).await?;
+                let _resp = self.validate(&req.common.source, req_path, &req.object_id).await?;
             }
         }
 

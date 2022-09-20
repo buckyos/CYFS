@@ -79,10 +79,7 @@ impl GlobalStateMetaLocalService {
         let rmeta = self.get_meta_manager(req_path.category());
 
         // 如果req_path没有指定target_dec_id，那么使用source_dec_id
-        let target_dec_id = match &req_path.dec_id {
-            Some(dec_id) => dec_id,
-            None => &source.dec,
-        };
+        let target_dec_id = req_path.dec(source);
 
         let ret = rmeta.get_option_global_state_meta(target_dec_id, false).await?;
         if ret.is_none() {
