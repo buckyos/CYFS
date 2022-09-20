@@ -758,23 +758,24 @@ impl NamedCacheClient {
                 Ok(DeviceId::try_from(device.desc().calculate_id()).unwrap())
             },
             StandardObject::People(people) => {
-                let ood_list = people.body_expect("").content().ood_list();
-                if ood_list.len() > 0 {
-                    Ok(ood_list[0].clone())
-                } else {
-                    let people_id = people.desc().calculate_id();
-                    if let SavedMetaObject::People(people) = self.meta_client.get().unwrap().get_desc(&people_id).await? {
-                        let ood_list = people.body_expect("").content().ood_list();
-                        if ood_list.len() > 0 {
-                            Ok(ood_list[0].clone())
-                        } else {
-                            Err(BuckyError::from(BuckyErrorCode::NotFound))
-                        }
+                let people_id = people.desc().calculate_id();
+                let mut device_id = if let SavedMetaObject::People(people) = self.meta_client.get().unwrap().get_desc(&people_id).await? {
+                    let ood_list = people.body_expect("").content().ood_list();
+                    if ood_list.len() > 0 {
+                        Ok(ood_list[0].clone())
                     } else {
-                        Err(BuckyError::from(BuckyErrorCode::NotMatch))
+                        Err(BuckyError::from(BuckyErrorCode::NotFound))
+                    }
+                } else {
+                    Err(BuckyError::from(BuckyErrorCode::NotMatch))
+                };
+                if device_id.is_err() {
+                    let ood_list = people.body_expect("").content().ood_list();
+                    if ood_list.len() > 0 {
+                        device_id = Ok(ood_list[0].clone())
                     }
                 }
-
+                device_id
             },
             _ => {Err(BuckyError::from(BuckyErrorCode::NotSupport))}
         }
