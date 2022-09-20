@@ -56,20 +56,13 @@ impl NONRequestHandlerEndpoint {
         server: &mut ::tide::Server<()>,
     ) {
         // get_object/select_object
-        server.at("/non/*must").get(NONRequestHandlerEndpoint::new(
-            zone_manager.clone(),
-            protocol.to_owned(),
-            NONRequestType::Get,
-            handler.clone(),
-        ));
-        // select_object在没req_path情况下，url只有/non段
-        server.at("/non").get(NONRequestHandlerEndpoint::new(
-            zone_manager.clone(),
-            protocol.to_owned(),
-            NONRequestType::Get,
-            handler.clone(),
-        ));
         server.at("/non/").get(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            NONRequestType::Get,
+            handler.clone(),
+        ));
+        server.at("/non").get(NONRequestHandlerEndpoint::new(
             zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::Get,
@@ -77,7 +70,13 @@ impl NONRequestHandlerEndpoint {
         ));
 
         // put_object
-        server.at("/non/*must").put(NONRequestHandlerEndpoint::new(
+        server.at("/non/").put(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            NONRequestType::PutObject,
+            handler.clone(),
+        ));
+        server.at("/non").put(NONRequestHandlerEndpoint::new(
             zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::PutObject,
@@ -85,7 +84,13 @@ impl NONRequestHandlerEndpoint {
         ));
 
         // post_object
-        server.at("/non/*must").post(NONRequestHandlerEndpoint::new(
+        server.at("/non/").post(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            NONRequestType::PostObject,
+            handler.clone(),
+        ));
+        server.at("/non").post(NONRequestHandlerEndpoint::new(
             zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::PostObject,
@@ -94,7 +99,15 @@ impl NONRequestHandlerEndpoint {
 
         // delete_object
         server
-            .at("/non/*must")
+            .at("/non/")
+            .delete(NONRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                NONRequestType::DeleteObject,
+                handler.clone(),
+            ));
+        server
+            .at("/non")
             .delete(NONRequestHandlerEndpoint::new(
                 zone_manager.clone(),
                 protocol.to_owned(),
