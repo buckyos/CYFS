@@ -47,6 +47,7 @@ impl NONService {
             tracker.clone(),
             ood_resovler.clone(),
             router_handlers.clone(),
+            zone_manager.clone(),
             chunk_manager.clone(),
         );
 

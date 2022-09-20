@@ -50,7 +50,6 @@ impl NONRouter {
         acl: AclManagerRef,
 
         zone_manager: ZoneManagerRef,
-
         router_handlers: RouterHandlersManager,
 
         meta_processor: NONInputProcessorRef,

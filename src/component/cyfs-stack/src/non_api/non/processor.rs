@@ -154,6 +154,17 @@ impl NONLevelInputProcessor {
         processor.get_object(req).await
     }
 
+    pub async fn post_object(
+        &self,
+        req: NONPostObjectInputRequest,
+    ) -> BuckyResult<NONPostObjectInputResponse> {
+        debug!("will post object from non: {}", req);
+
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.post_object(req).await
+    }
+
+
     pub async fn select_object(
         &self,
         req: NONSelectObjectInputRequest,
@@ -195,13 +206,7 @@ impl NONInputProcessor for NONLevelInputProcessor {
         &self,
         req: NONPostObjectInputRequest,
     ) -> BuckyResult<NONPostObjectInputResponse> {
-        let msg = format!(
-            "post_object not support on non level! id={}",
-            req.object.object_id
-        );
-        error!("{}", msg);
-
-        Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
+        NONLevelInputProcessor::post_object(&self, req).await
     }
 
     async fn select_object(

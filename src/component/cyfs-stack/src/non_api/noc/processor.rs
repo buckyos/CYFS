@@ -1,23 +1,33 @@
 use super::super::acl::*;
 use super::super::file::NONFileServiceProcessor;
 use super::super::handler::*;
+use super::super::router::NONRouterHandler;
 use crate::ndn_api::NDCLevelInputProcessor;
-use crate::{non::*, AclManagerRef};
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
+use crate::zone::ZoneManagerRef;
+use crate::{non::*, AclManagerRef};
 use cyfs_base::*;
+use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 
-use cyfs_chunk_cache::ChunkManager;
 use std::sync::Arc;
 
 pub(crate) struct NOCLevelInputProcessor {
     noc: NamedObjectCacheRef,
+
+    // action's handler with router handler system, now only valid for post_object
+    handler: NONRouterHandler,
 }
 
 impl NOCLevelInputProcessor {
-    fn new_raw(noc: NamedObjectCacheRef) -> NONInputProcessorRef {
-        let ret = Self { noc };
+    fn new_raw(
+        zone_manager: ZoneManagerRef,
+        router_handlers: &RouterHandlersManager,
+        noc: NamedObjectCacheRef,
+    ) -> NONInputProcessorRef {
+        let handler = NONRouterHandler::new(&router_handlers, zone_manager);
+        let ret = Self { noc, handler };
         Arc::new(Box::new(ret))
     }
 
@@ -28,9 +38,10 @@ impl NOCLevelInputProcessor {
         tracker: Box<dyn TrackerCache>,
         ood_resolver: OodResolver,
         router_handlers: RouterHandlersManager,
+        zone_manager: ZoneManagerRef,
         chunk_manager: Arc<ChunkManager>,
     ) -> NONInputProcessorRef {
-        let raw_processor = Self::new_raw(noc.clone());
+        let raw_processor = Self::new_raw(zone_manager, &router_handlers, noc.clone());
 
         let ndc =
             NDCLevelInputProcessor::new_raw(chunk_manager, ndc, tracker, raw_processor.clone());
@@ -56,7 +67,10 @@ impl NOCLevelInputProcessor {
     }
 
     // 创建一个带本地权限的processor
-    pub(crate) fn new_local(acl: AclManagerRef, raw_processor: NONInputProcessorRef) -> NONInputProcessorRef {
+    pub(crate) fn new_local(
+        acl: AclManagerRef,
+        raw_processor: NONInputProcessorRef,
+    ) -> NONInputProcessorRef {
         // should process with rmeta
         let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl, raw_processor);
 
@@ -101,7 +115,10 @@ impl NOCLevelInputProcessor {
                     }
                     NamedObjectCachePutObjectResult::AlreadyExists => {
                         // 对象已经在noc里面了
-                        info!("object alreay in noc: id={}, access={:?}", noc_req.object.object_id, req.access);
+                        info!(
+                            "object alreay in noc: id={}, access={:?}",
+                            noc_req.object.object_id, req.access
+                        );
                     }
                     NamedObjectCachePutObjectResult::Merged => {
                         info!(
@@ -231,13 +248,7 @@ impl NONInputProcessor for NOCLevelInputProcessor {
         &self,
         req: NONPostObjectInputRequest,
     ) -> BuckyResult<NONPostObjectInputResponse> {
-        let msg = format!(
-            "post_object not support on noc level! id={}",
-            req.object.object_id
-        );
-        error!("{}", msg);
-
-        Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
+        self.handler.post_object(req).await
     }
 
     async fn select_object(
