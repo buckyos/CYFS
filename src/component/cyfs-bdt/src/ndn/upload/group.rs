@@ -40,15 +40,6 @@ impl UploadGroup {
             })
         }))
     }
-
-    pub fn add(&self, path: Option<String>, sub: Box<dyn UploadTask>) -> BuckyResult<()> {
-        let mut state = self.0.state.write().unwrap();
-        state.running.push(sub.clone_as_task());
-        if let Some(path) = path {
-            state.entries.insert(path, sub);
-        }
-        Ok(())
-    }
 }
 
 impl UploadTask for UploadGroup {
@@ -66,6 +57,15 @@ impl UploadTask for UploadGroup {
 
     fn priority_score(&self) -> u8 {
         self.0.priority as u8
+    }
+
+    fn add_task(&self, path: Option<String>, sub: Box<dyn UploadTask>) -> BuckyResult<()> {
+        let mut state = self.0.state.write().unwrap();
+        state.running.push(sub.clone_as_task());
+        if let Some(path) = path {
+            state.entries.insert(path, sub);
+        }
+        Ok(())
     }
 
     fn sub_task(&self, path: &str) -> Option<Box<dyn UploadTask>> {

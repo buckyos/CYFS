@@ -9,7 +9,7 @@ use async_std::{
 };
 use cyfs_base::*;
 use crate::{
-    ndn::*, 
+    ndn::{*, channel::{*, protocol::v0::*}}, 
     stack::{Stack, WeakStack}, 
 };
 use super::local_chunk_store::{LocalChunkWriter, LocalChunkListWriter};
@@ -76,7 +76,7 @@ pub fn create_download_group(
     }
 }
 
-fn create_owner(
+fn create_download_task_owner(
     stack: &Stack, 
     group: Option<String>, 
     context: Option<SingleDownloadContext>, 
@@ -130,7 +130,7 @@ pub async fn download_chunk(
 ) -> BuckyResult<Box<dyn DownloadTask>> {
     let _ = stack.ndn().chunk_manager().track_chunk(&chunk).await?;
 
-    let (owner, path) = create_owner(stack, group, context.clone())?;
+    let (owner, path) = create_download_task_owner(stack, group, context.clone())?;
     // 默认写到cache里面去
     let task = ChunkTask::new(
         stack.to_weak(), 
@@ -153,7 +153,7 @@ pub async fn download_chunk_list(
     let chunk_list = ChunkListDesc::from_chunks(chunks);
     let _ = futures::future::try_join_all(chunks.iter().map(|chunk| stack.ndn().chunk_manager().track_chunk(chunk))).await?;
 
-    let (owner, path) = create_owner(stack, group, context.clone())?;
+    let (owner, path) = create_download_task_owner(stack, group, context.clone())?;
     let task = ChunkListTask::new(
         stack.to_weak(), 
         name, 
@@ -189,7 +189,7 @@ pub async fn download_file(
 ) -> BuckyResult<Box<dyn DownloadTask>> {
     stack.ndn().chunk_manager().track_file(&file).await?;
 
-    let (owner, path) = create_owner(stack, group, context.clone())?;
+    let (owner, path) = create_download_task_owner(stack, group, context.clone())?;
 
     let chunk_list = ChunkListDesc::from_file(&file)?;
     let task = FileTask::new(
@@ -213,7 +213,7 @@ pub async fn download_file_with_ranges(
 ) -> BuckyResult<Box<dyn DownloadTask>> {
     stack.ndn().chunk_manager().track_file(&file).await?;
     
-    let (owner, path) = create_owner(stack, group, context.clone())?;
+    let (owner, path) = create_download_task_owner(stack, group, context.clone())?;
 
     let chunk_list = ChunkListDesc::from_file(&file)?;
     let task = FileTask::with_ranges(
@@ -335,8 +335,6 @@ impl ChunkWriter for ChunkRange {
     async fn err(&self, _: BuckyErrorCode) -> BuckyResult<()> {
         Ok(())
     }
-
-
 }
 
 pub struct DirTaskPathControl {
@@ -397,7 +395,7 @@ pub fn download_dir_to_path(
     context: Option<SingleDownloadContext>, 
     path: &Path
 ) -> BuckyResult<(Box<dyn DownloadTask>, DirTaskPathControl)> {
-    let (owner, name) = create_owner(stack, group, context.clone())?;
+    let (owner, name) = create_download_task_owner(stack, group, context.clone())?;
     let task = DirTask::new(
         stack.to_weak(), 
         dir, 
@@ -412,4 +410,95 @@ pub fn download_dir_to_path(
             path: path.to_owned(), 
             task: Box::new(task)
     }))
+}
+
+
+pub fn get_upload_task(
+    stack: &Stack, 
+    path: &str
+) -> BuckyResult<Box<dyn UploadTask>> {
+    stack.ndn().root_task().upload().sub_task(path)
+        .ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, "no task in path"))
+}
+
+pub fn create_upload_group(
+    stack: &Stack, 
+    path: String
+) -> BuckyResult<Box<dyn UploadTask>> {
+    if let Some(group) = stack.ndn().root_task().upload().sub_task(path.as_str()) {
+        Ok(group)
+    } else {
+        let parts = path.split("::");
+        let mut parent = stack.ndn().root_task().upload().clone_as_task();
+        
+        for part in parts {
+            if let Some(sub) = parent.sub_task(part) {
+                parent = sub;
+            } else {
+                let sub = UploadGroup::new(stack.config().ndn.channel.history_speed.clone(), None);
+                parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
+                parent = sub.clone_as_task();
+            }
+        }
+
+        Ok(parent)
+    }
+}
+
+fn create_upload_task_owner(
+    stack: &Stack, 
+    group: Option<String>, 
+) -> BuckyResult<(Box<dyn UploadTask>, Option<String>)> {
+    if let Some(group) = group {
+        if group.len() == 0 {
+            return Ok((stack.ndn().root_task().upload().clone_as_task(), None));
+        } 
+
+        let mut parts: Vec<&str> = group.split("::").collect();
+        if parts.len() == 0 {
+            return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "invalid group path"))
+        } 
+        
+        let last_part = if parts[parts.len() - 1].len() == 0 {
+            None 
+        } else {
+            Some(parts[parts.len() - 1].to_owned())
+        };
+
+        parts.remove(parts.len() - 1);
+
+        let group_path = parts.join("::"); 
+        Ok((create_upload_group(stack, group_path)?, last_part))
+    } else {
+        Ok((stack.ndn().root_task().upload().clone_as_task(), None))
+    }
+}
+
+
+pub async fn start_upload_task(
+    stack: &Stack, 
+    interest: &Interest, 
+    to: &Channel, 
+    owners: Vec<String>
+) -> BuckyResult<Box<dyn UploadTask>> {
+    let session = stack.ndn().chunk_manager().start_upload(
+        interest.session_id.clone(), 
+        interest.chunk.clone(), 
+        interest.prefer_type.clone(), 
+        to.clone()).await?;
+    let _ =  stack.ndn().root_task().upload().add_task(None, session.clone_as_task());
+    // 加入到channel的 upload sessions中
+    let _ = to.upload(session.clone());
+    let _ = session.on_interest(interest)?;
+
+    if owners.len() > 0 {
+        for owner in owners {
+            let (owner, path) = create_upload_task_owner(stack, Some(owner))?;
+            let _ = owner.add_task(path, session.clone_as_task())?;
+        }
+    } else {
+        stack.ndn().root_task().upload().add_task(None, session.clone_as_task())?;
+    }
+   
+    Ok(session.clone_as_task())
 }

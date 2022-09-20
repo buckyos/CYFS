@@ -43,6 +43,9 @@ pub trait UploadTask: Send + Sync {
     fn priority_score(&self) -> u8 {
         UploadTaskPriority::Normal as u8
     }
+    fn add_task(&self, _path: Option<String>, _sub: Box<dyn UploadTask>) -> BuckyResult<()> {
+        Err(BuckyError::new(BuckyErrorCode::NotSupport, "no implement"))
+    }
     fn sub_task(&self, _path: &str) -> Option<Box<dyn UploadTask>> {
         None
     }

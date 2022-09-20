@@ -46,16 +46,14 @@ impl DefaultNdnEventHandler {
     pub async fn start_upload_task(
         stack: &Stack, 
         interest: &Interest, 
-        to: &Channel, 
-        group: &UploadGroup, 
-        path: Option<String>, 
+        to: &Channel
     ) -> BuckyResult<UploadSession> {
         let session = stack.ndn().chunk_manager().start_upload(
             interest.session_id.clone(), 
             interest.chunk.clone(), 
             interest.prefer_type.clone(), 
             to.clone()).await?;
-        let _ = group.add(path, session.clone_as_task());
+        let _ =  stack.ndn().root_task().upload().add_task(None, session.clone_as_task());
         // 加入到channel的 upload sessions中
         let _ = to.upload(session.clone());
         let _ = session.on_interest(interest)?;
@@ -108,9 +106,8 @@ impl NdnEventHandler for DefaultNdnEventHandler {
         let _ = Self::start_upload_task(
             stack, 
             interest, 
-            &requestor, 
-            stack.ndn().root_task().upload(), 
-            None).await?;
+            &requestor
+        ).await?;
 
         Ok(())
     }

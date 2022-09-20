@@ -105,7 +105,7 @@ impl JsonCodec<RespInterestFields> for RespInterestFields {
 #[derive(Clone)]
 pub enum InterestHandlerResponse {
     Default, 
-    Upload, 
+    Upload(Vec<String>), 
     Transmit(DeviceId), 
     Resp(RespInterestFields), 
     Handled
@@ -115,7 +115,7 @@ impl InterestHandlerResponse {
     pub fn type_str(&self) -> &str {
         match self {
             Self::Default => "Default", 
-            Self::Upload => "Upload",
+            Self::Upload(_) => "Upload",
             Self::Transmit(_) => "Transmit",  
             Self::Resp(_) => "Resp", 
             Self::Handled => "Handled"
@@ -143,8 +143,11 @@ impl JsonCodec<InterestHandlerResponse> for InterestHandlerResponse {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         match self {
-            Self::Default =>  JsonCodecHelper::encode_string_field(&mut obj, "type", "Default"), 
-            Self::Upload =>  JsonCodecHelper::encode_string_field(&mut obj, "type", "Upload"), 
+            Self::Default => JsonCodecHelper::encode_string_field(&mut obj, "type", "Default"), 
+            Self::Upload(groups) => {
+                JsonCodecHelper::encode_string_field(&mut obj, "type", "Upload");
+                JsonCodecHelper::encode_str_array_field(&mut obj, "upload_groups", groups);
+            }, 
             Self::Transmit(to) => {
                 JsonCodecHelper::encode_string_field(&mut obj, "type", "Transmit");
                 JsonCodecHelper::encode_option_string_field(&mut obj, "transmit_to", Some(to));
@@ -162,7 +165,10 @@ impl JsonCodec<InterestHandlerResponse> for InterestHandlerResponse {
         let type_str: String = JsonCodecHelper::decode_string_field(obj, "type")?;
         match type_str.as_str() {
             "Default" => Ok(Self::Default), 
-            "Upload" => Ok(Self::Upload), 
+            "Upload" => {
+                let groups = JsonCodecHelper::decode_str_array_field(obj, "upload_groups")?;
+                Ok(Self::Upload(groups))
+            }, 
             "Transmit" => Ok(Self::Transmit(JsonCodecHelper::decode_option_string_field(obj, "transmit_to")?
                 .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidInput, "no transmit_to field"))?)), 
             "Resp" => Ok(Self::Resp(JsonCodecHelper::decode_option_field(obj, "resp")?
@@ -178,7 +184,7 @@ impl std::fmt::Display for InterestHandlerResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::Default => write!(f, "Default")?, 
-            Self::Upload => write!(f, "Upload")?, 
+            Self::Upload(groups) => write!(f, "Upload({:?})", groups)?, 
             Self::Transmit(to) => write!(f, "Transmit({})", to)?, 
             Self::Resp(resp) => write!(f, "Resp({})", resp)?, 
             Self::Handled => write!(f, "Handled")?

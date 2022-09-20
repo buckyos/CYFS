@@ -3,7 +3,8 @@ use cyfs_bdt::{
     Stack, 
     NdnEventHandler, 
     DefaultNdnEventHandler, 
-    ndn::channel::{Channel, DownloadSession, protocol::v0::*}
+    ndn::channel::{Channel, DownloadSession, protocol::v0::*}, 
+    download
 };
 use cyfs_util::acl::*;
 use cyfs_lib::*;
@@ -139,8 +140,9 @@ impl NdnEventHandler for BdtNdnEventHandler {
                 InterestHandlerResponse::Default => {
                     self.call_default_with_acl(stack, interest, from).await
                 }, 
-                InterestHandlerResponse::Upload => {
-                    self.default.on_newly_interest(stack, interest, from).await
+                InterestHandlerResponse::Upload(groups) => {
+                    let _ = download::start_upload_task(stack, interest, from, groups).await?;
+                    Ok(())
                 },  
                 InterestHandlerResponse::Transmit(to) => {
                     let mut interest = interest.clone();
