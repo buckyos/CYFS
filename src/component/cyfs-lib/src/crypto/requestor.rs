@@ -56,9 +56,7 @@ impl CryptoRequestor {
             }
         }
 
-        if let Some(req_path) = &com_req.req_path {
-            http_req.insert_header(cyfs_base::CYFS_REQ_PATH, req_path.clone());
-        }
+        RequestorHelper::encode_opt_header_with_encoding(http_req, cyfs_base::CYFS_REQ_PATH, com_req.req_path.as_deref());
 
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());

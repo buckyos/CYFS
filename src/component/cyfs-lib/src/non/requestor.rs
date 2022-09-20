@@ -151,9 +151,8 @@ impl NONRequestor {
             }
         }
 
-        if let Some(req_path) = &com_req.req_path {
-            http_req.insert_header(cyfs_base::CYFS_REQ_PATH, req_path);
-        }
+        RequestorHelper::encode_opt_header_with_encoding(http_req, cyfs_base::CYFS_REQ_PATH, com_req.req_path.as_deref());
+        
         http_req.insert_header(cyfs_base::CYFS_NON_ACTION, action.to_string());
 
         http_req.insert_header(cyfs_base::CYFS_API_LEVEL, com_req.level.to_string());

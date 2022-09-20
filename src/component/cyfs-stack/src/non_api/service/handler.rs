@@ -33,7 +33,7 @@ impl NONRequestHandler {
     ) -> BuckyResult<NONInputRequestCommon> {
         // req_path
         let req_path =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_REQ_PATH)?;
+            RequestorHelper::decode_optional_header_with_utf8_decoding(&req.request, cyfs_base::CYFS_REQ_PATH)?;
 
         // 尝试提取flags
         let flags: Option<u32> =
