@@ -39,7 +39,7 @@ impl OpEnvPathAccess {
             if self.access.test_op(op_type) {
                 Ok(())
             } else {
-                let msg = format!("op is not allowed within path limiter! path={}, limiter={}, access={}, op={:?}", 
+                let msg = format!("op is not allowed within path limiter! path={}, limiter={}, access={}, op='{:?}'", 
                             full_path, self.limit_path, self.access.as_str(), op_type);
                 error!("{}", msg);
                 Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
