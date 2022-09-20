@@ -116,6 +116,7 @@ impl NonHelper {
             .put_object(NONPutObjectRequest {
                 common: NONOutputRequestCommon::new(NONAPILevel::Router),
                 object: NONObjectInfo::new(obj.desc().calculate_id(), obj.to_vec()?, None),
+                access: None,
             })
             .await
     }
