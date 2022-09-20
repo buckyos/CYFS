@@ -299,7 +299,7 @@ impl NONRouter {
                 error!(
                     "router put_object to noc but failed! object={}, {}",
                     object_id,
-                    put_ret.as_ref().unwrap()
+                    put_ret.as_ref().unwrap_err()
                 );
             }
 
@@ -781,7 +781,7 @@ impl NONRouter {
                 error!(
                     "router delete_object from noc but failed! object={}, {}",
                     object_id,
-                    delete_ret.as_ref().unwrap()
+                    delete_ret.as_ref().unwrap_err()
                 );
             }
 
