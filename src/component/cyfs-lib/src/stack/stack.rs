@@ -64,6 +64,8 @@ pub(crate) struct ObjectServices {
 
 #[derive(Clone)]
 pub struct SharedCyfsStack {
+    param: SharedCyfsStackParam,
+
     // 所属的dec_id
     dec_id: SharedObjectStackDecID,
 
@@ -132,7 +134,7 @@ impl CyfsStackRequestorConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SharedCyfsStackParam {
     pub dec_id: Option<ObjectId>,
 
@@ -262,17 +264,6 @@ impl SharedCyfsStack {
         Self::open(SharedCyfsStackParam::default_runtime(dec_id)).await
     }
 
-    pub fn fork_with_new_dec(&self, dec_id: Option<ObjectId>) -> Self {
-        let mut this = self.clone();
-
-        let slot = Arc::new(OnceCell::new());
-        if let Some(id) = dec_id {
-            slot.set(id).unwrap();
-        }
-        this.dec_id = slot;
-        this
-    }
-
     fn select_requestor(
         param: &SharedCyfsStackParam,
         requestor_type: &CyfsStackRequestorType,
@@ -298,8 +289,8 @@ impl SharedCyfsStack {
         info!("will init shared object stack: {:?}", param);
 
         let dec_id = Arc::new(OnceCell::new());
-        if let Some(id) = param.dec_id {
-            dec_id.set(id).unwrap();
+        if let Some(id) = &param.dec_id {
+            dec_id.set(id.clone()).unwrap();
         }
 
         // trans service
@@ -378,7 +369,7 @@ impl SharedCyfsStack {
         let router_events = RouterEventManager::new(
             Some(dec_id.clone()),
             &param.service_url.to_string(),
-            param.event_type,
+            param.event_type.clone(),
         )
         .await?;
 
@@ -400,6 +391,7 @@ impl SharedCyfsStack {
         });
 
         let ret = Self {
+            param,
             dec_id,
 
             services,
@@ -413,6 +405,17 @@ impl SharedCyfsStack {
         };
 
         Ok(ret)
+    }
+
+    pub fn param(&self) -> &SharedCyfsStackParam {
+        &self.param
+    }
+    
+    pub async fn fork_with_new_dec(&self, dec_id: Option<ObjectId>) -> BuckyResult<Self> {
+        let mut param = self.param.clone();
+        param.dec_id = dec_id;
+
+        Self::open(param).await
     }
 
     // 等待协议栈上线
@@ -527,6 +530,7 @@ impl SharedCyfsStack {
         GlobalStateStub::new(self.services.root_state.clone_processor(), target, target_dec_id)
     }
 
+    // root_state meta
     pub fn root_state_meta(&self) -> &GlobalStateMetaRequestor {
         &self.services.root_state_meta
     }
