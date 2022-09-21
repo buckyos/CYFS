@@ -3,7 +3,6 @@ pub mod channel;
 pub mod protocol;
 mod download;
 mod upload;
-mod provider;
 mod manager;
 
 pub use download::*;

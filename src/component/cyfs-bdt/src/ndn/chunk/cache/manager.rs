@@ -3,9 +3,6 @@ use std::{
     collections::BTreeMap
 };
 use cyfs_base::*;
-use super::super::super::{
-    channel::*
-};
 
 struct CacheImpl {
     

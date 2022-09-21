@@ -1,14 +1,31 @@
 use std::{
     collections::LinkedList, 
-    ops::Range
+    ops::Range, 
+    sync::Arc
 };
 use cyfs_base::*;
 use crate::{
     types::*
 };
 use super::super::super::{
+    channel::{protocol::v0::*}, 
     types::*
 };
+
+#[derive(Clone, Eq, PartialEq)]
+pub enum ChunkDecoderState2 {
+    Decoding(u32), 
+    Ready, 
+}
+
+pub trait ChunkDecoder2: Send + Sync {
+    fn clone_as_decoder(&self) -> Box<dyn ChunkDecoder2>;
+    fn chunk(&self) -> &ChunkId;
+    fn desc(&self) -> &ChunkEncodeDesc;
+    fn require_index(&self) -> Option<(Option<u32>, Option<Vec<Range<u32>>>)>;
+    fn push_piece_data(&self, piece: &PieceData) -> (ChunkDecoderState2, ChunkDecoderState2);
+    fn chunk_content(&self) -> Option<Arc<Vec<u8>>>;
+}
 
 pub trait ChunkEncoder2: Send + Sync {
     fn clone_as_encoder(&self) -> Box<dyn ChunkEncoder2>;

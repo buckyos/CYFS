@@ -1,158 +1,17 @@
-use log::*;
 use std::{
+    sync::{Arc, RwLock}, 
     ops::Range, 
-    collections::LinkedList, 
-    sync::{RwLock}, 
-};
-use async_std::{
-    sync::Arc, 
-    task, 
+    collections::{LinkedList}
 };
 use cyfs_base::*;
-use crate::{
+use super::super::super::super::{
     types::*, 
-};
-use super::super::super::{
-    channel::protocol::v0::*, 
+    channel::{protocol::v0::*}
 };
 use super::super::{
-    storage::ChunkReader
-};
-use super::{
     encode::*
 };
 
-//TODO: Range可以优化内存；不需要保留所有chunk内容在内存;
-enum EncoderStateImpl {
-    Pending(StateWaiter),
-    Ready(Arc<Vec<u8>>), 
-    Err(BuckyErrorCode)
-}
-
-struct EncoderImpl {
-    chunk: ChunkId,
-    // range 大小
-    range_size: u16, 
-    //最后一个index 
-    end_index: u32,  
-    state: RwLock<EncoderStateImpl>
-}
-
-#[derive(Clone)]
-pub struct RangeEncoder(Arc<EncoderImpl>);
-
-impl std::fmt::Display for RangeEncoder {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "RangeEncoder{{chunk:{},range_size:{}}}", self.0.chunk, self.0.range_size)
-    }
-}
-
-impl RangeEncoder {
-    pub fn from_reader(
-        reader: Arc<Box<dyn ChunkReader>>, 
-        chunk: &ChunkId) -> Self {
-        let range_size = PieceData::max_payload();
-        let end_index = (chunk.len() + range_size - 1) / range_size - 1;
-
-        let arc_self = Self(Arc::new(EncoderImpl {
-            chunk: chunk.clone(), 
-            end_index: end_index as u32, 
-            range_size: range_size as u16, 
-            state: RwLock::new(EncoderStateImpl::Pending(StateWaiter::new())) 
-        }));
-        trace!("{} begin load from store", arc_self);
-        {
-            let arc_self = arc_self.clone();
-            let chunk = chunk.clone();
-            task::spawn(async move {
-                let ret = reader.get(&chunk).await;
-                let to_wake = {
-                    let state =  &mut *arc_self.0.state.write().unwrap();
-                    let to_wake = match state {
-                        EncoderStateImpl::Pending(state_waiter) => {
-                            let to_wake = state_waiter.transfer();
-                            to_wake
-                        }, 
-                        _ => unreachable!()
-                    };
-                    match ret {
-                        Ok(content) => {
-                            info!("{} finish read", arc_self);
-                            *state = EncoderStateImpl::Ready(content);
-                        }, 
-                        Err(err) => {
-                            error!("{} load chunk failed for {}", arc_self, err);
-                            *state = EncoderStateImpl::Err(err.code());
-                        }
-                    }
-                    to_wake
-                };
-                to_wake.wake();
-            });
-        }
-        arc_self
-    } 
-
-    pub fn end_index(&self) -> u32 {
-        self.0.end_index
-    }
-
-    pub fn range_size(&self) -> u16 {
-        self.0.range_size
-    }
-}
-
-#[async_trait::async_trait]
-impl ChunkEncoder for RangeEncoder { 
-    fn chunk(&self) -> &ChunkId {
-        &self.0.chunk
-    }
-
-    fn state(&self) -> ChunkEncoderState {
-        match &*self.0.state.read().unwrap() {
-            EncoderStateImpl::Ready(_) => ChunkEncoderState::Ready,
-            EncoderStateImpl::Pending(_) => ChunkEncoderState::Pending, 
-            EncoderStateImpl::Err(err) => ChunkEncoderState::Err(*err)
-        }
-    }
-
-    async fn wait_ready(&self) -> ChunkEncoderState {
-        let (state, waker) = match &mut *self.0.state.write().unwrap() {
-            EncoderStateImpl::Ready(_) => (ChunkEncoderState::Ready, None),
-            EncoderStateImpl::Pending(state_waiter) =>  (ChunkEncoderState::Pending, Some(state_waiter.new_waiter())), 
-            EncoderStateImpl::Err(err) => (ChunkEncoderState::Err(*err), None),
-        };
-        if let Some(waker) = waker {
-            StateWaiter::wait(waker, || self.state()).await
-        } else {
-            state
-        }
-    }
-
-    fn piece_of(&self, index: u32, buf: &mut [u8]) -> BuckyResult<usize> {
-        match &*self.0.state.read().unwrap() {
-            EncoderStateImpl::Err(err) => Err(BuckyError::new(*err, "encoder in error")), 
-            EncoderStateImpl::Pending(_) => Err(BuckyError::new(BuckyErrorCode::Pending, "encoder pending on loading")), 
-            EncoderStateImpl::Ready(cache) => {
-                if index > self.end_index() {
-                    Err(BuckyError::new(BuckyErrorCode::OutOfLimit, "invalid index"))
-                } else if index == self.end_index() {
-                    let index = index as usize;
-                    let range_size = self.0.range_size as usize;
-                    let pre_len = index * range_size;
-                    let range_size = self.chunk().len() - pre_len;
-                    buf[..range_size].copy_from_slice(&cache[pre_len..self.chunk().len()]);
-                    Ok(range_size)
-                } else {
-                    let index = index as usize;
-                    let range_size = self.0.range_size as usize;
-                    buf[..range_size].copy_from_slice(&cache[index * range_size..(index + 1) * range_size]);
-                    Ok(range_size)
-                }
-            }
-        }   
-    }
-}
 
 struct DecodingState {
     pushed: u32, 
@@ -281,14 +140,16 @@ fn test_push_index() {
     assert!(lost.start == 7 && lost.end == 8);
 }   
 
+
 enum DecoderStateImpl {
     Decoding(DecodingState), 
     Ready(Arc<Vec<u8>>)   
 }
 
-//TODO: Range可以优化内存；不需要保留所有chunk内容在内存;
+
 struct DecoderImpl {
     chunk: ChunkId, 
+    desc: ChunkEncodeDesc, 
     // range 大小
     range_size: u16, 
     //最后一个index 
@@ -297,20 +158,22 @@ struct DecoderImpl {
 }
 
 #[derive(Clone)]
-pub struct RangeDecoder(Arc<DecoderImpl>);
+pub struct StreamDecoder(Arc<DecoderImpl>);
 
-impl std::fmt::Display for RangeDecoder {
+
+impl std::fmt::Display for StreamDecoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "RangeDecoder{{chunk:{}}}", self.0.chunk)
+        write!(f, "StreamDecoder{{chunk:{}}}", self.chunk())
     }
 }
 
-impl RangeDecoder {
-    pub fn new(chunk: &ChunkId) -> Self {
+impl StreamDecoder {
+    pub fn new(chunk: &ChunkId, desc: &ChunkEncodeDesc) -> Self {
         let range_size = PieceData::max_payload();
         let end_index = (chunk.len() + range_size - 1) / range_size - 1;
         Self(Arc::new(DecoderImpl {
             chunk: chunk.clone(), 
+            desc: desc.clone(), 
             end_index: end_index as u32, 
             range_size: range_size as u16, 
             state: RwLock::new(DecoderStateImpl::Decoding(DecodingState {
@@ -330,7 +193,30 @@ impl RangeDecoder {
         self.0.end_index
     }
 
-    pub fn require_index(&self) -> Option<(Option<u32>, Option<Vec<Range<u32>>>)> {
+}
+
+impl ChunkDecoder2 for StreamDecoder {
+    fn clone_as_decoder(&self) -> Box<dyn ChunkDecoder2> {
+        Box::new(self.clone())
+    }
+
+    fn chunk(&self) -> &ChunkId {
+        &self.0.chunk
+    }
+
+    fn desc(&self) -> &ChunkEncodeDesc {
+        &self.0.desc
+    }
+
+    fn chunk_content(&self) -> Option<Arc<Vec<u8>>> {
+        let state = &*self.0.state.read().unwrap();
+        match state {
+            DecoderStateImpl::Decoding(_) => None,
+            DecoderStateImpl::Ready(cache) => Some(cache.clone()) 
+        }
+    }
+
+    fn require_index(&self) -> Option<(Option<u32>, Option<Vec<Range<u32>>>)> {
         let state = &*self.0.state.read().unwrap();
         match state {
             DecoderStateImpl::Decoding(decoding) => {
@@ -345,31 +231,8 @@ impl RangeDecoder {
             DecoderStateImpl::Ready(_) => None
         }
     }
-}
 
-
-impl ChunkDecoder for RangeDecoder {
-    fn chunk(&self) -> &ChunkId {
-        &self.0.chunk
-    }
-
-    fn chunk_content(&self) -> Option<Arc<Vec<u8>>> {
-        let state = &*self.0.state.read().unwrap();
-        match state {
-            DecoderStateImpl::Decoding(_) => None, 
-            DecoderStateImpl::Ready(chunk) => Some(chunk.clone())
-        }
-    }
-
-    fn state(&self) -> ChunkDecoderState {
-        let state = &*self.0.state.read().unwrap();
-        match state {
-            DecoderStateImpl::Decoding(decoding) => ChunkDecoderState::Decoding(decoding.pushed), 
-            DecoderStateImpl::Ready(_) => ChunkDecoderState::Ready
-        } 
-    }
-
-    fn push_piece_data(&self, piece: &PieceData) -> (ChunkDecoderState, ChunkDecoderState) {
+    fn push_piece_data(&self, piece: &PieceData) -> (ChunkDecoderState2, ChunkDecoderState2) {
         trace!("{} push piece desc {:?}", self, piece.desc);
         let index = piece.desc.range_index(self.range_size()).unwrap();
         let state = &mut *self.0.state.write().unwrap();
@@ -377,7 +240,7 @@ impl ChunkDecoder for RangeDecoder {
             DecoderStateImpl::Decoding(decoding) => {
                 let pushed = decoding.pushed;
                 if index > self.end_index() {
-                    (ChunkDecoderState::Decoding(pushed), ChunkDecoderState::Decoding(pushed))
+                    (ChunkDecoderState2::Decoding(pushed), ChunkDecoderState2::Decoding(pushed))
                 } else {
                     if decoding.push_index(index) {
                         let index = index as usize;
@@ -392,19 +255,21 @@ impl ChunkDecoder for RangeDecoder {
                             let mut content = vec![];
                             std::mem::swap(&mut content, &mut decoding.cache);
                             *state = DecoderStateImpl::Ready(Arc::new(content));
-                            (ChunkDecoderState::Decoding(pushed), ChunkDecoderState::Ready)
+                            (ChunkDecoderState2::Decoding(pushed), ChunkDecoderState2::Ready)
                         } else {
-                            (ChunkDecoderState::Decoding(pushed), ChunkDecoderState::Decoding(decoding.pushed))
+                            (ChunkDecoderState2::Decoding(pushed), ChunkDecoderState2::Decoding(decoding.pushed))
                         }
                     } else {
-                        (ChunkDecoderState::Decoding(pushed), ChunkDecoderState::Decoding(pushed))
+                        (ChunkDecoderState2::Decoding(pushed), ChunkDecoderState2::Decoding(pushed))
                     }
                 }
             }, 
             DecoderStateImpl::Ready(_) => {
                 trace!("{} ingnore piece seq {} for decoder is ready", self, index);
-                (ChunkDecoderState::Ready, ChunkDecoderState::Ready)
+                (ChunkDecoderState2::Ready, ChunkDecoderState2::Ready)
             }
         }
     }
+
 }
+
