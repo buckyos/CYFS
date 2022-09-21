@@ -208,7 +208,7 @@ impl DeviceZoneInfo {
 }
 
 // The identy info of a request
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RequestSourceInfo {
     pub protocol: RequestProtocol,
     pub zone: DeviceZoneInfo,
@@ -216,6 +216,12 @@ pub struct RequestSourceInfo {
 
     // is passed the acl verified
     pub verified: bool,
+}
+
+impl std::fmt::Debug for RequestSourceInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self, f)
+    }
 }
 
 impl std::fmt::Display for RequestSourceInfo {
@@ -487,17 +493,9 @@ impl<'de> Deserialize<'de> for DeviceZoneCategory {
 #[cfg(test)]
 mod test {
     use super::*;
-    use cyfs_core::*;
-
-    fn new_dec(name: &str) -> ObjectId {
-        let owner_id = PeopleId::default();
-        let dec_id = DecApp::generate_id(owner_id.into(), name);
-
-        dec_id
-    }
 
     fn other_dec_read() {
-        let dec = new_dec("test");
+        let dec = ObjectId::default();
         let source = RequestSourceInfo {
             zone: DeviceZoneInfo {
                 device: None,
@@ -509,8 +507,8 @@ mod test {
             verified: false,
         };
 
-        let system = get_system_dec_app();
-        let mask = source.mask(system, RequestOpType::Read);
+        let system = ObjectId::default();
+        let mask = source.mask(&system, RequestOpType::Read);
 
         let default = AccessString::default().value();
         assert_ne!(default & mask, mask)

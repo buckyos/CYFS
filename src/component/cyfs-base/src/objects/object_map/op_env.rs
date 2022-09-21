@@ -107,6 +107,12 @@ mod test_sid {
         let sid = OpEnvSessionIDHelper::set_type(sid, ObjectMapOpEnvType::Path);
         let t = OpEnvSessionIDHelper::get_type(sid).unwrap();
         assert_eq!(t, ObjectMapOpEnvType::Path);
+
+        let sid = AtomicU64::new(u64::MAX);
+        let ret = sid.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(ret, u64::MAX);
+        let ret = sid.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(ret, 0);
     }
 }
 
@@ -431,12 +437,18 @@ impl ObjectMapRootManager {
         noc: ObjectMapNOCCacheRef,
         root: ObjectMapRootHolder,
     ) -> Self {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let sid1 = rng.gen::<u32>();
+        let sid2 = rng.gen::<u16>();
+        let begin_sid = sid1 as u64 * sid2 as u64;
+
         let lock = ObjectMapPathLock::new();
         let cache = ObjectMapRootMemoryCache::new_ref(noc, 60 * 5, 1024);
         Self {
             owner,
             dec_id,
-            next_sid: AtomicU64::new(1),
+            next_sid: AtomicU64::new(begin_sid),
             root,
             lock,
             cache,
