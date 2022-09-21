@@ -11,6 +11,7 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::super::{
+    types::*, 
     channel::*,
     download::*, 
 };
@@ -20,9 +21,6 @@ use super::{
     upload::*
 };
 
-use super::super::super::{
-    chunk::*, 
-};
 
 
 //TODO: 可能包含其他的内存状态，比如本地不存在但是但是left right有之类
@@ -31,8 +29,6 @@ struct StateImpl {
     // 在任何状态下都可以由uploader 的容器
     uploader: Option<ChunkUploader>, 
     downloader: Option<ChunkDownloader>, 
-    raptor_encoder: Option<RaptorEncoder>,
-    raptor_decoder: Option<RaptorDecoder>,
     chunk_cache: Option<Arc<Vec<u8>>>, 
 }
 
@@ -105,31 +101,7 @@ impl std::fmt::Display for ChunkView {
 }
 
 impl ChunkView {
-    pub fn raptor_decoder(&self) -> RaptorDecoder {
-        let mut state = self.0.state.write().unwrap();
-        match &state.raptor_decoder {
-            Some(decoder) => decoder.clone(), 
-            None => {
-                let decoder = RaptorDecoder::new(self.chunk());
-                state.raptor_decoder = Some(decoder.clone());
-                decoder
-            }
-        }
-    }
-
-    pub fn raptor_encoder(&self) -> RaptorEncoder {
-        let reader = self.reader().unwrap();
-        let mut state = self.0.state.write().unwrap();
-        match &state.raptor_encoder {
-            Some(encoder) => encoder.clone(), 
-            None => {
-                let encoder = RaptorEncoder::from_reader(reader, self.chunk());
-                state.raptor_encoder  = Some(encoder.clone());
-                encoder
-            }
-        }
-    }
-
+    
     pub fn new(
         stack: WeakStack, 
         chunk: ChunkId,  
@@ -143,8 +115,6 @@ impl ChunkView {
                     state: *init_state, 
                     uploader: None, 
                     downloader: None, 
-                    raptor_encoder: None,
-                    raptor_decoder: None, 
                     chunk_cache: None,
                 }),
             }))
@@ -260,7 +230,7 @@ impl ChunkView {
     pub fn start_upload(
         &self, 
         session_id: TempSeq, 
-        piece_type: PieceSessionType, 
+        piece_type: ChunkEncodeDesc, 
         to: Channel
     ) -> BuckyResult<UploadSession> {
         let uploader = {

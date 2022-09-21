@@ -13,7 +13,7 @@ use crate::{
 };
 use super::super::{
     chunk::*, 
-    channel::*
+    types::*
 };
 use super::{
     common::*, 

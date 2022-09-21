@@ -13,7 +13,10 @@ use crate::{
     stack::{WeakStack, Stack},
 };
 use super::super::{
-    channel::{PieceSessionType, Channel, UploadSession}, 
+    types::*
+};
+use super::super::{
+    channel::{Channel, UploadSession}, 
     download::*
 };
 use super::{
@@ -208,7 +211,7 @@ impl ChunkManager {
         &self, 
         session_id: TempSeq, 
         chunk: ChunkId, 
-        piece_type: PieceSessionType, 
+        piece_type: ChunkEncodeDesc, 
         to: Channel, 
     ) -> BuckyResult<UploadSession> {
         info!("{} try start upload type: {:?} to: {}", self, piece_type, to.remote());
