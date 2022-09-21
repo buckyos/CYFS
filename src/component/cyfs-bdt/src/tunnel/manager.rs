@@ -182,10 +182,10 @@ impl OnTcpInterface for TunnelManager {
 
 impl PingClientCalledEvent<PackageBox> for TunnelManager {
     fn on_called(&self, called: &SnCalled, caller_box: PackageBox) -> Result<(), BuckyError> {
-        debug!("{} on_called from remote {} sequence {:?}", self, called.from_peer_id, called.seq);
+        debug!("{} on_called from remote {} sequence {:?}", self, called.peer_info.desc().device_id(), called.seq);
         let first_package = &caller_box.packages_no_exchange()[0];
         if first_package.cmd_code() != PackageCmdCode::SynTunnel {
-            debug!("{} ignore udp package box from remote:{}, for first package is {:?}", self, called.from_peer_id, first_package.cmd_code());
+            debug!("{} ignore udp package box from remote:{}, for first package is {:?}", self, called.peer_info.desc().device_id(), first_package.cmd_code());
             return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "tunnel's first package shoud be SynTunnel"));
         }
         if let Some(tunnel) = self.container_of(caller_box.remote()) {

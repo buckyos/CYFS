@@ -158,7 +158,7 @@ impl CommandTunnel {
             err
         };
         let mut package_box = PackageBox::encrypt_box(
-            syn_proxy.from_peer_id.clone(), 
+            syn_proxy.from_peer_info.desc().device_id(), 
             enc_key.clone(), mix_key.clone());
         package_box.append(vec![DynamicPackage::from(ack_proxy)]);
         

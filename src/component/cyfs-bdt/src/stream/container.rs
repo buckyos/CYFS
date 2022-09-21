@@ -809,7 +809,6 @@ impl StreamContainerImpl {
                 result: 0u8,
                 to_vport: self.remote_port,
                 from_session_id: self.local_id,
-                from_device_id: local_device.desc().device_id(),
                 from_device_desc: local_device,
                 to_device_id: self.tunnel().remote().clone(),
                 reverse_endpoint: None,

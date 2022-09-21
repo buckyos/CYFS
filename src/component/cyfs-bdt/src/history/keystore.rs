@@ -564,92 +564,92 @@ struct HashInfo {
 }
 
 
-#[test]
-fn add_key() {
-    use std::time::Duration;
-    // 单一peer的key状态管理测试程序
-    let private_key = PrivateKey::generate_rsa(1024).unwrap();
-    let device = Device::new(
-        None,
-        UniqueId::default(),
-        vec![],
-        vec![],
-        vec![],
-        private_key.public(),
-        Area::default(), 
-        DeviceCategory::PC
-    ).build();
-    let sim_device_id = device.desc().device_id();
+// #[test]
+// fn add_key() {
+//     use std::time::Duration;
+//     // 单一peer的key状态管理测试程序
+//     let private_key = PrivateKey::generate_rsa(1024).unwrap();
+//     let device = Device::new(
+//         None,
+//         UniqueId::default(),
+//         vec![],
+//         vec![],
+//         vec![],
+//         private_key.public(),
+//         Area::default(), 
+//         DeviceCategory::PC
+//     ).build();
+//     let sim_device_id = device.desc().device_id();
 
-    let signer = RsaCPUObjectSigner::new(
-        private_key.public(),
-        private_key.clone(),
-    );
+//     let signer = RsaCPUObjectSigner::new(
+//         private_key.public(),
+//         private_key.clone(),
+//     );
 
-    let key_store = Keystore::new(
-        private_key.clone(), 
-        device.desc().clone(), 
-        signer, 
-        Config {
-            active_time: Duration::from_secs(1),
-            capacity: 5,
-        });
+//     let key_store = Keystore::new(
+//         private_key.clone(), 
+//         device.desc().clone(), 
+//         signer, 
+//         Config {
+//             active_time: Duration::from_secs(1),
+//             capacity: 5,
+//         });
     
-    let key_for_id0_first = key_store.create_key(device.desc(), true);
-    assert!(key_for_id0_first.encrypted.is_unconfirmed());
-    assert_eq!(key_for_id0_first.peerid, sim_device_id);
+//     let key_for_id0_first = key_store.create_key(device.desc(), true);
+//     assert!(key_for_id0_first.encrypted.is_unconfirmed());
+//     assert_eq!(key_for_id0_first.peerid, sim_device_id);
     
-    fn found_key_is_same(left: &FoundKey, right: &FoundKey) -> bool {
-        left.enc_key == right.enc_key &&
-            left.peerid == right.peerid &&
-            left.hash == right.hash // <TODO>启用加盐hash后需要修改
-    }
-    assert!(found_key_is_same(&key_store.get_key_by_remote(&sim_device_id, true).unwrap(), &key_for_id0_first));
-    assert!(found_key_is_same(&key_store.get_key_by_mix_hash(&key_for_id0_first.hash, true, false).unwrap(), &key_for_id0_first));
+//     fn found_key_is_same(left: &FoundKey, right: &FoundKey) -> bool {
+//         left.enc_key == right.enc_key &&
+//             left.peerid == right.peerid &&
+//             left.hash == right.hash // <TODO>启用加盐hash后需要修改
+//     }
+//     assert!(found_key_is_same(&key_store.get_key_by_remote(&sim_device_id, true).unwrap(), &key_for_id0_first));
+//     assert!(found_key_is_same(&key_store.get_key_by_mix_hash(&key_for_id0_first.hash, true, false).unwrap(), &key_for_id0_first));
     
-    let key_for_id0_twice = key_store.create_key(device.desc(), true); // 不重复构造key
-    assert!(key_for_id0_twice.encrypted.is_unconfirmed());
-    assert!(found_key_is_same(&key_for_id0_twice, &key_for_id0_first));
+//     let key_for_id0_twice = key_store.create_key(device.desc(), true); // 不重复构造key
+//     assert!(key_for_id0_twice.encrypted.is_unconfirmed());
+//     assert!(found_key_is_same(&key_for_id0_twice, &key_for_id0_first));
     
-    let found_by_hash = key_store.get_key_by_mix_hash(&key_for_id0_first.hash, true, true).unwrap(); // confirm: false->true
-    assert!(!found_by_hash.encrypted.is_unconfirmed());
-    assert!(found_key_is_same(&found_by_hash, &key_for_id0_first));
+//     let found_by_hash = key_store.get_key_by_mix_hash(&key_for_id0_first.hash, true, true).unwrap(); // confirm: false->true
+//     assert!(!found_by_hash.encrypted.is_unconfirmed());
+//     assert!(found_key_is_same(&found_by_hash, &key_for_id0_first));
     
-    let found_by_hash = key_store.get_key_by_mix_hash(&key_for_id0_first.hash, true, false).unwrap(); // confirm不能从true->false
-    assert!(!found_by_hash.encrypted.is_unconfirmed());
-    assert!(found_key_is_same(&found_by_hash, &key_for_id0_first));
+//     let found_by_hash = key_store.get_key_by_mix_hash(&key_for_id0_first.hash, true, false).unwrap(); // confirm不能从true->false
+//     assert!(!found_by_hash.encrypted.is_unconfirmed());
+//     assert!(found_key_is_same(&found_by_hash, &key_for_id0_first));
     
-    let (key_random, key_encrypted) = private_key.public().gen_aeskey_and_encrypt().unwrap();
-    let mix_key = AesKey::random();
-    let found_key_for_random = FoundKey {
-        enc_key: key_random.clone(),
-        hash: key_random.mix_hash(None),
-        peerid: sim_device_id.clone(),
-        encrypted: EncryptedKey::Unconfirmed(key_encrypted),
-        mix_key
-    };
-    key_store.add_key(&key_random, &sim_device_id);
-    let found_after_add = key_store.get_key_by_remote(&sim_device_id, true).unwrap();
-    assert!(found_key_is_same(&found_after_add, &key_for_id0_first) || found_key_is_same(&found_after_add, &found_key_for_random)); // 没有明显的时间先后，不能确定返回哪个
-    let found_by_hash_after_add = key_store.get_key_by_mix_hash(&found_key_for_random.hash, true, false).unwrap();
-    assert!(!found_by_hash_after_add.encrypted.is_unconfirmed());
-    assert!(found_key_is_same(&found_by_hash_after_add, &found_key_for_random));
+//     let (key_random, key_encrypted) = private_key.public().gen_aeskey_and_encrypt().unwrap();
+//     let mix_key = AesKey::random();
+//     let found_key_for_random = FoundKey {
+//         enc_key: key_random.clone(),
+//         hash: key_random.mix_hash(None),
+//         peerid: sim_device_id.clone(),
+//         encrypted: EncryptedKey::Unconfirmed(key_encrypted),
+//         mix_key
+//     };
+//     key_store.add_key(&key_random, &sim_device_id);
+//     let found_after_add = key_store.get_key_by_remote(&sim_device_id, true).unwrap();
+//     assert!(found_key_is_same(&found_after_add, &key_for_id0_first) || found_key_is_same(&found_after_add, &found_key_for_random)); // 没有明显的时间先后，不能确定返回哪个
+//     let found_by_hash_after_add = key_store.get_key_by_mix_hash(&found_key_for_random.hash, true, false).unwrap();
+//     assert!(!found_by_hash_after_add.encrypted.is_unconfirmed());
+//     assert!(found_key_is_same(&found_by_hash_after_add, &found_key_for_random));
     
-    key_store.add_key(&key_random, &sim_device_id); // confirm: false->true
-    let found_by_hash_after_add_with_confirm = key_store.get_key_by_mix_hash(&found_key_for_random.hash, true, false).unwrap();
-    assert!(!found_by_hash_after_add_with_confirm.encrypted.is_unconfirmed());
-    assert!(found_key_is_same(&found_by_hash_after_add_with_confirm, &found_key_for_random));
+//     key_store.add_key(&key_random, &sim_device_id); // confirm: false->true
+//     let found_by_hash_after_add_with_confirm = key_store.get_key_by_mix_hash(&found_key_for_random.hash, true, false).unwrap();
+//     assert!(!found_by_hash_after_add_with_confirm.encrypted.is_unconfirmed());
+//     assert!(found_key_is_same(&found_by_hash_after_add_with_confirm, &found_key_for_random));
     
-    let (key_random2, key_encrypted2) = private_key.public().gen_aeskey_and_encrypt().unwrap();
-    let found_key_for_random2 = FoundKey {
-        enc_key: key_random2.clone(),
-        hash: key_random2.mix_hash(None),
-        peerid: sim_device_id.clone(),
-        encrypted: EncryptedKey::Unconfirmed(key_encrypted2),
-        mix_key: mix_key2,
-    };
-    key_store.add_key(&key_random2, &sim_device_id); // 直接在add里confirm
-    let found_by_hash_after_add2_with_confirm = key_store.get_key_by_mix_hash(&found_key_for_random2.hash, true, false).unwrap();
-    assert!(!found_by_hash_after_add2_with_confirm.encrypted.is_unconfirmed());
-    assert!(found_key_is_same(&found_by_hash_after_add2_with_confirm, &found_key_for_random2));
-}
+//     let (key_random2, key_encrypted2) = private_key.public().gen_aeskey_and_encrypt().unwrap();
+//     let found_key_for_random2 = FoundKey {
+//         enc_key: key_random2.clone(),
+//         hash: key_random2.mix_hash(None),
+//         peerid: sim_device_id.clone(),
+//         encrypted: EncryptedKey::Unconfirmed(key_encrypted2),
+//         mix_key: mix_key2,
+//     };
+//     key_store.add_key(&key_random2, &sim_device_id); // 直接在add里confirm
+//     let found_by_hash_after_add2_with_confirm = key_store.get_key_by_mix_hash(&found_key_for_random2.hash, true, false).unwrap();
+//     assert!(!found_by_hash_after_add2_with_confirm.encrypted.is_unconfirmed());
+//     assert!(found_key_is_same(&found_by_hash_after_add2_with_confirm, &found_key_for_random2));
+// }

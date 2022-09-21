@@ -521,7 +521,6 @@ impl SnService {
                             let mut called_req = SnCalled {
                                 seq: called_seq,
                                 to_peer_id: call_req.to_peer_id.clone(),
-                                from_peer_id: from_peer_id.clone(),
                                 sn_peer_id: self.local_device_id().clone(),
                                 peer_info: from_peer_desc,
                                 call_seq: call_req.seq,

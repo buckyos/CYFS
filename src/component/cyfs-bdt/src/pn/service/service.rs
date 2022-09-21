@@ -142,7 +142,7 @@ impl OnPackage<SynProxy, (&PackageBox, &SocketAddr)> for Service {
         let from = *from; 
         task::spawn(async move {
             let stub_pair = (ProxyDeviceStub {
-                    id: syn_proxy.from_peer_id.clone(), 
+                    id: syn_proxy.from_peer_info.desc().device_id(), 
                     timestamp: syn_proxy.from_peer_info.body().as_ref().unwrap().update_time(), 
                 },
                 ProxyDeviceStub {

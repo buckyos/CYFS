@@ -800,7 +800,7 @@ impl<'de>
                     exchange.key_encrypted = encrypted;
 
                     let mut package_box =
-                        PackageBox::encrypt_box(exchange.from_device_id.clone(), key_info.enc_key, mix_key.unwrap());
+                        PackageBox::encrypt_box(exchange.from_device_desc.desc().device_id(), key_info.enc_key, mix_key.unwrap());
                     package_box.append(packages);
                     Ok((package_box, remain_buf))
                 } else {

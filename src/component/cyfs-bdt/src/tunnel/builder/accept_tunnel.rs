@@ -70,8 +70,7 @@ impl AcceptTunnelBuilder {
             let ack_tunnel = SynTunnel {
                 protocol_version: tunnel.protocol_version(), 
                 stack_version: tunnel.stack_version(), 
-                from_device_id: local.desc().device_id(),
-                to_device_id: syn_tunnel.from_device_id.clone(),
+                to_device_id: syn_tunnel.from_device_desc.desc().device_id(),
                 sequence: syn_tunnel.sequence,
                 from_device_desc: local,
                 send_time: 0

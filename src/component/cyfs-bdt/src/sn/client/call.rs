@@ -368,7 +368,6 @@ impl CallClientInner {
                 sequence: call_pkg.seq, 
                 key_encrypted: encrypted.clone(), 
                 seq_key_sign: Signature::default(),
-                from_device_id: stack.local_device_id().clone(),
                 send_time: 0,
                 from_device_desc: match call_pkg.peer_info.as_ref() {
                     Some(from) => from.clone(),

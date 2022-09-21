@@ -286,7 +286,6 @@ impl ConnectTunnelBuilder {
         let syn_tunnel = SynTunnel {
             protocol_version: self.0.tunnel.protocol_version(), 
             stack_version: self.0.tunnel.stack_version(), 
-            from_device_id: local.desc().device_id(), 
             to_device_id: tunnel.remote().clone(), 
             from_device_desc: local.clone(),
             sequence: self.sequence(), 
@@ -297,7 +296,6 @@ impl ConnectTunnelBuilder {
                 sequence: syn_tunnel.sequence.clone(), 
                 key_encrypted, 
                 seq_key_sign: Signature::default(),
-                from_device_id: syn_tunnel.from_device_id.clone(),
                 send_time: syn_tunnel.send_time.clone(),
                 from_device_desc: syn_tunnel.from_device_desc.clone(),
                 mix_key: key_stub.mix_key.clone(),

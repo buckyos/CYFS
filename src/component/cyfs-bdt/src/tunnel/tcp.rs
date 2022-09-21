@@ -608,7 +608,6 @@ impl Tunnel {
         let syn_tunnel = SynTunnel {
             protocol_version: owner.protocol_version(), 
             stack_version: owner.stack_version(),  
-            from_device_id: stack.local_device_id().clone(),
             to_device_id: owner.remote().clone(),
             sequence: syn_seq.clone(),
             from_device_desc: stack.local().clone(),
@@ -645,7 +644,6 @@ impl Tunnel {
         let syn_tunnel = SynTunnel {
             protocol_version: owner.protocol_version(), 
             stack_version: owner.stack_version(),  
-            from_device_id: stack.local_device_id().clone(),
             to_device_id: owner.remote().clone(),
             sequence: owner.generate_sequence(),
             from_device_desc: stack.local().clone(),

@@ -155,7 +155,6 @@ impl ConnectStreamBuilder {
         let syn_tunnel = SynTunnel {
             protocol_version: stream.as_ref().tunnel().protocol_version(), 
             stack_version: stream.as_ref().tunnel().stack_version(), 
-            from_device_id: local.desc().device_id(), 
             to_device_id: stream.as_ref().tunnel().remote().clone(), 
             from_device_desc: local.clone(),
             sequence: syn_session_data.syn_info.as_ref().unwrap().sequence.clone(), 

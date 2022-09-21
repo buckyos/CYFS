@@ -1119,7 +1119,7 @@ impl PingClientCalledEvent<PackageBox> for TunnelContainer {
 impl OnPackage<SynTunnel> for TunnelContainer {
     fn on_package(&self, pkg: &SynTunnel, _: Option<()>) -> Result<OnPackageResult, BuckyError> {
         // 缓存syn tunnel里面的 desc
-        Stack::from(&self.0.stack).device_cache().add(&pkg.from_device_id, &pkg.from_device_desc);
+        Stack::from(&self.0.stack).device_cache().add(&pkg.from_device_desc.desc().device_id(), &pkg.from_device_desc);
         Ok(OnPackageResult::Handled)
     }
 }

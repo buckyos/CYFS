@@ -532,7 +532,6 @@ pub struct Exchange {
     pub sequence: TempSeq,
     pub key_encrypted: Vec<u8>, 
     pub seq_key_sign: Signature,
-    pub from_device_id: DeviceId,
     pub send_time: Timestamp,
     pub from_device_desc: Device,
     pub mix_key: AesKey,
@@ -589,7 +588,6 @@ impl From<(&SynTunnel, Vec<u8>)> for Exchange {
             sequence: syn_tunnel.sequence.clone(),
             key_encrypted, 
             seq_key_sign: Signature::default(),
-            from_device_id: syn_tunnel.from_device_id.clone(),
             send_time: syn_tunnel.send_time.clone(),
             from_device_desc: syn_tunnel.from_device_desc.clone(),
             mix_key: AesKey::random(),
@@ -605,7 +603,6 @@ impl From<(&SynProxy, Vec<u8>)> for Exchange {
             sequence: syn_proxy.seq,
             key_encrypted, 
             seq_key_sign: Signature::default(),
-            from_device_id: syn_proxy.from_peer_id.clone(),
             send_time: bucky_time_now(),
             from_device_desc: syn_proxy.from_peer_info.clone(),
             mix_key: AesKey::random(),
@@ -631,8 +628,6 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for Exchange 
         let (mut context, buf) = context::Encode::<Self, Context>::new(enc_buf, merge_context)?;
         let buf = context.check_encode(buf, "sequence", &self.sequence, flags.next())?;
         let buf = context.encode(buf, &self.seq_key_sign, flags.next())?;
-        let buf =
-            context.check_encode(buf, "from_device_id", &self.from_device_id, flags.next())?;
         let buf = context.check_encode(buf, "send_time", &self.send_time, flags.next())?;
         let buf =
             context.check_encode(buf, "device_desc", &self.from_device_desc, flags.next())?;
@@ -651,7 +646,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (sequence, buf) = context.check_decode(buf, "sequence", flags.next())?;
         let (seq_key_sign, buf) = context.decode(buf, "Exchange.seq_key_sign", flags.next())?;
-        let (from_device_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (send_time, buf) = context.check_decode(buf, "send_time", flags.next())?;
         let (from_device_desc, buf) = context.check_decode(buf, "device_desc", flags.next())?;
         let (mix_key, buf) = context.check_decode(buf, "mix_key", flags.next())?;
@@ -661,7 +655,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
                 sequence,
                 key_encrypted: vec![],
                 seq_key_sign,
-                from_device_id,
                 send_time,
                 from_device_desc,
                 mix_key
@@ -693,7 +686,6 @@ fn encode_protocol_exchange() {
         sequence: TempSeq::from(rand::random::<u32>()),
         key_encrypted: key_encrypted.clone(), 
         seq_key_sign: Signature::default(),
-        from_device_id: device.desc().device_id(),
         send_time: bucky_time_now(),
         from_device_desc: device,
         mix_key: AesKey::random(),
@@ -717,7 +709,6 @@ fn encode_protocol_exchange() {
         Exchange::raw_decode_with_context(dec, &mut dec_ctx).unwrap();
 
     assert_eq!(dst.sequence, src.sequence);
-    assert_eq!(dst.from_device_id, src.from_device_id);
     assert_eq!(
         dst.from_device_desc.desc().device_id(),
         src.from_device_desc.desc().device_id()
@@ -727,7 +718,6 @@ fn encode_protocol_exchange() {
 pub struct SynTunnel {
     pub protocol_version: u8,
     pub stack_version: u32,  
-    pub from_device_id: DeviceId,
     pub to_device_id: DeviceId,
     pub sequence: TempSeq,
     pub from_device_desc: Device,
@@ -762,8 +752,6 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for SynTunnel
         let (mut context, buf) = context::Encode::<Self, Context>::new(enc_buf, merge_context)?;
         let buf = context.encode(buf, &self.protocol_version, context::FLAG_ALWAYS_ENCODE)?;
         let buf = context.encode(buf, &self.stack_version, context::FLAG_ALWAYS_ENCODE)?;
-        let buf =
-            context.check_encode(buf, "from_device_id", &self.from_device_id, flags.next())?;
         let buf = context.check_encode(buf, "to_device_id", &self.to_device_id, flags.next())?;
         let buf = context.check_encode(buf, "sequence", &self.sequence, flags.next())?;
         let buf = context.check_encode(buf, "device_desc", &self.from_device_desc, flags.next())?;
@@ -781,7 +769,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (protocol_version, buf) = context.decode(buf, "SynTunnel.protocol_version", context::FLAG_ALWAYS_DECODE)?;
         let (stack_version, buf) = context.decode(buf, "SynTunnel.stack_version", context::FLAG_ALWAYS_DECODE)?;
-        let (from_device_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (to_device_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
         let (sequence, buf) = context.check_decode(buf, "sequence", flags.next())?;
         let (from_device_desc, buf) = context.check_decode(buf, "device_desc", flags.next())?;
@@ -790,7 +777,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
             Self {
                 protocol_version, 
                 stack_version, 
-                from_device_id,
                 to_device_id,
                 sequence,
                 from_device_desc,
@@ -834,7 +820,6 @@ fn encode_protocol_syn_tunnel() {
     let src = SynTunnel {
         protocol_version: 0, 
         stack_version: 0,  
-        from_device_id: from_device.desc().device_id(),
         to_device_id: to_device.desc().device_id(),
         sequence: TempSeq::from(rand::random::<u32>()),
         from_device_desc: from_device,
@@ -857,7 +842,6 @@ fn encode_protocol_syn_tunnel() {
             .unwrap();
 
     assert_eq!(dst.sequence, src.sequence);
-    assert_eq!(dst.from_device_id, src.from_device_id);
     assert_eq!(dst.to_device_id, src.to_device_id);
     assert_eq!(
         dst.from_device_desc.desc().device_id(),
@@ -1413,7 +1397,6 @@ pub struct SynProxy {
     pub seq: TempSeq,
     pub to_peer_id: DeviceId,
     pub to_peer_timestamp: Timestamp,
-    pub from_peer_id: DeviceId,
     pub from_peer_info: Device,
     pub key_hash: KeyMixHash,
     pub mix_key: AesKey,
@@ -1426,7 +1409,7 @@ impl std::fmt::Display for SynProxy {
             "SynProxy:{{sequence:{:?}, to:{:?}, from:{}, key_hash:{}, mix_key:{:?}}}",
             self.seq,
             self.to_peer_id,
-            self.from_peer_id,
+            self.from_peer_info.desc().device_id(), 
             self.key_hash.to_string(),
             self.mix_key.to_hex(),
         )
@@ -1465,7 +1448,6 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for SynProxy 
         let buf = context.check_encode(buf, "seq", &self.seq, flags.next())?;
         let buf = context.check_encode(buf, "to_device_id", &self.to_peer_id, flags.next())?;
         let buf = context.encode(buf, &self.to_peer_timestamp, flags.next())?;
-        let buf = context.check_encode(buf, "from_device_id", &self.from_peer_id, flags.next())?;
         let buf = context.check_encode(buf, "device_desc", &self.from_peer_info, flags.next())?;
         let buf = context.encode(buf, &self.key_hash, flags.next())?;
         let _buf = context.encode(buf, &self.mix_key, flags.next())?;
@@ -1485,7 +1467,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (seq, buf) = context.check_decode(buf, "seq", flags.next())?;
         let (to_peer_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
         let (to_peer_timestamp, buf) = context.decode(buf, "SynProxy.to_peer_timestamp", flags.next())?;
-        let (from_peer_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (from_peer_info, buf) = context.check_decode(buf, "device_desc", flags.next())?;
         let (key_hash, buf) = context.decode(buf, "SynProxy.key_hash", flags.next())?;
         let (mix_key, buf) = context.decode(buf, "SynProxy.mix_key", flags.next())?;
@@ -1497,7 +1478,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
                 seq,
                 to_peer_id,
                 to_peer_timestamp,
-                from_peer_id,
                 from_peer_info,
                 key_hash,
                 mix_key,
@@ -1544,7 +1524,6 @@ fn encode_protocol_syn_proxy() {
         seq: TempSeq::from(rand::random::<u32>()),
         to_peer_id: to_device.desc().device_id(),
         to_peer_timestamp: bucky_time_now(),
-        from_peer_id: from_device.desc().device_id(),
         from_peer_info: from_device,
         key_hash: key_mix_hash,
         mix_key: AesKey::random(),
@@ -1568,7 +1547,6 @@ fn encode_protocol_syn_proxy() {
     assert_eq!(dst.seq, src.seq);
     assert_eq!(dst.to_peer_id, src.to_peer_id);
     assert_eq!(dst.to_peer_timestamp, src.to_peer_timestamp);
-    assert_eq!(dst.from_peer_id, src.from_peer_id);
 
     let dst_peer_info = dst.from_peer_info.to_hex().unwrap();
     let src_peer_info = src.from_peer_info.to_hex().unwrap();

@@ -304,7 +304,6 @@ impl AcceptStreamBuilder {
                     // let local_ip = *local_ip;
                     let remote_ep = *remote_ep;
                     let builder = self.clone();
-                    let remote_deviceid = syn_tunnel.from_device_id.clone();
                     let remote_constinfo = syn_tunnel.from_device_desc.desc().clone();
                     let remote_timestamp = syn_tunnel.from_device_desc.body().as_ref().unwrap().update_time();
                     let enc_key = caller_box.enc_key().clone();
@@ -313,7 +312,7 @@ impl AcceptStreamBuilder {
                         let _ = builder.reverse_tcp_stream(
                             /*local_ip, */
                             remote_ep, 
-                            remote_deviceid, 
+                            remote_constinfo.device_id(), 
                             remote_constinfo, 
                             remote_timestamp, 
                             enc_key,
@@ -333,8 +332,7 @@ impl AcceptStreamBuilder {
             let ack_tunnel = SynTunnel {
                 protocol_version: tunnel.protocol_version(), 
                 stack_version: tunnel.stack_version(), 
-                from_device_id: local.desc().device_id(),
-                to_device_id: syn_tunnel.from_device_id.clone(),
+                to_device_id: syn_tunnel.from_device_desc.desc().device_id(),
                 sequence: syn_tunnel.sequence,
                 from_device_desc: local,
                 send_time: 0

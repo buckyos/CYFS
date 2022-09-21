@@ -202,7 +202,7 @@ impl PingManager {
         log::info!("{} called, sn: {}, from: {}, seq: {}, from-eps: {}.",
             self, 
             called.sn_peer_id.to_string(),
-            called.from_peer_id.to_string(),
+            called.peer_info.desc().device_id().to_string(),
             called.seq.value(),
             called.peer_info.connect_info().endpoints().iter().map(|ep| ep.to_string()).collect::<Vec<String>>().concat());
 
@@ -670,9 +670,7 @@ impl ClientInner {
         let seq = self.seq_genarator.generate();
 
         let stack = Stack::from(&self.env.stack);
-        let (local_peer, local_deviceid) = {
-            (stack.device_cache().local(), stack.local_device_id().clone())
-        };
+        let local_peer = stack.device_cache().local();
         assert!(self.enc_key.is_some()); // <TODO>暂时不支持明文
         let mut pkg_box = PackageBox::encrypt_box(self.sn_peerid.clone(), self.enc_key.as_ref().unwrap().clone(), self.mix_key.as_ref().unwrap().clone());
 
@@ -687,7 +685,6 @@ impl ClientInner {
 	                sequence: seq,
 	                key_encrypted,
 	                seq_key_sign: Signature::default(),
-	                from_device_id: local_deviceid,
 	                send_time: now_abs_u64,
 	                from_device_desc: local_peer.clone(),
 	                mix_key: self.mix_key.as_ref().unwrap().clone(),
@@ -947,7 +944,7 @@ impl Contract {
             receipt.call_delay = ((receipt.call_delay as u32 * 7 + delay as u32) / 8) as u16
         }
 
-        let (called_inc, call_peer_inc) = match stat.call_peers.entry(called.from_peer_id.clone()) {
+        let (called_inc, call_peer_inc) = match stat.call_peers.entry(called.peer_info.desc().device_id()) {
             Entry::Occupied(exist) => {
                 let exist = exist.into_mut();
                 if exist.last_seq != seq {
@@ -959,7 +956,7 @@ impl Contract {
             }
             Entry::Vacant(entry) => {
                 let init_stat = CallPeerStat {
-                    peerid: called.from_peer_id.clone(),
+                    peerid: called.peer_info.desc().device_id(),
                     last_seq: seq,
                     is_connect_success: false
                 };
