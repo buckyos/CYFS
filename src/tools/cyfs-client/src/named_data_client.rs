@@ -347,7 +347,7 @@ impl NamedCacheClient {
         let mut chunk_ret = Err(BuckyError::new(BuckyErrorCode::NotInit, ""));
         for _ in 0..2 {
             let bdt_stream = self.get_bdt_stream(&owner).await?;
-            let ctx = ChunkSourceContext::source_http_bdt_remote(&peer_id, bdt_stream);
+            let ctx = ChunkSourceContext::source_http_bdt_remote(&peer_id, bdt_stream.clone());
             // get_from_source在udp被阻断的情况下可能会超时，这里超时后返回Timeout错误，再试一次
             chunk_ret = ChunkClient::get_from_source(ctx, &chunk_get_data_with_meta_req).await;
 
