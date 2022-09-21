@@ -24,6 +24,7 @@ use cyfs_base::*;
 use cyfs_base_meta::*;
 use std::str::FromStr;
 use std::convert::TryFrom;
+use std::net::Shutdown;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 use cyfs_bdt::stream_pool::{PooledStream, StreamPool};
@@ -101,6 +102,7 @@ pub struct NamedCacheClient {
     meta_client: OnceCell<Arc<MetaClient>>,
     init_ret: Mutex<bool>,
     object_cache: RwLock<HashMap<ObjectId, StandardObject>>,
+    device_cache: OnceCell<BdtDeviceCache>
 }
 
 impl NamedCacheClient {
@@ -112,6 +114,7 @@ impl NamedCacheClient {
             meta_client: OnceCell::new(),
             init_ret: Mutex::new(false),
             object_cache: RwLock::new(HashMap::new()),
+            device_cache: OnceCell::new()
         }
     }
 
@@ -170,10 +173,10 @@ impl NamedCacheClient {
 
         let device_cache = BdtDeviceCache::new(client);
 
-        let init_known_peers = cyfs_util::get_default_known_peers();
+        let _ = self.device_cache.set(device_cache.clone());
+
         let mut params = cyfs_bdt::StackOpenParams::new("cyfs-client");
         params.known_sn = Some(init_sn_peers);
-        params.known_device = Some(init_known_peers);
         params.outer_cache = Some(Box::new(device_cache));
 
         let desc = self.desc.get().unwrap().clone();
@@ -353,6 +356,8 @@ impl NamedCacheClient {
                 break;
             } else {
                 warn!("get chunk {} failed by err {}, may retry", chunk_id, chunk_ret.as_ref().err().unwrap());
+                // 这里尝试看能不能让pool放弃这条连接
+                bdt_stream.shutdown(Shutdown::Both);
             }
 
         }
@@ -444,6 +449,8 @@ impl NamedCacheClient {
                 },
                 SavedMetaObject::Device(p) => {
                     info!("get device desc {} from meta success", fileid);
+                    let device_id = p.desc().device_id();
+                    self.device_cache.get().unwrap().add(&device_id, p.clone());
                     Ok(StandardObject::Device(p))
                 }
                 SavedMetaObject::Data(data) => {
@@ -755,7 +762,9 @@ impl NamedCacheClient {
     async fn get_device_from_owner(&self, owner: &StandardObject) -> BuckyResult<DeviceId> {
         match owner {
             StandardObject::Device(device) => {
-                Ok(DeviceId::try_from(device.desc().calculate_id()).unwrap())
+                let device_id = device.desc().device_id();
+                self.device_cache.get().unwrap().add(&device_id, device.clone());
+                Ok(device_id)
             },
             StandardObject::People(people) => {
                 let people_id = people.desc().calculate_id();

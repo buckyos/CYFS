@@ -107,22 +107,7 @@ pub fn get_default_known_peers() -> Vec<Device> {
     if ret.len() > 0 {
         return ret;
     }
-    /*
-    const PUBKEY_HEX: &str = "0030818902818100b2765107d50f440b3f88e9298fe08ed90ff57e177fc111b35f17612628d97f3cef4b9b8ecdf45f99dce9a41a5d3904223d049eeca14d7d0a29d7d33a773a8779fc15899c0a863f7e2ae3e31c527e7e2fbc089fa4e1741e3a82c651a7393494eaee8c13ba5aeea2a747c4f1706ae956a898111e94cf00a6c70087336c6e595ec5020301000100000000000000000000000000000000000000000000";
-    const UNIQUE_ID: &str = "637966735f7265706f00000000000000";
 
-    let unique_id = UniqueId::create(&hex::decode(UNIQUE_ID).unwrap());
-    let (key, _) = PublicKey::raw_decode(&hex::decode(PUBKEY_HEX).unwrap()).unwrap();
-
-    // <TODO>填写ownerid
-    let desc = Device::create(None, unique_id, None, None, Some(13244209973212072), None, vec![
-        Endpoint::from_str("W4udp112.74.105.75:8050").unwrap(),
-        Endpoint::from_str("W4tcp112.74.105.75:8050").unwrap(),
-    ], vec![], None, key, Area::default()).unwrap();
-     */
-
-    let (desc, _) = Device::raw_decode(&hex::decode(env!("KNOWN_RAW")).unwrap()).unwrap();
-    ret.push(desc);
     ret
 }
 
