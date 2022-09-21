@@ -12,6 +12,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 pub type AppActionResult<T> = std::result::Result<T, SubErrorCode>;
 
@@ -375,6 +376,48 @@ impl AppController {
 
             BuckyError::new(BuckyErrorCode::ParseError, msg)
         })?;
+
+        for (id, config) in &acl_config {
+            let dec_id = if id == "self" {
+                app_id.object_id().clone()
+            } else if id == "system" {
+                cyfs_core::get_system_dec_app().object_id().clone()
+            } else {
+                ObjectId::from_str(id.as_str())?
+            };
+
+            let meta_stub = self
+                .shared_stack
+                .as_ref()
+                .unwrap()
+                .root_state_meta_stub(None, Some(dec_id));
+
+            if let Some(access) = &config.access {
+                for (path, access) in access {
+                    let ret = meta_stub
+                        .add_access(GlobalStatePathAccessItem::new(path, access.value()))
+                        .await;
+                    if let Err(e) = ret {
+                        warn!(
+                            "add access failed. app:{}, dest:{}, path:{}, access:{:?}, err:{}",
+                            app_id, id, path, access, e
+                        );
+                    }
+                }
+            }
+
+            if let Some(link) = &config.link {
+                for (source, target) in link {
+                    let ret = meta_stub.add_link(source, target).await;
+                    if let Err(e) = ret {
+                        warn!(
+                            "add link failed. app:{}, dest:{}, source:{}, target:{}, err:{}",
+                            app_id, id, source, target, e
+                        );
+                    }
+                }
+            }
+        }
 
         //TODO: Requires users to agree to permissions, not automatic settings
         Ok(None)
