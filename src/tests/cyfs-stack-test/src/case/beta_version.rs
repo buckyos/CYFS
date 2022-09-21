@@ -212,7 +212,7 @@ async fn test_non_object_req_path() {
 
     {
         let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
-        //test_get_object(&dec_id, &stack, &target).await;
+        test_get_object(&dec_id, &stack, &target).await;
 
         let object = new_object(&dec_id, "first-text");
         let object_id = object.text_id().object_id().to_owned();
