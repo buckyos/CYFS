@@ -90,6 +90,8 @@ impl OpEnvSessionIDHelper {
 
 #[cfg(test)]
 mod test_sid {
+    use std::sync::atomic::AtomicU64;
+
     use super::OpEnvSessionIDHelper;
     use crate::*;
 
@@ -198,15 +200,17 @@ use std::collections::HashMap;
 struct ObjectMapOpEnvHolder {
     last_access: u64,
     op_env: ObjectMapOpEnv,
+    source: Option<RequestSourceInfo>,
 }
 
 const OP_ENV_EXPIRED_DURATION: u64 = 1000 * 1000 * 60 * 60;
 
 impl ObjectMapOpEnvHolder {
-    fn new(op_env: ObjectMapOpEnv) -> Self {
+    fn new(op_env: ObjectMapOpEnv, source: Option<RequestSourceInfo>) -> Self {
         Self {
             last_access: bucky_time_now(),
             op_env,
+            source,
         }
     }
 
@@ -232,6 +236,22 @@ impl ObjectMapOpEnvHolder {
 
     fn touch(&mut self) {
         self.last_access = bucky_time_now();
+    }
+
+    fn compare_source(&self, source: Option<&RequestSourceInfo>) -> bool {
+        match &self.source {
+            Some(this) => match source {
+                Some(source) => {
+                    if this.dec == source.dec && this.zone.device == source.zone.device {
+                        true
+                    } else {
+                        false
+                    }
+                }
+                None => false,
+            },
+            None => true,
+        }
     }
 }
 
@@ -287,18 +307,31 @@ impl ObjectMapOpEnvContainer {
         }
     }
 
-    pub fn add_env(&self, env: ObjectMapOpEnv) {
+    pub fn add_env(&self, env: ObjectMapOpEnv, source: Option<RequestSourceInfo>) {
         let sid = env.sid();
-        let holder = ObjectMapOpEnvHolder::new(env);
+        let holder = ObjectMapOpEnvHolder::new(env, source);
         let prev = self.all.lock().unwrap().insert(sid, holder);
         assert!(prev.is_none());
     }
 
-    pub fn get_op_env(&self, sid: u64) -> BuckyResult<ObjectMapOpEnv> {
+    pub fn get_op_env(
+        &self,
+        sid: u64,
+        source: Option<&RequestSourceInfo>,
+    ) -> BuckyResult<ObjectMapOpEnv> {
         let mut list = self.all.lock().unwrap();
         let ret = list.get_mut(&sid);
         match ret {
             Some(value) => {
+                if !value.compare_source(source) {
+                    let msg = format!(
+                        "get op_env but source does not match! sid={}, source={:?}, current={:?}",
+                        sid, source, value.source
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+                }
+                
                 value.touch();
                 Ok(value.op_env().to_owned())
             }
@@ -310,48 +343,62 @@ impl ObjectMapOpEnvContainer {
         }
     }
 
-    pub fn get_path_op_env(&self, sid: u64) -> BuckyResult<ObjectMapPathOpEnvRef> {
-        let op_env = self.get_op_env(sid)?;
+    pub fn get_path_op_env(&self, sid: u64, source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectMapPathOpEnvRef> {
+        let op_env = self.get_op_env(sid, source)?;
         op_env.path_op_env(sid)
     }
 
-    pub fn get_single_op_env(&self, sid: u64) -> BuckyResult<ObjectMapSingleOpEnvRef> {
-        let op_env = self.get_op_env(sid)?;
+    pub fn get_single_op_env(&self, sid: u64, source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectMapSingleOpEnvRef> {
+        let op_env = self.get_op_env(sid, source)?;
         op_env.single_op_env(sid)
     }
 
-    pub async fn get_current_root(&self, sid: u64) -> BuckyResult<ObjectId> {
-        let op_env = self.get_op_env(sid)?;
+    pub async fn get_current_root(&self, sid: u64, source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectId> {
+        let op_env = self.get_op_env(sid, source)?;
 
         op_env.get_current_root().await
     }
 
-    pub async fn update(&self, sid: u64) -> BuckyResult<ObjectId> {
-        let op_env = self.get_op_env(sid)?;
+    pub async fn update(&self, sid: u64, source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectId> {
+        let op_env = self.get_op_env(sid, source)?;
 
         op_env.update().await
     }
 
-    pub async fn commit(&self, sid: u64) -> BuckyResult<ObjectId> {
-        let ret = self.all.lock().unwrap().remove(&sid);
-        if ret.is_none() {
-            let msg = format!("op_env not found! sid={}", sid);
-            error!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
-        }
-
-        ret.unwrap().into_op_env().commit().await
+    pub async fn commit(&self, sid: u64, source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectId> {
+        let item = self.remove(sid, source)?;
+        
+        item.into_op_env().commit().await
     }
 
-    pub fn abort(&self, sid: u64) -> BuckyResult<()> {
-        let ret = self.all.lock().unwrap().remove(&sid);
+    pub fn abort(&self, sid: u64,  source: Option<&RequestSourceInfo>,) -> BuckyResult<()> {
+        let item = self.remove(sid, source)?;
+
+        item.into_op_env().abort()
+    }
+
+    fn remove(&self, sid: u64,  source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectMapOpEnvHolder> {
+        let mut all = self.all.lock().unwrap();
+        let ret = all.get(&sid);
         if ret.is_none() {
             let msg = format!("op_env not found! sid={}", sid);
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
+        let value = ret.unwrap();
+        if !value.compare_source(source) {
+            let msg = format!(
+                "get op_env but source does not match! sid={}, source={:?}, current={:?}",
+                sid, source, value.source
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+        }
 
-        ret.unwrap().into_op_env().abort()
+        drop(value);
+
+        let ret = all.remove(&sid);
+        Ok(ret.unwrap())
     }
 }
 
@@ -435,10 +482,11 @@ impl ObjectMapRootManager {
     pub async fn create_managed_op_env(
         &self,
         access: Option<OpEnvPathAccess>,
+        source: Option<RequestSourceInfo>,
     ) -> BuckyResult<ObjectMapPathOpEnvRef> {
         let env = self.create_op_env(access).await?;
 
-        self.all_envs.add_env(ObjectMapOpEnv::Path(env.clone()));
+        self.all_envs.add_env(ObjectMapOpEnv::Path(env.clone()), source);
 
         Ok(env)
     }
@@ -464,9 +512,10 @@ impl ObjectMapRootManager {
     pub fn create_managed_single_op_env(
         &self,
         access: Option<OpEnvPathAccess>,
+        source: Option<RequestSourceInfo>
     ) -> BuckyResult<ObjectMapSingleOpEnvRef> {
         let env = self.create_single_op_env(access)?;
-        self.all_envs.add_env(ObjectMapOpEnv::Single(env.clone()));
+        self.all_envs.add_env(ObjectMapOpEnv::Single(env.clone()), source);
 
         Ok(env)
     }

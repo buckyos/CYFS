@@ -411,7 +411,7 @@ async fn test_managed(global_state_manager: &GlobalStateManager, dec_id: &Object
     let x1_value2 = ObjectId::from_str("95RvaS5aZKKM8ghTYmsTyhSEWD4pAmALoUSJx1yNxSx5").unwrap();
 
     // 这里使用托管模式env
-    let op_env_sid = root.create_managed_op_env().await.unwrap().sid();
+    let op_env_sid = root.create_managed_op_env(None, None).await.unwrap().sid();
 
     // 通过sid获取到对应的env才可以进行操作
     {
