@@ -24,6 +24,7 @@ mod role;
 mod storage;
 mod meta;
 mod beta_version;
+mod call;
 
 pub async fn test_restart() {
     let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
@@ -40,7 +41,10 @@ pub async fn test() {
     // crypto::test().await;
 
     beta_version::test().await;
+    call::test().await;
     return;
+
+    meta::test().await;
     
     codec::test().await;
     test_restart().await;

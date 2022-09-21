@@ -1,7 +1,6 @@
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
-use cyfs_stack_loader::*;
 use cyfs_util::*;
 use zone_simulator::*;
 
@@ -55,8 +54,10 @@ fn new_dec(name: &str) -> ObjectId {
 pub async fn test() {
     let dec_id = new_dec("crypto");
     let stack1 = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    open_hook_access(&stack1).await;
     add_handlers_for_stack("user1_ood", &stack1, &dec_id);
     let stack2 = TestLoader::get_shared_stack(DeviceIndex::User2OOD);
+    open_hook_access(&stack2).await;
     add_handlers_for_stack("user2_ood", &stack2, &dec_id);
 
     add_acl_handlers_for_stack("user1_ood", "test.crypto.out", &stack1, &dec_id);
@@ -181,7 +182,7 @@ impl EventListenerAsyncRoutine<RouterHandlerAclRequest, RouterHandlerAclResult> 
 
 fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId) {
     let filter = format!(
-        "dec_id == {} && (protocol == http-local || protocol == http-bdt)",
+        "source.dec_id == {} && (source.protocol == http-local || source.protocol == http-bdt)",
         dec_id
     );
 
@@ -260,7 +261,7 @@ fn add_handlers_for_stack(name: &str, stack: &SharedCyfsStack, dec_id: &ObjectId
 
 fn add_acl_handlers_for_stack(name: &str, acl: &str, stack: &SharedCyfsStack, dec_id: &ObjectId) {
     let filter = format!(
-        "dec_id == {} && (protocol == http-local || protocol == http-bdt)",
+        "source.dec_id == {} && (source.protocol == http-local || source.protocol == http-bdt)",
         dec_id
     );
 
@@ -294,9 +295,13 @@ async fn test_sign(dec_id: &ObjectId) {
         | CRYPTO_REQUEST_FLAG_SIGN_PUSH_BODY;
     let mut req = CryptoSignObjectRequest::new(id.object_id().to_owned(), object_raw, sign_flags);
     req.common.dec_id = Some(dec_id.to_owned());
-    req.common.req_path = Some("测试签名/tests".to_owned());
+    req.common.req_path = Some(
+        RequestGlobalStatePath::new(Some(dec_id.to_owned()), Some("测试签名/tests".to_owned()))
+            .to_string(),
+    );
 
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    clear_access(&stack).await;
     open_access(&stack, dec_id).await;
 
     let resp = stack.crypto().sign_object(req).await.unwrap();
@@ -331,9 +336,24 @@ async fn test_sign(dec_id: &ObjectId) {
     assert!(resp.is_err());
 }
 
-async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId) {
-    // 开启权限
+async fn clear_access(stack: &SharedCyfsStack) {
     let meta = stack.root_state_meta_stub(None, None);
+    meta.clear_access().await.unwrap();
+}
+
+async fn open_hook_access(stack: &SharedCyfsStack) {
+    // 需要使用system-dec身份操作
+    let dec_id = stack.dec_id().unwrap().to_owned();
+
+    let system_stack = stack
+        .fork_with_new_dec(Some(cyfs_base::get_system_dec_app().to_owned()))
+        .await
+        .unwrap();
+    system_stack.wait_online(None).await.unwrap();
+
+    // 开启权限，需要修改system's rmeta
+    let meta = system_stack.root_state_meta_stub(None, None);
+    /*
     let mut access = AccessString::new(0);
     access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
     access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Read);
@@ -341,18 +361,43 @@ async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId) {
     access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Call);
     access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Call);
     access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Call);
+    */
+    let item = GlobalStatePathAccessItem {
+        path: CYFS_HANDLER_VIRTUAL_PATH.to_owned(),
+        access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
+            zone: None,
+            zone_category: Some(DeviceZoneCategory::CurrentZone),
+            dec: Some(dec_id.clone()),
+            access: AccessPermissions::CallOnly as u8,
+        }),
+    };
+
+    meta.add_access(item).await.unwrap();
+}
+
+async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId) {
+    // 开启权限
+    let meta = stack.root_state_meta_stub(None, Some(cyfs_base::get_system_dec_app().to_owned()));
+    /*
+    let mut access = AccessString::new(0);
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Call);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Call);
+    access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Call);
+    */
     let item = GlobalStatePathAccessItem {
         path: CYFS_CRYPTO_VIRTUAL_PATH.to_owned(),
         access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
             zone: None,
             zone_category: Some(DeviceZoneCategory::CurrentZone),
             dec: Some(dec_id.clone()),
-            access: AccessPermissions::ReadAndWrite as u8,
+            access: AccessPermissions::CallOnly as u8,
         }),
     };
 
     meta.add_access(item).await.unwrap();
-
 }
 async fn test_sign_by_owner(dec_id: &ObjectId) {
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
@@ -378,9 +423,16 @@ async fn test_sign_by_owner(dec_id: &ObjectId) {
     let mut verify_req =
         CryptoVerifyObjectRequest::new_verify_by_owner(VerifySignType::Both, object_info.clone());
     let device_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+    clear_access(&device_stack).await;
+
     verify_req.common.target = Some(device_stack.local_device_id().object_id().to_owned());
     verify_req.common.dec_id = Some(dec_id.to_owned());
 
+    let ret = stack.crypto().verify_object(verify_req.clone()).await;
+    let err = ret.unwrap_err();
+    assert_eq!(err.code(), BuckyErrorCode::PermissionDenied);
+
+    open_access(&device_stack, dec_id).await;
     let resp = stack.crypto().verify_object(verify_req).await.unwrap();
     assert!(resp.result.valid);
 
@@ -418,6 +470,8 @@ async fn test_sign_by_owner(dec_id: &ObjectId) {
     assert!(ret.is_err());
     let err = ret.unwrap_err();
     assert_eq!(err.code(), BuckyErrorCode::PermissionDenied);
+
+    open_access(&stack2, dec_id).await;
 
     // 动态添加verify权限
     {

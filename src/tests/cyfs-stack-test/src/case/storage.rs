@@ -3,9 +3,6 @@ use cyfs_core::*;
 use cyfs_lib::*;
 use zone_simulator::*;
 
-use std::ops::Index;
-use std::str::FromStr;
-
 fn new_dec(name: &str) -> ObjectId {
     let owner_id = &USER1_DATA.get().unwrap().people_id;
 
