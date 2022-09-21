@@ -9,7 +9,7 @@ pub struct GlobalStatePathMetaStorage {
 impl GlobalStatePathMetaStorage {
     pub fn new(isolate: &str, dec_id: &Option<ObjectId>) -> Self {
         let mut file = cyfs_util::get_cyfs_root_path().join("etc");
-   
+
         if isolate.len() > 0 {
             file.push(isolate);
         }
@@ -20,15 +20,13 @@ impl GlobalStatePathMetaStorage {
         let file_name = format!("{}.json", Self::get_dec_string(dec_id));
         file.push(file_name);
 
-        Self {
-            file,
-        }
+        Self { file }
     }
 
     pub fn get_dec_string(dec_id: &Option<ObjectId>) -> String {
         match dec_id {
             Some(id) => {
-                if id == cyfs_core::get_system_dec_app().object_id() {
+                if id == cyfs_base::get_system_dec_app() {
                     "system".to_owned()
                 } else {
                     id.to_string()
@@ -39,7 +37,6 @@ impl GlobalStatePathMetaStorage {
     }
 
     pub async fn save(&self, data: String) -> BuckyResult<()> {
-
         if !self.file.exists() {
             let dir = self.file.parent().unwrap();
             if !dir.is_dir() {

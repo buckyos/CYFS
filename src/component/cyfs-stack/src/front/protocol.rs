@@ -428,7 +428,7 @@ impl FrontProtocolHandler {
 
         let dec_seg = segs[pos];
         match dec_seg {
-            "system" => Ok(Some(cyfs_core::get_system_dec_app().object_id().to_owned())),
+            "system" => Ok(Some(cyfs_base::get_system_dec_app().to_owned())),
             "root" => Ok(None),
             _ => {
                 match Self::parse_object_seg(dec_seg) {
@@ -508,7 +508,7 @@ impl FrontProtocolHandler {
             "system" => {
                 // treat as one seg mode
                 target = None;
-                target_dec_id = Some(cyfs_core::get_system_dec_app().object_id().to_owned());
+                target_dec_id = Some(cyfs_base::get_system_dec_app().to_owned());
                 inner_path_pos = 1;
             }
             "root" => {

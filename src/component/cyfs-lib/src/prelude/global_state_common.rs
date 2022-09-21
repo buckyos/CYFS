@@ -1,4 +1,4 @@
-use crate::{GlobalStateCategory, RequestSourceInfo};
+use crate::GlobalStateCategory;
 use cyfs_base::*;
 
 use std::borrow::Cow;
@@ -60,10 +60,7 @@ impl RequestGlobalStatePath {
     }
 
     pub fn new_system_dec(req_path: Option<impl Into<String>>) -> Self {
-        Self::new(
-            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
-            req_path,
-        )
+        Self::new(Some(cyfs_base::get_system_dec_app().to_owned()), req_path)
     }
 
     pub fn category(&self) -> GlobalStateCategory {
@@ -80,7 +77,7 @@ impl RequestGlobalStatePath {
         }
     }
 
-     // 如果req_path没有指定target_dec_id，那么使用source_dec_id
+    // 如果req_path没有指定target_dec_id，那么使用source_dec_id
     pub fn dec<'a>(&'a self, source: &'a RequestSourceInfo) -> &ObjectId {
         match &self.dec_id {
             Some(id) => id,
@@ -279,14 +276,11 @@ mod test {
         let r = RequestGlobalStatePath::parse(&s).unwrap();
         assert_eq!(root, r);
 
-        root.dec_id = Some(cyfs_core::get_system_dec_app().object_id().to_owned());
+        root.dec_id = Some(cyfs_base::get_system_dec_app().to_owned());
         let s = root.format_string();
         println!("{}", s);
         let r = RequestGlobalStatePath::parse(&s).unwrap();
-        assert_eq!(
-            r.dec_id,
-            Some(cyfs_core::get_system_dec_app().object_id().to_owned())
-        );
+        assert_eq!(r.dec_id, Some(cyfs_base::get_system_dec_app().to_owned()));
 
         let root = RequestGlobalStatePath {
             global_state_category: None,

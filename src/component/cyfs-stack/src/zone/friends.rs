@@ -1,7 +1,7 @@
-use cyfs_lib::*;
 use cyfs_base::*;
+use cyfs_lib::*;
 
-use std::{sync::Arc, ops::Deref};
+use std::{ops::Deref, sync::Arc};
 
 #[derive(Clone)]
 pub struct FriendsManager {
@@ -9,15 +9,13 @@ pub struct FriendsManager {
 }
 
 impl FriendsManager {
-    pub fn new(
-        global_state: GlobalStateOutputProcessorRef,
-    ) -> Self {
+    pub fn new(global_state: GlobalStateOutputProcessorRef) -> Self {
         let state_view = StateView::new(
             global_state,
             CYFS_FRIENDS_LIST_PATH,
             ObjectMapSimpleContentType::Map,
             None,
-            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            Some(cyfs_base::get_system_dec_app().to_owned()),
         );
 
         let cache = StateMapViewCache::new(state_view);
@@ -44,7 +42,7 @@ impl FriendsManager {
         async_std::task::spawn(async move {
             loop {
                 async_std::task::sleep(std::time::Duration::from_secs(60 * 10)).await;
-    
+
                 this.load().await;
             }
         });
@@ -54,7 +52,8 @@ impl FriendsManager {
         match self.cache.load().await {
             Ok(true) => {
                 //let coll = self.cache.coll().read().unwrap();
-                let value = serde_json::to_string(&self.cache.coll().read().unwrap().deref()).unwrap();
+                let value =
+                    serde_json::to_string(&self.cache.coll().read().unwrap().deref()).unwrap();
                 info!("friend list updated! {}", value);
             }
             Ok(false) => {

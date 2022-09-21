@@ -1,31 +1,17 @@
 use super::dec_app::*;
 use cyfs_base::ObjectId;
 
-use once_cell::sync::OnceCell;
-
-pub(crate) static SYSTEM_DEC_APP: OnceCell<DecAppId> = OnceCell::new();
 
 // get the default dec_app id for all the system service and system core
-pub fn get_system_dec_app() -> &'static DecAppId {
-    SYSTEM_DEC_APP.get_or_init(|| {
-        let id = SystemDecApp::gen_system_dec_id();
-        info!("init system dec_id as {}", id);
-        id
-    })
+pub fn get_system_dec_app() -> &'static ObjectId {
+    cyfs_base::get_system_dec_app()
 }
 
 pub fn is_system_dec_app(dec_id: &Option<ObjectId>) -> bool {
-    match dec_id {
-        Some(id) => {
-            id == get_system_dec_app().object_id()
-        }
-        None => {
-            true
-        }
-    }
+    cyfs_base::is_system_dec_app(dec_id)
 }
 
-pub(crate) struct SystemDecApp {}
+pub struct SystemDecApp;
 
 impl SystemDecApp {
     pub fn gen_system_dec_id() -> DecAppId {
@@ -33,6 +19,11 @@ impl SystemDecApp {
         DecApp::generate_id(owner, "cyfs-system-service")
             .try_into()
             .unwrap()
+    }
+
+    pub fn init_system_dec_id() {
+        let dec_id = Self::gen_system_dec_id().into();
+        cyfs_base::init_system_dec_app(dec_id);
     }
 }
 

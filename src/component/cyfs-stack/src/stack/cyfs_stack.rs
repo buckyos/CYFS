@@ -15,14 +15,16 @@ use crate::interface::{
 use crate::meta::*;
 use crate::name::NameResolver;
 use crate::ndn::NDNOutputTransformer;
-use crate::ndn_api::{ChunkStoreReader, NDNService, BdtNdnEventHandler};
+use crate::ndn_api::{BdtNdnEventHandler, ChunkStoreReader, NDNService};
 use crate::non::NONOutputTransformer;
 use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
 use crate::rmeta::GlobalStateMetaOutputTransformer;
 use crate::rmeta_api::{GlobalStateMetaLocalService, GlobalStateMetaService};
 use crate::root_state::{GlobalStateAccessOutputTransformer, GlobalStateOutputTransformer};
-use crate::root_state_api::{GlobalStateLocalService, GlobalStateService, GlobalStateValidatorManager};
+use crate::root_state_api::{
+    GlobalStateLocalService, GlobalStateService, GlobalStateValidatorManager,
+};
 use crate::router_handler::RouterHandlersManager;
 use crate::trans::TransOutputTransformer;
 use crate::trans_api::{create_trans_store, TransService};
@@ -30,13 +32,7 @@ use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use cyfs_base::*;
-use cyfs_bdt::{
-    ChunkReader, 
-    DeviceCache, 
-    Stack, 
-    StackGuard, 
-    StackOpenParams
-};
+use cyfs_bdt::{ChunkReader, DeviceCache, Stack, StackGuard, StackOpenParams};
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 use cyfs_noc::*;
@@ -141,6 +137,7 @@ impl CyfsStackImpl {
         param: CyfsStackParams,
         known_objects: Vec<KnownObject>,
     ) -> BuckyResult<Self> {
+        cyfs_core::SystemDecApp::init_system_dec_id();
         Self::register_custom_objects_format();
 
         let stack_params = param.clone();
@@ -246,7 +243,8 @@ impl CyfsStackImpl {
         ));
 
         // handlers
-        let router_handlers = RouterHandlersManager::new(param.config.isolate.clone(), acl_manager.clone());
+        let router_handlers =
+            RouterHandlersManager::new(param.config.isolate.clone(), acl_manager.clone());
         if let Err(e) = router_handlers.load().await {
             error!("load router handlers error! {}", e);
         }
@@ -415,7 +413,10 @@ impl CyfsStackImpl {
 
         // 缓存所有processors，用以uni_stack直接返回使用
         let processors = CyfsStackProcessors {
-            non_service: NONOutputTransformer::new(services.non_service.clone_processor(), source.clone()),
+            non_service: NONOutputTransformer::new(
+                services.non_service.clone_processor(),
+                source.clone(),
+            ),
             ndn_service: NDNOutputTransformer::new(
                 services.ndn_service.clone_processor(),
                 source.clone(),
@@ -680,7 +681,7 @@ impl CyfsStackImpl {
         config.change_access_mode(GlobalStateCategory::RootState, GlobalStateAccessMode::Write);
         root_state
             .state()
-            .get_dec_root_manager(cyfs_core::get_system_dec_app().object_id(), true)
+            .get_dec_root_manager(cyfs_base::get_system_dec_app(), true)
             .await?;
         config.change_access_mode(GlobalStateCategory::RootState, GlobalStateAccessMode::Read);
 
@@ -796,8 +797,11 @@ impl CyfsStackImpl {
         bdt_params.outer_cache = Some(device_cache);
         bdt_params.chunk_store = Some(chunk_store);
 
-        bdt_params.ndn_event = Some(Box::new(BdtNdnEventHandler::new(zone_manager, acl, router_handlers)));
-
+        bdt_params.ndn_event = Some(Box::new(BdtNdnEventHandler::new(
+            zone_manager,
+            acl,
+            router_handlers,
+        )));
 
         let ret = Stack::open(params.device, params.secret, bdt_params).await;
 
@@ -1120,7 +1124,11 @@ impl CyfsStack {
         target: Option<ObjectId>,
         target_dec_id: Option<ObjectId>,
     ) -> GlobalStateStub {
-        let source = self.zone_manager().get_current_source_info(&None).await.unwrap();
+        let source = self
+            .zone_manager()
+            .get_current_source_info(&None)
+            .await
+            .unwrap();
         let processor = GlobalStateOutputTransformer::new(
             self.stack.root_state.clone_global_state_processor(),
             source,
@@ -1134,7 +1142,11 @@ impl CyfsStack {
     }
 
     pub async fn local_cache_stub(&self, target_dec_id: Option<ObjectId>) -> GlobalStateStub {
-        let source = self.zone_manager().get_current_source_info(&None).await.unwrap();
+        let source = self
+            .zone_manager()
+            .get_current_source_info(&None)
+            .await
+            .unwrap();
         let processor = GlobalStateOutputTransformer::new(
             self.stack.local_cache.clone_global_state_processor(),
             source,

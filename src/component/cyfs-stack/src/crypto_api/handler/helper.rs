@@ -1,11 +1,15 @@
-use cyfs_lib::*;
 use crate::non_api::RequestHandlerHelper;
+use cyfs_base::*;
+use cyfs_lib::*;
 
 struct CryptoRequestUtil;
 
 // FIXME 选择哪些字段可以替换
 impl CryptoRequestUtil {
-    fn update_request_common(origin: &mut CryptoInputRequestCommon, handler: CryptoInputRequestCommon) {
+    fn update_request_common(
+        origin: &mut CryptoInputRequestCommon,
+        handler: CryptoInputRequestCommon,
+    ) {
         origin.req_path = handler.req_path;
         origin.target = handler.target;
         origin.flags = handler.flags;
@@ -44,7 +48,6 @@ impl CryptoRequestUtil {
         origin.result = handler.result;
     }
 }
-
 
 // sign_object
 impl RequestHandlerHelper<CryptoSignObjectInputRequest> for CryptoSignObjectInputRequest {

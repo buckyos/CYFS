@@ -1,5 +1,6 @@
-use cyfs_lib::*;
 use crate::non_api::RequestHandlerHelper;
+use cyfs_base::*;
+use cyfs_lib::*;
 
 struct NDNRequestUtil;
 
@@ -40,7 +41,6 @@ impl NDNRequestUtil {
         origin.attr = handler.attr;
     }
 
-
     fn update_delete_data_request(
         origin: &mut NDNDeleteDataInputRequest,
         handler: NDNDeleteDataInputRequest,
@@ -58,7 +58,6 @@ impl NDNRequestUtil {
         // origin.object_id = handler.object_id;
     }
 }
-
 
 // put_data
 impl RequestHandlerHelper<NDNPutDataInputRequest> for NDNPutDataInputRequest {
@@ -108,8 +107,6 @@ impl RequestHandlerHelper<NDNGetDataInputResponse> for NDNGetDataInputResponse {
     }
 }
 
-
-
 // delete_data
 impl RequestHandlerHelper<NDNDeleteDataInputRequest> for NDNDeleteDataInputRequest {
     fn update(&mut self, handler: Self) {
@@ -135,7 +132,6 @@ impl RequestHandlerHelper<NDNDeleteDataInputResponse> for NDNDeleteDataInputResp
     }
 }
 
-
 // interest handler
 impl RequestHandlerHelper<InterestHandlerRequest> for InterestHandlerRequest {
     fn update(&mut self, handler: Self) {
@@ -158,6 +154,6 @@ impl RequestHandlerHelper<InterestHandlerRequest> for InterestHandlerRequest {
 
 impl RequestHandlerHelper<InterestHandlerResponse> for InterestHandlerResponse {
     fn update(&mut self, handler: Self) {
-        *self = handler.clone(); 
+        *self = handler.clone();
     }
 }

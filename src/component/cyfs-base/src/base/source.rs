@@ -1,9 +1,8 @@
-use cyfs_base::*;
+use crate::*;
 
-use serde::{Serialize, Serializer, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 use std::str::FromStr;
-
 
 #[derive(Clone, Copy, Eq, Debug, PartialEq)]
 pub enum RequestProtocol {
@@ -82,7 +81,6 @@ impl FromStr for RequestProtocol {
         Ok(ret)
     }
 }
-
 
 // source device's zone info
 #[repr(u8)]
@@ -201,7 +199,9 @@ impl DeviceZoneInfo {
 
     pub fn is_friend_zone(&self) -> bool {
         match self.zone_category {
-            DeviceZoneCategory::CurrentDevice | DeviceZoneCategory::CurrentZone | DeviceZoneCategory::FriendZone => true,
+            DeviceZoneCategory::CurrentDevice
+            | DeviceZoneCategory::CurrentZone
+            | DeviceZoneCategory::FriendZone => true,
             _ => false,
         }
     }
@@ -238,7 +238,7 @@ impl RequestSourceInfo {
         Self {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_local(),
-            dec: cyfs_core::get_system_dec_app().object_id().to_owned(),
+            dec: get_system_dec_app().to_owned(),
             verified: false,
         }
     }
@@ -247,7 +247,7 @@ impl RequestSourceInfo {
         Self {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_local(),
-            dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            dec: dec.unwrap_or(get_system_dec_app().to_owned()),
             verified: false,
         }
     }
@@ -256,7 +256,7 @@ impl RequestSourceInfo {
         Self {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_current_zone(),
-            dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            dec: dec.unwrap_or(get_system_dec_app().to_owned()),
             verified: false,
         }
     }
@@ -265,7 +265,7 @@ impl RequestSourceInfo {
         Self {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_friend_zone(),
-            dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            dec: dec.unwrap_or(get_system_dec_app().to_owned()),
             verified: false,
         }
     }
@@ -274,7 +274,7 @@ impl RequestSourceInfo {
         Self {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_other_zone(),
-            dec: dec.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            dec: dec.unwrap_or(get_system_dec_app().to_owned()),
             verified: false,
         }
     }
@@ -285,7 +285,7 @@ impl RequestSourceInfo {
     }
 
     pub fn set_dec(&mut self, dec_id: Option<ObjectId>) {
-        self.dec = dec_id.unwrap_or(cyfs_core::get_system_dec_app().object_id().to_owned());
+        self.dec = dec_id.unwrap_or(get_system_dec_app().to_owned());
     }
 
     pub fn dec(mut self, dec_id: Option<ObjectId>) -> Self {
@@ -294,7 +294,7 @@ impl RequestSourceInfo {
     }
 
     pub fn is_system_dec(&self) -> bool {
-        self.dec == *cyfs_core::get_system_dec_app().object_id()
+        self.dec == *get_system_dec_app()
     }
 
     // return none if is system dec
@@ -509,7 +509,7 @@ mod test {
             verified: false,
         };
 
-        let system = cyfs_core::get_system_dec_app().object_id();
+        let system = get_system_dec_app();
         let mask = source.mask(system, RequestOpType::Read);
 
         let default = AccessString::default().value();

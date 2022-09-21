@@ -1,4 +1,3 @@
-mod access;
 mod acl;
 mod admin;
 mod base;
@@ -20,7 +19,6 @@ mod ws;
 mod zone;
 
 pub use crate::util::*;
-pub use access::*;
 pub use acl::*;
 pub use admin::*;
 pub use base::*;

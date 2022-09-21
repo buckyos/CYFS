@@ -112,7 +112,7 @@ async fn test_noc() {
             zone: None,
             zone_category: DeviceZoneCategory::OtherZone,
         },
-        dec: cyfs_core::get_system_dec_app().object_id().to_owned(),
+        dec: cyfs_base::get_system_dec_app().to_owned(),
     };
 
     let get_req = NamedObjectCacheGetObjectRequest {

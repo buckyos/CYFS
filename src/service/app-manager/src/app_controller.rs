@@ -381,7 +381,7 @@ impl AppController {
             let dec_id = if id == "self" {
                 app_id.object_id().clone()
             } else if id == "system" {
-                cyfs_core::get_system_dec_app().object_id().clone()
+                cyfs_base::get_system_dec_app().clone()
             } else {
                 ObjectId::from_str(id.as_str())?
             };

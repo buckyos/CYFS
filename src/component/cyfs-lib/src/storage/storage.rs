@@ -1,7 +1,6 @@
 use crate::prelude::*;
 use crate::root_state::*;
 use crate::NONObjectInfo;
-use crate::RequestSourceInfo;
 use cyfs_base::*;
 use cyfs_core::*;
 
@@ -198,7 +197,7 @@ impl NOCGlobalStateStorage {
     fn create_global_stub(&self) -> GlobalStateStub {
         let dec_id = match &self.dec_id {
             Some(dec_id) => Some(dec_id.to_owned()),
-            None => Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            None => Some(cyfs_base::get_system_dec_app().to_owned()),
         };
 
         let stub = GlobalStateStub::new(self.global_state.clone(), self.target.clone(), dec_id);

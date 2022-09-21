@@ -151,7 +151,7 @@ impl StateStorage {
     async fn load(&self) -> BuckyResult<StorageOpData> {
         let dec_id = match &self.dec_id {
             Some(dec_id) => Some(dec_id.to_owned()),
-            None => Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            None => Some(cyfs_base::get_system_dec_app().to_owned()),
         };
 
         let stub = GlobalStateStub::new(self.global_state.clone(), self.target.clone(), dec_id);
@@ -191,7 +191,7 @@ impl StateStorage {
 
         let mut current = op_data.current.lock().await;
         if *current == new {
-            return  Ok(false);
+            return Ok(false);
         }
 
         match new {
