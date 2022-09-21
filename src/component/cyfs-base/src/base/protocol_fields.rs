@@ -43,6 +43,7 @@ pub const CYFS_SIGN_RET: &str = "cyfs-sign-ret";
 
 pub const CYFS_FLAGS: &str = "cyfs-flags";
 pub const CYFS_TARGET: &str = "cyfs-target";
+pub const CYFS_SOURCE: &str = "cyfs-source";
 pub const CYFS_REFERER_OBJECT: &str = "cyfs-referer-object";
 pub const CYFS_FILTER_FLAGS: &str = "cyfs-filter-flags";
 pub const CYFS_REVISION: &str = "cyfs-revision";

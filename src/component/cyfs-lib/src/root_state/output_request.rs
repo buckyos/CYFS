@@ -12,7 +12,7 @@ pub struct RootStateOutputRequestCommon {
     // 目标DEC，如果为None，默认等价于dec_id
     pub target_dec_id: Option<ObjectId>,
 
-    // 用以默认行为
+    // 目标设备
     pub target: Option<ObjectId>,
 
     pub flags: u32,

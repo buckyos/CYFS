@@ -955,6 +955,7 @@ impl DsgService {
             let resp = self.stack().non_service().get_object(NONGetObjectOutputRequest {
                 common: NONOutputRequestCommon {
                     req_path: None,
+                    source: None,
                     dec_id: None,
                     level: NONAPILevel::Router,
                     target: None,

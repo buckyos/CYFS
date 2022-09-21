@@ -9,6 +9,9 @@ pub struct NONOutputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
 
+    // 来源Device，默认为空表示当前协议栈的device-id，在zone内转发请求时候会使用此字段
+    pub source: Option<DeviceId>,
+
     // 来源DEC,如果为None，默认为system-dec
     pub dec_id: Option<ObjectId>,
 
@@ -25,6 +28,7 @@ impl NONOutputRequestCommon {
     pub fn new(level: NONAPILevel) -> Self {
         Self {
             req_path: None,
+            source: None,
             dec_id: None,
             level,
             target: None,
@@ -37,6 +41,10 @@ impl fmt::Display for NONOutputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "req_path: {:?}", self.req_path)?;
         write!(f, ", level: {:?}", self.level)?;
+
+        if let Some(source) = &self.source {
+            write!(f, ", source: {}", source)?;
+        }
 
         if let Some(dec_id) = &self.dec_id {
             write!(f, ", dec_id: {}", dec_id)?;

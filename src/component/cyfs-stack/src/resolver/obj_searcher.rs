@@ -235,6 +235,7 @@ impl ZoneSearcher {
         let req = NONGetObjectOutputRequest {
             common: NONOutputRequestCommon {
                 req_path: None,
+                source: None,
                 dec_id: None,
                 level: NONAPILevel::NON,
 
@@ -246,7 +247,6 @@ impl ZoneSearcher {
             object_id: object_id.to_owned(),
             inner_path: None,
         };
-
         let resp = non_processor.get_object(req).await?;
 
         info!(

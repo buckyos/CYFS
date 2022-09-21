@@ -27,6 +27,7 @@ impl TransInputTransformer {
     fn convert_non_common(common: NONInputRequestCommon) -> NONOutputRequestCommon {
         NONOutputRequestCommon {
             req_path: common.req_path,
+            source: common.source.zone.device,
             dec_id: Some(common.source.dec),
             level: common.level,
             target: common.target,

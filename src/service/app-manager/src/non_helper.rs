@@ -419,6 +419,7 @@ impl NonHelper {
             .get_object(NONGetObjectRequest {
                 common: NONOutputRequestCommon {
                     req_path: None,
+                    source: None,
                     dec_id: None,
                     level: NONAPILevel::Router,
                     target,

@@ -20,6 +20,9 @@ impl NONInputTransformer {
             // 请求路径，可为空
             req_path: common.req_path,
 
+            // 来源设备
+            source: common.source.zone.device,
+            
             // 来源DEC
             dec_id: Some(common.source.dec),
 

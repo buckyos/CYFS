@@ -160,6 +160,7 @@ impl PerfReporterInner {
             .put_object(NONPutObjectOutputRequest {
                 common: NONOutputRequestCommon {
                     req_path: None,
+                    source: None,
                     target,
                     dec_id: obj.desc().dec_id().clone(),
                     flags: 0,

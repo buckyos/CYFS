@@ -152,13 +152,17 @@ impl NONRequestor {
         }
 
         RequestorHelper::encode_opt_header_with_encoding(http_req, cyfs_base::CYFS_REQ_PATH, com_req.req_path.as_deref());
-        
+
         http_req.insert_header(cyfs_base::CYFS_NON_ACTION, action.to_string());
 
         http_req.insert_header(cyfs_base::CYFS_API_LEVEL, com_req.level.to_string());
 
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
+        }
+
+        if let Some(source) = &com_req.source {
+            http_req.insert_header(cyfs_base::CYFS_SOURCE, source.to_string());
         }
 
         http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());

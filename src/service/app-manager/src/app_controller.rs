@@ -534,6 +534,7 @@ impl AppController {
             .get_object(NONGetObjectRequest {
                 common: NONOutputRequestCommon {
                     req_path: None,
+                    source: None,
                     dec_id: None,
                     level: NONAPILevel::Router,
                     target: None,
@@ -627,6 +628,7 @@ mod tests {
             .put_object(NONPutObjectOutputRequest {
                 common: NONOutputRequestCommon {
                     req_path: None,
+                    source: None,
                     dec_id: None,
                     level: NONAPILevel::NOC,
                     target: None,
