@@ -21,9 +21,6 @@ use super::{
     upload::*
 };
 
-use super::super::super::{
-    chunk::*, 
-};
 
 
 //TODO: 可能包含其他的内存状态，比如本地不存在但是但是left right有之类

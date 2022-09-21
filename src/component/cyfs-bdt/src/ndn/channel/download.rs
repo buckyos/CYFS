@@ -14,7 +14,6 @@ use crate::{
 };
 use super::super::{
     chunk::*, 
-    download::*, 
     types::*
 };
 use super::{
