@@ -251,6 +251,7 @@ async fn add_dir_impl(
                 level: NONAPILevel::NOC,
                 target: None,
                 flags: 0,
+                source: None,
             },
             object_id: _dir_resp.object_id.clone(),
             inner_path: None,
