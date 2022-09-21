@@ -796,13 +796,14 @@ impl<T: ObjectType> Default for NamedObjectId<T> {
 
 impl<T: ObjectType> std::fmt::Display for NamedObjectId<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        // self.0.fmt(f)
         write!(f, "{}", self.0.to_string())
     }
 }
 
 impl<T: ObjectType> std::fmt::Debug for NamedObjectId<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.to_string())
+        /*
         write!(
             f,
             "(obj_id: {:?}, obj_type_code: {:?}, obj_type:{})",
@@ -810,6 +811,7 @@ impl<T: ObjectType> std::fmt::Debug for NamedObjectId<T> {
             T::obj_type_code(),
             T::obj_type(),
         )
+        */
     }
 }
 
