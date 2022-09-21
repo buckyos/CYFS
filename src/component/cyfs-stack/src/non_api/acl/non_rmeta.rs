@@ -23,6 +23,8 @@ impl NONGlobalStateMetaAclInputProcessor {
         source: &RequestSourceInfo,
         op_type: RequestOpType,
     ) -> BuckyResult<()> {
+        debug!("will check access: req_path={}, source={}, {:?}", req_path, source, op_type);
+
         let req_path = RequestGlobalStatePath::from_str(req_path)?;
 
         // 同zone+同dec，或者同zone+system，那么不需要校验rmeta权限

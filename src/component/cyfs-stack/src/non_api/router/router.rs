@@ -3,7 +3,6 @@ use super::super::handler::*;
 use super::super::non::NONOutputFailHandleProcessor;
 use super::super::validate::NONGlobalStateValidator;
 use super::def::*;
-use super::handler::NONRouterHandler;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::*;
@@ -24,7 +23,7 @@ pub(crate) struct NONRouter {
     meta_processor: NONInputProcessorRef,
 
     // 用以处理本地noc请求
-    noc_processor: NONInputProcessorRef,
+    noc_raw_processor: NONInputProcessorRef,
     noc_acl_processor: NONInputProcessorRef,
 
     // 用以实现转发请求
@@ -35,15 +34,12 @@ pub(crate) struct NONRouter {
     router_handlers: RouterHandlersManager,
 
     fail_handler: ObjectFailHandler,
-
-    // action's handler with router handler system, now only valid for post_object
-    handler: Arc<NONRouterHandler>,
 }
 
 impl NONRouter {
     fn new_raw(
         // router内部的noc处理器，会经过acl和validate两层校验器
-        noc_processor: NONInputProcessorRef,
+        noc_raw_processor: NONInputProcessorRef,
 
         // 用以实现转发请求
         forward: ForwardProcessorManager,
@@ -55,18 +51,17 @@ impl NONRouter {
         meta_processor: NONInputProcessorRef,
         fail_handler: ObjectFailHandler,
     ) -> NONInputProcessorRef {
-        let handler = NONRouterHandler::new(&router_handlers, zone_manager.clone());
 
         // 带rmeta access的noc, 如果当前协议栈是router目标，那么使用此noc；如果是中间节点，那么使用raw_noc_processor来作为缓存查询
         let validate_noc_processor = NONGlobalStateValidator::new(
             acl.global_state_validator().clone(),
-            noc_processor.clone(),
+            noc_raw_processor.clone(),
         );
         let noc_acl_processor =
             NONGlobalStateMetaAclInputProcessor::new(acl.clone(), validate_noc_processor);
 
         let ret = Self {
-            noc_processor,
+            noc_raw_processor,
             noc_acl_processor,
 
             forward,
@@ -78,8 +73,6 @@ impl NONRouter {
 
             meta_processor,
             fail_handler,
-
-            handler: Arc::new(handler),
         };
 
         Arc::new(Box::new(ret))
@@ -293,7 +286,7 @@ impl NONRouter {
             // 没有下一跳了，说明已经到达目标设备
 
             let object_id = req.object.object_id.clone();
-            let put_ret = self.noc_processor.put_object(req).await;
+            let put_ret = self.noc_acl_processor.put_object(req).await;
             if put_ret.is_err() {
                 error!(
                     "router put_object to noc but failed! object={}, {}",
@@ -415,7 +408,7 @@ impl NONRouter {
             &self.noc_acl_processor
         } else {
             // 中间节点，noc作为缓存处理，直接使用object层的acl来处理
-            &self.noc_processor
+            &self.noc_raw_processor
         };
 
         // 从本地noc查询
@@ -528,29 +521,10 @@ impl NONRouter {
                 access: None,
             };
 
-            let _r = self.noc_processor.put_object(put_req).await;
+            let _r = self.noc_raw_processor.put_object(put_req).await;
         }
 
         Ok(resp)
-    }
-
-    async fn put_to_noc_on_get_object_handler_resp(
-        &self,
-        resp: &NONGetObjectInputResponse,
-        req: NONGetObjectInputRequest,
-    ) {
-        info!(
-            "router will save object to noc on get object handler resp: obj={}, {}",
-            resp.object.object_id, req.common.source
-        );
-
-        let put_req = NONPutObjectInputRequest {
-            common: req.common,
-            object: resp.object.clone(),
-            access: None,
-        };
-
-        let _r = self.noc_processor.put_object(put_req).await;
     }
 
     pub async fn get_object(
@@ -582,6 +556,8 @@ impl NONRouter {
         &self,
         req: NONPostObjectInputRequest,
     ) -> BuckyResult<NONPostObjectInputResponse> {
+        debug!("router will process post object request: {}", req);
+
         let router_info = self
             .resolve_router_info(
                 AclOperation::PostObject,
@@ -593,7 +569,7 @@ impl NONRouter {
         let object_id = std::borrow::Cow::Borrowed(&req.object.object_id);
         if router_info.next_hop.is_none() {
             // 没有下一跳了，交由handler处理器
-            return self.handler.post_object(req).await;
+            return self.noc_acl_processor.post_object(req).await;
         }
 
         // 不再修正req的target，保留请求原始值
@@ -629,135 +605,14 @@ impl NONRouter {
             })
     }
 
-    async fn default_select_object(
-        &self,
-        save_to_noc: bool,
-        router_info: &RouterHandlerRequestRouterInfo,
-        req: NONSelectObjectInputRequest,
-    ) -> BuckyResult<NONSelectObjectInputResponse> {
-        info!(
-            "will select: filter={:?}, opt={:?}, source={}, target={:?}",
-            req.filter, req.opt, req.common.source, req.common.target,
-        );
-
-        // select操作必须明确在一台device(协议栈)上发生，目前不支持合并
-        // 1. target没指定，那么当前zone ood
-        // 2. target明确指定了device，那么根据device是不是同zone，路径分别为
-        //        同zone: local->ood->target
-        //        不同zone: local->ood->target_ood->target
-        // 3. target指定了zone(people)，那么向zone主ood发起，但根据zone是不是当前zone，路径分别为
-        //        同zone: local->ood
-        //        不同zone: local->ood->target_ood
-
-        // 1. 如果明确指定了device，那么需要转发到目标device上select，需要通过zone的ood转发(即使是同zone)
-        // 2. 没有明确指定device, 那么需要在目标zone主ood上select
-
-        // 如果就是当前协议栈，那么直接从noc select
-        if router_info.next_hop.is_none() {
-            return self.noc_processor.select_object(req).await.map_err(|e| {
-                error!("router select object from noc failed! {}", e);
-                e
-            });
-        }
-
-        // 不再修正req的target
-        assert!(router_info.target.is_some());
-        // req.common.target = router_info.target.clone().map(|o| o.into());
-
-        let forward_processor = self
-            .get_forward(router_info.next_hop.as_ref().unwrap())
-            .await?;
-
-        let req_common = if save_to_noc {
-            Some(req.common.clone())
-        } else {
-            None
-        };
-
-        let select_resp = forward_processor
-            .select_object(req)
-            .await
-            .map_err(|mut e| {
-                // 需要区分一下是zone内连接失败，还是跨zone连接失败
-                if e.code() == BuckyErrorCode::ConnectFailed
-                    && *router_info.next_direction.as_ref().unwrap() == ZoneDirection::LocalToRemote
-                {
-                    e.set_code(BuckyErrorCode::ConnectInterZoneFailed);
-                }
-                e
-            })?;
-
-        if save_to_noc {
-            let common = req_common.unwrap();
-            // TODO 这里的source是不是要更新?
-            // common.source = router_info.target.clone();
-            self.cache_select_result(&common, &select_resp).await;
-        }
-
-        Ok(select_resp)
-    }
-
-    async fn cache_select_result(
-        &self,
-        common: &NONInputRequestCommon,
-        resp: &NONSelectObjectInputResponse,
-    ) {
-        let mut req_list = Vec::new();
-        for item in &resp.objects {
-            let object = item.object.as_ref().unwrap();
-
-            let req = NONPutObjectInputRequest {
-                common: common.clone(),
-                object: object.to_owned(),
-                access: None,
-            };
-
-            req_list.push(req);
-        }
-
-        let noc = self.noc_processor.clone();
-        async_std::task::spawn(async move {
-            for req in req_list {
-                let object_id = req.object.object_id.clone();
-                if let Err(e) = noc.put_object(req).await {
-                    if e.code() == BuckyErrorCode::AlreadyExists {
-                        info!("object alreay in noc: {}", object_id);
-                    } else if e.code() == BuckyErrorCode::AlreadyExistsAndSignatureMerged {
-                        info!("object alreay in noc and signs updated: {}", object_id);
-                    } else {
-                        error!("insert object to local cache error: {} {}", object_id, e);
-                    }
-                } else {
-                    info!("cache select object success: {}", object_id);
-                }
-            }
-        });
-    }
 
     pub async fn select_object(
         &self,
-        req: NONSelectObjectInputRequest,
+        _req: NONSelectObjectInputRequest,
     ) -> BuckyResult<NONSelectObjectInputResponse> {
-        info!("will handle router select_object request: {}", req);
-
-        // select操作必须明确在一台device(协议栈)上发生，目前不支持合并
-        // 1. target没指定，那么当前zone ood
-        // 2. target明确指定了device，那么根据device是不是同zone，路径分别为
-        //        同zone: local->ood->target
-        //        不同zone: local->ood->target_ood->target
-        // 3. target指定了zone(people)，那么向zone主ood发起，但根据zone是不是当前zone，路径分别为
-        //        同zone: local->ood
-        //        不同zone: local->ood->target_ood
-
-        let router_info = self
-            .resolve_router_info(
-                AclOperation::SelectObject,
-                &req.common.source,
-                req.common.target.as_ref(),
-            )
-            .await?;
-
-        self.default_select_object(true, &router_info, req).await
+        let msg = format!("select_object is no longer supported!");
+        error!("{}", msg);
+        Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
     }
 
     async fn default_delete_object(
@@ -775,7 +630,7 @@ impl NONRouter {
             // 没有下一跳了，说明已经到达目标设备
             // 直接从当前设备删除即可
             let object_id = req.object_id.clone();
-            let delete_ret = self.noc_processor.delete_object(req).await;
+            let delete_ret = self.noc_acl_processor.delete_object(req).await;
             if delete_ret.is_err() {
                 error!(
                     "router delete_object from noc but failed! object={}, {}",

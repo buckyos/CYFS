@@ -1,7 +1,7 @@
 use super::super::acl::*;
 use super::super::file::NONFileServiceProcessor;
 use super::super::handler::*;
-use super::super::router::NONRouterHandler;
+use super::handler::NONRouterHandler;
 use crate::ndn_api::NDCLevelInputProcessor;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;

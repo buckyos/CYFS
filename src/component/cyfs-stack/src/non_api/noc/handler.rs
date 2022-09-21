@@ -46,7 +46,7 @@ impl NONRouterHandler {
         }
 
         let msg = format!(
-            "post object must be handled by handler! req={}, soruce={}, device={}",
+            "post object must be handled by handler! req={}, source: {}, device={}",
             param.request.object.object_id,
             param.request.common.source,
             self.zone_manager.get_current_device_id(),

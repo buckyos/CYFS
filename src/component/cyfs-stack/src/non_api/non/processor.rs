@@ -46,20 +46,20 @@ impl NONLevelInputProcessor {
         fail_handler: ObjectFailHandler,
         router_handlers: RouterHandlersManager,
     ) -> NONInputProcessorRef {
+        // should process with rmeta
+        let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl.clone(), raw_noc_processor);
+
         // 不带input acl的处理器
-        let raw_processor = Self::new_raw(
+        let non_processor = Self::new_raw(
             acl.clone(),
-            raw_noc_processor,
+            rmeta_processor,
             forward,
             fail_handler,
             router_handlers,
         );
 
-         // should process with rmeta
-         let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl.clone(), raw_processor);
-
         // 带同zone input acl的处理器
-        let acl_processor = NONZoneAclInputProcessor::new(rmeta_processor);
+        let acl_processor = NONZoneAclInputProcessor::new(non_processor);
 
         acl_processor
     }
