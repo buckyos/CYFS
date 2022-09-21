@@ -873,6 +873,7 @@ impl ZoneManager {
         let current_info = self.get_current_info().await?;
         let mut ret = RequestSourceInfo::new_local_dec(dec.to_owned());
         ret.zone.zone = Some(current_info.owner_id.clone());
+        ret.zone.device = Some(current_info.device_id.clone());
 
         Ok(ret)
     }
@@ -882,7 +883,7 @@ impl ZoneManager {
         dec: &Option<ObjectId>,
         source: DeviceId,
     ) -> BuckyResult<RequestSourceInfo> {
-        let ret = loop {
+        let mut ret = loop {
             let current_info = self.get_current_info().await?;
             if source == self.device_id {
                 let mut ret = RequestSourceInfo::new_local_dec(dec.to_owned());
@@ -923,14 +924,21 @@ impl ZoneManager {
                     }
                 };
 
-                if self.friends_manager.is_friend(&owner) {
+                // Need resolve zone if device's owner is current zone'owner or friends zpne's owner
+                if owner == current_info.owner_id || self.friends_manager.is_friend(&owner) {
                     // need resolve zone!
                     match self.get_zone(&source, Some(device)).await {
                         Ok(zone) => {
                             assert!(zone.is_known_device(&source));
-                            let mut ret = RequestSourceInfo::new_friend_zone_dec(dec.to_owned());
-                            ret.zone.zone = Some(zone.owner().clone());
-                            break ret;
+                            if owner == current_info.owner_id {
+                                let mut ret = RequestSourceInfo::new_zone_dec(dec.to_owned());
+                                ret.zone.zone = Some(current_info.owner_id.clone());
+                                break ret;
+                            } else {
+                                let mut ret = RequestSourceInfo::new_friend_zone_dec(dec.to_owned());
+                                ret.zone.zone = Some(zone.owner().clone());
+                                break ret;
+                            }
                         }
                         Err(e) => {
                             // FIXME add black list to block the error friend requests
@@ -958,6 +966,8 @@ impl ZoneManager {
                 break ret;
             }
         };
+
+        ret.zone.device = Some(source);
 
         Ok(ret)
     }
