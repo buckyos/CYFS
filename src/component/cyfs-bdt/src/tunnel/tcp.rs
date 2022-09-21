@@ -600,7 +600,8 @@ impl Tunnel {
             *tunnel::Tunnel::remote(self), 
             owner.remote().clone(), 
             owner.remote_const().clone(), 
-            key_stub.aes_key, 
+            key_stub.enc_key, 
+            key_stub.mix_key,
             owner.config().tcp.connect_timeout).await
         }?;
         let syn_seq = owner.generate_sequence();
@@ -640,7 +641,7 @@ impl Tunnel {
         let sn = stack.device_cache().get(sn_id).await.ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "sn not cached"))?;
 
         let key_stub = stack.keystore().create_key(owner.remote_const(), true);
-        let mut syn_box = PackageBox::encrypt_box(owner.remote().clone(), key_stub.aes_key.clone());
+        let mut syn_box = PackageBox::encrypt_box(owner.remote().clone(), key_stub.enc_key.clone(), key_stub.mix_key.clone());
         let syn_tunnel = SynTunnel {
             protocol_version: owner.protocol_version(), 
             stack_version: owner.stack_version(),  
@@ -653,6 +654,7 @@ impl Tunnel {
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
             let mut exchg = Exchange::from((&syn_tunnel, encrypted));
             exchg.sign(stack.keystore().signer()).await?;
+            exchg.mix_key = key_stub.mix_key.clone();
             syn_box.push(exchg);
         }
         syn_box.push(syn_tunnel);
@@ -857,8 +859,9 @@ impl Tunnel {
                         RecvBox::Package(package_box) => {
                             let stack = owner.stack();
                             if package_box.has_exchange() {
+                                let exchange: &Exchange = package_box.packages()[0].as_ref();
                                 stack.keystore()
-                                    .add_key(package_box.key(), package_box.remote());
+                                    .add_key(package_box.enc_key(), package_box.remote(), exchange.mix_key());
                             }
                             if let Err(err) = package_box.packages().iter().try_for_each(|pkg| {
                                 if pkg.cmd_code() == PackageCmdCode::PingTunnel {

@@ -222,7 +222,7 @@ impl NetListener {
                     if let PackageCmdCode::Exchange = first_pkg.cmd_code() {
                         let exchg = first_pkg.as_any().downcast_ref::<Exchange>();
                         if let Some(exchg) = exchg {
-                            if !exchg.verify(pkg_box.key()).await {
+                            if !exchg.verify().await {
                                 warn!("exchange sign-verify failed, from: {:?}.", resp_sender.remote());
                                 return;
                             }
@@ -437,7 +437,12 @@ impl UdpListener {
                     let ctx = PackageBoxDecodeContext::new_inplace(recv.as_mut_ptr(), recv.len(), &self.0.key_store);
                     match PackageBox::raw_decode_with_context(recv, ctx) {
                         Ok((package_box, _)) => {
-                            let resp_sender = MessageSender::Udp(UdpSender::new(self.0.clone(), package_box.remote().clone(), package_box.key().clone(), from));
+                            let resp_sender = MessageSender::Udp(UdpSender::new(
+                                self.0.clone(), 
+                                package_box.remote().clone(), 
+                                package_box.enc_key().clone(), 
+                                from, 
+                                package_box.mix_key().clone()));
                             break Ok((package_box, resp_sender))
                         },
                         Err(e) => {
@@ -528,24 +533,26 @@ impl TcpAcceptor {
 pub struct UdpSender {
     handle: Arc<UdpInterface>,
     remote_device_id: DeviceId,
-    aes_key: AesKey,
+    enc_key: AesKey,
     to_addr: SocketAddr,
+    mix_key: AesKey,
 }
 
 impl UdpSender {
-    fn new(handle: Arc<UdpInterface>, remote_device_id: DeviceId, aes_key: AesKey, to_addr: SocketAddr) -> UdpSender {
+    fn new(handle: Arc<UdpInterface>, remote_device_id: DeviceId, enc_key: AesKey, to_addr: SocketAddr, mix_key: AesKey) -> UdpSender {
         UdpSender {
             handle,
             remote_device_id,
-            aes_key,
-            to_addr
+            enc_key,
+            to_addr,
+            mix_key
         }
     }
 }
 
 impl UdpSender {
     pub fn box_pkg(&self, pkg: DynamicPackage) -> PackageBox {
-        let mut package_box = PackageBox::encrypt_box(self.remote_device_id.clone(), self.aes_key.clone());
+        let mut package_box = PackageBox::encrypt_box(self.remote_device_id.clone(), self.enc_key.clone(), self.mix_key.clone());
         package_box.append(vec![pkg]);
         package_box
     }

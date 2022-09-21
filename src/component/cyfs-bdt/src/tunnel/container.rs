@@ -894,10 +894,10 @@ impl OnUdpPackageBox for TunnelContainer {
     }
 }
 
-impl OnUdpRawData<(interface::udp::Interface, DeviceId, AesKey, Endpoint)> for TunnelContainer {
-    fn on_udp_raw_data(&self, data: &[u8], context: (interface::udp::Interface, DeviceId, AesKey, Endpoint)) -> Result<(), BuckyError> {
+impl OnUdpRawData<(interface::udp::Interface, DeviceId, AesKey, Endpoint, AesKey)> for TunnelContainer {
+    fn on_udp_raw_data(&self, data: &[u8], context: (interface::udp::Interface, DeviceId, AesKey, Endpoint, AesKey)) -> Result<(), BuckyError> {
         // // 先创建 udp tunnel
-        let (interface, _, key, remote) = context;
+        let (interface, _, mix_key, remote, enc_key) = context;
         let ep_pair = EndpointPair::from((interface.local(), remote));
         let udp_tunnel = match self.tunnel_of::<udp::Tunnel>(&ep_pair) {
             Some(tunnel) => {
@@ -907,7 +907,7 @@ impl OnUdpRawData<(interface::udp::Interface, DeviceId, AesKey, Endpoint)> for T
         }?;
         // 为了udp 和 tcp tunnel的package 流向一致，直接把box转给udp tunnel，
         // 需要一致处理的package从udp/tcp tunnel回调container的 OnPackage
-        let _ = udp_tunnel.active(&key, false, None);
+        let _ = udp_tunnel.active(&mix_key, false, None, &enc_key);
         self.on_raw_data(data)
     }
 }

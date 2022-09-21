@@ -100,7 +100,7 @@ impl SynProxyTunnel {
                         seq, 
                         first_box: first_box.clone()
                     });
-                    info!("{} begin syn proxy with key {} seq {:?}", self, first_box.key().mix_hash(None), seq);
+                    info!("{} begin syn proxy with key {} seq {:?}", self, first_box.mix_key().mix_hash(None), seq);
                     Ok(())
                 }, 
                 _ => {
@@ -111,6 +111,9 @@ impl SynProxyTunnel {
         }?;
         
         let stack = self.tunnel().stack();
+        let proxy_id = proxy_desc.device_id();
+        let key_stub = stack.keystore().create_key_proxy(&proxy_desc, true);
+
         let syn_proxy = SynProxy {
             protocol_version: 0, 
             stack_version: 0, 
@@ -119,16 +122,22 @@ impl SynProxyTunnel {
             to_peer_timestamp: remote_timestamp, 
             from_peer_id: stack.local_device_id().clone(),
             from_peer_info: stack.local().clone(), 
-            key_hash: first_box.key().mix_hash(None)
+            key_hash: first_box.mix_key().mix_hash(None),
+            mix_key: first_box.mix_key().clone(),
         };
-        let proxy_id = proxy_desc.device_id();
-        let key_stub = stack.keystore().create_key(&proxy_desc, true);
+
         // 生成第一个package box
-        let mut syn_box = PackageBox::encrypt_box(proxy_id.clone(), key_stub.aes_key.clone());
+        let mut syn_box = PackageBox::encrypt_box(
+            proxy_id.clone(), 
+            key_stub.enc_key.clone(), 
+            key_stub.mix_key.clone());
+
+        trace!("syn_proxy enck={} mixk={}", key_stub.enc_key.to_hex().unwrap(), key_stub.mix_key.to_hex().unwrap());
 
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
             let mut exchg = Exchange::from((&syn_proxy, encrypted));
             let _ = exchg.sign(stack.keystore().signer()).await?;
+            exchg.mix_key = key_stub.mix_key.clone();
             syn_box.push(exchg);
         }
         syn_box.push(syn_proxy);

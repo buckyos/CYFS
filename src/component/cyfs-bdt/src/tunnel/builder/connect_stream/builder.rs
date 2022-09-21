@@ -147,7 +147,10 @@ impl ConnectStreamBuilder {
         let syn_session_data = syn_session_data.unwrap();
         let key_stub = stack.keystore().create_key(stream.as_ref().tunnel().remote_const(), true);
         // 生成第一个package box
-        let mut first_box = PackageBox::encrypt_box(stream.as_ref().tunnel().remote().clone(), key_stub.aes_key.clone());
+        let mut first_box = PackageBox::encrypt_box(
+            stream.as_ref().tunnel().remote().clone(), 
+            key_stub.enc_key.clone(), 
+            key_stub.mix_key.clone());
             
         let syn_tunnel = SynTunnel {
             protocol_version: stream.as_ref().tunnel().protocol_version(), 
@@ -161,6 +164,7 @@ impl ConnectStreamBuilder {
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
             let mut exchg = Exchange::from((&syn_tunnel, encrypted));
             let _ = exchg.sign(stack.keystore().signer()).await;
+            exchg.mix_key = key_stub.mix_key.clone();
             first_box.push(exchg);
         }
         first_box.push(syn_tunnel).push(syn_session_data.clone_with_data());

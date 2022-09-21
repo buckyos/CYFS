@@ -219,9 +219,9 @@ impl SnService {
         let cmd_pkg = match first_pkg.cmd_code() {
             PackageCmdCode::Exchange => {
                 let exchg = <Box<dyn Any + Send>>::downcast::<Exchange>(first_pkg.into_any()); // pkg.into_any().downcast::<Exchange>();
-                if let Ok(_exchg) = exchg {
+                if let Ok(exchg) = exchg {
                     self.key_store()
-                        .add_key(pkg_box.key(), pkg_box.remote());
+                        .add_key(pkg_box.enc_key(), pkg_box.remote(), exchg.mix_key());
                 } else {
                     warn!("fetch exchange failed, from: {:?}.", resp_sender.remote());
                     return;
@@ -245,7 +245,7 @@ impl SnService {
                     self.handle_ping(
                         ping_req,
                         resp_sender,
-                        Some((pkg_box.key(), pkg_box.remote())),
+                        Some((pkg_box.enc_key(), pkg_box.remote())),
                         send_time,
                     );
                 } else {
@@ -259,7 +259,7 @@ impl SnService {
                     self.handle_call(
                         call_req,
                         resp_sender,
-                        Some((pkg_box.key(), pkg_box.remote())),
+                        Some((pkg_box.enc_key(), pkg_box.remote())),
                         send_time,
                     );
                 } else {
@@ -271,7 +271,7 @@ impl SnService {
                 let called_resp =
                     <Box<dyn Any + Send>>::downcast::<SnCalledResp>(cmd_pkg.into_any());
                 if let Ok(called_resp) = called_resp {
-                    self.handle_called_resp(called_resp, Some(pkg_box.key()))
+                    self.handle_called_resp(called_resp, Some(pkg_box.enc_key()))
                 } else {
                     warn!(
                         "fetch sn-called-resp failed, from: {:?}.",

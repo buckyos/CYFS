@@ -1235,6 +1235,7 @@ impl Package for TcpSynConnection {
 impl From<(&TcpSynConnection, Vec<u8>)> for Exchange {
     fn from(context: (&TcpSynConnection, Vec<u8>)) -> Self {
         let (tcp_syn, key_encrypted) = context;
+	let mix_key_rand = AesKey::random();
         Exchange {
             sequence: tcp_syn.sequence.clone(),
             key_encrypted, 
@@ -1242,6 +1243,7 @@ impl From<(&TcpSynConnection, Vec<u8>)> for Exchange {
             from_device_id: tcp_syn.from_device_id.clone(),
             send_time: bucky_time_now(),
             from_device_desc: tcp_syn.from_device_desc.clone(),
+            mix_key: mix_key_rand,
         }
     }
 }
@@ -1429,6 +1431,7 @@ impl Package for TcpAckConnection {
 impl From<(&TcpAckConnection, Vec<u8>)> for Exchange {
     fn from(context: (&TcpAckConnection, Vec<u8>)) -> Self {
         let (tcp_ack, key_encrypted) = context;
+	let mix_key_rand = AesKey::random();
         Exchange {
             sequence: tcp_ack.sequence.clone(),
             key_encrypted, 
@@ -1436,6 +1439,7 @@ impl From<(&TcpAckConnection, Vec<u8>)> for Exchange {
             from_device_id: tcp_ack.to_device_desc.desc().device_id(),
             send_time: bucky_time_now(),
             from_device_desc: tcp_ack.to_device_desc.clone(),
+            mix_key: mix_key_rand,
         }
     }
 }

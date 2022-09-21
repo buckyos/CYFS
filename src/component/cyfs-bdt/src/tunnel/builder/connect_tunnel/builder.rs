@@ -281,7 +281,7 @@ impl ConnectTunnelBuilder {
 
         let key_stub = stack.keystore().create_key(tunnel.remote_const(), true);
         // 生成第一个package box
-        let mut first_box = PackageBox::encrypt_box(tunnel.remote().clone(), key_stub.aes_key.clone());
+        let mut first_box = PackageBox::encrypt_box(tunnel.remote().clone(), key_stub.enc_key.clone(), key_stub.mix_key.clone());
             
         let syn_tunnel = SynTunnel {
             protocol_version: self.0.tunnel.protocol_version(), 
@@ -300,6 +300,7 @@ impl ConnectTunnelBuilder {
                 from_device_id: syn_tunnel.from_device_id.clone(),
                 send_time: syn_tunnel.send_time.clone(),
                 from_device_desc: syn_tunnel.from_device_desc.clone(),
+                mix_key: key_stub.mix_key.clone(),
             };
             let _ = exchange.sign(stack.keystore().signer()).await;
             first_box.push(exchange);

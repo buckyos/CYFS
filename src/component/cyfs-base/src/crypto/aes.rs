@@ -106,6 +106,18 @@ impl Default for AesKey {
 }
 
 impl AesKey {
+    pub fn proxy(n: u64) -> AesKey {
+        let mut key = [0u8; 48];
+        for i in 0..3 {
+            key[i * 8..(i + 1) * 8].copy_from_slice(&n.to_be_bytes());
+        }
+        for i in 3..6 {
+            let r = rand::random::<u64>();
+            key[i * 8..(i + 1) * 8].copy_from_slice(&r.to_be_bytes());
+        }
+        AesKey::from(&key)
+    }
+
     pub fn random() -> AesKey {
         let mut key = [0u8; 48];
         for i in 0..6 {

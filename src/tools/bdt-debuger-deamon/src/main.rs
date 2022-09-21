@@ -49,8 +49,9 @@ async fn main() {
                         .arg(Arg::with_name("port").long("port").short("p").takes_value(true).default_value("12345").help("debug command port to listen"))
                         .arg(Arg::with_name("ep").long("ep").multiple(true).takes_value(true).help("local endpoint"))
                         .arg(Arg::with_name("sn_conn_timeout").takes_value(true).default_value("0").help("sn connect timeout"))
-                        .arg(Arg::with_name("active_pn").takes_value(true).default_value("").help("active pn"))
-                        .arg(Arg::with_name("passive_pn").takes_value(true).default_value("").help("passive pn"))
+                        .arg(Arg::with_name("active_pn").long("active_pn").takes_value(true).default_value("").help("active pn"))
+                        .arg(Arg::with_name("passive_pn").long("passive_pn").takes_value(true).default_value("").help("passive pn"))
+                        .arg(Arg::with_name("device_cache").long("device_cache").takes_value(true).default_value("").help("device cache"))
                         .get_matches();
     
     let mut endpoints = vec![];
@@ -175,6 +176,14 @@ async fn main() {
     }
 
     let stack = stack.unwrap();
+
+    if let Some(device_cache) = matches.value_of("device_cache") {
+        if device_cache.len() > 0 {
+            let dev = load_dev_by_path(device_cache).unwrap();
+            let device_id = dev.desc().device_id();
+            stack.device_cache().add(&device_id, &dev);
+        }
+    }
 
     if let Some(vport) = matches.value_of("listen") {
         let vport = u16::from_str(vport);
