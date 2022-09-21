@@ -120,9 +120,9 @@ impl TryFrom<&Row<'_>> for NamedObjectMetaAccessInfoRaw {
 
     fn try_from(row: &Row<'_>) -> Result<Self, Self::Error> {
         let data = Self {
-            create_dec_id: row.get(1)?,
+            create_dec_id: row.get(0)?,
 
-            access_string: row.get(2)?,
+            access_string: row.get(1)?,
         };
 
         Ok(data)
