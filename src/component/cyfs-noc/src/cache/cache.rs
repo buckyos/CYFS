@@ -47,6 +47,14 @@ impl NamedObjectCacheMemoryCache {
         create_dec_id: &ObjectId,
         op_type: RequestOpType,
     ) -> BuckyResult<()> {
+        debug!(
+            "noc cache will check access: object={}, access={}, source={}, create_dec={}",
+            object_id,
+            AccessString::new(access_string),
+            source,
+            create_dec_id
+        );
+
         // system dec in current zone is always allowed
         if source.is_current_zone() {
             if source.is_system_dec() {

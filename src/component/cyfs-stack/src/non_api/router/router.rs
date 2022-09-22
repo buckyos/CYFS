@@ -428,6 +428,14 @@ impl NONRouter {
                     );
                     return Err(e);
                 }
+
+                if e.code() == BuckyErrorCode::PermissionDenied {
+                    warn!(
+                        "get object from noc stopped by access: obj={}, {}",
+                        req.object_id, e
+                    );
+                    return Err(e);
+                }
             }
         }
 

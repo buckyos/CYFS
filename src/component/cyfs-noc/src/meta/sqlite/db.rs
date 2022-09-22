@@ -260,6 +260,9 @@ impl SqliteMetaStorage {
         create_dec_id: &ObjectId,
         op_type: RequestOpType,
     ) -> BuckyResult<()> {
+        debug!("noc meta will check access: object={}, access={}, source={}, create_dec={}, op_type={:?}", 
+            object_id, AccessString::new(access_string), source, create_dec_id, op_type);
+
         // system dec in current zone is always allowed
         if source.is_current_zone() {
             if source.is_system_dec() {
@@ -331,7 +334,11 @@ impl SqliteMetaStorage {
             BuckyError::new(code, msg)
         })?;
 
-        debug!("insert new to noc success: obj={}", req.object_id);
+        debug!(
+            "insert new to noc success: obj={}, access={}",
+            req.object_id,
+            AccessString::new(req.access_string)
+        );
 
         Ok(count)
     }
@@ -442,7 +449,7 @@ impl SqliteMetaStorage {
 
         const UPDATE_SQL: &str = r#"
         UPDATE data_namedobject_meta SET update_time = :update_time, object_update_time = :object_update_time, 
-            context = :context, last_access_time = :last_access_time, last_access_rpath = :last_access_rpath 
+            context = :context, last_access_time = :last_access_time, last_access_rpath = :last_access_rpath, access = :access 
             WHERE object_id = :object_id 
             AND object_update_time = :current_object_update_time 
             AND update_time = :current_update_time 
@@ -459,6 +466,7 @@ impl SqliteMetaStorage {
             ":current_object_update_time": current_info.object_update_time.unwrap_or(0),
             ":current_update_time": current_info.update_time,
             ":current_insert_time": current_info.insert_time,
+            ":access": req.access_string,
         };
 
         let conn = self.get_conn()?.borrow();
@@ -525,7 +533,7 @@ impl SqliteMetaStorage {
         object_id: &ObjectId,
     ) -> BuckyResult<Option<NamedObjectMetaAccessInfo>> {
         const QUERY_UPDATE_SQL: &str = r#"
-            SELECT (create_dec_id, access) FROM data_namedobject_meta WHERE object_id = :object_id;
+            SELECT create_dec_id, access FROM data_namedobject_meta WHERE object_id = :object_id;
         "#;
 
         let params = named_params! {
@@ -603,7 +611,7 @@ impl SqliteMetaStorage {
         object_id: &ObjectId,
     ) -> BuckyResult<Option<NamedObjectMetaData>> {
         const GET_SQL: &'static str = r#"
-            SELECT * FROM data_namedobject_meta WHERE object_id=:object_id;
+            SELECT * FROM data_namedobject_meta WHERE object_id = :object_id;
         "#;
 
         let params = named_params! {
@@ -624,10 +632,11 @@ impl SqliteMetaStorage {
 
         match ret {
             Some(v) => {
-                let data = v.try_into().map_err(|e| {
+                let data: NamedObjectMetaData = v.try_into().map_err(|e| {
                     error!("noc meta convert raw data to meta data error: {}", e);
                     e
                 })?;
+                // debug!("noc meta got object={}, access={}", data.object_id, AccessString::new(data.access_string));
                 Ok(Some(data))
             }
             None => Ok(None),

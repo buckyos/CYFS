@@ -26,6 +26,8 @@ impl NONGlobalStateValidator {
         req_path: &str,
         object_id: &ObjectId,
     ) -> BuckyResult<GlobalStateValidateResponse> {
+        debug!("will validate object: req_path={}, object={}", req_path, object_id);
+        
         let req_path = RequestGlobalStatePath::from_str(req_path)?;
         let category = req_path.category();
         let dec_id = req_path.dec(source).to_owned();
