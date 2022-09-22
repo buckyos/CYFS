@@ -682,7 +682,8 @@ impl ClientInner {
                 .ok_or_else(|| BuckyError::new(BuckyErrorCode::CryptoError, "key not exists"))?;
             if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
 	    	    let mut exchg = Exchange {
-	                sequence: seq,
+	                sequence: seq, 
+                    to_device_id: self.sn_peerid.clone(), 
 	                key_encrypted,
 	                seq_key_sign: Signature::default(),
 	                send_time: now_abs_u64,

@@ -134,9 +134,8 @@ impl SynProxyTunnel {
         trace!("syn_proxy enck={} mixk={}", key_stub.enc_key.to_hex().unwrap(), key_stub.mix_key.to_hex().unwrap());
 
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
-            let mut exchg = Exchange::from((&syn_proxy, encrypted));
+            let mut exchg = Exchange::from((&syn_proxy, encrypted, key_stub.mix_key));
             let _ = exchg.sign(stack.keystore().signer()).await?;
-            exchg.mix_key = key_stub.mix_key.clone();
             syn_box.push(exchg);
         }
         syn_box.push(syn_proxy);

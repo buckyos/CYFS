@@ -292,14 +292,7 @@ impl ConnectTunnelBuilder {
             send_time: bucky_time_now()
         };
         if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
-            let mut exchange = Exchange {
-                sequence: syn_tunnel.sequence.clone(), 
-                key_encrypted, 
-                seq_key_sign: Signature::default(),
-                send_time: syn_tunnel.send_time.clone(),
-                from_device_desc: syn_tunnel.from_device_desc.clone(),
-                mix_key: key_stub.mix_key.clone(),
-            };
+            let mut exchange = Exchange::from((&syn_tunnel, key_encrypted, key_stub.mix_key));
             let _ = exchange.sign(stack.keystore().signer()).await;
             first_box.push(exchange);
         }

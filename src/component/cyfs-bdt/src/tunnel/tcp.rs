@@ -650,9 +650,8 @@ impl Tunnel {
             send_time: bucky_time_now()
         };
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
-            let mut exchg = Exchange::from((&syn_tunnel, encrypted));
+            let mut exchg = Exchange::from((&syn_tunnel, encrypted, key_stub.mix_key));
             exchg.sign(stack.keystore().signer()).await?;
-            exchg.mix_key = key_stub.mix_key.clone();
             syn_box.push(exchg);
         }
         syn_box.push(syn_tunnel);

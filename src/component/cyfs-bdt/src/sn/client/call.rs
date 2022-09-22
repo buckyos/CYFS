@@ -365,7 +365,8 @@ impl CallClientInner {
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = &self.aes_key.encrypted {
             let stack = Stack::from(&self.stack);
             let exchg = Exchange {
-                sequence: call_pkg.seq, 
+                sequence: call_pkg.seq,  
+                to_device_id: self.sn_peerid.clone(), 
                 key_encrypted: encrypted.clone(), 
                 seq_key_sign: Signature::default(),
                 send_time: 0,

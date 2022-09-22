@@ -7,7 +7,7 @@ use async_std::{
 };
 use log::*;
 use std::{
-    convert::TryFrom, io::ErrorKind, net::TcpListener, sync::RwLock, thread, time::Duration,
+    io::ErrorKind, net::TcpListener, sync::RwLock, thread, time::Duration,
 };
 //
 // use socket2;
@@ -705,7 +705,25 @@ impl Interface {
                 let exchg: &mut Exchange = packages[0].as_mut();
                 exchg.sign(stack.keystore().signer()).await?;
             } else {
-                let mut exchg = Exchange::try_from((&packages[0], encrypted))?;
+                let pkg = &packages[0];
+                let mut exchg = match pkg.cmd_code() {
+                    PackageCmdCode::SynTunnel => {
+                        let syn_tunnel: &SynTunnel = pkg.as_ref();
+                        Ok(Exchange::from((syn_tunnel, encrypted, key_stub.mix_key)))
+                    }
+                    PackageCmdCode::TcpSynConnection => {
+                        let tcp_syn: &v0::TcpSynConnection = pkg.as_ref();
+                        Ok(Exchange::from((tcp_syn, encrypted, key_stub.mix_key)))
+                    }
+                    PackageCmdCode::TcpAckConnection => {
+                        let tcp_ack: &v0::TcpAckConnection = pkg.as_ref();
+                        Ok(Exchange::from((tcp_ack, self.0.remote_device_id.clone(), encrypted, key_stub.mix_key)))
+                    }
+                    _ => Err(BuckyError::new(
+                        BuckyErrorCode::InvalidInput,
+                        "exchange cannt merge with first package",
+                    )),
+                }?;
                 exchg.sign(stack.keystore().signer()).await?;
                 package_box.push(exchg);
             }

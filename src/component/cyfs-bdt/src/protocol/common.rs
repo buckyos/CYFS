@@ -530,6 +530,7 @@ pub trait Package {
 #[derive(Clone)]
 pub struct Exchange {
     pub sequence: TempSeq,
+    pub to_device_id: DeviceId, 
     pub key_encrypted: Vec<u8>, 
     pub seq_key_sign: Signature,
     pub send_time: Timestamp,
@@ -581,31 +582,33 @@ impl Package for Exchange {
 }
 
 
-impl From<(&SynTunnel, Vec<u8>)> for Exchange {
-    fn from(context: (&SynTunnel, Vec<u8>)) -> Self {
-        let (syn_tunnel, key_encrypted) = context;
+impl From<(&SynTunnel, Vec<u8>, AesKey)> for Exchange {
+    fn from(context: (&SynTunnel, Vec<u8>, AesKey)) -> Self {
+        let (syn_tunnel, key_encrypted, mix_key) = context;
         Exchange {
-            sequence: syn_tunnel.sequence.clone(),
+            sequence: syn_tunnel.sequence.clone(), 
+            to_device_id: syn_tunnel.to_device_id.clone(), 
             key_encrypted, 
             seq_key_sign: Signature::default(),
             send_time: syn_tunnel.send_time.clone(),
             from_device_desc: syn_tunnel.from_device_desc.clone(),
-            mix_key: AesKey::random(),
+            mix_key
         }
     }
 }
 
 
-impl From<(&SynProxy, Vec<u8>)> for Exchange {
-    fn from(context: (&SynProxy, Vec<u8>)) -> Self {
-        let (syn_proxy, key_encrypted) = context;
+impl From<(&SynProxy, Vec<u8>, AesKey)> for Exchange {
+    fn from(context: (&SynProxy, Vec<u8>, AesKey)) -> Self {
+        let (syn_proxy, key_encrypted, mix_key) = context;
         Exchange {
-            sequence: syn_proxy.seq,
+            sequence: syn_proxy.seq, 
+            to_device_id: syn_proxy.to_peer_id.clone(), 
             key_encrypted, 
             seq_key_sign: Signature::default(),
             send_time: bucky_time_now(),
             from_device_desc: syn_proxy.from_peer_info.clone(),
-            mix_key: AesKey::random(),
+            mix_key
         }
     }
 }
@@ -627,6 +630,7 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for Exchange 
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Encode::<Self, Context>::new(enc_buf, merge_context)?;
         let buf = context.check_encode(buf, "sequence", &self.sequence, flags.next())?;
+        let buf = context.check_encode(buf, "to_device_id", &self.to_device_id, flags.next())?;
         let buf = context.encode(buf, &self.seq_key_sign, flags.next())?;
         let buf = context.check_encode(buf, "send_time", &self.send_time, flags.next())?;
         let buf =
@@ -645,6 +649,7 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let mut flags = context::FlagsCounter::new();
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (sequence, buf) = context.check_decode(buf, "sequence", flags.next())?;
+        let (to_device_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
         let (seq_key_sign, buf) = context.decode(buf, "Exchange.seq_key_sign", flags.next())?;
         let (send_time, buf) = context.check_decode(buf, "send_time", flags.next())?;
         let (from_device_desc, buf) = context.check_decode(buf, "device_desc", flags.next())?;
@@ -652,7 +657,8 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
 
         Ok((
             Self {
-                sequence,
+                sequence, 
+                to_device_id, 
                 key_encrypted: vec![],
                 seq_key_sign,
                 send_time,
@@ -683,7 +689,8 @@ fn encode_protocol_exchange() {
 
     let (_key, key_encrypted) = private_key.public().gen_aeskey_and_encrypt().unwrap();
     let src = Exchange {
-        sequence: TempSeq::from(rand::random::<u32>()),
+        sequence: TempSeq::from(rand::random::<u32>()), 
+        to_device_id: DeviceId::default(), 
         key_encrypted: key_encrypted.clone(), 
         seq_key_sign: Signature::default(),
         send_time: bucky_time_now(),

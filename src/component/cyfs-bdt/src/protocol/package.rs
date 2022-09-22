@@ -226,29 +226,5 @@ impl<T: 'static + Package + Send + Sync> From<T> for DynamicPackage {
 
 
 
-impl std::convert::TryFrom<(&DynamicPackage, Vec<u8>)> for Exchange {
-    type Error = BuckyError;
-    fn try_from(context: (&DynamicPackage, Vec<u8>)) -> Result<Self, BuckyError> {
-        let (pkg, encrypted) = context;
-        match pkg.cmd_code() {
-            PackageCmdCode::SynTunnel => {
-                let syn_tunnel: &SynTunnel = pkg.as_ref();
-                Ok(Self::from((syn_tunnel, encrypted)))
-            }
-            PackageCmdCode::TcpSynConnection => {
-                let tcp_syn: &v0::TcpSynConnection = pkg.as_ref();
-                Ok(Self::from((tcp_syn, encrypted)))
-            }
-            PackageCmdCode::TcpAckConnection => {
-                let tcp_ack: &v0::TcpAckConnection = pkg.as_ref();
-                Ok(Self::from((tcp_ack, encrypted)))
-            }
-            _ => Err(BuckyError::new(
-                BuckyErrorCode::InvalidInput,
-                "exchange cannt merge with first package",
-            )),
-        }
-    }
-}
 
 
