@@ -1,8 +1,8 @@
 //use crate::app_manager_ex::USER_APP_LIST;
-use cyfs_base::*;
-use cyfs_core::*;
 use cyfs_lib::*;
 use log::*;
+use cyfs_base::*;
+use cyfs_core::{APP_LOCAL_LIST_PATH, AppCmdList, AppLocalList, AppLocalStatus, CMD_LIST_PATH, DecApp, DecAppId};
 
 const DEFAULT_CMD_LIST: &str = "default";
 const APP_MAIN_PATH: &str = "/app";
@@ -21,7 +21,7 @@ impl NonHelper {
     }
 
     pub async fn init(&mut self) -> BuckyResult<()> {
-        let dec_id = Some(get_system_dec_app().object_id().clone());
+        let dec_id = Some(get_system_dec_app().clone());
         let stack = SharedCyfsStack::open_default(dec_id).await?;
         stack.wait_online(None).await?;
         self.owner = stack.local_device().desc().owner().clone();
@@ -90,6 +90,7 @@ impl NonHelper {
             .get_object(NONGetObjectRequest {
                 common: NONOutputRequestCommon {
                     req_path: None,
+                    source: None,
                     dec_id: None,
                     level: NONAPILevel::Router,
                     target,
