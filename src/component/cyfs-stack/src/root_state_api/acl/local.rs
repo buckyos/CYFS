@@ -119,29 +119,7 @@ impl OpEnvAclInnerInputProcessor {
     fn check_access(&self, service: &str, common: &OpEnvInputRequestCommon) -> BuckyResult<()> {
         common.source.check_current_zone(service)?;
 
-        if common
-            .source
-            .check_target_dec_permission(&common.target_dec_id)
-        {
-            return Ok(());
-        }
-
-        match OpEnvSessionIDHelper::get_type(common.sid)? {
-            ObjectMapOpEnvType::Path => {
-                // 同zone内，path_op_env不可以跨dec使用
-                let msg = format!(
-                    "only single op_env could be used between different dec! {}, source={}, target={:?}",
-                    service, common.source, common.target_dec_id,
-                );
-                error!("{}", msg);
-
-                Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
-            }
-            ObjectMapOpEnvType::Single => {
-                // 同zone内，single_op可以跨dec使用
-                Ok(())
-            }
-        }
+        Ok(())
     }
 }
 
