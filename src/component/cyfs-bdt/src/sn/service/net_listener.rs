@@ -607,7 +607,7 @@ impl UdpSender {
     }
 
     pub fn key(&self) -> &AesKey {
-        &self.aes_key
+        &self.enc_key
     }
 }
 
