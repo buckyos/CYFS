@@ -321,7 +321,7 @@ impl SqliteMetaStorage {
             let msg;
             let code = if Self::is_exists_error(&e) {
                 msg = format!("insert_new but already exists: {}", req.object_id);
-                warn!("{}", msg);
+                debug!("{}", msg);
 
                 BuckyErrorCode::AlreadyExists
             } else {

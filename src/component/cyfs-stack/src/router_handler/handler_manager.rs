@@ -671,7 +671,7 @@ impl RouterHandlersManager {
 
         self.acl_manager
             .global_state_meta()
-            .check_access(source, &req_path, RequestOpType::Call)
+            .check_access(source, &req_path, RequestOpType::Write)
             .await
     }
 }

@@ -99,8 +99,8 @@ impl GlobalStateMetaLocalService {
 
         if let Err(e) = dec_rmeta.check_access(check_req) {
             error!(
-                "global check check rmeta but been rejected! source={}, req_path={}, permissons={}, {}",
-                source, req_path, permissions.as_str(), e
+                "global check check rmeta but been rejected! source={}, req_path={}, permissons={}",
+                source, req_path, permissions.as_str()
             );
             return Err(e);
         }
