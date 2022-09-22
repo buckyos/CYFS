@@ -104,8 +104,8 @@ impl StreamEncoder {
     }
 }
 
-impl ChunkEncoder2 for StreamEncoder {
-    fn clone_as_encoder(&self) -> Box<dyn ChunkEncoder2> {
+impl ChunkEncoder for StreamEncoder {
+    fn clone_as_encoder(&self) -> Box<dyn ChunkEncoder> {
         Box::new(self.clone())
     }
 
