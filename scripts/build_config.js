@@ -133,11 +133,7 @@ const misc = [
     {
         "name": "sn-miner-rust",
         "include": formal_platform
-    },
-    {
-        "name": "pn-miner",
-        "include": formal_platform
-    },
+    }
 ]
 
 module.exports = {
