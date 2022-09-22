@@ -150,12 +150,11 @@ impl OnPackage<SynProxy, (&PackageBox, &SocketAddr)> for Service {
                     timestamp: syn_proxy.to_peer_timestamp, 
                 }
             );
-            let stub_key = syn_proxy.key_hash.clone();
-
-            let filter_result = service.events().pre_create_tunnel(&stub_key, &stub_pair, &mix_key).await;
+            
+            let filter_result = service.events().pre_create_tunnel(&mix_key, &stub_pair).await;
             match filter_result {
                 Ok(_) => {
-                    let ret = service.proxy_tunnels().create_tunnel(stub_key, stub_pair, &mix_key);
+                    let ret = service.proxy_tunnels().create_tunnel(&mix_key, stub_pair);
                     let _ = service.command_tunnel().ack_proxy(ret, &syn_proxy, &from, &enc_key, &mix_key);
                 }, 
                 Err(err) => {

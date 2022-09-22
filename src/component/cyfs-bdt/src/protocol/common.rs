@@ -1405,7 +1405,6 @@ pub struct SynProxy {
     pub to_peer_id: DeviceId,
     pub to_peer_timestamp: Timestamp,
     pub from_peer_info: Device,
-    pub key_hash: KeyMixHash,
     pub mix_key: AesKey,
 }
 
@@ -1413,11 +1412,10 @@ impl std::fmt::Display for SynProxy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "SynProxy:{{sequence:{:?}, to:{:?}, from:{}, key_hash:{}, mix_key:{:?}}}",
+            "SynProxy:{{sequence:{:?}, to:{:?}, from:{}, mix_key:{:?}}}",
             self.seq,
             self.to_peer_id,
             self.from_peer_info.desc().device_id(), 
-            self.key_hash.to_string(),
             self.mix_key.to_hex(),
         )
     }
@@ -1456,7 +1454,6 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for SynProxy 
         let buf = context.check_encode(buf, "to_device_id", &self.to_peer_id, flags.next())?;
         let buf = context.encode(buf, &self.to_peer_timestamp, flags.next())?;
         let buf = context.check_encode(buf, "device_desc", &self.from_peer_info, flags.next())?;
-        let buf = context.encode(buf, &self.key_hash, flags.next())?;
         let _buf = context.encode(buf, &self.mix_key, flags.next())?;
         context.finish(enc_buf)
     }
@@ -1475,7 +1472,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (to_peer_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
         let (to_peer_timestamp, buf) = context.decode(buf, "SynProxy.to_peer_timestamp", flags.next())?;
         let (from_peer_info, buf) = context.check_decode(buf, "device_desc", flags.next())?;
-        let (key_hash, buf) = context.decode(buf, "SynProxy.key_hash", flags.next())?;
         let (mix_key, buf) = context.decode(buf, "SynProxy.mix_key", flags.next())?;
 
         Ok((
@@ -1486,7 +1482,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
                 to_peer_id,
                 to_peer_timestamp,
                 from_peer_info,
-                key_hash,
                 mix_key,
             },
             buf,
@@ -1524,7 +1519,6 @@ fn encode_protocol_syn_proxy() {
     )
     .build();
 
-    let key_mix_hash = AesKey::random().mix_hash(None);
     let src = SynProxy {
         protocol_version: 0,
         stack_version: 0, 
@@ -1532,7 +1526,6 @@ fn encode_protocol_syn_proxy() {
         to_peer_id: to_device.desc().device_id(),
         to_peer_timestamp: bucky_time_now(),
         from_peer_info: from_device,
-        key_hash: key_mix_hash,
         mix_key: AesKey::random(),
     };
 
@@ -1558,6 +1551,4 @@ fn encode_protocol_syn_proxy() {
     let dst_peer_info = dst.from_peer_info.to_hex().unwrap();
     let src_peer_info = src.from_peer_info.to_hex().unwrap();
     assert_eq!(dst_peer_info, src_peer_info);
-
-    assert_eq!(dst.key_hash, src.key_hash);
 }

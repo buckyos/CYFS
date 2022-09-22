@@ -303,7 +303,7 @@ impl ProxyTunnelManager {
         })
     }
 
-    pub fn create_tunnel(&self, key: KeyMixHash, device_pair: (ProxyDeviceStub, ProxyDeviceStub), _mix_key: &AesKey) -> BuckyResult<SocketAddr> {
+    pub fn create_tunnel(&self, _mix_key: &AesKey, device_pair: (ProxyDeviceStub, ProxyDeviceStub)) -> BuckyResult<SocketAddr> {
         let _ = self.interface.create_tunnel(key, device_pair)?;
         Ok(self.interface.outer().clone())
     }
