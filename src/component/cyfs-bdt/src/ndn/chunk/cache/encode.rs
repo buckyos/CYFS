@@ -13,22 +13,22 @@ use super::super::super::{
 };
 
 #[derive(Clone, Eq, PartialEq)]
-pub enum ChunkDecoderState2 {
+pub enum ChunkDecoderState {
     Decoding(u32), 
     Ready, 
 }
 
-pub trait ChunkDecoder2: Send + Sync {
-    fn clone_as_decoder(&self) -> Box<dyn ChunkDecoder2>;
+pub trait ChunkDecoder: Send + Sync {
+    fn clone_as_decoder(&self) -> Box<dyn ChunkDecoder>;
     fn chunk(&self) -> &ChunkId;
     fn desc(&self) -> &ChunkEncodeDesc;
     fn require_index(&self) -> Option<(Option<u32>, Option<Vec<Range<u32>>>)>;
-    fn push_piece_data(&self, piece: &PieceData) -> (ChunkDecoderState2, ChunkDecoderState2);
+    fn push_piece_data(&self, piece: &PieceData) -> (ChunkDecoderState, ChunkDecoderState);
     fn chunk_content(&self) -> Option<Arc<Vec<u8>>>;
 }
 
-pub trait ChunkEncoder2: Send + Sync {
-    fn clone_as_encoder(&self) -> Box<dyn ChunkEncoder2>;
+pub trait ChunkEncoder: Send + Sync {
+    fn clone_as_encoder(&self) -> Box<dyn ChunkEncoder>;
     fn chunk(&self) -> &ChunkId;
     fn desc(&self) -> &ChunkEncodeDesc;
     fn next_piece(

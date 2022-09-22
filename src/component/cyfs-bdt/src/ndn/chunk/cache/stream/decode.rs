@@ -195,8 +195,8 @@ impl StreamDecoder {
 
 }
 
-impl ChunkDecoder2 for StreamDecoder {
-    fn clone_as_decoder(&self) -> Box<dyn ChunkDecoder2> {
+impl ChunkDecoder for StreamDecoder {
+    fn clone_as_decoder(&self) -> Box<dyn ChunkDecoder> {
         Box::new(self.clone())
     }
 
@@ -232,7 +232,7 @@ impl ChunkDecoder2 for StreamDecoder {
         }
     }
 
-    fn push_piece_data(&self, piece: &PieceData) -> (ChunkDecoderState2, ChunkDecoderState2) {
+    fn push_piece_data(&self, piece: &PieceData) -> (ChunkDecoderState, ChunkDecoderState) {
         trace!("{} push piece desc {:?}", self, piece.desc);
         let index = piece.desc.range_index(self.range_size()).unwrap();
         let state = &mut *self.0.state.write().unwrap();
@@ -240,7 +240,7 @@ impl ChunkDecoder2 for StreamDecoder {
             DecoderStateImpl::Decoding(decoding) => {
                 let pushed = decoding.pushed;
                 if index > self.end_index() {
-                    (ChunkDecoderState2::Decoding(pushed), ChunkDecoderState2::Decoding(pushed))
+                    (ChunkDecoderState::Decoding(pushed), ChunkDecoderState::Decoding(pushed))
                 } else {
                     if decoding.push_index(index) {
                         let index = index as usize;
@@ -255,18 +255,18 @@ impl ChunkDecoder2 for StreamDecoder {
                             let mut content = vec![];
                             std::mem::swap(&mut content, &mut decoding.cache);
                             *state = DecoderStateImpl::Ready(Arc::new(content));
-                            (ChunkDecoderState2::Decoding(pushed), ChunkDecoderState2::Ready)
+                            (ChunkDecoderState::Decoding(pushed), ChunkDecoderState::Ready)
                         } else {
-                            (ChunkDecoderState2::Decoding(pushed), ChunkDecoderState2::Decoding(decoding.pushed))
+                            (ChunkDecoderState::Decoding(pushed), ChunkDecoderState::Decoding(decoding.pushed))
                         }
                     } else {
-                        (ChunkDecoderState2::Decoding(pushed), ChunkDecoderState2::Decoding(pushed))
+                        (ChunkDecoderState::Decoding(pushed), ChunkDecoderState::Decoding(pushed))
                     }
                 }
             }, 
             DecoderStateImpl::Ready(_) => {
                 trace!("{} ingnore piece seq {} for decoder is ready", self, index);
-                (ChunkDecoderState2::Ready, ChunkDecoderState2::Ready)
+                (ChunkDecoderState::Ready, ChunkDecoderState::Ready)
             }
         }
     }

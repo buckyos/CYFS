@@ -38,7 +38,7 @@ struct DownloadingState {
     waiters: StateWaiter, 
     last_pushed: Timestamp, 
     loss_count: u32, 
-    decoder: Box<dyn ChunkDecoder2>, 
+    decoder: Box<dyn ChunkDecoder>, 
     speed_counter: SpeedCounter, 
     history_speed: HistorySpeed
 }
@@ -263,7 +263,7 @@ impl DownloadSession {
             EnterDownloading, 
             RespControl(PieceControlCommand), 
             Ignore, 
-            Push(Box<dyn ChunkDecoder2>)
+            Push(Box<dyn ChunkDecoder>)
         }
         use NextStep::*;
         use StateImpl::*;
@@ -310,7 +310,7 @@ impl DownloadSession {
             });
         };
 
-        let push_to_decoder = |provider: Box<dyn ChunkDecoder2>| {
+        let push_to_decoder = |provider: Box<dyn ChunkDecoder>| {
             let (pre_state, next_state) = provider.push_piece_data(piece); 
             if let Some(waiters) = {
                 let state = &mut *self.0.state.write().unwrap();
@@ -320,7 +320,7 @@ impl DownloadSession {
                             downloading.last_pushed = bucky_time_now();
                             downloading.loss_count = 0;
                         }
-                        if next_state == ChunkDecoderState2::Ready {
+                        if next_state == ChunkDecoderState::Ready {
                             let mut waiters = StateWaiter::new();
                             std::mem::swap(&mut waiters, &mut downloading.waiters);
                             info!("{} finished", self);

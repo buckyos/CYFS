@@ -25,7 +25,7 @@ struct UploadingState {
     speed_counter: SpeedCounter,  
     history_speed: HistorySpeed, 
     pending_from: Timestamp, 
-    encoder: Box<dyn ChunkEncoder2>
+    encoder: Box<dyn ChunkEncoder>
 }
 
 struct StateImpl {
@@ -171,7 +171,7 @@ impl UploadSession {
     // 把第一个包加到重发队列里去
     pub fn on_interest(&self, _interest: &Interest) -> BuckyResult<()> {
         enum NextStep {
-            ResetEncoder(Box<dyn ChunkEncoder2>), 
+            ResetEncoder(Box<dyn ChunkEncoder>), 
             RespInterest(BuckyErrorCode), 
             None
         }
@@ -215,7 +215,7 @@ impl UploadSession {
     pub(super) fn on_piece_control(&self, ctrl: &PieceControl) -> BuckyResult<()> {
         self.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
         enum NextStep {
-            MergeIndex(Box<dyn ChunkEncoder2>, u32, Vec<Range<u32>>), 
+            MergeIndex(Box<dyn ChunkEncoder>, u32, Vec<Range<u32>>), 
             RespInterest(BuckyErrorCode), 
             None
         }
