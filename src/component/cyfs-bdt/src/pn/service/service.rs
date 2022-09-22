@@ -43,7 +43,7 @@ struct DefaultEvents {
 
 #[async_trait::async_trait]
 impl ProxyServiceEvents for DefaultEvents {
-    async fn pre_create_tunnel(&self, _key: &KeyMixHash, _device_pair: &(ProxyDeviceStub, ProxyDeviceStub)) -> BuckyResult<()> {
+    async fn pre_create_tunnel(&self, _key: &KeyMixHash, _device_pair: &(ProxyDeviceStub, ProxyDeviceStub), _mix_key: &AesKey) -> BuckyResult<()> {
         Ok(())
     }
 }
@@ -137,11 +137,12 @@ impl OnPackage<SynProxy, (&PackageBox, &SocketAddr)> for Service {
         trace!("{} got {} from {:?}", self, syn_proxy, from);
         let service = self.clone();
         let syn_proxy = syn_proxy.clone();
-        let with_key = in_box.key().clone();
+        let enc_key = in_box.enc_key().clone();
+        let mix_key = in_box.mix_key().clone();
         let from = *from; 
         task::spawn(async move {
             let stub_pair = (ProxyDeviceStub {
-                    id: syn_proxy.from_peer_id.clone(), 
+                    id: syn_proxy.from_peer_info.desc().device_id(), 
                     timestamp: syn_proxy.from_peer_info.body().as_ref().unwrap().update_time(), 
                 },
                 ProxyDeviceStub {
@@ -149,16 +150,15 @@ impl OnPackage<SynProxy, (&PackageBox, &SocketAddr)> for Service {
                     timestamp: syn_proxy.to_peer_timestamp, 
                 }
             );
-            let stub_key = syn_proxy.key_hash.clone();
-
-            let filter_result = service.events().pre_create_tunnel(&stub_key, &stub_pair).await;
+            
+            let filter_result = service.events().pre_create_tunnel(&mix_key, &stub_pair).await;
             match filter_result {
                 Ok(_) => {
-                    let ret = service.proxy_tunnels().create_tunnel(stub_key, stub_pair);
-                    let _ = service.command_tunnel().ack_proxy(ret, &syn_proxy, &from, &with_key);
+                    let ret = service.proxy_tunnels().create_tunnel(&mix_key, stub_pair);
+                    let _ = service.command_tunnel().ack_proxy(ret, &syn_proxy, &from, &enc_key, &mix_key);
                 }, 
                 Err(err) => {
-                    let _ = service.command_tunnel().ack_proxy(Err(err), &syn_proxy, &from, &with_key);
+                    let _ = service.command_tunnel().ack_proxy(Err(err), &syn_proxy, &from, &enc_key, &mix_key);
                 }
             }
         });

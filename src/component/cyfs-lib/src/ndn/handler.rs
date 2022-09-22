@@ -2,7 +2,7 @@ use serde_json::{Map, Value};
 use cyfs_base::*;
 use cyfs_bdt::{
     TempSeq, 
-    ndn::channel::{PieceSessionType}
+    ndn::channel::{ChunkEncodeDesc}
 };
 use super::{
     bdt_request::BdtDataRefererInfo
@@ -11,7 +11,7 @@ use super::{
 pub struct InterestHandlerRequest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,
-    pub prefer_type: PieceSessionType, 
+    pub prefer_type: ChunkEncodeDesc, 
     pub from: Option<DeviceId>,
     pub referer: Option<BdtDataRefererInfo>, 
     pub from_channel: DeviceId 

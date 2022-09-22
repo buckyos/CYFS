@@ -1204,7 +1204,6 @@ pub struct TcpSynConnection {
     pub result: u8,
     pub to_vport: u16,
     pub from_session_id: IncreaseId,
-    pub from_device_id: DeviceId,
     pub to_device_id: DeviceId,
     pub from_device_desc: Device,
     pub reverse_endpoint: Option<Vec<Endpoint>>,
@@ -1216,7 +1215,7 @@ impl std::fmt::Display for TcpSynConnection {
         write!(
             f,
             "TcpSynConnection:{{sequence:{:?},to_vport:{},from_device_id:{}, reverse_endpoint:{:?}}}",
-            self.sequence, self.to_vport, self.from_device_id, self.reverse_endpoint
+            self.sequence, self.to_vport, self.from_device_desc.desc().device_id(), self.reverse_endpoint
         )
     }
 }
@@ -1232,16 +1231,17 @@ impl Package for TcpSynConnection {
 }
 
 
-impl From<(&TcpSynConnection, Vec<u8>)> for Exchange {
-    fn from(context: (&TcpSynConnection, Vec<u8>)) -> Self {
-        let (tcp_syn, key_encrypted) = context;
+impl From<(&TcpSynConnection, Vec<u8>, AesKey)> for Exchange {
+    fn from(context: (&TcpSynConnection, Vec<u8>, AesKey)) -> Self {
+        let (tcp_syn, key_encrypted, mix_key) = context;
         Exchange {
-            sequence: tcp_syn.sequence.clone(),
+            sequence: tcp_syn.sequence.clone(), 
+            to_device_id: tcp_syn.to_device_id.clone(), 
+            send_time: bucky_time_now(), 
             key_encrypted, 
-            seq_key_sign: Signature::default(),
-            from_device_id: tcp_syn.from_device_id.clone(),
-            send_time: bucky_time_now(),
+            sign: Signature::default(),
             from_device_desc: tcp_syn.from_device_desc.clone(),
+            mix_key
         }
     }
 }
@@ -1268,8 +1268,6 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for TcpSynCon
         let buf = context.encode(buf, &self.result, flags.next())?;
         let buf = context.encode(buf, &self.to_vport, flags.next())?;
         let buf = context.encode(buf, &self.from_session_id, flags.next())?;
-        let buf =
-            context.check_encode(buf, "from_device_id", &self.from_device_id, flags.next())?;
         let buf = context.check_encode(buf, "to_device_id", &self.to_device_id, flags.next())?;
         let buf = context.check_encode(buf, "device_desc", &self.from_device_desc, flags.next())?;
         let buf = context.option_encode(buf, &self.reverse_endpoint, flags.next())?;
@@ -1291,7 +1289,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (result, buf) = context.decode(buf, "TcpSynConnection.result", flags.next())?;
         let (to_vport, buf) = context.decode(buf, "TcpSynConnection.to_vport", flags.next())?;
         let (from_session_id, buf) = context.decode(buf, "TcpSynConnection.from_session_id", flags.next())?;
-        let (from_device_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (to_device_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
         let (from_device_desc, buf) = context.check_decode(buf, "device_desc", flags.next())?;
         let (reverse_endpoint, buf) = context.option_decode(buf, flags.next())?;
@@ -1303,7 +1300,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
                 result,
                 to_vport,
                 from_session_id,
-                from_device_id,
                 to_device_id,
                 from_device_desc,
                 reverse_endpoint,
@@ -1354,7 +1350,6 @@ fn encode_protocol_tcp_syn_connection() {
         result: rand::random::<u8>(),
         to_vport: rand::random::<u16>(),
         from_session_id: IncreaseId::default(),
-        from_device_id: from_device.desc().device_id(),
         to_device_id: to_device.desc().device_id(),
         from_device_desc: from_device,
         reverse_endpoint: Some(eps),
@@ -1380,7 +1375,6 @@ fn encode_protocol_tcp_syn_connection() {
     assert_eq!(dst.result, src.result);
     assert_eq!(dst.to_vport, src.to_vport);
     assert_eq!(dst.from_session_id, src.from_session_id);
-    assert_eq!(dst.from_device_id, src.from_device_id);
     assert_eq!(dst.to_device_id, src.to_device_id);
 
     let dst_from_device_desc = dst.from_device_desc.to_hex().unwrap();
@@ -1426,16 +1420,17 @@ impl Package for TcpAckConnection {
     }
 }
 
-impl From<(&TcpAckConnection, Vec<u8>)> for Exchange {
-    fn from(context: (&TcpAckConnection, Vec<u8>)) -> Self {
-        let (tcp_ack, key_encrypted) = context;
+impl From<(&TcpAckConnection, DeviceId, Vec<u8>, AesKey)> for Exchange {
+    fn from(context: (&TcpAckConnection, DeviceId, Vec<u8>, AesKey)) -> Self {
+        let (tcp_ack, to_device_id, key_encrypted, mix_key) = context;
         Exchange {
-            sequence: tcp_ack.sequence.clone(),
-            key_encrypted, 
-            seq_key_sign: Signature::default(),
-            from_device_id: tcp_ack.to_device_desc.desc().device_id(),
+            sequence: tcp_ack.sequence.clone(), 
+            to_device_id, 
             send_time: bucky_time_now(),
+            key_encrypted, 
+            sign: Signature::default(),
             from_device_desc: tcp_ack.to_device_desc.clone(),
+            mix_key
         }
     }
 }
@@ -1764,7 +1759,6 @@ pub struct SnCalled {
     pub seq: TempSeq,
     pub sn_peer_id: DeviceId,
     pub to_peer_id: DeviceId,
-    pub from_peer_id: DeviceId,
     pub reverse_endpoint_array: Vec<Endpoint>,
     pub active_pn_list: Vec<DeviceId>,
     pub peer_info: Device,
@@ -1788,7 +1782,6 @@ impl Into<merge_context::OtherDecode> for &SnCalled {
         let mut context = merge_context::FirstDecode::new();
         merge_context::Decode::set_name(&mut context, "sequence", &self.call_seq);
         merge_context::Decode::set_name(&mut context, "to_device_id", &self.to_peer_id);
-        merge_context::Decode::set_name(&mut context, "from_device_id", &self.from_peer_id);
         merge_context::Decode::set_name(&mut context, "send_time", &self.call_send_time);
         merge_context::Decode::set_name(&mut context, "device_desc", &self.peer_info);
         context.into()
@@ -1815,7 +1808,6 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for SnCalled 
         let buf = context.encode(buf, &self.seq, flags.next())?;
         let buf = context.check_encode(buf, "sn_device_id", &self.sn_peer_id, flags.next())?;
         let buf = context.check_encode(buf, "to_device_id", &self.to_peer_id, flags.next())?;
-        let buf = context.check_encode(buf, "from_device_id", &self.from_peer_id, flags.next())?;
         let buf = context.encode(buf, &self.reverse_endpoint_array, flags.next())?;
         let buf = context.encode(buf, &self.active_pn_list, flags.next())?;
         let buf = context.check_encode(buf, "device_desc", &self.peer_info, flags.next())?;
@@ -1836,7 +1828,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (seq, buf) = context.check_decode(buf, "sequence", flags.next())?;
         let (sn_peer_id, buf) = context.check_decode(buf, "sn_device_id", flags.next())?;
         let (to_peer_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
-        let (from_peer_id, buf) = context.check_decode(buf, "from_device_id", flags.next())?;
         let (reverse_endpoint_array, buf) = context.decode(buf, "SnCalled.reverse_endpoint_array", flags.next())?;
         let (active_pn_list, buf) = context.decode(buf, "SnCalled.active_pn_list", flags.next())?;
         let (peer_info, buf) = context.check_decode(buf, "device_desc", flags.next())?;
@@ -1849,7 +1840,6 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
                 seq,
                 sn_peer_id,
                 to_peer_id,
-                from_peer_id,
                 reverse_endpoint_array,
                 active_pn_list,
                 peer_info,
@@ -1903,7 +1893,6 @@ fn encode_protocol_sn_called() {
         seq: TempSeq::from(rand::random::<u32>()),
         sn_peer_id: to_device.desc().device_id(),
         to_peer_id: to_device.desc().device_id(),
-        from_peer_id: from_device.desc().device_id(),
         reverse_endpoint_array: eps,
         active_pn_list: pn,
         peer_info: from_device,
@@ -1930,7 +1919,6 @@ fn encode_protocol_sn_called() {
     assert_eq!(dst.seq, src.seq);
     assert_eq!(dst.sn_peer_id, src.sn_peer_id);
     assert_eq!(dst.to_peer_id, src.to_peer_id);
-    assert_eq!(dst.from_peer_id, src.from_peer_id);
     assert_eq!(dst.reverse_endpoint_array, src.reverse_endpoint_array);
 
     let dst_pn = dst.active_pn_list.to_hex().unwrap();

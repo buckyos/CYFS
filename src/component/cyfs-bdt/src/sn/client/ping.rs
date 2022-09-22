@@ -202,7 +202,7 @@ impl PingManager {
         log::info!("{} called, sn: {}, from: {}, seq: {}, from-eps: {}.",
             self, 
             called.sn_peer_id.to_string(),
-            called.from_peer_id.to_string(),
+            called.peer_info.desc().device_id().to_string(),
             called.seq.value(),
             called.peer_info.connect_info().endpoints().iter().map(|ep| ep.to_string()).collect::<Vec<String>>().concat());
 
@@ -358,7 +358,8 @@ impl Client {
             create_time: Instant::now(),
             sn_peerid: sn_peerid.clone(),
             sn: sn.clone(),
-            aes_key: None,
+            enc_key: None,
+            mix_key: None,
             sessions: RwLock::new(sessions),
             active_session_index: AtomicU32::new(std::u32::MAX),
             client_status: AtomicU8::new(PING_CLIENT_STATUS_INIT),
@@ -385,7 +386,8 @@ impl Client {
 
         if is_encrypto {
             let found_key = Stack::from(&mgr.env.stack).keystore().create_key(sn.desc(), false);
-            inner.aes_key = Some(found_key.aes_key.clone());
+            inner.enc_key = Some(found_key.enc_key.clone());
+            inner.mix_key = Some(found_key.mix_key.clone());
         }
 
         Client {
@@ -535,7 +537,8 @@ struct ClientInner {
     sn_peerid: DeviceId,
     sn: Device,
 
-    aes_key: Option<AesKey>,
+    enc_key: Option<AesKey>,
+    mix_key: Option<AesKey>,
     sessions: RwLock<Vec<Session>>,
     active_session_index: AtomicU32,
 
@@ -667,41 +670,22 @@ impl ClientInner {
         let seq = self.seq_genarator.generate();
 
         let stack = Stack::from(&self.env.stack);
-        let (local_peer, local_deviceid) = {
-            (stack.device_cache().local(), stack.local_device_id().clone())
-        };
-        assert!(self.aes_key.is_some()); // <TODO>暂时不支持明文
-        let mut pkg_box = PackageBox::encrypt_box(self.sn_peerid.clone(), self.aes_key.as_ref().unwrap().clone());
+        let local_peer = stack.device_cache().local();
+        assert!(self.enc_key.is_some()); // <TODO>暂时不支持明文
+        let mut pkg_box = PackageBox::encrypt_box(self.sn_peerid.clone(), self.enc_key.as_ref().unwrap().clone(), self.mix_key.as_ref().unwrap().clone());
 
         let last_resp_time = self.last_resp_time.load(atomic::Ordering::Acquire);
-        let to_session_index = if (last_resp_time == 0 || (now < last_resp_time || now - last_resp_time > 1000)) && self.aes_key.is_some() {
-            let key_stub = stack
-                .keystore()
-                .get_key_by_mix_hash(&self.aes_key.as_ref().unwrap().mix_hash(None), false, false)
-                .ok_or_else(|| BuckyError::new(BuckyErrorCode::CryptoError, "key not exists"))?;
-            if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
-                let mut exchg = Exchange {
-                    sequence: seq, 
-                    key_encrypted, 
-                    seq_key_sign: Signature::default(),
-                    from_device_id: local_deviceid,
-                    send_time: now_abs_u64,
-                    from_device_desc: local_peer.clone(),
-                };
-                let _ = exchg.sign(stack.keystore().signer()).await;
-                pkg_box.push(exchg);
-            }
-           
+        let to_session_index = if (last_resp_time == 0 || (now < last_resp_time || now - last_resp_time > 1000)) && self.enc_key.is_some() {
             self.active_session_index.store(std::u32::MAX, atomic::Ordering::Release);
             std::u32::MAX
         } else {
             self.active_session_index.load(atomic::Ordering::Acquire)
         };
 
-        let sessions = self.sessions.read().unwrap();
         let to_sessions = {
+            let sessions = self.sessions.read().unwrap();
             let to_session = if to_session_index != std::u32::MAX {
-                (*sessions).get(to_session_index as usize)
+                sessions.get(to_session_index as usize)
             } else {
                 None
             };
@@ -723,7 +707,7 @@ impl ClientInner {
                 protocol_version: 0, 
                 stack_version: 0, 
                 seq,
-                from_peer_id: if self.aes_key.is_some() { Some(stack.local_device_id().clone()) } else { None }, // 加密通信，密钥就能代表deviceid
+                from_peer_id: if self.enc_key.is_some() { Some(stack.local_device_id().clone()) } else { None }, // 加密通信，密钥就能代表deviceid
                 sn_peer_id: self.sn_peerid.clone(),
                 peer_info: if last_update_seq != 0 { Some(local_peer.clone()) } else { None }, // 本地信息更新了信息，需要同步，或者服务器要求更新
                 send_time: now_abs_u64,
@@ -740,6 +724,18 @@ impl ClientInner {
             ping_pkg
         };
 
+
+        let key_stub = stack
+                .keystore()
+                .get_key_by_mix_hash(&self.mix_key.as_ref().unwrap().mix_hash(None), false, false)
+                .ok_or_else(|| BuckyError::new(BuckyErrorCode::CryptoError, "key not exists"))?;
+        if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
+            let stack = Stack::from(&self.env.stack);
+            let mut exchg = Exchange::from((&ping_pkg, local_peer.clone(), key_encrypted, key_stub.mix_key));
+            let _ = exchg.sign(stack.keystore().signer()).await;
+            pkg_box.push(exchg);
+        }
+
         let ping_seq = ping_pkg.seq.clone();
         pkg_box.push(ping_pkg);
 
@@ -749,13 +745,13 @@ impl ClientInner {
 
         self.contract.will_ping(seq.value());
 
-        struct SendIter<'a> {
-            sessions: Vec<(&'a Interface, Vec<Endpoint>)>,
+        struct SendIter {
+            sessions: Vec<(Interface, Vec<Endpoint>)>,
             sub_pos: usize,
             pos: usize,
         }
 
-        impl <'a> Iterator for SendIter<'a> {
+        impl Iterator for SendIter {
             type Item = (Interface, Endpoint);
 
             fn next(&mut self) -> Option<Self::Item> {
@@ -798,8 +794,8 @@ impl ClientInner {
             sn_peer_id: self.sn_peerid.clone(),
         };
 
-        assert!(self.aes_key.is_some()); // <TODO>暂时不支持明文
-        let mut pkg_box = PackageBox::encrypt_box(self.sn_peerid.clone(), self.aes_key.as_ref().unwrap().clone());
+        assert!(self.enc_key.is_some()); // <TODO>暂时不支持明文
+        let mut pkg_box = PackageBox::encrypt_box(self.sn_peerid.clone(), self.enc_key.as_ref().unwrap().clone(), self.mix_key.as_ref().unwrap().clone());
         pkg_box.push(resp);
 
         let mut context = PackageBoxEncodeContext::default();
@@ -821,7 +817,7 @@ struct Session {
 }
 
 impl Session {
-    fn prepare_send_endpoints(&self, now: u64) -> (&Interface, Vec<Endpoint>) {
+    fn prepare_send_endpoints(&self, now: u64) -> (Interface, Vec<Endpoint>) {
         let local_endpoint = self.interface.local();
         let to_endpoints = {
             let (eps, is_reset) = {
@@ -845,7 +841,7 @@ impl Session {
 
         self.last_ping_time.store(now, atomic::Ordering::Release);
 
-        (&self.interface, to_endpoints)
+        (self.interface.clone(), to_endpoints)
     }
 
     fn on_ping_resp(&self, resp: &SnPingResp, from: &Endpoint, from_interface: Interface, now: u64, rto: &mut u16, is_handled: &mut bool) -> UpdateOuterResult {
@@ -944,7 +940,7 @@ impl Contract {
             receipt.call_delay = ((receipt.call_delay as u32 * 7 + delay as u32) / 8) as u16
         }
 
-        let (called_inc, call_peer_inc) = match stat.call_peers.entry(called.from_peer_id.clone()) {
+        let (called_inc, call_peer_inc) = match stat.call_peers.entry(called.peer_info.desc().device_id()) {
             Entry::Occupied(exist) => {
                 let exist = exist.into_mut();
                 if exist.last_seq != seq {
@@ -956,7 +952,7 @@ impl Contract {
             }
             Entry::Vacant(entry) => {
                 let init_stat = CallPeerStat {
-                    peerid: called.from_peer_id.clone(),
+                    peerid: called.peer_info.desc().device_id(),
                     last_seq: seq,
                     is_connect_success: false
                 };

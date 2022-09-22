@@ -121,8 +121,9 @@ impl CommandTunnel {
                             return;
                         }
                         service.keystore().add_key(
-                            package_box.key(),
+                            package_box.enc_key(),
                             package_box.remote(),
+                            exchange.mix_key(),
                         );
                         let _ = tunnel.on_package_box(package_box, from);
                     });
@@ -143,7 +144,8 @@ impl CommandTunnel {
         proxy_endpoint: BuckyResult<SocketAddr>,  
         syn_proxy: &SynProxy, 
         to: &SocketAddr, 
-        key: &AesKey) -> BuckyResult<()> {
+        enc_key: &AesKey,
+        mix_key: &AesKey) -> BuckyResult<()> {
         let (proxy_endpoint, err) = match proxy_endpoint {
             Ok(proxy_endpoint) => (Some(Endpoint::from((Protocol::Udp, proxy_endpoint))), None), 
             Err(err) => (None, Some(err.code()))
@@ -156,8 +158,8 @@ impl CommandTunnel {
             err
         };
         let mut package_box = PackageBox::encrypt_box(
-            syn_proxy.from_peer_id.clone(), 
-            key.clone());
+            syn_proxy.from_peer_info.desc().device_id(), 
+            enc_key.clone(), mix_key.clone());
         package_box.append(vec![DynamicPackage::from(ack_proxy)]);
         
         let mut context = PackageBoxEncodeContext::default();

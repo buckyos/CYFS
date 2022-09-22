@@ -304,18 +304,19 @@ impl AcceptStreamBuilder {
                     // let local_ip = *local_ip;
                     let remote_ep = *remote_ep;
                     let builder = self.clone();
-                    let remote_deviceid = syn_tunnel.from_device_id.clone();
                     let remote_constinfo = syn_tunnel.from_device_desc.desc().clone();
                     let remote_timestamp = syn_tunnel.from_device_desc.body().as_ref().unwrap().update_time();
-                    let aes_key = caller_box.key().clone();
+                    let enc_key = caller_box.enc_key().clone();
+                    let mix_key = caller_box.mix_key().clone();
                     task::spawn(async move {
                         let _ = builder.reverse_tcp_stream(
                             /*local_ip, */
                             remote_ep, 
-                            remote_deviceid, 
+                            remote_constinfo.device_id(), 
                             remote_constinfo, 
                             remote_timestamp, 
-                            aes_key).await
+                            enc_key,
+                            mix_key).await
                             .map_err(|e| {
                                 debug!("{} reverse tcp stream to {} failed for {}", builder, remote_ep, e);
                                 e
@@ -331,13 +332,12 @@ impl AcceptStreamBuilder {
             let ack_tunnel = SynTunnel {
                 protocol_version: tunnel.protocol_version(), 
                 stack_version: tunnel.stack_version(), 
-                from_device_id: local.desc().device_id(),
-                to_device_id: syn_tunnel.from_device_id.clone(),
+                to_device_id: syn_tunnel.from_device_desc.desc().device_id(),
                 sequence: syn_tunnel.sequence,
                 from_device_desc: local,
                 send_time: 0
             };
-            let mut first_box = PackageBox::encrypt_box(caller_box.remote().clone(), caller_box.key().clone());
+            let mut first_box = PackageBox::encrypt_box(caller_box.remote().clone(), caller_box.enc_key().clone(), caller_box.mix_key().clone());
             first_box.append(vec![DynamicPackage::from(ack_tunnel), DynamicPackage::from(confirm_ack.package_syn_ack.clone_with_data())]);
             let first_box = Arc::new(first_box);
 
@@ -388,7 +388,8 @@ impl AcceptStreamBuilder {
         remote_device_id: DeviceId, 
         remote_device_desc: DeviceDesc, 
         remote_timestamp: Timestamp, 
-        aes_key: AesKey) -> Result<(), BuckyError> {
+        enc_key: AesKey,
+        mix_key: AesKey) -> Result<(), BuckyError> {
         debug!("{} reverse tcp stream to {} {} connect tcp interface", self, remote_device_id, remote_ep);
         let stack: Stack = Stack::from(&self.0.stack);
         let stream = self.building_stream();
@@ -398,7 +399,14 @@ impl AcceptStreamBuilder {
                 err
             })?;
 
-        let tcp_interface = tcp::Interface::connect(/*local_ip, */remote_ep, remote_device_id.clone(), remote_device_desc, aes_key, stack.config().tunnel.tcp.connect_timeout).await
+        let tcp_interface = tcp::Interface::connect(
+            /*local_ip, */
+            remote_ep, 
+            remote_device_id.clone(), 
+            remote_device_desc, 
+            enc_key, 
+            mix_key, 
+            stack.config().tunnel.tcp.connect_timeout).await
             .map_err(|err| { 
                 tunnel.mark_dead(tunnel.state());
                 debug!("{} reverse tcp stream to {} {} connect tcp interface failed for {}", self, remote_device_id, remote_ep, err);
@@ -428,7 +436,11 @@ impl AcceptStreamBuilder {
         match ack_ack.result {
             TCP_ACK_CONNECTION_RESULT_OK => {
                 stream.as_ref().establish_with(
-                    StreamProviderSelector::Tcp(tcp_interface.socket().clone(), tcp_interface.key().clone(), None), 
+                    StreamProviderSelector::Tcp(
+                        tcp_interface.socket().clone(), 
+                        tcp_interface.mix_key().clone(), 
+                        None, 
+                        tcp_interface.enc_key().clone()), 
                     stream).await
             }, 
             TCP_ACK_CONNECTION_RESULT_REFUSED => {
@@ -543,7 +555,11 @@ impl OnPackage<TcpSynConnection, tcp::AcceptInterface> for AcceptStreamBuilder {
             if let Ok(ack) = builder.wait_confirm().await.map(|s| s.tcp_syn_ack.clone()) {
                 let _ = match interface.confirm_accept(vec![DynamicPackage::from(ack)]).await {
                     Ok(_) => builder.building_stream().as_ref().establish_with(
-                        StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone(), None), 
+                        StreamProviderSelector::Tcp(
+                            interface.socket().clone(), 
+                            interface.mix_key().clone(), 
+                            None, 
+                            interface.enc_key().clone()), 
                         builder.building_stream()).await, 
                     Err(err) => {
                         let _ = builder.building_stream().as_ref().cancel_connecting_with(&err);
@@ -634,8 +650,9 @@ impl OnPackage<TcpSynConnection> for AcceptStreamBuilder {
             builder: AcceptStreamBuilder, 
             remote_desc: DeviceDesc, 
             remote_timestamp: Timestamp, 
-            key: AesKey
-            /*, local: IpAddr*/, 
+            enc_key: AesKey,
+            mix_key: AesKey,
+            /*, local: IpAddr*/
             remote_ep: Endpoint) -> Result<(), BuckyError> {
             let stream = builder.building_stream();
             let stack = builder.building_stream().as_ref().stack();
@@ -647,7 +664,8 @@ impl OnPackage<TcpSynConnection> for AcceptStreamBuilder {
                 remote_ep, 
                 remote_id.clone(), 
                 remote_desc, 
-                key, 
+                enc_key,
+                mix_key, 
                 stack.config().tunnel.tcp.connect_timeout).await?;
             
             let tcp_ack = builder.wait_confirm().await.map(|ack| {
@@ -676,7 +694,11 @@ impl OnPackage<TcpSynConnection> for AcceptStreamBuilder {
                         match ack_ack.result {
                             TCP_ACK_CONNECTION_RESULT_OK => {
                                 stream.as_ref().establish_with(
-                                    StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone(), None), 
+                                    StreamProviderSelector::Tcp(
+                                        interface.socket().clone(), 
+                                        interface.mix_key().clone(), 
+                                        None, 
+                                        interface.enc_key().clone()), 
                                     stream).await
                             }, 
                             TCP_ACK_CONNECTION_RESULT_REFUSED => {
@@ -706,13 +728,15 @@ impl OnPackage<TcpSynConnection> for AcceptStreamBuilder {
                 let remote = *remote;
                 let builder = builder.clone();
                 let remote_desc = remote_desc.clone();
-                let key = key_stub.aes_key.clone();
+                let enc_key = key_stub.enc_key.clone();
+                let mix_key = key_stub.mix_key.clone();
                 task::spawn(async move {
                     let _ = reverse_connect(
                         builder.clone(), 
                         remote_desc,
                         remote_timestamp, 
-                        key, 
+                        enc_key, 
+                        mix_key,
                         /*local, */
                         remote).await
                         .map_err(|e| {

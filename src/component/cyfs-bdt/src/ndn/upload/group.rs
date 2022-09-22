@@ -7,7 +7,7 @@ use crate::{
     types::*
 };
 use super::super::{
-    channel::*
+    types::*
 };
 use super::{
     common::*

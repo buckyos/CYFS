@@ -3,7 +3,7 @@ use async_std::{
 };
 use crate::Timestamp;
 use super::{
-    channel::*, 
+    types::*, 
     download::*,
     upload::*
 };

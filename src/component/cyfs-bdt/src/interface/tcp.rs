@@ -7,7 +7,7 @@ use async_std::{
 };
 use log::*;
 use std::{
-    convert::TryFrom, io::ErrorKind, net::TcpListener, sync::RwLock, thread, time::Duration,
+    io::ErrorKind, net::TcpListener, sync::RwLock, thread, time::Duration,
 };
 //
 // use socket2;
@@ -19,6 +19,7 @@ use crate::{
 };
 use cyfs_base::endpoint;
 use cyfs_base::*;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 struct ListenerImpl {
     local: RwLock<Endpoint>,
@@ -149,7 +150,8 @@ impl Listener {
                     task::spawn(async move {
                         let socket = TcpStream::from(socket);
                         match AcceptInterface::accept(
-                            socket.clone(),
+                            socket.clone(), 
+                            Stack::from(&stack).local_device_id(), 
                             &key_store,
                             Stack::from(&stack).config().tunnel.tcp.accept_timeout,
                         )
@@ -246,7 +248,7 @@ impl RawEncodeWithContext<OtherBoxEncodeContext> for PackageBox {
 
         encrypt_in_len -= buf.len();
         // 用aes 加密package的部分
-        let len = self.key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?;
+        let len = self.enc_key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?;
 
         Ok(&mut to_encrypt_buf[len..])
     }
@@ -260,23 +262,26 @@ enum DecryptBuffer<'de> {
 struct OtherBoxDecodeContext<'de> {
     decrypt_buf: DecryptBuffer<'de>,
     remote: &'de DeviceId,
-    key: &'de AesKey,
+    enc_key: &'de AesKey,
+    mix_key: &'de AesKey,
 }
 
 impl<'de> OtherBoxDecodeContext<'de> {
-    pub fn new_copy(decrypt_buf: &'de mut [u8], remote: &'de DeviceId, key: &'de AesKey) -> Self {
+    pub fn new_copy(decrypt_buf: &'de mut [u8], remote: &'de DeviceId, enc_key: &'de AesKey, mix_key: &'de AesKey) -> Self {
         Self {
             decrypt_buf: DecryptBuffer::Copy(decrypt_buf),
             remote,
-            key,
+            enc_key,
+            mix_key,
         }
     }
 
-    pub fn new_inplace(ptr: *mut u8, len: usize, remote: &'de DeviceId, key: &'de AesKey) -> Self {
+    pub fn new_inplace(ptr: *mut u8, len: usize, remote: &'de DeviceId, enc_key: &'de AesKey, mix_key: &'de AesKey) -> Self {
         Self {
             decrypt_buf: DecryptBuffer::Inplace(ptr, len),
             remote,
-            key,
+            enc_key,
+            mix_key,
         }
     }
 
@@ -298,8 +303,12 @@ impl<'de> OtherBoxDecodeContext<'de> {
         self.remote
     }
 
-    pub fn key(&self) -> &AesKey {
-        self.key
+    pub fn enc_key(&self) -> &AesKey {
+        self.enc_key
+    }
+
+    pub fn mix_key(&self) -> &AesKey {
+        self.mix_key
     }
 }
 
@@ -308,12 +317,13 @@ impl<'de> RawDecodeWithContext<'de, OtherBoxDecodeContext<'de>> for PackageBox {
         buf: &'de [u8],
         context: OtherBoxDecodeContext<'de>,
     ) -> BuckyResult<(Self, &'de [u8])> {
-        let key = context.key().clone();
+        let enc_key = context.enc_key().clone();
+        let mix_key = context.mix_key().clone();
         let remote = context.remote().clone();
 
         let decrypt_buf = unsafe { context.decrypt_buf(buf) };
         // 用key 解密数据
-        let decrypt_len = key.inplace_decrypt(decrypt_buf, buf.len())?;
+        let decrypt_len = enc_key.inplace_decrypt(decrypt_buf, buf.len())?;
         let remain_buf = &buf[buf.len()..];
         let decrypt_buf = &decrypt_buf[..decrypt_len];
         let mut packages = vec![];
@@ -337,7 +347,7 @@ impl<'de> RawDecodeWithContext<'de, OtherBoxDecodeContext<'de>> for PackageBox {
             }
         }
 
-        let mut package_box = PackageBox::encrypt_box(remote, key);
+        let mut package_box = PackageBox::encrypt_box(remote, enc_key, mix_key);
         package_box.append(packages);
         Ok((package_box, remain_buf))
     }
@@ -477,7 +487,8 @@ struct AcceptInterfaceImpl {
     remote_device_id: DeviceId,
     local: Endpoint,
     remote: Endpoint,
-    key: AesKey,
+    enc_key: AesKey,
+    mix_key: AesKey,
 }
 
 #[derive(Clone)]
@@ -495,7 +506,8 @@ impl std::fmt::Display for AcceptInterface {
 
 impl AcceptInterface {
     pub(crate) async fn accept(
-        socket: TcpStream,
+        socket: TcpStream, 
+        local_device_id: &DeviceId, 
         keystore: &keystore::Keystore,
         timeout: Duration,
     ) -> Result<(Self, PackageBox), BuckyError> {
@@ -527,7 +539,7 @@ impl AcceptInterface {
             None => return Err(BuckyError::new(BuckyErrorCode::InvalidData, "no package")),
         };
         if let Some(exchg) = exchg {
-            if !exchg.verify().await {
+            if !exchg.verify(local_device_id).await {
                 warn!("tcp exchg verify failed.");
                 return Err(BuckyError::new(
                     BuckyErrorCode::InvalidData,
@@ -539,10 +551,11 @@ impl AcceptInterface {
         Ok((
             Self(Arc::new(AcceptInterfaceImpl {
                 socket,
-                key: first_box.key().clone(),
+                enc_key: first_box.enc_key().clone(),
                 remote_device_id: first_box.remote().clone(),
                 local,
                 remote,
+                mix_key: first_box.mix_key().clone(),
             })),
             first_box,
         ))
@@ -552,8 +565,12 @@ impl AcceptInterface {
         &self.0.socket
     }
 
-    pub fn key(&self) -> &AesKey {
-        &self.0.key
+    pub fn enc_key(&self) -> &AesKey {
+        &self.0.enc_key
+    }
+
+    pub fn mix_key(&self) -> &AesKey {
+        &self.0.mix_key
     }
 
     pub fn remote_device_id(&self) -> &DeviceId {
@@ -574,7 +591,10 @@ impl AcceptInterface {
             plaintext: false,
         });
         let mut package_box =
-            PackageBox::encrypt_box(self.remote_device_id().clone(), self.0.key.clone());
+            PackageBox::encrypt_box(
+                self.remote_device_id().clone(), 
+                self.0.enc_key.clone(), 
+                self.0.mix_key.clone());
         package_box.append(packages);
         let mut socket = self.socket().clone();
         socket
@@ -594,8 +614,9 @@ impl Into<PackageInterface> for AcceptInterface {
             local: self.0.local,
             remote: self.0.remote,
             socket: self.0.socket.clone(),
-            key: self.0.key.clone(),
+            enc_key: self.0.enc_key.clone(),
             remote_device_id: self.0.remote_device_id.clone(),
+            mix_key: self.0.mix_key.clone(),
         }))
     }
 }
@@ -606,7 +627,8 @@ struct InterfaceImpl {
     local: Endpoint,
     remote: Endpoint,
     remote_device_desc: DeviceDesc,
-    key: AesKey,
+    enc_key: AesKey,
+    mix_key: AesKey,
 }
 
 impl std::fmt::Display for Interface {
@@ -628,7 +650,8 @@ impl Interface {
         remote_ep: Endpoint,
         remote_device_id: DeviceId,
         remote_device_desc: DeviceDesc,
-        key: AesKey,
+        enc_key: AesKey,
+        mix_key: AesKey,
         timeout: Duration,
     ) -> Result<Interface, BuckyError> {
         // let socket = socket2::Socket::new(socket2::Domain::ipv4(), socket2::Type::stream(), None).unwrap();
@@ -658,7 +681,8 @@ impl Interface {
             remote: remote_ep,
             remote_device_id,
             remote_device_desc,
-            key,
+            enc_key,
+            mix_key,
         }));
         debug!("{} connected", interface);
         Ok(interface)
@@ -673,17 +697,35 @@ impl Interface {
         debug!("{} confirm_connect", self);
         let key_stub = stack
             .keystore()
-            .get_key_by_mix_hash(&self.key().mix_hash(None), false, false)
+            .get_key_by_mix_hash(&self.mix_key().mix_hash(Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / 60)), false, false)
             .ok_or_else(|| BuckyError::new(BuckyErrorCode::CryptoError, "key not exists"))?;
         let mut buffer = [0u8; udp::MTU];
         let mut package_box =
-            PackageBox::encrypt_box(self.0.remote_device_id.clone(), self.0.key.clone());
+            PackageBox::encrypt_box(self.0.remote_device_id.clone(), self.0.enc_key.clone(), self.0.mix_key.clone());
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
             if let PackageCmdCode::Exchange = packages[0].cmd_code() {
                 let exchg: &mut Exchange = packages[0].as_mut();
                 exchg.sign(stack.keystore().signer()).await?;
             } else {
-                let mut exchg = Exchange::try_from((&packages[0], encrypted))?;
+                let pkg = &packages[0];
+                let mut exchg = match pkg.cmd_code() {
+                    PackageCmdCode::SynTunnel => {
+                        let syn_tunnel: &SynTunnel = pkg.as_ref();
+                        Ok(Exchange::from((syn_tunnel, encrypted, key_stub.mix_key)))
+                    }
+                    PackageCmdCode::TcpSynConnection => {
+                        let tcp_syn: &v0::TcpSynConnection = pkg.as_ref();
+                        Ok(Exchange::from((tcp_syn, encrypted, key_stub.mix_key)))
+                    }
+                    PackageCmdCode::TcpAckConnection => {
+                        let tcp_ack: &v0::TcpAckConnection = pkg.as_ref();
+                        Ok(Exchange::from((tcp_ack, self.0.remote_device_id.clone(), encrypted, key_stub.mix_key)))
+                    }
+                    _ => Err(BuckyError::new(
+                        BuckyErrorCode::InvalidInput,
+                        "exchange cannt merge with first package",
+                    )),
+                }?;
                 exchg.sign(stack.keystore().signer()).await?;
                 package_box.push(exchg);
             }
@@ -723,7 +765,8 @@ impl Interface {
             box_buf.as_mut_ptr(),
             box_buf.len(),
             &self.0.remote_device_id,
-            self.key(),
+            self.enc_key(),
+            self.mix_key(),
         );
         PackageBox::raw_decode_with_context(box_buf, context).map(|(package_box, _)| package_box)
     }
@@ -732,8 +775,12 @@ impl Interface {
         &self.0.socket
     }
 
-    pub fn key(&self) -> &AesKey {
-        &self.0.key
+    pub fn enc_key(&self) -> &AesKey {
+        &self.0.enc_key
+    }
+
+    pub fn mix_key(&self) -> &AesKey {
+        &self.0.mix_key
     }
 
     pub fn remote_endpoint(&self) -> &Endpoint {
@@ -747,8 +794,9 @@ impl Into<PackageInterface> for Interface {
             local: self.0.local,
             remote: self.0.remote,
             socket: self.0.socket.clone(),
-            key: self.0.key.clone(),
+            enc_key: self.0.enc_key.clone(),
             remote_device_id: self.0.remote_device_id.clone(),
+            mix_key: self.0.mix_key.clone(),
         }))
     }
 }
@@ -757,8 +805,9 @@ struct PackageInterfaceImpl {
     local: Endpoint,
     remote: Endpoint,
     socket: TcpStream,
-    key: AesKey,
+    enc_key: AesKey,
     remote_device_id: DeviceId,
+    mix_key: AesKey,
 }
 #[derive(Clone)]
 pub struct PackageInterface(Arc<PackageInterfaceImpl>);
@@ -808,7 +857,8 @@ impl PackageInterface {
                     box_buf.as_mut_ptr(),
                     box_buf.len(),
                     &self.0.remote_device_id,
-                    &self.0.key,
+                    &self.0.enc_key,
+                    &self.0.mix_key,
                 );
                 let package = PackageBox::raw_decode_with_context(box_buf, context)
                     .map(|(package_box, _)| package_box)?;
@@ -839,7 +889,11 @@ impl PackageInterface {
     ) -> Result<(), BuckyError> {
         let mut socket = self.0.socket.clone();
         let package_box =
-            PackageBox::from_package(self.0.remote_device_id.clone(), self.0.key.clone(), package);
+            PackageBox::from_package(
+                self.0.remote_device_id.clone(), 
+                self.0.enc_key.clone(), 
+                self.0.mix_key.clone(), 
+                package);
         let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {plaintext});
         socket
             .write_all(package_box.raw_tail_encode_with_context(send_buf, &mut context, &None)?)

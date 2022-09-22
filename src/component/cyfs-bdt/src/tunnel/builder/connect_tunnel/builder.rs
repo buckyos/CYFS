@@ -281,26 +281,18 @@ impl ConnectTunnelBuilder {
 
         let key_stub = stack.keystore().create_key(tunnel.remote_const(), true);
         // 生成第一个package box
-        let mut first_box = PackageBox::encrypt_box(tunnel.remote().clone(), key_stub.aes_key.clone());
+        let mut first_box = PackageBox::encrypt_box(tunnel.remote().clone(), key_stub.enc_key.clone(), key_stub.mix_key.clone());
             
         let syn_tunnel = SynTunnel {
             protocol_version: self.0.tunnel.protocol_version(), 
             stack_version: self.0.tunnel.stack_version(), 
-            from_device_id: local.desc().device_id(), 
             to_device_id: tunnel.remote().clone(), 
             from_device_desc: local.clone(),
             sequence: self.sequence(), 
             send_time: bucky_time_now()
         };
         if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
-            let mut exchange = Exchange {
-                sequence: syn_tunnel.sequence.clone(), 
-                key_encrypted, 
-                seq_key_sign: Signature::default(),
-                from_device_id: syn_tunnel.from_device_id.clone(),
-                send_time: syn_tunnel.send_time.clone(),
-                from_device_desc: syn_tunnel.from_device_desc.clone(),
-            };
+            let mut exchange = Exchange::from((&syn_tunnel, key_encrypted, key_stub.mix_key));
             let _ = exchange.sign(stack.keystore().signer()).await;
             first_box.push(exchange);
         }

@@ -11,6 +11,7 @@ use cyfs_base::*;
 use log::*;
 use std::{cell::RefCell, net::UdpSocket, sync::RwLock, thread};
 use socket2::{Socket, Domain, Type};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone)]
 pub struct Config {
@@ -274,7 +275,7 @@ impl Interface {
                         }
 
                         let _ = 
-                            stack.on_udp_raw_data(raw_data, (self.clone(), found_key.peerid, found_key.aes_key, from));
+                            stack.on_udp_raw_data(raw_data, (self.clone(), found_key.peerid, found_key.mix_key, from, found_key.enc_key));
 
                         return;
                     }
@@ -296,7 +297,7 @@ impl Interface {
                 if package_box.has_exchange() {
                     async_std::task::spawn(async move {
                         let exchange: &Exchange = package_box.packages()[0].as_ref();
-                        if !exchange.verify().await {
+                        if !exchange.verify(stack.local_device_id()).await {
                             warn!("{} exchg verify failed, from {}.", local_interface, from);
                             return;
                         }
@@ -407,14 +408,14 @@ impl Interface {
 
     pub fn send_raw_data_to(
         &self,
-        key: &AesKey,
+        mix_key: &AesKey,
         data: &mut [u8],
         to: &Endpoint,
     ) -> Result<usize, BuckyError> {
         if self.0.config.sn_only {
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, "interface is only for sn"));
         }
-        let mix_hash = key.mix_hash(None);
+        let mix_hash = mix_key.mix_hash(Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / 60));
         let _ = mix_hash.raw_encode(data, &None)?;
         data[0] |= 0x80;
         self.send_buf_to(data, to)
@@ -552,10 +553,10 @@ impl<'de> PackageBoxDecodeContext<'de> {
         self.keystore.public_key()
     }
 
-    pub fn key_from_mixhash(&self, mix_hash: &KeyMixHash) -> Option<(DeviceId, AesKey)> {
+    pub fn key_from_mixhash(&self, mix_hash: &KeyMixHash) -> Option<(DeviceId, AesKey, AesKey)> {
         self.keystore
             .get_key_by_mix_hash(mix_hash, true, true)
-            .map(|k| (k.peerid.clone(), k.aes_key.clone()))
+            .map(|k| (k.peerid.clone(), k.enc_key.clone(), k.mix_key.clone()))
     }
 
     pub fn version_of(&self, _remote: &DeviceId) -> u8 {
@@ -596,7 +597,7 @@ impl RawEncodeWithContext<PackageBoxEncodeContext> for PackageBox {
         }
 
         // 写入 key的mixhash
-        let mixhash = self.key().mix_hash(None);
+        let mixhash = self.mix_key().mix_hash(Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / 60));
         let _ = mixhash.raw_encode(buf, purpose)?;
         if context.plaintext {
             buf[0] |= 0x80;
@@ -636,7 +637,7 @@ impl RawEncodeWithContext<PackageBoxEncodeContext> for PackageBox {
         let len = if context.plaintext {
             encrypt_in_len
         } else {
-            self.key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?
+            self.enc_key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?
         };
 
         //info!("package_box udp encode: encrypt_in_len={} len={} buf_len={} plaintext={}", 
@@ -680,26 +681,32 @@ impl<'de>
         }
 
         struct KeyInfo {
-            key: AesKey, 
+            enc_key: AesKey, 
             mix_hash: KeyMixHash, 
             stub: KeyStub
         }
 
+
+        let mut mix_key = None;
         let (key_info, buf) = {
             match context.key_from_mixhash(&mix_hash) {
-                Some((remote, key)) => (KeyInfo {
-                    stub: KeyStub::Exist(remote), 
-                    key, 
-                    mix_hash, 
-                }, hash_buf), 
+                Some((remote, enc_key, found_mix_key)) => {
+                        mix_key = Some(found_mix_key);
+
+                        (KeyInfo {
+                        stub: KeyStub::Exist(remote), 
+                        enc_key, 
+                        mix_hash
+                    }, hash_buf)
+                }, 
                 None => {
-                    let mut key = AesKey::default();
-                    let (remain, _) = context.local_secret().decrypt_aeskey(buf, key.as_mut_slice())?;
+                    let mut enc_key = AesKey::default();
+                    let (remain, _) = context.local_secret().decrypt_aeskey(buf, enc_key.as_mut_slice())?;
                     let encrypted = Vec::from(&buf[..buf.len() - remain.len()]);
                     let (mix_hash, remain) = KeyMixHash::raw_decode(remain)?;
                     (KeyInfo {
                         stub: KeyStub::Exchange(encrypted), 
-                        key, 
+                        enc_key, 
                         mix_hash, 
                     }, remain)
                 }
@@ -714,7 +721,7 @@ impl<'de>
         // 把原数据拷贝到context 给的buffer上去
         let decrypt_buf = unsafe { context.decrypt_buf(buf) };
         // 用key 解密数据
-        let decrypt_len =  key_info.key.inplace_decrypt(decrypt_buf, buf.len())?;
+        let decrypt_len =  key_info.enc_key.inplace_decrypt(decrypt_buf, buf.len())?;
         let remain_buf = &buf[buf.len()..];
         let decrypt_buf = &decrypt_buf[..decrypt_len];
 
@@ -772,9 +779,18 @@ impl<'de>
             }
         }
 
+        if mix_key.is_none() {
+            if packages.len() > 0 && packages[0].cmd_code().is_exchange() {
+                let exchange: &Exchange = packages[0].as_ref();
+                mix_key = Some(exchange.mix_key.clone());
+            } else {
+                return Err(BuckyError::new(BuckyErrorCode::ErrorState, "unkown mix_key"));
+            }
+        }
+
         match key_info.stub {
             KeyStub::Exist(remote) => {
-                let mut package_box = PackageBox::encrypt_box(remote, key_info.key);
+                let mut package_box = PackageBox::encrypt_box(remote, key_info.enc_key, mix_key.unwrap());
                 package_box.append(packages);
                 Ok((package_box, remain_buf))
             }
@@ -782,8 +798,9 @@ impl<'de>
                 if packages.len() > 0 && packages[0].cmd_code().is_exchange() {
                     let exchange: &mut Exchange = packages[0].as_mut();
                     exchange.key_encrypted = encrypted;
+
                     let mut package_box =
-                        PackageBox::encrypt_box(exchange.from_device_id.clone(), key_info.key);
+                        PackageBox::encrypt_box(exchange.from_device_desc.desc().device_id(), key_info.enc_key, mix_key.unwrap());
                     package_box.append(packages);
                     Ok((package_box, remain_buf))
                 } else {

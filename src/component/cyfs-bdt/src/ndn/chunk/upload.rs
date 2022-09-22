@@ -14,7 +14,6 @@ use super::super::{
     channel::*, 
 };
 use super::{
-    encode::*,
     view::{ChunkView}
 };
 
@@ -84,12 +83,7 @@ impl ChunkUploader {
             sessions.push_front(session.clone());
             
         }
-        let encoder = match *session.piece_type() {
-            PieceSessionType::Raptor(..) => TypedChunkEncoder::Raptor(self.0.view.raptor_encoder()),
-            PieceSessionType::Stream(..) => TypedChunkEncoder::Range(RangeEncoder::from_reader(self.0.view.reader().unwrap(), self.chunk())), 
-            _ => unreachable!()
-        };
-        session.start(encoder);
+        session.start(self.0.view.reader().unwrap());
 
         Ok(())
     }

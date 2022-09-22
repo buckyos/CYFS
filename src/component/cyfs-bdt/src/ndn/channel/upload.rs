@@ -1,5 +1,6 @@
 use log::*;
 use std::{
+    ops::Range, 
     time::Duration, 
     sync::{RwLock, atomic::{AtomicU64, Ordering}}
 };
@@ -12,12 +13,11 @@ use crate::{
 };
 use super::super::{
     chunk::*, 
-    upload::*
+    upload::*,
+    types::*
 };
-use super::{
-    types::*, 
+use super::{ 
     protocol::v0::*, 
-    provider::*, 
     channel::Channel, 
 };
 
@@ -25,7 +25,7 @@ struct UploadingState {
     speed_counter: SpeedCounter,  
     history_speed: HistorySpeed, 
     pending_from: Timestamp, 
-    provider: Box<dyn UploadSessionProvider>
+    encoder: Box<dyn ChunkEncoder>
 }
 
 struct StateImpl {
@@ -44,7 +44,7 @@ enum TaskStateImpl {
 struct SessionImpl {
     chunk: ChunkId, 
     session_id: TempSeq, 
-    piece_type: PieceSessionType, 
+    piece_type: ChunkEncodeDesc, 
     channel: Channel, 
     state: RwLock<StateImpl>, 
     last_active: AtomicU64, 
@@ -63,7 +63,7 @@ impl UploadSession {
     pub fn new(
         chunk: ChunkId, 
         session_id: TempSeq, 
-        piece_type: PieceSessionType, 
+        piece_type: ChunkEncodeDesc, 
         channel: Channel
     ) -> Self {
         Self(Arc::new(SessionImpl {
@@ -83,7 +83,7 @@ impl UploadSession {
         &self.0.chunk
     }
 
-    pub fn piece_type(&self) -> &PieceSessionType {
+    pub fn piece_type(&self) -> &ChunkEncodeDesc {
         &self.0.piece_type
     }
 
@@ -95,42 +95,22 @@ impl UploadSession {
         &self.0.session_id
     }
 
-    pub fn start(&self, chunk_encoder: TypedChunkEncoder) {
+    pub fn start(&self, chunk_reader: Arc<Box<dyn ChunkReader>>) {
         info!("{} started", self);
         let mut state = self.0.state.write().unwrap();
         match &state.task_state {
             TaskStateImpl::Init => {
                 state.task_state = match *self.piece_type() {
-                    PieceSessionType::Stream(..) => {
-                        let encoder = match chunk_encoder {
-                            TypedChunkEncoder::Range(encoder) => encoder,
-                            _ => unreachable!()
-                        };
+                    ChunkEncodeDesc::Stream(..) => {
                         TaskStateImpl::Uploading(
                             UploadingState {
                                 pending_from: 0, 
                                 history_speed: HistorySpeed::new(0, self.channel().config().history_speed.clone()), 
                                 speed_counter: SpeedCounter::new(0), 
-                                provider: StreamUpload::new(
-                                    self.session_id().clone(), 
-                                    encoder).clone_as_provider()
+                                encoder: StreamEncoder::from_reader(chunk_reader, self.chunk(), self.piece_type()).clone_as_encoder()
                             })
                     },
-                    _ => {
-                        let encoder = match chunk_encoder {
-                            TypedChunkEncoder::Range(encoder) => encoder,
-                            _ => unreachable!()
-                        };
-                        TaskStateImpl::Uploading(
-                            UploadingState {
-                                pending_from: 0, 
-                                history_speed: HistorySpeed::new(0, self.channel().config().history_speed.clone()), 
-                                speed_counter: SpeedCounter::new(0), 
-                                provider: StreamUpload::new(
-                                    self.session_id().clone(), 
-                                    encoder).clone_as_provider()
-                            })
-                    }
+                    _ => unimplemented!()
                 };
             }, 
             _ => unreachable!()
@@ -138,17 +118,17 @@ impl UploadSession {
     }
 
     pub(super) fn next_piece(&self, buf: &mut [u8]) -> BuckyResult<usize> {
-        let provider = {
+        let encoder = {
             let state = self.0.state.read().unwrap();
             match &state.task_state {
                 TaskStateImpl::Uploading(uploading) => {
-                    Some(uploading.provider.clone_as_provider())
+                    Some(uploading.encoder.clone_as_encoder())
                 }, 
                 _ => None
             }
         };
-        if let Some(provider) = provider {
-            match provider.next_piece(buf) {
+        if let Some(encoder) = encoder {
+            match encoder.next_piece(self.session_id(), buf) {
                 Ok(len) => {
                     let mut state = self.0.state.write().unwrap();
                     match &mut state.task_state {
@@ -157,14 +137,7 @@ impl UploadSession {
                                 uploading.speed_counter.on_recv(len);
                                 uploading.pending_from = 0;
                             } else {
-                                match provider.state() {
-                                    ChunkEncoderState::Ready => {
-                                        uploading.pending_from = bucky_time_now()
-                                    }, 
-                                    _ => {
-                                        uploading.pending_from = 0;
-                                    }
-                                };
+                                uploading.pending_from = bucky_time_now();
                             }
                             Ok(len)
                         },
@@ -196,9 +169,9 @@ impl UploadSession {
     }
 
     // 把第一个包加到重发队列里去
-    pub fn on_interest(&self, interest: &Interest) -> BuckyResult<()> {
+    pub fn on_interest(&self, _interest: &Interest) -> BuckyResult<()> {
         enum NextStep {
-            CallProvider(Box<dyn UploadSessionProvider>), 
+            ResetEncoder(Box<dyn ChunkEncoder>), 
             RespInterest(BuckyErrorCode), 
             None
         }
@@ -207,7 +180,7 @@ impl UploadSession {
             let state = self.0.state.read().unwrap();
             match &state.task_state {
                 TaskStateImpl::Uploading(uploading) => {
-                    NextStep::CallProvider(uploading.provider.clone_as_provider())
+                    NextStep::ResetEncoder(uploading.encoder.clone_as_encoder())
                 }, 
                 TaskStateImpl::Error(err) => {
                     NextStep::RespInterest(*err)
@@ -219,7 +192,10 @@ impl UploadSession {
         };
 
         match next_step {
-            NextStep::CallProvider(provider) => provider.on_interest(interest), 
+            NextStep::ResetEncoder(encoder) => {
+                debug!("{} will reset index", self);
+                encoder.reset()
+            }, 
             NextStep::RespInterest(err) => {
                 let resp_interest = RespInterest {
                     session_id: self.session_id().clone(), 
@@ -239,7 +215,7 @@ impl UploadSession {
     pub(super) fn on_piece_control(&self, ctrl: &PieceControl) -> BuckyResult<()> {
         self.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
         enum NextStep {
-            CallProvider(Box<dyn UploadSessionProvider>), 
+            MergeIndex(Box<dyn ChunkEncoder>, u32, Vec<Range<u32>>), 
             RespInterest(BuckyErrorCode), 
             None
         }
@@ -266,7 +242,13 @@ impl UploadSession {
             PieceControlCommand::Continue => {
                 let state = self.0.state.read().unwrap();
                 match &state.task_state {
-                    TaskStateImpl::Uploading(uploading) => NextStep::CallProvider(uploading.provider.clone_as_provider()),
+                    TaskStateImpl::Uploading(uploading) => {
+                        if let Some(max_index) = ctrl.max_index {
+                            NextStep::MergeIndex(uploading.encoder.clone_as_encoder(), max_index, ctrl.lost_index.clone().unwrap_or_default())
+                        } else {
+                            NextStep::None
+                        }
+                    },
                     TaskStateImpl::Error(err) => NextStep::RespInterest(*err),  
                     _ => NextStep::None
                 }
@@ -275,7 +257,12 @@ impl UploadSession {
         };
 
         match next_step {
-            NextStep::CallProvider(provider) => provider.on_piece_control(ctrl), 
+            NextStep::MergeIndex(encoder, max_index, lost_index) => {
+                match &ctrl.command {
+                    PieceControlCommand::Continue => encoder.merge(max_index, lost_index), 
+                    _ => Ok(())
+                }
+            }, 
             NextStep::RespInterest(err) => {
                 let resp_interest = RespInterest {
                     session_id: self.session_id().clone(), 

@@ -374,7 +374,7 @@ enum StreamStateImpl {
 struct PackageStreamProviderSelector {}
 pub enum StreamProviderSelector {
     Package(IncreaseId /*remote id*/, Option<SessionData>),
-    Tcp(async_std::net::TcpStream, AesKey, Option<TcpAckConnection>),
+    Tcp(async_std::net::TcpStream, AesKey, Option<TcpAckConnection>, AesKey),
 }
 
 pub struct StreamContainerImpl {
@@ -579,7 +579,7 @@ impl StreamContainerImpl {
                     answer_data,
                 )
             }
-            StreamProviderSelector::Tcp(socket, key, ack) => {
+            StreamProviderSelector::Tcp(socket, _mix_key, ack, enc_key) => {
                 let answer_data = match ack {
                     Some(tcp_ack_connection) => {
                         if tcp_ack_connection.payload.as_ref().len() > 0 {
@@ -593,7 +593,7 @@ impl StreamContainerImpl {
                     _ => vec![],
                 };
 
-                let stream = TcpStream::new(arc_self.clone(), socket, key)?;
+                let stream = TcpStream::new(arc_self.clone(), socket, enc_key)?;
                 (
                     Box::new(stream.clone()) as Box<dyn StreamProvider>,
                     Box::new(stream) as Box<dyn StreamProvider>,
@@ -809,7 +809,6 @@ impl StreamContainerImpl {
                 result: 0u8,
                 to_vport: self.remote_port,
                 from_session_id: self.local_id,
-                from_device_id: local_device.desc().device_id(),
                 from_device_desc: local_device,
                 to_device_id: self.tunnel().remote().clone(),
                 reverse_endpoint: None,

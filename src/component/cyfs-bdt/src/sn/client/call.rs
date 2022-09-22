@@ -362,23 +362,19 @@ struct CallClientInner {
 
 impl CallClientInner {
     fn init_pkgs(&mut self, mut call_pkg: SnCall) {
+        call_pkg.sn_peer_id = self.sn_peerid.clone();
+
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = &self.aes_key.encrypted {
             let stack = Stack::from(&self.stack);
-            let exchg = Exchange {
-                sequence: call_pkg.seq, 
-                key_encrypted: encrypted.clone(), 
-                seq_key_sign: Signature::default(),
-                from_device_id: stack.local_device_id().clone(),
-                send_time: 0,
-                from_device_desc: match call_pkg.peer_info.as_ref() {
-                    Some(from) => from.clone(),
-                    None => stack.device_cache().local()
-                },
+            let local_device = match call_pkg.peer_info.as_ref() {
+                Some(from) => from.clone(),
+                None => stack.device_cache().local()
             };
+            let exchg = Exchange::from((&call_pkg, local_device, encrypted.clone(), self.aes_key.mix_key.clone()));
             self.pkgs.push(SendPackage::Exchange(exchg));
         }
 
-        call_pkg.sn_peer_id = self.sn_peerid.clone();
+        
         self.pkgs.push(SendPackage::Call(call_pkg));
     }
 
@@ -419,7 +415,9 @@ impl CallClient {
 
     fn prepare_pkgs_to_send(&self) -> Result<PackageBox, BuckyError> {
         // <TODO>暂时不支持明文
-        let mut pkg_box = PackageBox::encrypt_box(self.inner.sn_peerid.clone(), self.inner.aes_key.aes_key.clone());
+        let enc_key = self.inner.aes_key.enc_key.clone();
+        let mix_key = self.inner.aes_key.mix_key.clone();
+        let mut pkg_box = PackageBox::encrypt_box(self.inner.sn_peerid.clone(), enc_key, mix_key);
         let now_abs = bucky_time_now();
         for pkg in self.inner.pkgs.as_slice() {
             match pkg {
@@ -525,7 +523,13 @@ impl CallClient {
             for ep in remote_eps {
                 if ep.is_tcp() {
                     connect_futures.push(
-                        Box::pin(tcp::Interface::connect(ep.clone(), inner.sn_peerid.clone(), inner.sn.desc().clone(), pkg_box.key().clone(), time_limit))
+                        Box::pin(tcp::Interface::connect(
+                            ep.clone(), 
+                            inner.sn_peerid.clone(), 
+                            inner.sn.desc().clone(), 
+                            pkg_box.enc_key().clone(), 
+                            pkg_box.mix_key().clone(), 
+                            time_limit))
                     );
                 }
             }
