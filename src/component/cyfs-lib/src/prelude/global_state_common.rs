@@ -63,6 +63,13 @@ impl RequestGlobalStatePath {
         Self::new(Some(cyfs_base::get_system_dec_app().to_owned()), req_path)
     }
 
+    pub fn set_root(&mut self, root: ObjectId) {
+        self.global_state_root = Some(RequestGlobalStateRoot::GlobalRoot(root)); 
+    }
+    pub fn set_dec_root(&mut self, dec_root: ObjectId) {
+        self.global_state_root = Some(RequestGlobalStateRoot::DecRoot(dec_root)); 
+    }
+
     pub fn category(&self) -> GlobalStateCategory {
         match &self.global_state_category {
             Some(v) => *v,

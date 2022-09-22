@@ -34,6 +34,7 @@ pub struct GlobalStateValidateResponse {
     pub object_id: ObjectId,
 }
 
+#[derive(Debug)]
 enum CheckRoot {
     GlobalRoot,
     DecRoot(ObjectId),
@@ -62,6 +63,8 @@ impl GlobalStateValidator {
         &self,
         req: GlobalStateValidateRequest,
     ) -> BuckyResult<GlobalStateValidateResponse> {
+        info!("will validate request: {}", req);
+
         let dec_root_id;
         let root_id;
         let check_root;
@@ -79,9 +82,13 @@ impl GlobalStateValidator {
                 let inner_path = if req.inner_path == "/" {
                     format!("/{}", req.dec_id)
                 } else {
-                    format!("/{}/{}", req.dec_id, req.inner_path)
+                    if req.inner_path.starts_with('/') {
+                        format!("/{}{}", req.dec_id, req.inner_path)
+                    } else {
+                        format!("/{}/{}", req.dec_id, req.inner_path)
+                    }
                 };
-                
+
                 GlobalStatePathCacheKey {
                     root: global_root,
                     inner_path,
@@ -124,7 +131,10 @@ impl GlobalStateValidator {
         let target = if ret.is_none() {
             let ret = self.load_target(&cache_key, check_root).await?;
             if ret.is_none() {
-                let msg = format!("the object referenced by path was not found! req={}", debug_info);
+                let msg = format!(
+                    "the object referenced by path was not found! req={}",
+                    debug_info
+                );
                 warn!("{}", msg);
                 let err = BuckyError::new(BuckyErrorCode::NotFound, msg);
                 self.cache.on_failed(cache_key, err.clone());
