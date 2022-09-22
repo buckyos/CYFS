@@ -235,7 +235,12 @@ impl HistorySpeed {
         let cur_speed = cur_speed.unwrap_or(self.latest());
 
         if when > self.last_update {
-            let count = ((when - self.last_update) / self.config.atomic.as_micros() as u64) as usize;
+            let mut count = ((when - self.last_update) / self.config.atomic.as_micros() as u64) as usize;
+
+            if count > self.expire_count {
+                self.intermediate.clear();
+                count = self.expire_count;
+            }
 
             for _ in 0..count {
                 self.intermediate.iter_mut().for_each(|v| *v = (*v) * self.config.attenuation);
@@ -244,6 +249,8 @@ impl HistorySpeed {
                     self.intermediate.pop_front();
                 }
             }
+
+            self.last_update = when;
         };
     }
 
