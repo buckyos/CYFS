@@ -2,7 +2,7 @@ use serde_json::{Map, Value};
 use cyfs_base::*;
 use cyfs_bdt::{
     TempSeq, 
-    ndn::channel::{ChunkEncodeDesc}
+    ChunkEncodeDesc,
 };
 use super::{
     bdt_request::BdtDataRefererInfo
