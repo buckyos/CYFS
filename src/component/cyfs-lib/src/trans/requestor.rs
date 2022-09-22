@@ -205,6 +205,42 @@ impl TransRequestor {
         }
     }
 
+    pub async fn start_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+        Self::control_task(
+            self,
+            &TransControlTaskOutputRequest {
+                common: req.common.clone(),
+                task_id: req.task_id.clone(),
+                action: TransTaskControlAction::Start,
+            },
+        )
+        .await
+    }
+
+    pub async fn stop_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+        Self::control_task(
+            self,
+            &TransControlTaskOutputRequest {
+                common: req.common.clone(),
+                task_id: req.task_id.clone(),
+                action: TransTaskControlAction::Stop,
+            },
+        )
+        .await
+    }
+
+    pub async fn delete_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+        Self::control_task(
+            self,
+            &TransControlTaskOutputRequest {
+                common: req.common.clone(),
+                task_id: req.task_id.clone(),
+                action: TransTaskControlAction::Delete,
+            },
+        )
+        .await
+    }
+
     pub async fn get_task_state(
         &self,
         req: &TransGetTaskStateOutputRequest,
