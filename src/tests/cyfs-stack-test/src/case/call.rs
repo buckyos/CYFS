@@ -32,6 +32,7 @@ fn new_dec(name: &str) -> ObjectId {
     dec_id
 }
 
+
 async fn zone_same_dec_call() {
     let device1 = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
     let device2 = TestLoader::get_shared_stack(DeviceIndex::User1Device2);

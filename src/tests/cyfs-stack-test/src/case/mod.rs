@@ -40,7 +40,7 @@ pub async fn test() {
 
     // crypto::test().await;
 
-    beta_version::test().await;
+    non::test().await;
     call::test().await;
     return;
 
