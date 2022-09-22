@@ -11,7 +11,7 @@ pub struct TransAclInnerInputProcessor {
 
 impl TransAclInnerInputProcessor {
     pub(crate) fn new(next: TransInputProcessorRef) -> TransInputProcessorRef {
-        Arc::new(Self { next })
+        Arc::new(Box::new(Self { next }))
     }
 
     fn check_local_zone_permit(

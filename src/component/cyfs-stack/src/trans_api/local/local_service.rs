@@ -3,7 +3,7 @@ use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
 
-use crate::trans::TransInputProcessor;
+use crate::trans::{TransInputProcessor, TransInputProcessorRef};
 use crate::trans_api::local::FileRecorder;
 use crate::trans_api::{DownloadTaskManager, PublishManager, TransStore};
 use cyfs_base::File;
@@ -495,6 +495,10 @@ impl LocalTransService {
             }
             Err(e) => Err(e),
         }
+    }
+
+    pub fn clone_processor(&self) -> TransInputProcessorRef {
+        Arc::new(Box::new(self.clone()))
     }
 }
 

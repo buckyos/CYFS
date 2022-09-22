@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct TransService {
-    router: Arc<TransServiceRouter>,
-    local_service: Arc<LocalTransService>,
+    router: TransInputProcessorRef,
+    local_service: LocalTransService,
 }
 
 impl TransService {
@@ -33,7 +33,7 @@ impl TransService {
         fail_handler: ObjectFailHandler,
         trans_store: Arc<TransStore>,
     ) -> Self {
-        let local_service = Arc::new(LocalTransService::new(
+        let local_service = LocalTransService::new(
             noc.clone(),
             bdt_stack.clone(),
             ndc.clone(),
@@ -42,22 +42,18 @@ impl TransService {
             chunk_manager.clone(),
             task_manager.clone(),
             trans_store,
-        ));
-        let router = Arc::new(TransServiceRouter::new(
+        );
+        let router = TransServiceRouter::new(
             forward,
             zone_manager,
             fail_handler,
-            local_service.clone(),
-        ));
+            local_service.clone_processor(),
+        );
 
         Self {
             router,
             local_service,
         }
-    }
-
-    pub(crate) fn clone_local_processor(&self) -> TransInputProcessorRef {
-        self.local_service.clone()
     }
 
     pub fn clone_processor(&self) -> TransInputProcessorRef {

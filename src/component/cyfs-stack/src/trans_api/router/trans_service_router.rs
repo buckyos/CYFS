@@ -9,22 +9,12 @@ use crate::trans::{TransInputProcessor, TransInputProcessorRef, TransInputTransf
 use crate::trans_api::TransAclInnerInputProcessor;
 use crate::zone::ZoneManagerRef;
 
+#[derive(Clone)]
 pub struct TransServiceRouter {
     processor: TransInputProcessorRef,
     forward: ForwardProcessorManager,
     fail_handler: ObjectFailHandler,
     zone_manager: ZoneManagerRef,
-}
-
-impl Clone for TransServiceRouter {
-    fn clone(&self) -> Self {
-        Self {
-            processor: self.processor.clone(),
-            forward: self.forward.clone(),
-            fail_handler: self.fail_handler.clone(),
-            zone_manager: self.zone_manager.clone(),
-        }
-    }
 }
 
 impl TransServiceRouter {
@@ -33,14 +23,15 @@ impl TransServiceRouter {
         zone_manager: ZoneManagerRef,
         fail_handler: ObjectFailHandler,
         processor: TransInputProcessorRef,
-    ) -> Self {
+    ) -> TransInputProcessorRef {
         let processor = TransAclInnerInputProcessor::new(processor);
-        Self {
+        let ret = Self {
             processor,
             zone_manager,
             forward,
             fail_handler,
-        }
+        };
+        Arc::new(Box::new(ret))
     }
 
     async fn get_forward(&self, target: DeviceId) -> BuckyResult<TransInputProcessorRef> {

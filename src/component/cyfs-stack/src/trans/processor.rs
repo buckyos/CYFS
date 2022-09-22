@@ -25,4 +25,4 @@ pub trait TransInputProcessor: Send + Sync {
         req: TransPublishFileInputRequest,
     ) -> BuckyResult<TransPublishFileInputResponse>;
 }
-pub type TransInputProcessorRef = Arc<dyn TransInputProcessor>;
+pub type TransInputProcessorRef = Arc<Box<dyn TransInputProcessor>>;

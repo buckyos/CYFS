@@ -11,9 +11,7 @@ pub trait TransOutputProcessor: Send + Sync {
         &self,
         req: &TransCreateTaskOutputRequest,
     ) -> BuckyResult<TransCreateTaskOutputResponse>;
-    async fn start_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()>;
-    async fn stop_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()>;
-    async fn delete_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()>;
+    async fn control_task(&self, req: TransControlTaskOutputRequest) -> BuckyResult<()>;
     async fn query_tasks(
         &self,
         req: &TransQueryTasksOutputRequest,

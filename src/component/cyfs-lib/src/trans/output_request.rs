@@ -182,11 +182,13 @@ pub struct TransPublishFileOutputRequest {
     pub dirs: Option<Vec<FileDirRef>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TransPublishFileOutputResponse {
     pub file_id: ObjectId,
 }
 
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TransCreateTaskOutputResponse {
     pub task_id: String,
 }

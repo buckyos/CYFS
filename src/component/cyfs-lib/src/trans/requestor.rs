@@ -362,42 +362,6 @@ impl TransOutputProcessor for TransRequestor {
         Self::create_task(self, req).await
     }
 
-    async fn start_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
-        Self::control_task(
-            self,
-            &TransControlTaskOutputRequest {
-                common: req.common.clone(),
-                task_id: req.task_id.clone(),
-                action: TransTaskControlAction::Start,
-            },
-        )
-        .await
-    }
-
-    async fn stop_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
-        Self::control_task(
-            self,
-            &TransControlTaskOutputRequest {
-                common: req.common.clone(),
-                task_id: req.task_id.clone(),
-                action: TransTaskControlAction::Stop,
-            },
-        )
-        .await
-    }
-
-    async fn delete_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
-        Self::control_task(
-            self,
-            &TransControlTaskOutputRequest {
-                common: req.common.clone(),
-                task_id: req.task_id.clone(),
-                action: TransTaskControlAction::Delete,
-            },
-        )
-        .await
-    }
-
     async fn query_tasks(
         &self,
         req: &TransQueryTasksOutputRequest,
@@ -417,6 +381,10 @@ impl TransOutputProcessor for TransRequestor {
         req: &TransPublishFileOutputRequest,
     ) -> BuckyResult<TransPublishFileOutputResponse> {
         Self::publish_file(self, req).await
+    }
+
+    async fn control_task(&self, req: TransControlTaskOutputRequest) -> BuckyResult<()> {
+        Self::control_task(self, &req).await
     }
 }
 /*

@@ -3,6 +3,10 @@ use cyfs_base::{DeviceId, ObjectId};
 use cyfs_core::TransContext;
 use std::path::PathBuf;
 use cyfs_util::cache::FileDirRef;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 pub struct TransGetContextInputRequest {
     pub common: NDNInputRequestCommon,
@@ -71,11 +75,12 @@ pub struct TransQueryTasksInputRequest {
     pub range: Option<(u64, u32)>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TransPublishFileInputResponse {
     pub file_id: ObjectId,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TransCreateTaskInputResponse {
     pub task_id: String,
 }

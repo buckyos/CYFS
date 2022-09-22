@@ -217,8 +217,8 @@ impl ObjectHttpListener {
 
         // trans service
         let handler =
-            TransRequestHandler::new(protocol.clone(), services.trans_service.clone_processor());
-        TransRequestHandlerEndpoint::register_server(&handler, &mut server);
+            TransRequestHandler::new(services.trans_service.clone_processor());
+        TransRequestHandlerEndpoint::register_server(zone_manager, &protocol, &handler, &mut server);
 
         Self { server }
     }
