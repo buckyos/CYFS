@@ -1237,9 +1237,9 @@ impl From<(&TcpSynConnection, Vec<u8>, AesKey)> for Exchange {
         Exchange {
             sequence: tcp_syn.sequence.clone(), 
             to_device_id: tcp_syn.to_device_id.clone(), 
+            send_time: bucky_time_now(), 
             key_encrypted, 
-            seq_key_sign: Signature::default(),
-            send_time: bucky_time_now(),
+            sign: Signature::default(),
             from_device_desc: tcp_syn.from_device_desc.clone(),
             mix_key
         }
@@ -1426,9 +1426,9 @@ impl From<(&TcpAckConnection, DeviceId, Vec<u8>, AesKey)> for Exchange {
         Exchange {
             sequence: tcp_ack.sequence.clone(), 
             to_device_id, 
-            key_encrypted, 
-            seq_key_sign: Signature::default(),
             send_time: bucky_time_now(),
+            key_encrypted, 
+            sign: Signature::default(),
             from_device_desc: tcp_ack.to_device_desc.clone(),
             mix_key
         }

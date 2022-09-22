@@ -362,24 +362,19 @@ struct CallClientInner {
 
 impl CallClientInner {
     fn init_pkgs(&mut self, mut call_pkg: SnCall) {
+        call_pkg.sn_peer_id = self.sn_peerid.clone();
+
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = &self.aes_key.encrypted {
             let stack = Stack::from(&self.stack);
-            let exchg = Exchange {
-                sequence: call_pkg.seq,  
-                to_device_id: self.sn_peerid.clone(), 
-                key_encrypted: encrypted.clone(), 
-                seq_key_sign: Signature::default(),
-                send_time: 0,
-                from_device_desc: match call_pkg.peer_info.as_ref() {
-                    Some(from) => from.clone(),
-                    None => stack.device_cache().local()
-                },
-		        mix_key: self.aes_key.mix_key.clone(),
+            let local_device = match call_pkg.peer_info.as_ref() {
+                Some(from) => from.clone(),
+                None => stack.device_cache().local()
             };
+            let exchg = Exchange::from((&call_pkg, local_device, encrypted.clone(), self.aes_key.mix_key.clone()));
             self.pkgs.push(SendPackage::Exchange(exchg));
         }
 
-        call_pkg.sn_peer_id = self.sn_peerid.clone();
+        
         self.pkgs.push(SendPackage::Call(call_pkg));
     }
 

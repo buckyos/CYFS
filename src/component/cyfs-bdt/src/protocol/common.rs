@@ -531,43 +531,46 @@ pub trait Package {
 pub struct Exchange {
     pub sequence: TempSeq,
     pub to_device_id: DeviceId, 
-    pub key_encrypted: Vec<u8>, 
-    pub seq_key_sign: Signature,
     pub send_time: Timestamp,
+    pub key_encrypted: Vec<u8>, 
+    pub sign: Signature,
     pub from_device_desc: Device,
     pub mix_key: AesKey,
 }
 
 impl Exchange {
     pub async fn sign(&mut self, signer: &impl Signer) -> BuckyResult<()> {
-        self.seq_key_sign = signer
+        self.sign = signer
             .sign(
-                self.seq_key_hash().as_slice(),
+                self.to_sign().as_slice(),
                 &SignatureSource::RefIndex(0),
             )
             .await?;
         Ok(())
     }
 
-    pub async fn verify(&self) -> bool {
+    pub async fn verify(&self, local: &DeviceId) -> bool {
         let verifier = RsaCPUObjectVerifier::new(self.from_device_desc.desc().public_key().clone());
-        verifier
-            .verify(self.seq_key_hash().as_slice(), &self.seq_key_sign)
-            .await
+        if verifier
+            .verify(self.to_sign().as_slice(), &self.sign)
+            .await {
+            self.to_device_id.eq(local)
+        } else {
+            false
+        }
     }
 
-    fn seq_key_hash(&self) -> HashValue {
+    fn to_sign(&self) -> HashValue {
         let seq = self.sequence.raw_encode_to_buffer().unwrap();
-        
+        let to_device_id = self.to_device_id.raw_encode_to_buffer().unwrap();
+        let send_time = self.send_time.raw_encode_to_buffer().unwrap();
         use sha2::Digest;
         let mut sha256 = sha2::Sha256::new();
         sha256.input(&seq);
+        sha256.input(&to_device_id);
+        sha256.input(&send_time);
         sha256.input(&self.key_encrypted);
         sha256.result().into()
-    }
-
-    pub fn mix_key(&self) -> &AesKey {
-        &self.mix_key
     }
 }
 
@@ -588,9 +591,9 @@ impl From<(&SynTunnel, Vec<u8>, AesKey)> for Exchange {
         Exchange {
             sequence: syn_tunnel.sequence.clone(), 
             to_device_id: syn_tunnel.to_device_id.clone(), 
-            key_encrypted, 
-            seq_key_sign: Signature::default(),
             send_time: syn_tunnel.send_time.clone(),
+            key_encrypted, 
+            sign: Signature::default(),
             from_device_desc: syn_tunnel.from_device_desc.clone(),
             mix_key
         }
@@ -604,9 +607,9 @@ impl From<(&SynProxy, Vec<u8>, AesKey)> for Exchange {
         Exchange {
             sequence: syn_proxy.seq, 
             to_device_id: syn_proxy.to_peer_id.clone(), 
-            key_encrypted, 
-            seq_key_sign: Signature::default(),
             send_time: bucky_time_now(),
+            key_encrypted, 
+            sign: Signature::default(),
             from_device_desc: syn_proxy.from_peer_info.clone(),
             mix_key
         }
@@ -631,8 +634,8 @@ impl<Context: merge_context::Encode> RawEncodeWithContext<Context> for Exchange 
         let (mut context, buf) = context::Encode::<Self, Context>::new(enc_buf, merge_context)?;
         let buf = context.check_encode(buf, "sequence", &self.sequence, flags.next())?;
         let buf = context.check_encode(buf, "to_device_id", &self.to_device_id, flags.next())?;
-        let buf = context.encode(buf, &self.seq_key_sign, flags.next())?;
         let buf = context.check_encode(buf, "send_time", &self.send_time, flags.next())?;
+        let buf = context.encode(buf, &self.sign, flags.next())?;
         let buf =
             context.check_encode(buf, "device_desc", &self.from_device_desc, flags.next())?;
         let _buf =
@@ -650,8 +653,8 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
         let (mut context, buf) = context::Decode::new(buf, merge_context)?;
         let (sequence, buf) = context.check_decode(buf, "sequence", flags.next())?;
         let (to_device_id, buf) = context.check_decode(buf, "to_device_id", flags.next())?;
-        let (seq_key_sign, buf) = context.decode(buf, "Exchange.seq_key_sign", flags.next())?;
         let (send_time, buf) = context.check_decode(buf, "send_time", flags.next())?;
+        let (sign, buf) = context.decode(buf, "Exchange.seq_key_sign", flags.next())?;
         let (from_device_desc, buf) = context.check_decode(buf, "device_desc", flags.next())?;
         let (mix_key, buf) = context.check_decode(buf, "mix_key", flags.next())?;
 
@@ -659,9 +662,9 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
             Self {
                 sequence, 
                 to_device_id, 
+                send_time, 
                 key_encrypted: vec![],
-                seq_key_sign,
-                send_time,
+                sign,
                 from_device_desc,
                 mix_key
             },
@@ -691,9 +694,9 @@ fn encode_protocol_exchange() {
     let src = Exchange {
         sequence: TempSeq::from(rand::random::<u32>()), 
         to_device_id: DeviceId::default(), 
-        key_encrypted: key_encrypted.clone(), 
-        seq_key_sign: Signature::default(),
         send_time: bucky_time_now(),
+        key_encrypted: key_encrypted.clone(), 
+        sign: Signature::default(),
         from_device_desc: device,
         mix_key: AesKey::random(),
     };
@@ -1015,6 +1018,23 @@ impl Package for SnCall {
     }
 }
 
+
+impl From<(&SnCall, Device, Vec<u8>, AesKey)> for Exchange {
+    fn from(context: (&SnCall, Device, Vec<u8>, AesKey)) -> Self {
+        let (sn_call, local_device, key_encrypted, mix_key) = context;
+    
+        Self {
+            sequence: sn_call.seq.clone(),  
+            to_device_id: sn_call.sn_peer_id.clone(), 
+            send_time: sn_call.send_time,  
+            key_encrypted, 
+            sign: Signature::default(),
+            from_device_desc: local_device,
+            mix_key
+        }
+    }
+}
+
 impl Into<merge_context::FixedValues> for &SnCall {
     fn into(self) -> merge_context::FixedValues {
         let mut v = merge_context::FixedValues::new();
@@ -1199,8 +1219,6 @@ fn encode_protocol_sn_call() {
 }
 
 
-
-
 pub struct SnPing {
     pub protocol_version: u8, 
     pub stack_version: u32, 
@@ -1213,6 +1231,22 @@ pub struct SnPing {
     pub contract_id: Option<ObjectId>,         //合约文件对象id
     pub receipt: Option<ReceiptWithSignature>, //客户端提供的服务清单
 }
+
+impl From<(&SnPing, Device, Vec<u8>, AesKey)> for Exchange {
+    fn from(context: (&SnPing, Device, Vec<u8>, AesKey)) -> Self {
+        let (sn_ping, local_device, key_encrypted, mix_key) = context;
+        Self {
+            sequence: sn_ping.seq.clone(), 
+            to_device_id: sn_ping.sn_peer_id.clone(), 
+            send_time: sn_ping.send_time,
+            key_encrypted,
+            sign: Signature::default(),
+            from_device_desc: local_device, 
+            mix_key, 
+        }
+    }
+}
+
 
 impl Into<merge_context::FixedValues> for &SnPing {
     fn into(self) -> merge_context::FixedValues {

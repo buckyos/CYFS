@@ -676,33 +676,16 @@ impl ClientInner {
 
         let last_resp_time = self.last_resp_time.load(atomic::Ordering::Acquire);
         let to_session_index = if (last_resp_time == 0 || (now < last_resp_time || now - last_resp_time > 1000)) && self.enc_key.is_some() {
-            let key_stub = stack
-                .keystore()
-                .get_key_by_mix_hash(&self.mix_key.as_ref().unwrap().mix_hash(None), false, false)
-                .ok_or_else(|| BuckyError::new(BuckyErrorCode::CryptoError, "key not exists"))?;
-            if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
-	    	    let mut exchg = Exchange {
-	                sequence: seq, 
-                    to_device_id: self.sn_peerid.clone(), 
-	                key_encrypted,
-	                seq_key_sign: Signature::default(),
-	                send_time: now_abs_u64,
-	                from_device_desc: local_peer.clone(),
-	                mix_key: self.mix_key.as_ref().unwrap().clone(),
-	            };
-	            let _ = exchg.sign(stack.keystore().signer()).await;
-	            pkg_box.push(exchg);
-	    }
             self.active_session_index.store(std::u32::MAX, atomic::Ordering::Release);
             std::u32::MAX
         } else {
             self.active_session_index.load(atomic::Ordering::Acquire)
         };
 
-        let sessions = self.sessions.read().unwrap();
         let to_sessions = {
+            let sessions = self.sessions.read().unwrap();
             let to_session = if to_session_index != std::u32::MAX {
-                (*sessions).get(to_session_index as usize)
+                sessions.get(to_session_index as usize)
             } else {
                 None
             };
@@ -741,6 +724,18 @@ impl ClientInner {
             ping_pkg
         };
 
+
+        let key_stub = stack
+                .keystore()
+                .get_key_by_mix_hash(&self.mix_key.as_ref().unwrap().mix_hash(None), false, false)
+                .ok_or_else(|| BuckyError::new(BuckyErrorCode::CryptoError, "key not exists"))?;
+        if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
+            let stack = Stack::from(&self.env.stack);
+            let mut exchg = Exchange::from((&ping_pkg, local_peer.clone(), key_encrypted, key_stub.mix_key));
+            let _ = exchg.sign(stack.keystore().signer()).await;
+            pkg_box.push(exchg);
+        }
+
         let ping_seq = ping_pkg.seq.clone();
         pkg_box.push(ping_pkg);
 
@@ -750,13 +745,13 @@ impl ClientInner {
 
         self.contract.will_ping(seq.value());
 
-        struct SendIter<'a> {
-            sessions: Vec<(&'a Interface, Vec<Endpoint>)>,
+        struct SendIter {
+            sessions: Vec<(Interface, Vec<Endpoint>)>,
             sub_pos: usize,
             pos: usize,
         }
 
-        impl <'a> Iterator for SendIter<'a> {
+        impl Iterator for SendIter {
             type Item = (Interface, Endpoint);
 
             fn next(&mut self) -> Option<Self::Item> {
@@ -822,7 +817,7 @@ struct Session {
 }
 
 impl Session {
-    fn prepare_send_endpoints(&self, now: u64) -> (&Interface, Vec<Endpoint>) {
+    fn prepare_send_endpoints(&self, now: u64) -> (Interface, Vec<Endpoint>) {
         let local_endpoint = self.interface.local();
         let to_endpoints = {
             let (eps, is_reset) = {
@@ -846,7 +841,7 @@ impl Session {
 
         self.last_ping_time.store(now, atomic::Ordering::Release);
 
-        (&self.interface, to_endpoints)
+        (self.interface.clone(), to_endpoints)
     }
 
     fn on_ping_resp(&self, resp: &SnPingResp, from: &Endpoint, from_interface: Interface, now: u64, rto: &mut u16, is_handled: &mut bool) -> UpdateOuterResult {

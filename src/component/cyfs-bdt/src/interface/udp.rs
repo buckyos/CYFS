@@ -297,7 +297,7 @@ impl Interface {
                 if package_box.has_exchange() {
                     async_std::task::spawn(async move {
                         let exchange: &Exchange = package_box.packages()[0].as_ref();
-                        if !exchange.verify().await {
+                        if !exchange.verify(stack.local_device_id()).await {
                             warn!("{} exchg verify failed, from {}.", local_interface, from);
                             return;
                         }

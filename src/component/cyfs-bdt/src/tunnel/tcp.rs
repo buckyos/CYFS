@@ -858,7 +858,7 @@ impl Tunnel {
                             if package_box.has_exchange() {
                                 let exchange: &Exchange = package_box.packages()[0].as_ref();
                                 stack.keystore()
-                                    .add_key(package_box.enc_key(), package_box.remote(), exchange.mix_key());
+                                    .add_key(package_box.enc_key(), package_box.remote(), &exchange.mix_key);
                             }
                             if let Err(err) = package_box.packages().iter().try_for_each(|pkg| {
                                 if pkg.cmd_code() == PackageCmdCode::PingTunnel {

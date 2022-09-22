@@ -552,7 +552,7 @@ impl OnUdpPackageBox for Stack {
             self.keystore().add_key(
                 package_box.as_ref().enc_key(),
                 package_box.as_ref().remote(),
-                exchange.mix_key(),
+                &exchange.mix_key,
             );
         }
         if package_box.as_ref().is_tunnel() {
@@ -589,7 +589,7 @@ impl OnTcpInterface for Stack {
         if first_box.has_exchange() {
             let exchange: &Exchange = first_box.packages()[0].as_ref();
             self.keystore()
-                .add_key(first_box.enc_key(), first_box.remote(), exchange.mix_key());
+                .add_key(first_box.enc_key(), first_box.remote(), &exchange.mix_key);
         }
         if first_box.is_tunnel() {
             self.tunnel_manager().on_tcp_interface(interface, first_box)
@@ -636,7 +636,7 @@ impl PingClientCalledEvent for Stack {
         if caller_box.has_exchange() {
             let exchange: &Exchange = caller_box.packages()[0].as_ref();
             self.keystore()
-                .add_key(caller_box.enc_key(), caller_box.remote(), exchange.mix_key());
+                .add_key(caller_box.enc_key(), caller_box.remote(), &exchange.mix_key);
         }
         self.tunnel_manager().on_called(called, caller_box)
     }

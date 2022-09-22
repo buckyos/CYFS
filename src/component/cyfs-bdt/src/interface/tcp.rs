@@ -150,7 +150,8 @@ impl Listener {
                     task::spawn(async move {
                         let socket = TcpStream::from(socket);
                         match AcceptInterface::accept(
-                            socket.clone(),
+                            socket.clone(), 
+                            Stack::from(&stack).local_device_id(), 
                             &key_store,
                             Stack::from(&stack).config().tunnel.tcp.accept_timeout,
                         )
@@ -505,7 +506,8 @@ impl std::fmt::Display for AcceptInterface {
 
 impl AcceptInterface {
     pub(crate) async fn accept(
-        socket: TcpStream,
+        socket: TcpStream, 
+        local_device_id: &DeviceId, 
         keystore: &keystore::Keystore,
         timeout: Duration,
     ) -> Result<(Self, PackageBox), BuckyError> {
@@ -537,7 +539,7 @@ impl AcceptInterface {
             None => return Err(BuckyError::new(BuckyErrorCode::InvalidData, "no package")),
         };
         if let Some(exchg) = exchg {
-            if !exchg.verify().await {
+            if !exchg.verify(local_device_id).await {
                 warn!("tcp exchg verify failed.");
                 return Err(BuckyError::new(
                     BuckyErrorCode::InvalidData,
