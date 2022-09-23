@@ -71,7 +71,7 @@ impl FromStr for RequestProtocol {
             "datagram-bdt" => Self::DatagramBdt,
             "data-bdt" => Self::DataBdt,
             v @ _ => {
-                let msg = format!("unknown non input protocol: {}", v);
+                let msg = format!("unknown request input protocol: {}", v);
                 error!("{}", msg);
 
                 return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
@@ -233,7 +233,7 @@ impl std::fmt::Display for RequestSourceInfo {
             self.zone.zone_category,
             self.zone.device,
             self.zone.zone,
-            self.dec,
+            crate::dec_id_to_string(&self.dec),
             self.verified,
         )
     }
@@ -249,38 +249,51 @@ impl RequestSourceInfo {
         }
     }
 
+    pub fn new_local_anonymouse() -> Self {
+        Self {
+            protocol: RequestProtocol::Native,
+            zone: DeviceZoneInfo::new_local(),
+            dec: get_anonymous_dec_app().to_owned(),
+            verified: false,
+        }
+    }
+
+    // dec-id = anonymous-dec-id if None
     pub fn new_local_dec(dec: Option<ObjectId>) -> Self {
         Self {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_local(),
-            dec: dec.unwrap_or(get_system_dec_app().to_owned()),
+            dec: dec.unwrap_or(get_anonymous_dec_app().to_owned()),
             verified: false,
         }
     }
 
+    // dec-id = anonymous-dec-id if None
     pub fn new_zone_dec(dec: Option<ObjectId>) -> Self {
         Self {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_current_zone(),
-            dec: dec.unwrap_or(get_system_dec_app().to_owned()),
+            dec: dec.unwrap_or(get_anonymous_dec_app().to_owned()),
             verified: false,
         }
     }
 
+    // dec-id = anonymous-dec-id if None
     pub fn new_friend_zone_dec(dec: Option<ObjectId>) -> Self {
         Self {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_friend_zone(),
-            dec: dec.unwrap_or(get_system_dec_app().to_owned()),
+            dec: dec.unwrap_or(get_anonymous_dec_app().to_owned()),
             verified: false,
         }
     }
 
+    // dec-id = anonymous-dec-id if None
     pub fn new_other_zone_dec(dec: Option<ObjectId>) -> Self {
         Self {
             protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo::new_other_zone(),
-            dec: dec.unwrap_or(get_system_dec_app().to_owned()),
+            dec: dec.unwrap_or(get_anonymous_dec_app().to_owned()),
             verified: false,
         }
     }
@@ -291,7 +304,7 @@ impl RequestSourceInfo {
     }
 
     pub fn set_dec(&mut self, dec_id: Option<ObjectId>) {
-        self.dec = dec_id.unwrap_or(get_system_dec_app().to_owned());
+        self.dec = dec_id.unwrap_or(get_anonymous_dec_app().to_owned());
     }
 
     pub fn dec(mut self, dec_id: Option<ObjectId>) -> Self {

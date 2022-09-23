@@ -137,7 +137,7 @@ impl CyfsStackImpl {
         param: CyfsStackParams,
         known_objects: Vec<KnownObject>,
     ) -> BuckyResult<Self> {
-        cyfs_core::SystemDecApp::init_system_dec_id();
+        cyfs_core::SystemDecApp::init();
         Self::register_custom_objects_format();
 
         let stack_params = param.clone();

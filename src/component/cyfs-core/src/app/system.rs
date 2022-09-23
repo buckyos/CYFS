@@ -21,9 +21,26 @@ impl SystemDecApp {
             .unwrap()
     }
 
-    pub fn init_system_dec_id() {
+    pub fn gen_anonymous_dec_id() -> DecAppId {
+        let owner = cyfs_base::ObjectId::default();
+        DecApp::generate_id(owner, "cyfs-anonymous-service")
+            .try_into()
+            .unwrap()
+    }
+
+    fn init_system_dec_id() {
         let dec_id = Self::gen_system_dec_id().into();
         cyfs_base::init_system_dec_app(dec_id);
+    }
+
+    fn init_anonymous_dec_id() {
+        let dec_id = Self::gen_anonymous_dec_id().into();
+        cyfs_base::init_anonymous_dec_app(dec_id);
+    }
+
+    pub fn init() {
+        Self::init_system_dec_id();
+        Self::init_anonymous_dec_id();
     }
 }
 

@@ -91,14 +91,6 @@ impl GlobalStateRoot {
             root = Some(root_id);
         } else {
             info!("load global state success! category={}, root={}", category, root.as_ref().unwrap());
-
-            /*
-            // Compatibility code, remove later
-            match Self::try_update_root_class(&noc_cache, root.as_ref().unwrap(), ObjectMapClass::GlobalRoot).await {
-                Some(id) => root = Some(id),
-                None => {},
-            }
-            */
         }
 
         // 创建基于global root的管理器，用以操作所有dec root状态的改变
@@ -160,11 +152,23 @@ impl GlobalStateRoot {
         self.root.root_cache()
     }
 
+    fn check_dec(dec_id: &ObjectId,) -> BuckyResult<()> {
+        if cyfs_base::get_anonymous_dec_app() == dec_id {
+            let msg = format!("anonymous dec app does not support global-state!");
+            error!("{}", msg);
+            Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
+        } else {
+            Ok(())
+        }
+    }
+
     pub(super) async fn get_dec_root(
         &self,
         dec_id: &ObjectId,
         auto_create: bool,
     ) -> BuckyResult<Option<DecRootInfo>> {
+        Self::check_dec(dec_id)?;
+
         let key = dec_id.to_string();
         let env = self.root.create_op_env(None).await?;
         let root_id = env.get_by_key("/", &key).await.map_err(|e| {
@@ -181,19 +185,6 @@ impl GlobalStateRoot {
                     "get dec root from global state! category={}, dec={}, dec_root={}",
                     self.category, dec_id, dec_root
                 );
-
-                /*
-                // FIXME Compatibility code, remove later
-                let info = match self.try_update_dec_root_class(dec_id, &dec_root).await {
-                    Some(info) => info,
-                    None => {
-                        DecRootInfo {
-                            dec_root,
-                            root: env.root().to_owned(),
-                        }
-                    },
-                };
-                */
 
                 let info = DecRootInfo {
                     dec_root,
@@ -265,6 +256,7 @@ impl GlobalStateRoot {
         new_root_id: ObjectId,
         prev_id: ObjectId,
     ) -> BuckyResult<ObjectId> {
+        Self::check_dec(dec_id)?;
 
         // first check access mode
         if !self.access_mode().is_writable() {
@@ -306,47 +298,6 @@ impl GlobalStateRoot {
 
         Ok(global_root_id)
     }
-
-    /*
-    // FIXME for beta version compatible, remove the two function later
-    async fn try_update_root_class(noc_cache: &ObjectMapNOCCacheRef, root: &ObjectId, class: ObjectMapClass) -> Option<ObjectId> {
-        let ret = noc_cache.get_object_map(root).await.unwrap();
-        if ret.is_none() {
-            unreachable!("root object not found! {}", root);
-        }
-
-        let mut obj = ret.unwrap();
-        if obj.class() == class {
-            return None;
-        }
-
-        obj.desc_mut().content_mut().set_class(class);
-        let new_root_id = obj.flush_id();
-
-        info!("update root object's class! {} -> {}, {:?}", root, new_root_id, class);
-
-        // 需要立刻保存到noc
-        noc_cache.put_object_map(new_root_id, obj).await.unwrap();
-
-        Some(new_root_id)
-    }
-
-    async fn try_update_dec_root_class(&self, dec_id: &ObjectId, root: &ObjectId) -> Option<DecRootInfo> {
-        let ret = Self::try_update_root_class(&self.noc_cache, root, ObjectMapClass::DecRoot).await;
-        if ret.is_none() {
-            return None;
-        }
-
-        let new_root_id = ret.unwrap();
-        let global_root_id = self.update_dec_root(dec_id, new_root_id.clone(), root.to_owned()).await.unwrap();
-
-        Some(DecRootInfo {
-            dec_root: new_root_id,
-            root: global_root_id,
-        })
-    }
-
-    */
 }
 
 pub(crate) type GlobalStateRootRef = Arc<GlobalStateRoot>;
