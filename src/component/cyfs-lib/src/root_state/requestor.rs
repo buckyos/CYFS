@@ -276,6 +276,10 @@ impl OpEnvRequestor {
 
         http_req.insert_header(cyfs_base::CYFS_OP_ENV_ACTION, action.to_string());
 
+        if let Some(target_dec_id) = &com_req.target_dec_id {
+            http_req.insert_header(cyfs_base::CYFS_TARGET_DEC_ID, target_dec_id.to_string());
+        }
+
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
         }
@@ -1025,6 +1029,10 @@ impl GlobalStateAccessRequestor {
             }
         }
 
+        if let Some(target_dec_id) = &com_req.target_dec_id {
+            http_req.insert_header(cyfs_base::CYFS_TARGET_DEC_ID, target_dec_id.to_string());
+        }
+        
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
         }
