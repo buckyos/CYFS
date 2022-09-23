@@ -235,21 +235,22 @@ impl AppController {
         &self,
         router_handlers: &RouterHandlerManagerProcessorRef,
     ) -> BuckyResult<()> {
-        let filter = format!("obj_type == {}", CoreObjectType::AppManagerAction.as_u16(),);
+        // let filter = format!("obj_type == {}", CoreObjectType::AppManagerAction.as_u16(),);
 
         // add post_object handler for app_manager's action cmd
         let routine = OnAppActionWatcher {
             owner: self.clone(),
         };
 
+        let req_path = RequestGlobalStatePath::new_system_dec(Some(CYFS_SYSTEM_APP_VIRTUAL_PATH));
         if let Err(e) = router_handlers
             .post_object()
             .add_handler(
                 RouterHandlerChain::Handler,
                 APP_MANAGER_CONTROLLER_HANDLER_ID,
                 1,
-                Some(filter.clone()),
                 None,
+                Some(req_path.to_string()),
                 RouterHandlerAction::Reject,
                 Some(Box::new(routine)),
             )

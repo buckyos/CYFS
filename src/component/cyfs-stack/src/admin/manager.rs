@@ -82,21 +82,20 @@ impl AdminManager {
         &self,
         router_handlers: &RouterHandlersManager,
     ) -> BuckyResult<()> {
-        let filter = format!("obj_type == {}", CoreObjectType::Admin as u16);
-
         // add post_object handler for app_manager's action cmd
         let routine = OnAdminCommandWatcher {
             owner: self.clone(),
         };
 
+        let req_path = RequestGlobalStatePath::new_system_dec(Some(CYFS_SYSTEM_ADMIN_VIRTUAL_PATH));
         if let Err(e) = router_handlers
             .post_object()
             .add_handler(
                 RouterHandlerChain::Handler,
                 ADMIN_MANAGER_HANDLER_ID,
                 1,
-                Some(filter),
                 None,
+                Some(req_path.to_string()),
                 RouterHandlerAction::Default,
                 Some(Box::new(routine)),
             )

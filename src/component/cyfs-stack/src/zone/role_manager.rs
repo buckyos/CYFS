@@ -527,21 +527,22 @@ impl ZoneRoleManager {
         let zone = self.zone_manager.get_current_zone().await?;
         let owner = zone.owner();
 
-        let filter = format!("object_id == {}", owner.to_string());
+        // let filter = format!("object_id == {}", owner.to_string());
 
         // add post_object handler for app_manager's action cmd
         let routine = OnPeopleUpdateWatcher {
             owner: self.clone(),
         };
 
+        let req_path = RequestGlobalStatePath::new_system_dec(Some(CYFS_SYSTEM_ROLE_VIRTUAL_PATH));
         if let Err(e) = router_handlers
             .post_object()
             .add_handler(
                 RouterHandlerChain::Handler,
                 ROLE_MANAGER_HANDLER_ID,
                 1,
-                Some(filter),
                 None,
+                Some(req_path.to_string()),
                 RouterHandlerAction::Default,
                 Some(Box::new(routine)),
             )

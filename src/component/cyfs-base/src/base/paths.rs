@@ -18,3 +18,9 @@ pub const CYFS_KNOWN_ZONES_PATH: &str = "/data/known-zones";
 pub const CYFS_API_VIRTUAL_PATH: &str = "/.cyfs/api";
 pub const CYFS_HANDLER_VIRTUAL_PATH: &str = "/.cyfs/api/handler";
 pub const CYFS_CRYPTO_VIRTUAL_PATH: &str = "/.cyfs/api/crypto";
+
+// System control cmds
+pub const CYFS_SYSTEM_VIRTUAL_PATH: &str = "/.cyfs/api/system";
+pub const CYFS_SYSTEM_ADMIN_VIRTUAL_PATH: &str = "/.cyfs/api/system/admin";
+pub const CYFS_SYSTEM_ROLE_VIRTUAL_PATH: &str = "/.cyfs/api/system/role";
+pub const CYFS_SYSTEM_APP_VIRTUAL_PATH: &str = "/.cyfs/api/system/app";
