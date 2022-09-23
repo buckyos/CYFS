@@ -3,7 +3,6 @@ use crate::docker_api::*;
 use crate::package::AppPackage;
 use cyfs_base::*;
 use cyfs_client::NamedCacheClient;
-use cyfs_core::*;
 use cyfs_lib::*;
 use cyfs_util::*;
 use log::*;
@@ -13,8 +12,9 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
+use cyfs_core::{DecApp, DecAppId, DecAppObj, SubErrorCode};
 
-pub type AppActionResult<T> = std::result::Result<T, SubErrorCode>;
+pub type AppActionResult<T> = Result<T, SubErrorCode>;
 
 pub struct PermissionNode {
     key: String,
@@ -111,7 +111,7 @@ impl AppController {
                 .publish_file(&TransPublishFileOutputRequest {
                     common: NDNOutputRequestCommon {
                         req_path: None,
-                        dec_id: Some(get_system_dec_app().object_id().clone()),
+                        dec_id: Some(get_system_dec_app().clone()),
                         level: Default::default(),
                         target: None,
                         referer_object: vec![],
@@ -589,6 +589,7 @@ mod tests {
     //use cyfs_core::;
     use std::convert::TryFrom;
     use std::str::FromStr;
+    use cyfs_core::{AppCmd, AppCmdObj};
 
     async fn get_stack() -> SharedCyfsStack {
         let cyfs_stack = SharedCyfsStack::open_default(None).await.unwrap();
@@ -639,6 +640,7 @@ mod tests {
                     object_raw: appcmd.to_vec().unwrap(),
                     object: None,
                 },
+                access: None
             })
             .await
             .unwrap();

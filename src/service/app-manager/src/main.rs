@@ -1,9 +1,7 @@
 #![windows_subsystem = "windows"]
 use cyfs_base::*;
-use cyfs_core::*;
 use cyfs_lib::SharedCyfsStack;
 use log::*;
-extern crate ood_daemon;
 use ood_daemon::init_system_config;
 use app_manager_lib::{AppManagerConfig, AppManagerHostMode};
 use crate::app_manager_ex::AppManager as AppManagerEx;
@@ -12,6 +10,8 @@ use std::{sync::Arc, str::FromStr};
 use cyfs_util::process::{ProcessCmdFuncs, prepare_args, check_cmd_and_exec, ProcessAction, set_process_cmd_funcs};
 use clap::App;
 use std::fs;
+use cyfs_core::DecAppId;
+
 mod app_cmd_executor;
 mod app_controller;
 mod app_install_detail;
@@ -115,7 +115,7 @@ async fn main() {
     // 使用默认配置初始化non-stack，因为是跑在gateway后面，共享了gateway的协议栈，所以配置使用默认即可
     // 兼容gateway没启动的情况，在这里等待gateway启动后再往下走
     let cyfs_stack;
-    match SharedCyfsStack::open_default(Some(get_system_dec_app().object_id().clone())).await {
+    match SharedCyfsStack::open_default(Some(get_system_dec_app().clone())).await {
         Ok(stack) => {
             info!("open default stack success");
             cyfs_stack = stack;
