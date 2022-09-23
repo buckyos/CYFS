@@ -524,9 +524,8 @@ impl ZoneRoleManager {
         &self,
         router_handlers: &RouterHandlersManager,
     ) -> BuckyResult<()> {
-        let zone = self.zone_manager.get_current_zone().await?;
-        let owner = zone.owner();
-
+        // let zone = self.zone_manager.get_current_zone().await?;
+        // let owner = zone.owner();
         // let filter = format!("object_id == {}", owner.to_string());
 
         // add post_object handler for app_manager's action cmd

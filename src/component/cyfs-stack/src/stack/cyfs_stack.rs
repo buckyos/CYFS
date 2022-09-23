@@ -228,7 +228,7 @@ impl CyfsStackImpl {
 
         // load local global-state meta
         let local_global_state_meta =
-            Self::load_global_state_meta(isolate, &local_root_state, noc.clone(), &source);
+            Self::load_global_state_meta(isolate, &local_root_state, noc.clone(), &source).await?;
 
         // init global-state validator
         let validator = GlobalStateValidatorManager::new(&local_root_state, &local_cache);
@@ -738,16 +738,19 @@ impl CyfsStackImpl {
         Ok(root_state)
     }
 
-    fn load_global_state_meta(
+    async fn load_global_state_meta(
         isolate: &str,
         root_state: &GlobalStateLocalService,
         noc: NamedObjectCacheRef,
         source: &RequestSourceInfo,
-    ) -> GlobalStateMetaLocalService {
+    ) -> BuckyResult<GlobalStateMetaLocalService> {
         let root_state = root_state.clone_global_state_processor();
         let root_state = GlobalStateOutputTransformer::new(root_state, source.clone());
 
-        GlobalStateMetaLocalService::new(isolate, root_state, noc.clone())
+        let service = GlobalStateMetaLocalService::new(isolate, root_state, noc.clone());
+        service.init().await?;
+
+        Ok(service)
     }
 
     fn load_global_state_meta_service(

@@ -260,7 +260,7 @@ impl AppController {
             return Err(e);
         }
 
-        info!("add app_manager controller success! req_path={}", &req_path);
+        info!("add app_manager controller success! req_path={}", req_path.to_string());
 
         if let Ok(_) = self.auth_app_list.load().await {
             if self.auth_app_list.count() > 0 {

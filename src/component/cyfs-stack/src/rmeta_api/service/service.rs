@@ -1,6 +1,7 @@
 use super::super::local::*;
 use super::super::path::GlobalStateAccessRequest;
 use super::super::router::GlobalStateMetaServiceRouter;
+use super::default::GlobalStateDefaultMetas;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::rmeta::*;
@@ -50,6 +51,10 @@ impl GlobalStateMetaLocalService {
         }
     }
 
+    pub(crate) async fn init(&self) -> BuckyResult<()> {
+        GlobalStateDefaultMetas::init(&self).await
+    }
+
     pub(crate) fn get_meta_manager(
         &self,
         category: GlobalStateCategory,
@@ -81,7 +86,9 @@ impl GlobalStateMetaLocalService {
         // 如果req_path没有指定target_dec_id，那么使用source_dec_id
         let target_dec_id = req_path.dec(source);
 
-        let ret = rmeta.get_option_global_state_meta(target_dec_id, false).await?;
+        let ret = rmeta
+            .get_option_global_state_meta(target_dec_id, false)
+            .await?;
         if ret.is_none() {
             let msg = format!("global state check rmeta but target dec rmeta not found! target_dec={}, req_path={}", target_dec_id, req_path);
             warn!("{}", msg);
@@ -100,7 +107,9 @@ impl GlobalStateMetaLocalService {
         if let Err(e) = dec_rmeta.check_access(check_req) {
             error!(
                 "global check check rmeta but been rejected! source={}, req_path={}, permissons={}",
-                source, req_path, permissions.as_str()
+                source,
+                req_path,
+                permissions.as_str()
             );
             return Err(e);
         }
