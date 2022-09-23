@@ -101,10 +101,17 @@ impl AclManager {
         }
     }
 
-    pub async fn init(&self) {
-        // 首先加载配置
-        // FIXME 如果加载出错了如何处理？都会fallback到AclTable的默认逻辑
+    pub async fn init(&self) -> BuckyResult<()> {
+        // First load some acl config
         self.load().await;
+
+        let current_info = self.zone_manager.get_current_info().await?;
+        if current_info.zone_role.is_active_ood() {
+            // Only init default rmeta on active ood, other ood will been sync to
+            self.local_global_state_meta.init().await?;
+        }
+        
+        Ok(())
     }
 
     async fn load(&self) {

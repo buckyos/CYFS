@@ -214,7 +214,7 @@ impl std::fmt::Display for GlobalStatePathAccessItem {
                     self.path,
                     s.zone,
                     s.zone_category,
-                    s.dec,
+                    s.dec.as_ref().map(|id| dec_id_to_string(id)),
                     AccessPermissions::format_u8(s.access),
                 )
             }
