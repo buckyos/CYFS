@@ -116,14 +116,10 @@ impl CommandTunnel {
                 if package_box.has_exchange() {
                     async_std::task::spawn(async move {
                         let exchange: &Exchange = package_box.packages()[0].as_ref();
-                        if !exchange.verify().await {
-                            warn!("{} exchg verify failed, from {}.", tunnel, from);
-                            return;
-                        }
                         service.keystore().add_key(
                             package_box.enc_key(),
                             package_box.remote(),
-                            exchange.mix_key(),
+                            &exchange.mix_key,
                         );
                         let _ = tunnel.on_package_box(package_box, from);
                     });
