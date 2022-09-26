@@ -43,7 +43,7 @@ struct DefaultEvents {
 
 #[async_trait::async_trait]
 impl ProxyServiceEvents for DefaultEvents {
-    async fn pre_create_tunnel(&self, _key: &KeyMixHash, _device_pair: &(ProxyDeviceStub, ProxyDeviceStub), _mix_key: &AesKey) -> BuckyResult<()> {
+    async fn pre_create_tunnel(&self, _mix_key: &AesKey, _device_pair: &(ProxyDeviceStub, ProxyDeviceStub)) -> BuckyResult<()> {
         Ok(())
     }
 }
@@ -151,10 +151,10 @@ impl OnPackage<SynProxy, (&PackageBox, &SocketAddr)> for Service {
                 }
             );
             
-            let filter_result = service.events().pre_create_tunnel(&mix_key, &stub_pair).await;
+            let filter_result = service.events().pre_create_tunnel(&syn_proxy.mix_key, &stub_pair).await;
             match filter_result {
                 Ok(_) => {
-                    let ret = service.proxy_tunnels().create_tunnel(&mix_key, stub_pair);
+                    let ret = service.proxy_tunnels().create_tunnel(&syn_proxy.mix_key, stub_pair);
                     let _ = service.command_tunnel().ack_proxy(ret, &syn_proxy, &from, &enc_key, &mix_key);
                 }, 
                 Err(err) => {
