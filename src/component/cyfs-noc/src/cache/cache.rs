@@ -92,7 +92,7 @@ impl NamedObjectCacheMemoryCache {
         let item = ret.unwrap();
 
         // first check the access permissions
-        if !req.source.is_verified() {
+        if !req.source.is_verified(&item.meta.create_dec_id) {
             Self::check_access(
                 &req.object_id,
                 item.meta.access_string,

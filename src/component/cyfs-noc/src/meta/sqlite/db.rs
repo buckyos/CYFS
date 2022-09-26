@@ -387,7 +387,7 @@ impl SqliteMetaStorage {
                         let current_info = ret.unwrap();
                         // info!("noc meta current info: {:?}", current_info);
 
-                        if !req.source.is_verified() {
+                        if !req.source.is_verified(&current_info.create_dec_id) {
                             Self::check_access(
                                 &req.object_id,
                                 current_info.access_string,
@@ -580,7 +580,7 @@ impl SqliteMetaStorage {
 
         match self.get_raw(&conn, &req.object_id)? {
             Some(data) => {
-                if !req.source.is_verified() {
+                if !req.source.is_verified(&data.create_dec_id) {
                     Self::check_access(
                         &req.object_id,
                         data.access_string,
@@ -719,7 +719,7 @@ impl SqliteMetaStorage {
 
             match self.get_raw(&conn, &req.object_id)? {
                 Some(data) => {
-                    if !req.source.is_verified() {
+                    if !req.source.is_verified(&data.create_dec_id) {
                         Self::check_access(
                             &req.object_id,
                             data.access_string,
@@ -764,11 +764,8 @@ impl SqliteMetaStorage {
         &self,
         req: &NamedObjectMetaDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectMetaDeleteObjectResponse> {
-        if req.source.is_verified() {
-            self.delete_only_without_check_access(req)
-        } else {
-            self.delete_only_with_check_access(req)
-        }
+        // Even if the upper-level req-path permission verification is passed, check whether the dec-id matches
+        self.delete_only_with_check_access(req)
     }
 
     fn delete_only_with_check_access(
@@ -804,14 +801,15 @@ impl SqliteMetaStorage {
             let access_info = ret.unwrap();
 
             // Check permission first
-            assert!(!req.source.is_verified());
-            Self::check_access(
-                &req.object_id,
-                access_info.access_string,
-                &req.source,
-                &access_info.create_dec_id,
-                RequestOpType::Write,
-            )?;
+            if !req.source.is_verified(&access_info.create_dec_id) {
+                Self::check_access(
+                    &req.object_id,
+                    access_info.access_string,
+                    &req.source,
+                    &access_info.create_dec_id,
+                    RequestOpType::Write,
+                )?;
+            }
 
             let count = Self::try_delete(&conn, &req.object_id, &access_info)?;
             if count > 0 {
@@ -872,6 +870,7 @@ impl SqliteMetaStorage {
         Ok(ret)
     }
 
+    /*
     fn delete_only_without_check_access(
         &self,
         req: &NamedObjectMetaDeleteObjectRequest,
@@ -919,6 +918,7 @@ impl SqliteMetaStorage {
 
         Ok(ret)
     }
+    */
 
     fn exists(&self, req: &NamedObjectMetaExistsObjectRequest) -> BuckyResult<bool> {
         // FIXME Do you need to add pre-authorization detection?
