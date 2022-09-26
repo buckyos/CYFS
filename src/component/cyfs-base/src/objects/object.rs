@@ -2162,7 +2162,7 @@ pub struct ObjectSigns {
     body_signs: Option<Vec<Signature>>,
 }
 
-struct ObjectSignsHelper;
+pub struct ObjectSignsHelper;
 
 impl ObjectSignsHelper {
     pub fn set_sign(list: &mut Option<Vec<Signature>>, sign: Signature) {
