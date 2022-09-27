@@ -168,7 +168,7 @@ impl CyfsStackImpl {
 
         // 不使用rules的meta_client
         // 内部依赖带rule-noc，需要使用延迟绑定策略
-        let raw_meta_cache = RawMetaCache::new(param.meta.target);
+        let raw_meta_cache = RawMetaCache::new(param.meta.target, noc.clone());
 
         // init object searcher for global use
         let obj_searcher = CompoundObjectSearcher::new(
@@ -177,8 +177,6 @@ impl CyfsStackImpl {
             raw_meta_cache.clone_meta(),
         );
 
-        // 带rules的meta client
-        let rule_meta_cache = MetaCacheWithRule::new(raw_meta_cache.clone());
 
         // 内部依赖带rule-noc，需要使用延迟绑定策略
         let verifier = ObjectVerifier::new(
@@ -309,7 +307,7 @@ impl CyfsStackImpl {
         );
 
         // 名字解析服务
-        let name_resolver = NameResolver::new(rule_meta_cache.clone_meta(), noc.clone());
+        let name_resolver = NameResolver::new(raw_meta_cache.clone_meta(), noc.clone());
         name_resolver.start().await?;
 
         let util_service = UtilService::new(
@@ -334,12 +332,10 @@ impl CyfsStackImpl {
             zone_manager.clone(),
             ood_resoler.clone(),
             router_handlers.clone(),
-            rule_meta_cache.clone_meta(),
+            raw_meta_cache.clone_meta(),
             fail_handler.clone(),
             chunk_manager.clone(),
         );
-
-        raw_meta_cache.bind_noc(non_service.raw_noc_processor().clone());
 
         let trans_service = TransService::new(
             noc.clone(),

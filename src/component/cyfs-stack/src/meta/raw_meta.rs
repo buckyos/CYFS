@@ -1,17 +1,15 @@
 use super::fail_cache::*;
 use super::meta_cache::*;
-use crate::non::NONInputProcessorRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
 
 use async_trait::async_trait;
-use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct RawMetaCache {
-    noc: Arc<OnceCell<NONInputProcessorRef>>,
+    noc: NamedObjectCacheRef,
     meta_client: Arc<MetaClient>,
     device_id: DeviceId,
 
@@ -20,26 +18,16 @@ pub(crate) struct RawMetaCache {
 }
 
 impl RawMetaCache {
-    pub fn new(target: MetaMinerTarget) -> Self {
+    pub fn new(target: MetaMinerTarget, noc: NamedObjectCacheRef) -> Self {
         info!("raw meta cache: {}", target.to_string());
         let meta_client = MetaClient::new_target(target);
 
         Self {
-            noc: Arc::new(OnceCell::new()),
+            noc,
             meta_client: Arc::new(meta_client),
             device_id: DeviceId::default(),
             fail_cache: MetaFailCache::new(),
         }
-    }
-
-    pub(crate) fn bind_noc(&self, noc: NONInputProcessorRef) {
-        if let Err(_) = self.noc.set(noc) {
-            unreachable!();
-        }
-    }
-
-    fn noc(&self) -> &NONInputProcessorRef {
-        self.noc.get().unwrap()
     }
 
     async fn get_from_meta(
@@ -91,38 +79,32 @@ impl RawMetaCache {
             Some(resp.object.clone()),
         );
 
-        let req = NONPutObjectInputRequest {
-            common: NONInputRequestCommon {
-                req_path: None,
-                source: RequestSourceInfo::new_local_system().protocol(RequestProtocol::Meta),
-                level: NONAPILevel::NOC,
-                target: None,
-                flags: 0,
-            },
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_system().protocol(RequestProtocol::Meta),
+            storage_category: NamedObjectStorageCategory::Cache,
+            context: None,
+            last_access_rpath: None,
             object,
-            access: None,
+            access_string: None,
         };
 
-        match self.noc().put_object(req).await {
+        match self.noc.put_object(&req).await {
             Ok(resp) => match resp.result {
-                NONPutObjectResult::AlreadyExists => {
+                NamedObjectCachePutObjectResult::AlreadyExists => {
                     info!("meta object alreay in noc: {}", object_id);
                     Ok(false)
                 }
-                NONPutObjectResult::Merged => {
+                NamedObjectCachePutObjectResult::Merged => {
                     info!("meta object alreay in noc but signs merged: {}", object_id);
                     Ok(true)
                 }
-                NONPutObjectResult::Accept => {
+                NamedObjectCachePutObjectResult::Accept => {
                     info!("put meta object to noc success! {}", object_id);
                     Ok(true)
                 }
-                NONPutObjectResult::Updated => {
+                NamedObjectCachePutObjectResult::Updated => {
                     info!("put meta object to noc and updated! {}", object_id);
                     Ok(true)
-                }
-                NONPutObjectResult::AcceptWithSign => {
-                    unreachable!();
                 }
             },
             Err(e) => {
