@@ -76,7 +76,6 @@ impl RouterHandlerWSProcessor {
                 req.chain,
                 req.category,
                 &req.id,
-                &req.dec_id,
                 &req.param.req_path,
                 &req.param.filter,
             )

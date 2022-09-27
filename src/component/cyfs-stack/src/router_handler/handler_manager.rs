@@ -634,7 +634,6 @@ impl RouterHandlersManager {
         chain: RouterHandlerChain,
         category: RouterHandlerCategory,
         id: &str,
-        dec_id: &Option<ObjectId>,
         req_path: &Option<String>,
         filter: &Option<String>,
     ) -> BuckyResult<()> {
@@ -645,10 +644,6 @@ impl RouterHandlersManager {
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        }
-
-        if cyfs_core::is_system_dec_app(dec_id) {
-            return Ok(());
         }
 
         let req_path = if chain == RouterHandlerChain::Handler {
@@ -668,6 +663,12 @@ impl RouterHandlersManager {
             let path = format!("{}/{}/{}/", CYFS_HANDLER_VIRTUAL_PATH, chain, category);
             RequestGlobalStatePath::new_system_dec(Some(path))
         };
+
+        if source.is_current_zone() {
+            if source.check_target_dec_permission(&req_path.dec_id) {
+                return Ok(());
+            }
+        }
 
         self.acl_manager
             .global_state_meta()
