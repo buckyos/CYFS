@@ -206,7 +206,7 @@ struct TunnelsManager {
 impl TunnelsManager {
     pub fn default() -> Self {
         let def_keepalive = 60;
-        let def_mixhash_live_minute = 5;
+        let def_mixhash_live_minute = 31;
 
         Self {
             tunnel_mixhash_map: HashMap::new(),
