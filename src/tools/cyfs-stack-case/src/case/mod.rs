@@ -8,6 +8,7 @@ pub async fn test() {
     // [source-zone, source-dec-id, target-zone, target-dec-id]
 
     root_state_beta::test().await;
+    non_beta::test().await;
 
     info!("test all case success!");
 }
