@@ -1,7 +1,7 @@
-use std::path::PathBuf;
 use super::output_request::*;
+use crate::base::*;
 use cyfs_base::*;
-
+use std::path::PathBuf;
 
 pub struct UtilInputRequestCommon {
     // 请求路径，可为空
@@ -30,8 +30,7 @@ pub struct UtilGetZoneInputRequest {
     pub object_raw: Option<Vec<u8>>,
 }
 
-
-pub type UtilGetZoneInputResponse  = UtilGetZoneOutputResponse;
+pub type UtilGetZoneInputResponse = UtilGetZoneOutputResponse;
 
 // resolve_ood
 pub struct UtilResolveOODInputRequest {
@@ -48,13 +47,12 @@ pub struct UtilGetOODStatusInputRequest {
     pub common: UtilInputRequestCommon,
 }
 
-pub type UtilGetOODStatusInputResponse  = UtilGetOODStatusOutputResponse;
+pub type UtilGetOODStatusInputResponse = UtilGetOODStatusOutputResponse;
 
 // get_noc_stat
 pub struct UtilGetNOCInfoInputRequest {
     pub common: UtilInputRequestCommon,
 }
-
 
 pub type UtilGetNOCInfoInputResponse = UtilGetNOCInfoOutputResponse;
 

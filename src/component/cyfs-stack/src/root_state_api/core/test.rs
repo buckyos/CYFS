@@ -415,7 +415,7 @@ async fn test_managed(global_state_manager: &GlobalStateManager, dec_id: &Object
 
     // 通过sid获取到对应的env才可以进行操作
     {
-        let op_env = root.managed_envs().get_path_op_env(op_env_sid).unwrap();
+        let op_env = root.managed_envs().get_path_op_env(op_env_sid, None).unwrap();
 
         let current_value = op_env.get_by_key("/a/c", "test1").await.unwrap();
         assert!(current_value.is_none());

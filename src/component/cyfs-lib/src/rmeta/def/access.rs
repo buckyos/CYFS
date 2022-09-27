@@ -1,8 +1,8 @@
+use crate::base::*;
 use cyfs_base::*;
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct GlobalStatePathSpecifiedGroup {
@@ -22,7 +22,7 @@ impl GlobalStatePathSpecifiedGroup {
     pub fn is_empty(&self) -> bool {
         self.zone.is_none() && self.zone_category.is_none() && self.dec.is_none()
     }
-    
+
     fn compare_opt_item(left: &Option<ObjectId>, right: &Option<ObjectId>) -> Option<Ordering> {
         match left {
             Some(left) => match right {
@@ -119,13 +119,15 @@ pub struct GlobalStatePathAccessItem {
 impl GlobalStatePathAccessItem {
     pub fn check_valid(&self) -> bool {
         match &self.access {
-            GlobalStatePathGroupAccess::Default(_) => {},
-            GlobalStatePathGroupAccess::Specified(v) => if v.is_empty() {
-                return false;
+            GlobalStatePathGroupAccess::Default(_) => {}
+            GlobalStatePathGroupAccess::Specified(v) => {
+                if v.is_empty() {
+                    return false;
+                }
             }
         }
 
-        true    
+        true
     }
 
     pub fn fix_path(path: impl Into<String> + AsRef<str>) -> String {
@@ -200,7 +202,6 @@ impl GlobalStatePathAccessItem {
     }
 }
 
-
 impl std::fmt::Display for GlobalStatePathAccessItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.access {
@@ -214,7 +215,7 @@ impl std::fmt::Display for GlobalStatePathAccessItem {
                     self.path,
                     s.zone,
                     s.zone_category,
-                    s.dec.as_ref().map(|id| dec_id_to_string(id)),
+                    s.dec.as_ref().map(|id| cyfs_core::dec_id_to_string(id)),
                     AccessPermissions::format_u8(s.access),
                 )
             }
@@ -262,7 +263,7 @@ mod test {
             zone: None,
             zone_category: Some(DeviceZoneCategory::CurrentZone),
             dec: Some(get_system_dec_app().object_id().clone()),
-            access: 5
+            access: 5,
         };
 
         let s = serde_json::to_string(&t).unwrap();

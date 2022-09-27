@@ -45,7 +45,7 @@ pub struct GatewayMonitor {
 impl GatewayMonitor {
     pub fn new() -> Self {
         Self {
-            dec_id: cyfs_base::get_system_dec_app().to_owned(),
+            dec_id: cyfs_core::get_system_dec_app().to_owned(),
             stack: OnceCell::new(),
             zone_role: Mutex::new(ZoneRole::ActiveOOD),
         }

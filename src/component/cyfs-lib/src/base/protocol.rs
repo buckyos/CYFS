@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-pub use cyfs_base::RequestProtocol;
 
 // pub const CYFS_OBJECT_MIME_STRING: &str = "application/cyfs-object";
 

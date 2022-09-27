@@ -14,7 +14,7 @@ impl GlobalStateDefaultMetas {
     async fn init_access(local_service: &GlobalStateMetaLocalService) -> BuckyResult<()> {
         let root_state_meta = local_service.get_meta_manager(GlobalStateCategory::RootState);
         let meta = root_state_meta
-            .get_global_state_meta(cyfs_base::get_system_dec_app(), true)
+            .get_global_state_meta(cyfs_core::get_system_dec_app(), true)
             .await?;
 
         // admin manager call
@@ -23,7 +23,7 @@ impl GlobalStateDefaultMetas {
             access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
                 zone: None,
                 zone_category: Some(DeviceZoneCategory::CurrentZone),
-                dec: Some(cyfs_base::get_system_dec_app().to_owned()),
+                dec: Some(cyfs_core::get_system_dec_app().to_owned()),
                 access: AccessPermissions::CallOnly as u8,
             }),
         };
@@ -36,7 +36,7 @@ impl GlobalStateDefaultMetas {
             access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
                 zone: None,
                 zone_category: Some(DeviceZoneCategory::CurrentDevice),
-                dec: Some(cyfs_base::get_system_dec_app().to_owned()),
+                dec: Some(cyfs_core::get_system_dec_app().to_owned()),
                 access: AccessPermissions::CallOnly as u8,
             }),
         };
@@ -49,7 +49,7 @@ impl GlobalStateDefaultMetas {
             access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
                 zone: None,
                 zone_category: Some(DeviceZoneCategory::CurrentZone),
-                dec: Some(cyfs_base::get_system_dec_app().to_owned()),
+                dec: Some(cyfs_core::get_system_dec_app().to_owned()),
                 access: AccessPermissions::CallOnly as u8,
             }),
         };
@@ -68,7 +68,7 @@ impl GlobalStateDefaultMetas {
             path,
             access: GlobalStatePathGroupAccess::Default(permissions.value()),
         };
-    
+
         meta.add_access(item).await?;
 
         info!("init defualt rmeta access success!");

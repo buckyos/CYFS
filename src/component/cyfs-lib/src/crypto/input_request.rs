@@ -1,4 +1,5 @@
 use super::output_request::*;
+use crate::base::*;
 use crate::non::*;
 use cyfs_base::*;
 
@@ -50,8 +51,7 @@ impl fmt::Display for CryptoSignObjectInputRequest {
     }
 }
 
-
-pub type CryptoSignObjectInputResponse = CryptoSignObjectOutputResponse; 
+pub type CryptoSignObjectInputResponse = CryptoSignObjectOutputResponse;
 
 #[derive(Debug, Clone)]
 pub struct CryptoVerifyObjectInputRequest {

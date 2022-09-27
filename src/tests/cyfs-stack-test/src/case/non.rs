@@ -47,7 +47,6 @@ pub async fn test() {
 async fn zone_same_dec_without_req_path() {
     let device1 = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
     let device2 = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-    let ood1 = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
 
     let dec1 = device1.dec_id().unwrap();
     let dec2 = device2.dec_id().unwrap();
@@ -79,7 +78,7 @@ async fn zone_same_dec_without_req_path() {
 
     // test get by same dec
     let req = NONGetObjectRequest::new_router(None, object_id, None);
-    let ret = device1.non_service().get_object(req.clone()).await.unwrap();
+    let _ret = device1.non_service().get_object(req.clone()).await.unwrap();
 
     // test get by other dec
     let new_dec = new_dec("zone_same_dec_without_req_path");
@@ -119,7 +118,7 @@ async fn zone_get_with_req_path() {
     info!("delete object success! {}", object_id);
 
     // put object to ood with defualt access
-    let mut req =
+    let req =
         NONPutObjectOutputRequest::new_router(None, object_id.clone(), object.to_vec().unwrap());
 
     device1.non_service().put_object(req).await.unwrap();

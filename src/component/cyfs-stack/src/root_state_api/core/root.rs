@@ -153,7 +153,7 @@ impl GlobalStateRoot {
     }
 
     fn check_dec(dec_id: &ObjectId,) -> BuckyResult<()> {
-        if cyfs_base::get_anonymous_dec_app() == dec_id {
+        if cyfs_core::get_anonymous_dec_app() == dec_id {
             let msg = format!("anonymous dec app does not support global-state!");
             error!("{}", msg);
             Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))

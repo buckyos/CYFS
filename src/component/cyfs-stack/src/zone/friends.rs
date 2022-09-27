@@ -15,7 +15,7 @@ impl FriendsManager {
             CYFS_FRIENDS_LIST_PATH,
             ObjectMapSimpleContentType::Map,
             None,
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         let cache = StateMapViewCache::new(state_view);

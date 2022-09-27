@@ -203,16 +203,33 @@ impl ObjectMapOpEnv {
 
 use std::collections::HashMap;
 
+pub struct OpEnvSourceInfo {
+    pub dec: ObjectId,
+    pub device: Option<DeviceId>,
+}
+
+impl std::fmt::Debug for OpEnvSourceInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
+impl std::fmt::Display for OpEnvSourceInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "dec={}, device={:?}", self.dec, self.device)
+    }
+}
+
 struct ObjectMapOpEnvHolder {
     last_access: u64,
     op_env: ObjectMapOpEnv,
-    source: Option<RequestSourceInfo>,
+    source: Option<OpEnvSourceInfo>,
 }
 
 const OP_ENV_EXPIRED_DURATION: u64 = 1000 * 1000 * 60 * 60;
 
 impl ObjectMapOpEnvHolder {
-    fn new(op_env: ObjectMapOpEnv, source: Option<RequestSourceInfo>) -> Self {
+    fn new(op_env: ObjectMapOpEnv, source: Option<OpEnvSourceInfo>) -> Self {
         Self {
             last_access: bucky_time_now(),
             op_env,
@@ -244,11 +261,11 @@ impl ObjectMapOpEnvHolder {
         self.last_access = bucky_time_now();
     }
 
-    fn compare_source(&self, source: Option<&RequestSourceInfo>) -> bool {
+    fn compare_source(&self, source: Option<&OpEnvSourceInfo>) -> bool {
         match &self.source {
             Some(this) => match source {
                 Some(source) => {
-                    if this.dec == source.dec && this.zone.device == source.zone.device {
+                    if this.dec == source.dec && this.device == source.device {
                         true
                     } else {
                         false
@@ -313,7 +330,7 @@ impl ObjectMapOpEnvContainer {
         }
     }
 
-    pub fn add_env(&self, env: ObjectMapOpEnv, source: Option<RequestSourceInfo>) {
+    pub fn add_env(&self, env: ObjectMapOpEnv, source: Option<OpEnvSourceInfo>) {
         let sid = env.sid();
         let holder = ObjectMapOpEnvHolder::new(env, source);
         let prev = self.all.lock().unwrap().insert(sid, holder);
@@ -323,7 +340,7 @@ impl ObjectMapOpEnvContainer {
     pub fn get_op_env(
         &self,
         sid: u64,
-        source: Option<&RequestSourceInfo>,
+        source: Option<&OpEnvSourceInfo>,
     ) -> BuckyResult<ObjectMapOpEnv> {
         let mut list = self.all.lock().unwrap();
         let ret = list.get_mut(&sid);
@@ -349,41 +366,41 @@ impl ObjectMapOpEnvContainer {
         }
     }
 
-    pub fn get_path_op_env(&self, sid: u64, source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectMapPathOpEnvRef> {
+    pub fn get_path_op_env(&self, sid: u64, source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectMapPathOpEnvRef> {
         let op_env = self.get_op_env(sid, source)?;
         op_env.path_op_env(sid)
     }
 
-    pub fn get_single_op_env(&self, sid: u64, source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectMapSingleOpEnvRef> {
+    pub fn get_single_op_env(&self, sid: u64, source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectMapSingleOpEnvRef> {
         let op_env = self.get_op_env(sid, source)?;
         op_env.single_op_env(sid)
     }
 
-    pub async fn get_current_root(&self, sid: u64, source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectId> {
+    pub async fn get_current_root(&self, sid: u64, source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectId> {
         let op_env = self.get_op_env(sid, source)?;
 
         op_env.get_current_root().await
     }
 
-    pub async fn update(&self, sid: u64, source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectId> {
+    pub async fn update(&self, sid: u64, source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectId> {
         let op_env = self.get_op_env(sid, source)?;
 
         op_env.update().await
     }
 
-    pub async fn commit(&self, sid: u64, source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectId> {
+    pub async fn commit(&self, sid: u64, source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectId> {
         let item = self.remove(sid, source)?;
         
         item.into_op_env().commit().await
     }
 
-    pub fn abort(&self, sid: u64,  source: Option<&RequestSourceInfo>,) -> BuckyResult<()> {
+    pub fn abort(&self, sid: u64,  source: Option<&OpEnvSourceInfo>,) -> BuckyResult<()> {
         let item = self.remove(sid, source)?;
 
         item.into_op_env().abort()
     }
 
-    fn remove(&self, sid: u64,  source: Option<&RequestSourceInfo>,) -> BuckyResult<ObjectMapOpEnvHolder> {
+    fn remove(&self, sid: u64,  source: Option<&OpEnvSourceInfo>,) -> BuckyResult<ObjectMapOpEnvHolder> {
         let mut all = self.all.lock().unwrap();
         let ret = all.get(&sid);
         if ret.is_none() {
@@ -494,7 +511,7 @@ impl ObjectMapRootManager {
     pub async fn create_managed_op_env(
         &self,
         access: Option<OpEnvPathAccess>,
-        source: Option<RequestSourceInfo>,
+        source: Option<OpEnvSourceInfo>,
     ) -> BuckyResult<ObjectMapPathOpEnvRef> {
         let env = self.create_op_env(access).await?;
 
@@ -524,7 +541,7 @@ impl ObjectMapRootManager {
     pub fn create_managed_single_op_env(
         &self,
         access: Option<OpEnvPathAccess>,
-        source: Option<RequestSourceInfo>
+        source: Option<OpEnvSourceInfo>
     ) -> BuckyResult<ObjectMapSingleOpEnvRef> {
         let env = self.create_single_op_env(access)?;
         self.all_envs.add_env(ObjectMapOpEnv::Single(env.clone()), source);

@@ -58,7 +58,7 @@ impl NamedObjectCache for RemoteNamedObjectCache {
                     meta: NamedObjectMetaData {
                         object_id: resp.object.object_id.clone(),
                         owner_id: resp.object.object().owner().to_owned(),
-                        create_dec_id: cyfs_base::get_system_dec_app().to_owned(),
+                        create_dec_id: cyfs_core::get_system_dec_app().to_owned(),
                         update_time: resp.object_update_time,
                         expired_time: resp.object_expires_time,
                         storage_category: NamedObjectStorageCategory::Storage,
@@ -93,7 +93,7 @@ impl NamedObjectCache for RemoteNamedObjectCache {
                     let meta = NamedObjectMetaData {
                         object_id: object.object_id.clone(),
                         owner_id: object.object().owner().to_owned(),
-                        create_dec_id: cyfs_base::get_system_dec_app().to_owned(),
+                        create_dec_id: cyfs_core::get_system_dec_app().to_owned(),
                         update_time: object.object().update_time(),
                         expired_time: object.object().expired_time(),
                         storage_category: NamedObjectStorageCategory::Storage,

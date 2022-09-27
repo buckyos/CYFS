@@ -3,6 +3,7 @@ use crate::docker_api::*;
 use crate::package::AppPackage;
 use cyfs_base::*;
 use cyfs_client::NamedCacheClient;
+use cyfs_core::{DecApp, DecAppId, DecAppObj, SubErrorCode};
 use cyfs_lib::*;
 use cyfs_util::*;
 use log::*;
@@ -12,7 +13,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
-use cyfs_core::{DecApp, DecAppId, DecAppObj, SubErrorCode};
 
 pub type AppActionResult<T> = Result<T, SubErrorCode>;
 
@@ -381,7 +381,7 @@ impl AppController {
             let dec_id = if id == "self" {
                 app_id.object_id().clone()
             } else if id == "system" {
-                cyfs_base::get_system_dec_app().clone()
+                cyfs_core::get_system_dec_app().clone()
             } else {
                 ObjectId::from_str(id.as_str())?
             };
@@ -587,9 +587,9 @@ mod tests {
     use super::*;
     use std::process::Command;
     //use cyfs_core::;
+    use cyfs_core::{AppCmd, AppCmdObj};
     use std::convert::TryFrom;
     use std::str::FromStr;
-    use cyfs_core::{AppCmd, AppCmdObj};
 
     async fn get_stack() -> SharedCyfsStack {
         let cyfs_stack = SharedCyfsStack::open_default(None).await.unwrap();
@@ -640,7 +640,7 @@ mod tests {
                     object_raw: appcmd.to_vec().unwrap(),
                     object: None,
                 },
-                access: None
+                access: None,
             })
             .await
             .unwrap();

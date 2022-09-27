@@ -407,7 +407,7 @@ pub async fn test_storage(s: &SharedCyfsStack) {
             "/",
             ObjectMapSimpleContentType::Map,
             None,
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         storage.init().await.unwrap();
@@ -426,7 +426,7 @@ pub async fn test_storage(s: &SharedCyfsStack) {
             "/user/friends",
             ObjectMapSimpleContentType::Map,
             None,
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         storage.init().await.unwrap();
@@ -453,7 +453,7 @@ pub async fn test_storage(s: &SharedCyfsStack) {
             "/user/friends",
             ObjectMapSimpleContentType::Map,
             None,
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         storage.init().await.unwrap();
@@ -488,7 +488,7 @@ pub async fn test_storage(s: &SharedCyfsStack) {
             "/user/friends",
             ObjectMapSimpleContentType::Map,
             None,
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         storage.init().await.unwrap();
@@ -507,7 +507,7 @@ pub async fn test_storage(s: &SharedCyfsStack) {
             "/user/friends",
             ObjectMapSimpleContentType::Map,
             None,
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         storage.init().await.unwrap();
@@ -529,7 +529,7 @@ pub async fn test_storage(s: &SharedCyfsStack) {
                 "/user/friends",
                 ObjectMapSimpleContentType::Map,
                 None,
-                Some(cyfs_base::get_system_dec_app().to_owned()),
+                Some(cyfs_core::get_system_dec_app().to_owned()),
             );
 
             storage.init().await.unwrap();
@@ -547,7 +547,7 @@ pub async fn test_storage(s: &SharedCyfsStack) {
             "/user/friends",
             ObjectMapSimpleContentType::Map,
             None,
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         storage.init().await.unwrap();
@@ -568,7 +568,7 @@ pub async fn test_storage(s: &SharedCyfsStack) {
             "/user/index",
             ObjectMapSimpleContentType::Set,
             None,
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         storage.init().await.unwrap();
@@ -587,7 +587,7 @@ pub async fn test_storage(s: &SharedCyfsStack) {
             "/user/index",
             ObjectMapSimpleContentType::Set,
             None,
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         storage.init().await.unwrap();
@@ -615,7 +615,7 @@ pub async fn test_storage(s: &SharedCyfsStack) {
             "/user/index",
             ObjectMapSimpleContentType::Set,
             None,
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         storage.init().await.unwrap();

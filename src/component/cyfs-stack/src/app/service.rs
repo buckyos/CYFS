@@ -31,7 +31,7 @@ impl AppService {
         let root_state_stub = GlobalStateStub::new(
             processor,
             Some(info.zone_device_ood_id.object_id().clone()),
-            Some(cyfs_base::get_system_dec_app().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         Ok(Self {

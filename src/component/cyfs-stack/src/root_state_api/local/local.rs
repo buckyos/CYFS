@@ -123,6 +123,7 @@ impl GlobalStateInputProcessor for GlobalStateLocalService {
         let dec_id = Self::get_target_dec_id(&req.common)?;
 
         let dec_root_manager = self.global_state.get_dec_root_manager(dec_id, true).await?;
+        drop(dec_id);
 
         let access = if let Some(access) = req.access {
             Some(OpEnvPathAccess::new(&access.path, access.access))
@@ -132,20 +133,23 @@ impl GlobalStateInputProcessor for GlobalStateLocalService {
 
         let sid = match req.op_env_type {
             ObjectMapOpEnvType::Path => {
-                let env = dec_root_manager.create_managed_op_env(access, Some(req.common.source.clone())).await?;
+                let env = dec_root_manager
+                    .create_managed_op_env(access, Some(req.common.source.clone().into()))
+                    .await?;
                 info!(
-                    "create_path_op_env success! dec_id={}, sid={}",
-                    dec_id,
+                    "create_path_op_env success! source={}, sid={}",
+                    req.common.source,
                     env.sid()
                 );
                 env.sid()
             }
 
             ObjectMapOpEnvType::Single => {
-                let env = dec_root_manager.create_managed_single_op_env(access, Some(req.common.source.clone()))?;
+                let env = dec_root_manager
+                    .create_managed_single_op_env(access, Some(req.common.source.clone().into()))?;
                 info!(
                     "create_single_op_env success! dec_id={}, sid={}",
-                    dec_id,
+                    req.common.source,
                     env.sid()
                 );
                 env.sid()
@@ -173,7 +177,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .await?;
         let op_env = dec_root_manager
             .managed_envs()
-            .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+            .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
         op_env.load(&req.target).await
     }
 
@@ -186,7 +190,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .await?;
         let op_env = dec_root_manager
             .managed_envs()
-            .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+            .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
 
         op_env.load_by_path(&req.path).await
     }
@@ -211,7 +215,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                 let key = req.key.as_ref().unwrap();
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_path_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
 
                 match req.path {
                     Some(path) => op_env.create_new(&path, &key, req.content_type).await?,
@@ -221,7 +225,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
 
                 op_env.create_new(req.content_type).await?
             }
@@ -240,7 +244,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .await?;
         let op_env = dec_root_manager
             .managed_envs()
-            .get_path_op_env(req.common.sid, Some(&req.common.source))?;
+            .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
         op_env
             .lock_path(req.path_list, req.duration_in_millsecs, req.try_lock)
             .await
@@ -259,7 +263,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
 
         let dec_root = dec_root_manager
             .managed_envs()
-            .get_current_root(req.common.sid, Some(&req.common.source))
+            .get_current_root(req.common.sid, Some(&req.common.source.into()))
             .await?;
 
         let resp = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
@@ -294,13 +298,13 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             Some(OpEnvCommitOpType::Update) => {
                 dec_root_manager
                     .managed_envs()
-                    .update(req.common.sid, Some(&req.common.source))
+                    .update(req.common.sid, Some(&req.common.source.into()))
                     .await?
             }
             _ => {
                 dec_root_manager
                     .managed_envs()
-                    .commit(req.common.sid, Some(&req.common.source))
+                    .commit(req.common.sid, Some(&req.common.source.into()))
                     .await?
             }
         };
@@ -332,7 +336,9 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .get_dec_root_manager(dec_id, false)
             .await?;
 
-        dec_root_manager.managed_envs().abort(req.common.sid, Some(&req.common.source))
+        dec_root_manager
+            .managed_envs()
+            .abort(req.common.sid, Some(&req.common.source.into()))
     }
 
     // map methods
@@ -350,7 +356,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Path => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_path_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 match req.path {
                     Some(path) => op_env.get_by_key(&path, &req.key).await?,
                     None => op_env.get_by_path(&req.key).await?,
@@ -359,7 +365,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env.get_by_key(&req.key).await?
             }
         };
@@ -380,7 +386,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Path => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_path_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 match req.path {
                     Some(path) => op_env.insert_with_key(&path, &req.key, &req.value).await?,
                     None => op_env.insert_with_path(&req.key, &req.value).await?,
@@ -389,7 +395,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env.insert_with_key(&req.key, &req.value).await?
             }
         };
@@ -411,7 +417,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Path => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_path_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 match req.path {
                     Some(path) => {
                         op_env
@@ -434,7 +440,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env
                     .set_with_key(&req.key, &req.value, &req.prev_value, req.auto_insert)
                     .await?
@@ -460,7 +466,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Path => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_path_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 match req.path {
                     Some(path) => {
                         op_env
@@ -473,7 +479,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env.remove_with_key(&req.key, &req.prev_value).await?
             }
         };
@@ -495,26 +501,26 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .await?;
 
         let result = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
-            ObjectMapOpEnvType::Path => {
-                let op_env = dec_root_manager
-                    .managed_envs()
-                    .get_path_op_env(req.common.sid, Some(&req.common.source))?;
-                match req.path {
-                    Some(path) => op_env.contains(&path, &req.value).await?,
-                    None => {
-                        let msg = format!(
-                            "call contains on path_op_env but path param not found! req={}",
-                            req
-                        );
-                        error!("{}", msg);
-                        return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-                    }
+            ObjectMapOpEnvType::Path => match req.path {
+                Some(path) => {
+                    let op_env = dec_root_manager
+                        .managed_envs()
+                        .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                    op_env.contains(&path, &req.value).await?
                 }
-            }
+                None => {
+                    let msg = format!(
+                        "call contains on path_op_env but path param not found! req={}",
+                        req
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            },
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env.contains(&req.value).await?
             }
         };
@@ -532,26 +538,26 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .await?;
 
         let result = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
-            ObjectMapOpEnvType::Path => {
-                let op_env = dec_root_manager
-                    .managed_envs()
-                    .get_path_op_env(req.common.sid, Some(&req.common.source))?;
-                match req.path {
-                    Some(path) => op_env.insert(&path, &req.value).await?,
-                    None => {
-                        let msg = format!(
-                            "call insert on path_op_env but path param not found! req={}",
-                            req
-                        );
-                        error!("{}", msg);
-                        return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-                    }
+            ObjectMapOpEnvType::Path => match req.path {
+                Some(path) => {
+                    let op_env = dec_root_manager
+                        .managed_envs()
+                        .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                    op_env.insert(&path, &req.value).await?
                 }
-            }
+                None => {
+                    let msg = format!(
+                        "call insert on path_op_env but path param not found! req={}",
+                        req
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            },
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env.insert(&req.value).await?
             }
         };
@@ -569,26 +575,26 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .await?;
 
         let result = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
-            ObjectMapOpEnvType::Path => {
-                let op_env = dec_root_manager
-                    .managed_envs()
-                    .get_path_op_env(req.common.sid, Some(&req.common.source))?;
-                match req.path {
-                    Some(path) => op_env.remove(&path, &req.value).await?,
-                    None => {
-                        let msg = format!(
-                            "call contains on path_op_env but path param not found! req={}",
-                            req
-                        );
-                        error!("{}", msg);
-                        return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-                    }
+            ObjectMapOpEnvType::Path => match req.path {
+                Some(path) => {
+                    let op_env = dec_root_manager
+                        .managed_envs()
+                        .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
+                    op_env.remove(&path, &req.value).await?
                 }
-            }
+                None => {
+                    let msg = format!(
+                        "call contains on path_op_env but path param not found! req={}",
+                        req
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            },
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env.remove(&req.value).await?
             }
         };
@@ -608,7 +614,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .await?;
         let op_env = dec_root_manager
             .managed_envs()
-            .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+            .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
         let list = op_env.next(req.step as usize).await?;
         let resp = OpEnvNextInputResponse { list: list.list };
 
@@ -624,7 +630,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             .await?;
         let op_env = dec_root_manager
             .managed_envs()
-            .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+            .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
         op_env.reset().await;
 
         Ok(())
@@ -640,10 +646,6 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
 
         let list = match OpEnvSessionIDHelper::get_type(req.common.sid)? {
             ObjectMapOpEnvType::Path => {
-                let op_env = dec_root_manager
-                    .managed_envs()
-                    .get_path_op_env(req.common.sid, Some(&req.common.source))?;
-
                 if req.path.is_none() {
                     let msg = format!(
                         "call list on path_op_env but path param not found! req={}",
@@ -653,12 +655,15 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
                     return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
                 }
 
+                let op_env = dec_root_manager
+                    .managed_envs()
+                    .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env.list(req.path.as_ref().unwrap()).await
             }
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env.list().await
             }
         }?;
@@ -683,7 +688,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Path => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_path_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_path_op_env(req.common.sid, Some(&req.common.source.into()))?;
 
                 if req.path.is_none() {
                     let msg = format!("get metadata for path_op_env but path not specified!");
@@ -696,7 +701,7 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
             ObjectMapOpEnvType::Single => {
                 let op_env = dec_root_manager
                     .managed_envs()
-                    .get_single_op_env(req.common.sid, Some(&req.common.source))?;
+                    .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
                 op_env.metadata().await?
             }
         };

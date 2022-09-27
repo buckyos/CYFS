@@ -27,7 +27,7 @@ pub async fn test() {
 async fn test_meta(stack: &SharedCyfsStack) {
     {
         let meta =
-            stack.root_state_meta_stub(None, Some(cyfs_base::get_system_dec_app().to_owned()));
+            stack.root_state_meta_stub(None, Some(cyfs_core::get_system_dec_app().to_owned()));
 
         let access = AccessString::dec_default();
         let item = GlobalStatePathAccessItem {

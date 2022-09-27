@@ -8,8 +8,6 @@ mod name;
 mod paths;
 mod ports;
 mod protocol_fields;
-mod source;
-mod system;
 mod time;
 
 pub use access_string::*;
@@ -22,6 +20,4 @@ pub use name::*;
 pub use paths::*;
 pub use ports::*;
 pub use protocol_fields::*;
-pub use source::*;
-pub use system::*;
 pub use time::*;

@@ -26,7 +26,7 @@ impl GlobalStatePathMetaStorage {
     pub fn get_dec_string(dec_id: &Option<ObjectId>) -> String {
         match dec_id {
             Some(id) => {
-                if id == cyfs_base::get_system_dec_app() {
+                if id == cyfs_core::get_system_dec_app() {
                     "system".to_owned()
                 } else {
                     id.to_string()

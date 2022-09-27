@@ -346,7 +346,7 @@ async fn open_hook_access(stack: &SharedCyfsStack) {
     let dec_id = stack.dec_id().unwrap().to_owned();
 
     let system_stack = stack
-        .fork_with_new_dec(Some(cyfs_base::get_system_dec_app().to_owned()))
+        .fork_with_new_dec(Some(cyfs_core::get_system_dec_app().to_owned()))
         .await
         .unwrap();
     system_stack.wait_online(None).await.unwrap();
@@ -377,7 +377,7 @@ async fn open_hook_access(stack: &SharedCyfsStack) {
 
 async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId) {
     // 开启权限
-    let meta = stack.root_state_meta_stub(None, Some(cyfs_base::get_system_dec_app().to_owned()));
+    let meta = stack.root_state_meta_stub(None, Some(cyfs_core::get_system_dec_app().to_owned()));
     /*
     let mut access = AccessString::new(0);
     access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);

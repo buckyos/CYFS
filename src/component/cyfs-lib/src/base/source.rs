@@ -1,4 +1,5 @@
-use crate::*;
+use cyfs_base::*;
+use cyfs_core::*;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
@@ -233,7 +234,7 @@ impl std::fmt::Display for RequestSourceInfo {
             self.zone.zone_category,
             self.zone.device,
             self.zone.zone,
-            crate::dec_id_to_string(&self.dec),
+            cyfs_core::dec_id_to_string(&self.dec),
             self.verified,
         )
     }
@@ -340,7 +341,7 @@ impl RequestSourceInfo {
                         true
                     } else {
                         warn!("request source pass verify but target_dec_id not match! pass={}, required={}",
-                        dec_id_to_string(&id), dec_id_to_string(&target_dec_id));
+                        cyfs_core::dec_id_to_string(&id), cyfs_core::dec_id_to_string(&target_dec_id));
 
                         false
                     }
@@ -519,6 +520,14 @@ impl<'de> Deserialize<'de> for DeviceZoneCategory {
     }
 }
 
+impl Into<OpEnvSourceInfo> for RequestSourceInfo {
+    fn into(self) -> OpEnvSourceInfo {
+        OpEnvSourceInfo {
+            dec: self.dec,
+            device: self.zone.device,
+        }
+    }
+}
 #[cfg(test)]
 mod test {
     use super::*;

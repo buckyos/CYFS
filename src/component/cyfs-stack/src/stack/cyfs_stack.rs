@@ -137,7 +137,6 @@ impl CyfsStackImpl {
         param: CyfsStackParams,
         known_objects: Vec<KnownObject>,
     ) -> BuckyResult<Self> {
-        cyfs_core::SystemDecApp::init();
         Self::register_custom_objects_format();
 
         let stack_params = param.clone();
@@ -681,7 +680,7 @@ impl CyfsStackImpl {
         config.change_access_mode(GlobalStateCategory::RootState, GlobalStateAccessMode::Write);
         root_state
             .state()
-            .get_dec_root_manager(cyfs_base::get_system_dec_app(), true)
+            .get_dec_root_manager(cyfs_core::get_system_dec_app(), true)
             .await?;
         config.change_access_mode(GlobalStateCategory::RootState, GlobalStateAccessMode::Read);
 

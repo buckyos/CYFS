@@ -1,3 +1,4 @@
+use crate::base::*;
 use crate::GlobalStateCategory;
 use cyfs_base::*;
 
@@ -60,14 +61,14 @@ impl RequestGlobalStatePath {
     }
 
     pub fn new_system_dec(req_path: Option<impl Into<String>>) -> Self {
-        Self::new(Some(cyfs_base::get_system_dec_app().to_owned()), req_path)
+        Self::new(Some(cyfs_core::get_system_dec_app().to_owned()), req_path)
     }
 
     pub fn set_root(&mut self, root: ObjectId) {
-        self.global_state_root = Some(RequestGlobalStateRoot::GlobalRoot(root)); 
+        self.global_state_root = Some(RequestGlobalStateRoot::GlobalRoot(root));
     }
     pub fn set_dec_root(&mut self, dec_root: ObjectId) {
-        self.global_state_root = Some(RequestGlobalStateRoot::DecRoot(dec_root)); 
+        self.global_state_root = Some(RequestGlobalStateRoot::DecRoot(dec_root));
     }
 
     pub fn category(&self) -> GlobalStateCategory {
@@ -283,11 +284,11 @@ mod test {
         let r = RequestGlobalStatePath::parse(&s).unwrap();
         assert_eq!(root, r);
 
-        root.dec_id = Some(cyfs_base::get_system_dec_app().to_owned());
+        root.dec_id = Some(cyfs_core::get_system_dec_app().to_owned());
         let s = root.format_string();
         println!("{}", s);
         let r = RequestGlobalStatePath::parse(&s).unwrap();
-        assert_eq!(r.dec_id, Some(cyfs_base::get_system_dec_app().to_owned()));
+        assert_eq!(r.dec_id, Some(cyfs_core::get_system_dec_app().to_owned()));
 
         let root = RequestGlobalStatePath {
             global_state_category: None,

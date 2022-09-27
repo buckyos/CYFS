@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use tide::Response;
-use cyfs_base::RequestProtocol;
+use cyfs_lib::RequestProtocol;
 use crate::non::NONInputHttpRequest;
 
 use crate::trans_api::service::trans_handler::*;
