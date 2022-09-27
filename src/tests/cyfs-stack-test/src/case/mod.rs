@@ -23,7 +23,6 @@ mod zone;
 mod role;
 mod storage;
 mod meta;
-mod beta_version;
 mod call;
 
 pub async fn test_restart() {

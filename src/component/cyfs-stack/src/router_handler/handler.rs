@@ -58,7 +58,7 @@ where
     }
 
     pub fn new(
-        &source: &RequestSourceInfo,
+        source: &RequestSourceInfo,
         id: impl Into<String>,
         dec_id: Option<ObjectId>,
         index: i32,
