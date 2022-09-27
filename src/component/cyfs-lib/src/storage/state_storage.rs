@@ -1,5 +1,5 @@
 use crate::root_state::*;
-use crate::UniObjectStackRef;
+use crate::UniCyfsStackRef;
 use cyfs_base::*;
 
 use async_std::sync::Mutex as AsyncMutex;
@@ -58,7 +58,7 @@ impl StateStorage {
     }
 
     pub fn new_with_stack(
-        stack: UniObjectStackRef,
+        stack: UniCyfsStackRef,
         category: GlobalStateCategory,
         path: impl Into<String>,
         content_type: ObjectMapSimpleContentType,

@@ -5,7 +5,6 @@ use crate::events::RouterEventsManager;
 use crate::interface::{SyncListenerManager, SyncListenerManagerParams};
 use crate::meta::RawMetaCache;
 use crate::root_state_api::GlobalStateLocalService;
-use crate::router_handler::RouterHandlersManager;
 use crate::sync::*;
 use crate::util_api::UtilService;
 use cyfs_base::*;
@@ -459,7 +458,7 @@ impl ZoneRoleManager {
         root_state: &GlobalStateLocalService,
         bdt_stack: &StackGuard,
         device_manager: &Box<dyn DeviceCache>,
-        router_handlers: &RouterHandlersManager,
+        router_handlers: &RouterHandlerManagerProcessorRef,
         util_service: &Arc<UtilService>,
         chunk_manager: Arc<ChunkManager>,
     ) -> BuckyResult<()> {
@@ -522,7 +521,7 @@ impl ZoneRoleManager {
 
     async fn register_router_handler(
         &self,
-        router_handlers: &RouterHandlersManager,
+        router_handlers: &RouterHandlerManagerProcessorRef,
     ) -> BuckyResult<()> {
         // let zone = self.zone_manager.get_current_zone().await?;
         // let owner = zone.owner();

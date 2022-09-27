@@ -1,5 +1,6 @@
 // use super::dsg::{DSGService, DSGServiceOptions};
 use super::params::*;
+use super::uni_stack::*;
 use crate::acl::{AclManager, AclManagerRef};
 use crate::admin::AdminManager;
 use crate::app::{AppController, AppService};
@@ -51,26 +52,6 @@ pub struct KnownObject {
     pub object: Arc<AnyNamedObject>,
 }
 
-struct CyfsStackProcessors {
-    pub non_service: NONOutputProcessorRef,
-    pub ndn_service: NDNOutputProcessorRef,
-    pub crypto_service: CryptoOutputProcessorRef,
-    pub util_service: UtilOutputProcessorRef,
-    pub trans_service: TransOutputProcessorRef,
-
-    pub router_handlers: RouterHandlerManagerProcessorRef,
-    pub router_events: RouterEventManagerProcessorRef,
-
-    pub root_state: GlobalStateOutputProcessorRef,
-    pub root_state_access: GlobalStateAccessOutputProcessorRef,
-
-    pub local_cache: GlobalStateOutputProcessorRef,
-    pub local_cache_access: GlobalStateAccessOutputProcessorRef,
-
-    pub root_state_meta: GlobalStateMetaOutputProcessorRef,
-    pub local_cache_meta: GlobalStateMetaOutputProcessorRef,
-}
-
 #[derive(Clone)]
 pub(crate) struct ObjectServices {
     pub ndn_service: Arc<NDNService>,
@@ -100,7 +81,6 @@ pub struct CyfsStackImpl {
     tracker: Box<dyn TrackerCache>,
 
     services: ObjectServices,
-    processors: CyfsStackProcessors,
 
     interface: OnceCell<ObjectListenerManagerRef>,
 
@@ -177,7 +157,6 @@ impl CyfsStackImpl {
             raw_meta_cache.clone_meta(),
         );
 
-
         // 内部依赖带rule-noc，需要使用延迟绑定策略
         let verifier = ObjectVerifier::new(
             bdt_param.device.desc().device_id().to_owned(),
@@ -220,7 +199,11 @@ impl CyfsStackImpl {
         let zone_manager = Arc::new(zone_manager);
         zone_manager.init().await?;
 
-        // FIXME Which dec-id should choose to use for uni-stack's source? now use system as default
+        // first init current zone info
+        let zm = zone_manager.clone();
+        async_std::task::spawn(async move { zm.get_current_info().await }).await?;
+
+        // FIXME Which dec-id should choose to use for uni-stack's source? now use anonymous dec as default
         let source = zone_manager.get_current_source_info(&None).await?;
 
         // load local global-state meta
@@ -406,61 +389,6 @@ impl CyfsStackImpl {
             front_service,
         };
 
-        // 缓存所有processors，用以uni_stack直接返回使用
-        let processors = CyfsStackProcessors {
-            non_service: NONOutputTransformer::new(
-                services.non_service.clone_processor(),
-                source.clone(),
-            ),
-            ndn_service: NDNOutputTransformer::new(
-                services.ndn_service.clone_processor(),
-                source.clone(),
-            ),
-            crypto_service: CryptoOutputTransformer::new(
-                services.crypto_service.clone_processor(),
-                source.clone(),
-            ),
-            util_service: UtilOutputTransformer::new(
-                services.util_service.clone_processor(),
-                source.clone(),
-            ),
-            trans_service: TransOutputTransformer::new(
-                services.trans_service.clone_processor(),
-                source.clone(),
-            ),
-            router_handlers: router_handlers.clone_processor(),
-            router_events: router_events.clone_processor(),
-
-            root_state: GlobalStateOutputTransformer::new(
-                root_state.clone_global_state_processor(),
-                source.clone(),
-            ),
-
-            root_state_access: GlobalStateAccessOutputTransformer::new(
-                root_state.clone_access_processor(),
-                source.clone(),
-            ),
-
-            local_cache: GlobalStateOutputTransformer::new(
-                local_cache.clone_global_state_processor(),
-                source.clone(),
-            ),
-
-            local_cache_access: GlobalStateAccessOutputTransformer::new(
-                local_cache.clone_access_processor(),
-                source.clone(),
-            ),
-
-            root_state_meta: GlobalStateMetaOutputTransformer::new(
-                global_state_meta.clone_processor(GlobalStateCategory::RootState),
-                source.clone(),
-            ),
-            local_cache_meta: GlobalStateMetaOutputTransformer::new(
-                global_state_meta.clone_processor(GlobalStateCategory::LocalCache),
-                source.clone(),
-            ),
-        };
-
         let admin_manager = AdminManager::new(
             zone_role_manager.clone(),
             services.crypto_service.local_service().verifier().clone(),
@@ -488,7 +416,6 @@ impl CyfsStackImpl {
             tracker,
 
             services,
-            processors,
 
             interface: OnceCell::new(),
             app_controller: OnceCell::new(),
@@ -505,9 +432,10 @@ impl CyfsStackImpl {
             acl_manager,
         };
 
-        // first init current zone info
-        let zone_manager = stack.zone_manager.clone();
-        async_std::task::spawn(async move { zone_manager.get_current_info().await }).await?;
+        // init an system-dec router-handler processor for later use
+        let mut system_source = source.clone();
+        system_source.dec = cyfs_core::get_system_dec_app().to_owned();
+        let system_router_handlers = stack.router_handlers.clone_processor(system_source);
 
         // root_state should never change during stack init and before role_manager init access_mode
         let now_root = stack.root_state.local_service().state().get_current_root();
@@ -533,6 +461,7 @@ impl CyfsStackImpl {
         if param.config.sync_service {
             // 避免调用栈过深，使用task异步初始化
 
+            let system_router_handlers = system_router_handlers.clone();
             let (ret, s) = async_std::task::spawn(async move {
                 let ret = stack
                     .zone_role_manager
@@ -540,7 +469,7 @@ impl CyfsStackImpl {
                         &stack.root_state.local_service(),
                         &stack.bdt_stack,
                         &stack.device_manager.clone_cache(),
-                        &stack.router_handlers,
+                        &system_router_handlers,
                         &stack.services.util_service,
                         chunk_manager,
                     )
@@ -557,9 +486,9 @@ impl CyfsStackImpl {
 
             stack = s;
         }
-
+       
         // init admin manager
-        stack.admin_manager.init(&stack.router_handlers).await?;
+        stack.admin_manager.init(&system_router_handlers).await?;
 
         // 初始化对外interface
         let mut interface = ObjectListenerManager::new(device_id.clone());
@@ -597,7 +526,7 @@ impl CyfsStackImpl {
         // init app controller
         let app_controller = AppController::new(param.config.isolate.clone(), interface);
         app_controller
-            .init(&stack.router_handlers.clone_processor())
+            .init(&system_router_handlers)
             .await?;
 
         if let Err(_) = stack.app_controller.set(app_controller) {
@@ -1021,14 +950,83 @@ impl CyfsStackImpl {
             cyfs_lib::register_core_objects_format();
         }
     }
+
+    pub async fn open_uni_stack(&self, dec_id: &Option<ObjectId>) -> UniCyfsStackRef {
+        let processors = self.gen_processors(dec_id).await;
+        Arc::new(processors)
+    }
+
+    async fn gen_processors(&self, dec_id: &Option<ObjectId>) -> CyfsStackProcessors {
+        let source = self
+            .zone_manager
+            .get_current_source_info(dec_id)
+            .await
+            .unwrap();
+
+        // 缓存所有processors，用以uni_stack直接返回使用
+        let processors = CyfsStackProcessors {
+            non_service: NONOutputTransformer::new(
+                self.services.non_service.clone_processor(),
+                source.clone(),
+            ),
+            ndn_service: NDNOutputTransformer::new(
+                self.services.ndn_service.clone_processor(),
+                source.clone(),
+            ),
+            crypto_service: CryptoOutputTransformer::new(
+                self.services.crypto_service.clone_processor(),
+                source.clone(),
+            ),
+            util_service: UtilOutputTransformer::new(
+                self.services.util_service.clone_processor(),
+                source.clone(),
+            ),
+            trans_service: TransOutputTransformer::new(
+                self.services.trans_service.clone_processor(),
+                source.clone(),
+            ),
+            router_handlers: self.router_handlers.clone_processor(source.clone()),
+            router_events: self.router_events.clone_processor(),
+
+            root_state: GlobalStateOutputTransformer::new(
+                self.root_state.clone_global_state_processor(),
+                source.clone(),
+            ),
+
+            root_state_access: GlobalStateAccessOutputTransformer::new(
+                self.root_state.clone_access_processor(),
+                source.clone(),
+            ),
+
+            local_cache: GlobalStateOutputTransformer::new(
+                self.local_cache.clone_global_state_processor(),
+                source.clone(),
+            ),
+
+            local_cache_access: GlobalStateAccessOutputTransformer::new(
+                self.local_cache.clone_access_processor(),
+                source.clone(),
+            ),
+
+            root_state_meta: GlobalStateMetaOutputTransformer::new(
+                self.global_state_meta
+                    .clone_processor(GlobalStateCategory::RootState),
+                source.clone(),
+            ),
+            local_cache_meta: GlobalStateMetaOutputTransformer::new(
+                self.global_state_meta
+                    .clone_processor(GlobalStateCategory::LocalCache),
+                source.clone(),
+            ),
+        };
+
+        processors
+    }
 }
 
 #[derive(Clone)]
 pub struct CyfsStack {
     stack: Arc<CyfsStackImpl>,
-
-    // uni_stack
-    uni_stack: Arc<OnceCell<UniObjectStackRef>>,
 }
 
 impl CyfsStack {
@@ -1042,7 +1040,6 @@ impl CyfsStack {
         let stack_impl = CyfsStackImpl::open(bdt_param, param, known_objects).await?;
         Ok(Self {
             stack: Arc::new(stack_impl),
-            uni_stack: Arc::new(OnceCell::new()),
         })
     }
 
@@ -1168,67 +1165,5 @@ impl CyfsStack {
         dec_id: Option<ObjectId>,
     ) -> BuckyResult<SharedCyfsStack> {
         self.stack.open_shared_object_stack(dec_id).await
-    }
-
-    fn create_uni_stack(&self) -> UniObjectStackRef {
-        Arc::new(self.clone())
-    }
-
-    pub fn uni_stack(&self) -> &UniObjectStackRef {
-        self.uni_stack.get_or_init(|| self.create_uni_stack())
-    }
-}
-
-impl UniCyfsStack for CyfsStack {
-    fn non_service(&self) -> &NONOutputProcessorRef {
-        &self.stack.processors.non_service
-    }
-
-    fn ndn_service(&self) -> &NDNOutputProcessorRef {
-        &self.stack.processors.ndn_service
-    }
-
-    fn crypto_service(&self) -> &CryptoOutputProcessorRef {
-        &self.stack.processors.crypto_service
-    }
-
-    fn util_service(&self) -> &UtilOutputProcessorRef {
-        &self.stack.processors.util_service
-    }
-
-    fn trans_service(&self) -> &TransOutputProcessorRef {
-        &self.stack.processors.trans_service
-    }
-
-    fn router_handlers(&self) -> &RouterHandlerManagerProcessorRef {
-        &self.stack.processors.router_handlers
-    }
-
-    fn router_events(&self) -> &RouterEventManagerProcessorRef {
-        &self.stack.processors.router_events
-    }
-
-    fn root_state(&self) -> &GlobalStateOutputProcessorRef {
-        &self.stack.processors.root_state
-    }
-
-    fn root_state_access(&self) -> &GlobalStateAccessOutputProcessorRef {
-        &self.stack.processors.root_state_access
-    }
-
-    fn local_cache(&self) -> &GlobalStateOutputProcessorRef {
-        &self.stack.processors.local_cache
-    }
-
-    fn local_cache_access(&self) -> &GlobalStateAccessOutputProcessorRef {
-        &self.stack.processors.local_cache_access
-    }
-
-    fn root_state_meta(&self) -> &GlobalStateMetaOutputProcessorRef {
-        &self.stack.processors.root_state_meta
-    }
-
-    fn local_cache_meta(&self) -> &GlobalStateMetaOutputProcessorRef {
-        &self.stack.processors.local_cache_meta
     }
 }

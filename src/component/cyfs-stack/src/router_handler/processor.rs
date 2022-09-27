@@ -4,10 +4,24 @@ use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::*;
 
+pub struct SharedRouterHandlersManager {
+    manager: RouterHandlersManager,
+    source: RequestSourceInfo,
+}
+
+impl SharedRouterHandlersManager {
+    pub fn new(manager: RouterHandlersManager, source: RequestSourceInfo) -> Self {
+        Self {
+            manager,
+            source,
+        }
+    }
+}
+
 macro_rules! declare_router_handler_processor {
     ($REQ:ty, $RESP:ty, $func:ident) => {
         #[async_trait::async_trait]
-        impl RouterHandlerProcessor<$REQ, $RESP> for RouterHandlersManager {
+        impl RouterHandlerProcessor<$REQ, $RESP> for SharedRouterHandlersManager {
             async fn add_handler(
                 &self,
                 chain: RouterHandlerChain,
@@ -25,9 +39,8 @@ macro_rules! declare_router_handler_processor {
                     >,
                 >,
             ) -> BuckyResult<()> {
-                let source = RequestSourceInfo::new_local_system();
                 let handler = RouterHandler::new(
-                    &source,
+                    &self.source,
                     id.to_owned(),
                     None,
                     index,
@@ -37,7 +50,7 @@ macro_rules! declare_router_handler_processor {
                     routine,
                 )?;
 
-                self.handlers(&chain).$func().add_handler(handler)
+                self.manager.handlers(&chain).$func().add_handler(handler)
             }
 
             async fn remove_handler(
@@ -45,7 +58,7 @@ macro_rules! declare_router_handler_processor {
                 chain: RouterHandlerChain,
                 id: &str,
             ) -> BuckyResult<bool> {
-                let ret = self.handlers(&chain).$func().remove_handler(id, None);
+                let ret = self.manager.handlers(&chain).$func().remove_handler(id, None);
 
                 Ok(ret)
             }
@@ -107,7 +120,7 @@ declare_router_handler_processor!(AclHandlerRequest, AclHandlerResponse, acl);
 // interest handlers
 declare_router_handler_processor!(InterestHandlerRequest, InterestHandlerResponse, interest);
 
-impl RouterHandlerManagerProcessor for RouterHandlersManager {
+impl RouterHandlerManagerProcessor for SharedRouterHandlersManager {
     fn get_object(
         &self,
     ) -> &dyn RouterHandlerProcessor<NONGetObjectInputRequest, NONGetObjectInputResponse> {

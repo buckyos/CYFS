@@ -22,4 +22,4 @@ pub trait UniCyfsStack: Send + Sync {
     fn local_cache_meta(&self) -> &GlobalStateMetaOutputProcessorRef;
 }
 
-pub type UniObjectStackRef = Arc<dyn UniCyfsStack>;
+pub type UniCyfsStackRef = Arc<dyn UniCyfsStack>;

@@ -82,7 +82,7 @@ pub struct SharedCyfsStack {
     device_info: Arc<RwLock<Option<(DeviceId, Device)>>>,
 
     // uni_stack
-    uni_stack: Arc<OnceCell<UniObjectStackRef>>,
+    uni_stack: Arc<OnceCell<UniCyfsStackRef>>,
 }
 
 #[derive(Debug, Clone)]
@@ -410,7 +410,7 @@ impl SharedCyfsStack {
     pub fn param(&self) -> &SharedCyfsStackParam {
         &self.param
     }
-    
+
     pub async fn fork_with_new_dec(&self, dec_id: Option<ObjectId>) -> BuckyResult<Self> {
         let mut param = self.param.clone();
         param.dec_id = dec_id;
@@ -527,7 +527,11 @@ impl SharedCyfsStack {
         target: Option<ObjectId>,
         target_dec_id: Option<ObjectId>,
     ) -> GlobalStateStub {
-        GlobalStateStub::new(self.services.root_state.clone_processor(), target, target_dec_id)
+        GlobalStateStub::new(
+            self.services.root_state.clone_processor(),
+            target,
+            target_dec_id,
+        )
     }
 
     // root_state meta
@@ -553,7 +557,11 @@ impl SharedCyfsStack {
     }
 
     pub fn local_cache_stub(&self, target_dec_id: Option<ObjectId>) -> GlobalStateStub {
-        GlobalStateStub::new(self.services.local_cache.clone_processor(), None, target_dec_id)
+        GlobalStateStub::new(
+            self.services.local_cache.clone_processor(),
+            None,
+            target_dec_id,
+        )
     }
 
     pub fn local_cache_meta(&self) -> &GlobalStateMetaRequestor {
@@ -604,11 +612,11 @@ impl SharedCyfsStack {
     }
 
     // uni_stack相关接口
-    fn create_uni_stack(&self) -> UniObjectStackRef {
+    fn create_uni_stack(&self) -> UniCyfsStackRef {
         Arc::new(self.clone())
     }
 
-    pub fn uni_stack(&self) -> &UniObjectStackRef {
+    pub fn uni_stack(&self) -> &UniCyfsStackRef {
         self.uni_stack.get_or_init(|| self.create_uni_stack())
     }
 }

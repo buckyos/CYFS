@@ -1,5 +1,5 @@
 use crate::root_state::*;
-use crate::UniObjectStackRef;
+use crate::UniCyfsStackRef;
 use cyfs_base::*;
 
 use std::sync::{Arc, RwLock};
@@ -51,7 +51,7 @@ impl StateView {
     }
 
     pub fn new_with_stack(
-        stack: UniObjectStackRef,
+        stack: UniCyfsStackRef,
         category: GlobalStateCategory,
         path: impl Into<String>,
         content_type: ObjectMapSimpleContentType,

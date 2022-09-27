@@ -1,4 +1,5 @@
 use super::handler::*;
+use super::processor::SharedRouterHandlersManager;
 use super::storage::*;
 use crate::acl::AclManagerRef;
 use cyfs_base::*;
@@ -31,8 +32,8 @@ pub struct RouterHandlersContainer {
     pub verify_object:
         OnceCell<RouterHandlers<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse>>,
 
-    pub acl: OnceCell<RouterHandlers<AclHandlerRequest, AclHandlerResponse>>, 
-    pub interest: OnceCell<RouterHandlers<InterestHandlerRequest, InterestHandlerResponse>>, 
+    pub acl: OnceCell<RouterHandlers<AclHandlerRequest, AclHandlerResponse>>,
+    pub interest: OnceCell<RouterHandlers<InterestHandlerRequest, InterestHandlerResponse>>,
 }
 
 pub type RouterHandlersContainerRef = Arc<RouterHandlersContainer>;
@@ -56,8 +57,8 @@ impl RouterHandlersContainer {
             sign_object: OnceCell::new(),
             verify_object: OnceCell::new(),
 
-            acl: OnceCell::new(), 
-            interest: OnceCell::new(), 
+            acl: OnceCell::new(),
+            interest: OnceCell::new(),
         }
     }
 
@@ -240,10 +241,11 @@ impl RouterHandlersContainer {
             )
         })
     }
-    pub fn try_interest(&self) -> Option<&RouterHandlers<InterestHandlerRequest, InterestHandlerResponse>> {
+    pub fn try_interest(
+        &self,
+    ) -> Option<&RouterHandlers<InterestHandlerRequest, InterestHandlerResponse>> {
         self.interest.get()
     }
-
 
     pub(crate) fn clear_dec_handlers(&self, dec_id: &Option<ObjectId>) -> bool {
         let mut changed = false;
@@ -334,7 +336,6 @@ impl RouterHandlersContainer {
             result.interest = container.dump_data();
         }
 
-
         result
     }
 
@@ -401,9 +402,9 @@ pub struct RouterHandlersManager {
 
     handler: Arc<RouterHandlersContainer>,
 
-    acl: Arc<RouterHandlersContainer>, 
+    acl: Arc<RouterHandlersContainer>,
 
-    ndn: Arc<RouterHandlersContainer>
+    ndn: Arc<RouterHandlersContainer>,
 }
 
 impl RouterHandlersManager {
@@ -457,12 +458,12 @@ impl RouterHandlersManager {
             acl: Arc::new(RouterHandlersContainer::new(
                 RouterHandlerChain::Acl,
                 storage.clone(),
-            )), 
-            
+            )),
+
             ndn: Arc::new(RouterHandlersContainer::new(
                 RouterHandlerChain::NDN,
                 storage.clone(),
-            ))
+            )),
         };
 
         storage.bind(ret.clone());
@@ -474,8 +475,10 @@ impl RouterHandlersManager {
         &self.acl_manager
     }
 
-    pub fn clone_processor(&self) -> RouterHandlerManagerProcessorRef {
-        Arc::new(Box::new(self.clone()))
+    pub fn clone_processor(&self, source: RequestSourceInfo) -> RouterHandlerManagerProcessorRef {
+        let sm = SharedRouterHandlersManager::new(self.clone(), source);
+
+        Arc::new(Box::new(sm))
     }
 
     pub async fn load(&self) -> BuckyResult<()> {
@@ -500,7 +503,7 @@ impl RouterHandlersManager {
 
             RouterHandlerChain::Acl => &self.acl,
 
-            RouterHandlerChain::NDN => &self.ndn,  
+            RouterHandlerChain::NDN => &self.ndn,
         }
     }
 
@@ -659,7 +662,7 @@ impl RouterHandlersManager {
                 error!("{}", msg);
                 return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
             }
-            
+
             let path = format!("{}/{}/{}/", CYFS_HANDLER_VIRTUAL_PATH, chain, category);
             RequestGlobalStatePath::new_system_dec(Some(path))
         };

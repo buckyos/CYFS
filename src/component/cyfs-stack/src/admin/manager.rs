@@ -1,6 +1,5 @@
 use crate::config::StackGlobalConfig;
 use crate::crypto_api::*;
-use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneRoleManager;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -70,7 +69,7 @@ impl AdminManager {
 
     pub async fn init(
         &self,
-        router_handlers: &RouterHandlersManager,
+        router_handlers: &RouterHandlerManagerProcessorRef,
     ) -> BuckyResult<()> {
         self.register_router_handler(router_handlers).await?;
 
@@ -79,7 +78,7 @@ impl AdminManager {
 
     async fn register_router_handler(
         &self,
-        router_handlers: &RouterHandlersManager,
+        router_handlers: &RouterHandlerManagerProcessorRef,
     ) -> BuckyResult<()> {
         // add post_object handler for app_manager's action cmd
         let routine = OnAdminCommandWatcher {
