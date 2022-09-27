@@ -111,7 +111,7 @@ impl AppController {
                 .publish_file(&TransPublishFileOutputRequest {
                     common: NDNOutputRequestCommon {
                         req_path: None,
-                        dec_id: Some(get_system_dec_app().clone()),
+                        dec_id: Some(cyfs_core::get_system_dec_app().clone()),
                         level: Default::default(),
                         target: None,
                         referer_object: vec![],

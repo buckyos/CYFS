@@ -115,7 +115,7 @@ async fn main() {
     // 使用默认配置初始化non-stack，因为是跑在gateway后面，共享了gateway的协议栈，所以配置使用默认即可
     // 兼容gateway没启动的情况，在这里等待gateway启动后再往下走
     let cyfs_stack;
-    match SharedCyfsStack::open_default(Some(get_system_dec_app().clone())).await {
+    match SharedCyfsStack::open_default(Some(cyfs_core::get_system_dec_app().clone())).await {
         Ok(stack) => {
             info!("open default stack success");
             cyfs_stack = stack;
