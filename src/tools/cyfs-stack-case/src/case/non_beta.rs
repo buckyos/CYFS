@@ -26,122 +26,8 @@ pub async fn test() {
     let user2_device1_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
     let user2_device2_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device2);
 
-    test_beta_version(&user1_stack, &user1_device1_stack, &user1_device2_stack, &user2_stack, &user2_device1_stack, &user2_device2_stack).await;
-}
-
-async fn test_beta_version(
-    user1_stack: &SharedCyfsStack,
-    user1_device1_stack: &SharedCyfsStack, 
-    user1_device2_stack: &SharedCyfsStack, 
-    user2_stack: &SharedCyfsStack, 
-    user2_device1_stack: &SharedCyfsStack, 
-    user2_device2_stack: &SharedCyfsStack) {
-
-    //test_root_state_cross_dec(&user1_stack, &user1_device1_stack, &user1_device2_stack, &user2_stack, &user2_device1_stack, &user2_device2_stack).await;
     test_non_object_req_path().await;
 }
-
-// 测试root-state的同zone的跨dec操作 需要配合权限
-async fn test_root_state_cross_dec(
-    user1_stack: &SharedCyfsStack,
-    user1_device1_stack: &SharedCyfsStack, 
-    _user1_device2_stack: &SharedCyfsStack, 
-    _user2_stack: &SharedCyfsStack, 
-    _user2_device1_stack: &SharedCyfsStack, 
-    _user2_device2_stack: &SharedCyfsStack) {
-
-    let root_state = user1_stack.root_state_stub(None, Some(user1_device1_stack.dec_id().unwrap().to_owned()));
-    let root_info = root_state.get_current_root().await.unwrap();
-    info!("current root: {:?}", root_info);
-
-    let access = RootStateOpEnvAccess::new("/", AccessPermissions::Full);
-    let op_env = root_state.create_path_op_env_with_access(Some(access)).await.unwrap();
-
-    
-    let x1_value = ObjectId::from_base58("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
-    let x2_value = ObjectId::from_base58("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
-    
-    // test create_new
-    op_env.remove_with_path("/new", None).await.unwrap();
-    op_env
-        .create_new_with_path("/new/a", ObjectMapSimpleContentType::Map)
-        .await
-        .unwrap();
-    op_env
-        .create_new_with_path("/new/c", ObjectMapSimpleContentType::Set)
-        .await
-        .unwrap();
-
-    if let Err(e) = op_env
-        .create_new_with_path("/new/a", ObjectMapSimpleContentType::Map)
-        .await
-    {
-        assert!(e.code() == BuckyErrorCode::AlreadyExists);
-    } else {
-        unreachable!();
-    }
-
-    if let Err(e) = op_env
-        .create_new_with_path("/new/c", ObjectMapSimpleContentType::Map)
-        .await
-    {
-        assert!(e.code() == BuckyErrorCode::AlreadyExists);
-    } else {
-        unreachable!();
-    }
-
-    // 首先移除老的值，如果存在的话
-    op_env.remove_with_path("/x/b", None).await.unwrap();
-
-    let ret = op_env.get_by_path("/x/b").await.unwrap();
-    assert_eq!(ret, None);
-    let ret = op_env.get_by_path("/x/b/c").await.unwrap();
-    assert_eq!(ret, None);
-
-    op_env
-        .insert_with_key("/x/b", "c", &x1_value)
-        .await
-        .unwrap();
-
-    let ret = op_env.get_by_path("/x/b/c").await.unwrap();
-    assert_eq!(ret, Some(x1_value));
-
-    let ret = op_env.remove_with_path("/x/b/d", None).await.unwrap();
-    assert_eq!(ret, None);
-
-    let root = op_env.commit().await.unwrap();
-    info!("new dec root is: {:?}", root);
-
-    {
-        let op_env = root_state.create_path_op_env().await.unwrap();
-        op_env.remove_with_path("/set", None).await.unwrap();
-
-        let ret = op_env.insert("/set/a", &x2_value).await.unwrap();
-        assert!(ret);
-
-        let ret = op_env.contains("/set/a", &x1_value).await.unwrap();
-        assert!(!ret);
-
-        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-        assert!(ret);
-
-        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-        assert!(!ret);
-
-        let ret = op_env.remove("/set/a", &x1_value).await.unwrap();
-        assert!(ret);
-
-        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-        assert!(ret);
-
-        let root = op_env.commit().await.unwrap();
-        info!("new dec root is: {:?}", root);
-    }
-
-    info!("test root_state complete!");
-
-}
-
 
 fn new_object(dec_id: &ObjectId, id: &str) -> Text {
     Text::build(id, "test_header", "hello!")
@@ -351,7 +237,7 @@ async fn test_outer_put_dec(dec_id: &ObjectId) {
 
 }
 
-// object层 跨zone在设置和不设置对应group情况下的操作是否正常
+// object层 跨zone在设置和不设置对应group情况下的操作是否正常, 不允许跨zone put
 async fn test_outer_put_zone(dec_id: &ObjectId) {
 
     let dec_id = TestLoader::get_shared_stack(DeviceIndex::User2Device2).dec_id().unwrap().to_owned();
@@ -403,10 +289,10 @@ async fn test_outer_put_zone(dec_id: &ObjectId) {
 
 
 fn qa_pair() -> (Text, Text) {
-    let q = Text::build("question121111", "test_header1212122", "hello1!21321@")
+    let q = Text::build("question", "test_header", "hello1")
         .no_create_time()
         .build();
-    let a = Text::build("answ321321er1", "test_header132132", "world32131!@")
+    let a = Text::build("answer", "test_header", "world")
         .no_create_time()
         .build();
 
@@ -609,11 +495,4 @@ async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &De
     let resp = ret.unwrap();
 
     info!("test_get_object: {}", resp);
-
-    /*
-    // used for clear old data
-    for item in &resp.objects {
-        test_delete_object(&item.object.as_ref().unwrap().object_id, dec_id, stack, target).await;
-    }
-    */
 }
