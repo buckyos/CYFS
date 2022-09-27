@@ -130,7 +130,13 @@ impl UtilRequestHandlerEndpoint {
         ));
 
         // resolve_ood
-        server.at("/util/resolve_ood/*must").get(Self::new(
+        server.at("/util/resolve_ood/").get(Self::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            UtilRequestType::ResolveOOD,
+            handler.clone(),
+        ));
+        server.at("/util/resolve_ood").get(Self::new(
             zone_manager.clone(),
             protocol.to_owned(),
             UtilRequestType::ResolveOOD,
