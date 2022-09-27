@@ -478,6 +478,8 @@ mod test {
         access_string.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Call);
         access_string.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
 
+        access_string.set_group_permissions(AccessGroup::CurrentZone, AccessPermissions::ReadAndCall);
+        
         println!("{}", access_string);
 
         let access_string2 = AccessString::try_from(access_string.to_string().as_str());

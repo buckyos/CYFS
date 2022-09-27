@@ -542,7 +542,7 @@ mod test {
             },
             dec,
             protocol: RequestProtocol::Native,
-            verified: false,
+            verified: None,
         };
 
         let system = ObjectId::default();

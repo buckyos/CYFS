@@ -15,7 +15,7 @@ pub struct GlobalStatePathSpecifiedGroup {
     // specified dec, None for any dec
     pub dec: Option<ObjectId>,
 
-    pub access: u8,
+    pub access: u8 /*AccessPermissions*/,
 }
 
 impl GlobalStatePathSpecifiedGroup {
@@ -89,7 +89,7 @@ impl PartialOrd for GlobalStatePathSpecifiedGroup {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum GlobalStatePathGroupAccess {
     Specified(GlobalStatePathSpecifiedGroup),
-    Default(u32),
+    Default(u32 /*AccessString*/),
 }
 
 impl PartialOrd for GlobalStatePathGroupAccess {
