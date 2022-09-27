@@ -400,29 +400,32 @@ impl tunnel::Tunnel for Tunnel {
                             break;
                         }
                         let now = bucky_time_now();
-                        let miss_active_time = Duration::from_micros(now - tunnel.0.last_active.load(Ordering::SeqCst));
-                        if miss_active_time > ping_timeout {
-                            let state = &mut *tunnel.0.state.write().unwrap();
-                            if let TunnelState::Active(_) = state {
-                                info!("{} dead for ping timeout", tunnel);
-                                *state = TunnelState::Dead;
-                                break;
-                            } else {
-                                break;
+                        let last_active = tunnel.0.last_active.load(Ordering::SeqCst);
+                        if now > last_active {
+                            let miss_active_time = Duration::from_micros(now - last_active);
+                            if miss_active_time > ping_timeout {
+                                let state = &mut *tunnel.0.state.write().unwrap();
+                                if let TunnelState::Active(_) = state {
+                                    info!("{} dead for ping timeout", tunnel);
+                                    *state = TunnelState::Dead;
+                                    break;
+                                } else {
+                                    break;
+                                }
+                            }
+                            if miss_active_time > ping_interval {
+                                if tunnel.0.keeper_count.load(Ordering::SeqCst) > 0 {
+                                    debug!("{} send ping", tunnel);
+                                    let ping = PingTunnel {
+                                        package_id: 0,
+                                        send_time: now,
+                                        recv_data: 0,
+                                    };
+                                    let _ = tunnel::Tunnel::send_package(&tunnel, DynamicPackage::from(ping));
+                                }
                             }
                         }
-                        if miss_active_time > ping_interval {
-                            if tunnel.0.keeper_count.load(Ordering::SeqCst) > 0 {
-                                debug!("{} send ping", tunnel);
-                                let ping = PingTunnel {
-                                    package_id: 0,
-                                    send_time: now,
-                                    recv_data: 0,
-                                };
-                                let _ = tunnel::Tunnel::send_package(&tunnel, DynamicPackage::from(ping));
-                            }
-                        }
-
+                        
                         let _ = future::timeout(ping_interval, future::pending::<()>()).await;
                     };
                     owner.sync_tunnel_state(&tunnel::DynamicTunnel::new(tunnel.clone()), cur_state, tunnel.state());
