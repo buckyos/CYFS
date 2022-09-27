@@ -21,7 +21,7 @@ impl NonHelper {
     }
 
     pub async fn init(&mut self) -> BuckyResult<()> {
-        let dec_id = Some(get_system_dec_app().clone());
+        let dec_id = Some(cyfs_core::get_system_dec_app().clone());
         let stack = SharedCyfsStack::open_default(dec_id).await?;
         stack.wait_online(None).await?;
         self.owner = stack.local_device().desc().owner().clone();
