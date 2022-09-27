@@ -19,6 +19,7 @@ impl RouterHandlerWSProcessor {
 
     fn create_handler<REQ, RESP>(
         session_requestor: Arc<WebSocketRequestManager>,
+        source: &RequestSourceInfo,
         req: &RouterWSAddHandlerParam,
     ) -> BuckyResult<RouterHandler<REQ, RESP>>
     where
@@ -50,6 +51,7 @@ impl RouterHandlerWSProcessor {
         };
 
         let handler = RouterHandler::new(
+            source,
             req.id.clone(),
             req.dec_id,
             req.param.index,
@@ -86,7 +88,7 @@ impl RouterHandlerWSProcessor {
                 let handler = Self::create_handler::<
                     NONPutObjectInputRequest,
                     NONPutObjectInputResponse,
-                >(session_requestor, &req)?;
+               >(session_requestor, &source, &req)?;
                 self.manager
                     .handlers(&req.chain)
                     .put_object()
@@ -97,7 +99,7 @@ impl RouterHandlerWSProcessor {
                 let handler = Self::create_handler::<
                     NONGetObjectInputRequest,
                     NONGetObjectInputResponse,
-                >(session_requestor, &req)?;
+               >(session_requestor, &source, &req)?;
                 self.manager
                     .handlers(&req.chain)
                     .get_object()
@@ -108,7 +110,7 @@ impl RouterHandlerWSProcessor {
                 let handler = Self::create_handler::<
                     NONPostObjectInputRequest,
                     NONPostObjectInputResponse,
-                >(session_requestor, &req)?;
+               >(session_requestor, &source, &req)?;
                 self.manager
                     .handlers(&req.chain)
                     .post_object()
@@ -119,7 +121,7 @@ impl RouterHandlerWSProcessor {
                 let handler = Self::create_handler::<
                     NONSelectObjectInputRequest,
                     NONSelectObjectInputResponse,
-                >(session_requestor, &req)?;
+               >(session_requestor, &source, &req)?;
                 self.manager
                     .handlers(&req.chain)
                     .select_object()
@@ -129,7 +131,7 @@ impl RouterHandlerWSProcessor {
                 let handler = Self::create_handler::<
                     NONDeleteObjectInputRequest,
                     NONDeleteObjectInputResponse,
-                >(session_requestor, &req)?;
+               >(session_requestor, &source, &req)?;
                 self.manager
                     .handlers(&req.chain)
                     .delete_object()
@@ -140,7 +142,7 @@ impl RouterHandlerWSProcessor {
                 let handler = Self::create_handler::<
                     NDNGetDataInputRequest,
                     NDNGetDataInputResponse,
-                >(session_requestor, &req)?;
+               >(session_requestor, &source, &req)?;
                 self.manager
                     .handlers(&req.chain)
                     .get_data()
@@ -150,7 +152,7 @@ impl RouterHandlerWSProcessor {
                 let handler = Self::create_handler::<
                     NDNPutDataInputRequest,
                     NDNPutDataInputResponse,
-                >(session_requestor, &req)?;
+               >(session_requestor, &source, &req)?;
                 self.manager
                     .handlers(&req.chain)
                     .put_data()
@@ -160,7 +162,7 @@ impl RouterHandlerWSProcessor {
                 let handler = Self::create_handler::<
                     NDNDeleteDataInputRequest,
                     NDNDeleteDataInputResponse,
-                >(session_requestor, &req)?;
+               >(session_requestor, &source, &req)?;
                 self.manager
                     .handlers(&req.chain)
                     .delete_data()
@@ -171,7 +173,7 @@ impl RouterHandlerWSProcessor {
                 let handler = Self::create_handler::<
                     CryptoSignObjectInputRequest,
                     CryptoSignObjectInputResponse,
-                >(session_requestor, &req)?;
+               >(session_requestor, &source, &req)?;
                 self.manager
                     .handlers(&req.chain)
                     .sign_object()
@@ -182,7 +184,7 @@ impl RouterHandlerWSProcessor {
                 let handler = Self::create_handler::<
                     CryptoVerifyObjectInputRequest,
                     CryptoVerifyObjectInputResponse,
-                >(session_requestor, &req)?;
+               >(session_requestor, &source, &req)?;
                 self.manager
                     .handlers(&req.chain)
                     .verify_object()
@@ -192,6 +194,7 @@ impl RouterHandlerWSProcessor {
             RouterHandlerCategory::Acl => {
                 let handler = Self::create_handler::<AclHandlerRequest, AclHandlerResponse>(
                     session_requestor,
+                    &source,
                     &req,
                 )?;
                 self.manager.handlers(&req.chain).acl().add_handler(handler)
@@ -200,6 +203,7 @@ impl RouterHandlerWSProcessor {
             RouterHandlerCategory::Interest => {
                 let handler = Self::create_handler::<InterestHandlerRequest, InterestHandlerResponse>(
                     session_requestor,
+                    &source,
                     &req,
                 )?;
                 self.manager.handlers(&req.chain).interest().add_handler(handler)

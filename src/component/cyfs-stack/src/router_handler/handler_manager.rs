@@ -637,15 +637,6 @@ impl RouterHandlersManager {
         req_path: &Option<String>,
         filter: &Option<String>,
     ) -> BuckyResult<()> {
-        if req_path.is_none() && filter.is_none() {
-            let msg = format!(
-                "{} {} handler's req_path or filter should specify at least one! id={}",
-                chain, category, id,
-            );
-            error!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        }
-
         let req_path = if chain == RouterHandlerChain::Handler {
             // Handler must specified valid req_path
             if req_path.is_none() {
@@ -660,6 +651,15 @@ impl RouterHandlersManager {
             use std::str::FromStr;
             RequestGlobalStatePath::from_str(&req_path.as_ref().unwrap())?
         } else {
+            if req_path.is_none() && filter.is_none() {
+                let msg = format!(
+                    "{} {} handler's req_path or filter should specify at least one! id={}",
+                    chain, category, id,
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+            
             let path = format!("{}/{}/{}/", CYFS_HANDLER_VIRTUAL_PATH, chain, category);
             RequestGlobalStatePath::new_system_dec(Some(path))
         };

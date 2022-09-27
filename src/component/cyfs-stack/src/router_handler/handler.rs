@@ -58,6 +58,7 @@ where
     }
 
     pub fn new(
+        &source: &RequestSourceInfo,
         id: impl Into<String>,
         dec_id: Option<ObjectId>,
         index: i32,
@@ -82,7 +83,13 @@ where
         };
         
         let req_path = match req_path {
-            Some(v) => Some(RequestGlobalStatePath::from_str(&v)?),
+            Some(v) => {
+                let mut req_path = RequestGlobalStatePath::from_str(&v)?;
+                if req_path.dec_id.is_none() {
+                    req_path.dec_id = Some(source.dec.clone());
+                }
+                Some(req_path)
+            }
             None => None,
         };
 

@@ -47,6 +47,7 @@ impl RouterHandlerHttpProcessor {
     }
 
     fn create_handler<REQ, RESP>(
+        source: &RequestSourceInfo,
         req: RouterAddHandlerRequest,
     ) -> BuckyResult<RouterHandler<REQ, RESP>>
     where
@@ -84,6 +85,7 @@ impl RouterHandlerHttpProcessor {
         );
 
         let handler = RouterHandler::new(
+            source,
             req.id,
             req.dec_id,
             req.param.index,
@@ -115,7 +117,7 @@ impl RouterHandlerHttpProcessor {
                 let handler = Self::create_handler::<
                     NONPutObjectInputRequest,
                     NONPutObjectInputResponse,
-                >(req)?;
+                >(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .put_object()
@@ -125,7 +127,7 @@ impl RouterHandlerHttpProcessor {
                 let handler = Self::create_handler::<
                     NONGetObjectInputRequest,
                     NONGetObjectInputResponse,
-                >(req)?;
+                >(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .get_object()
@@ -135,7 +137,7 @@ impl RouterHandlerHttpProcessor {
                 let handler = Self::create_handler::<
                     NONPostObjectInputRequest,
                     NONPostObjectInputResponse,
-                >(req)?;
+                >(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .post_object()
@@ -145,7 +147,7 @@ impl RouterHandlerHttpProcessor {
                 let handler = Self::create_handler::<
                     NONSelectObjectInputRequest,
                     NONSelectObjectInputResponse,
-                >(req)?;
+                >(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .select_object()
@@ -155,7 +157,7 @@ impl RouterHandlerHttpProcessor {
                 let handler = Self::create_handler::<
                     NONDeleteObjectInputRequest,
                     NONDeleteObjectInputResponse,
-                >(req)?;
+                >(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .delete_object()
@@ -164,7 +166,7 @@ impl RouterHandlerHttpProcessor {
 
             RouterHandlerCategory::GetData => {
                 let handler =
-                    Self::create_handler::<NDNGetDataInputRequest, NDNGetDataInputResponse>(req)?;
+                    Self::create_handler::<NDNGetDataInputRequest, NDNGetDataInputResponse>(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .get_data()
@@ -172,7 +174,7 @@ impl RouterHandlerHttpProcessor {
             }
             RouterHandlerCategory::PutData => {
                 let handler =
-                    Self::create_handler::<NDNPutDataInputRequest, NDNPutDataInputResponse>(req)?;
+                    Self::create_handler::<NDNPutDataInputRequest, NDNPutDataInputResponse>(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .put_data()
@@ -182,7 +184,7 @@ impl RouterHandlerHttpProcessor {
                 let handler = Self::create_handler::<
                     NDNDeleteDataInputRequest,
                     NDNDeleteDataInputResponse,
-                >(req)?;
+                >(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .delete_data()
@@ -193,7 +195,7 @@ impl RouterHandlerHttpProcessor {
                 let handler = Self::create_handler::<
                     CryptoSignObjectInputRequest,
                     CryptoSignObjectInputResponse,
-                >(req)?;
+                >(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .sign_object()
@@ -203,7 +205,7 @@ impl RouterHandlerHttpProcessor {
                 let handler = Self::create_handler::<
                     CryptoVerifyObjectInputRequest,
                     CryptoVerifyObjectInputResponse,
-                >(req)?;
+                >(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .verify_object()
@@ -211,12 +213,12 @@ impl RouterHandlerHttpProcessor {
             }
 
             RouterHandlerCategory::Acl => {
-                let handler = Self::create_handler::<AclHandlerRequest, AclHandlerResponse>(req)?;
+                let handler = Self::create_handler::<AclHandlerRequest, AclHandlerResponse>(&source, req)?;
                 self.manager.handlers(&chain).acl().add_handler(handler)
             }, 
 
             RouterHandlerCategory::Interest => {
-                let handler = Self::create_handler::<InterestHandlerRequest, InterestHandlerResponse>(req)?;
+                let handler = Self::create_handler::<InterestHandlerRequest, InterestHandlerResponse>(&source, req)?;
                 self.manager.handlers(&chain).interest().add_handler(handler)
             }
         }

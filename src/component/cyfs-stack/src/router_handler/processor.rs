@@ -25,7 +25,9 @@ macro_rules! declare_router_handler_processor {
                     >,
                 >,
             ) -> BuckyResult<()> {
+                let source = RequestSourceInfo::new_local_system();
                 let handler = RouterHandler::new(
+                    &source,
                     id.to_owned(),
                     None,
                     index,
