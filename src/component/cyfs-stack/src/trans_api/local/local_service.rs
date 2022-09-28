@@ -328,7 +328,7 @@ impl LocalTransService {
         };
 
         let task_id = if req.object_id.obj_type_code() == ObjectTypeCode::File {
-            let object = self.get_object_from_noc(&req.object_id).await?;
+            let object = self.get_object_from_noc(&req.common.source, &req.object_id).await?;
             if let AnyNamedObject::Standard(StandardObject::File(file_obj)) = object.as_ref() {
                 let task_id = self
                     .download_tasks
@@ -477,11 +477,11 @@ impl LocalTransService {
         Ok(TransQueryTasksInputResponse { task_list })
     }
 
-    async fn get_object_from_noc(&self, object_id: &ObjectId) -> BuckyResult<Arc<AnyNamedObject>> {
+    async fn get_object_from_noc(&self, source: &RequestSourceInfo, object_id: &ObjectId) -> BuckyResult<Arc<AnyNamedObject>> {
         // 如果没指定flags，那么使用默认值
         // let flags = req.flags.unwrap_or(0);
         let noc_req = NamedObjectCacheGetObjectRequest {
-            source: RequestSourceInfo::new_local_system(),
+            source: source.clone(),
             object_id: object_id.to_owned(),
             last_access_rpath: None,
         };

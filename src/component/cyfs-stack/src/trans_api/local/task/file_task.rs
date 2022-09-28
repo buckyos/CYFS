@@ -131,7 +131,7 @@ impl Task for DownloadFileTask {
                 Some(self.referer.to_owned())
             } else {
                 None
-            }, vec![self.device_list[0].clone()]);
+            }, self.device_list.clone());
         
 
         let writers: Box<dyn ChunkWriter> =

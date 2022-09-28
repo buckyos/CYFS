@@ -11,9 +11,12 @@ pub struct BdtDataRefererInfo {
     pub object_id: ObjectId,
     pub inner_path: Option<String>,
 
+    // source-dec-id
     pub dec_id: Option<ObjectId>,
 
+    // target-dec-id and req-path, etc
     pub req_path: Option<String>,
+    
     pub referer_object: Vec<NDNDataRefererObject>,
     pub flags: u32,
 }
