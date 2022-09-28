@@ -1,7 +1,7 @@
 
 [package]
 name = 'cyfs-base'
-version = '0.5.5'
+version = '0.6.0'
 authors = ['liuzhicong <liuzhicong@buckyos.com>']
 edition = '2021'
 license = 'BSD-2-Clause'
@@ -43,9 +43,9 @@ lru_time_cache = '0.11'
 once_cell = '1.12'
 chrono = '0.4'
 simple_logger = '2.1'
-intbits = "0.2"
-itertools = "0.10"
-base-x = "0.2.0"
+intbits = '0.2'
+itertools = '0.10'
+base-x = '0.2.0'
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zip = '0.6'

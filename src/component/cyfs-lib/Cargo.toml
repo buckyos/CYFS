@@ -1,17 +1,17 @@
 
 [package]
 name = 'cyfs-lib'
-version = '0.5.6'
+version = '0.6.0'
 authors = ['liyaxing <liyaxing@buckyos.com>']
 edition = '2021'
 license = 'BSD-2-Clause'
 description = 'Rust cyfs-lib package'
 
 [dependencies]
-cyfs-util = { path = '../../component/cyfs-util', version = '0.5' }
-cyfs-bdt = { path = '../../component/cyfs-bdt', version = '0.5' }
-cyfs-base = { path = '../../component/cyfs-base', version = '0.5' }
-cyfs-core = { path = '../../component/cyfs-core', version = '0.5' }
+cyfs-util = { path = '../../component/cyfs-util', version = '0.6' }
+cyfs-bdt = { path = '../../component/cyfs-bdt', version = '0.6' }
+cyfs-base = { path = '../../component/cyfs-base', version = '0.6' }
+cyfs-core = { path = '../../component/cyfs-core', version = '0.6' }
 cyfs-debug = { path = '../../component/cyfs-debug', version = '0.5' }
 log = '0.4'
 async-h1 = '2.3.3'

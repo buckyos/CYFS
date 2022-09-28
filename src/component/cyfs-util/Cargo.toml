@@ -1,14 +1,14 @@
 
 [package]
 name = 'cyfs-util'
-version = '0.5.2'
+version = '0.6.0'
 authors = ['weiqiushi <weiqiushi@buckyos.com>']
 edition = '2021'
 license = 'BSD-2-Clause'
 description = 'Rust cyfs-util package'
 
 [dependencies]
-cyfs-base = { path = '../cyfs-base', version = '0.5' }
+cyfs-base = { path = '../cyfs-base', version = '0.6' }
 cyfs-sha2 = { path = '../../3rd/cyfs-sha2', version = '0.8.2' }
 url = '2.2'
 async-std = { version = '1.11', features = ['unstable', 'attributes'] }

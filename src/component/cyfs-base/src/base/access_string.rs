@@ -140,6 +140,32 @@ impl std::fmt::Display for AccessPermissions {
     }
 }
 
+impl Serialize for AccessPermissions {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+struct AccessPermissionsVisitor;
+
+impl<'de> Visitor<'de> for AccessPermissionsVisitor {
+    type Value = AccessPermissions;
+
+    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        formatter.write_str("a string represent access permissions")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: Error {
+        AccessPermissions::try_from(v).map_err(Error::custom)
+    }
+}
+
+impl<'de> Deserialize<'de> for AccessPermissions {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        deserializer.deserialize_string(AccessPermissionsVisitor)
+    }
+}
+
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccessGroup {
