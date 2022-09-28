@@ -73,45 +73,54 @@ async fn clear_all(dec_id: &ObjectId) {
 // 跨zone 调用req_path
 async fn test_non_object_req_path() {
     let dec_id = new_dec("test-non");
+    let user1_stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    let user1_stack = user1_stack.fork_with_new_dec(Some(dec_id.clone())).await.unwrap();
+    user1_stack.wait_online(None).await.unwrap();
 
     async_std::task::spawn(async move {
         loop {
             let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
             let dec_id = new_dec("test-non");
             test_put_object(&dec_id, &stack).await;
-
-            let target = stack.local_device_id();
-            test_get_object(&dec_id, &stack, &target).await;
-
-            let object = new_object(&dec_id, "first-text");
-            let object_id = object.text_id().object_id().to_owned();
-    
-            test_delete_object(&object_id, &dec_id, &stack, &target).await;
-
-
-            async_std::task::sleep(std::time::Duration::from_secs(5)).await;
+            async_std::task::sleep(std::time::Duration::from_secs(60)).await;
         }
     });
 
     test_outer_put_dec(&dec_id).await;
 
+    {
+        let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
+        let target = stack.local_device_id();
+        test_get_object(&dec_id, &stack, &target).await;
+
+        let object = new_object(&dec_id, "first-text");
+        let object_id = object.text_id().object_id().to_owned();
+
+        test_delete_object(&object_id, &dec_id, &stack, &target).await;
+    }
     info!("test all non case success!");
 }
 
-async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId) {
-    // 开启权限acl
+async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl Into<String>, _perm: AccessPermissions) {
+    // 开启权限 rmeta, 为当前Zone内的dec_id开放req_path的读写权限
     let meta = stack.root_state_meta_stub(None, None);
-    // 为当前Zone内的desc_id开放req_path的读写权限
-    let item = GlobalStatePathAccessItem {
-        path: "/root/shared".to_owned(),
-        access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
-            zone: None,
-            zone_category: Some(DeviceZoneCategory::CurrentZone),
-            dec: Some(dec_id.clone()),
-            access: AccessPermissions::Full as u8,
-        }),
-    };
+    let mut access = AccessString::new(0);
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Write);
 
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Read);
+
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Call);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Call);
+    access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Call);
+
+    let item = GlobalStatePathAccessItem {
+        path: req_path.into(),
+        access: GlobalStatePathGroupAccess::Default(access.value()),
+    };
     meta.add_access(item).await.unwrap();
 
 }
@@ -125,7 +134,7 @@ async fn test_outer_put_dec(dec_id: &ObjectId) {
     let object_id = a.text_id().object_id().to_owned();
 
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
-    let target_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
+    let target_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device2);
 
     let mut req =
         NONPutObjectOutputRequest::new_router(None, object_id.clone(), a.to_vec().unwrap());
@@ -150,8 +159,8 @@ async fn test_outer_put_dec(dec_id: &ObjectId) {
     req.access = None;  // object层的权限
 
     // 目标req_path层, dec-id开启对应的权限才可以操作
-    //open_access(&stack, &dec_id).await;
-    //open_access(&target_stack, &dec_id).await;
+    //open_access(&stack, dec_id, "/root/shared", AccessPermissions::Full).await;
+    //open_access(&target_stack, dec_id, "/root/shared", AccessPermissions::Full).await;
 
     let ret = stack.non_service().put_object(req).await;
     match ret {
@@ -161,32 +170,19 @@ async fn test_outer_put_dec(dec_id: &ObjectId) {
         Ok(ret) => info!("put: {}", ret),
     }
 
-
-    let filter = RequestGlobalStatePath {
+    let target_dec_id = TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().clone();
+    let path = RequestGlobalStatePath {
         global_state_category: None,
         global_state_root: None,
-        dec_id: None,
+        dec_id: Some(target_dec_id.to_owned()),
         req_path: Some("/root/shared".to_owned()),
     };
 
-    let listener = OnGetObject {};
-    stack
-        .router_handlers()
-        .add_handler(
-            RouterHandlerChain::PreRouter,
-            "get-object1",
-            0,
-            Some(filter.format_string()),
-            None,
-            RouterHandlerAction::Default,
-            Some(Box::new(listener)),
-        )
-        .unwrap();
 
     // 事件是异步注册的，需要等待
     async_std::task::sleep(std::time::Duration::from_secs(2)).await;
 
-    let (q, a) = qa_pair();
+    let (_q, a) = qa_pair();
     //let object_id = q.text_id().object_id().to_owned();
 
     let mut req = NONGetObjectOutputRequest::new_router(None, object_id, None);
@@ -203,13 +199,21 @@ async fn test_outer_put_dec(dec_id: &ObjectId) {
     // let req_path = req_path.format_string();
     // req.common.req_path = Some(req_path);
 
-    let ret = stack.non_service().get_object(req).await;
+    let new_dec = new_dec("cross_dec");
+    let stack1 = stack.fork_with_new_dec(Some(new_dec.clone())).await.unwrap();
+    stack1.wait_online(None).await.unwrap();
+    let ret = stack1.non_service().get_object(req.clone()).await;
     let resp = ret.unwrap();
-
+    // cross dec
     let t = Text::clone_from_slice(&resp.object.object_raw).unwrap();
     assert_eq!(*t.text_id().object_id(), *a.text_id().object_id());
     assert_eq!(resp.object.object_id, *a.text_id().object_id());
 
+    // cross zone
+    let ret = target_stack.non_service().get_object(req.clone()).await;
+    assert!(ret.is_err());
+    let err = ret.err().unwrap();
+    assert_eq!(err.code(), BuckyErrorCode::PermissionDenied);
 }
 
 fn qa_pair() -> (Text, Text) {
@@ -221,40 +225,6 @@ fn qa_pair() -> (Text, Text) {
         .build();
 
     (q, a)
-}
-
-struct OnGetObject;
-
-#[async_trait::async_trait]
-impl EventListenerAsyncRoutine<RouterHandlerGetObjectRequest, RouterHandlerGetObjectResult>
-    for OnGetObject
-{
-    async fn call(
-        &self,
-        param: &RouterHandlerGetObjectRequest,
-    ) -> BuckyResult<RouterHandlerGetObjectResult> {
-        info!("handler_get_object: {}", param.request.object_id);
-
-        let (q, a) = qa_pair();
-
-        assert!(*q.text_id().object_id() == param.request.object_id);
-
-        let object_raw = a.to_vec().unwrap();
-        info!("will return a: {:?}", object_raw);
-
-        let mut response =
-            NONGetObjectInputResponse::new(a.text_id().object_id().to_owned(), object_raw, None);
-        response.init_times()?;
-
-        // let object = Text::clone_from_slice(&param.object_raw).unwrap();
-        let result = RouterHandlerGetObjectResult {
-            action: RouterHandlerAction::Response,
-            request: None,
-            response: Some(Ok(response)),
-        };
-
-        Ok(result)
-    }
 }
 
 async fn test_delete_object(
@@ -280,8 +250,6 @@ async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
         let object = new_object(dec_id, "first-text");
         let object_id = object.text_id().object_id().to_owned();
 
-        info!("hah1: {}", object_id.to_string());
-
         info!("will test put object to ood: {}", object_id);
 
         let mut req = NONPutObjectOutputRequest::new_router(
@@ -302,24 +270,17 @@ async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
 
         let req_path = req_path.format_string();
 
-        //req.common.req_path = Some(req_path);
-        //req.common.req_path = Some("/root/shared".to_owned());
+        req.common.req_path = Some(req_path);
         // 权限位操作
-        // let mut access = AccessString::new(0);
-        // access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
-        // access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Read);
-        // access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Read);
-    
-        // access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Write);
-        // access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Write);
-        // access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Write);
-
-        //req.access = Some(access);
+        let mut access = AccessString::default();
+        access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Read);
+        access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Write);
+        access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Call);
         // 这里是object层对象
-        req.access = None;
+        req.access = Some(access);
 
         // req_path层的权限
-        open_access(&stack, dec_id).await;
+        open_access(&stack, dec_id, "/root/shared", AccessPermissions::Full).await;
 
         let ret = stack.non_service().put_object(req).await.unwrap();
         match ret.result {
@@ -365,33 +326,22 @@ async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
 }
 
 async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &DeviceId) {
-
-    let filter = format!("dec_id == {}", dec_id);
-
+    let get_object_path = "/.cyfs/api/handler/pre_router/get_object/";
     // req_path 统一格式
     let req_path = RequestGlobalStatePath {
         global_state_category: None,
         global_state_root: None,
         dec_id: Some(dec_id.clone()),
-        req_path: Some("/root/shared".to_owned()),
+        req_path: Some(get_object_path.to_owned()),
     };
 
     let req_path = req_path.format_string();
-    println!("req_path: {}", req_path.to_owned());
+    debug!("haha: {}", req_path.to_owned());
 
-    let listener = OnGetObject {};
-    // stack
-    //     .router_handlers()
-    //     .add_handler(
-    //         RouterHandlerChain::PreRouter,
-    //         "get-object2",
-    //         0,
-    //         Some(filter.clone()),
-    //         Some(req_path.to_owned()),
-    //         RouterHandlerAction::Default,
-    //         Some(Box::new(listener)),
-    //     )
-    //     .unwrap();
+    // req_path层的权限
+    let target_stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    open_access(&target_stack, dec_id, get_object_path.to_owned(), AccessPermissions::Full).await;
+    open_access(&stack, dec_id, get_object_path.to_owned(), AccessPermissions::Full).await;
 
     // 事件是异步注册的，需要等待
     async_std::task::sleep(std::time::Duration::from_secs(2)).await;
@@ -399,12 +349,11 @@ async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &De
     let object = new_object(dec_id, "first-text");
     let object_id = object.text_id().object_id().to_owned();
 
-    info!("hah: {}", object_id.to_string());
     let mut req = NONGetObjectOutputRequest::new_router(None, object_id, None);
     req.common.dec_id = Some(dec_id.clone());
-    req.common.target = Some(target.object_id().to_owned());
+    req.common.target = Some(target_stack.local_device_id().object_id().to_owned());
     // req_path 统一格式
-    // req.common.req_path = Some(req_path.to_owned());
+    req.common.req_path = Some(req_path.to_owned());
 
     let ret = stack.non_service().get_object(req).await;
     let resp = ret.unwrap();
