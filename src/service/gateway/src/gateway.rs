@@ -179,7 +179,8 @@ impl Gateway {
 
         let notifier = ZoneRoleChangedNotify {};
         if let Err(e) = stack
-            .uni_stack()
+            .open_uni_stack(&Some(cyfs_core::get_system_dec_app().to_owned()))
+            .await
             .router_events()
             .zone_role_changed_event()
             .add_event("gateway-watcher", -1, Box::new(notifier))

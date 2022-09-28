@@ -1166,4 +1166,8 @@ impl CyfsStack {
     ) -> BuckyResult<SharedCyfsStack> {
         self.stack.open_shared_object_stack(dec_id).await
     }
+
+    pub async fn open_uni_stack(&self, dec_id: &Option<ObjectId>) -> UniCyfsStackRef {
+        self.stack.open_uni_stack(dec_id).await
+    }
 }

@@ -3073,6 +3073,7 @@ dependencies = [
  "clap",
  "cyfs-base",
  "cyfs-bdt",
+ "cyfs-core",
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-stack-loader",
