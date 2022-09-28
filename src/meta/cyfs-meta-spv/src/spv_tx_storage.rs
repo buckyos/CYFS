@@ -728,6 +728,19 @@ impl SPVTxStorage {
                             self.nft_update_state(&mut conn, &nft_tx.nft_id, &NFTState::Normal).await?;
                         }
                     }
+                    MetaTxBody::SetBenefi(tx) => {
+                        if receipt.result == 0 {
+                            if let Ok(nft_detail) = self.nft_get2(&mut conn, &tx.address).await {
+                                self.nft_change_beneficiary(
+                                    &mut conn,
+                                    &tx.address,
+                                    nft_detail.desc.owner_id().as_ref().unwrap(),
+                                    &tx.to,
+                                    block.desc().number(),
+                                    true).await?;
+                            }
+                        }
+                    }
                     // MetaTxBody::SNService(sn_service) => {
                     //     match sn_service {
                     //         SNServiceTx::Publish(service) => {
