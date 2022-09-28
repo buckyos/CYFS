@@ -35,7 +35,7 @@ for (const package of publish_packages) {
     const remote_version = get_remote_version(metadata.name)
     if (local_version !== remote_version) {
         console.log(`found ${metadata.name} local ${local_version}, remote ${remote_version}, need publish?`)
-        let ret = child_process.spawnSync(`cargo publish -p ${metadata.name} --allow-dirty`, {stdio: 'inherit', shell: true})
+        let ret = child_process.spawnSync(`cargo publish -p ${metadata.name} --allow-dirty --no-verify`, {stdio: 'inherit', shell: true})
         if (ret.status !== 0) {
             console.log(`publish package ${metadata.name} failed, please retry.`)
             process.exit(0)
