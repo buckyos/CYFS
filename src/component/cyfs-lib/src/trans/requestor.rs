@@ -49,8 +49,21 @@ impl TransRequestor {
             }
         }
 
+        RequestorHelper::encode_opt_header_with_encoding(http_req, cyfs_base::CYFS_REQ_PATH, com_req.req_path.as_deref());
+        http_req.insert_header(CYFS_API_LEVEL, com_req.level.to_string());
+
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
+        }
+
+        if !com_req.referer_object.is_empty() {
+            let headers: Vec<String> = com_req
+                .referer_object
+                .iter()
+                .map(|v| v.to_string())
+                .collect();
+
+            RequestorHelper::insert_headers(http_req, cyfs_base::CYFS_REFERER_OBJECT, &headers);
         }
 
         http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());

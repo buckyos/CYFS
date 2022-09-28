@@ -4,7 +4,6 @@ use cyfs_base::*;
 
 use cyfs_core::TransContext;
 use serde_json::{Map, Value};
-use std::path::PathBuf;
 use std::str::FromStr;
 
 impl JsonCodec<TransGetContextOutputRequest> for TransGetContextOutputRequest {
@@ -286,36 +285,10 @@ impl JsonCodec<TransPublishFileOutputRequest> for TransPublishFileOutputRequest 
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let mut owner: Option<ObjectId> = None;
-        let mut local_path: Option<PathBuf> = None;
-        let mut chunk_size: Option<u32> = None;
-        let mut dirs: Option<Vec<FileDirRef>> = None;
-
-        for (k, v) in obj {
-            match k.as_str() {
-                "owner" => {
-                    owner = Some(JsonCodecHelper::decode_from_string(v)?);
-                }
-
-                "local_path" => {
-                    local_path = Some(JsonCodecHelper::decode_from_string(v)?);
-                }
-
-                "chunk_size" => {
-                    chunk_size = Some(JsonCodecHelper::decode_to_int(v)?);
-                }
-
-                "dirs" => {
-                    if !JsonCodecHelper::is_none_node(v) {
-                        dirs = Some(JsonCodecHelper::decode_from_array(v)?);
-                    }
-                }
-
-                u @ _ => {
-                    warn!("unknown TransAddFileRequest field: {}", u);
-                }
-            }
-        }
+        let owner = JsonCodecHelper::decode_option_string_field(&obj, "owner")?;
+        let local_path = JsonCodecHelper::decode_option_string_field(&obj, "local_path")?;
+        let chunk_size = JsonCodecHelper::decode_option_int_field(&obj, "chunk_size")?;
+        let dirs = JsonCodecHelper::decode_option_array_field(&obj, "dirs")?;
 
         if owner.is_none() || local_path.is_none() || chunk_size.is_none() {
             error!(
@@ -352,57 +325,21 @@ impl JsonCodec<TransPublishFileInputRequest> for TransPublishFileInputRequest {
             );
             ""
         });
-        obj.insert(
-            "local_path".to_owned(),
-            Value::String(local_path.to_string()),
-        );
-
-        obj.insert(
-            "chunk_size".to_owned(),
-            Value::String(self.chunk_size.to_string()),
-        );
+        JsonCodecHelper::encode_string_field(&mut obj, "local_path", local_path);
+        JsonCodecHelper::encode_number_field(&mut obj, "chunk_size", self.chunk_size);
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "file_id", self.file_id.as_ref());
 
-        if let Some(dirs) = &self.dirs {
-            let node = JsonCodecHelper::encode_to_array(dirs);
-            obj.insert("dirs".to_owned(), node);
-        }
+        JsonCodecHelper::encode_as_option_list(&mut obj, "dirs", self.dirs.as_ref());
 
         obj
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let mut owner: Option<ObjectId> = None;
-        let mut local_path: Option<PathBuf> = None;
-        let mut chunk_size: Option<u32> = None;
-        let mut dirs: Option<Vec<FileDirRef>> = None;
-
-        for (k, v) in obj {
-            match k.as_str() {
-                "owner" => {
-                    owner = Some(JsonCodecHelper::decode_from_string(v)?);
-                }
-
-                "local_path" => {
-                    local_path = Some(JsonCodecHelper::decode_from_string(v)?);
-                }
-
-                "chunk_size" => {
-                    chunk_size = Some(JsonCodecHelper::decode_to_int(v)?);
-                }
-
-                "dirs" => {
-                    if !JsonCodecHelper::is_none_node(v) {
-                        dirs = Some(JsonCodecHelper::decode_from_array(v)?);
-                    }
-                }
-
-                u @ _ => {
-                    warn!("unknown TransAddFileRequest field: {}", u);
-                }
-            }
-        }
+        let owner = JsonCodecHelper::decode_option_string_field(&obj, "owner")?;
+        let local_path = JsonCodecHelper::decode_option_string_field(&obj, "local_path")?;
+        let chunk_size = JsonCodecHelper::decode_option_int_field(&obj, "chunk_size")?;
+        let dirs = JsonCodecHelper::decode_option_array_field(&obj, "dirs")?;
 
         if owner.is_none() || local_path.is_none() || chunk_size.is_none() {
             error!(
@@ -497,20 +434,9 @@ impl JsonCodec<TransQueryTasksOutputRequest> for TransQueryTasksOutputRequest {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
-        if self.context_id.is_some() {
-            JsonCodecHelper::encode_string_field(
-                &mut obj,
-                "context_id",
-                self.context_id.as_ref().unwrap(),
-            );
-        }
-        if self.task_status.is_some() {
-            JsonCodecHelper::encode_string_field(
-                &mut obj,
-                "task_status",
-                self.task_status.as_ref().unwrap(),
-            );
-        }
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_id", self.context_id.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "task_status", self.task_status.as_ref());
+
         if self.range.is_some() {
             JsonCodecHelper::encode_string_field(
                 &mut obj,
