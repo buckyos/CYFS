@@ -22,7 +22,7 @@ rand = '0.8.5'
 cyfs-base = { path = '../cyfs-base', version = '0.6' }
 cyfs-lib = { path = '../cyfs-lib', version = '0.6' }
 cyfs-util = { path = '../cyfs-util', version = '0.6' }
-cyfs-debug = { path = '../cyfs-debug', version = '0.5' }
+cyfs-debug = { path = '../cyfs-debug', version = '0.6' }
 cyfs-core = { path = '../cyfs-core', version = '0.6' }
 cyfs-bdt = { path = '../cyfs-bdt', version = '0.6' }
 
