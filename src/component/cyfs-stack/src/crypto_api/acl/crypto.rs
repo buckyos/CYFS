@@ -22,6 +22,11 @@ impl CryptoAclInputProcessor {
         source: &RequestSourceInfo,
         op_type: RequestOpType,
     ) -> BuckyResult<()> {
+        assert!(source.is_current_zone());
+        if source.is_system_dec() {
+            return Ok(());
+        }
+        
         let path = format!("{}/{}/", CYFS_CRYPTO_VIRTUAL_PATH, name);
         let req_path = RequestGlobalStatePath::new_system_dec(Some(path));
 
