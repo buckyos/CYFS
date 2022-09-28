@@ -162,7 +162,7 @@ impl DsgService {
             contracts: ContractStates::new()
         }));
 
-        let _ = service.listen()?;
+        let _ = service.listen().await?;
         let _ = service.stack().wait_online(None).await?;
 
         {
@@ -201,7 +201,7 @@ impl DsgService {
         Ok(())
     }
 
-    fn listen(&self) -> BuckyResult<()> {
+    async fn listen(&self) -> BuckyResult<()> {
         // post contract state
         struct OnSyncContractState {
             service: DsgService
@@ -232,12 +232,20 @@ impl DsgService {
             }
         }
 
+        let path = RequestGlobalStatePath::new(Some(self.stack().local_device_id().object_id().to_owned()), Some("/dsg/service/sync/state/")).format_string();
+        let access = AccessString::default();
+        let item = GlobalStatePathAccessItem {
+            path: path.clone(),
+            access: GlobalStatePathGroupAccess::Default(access.value()),
+        };
+        self.stack().root_state_meta_stub(Some(self.stack().local_device_id().object_id().to_owned()), None).add_access(item).await?;
+
         let _ = self.stack().router_handlers().add_handler(
             RouterHandlerChain::Handler,
             "OnSyncContractState",
             0,
             Some(format!("obj_type == {} && object.dec_id == {}",  DsgContractStateDesc::obj_type(), dsg_dec_id())),
-            None,
+            Some(path),
             RouterHandlerAction::Default,
             Some(Box::new(OnSyncContractState {service: self.clone()})))
             .map_err(|err| {
@@ -276,12 +284,20 @@ impl DsgService {
             }
         }
 
+        let path = RequestGlobalStatePath::new(Some(self.stack().local_device_id().object_id().to_owned()), Some("/dsg/service/proof/")).format_string();
+        let access = AccessString::default();
+        let item = GlobalStatePathAccessItem {
+            path: path.clone(),
+            access: GlobalStatePathGroupAccess::Default(access.value()),
+        };
+        self.stack().root_state_meta_stub(Some(self.stack().local_device_id().object_id().to_owned()), None).add_access(item).await?;
+
         let _ = self.stack().router_handlers().add_handler(
             RouterHandlerChain::Handler,
             "OnProof",
             0,
             Some(format!("obj_type == {} && object.dec_id == {}",  DsgProofDesc::obj_type(), dsg_dec_id())),
-            None,
+            Some(path),
             RouterHandlerAction::Default,
             Some(Box::new(OnProof {service: self.clone()})))
             .map_err(|err| {
@@ -315,12 +331,20 @@ impl DsgService {
             }
         }
 
+        let path = RequestGlobalStatePath::new(Some(self.stack().local_device_id().object_id().to_owned()), Some("/dsg/service/query/")).format_string();
+        let access = AccessString::default();
+        let item = GlobalStatePathAccessItem {
+            path: path.clone(),
+            access: GlobalStatePathGroupAccess::Default(access.value()),
+        };
+        self.stack().root_state_meta_stub(Some(self.stack().local_device_id().object_id().to_owned()), None).add_access(item).await?;
+
         let _ = self.stack().router_handlers().add_handler(
             RouterHandlerChain::Handler,
             "OnQuery",
             0,
             Some(format!("obj_type == {} && object.dec_id == {}",  DsgQueryDesc::obj_type(), dsg_dec_id())),
-            None,
+            Some(path),
             RouterHandlerAction::Default,
             Some(Box::new(OnQuery {service: self.clone()})))
             .map_err(|err| {
@@ -986,8 +1010,13 @@ impl DsgService {
 
     async fn post_challenge<'a>(&self, challenge: DsgChallengeObjectRef<'a>, miner: ObjectId) -> BuckyResult<()> {
         log::debug!("{} try post challenge, challenge={}", self, challenge);
+
+        let path = RequestGlobalStatePath::new(Some(miner), Some("/dmc/dsg/miner/")).format_string();
+
         let mut req = NONPostObjectOutputRequest::new(NONAPILevel::default(), challenge.id(), challenge.as_ref().to_vec().unwrap());
         req.common.target = Some(miner);
+        req.common.req_path = Some(path);
+        
         if self.contracts().pre_post_challenge(challenge, self.config()) {
             let _ = self.stack().non_service().post_object(req).await
                 .map_err(|err| {

@@ -49,14 +49,20 @@ where
     ) -> BuckyResult<DsgContractStateObject> {
         let state_ref = DsgContractStateObjectRef::from(new_state);
         log::info!("DsgClient try sync contract state, state={}", state_ref);
+
+        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/sync/state/")).format_string();
+
+        let mut req = NONPostObjectOutputRequest::new(
+            NONAPILevel::default(),
+            DsgContractStateObjectRef::from(new_state).id(),
+            new_state.to_vec()?,
+        );
+        req.common.req_path = Some(path);
+
         let resp = self
             .stack()
             .non_service()
-            .post_object(NONPostObjectOutputRequest::new(
-                NONAPILevel::default(),
-                DsgContractStateObjectRef::from(new_state).id(),
-                new_state.to_vec()?,
-            ))
+            .post_object(req)
             .await
             .map_err(|err| {
                 log::error!(
@@ -93,14 +99,19 @@ where
 
     pub async fn query(&self, query: DsgQuery) -> BuckyResult<DsgQuery> {
         let query_obj: DsgQueryObject = query.into();
+
+        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/query/")).format_string();
+        let mut req = NONPostObjectOutputRequest::new(
+            NONAPILevel::default(),
+            query_obj.desc().object_id(),
+            query_obj.to_vec()?,
+        );
+        req.common.req_path = Some(path);
+
         let resp = self
             .stack()
             .non_service()
-            .post_object(NONPostObjectOutputRequest::new(
-                NONAPILevel::default(),
-                query_obj.desc().object_id(),
-                query_obj.to_vec()?,
-            ))
+            .post_object(req)
             .await?;
         let resp = resp.object.unwrap();
         let resp_obj = DsgQueryObject::clone_from_slice(resp.object_raw.as_slice())?;
