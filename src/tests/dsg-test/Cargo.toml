@@ -13,15 +13,15 @@ async-std = { version = "1.8", features = ["std"] }
 futures = { version = "0.3", features = ["default"] }
 async-trait = "0.1.53"
 rand = "0.8.5"
-cyfs-base = {path="../../component/cyfs-base", version="0.5.0"}
-cyfs-debug = {path="../../component/cyfs-debug", version="0.5.0"}
-cyfs-util = {path="../../component/cyfs-util", version="0.5.0"}
-cyfs-bdt = {path="../../component/cyfs-bdt", version="0.5.1"}
+cyfs-base = {path="../../component/cyfs-base"}
+cyfs-debug = {path="../../component/cyfs-debug"}
+cyfs-util = {path="../../component/cyfs-util"}
+cyfs-bdt = {path="../../component/cyfs-bdt"}
 cyfs-ndc = { path = "../../component/cyfs-ndc" }
 cyfs-tracker-cache = { path = "../../component/cyfs-tracker-cache" }
 cyfs-chunk-cache = { path = "../../component/cyfs-chunk-cache" }
-cyfs-lib = {path="../../component/cyfs-lib", version="0.5.0"}
-cyfs-stack = {path="../../component/cyfs-stack", version="0.5.0"}
-cyfs-core = {path="../../component/cyfs-core", version="0.5.0"}
-cyfs-dsg-client = {path="../../component/cyfs-dsg-client", version="0.5"}
-dsg-service = {path="../../service/dsg-service", version="0.5"}
+cyfs-lib = {path="../../component/cyfs-lib"}
+cyfs-stack = {path="../../component/cyfs-stack"}
+cyfs-core = {path="../../component/cyfs-core"}
+cyfs-dsg-client = {path="../../component/cyfs-dsg-client"}
+dsg-service = {path="../../service/dsg-service"}
