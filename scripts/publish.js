@@ -21,10 +21,15 @@ fs.writeFileSync('../cargo_pub_rev', rev)
 console.log('write rev', rev)
 
 // 遍历所有工程
-for (const metadata of metadatas.packages) {
-    if (!publish_packages.includes(metadata.name)) {
-        continue
-    }
+
+function find_metadata(package, packages) {
+    return packages.find((value) => {
+        return value.name === package
+    });
+}
+
+for (const package of publish_packages) {
+    let metadata = find_metadata(package, metadatas.packages);
 
     const local_version = metadata.version
     const remote_version = get_remote_version(metadata.name)
@@ -35,5 +40,7 @@ for (const metadata of metadatas.packages) {
             console.log(`publish package ${metadata.name} failed, please retry.`)
             process.exit(0)
         }
+
+        child_process.spawnSync('timeout /T 10 /NOBREAK', {stdio: 'inherit', shell: true})
     }
 }

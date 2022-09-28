@@ -12,7 +12,7 @@ cyfs-util = { path = '../../component/cyfs-util', version = '0.6' }
 cyfs-bdt = { path = '../../component/cyfs-bdt', version = '0.6' }
 cyfs-base = { path = '../../component/cyfs-base', version = '0.6' }
 cyfs-core = { path = '../../component/cyfs-core', version = '0.6' }
-cyfs-debug = { path = '../../component/cyfs-debug', version = '0.5' }
+cyfs-debug = { path = '../../component/cyfs-debug', version = '0.6' }
 log = '0.4'
 async-h1 = '2.3.3'
 http-types = '2.12'

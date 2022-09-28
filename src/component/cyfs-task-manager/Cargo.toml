@@ -1,6 +1,6 @@
 [package]
 name = "cyfs-task-manager"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust cyfs-task-manager package"
@@ -8,7 +8,7 @@ description = "Rust cyfs-task-manager package"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cyfs-base = { path = "../../component/cyfs-base", version = "0.5" }
+cyfs-base = { path = "../../component/cyfs-base", version = "0.6" }
 async-trait = "0.1.53"
 futures = "0.3"
 log = "0.4"

@@ -1,11 +1,12 @@
 const publish_packages = [
     "cyfs-base",
     "cyfs-base-derive",
-    "cyfs-base-meta",
-    "cyfs-bdt",
-    "cyfs-chunk-lib",
+    "cyfs-util",
     "cyfs-core",
+    "cyfs-base-meta",
+    "cyfs-chunk-lib",
     "cyfs-debug",
+    "cyfs-bdt",
     "cyfs-ecies",
     "cyfs-lib",
     "cyfs-meta-lib",
@@ -14,7 +15,6 @@ const publish_packages = [
     "cyfs-raptorq",
     "cyfs-sha2",
     "cyfs-task-manager",
-    "cyfs-util",
     "cyfs-dsg-client",
     "cyfs-cip"
 ]
