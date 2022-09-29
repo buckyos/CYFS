@@ -452,6 +452,13 @@ impl NamedObjectLocalStorage {
         Ok(resp)
     }
 
+    async fn update_object_meta(
+        &self,
+        req: &NamedObjectCacheUpdateObjectMetaRequest,
+    ) -> BuckyResult<()> {
+        self.meta.update_object_meta(req).await
+    }
+
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         let meta = self.meta.stat().await?;
         let blob = self.blob.stat().await?;
@@ -493,6 +500,13 @@ impl NamedObjectCache for NamedObjectLocalStorage {
         req: &NamedObjectCacheExistsObjectRequest,
     ) -> BuckyResult<NamedObjectCacheExistsObjectResponse> {
         Self::exists_object(&self, req).await
+    }
+
+    async fn update_object_meta(
+        &self,
+        req: &NamedObjectCacheUpdateObjectMetaRequest,
+    ) -> BuckyResult<()> {
+        Self::update_object_meta(&self, req).await
     }
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {

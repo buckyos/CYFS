@@ -156,6 +156,21 @@ impl NamedObjectCache for NamedObjectCacheSerializer {
         ret
     }
 
+    async fn update_object_meta(
+        &self,
+        req: &NamedObjectCacheUpdateObjectMetaRequest,
+    ) -> BuckyResult<()> {
+        let lock = self.acquire_lock(&req.object_id);
+        let ret = {
+            let _guard = lock.lock.lock().await;
+            self.next.update_object_meta(req).await
+        };
+
+        self.leave_lock(&req.object_id, lock);
+
+        ret
+    }
+
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         self.next.stat().await
     }

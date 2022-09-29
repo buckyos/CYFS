@@ -205,6 +205,25 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
         self.next.exists_object(req).await
     }
 
+    async fn update_object_meta(
+        &self,
+        req: &NamedObjectCacheUpdateObjectMetaRequest,
+    ) -> BuckyResult<()> {
+        self.next.update_object_meta(req).await?;
+
+        {
+            let mut cache = self.cache.lock().unwrap();
+            cache.remove(&req.object_id);
+        }
+
+        {
+            let mut cache = self.missing_cache.lock().unwrap();
+            cache.remove(&req.object_id);
+        }
+
+        Ok(())
+    }
+
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         self.next.stat().await
     }

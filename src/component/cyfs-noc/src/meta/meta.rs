@@ -123,6 +123,9 @@ pub struct NamedObjectMetaExistsObjectRequest {
     pub object_id: ObjectId,
 }
 
+pub type NamedObjectMetaUpdateObjectMetaRequest = NamedObjectCacheUpdateObjectMetaRequest;
+
+
 #[derive(Debug, Clone)]
 pub struct NamedObjectMetaStat {
     pub count: u64,
@@ -149,6 +152,11 @@ pub trait NamedObjectMeta: Sync + Send {
     async fn exists_object(&self, req: &NamedObjectMetaExistsObjectRequest) -> BuckyResult<bool>;
 
     async fn update_last_access(&self, req: &NamedObjectMetaUpdateLastAccessRequest) -> BuckyResult<bool>;
+
+    async fn update_object_meta(
+        &self,
+        req: &NamedObjectMetaUpdateObjectMetaRequest,
+    ) -> BuckyResult<()>;
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat>;
 }

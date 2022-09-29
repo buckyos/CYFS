@@ -66,6 +66,17 @@ pub struct NamedObjectCachePutObjectResponse {
     pub expires_time: Option<u64>,
 }
 
+// update object's related meta info (except meta info from object data)
+#[derive(Debug)]
+pub struct NamedObjectCacheUpdateObjectMetaRequest {
+    pub source: RequestSourceInfo,
+    pub object_id: ObjectId,
+    pub storage_category: Option<NamedObjectStorageCategory>,
+    pub context: Option<String>,
+    pub last_access_rpath: Option<String>,
+    pub access_string: Option<u32>,
+}
+
 // get_object
 #[derive(Clone)]
 pub struct NamedObjectCacheGetObjectRequest {
@@ -190,6 +201,11 @@ pub trait NamedObjectCache: Sync + Send {
         &self,
         req: &NamedObjectCacheExistsObjectRequest,
     ) -> BuckyResult<NamedObjectCacheExistsObjectResponse>;
+
+    async fn update_object_meta(
+        &self,
+        req: &NamedObjectCacheUpdateObjectMetaRequest,
+    ) -> BuckyResult<()>;
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat>;
 }

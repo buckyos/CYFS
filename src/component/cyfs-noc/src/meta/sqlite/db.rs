@@ -4,7 +4,7 @@ use super::sql::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use rusqlite::{named_params, Connection, OptionalExtension};
+use rusqlite::{named_params, Connection, OptionalExtension, ToSql};
 use std::cell::RefCell;
 use std::convert::{TryFrom, TryInto};
 use std::path::{Path, PathBuf};
@@ -956,6 +956,126 @@ impl SqliteMetaStorage {
 
         Ok(ret)
     }
+
+    fn update_object_meta(&self, req: &NamedObjectMetaUpdateObjectMetaRequest) -> BuckyResult<()> {
+        info!("noc meta will update object meta: {:?}", req);
+
+        let mut retry_count = 0;
+        loop {
+            // In order to avoid some extreme cases into an infinite loop
+            retry_count += 1;
+            if retry_count > 16 {
+                let msg = format!(
+                    "udpate object extend max retry count! obj={}",
+                    req.object_id
+                );
+                error!("{}", msg);
+
+                break Err(BuckyError::from(msg));
+            }
+
+            let ret = self.query_update_info(&req.object_id)?;
+            if ret.is_none() {
+                let msg = format!(
+                    "noc update object meta but not found! obj={}",
+                    req.object_id
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            }
+
+            let current_info = ret.unwrap();
+            // info!("noc meta current info: {:?}", current_info);
+
+            if !req.source.is_verified(&current_info.create_dec_id) {
+                Self::check_access(
+                    &req.object_id,
+                    current_info.access_string,
+                    &req.source,
+                    &current_info.create_dec_id,
+                    RequestOpType::Write,
+                )?;
+            }
+
+            let ret = self.update_existing_meta(req, &current_info)?;
+            if ret > 0 {
+                break Ok(());
+            }
+        }
+    }
+
+    fn update_existing_meta(
+        &self,
+        req: &NamedObjectCacheUpdateObjectMetaRequest,
+        current_info: &NamedObjectMetaUpdateInfo,
+    ) -> BuckyResult<usize> {
+        // debug!("noc meta update existing: {}", req);
+
+        let now = bucky_time_now();
+        const UPDATE_SQL: &str = r#"
+        UPDATE data_namedobject_meta SET update_time = :update_time, last_access_time = :last_access_time, 
+            {}
+            WHERE object_id = :object_id
+            AND access = :current_access
+        "#;
+
+        let mut sqls = vec![];
+        let mut params: Vec<(&str, &dyn ToSql)> = vec![];
+
+        let object_id = req.object_id.to_string();
+        params.push((":update_time", &now as &dyn ToSql));
+        params.push((":last_access_time", &now as &dyn ToSql));
+        params.push((":object_id", &object_id as &dyn ToSql));
+        params.push((":current_access", &current_info.access_string as &dyn ToSql));
+
+        let storage_category_value;
+        if let Some(storage_category) = &req.storage_category {
+            storage_category_value = Some(storage_category.as_u8());
+            params.push((":storage_category", storage_category_value.as_ref().unwrap() as &dyn ToSql));
+            sqls.push("storage_category = :storage_category");
+        }
+        if let Some(context) = &req.context {
+            params.push((":context", context as &dyn ToSql));
+            sqls.push("context = :context");
+        }
+        if let Some(last_access_rpath) = &req.last_access_rpath {
+            params.push((":last_access_rpath", last_access_rpath as &dyn ToSql));
+            sqls.push("last_access_rpath = :last_access_rpath");
+        }
+        if let Some(access_string) = &req.access_string {
+            params.push((":access", access_string as &dyn ToSql));
+            sqls.push("access = :access");
+        }
+
+        assert!(sqls.len() > 0);
+        let sql = UPDATE_SQL.replace("{}", &sqls.join(","));
+
+        let conn = self.get_conn()?.borrow();
+        let count = conn.execute(&sql, params.as_slice()).map_err(|e| {
+            let msg = format!("noc meta update existing error: {} {}", req.object_id, e);
+            error!("{}", msg);
+
+            warn!("{}", msg);
+            BuckyError::new(BuckyErrorCode::SqliteError, msg)
+        })?;
+
+        if count > 0 {
+            assert_eq!(count, 1);
+            info!(
+                "noc meta update existsing success: obj={}, update_time={} -> {}",
+                req.object_id,
+                current_info.update_time,
+                current_info.object_update_time.unwrap_or(0),
+            );
+        } else {
+            warn!(
+                "noc meta update existsing but not changed: obj={}",
+                req.object_id
+            );
+        }
+
+        Ok(count)
+    }
 }
 
 #[async_trait::async_trait]
@@ -993,6 +1113,13 @@ impl NamedObjectMeta for SqliteMetaStorage {
             n if n >= 1 => Ok(true),
             _ => Ok(false),
         }
+    }
+
+    async fn update_object_meta(
+        &self,
+        req: &NamedObjectMetaUpdateObjectMetaRequest,
+    ) -> BuckyResult<()> {
+        Self::update_object_meta(&self, req)
     }
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat> {

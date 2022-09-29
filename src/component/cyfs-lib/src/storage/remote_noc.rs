@@ -123,6 +123,13 @@ impl NamedObjectCache for RemoteNamedObjectCache {
         unimplemented!();
     }
 
+    async fn update_object_meta(
+        &self,
+        _req: &NamedObjectCacheUpdateObjectMetaRequest,
+    ) -> BuckyResult<()> {
+        unimplemented!();
+    }
+
     async fn exists_object(
         &self,
         _req: &NamedObjectCacheExistsObjectRequest,

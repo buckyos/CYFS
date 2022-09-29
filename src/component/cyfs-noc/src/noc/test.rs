@@ -25,14 +25,17 @@ async fn test_noc() {
     let object = new_object("test-local");
     let update_time = object.object.as_ref().unwrap().update_time().unwrap();
 
-    let object_id = object.object_id.clone();
+    let mut access = AccessString::new(0);
+    access.set_group_permissions(AccessGroup::CurrentDevice, AccessPermissions::Full);
+    access.set_group_permissions(AccessGroup::CurrentZone, AccessPermissions::Full);
+    access.set_group_permissions(AccessGroup::OwnerDec, AccessPermissions::Full);
     let put_req = NamedObjectCachePutObjectRequest {
         source: RequestSourceInfo::new_local_system(),
         object: object,
         storage_category: NamedObjectStorageCategory::Storage,
         context: None,
         last_access_rpath: None,
-        access_string: None,
+        access_string: Some(access.value()),
     };
 
     noc.put_object(&put_req).await.unwrap();
@@ -40,12 +43,14 @@ async fn test_noc() {
     // put by other dec
     let dec1 = new_dec("dec1");
     let source = RequestSourceInfo {
+        protocol: RequestProtocol::Native,
         zone: DeviceZoneInfo {
             device: None,
             zone: None,
             zone_category: DeviceZoneCategory::CurrentDevice,
         },
         dec: dec1,
+        verified: None,
     };
 
     let object = new_object("test-local");
@@ -96,8 +101,6 @@ async fn test_noc() {
     let data = ret.unwrap();
     let got_update_time = data
         .object
-        .as_ref()
-        .unwrap()
         .object
         .as_ref()
         .unwrap()
@@ -105,14 +108,50 @@ async fn test_noc() {
         .unwrap();
     assert_eq!(got_update_time, update_time);
 
+    // update meta
+    let mut access = AccessString::new(0);
+    access.set_group_permissions(AccessGroup::CurrentDevice, AccessPermissions::Full);
+    access.set_group_permissions(AccessGroup::CurrentZone, AccessPermissions::Full);
+    access.set_group_permissions(AccessGroup::FriendZone, AccessPermissions::Full);
+    access.set_group_permissions(AccessGroup::OwnerDec, AccessPermissions::Full);
+    let context = "test1".to_owned();
+    let last_access_rpath = "/test/last_access_rpath".to_owned();
+    let put_req = NamedObjectCacheUpdateObjectMetaRequest {
+        source: RequestSourceInfo::new_local_system(),
+        object_id: data.object.object_id.clone(),
+        storage_category: Some(NamedObjectStorageCategory::Cache),
+        context: Some(context.clone()),
+        last_access_rpath: Some(last_access_rpath.clone()),
+        access_string: Some(access.value()),
+    };
+
+    noc.update_object_meta(&put_req).await.unwrap();
+
+    // reget
+    let get_req = NamedObjectCacheGetObjectRequest {
+        source: RequestSourceInfo::new_local_system(),
+        object_id: object_id.to_owned(),
+        last_access_rpath: None,
+    };
+
+    let ret = noc.get_object(&get_req).await.unwrap();
+    assert!(ret.is_some());
+    let data = ret.unwrap();
+    assert_eq!(*data.meta.context.as_ref().unwrap(), context);
+    assert_eq!(*data.meta.last_access_rpath.as_ref().unwrap(), last_access_rpath);
+    assert_eq!(data.meta.storage_category, NamedObjectStorageCategory::Cache);
+    assert_eq!(data.meta.access_string, access.value());
+
     // get by unknown device
     let source = RequestSourceInfo {
+        protocol: RequestProtocol::Native,
         zone: DeviceZoneInfo {
             device: None,
             zone: None,
             zone_category: DeviceZoneCategory::OtherZone,
         },
         dec: cyfs_core::get_system_dec_app().to_owned(),
+        verified: None,
     };
 
     let get_req = NamedObjectCacheGetObjectRequest {
@@ -128,14 +167,16 @@ async fn test_noc() {
     }
 
     // get by other dec
-    let dec1 = new_dec("dec1");
+    let dec2 = new_dec("dec1");
     let source = RequestSourceInfo {
+        protocol: RequestProtocol::Native,
         zone: DeviceZoneInfo {
             device: None,
             zone: None,
             zone_category: DeviceZoneCategory::CurrentDevice,
         },
-        dec: dec1,
+        dec: dec2.clone(),
+        verified: None,
     };
     let get_req = NamedObjectCacheGetObjectRequest {
         source,
