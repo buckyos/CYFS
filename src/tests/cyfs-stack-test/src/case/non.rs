@@ -38,7 +38,7 @@ fn gen_text_object_list(dec_id: &ObjectId) -> Vec<(Text, ObjectId)> {
 }
 
 pub async fn test() {
-    // zone_same_dec_without_req_path().await;
+    zone_same_dec_without_req_path().await;
     zone_get_with_req_path().await;
 
     info!("test all non case success!");
@@ -65,6 +65,7 @@ async fn zone_same_dec_without_req_path() {
     let _resp = device2.non_service().delete_object(del_req.clone()).await.unwrap();
     info!("delete object success! {}", object_id);
 
+    // put_object to ood1
     let mut req =
         NONPutObjectOutputRequest::new_router(None, object_id.clone(), object.to_vec().unwrap());
 
@@ -72,9 +73,16 @@ async fn zone_same_dec_without_req_path() {
     access.set_group_permissions(AccessGroup::CurrentZone, AccessPermissions::Full);
     access.set_group_permissions(AccessGroup::CurrentDevice, AccessPermissions::Full);
     access.set_group_permissions(AccessGroup::OwnerDec, AccessPermissions::Full);
-    req.access = Some(access);
+    req.access = Some(access.clone());
 
     device1.non_service().put_object(req).await.unwrap();
+
+    // update object meta
+    access.set_group_permissions(AccessGroup::FriendZone, AccessPermissions::ReadOnly);
+    let update_req = NONUpdateObjectMetaOutputRequest::new_router(
+        None, object_id.clone(), Some(access),
+    );
+    device1.non_service().update_object_meta(update_req).await.unwrap();
 
     // test get by same dec
     let req = NONGetObjectRequest::new_router(None, object_id, None);

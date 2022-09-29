@@ -28,8 +28,7 @@ impl NONRequestorHelper {
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
 
-        let mut info = NONObjectInfo::new(object_id, object_raw, None);
-        info.decode_and_verify()?;
+        let info = NONObjectInfo::new(object_id, object_raw, None);
 
         Ok(info)
     }
@@ -41,7 +40,23 @@ impl NONRequestorHelper {
         // 头部必须有object-id字段
         let object_id: ObjectId = RequestorHelper::decode_header(req, cyfs_base::CYFS_OBJECT_ID)?;
 
-        Self::decode_object_info_from_body(object_id, req).await
+        let mut info = Self::decode_object_info_from_body(object_id, req).await?;
+        info.decode_and_verify()?;
+        Ok(info)
+    }
+
+    pub async fn decode_allow_empty_object_info<T>(req: &mut T) -> BuckyResult<NONObjectInfo>
+    where
+        T: BodyOp + HeaderOp,
+    {
+        // 头部必须有object-id字段
+        let object_id: ObjectId = RequestorHelper::decode_header(req, cyfs_base::CYFS_OBJECT_ID)?;
+
+        let mut info = Self::decode_object_info_from_body(object_id, req).await?;
+        if !info.is_empty() {
+            info.decode_and_verify()?;
+        }
+        Ok(info)
     }
 
     pub async fn decode_option_object_info<T>(req: &mut T) -> BuckyResult<Option<NONObjectInfo>>
@@ -55,7 +70,8 @@ impl NONRequestorHelper {
             return Ok(None);
         }
 
-        let info = Self::decode_object_info_from_body(ret.unwrap(), req).await?;
+        let mut info = Self::decode_object_info_from_body(ret.unwrap(), req).await?;
+        info.decode_and_verify()?;
 
         Ok(Some(info))
     }
@@ -65,8 +81,11 @@ impl NONRequestorHelper {
         T: BodyOp + HeaderOp,
     {
         req.insert_header(cyfs_base::CYFS_OBJECT_ID, info.object_id.to_string());
-        req.set_body(info.object_raw);
-        req.set_content_type(CYFS_OBJECT_MIME.clone());
+
+        if info.object_raw.len() > 0 {
+            req.set_body(info.object_raw);
+            req.set_content_type(CYFS_OBJECT_MIME.clone());
+        }
     }
 
     pub async fn decode_get_object_response<T>(
@@ -151,7 +170,11 @@ impl NONRequestor {
             }
         }
 
-        RequestorHelper::encode_opt_header_with_encoding(http_req, cyfs_base::CYFS_REQ_PATH, com_req.req_path.as_deref());
+        RequestorHelper::encode_opt_header_with_encoding(
+            http_req,
+            cyfs_base::CYFS_REQ_PATH,
+            com_req.req_path.as_deref(),
+        );
 
         http_req.insert_header(cyfs_base::CYFS_NON_ACTION, action.to_string());
 
@@ -171,11 +194,13 @@ impl NONRequestor {
     fn encode_put_object_request(&self, req: &NONPutObjectOutputRequest) -> Request {
         #[cfg(debug_assertions)]
         {
-            req.object.verify().expect(&format!(
-                "pub object id unmatch: id={}, object={:?}",
-                req.object.object_id,
-                req.object.object_raw.to_hex()
-            ));
+            if !req.object.is_empty() {
+                req.object.verify().expect(&format!(
+                    "pub object id unmatch: id={}, object={:?}",
+                    req.object.object_id,
+                    req.object.object_raw.to_hex()
+                ));
+            }
         }
 
         let mut http_req = Request::new(Method::Put, self.service_url.clone());
@@ -230,6 +255,19 @@ impl NONRequestor {
             );
             Err(e)
         }
+    }
+
+    pub async fn update_object_meta(
+        &self,
+        req: NONUpdateObjectMetaOutputRequest,
+    ) -> BuckyResult<NONPutObjectOutputResponse> {
+        let req = NONPutObjectOutputRequest {
+            common: req.common,
+            object: NONObjectInfo::new(req.object_id, vec![], None),
+            access: req.access,
+        };
+
+        self.put_object(req).await
     }
 
     fn encode_get_object_request(&self, req: &NONGetObjectOutputRequest) -> Request {

@@ -243,6 +243,10 @@ impl NONObjectInfo {
         Ok(Self::new(object_id, object_raw, Some(Arc::new(object))))
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.object_raw.is_empty()
+    }
+    
     pub fn object(&self) -> &Arc<AnyNamedObject> {
         self.object.as_ref().unwrap()
     }
@@ -418,6 +422,12 @@ pub struct NONSlimObjectInfo {
 }
 
 impl fmt::Debug for NONSlimObjectInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+
+impl fmt::Display for NONSlimObjectInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "object_id: {}", self.object_id)?;
         if let Some(object_raw) = &self.object_raw {

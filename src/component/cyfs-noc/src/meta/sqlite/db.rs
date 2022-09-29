@@ -402,9 +402,15 @@ impl SqliteMetaStorage {
                         let new_update_time = req.object_update_time.unwrap_or(0);
 
                         if current_update_time >= new_update_time {
-                            let msg = format!("noc meta update object but object's update time is same or older! obj={}, current={}, new={}", 
+                            if current_update_time != new_update_time {
+                                let msg = format!("noc meta update object but object's update time is older! obj={}, current={}, new={}", 
                                 req.object_id, current_update_time, new_update_time);
-                            warn!("{}", msg);
+                                warn!("{}", msg);
+                            } else {
+                                let msg = format!("noc meta update object but object's update time is same! obj={}, current={}, new={}", 
+                                req.object_id, current_update_time, new_update_time);
+                                debug!("{}", msg);
+                            }
 
                             let resp = NamedObjectMetaPutObjectResponse {
                                 result: NamedObjectMetaPutObjectResult::AlreadyExists,
@@ -960,6 +966,10 @@ impl SqliteMetaStorage {
     fn update_object_meta(&self, req: &NamedObjectMetaUpdateObjectMetaRequest) -> BuckyResult<()> {
         info!("noc meta will update object meta: {:?}", req);
 
+        if req.is_empty() {
+            return Ok(());
+        }
+
         let mut retry_count = 0;
         loop {
             // In order to avoid some extreme cases into an infinite loop
@@ -1009,7 +1019,9 @@ impl SqliteMetaStorage {
         req: &NamedObjectCacheUpdateObjectMetaRequest,
         current_info: &NamedObjectMetaUpdateInfo,
     ) -> BuckyResult<usize> {
-        // debug!("noc meta update existing: {}", req);
+        trace!("noc meta update existing meta: {:?}", req);
+
+        assert!(!req.is_empty());
 
         let now = bucky_time_now();
         const UPDATE_SQL: &str = r#"
@@ -1031,7 +1043,10 @@ impl SqliteMetaStorage {
         let storage_category_value;
         if let Some(storage_category) = &req.storage_category {
             storage_category_value = Some(storage_category.as_u8());
-            params.push((":storage_category", storage_category_value.as_ref().unwrap() as &dyn ToSql));
+            params.push((
+                ":storage_category",
+                storage_category_value.as_ref().unwrap() as &dyn ToSql,
+            ));
             sqls.push("storage_category = :storage_category");
         }
         if let Some(context) = &req.context {
@@ -1052,7 +1067,10 @@ impl SqliteMetaStorage {
 
         let conn = self.get_conn()?.borrow();
         let count = conn.execute(&sql, params.as_slice()).map_err(|e| {
-            let msg = format!("noc meta update existing error: {} {}", req.object_id, e);
+            let msg = format!(
+                "noc meta update existing meta error: {} {}",
+                req.object_id, e
+            );
             error!("{}", msg);
 
             warn!("{}", msg);
@@ -1062,14 +1080,14 @@ impl SqliteMetaStorage {
         if count > 0 {
             assert_eq!(count, 1);
             info!(
-                "noc meta update existsing success: obj={}, update_time={} -> {}",
+                "noc meta update existsing meta success: obj={}, update_time={} -> {}",
                 req.object_id,
                 current_info.update_time,
                 current_info.object_update_time.unwrap_or(0),
             );
         } else {
             warn!(
-                "noc meta update existsing but not changed: obj={}",
+                "noc meta update existsing meta but not changed: obj={}",
                 req.object_id
             );
         }

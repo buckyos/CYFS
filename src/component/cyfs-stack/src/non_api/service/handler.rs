@@ -117,7 +117,7 @@ impl NONRequestHandler {
         }
 
         let common = Self::decode_common_headers(&req)?;
-        let object = NONRequestorHelper::decode_object_info(&mut req.request).await?;
+        let object = NONRequestorHelper::decode_allow_empty_object_info(&mut req.request).await?;
 
         let access: Option<u32>= RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_ACCESS)?;
         let access = access.map(|v| AccessString::new(v));

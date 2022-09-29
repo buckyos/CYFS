@@ -166,6 +166,40 @@ impl NOCLevelInputProcessor {
         })
     }
 
+    async fn update_object_meta(
+        &self,
+        req: NONPutObjectInputRequest,
+    ) -> BuckyResult<NONPutObjectInputResponse> {
+        assert!(req.object.is_empty());
+
+        debug!(
+            "will update object meta local noc: id={}, access={:?}, {}",
+            req.object.object_id, req.access, req.common.source,
+        );
+
+        let noc_req = NamedObjectCacheUpdateObjectMetaRequest {
+            source: req.common.source,
+            object_id: req.object.object_id,
+            storage_category: None,
+            context: None,
+            last_access_rpath: None,
+            access_string: req.access.as_ref().map(|v| v.value()),
+        };
+
+        self.noc.update_object_meta(&noc_req).await?;
+     
+        info!(
+            "update object meta success: id={}, access={:?}",
+            noc_req.object_id, req.access,
+        );
+         
+        Ok(NONPutObjectInputResponse {
+            result: NONPutObjectResult::Accept,
+            object_expires_time: None,
+            object_update_time: None,
+        })
+    }
+
     pub async fn get_object(
         &self,
         req: NONGetObjectInputRequest,
@@ -234,7 +268,11 @@ impl NONInputProcessor for NOCLevelInputProcessor {
         &self,
         req: NONPutObjectInputRequest,
     ) -> BuckyResult<NONPutObjectInputResponse> {
-        NOCLevelInputProcessor::put_object(&self, req).await
+        if req.object.is_empty() {
+            Self::update_object_meta(&self, req).await
+        } else {
+            Self::put_object(&self, req).await
+        }
     }
 
     async fn get_object(

@@ -110,6 +110,54 @@ impl fmt::Display for NONPutObjectOutputRequest {
 }
 
 #[derive(Clone)]
+pub struct NONUpdateObjectMetaOutputRequest {
+    pub common: NONOutputRequestCommon,
+
+    pub object_id: ObjectId,
+    pub access: Option<AccessString>,
+}
+
+impl NONUpdateObjectMetaOutputRequest {
+    pub fn new(level: NONAPILevel, object_id: ObjectId, access: Option<AccessString>) -> Self {
+        Self {
+            common: NONOutputRequestCommon::new(level),
+            object_id,
+            access,
+        }
+    }
+
+    pub fn new_noc(object_id: ObjectId, access: Option<AccessString>) -> Self {
+        Self::new(NONAPILevel::NOC, object_id, access)
+    }
+
+    pub fn new_non(target: Option<DeviceId>, object_id: ObjectId, access: Option<AccessString>) -> Self {
+        let mut ret = Self::new(NONAPILevel::NON, object_id, access);
+        ret.common.target = target.map(|v| v.into());
+
+        ret
+    }
+
+    pub fn new_router(target: Option<ObjectId>, object_id: ObjectId, access: Option<AccessString>) -> Self {
+        let mut ret = Self::new(NONAPILevel::Router, object_id, access);
+        ret.common.target = target;
+
+        ret
+    }
+}
+
+impl fmt::Display for NONUpdateObjectMetaOutputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)?;
+        write!(f, ", object: {}", self.object_id)?;
+        if let Some(access) = &self.access {
+            write!(f, ", access: {}", access.to_string())?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
 pub struct NONPutObjectOutputResponse {
     pub result: NONPutObjectResult,
     pub object_update_time: Option<u64>,

@@ -71,10 +71,20 @@ pub struct NamedObjectCachePutObjectResponse {
 pub struct NamedObjectCacheUpdateObjectMetaRequest {
     pub source: RequestSourceInfo,
     pub object_id: ObjectId,
+
     pub storage_category: Option<NamedObjectStorageCategory>,
     pub context: Option<String>,
     pub last_access_rpath: Option<String>,
     pub access_string: Option<u32>,
+}
+
+impl NamedObjectCacheUpdateObjectMetaRequest {
+    pub fn is_empty(&self) -> bool {
+        self.storage_category.is_none()
+            && self.context.is_none()
+            && self.last_access_rpath.is_none()
+            && self.access_string.is_none()
+    }
 }
 
 // get_object
