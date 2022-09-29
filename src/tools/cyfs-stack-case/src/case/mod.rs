@@ -8,8 +8,8 @@ pub async fn test() {
     // non/router-handler/root-state/rmeta 目前rust的用例至少要覆盖这几大模块
     // [source-zone, source-dec-id, target-zone, target-dec-id]
 
-    //root_state_beta::test().await;
-   // non_beta::test().await;
+    root_state_beta::test().await;
+    non_beta::test().await;
 
     router_handler_beta::test().await;
 

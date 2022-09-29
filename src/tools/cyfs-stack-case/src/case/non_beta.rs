@@ -116,6 +116,9 @@ async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl 
     access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Call);
     access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Call);
     access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Call);
+    
+    access.set_group_permission(AccessGroup::OthersZone, AccessPermission::Read);
+
 
     let item = GlobalStatePathAccessItem {
         path: req_path.into(),
@@ -126,8 +129,8 @@ async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl 
 }
 
 // object层 跨dec 在设置和不设置对应group情况下的操作是否正常
-// object层 跨zone在设置和不设置对应group情况下的操作是否正常, 不允许跨zone put
-async fn test_outer_put_dec(dec_id: &ObjectId) {
+// object层 跨zone在设置和不设置对应group情况下的操作是否正常, 不允许跨zone put, 允许跨zone get
+async fn test_outer_put_dec(_dec_id: &ObjectId) {
 
     let dec_id = TestLoader::get_shared_stack(DeviceIndex::User1Device2).dec_id().unwrap().to_owned();
     let (_q, a) = qa_pair();
@@ -162,6 +165,16 @@ async fn test_outer_put_dec(dec_id: &ObjectId) {
     //open_access(&stack, dec_id, "/root/shared", AccessPermissions::Full).await;
     //open_access(&target_stack, dec_id, "/root/shared", AccessPermissions::Full).await;
 
+    let target_dec_id = TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().clone();
+    let req_path = RequestGlobalStatePath {
+        global_state_category: None,
+        global_state_root: None,
+        dec_id: Some(target_dec_id.to_owned()),
+        req_path: Some("/root/shared".to_owned()),
+    };
+
+    req.common.req_path = Some(req_path.format_string());
+
     let ret = stack.non_service().put_object(req).await;
     match ret {
         Err(e) => {
@@ -169,15 +182,6 @@ async fn test_outer_put_dec(dec_id: &ObjectId) {
         }
         Ok(ret) => info!("put: {}", ret),
     }
-
-    let target_dec_id = TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().clone();
-    let path = RequestGlobalStatePath {
-        global_state_category: None,
-        global_state_root: None,
-        dec_id: Some(target_dec_id.to_owned()),
-        req_path: Some("/root/shared".to_owned()),
-    };
-
 
     // 事件是异步注册的，需要等待
     async_std::task::sleep(std::time::Duration::from_secs(2)).await;
@@ -188,16 +192,6 @@ async fn test_outer_put_dec(dec_id: &ObjectId) {
     let mut req = NONGetObjectOutputRequest::new_router(None, object_id, None);
     req.common.dec_id = Some(TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().to_owned());
     req.common.target = Some(stack.local_device_id().into());
-    // // req_path 统一格式
-    // let req_path = RequestGlobalStatePath {
-    //     global_state_category: None,
-    //     global_state_root: None,
-    //     dec_id: None,
-    //     req_path: Some("/root/shared".to_owned()),
-    // };
-
-    // let req_path = req_path.format_string();
-    // req.common.req_path = Some(req_path);
 
     let new_dec = new_dec("cross_dec");
     let stack1 = stack.fork_with_new_dec(Some(new_dec.clone())).await.unwrap();
@@ -209,11 +203,32 @@ async fn test_outer_put_dec(dec_id: &ObjectId) {
     assert_eq!(*t.text_id().object_id(), *a.text_id().object_id());
     assert_eq!(resp.object.object_id, *a.text_id().object_id());
 
-    // cross zone
+    // cross zone not perm
+    // let ret = target_stack.non_service().get_object(req.clone()).await;
+    // assert!(ret.is_err());
+    // let err = ret.err().unwrap();
+    // assert_eq!(err.code(), BuckyErrorCode::PermissionDenied);
+
+    // cross zone add perm
+    // 目标req_path层, dec-id开启对应的权限才可以操作
+    open_access(&stack, &TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().to_owned(), "/root/shared", AccessPermissions::Full).await;
+    // 挂在树上
+    let stub = stack.root_state_stub(Some(stack.local_device_id().object_id().to_owned()), None);
+    let op_env = stub.create_path_op_env().await.unwrap();
+    op_env.set_with_path("/root/shared", &object_id, None, true).await.unwrap();
+    let _root_info = op_env.commit().await.unwrap();
+
+    req.common.req_path = Some(req_path.format_string());
+    req.common.dec_id = Some(TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().to_owned());
+    req.common.target = Some(stack.local_device_id().into());
     let ret = target_stack.non_service().get_object(req.clone()).await;
-    assert!(ret.is_err());
-    let err = ret.err().unwrap();
-    assert_eq!(err.code(), BuckyErrorCode::PermissionDenied);
+    let resp = ret.unwrap();
+    let t = Text::clone_from_slice(&resp.object.object_raw).unwrap();
+    assert_eq!(*t.text_id().object_id(), *a.text_id().object_id());
+    assert_eq!(resp.object.object_id, *a.text_id().object_id());
+
+    info!("cross zone get object success");
+
 }
 
 fn qa_pair() -> (Text, Text) {
