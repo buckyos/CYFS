@@ -1,3 +1,4 @@
+use crate::app_acl_util::*;
 use crate::dapp::DApp;
 use crate::docker_api::*;
 use crate::package::AppPackage;
@@ -7,12 +8,10 @@ use cyfs_core::{DecApp, DecAppId, DecAppObj, SubErrorCode};
 use cyfs_lib::*;
 use cyfs_util::*;
 use log::*;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 pub type AppActionResult<T> = Result<T, SubErrorCode>;
 
@@ -20,15 +19,6 @@ pub struct PermissionNode {
     key: String,
     reason: String,
 }
-
-#[derive(Clone, Serialize, Deserialize)]
-struct AclConfig {
-    access: Option<HashMap<String, AccessString>>,
-    link: Option<HashMap<String, String>>,
-    config: Option<HashMap<String, String>>,
-}
-
-type AclConfigs = HashMap<String, AclConfig>;
 
 pub struct AppController {
     shared_stack: Option<SharedCyfsStack>,
@@ -361,63 +351,10 @@ impl AppController {
             return Ok(None);
         }
 
-        let contents = std::fs::read_to_string(acl_file).map_err(|e| {
-            let msg = format!("read acl config failed! app={}, err={}", app_id, e);
-            warn!("{}", msg);
+        let acl_config = AppAclUtil::load_from_file(app_id, &acl_file)?;
 
-            BuckyError::new(BuckyErrorCode::IoError, msg)
-        })?;
-
-        info!("read acl config:{}", contents);
-
-        let acl_config: AclConfigs = toml::from_str(&contents).map_err(|e| {
-            let msg = format!("parse acl config failed! app={}, err={}", app_id, e);
-            warn!("{}", msg);
-
-            BuckyError::new(BuckyErrorCode::ParseError, msg)
-        })?;
-
-        for (id, config) in &acl_config {
-            let dec_id = if id == "self" {
-                app_id.object_id().clone()
-            } else if id == "system" {
-                cyfs_core::get_system_dec_app().clone()
-            } else {
-                ObjectId::from_str(id.as_str())?
-            };
-
-            let meta_stub = self
-                .shared_stack
-                .as_ref()
-                .unwrap()
-                .root_state_meta_stub(None, Some(dec_id));
-
-            if let Some(access) = &config.access {
-                for (path, access) in access {
-                    let ret = meta_stub
-                        .add_access(GlobalStatePathAccessItem::new(path, access.value()))
-                        .await;
-                    if let Err(e) = ret {
-                        warn!(
-                            "add access failed. app:{}, dest:{}, path:{}, access:{:?}, err:{}",
-                            app_id, id, path, access, e
-                        );
-                    }
-                }
-            }
-
-            if let Some(link) = &config.link {
-                for (source, target) in link {
-                    let ret = meta_stub.add_link(source, target).await;
-                    if let Err(e) = ret {
-                        warn!(
-                            "add link failed. app:{}, dest:{}, source:{}, target:{}, err:{}",
-                            app_id, id, source, target, e
-                        );
-                    }
-                }
-            }
-        }
+        let _ =
+            AppAclUtil::apply_acl(app_id, self.shared_stack.as_ref().unwrap(), acl_config).await;
 
         //TODO: Requires users to agree to permissions, not automatic settings
         Ok(None)

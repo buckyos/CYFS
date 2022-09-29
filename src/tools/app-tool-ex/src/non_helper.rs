@@ -1,8 +1,11 @@
 //use crate::app_manager_ex::USER_APP_LIST;
+use cyfs_base::*;
+use cyfs_core::{
+    get_system_dec_app, AppCmdList, AppLocalList, AppLocalStatus, DecApp, DecAppId,
+    APP_LOCAL_LIST_PATH, CMD_LIST_PATH,
+};
 use cyfs_lib::*;
 use log::*;
-use cyfs_base::*;
-use cyfs_core::{APP_LOCAL_LIST_PATH, AppCmdList, AppLocalList, AppLocalStatus, CMD_LIST_PATH, DecApp, DecAppId};
 
 const DEFAULT_CMD_LIST: &str = "default";
 const APP_MAIN_PATH: &str = "/app";
@@ -123,7 +126,11 @@ impl NonHelper {
     }
 
     // send cmds without reponse object
-    pub async fn post_object_without_resp<D, T, N>(&self, obj: &N) -> BuckyResult<()>
+    pub async fn post_object_without_resp<D, T, N>(
+        &self,
+        obj: &N,
+        req_path: Option<String>,
+    ) -> BuckyResult<()>
     where
         D: ObjectType,
         T: RawEncode,
@@ -131,8 +138,10 @@ impl NonHelper {
         N: NamedObject<D>,
         <D as ObjectType>::ContentType: BodyContent,
     {
-        let req =
+        let mut req =
             NONPostObjectOutputRequest::new_router(None, obj.desc().calculate_id(), obj.to_vec()?);
+        req.common.req_path = req_path;
+
         let ret = self
             .shared_stack
             .as_ref()

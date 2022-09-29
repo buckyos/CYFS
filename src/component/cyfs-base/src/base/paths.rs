@@ -1,4 +1,3 @@
-
 // Every app has one
 pub const CYFS_GLOBAL_STATE_META_PATH: &str = "/.cyfs/meta";
 
@@ -14,7 +13,7 @@ pub const CYFS_APP_LOCAL_STATUS_PATH: &str = "/app/${DecAppId}/local_status";
 // Known zones in local-cache
 pub const CYFS_KNOWN_ZONES_PATH: &str = "/data/known-zones";
 
-// Virtual path for handler and api 
+// Virtual path for handler and api
 pub const CYFS_API_VIRTUAL_PATH: &str = "/.cyfs/api";
 pub const CYFS_HANDLER_VIRTUAL_PATH: &str = "/.cyfs/api/handler";
 pub const CYFS_CRYPTO_VIRTUAL_PATH: &str = "/.cyfs/api/crypto";
@@ -24,3 +23,6 @@ pub const CYFS_SYSTEM_VIRTUAL_PATH: &str = "/.cyfs/api/system";
 pub const CYFS_SYSTEM_ADMIN_VIRTUAL_PATH: &str = "/.cyfs/api/system/admin";
 pub const CYFS_SYSTEM_ROLE_VIRTUAL_PATH: &str = "/.cyfs/api/system/role";
 pub const CYFS_SYSTEM_APP_VIRTUAL_PATH: &str = "/.cyfs/api/system/app";
+
+//App control cmds (e.g.: Start, Stop, Install, Uninstall)
+pub const CYFS_SYSTEM_APP_CMD_VIRTUAL_PATH: &str = "/.cyfs/api/system/app/cmd";

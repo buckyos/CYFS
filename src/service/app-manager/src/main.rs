@@ -1,17 +1,20 @@
 #![windows_subsystem = "windows"]
+use crate::app_controller::AppController;
+use crate::app_manager_ex::AppManager as AppManagerEx;
+use app_manager_lib::{AppManagerConfig, AppManagerHostMode};
+use clap::App;
 use cyfs_base::*;
+use cyfs_core::DecAppId;
 use cyfs_lib::SharedCyfsStack;
+use cyfs_util::process::{
+    check_cmd_and_exec, prepare_args, set_process_cmd_funcs, ProcessAction, ProcessCmdFuncs,
+};
 use log::*;
 use ood_daemon::init_system_config;
-use app_manager_lib::{AppManagerConfig, AppManagerHostMode};
-use crate::app_manager_ex::AppManager as AppManagerEx;
-use crate::app_controller::AppController;
-use std::{sync::Arc, str::FromStr};
-use cyfs_util::process::{ProcessCmdFuncs, prepare_args, check_cmd_and_exec, ProcessAction, set_process_cmd_funcs};
-use clap::App;
 use std::fs;
-use cyfs_core::DecAppId;
+use std::{str::FromStr, sync::Arc};
 
+mod app_acl_util;
 mod app_cmd_executor;
 mod app_controller;
 mod app_install_detail;
@@ -44,7 +47,7 @@ impl AppManagerProcessFuncs {
                         info!("[STOP] stop app:{}, ret:{:?}", app_id, ret);
                     }
                 }
-            }     
+            }
         }
 
         Ok(())
@@ -67,10 +70,10 @@ async fn main() {
     //cyfs_base::init_log_with_isolate_bdt(APP_MANAGER_NAME, Some("debug"), None);
     //let action = cyfs_util::process::check_cmd_and_exec(APP_MANAGER_NAME);
     let app_config = AppManagerConfig::new();
-    let use_docker = *app_config.host_mode() == AppManagerHostMode::Default && cfg!(target_os = "linux");
+    let use_docker =
+        *app_config.host_mode() == AppManagerHostMode::Default && cfg!(target_os = "linux");
 
-    let app = App::new(&format!("{}", APP_MANAGER_NAME))
-        .version(cyfs_base::get_version());
+    let app = App::new(&format!("{}", APP_MANAGER_NAME)).version(cyfs_base::get_version());
 
     let app = prepare_args(app);
     let matches = app.get_matches();
@@ -93,9 +96,9 @@ async fn main() {
 
     info!("app use docker:{}", use_docker);
 
-    let _ = set_process_cmd_funcs(Box::new(AppManagerProcessFuncs {use_docker}));
+    let _ = set_process_cmd_funcs(Box::new(AppManagerProcessFuncs { use_docker }));
     check_cmd_and_exec(APP_MANAGER_NAME);
-    
+
     if matches.is_present("stop") {
         unreachable!("Stop cmd should exit.");
     }

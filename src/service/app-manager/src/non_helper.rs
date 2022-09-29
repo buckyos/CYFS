@@ -304,6 +304,11 @@ impl NonHelper {
             return Err(e);
         }
 
+        info!(
+            "save app web dir success, app:{}, ver:{}, dir:{}",
+            app_id, ver, web_dir_id
+        );
+
         Ok(())
     }
 
@@ -337,6 +342,11 @@ impl NonHelper {
             return Err(e);
         }
 
+        info!(
+            "remove app web dir success, app:{}, ver:{}, dir:{}",
+            app_id, ver, web_dir_id
+        );
+
         Ok(())
     }
 
@@ -349,6 +359,10 @@ impl NonHelper {
             );
             return Err(e);
         }
+        info!(
+            "register app name success, app:{}, name:{}",
+            app_id, app_name
+        );
 
         Ok(())
     }
@@ -365,6 +379,11 @@ impl NonHelper {
             );
             return Err(e);
         }
+
+        info!(
+            "unregister app name success, app:{}, name:{}",
+            app_id, app_name
+        );
 
         Ok(())
     }
@@ -444,7 +463,7 @@ impl NonHelper {
             .put_object(NONPutObjectRequest {
                 common: NONOutputRequestCommon::new(NONAPILevel::Router),
                 object: NONObjectInfo::new(obj.desc().calculate_id(), obj.to_vec()?, None),
-                access: None
+                access: None,
             })
             .await
     }
