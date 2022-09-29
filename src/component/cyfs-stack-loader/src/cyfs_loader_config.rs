@@ -55,7 +55,6 @@ enable = ${front_enable}
 #target = dev
 
 [stack.noc]
-type = "sqlite"
 
 [[stack.interface]]
 type = "http"
