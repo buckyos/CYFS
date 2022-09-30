@@ -110,39 +110,58 @@ impl fmt::Display for SelectOption {
     }
 }
 
-struct SelectResponseObjectMetaInfo {
-    size: u32,
-    insert_time: u64,
+
+#[derive(Debug, Clone)]
+pub struct SelectResponseObjectMetaInfo {
+    pub size: u32,
+    pub insert_time: u64,
+    pub create_dec_id: Option<ObjectId>,
+    pub context: Option<String>,
+    pub last_access_rpath: Option<String>,
+    pub access_string: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
 pub struct SelectResponseObjectInfo {
-    pub size: u32,
-    pub insert_time: u64,
+    pub meta: SelectResponseObjectMetaInfo,
     pub object: Option<NONObjectInfo>,
 }
 
 impl SelectResponseObjectInfo {
-    fn from_meta(info: SelectResponseObjectMetaInfo) -> Self {
+    fn from_meta(meta: SelectResponseObjectMetaInfo) -> Self {
         Self {
-            size: info.size,
-            insert_time: info.insert_time,
+            meta,
             object: None,
         }
     }
 
-    fn meta(&self) -> SelectResponseObjectMetaInfo {
-        SelectResponseObjectMetaInfo {
-            size: self.size,
-            insert_time: self.insert_time,
+    fn meta(&self) -> &SelectResponseObjectMetaInfo {
+        &self.meta
+    }
+}
+
+impl fmt::Display for SelectResponseObjectMetaInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "size:{}, insert_time:{}", self.size, self.insert_time)?;
+
+        if let Some(v) = &self.create_dec_id {
+            write!(f, ", create_dec_id:{} ", v)?;
         }
+        if let Some(v) = &self.context {
+            write!(f, ", context:{} ", v)?;
+        }
+        if let Some(v) = &self.last_access_rpath {
+            write!(f, ", last_access_rpath:{} ", v)?;
+        }
+        write!(f, ", access:{:?}", self.access_string)?;
+
+        Ok(())
     }
 }
 
 impl fmt::Display for SelectResponseObjectInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "size:{} ", self.size)?;
-        write!(f, "insert_time:{} ", self.insert_time)?;
+        write!(f, "{} ", self.meta)?;
 
         if let Some(obj) = &self.object {
             write!(f, "object:{} ", obj)?;
@@ -163,6 +182,11 @@ impl JsonCodec<SelectResponseObjectMetaInfo> for SelectResponseObjectMetaInfo {
             Value::String(self.insert_time.to_string()),
         );
 
+        JsonCodecHelper::encode_option_string_field(&mut obj, "create_dec_id", self.create_dec_id.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context", self.context.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "last_access_rpath", self.last_access_rpath.as_ref());
+        JsonCodecHelper::encode_option_number_field(&mut obj, "access", self.access_string);
+
         obj
     }
 
@@ -170,12 +194,19 @@ impl JsonCodec<SelectResponseObjectMetaInfo> for SelectResponseObjectMetaInfo {
         Ok(Self {
             size: JsonCodecHelper::decode_int_field(obj, "size")?,
             insert_time: JsonCodecHelper::decode_int_field(obj, "insert_time")?,
+            create_dec_id: JsonCodecHelper::decode_option_string_field(obj, "create_dec_id")?,
+            context: JsonCodecHelper::decode_option_string_field(obj, "context")?,
+            last_access_rpath: JsonCodecHelper::decode_option_string_field(obj, "last_access_rpath")?,
+            access_string: JsonCodecHelper::decode_option_int_field(obj, "access")?,
         })
     }
 }
 
 impl JsonCodec<SelectResponseObjectInfo> for SelectResponseObjectInfo {
     fn encode_json(&self) -> Map<String, Value> {
+        let mut obj = Map::new();
+
+        JsonCodecHelper::encode_field(&mut obj, "meta", &self.meta);
         let mut obj = self.meta().encode_json();
         if let Some(object) = &self.object {
             JsonCodecHelper::encode_field(&mut obj, "object", object);
@@ -184,12 +215,10 @@ impl JsonCodec<SelectResponseObjectInfo> for SelectResponseObjectInfo {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let meta = SelectResponseObjectMetaInfo::decode_json(obj)?;
-        let mut ret = SelectResponseObjectInfo::from_meta(meta);
-
-        ret.object = JsonCodecHelper::decode_option_field(obj, "object")?;
-
-        Ok(ret)
+        Ok(Self {
+            meta: JsonCodecHelper::decode_field(obj, "meta")?,
+            object: JsonCodecHelper::decode_option_field(obj, "object")?,
+        })
     }
 }
 
@@ -298,7 +327,7 @@ impl SelectResponse {
 
         let mut total: usize = 0;
         for item in objects {
-            total += item.size as usize;
+            total += item.meta.size as usize;
         }
 
         let mut all_buf = Vec::with_capacity(total);
@@ -314,18 +343,18 @@ impl SelectResponse {
             // 输出一些诊断日志
             if let Some(obj) = &item.object {
                 debug!(
-                    "encode selected object: {}, size={}, insert_time={}",
-                    obj, item.size, item.insert_time,
+                    "encode selected object: {}, size={}",
+                    obj, item.meta.size,
                 );
             } else {
                 warn!(
                     "encode empty selected object: insert_time={}",
-                    item.insert_time
+                    item.meta.insert_time
                 );
             }
             http_resp.append_header(cyfs_base::CYFS_OBJECTS, header);
 
-            let size = item.size as usize;
+            let size = item.meta.size as usize;
             if size == 0 {
                 continue;
             }
@@ -373,7 +402,7 @@ impl SelectResponse {
             let info = SelectResponseObjectInfo::from_meta(meta);
 
             debug!("select object item: {}", info);
-            total_size += info.size;
+            total_size += info.meta.size;
             objects.push(info);
         }
 
@@ -404,7 +433,7 @@ impl SelectResponse {
 
         let mut pos: usize = 0;
         for item in &mut objects {
-            let size = item.size as usize;
+            let size = item.meta.size as usize;
             if size == 0 {
                 // 允许有空的对象
                 continue;
@@ -424,10 +453,9 @@ impl SelectResponse {
             })?;
 
             debug!(
-                "decode selected object:{} size={}, insert_time={}",
+                "decode selected object:{} size={}",
                 item.object.as_ref().unwrap().object_id,
                 size,
-                item.insert_time
             );
 
             pos += size;

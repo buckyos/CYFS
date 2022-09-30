@@ -159,8 +159,14 @@ impl ZoneSyncServer {
         let mut ret_objects: Vec<SelectResponseObjectInfo> = Vec::new();
         for item in list.into_iter() {
             let resp_info = SelectResponseObjectInfo {
-                size: item.object.object_raw.len() as u32,
-                insert_time: 0,
+                meta: SelectResponseObjectMetaInfo {
+                    size: item.object.object_raw.len() as u32,
+                    create_dec_id: Some(item.meta.create_dec_id),
+                    insert_time: item.meta.insert_time,
+                    context: item.meta.context,
+                    last_access_rpath: item.meta.last_access_rpath,
+                    access_string: Some(item.meta.access_string),
+                },
                 object: Some(item.object),
             };
 

@@ -137,8 +137,14 @@ impl GlobalStateSyncServer {
         let info = NONObjectInfo::new(object_id.to_owned(), object_raw, None);
 
         SelectResponseObjectInfo {
-            insert_time: 0,
-            size: info.object_raw.len() as u32,
+            meta: SelectResponseObjectMetaInfo {
+                size: info.object_raw.len() as u32,
+                insert_time: 0,
+                create_dec_id: None,
+                context: None,
+                last_access_rpath: None,
+                access_string: None,
+            },
             object: Some(info),
         }
     }

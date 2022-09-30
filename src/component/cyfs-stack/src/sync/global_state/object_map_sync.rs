@@ -319,7 +319,7 @@ impl ObjectMapSync {
                     }
 
                     // save objects to noc
-                    if let Err(_e) = self.put_others(object).await {
+                    if let Err(_e) = self.put_others(item.meta, object).await {
                         *had_err = true;
                     }
                 }
@@ -359,14 +359,15 @@ impl ObjectMapSync {
         Ok(())
     }
 
-    async fn put_others(&self, object: NONObjectInfo) -> BuckyResult<()> {
+    async fn put_others(&self, meta: SelectResponseObjectMetaInfo, object: NONObjectInfo) -> BuckyResult<()> {
+        let source = RequestSourceInfo::new_local_dec(meta.create_dec_id);
         let req = NamedObjectCachePutObjectRequest {
-            source: RequestSourceInfo::new_local_system(),
+            source,
             object,
             storage_category: NamedObjectStorageCategory::Storage,
-            context: None,
-            last_access_rpath: None,
-            access_string: None,
+            context: meta.context,
+            last_access_rpath: meta.last_access_rpath,
+            access_string: meta.access_string,
         };
 
         match self.noc.put_object(&req).await {
