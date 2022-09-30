@@ -104,8 +104,13 @@ pub struct NamedObjectMetaData {
     pub owner_id: Option<ObjectId>,
     pub create_dec_id: ObjectId,
 
-    pub update_time: Option<u64>,
-    pub expired_time: Option<u64>,
+    // the item in noc's related times
+    pub insert_time: u64,
+    pub update_time: u64,
+
+    // object's update_time and expired_time
+    pub object_update_time: Option<u64>,
+    pub object_expired_time: Option<u64>,
 
     pub storage_category: NamedObjectStorageCategory,
     pub context: Option<String>,

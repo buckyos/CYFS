@@ -1,7 +1,7 @@
 use crate::non::*;
 use crate::prelude::*;
 use crate::NONOutputProcessorRef;
-use cyfs_base::{BuckyErrorCode, BuckyResult, DeviceId};
+use cyfs_base::*;
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -59,8 +59,10 @@ impl NamedObjectCache for RemoteNamedObjectCache {
                         object_id: resp.object.object_id.clone(),
                         owner_id: resp.object.object().owner().to_owned(),
                         create_dec_id: cyfs_core::get_system_dec_app().to_owned(),
-                        update_time: resp.object_update_time,
-                        expired_time: resp.object_expires_time,
+                        insert_time: bucky_time_now(),
+                        update_time: bucky_time_now(),
+                        object_update_time: resp.object_update_time,
+                        object_expired_time: resp.object_expires_time,
                         storage_category: NamedObjectStorageCategory::Storage,
                         context: None,
                         last_access_rpath: None,
@@ -94,8 +96,10 @@ impl NamedObjectCache for RemoteNamedObjectCache {
                         object_id: object.object_id.clone(),
                         owner_id: object.object().owner().to_owned(),
                         create_dec_id: cyfs_core::get_system_dec_app().to_owned(),
-                        update_time: object.object().update_time(),
-                        expired_time: object.object().expired_time(),
+                        insert_time: bucky_time_now(),
+                        update_time: bucky_time_now(),
+                        object_update_time: object.object().update_time(),
+                        object_expired_time: object.object().expired_time(),
                         storage_category: NamedObjectStorageCategory::Storage,
                         context: None,
                         last_access_rpath: None,

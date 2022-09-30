@@ -309,14 +309,14 @@ impl NamedObjectLocalStorage {
         if let Some(data) = &blob_ret {
             // meta and blob maybe unmatch?
             let obj = data.object.as_ref().unwrap();
-            let update_time = obj.update_time();
+            let object_update_time = obj.update_time();
 
-            if meta.update_time != update_time {
+            if meta.object_update_time != object_update_time {
                 warn!(
                     "object meta and blob update_time not match! obj={}, meta={:?}, blob={:?}",
-                    req.object_id, meta.update_time, update_time
+                    req.object_id, meta.object_update_time, object_update_time
                 );
-                meta.update_time = update_time;
+                meta.object_update_time = object_update_time;
             }
         } else {
             warn!("object blob missing! obj={}", req.object_id);

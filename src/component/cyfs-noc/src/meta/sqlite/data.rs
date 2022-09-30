@@ -147,8 +147,11 @@ pub(super) struct NamedObjectMetaDataRaw {
     pub owner_id: Option<String>,
     pub create_dec_id: String,
 
-    pub update_time: Option<u64>,
-    pub expired_time: Option<u64>,
+    pub insert_time: u64,
+    pub update_time: u64,
+
+    pub object_update_time: Option<u64>,
+    pub object_expired_time: Option<u64>,
 
     pub storage_category: u8,
     pub context: Option<String>,
@@ -166,8 +169,11 @@ impl TryFrom<&Row<'_>> for NamedObjectMetaDataRaw {
             owner_id: row.get(1)?,
             create_dec_id: row.get(2)?,
 
-            update_time: row.get(5)?,
-            expired_time: row.get(6)?,
+            insert_time: row.get(3)?,
+            update_time: row.get(4)?,
+
+            object_update_time: row.get(5)?,
+            object_expired_time: row.get(6)?,
 
             storage_category: row.get(7)?,
             context: row.get(8)?,
@@ -195,8 +201,11 @@ impl TryInto<NamedObjectMetaData> for NamedObjectMetaDataRaw {
             owner_id: convert_option_value(&self.owner_id)?,
             create_dec_id: ObjectId::from_str(&self.create_dec_id)?,
 
+            insert_time: self.insert_time,
             update_time: self.update_time,
-            expired_time: self.expired_time,
+            
+            object_update_time: self.object_update_time,
+            object_expired_time: self.object_expired_time,
 
             storage_category: NamedObjectStorageCategory::try_from(self.storage_category)
                 .unwrap_or(NamedObjectStorageCategory::default()),
