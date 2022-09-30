@@ -59,6 +59,7 @@ impl CyfsChainObjectType {
 pub enum CyfsChainNetwork {
     Main = 0,
     Test = 1,
+    Beta = 2,
 }
 
 impl Into<u32> for CyfsChainNetwork {
@@ -79,6 +80,7 @@ impl TryFrom<u32> for CyfsChainNetwork {
         match v {
             0u32 => Ok(CyfsChainNetwork::Main),
             1u32 => Ok(CyfsChainNetwork::Test),
+            2u32 => Ok(CyfsChainNetwork::Beta),
             v @ _ => {
                 let msg = format!("invalid cyfs chain network value: {}", v);
                 error!("{}", msg);
