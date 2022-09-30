@@ -62,6 +62,7 @@ members = [
 
     "./misc/sn-miner-rust",
     "./misc/pn-miner",
+    "./misc/cyfs-monitor",
 
     "./tests/cyfs-stack-test",
     "./tests/dsg-test",
