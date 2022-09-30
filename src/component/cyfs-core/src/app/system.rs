@@ -30,7 +30,9 @@ pub(crate) static ANONYMOUS_DEC_APP: OnceCell<ObjectId> = OnceCell::new();
 // get the default dec_app id for all the system service and system core
 pub fn get_system_dec_app() -> &'static ObjectId {
     SYSTEM_DEC_APP.get_or_init(|| {
-        SystemDecApp::gen_system_dec_id().into()
+        let dec_id = SystemDecApp::gen_system_dec_id().into();
+        info!("init system dec app id: {}", dec_id);
+        dec_id
     })
 }
 
@@ -49,7 +51,9 @@ pub fn is_system_dec_app(dec_id: &Option<ObjectId>) -> bool {
 // get the default dec_app id for all the unknown service and incoming reqeust
 pub fn get_anonymous_dec_app() -> &'static ObjectId {
     ANONYMOUS_DEC_APP.get_or_init(|| {
-        SystemDecApp::gen_anonymous_dec_id().into()
+        let dec_id = SystemDecApp::gen_anonymous_dec_id().into();
+        info!("init anonymous dec app id: {}", dec_id);
+        dec_id
     })
 }
 

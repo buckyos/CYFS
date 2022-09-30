@@ -317,9 +317,13 @@ impl RequestSourceInfo {
         self.dec == *get_system_dec_app()
     }
 
-    // return none if is system dec
+    pub fn is_anonymous_dec_app(&self) -> bool {
+        self.dec == *get_anonymous_dec_app()
+    }
+
+    // return none if is anonymous dec
     pub fn get_opt_dec(&self) -> Option<&ObjectId> {
-        if self.is_system_dec() {
+        if self.is_anonymous_dec_app() {
             None
         } else {
             Some(&self.dec)
