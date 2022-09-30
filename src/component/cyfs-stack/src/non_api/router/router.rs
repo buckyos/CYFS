@@ -405,36 +405,47 @@ impl NONRouter {
         // 选择正确的noc处理器
         let noc_processor = if router_info.next_hop.is_none() {
             // 目标协议栈，那么需要校验rmeta access
-            &self.noc_acl_processor
+            Some(&self.noc_acl_processor)
         } else {
-            // 中间节点，noc作为缓存处理，直接使用object层的acl来处理
-            &self.noc_raw_processor
+            if req.common.source.zone.is_current_zone() || req.common.source.zone.is_friend_zone() {
+                // 中间节点，noc作为缓存处理，直接使用object层的acl来处理
+                Some(&self.noc_raw_processor)
+            } else {
+                // 如果是跨设备的查找，并且来源是other zone，那么绕过缓存，直接朝目标发起
+                None
+            }
         };
 
         // 从本地noc查询
-        match noc_processor.get_object(req.clone()).await {
-            Ok(resp) => {
-                return Ok(resp);
-            }
-            Err(e) => {
-                if Self::is_dir_inner_path_error(&req, &e) {
-                    return Err(e);
+        if let Some(noc_processor) = noc_processor {
+            match noc_processor.get_object(req.clone()).await {
+                Ok(resp) => {
+                    if router_info.next_hop.is_some() {
+                        info!("router get_object from local noc cache! id={}", req.object_id);
+                    }
+                    
+                    return Ok(resp);
                 }
-
-                if RouterHandlerAction::is_action_error(&e) {
-                    warn!(
-                        "get object from noc stopped by action: obj={}, {}",
-                        req.object_id, e
-                    );
-                    return Err(e);
-                }
-
-                if e.code() == BuckyErrorCode::PermissionDenied {
-                    warn!(
-                        "get object from noc stopped by access: obj={}, {}",
-                        req.object_id, e
-                    );
-                    return Err(e);
+                Err(e) => {
+                    if Self::is_dir_inner_path_error(&req, &e) {
+                        return Err(e);
+                    }
+    
+                    if RouterHandlerAction::is_action_error(&e) {
+                        warn!(
+                            "get object from noc stopped by action: obj={}, {}",
+                            req.object_id, e
+                        );
+                        return Err(e);
+                    }
+    
+                    if e.code() == BuckyErrorCode::PermissionDenied {
+                        warn!(
+                            "get object from noc stopped by access: obj={}, {}",
+                            req.object_id, e
+                        );
+                        return Err(e);
+                    }
                 }
             }
         }
