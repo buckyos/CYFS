@@ -8,14 +8,15 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
-pub(crate) struct NONFileServiceProcessor {
+// Used to support dir+innerpath and objectmap+innerpath modes
+pub(crate) struct NONInnerPathServiceProcessor {
     next: NONInputProcessorRef,
 
     dir_loader: NONDirLoader,
     objectmap_loader: NONObjectMapLoader,
 }
 
-impl NONFileServiceProcessor {
+impl NONInnerPathServiceProcessor {
     pub fn new(
         non_api_level: NONAPILevel,
         non_processor: NONInputProcessorRef,
@@ -45,10 +46,7 @@ impl NONFileServiceProcessor {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        let ret = self
-            .objectmap_loader
-            .load(req)
-            .await?;
+        let ret = self.objectmap_loader.load(req).await?;
 
         let mut resp = NONGetObjectInputResponse::new_with_object(ret);
         resp.init_times()?;
@@ -94,7 +92,7 @@ impl NONFileServiceProcessor {
 }
 
 #[async_trait::async_trait]
-impl NONInputProcessor for NONFileServiceProcessor {
+impl NONInputProcessor for NONInnerPathServiceProcessor {
     async fn put_object(
         &self,
         req: NONPutObjectInputRequest,

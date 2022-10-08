@@ -40,8 +40,8 @@ impl NONService {
         fail_handler: ObjectFailHandler,
         chunk_manager: ChunkManagerRef,
     ) -> (NONService, NDNService) {
-        // 带file服务的无权限的noc processor
-        let raw_noc_processor = NOCLevelInputProcessor::new_raw_with_file_service(
+        // raw service with inner_path support
+        let raw_noc_processor = NOCLevelInputProcessor::new_raw_with_inner_path_service(
             noc.clone(),
             ndc.clone(),
             tracker.clone(),
@@ -52,7 +52,7 @@ impl NONService {
         );
 
         // meta处理器，从mete和noc处理get_object请求
-        let meta_processor = MetaInputProcessor::new_raw_with_file_service(
+        let meta_processor = MetaInputProcessor::new_raw_with_inner_path_service(
             None,
             meta_cache,
             ndc.clone(),

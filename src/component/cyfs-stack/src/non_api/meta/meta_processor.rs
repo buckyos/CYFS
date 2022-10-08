@@ -1,4 +1,4 @@
-use super::super::file::NONFileServiceProcessor;
+use super::super::inner_path::NONInnerPathServiceProcessor;
 use crate::meta::*;
 use crate::ndn_api::NDCLevelInputProcessor;
 use crate::non::*;
@@ -23,8 +23,8 @@ impl MetaInputProcessor {
         Arc::new(Box::new(ret))
     }
 
-    // 带file服务的noc processor
-    pub(crate) fn new_raw_with_file_service(
+    // Integrate noc with inner_path+meta service
+    pub(crate) fn new_raw_with_inner_path_service(
         noc_processor: Option<NONInputProcessorRef>,
         meta_cache: Box<dyn MetaCache>,
         ndc: Box<dyn NamedDataCache>,
@@ -33,20 +33,20 @@ impl MetaInputProcessor {
         chunk_manager: Arc<ChunkManager>,
         noc: NamedObjectCacheRef,
     ) -> NONInputProcessorRef {
-        let meta_processor = Self::new_raw(noc_processor, meta_cache);
+        let noc_with_meta_processor = Self::new_raw(noc_processor, meta_cache);
 
         let ndc_processor =
-            NDCLevelInputProcessor::new_raw(chunk_manager, ndc, tracker, meta_processor.clone());
+            NDCLevelInputProcessor::new_raw(chunk_manager, ndc, tracker, noc_with_meta_processor.clone());
 
-        let file_processor = NONFileServiceProcessor::new(
+        let inner_path_processor = NONInnerPathServiceProcessor::new(
             NONAPILevel::NOC,
-            meta_processor,
+            noc_with_meta_processor,
             ndc_processor,
             ood_resolver,
             noc,
         );
 
-        file_processor
+        inner_path_processor
     }
 
     async fn get_object(

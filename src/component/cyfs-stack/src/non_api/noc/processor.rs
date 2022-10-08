@@ -1,5 +1,5 @@
 use super::super::acl::*;
-use super::super::file::NONFileServiceProcessor;
+use super::super::inner_path::NONInnerPathServiceProcessor;
 use super::super::handler::*;
 use super::handler::NONRouterHandler;
 use crate::ndn_api::NDCLevelInputProcessor;
@@ -32,7 +32,7 @@ impl NOCLevelInputProcessor {
     }
 
     // 带file服务的noc processor
-    pub(crate) fn new_raw_with_file_service(
+    pub(crate) fn new_raw_with_inner_path_service(
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
@@ -46,13 +46,18 @@ impl NOCLevelInputProcessor {
         let ndc =
             NDCLevelInputProcessor::new_raw(chunk_manager, ndc, tracker, raw_processor.clone());
 
-        let file_processor =
-            NONFileServiceProcessor::new(NONAPILevel::NOC, raw_processor, ndc, ood_resolver, noc);
+        let inner_path_processor = NONInnerPathServiceProcessor::new(
+            NONAPILevel::NOC,
+            raw_processor,
+            ndc,
+            ood_resolver,
+            noc,
+        );
 
         // 增加pre-noc前置处理器
         let pre_processor = NONHandlerPreProcessor::new(
             RouterHandlerChain::PreNOC,
-            file_processor,
+            inner_path_processor,
             router_handlers.clone(),
         );
 
@@ -187,12 +192,12 @@ impl NOCLevelInputProcessor {
         };
 
         self.noc.update_object_meta(&noc_req).await?;
-     
+
         info!(
             "update object meta success: id={}, access={:?}",
             noc_req.object_id, req.access,
         );
-         
+
         Ok(NONPutObjectInputResponse {
             result: NONPutObjectResult::Accept,
             object_expires_time: None,
@@ -279,7 +284,7 @@ impl NONInputProcessor for NOCLevelInputProcessor {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        NOCLevelInputProcessor::get_object(&self, req).await
+        Self::get_object(&self, req).await
     }
 
     async fn post_object(
@@ -293,13 +298,13 @@ impl NONInputProcessor for NOCLevelInputProcessor {
         &self,
         req: NONSelectObjectInputRequest,
     ) -> BuckyResult<NONSelectObjectInputResponse> {
-        NOCLevelInputProcessor::select_object(&self, req).await
+        Self::select_object(&self, req).await
     }
 
     async fn delete_object(
         &self,
         req: NONDeleteObjectInputRequest,
     ) -> BuckyResult<NONDeleteObjectInputResponse> {
-        NOCLevelInputProcessor::delete_object(&self, req).await
+        Self::delete_object(&self, req).await
     }
 }

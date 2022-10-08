@@ -1,5 +1,5 @@
 mod acl;
-mod file;
+mod inner_path;
 mod handler;
 mod meta;
 mod noc;
