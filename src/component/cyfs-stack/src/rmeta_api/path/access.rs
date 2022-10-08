@@ -27,7 +27,9 @@ impl<'d, 'a, 'b> std::fmt::Display for GlobalStateAccessRequest<'d, 'a, 'b> {
         write!(
             f,
             "path={}, {}, permissions={}",
-            self.path, self.source, self.permissions.as_str()
+            self.path,
+            self.source,
+            self.permissions.as_str()
         )
     }
 }
@@ -172,6 +174,7 @@ mod test_path_access {
         let item = GlobalStatePathAccessItem::new_group(
             "/d/a",
             None,
+            None,
             Some(dec.clone()),
             AccessPermissions::ReadOnly as u8,
         );
@@ -183,6 +186,7 @@ mod test_path_access {
             "/d/a",
             Some(device.object_id().clone()),
             None,
+            None,
             AccessPermissions::ReadOnly as u8,
         );
 
@@ -193,70 +197,86 @@ mod test_path_access {
 
         // same zone, same dec
         let source = RequestSourceInfo {
+            protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo {
                 device: None,
                 zone: None,
                 zone_category: DeviceZoneCategory::CurrentDevice,
             },
             dec: owner_dec.clone(),
+            verified: None,
         };
 
         let ret = GlobalStateAccessRequest {
             path: Cow::Owned("/d/a/c/".to_owned()),
             dec: Cow::Owned(owner_dec.clone()),
             source: Cow::Borrowed(&source),
-            op_type: RequestOpType::Write,
+            permissions: AccessPermissions::WriteOnly,
         };
 
         list.check(ret).unwrap();
 
         // same zone, diff dec
         let source = RequestSourceInfo {
+            protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo {
                 device: None,
                 zone: None,
                 zone_category: DeviceZoneCategory::CurrentDevice,
             },
             dec: dec.clone(),
+            verified: None,
         };
 
         let ret = GlobalStateAccessRequest {
             path: Cow::Owned("/d/a/c/".to_owned()),
             dec: Cow::Owned(owner_dec.clone()),
             source: Cow::Borrowed(&source),
-            op_type: RequestOpType::Read,
+            permissions: AccessPermissions::ReadOnly,
         };
 
         list.check(ret).unwrap();
 
         // same zone, diff dec, write
         let source = RequestSourceInfo {
+            protocol: RequestProtocol::Native,
             zone: DeviceZoneInfo {
                 device: None,
                 zone: None,
                 zone_category: DeviceZoneCategory::CurrentDevice,
             },
             dec: dec.clone(),
+            verified: None,
         };
 
         let ret = GlobalStateAccessRequest {
             path: Cow::Owned("/d/a/c/".to_owned()),
             dec: Cow::Owned(owner_dec.clone()),
             source: Cow::Borrowed(&source),
-            op_type: RequestOpType::Write,
+            permissions: AccessPermissions::WriteOnly,
         };
 
         list.check(ret).unwrap_err();
 
         // test remove
         let device = DeviceId::default();
-        let item =
-            GlobalStatePathAccessItem::new_group("/d/a", Some(device.object_id().clone()), None, 0);
+        let item = GlobalStatePathAccessItem::new_group(
+            "/d/a",
+            Some(device.object_id().clone()),
+            None,
+            None,
+            0,
+        );
         list.remove(item).unwrap();
 
         let device = DeviceId::default();
-        let item =
-            GlobalStatePathAccessItem::new_group("/a/b", Some(device.object_id().clone()), None, 0);
+        let item = GlobalStatePathAccessItem::new_group(
+            "/a/b",
+            Some(device.object_id().clone()),
+            None,
+            None,
+            0,
+        );
         let ret = list.remove(item);
         assert!(ret.is_none());
 
@@ -264,6 +284,7 @@ mod test_path_access {
         let item = GlobalStatePathAccessItem::new_group(
             "/d/a/c",
             Some(device.object_id().clone()),
+            None,
             None,
             0,
         );

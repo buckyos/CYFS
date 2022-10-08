@@ -382,10 +382,10 @@ mod build_file_task_test {
     use cyfs_lib::*;
     use cyfs_task_manager::test_task_manager::create_test_task_manager;
     use cyfs_task_manager::BUILD_FILE_TASK;
-    use cyfs_util::cache::*;
     use futures::AsyncWriteExt;
     use std::path::Path;
     use std::time::Duration;
+    use std::sync::Arc;
 
     struct MemoryNoc {}
 
@@ -402,36 +402,36 @@ mod build_file_task_test {
             })
         }
 
-        async fn get_object(
+        async fn get_object_raw(
             &self,
             req: &NamedObjectCacheGetObjectRequest,
-        ) -> BuckyResult<Option<ObjectCacheData>> {
-            todo!()
-        }
-
-        async fn select_object(
-            &self,
-            req: &NamedObjectCacheSelectObjectRequest,
-        ) -> BuckyResult<Vec<ObjectCacheData>> {
+        ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
             todo!();
         }
 
         async fn delete_object(
             &self,
             req: &NamedObjectCacheDeleteObjectRequest,
-        ) -> BuckyResult<NamedObjectCacheDeleteObjectResult> {
-            todo!()
+        ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
+            todo!();
         }
-
+    
         async fn exists_object(
             &self,
             req: &NamedObjectCacheExistsObjectRequest,
         ) -> BuckyResult<NamedObjectCacheExistsObjectResponse> {
-            unimplemented!();
+            todo!();
         }
-
+    
+        async fn update_object_meta(
+            &self,
+            req: &NamedObjectCacheUpdateObjectMetaRequest,
+        ) -> BuckyResult<()> {
+            todo!();
+        }
+    
         async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
-            todo!()
+            todo!();
         }
     }
 
@@ -559,7 +559,7 @@ mod build_file_task_test {
     #[test]
     fn test() {
         async_std::task::block_on(async move {
-            let noc = Box::new(MemoryNoc {});
+            let noc = Arc::new(Box::new(MemoryNoc {}) as Box<dyn NamedObjectCache>);
             let ndc = Box::new(MemoryNDC {});
             let task_manager = create_test_task_manager().await.unwrap();
             task_manager
