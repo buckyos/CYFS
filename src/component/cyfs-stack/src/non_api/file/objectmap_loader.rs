@@ -25,20 +25,22 @@ impl NONObjectMapLoader {
         }
     }
 
-    pub async fn load(&self, object_id: &ObjectId, inner_path: &str) -> BuckyResult<NONObjectInfo> {
+    pub async fn load(&self, req: NONGetObjectInputRequest,) -> BuckyResult<NONObjectInfo> {
+        let inner_path = req.inner_path.unwrap();
+
         info!(
             "will get objectmap with inner path: {}, {}",
-            object_id, inner_path
+            req.object_id, inner_path
         );
 
-        assert_eq!(object_id.obj_type_code(), ObjectTypeCode::ObjectMap);
+        assert_eq!(req.object_id.obj_type_code(), ObjectTypeCode::ObjectMap);
 
-        let path = ObjectMapPath::new(object_id.to_owned(), self.op_env_cache.clone());
-        let ret = path.get_by_path(inner_path).await?;
+        let path = ObjectMapPath::new(req.object_id.clone(), self.op_env_cache.clone());
+        let ret = path.get_by_path(&inner_path).await?;
         if ret.is_none() {
             let msg = format!(
                 "get_by_path but inner path not found! object={}, inner_path={}",
-                object_id, inner_path,
+                req.object_id, inner_path,
             );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
@@ -63,13 +65,13 @@ impl NONObjectMapLoader {
                 None => None,
             }
         } else {
-            self.load_object_from_noc(&object_id).await?
+            self.load_object_from_noc(req.common.source, &object_id).await?
         };
 
         if ret.is_none() {
             let msg = format!(
                 "get_by_path but object not found! object={}, inner_path={}",
-                object_id, inner_path,
+                req.object_id, inner_path,
             );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
@@ -88,11 +90,12 @@ impl NONObjectMapLoader {
 
     async fn load_object_from_noc(
         &self,
+        source: RequestSourceInfo,
         object_id: &ObjectId,
     ) -> BuckyResult<Option<(Arc<AnyNamedObject>, Vec<u8>)>> {
         let noc_req = NamedObjectCacheGetObjectRequest {
             object_id: object_id.clone(),
-            source: RequestSourceInfo::new_local_system(),
+            source,
             last_access_rpath: None,
         };
 

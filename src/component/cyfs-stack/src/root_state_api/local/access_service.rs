@@ -76,7 +76,7 @@ impl GlobalStateAccessService {
         };
 
         let resp = self
-            .get_by_path_impl(&dec_id, &req.inner_path)
+            .get_by_path_impl(req.common.source, &dec_id, &req.inner_path)
             .await?;
 
         Ok(resp)
@@ -85,6 +85,7 @@ impl GlobalStateAccessService {
     // for http protocol's get method
     async fn get_by_path_impl(
         &self,
+        source: RequestSourceInfo,
         dec_id: &Option<ObjectId>,
         inner_path: &str,
     ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
@@ -111,7 +112,7 @@ impl GlobalStateAccessService {
                         None => None,
                     }
                 } else {
-                    self.load_object_from_noc(&object_id).await?
+                    self.load_object_from_noc(source, &object_id).await?
                 };
 
                 if ret.is_none() {
@@ -142,11 +143,12 @@ impl GlobalStateAccessService {
 
     async fn load_object_from_noc(
         &self,
+        source: RequestSourceInfo,
         object_id: &ObjectId,
     ) -> BuckyResult<Option<(Arc<AnyNamedObject>, Vec<u8>)>> {
         let noc_req = NamedObjectCacheGetObjectRequest {
             object_id: object_id.clone(),
-            source: RequestSourceInfo::new_local_system(),
+            source,
             last_access_rpath: None,
         };
 

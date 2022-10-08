@@ -47,7 +47,7 @@ impl NONFileServiceProcessor {
     ) -> BuckyResult<NONGetObjectInputResponse> {
         let ret = self
             .objectmap_loader
-            .load(&req.object_id, &req.inner_path.as_ref().unwrap())
+            .load(req)
             .await?;
 
         let mut resp = NONGetObjectInputResponse::new_with_object(ret);
