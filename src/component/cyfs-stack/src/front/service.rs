@@ -475,7 +475,7 @@ impl FrontService {
                             flags: req.flags,
                         };
 
-                        let url = self.gen_o_redirect_url(&o_req);
+                        let url = self.gen_o_redirect_url(&o_req, &req.origin_url);
                         FrontAResponse::Redirect(url)
                         //let o_resp = self.process_o_request(o_req).await?;
                         //FrontAResponse::Response(o_resp)
@@ -488,6 +488,7 @@ impl FrontService {
                             dec_id,
                             name,
                             Some(&web_req.version),
+                            &req.origin_url
                         );
                         FrontAResponse::Redirect(url)
                     }
@@ -519,7 +520,7 @@ impl FrontService {
                         let dec_id = dec.as_dec_id().or(req.dec.as_dec_id());
                         let name = dec.as_name().or(req.dec.as_name());
 
-                        let url = self.gen_app_not_installed_redirect_url(dec_id, name, None);
+                        let url = self.gen_app_not_installed_redirect_url(dec_id, name, None, &req.origin_url);
                         FrontAResponse::Redirect(url)
                     }
                 }
@@ -529,7 +530,7 @@ impl FrontService {
         Ok(resp)
     }
 
-    fn gen_o_redirect_url(&self, req: &FrontORequest) -> String {
+    fn gen_o_redirect_url(&self, req: &FrontORequest, origin_url: &http_types::Url) -> String {
         let mut parts = vec![];
         if req.target.len() > 0 {
             let targets: Vec<String> = req.target.iter().map(|v| v.to_string()).collect();
@@ -561,6 +562,18 @@ impl FrontService {
             querys.push(format!("format={}", req.format.as_str()));
         }
 
+        // merge origin query pairs
+        for (key, value) in origin_url.query_pairs() {
+            let s = format!("{}=", key);
+            if let Some(_) = querys.iter().find(|&v| v.starts_with(&s)) {
+                warn!("a protocol query name conflicts with reserved! key={}, value={}", key, value);
+                continue;
+            }
+
+            querys.push(format!("{}={}", key, value));
+        }
+
+
         let url = if querys.len() > 0 {
             let querys = querys.join("&");
             format!("{}?{}", url, querys)
@@ -576,6 +589,7 @@ impl FrontService {
         dec_id: Option<&ObjectId>,
         name: Option<&str>,
         version: Option<&FrontARequestVersion>,
+        origin_url: &http_types::Url
     ) -> String {
         let mut querys = vec![];
 
@@ -604,6 +618,17 @@ impl FrontService {
                 }
                 FrontARequestVersion::Current => {}
             }
+        }
+
+        // merge origin query pairs
+        for (key, value) in origin_url.query_pairs() {
+            let s = format!("{}=", key);
+            if let Some(_) = querys.iter().find(|&v| v.starts_with(&s)) {
+                warn!("a protocol query name conflicts with reserved! key={}, value={}", key, value);
+                continue;
+            }
+
+            querys.push(format!("{}={}", key, value));
         }
 
         let url = if querys.len() > 0 {

@@ -163,6 +163,7 @@ pub struct FrontARequest {
     pub mode: FrontRequestGetMode,
     pub format: FrontRequestObjectFormat,
 
+    pub origin_url: http_types::Url,
     pub flags: u32,
 }
 

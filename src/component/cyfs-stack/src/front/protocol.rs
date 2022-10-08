@@ -725,6 +725,7 @@ impl FrontProtocolHandler {
             mode,
             format,
 
+            origin_url: url.to_owned(),
             flags,
         };
 
