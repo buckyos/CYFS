@@ -234,7 +234,7 @@ impl ChunkDecoder for StreamDecoder {
 
     fn push_piece_data(&self, piece: &PieceData) -> (ChunkDecoderState, ChunkDecoderState) {
         trace!("{} push piece desc {:?}", self, piece.desc);
-        let index = piece.desc.range_index(self.range_size()).unwrap();
+        let (index, _) = piece.desc.stream_piece_range(self.chunk());
         let state = &mut *self.0.state.write().unwrap();
         match state {
             DecoderStateImpl::Decoding(decoding) => {

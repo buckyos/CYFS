@@ -18,7 +18,7 @@ use crate::{
 };
 use super::{
     channel::{self, ChannelManager}, 
-    chunk::{ChunkManager, ChunkReader}, 
+    chunk::{ChunkManager, ChunkManager2, ChunkReader}, 
     event::*, 
     root::RootTask,
 };
@@ -35,6 +35,7 @@ struct StackImpl {
     stack: WeakStack, 
     last_schedule: AtomicU64, 
     chunk_manager: ChunkManager, 
+    chunk_manager2: ChunkManager2, 
     channel_manager: ChannelManager, 
     event_handler: Box<dyn NdnEventHandler>, 
     root_task: RootTask,
@@ -63,6 +64,11 @@ impl NdnStack {
             stack: stack.clone(), 
             last_schedule: AtomicU64::new(0), 
             chunk_manager: ChunkManager::new(
+                stack.clone(), 
+                ndc, 
+                tracker, 
+                store), 
+            chunk_manager2: ChunkManager2::new(
                 stack.clone(), 
                 ndc, 
                 tracker, 
@@ -102,6 +108,10 @@ impl NdnStack {
     
     pub fn chunk_manager(&self) -> &ChunkManager {
         &self.0.chunk_manager
+    }
+
+    pub fn chunk_manager2(&self) -> &ChunkManager2 {
+        &self.0.chunk_manager2
     }
 
     pub fn root_task(&self) -> &RootTask {
