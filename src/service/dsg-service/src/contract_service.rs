@@ -232,19 +232,21 @@ impl DsgService {
             }
         }
 
-        let path = RequestGlobalStatePath::new(Some(self.stack().local_device_id().object_id().to_owned()), Some("/dsg/service/sync/state/")).format_string();
-        let access = AccessString::default();
+        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/sync/state/")).format_string();
+        log::info!("-------> handler access path: {}", path);
+        let access = AccessString::full();
         let item = GlobalStatePathAccessItem {
             path: path.clone(),
             access: GlobalStatePathGroupAccess::Default(access.value()),
         };
-        self.stack().root_state_meta_stub(Some(self.stack().local_device_id().object_id().to_owned()), None).add_access(item).await?;
+        //Some(self.stack().local_device_id().object_id().to_owned())
+        self.stack().root_state_meta_stub(None, None).add_access(item).await?;
 
         let _ = self.stack().router_handlers().add_handler(
             RouterHandlerChain::Handler,
             "OnSyncContractState",
             0,
-            Some(format!("obj_type == {} && object.dec_id == {}",  DsgContractStateDesc::obj_type(), dsg_dec_id())),
+            None,
             Some(path),
             RouterHandlerAction::Default,
             Some(Box::new(OnSyncContractState {service: self.clone()})))
@@ -284,19 +286,19 @@ impl DsgService {
             }
         }
 
-        let path = RequestGlobalStatePath::new(Some(self.stack().local_device_id().object_id().to_owned()), Some("/dsg/service/proof/")).format_string();
-        let access = AccessString::default();
+        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/proof/")).format_string();
+        let access = AccessString::full();
         let item = GlobalStatePathAccessItem {
             path: path.clone(),
             access: GlobalStatePathGroupAccess::Default(access.value()),
         };
-        self.stack().root_state_meta_stub(Some(self.stack().local_device_id().object_id().to_owned()), None).add_access(item).await?;
+        self.stack().root_state_meta_stub(None, None).add_access(item).await?;
 
         let _ = self.stack().router_handlers().add_handler(
             RouterHandlerChain::Handler,
             "OnProof",
             0,
-            Some(format!("obj_type == {} && object.dec_id == {}",  DsgProofDesc::obj_type(), dsg_dec_id())),
+            None,
             Some(path),
             RouterHandlerAction::Default,
             Some(Box::new(OnProof {service: self.clone()})))
@@ -331,19 +333,19 @@ impl DsgService {
             }
         }
 
-        let path = RequestGlobalStatePath::new(Some(self.stack().local_device_id().object_id().to_owned()), Some("/dsg/service/query/")).format_string();
-        let access = AccessString::default();
+        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/query/")).format_string();
+        let access = AccessString::full();
         let item = GlobalStatePathAccessItem {
             path: path.clone(),
             access: GlobalStatePathGroupAccess::Default(access.value()),
         };
-        self.stack().root_state_meta_stub(Some(self.stack().local_device_id().object_id().to_owned()), None).add_access(item).await?;
+        self.stack().root_state_meta_stub(None, None).add_access(item).await?;
 
         let _ = self.stack().router_handlers().add_handler(
             RouterHandlerChain::Handler,
             "OnQuery",
             0,
-            Some(format!("obj_type == {} && object.dec_id == {}",  DsgQueryDesc::obj_type(), dsg_dec_id())),
+            None,
             Some(path),
             RouterHandlerAction::Default,
             Some(Box::new(OnQuery {service: self.clone()})))

@@ -17,21 +17,22 @@ fn main() {
 }
 
 async fn main_run() {
-    let status = cyfs_util::process::check_cmd_and_exec("cyfs dsg service");
+    const NAME: &str = "cyfs-dsg-service";
+    let status = cyfs_util::process::check_cmd_and_exec(NAME);
     if status == ProcessAction::Install {
         std::process::exit(0);
     }
 
-    cyfs_debug::CyfsLoggerBuilder::new_app("cyfs dsg service")
+    cyfs_debug::CyfsLoggerBuilder::new_service(NAME)
         .level("debug")
         .console("debug")
-        .enable_bdt(Some("off"), Some("off"))
-        .module("cyfs-lib", Some("off"), Some("off"))
+        .enable_bdt(Some("debug"), Some("debug"))
+        .module("cyfs-lib", Some("debug"), Some("debug"))
         .build()
         .unwrap()
         .start();
 
-    cyfs_debug::PanicBuilder::new("cyfs dsg", "cyfs dsg service")
+    cyfs_debug::PanicBuilder::new(NAME, NAME)
         .build()
         .start();
 
@@ -39,7 +40,7 @@ async fn main_run() {
         .set_default("challenge_interval", 24*3600).unwrap()
         .set_default("initial_challenge_live_time", 24*3600).unwrap()
         .set_default("store_challenge_live_time", 3600).unwrap();
-    let data_dir = get_app_data_dir("cyfs dsg service");
+    let data_dir = get_app_data_dir(NAME);
     let config_path = data_dir.join("config.toml");
     if config_path.exists() {
         let file = config::File::from(config_path.as_path());
@@ -47,9 +48,12 @@ async fn main_run() {
     }
     let config = config_builder.build().unwrap();
 
-    let stack = SharedCyfsStack::open_default(Some(dsg_dec_id()))
+    let dec_id = dsg_dec_id();
+    log::info!("----> dec id # {}", &dec_id);
+    let stack = SharedCyfsStack::open_default(Some(dec_id))
         .await
         .unwrap();
+    stack.wait_online(None).await.unwrap();
 
     let mut dsg_config = DsgServiceConfig::default();
     dsg_config.challenge_interval = Duration::from_secs(config.get_int("challenge_interval").unwrap() as u64);
