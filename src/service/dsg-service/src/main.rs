@@ -23,7 +23,7 @@ async fn main_run() {
         std::process::exit(0);
     }
 
-    cyfs_debug::CyfsLoggerBuilder::new_app(NAME)
+    cyfs_debug::CyfsLoggerBuilder::new_service(NAME)
         .level("debug")
         .console("debug")
         .enable_bdt(Some("debug"), Some("debug"))
