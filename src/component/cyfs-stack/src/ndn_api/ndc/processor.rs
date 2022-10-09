@@ -1,5 +1,5 @@
 use super::super::acl::{NDNAclLocalInputProcessor, NDNInputAclSwitcher};
-use super::super::file::{zero_bytes_reader, LocalDataManager};
+use super::super::data::{zero_bytes_reader, LocalDataManager};
 use super::object_loader::NDNObjectLoader;
 use crate::ndn::*;
 use crate::non::*;
@@ -239,6 +239,7 @@ impl NDCLevelInputProcessor {
     }
 
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
+
         match req.object_id.obj_type_code() {
             ObjectTypeCode::Chunk => {
                 // 加载chunk

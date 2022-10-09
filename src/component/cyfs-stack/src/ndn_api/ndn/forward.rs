@@ -1,4 +1,4 @@
-use super::super::file::*;
+use super::super::data::*;
 use crate::ndn::*;
 use cyfs_base::*;
 use cyfs_chunk_cache::ChunkManagerRef;
