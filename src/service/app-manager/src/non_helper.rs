@@ -477,8 +477,9 @@ impl NonHelper {
         N: NamedObject<D>,
         <D as ObjectType>::ContentType: BodyContent,
     {
-        let req =
+        let mut req =
             NONPostObjectOutputRequest::new_router(None, obj.desc().calculate_id(), obj.to_vec()?);
+        req.common.req_path = Some(CYFS_SYSTEM_APP_VIRTUAL_PATH.to_owned());
         let ret = self.shared_stack.non_service().post_object(req).await;
 
         match ret {
