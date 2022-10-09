@@ -1,6 +1,7 @@
 use std::{convert::TryFrom, fmt::Debug, sync::Arc};
 use cyfs_base::*;
 use cyfs_lib::*;
+use log::info;
 use crate::{contracts::*, query::*};
 
 pub struct DsgClientInterface<T>
@@ -51,7 +52,7 @@ where
         log::info!("DsgClient try sync contract state, state={}", state_ref);
 
         let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/sync/state/")).format_string();
-
+        log::info!("sync contract state req_path: {}", &path);
         let mut req = NONPostObjectOutputRequest::new(
             NONAPILevel::default(),
             DsgContractStateObjectRef::from(new_state).id(),

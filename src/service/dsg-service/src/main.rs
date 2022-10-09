@@ -48,7 +48,9 @@ async fn main_run() {
     }
     let config = config_builder.build().unwrap();
 
-    let stack = SharedCyfsStack::open_default(Some(dsg_dec_id()))
+    let dec_id = dsg_dec_id();
+    log::info!("----> dec id # {}", &dec_id);
+    let stack = SharedCyfsStack::open_default(Some(dec_id))
         .await
         .unwrap();
     stack.wait_online(None).await.unwrap();
