@@ -1,7 +1,7 @@
 mod acl;
 mod bdt;
 mod cache;
-mod file;
+mod data;
 mod handler;
 mod ndc;
 mod ndn;
@@ -10,7 +10,7 @@ mod service;
 
 pub(crate) use bdt::*;
 pub(crate) use cache::*;
-pub use file::*;
+pub use data::*;
 pub(crate) use ndc::NDCLevelInputProcessor;
 pub(crate) use ndn::*;
 pub(crate) use service::*;
