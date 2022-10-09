@@ -1,6 +1,7 @@
 use super::super::acl::*;
-use super::super::inner_path::NONInnerPathServiceProcessor;
 use super::super::handler::*;
+use super::super::inner_path::NONInnerPathServiceProcessor;
+use super::super::validate::NONGlobalStateValidator;
 use super::handler::NONRouterHandler;
 use crate::ndn_api::NDCLevelInputProcessor;
 use crate::resolver::OodResolver;
@@ -31,7 +32,7 @@ impl NOCLevelInputProcessor {
         Arc::new(Box::new(ret))
     }
 
-    // 带file服务的noc processor
+    // noc processor with inner_path service
     pub(crate) fn new_raw_with_inner_path_service(
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
@@ -71,15 +72,21 @@ impl NOCLevelInputProcessor {
         post_processor
     }
 
-    // 创建一个带本地权限的processor
+    // processor with local device acl + rmeta acl + valdiate
     pub(crate) fn new_local(
         acl: AclManagerRef,
         raw_processor: NONInputProcessorRef,
     ) -> NONInputProcessorRef {
-        // should process with rmeta
-        let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl, raw_processor);
+        // should use validate for req_path
+        let validate_noc_processor = NONGlobalStateValidator::new(
+            acl.global_state_validator().clone(),
+            raw_processor.clone(),
+        );
 
-        // only allowed in current device
+        // should process with rmeta
+        let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl, validate_noc_processor);
+
+        // only allowed on current device
         let acl_processor = NONLocalAclInputProcessor::new(rmeta_processor);
 
         acl_processor
