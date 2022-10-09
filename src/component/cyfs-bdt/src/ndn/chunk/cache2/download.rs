@@ -37,15 +37,7 @@ enum StateImpl {
     Finished
 }
 
-impl StateImpl {
-    pub fn to_task_state(&self) -> DownloadTaskState {
-        match self {
-            Self::Loading => DownloadTaskState::Downloading(0, 0.0), 
-            Self::Downloading(_) => DownloadTaskState::Downloading(0, 0.0), 
-            Self::Finished => DownloadTaskState::Finished
-        }
-    }
-}
+
 
 struct ChunkDowloaderImpl { 
     stack: WeakStack, 
@@ -138,7 +130,7 @@ impl ChunkDownloader {
 
         if sources.len() > 0 {
             let cache = stack.ndn().chunk_manager2().raw_caches().alloc_mem(self.chunk().len());
-            stream_cache.load(false, cache.clone_as_raw_cache());
+            let _ = stream_cache.load(false, cache.clone_as_raw_cache()).unwrap();
 
             let source = sources.pop_front().unwrap();
             let channel = stack.ndn().channel_manager().create_channel(&source.target);
@@ -166,19 +158,21 @@ impl ChunkDownloader {
         } 
     }
 
-    pub fn context(&self) -> &MultiDownloadContext {
+    pub fn add_context(&self, context: SingleDownloadContext) {
+        self.context().add_context(context);
+    }
+
+    pub fn remove_context(&self, context: &SingleDownloadContext) {
+        self.context().remove_context(context)
+    }
+
+    fn context(&self) -> &MultiDownloadContext {
         &self.0.context
     }
 
     pub fn chunk(&self) -> &ChunkId {
         &self.0.chunk
     }
-
-
-    pub fn state(&self) -> DownloadTaskState {
-        self.0.state.read().unwrap().to_task_state()
-    }
-
 
     pub fn calc_speed(&self, when: Timestamp) -> u32 {
         if let Some(session) = {

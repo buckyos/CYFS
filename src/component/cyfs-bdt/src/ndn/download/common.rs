@@ -94,6 +94,10 @@ impl MultiDownloadContext {
         self.0.contexts.write().unwrap().push_back(context);
     }
 
+    pub fn remove_context(&self, context: &SingleDownloadContext) {
+        unimplemented!()
+    }
+
     pub fn sources_of(&self, filter: impl Fn(&DownloadSource) -> bool + Copy, limit: usize) -> LinkedList<DownloadSource> {
         let mut result = LinkedList::new();
         let mut limit = limit;

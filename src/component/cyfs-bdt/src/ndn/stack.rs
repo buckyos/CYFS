@@ -65,9 +65,9 @@ impl NdnStack {
             last_schedule: AtomicU64::new(0), 
             chunk_manager: ChunkManager::new(
                 stack.clone(), 
-                ndc, 
-                tracker, 
-                store), 
+                ndc.clone(), 
+                tracker.clone(), 
+                store.clone_as_reader()), 
             chunk_manager2: ChunkManager2::new(
                 stack.clone(), 
                 ndc, 
@@ -126,6 +126,6 @@ impl NdnStack {
         self.0.event_handler.as_ref()
     }
 
-
+    
 }
 

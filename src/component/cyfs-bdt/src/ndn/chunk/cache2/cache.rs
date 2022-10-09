@@ -15,46 +15,41 @@ use super::super::super::{
 use super::{
     encode::*, 
     stream::*, 
-    // download::*
+    download::*
 };
 
 
 
-struct CacheState {
-    // downloader: ChunkDownloader, 
-    stream_cache: ChunkStreamCache, 
-}
-
 struct CacheImpl {
     stack: WeakStack, 
     chunk: ChunkId, 
-    state: RwLock<CacheState>
+    downloader: ChunkDownloader, 
+    stream_cache: ChunkStreamCache, 
 }
 
 #[derive(Clone)]
 pub struct ChunkCache(Arc<CacheImpl>);
 
 impl ChunkCache {
-    fn new(stack: WeakStack, chunk: ChunkId) -> Self {
+    pub fn new(stack: WeakStack, chunk: ChunkId) -> Self {
+        let stream_cache = ChunkStreamCache::new(&chunk);
         Self(Arc::new((CacheImpl {
-            stack, 
-            state: RwLock::new(CacheState {
-                // downloader: ChunkDownloader::new(), 
-                stream_cache: ChunkStreamCache::new(&chunk), 
-            }),
+            downloader: ChunkDownloader::new(stack.clone(), chunk.clone(), stream_cache.clone()), 
             chunk, 
+            stack, 
+            stream_cache, 
         })))
     }
 
-    pub fn add_context(&self, context: SingleDownloadContext) {
-        unimplemented!()
+    pub fn downloader(&self) -> &ChunkDownloader {
+        &self.0.downloader
     }
 
-    pub fn remove_context(&self, context: &SingleDownloadContext) {
-        unimplemented!()
+    pub fn stream(&self) -> &ChunkStreamCache {
+        &self.0.stream_cache
     }
-
-    pub async fn read(&self, piece_desc: &PieceDesc, buf: &mut [u8], timeout: Option<Duration>) -> BuckyResult<usize> {
+    
+    pub fn read<T: futures::Future<Output=BuckyError>>(&self, offset: usize, buffer: &mut [u8], abort: T) -> BuckyResult<usize> {
         unimplemented!()
     }
 }

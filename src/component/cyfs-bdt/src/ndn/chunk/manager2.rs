@@ -165,4 +165,18 @@ impl ChunkManager2 {
     pub fn raw_caches(&self) -> &RawCacheManager {
         &self.raw_caches
     }
+
+    pub fn create_cache(&self, chunk: &ChunkId, context: Option<SingleDownloadContext>) -> ChunkCache {
+        let mut caches = self.chunk_caches.write().unwrap();
+        if let Some(cache) = caches.get(chunk).cloned() {
+            cache
+        } else {
+            let cache = ChunkCache::new(self.stack.clone(), chunk.clone());
+            caches.insert(chunk.clone(), cache.clone());
+            if let Some(context) = context {
+                cache.downloader().add_context(context);
+            }
+            cache
+        }
+    }
 }

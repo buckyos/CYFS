@@ -2,7 +2,7 @@ use std::{
     sync::{Arc, RwLock}, 
     ops::Range, 
     io::SeekFrom, 
-    time::Duration
+    collections::BTreeMap
 };
 use async_std::{
     task
@@ -29,7 +29,7 @@ use super::{
 struct StateImpl {
     raw_cache: OnceCell<Box<dyn RawCache>>, 
     indices: IncomeIndexQueue, 
-    // waiters: StateWaiter
+    waiters: BTreeMap::<u32, StateWaiter>
 }
 
 struct CacheImpl {
@@ -47,7 +47,8 @@ impl ChunkStreamCache {
             chunk: chunk.clone(),
             state: RwLock::new(StateImpl {
                 raw_cache: OnceCell::new(), 
-                indices: IncomeIndexQueue::new(chunk.len() as u32)
+                indices: IncomeIndexQueue::new(chunk.len() as u32), 
+                waiters: BTreeMap::new()
             })
         })))
     }
@@ -56,11 +57,33 @@ impl ChunkStreamCache {
         &self, 
         finished: bool, 
         raw_cache: Box<dyn RawCache>, 
-    ) {
-        unimplemented!()
+    ) -> BuckyResult<()> {
+
+        let waiters = {
+            let mut state = self.0.state.write().unwrap();
+            match state.raw_cache.set(raw_cache) {
+                Ok(_) => {
+                    if finished {
+                        state.indices.push(0..self.chunk().len() as u32);
+                        let mut waiters = Default::default();
+                        std::mem::swap(&mut waiters, &mut state.waiters);
+                        Ok(waiters.into_values().collect())
+                    } else {
+                        Ok(vec![])
+                    }
+                },
+                Err(_) => Err(BuckyError::new(BuckyErrorCode::ErrorState, "loaded"))
+            }
+        }?;
+        
+        for waiter in waiters {
+            waiter.wake();
+        }
+
+        Ok(())
     }
 
-    fn chunk(&self) -> &ChunkId {
+    pub fn chunk(&self) -> &ChunkId {
         &self.0.chunk
     }
 
@@ -76,11 +99,23 @@ impl ChunkStreamCache {
             return Ok(index_result);
         }
 
-        let mut writer = self.0.state.read().unwrap().raw_cache.get().unwrap().sync_writer()?;  
+        let mut writer = {
+            let state = self.0.state.read().unwrap();
+            state.raw_cache.get().unwrap().sync_writer()
+        }?;
+
         if range.start == writer.seek(SeekFrom::Start(range.start))? {
             let len = (range.end - range.start) as usize;
             if len == writer.write(&piece.data[..len])? {
-                Ok(self.0.state.write().unwrap().indices.push(index..index + 1))
+                let (result, waiter) = {
+                    let mut state = self.0.state.write().unwrap();
+                    let result = state.indices.push(index..index + 1);
+                    (result, state.waiters.remove(&index))
+                };
+                if let Some(waiter) = waiter {
+                    waiter.wake();
+                }
+                Ok(result)
             } else {
                 Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
             }
@@ -93,15 +128,27 @@ impl ChunkStreamCache {
         self.0.state.read().unwrap().indices.exists(index)
     }
 
-    pub async fn async_exists(&self, index: u32, timeout: Option<Duration>) -> BuckyResult<bool> {
-        unimplemented!()
+    pub async fn wait_index<T: futures::Future<Output=BuckyError>>(&self, index: u32, abort: T) -> BuckyResult<()> {
+        let waiter = {
+            let mut state = self.0.state.write().unwrap();
+            if state.indices.exists(index) {
+                return Ok(());
+            }
+            if let Some(waiters) = state.waiters.get_mut(&index) {
+                waiters.new_waiter()
+            } else {
+                let mut waiters = StateWaiter::new();
+                let waiter = waiters.new_waiter();
+                state.waiters.insert(index, waiters);
+                waiter
+            }
+        };
+        StateWaiter::abort_wait(abort, waiter, || ()).await
     }
 
-    pub async fn async_read(&self, piece_desc: &PieceDesc, buffer: &mut [u8], timeout: Option<Duration>) -> BuckyResult<usize> {
+    pub async fn async_read<T: futures::Future<Output=BuckyError>>(&self, piece_desc: &PieceDesc, buffer: &mut [u8], abort: T) -> BuckyResult<usize> {
         let (index, range) = piece_desc.stream_piece_range(self.chunk());
-        if !self.async_exists(index, timeout).await? {
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, "not exists"));
-        }
+        self.wait_index(index, abort).await?;
         let raw_cache = self.0.state.read().unwrap().raw_cache.get().unwrap().clone_as_raw_cache();
         let mut reader = raw_cache.async_reader().await?;
         use async_std::io::prelude::*;
