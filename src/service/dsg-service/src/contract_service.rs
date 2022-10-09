@@ -232,7 +232,7 @@ impl DsgService {
             }
         }
 
-        let path = RequestGlobalStatePath::new(Some(self.stack().local_device_id().object_id().to_owned()), Some("/dsg/service/sync/state/")).format_string();
+        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/sync/state/")).format_string();
         let access = AccessString::default();
         let item = GlobalStatePathAccessItem {
             path: path.clone(),
@@ -284,7 +284,7 @@ impl DsgService {
             }
         }
 
-        let path = RequestGlobalStatePath::new(Some(self.stack().local_device_id().object_id().to_owned()), Some("/dsg/service/proof/")).format_string();
+        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/proof/")).format_string();
         let access = AccessString::default();
         let item = GlobalStatePathAccessItem {
             path: path.clone(),
@@ -331,7 +331,7 @@ impl DsgService {
             }
         }
 
-        let path = RequestGlobalStatePath::new(Some(self.stack().local_device_id().object_id().to_owned()), Some("/dsg/service/query/")).format_string();
+        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/query/")).format_string();
         let access = AccessString::default();
         let item = GlobalStatePathAccessItem {
             path: path.clone(),
