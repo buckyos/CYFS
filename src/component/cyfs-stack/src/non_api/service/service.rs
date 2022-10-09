@@ -40,7 +40,7 @@ impl NONService {
         fail_handler: ObjectFailHandler,
         chunk_manager: ChunkManagerRef,
     ) -> (NONService, NDNService) {
-        // raw service with inner_path support
+        // raw service with inner_path service support
         let raw_noc_processor = NOCLevelInputProcessor::new_raw_with_inner_path_service(
             noc.clone(),
             ndc.clone(),
@@ -62,11 +62,11 @@ impl NONService {
             noc.clone(),
         );
 
-        // 带本地权限的noc processor
+        // noc processor with local device acl + rmeta acl + validate
         let local_noc_processor =
             NOCLevelInputProcessor::new_local(acl.clone(), raw_noc_processor.clone());
 
-        // 同zone权限的non processor
+        // non processor with zone acl + rmeta acl + validate
         let non_processor = NONLevelInputProcessor::new_zone(
             acl.clone(),
             raw_noc_processor.clone(),
@@ -75,7 +75,7 @@ impl NONService {
             router_handlers.clone(),
         );
 
-        // 标准acl权限的router
+        // 标准acl权限的router + rmeta acl + validate
         let router = NONRouter::new_acl(
             raw_noc_processor.clone(),
             forward_manager.clone(),

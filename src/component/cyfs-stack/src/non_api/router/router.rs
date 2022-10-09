@@ -10,6 +10,7 @@ use crate::non::*;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::*;
 use cyfs_base::*;
+use cyfs_core::ZoneId;
 use cyfs_lib::*;
 
 use std::sync::Arc;
@@ -36,7 +37,7 @@ pub(crate) struct NONRouter {
 }
 
 impl NONRouter {
-    fn new_raw(
+    fn new(
         // router内部的noc处理器，会经过acl和validate两层校验器
         noc_raw_processor: NONInputProcessorRef,
 
@@ -50,6 +51,7 @@ impl NONRouter {
         meta_processor: NONInputProcessorRef,
         fail_handler: ObjectFailHandler,
     ) -> NONInputProcessorRef {
+
         // 带rmeta access的noc, 如果当前协议栈是router目标，那么使用此noc；如果是中间节点，那么使用raw_noc_processor来作为缓存查询
         let validate_noc_processor = NONGlobalStateValidator::new(
             acl.global_state_validator().clone(),
@@ -89,8 +91,9 @@ impl NONRouter {
         meta_processor: NONInputProcessorRef,
         fail_handler: ObjectFailHandler,
     ) -> NONInputProcessorRef {
-        // 不带input acl的处理器
-        let raw_router = Self::new_raw(
+
+        // router processor with rmeta acl and valdiate
+        let rmeta_validate_router = Self::new(
             raw_noc_processor,
             forward,
             acl.clone(),
@@ -106,7 +109,7 @@ impl NONRouter {
         // 增加router前置处理器
         let pre_processor = NONHandlerPreProcessor::new(
             RouterHandlerChain::PreRouter,
-            raw_router,
+            rmeta_validate_router,
             router_handlers.clone(),
         );
 
@@ -130,33 +133,30 @@ impl NONRouter {
         target: Option<&ObjectId>,
     ) -> BuckyResult<RouterHandlerRequestRouterInfo> {
         let current_info = self.zone_manager.get_current_info().await?;
-        let target_zone_info = self
-            .zone_manager
-            .target_zone_manager()
-            .resolve_target(target)
-            .await?;
+        let (target_zone_id, final_target) = self.zone_manager.resolve_target(target, None).await?;
 
-        // 如果就是当前协议栈，那么直接本地处理
+        // 如果就是当前协议栈，那么直接从noc select
         let target;
         let direction;
         let next_hop;
         let next_direction;
-        if target_zone_info.target_device == current_info.device_id {
+        if final_target == current_info.device_id {
             // FIXME 如果是本地device，这里是设置为本地device值，还是都置空？
             target = None;
             direction = None;
             next_hop = None;
             next_direction = None;
         } else {
-            let ret = self.next_forward_target(op, &current_info, &target_zone_info)?;
+            let ret =
+                self.next_forward_target(op, &current_info, &target_zone_id, &final_target)?;
             assert!(ret.is_some());
             let next_forward_info = ret.unwrap();
             next_hop = Some(next_forward_info.0);
             next_direction = Some(next_forward_info.1);
 
-            target = Some(target_zone_info.target_device.clone());
+            target = Some(final_target.clone());
 
-            if target_zone_info.is_current_zone {
+            if target_zone_id == current_info.zone_id {
                 direction = Some(ZoneDirection::LocalToLocal);
             } else {
                 direction = Some(ZoneDirection::LocalToRemote);
@@ -179,30 +179,25 @@ impl NONRouter {
         &self,
         op: AclOperation,
         current_info: &Arc<CurrentZoneInfo>,
-        target_zone_info: &TargetZoneInfo,
+        target_zone_id: &ZoneId,
+        final_target: &DeviceId,
     ) -> BuckyResult<Option<(DeviceId, ZoneDirection)>> {
         // 根据当前设备是不是ood，需要区别对待：
         let forward_target = if current_info.zone_role.is_ood_device() {
             // 同zone，那么直接转发到目标device
-            if target_zone_info.is_current_zone {
-                (
-                    target_zone_info.target_device.clone(),
-                    ZoneDirection::LocalToLocal,
-                )
+            if *target_zone_id == current_info.zone_id {
+                (final_target.clone(), ZoneDirection::LocalToLocal)
             } else {
                 // 不同zone，那么转发到目标device所在zone ood
                 (
-                    target_zone_info.target_ood.clone(),
+                    self.zone_manager.get_zone_ood(target_zone_id)?,
                     ZoneDirection::LocalToRemote,
                 )
             }
         } else {
             // 判断是不是就是自己
-            if target_zone_info.target_device == current_info.device_id {
-                (
-                    target_zone_info.target_device.clone(),
-                    ZoneDirection::LocalToLocal,
-                )
+            if *final_target == current_info.device_id {
+                (final_target.clone(), ZoneDirection::LocalToLocal)
             } else {
                 // 判断是不是需要绕过当前zone的ood设备，直接发送请求到目标ood
                 let bypass_current_ood = match op.category() {
@@ -213,16 +208,13 @@ impl NONRouter {
 
                 // 非自己，并且自己也非ood设备，需要根据策略，转发到当前zone ood或者目标zone ood处理
                 if bypass_current_ood {
-                    if target_zone_info.is_current_zone {
+                    if *target_zone_id == current_info.zone_id {
                         // 同zone，那么直接发送到目标设备
-                        (
-                            target_zone_info.target_device.clone(),
-                            ZoneDirection::LocalToLocal,
-                        )
+                        (final_target.clone(), ZoneDirection::LocalToLocal)
                     } else {
                         // 不同zone，那么直接发送到目标zone ood
                         (
-                            target_zone_info.target_ood.clone(),
+                            self.zone_manager.get_zone_ood(target_zone_id)?,
                             ZoneDirection::LocalToRemote,
                         )
                     }
@@ -428,22 +420,17 @@ impl NONRouter {
         if let Some(noc_processor) = noc_processor {
             match noc_processor.get_object(req.clone()).await {
                 Ok(resp) => {
-                    if let Some(next) = &router_info.next_hop {
-                        info!(
-                            "router get_object from local noc cache! id={}, next_hop={}",
-                            req.object_id, next
-                        );
-                    } else {
-                        info!("router get_object from local noc! id={}", req.object_id,);
+                    if router_info.next_hop.is_some() {
+                        info!("router get_object from local noc cache! id={}", req.object_id);
                     }
-
+                    
                     return Ok(resp);
                 }
                 Err(e) => {
                     if Self::is_dir_inner_path_error(&req, &e) {
                         return Err(e);
                     }
-
+    
                     if RouterHandlerAction::is_action_error(&e) {
                         warn!(
                             "get object from noc stopped by action: obj={}, {}",
@@ -451,7 +438,7 @@ impl NONRouter {
                         );
                         return Err(e);
                     }
-
+    
                     if e.code() == BuckyErrorCode::PermissionDenied {
                         warn!(
                             "get object from noc stopped by access: obj={}, {}",
@@ -563,7 +550,7 @@ impl NONRouter {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        info!("router will handle get_object request: {}", req);
+        info!("will handle router get_object request: {}", req);
         // 查找操作一定会转发到当前zone的ood来处理
         // final_target有下面几种情况，查找流程如下(其中-->表示跨协议栈转发操作)
         // 1. 当前协议栈： noc-->ood->noc->meta
@@ -588,7 +575,7 @@ impl NONRouter {
         &self,
         req: NONPostObjectInputRequest,
     ) -> BuckyResult<NONPostObjectInputResponse> {
-        info!("router will handle post object request: {}", req);
+        debug!("router will process post object request: {}", req);
 
         let router_info = self
             .resolve_router_info(
@@ -607,11 +594,12 @@ impl NONRouter {
         // 不再修正req的target，保留请求原始值
         assert!(router_info.target.is_some());
 
+        /*
         info!(
-            "will forward post object: req={}, router={}",
-            req.object.object_id,
-            router_info,
+            "will forward post object: target={}, direction={}",
+            forward_target, direction
         );
+        */
 
         let forward_processor = self
             .get_forward(router_info.next_hop.as_ref().unwrap())
@@ -631,10 +619,11 @@ impl NONRouter {
                 e
             })
             .map(|resp| {
-                info!("forward post object response: req={}, resp={}", object_id, resp);
+                info!("post_object response: req={}, resp={}", object_id, resp);
                 resp
             })
     }
+
 
     pub async fn select_object(
         &self,
