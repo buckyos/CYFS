@@ -68,6 +68,7 @@ impl ProcessCmdFuncs for AppManagerProcessFuncs {
 async fn main_run() {
     //cyfs_base::init_log_with_isolate_bdt(APP_MANAGER_NAME, Some("debug"), None);
     //let action = cyfs_util::process::check_cmd_and_exec(APP_MANAGER_NAME);
+
     let app_config = AppManagerConfig::new();
     let use_docker =
         *app_config.host_mode() == AppManagerHostMode::Default && cfg!(target_os = "linux");
@@ -102,12 +103,12 @@ async fn main_run() {
         unreachable!("Stop cmd should exit.");
     }
 
-    {
-        if let Err(e) = init_system_config().await {
-            error!("load system config err: {}", e);
-            std::process::exit(1);
-        }
-    }
+    // {
+    //     if let Err(e) = init_system_config().await {
+    //         error!("load system config err: {}", e);
+    //         std::process::exit(1);
+    //     }
+    // }
 
     // if is_stop {
     //     info!("will stop, find and kill {} process", APP_MANAGER_NAME);
