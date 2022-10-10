@@ -233,13 +233,13 @@ impl DsgService {
         }
 
         let path = RequestGlobalStatePath::new(None, Some("/dsg/service/sync/state/")).format_string();
-        
+
         let access = AccessString::full();
         let item = GlobalStatePathAccessItem {
             path: path.clone(),
             access: GlobalStatePathGroupAccess::Default(access.value()),
         };
-        
+
         self.stack().root_state_meta_stub(Some(self.stack().local_device_id().object_id().to_owned()), None).add_access(item).await?;
 
         let _ = self.stack().router_handlers().add_handler(
@@ -932,7 +932,9 @@ impl DsgService {
 
 
     async fn put_object_to_noc<T: RawEncode>(&self, id: ObjectId, object: &T) -> BuckyResult<()> {
-        let _ = self.stack().non_service().put_object(NONPutObjectOutputRequest::new(NONAPILevel::NOC, id, object.to_vec()?)).await?;
+        let mut req = NONPutObjectOutputRequest::new(NONAPILevel::NOC, id, object.to_vec()?);
+        req.access = Some(AccessString::full());
+        let _ = self.stack().non_service().put_object(req).await?;
         Ok(())
     }
 
@@ -1018,7 +1020,7 @@ impl DsgService {
         let mut req = NONPostObjectOutputRequest::new(NONAPILevel::default(), challenge.id(), challenge.as_ref().to_vec().unwrap());
         req.common.target = Some(miner);
         req.common.req_path = Some(path);
-        
+
         if self.contracts().pre_post_challenge(challenge, self.config()) {
             let _ = self.stack().non_service().post_object(req).await
                 .map_err(|err| {

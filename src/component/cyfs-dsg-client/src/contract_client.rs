@@ -133,14 +133,16 @@ where
     }
 
     async fn put_object_to_noc<O: RawEncode>(&self, id: ObjectId, object: &O) -> BuckyResult<()> {
+        let mut req = NONPutObjectOutputRequest::new(
+            NONAPILevel::NOC,
+            id,
+            object.to_vec()?,
+        );
+        req.access = Some(AccessString::full());
         let _ = self
             .stack()
             .non_service()
-            .put_object(NONPutObjectOutputRequest::new(
-                NONAPILevel::NOC,
-                id,
-                object.to_vec()?,
-            ))
+            .put_object(req)
             .await?;
         Ok(())
     }
