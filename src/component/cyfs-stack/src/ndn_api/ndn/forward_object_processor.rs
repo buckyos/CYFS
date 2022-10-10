@@ -73,7 +73,7 @@ impl NDNForwardObjectProcessor {
 
     async fn get_file_object(&self, req: &NDNGetDataInputRequest) -> BuckyResult<(ObjectId, File)> {
       
-        // objectmap should not look from local noc, always on target device
+        // objectmap should not look from local noc, its always on target device!!!
         if req.object_id.obj_type_code() != ObjectTypeCode::ObjectMap {
             // 首先本地查询
             if let Some(loader) = &self.local_object_loader {
