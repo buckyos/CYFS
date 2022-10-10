@@ -106,7 +106,7 @@ impl GatewayMonitor {
                 error!("sync zone role from gateway error! {}", e);
             }
 
-            async_std::task::sleep(std::time::Duration::from_secs(60)).await;
+            async_std::task::sleep(std::time::Duration::from_secs(60 * 5)).await;
         }
     }
 

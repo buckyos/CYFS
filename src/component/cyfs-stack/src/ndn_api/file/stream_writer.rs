@@ -298,10 +298,10 @@ impl Read for FileChunkListStreamWriter {
         loop {
             if inner.chunk_list.is_empty() {
                 if inner.is_end {
-                    trace!("chunklist poll break with end {}", self.task_id());
+                    trace!("chunklist poll break with end {}", inner.task_id);
                     break Poll::Ready(Ok(0));
                 } else {
-                    trace!("chunklist poll break with pending, list is empty {}", self.task_id());
+                    trace!("chunklist poll break with pending, list is empty {}", inner.task_id);
                     // assert!(inner.waker.is_none());
                     inner.waker = Some(cx.waker().clone());
                     break Poll::Pending;
@@ -319,18 +319,18 @@ impl Read for FileChunkListStreamWriter {
 
                                 // TODO 是否要填满buf再返回，还是一个chunk read返回了数据就立即返回？
                                 // 这里先立即返回
-                                trace!("chunklist poll break with data: {}, len={}", self.task_id(), complete);
+                                trace!("chunklist poll break with data: {}, len={}", inner.task_id, complete);
 
                                 break Poll::Ready(Ok(complete));
                             } else {
-                                trace!("chunklist poll break with one chunk complete {}", self.task_id());
+                                trace!("chunklist poll break with one chunk complete {}", inner.task_id);
 
                                 // 当前chunk读取完毕了，继续下一个
                                 inner.chunk_list.remove(0);
                             }
                         }
                         Err(e) => {
-                            trace!("chunklist poll break with one chunk error: {}, {}", self.task_id(), e);
+                            trace!("chunklist poll break with one chunk error: {}, {}", inner.task_id, e);
 
                             // 出错了，终止
                             break Poll::Ready(Err(e));
@@ -339,10 +339,10 @@ impl Read for FileChunkListStreamWriter {
                 }
                 Poll::Pending => {
                     if complete > 0 {
-                        trace!("chunklist poll break with data: chunk pending but had pre chunk data: {}, {}", self.task_id(), complete);
+                        trace!("chunklist poll break with data: chunk pending but had pre chunk data: {}, {}", inner.task_id, complete);
                         break Poll::Ready(Ok(complete));
                     } else {
-                        trace!("chunklist poll break with chunk poll_read return pending {}", self.task_id());
+                        trace!("chunklist poll break with chunk poll_read return pending {}", inner.task_id);
                         break Poll::Pending;
                     }
                 }

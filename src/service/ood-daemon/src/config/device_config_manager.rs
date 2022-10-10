@@ -138,7 +138,7 @@ impl DeviceConfigManager {
             }
         };
 
-        info!(
+        debug!(
             "load device_config from {} repo: {}",
             repo.get_type(),
             device_config_str
