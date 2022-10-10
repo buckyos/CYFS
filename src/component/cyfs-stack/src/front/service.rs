@@ -475,10 +475,10 @@ impl FrontService {
                             flags: req.flags,
                         };
 
-                        let url = self.gen_o_redirect_url(&o_req, &req.origin_url);
-                        FrontAResponse::Redirect(url)
-                        //let o_resp = self.process_o_request(o_req).await?;
-                        //FrontAResponse::Response(o_resp)
+                        // let url = self.gen_o_redirect_url(&o_req, &req.origin_url);
+                        // FrontAResponse::Redirect(url)
+                        let o_resp = self.process_o_request(o_req).await?;
+                        FrontAResponse::Response(o_resp)
                     }
                     AppInstallStatus::NotInstalled(dec) => {
                         let dec_id = dec.as_dec_id().or(req.dec.as_dec_id());
@@ -513,7 +513,6 @@ impl FrontService {
                         };
 
                         let o_resp = self.process_o_request(o_req).await?;
-
                         FrontAResponse::Response(o_resp)
                     }
                     AppInstallStatus::NotInstalled(dec) => {
