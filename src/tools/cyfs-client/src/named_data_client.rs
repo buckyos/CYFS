@@ -357,7 +357,9 @@ impl NamedCacheClient {
             } else {
                 warn!("get chunk {} failed by err {}, may retry", chunk_id, chunk_ret.as_ref().err().unwrap());
                 // 这里尝试看能不能让pool放弃这条连接
-                bdt_stream.shutdown(Shutdown::Both);
+                if let Err(e) = bdt_stream.shutdown(Shutdown::Both) {
+                    error!("bdt stream close error! {}", e);
+                }
             }
 
         }
@@ -450,7 +452,7 @@ impl NamedCacheClient {
                 SavedMetaObject::Device(p) => {
                     info!("get device desc {} from meta success", fileid);
                     let device_id = p.desc().device_id();
-                    self.device_cache.get().unwrap().add(&device_id, p.clone());
+                    self.device_cache.get().unwrap().add(&device_id, p.clone()).await;
                     Ok(StandardObject::Device(p))
                 }
                 SavedMetaObject::Data(data) => {
@@ -763,7 +765,7 @@ impl NamedCacheClient {
         match owner {
             StandardObject::Device(device) => {
                 let device_id = device.desc().device_id();
-                self.device_cache.get().unwrap().add(&device_id, device.clone());
+                self.device_cache.get().unwrap().add(&device_id, device.clone()).await;
                 Ok(device_id)
             },
             StandardObject::People(people) => {
