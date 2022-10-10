@@ -13,8 +13,8 @@ use loader::*;
 
 use clap::{App, Arg};
 
-#[async_std::main]
-async fn main() {
+
+async fn main_run() {
     let app = App::new("zone-simulator")
         .version(cyfs_base::get_version())
         .about("zone-simulator tools for cyfs system")
@@ -70,4 +70,10 @@ async fn main() {
     TestLoader::load_stack(user1, user2).await;
 
     async_std::future::pending::<u8>().await;
+}
+
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run())
 }

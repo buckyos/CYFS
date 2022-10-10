@@ -9,6 +9,7 @@ description = "Rust app-tool-ex package"
 
 [dependencies]
 cyfs-base = { path = "../../component/cyfs-base" }
+cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-core = { path = "../../component/cyfs-core" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-util = { path = "../../component/cyfs-util" }

@@ -20,8 +20,7 @@ extern crate log;
 const SERVICE_NAME: &str = ::cyfs_base::OOD_DAEMON_NAME;
 
 
-#[async_std::main]
-async fn main() {
+async fn main_run() {
     let app = App::new("ood-daemon service")
         .version(cyfs_base::get_version())
         .about("ood-daemon service for cyfs system")
@@ -144,4 +143,10 @@ async fn main() {
     if let Err(e) = daemon.run().await {
         error!("daemon run error! err={}", e);
     }
+}
+
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run())
 }

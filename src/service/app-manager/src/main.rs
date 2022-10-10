@@ -65,8 +65,7 @@ impl ProcessCmdFuncs for AppManagerProcessFuncs {
     }
 }
 
-#[async_std::main]
-async fn main() {
+async fn main_run() {
     //cyfs_base::init_log_with_isolate_bdt(APP_MANAGER_NAME, Some("debug"), None);
     //let action = cyfs_util::process::check_cmd_and_exec(APP_MANAGER_NAME);
     let app_config = AppManagerConfig::new();
@@ -165,3 +164,9 @@ async fn main() {
 
     return false;
 }*/
+
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run())
+}

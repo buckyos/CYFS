@@ -304,8 +304,8 @@ lazy_static! {
     static ref DEFAULT_TARGET: String = MetaMinerTarget::default().to_string();
 }
 
-#[async_std::main]
-async fn main() -> BuckyResult<()> {
+
+async fn main_run() -> BuckyResult<()> {
     simple_logger::SimpleLogger::new()
         .with_level(LevelFilter::Debug)
         .init()
@@ -912,4 +912,10 @@ async fn main() -> BuckyResult<()> {
     }
 
     Ok(())
+}
+
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run())
 }

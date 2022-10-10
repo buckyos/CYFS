@@ -47,8 +47,8 @@ fn get_desc(matches: &ArgMatches, name: &str) -> Option<(StandardObject, Private
     }
 }
 
-#[async_std::main]
-async fn main() {
+
+async fn main_run() {
     cyfs_debug::CyfsLoggerBuilder::new_service("cyfs-client")
         .level("info")
         .console("info")
@@ -235,4 +235,10 @@ async fn main() {
             std::process::exit(1);
         },
     };
+}
+
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run())
 }

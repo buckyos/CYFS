@@ -1,4 +1,4 @@
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, CyfsChannel};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 
 use rust_embed::RustEmbed;
 #[cfg(not(windows))]
