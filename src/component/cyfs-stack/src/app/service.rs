@@ -26,7 +26,7 @@ impl AppService {
         root_state: GlobalStateInputProcessorRef,
     ) -> BuckyResult<Self> {
         let info = zone_manager.get_current_info().await?;
-        let source = zone_manager.get_current_source_info(&None).await?;
+        let source = zone_manager.get_current_source_info(&Some(cyfs_core::get_system_dec_app().to_owned())).await?;
         let processor = GlobalStateOutputTransformer::new(root_state, source);
         let root_state_stub = GlobalStateStub::new(
             processor,

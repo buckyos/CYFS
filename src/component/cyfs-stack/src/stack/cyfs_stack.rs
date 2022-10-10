@@ -1111,6 +1111,7 @@ impl CyfsStack {
         &self.stack.root_state
     }
 
+    // use system dec as default dec
     pub async fn root_state_stub(
         &self,
         target: Option<ObjectId>,
@@ -1118,7 +1119,7 @@ impl CyfsStack {
     ) -> GlobalStateStub {
         let source = self
             .zone_manager()
-            .get_current_source_info(&None)
+            .get_current_source_info(&Some(cyfs_core::get_system_dec_app().to_owned()))
             .await
             .unwrap();
         let processor = GlobalStateOutputTransformer::new(
@@ -1133,10 +1134,11 @@ impl CyfsStack {
         &self.stack.local_cache
     }
 
+    // use system dec as default dec
     pub async fn local_cache_stub(&self, target_dec_id: Option<ObjectId>) -> GlobalStateStub {
         let source = self
             .zone_manager()
-            .get_current_source_info(&None)
+            .get_current_source_info(&Some(cyfs_core::get_system_dec_app().to_owned()))
             .await
             .unwrap();
         let processor = GlobalStateOutputTransformer::new(
