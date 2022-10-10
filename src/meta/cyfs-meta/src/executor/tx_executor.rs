@@ -366,6 +366,9 @@ impl TxExecutor {
                 },
                 MetaTxBody::NFTSetNameTx(tx) => {
                     result = self.execute_nft_set_name(&mut context, tx).await;
+                },
+                MetaTxBody::NFTTrans(tx) => {
+                    result = self.execute_nft_trans(&mut context, tx).await;
                 }
                 _ => {
                     error!("execute unsupport transcation");

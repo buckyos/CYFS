@@ -13,7 +13,7 @@ pub trait NFTStorage {
     async fn nft_get2(&self, conn: &mut MetaConnection, object_id: &ObjectId) -> BuckyResult<NFTDetail>;
     async fn nft_get_of_user(&self, user_id: &ObjectId) -> BuckyResult<Vec<NFTDetail>>;
     async fn nft_get_latest_of_user(&self, user_id: &ObjectId, block_number: i64) -> BuckyResult<Vec<NFTDetail>>;
-    async fn nft_change_beneficiary(&self, conn: &mut MetaConnection, nft_id: &ObjectId, creator_id: &ObjectId, beneficiary: &ObjectId, block_number: i64, record_transfer: bool) -> BuckyResult<()>;
+    async fn nft_change_beneficiary(&self, conn: &mut MetaConnection, nft_id: &ObjectId, creator_id: &ObjectId, beneficiary: &ObjectId, block_number: i64, record_transfer: bool, nft_cached: Option<ObjectId>) -> BuckyResult<()>;
     async fn nft_update_state(&self, conn: &mut MetaConnection, object_id: &ObjectId, state: &NFTState) -> BuckyResult<()>;
     async fn nft_add_apply_buy(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId, price: u64, coin_id: &CoinTokenId) -> BuckyResult<()>;
     async fn nft_get_apply_buy(&self, nft_id: &ObjectId, buyer_id: &ObjectId) -> BuckyResult<Option<(u64, CoinTokenId)>>;
@@ -118,7 +118,8 @@ impl NFTStorage for SPVTxStorage {
             "nft_id" char(45) not null,
             "from" char(45) not null,
             "to" char(45) not null,
-            "block_number" integer not null
+            "block_number" integer not null,
+            "nft_cached" char(45) not null
             )"#;
         conn.execute_sql(sqlx::query(sql)).await?;
 
@@ -135,6 +136,11 @@ impl NFTStorage for SPVTxStorage {
             let sql = r#"alter table nft_transfers add column "creator_id" char(45)"#;
             conn.execute_sql(sqlx::query(sql)).await?;
             let sql = r#"create index if not exists nft_transfers_creator on nft_transfers("creator_id", block_number)"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+        }
+
+        if sql.find("nft_cached").is_none() {
+            let sql = r#"alter table nft_transfers add column "nft_cached" char(45)"#;
             conn.execute_sql(sqlx::query(sql)).await?;
         }
         Ok(())
@@ -251,7 +257,7 @@ impl NFTStorage for SPVTxStorage {
         Ok(list)
     }
 
-    async fn nft_change_beneficiary(&self, conn: &mut MetaConnection, nft_id: &ObjectId, creator_id: &ObjectId, beneficiary: &ObjectId, block_number: i64, record_transfer: bool) -> BuckyResult<()> {
+    async fn nft_change_beneficiary(&self, conn: &mut MetaConnection, nft_id: &ObjectId, creator_id: &ObjectId, beneficiary: &ObjectId, block_number: i64, record_transfer: bool, nft_cached: Option<ObjectId>) -> BuckyResult<()> {
         let sql = "select beneficiary from nft where object_id = ?1";
         let row = conn.query_one(sqlx::query(sql).bind(nft_id.to_string())).await?;
         let old_beneficiary: String = row.get("beneficiary");
@@ -260,8 +266,13 @@ impl NFTStorage for SPVTxStorage {
         conn.execute_sql(sqlx::query(sql).bind(beneficiary.to_string()).bind(nft_id.to_string()).bind(block_number)).await?;
 
         if record_transfer {
-            let sql = r#"insert into nft_transfers (nft_id, creator_id, "from", "to", block_number) values (?1, ?2, ?3, ?4, ?5)"#;
-            conn.execute_sql(sqlx::query(sql).bind(nft_id.to_string()).bind(creator_id.to_string()).bind(old_beneficiary).bind(beneficiary.to_string()).bind(block_number)).await?;
+            let sql = r#"insert into nft_transfers (nft_id, creator_id, "from", "to", block_number, nft_cached) values (?1, ?2, ?3, ?4, ?5, ?6)"#;
+            conn.execute_sql(sqlx::query(sql)
+                .bind(nft_id.to_string())
+                .bind(creator_id.to_string())
+                .bind(old_beneficiary)
+                .bind(beneficiary.to_string())
+                .bind(block_number).bind(nft_cached.map_or("".to_string(), |v| v.to_string()))).await?;
         }
 
         Ok(())
@@ -467,12 +478,19 @@ impl NFTStorage for SPVTxStorage {
             let nft_id: String = row.get("nft_id");
             let sql = "select * from nft where object_id = ?1";
             let ret = conn.query_one(sqlx::query(sql).bind(nft_id)).await?;
+            let nft_cached: String = ret.get("nft_cached");
+            let nft_cached = if nft_cached.is_empty() {
+                None
+            } else {
+                Some(nft_cached)
+            };
             list.push(NFTTransRecord {
                 desc: NFTDesc::clone_from_slice(ret.get("desc"))?,
                 name: ret.get("name"),
                 block_number: row.get("block_number"),
                 from: user_id.to_string(),
-                to: row.get("to")
+                to: row.get("to"),
+                nft_cached
             });
         }
 
@@ -483,12 +501,19 @@ impl NFTStorage for SPVTxStorage {
             let nft_id: String = row.get("nft_id");
             let sql = "select * from nft where object_id = ?1";
             let ret = conn.query_one(sqlx::query(sql).bind(nft_id)).await?;
+            let nft_cached: String = ret.get("nft_cached");
+            let nft_cached = if nft_cached.is_empty() {
+                None
+            } else {
+                Some(nft_cached)
+            };
             list.push(NFTTransRecord {
                 desc: NFTDesc::clone_from_slice(ret.get("desc"))?,
                 name: ret.get("name"),
                 block_number: row.get("block_number"),
                 from: row.get("from"),
-                to: user_id.to_string()
+                to: user_id.to_string(),
+                nft_cached
             });
         }
 
@@ -505,12 +530,19 @@ impl NFTStorage for SPVTxStorage {
             let nft_id: String = row.get("nft_id");
             let sql = "select * from nft where object_id = ?1";
             let ret = conn.query_one(sqlx::query(sql).bind(nft_id)).await?;
+            let nft_cached: String = ret.get("nft_cached");
+            let nft_cached = if nft_cached.is_empty() {
+                None
+            } else {
+                Some(nft_cached)
+            };
             list.push(NFTTransRecord {
                 desc: NFTDesc::clone_from_slice(ret.get("desc"))?,
                 name: ret.get("name"),
                 block_number: row.get("block_number"),
                 from: row.get("from"),
-                to: row.get("to")
+                to: row.get("to"),
+                nft_cached
             });
         }
 

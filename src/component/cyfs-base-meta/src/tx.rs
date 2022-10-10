@@ -1,7 +1,7 @@
 use cyfs_base::*;
 use sha2::{Digest, Sha256};
 use crate::contract::*;
-use crate::{MetaExtensionTx, NFTAgreeApplyTx, NFTApplyBuyTx, NFTAuctionTx, NFTBidTx, NFTBuyTx, NFTCancelApplyBuyTx, NFTCancelSellTx, NFTCreateTx, NFTCreateTx2, NFTLikeTx, NFTSellTx, NFTSellTx2, NFTSetNameTx, SNService, SPVTx};
+use crate::{MetaExtensionTx, NFTAgreeApplyTx, NFTApplyBuyTx, NFTAuctionTx, NFTBidTx, NFTBuyTx, NFTCancelApplyBuyTx, NFTCancelSellTx, NFTCreateTx, NFTCreateTx2, NFTLikeTx, NFTSellTx, NFTSellTx2, NFTSetNameTx, NFTTransTx, SNService, SPVTx};
 use async_trait::async_trait;
 use cyfs_core::CoreObjectType;
 use generic_array::typenum::U32;
@@ -58,6 +58,7 @@ pub enum MetaTxBody {
     NFTSetNameTx(NFTSetNameTx),
     NFTCreate2(NFTCreateTx2),
     NFTSell2(NFTSellTx2),
+    NFTTrans(NFTTransTx),
 }
 
 #[derive(Clone, Debug, RawEncode, RawDecode)]

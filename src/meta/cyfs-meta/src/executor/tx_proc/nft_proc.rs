@@ -1,4 +1,4 @@
-use cyfs_base::{BuckyResult, CoinTokenId, hash_data, ObjectDesc, ObjectTypeCode, RawConvertTo};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, CoinTokenId, hash_data, ObjectDesc, ObjectTypeCode, RawConvertTo};
 use cyfs_base_meta::*;
 use crate::{ArcWeakHelper, ExecuteContext, get_meta_err_code, meta_err, State};
 use crate::tx_executor::TxExecutor;
@@ -690,6 +690,24 @@ impl TxExecutor {
 
         context.ref_state().to_rc()?.nft_set_name(&tx.nft_id, tx.name.as_str()).await?;
 
+        Ok(())
+    }
+
+    pub async fn execute_nft_trans(
+        &self,
+        context: &mut ExecuteContext,
+        tx: &NFTTransTx
+    ) -> BuckyResult<()> {
+        // 获取address现在的受益人信息, 没有受益人的情况，benefi是address自己
+        let benefi = context.ref_state().to_rc()?.get_beneficiary(&tx.nft_id).await?;
+
+        // 检查caller是不是受益人，或者受益人的owner
+        if context.caller().id() != &benefi {
+            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, "caller is not benefi or benefi`s owner"));
+        }
+
+        // 修改benefi
+        context.ref_state().to_rc()?.set_beneficiary(&tx.nft_id, &tx.to).await?;
         Ok(())
     }
 }

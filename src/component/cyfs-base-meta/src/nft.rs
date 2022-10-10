@@ -217,6 +217,13 @@ pub struct NFTSetNameTx {
     pub name: String,
 }
 
+#[derive(RawEncode, RawDecode, Clone, Debug)]
+pub struct NFTTransTx {
+    pub nft_id: ObjectId,
+    pub to: ObjectId,
+    pub nft_cached: Option<ObjectId>,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct NFTData {
     pub nft_id: String,
@@ -245,6 +252,7 @@ pub struct NFTTransferRecord {
     pub block_number: i64,
     pub from: String,
     pub to: String,
+    pub cached: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -271,4 +279,5 @@ pub struct NFTTransRecord {
     pub block_number: i64,
     pub from: String,
     pub to: String,
+    pub nft_cached: Option<String>,
 }

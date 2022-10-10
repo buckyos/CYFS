@@ -531,7 +531,8 @@ impl SPVHttpServer {
                                 name: nft_detail.name.clone(),
                                 block_number: nft_detail.block_number,
                                 from: nft_detail.from.clone(),
-                                to: nft_detail.to.clone()
+                                to: nft_detail.to.clone(),
+                                cached: nft_detail.nft_cached.clone()
                             });
                     }
                     Ok(data_list)
@@ -575,7 +576,8 @@ impl SPVHttpServer {
                                 name: nft_detail.name.clone(),
                                 block_number: nft_detail.block_number,
                                 from: nft_detail.from.clone(),
-                                to: nft_detail.to.clone()
+                                to: nft_detail.to.clone(),
+                                cached: nft_detail.nft_cached.clone()
                             });
                     }
                     Ok(data_list)
