@@ -163,7 +163,7 @@ impl DsgService {
         }));
 
         let _ = service.listen().await?;
-        let _ = service.stack().wait_online(None).await?;
+        //let _ = service.stack().wait_online(None).await?;
 
         {
             let service = service.clone();
@@ -233,14 +233,14 @@ impl DsgService {
         }
 
         let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/sync/state/")).format_string();
-        log::info!("-------> handler access path: {}", path);
+        
         let access = AccessString::full();
         let item = GlobalStatePathAccessItem {
             path: path.clone(),
             access: GlobalStatePathGroupAccess::Default(access.value()),
         };
-        //Some(self.stack().local_device_id().object_id().to_owned())
-        self.stack().root_state_meta_stub(None, None).add_access(item).await?;
+        
+        self.stack().root_state_meta_stub(Some(self.stack().local_device_id().object_id().to_owned()), None).add_access(item).await?;
 
         let _ = self.stack().router_handlers().add_handler(
             RouterHandlerChain::Handler,
@@ -1013,7 +1013,7 @@ impl DsgService {
     async fn post_challenge<'a>(&self, challenge: DsgChallengeObjectRef<'a>, miner: ObjectId) -> BuckyResult<()> {
         log::debug!("{} try post challenge, challenge={}", self, challenge);
 
-        let path = RequestGlobalStatePath::new(Some(miner), Some("/dmc/dsg/miner/")).format_string();
+        let path = RequestGlobalStatePath::new(None, Some("/dmc/dsg/miner/")).format_string();
 
         let mut req = NONPostObjectOutputRequest::new(NONAPILevel::default(), challenge.id(), challenge.as_ref().to_vec().unwrap());
         req.common.target = Some(miner);
