@@ -147,7 +147,7 @@ impl ObjectMapSingleOpEnv {
             let value = object_path.get_by_key(path, key).await?;
             if value.is_none() {
                 let msg = format!(
-                    "load single_op_env by path but not found!  root={}, path={}, key={}",
+                    "load single_op_env by path but not found! root={}, path={}, key={}",
                     root, path, key
                 );
                 error!("{}", msg);
