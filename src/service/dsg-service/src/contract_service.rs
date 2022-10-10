@@ -232,7 +232,7 @@ impl DsgService {
             }
         }
 
-        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/sync/state/")).format_string();
+        let path = RequestGlobalStatePath::new(None, Some("/dsg/service/sync/state/")).format_string();
         
         let access = AccessString::full();
         let item = GlobalStatePathAccessItem {
@@ -286,7 +286,7 @@ impl DsgService {
             }
         }
 
-        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/proof/")).format_string();
+        let path = RequestGlobalStatePath::new(None, Some("/dsg/service/proof/")).format_string();
         let access = AccessString::full();
         let item = GlobalStatePathAccessItem {
             path: path.clone(),
@@ -333,7 +333,7 @@ impl DsgService {
             }
         }
 
-        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dsg/service/query/")).format_string();
+        let path = RequestGlobalStatePath::new(None, Some("/dsg/service/query/")).format_string();
         let access = AccessString::full();
         let item = GlobalStatePathAccessItem {
             path: path.clone(),
@@ -1013,7 +1013,7 @@ impl DsgService {
     async fn post_challenge<'a>(&self, challenge: DsgChallengeObjectRef<'a>, miner: ObjectId) -> BuckyResult<()> {
         log::debug!("{} try post challenge, challenge={}", self, challenge);
 
-        let path = RequestGlobalStatePath::new(None, Some("/dmc/dsg/miner/")).format_string();
+        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dmc/dsg/miner/")).format_string();
 
         let mut req = NONPostObjectOutputRequest::new(NONAPILevel::default(), challenge.id(), challenge.as_ref().to_vec().unwrap());
         req.common.target = Some(miner);
