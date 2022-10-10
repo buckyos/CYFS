@@ -4,7 +4,6 @@ use std::{
 use async_std::{
     sync::Arc, 
     task, 
-    io::prelude::*
 };
 use cyfs_base::*;
 use crate::{
@@ -17,7 +16,6 @@ use super::super::super::{
     download::*,
 };
 use super::super::{
-    //encode::ChunkDecoder, 
     storage::{ChunkReader}, 
 };
 use super::{
@@ -28,7 +26,7 @@ use super::{
 
 struct DownloadingState {
     cache: ChunkStreamCache, 
-    session: Option<DownloadSession2>
+    session: Option<DownloadSession>
 }
 
 enum StateImpl {
@@ -64,15 +62,14 @@ impl ChunkDownloader {
         }));
 
         {
-            
             let downloader = downloader.clone();
             
             task::spawn(async move {
                 let stack = Stack::from(&downloader.0.stack);
                 
                 match downloader.load(
-                    stack.ndn().chunk_manager2().store().clone_as_reader(), 
-                    stack.ndn().chunk_manager2().raw_caches()).await {
+                    stack.ndn().chunk_manager().store().clone_as_reader(), 
+                    stack.ndn().chunk_manager().raw_caches()).await {
                     Ok(cache) => {
                         stream_cache.load(true, cache);
                         let state = &mut *downloader.0.state.write().unwrap();
@@ -100,7 +97,7 @@ impl ChunkDownloader {
         let mut writer = cache.async_writer().await?;
         let range_size = PieceData::max_payload();  
 
-        let (_, end, step) = ChunkEncodeDesc::Stream(None, None, None).fill(self.chunk()).unwrap_as_stream();
+        let (_, end, step) = ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()).unwrap_as_stream();
         let mut buffer = vec![0u8; step as usize];
 
         use async_std::io::prelude::*;
@@ -129,13 +126,13 @@ impl ChunkDownloader {
         }, 1);
 
         if sources.len() > 0 {
-            let cache = stack.ndn().chunk_manager2().raw_caches().alloc_mem(self.chunk().len());
+            let cache = stack.ndn().chunk_manager().raw_caches().alloc_mem(self.chunk().len());
             let _ = stream_cache.load(false, cache.clone_as_raw_cache()).unwrap();
 
             let source = sources.pop_front().unwrap();
             let channel = stack.ndn().channel_manager().create_channel(&source.target);
 
-            let session = DownloadSession2::new( 
+            let session = DownloadSession::new( 
                 self.chunk().clone(), 
                 stack.ndn().chunk_manager().gen_session_id(), 
                 channel, 

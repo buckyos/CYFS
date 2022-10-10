@@ -7,8 +7,8 @@ use super::{
     channel::{
         protocol::v0::*, 
         Channel, 
-        DownloadSession, 
-        UploadSession
+        UploadSession, 
+        DownloadSession
     }, 
 };
 
@@ -50,11 +50,14 @@ impl DefaultNdnEventHandler {
         group: &UploadGroup, 
         path: Option<String>, 
     ) -> BuckyResult<UploadSession> {
-        let session = stack.ndn().chunk_manager().start_upload(
-            interest.session_id.clone(), 
+        let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
+        let encoder = cache.create_encoder(&interest.prefer_type);
+        let session = UploadSession::new(
             interest.chunk.clone(), 
+            interest.session_id.clone(), 
             interest.prefer_type.clone(), 
-            to.clone()).await?;
+            encoder, 
+            to.clone());
         let _ = group.add(path, session.clone_as_task());
         // 加入到channel的 upload sessions中
         let _ = to.upload(session.clone());

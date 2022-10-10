@@ -18,7 +18,7 @@ use crate::{
 };
 use super::{
     channel::{self, ChannelManager}, 
-    chunk::{ChunkManager, ChunkManager2, ChunkReader}, 
+    chunk::{ChunkManager, ChunkReader}, 
     event::*, 
     root::RootTask,
 };
@@ -35,7 +35,6 @@ struct StackImpl {
     stack: WeakStack, 
     last_schedule: AtomicU64, 
     chunk_manager: ChunkManager, 
-    chunk_manager2: ChunkManager2, 
     channel_manager: ChannelManager, 
     event_handler: Box<dyn NdnEventHandler>, 
     root_task: RootTask,
@@ -64,11 +63,6 @@ impl NdnStack {
             stack: stack.clone(), 
             last_schedule: AtomicU64::new(0), 
             chunk_manager: ChunkManager::new(
-                stack.clone(), 
-                ndc.clone(), 
-                tracker.clone(), 
-                store.clone_as_reader()), 
-            chunk_manager2: ChunkManager2::new(
                 stack.clone(), 
                 ndc, 
                 tracker, 
@@ -99,7 +93,7 @@ impl NdnStack {
         if now > last_schedule 
             && Duration::from_millis(now - last_schedule) > stack.config().ndn.schedule_interval {
             self.channel_manager().on_schedule(now);
-            self.chunk_manager().on_schedule(now);
+            // self.chunk_manager().on_schedule(now);
             self.root_task().on_schedule(now);
             self.0.last_schedule.store(now, Ordering::SeqCst);
         }
@@ -108,10 +102,6 @@ impl NdnStack {
     
     pub fn chunk_manager(&self) -> &ChunkManager {
         &self.0.chunk_manager
-    }
-
-    pub fn chunk_manager2(&self) -> &ChunkManager2 {
-        &self.0.chunk_manager2
     }
 
     pub fn root_task(&self) -> &RootTask {

@@ -17,9 +17,6 @@ use super::super::super::{
     types::*, 
     channel::{protocol::v0::*}
 };
-use super::super::{
-    storage::*
-};
 use super::{
     encode::*, 
     raw_cache::*
@@ -124,16 +121,24 @@ impl ChunkStreamCache {
         }
     }
 
-    fn exists(&self, index: u32) -> bool {
+    fn exists(&self, index: u32) -> BuckyResult<bool> {
         self.0.state.read().unwrap().indices.exists(index)
     }
 
-    pub async fn wait_index<T: futures::Future<Output=BuckyError>>(&self, index: u32, abort: T) -> BuckyResult<()> {
+    pub async fn wait_exists<T: futures::Future<Output=BuckyError>>(&self, index: u32, abort: T) -> BuckyResult<()> {
         let waiter = {
             let mut state = self.0.state.write().unwrap();
-            if state.indices.exists(index) {
-                return Ok(());
+            match state.indices.exists(index) {
+                Ok(exists) => {
+                    if exists {
+                        return Ok(());
+                    }
+                }, 
+                Err(err) => {
+                    return Err(err); 
+                }
             }
+
             if let Some(waiters) = state.waiters.get_mut(&index) {
                 waiters.new_waiter()
             } else {
@@ -146,14 +151,23 @@ impl ChunkStreamCache {
         StateWaiter::abort_wait(abort, waiter, || ()).await
     }
 
-    pub async fn async_read<T: futures::Future<Output=BuckyError>>(&self, piece_desc: &PieceDesc, buffer: &mut [u8], abort: T) -> BuckyResult<usize> {
+    pub async fn async_read<T: futures::Future<Output=BuckyError>>(
+        &self, 
+        piece_desc: &PieceDesc, 
+        offset_in_piece: usize,  
+        buffer: &mut [u8], 
+        abort: T
+    ) -> BuckyResult<usize> {
         let (index, range) = piece_desc.stream_piece_range(self.chunk());
-        self.wait_index(index, abort).await?;
+        if self.wait_exists(index, abort).await.is_err() {
+            return Ok(0);
+        }
         let raw_cache = self.0.state.read().unwrap().raw_cache.get().unwrap().clone_as_raw_cache();
         let mut reader = raw_cache.async_reader().await?;
         use async_std::io::prelude::*;
-        if range.start == reader.seek(SeekFrom::Start(range.start)).await? {
-            let len = (range.end - range.start) as usize;
+        let start = range.start + offset_in_piece as u64;
+        if start == reader.seek(SeekFrom::Start(start)).await? {
+            let len = (range.end - start) as usize;
             if len == reader.read(&mut buffer[..len]).await? {
                 Ok(len)
             } else {
@@ -165,16 +179,29 @@ impl ChunkStreamCache {
     }
 
 
-    fn sync_try_read(&self, piece_desc: &PieceDesc, buffer: &mut [u8]) -> BuckyResult<usize> {
+    fn sync_try_read(
+        &self, 
+        piece_desc: &PieceDesc, 
+        offset_in_piece: usize,  
+        buffer: &mut [u8]
+    ) -> BuckyResult<usize> {
         let (index, range) = piece_desc.stream_piece_range(self.chunk());
-        if !self.exists(index) {
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, "not exists"));
+        match self.exists(index) {
+            Ok(exists) => {
+                if !exists {
+                    return Err(BuckyError::new(BuckyErrorCode::NotFound, "not exists"));
+                }
+            }, 
+            Err(_) => {
+                return Ok(0);
+            }
         }
         let raw_cache = self.0.state.read().unwrap().raw_cache.get().unwrap().clone_as_raw_cache();
         let mut reader = raw_cache.sync_reader()?;
         use std::io::{Read, Seek};
-        if range.start == reader.seek(SeekFrom::Start(range.start))? {
-            let len = (range.end - range.start) as usize;
+        let start = range.start + offset_in_piece as u64;
+        if start == reader.seek(SeekFrom::Start(start))? {
+            let len = (range.end - start) as usize;
             if len == reader.read(&mut buffer[..len])? {
                 Ok(len)
             } else {
@@ -185,16 +212,29 @@ impl ChunkStreamCache {
         }
     }
 
-    async fn async_try_read(&self, piece_desc: &PieceDesc, buffer: &mut [u8]) -> BuckyResult<usize> {
+    async fn async_try_read(
+        &self, 
+        piece_desc: &PieceDesc, 
+        offset_in_piece: usize,  
+        buffer: &mut [u8]
+    ) -> BuckyResult<usize> {
         let (index, range) = piece_desc.stream_piece_range(self.chunk());
-        if !self.exists(index) {
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, "not exists"));
+        match self.exists(index) {
+            Ok(exists) => {
+                if !exists {
+                    return Err(BuckyError::new(BuckyErrorCode::NotFound, "not exists"));
+                }
+            }, 
+            Err(_) => {
+                return Ok(0);
+            }
         }
         let raw_cache = self.0.state.read().unwrap().raw_cache.get().unwrap().clone_as_raw_cache();
         let mut reader = raw_cache.async_reader().await?;
         use async_std::io::prelude::*;
-        if range.start == reader.seek(SeekFrom::Start(range.start)).await? {
-            let len = (range.end - range.start) as usize;
+        let start = range.start + offset_in_piece as u64;
+        if start == reader.seek(SeekFrom::Start(start)).await? {
+            let len = (range.end - start) as usize;
             if len == reader.read(&mut buffer[..len]).await? {
                 Ok(len)
             } else {
@@ -298,7 +338,6 @@ struct EncoderStateImpl {
 }
 
 struct EncoderImpl {
-    chunk: ChunkId,
     desc: ChunkEncodeDesc, 
     cache: ChunkStreamCache,  
     state: RwLock<EncoderStateImpl>
@@ -316,13 +355,11 @@ impl std::fmt::Display for StreamEncoder {
 
 impl StreamEncoder {
     pub fn new(
-        chunk: &ChunkId, 
-        desc: &ChunkEncodeDesc, 
-        cache: ChunkStreamCache
+        cache: ChunkStreamCache, 
+        desc: &ChunkEncodeDesc
     ) -> Self {
         let (start, end, step) = desc.unwrap_as_stream();
         Self(Arc::new(EncoderImpl {
-            chunk: chunk.clone(), 
             desc: desc.clone(), 
             cache, 
             state: RwLock::new(EncoderStateImpl {
@@ -338,7 +375,7 @@ impl StreamEncoder {
 
     async fn async_next_piece(&self, piece_desc: PieceDesc) {
         let mut buffer = vec![0u8; MTU];
-        let result = self.cache().async_try_read(&piece_desc, &mut buffer[..]).await;
+        let result = self.cache().async_try_read(&piece_desc, 0, &mut buffer[..]).await;
         let mut state = self.0.state.write().unwrap();
         if let EncoderPendingState::Pending(pending_desc) = &state.pending {
             if pending_desc.eq(&piece_desc) {
@@ -357,7 +394,7 @@ impl ChunkEncoder for StreamEncoder {
     }
 
     fn chunk(&self) -> &ChunkId {
-        &self.0.chunk
+        self.cache().chunk()
     }
 
     fn desc(&self) -> &ChunkEncodeDesc {
@@ -399,7 +436,7 @@ impl ChunkEncoder for StreamEncoder {
             }, 
             EncoderPendingState::None => {
                 if let Some(index) = state.indices.next() {
-                    if self.cache().exists(index) {
+                    if self.cache().exists(index).unwrap() {
                         let (_, _, step) = self.desc().unwrap_as_stream();
                         let piece_desc = PieceDesc::Range(index, step.abs() as u16);
                         let buf_len = buf.len();
@@ -409,7 +446,7 @@ impl ChunkEncoder for StreamEncoder {
                             self.chunk(), 
                             &piece_desc)?;
                         let header_len = buf_len - buf.len();
-                        match self.cache().sync_try_read(&piece_desc, buf) {
+                        match self.cache().sync_try_read(&piece_desc, 0, buf) {
                             Ok(len) => {
                                 let _ = state.indices.pop_next();
                                 Ok(header_len + len)

@@ -34,7 +34,6 @@ struct StateImpl {
 }
 
 enum TaskStateImpl {
-    Init, 
     Uploading(UploadingState),
     Finished, 
     Error(BuckyErrorCode),
@@ -64,17 +63,23 @@ impl UploadSession {
         chunk: ChunkId, 
         session_id: TempSeq, 
         piece_type: ChunkEncodeDesc, 
+        encoder: Box<dyn ChunkEncoder>, 
         channel: Channel
     ) -> Self {
         Self(Arc::new(SessionImpl {
             chunk, 
             session_id, 
             piece_type, 
-            channel, 
             state: RwLock::new(StateImpl{
-                task_state: TaskStateImpl::Init, 
+                task_state: TaskStateImpl::Uploading(UploadingState {
+                    pending_from: 0, 
+                    history_speed: HistorySpeed::new(0, channel.config().history_speed.clone()), 
+                    speed_counter: SpeedCounter::new(0), 
+                    encoder
+                }), 
                 control_state: UploadTaskControlState::Normal
             }), 
+            channel, 
             last_active: AtomicU64::new(0), 
         }))
     }
@@ -95,27 +100,6 @@ impl UploadSession {
         &self.0.session_id
     }
 
-    pub fn start(&self, chunk_reader: Arc<Box<dyn ChunkReader>>) {
-        info!("{} started", self);
-        let mut state = self.0.state.write().unwrap();
-        match &state.task_state {
-            TaskStateImpl::Init => {
-                state.task_state = match *self.piece_type() {
-                    ChunkEncodeDesc::Stream(..) => {
-                        TaskStateImpl::Uploading(
-                            UploadingState {
-                                pending_from: 0, 
-                                history_speed: HistorySpeed::new(0, self.channel().config().history_speed.clone()), 
-                                speed_counter: SpeedCounter::new(0), 
-                                encoder: StreamEncoder::from_reader(chunk_reader, self.chunk(), self.piece_type()).clone_as_encoder()
-                            })
-                    },
-                    _ => unimplemented!()
-                };
-            }, 
-            _ => unreachable!()
-        }
-    }
 
     pub(super) fn next_piece(&self, buf: &mut [u8]) -> BuckyResult<usize> {
         let encoder = {
@@ -194,7 +178,8 @@ impl UploadSession {
         match next_step {
             NextStep::ResetEncoder(encoder) => {
                 debug!("{} will reset index", self);
-                encoder.reset()
+                encoder.reset();
+                Ok(())
             }, 
             NextStep::RespInterest(err) => {
                 let resp_interest = RespInterest {
@@ -259,7 +244,10 @@ impl UploadSession {
         match next_step {
             NextStep::MergeIndex(encoder, max_index, lost_index) => {
                 match &ctrl.command {
-                    PieceControlCommand::Continue => encoder.merge(max_index, lost_index), 
+                    PieceControlCommand::Continue => {
+                        encoder.merge(max_index, lost_index);
+                        Ok(())
+                    }, 
                     _ => Ok(())
                 }
             }, 
@@ -284,7 +272,6 @@ impl UploadSession {
     pub(super) fn on_time_escape(&self, now: Timestamp) -> Option<UploadTaskState> {
         let mut state = self.0.state.write().unwrap();
         match &mut state.task_state {
-            TaskStateImpl::Init => Some(UploadTaskState::Uploading(0)), 
             TaskStateImpl::Uploading(uploading) => {
                 if uploading.pending_from > 0 
                     && now > uploading.pending_from 
@@ -318,7 +305,6 @@ impl UploadTask for UploadSession {
 
     fn state(&self) -> UploadTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Init => UploadTaskState::Uploading(0), 
             TaskStateImpl::Uploading(_) => UploadTaskState::Uploading(0), 
             TaskStateImpl::Finished => UploadTaskState::Finished, 
             TaskStateImpl::Error(err) => UploadTaskState::Error(*err),

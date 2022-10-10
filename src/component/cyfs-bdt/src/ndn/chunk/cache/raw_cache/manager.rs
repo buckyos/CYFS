@@ -30,14 +30,16 @@ impl RawCacheManager {
     }
 
     pub async fn alloc(&self, capacity: usize) -> Box<dyn RawCache> {
-        unimplemented!()
+        // FIXME: create file cache when outof config 
+        self.alloc_mem(capacity)
     }
 
     pub fn alloc_mem(&self, capacity: usize) -> Box<dyn RawCache> {
-        unimplemented!()
+        self.0.state.write().unwrap().total_mem += capacity as u64;
+        MemCache::new(self.clone(), capacity).clone_as_raw_cache()
     }
 
     pub(super) fn release_mem(&self, capacity: usize) {
-        unimplemented!()
+        self.0.state.write().unwrap().total_mem -= capacity as u64;
     }
 }

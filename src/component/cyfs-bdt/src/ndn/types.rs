@@ -28,7 +28,6 @@ impl PieceDesc {
         u8::raw_bytes().unwrap() + u32::raw_bytes().unwrap() + u16::raw_bytes().unwrap()
     }
 
-
     pub fn unwrap_as_stream(&self) -> (u32, u16) {
         match self {
             Self::Range(index, range) => (*index, *range), 
@@ -51,6 +50,12 @@ impl PieceDesc {
             }, 
             Self::Raptor(..) => unreachable!()
         }
+    }
+
+    pub fn from_stream_offset(chunk: &ChunkId, range: usize, offset: u32) -> (Self, u32) {
+        let index = offset / range as u32;
+        let offset = offset - index * range as u32;
+        (Self::Range(index, range as u16), offset)
     }
 }
 
@@ -123,7 +128,7 @@ pub enum ChunkEncodeDesc {
 } 
 
 impl ChunkEncodeDesc {
-    pub fn fill(&self, chunk: &ChunkId) -> Self {
+    pub fn fill_values(&self, chunk: &ChunkId) -> Self {
         match self {
             Self::Unknown => Self::Unknown, 
             Self::Stream(start, end, step) => {
@@ -143,8 +148,6 @@ impl ChunkEncodeDesc {
             _ => unreachable!()
         }
     }
-
-    
 }
 
 impl RawEncode for ChunkEncodeDesc {

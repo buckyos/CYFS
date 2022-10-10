@@ -23,13 +23,13 @@ async fn watch_recv_chunk(stack: StackGuard, chunkid: ChunkId) -> BuckyResult<Ch
 }
 
 async fn watch_release_uploader(stack: StackGuard, chunkid: &ChunkId) {
-    loop {
-        if stack.ndn().chunk_manager().view_of(&chunkid).is_some() {
-            task::sleep(Duration::from_millis(500)).await;
-        } else {
-            break;
-        }
-    }
+    // loop {
+    //     if stack.ndn().chunk_manager().view_of(&chunkid).is_some() {
+    //         task::sleep(Duration::from_millis(500)).await;
+    //     } else {
+    //         break;
+    //     }
+    // }
 }
 
 async fn one_small_chunk(ln_ep: &[&str], rn_ep: &[&str], uploader_config: Option<StackConfig>) {

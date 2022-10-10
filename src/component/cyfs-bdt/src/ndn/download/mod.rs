@@ -1,7 +1,6 @@
 mod common;
 mod group;
 mod chunk;
-mod chunk2;
 mod file;
 mod chunk_list;
 mod dir;
