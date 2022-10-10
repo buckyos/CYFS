@@ -78,7 +78,7 @@ impl WebSocketRequestHandler for WebSocketRequestInnerHandler {
     }
 
     async fn on_session_begin(&self, session: &Arc<WebSocketSession>) {
-        info!("ws event new session: sid={}", session.sid());
+        debug!("ws event new session: sid={}", session.sid());
     }
 
     async fn on_session_end(&self, session: &Arc<WebSocketSession>) {

@@ -496,7 +496,7 @@ impl WebSocketRequestManager {
     fn stop_monitor(&self) {
         let mut monitor_canceler = self.monitor_canceler.lock().unwrap();
         if let Some(canceler) = monitor_canceler.take() {
-            info!("will stop ws request monitor: sid={}", self.sid());
+            debug!("will stop ws request monitor: sid={}", self.sid());
             canceler.abort();
         }
     }
