@@ -103,17 +103,12 @@ async fn main_run() {
         unreachable!("Stop cmd should exit.");
     }
 
-    // {
-    //     if let Err(e) = init_system_config().await {
-    //         error!("load system config err: {}", e);
-    //         std::process::exit(1);
-    //     }
-    // }
-
-    // if is_stop {
-    //     info!("will stop, find and kill {} process", APP_MANAGER_NAME);
-    //     kill_service_start_process(APP_MANAGER_NAME);
-    // }
+    {
+        if let Err(e) = init_system_config().await {
+            error!("load system config err: {}", e);
+            std::process::exit(1);
+        }
+    }
 
     // 使用默认配置初始化non-stack，因为是跑在gateway后面，共享了gateway的协议栈，所以配置使用默认即可
     // 兼容gateway没启动的情况，在这里等待gateway启动后再往下走
