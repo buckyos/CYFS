@@ -62,6 +62,28 @@ impl FileBlobStorage {
         let info = NONObjectInfo::new_from_object_raw(object_raw)?;
         Ok(info)
     }
+
+    fn write_sync<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> std::io::Result<()> {
+        use std::fs::File;
+        use std::io::Write;
+
+        fn inner(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+            let mut file = File::create(path)?;
+            file.write_all(contents)?;
+            file.sync_all()?;
+            Ok(())
+        }
+        inner(path.as_ref(), contents.as_ref())
+    }
+
+    async fn write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> std::io::Result<()> {
+        let path = path.as_ref().to_owned();
+        let contents = contents.as_ref().to_owned();
+        async_std::task::spawn_blocking(move || {
+            Self::write_sync(&path, contents)
+        })
+        .await
+    }
 }
 
 #[async_trait::async_trait]
@@ -69,7 +91,7 @@ impl BlobStorage for FileBlobStorage {
     async fn put_object(&self, data: NONObjectInfo) -> BuckyResult<()> {
         let path = self.get_full_path(&data.object_id, true).await?;
 
-        async_std::fs::write(&path, &data.object_raw)
+        Self::write(&path, &data.object_raw)
             .await
             .map_err(|e| {
                 let msg = format!(
@@ -81,6 +103,7 @@ impl BlobStorage for FileBlobStorage {
                 BuckyError::new(BuckyErrorCode::IoError, msg)
             })?;
 
+        
         info!(
             "save object blob to file success! object={}",
             data.object_id

@@ -1875,10 +1875,9 @@ where
         //println!("object type:{}, expected:{}", ctx.obj_type(), O::obj_type());
         if O::obj_type() != OBJECT_TYPE_ANY {
             if ctx.obj_type() != O::obj_type() {
-                return Err(BuckyError::new(
-                    BuckyErrorCode::OutOfLimit,
-                    "named obj_type_code not match",
-                ));
+                let msg = format!("obj_type_code not match! required={:?}, got={:?}", O::obj_type(), ctx.obj_type());
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
             }
         }
 

@@ -215,9 +215,44 @@ async fn test_noc() {
     assert_eq!(got_update_time, update_time);
 }
 
+async fn test_error_blob() {
+    use std::str::FromStr;
+
+    cyfs_base::init_simple_log("cyfs-noc-test", Some("debug"));
+
+    let noc = NamedObjectCacheManager::create("error").await.unwrap();
+
+    let object_id = ObjectId::from_str("9cfBkPtFSnksaLsAHpDXtquYG46TRj1xHLsqqM9jFagi").unwrap();
+    info!("object={}, {}", object_id, object_id.to_base36());
+
+    let dec2 = new_dec("dec1");
+    let source = RequestSourceInfo {
+        protocol: RequestProtocol::Native,
+        zone: DeviceZoneInfo {
+            device: None,
+            zone: None,
+            zone_category: DeviceZoneCategory::CurrentDevice,
+        },
+        dec: dec2.clone(),
+        verified: None,
+    };
+    let get_req = NamedObjectCacheGetObjectRequest {
+        source,
+        object_id: object_id.clone(),
+        last_access_rpath: None,
+    };
+
+    let resp = noc.get_object(&get_req).await.unwrap();
+    let data = resp.unwrap();
+    let data = Storage::raw_decode(&data.object.object_raw).unwrap();
+    info!("test complete!");
+    
+}
+
 #[test]
 fn main() {
     async_std::task::block_on(async move {
+        // test_error_blob().await;
         test_noc().await;
     });
 }
