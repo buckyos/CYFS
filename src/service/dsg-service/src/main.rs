@@ -5,6 +5,7 @@ use std::time::Duration;
 use config::builder::DefaultState;
 use config::ConfigBuilder;
 use cyfs_lib::*;
+use cyfs_base::*;
 use cyfs_util::process::ProcessAction;
 use cyfs_dsg_client::*;
 use contract_service::*;
@@ -54,6 +55,12 @@ async fn main_run() {
         .await
         .unwrap();
     stack.wait_online(None).await.unwrap();
+
+    let path = RequestGlobalStatePath::new(None, Some("/dmc/dsg/miner/")).format_string();
+    stack.root_state_meta_stub(None, None).add_access(GlobalStatePathAccessItem {
+        path: path.clone(),
+        access: GlobalStatePathGroupAccess::Default(AccessString::full().value()),
+    }).await.unwrap();
 
     let mut dsg_config = DsgServiceConfig::default();
     dsg_config.challenge_interval = Duration::from_secs(config.get_int("challenge_interval").unwrap() as u64);

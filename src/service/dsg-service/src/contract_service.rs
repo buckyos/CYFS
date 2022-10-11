@@ -1015,12 +1015,12 @@ impl DsgService {
     async fn post_challenge<'a>(&self, challenge: DsgChallengeObjectRef<'a>, miner: ObjectId) -> BuckyResult<()> {
         log::debug!("{} try post challenge, challenge={}", self, challenge);
 
-        let path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dmc/dsg/miner/")).format_string();
+        let req_path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dmc/dsg/miner/")).format_string();
 
         let mut req = NONPostObjectOutputRequest::new(NONAPILevel::default(), challenge.id(), challenge.as_ref().to_vec().unwrap());
         req.common.target = Some(miner);
-        req.common.req_path = Some(path);
-
+        req.common.req_path = Some(req_path);
+        
         if self.contracts().pre_post_challenge(challenge, self.config()) {
             let _ = self.stack().non_service().post_object(req).await
                 .map_err(|err| {
