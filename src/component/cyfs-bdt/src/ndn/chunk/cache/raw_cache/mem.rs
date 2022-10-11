@@ -107,7 +107,7 @@ impl SeekWrapper {
 impl async_std::io::Seek for SeekWrapper {
     fn poll_seek(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
         pos: SeekFrom,
     ) -> Poll<std::io::Result<u64>> {
         let pined = self.get_mut();
@@ -119,7 +119,7 @@ impl async_std::io::Seek for SeekWrapper {
 impl async_std::io::Read for SeekWrapper {
     fn poll_read(
             self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
+            _cx: &mut Context<'_>,
             buf: &mut [u8],
         ) -> Poll<std::io::Result<usize>> {
         let pined = self.get_mut();
@@ -151,7 +151,7 @@ impl SyncReadWithSeek for SeekWrapper {}
 impl async_std::io::Write for SeekWrapper {
     fn poll_write(
         self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
         let pined = self.get_mut();

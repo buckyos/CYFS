@@ -3,13 +3,11 @@ use std::{
 };
 use cyfs_base::*;
 use crate::{
-    types::*, 
-    stack::{WeakStack, Stack}, channel::protocol::v0::PieceData
+    stack::{WeakStack}, 
 };
 use super::super::super::{
     types::*, 
-    download::*, 
-    channel::protocol::v0
+    channel::protocol::v0::PieceData
 };
 use super::{
     encode::*, 
@@ -20,7 +18,6 @@ use super::{
 
 
 struct CacheImpl {
-    stack: WeakStack, 
     chunk: ChunkId, 
     downloader: ChunkDownloader, 
     stream_cache: ChunkStreamCache, 
@@ -32,12 +29,11 @@ pub struct ChunkCache(Arc<CacheImpl>);
 impl ChunkCache {
     pub fn new(stack: WeakStack, chunk: ChunkId) -> Self {
         let stream_cache = ChunkStreamCache::new(&chunk);
-        Self(Arc::new((CacheImpl {
+        Self(Arc::new(CacheImpl {
             downloader: ChunkDownloader::new(stack.clone(), chunk.clone(), stream_cache.clone()), 
             chunk, 
-            stack, 
             stream_cache, 
-        })))
+        }))
     }
 
     pub fn chunk(&self) -> &ChunkId {
@@ -62,7 +58,7 @@ impl ChunkCache {
         buffer: &mut [u8], 
         abort: A
     ) -> BuckyResult<usize> {
-        let (desc, mut offset) = PieceDesc::from_stream_offset(self.chunk(), PieceData::max_payload(), offset as u32);
+        let (desc, mut offset) = PieceDesc::from_stream_offset(PieceData::max_payload(), offset as u32);
         let (mut index, range) = desc.unwrap_as_stream();
         let mut read = 0;
         loop {

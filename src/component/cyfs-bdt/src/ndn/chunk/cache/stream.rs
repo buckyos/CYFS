@@ -38,16 +38,24 @@ struct CacheImpl {
 pub struct ChunkStreamCache(Arc<CacheImpl>);
 
 
+impl std::fmt::Display for ChunkStreamCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ChunkStreamCache{{chunk:{}}}", self.chunk())
+    }
+}
+
+
 impl ChunkStreamCache {
     pub fn new(chunk: &ChunkId) -> Self {
-        Self(Arc::new((CacheImpl {
+        let end = PieceDesc::stream_end_index(chunk, PieceData::max_payload() as u32) + 1;
+        Self(Arc::new(CacheImpl {
             chunk: chunk.clone(),
             state: RwLock::new(StateImpl {
                 raw_cache: OnceCell::new(), 
-                indices: IncomeIndexQueue::new(chunk.len() as u32), 
+                indices: IncomeIndexQueue::new(end), 
                 waiters: BTreeMap::new()
             })
-        })))
+        }))
     }
 
     pub fn load(
@@ -55,13 +63,14 @@ impl ChunkStreamCache {
         finished: bool, 
         raw_cache: Box<dyn RawCache>, 
     ) -> BuckyResult<()> {
-
+        info!("{} load finished:{}", self, finished);
         let waiters = {
             let mut state = self.0.state.write().unwrap();
             match state.raw_cache.set(raw_cache) {
                 Ok(_) => {
                     if finished {
-                        state.indices.push(0..self.chunk().len() as u32);
+                        let end = PieceDesc::stream_end_index(self.chunk(), PieceData::max_payload() as u32) + 1;
+                        state.indices.push(0..end);
                         let mut waiters = Default::default();
                         std::mem::swap(&mut waiters, &mut state.waiters);
                         Ok(waiters.into_values().collect())
@@ -90,9 +99,12 @@ impl ChunkStreamCache {
     }
 
     fn push_piece_data(&self, piece: &PieceData) -> BuckyResult<PushIndexResult> {
+        trace!("{} push piece data:{:?}", self, piece.desc);
+
         let (index, range) = piece.desc.stream_piece_range(self.chunk());
         let index_result = self.0.state.read().unwrap().indices.try_push(index..index + 1);
         if !index_result.pushed() {
+            trace!("{} push piece data:{:?}, result:{:?}", self, piece.desc, index_result);
             return Ok(index_result);
         }
 
@@ -101,9 +113,16 @@ impl ChunkStreamCache {
             state.raw_cache.get().unwrap().sync_writer()
         }?;
 
-        if range.start == writer.seek(SeekFrom::Start(range.start))? {
+        if range.start == writer.seek(SeekFrom::Start(range.start))
+            .map_err(|err| {
+                trace!("{} push piece data:{:?}, result:{}", self, piece.desc, err);
+                err
+            })? {
             let len = (range.end - range.start) as usize;
-            if len == writer.write(&piece.data[..len])? {
+            if len == writer.write(&piece.data[..len]).map_err(|err| {
+                trace!("{} push piece data:{:?}, result:{}", self, piece.desc, err);
+                err
+            })? {
                 let (result, waiter) = {
                     let mut state = self.0.state.write().unwrap();
                     let result = state.indices.push(index..index + 1);
@@ -112,12 +131,17 @@ impl ChunkStreamCache {
                 if let Some(waiter) = waiter {
                     waiter.wake();
                 }
+                trace!("{} push piece data:{:?}, result:{:?}", self, piece.desc, result);
                 Ok(result)
             } else {
-                Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
+                let err = BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch");
+                trace!("{} push piece data:{:?}, result:{}", self, piece.desc, err);
+                Err(err)
             }
         } else {
-            Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
+            let err = BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch");
+            trace!("{} push piece data:{:?}, result:{}", self, piece.desc, err);
+            Err(err)
         }
     }
 
@@ -158,23 +182,41 @@ impl ChunkStreamCache {
         buffer: &mut [u8], 
         abort: T
     ) -> BuckyResult<usize> {
+        trace!("{} async read:{:?}", self, piece_desc);
+
         let (index, range) = piece_desc.stream_piece_range(self.chunk());
         if self.wait_exists(index, abort).await.is_err() {
+            trace!("{} async read:{:?}, read:{}", self, piece_desc, 0);
             return Ok(0);
         }
         let raw_cache = self.0.state.read().unwrap().raw_cache.get().unwrap().clone_as_raw_cache();
-        let mut reader = raw_cache.async_reader().await?;
+        let mut reader = raw_cache.async_reader().await
+            .map_err(|err| {
+                trace!("{} async read:{:?}, read:{}", self, piece_desc, err);
+                err
+            })?;
         use async_std::io::prelude::*;
         let start = range.start + offset_in_piece as u64;
-        if start == reader.seek(SeekFrom::Start(start)).await? {
+        if start == reader.seek(SeekFrom::Start(start)).await.map_err(|err| {
+            trace!("{} async read:{:?}, read:{}", self, piece_desc, err);
+            err
+        })? {
             let len = (range.end - start) as usize;
-            if len == reader.read(&mut buffer[..len]).await? {
+            if len == reader.read(&mut buffer[..len]).await.map_err(|err| {
+                trace!("{} async read:{:?}, read:{}", self, piece_desc, err);
+                err
+            })? {
+                trace!("{} async read:{:?}, read:{}", self, piece_desc, len);
                 Ok(len)
             } else {
-                Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
+                let err = BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch");
+                trace!("{} async read:{:?}, read:{}", self, piece_desc, err);
+                Err(err)
             }
         } else {
-            Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
+            let err = BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch");
+            trace!("{} async read:{:?}, read:{}", self, piece_desc, err);
+            Err(err)
         }
     }
 
@@ -297,8 +339,8 @@ impl ChunkDecoder for StreamDecoder {
 
     fn push_piece_data(&self, piece: &PieceData) -> BuckyResult<PushIndexResult> {
         trace!("{} push piece desc {:?}", self, piece.desc);
-        let (start, end, step) = self.desc().unwrap_as_stream();
-        let (index, range) = piece.desc.unwrap_as_stream();
+        let (start, end, _) = self.desc().unwrap_as_stream();
+        let (index, _) = piece.desc.unwrap_as_stream();
         if index < start || index >= end {
             return Ok(PushIndexResult {
                 valid: false, 
@@ -436,7 +478,12 @@ impl ChunkEncoder for StreamEncoder {
             }, 
             EncoderPendingState::None => {
                 if let Some(index) = state.indices.next() {
-                    if self.cache().exists(index).unwrap() {
+                    trace!("{} try pop next piece {}", self, index);
+                    if self.cache().exists(index)
+                        .map_err(|err| {
+                            error!("{} exists error {}", self, index);
+                            err
+                        }).unwrap() {
                         let (_, _, step) = self.desc().unwrap_as_stream();
                         let piece_desc = PieceDesc::Range(index, step.abs() as u16);
                         let buf_len = buf.len();
@@ -449,6 +496,7 @@ impl ChunkEncoder for StreamEncoder {
                         match self.cache().sync_try_read(&piece_desc, 0, buf) {
                             Ok(len) => {
                                 let _ = state.indices.pop_next();
+                                trace!("{} pop next piece {:?}", self, piece_desc);
                                 Ok(header_len + len)
                             }, 
                             Err(err) => {
@@ -497,7 +545,7 @@ impl ChunkEncoder for StreamEncoder {
 
     fn merge(&self, max_index: u32, lost_index: Vec<Range<u32>>) {
         let mut state = self.0.state.write().unwrap();
-        state.indices.reset();
+        state.indices.merge(max_index, lost_index);
 
         match &state.pending {
             EncoderPendingState::Pending(next_desc) => {

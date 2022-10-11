@@ -702,7 +702,7 @@ impl Channel {
                     session.push_piece_data(&piece);
                     //FIXME： 如果新建了任务，这里应当继续接受piece data
                 },
-                Err(err) => {
+                Err(_err) => {
                     // 通过新建一个canceled的session来回复piece control
                     // let session = DownloadSession::canceled(
                     //     self.0.stack.clone(), 

@@ -125,8 +125,8 @@ impl ChunkTask {
         let _ = cache.read(0, buffer.as_mut_slice(), || async_std::future::pending::<BuckyError>()).await;
         let content = Arc::new(buffer);
         for writer in self.0.writers.iter() {
-            writer.write(self.chunk(), content.clone(), None).await;
-            writer.finish().await;
+            let _ = writer.write(self.chunk(), content.clone(), None).await;
+            let _ = writer.finish().await;
         }
        
     }

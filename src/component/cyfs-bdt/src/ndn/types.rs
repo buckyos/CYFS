@@ -35,7 +35,7 @@ impl PieceDesc {
         }
     }
 
-    fn stream_end_index(chunk: &ChunkId, range: u32) -> u32 {
+    pub fn stream_end_index(chunk: &ChunkId, range: u32) -> u32 {
         (chunk.len() as u32 + range - 1) / range - 1
     }
 
@@ -52,7 +52,7 @@ impl PieceDesc {
         }
     }
 
-    pub fn from_stream_offset(chunk: &ChunkId, range: usize, offset: u32) -> (Self, u32) {
+    pub fn from_stream_offset(range: usize, offset: u32) -> (Self, u32) {
         let index = offset / range as u32;
         let offset = offset - index * range as u32;
         (Self::Range(index, range as u16), offset)
@@ -134,7 +134,7 @@ impl ChunkEncodeDesc {
             Self::Stream(start, end, step) => {
                 let start = start.clone().unwrap_or(0);
                 let range = step.map(|s| s.abs() as u32).unwrap_or(PieceData::max_payload() as u32);
-                let end = end.clone().unwrap_or(PieceDesc::stream_end_index(chunk, range));
+                let end = end.clone().unwrap_or(PieceDesc::stream_end_index(chunk, range) + 1);
                 let step = step.clone().unwrap_or(range as i32);
                 Self::Stream(Some(start), Some(end), Some(step))
             }, 

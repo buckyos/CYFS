@@ -51,11 +51,12 @@ impl DefaultNdnEventHandler {
         path: Option<String>, 
     ) -> BuckyResult<UploadSession> {
         let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
-        let encoder = cache.create_encoder(&interest.prefer_type);
+        let desc = interest.prefer_type.fill_values(&interest.chunk);
+        let encoder = cache.create_encoder(&desc);
         let session = UploadSession::new(
             interest.chunk.clone(), 
             interest.session_id.clone(), 
-            interest.prefer_type.clone(), 
+            desc.clone(), 
             encoder, 
             to.clone());
         let _ = group.add(path, session.clone_as_task());

@@ -12,7 +12,7 @@ use crate::{
 };
 use super::super::super::{ 
     types::*, 
-    channel::{*, protocol::v0::*}, 
+    channel::*, 
     download::*,
 };
 use super::super::{
@@ -71,7 +71,7 @@ impl ChunkDownloader {
                     stack.ndn().chunk_manager().store().clone_as_reader(), 
                     stack.ndn().chunk_manager().raw_caches()).await {
                     Ok(cache) => {
-                        stream_cache.load(true, cache);
+                        let _ = stream_cache.load(true, cache).unwrap();
                         let state = &mut *downloader.0.state.write().unwrap();
                         match &state {
                             StateImpl::Loading => {
@@ -95,7 +95,6 @@ impl ChunkDownloader {
 
         let cache = raw_cache.alloc(self.chunk().len()).await;
         let mut writer = cache.async_writer().await?;
-        let range_size = PieceData::max_payload();  
 
         let (_, end, step) = ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()).unwrap_as_stream();
         let mut buffer = vec![0u8; step as usize];
@@ -135,22 +134,29 @@ impl ChunkDownloader {
             let session = DownloadSession::new( 
                 self.chunk().clone(), 
                 stack.ndn().chunk_manager().gen_session_id(), 
-                channel, 
+                channel.clone(), 
                 source.referer, 
-                ChunkEncodeDesc::Stream(None, None, None), 
+                ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 
                 stream_cache.clone()
             );
-
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                StateImpl::Loading => {
-                    let downloading = DownloadingState {
-                        cache: stream_cache.clone(), 
-                        session: Some(session.clone())
-                    };
-                    *state = StateImpl::Downloading(downloading);
-                }, 
-                _ => {}
+           
+            let start = {
+                let state = &mut *self.0.state.write().unwrap();
+                match state {
+                    StateImpl::Loading => {
+                        let downloading = DownloadingState {
+                            cache: stream_cache.clone(), 
+                            session: Some(session.clone())
+                        };
+                        *state = StateImpl::Downloading(downloading);
+                        true
+                    }, 
+                    _ => false
+                }
+            };
+           
+            if start {
+                let _ = channel.download(session);
             }
         } 
     }

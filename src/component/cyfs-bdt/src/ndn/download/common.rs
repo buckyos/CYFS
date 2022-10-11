@@ -94,7 +94,7 @@ impl MultiDownloadContext {
         self.0.contexts.write().unwrap().push_back(context);
     }
 
-    pub fn remove_context(&self, context: &SingleDownloadContext) {
+    pub fn remove_context(&self, _context: &SingleDownloadContext) {
         unimplemented!()
     }
 

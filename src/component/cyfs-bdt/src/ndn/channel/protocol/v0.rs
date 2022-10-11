@@ -540,12 +540,16 @@ impl PieceControl {
                     let buf_ptr = context.encode(buf_ptr, &self.chunk)?;
                     let buf_ptr = context.encode(buf_ptr, &self.command)?;
                     let index_from = MTU - buf_ptr.len(); 
-                    let buf_ptr = context.option_encode(buf_ptr, &Some(0), flags.next())?;
+                    let buf_ptr = context.option_encode(buf_ptr, &self.max_index, flags.next())?;
                     let _ = context.option_encode(buf_ptr, &Some(vec![0u8; 0]), flags.next())?;
                     let _ = context.finish(&mut buffer[enc_from..])?;
                     
                     for indices in lost_index.chunks(Self::max_index_payload()) {
-                        let buf_ptr = self.max_index.unwrap().raw_encode(&mut buffer[index_from..], &None)?;
+                        let buf_ptr = if let Some(max_index) = self.max_index {
+                            max_index.raw_encode(&mut buffer[index_from..], &None)?
+                        } else {
+                            &mut buffer[index_from..]
+                        };
                         let buf_ptr = indices.raw_encode(buf_ptr, &None)?;
 
                         let len = MTU - buf_ptr.len();

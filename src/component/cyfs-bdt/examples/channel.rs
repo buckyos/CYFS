@@ -82,7 +82,7 @@ async fn main() {
    
 
     for _ in 1..2 {
-        let (chunk_len, chunk_data) = utils::random_mem(1024, 16 * 1024);
+        let (chunk_len, chunk_data) = utils::random_mem(1024, 100);
         let chunk_hash = hash_data(&chunk_data[..]);
         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
         
@@ -98,7 +98,7 @@ async fn main() {
         
         watch_resource(task);
 
-        let recv = future::timeout(Duration::from_secs(5), watch_recv_chunk(ln_stack.clone(), chunkid.clone())).await.unwrap();
+        let recv = future::timeout(Duration::from_secs(50), watch_recv_chunk(ln_stack.clone(), chunkid.clone())).await.unwrap();
         let recv_chunk_id = recv.unwrap();
         assert_eq!(recv_chunk_id, chunkid);
     }

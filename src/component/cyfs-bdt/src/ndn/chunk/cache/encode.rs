@@ -43,7 +43,7 @@ pub trait ChunkEncoder: Send + Sync {
 }
 
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct PushIndexResult {
     pub valid: bool, 
     pub exists: bool, 
@@ -74,21 +74,25 @@ impl IncomeIndexQueue {
             return None;
         }
 
+        if self.queue.is_empty() {
+            return Some((None, Some(vec![start..end])));
+        }
+
         let mut require = LinkedList::new(); 
-        let mut cur_range: Option<Range<u32>> = None;
+        let mut cur_range: Option<Range<u32>> = Some(start..0);
 
         for exists in self.queue.iter() {
             if exists.end <= start {
                 continue;
             }
             if start >= exists.start && end <= exists.end {
+                cur_range = None;
                 break;
             } 
             if exists.start >= end {
                 assert!(cur_range.is_some());
                 cur_range.as_mut().unwrap().end = end;
                 require.push_back(cur_range.clone().unwrap());
-                cur_range = None;
                 break;
             }
             if exists.start < start && exists.end > start {
@@ -104,6 +108,11 @@ impl IncomeIndexQueue {
                 continue;
             }   
         }
+
+        if let Some(mut range) = cur_range {
+            range.end = end;
+            require.push_back(range);
+        } 
         
         if require.len() > 0 {
             if step > 0 {
@@ -264,7 +273,10 @@ fn test_income_index_queue() {
         queue: LinkedList::new()
     };
 
-    indices.push(0..1);
+    let result = indices.push(0..1);
+    assert!(!result.exists && result.valid && !result.finished);
+
+    assert!(indices.require(0, 10, 1).is_some());
 }   
 
 
@@ -282,7 +294,7 @@ pub struct OutcomeIndexQueue {
 impl OutcomeIndexQueue {
     pub fn new(start: u32, end: u32, step: i32) -> Self {
         let mut queue = LinkedList::new();
-        queue.push_back(start..end + 1);
+        queue.push_back(start..end);
         Self {
             step, 
             start, 
@@ -293,7 +305,7 @@ impl OutcomeIndexQueue {
 
     pub fn reset(&mut self) {
         let mut queue = LinkedList::new();
-        queue.push_back(self.start..self.end + 1);
+        queue.push_back(self.start..self.end);
         self.queue = queue;
     }
 
@@ -386,12 +398,12 @@ impl OutcomeIndexQueue {
         }
 
         if self.step > 0 {
-            if max_index < self.end {
-                merge_one(max_index + 1..self.end + 1, skip);
+            if max_index < (self.end - 1) {
+                merge_one(max_index + 1..self.end, skip);
             }
         } else {
             if max_index > self.start {
-                merge_one(self.start..max_index - 1, skip);
+                merge_one(self.start..max_index, skip);
             }
         }
         
@@ -409,7 +421,7 @@ impl OutcomeIndexQueue {
         if self.queue.len() > 0 {
             if self.step > 0 {
                 let range = self.queue.front_mut().unwrap();
-                let index = if range.end - range.start == 1 {
+                let index = if (range.end - range.start) == 1 {
                     self.queue.pop_front().unwrap().start
                 } else {
                     let index = range.start;
@@ -419,7 +431,7 @@ impl OutcomeIndexQueue {
                 Some(index)
             } else {
                 let range = self.queue.back_mut().unwrap();
-                let index = if range.end - range.start == 1 {
+                let index = if (range.end - range.start) == 1 {
                     self.queue.pop_back().unwrap().end - 1
                 } else {
                     let index = range.end - 1;
@@ -438,44 +450,42 @@ impl OutcomeIndexQueue {
 #[test]
 fn test_outcome_index_queue() {
     let mut queue = OutcomeIndexQueue::new(0, 9, 1);
-    assert_eq!(queue.next(), Some(0));
-    assert_eq!(queue.next(), Some(1));
-    assert_eq!(queue.next(), Some(2));
-    assert_eq!(queue.next(), Some(3));
-    assert_eq!(queue.next(), Some(4));
-    assert_eq!(queue.next(), Some(5));
+    assert_eq!(queue.pop_next(), Some(0));
+    assert_eq!(queue.pop_next(), Some(1));
+    assert_eq!(queue.pop_next(), Some(2));
+    assert_eq!(queue.pop_next(), Some(3));
+    assert_eq!(queue.pop_next(), Some(4));
+    assert_eq!(queue.pop_next(), Some(5));
 
     queue.merge(5, vec![]);
-    assert_eq!(queue.next(), Some(6));
+    assert_eq!(queue.pop_next(), Some(6));
 
     queue.merge(4, vec![]);
-    assert_eq!(queue.next(), Some(5));
-    assert_eq!(queue.next(), Some(6));
-    assert_eq!(queue.next(), Some(7));
-    assert_eq!(queue.next(), Some(8));
-    assert_eq!(queue.next(), Some(9));
-    assert_eq!(queue.next(), None);
+    assert_eq!(queue.pop_next(), Some(5));
+    assert_eq!(queue.pop_next(), Some(6));
+    assert_eq!(queue.pop_next(), Some(7));
+    assert_eq!(queue.pop_next(), Some(8));
+    assert_eq!(queue.pop_next(), None);
 
 
 
     let mut queue = OutcomeIndexQueue::new(0, 9, -1);
-    assert_eq!(queue.next(), Some(9));
-    assert_eq!(queue.next(), Some(8));
-    assert_eq!(queue.next(), Some(7));
-    assert_eq!(queue.next(), Some(6));
-    assert_eq!(queue.next(), Some(5));
-    assert_eq!(queue.next(), Some(4));
+    assert_eq!(queue.pop_next(), Some(8));
+    assert_eq!(queue.pop_next(), Some(7));
+    assert_eq!(queue.pop_next(), Some(6));
+    assert_eq!(queue.pop_next(), Some(5));
+    assert_eq!(queue.pop_next(), Some(4));
 
     queue.merge(5, vec![]);
-    assert_eq!(queue.next(), Some(4));
+    assert_eq!(queue.pop_next(), Some(4));
 
     queue.merge(5, vec![]);
-    assert_eq!(queue.next(), Some(4));
-    assert_eq!(queue.next(), Some(3));
-    assert_eq!(queue.next(), Some(2));
-    assert_eq!(queue.next(), Some(1));
-    assert_eq!(queue.next(), Some(0));
-    assert_eq!(queue.next(), None);
+    assert_eq!(queue.pop_next(), Some(4));
+    assert_eq!(queue.pop_next(), Some(3));
+    assert_eq!(queue.pop_next(), Some(2));
+    assert_eq!(queue.pop_next(), Some(1));
+    assert_eq!(queue.pop_next(), Some(0));
+    assert_eq!(queue.pop_next(), None);
 }
 
 

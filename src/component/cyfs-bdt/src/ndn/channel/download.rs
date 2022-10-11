@@ -217,7 +217,6 @@ impl DownloadSession {
                         Ignore
                     }
                 }, 
-                _ => unreachable!()
             }
         };
 
