@@ -58,29 +58,12 @@ impl ChunkTask {
         context: SingleDownloadContext, 
         writers: Vec<Box <dyn ChunkWriter>>, 
     ) -> Self {
-        let strong_stack = Stack::from(&stack);
-        let cache = strong_stack.ndn().chunk_manager().create_cache(&chunk);
-        cache.downloader().add_context(context.clone());
-        let task = Self(Arc::new(ChunkTaskImpl {
+        Self::with_range(
             stack, 
             chunk, 
-            range: None, 
+            None, 
             context, 
-            state: RwLock::new(StateImpl {
-                task_state: TaskStateImpl::Downloading(cache.clone()), 
-                control_state: DownloadTaskControlState::Normal,
-            }), 
-            writers: writers.into_iter().map(|w| ChunkWriterExtWrapper::new(w).clone_as_writer()).collect(),
-        }));
-
-        {
-            let task = task.clone();
-            task::spawn(async move {
-                task.begin(cache).await;
-            });
-        }
-       
-        task
+            writers.into_iter().map(|w| ChunkWriterExtWrapper::new(w).clone_as_writer()).collect())
     } 
 
     pub fn with_range(
@@ -93,17 +76,26 @@ impl ChunkTask {
         let strong_stack = Stack::from(&stack);
         let cache = strong_stack.ndn().chunk_manager().create_cache(&chunk);
         cache.downloader().add_context(context.clone());
-        Self(Arc::new(ChunkTaskImpl {
+        let task = Self(Arc::new(ChunkTaskImpl {
             stack, 
             chunk, 
             range, 
             context, 
             state: RwLock::new(StateImpl {
-                task_state: TaskStateImpl::Downloading(cache), 
+                task_state: TaskStateImpl::Downloading(cache.clone()), 
                 control_state: DownloadTaskControlState::Normal,
             }), 
             writers,
-        }))
+        }));
+
+        {
+            let task = task.clone();
+            task::spawn(async move {
+                task.begin(cache).await;
+            });
+        }
+
+        task
     } 
 
 
@@ -125,7 +117,7 @@ impl ChunkTask {
         let _ = cache.read(0, buffer.as_mut_slice(), || async_std::future::pending::<BuckyError>()).await;
         let content = Arc::new(buffer);
         for writer in self.0.writers.iter() {
-            let _ = writer.write(self.chunk(), content.clone(), None).await;
+            let _ = writer.write(self.chunk(), content.clone(), self.range()).await;
             let _ = writer.finish().await;
         }
        
