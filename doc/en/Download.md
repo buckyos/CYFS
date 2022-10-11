@@ -26,7 +26,7 @@ This page collects download links for various important resources of the CYFS ec
 # nightly (dev_testnet)
 ## CyberChat (CYFS wallet)
 - Android: [https://www.cyfs.com/download/nightly/cyberchat/android/latest](https://www.cyfs.com/download/nightly/cyberchat/android/latest)   
-- iOS:     https://testflight.apple.com/join/cDS8j9Ts 
+- iOS:     https://testflight.apple.com/join/cDS8j9Ts getrece
 
 ## CYFS Brower
 - Windows：[https://www.cyfs.com/download/nightly/browser/windows/latest](https://www.cyfs.com/download/nightly/browser/windows/latest)
@@ -41,7 +41,21 @@ This page collects download links for various important resources of the CYFS ec
 - Windows(for debug only): [https://www.cyfs.com/download/nightly/ood/windows/latest](https://www.cyfs.com/download/nightly/ood/windows/latest)
 
 # beta (testnet)
-Coming soon~
+## CyberChat (CYFS wallet)
+- Android: [https://www.cyfs.com/download/beta/cyberchat/android/latest](https://www.cyfs.com/download/beta/cyberchat/android/latest)   
+- iOS:     https://testflight.apple.com/join/cDS8j9Ts 
+
+## CYFS Brower
+- Windows：[https://www.cyfs.com/download/beta/browser/windows/latest](https://www.cyfs.com/download/beta/browser/windows/latest)
+- MAC x86：[https://www.cyfs.com/download/beta/browser/mac-x86/latest](https://www.cyfs.com/download/beta/browser/mac-x86/latest)
+- MAC M1/M2：[https://www.cyfs.com/download/beta/browser/mac-aarch64/latest](https://www.cyfs.com/download/beta/browser/mac-aarch64/latest)
+
+## OOD installer
+- Linux(x86): [https://www.cyfs.com/download/beta/ood/linux/latest](https://www.cyfs.com/download/beta/ood/linux/latest)
+- synology(6.x)：[https://www.cyfs.com/download/beta/ood/synology-6.2/latest](https://www.cyfs.com/download/beta/ood/synology-6.2/latest)
+- synology(7.x)：[https://www.cyfs.com/download/beta/ood/synology-7.0/latest](https://www.cyfs.com/download/beta/ood/synology-7.0/latest)
+- QNAP：[https://www.cyfs.com/download/beta/ood/qnap/latest](https://www.cyfs.com/download/beta/ood/qnap/latest)
+- Windows(for debug only): [https://www.cyfs.com/download/beta/ood/windows/latest](https://www.cyfs.com/download/beta/ood/windows/latest)
 
 # release (mainnet)
 Waiting for stable release.

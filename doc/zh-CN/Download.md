@@ -26,7 +26,6 @@
 # Nightly (dev_testnet)
 ## CyberChat (CYFS wallet)
 - Android: [https://www.cyfs.com/download/nightly/cyberchat/android/latest](https://www.cyfs.com/download/nightly/cyberchat/android/latest)   
-- iOS: https://testflight.apple.com/join/cDS8j9Ts 
 
 ## CYFS Brower
 - Windows：[https://www.cyfs.com/download/nightly/browser/windows/latest](https://www.cyfs.com/download/nightly/browser/windows/latest)
@@ -41,7 +40,21 @@
 - Windows(仅用于调试)。[https://www.cyfs.com/download/nightly/ood/windows/latest](https://www.cyfs.com/download/nightly/ood/windows/latest)
 
 # beta (testnet)
-即将推出~。
+## CyberChat (CYFS wallet)
+- Android: [https://www.cyfs.com/download/beta/cyberchat/android/latest](https://www.cyfs.com/download/beta/cyberchat/android/latest)   
+- iOS: https://testflight.apple.com/join/cDS8j9Ts
+
+## CYFS Brower
+- Windows：[https://www.cyfs.com/download/beta/browser/windows/latest](https://www.cyfs.com/download/beta/browser/windows/latest)
+- MAC x86：[https://www.cyfs.com/download/beta/browser/mac-x86/latest](https://www.cyfs.com/download/beta/browser/mac-x86/latest)
+- MAC M1/M2：[https://www.cyfs.com/download/beta/browser/mac-aarch64/latest](https://www.cyfs.com/download/beta/browser/mac-aarch64/latest)
+
+## OOD安装程序
+- Linux(x86): [https://www.cyfs.com/download/beta/ood/linux/latest](https://www.cyfs.com/download/beta/ood/linux/latest)
+- synology(6.x)：[https://www.cyfs.com/download/beta/ood/synology-6.2/latest](https://www.cyfs.com/download/beta/ood/synology-6.2/latest)
+- synology(7.x)：[https://www.cyfs.com/download/beta/ood/synology-7.0/latest](https://www.cyfs.com/download/beta/ood/synology-7.0/latest)
+- QNAP：[https://www.cyfs.com/download/beta/ood/qnap/latest](https://www.cyfs.com/download/beta/ood/qnap/latest)
+- Windows(仅用于调试)。[https://www.cyfs.com/download/beta/ood/windows/latest](https://www.cyfs.com/download/beta/ood/windows/latest)
 
 # release （mainnet）
 等待稳定版。
