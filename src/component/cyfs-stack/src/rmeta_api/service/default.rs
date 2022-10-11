@@ -17,6 +17,7 @@ impl GlobalStateDefaultMetas {
             .get_global_state_meta(cyfs_core::get_system_dec_app(), true)
             .await?;
 
+        /*
         // admin manager call
         let item = GlobalStatePathAccessItem {
             path: CYFS_SYSTEM_ADMIN_VIRTUAL_PATH.to_owned(),
@@ -55,6 +56,7 @@ impl GlobalStateDefaultMetas {
         };
 
         meta.add_access(item).await?;
+        */
 
         // allow crypto.verify_object for all zone dec call
         let mut permissions = AccessString::new(0);
@@ -71,7 +73,7 @@ impl GlobalStateDefaultMetas {
 
         meta.add_access(item).await?;
 
-        info!("init defualt rmeta access success!");
+        info!("init default rmeta access success!");
 
         Ok(())
     }
