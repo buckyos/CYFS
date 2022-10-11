@@ -34,14 +34,16 @@ impl FriendsManager {
         let all: Vec<&String> = coll.keys().collect();
         info!("load friends list success! {:?}", all);
 
+        self.start_auto_load();
+
         Ok(())
     }
 
-    async fn start_auto_load(&self) {
+    fn start_auto_load(&self) {
         let this = self.clone();
         async_std::task::spawn(async move {
             loop {
-                async_std::task::sleep(std::time::Duration::from_secs(60 * 10)).await;
+                async_std::task::sleep(std::time::Duration::from_secs(60 * 5)).await;
 
                 this.load().await;
             }
