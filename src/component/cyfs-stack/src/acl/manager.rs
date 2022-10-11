@@ -106,8 +106,8 @@ impl AclManager {
         self.load().await;
 
         let current_info = self.zone_manager.get_current_info().await?;
-        if current_info.zone_role.is_active_ood() {
-            // Only init default rmeta on active ood, other ood will been sync to
+        if !current_info.zone_role.is_ood_device() || current_info.zone_role.is_active_ood() {
+            // Only init default rmeta on none ood device and active ood, other ood will been sync to
             self.local_global_state_meta.init().await?;
         }
         
