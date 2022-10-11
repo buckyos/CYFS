@@ -240,5 +240,5 @@ async fn main_run() {
 fn main() {
     cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
 
-    async_std::task::block_on(main_run())
+    async_std::task::block_on(main_run());
 }
