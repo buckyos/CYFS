@@ -21,7 +21,9 @@ impl GlobalStateOutputTransformer {
 
     fn convert_common(&self, common: RootStateOutputRequestCommon) -> RootStateInputRequestCommon {
         let mut source = self.source.clone();
-        source.set_dec(common.dec_id);
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
 
         RootStateInputRequestCommon {
             target_dec_id: common.target_dec_id,
@@ -94,7 +96,9 @@ impl OpEnvOutputTransformer {
 
     fn convert_common(&self, common: OpEnvOutputRequestCommon) -> OpEnvInputRequestCommon {
         let mut source = self.source.clone();
-        source.set_dec(common.dec_id);
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
 
         OpEnvInputRequestCommon {
             target: common.target,
@@ -148,7 +152,10 @@ impl OpEnvOutputProcessor for OpEnvOutputTransformer {
         self.processor.create_new(in_req).await
     }
 
-    async fn get_current_root(&self, req: OpEnvGetCurrentRootOutputRequest) -> BuckyResult<OpEnvGetCurrentRootOutputResponse> {
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootOutputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootOutputResponse> {
         let in_req = OpEnvGetCurrentRootInputRequest {
             common: self.convert_common(req.common),
         };
@@ -462,7 +469,10 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
         self.processor.create_new(in_req).await
     }
 
-    async fn get_current_root(&self, req: OpEnvGetCurrentRootInputRequest) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootInputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootInputResponse> {
         let in_req = OpEnvGetCurrentRootOutputRequest {
             common: self.convert_common(req.common),
         };
@@ -655,7 +665,9 @@ impl GlobalStateAccessOutputTransformer {
 
     fn convert_common(&self, common: RootStateOutputRequestCommon) -> RootStateInputRequestCommon {
         let mut source = self.source.clone();
-        source.set_dec(common.dec_id);
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
 
         RootStateInputRequestCommon {
             // 来源DEC

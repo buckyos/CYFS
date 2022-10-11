@@ -81,7 +81,7 @@ impl NDNRequestHandler {
         }
 
         // FIXME header dec_id vs query pairs dec_id? 
-        let source = req.source.clone().dec(dec_id);
+        let source = req.source.clone().dec(dec_id.unwrap_or(cyfs_core::get_anonymous_dec_app().to_owned()));
 
         let common = NDNInputRequestCommon {
             req_path: None,

@@ -304,11 +304,11 @@ impl RequestSourceInfo {
         self
     }
 
-    pub fn set_dec(&mut self, dec_id: Option<ObjectId>) {
-        self.dec = dec_id.unwrap_or(get_anonymous_dec_app().to_owned());
+    pub fn set_dec(&mut self, dec_id: ObjectId) {
+        self.dec = dec_id;
     }
 
-    pub fn dec(mut self, dec_id: Option<ObjectId>) -> Self {
+    pub fn dec(mut self, dec_id: ObjectId) -> Self {
         self.set_dec(dec_id);
         self
     }

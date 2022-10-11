@@ -125,7 +125,11 @@ impl fmt::Display for RootStateOpEnvAccess {
         write!(f, "path: {}, access: {}", self.path, self.access.as_str())
     }
 }
-
+impl fmt::Debug for RootStateOpEnvAccess {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
 
 impl RootStateOpEnvAccess {
     pub fn new(path: impl Into<String>, access: AccessPermissions) -> Self {
@@ -137,7 +141,7 @@ impl RootStateOpEnvAccess {
 }
 
 // create_op_env
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RootStateCreateOpEnvOutputRequest {
     pub common: RootStateOutputRequestCommon,
 

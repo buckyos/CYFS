@@ -76,7 +76,10 @@ impl NDNInputTransformer {
         Ok(resp)
     }
 
-    async fn put_shared_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
+    async fn put_shared_data(
+        &self,
+        req: NDNPutDataInputRequest,
+    ) -> BuckyResult<NDNPutDataInputResponse> {
         let out_req = NDNPutDataOutputRequest {
             common: Self::convert_common(req.common),
 
@@ -94,7 +97,10 @@ impl NDNInputTransformer {
         Ok(resp)
     }
 
-    async fn get_shared_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
+    async fn get_shared_data(
+        &self,
+        req: NDNGetDataInputRequest,
+    ) -> BuckyResult<NDNGetDataInputResponse> {
         let out_req = NDNGetDataOutputRequest {
             common: Self::convert_common(req.common),
 
@@ -185,19 +191,23 @@ pub(crate) struct NDNOutputTransformer {
 }
 
 impl NDNOutputTransformer {
-    pub fn new(processor: NDNInputProcessorRef, source: RequestSourceInfo) -> NDNOutputProcessorRef {
+    pub fn new(
+        processor: NDNInputProcessorRef,
+        source: RequestSourceInfo,
+    ) -> NDNOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: NDNOutputRequestCommon) -> NDNInputRequestCommon {
         let mut source = self.source.clone();
-        source.set_dec(common.dec_id);
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
 
         NDNInputRequestCommon {
             // 请求路径，可为空
             req_path: common.req_path,
-
 
             // 默认行为
             level: common.level,

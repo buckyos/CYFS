@@ -127,6 +127,8 @@ impl AppService {
         dec_id: &ObjectId,
         ver: &FrontARequestVersion,
     ) -> BuckyResult<Option<ObjectId>> {
+        debug!("will search app web dir: dec={}, ver={:?}", dec_id, ver);
+
         let ver_seg = match ver {
             FrontARequestVersion::Current | FrontARequestVersion::DirID(_) => "current",
             FrontARequestVersion::Version(ver) => ver.as_str(),

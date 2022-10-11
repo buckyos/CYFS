@@ -88,14 +88,19 @@ pub(crate) struct CryptoOutputTransformer {
 }
 
 impl CryptoOutputTransformer {
-    pub fn new(processor: CryptoInputProcessorRef, source: RequestSourceInfo) -> CryptoOutputProcessorRef {
+    pub fn new(
+        processor: CryptoInputProcessorRef,
+        source: RequestSourceInfo,
+    ) -> CryptoOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: CryptoOutputRequestCommon) -> CryptoInputRequestCommon {
         let mut source = self.source.clone();
-        source.set_dec(common.dec_id);
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
 
         CryptoInputRequestCommon {
             // 请求路径，可为空

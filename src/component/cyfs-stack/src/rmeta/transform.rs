@@ -21,7 +21,9 @@ impl GlobalStateMetaOutputTransformer {
 
     fn convert_common(&self, common: MetaOutputRequestCommon) -> MetaInputRequestCommon {
         let mut source = self.source.clone();
-        source.set_dec(common.dec_id);
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
 
         MetaInputRequestCommon {
             target: common.target,

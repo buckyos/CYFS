@@ -76,11 +76,13 @@ impl TransInputProcessor for TransInputTransformer {
     }
 
     async fn control_task(&self, req: TransControlTaskInputRequest) -> BuckyResult<()> {
-        self.processor.control_task(TransControlTaskOutputRequest {
-            common: Self::convert_common(req.common),
-            task_id: req.task_id,
-            action: req.action
-        }).await
+        self.processor
+            .control_task(TransControlTaskOutputRequest {
+                common: Self::convert_common(req.common),
+                task_id: req.task_id,
+                action: req.action,
+            })
+            .await
     }
 
     async fn query_tasks(
@@ -142,15 +144,14 @@ impl TransOutputTransformer {
         processor: TransInputProcessorRef,
         source: RequestSourceInfo,
     ) -> TransOutputProcessorRef {
-        Arc::new(Self {
-            processor,
-            source,
-        })
+        Arc::new(Self { processor, source })
     }
 
     fn convert_common(&self, common: &NDNOutputRequestCommon) -> NDNInputRequestCommon {
         let mut source = self.source.clone();
-        source.set_dec(common.dec_id);
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
 
         NDNInputRequestCommon {
             req_path: common.req_path.clone(),
@@ -165,7 +166,9 @@ impl TransOutputTransformer {
 
     fn convert_non_common(&self, common: &NONOutputRequestCommon) -> NONInputRequestCommon {
         let mut source = self.source.clone();
-        source.set_dec(common.dec_id);
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
 
         NONInputRequestCommon {
             req_path: common.req_path.clone(),
@@ -268,10 +271,12 @@ impl TransOutputProcessor for TransOutputTransformer {
     }
 
     async fn control_task(&self, req: TransControlTaskOutputRequest) -> BuckyResult<()> {
-        self.processor.control_task(TransControlTaskInputRequest {
-            common: self.convert_common(&req.common),
-            task_id: req.task_id.clone(),
-            action: req.action.clone()
-        }).await
+        self.processor
+            .control_task(TransControlTaskInputRequest {
+                common: self.convert_common(&req.common),
+                task_id: req.task_id.clone(),
+                action: req.action.clone(),
+            })
+            .await
     }
 }

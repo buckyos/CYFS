@@ -22,7 +22,7 @@ impl NONInputTransformer {
 
             // 来源设备
             source: common.source.zone.device,
-            
+
             // 来源DEC
             dec_id: Some(common.source.dec),
 
@@ -186,14 +186,19 @@ pub(crate) struct NONOutputTransformer {
 }
 
 impl NONOutputTransformer {
-    pub fn new(processor: NONInputProcessorRef, source: RequestSourceInfo) -> NONOutputProcessorRef {
+    pub fn new(
+        processor: NONInputProcessorRef,
+        source: RequestSourceInfo,
+    ) -> NONOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: NONOutputRequestCommon) -> NONInputRequestCommon {
         let mut source = self.source.clone();
-        source.set_dec(common.dec_id);
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
 
         NONInputRequestCommon {
             // 请求路径，可为空
