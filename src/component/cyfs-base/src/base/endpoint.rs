@@ -343,8 +343,8 @@ impl Endpoint {
     fn flags(&self) -> u8 {
         let mut flags = 0u8;
         flags |= match self.protocol {
-            Protocol::Unk => ENDPOINT_PROTOCOL_UNK,
             Protocol::Tcp => ENDPOINT_PROTOCOL_TCP,
+            Protocol::Unk => ENDPOINT_PROTOCOL_UNK,
             Protocol::Udp => ENDPOINT_PROTOCOL_UDP,
         };
         flags |= match self.is_static_wan {
@@ -411,7 +411,10 @@ impl Endpoint {
         buf: &'de [u8],
     ) -> Result<(Self, &'de [u8]), BuckyError> {
         let protocol = match flags & ENDPOINT_PROTOCOL_TCP {
-            0 => Protocol::Udp,
+            0 => match flags & ENDPOINT_PROTOCOL_UDP {
+                0 => Protocol::Unk,
+                _ => Protocol::Udp,
+            },
             _ => Protocol::Tcp,
         };
 
@@ -569,6 +572,22 @@ mod test {
     use std::convert::From;
     //use std::path::Path;
 
+    #[test]
+    fn test_codec() {
+        let ep = Endpoint::default();
+        let v = ep.to_vec().unwrap();
+        let ep2 = Endpoint::clone_from_slice(&v).unwrap();
+        assert_eq!(ep, ep2);
+
+        let ep: Endpoint = (
+            Protocol::Tcp,
+            SocketAddr::from(SocketAddrV4::new(Ipv4Addr::new(127, 11, 22, 33), 4)),
+        )
+            .into();
+        let v = ep.to_vec().unwrap();
+        let ep2 = Endpoint::clone_from_slice(&v).unwrap();
+        assert_eq!(ep, ep2);
+    }
     #[test]
     fn endpoint() {
         let ep: Endpoint = (

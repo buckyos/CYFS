@@ -259,13 +259,13 @@ impl DeviceInfoManagerImpl {
             Ok(resp) => {
                 match resp.result {
                     NamedObjectCachePutObjectResult::AlreadyExists => {
-                        info!("device already in noc: {}", device_id);
+                        debug!("device already in noc: {}", device_id);
                     }
                     NamedObjectCachePutObjectResult::Merged => {
                         info!("device already in noc and signs updated: {}", device_id);
                     }
                     _ => {
-                        info!("insert device to noc success: {}", device_id);
+                        info!("insert new device to noc success: {}", device_id);
                     }
                 }
                 Ok(())
