@@ -21,7 +21,7 @@ impl SerializeExecutorLock {
 
     pub fn add_ref(&self) -> i32 {
         let count = self.count.fetch_add(1, Ordering::SeqCst);
-        assert!(count > 0);
+        assert!(count >= 0);
 
         count + 1
     }
@@ -79,17 +79,16 @@ impl NamedObjectCacheSerializer {
     fn leave_lock(&self, object_id: &ObjectId, lock: SerializeExecutorLockRef) {
         let ref_count = lock.release();
         if ref_count <= 0 {
-            self.try_release_lock(object_id);
+            self.try_release_lock(object_id, lock);
         }
     }
 
-    fn try_release_lock(&self, object_id: &ObjectId) {
+    fn try_release_lock(&self, object_id: &ObjectId, lock: SerializeExecutorLockRef) {
         let mut locks = self.locks.lock().unwrap();
-        let (id, item) = locks.remove_entry(object_id).unwrap();
 
-        // should check once before been removed
-        if item.ref_count() > 0 {
-            locks.insert(id, item);
+        // should check once before been removed!!
+        if lock.ref_count() <= 0 {
+            locks.remove_entry(object_id).unwrap();
         }
     }
 }
