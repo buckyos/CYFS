@@ -74,46 +74,30 @@ impl IncomeIndexQueue {
             return None;
         }
 
-        if self.queue.is_empty() {
-            return Some((None, Some(vec![start..end])));
-        }
-
-        let mut require = LinkedList::new(); 
-        let mut cur_range: Option<Range<u32>> = Some(start..0);
-
-        for exists in self.queue.iter() {
-            if exists.end <= start {
+        let mut exists = LinkedList::new();
+        for exist in &self.queue {
+            if exist.end <= start {
                 continue;
             }
-            if start >= exists.start && end <= exists.end {
-                cur_range = None;
-                break;
-            } 
-            if exists.start >= end {
-                assert!(cur_range.is_some());
-                cur_range.as_mut().unwrap().end = end;
-                require.push_back(cur_range.clone().unwrap());
+            if exist.start >= end {
                 break;
             }
-            if exists.start < start && exists.end > start {
-                assert!(cur_range.is_none());
-                cur_range = Some(exists.end..0);
-                continue;
-            }
-            if exists.start > start && exists.end < end {
-                assert!(cur_range.is_some());
-                cur_range.as_mut().unwrap().end = exists.start;
-                require.push_back(cur_range.clone().unwrap());
-                cur_range = Some(exists.end..0);
-                continue;
-            }   
+            exists.push_back(u32::max(start, exist.start)..u32::min(end, exist.end));
         }
-
-        if let Some(mut range) = cur_range {
-            range.end = end;
-            require.push_back(range);
-        } 
         
+        let mut require = LinkedList::new();
+        let mut remain = start..end;
+        for exist in exists {
+            let cur = remain.start..exist.start;
+            if cur.end > cur.start {
+                require.push_back(cur);
+            }
+            remain.start = exist.end
+        }
+        if remain.end > remain.start {
+            require.push_back(remain);
+        }
+
         if require.len() > 0 {
             if step > 0 {
                 Some((Some(self.queue.back().unwrap().end - 1), Some(require.into_iter().collect())))
@@ -186,7 +170,7 @@ impl IncomeIndexQueue {
                     break;
                 } else if index.end < next.start {
                     // 朝前附加
-                    ChangeQueue::Insert(i);
+                    change = ChangeQueue::Insert(i);
                     break;
                 } else if index.end == next.start {
                     // 和当前合并
@@ -268,15 +252,170 @@ impl IncomeIndexQueue {
 
 #[test]
 fn test_income_index_queue() {
-    let mut indices = IncomeIndexQueue {
-        end: 10u32, 
-        queue: LinkedList::new()
-    };
+    {
+        let mut indices = IncomeIndexQueue {
+            end: 10u32, 
+            queue: LinkedList::new()
+        };
 
-    let result = indices.push(0..1);
-    assert!(!result.exists && result.valid && !result.finished);
+        let result = indices.push(0..1);
+        assert!(!result.exists && result.valid && !result.finished);
+        assert!(indices.require(0, 10, 1).is_some());
 
-    assert!(indices.require(0, 10, 1).is_some());
+        let result = indices.push(1..2);
+        assert!(!result.exists && result.valid && !result.finished);
+        let result = indices.push(2..3);
+        assert!(!result.exists && result.valid && !result.finished);
+        let result = indices.push(3..4);
+        assert!(!result.exists && result.valid && !result.finished);
+        let result = indices.push(4..5);
+        assert!(!result.exists && result.valid && !result.finished);
+        let result = indices.push(5..6);
+        assert!(!result.exists && result.valid && !result.finished);
+        let result = indices.push(6..7);
+        assert!(!result.exists && result.valid && !result.finished);
+        let result = indices.push(7..8);
+        assert!(!result.exists && result.valid && !result.finished);
+        let result = indices.push(8..9);
+        assert!(!result.exists && result.valid && !result.finished);
+        assert!(indices.require(0, 10, 1).is_some());
+
+        let result = indices.push(9..10);
+        assert!(!result.exists && result.valid && result.finished);
+        assert!(indices.require(0, 10, 1).is_none());
+    }
+
+
+    {
+        let mut indices = IncomeIndexQueue {
+            end: 10u32, 
+            queue: LinkedList::new()
+        };
+
+        let index = 9;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        assert!(indices.require(0, 10, 1).is_some());
+
+        let index = 8;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 7;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 6;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 5;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 4;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 3;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 2;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 1;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        assert!(indices.require(0, 10, 1).is_some());
+
+        let index = 0;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && result.finished);
+        assert!(indices.require(0, 10, 1).is_none());
+    }
+
+
+    {
+        let mut indices = IncomeIndexQueue {
+            end: 10u32, 
+            queue: LinkedList::new()
+        };
+
+        let index = 9;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        assert!(indices.require(0, 10, 1).is_some());
+
+        let index = 7;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 8;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 6;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 5;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 4;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 3;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 2;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 1;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        assert!(indices.require(0, 10, 1).is_some());
+
+        let index = 0;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && result.finished);
+        assert!(indices.require(0, 10, 1).is_none());
+    }
+
+
+
+    {
+        let mut indices = IncomeIndexQueue {
+            end: 10u32, 
+            queue: LinkedList::new()
+        };
+
+        let index = 9;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        assert!(indices.require(0, 10, 1).is_some());
+
+        let index = 7;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 8;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 6;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 5;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 4;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        let index = 3;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        
+
+        let index = 0;
+        let result = indices.push(index..index + 1);
+        assert!(!result.exists && result.valid && !result.finished);
+        
+        let (_, lost_indices) = indices.require(0, 10, -1).unwrap();
+        let lost = &lost_indices.unwrap()[0];
+        assert!(lost.start == 1 && lost.end == 3);
+
+    }
+    
 }   
 
 

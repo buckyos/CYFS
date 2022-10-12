@@ -4,6 +4,8 @@ use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
     download::*,
     SingleDownloadContext, 
+    DownloadSource, 
+    ChunkEncodeDesc, 
     ChunkReader,
     ChunkWriter,
     MemChunkStore,
@@ -90,10 +92,18 @@ async fn main() {
         let path = dir.join(chunkid.to_string().as_str());
         let _ = track_chunk_to_path(&*rn_stack, &chunkid, Arc::new(chunk_data), path.as_path()).await.unwrap();
 
+        let context = SingleDownloadContext::new(None);
+        context.add_source(DownloadSource {
+            target: rn_stack.local_device_id().clone(), 
+            object_id: None, 
+            encode_desc: ChunkEncodeDesc::reverse_stream(None, None), 
+            referer: None
+        });
+
         let task = download_chunk(
             &*ln_stack, 
             chunkid.clone(), 
-            SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]), 
+            context, 
             vec![ln_store.clone_as_writer()]).await.unwrap();
         
         watch_resource(task);

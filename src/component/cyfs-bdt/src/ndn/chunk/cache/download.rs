@@ -131,12 +131,19 @@ impl ChunkDownloader {
             let source = sources.pop_front().unwrap();
             let channel = stack.ndn().channel_manager().create_channel(&source.target);
 
+            let desc = match source.encode_desc {
+                ChunkEncodeDesc::Unknown => ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 
+                ChunkEncodeDesc::Stream(..) => source.encode_desc.fill_values(self.chunk()), 
+                _ => unimplemented!()
+            };
+            
+
             let session = DownloadSession::new( 
                 self.chunk().clone(), 
                 stack.ndn().chunk_manager().gen_session_id(), 
                 channel.clone(), 
                 source.referer, 
-                ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 
+                desc, 
                 stream_cache.clone()
             );
            

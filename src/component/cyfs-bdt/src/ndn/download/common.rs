@@ -29,6 +29,13 @@ struct SingleContextImpl {
 pub struct SingleDownloadContext(Arc<SingleContextImpl>);
 
 impl SingleDownloadContext {
+    pub fn new(referer: Option<String>) -> Self {
+        Self(Arc::new(SingleContextImpl {
+            referer, 
+            sources: RwLock::new(Default::default())
+        }))
+    }
+
     pub fn streams(referer: Option<String>, remotes: Vec<DeviceId>) -> Self {
         let mut sources = LinkedList::new();
         for remote in remotes {

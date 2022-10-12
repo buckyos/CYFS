@@ -98,7 +98,7 @@ async fn main() {
         
         watch_resource(task);
 
-        let recv = future::timeout(Duration::from_secs(50), watch_recv_chunk(ln_stack.clone(), chunkid.clone())).await.unwrap();
+        let recv = future::timeout(Duration::from_secs(5), watch_recv_chunk(ln_stack.clone(), chunkid.clone())).await.unwrap();
         let recv_chunk_id = recv.unwrap();
         assert_eq!(recv_chunk_id, chunkid);
     }

@@ -128,6 +128,10 @@ pub enum ChunkEncodeDesc {
 } 
 
 impl ChunkEncodeDesc {
+    pub fn reverse_stream(start: Option<u32>, end: Option<u32>) -> Self {
+        Self::Stream(start, end, Some(-(PieceData::max_payload() as i32)))
+    }
+
     pub fn fill_values(&self, chunk: &ChunkId) -> Self {
         match self {
             Self::Unknown => Self::Unknown, 
