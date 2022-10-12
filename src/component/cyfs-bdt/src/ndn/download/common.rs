@@ -38,6 +38,13 @@ impl Default for SingleDownloadContext {
 }
 
 impl SingleDownloadContext {
+    pub fn new(referer: Option<String>) -> Self {
+        Self(Arc::new(SingleContextImpl {
+            referer, 
+            sources: RwLock::new(Default::default())
+        }))
+    }
+
     pub fn streams(referer: Option<String>, remotes: Vec<DeviceId>) -> Self {
         let mut sources = LinkedList::new();
         for remote in remotes {
@@ -101,6 +108,10 @@ impl MultiDownloadContext {
 
     pub fn add_context(&self, context: SingleDownloadContext) {
         self.0.contexts.write().unwrap().push_back(context);
+    }
+
+    pub fn remove_context(&self, _context: &SingleDownloadContext) {
+        unimplemented!()
     }
 
     pub fn sources_of(&self, filter: impl Fn(&DownloadSource) -> bool + Copy, limit: usize) -> LinkedList<DownloadSource> {

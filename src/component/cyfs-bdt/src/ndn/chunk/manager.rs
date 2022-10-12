@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, LinkedList}, 
+    collections::{BTreeMap}, 
     sync::{RwLock},
 };
 use async_std::{
@@ -12,20 +12,10 @@ use crate::{
     types::*, 
     stack::{WeakStack, Stack},
 };
-use super::super::{
-    types::*
-};
-use super::super::{
-    channel::{Channel, UploadSession}, 
-    download::*
-};
 use super::{
     storage::*,  
-    download::{ChunkDownloader}, 
-    view::ChunkView
+    cache::*
 };
-
-
 
 pub struct ChunkManager {
     stack: WeakStack, 
@@ -33,7 +23,8 @@ pub struct ChunkManager {
     tracker: Box<dyn TrackerCache>, 
     store: Box<dyn ChunkReader>, 
     gen_session_id: TempSeqGenerator, 
-    views: RwLock<BTreeMap<ChunkId, ChunkView>>, 
+    raw_caches: RawCacheManager, 
+    chunk_caches: RwLock<BTreeMap<ChunkId, ChunkCache>>, 
 }
 
 impl std::fmt::Display for ChunkManager {
@@ -87,7 +78,8 @@ impl ChunkManager {
             ndc, 
             tracker, 
             store: Box::new(EmptyChunkWrapper::new(store)), 
-            views: RwLock::new(BTreeMap::new())
+            raw_caches: RawCacheManager::new(), 
+            chunk_caches: RwLock::new(Default::default())
         }
     }
 
@@ -165,90 +157,24 @@ impl ChunkManager {
     pub fn store(&self) -> &dyn ChunkReader {
         self.store.as_ref()
     }
-}
 
-
-impl ChunkManager {
-    pub fn view_of(&self, chunk: &ChunkId) -> Option<ChunkView> {
-        self.views.read().unwrap().get(chunk).cloned()
+    pub fn raw_caches(&self) -> &RawCacheManager {
+        &self.raw_caches
     }
-
-    async fn create_view(&self, chunk: ChunkId, init_state: ChunkState) -> BuckyResult<ChunkView> {
-        let view = self.views.read().unwrap().get(&chunk).cloned();
-        let view = match view {
-            Some(view) => view, 
-            None => {
-                info!("{} will create chunk view of {}", self, chunk);
-                let view = ChunkView::new(
-                    self.stack.clone(), 
-                    chunk.clone(), 
-                    &init_state);
-                let mut views = self.views.write().unwrap();
-                match views.get(&chunk) {
-                    Some(view) => view.clone(), 
-                    None => {
-                        views.insert(chunk.clone(), view.clone());
-                        view
-                    }
-                } 
-            }
-        };
-        view.load().await?;
-        Ok(view)
-    }
-
-    pub(crate) async fn start_download(
-        &self, 
-        chunk: ChunkId, 
-        context: SingleDownloadContext
-    ) -> BuckyResult<ChunkDownloader> {
-        info!("{} try start download", self);
-        let view = self.create_view(chunk, ChunkState::Unknown).await?;
-        view.start_download(context)
-    }
-
-    pub(crate) async fn start_upload(
-        &self, 
-        session_id: TempSeq, 
-        chunk: ChunkId, 
-        piece_type: ChunkEncodeDesc, 
-        to: Channel, 
-    ) -> BuckyResult<UploadSession> {
-        info!("{} try start upload type: {:?} to: {}", self, piece_type, to.remote());
-        let view = self.create_view(chunk, ChunkState::Unknown).await?;
-        view.start_upload(session_id, piece_type, to)
-            .map_err(|err| {
-                error!("{} failed start upload for {}", self, err);
-                err
-            })
-    }
-
 
     pub(super) fn gen_session_id(&self) -> TempSeq {
         self.gen_session_id.generate()
     }
 
-    pub fn on_schedule(&self, now: Timestamp) {
-        let views: Vec<ChunkView> = self.views.read().unwrap().values().cloned().collect();
-        let mut to_recycle = LinkedList::new();
-        for view in views {
-            view.on_schedule(now);
-            if view.recyclable(2) {
-                to_recycle.push_back(view);
-            }
-        }
-
-        if to_recycle.len() > 0 {
-            let mut views = self.views.write().unwrap();
-            for view in to_recycle {
-                if let Some(exists) = views.remove(view.chunk()) {
-                    if view.ptr_eq(&exists) && view.recyclable(2) {
-                        info!("{} recycle {}", self, view);
-                    } else {
-                        views.insert(view.chunk().clone(), exists);
-                    }
-                }
-            }
+    pub fn create_cache(&self, chunk: &ChunkId) -> ChunkCache {
+        let mut caches = self.chunk_caches.write().unwrap();
+        if let Some(cache) = caches.get(chunk).cloned() {
+            cache
+        } else {
+            let cache = ChunkCache::new(self.stack.clone(), chunk.clone());
+            caches.insert(chunk.clone(), cache.clone());
+            cache
         }
     }
+
 }

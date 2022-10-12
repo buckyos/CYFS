@@ -351,6 +351,16 @@ impl StateWaiter {
         state()
     }
 
+    pub async fn abort_wait<A: futures::Future<Output = BuckyError>, T, S: FnOnce() -> T>(t: A, waiter: AbortRegistration, state: S) -> BuckyResult<T> {
+        match Abortable::new(t, waiter).await {
+            Ok(err) => {
+                //FIXME: remove waker 
+                Err(err)
+            }, 
+            Err(_) =>  Ok(state())
+        }
+    }
+
     pub fn wake(self) {
         for waker in self.wakers {
             waker.abort();
