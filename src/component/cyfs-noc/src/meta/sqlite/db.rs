@@ -11,6 +11,25 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thread_local::ThreadLocal;
 
+#[derive(Debug)]
+pub struct UpdateObjectMetaRequest<'a> {
+    pub object_id: &'a ObjectId,
+
+    pub storage_category: Option<&'a NamedObjectStorageCategory>,
+    pub context: Option<&'a String>,
+    pub last_access_rpath: Option<&'a String>,
+    pub access_string: Option<u32>,
+}
+
+impl<'a> UpdateObjectMetaRequest<'a> {
+    pub fn is_empty(&self) -> bool {
+        self.storage_category.is_none()
+            && self.context.is_none()
+            && self.last_access_rpath.is_none()
+            && self.access_string.is_none()
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct SqliteMetaStorage {
     data_dir: PathBuf,
@@ -410,6 +429,20 @@ impl SqliteMetaStorage {
                                 let msg = format!("noc meta update object but object's update time is same! obj={}, current={}, new={}", 
                                 req.object_id, current_update_time, new_update_time);
                                 debug!("{}", msg);
+                            }
+
+                            // try update meta
+                            let meta_req = UpdateObjectMetaRequest {
+                                object_id: &req.object_id,
+                                storage_category: Some(&req.storage_category),
+                                context: req.context.as_ref(),
+                                last_access_rpath: req.last_access_rpath.as_ref(),
+                                access_string: Some(req.access_string.clone()),
+                            };
+
+                            let count = self.update_existing_meta(meta_req, &current_info)?;
+                            if count == 0 {
+                                continue;
                             }
 
                             let resp = NamedObjectMetaPutObjectResponse {
@@ -1007,16 +1040,24 @@ impl SqliteMetaStorage {
                 )?;
             }
 
-            let ret = self.update_existing_meta(req, &current_info)?;
+            let meta_req = UpdateObjectMetaRequest {
+                object_id: &req.object_id,
+                storage_category: req.storage_category.as_ref(),
+                context: req.context.as_ref(),
+                last_access_rpath: req.last_access_rpath.as_ref(),
+                access_string: req.access_string.clone(),
+            };
+
+            let ret = self.update_existing_meta(meta_req, &current_info)?;
             if ret > 0 {
                 break Ok(());
             }
         }
     }
 
-    fn update_existing_meta(
+    fn update_existing_meta<'a>(
         &self,
-        req: &NamedObjectCacheUpdateObjectMetaRequest,
+        req: UpdateObjectMetaRequest<'a>,
         current_info: &NamedObjectMetaUpdateInfo,
     ) -> BuckyResult<usize> {
         trace!("noc meta update existing meta: {:?}", req);
