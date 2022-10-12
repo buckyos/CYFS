@@ -213,6 +213,26 @@ impl FrontProtocolHandler {
         }
     }
 
+    fn is_cyfs_browser(req: &http_types::Request) -> bool {
+        let ret: BuckyResult<Option<String>> = RequestorHelper::decode_optional_header(req, http_types::headers::USER_AGENT);
+        match ret {
+            Ok(Some(s)) => {
+                if s.as_str().contains("CYFS Browser") {
+                    true
+                } else {
+                    false
+                }
+            }
+            Ok(None) => {
+                false
+            }
+            Err(e) => {
+                warn!("decode user-agent from http request header error! {}", e);
+                false
+            }
+        }
+    }
+
     fn parse_url_segs(route_param: &str) -> BuckyResult<Vec<&str>> {
         let segs: Vec<&str> = route_param
             .trim_start_matches('/')
@@ -268,9 +288,10 @@ impl FrontProtocolHandler {
             }
             FrontRequestType::A => {
                 let route_param = Self::extract_route_param(&req.request)?;
+                let is_cyfs_browser = Self::is_cyfs_browser(&req.request.as_ref());
                 let resp = self.process_a_request(req, route_param, format).await?;
 
-                let http_resp = self.encode_a_response(resp, format).await;
+                let http_resp = self.encode_a_response(resp, format, is_cyfs_browser).await;
                 Ok(http_resp)
             }
             FrontRequestType::Any => {
@@ -794,10 +815,16 @@ impl FrontProtocolHandler {
         &self,
         resp: FrontAResponse,
         format: FrontRequestObjectFormat,
+        is_cyfs_browser: bool,
     ) -> tide::Response {
         match resp {
             FrontAResponse::Response(o_resp) => self.encode_o_response(o_resp, format).await,
-            FrontAResponse::Redirect(url) => tide::Redirect::new(url).into(),
+            FrontAResponse::Redirect(mut url) => {
+                if is_cyfs_browser {
+                    url = format!("cyfs:/{}", url);
+                }
+                tide::Redirect::new(url).into() 
+            }
         }
     }
 }
