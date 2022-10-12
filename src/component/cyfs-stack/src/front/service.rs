@@ -641,4 +641,4 @@ impl FrontService {
     }
 }
 
-const APP_DETAIL_URL: &str = "/static/app/app_detail.html";
+const APP_DETAIL_URL: &str = "/static/DecAppStore/app_detail.html";
