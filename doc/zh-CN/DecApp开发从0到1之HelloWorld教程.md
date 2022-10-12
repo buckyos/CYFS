@@ -10,16 +10,16 @@
 
 - windows 系统，在 C:\Users\<your-conputer-name>\.cyfs_profile 目录下分别有 poeple.desc 和 people.sec 文件
 
-2. 请确保已经在系统中安装好 nodejs 最新稳定版以及 yarn。
+2. 请确保已经在系统中安装好 nodejs 最新稳定版。
 3. 全局安装 cyfs-sdk、cyfs-tool 和 cyfs-dapp-cli 脚手架。
    **注意** 如果使用的是 nightly 版本，请安装 cyfs-sdk-nightly、cyfs-tool-nightly
 4. 在你觉得合适的文件夹下，使用脚手架创建 dec app 工程模板，命令如下：
 
 ```shell
-npm i -g cyfs-sdk cyfs-tool cyfs-dapp-cli yarn
+npm i -g cyfs-sdk cyfs-tool cyfs-dapp-cli
 cyfs-dapp-cli create hello-demo
 cd hello-demo
-yarn
+npm i --force
 ```
 
 ---
@@ -161,8 +161,8 @@ message HelloResponseObject {
 - mac 系统，在项目根目录下，执行指令如下：
 
 ```shell
-yarn proto-mac-pre
-yarn proto-mac
+npm run proto-mac-pre
+npm run proto-mac
 ```
 
 **注意** 由于是直接执行的 protoc 执行程序，可能会弹窗提示 _无法打开“protoc”，因为无法验证开发者_，需要开发者按照以下路径去设置：
@@ -172,7 +172,7 @@ _系统偏好设置_ -> _安全性与隐私_ -> _允许从以下位置下载的 
 - windows 系统，在项目根目录下，运行如下指令：
 
 ```shell
-yarn proto-windows
+npm run proto-windows
 ```
 
 运行完毕，在 src/common/objs 文件夹下，生成了 obj_proto_pb.d.ts 和 obj_proto_pb.js 这两个文件。在 obj_proto_pb.d.ts 声明文件中，我们看到了 HelloRequestObject 和 HelloResponseObject 对象的类型定义！
@@ -480,7 +480,7 @@ chmod 775 zone-simulator
 在项目根目录输入以下指令：
 
 ```shell
-yarn dev
+npm run dev
 ```
 
 在 CYFS 浏览器中访问 http://localhost:8088，即可看到前端界面。
