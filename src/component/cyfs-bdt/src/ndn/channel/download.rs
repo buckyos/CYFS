@@ -10,7 +10,6 @@ use futures::future::AbortRegistration;
 use cyfs_base::*;
 use crate::{
     types::*, 
-    stack::{Stack, WeakStack} 
 };
 use super::super::{
     chunk::*, 
@@ -21,17 +20,13 @@ use super::{
     channel::Channel, 
 };
 
-struct InitState {
-    waiters: StateWaiter, 
-    history_speed: HistorySpeed
-}
-
 
 struct InterestingState {
     waiters: StateWaiter, 
     start_send_time: Timestamp, 
     last_send_time: Timestamp, 
-    history_speed: HistorySpeed
+    history_speed: HistorySpeed, 
+    cache: ChunkStreamCache,
 }
 
 struct DownloadingState {
@@ -40,14 +35,12 @@ struct DownloadingState {
     loss_count: u32, 
     decoder: Box<dyn ChunkDecoder>, 
     speed_counter: SpeedCounter, 
-    history_speed: HistorySpeed
+    history_speed: HistorySpeed, 
 }
-
 
 
 struct FinishedState {
     send_ctrl_time: Timestamp, 
-    chunk: Option<Arc<Vec<u8>>>
 }
 
 struct CanceledState {
@@ -62,7 +55,6 @@ pub enum DownloadSessionState {
 }
 
 enum StateImpl {
-    Init(InitState), 
     Interesting(InterestingState), 
     Downloading(DownloadingState),
     Finished(FinishedState), 
@@ -72,7 +64,6 @@ enum StateImpl {
 impl StateImpl {
     fn to_session_state(&self) -> DownloadSessionState {
         match self {
-            Self::Init(_) => DownloadSessionState::Downloading(0), 
             Self::Interesting(_) => DownloadSessionState::Downloading(0), 
             Self::Downloading(_) => DownloadSessionState::Downloading(0), 
             Self::Finished(_) => DownloadSessionState::Finished, 
@@ -83,13 +74,12 @@ impl StateImpl {
 
 
 struct SessionImpl {
-    stack: WeakStack, 
     chunk: ChunkId, 
-    session_id: TempSeq, 
     channel: Channel, 
+    session_id: TempSeq, 
+    desc: ChunkEncodeDesc, 
+    referer: Option<String>, 
     state: RwLock<StateImpl>, 
-    piece_type: ChunkEncodeDesc, 
-    referer: Option<String>,
 }
 
 #[derive(Clone)]
@@ -104,57 +94,50 @@ impl std::fmt::Display for DownloadSession {
 
 impl DownloadSession {
     pub fn new(
-        stack: WeakStack, 
         chunk: ChunkId, 
         session_id: TempSeq, 
         channel: Channel, 
-        piece_type: ChunkEncodeDesc,
 	    referer: Option<String>, 
+        desc: ChunkEncodeDesc,  
+        cache: ChunkStreamCache,
     ) -> Self {
-        let strong_stack = Stack::from(&stack);
-        Self(Arc::new(SessionImpl {
-            stack, 
+        let now = bucky_time_now(); 
+        let session = Self(Arc::new(SessionImpl {
             chunk, 
-            session_id, 
-            piece_type, 
+            session_id,  
+            desc,
 	        referer, 
-            state: RwLock::new(StateImpl::Init(InitState {
-                waiters: StateWaiter::new(), 
+            state: RwLock::new(StateImpl::Interesting(InterestingState { 
                 history_speed: HistorySpeed::new(
                     channel.initial_download_session_speed(), 
-                    strong_stack.config().ndn.channel.history_speed.clone())
-            })),
+                    channel.config().history_speed.clone()), 
+                waiters: StateWaiter::new(), 
+                start_send_time: now, 
+                last_send_time: now, 
+                cache
+            })), 
             channel, 
-        }))
-    }
+        }));
 
-    pub fn canceled(
-        stack: WeakStack, 
-        chunk: ChunkId, 
-        session_id: TempSeq, 
-        channel: Channel, 
-        err: BuckyError
-    ) -> Self {
-        Self(Arc::new(SessionImpl {
-            stack, 
-            chunk, 
-            session_id, 
-            channel, 
-            piece_type: ChunkEncodeDesc::Unknown, 
-            referer: None, 
-            state: RwLock::new(StateImpl::Canceled(CanceledState {
-                send_ctrl_time: 0, 
-                err
-            })),
-        }))
+        let interest = Interest {
+            session_id: session.session_id().clone(), 
+            chunk: session.chunk().clone(), 
+            prefer_type: session.desc().clone(), 
+            referer: session.referer().cloned(), 
+            from: None
+        };
+        info!("{} sent {:?}", session, interest);
+        session.channel().interest(interest);
+
+        session
     }
 
     pub fn chunk(&self) -> &ChunkId {
         &self.0.chunk
     }
 
-    pub fn piece_type(&self) -> &ChunkEncodeDesc {
-        &self.0.piece_type
+    pub fn desc(&self) -> &ChunkEncodeDesc {
+        &self.0.desc
     }
 
     pub fn referer(&self) -> Option<&String> {
@@ -177,48 +160,6 @@ impl DownloadSession {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    pub fn start(&self) -> DownloadSessionState {
-        self.channel().clear_dead();
-
-        info!("{} try start", self);
-        let _continue = {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                StateImpl::Init(init) => {
-                    let now = bucky_time_now();
-                    let mut interesting = InterestingState {
-                        history_speed: init.history_speed.clone(), 
-                        waiters: StateWaiter::new(), 
-                        start_send_time: now, 
-                        last_send_time: now, 
-                    };
-                    std::mem::swap(&mut interesting.waiters, &mut init.waiters);
-                    *state = StateImpl::Interesting(interesting);
-                    true
-                }, 
-                _ => {
-                    let err = BuckyError::new(BuckyErrorCode::ErrorState, "not in init state");
-                    error!("{} try start failed for {}", self, err);
-                    false
-                }
-            }
-        };
-
-        if _continue {
-            let interest = Interest {
-                session_id: self.session_id().clone(), 
-                chunk: self.chunk().clone(), 
-                prefer_type: self.piece_type().clone(), 
-                referer: self.referer().cloned(), 
-                from: None
-            };
-            info!("{} sent {:?}", self, interest);
-            self.channel().interest(interest);
-        }
-
-        self.state()
-    }
-
     pub async fn wait_finish(&self) -> DownloadSessionState {
         enum NextStep {
             Wait(AbortRegistration), 
@@ -227,7 +168,6 @@ impl DownloadSession {
         let next_step = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
-                StateImpl::Init(init) => NextStep::Wait(init.waiters.new_waiter()), 
                 StateImpl::Interesting(interesting) => NextStep::Wait(interesting.waiters.new_waiter()), 
                 StateImpl::Downloading(downloading) => NextStep::Wait(downloading.waiters.new_waiter()),
                 StateImpl::Finished(_) => NextStep::Return(DownloadSessionState::Finished), 
@@ -239,24 +179,6 @@ impl DownloadSession {
             NextStep::Return(state) => state
         }
     }
-    
-    pub fn take_chunk_content(&self) -> Option<Arc<Vec<u8>>> {
-        let state = &mut *self.0.state.write().unwrap();
-        match state {
-            StateImpl::Finished(finished) => {
-                if finished.chunk.is_some() {
-                    let mut chunk = None;
-                    std::mem::swap(&mut chunk, &mut finished.chunk);
-                    info!("{} chunk content taken", self);
-                    chunk
-                } else {
-                    None
-                }
-            }, 
-            _ => None
-        }
-    }
-
 
     pub(super) fn push_piece_data(&self, piece: &PieceData) {
         enum NextStep {
@@ -295,7 +217,6 @@ impl DownloadSession {
                         Ignore
                     }
                 }, 
-                _ => unreachable!()
             }
         };
 
@@ -311,22 +232,21 @@ impl DownloadSession {
         };
 
         let push_to_decoder = |provider: Box<dyn ChunkDecoder>| {
-            let (pre_state, next_state) = provider.push_piece_data(piece); 
+            let result = provider.push_piece_data(piece).unwrap(); 
             if let Some(waiters) = {
                 let state = &mut *self.0.state.write().unwrap();
                 match state {
                     Downloading(downloading) => {
-                        if pre_state != next_state {
+                        if result.valid {
                             downloading.last_pushed = bucky_time_now();
                             downloading.loss_count = 0;
                         }
-                        if next_state == ChunkDecoderState::Ready {
+                        if result.finished {
                             let mut waiters = StateWaiter::new();
                             std::mem::swap(&mut waiters, &mut downloading.waiters);
                             info!("{} finished", self);
                             *state = Finished(FinishedState {
                                 send_ctrl_time: bucky_time_now(), 
-                                chunk: Some(downloading.decoder.chunk_content().unwrap())
                             });
                             Some(waiters)
                         } else {
@@ -344,10 +264,10 @@ impl DownloadSession {
         match next_step {
             EnterDownloading => {
                 if let Some(decoder) = {
-                    let decoder = StreamDecoder::new(self.chunk(), self.piece_type());
                     let state = &mut *self.0.state.write().unwrap();
                     match state {
                         Interesting(interesting) => {
+                            let decoder = StreamDecoder::new(self.chunk(), self.desc(), interesting.cache.clone());
                             let mut downloading = DownloadingState {
                                 history_speed: interesting.history_speed.clone(), 
                                 speed_counter: SpeedCounter::new(piece.data.len()), 
@@ -402,7 +322,7 @@ impl DownloadSession {
         let interest = Interest {
             session_id: self.session_id().clone(), 
             chunk: self.chunk().clone(), 
-            prefer_type: self.piece_type().clone(), 
+            prefer_type: self.desc().clone(), 
             from: None,
             referer: self.referer().cloned()
         };
@@ -419,13 +339,6 @@ impl DownloadSession {
         {
             let state = &mut *self.0.state.write().unwrap();
             match state {
-                StateImpl::Init(init) => {
-                    std::mem::swap(&mut waiters, &mut init.waiters);
-                    *state = StateImpl::Canceled(CanceledState {
-                        send_ctrl_time: 0, 
-                        err
-                    });
-                },
                 StateImpl::Interesting(interesting) => {
                     std::mem::swap(&mut waiters, &mut interesting.waiters);
                     *state = StateImpl::Canceled(CanceledState {
@@ -463,7 +376,6 @@ impl DownloadSession {
         let next_step = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
-                StateImpl::Init(_) => NextStep::None, 
                 StateImpl::Interesting(interesting) => {
                     if now > interesting.start_send_time
                         && Duration::from_micros(now - interesting.start_send_time) > self.channel().config().resend_timeout {
@@ -527,10 +439,6 @@ impl DownloadSession {
     pub fn calc_speed(&self, when: Timestamp) -> u32 {
         let state = &mut *self.0.state.write().unwrap();
         match state {
-            StateImpl::Init(init) => {
-                init.history_speed.update(Some(0), when);
-                0
-            },
             StateImpl::Interesting(interesting) => {
                 interesting.history_speed.update(Some(0), when);
                 0
@@ -555,7 +463,6 @@ impl DownloadSession {
     pub fn history_speed(&self) -> u32 {
         let state = &*self.0.state.read().unwrap();
         match state {
-            StateImpl::Init(init) => init.history_speed.average(),
             StateImpl::Interesting(interesting) => interesting.history_speed.average(),
             StateImpl::Downloading(downloading) => downloading.history_speed.average(),
             _ => 0

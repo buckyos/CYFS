@@ -1,4 +1,5 @@
 use std::{
+    ops::Range, 
     time::Duration, 
     collections::LinkedList, 
 };
@@ -7,6 +8,107 @@ use cyfs_base::*;
 use crate::{
     types::*
 };
+use super::{
+    channel::protocol::v0::*
+};
+
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PieceDesc {
+    Raptor(u32 /*raptor seq*/, u16 /*raptor k*/),
+    Range(u32 /*range index*/, u16 /*range size*/),
+}
+
+impl PieceDesc {
+    pub fn raw_raptor_bytes() -> usize {
+        u8::raw_bytes().unwrap() + u32::raw_bytes().unwrap() + u16::raw_bytes().unwrap()
+    }
+
+    pub fn raw_stream_bytes() -> usize {
+        u8::raw_bytes().unwrap() + u32::raw_bytes().unwrap() + u16::raw_bytes().unwrap()
+    }
+
+    pub fn unwrap_as_stream(&self) -> (u32, u16) {
+        match self {
+            Self::Range(index, range) => (*index, *range), 
+            Self::Raptor(..) => unreachable!()
+        }
+    }
+
+    pub fn stream_end_index(chunk: &ChunkId, range: u32) -> u32 {
+        (chunk.len() as u32 + range - 1) / range - 1
+    }
+
+    pub fn stream_piece_range(&self, chunk: &ChunkId) -> (u32, Range<u64>) {
+        match self {
+            Self::Range(index, range) => {
+                if *index == Self::stream_end_index(chunk, *range as u32) {
+                    (*index, (*index * (*range) as u32) as u64..chunk.len() as u64)
+                } else {
+                    (*index, (*index * (*range) as u32) as u64..((*index + 1) * (*range) as u32) as u64)
+                }
+            }, 
+            Self::Raptor(..) => unreachable!()
+        }
+    }
+
+    pub fn from_stream_offset(range: usize, offset: u32) -> (Self, u32) {
+        let index = offset / range as u32;
+        let offset = offset - index * range as u32;
+        (Self::Range(index, range as u16), offset)
+    }
+}
+
+impl RawFixedBytes for PieceDesc {
+    fn raw_bytes() -> Option<usize> {
+        Some(Self::raw_raptor_bytes())
+    }
+}
+
+impl RawEncode for PieceDesc {
+    fn raw_measure(&self, _purpose: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
+        Ok(Self::raw_bytes().unwrap())
+    }
+
+    fn raw_encode<'a>(
+        &self,
+        buf: &'a mut [u8],
+        purpose: &Option<RawEncodePurpose>,
+    ) -> BuckyResult<&'a mut [u8]> {
+        match self {
+            Self::Raptor(index, k) => {
+                let buf = 0u8.raw_encode(buf, purpose)?;
+                let buf = index.raw_encode(buf, purpose)?;
+                k.raw_encode(buf, purpose)
+            }, 
+            Self::Range(index, len) => {
+                let buf = 1u8.raw_encode(buf, purpose)?;
+                let buf = index.raw_encode(buf, purpose)?;
+                len.raw_encode(buf, purpose)
+            }
+        }
+    }
+}
+
+impl<'de> RawDecode<'de> for PieceDesc {
+    fn raw_decode(buf: &'de [u8]) -> BuckyResult<(Self, &'de [u8])> {
+        let (code, buf) = u8::raw_decode(buf)?;
+        match code {
+            0u8 => {
+                let (index, buf) = u32::raw_decode(buf)?;
+                let (k, buf) = u16::raw_decode(buf)?;
+                Ok((Self::Raptor(index, k), buf))
+            }, 
+            1u8 => {
+                let (index, buf) = u32::raw_decode(buf)?;
+                let (len, buf) = u16::raw_decode(buf)?;
+                Ok((Self::Range(index, len), buf))
+            }, 
+            _ => Err(BuckyError::new(BuckyErrorCode::InvalidData, "invalid piece desc type code"))
+        }
+    }
+}
+
 
 const PIECE_SESSION_FLAGS_UNKNOWN: u16 = 0; 
 const PIECE_SESSION_FLAGS_STREAM: u16 = 1<<0;
@@ -24,6 +126,33 @@ pub enum ChunkEncodeDesc {
     Stream(Option<u32>, Option<u32>, Option<i32>), 
     Raptor(Option<u32>, Option<u32>, Option<i32>)
 } 
+
+impl ChunkEncodeDesc {
+    pub fn reverse_stream(start: Option<u32>, end: Option<u32>) -> Self {
+        Self::Stream(start, end, Some(-(PieceData::max_payload() as i32)))
+    }
+
+    pub fn fill_values(&self, chunk: &ChunkId) -> Self {
+        match self {
+            Self::Unknown => Self::Unknown, 
+            Self::Stream(start, end, step) => {
+                let start = start.clone().unwrap_or(0);
+                let range = step.map(|s| s.abs() as u32).unwrap_or(PieceData::max_payload() as u32);
+                let end = end.clone().unwrap_or(PieceDesc::stream_end_index(chunk, range) + 1);
+                let step = step.clone().unwrap_or(range as i32);
+                Self::Stream(Some(start), Some(end), Some(step))
+            }, 
+            Self::Raptor(..) => unimplemented!()
+        }
+    }
+
+    pub fn unwrap_as_stream(&self) -> (u32, u32, i32) {
+        match self {
+            Self::Stream(start, end, step) => ((*start).unwrap(), (*end).unwrap(), (*step).unwrap()), 
+            _ => unreachable!()
+        }
+    }
+}
 
 impl RawEncode for ChunkEncodeDesc {
     fn raw_measure(&self, _: &Option<RawEncodePurpose>) -> BuckyResult<usize> {

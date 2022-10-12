@@ -320,7 +320,6 @@ impl Downloaders {
             Ok(())
         }?;
 
-        let _ = session.start();
         task::spawn(async move {
             let state = session.wait_finish().await;
             // 这里等待2*msl
@@ -703,16 +702,16 @@ impl Channel {
                     session.push_piece_data(&piece);
                     //FIXME： 如果新建了任务，这里应当继续接受piece data
                 },
-                Err(err) => {
+                Err(_err) => {
                     // 通过新建一个canceled的session来回复piece control
-                    let session = DownloadSession::canceled(
-                        self.0.stack.clone(), 
-                        piece.chunk.clone(), 
-                        piece.session_id.clone(), 
-                        self.clone(),
-                        err);
-                    let _ = self.0.downloaders.add(session.clone());
-                    session.push_piece_data(&piece);
+                    // let session = DownloadSession::canceled(
+                    //     self.0.stack.clone(), 
+                    //     piece.chunk.clone(), 
+                    //     piece.session_id.clone(), 
+                    //     self.clone(),
+                    //     err);
+                    // let _ = self.0.downloaders.add(session.clone());
+                    // session.push_piece_data(&piece);
                 }  
             }
         }

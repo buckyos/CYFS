@@ -82,7 +82,7 @@ async fn main() {
    
 
     for _ in 1..2 {
-        let (chunk_len, chunk_data) = utils::random_mem(1024, 16 * 1024);
+        let (chunk_len, chunk_data) = utils::random_mem(1024, 100);
         let chunk_hash = hash_data(&chunk_data[..]);
         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
         
