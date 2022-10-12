@@ -10,7 +10,7 @@ description = 'Rust cyfs-meta-lib package'
 [dependencies]
 async-std = '1.11'
 http-types = '2.12'
-async-h1 = '2.3.3'
+surf = {version = "2.3.2", default-features = false, features = ["h1-client-rustls"]}
 hex = '0.4'
 cyfs-base = { path = '../../component/cyfs-base', version = '0.6' }
 cyfs-base-meta = { path = '../../component/cyfs-base-meta', version = '0.6' }

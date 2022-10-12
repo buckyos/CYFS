@@ -402,7 +402,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c86f33abd5a4f3e2d6d9251a9e0c6a7e52eb1113caf893dae8429bf4a53f378"
 dependencies = [
  "futures-lite",
- "rustls",
+ "rustls 0.19.1",
  "webpki",
 ]
 
@@ -474,6 +474,19 @@ name = "async-task"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a40729d2133846d9ed0ea60a8b9541bccddab49cd30f0715a1da672fe9a2524"
+
+[[package]]
+name = "async-tls"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d85a97c4a0ecce878efd3f945f119c78a646d8975340bca0398f9bb05c30cc52"
+dependencies = [
+ "futures-core",
+ "futures-io",
+ "rustls 0.18.1",
+ "webpki",
+ "webpki-roots 0.20.0",
+]
 
 [[package]]
 name = "async-trait"
@@ -1120,6 +1133,17 @@ dependencies = [
 
 [[package]]
 name = "config"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19b076e143e1d9538dde65da30f8481c2a6c44040edb8e02b9bf1351edb92ce3"
+dependencies = [
+ "lazy_static",
+ "nom 5.1.2",
+ "serde",
+]
+
+[[package]]
+name = "config"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11f1667b8320afa80d69d8bbe40830df2c8a06003d86f73d8e003b2c48df416d"
@@ -1127,7 +1151,7 @@ dependencies = [
  "async-trait",
  "json5",
  "lazy_static",
- "nom",
+ "nom 7.1.1",
  "pathdiff",
  "ron",
  "rust-ini",
@@ -1905,7 +1929,6 @@ dependencies = [
 name = "cyfs-meta-lib"
 version = "0.6.0"
 dependencies = [
- "async-h1",
  "async-std",
  "cyfs-base",
  "cyfs-base-meta",
@@ -1915,6 +1938,7 @@ dependencies = [
  "primitive-types",
  "rand 0.7.3",
  "serde_json",
+ "surf",
 ]
 
 [[package]]
@@ -1972,6 +1996,33 @@ dependencies = [
  "jni",
  "log 0.4.16",
  "once_cell",
+]
+
+[[package]]
+name = "cyfs-monitor"
+version = "0.5.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "chrono",
+ "clap",
+ "cyfs-base",
+ "cyfs-base-meta",
+ "cyfs-bdt",
+ "cyfs-client",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-meta-lib",
+ "cyfs-util",
+ "futures",
+ "log 0.4.16",
+ "once_cell",
+ "rand 0.7.3",
+ "serde",
+ "serde_json",
+ "surf",
+ "toml",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -2335,6 +2386,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "5.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "907076dfda823b0b36d2a1bb5f90c96660a5bbcd7729e10727f07858f22c4edc"
+dependencies = [
+ "cfg-if 1.0.0",
+ "hashbrown 0.12.3",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core 0.9.3",
+]
+
+[[package]]
+name = "deadpool"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d126179d86aee4556e54f5f3c6bf6d9884e7cc52cef82f77ee6f90a7747616d"
+dependencies = [
+ "async-trait",
+ "config 0.10.1",
+ "crossbeam-queue",
+ "num_cpus",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "der"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2479,7 +2557,7 @@ dependencies = [
  "async-recursion",
  "async-std",
  "async-trait",
- "config",
+ "config 0.13.2",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-debug",
@@ -3427,12 +3505,19 @@ version = "6.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1947510dc91e2bf586ea5ffb412caad7673264e14bb39fb9078da114a94ce1a5"
 dependencies = [
+ "async-h1",
+ "async-native-tls",
  "async-std",
+ "async-tls",
  "async-trait",
  "cfg-if 1.0.0",
+ "dashmap",
+ "deadpool",
+ "futures",
  "http-types",
  "isahc",
  "log 0.4.16",
+ "rustls 0.18.1",
 ]
 
 [[package]]
@@ -3856,6 +3941,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lexical-core"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6607c62aa161d23d17a9072cc5da0be67cdfc89d3afb1e8d9c842bebc2525ffe"
+dependencies = [
+ "arrayvec 0.5.2",
+ "bitflags",
+ "cfg-if 1.0.0",
+ "ryu",
+ "static_assertions",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.133"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4165,6 +4263,17 @@ dependencies = [
  "cfg-if 1.0.0",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "nom"
+version = "5.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffb4262d26ed83a1c0a33a38fe2bb15797329c85770da05e6b828ddb782627af"
+dependencies = [
+ "lexical-core",
+ "memchr",
+ "version_check 0.9.4",
 ]
 
 [[package]]
@@ -5696,6 +5805,19 @@ dependencies = [
 
 [[package]]
 name = "rustls"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d1126dcf58e93cee7d098dbda643b5f92ed724f1f6a63007c1116eed6700c81"
+dependencies = [
+ "base64 0.12.3",
+ "log 0.4.16",
+ "ring",
+ "sct",
+ "webpki",
+]
+
+[[package]]
+name = "rustls"
 version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "35edb675feee39aec9c99fa5ff985081995a06d594114ae14cbe797ad7b7a6d7"
@@ -6207,7 +6329,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4b7922be017ee70900be125523f38bdd644f4f06a1b16e8fa5a8ee8c34bffd4"
 dependencies = [
  "itertools",
- "nom",
+ "nom 7.1.1",
  "unicode_categories",
 ]
 
@@ -6258,7 +6380,7 @@ dependencies = [
  "percent-encoding 2.2.0",
  "rand 0.8.5",
  "rsa 0.6.1",
- "rustls",
+ "rustls 0.19.1",
  "sha-1",
  "sha2 0.10.6",
  "smallvec 1.9.0",
@@ -6268,7 +6390,7 @@ dependencies = [
  "thiserror",
  "url 2.3.0",
  "webpki",
- "webpki-roots",
+ "webpki-roots 0.21.1",
 ]
 
 [[package]]
@@ -6406,6 +6528,7 @@ version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "718b1ae6b50351982dedff021db0def601677f2120938b070eadb10ba4038dd7"
 dependencies = [
+ "async-native-tls",
  "async-std",
  "async-trait",
  "cfg-if 1.0.0",
@@ -6418,6 +6541,7 @@ dependencies = [
  "mime_guess",
  "once_cell",
  "pin-project-lite 0.2.9",
+ "rustls 0.18.1",
  "serde",
  "serde_json",
  "web-sys",
@@ -7170,6 +7294,15 @@ checksum = "b8e38c0608262c46d4a56202ebabdeb094cef7e560ca7a226c6bf055188aa4ea"
 dependencies = [
  "ring",
  "untrusted",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f20dea7535251981a9670857150d571846545088359b28e4951d350bdaf179f"
+dependencies = [
+ "webpki",
 ]
 
 [[package]]

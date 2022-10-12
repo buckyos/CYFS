@@ -4,11 +4,11 @@ use cyfs_base::{BuckyError, CyfsChannel};
 use log::*;
 use std::fmt::Formatter;
 
-const DEV_SERVICE_URL: &str = "http://154.31.50.111:1423";
-const TEST_SERVICE_URL: &str = "http://120.24.6.201:1423";
+const DEV_SERVICE_URL: &str = "http://nightly.meta.cyfs.com:1423";
+const TEST_SERVICE_URL: &str = "http://beta.meta.cyfs.com:1423";
 
-const DEV_SPV_URL: &str = "http://154.31.50.111:3516";
-const TEST_SPV_URL: &str = "http://120.24.6.201:3516";
+const DEV_SPV_URL: &str = "http://nightly.meta.cyfs.com:3516";
+const TEST_SPV_URL: &str = "http://beta.meta.cyfs.com:3516";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MetaMinerTarget {

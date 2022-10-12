@@ -563,6 +563,11 @@ impl MetaClient {
 
         debug!("miner request url={}", req.url());
 
+        let mut resp = surf::client().send(req).await.map_err(|err| {
+            error!("http connect error! host={}, err={}", self.miner_host, err);
+            err
+        })?;
+        /*
         let host = self.miner_host.host_str().unwrap();
         let port = self.miner_host.port().unwrap_or(80);
         let addr = format!("{}:{}", host, port);
@@ -579,6 +584,7 @@ impl MetaClient {
             error!("http connect error! host={}, err={}", self.miner_host, err);
             err
         })?;
+        */
         let ret: Value = resp.body_json().await?;
         if 0 == ret.get("err").unwrap().as_u64().unwrap() {
             Ok(serde_json::from_value(ret.get("result").unwrap().clone())?)
@@ -625,6 +631,11 @@ impl MetaClient {
     ) -> BuckyResult<T> {
         debug!("miner request url={}", req.url());
 
+        let mut resp = surf::client().send(req).await.map_err(|err| {
+            error!("http connect error! host={}, err={}", self.miner_host, err);
+            err
+        })?;
+        /*
         let host = self.miner_host.host_str().unwrap();
         let port = self.miner_host.port().unwrap_or(80);
         let addr = format!("{}:{}", host, port);
@@ -641,6 +652,7 @@ impl MetaClient {
             error!("http connect error! host={}, err={}", self.miner_host, err);
             err
         })?;
+        */
         let ret_hex = resp.body_string()
             .await
             .map_err(|err| {
