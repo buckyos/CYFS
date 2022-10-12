@@ -1,5 +1,5 @@
 use cyfs_base::*;
-use cyfs_core::DecAppId;
+use cyfs_core::{DecAppId, get_system_dec_app};
 use cyfs_lib::*;
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -118,8 +118,15 @@ impl AppAclUtil {
                         );
                     }
                 }
-            } else {
-                let dec_id = ObjectId::from_str(&id).unwrap();
+            }else {
+                let dec_id = if id == "system" {
+                    Ok(get_system_dec_app().clone())
+                } else {
+                    ObjectId::from_str(&id).map_err(|e| {
+                        error!("acl parse dec id {} err {}", id, e);
+                        e
+                    })
+                }?;
                 let stub = stack.root_state_meta_stub(None, Some(dec_id.clone()));
 
                 if let Some(specified) = config.specified {

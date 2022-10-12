@@ -3,12 +3,11 @@
 本页收集了CYFS生态系统中各种重要资源的下载链接。目前，CYFS dev_testnet刚刚上线。CYFS dev_testnet系统仅用于开发和测试，不应用于官方目的。   
 
 # 预编译包下载URL的规则
-{channel}目前只有 "nightly"。
+{channel}目前有 "nightly", "beta"。
 
 ## CyberChat (CYFS wallet)
 - Android：https://www.cyfs.com/download/`{channel}`/cyberchat/android/latest
-- iOS: https://testflight.apple.com/join/cDS8j9Ts    
-     由于众所周知的苹果的Appstore政策，我们定期在testflight上更新，这比安卓版本的更新速度要慢。
+- iOS: 由于众所周知的苹果的Appstore政策，我们定期在testflight上更新，这比安卓版本的更新速度要慢。
 
 ##CYFS Brower
 - Windows：https://www.cyfs.com/download/`{channel}`/browser/windows/latest
@@ -25,7 +24,8 @@
         
 # Nightly (dev_testnet)
 ## CyberChat (CYFS wallet)
-- Android: [https://www.cyfs.com/download/nightly/cyberchat/android/latest](https://www.cyfs.com/download/nightly/cyberchat/android/latest)   
+- Android: [https://www.cyfs.com/download/nightly/cyberchat/android/latest](https://www.cyfs.com/download/nightly/cyberchat/android/latest) 
+- iOS: https://testflight.apple.com/join/cDS8j9Ts
 
 ## CYFS Brower
 - Windows：[https://www.cyfs.com/download/nightly/browser/windows/latest](https://www.cyfs.com/download/nightly/browser/windows/latest)
@@ -42,7 +42,7 @@
 # beta (testnet)
 ## CyberChat (CYFS wallet)
 - Android: [https://www.cyfs.com/download/beta/cyberchat/android/latest](https://www.cyfs.com/download/beta/cyberchat/android/latest)   
-- iOS: https://testflight.apple.com/join/cDS8j9Ts
+- iOS: https://testflight.apple.com/join/0kRenfx0
 
 ## CYFS Brower
 - Windows：[https://www.cyfs.com/download/beta/browser/windows/latest](https://www.cyfs.com/download/beta/browser/windows/latest)
