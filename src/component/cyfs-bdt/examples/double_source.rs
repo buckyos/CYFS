@@ -4,6 +4,8 @@ use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
     download::*,
     SingleDownloadContext, 
+    DownloadSource, 
+    ChunkEncodeDesc, 
     ChunkReader,
     ChunkWriter,
     MemChunkStore,
@@ -11,7 +13,7 @@ use cyfs_bdt::{
     // StackConfig,
     Stack,
     StackGuard,
-    StackOpenParams,
+    StackOpenParams, 
     DownloadTask, 
 };
 use std::{sync::Arc, time::Duration};
@@ -41,119 +43,78 @@ fn watch_resource(task: Box<dyn DownloadTask>) {
 }
 
 
-
 #[async_std::main]
 async fn main() {
-    cyfs_util::process::check_cmd_and_exec("bdt-example-double-source");
-    cyfs_debug::CyfsLoggerBuilder::new_app("bdt-example-double-source")
+
+    cyfs_util::process::check_cmd_and_exec("bdt-example-channel");
+    cyfs_debug::CyfsLoggerBuilder::new_app("bdt-example-channel")
         .level("trace")
-        .console("info")
+        .console("debug")
         .build()
         .unwrap()
         .start();
 
-    cyfs_debug::PanicBuilder::new("bdt-example-double-source", "bdt-example-double-source")
+    cyfs_debug::PanicBuilder::new("bdt-example-channel", "bdt-example-channel")
         .exit_on_panic(true)
         .build()
         .start();
 
-    let (down_dev, down_secret) = utils::create_device(
-        "5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR",
-        &["W4udp127.0.0.1:10000"],
-    )
-    .unwrap();
-    let (ref_dev, ref_secret) = utils::create_device(
-        "5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR",
-        &["W4udp127.0.0.1:10001"],
-    )
-    .unwrap();
-    let (src_dev, src_secret) = utils::create_device(
-        "5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR",
-        &["W4udp127.0.0.1:10002"],
-    )
-    .unwrap();
+    let (ln_dev, ln_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4udp127.0.0.1:10000"]).unwrap();
+    let (rn_dev, rn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4udp127.0.0.1:10001"]).unwrap();
+    
+    let mut ln_params = StackOpenParams::new("bdt-example-channel-download");
+    let ln_tracker = MemTracker::new();
+    let ln_store = MemChunkStore::new(NamedDataCache::clone(&ln_tracker).as_ref());
+    ln_params.chunk_store = Some(ln_store.clone_as_reader());
+    ln_params.ndc = Some(NamedDataCache::clone(&ln_tracker));
+    ln_params.tracker = Some(TrackerCache::clone(&ln_tracker));
+    
+    ln_params.known_device = Some(vec![rn_dev.clone()]);
+    let ln_stack = Stack::open(
+        ln_dev.clone(), 
+        ln_secret, 
+        ln_params).await.unwrap();
 
-    let (down_stack, down_store) = {
-        let mut params = StackOpenParams::new("bdt-example-double-source-download");
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
-        params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
-        params.known_device = Some(vec![ref_dev.clone(), src_dev.clone()]);
-        (
-            Stack::open(down_dev.clone(), down_secret, params)
-                .await
-                .unwrap(),
-            store,
-        )
-    };
-
-    let (ref_stack, ref_store) = {
-        let mut params = StackOpenParams::new("bdt-example-double-source-ref");
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
-        params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
-        (
-            Stack::open(ref_dev, ref_secret, params).await.unwrap(),
-            store,
-        )
-    };
-
-    let (src_stack, src_store) = {
-        let mut params = StackOpenParams::new("bdt-example-double-source-src");
-        params.config.interface.udp.sim_loss_rate = 10;
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
-        params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
-        (
-            Stack::open(src_dev, src_secret, params).await.unwrap(),
-            store,
-        )
-    };
+    let mut rn_params = StackOpenParams::new("bdt-example-channel-upload");
+    rn_params.config.interface.udp.sim_loss_rate = 10;
+    let rn_stack = Stack::open(
+        rn_dev, 
+        rn_secret, 
+        rn_params).await.unwrap();
+   
 
     for _ in 1..2 {
-        let (chunk_len, chunk_data) = utils::random_mem(1024, 16 * 1024);
+        let (chunk_len, chunk_data) = utils::random_mem(1024, 100);
         let chunk_hash = hash_data(&chunk_data[..]);
         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
+        
+        let dir = cyfs_util::get_named_data_root("bdt-example-channel-upload");
+        let path = dir.join(chunkid.to_string().as_str());
+        let _ = track_chunk_to_path(&*rn_stack, &chunkid, Arc::new(chunk_data), path.as_path()).await.unwrap();
 
-        let to_put = Arc::new(chunk_data);
-        let _ = ref_store
-            .add(chunkid.clone(), to_put.clone())
-            .await
-            .unwrap();
-        let _ = src_store
-            .add(chunkid.clone(), to_put.clone())
-            .await
-            .unwrap();
+        let context = SingleDownloadContext::new(None);
+        context.add_source(DownloadSource {
+            target: rn_stack.local_device_id().clone(), 
+            object_id: None, 
+            encode_desc: ChunkEncodeDesc::reverse_stream(None, None), 
+            referer: None
+        });
 
         let task = download_chunk(
-            &*down_stack,
+            &*ln_stack, 
             chunkid.clone(), 
-            None, 
-            Some(SingleDownloadContext::streams(None, vec![
-                ref_stack.local_device_id().clone(),
-                src_stack.local_device_id().clone(),]
-            )),
-            vec![down_store.clone_as_writer()],
-        )
-        .await.unwrap();
-
+            context, 
+            vec![ln_store.clone_as_writer()]).await.unwrap();
+        
         watch_resource(task);
 
-        let recv = future::timeout(
-            Duration::from_secs(5),
-            watch_recv_chunk(down_stack.clone(), chunkid.clone()),
-        )
-        .await
-        .unwrap();
+        let recv = future::timeout(Duration::from_secs(50), watch_recv_chunk(ln_stack.clone(), chunkid.clone())).await.unwrap();
         let recv_chunk_id = recv.unwrap();
         assert_eq!(recv_chunk_id, chunkid);
     }
 
     task::sleep(Duration::from_secs(10000000000)).await;
 }
+
+
+

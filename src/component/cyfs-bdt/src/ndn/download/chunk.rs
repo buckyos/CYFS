@@ -22,11 +22,8 @@ use super::{
 
 
 enum TaskStateImpl {
-    Init, 
-    Pending, 
-    Downloading(ChunkDownloader),
+    Downloading(ChunkCache),
     Error(BuckyErrorCode), 
-    Writting,  
     Finished,
 }
 
@@ -61,17 +58,12 @@ impl ChunkTask {
         context: SingleDownloadContext, 
         writers: Vec<Box <dyn ChunkWriter>>, 
     ) -> Self {
-        Self(Arc::new(ChunkTaskImpl {
+        Self::with_range(
             stack, 
             chunk, 
-            range: None, 
+            None, 
             context, 
-            state: RwLock::new(StateImpl {
-                task_state: TaskStateImpl::Init, 
-                control_state: DownloadTaskControlState::Normal,
-            }), 
-            writers: writers.into_iter().map(|w| ChunkWriterExtWrapper::new(w).clone_as_writer()).collect(),
-        }))
+            writers.into_iter().map(|w| ChunkWriterExtWrapper::new(w).clone_as_writer()).collect())
     } 
 
     pub fn with_range(
@@ -81,17 +73,29 @@ impl ChunkTask {
         context: SingleDownloadContext, 
         writers: Vec<Box <dyn ChunkWriterExt>>, 
     ) -> Self {
-        Self(Arc::new(ChunkTaskImpl {
+        let strong_stack = Stack::from(&stack);
+        let cache = strong_stack.ndn().chunk_manager().create_cache(&chunk);
+        cache.downloader().add_context(context.clone());
+        let task = Self(Arc::new(ChunkTaskImpl {
             stack, 
             chunk, 
             range, 
             context, 
             state: RwLock::new(StateImpl {
-                task_state: TaskStateImpl::Init, 
+                task_state: TaskStateImpl::Downloading(cache.clone()), 
                 control_state: DownloadTaskControlState::Normal,
             }), 
             writers,
-        }))
+        }));
+
+        {
+            let task = task.clone();
+            task::spawn(async move {
+                task.begin(cache).await;
+            });
+        }
+
+        task
     } 
 
 
@@ -107,54 +111,16 @@ impl ChunkTask {
         &self.0.context
     }
 
-    async fn sync_chunk_state(&self) {
-        loop {
-            let downloader = {
-                match &self.0.state.read().unwrap().task_state {
-                    TaskStateImpl::Downloading(downloader) => downloader.clone(), 
-                    _ => unreachable!()
-                }
-            };
-
-            match downloader.wait_finish().await {
-                DownloadTaskState::Finished => {
-                    match downloader.reader().unwrap().get(self.chunk()).await {
-                        Ok(content) => {
-                            self.0.state.write().unwrap().task_state = TaskStateImpl::Writting;
-                            for writer in &self.0.writers {
-                                let _ = writer.write(self.chunk(), content.clone(), self.range()).await;
-                                let _ = writer.finish().await;
-                            }
-                            let mut state = self.0.state.write().unwrap();
-                            info!("{} finished", self);
-                            state.task_state = TaskStateImpl::Finished;
-                            break; 
-                        }, 
-                        Err(_err) => {
-                            let stack = Stack::from(&self.0.stack);
-                            let downloader = stack.ndn().chunk_manager().start_download(
-                                self.chunk().clone(), 
-                                self.context().clone(), 
-                            ).await.unwrap();
-                            info!("{} reset downloader for read chunk failed", self);
-                            let mut state = self.0.state.write().unwrap();
-                            state.task_state = TaskStateImpl::Downloading(downloader.clone());
-                        }
-                    }
-                    
-                }, 
-                DownloadTaskState::Error(err) => {
-                    error!("{} canceled", self);
-                    self.0.state.write().unwrap().task_state = TaskStateImpl::Error(err);
-                    for writer in &self.0.writers {
-                        let _ = writer.err(err).await;
-                    }
-
-                    break; 
-                }, 
-                _ => unimplemented!()
-            }
+    async fn begin(&self, cache: ChunkCache) {
+        let mut buffer = vec![0u8; self.chunk().len() as usize];
+        
+        let _ = cache.read(0, buffer.as_mut_slice(), || async_std::future::pending::<BuckyError>()).await;
+        let content = Arc::new(buffer);
+        for writer in self.0.writers.iter() {
+            let _ = writer.write(self.chunk(), content.clone(), self.range()).await;
+            let _ = writer.finish().await;
         }
+       
     }
 }
 
@@ -169,11 +135,8 @@ impl DownloadTask for ChunkTask {
 
     fn state(&self) -> DownloadTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Init => DownloadTaskState::Downloading(0, 0.0), 
-            TaskStateImpl::Pending => DownloadTaskState::Downloading(0, 0.0), 
-            TaskStateImpl::Downloading(downloader) => downloader.state(), 
+            TaskStateImpl::Downloading(_) => DownloadTaskState::Downloading(0, 0.0), 
             TaskStateImpl::Error(err) => DownloadTaskState::Error(*err), 
-            TaskStateImpl::Writting => DownloadTaskState::Downloading(0, 100.0), 
             TaskStateImpl::Finished => DownloadTaskState::Finished
         }
     }
@@ -191,93 +154,70 @@ impl DownloadTask for ChunkTask {
     }
 
     fn calc_speed(&self, when: Timestamp) -> u32 {
-        if let Some(downloader) = {
+        if let Some(cache) = {
             let state = self.0.state.read().unwrap();
             match &state.task_state {
-                TaskStateImpl::Downloading(downloader) => Some(downloader.clone()), 
+                TaskStateImpl::Downloading(cache) => Some(cache.clone()), 
                 _ => None
             }
         } {
-            downloader.calc_speed(when)
+            cache.downloader().calc_speed(when)
         } else {
             0
         }
     }
 
     fn cur_speed(&self) -> u32 {
-        if let Some(downloader) = {
+        if let Some(cache) = {
             let state = self.0.state.read().unwrap();
             match &state.task_state {
-                TaskStateImpl::Downloading(downloader) => Some(downloader.clone()), 
+                TaskStateImpl::Downloading(cache) => Some(cache.clone()), 
                 _ => None
             }
         } {
-            downloader.cur_speed()
+            cache.downloader().cur_speed()
         } else {
             0
         }
     }
 
     fn history_speed(&self) -> u32 {
-        if let Some(downloader) = {
+        if let Some(cache) = {
             let state = self.0.state.read().unwrap();
             match &state.task_state {
-                TaskStateImpl::Downloading(downloader) => Some(downloader.clone()), 
+                TaskStateImpl::Downloading(cache) => Some(cache.clone()), 
                 _ => None
             }
         } {
-            downloader.history_speed()
+            cache.downloader().history_speed()
         } else {
             0
         }
     }
 
     fn drain_score(&self) -> i64 {
-        if let Some(downloader) = {
+        if let Some(cache) = {
             let state = self.0.state.read().unwrap();
             match &state.task_state {
-                TaskStateImpl::Downloading(downloader) => Some(downloader.clone()), 
+                TaskStateImpl::Downloading(cache) => Some(cache.clone()), 
                 _ => None
             }
         } {
-            downloader.drain_score()
+            cache.downloader().drain_score()
         } else {
             0
         }
     }
 
     fn on_drain(&self, expect_speed: u32) -> u32 {
-        if let Some(downloader) = {
-            let mut state = self.0.state.write().unwrap();
+        if let Some(cache) = {
+            let state = self.0.state.read().unwrap();
             match &state.task_state {
-                TaskStateImpl::Init => {
-                    info!("{} started", self);
-                    let stack = Stack::from(&self.0.stack);
-                    state.task_state = TaskStateImpl::Pending;
-                    let task = self.clone();
-                    task::spawn(async move {
-                        let downloader = stack.ndn().chunk_manager().start_download(
-                            task.chunk().clone(), 
-                            task.context().clone(), 
-                        ).await.unwrap();
-                        {
-                            let mut state = task.0.state.write().unwrap();
-                            match &state.task_state {
-                                TaskStateImpl::Pending => {
-                                    state.task_state = TaskStateImpl::Downloading(downloader.clone())
-                                }, 
-                                _ => unreachable!()
-                            }
-                        }
-                        task.sync_chunk_state().await;
-                    });
-                    None
-                }, 
-                TaskStateImpl::Downloading(downloader) => Some(downloader.clone()), 
+                TaskStateImpl::Downloading(cache) => Some(cache.clone()), 
                 _ => None
             }
         } {
-            downloader.on_drain(expect_speed)
+            cache.downloader().on_drain(expect_speed)
         } else {
             0
         }

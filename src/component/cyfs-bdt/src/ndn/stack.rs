@@ -93,7 +93,7 @@ impl NdnStack {
         if now > last_schedule 
             && Duration::from_millis(now - last_schedule) > stack.config().ndn.schedule_interval {
             self.channel_manager().on_schedule(now);
-            self.chunk_manager().on_schedule(now);
+            // self.chunk_manager().on_schedule(now);
             self.root_task().on_schedule(now);
             self.0.last_schedule.store(now, Ordering::SeqCst);
         }
@@ -116,6 +116,6 @@ impl NdnStack {
         self.0.event_handler.as_ref()
     }
 
-
+    
 }
 
