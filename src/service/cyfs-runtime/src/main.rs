@@ -107,7 +107,7 @@ async fn main_run() {
         .unwrap()
         .start();
 
-    PanicBuilder::new("cyfs-sdk", SERVICE_NAME).build().start();
+    PanicBuilder::new("cyfs-sdk", SERVICE_NAME).exit_on_panic(true).build().start();
 
     cyfs_debug::ProcessDeadHelper::instance().enable_exit_on_task_system_dead(None);
 

@@ -90,6 +90,7 @@ async fn main_run() {
             .start();
 
         cyfs_debug::PanicBuilder::new("cyfs-service", APP_MANAGER_NAME)
+            .exit_on_panic(true)
             .build()
             .start();
     }

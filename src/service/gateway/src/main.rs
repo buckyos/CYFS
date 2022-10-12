@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 
 mod control;
 mod gateway;
@@ -43,6 +43,7 @@ async fn main_run() {
         .start();
 
     cyfs_debug::PanicBuilder::new("cyfs-service", SERVICE_NAME)
+        .exit_on_panic(true)
         .build()
         .start();
 
