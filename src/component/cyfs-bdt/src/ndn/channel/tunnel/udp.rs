@@ -112,7 +112,7 @@ impl UdpTunnel {
         if piece_count == 0 {
             return;
         }
-        trace!("{} schedule send pieces count {}", self, piece_count);
+        // trace!("{} schedule send pieces count {}", self, piece_count);
         struct BufferIndex {
             index: usize, 
             len: usize

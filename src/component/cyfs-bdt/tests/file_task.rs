@@ -137,18 +137,6 @@ async fn empty_file() {
 
 #[async_std::test]
 async fn one_small_file_with_ranges() {
-    cyfs_debug::CyfsLoggerBuilder::new_app("bdt-one-small-file-with-ranges")
-        .level("debug")
-        .console("info")
-        .build()
-        .unwrap()
-        .start();
-
-    cyfs_debug::PanicBuilder::new("bdt-one-small-file-with-ranges", "bdt-one-small-file-with-ranges")
-        .exit_on_panic(true)
-        .build()
-        .start();
-
     let ((ln_stack, _), (rn_stack, rn_store)) = utils::local_stack_pair(
         &["W4udp127.0.0.1:10006"], 
         &["W4udp127.0.0.1:10007"]
