@@ -1001,10 +1001,7 @@ impl StreamContainer {
     }
 
     fn contain_answer_data(&self) -> bool {
-        match *self.0.answer_data.read().unwrap() {
-            None => false,
-            _ => true,
-        }
+        self.0.answer_data.read().unwrap().is_some()
     }
 
     fn answer_read(&self, buf: &mut [u8]) -> usize {
@@ -1038,28 +1035,52 @@ impl StreamContainer {
 
     fn poll_read(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<std::io::Result<usize>> {
         debug!("{} poll read {} bytes", self.as_ref(), buf.len());
+        let read_len = self.answer_read(buf);
+        if read_len > 0 {
+            return Poll::Ready(Ok(read_len));
+        }
 
-        self.poll_io_wait_establish(cx.waker().clone(), true, |provider| {
-            let read_len = self.answer_read(buf);
-
-            if read_len > 0 {
-                Poll::Ready(Ok(read_len))
-            } else {
-                provider.poll_read(cx, buf)
+        let provider = {
+            let state = &*self.0.state.read().unwrap();
+            match state {
+                StreamStateImpl::Initial | StreamStateImpl::Connecting(_) => {
+                    trace!(
+                        "{} poll-write in initial/connecting.",
+                        self.as_ref(),
+                    );
+                    None
+                }, 
+                StreamStateImpl::Establish(s) => Some(s.provider.clone_as_provider()),
+                StreamStateImpl::Closing(s) => Some(s.provider.clone_as_provider()), 
+                _ => {
+                    return Poll::Ready(Ok(0));
+                }
             }
-        })
+        };
+        
+        if let Some (provider) = provider {
+            provider.poll_read(cx, buf)
+        } else {
+            let waker = cx.waker().clone();
+            let container_impl = self.0.clone();
+            task::spawn(async move {
+                let _ = container_impl.wait_establish().await;
+                waker.wake();
+            });
+            Poll::Pending
+        }
     }
 
     fn poll_write(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
         debug!("{} poll write {} bytes", self.as_ref(), buf.len());
-        self.poll_io_wait_establish(cx.waker().clone(), false, |provider| {
+        self.poll_write_wait_establish(cx.waker().clone(), |provider| {
             provider.poll_write(cx, buf)
         })
     }
 
     fn poll_flush(&self, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         debug!("{} poll flush", self.as_ref());
-        self.poll_io_wait_establish(cx.waker().clone(), false, |provider| {
+        self.poll_write_wait_establish(cx.waker().clone(), |provider| {
             provider.poll_flush(cx)
         })
     }
@@ -1136,10 +1157,9 @@ impl StreamContainer {
         }
     }
 
-    fn poll_io_wait_establish<R>(
+    fn poll_write_wait_establish<R>(
         &self,
         waker: Waker,
-        is_read: bool,
         mut proc: impl FnMut(&dyn StreamProvider) -> Poll<std::io::Result<R>>,
     ) -> Poll<std::io::Result<R>> {
         let provider = {
@@ -1148,18 +1168,13 @@ impl StreamContainer {
                 StreamStateImpl::Establish(s) => Some(s.provider.clone_as_provider()),
                 StreamStateImpl::Initial | StreamStateImpl::Connecting(_) => {
                     trace!(
-                        "{} poll-io(read:{}) in initial/connecting.",
+                        "{} poll-write in initial/connecting.",
                         self.as_ref(),
-                        is_read
                     );
                     None
-                }
-                StreamStateImpl::Closing(s) if is_read => {
-                    trace!("{} poll-io(read:{}) in closing.", self.as_ref(), is_read);
-                    Some(s.provider.clone_as_provider())
-                }
+                }, 
                 _ => {
-                    let msg = format!("{} poll-io(read:{}) in closed.", self.as_ref(), is_read);
+                    let msg = format!("{} poll-write in close.", self.as_ref());
                     error!("{}", msg);
                     return Poll::Ready(Err(std::io::Error::new(ErrorKind::NotConnected, msg)));
                 }
