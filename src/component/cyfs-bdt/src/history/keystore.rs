@@ -7,7 +7,7 @@ use std::rc::Rc;
 use cyfs_debug::Mutex;
 
 
-const MIX_HASH_LIVE_MINUTES: usize = 3;
+const MIX_HASH_LIVE_MINUTES: usize = 31;
 
 #[derive(Clone)]
 pub struct Keystore {

@@ -11,7 +11,7 @@ use crate::{
 };
 
 struct Proxies {
-    active_proxies: BTreeSet<DeviceId>, 
+    active_proxies: BTreeSet<DeviceId>,
     passive_proxies: BTreeSet<DeviceId>,
     dump_proxies: BTreeSet<DeviceId>,
 }
@@ -27,7 +27,7 @@ impl Proxies {
 }
 
 pub struct ProxyManager {
-    stack: WeakStack, 
+    stack: WeakStack,
     proxies: RwLock<Proxies>
 } 
 

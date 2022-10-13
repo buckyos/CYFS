@@ -138,14 +138,12 @@ impl Storage {
     }
 }
 
-
 #[async_trait::async_trait]
 impl ProxyServiceEvents for Storage {
     async fn pre_create_tunnel(
         &self, 
-        _key: &KeyMixHash, 
-        device_pair: &(ProxyDeviceStub, ProxyDeviceStub),
-        _mix_key: &AesKey) -> BuckyResult<()> {
+        _mix_key: &AesKey, 
+        device_pair: &(ProxyDeviceStub, ProxyDeviceStub)) -> BuckyResult<()> {
 
         if !self.contract_of(&device_pair.0.id)?.is_empty() 
             || !self.contract_of(&device_pair.1.id)?.is_empty() {
