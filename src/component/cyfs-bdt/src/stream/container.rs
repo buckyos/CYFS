@@ -1000,12 +1000,12 @@ impl StreamContainer {
         }
     }
 
-    fn contain_answer_data(&self) -> bool {
+    fn has_first_answer(&self) -> bool {
         self.0.answer_data.read().unwrap().is_some()
     }
 
-    fn answer_read(&self, buf: &mut [u8]) -> usize {
-        if self.contain_answer_data() {
+    fn read_first_answer(&self, buf: &mut [u8]) -> usize {
+        if self.has_first_answer() {
             let answer_data = &mut *self.0.answer_data.write().unwrap();
             match answer_data {
                 Some(answer_buf) => {
@@ -1035,7 +1035,7 @@ impl StreamContainer {
 
     fn poll_read(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<std::io::Result<usize>> {
         debug!("{} poll read {} bytes", self.as_ref(), buf.len());
-        let read_len = self.answer_read(buf);
+        let read_len = self.read_first_answer(buf);
         if read_len > 0 {
             return Poll::Ready(Ok(read_len));
         }
@@ -1059,6 +1059,10 @@ impl StreamContainer {
         };
         
         if let Some (provider) = provider {
+            let read_len = self.read_first_answer(buf);
+            if read_len > 0 {
+                return Poll::Ready(Ok(read_len));
+            }
             provider.poll_read(cx, buf)
         } else {
             let waker = cx.waker().clone();
