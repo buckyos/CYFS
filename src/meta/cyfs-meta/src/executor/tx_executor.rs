@@ -142,12 +142,7 @@ impl TxExecutor {
                     // 给0号主币充值
                     self.ref_state
                         .to_rc()?
-                        .inc_balance(&CoinTokenId::Coin(0), caller.id(), 10000000000)
-                        .await?;
-                    // 给1号主币也充这么多
-                    self.ref_state
-                        .to_rc()?
-                        .inc_balance(&CoinTokenId::Coin(1), caller.id(), 10000000000)
+                        .inc_balance(&CoinTokenId::Coin(0), caller.id(), 100000000)
                         .await?;
                 } else if let SavedMetaObject::Device(_) = &desc {
                     self.ref_state
