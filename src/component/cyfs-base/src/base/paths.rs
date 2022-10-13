@@ -18,6 +18,9 @@ pub const CYFS_API_VIRTUAL_PATH: &str = "/.cyfs/api";
 pub const CYFS_HANDLER_VIRTUAL_PATH: &str = "/.cyfs/api/handler";
 pub const CYFS_CRYPTO_VIRTUAL_PATH: &str = "/.cyfs/api/crypto";
 
+pub const CYFS_GLOBAL_STATE_VIRTUAL_PATH: &str = "/.cyfs/api/global_state";
+pub const CYFS_GLOBAL_STATE_ROOT_VIRTUAL_PATH: &str = "/.cyfs/api/global_state/root";
+
 // System control cmds
 pub const CYFS_SYSTEM_VIRTUAL_PATH: &str = "/.cyfs/api/system";
 pub const CYFS_SYSTEM_ADMIN_VIRTUAL_PATH: &str = "/.cyfs/api/system/admin";

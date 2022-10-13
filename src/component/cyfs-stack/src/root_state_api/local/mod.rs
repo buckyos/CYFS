@@ -1,5 +1,5 @@
 mod access_service;
-mod local;
+mod service;
 
 pub use access_service::*;
-pub use local::*;
+pub use service::*;

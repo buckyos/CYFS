@@ -206,10 +206,10 @@ impl std::fmt::Display for GlobalStatePathAccessItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.access {
             GlobalStatePathGroupAccess::Default(p) => {
-                writeln!(f, "({}, {})", self.path, AccessString::new(*p))
+                write!(f, "({}, {})", self.path, AccessString::new(*p))
             }
             GlobalStatePathGroupAccess::Specified(s) => {
-                writeln!(
+                write!(
                     f,
                     "({}, zone={:?}, zone_category={:?} dec={:?}, {})",
                     self.path,

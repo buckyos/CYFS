@@ -6,12 +6,12 @@ use cyfs_lib::*;
 use std::sync::Arc;
 
 // 限定在同zone内操作
-pub(crate) struct GlobalStateAclInnerInputProcessor {
+pub(crate) struct GlobalStateAclZoneInputProcessor {
     acl: AclManagerRef,
     next: GlobalStateInputProcessorRef,
 }
 
-impl GlobalStateAclInnerInputProcessor {
+impl GlobalStateAclZoneInputProcessor {
     pub(crate) fn new(
         acl: AclManagerRef,
         next: GlobalStateInputProcessorRef,
@@ -23,7 +23,7 @@ impl GlobalStateAclInnerInputProcessor {
 }
 
 #[async_trait::async_trait]
-impl GlobalStateInputProcessor for GlobalStateAclInnerInputProcessor {
+impl GlobalStateInputProcessor for GlobalStateAclZoneInputProcessor {
     fn create_op_env_processor(&self) -> OpEnvInputProcessorRef {
         let processor = self.next.create_op_env_processor();
         OpEnvAclInnerInputProcessor::new(self.acl.clone(), processor)
@@ -46,13 +46,25 @@ impl GlobalStateInputProcessor for GlobalStateAclInnerInputProcessor {
             .source
             .check_target_dec_permission(&req.common.target_dec_id)
         {
-            let global_state = RequestGlobalStatePath {
-                global_state_category: Some(self.get_category()),
-                global_state_root: None,
-                dec_id: req.common.target_dec_id.clone(),
-                req_path: None, // None will treat as /
+            let global_state = match req.root_type {
+                RootStateRootType::Global => {
+                    RequestGlobalStatePath {
+                        global_state_category: Some(self.get_category()),
+                        global_state_root: None,
+                        dec_id: Some(cyfs_core::get_system_dec_app().to_owned()),
+                        req_path: Some(CYFS_GLOBAL_STATE_ROOT_VIRTUAL_PATH.to_owned()),
+                    }
+                }
+                RootStateRootType::Dec => {
+                    RequestGlobalStatePath {
+                        global_state_category: Some(self.get_category()),
+                        global_state_root: None,
+                        dec_id: req.common.target_dec_id.clone(),
+                        req_path: None, // None will treat as /
+                    }
+                }
             };
-
+            
             self.acl
                 .global_state_meta()
                 .check_access(&req.common.source, &global_state, RequestOpType::Read)

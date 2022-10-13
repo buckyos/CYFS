@@ -49,15 +49,11 @@ impl GlobalStateRouter {
         let access_processor = local_service.clone_access_processor();
 
         // acl limit processors
-        let global_state_processor = GlobalStateAclInnerInputProcessor::new(
-            acl.clone(),
-            global_state_processor,
-        );
-        let op_env_processor =
-            OpEnvAclInnerInputProcessor::new(acl.clone(), op_env_processor);
+        let global_state_processor =
+            GlobalStateAclZoneInputProcessor::new(acl.clone(), global_state_processor);
+        let op_env_processor = OpEnvAclInnerInputProcessor::new(acl.clone(), op_env_processor);
 
-        let access_processor =
-            GlobalStateAccessAclInputProcessor::new(acl, access_processor);
+        let access_processor = GlobalStateAccessAclInputProcessor::new(acl, access_processor);
 
         Self {
             category,
