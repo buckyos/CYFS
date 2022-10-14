@@ -184,7 +184,7 @@ impl ConnectStreamAction for ConnectPackageStream {
         }
     }
 
-    async fn continue_connect(&self) -> Result<(), BuckyError> {
+    async fn continue_connect(&self) -> BuckyResult<StreamProviderSelector> {
         // 让 package stream 联通， 发送不带 syn flag的session data包的逻辑应该在 package stream provider中完成 
         let sesstion_data = {
             let state = &mut *self.0.state.write().unwrap();
@@ -204,9 +204,7 @@ impl ConnectStreamAction for ConnectPackageStream {
 
         let remote_id = sesstion_data.syn_info.clone().unwrap().from_session_id;
 
-        self.0.stream.as_ref().establish_with(
-            StreamProviderSelector::Package(remote_id, Some(sesstion_data)), 
-            &self.0.stream).await
+        Ok(StreamProviderSelector::Package(remote_id, Some(sesstion_data)))
     }
 }
 

@@ -1,5 +1,8 @@
 use async_trait::{async_trait};
 use cyfs_base::*;
+use crate::{
+    stream::{StreamProviderSelector}
+};
 use super::super::{action::*};
 
 pub enum ConnectStreamState {
@@ -18,5 +21,5 @@ pub trait ConnectStreamAction: BuildTunnelAction {
     fn as_any(&self) -> &dyn std::any::Any;
     fn state(&self) -> ConnectStreamState;
     async fn wait_pre_establish(&self) -> ConnectStreamState;
-    async fn continue_connect(&self) -> Result<(), BuckyError>;
+    async fn continue_connect(&self) -> BuckyResult<StreamProviderSelector>;
 }

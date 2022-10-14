@@ -105,7 +105,9 @@ mod connector {
             task::spawn(async move {
                 match action.wait_pre_establish().await {
                     ConnectStreamState::PreEstablish => match action.continue_connect().await {
-                        Ok(_) => {}
+                        Ok(selector) => {
+                            let _ = stream.as_ref().establish_with(selector, &stream).await;
+                        }
                         Err(err) => {
                             let _ = stream.as_ref().cancel_connecting_with(&err);
                         }
@@ -144,7 +146,9 @@ mod connector {
             task::spawn(async move {
                 match action.wait_pre_establish().await {
                     ConnectStreamState::PreEstablish => match action.continue_connect().await {
-                        Ok(_) => {}
+                        Ok(selector) => {
+                            let _ = stream.as_ref().establish_with(selector, &stream).await;
+                        }
                         Err(err) => {
                             let _ = stream.as_ref().cancel_connecting_with(&err);
                         }
@@ -251,7 +255,9 @@ mod connector {
                             match state {
                                 ConnectStreamState::PreEstablish => {
                                     match provider.action.continue_connect().await {
-                                        Ok(_) => {}
+                                        Ok(selector) => {
+                                            let _ = stream.as_ref().establish_with(selector, &stream).await;
+                                        }
                                         Err(err) => {
                                             let _ = stream.as_ref().cancel_connecting_with(&err);
                                         }

@@ -219,7 +219,7 @@ impl ConnectStreamAction for ConnectTcpStream {
         }
     }
 
-    async fn continue_connect(&self) -> Result<(), BuckyError> {
+    async fn continue_connect(&self) -> BuckyResult<StreamProviderSelector> {
         // 向已经联通的tcp interface发 tcp syn connection，收到对端返回的tcp ack connection时establish
         let interface = {
             let state = &mut *self.0.state.write().unwrap();
@@ -270,13 +270,11 @@ impl ConnectStreamAction for ConnectTcpStream {
             e
         })?;
 
-        self.0.stream.as_ref().establish_with(
-            StreamProviderSelector::Tcp(
+        Ok(StreamProviderSelector::Tcp(
                 interface.socket().clone(), 
                 interface.mix_key().clone(), 
                 Some(ack.clone()), 
-                interface.enc_key().clone()), 
-            &self.0.stream).await
+                interface.enc_key().clone()))
     }
 }
 
@@ -436,7 +434,7 @@ impl ConnectStreamAction for AcceptReverseTcpStream {
         }
     }
 
-    async fn continue_connect(&self) -> Result<(), BuckyError> {
+    async fn continue_connect(&self) -> BuckyResult<StreamProviderSelector> {
         // 向已经联通的tcp interface发 tcp syn connection，收到对端返回的tcp ack connection时establish
         let interface = {
             let state = &mut *self.0.state.write().unwrap();
@@ -470,13 +468,11 @@ impl ConnectStreamAction for AcceptReverseTcpStream {
             }
         }?;
 
-        self.0.stream.as_ref().establish_with(
-            StreamProviderSelector::Tcp(
+        Ok(StreamProviderSelector::Tcp(
                 interface.socket().clone(), 
                 interface.mix_key().clone(), 
                 None, 
-                interface.enc_key().clone()), 
-            &self.0.stream).await
+                interface.enc_key().clone()))
     }
 }
 
