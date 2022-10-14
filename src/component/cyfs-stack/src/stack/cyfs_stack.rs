@@ -22,7 +22,7 @@ use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
 use crate::rmeta::GlobalStateMetaOutputTransformer;
 use crate::rmeta_api::{GlobalStateMetaLocalService, GlobalStateMetaService};
-use crate::root_state::{GlobalStateAccessOutputTransformer, GlobalStateOutputTransformer};
+use crate::root_state::{GlobalStateAccessorOutputTransformer, GlobalStateOutputTransformer};
 use crate::root_state_api::{
     GlobalStateLocalService, GlobalStateService, GlobalStateValidatorManager,
 };
@@ -366,8 +366,8 @@ impl CyfsStackImpl {
             let front_service = FrontService::new(
                 non_service.clone_processor(),
                 ndn_service.clone_processor(),
-                root_state.clone_access_processor(),
-                local_cache.clone_access_processor(),
+                root_state.clone_accessor_processor(),
+                local_cache.clone_accessor_processor(),
                 app_service,
                 ood_resoler.clone(),
             );
@@ -485,7 +485,7 @@ impl CyfsStackImpl {
 
             stack = s;
         }
-       
+
         // init admin manager
         stack.admin_manager.init(&system_router_handlers).await?;
 
@@ -524,9 +524,7 @@ impl CyfsStackImpl {
 
         // init app controller
         let app_controller = AppController::new(param.config.isolate.clone(), interface);
-        app_controller
-            .init(&system_router_handlers)
-            .await?;
+        app_controller.init(&system_router_handlers).await?;
 
         if let Err(_) = stack.app_controller.set(app_controller) {
             unreachable!();
@@ -992,8 +990,8 @@ impl CyfsStackImpl {
                 source.clone(),
             ),
 
-            root_state_access: GlobalStateAccessOutputTransformer::new(
-                self.root_state.clone_access_processor(),
+            root_state_accessor: GlobalStateAccessorOutputTransformer::new(
+                self.root_state.clone_accessor_processor(),
                 source.clone(),
             ),
 
@@ -1002,8 +1000,8 @@ impl CyfsStackImpl {
                 source.clone(),
             ),
 
-            local_cache_access: GlobalStateAccessOutputTransformer::new(
-                self.local_cache.clone_access_processor(),
+            local_cache_accessor: GlobalStateAccessorOutputTransformer::new(
+                self.local_cache.clone_accessor_processor(),
                 source.clone(),
             ),
 

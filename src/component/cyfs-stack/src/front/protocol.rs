@@ -214,7 +214,8 @@ impl FrontProtocolHandler {
     }
 
     fn is_cyfs_browser(req: &http_types::Request) -> bool {
-        let ret: BuckyResult<Option<String>> = RequestorHelper::decode_optional_header(req, http_types::headers::USER_AGENT);
+        let ret: BuckyResult<Option<String>> =
+            RequestorHelper::decode_optional_header(req, http_types::headers::USER_AGENT);
         match ret {
             Ok(Some(s)) => {
                 if s.as_str().contains("CYFS Browser") {
@@ -223,9 +224,7 @@ impl FrontProtocolHandler {
                     false
                 }
             }
-            Ok(None) => {
-                false
-            }
+            Ok(None) => false,
             Err(e) => {
                 warn!("decode user-agent from http request header error! {}", e);
                 false
@@ -597,7 +596,7 @@ impl FrontProtocolHandler {
         // extract params from url querys
         let mut page_index: Option<u32> = None;
         let mut page_size: Option<u32> = None;
-        let mut action = RootStateAccessAction::GetObjectByPath;
+        let mut action = GlobalStateAccessorAction::GetObjectByPath;
         let mut mode = FrontRequestGetMode::Default;
         let mut flags = 0;
 
@@ -620,7 +619,7 @@ impl FrontProtocolHandler {
                     })?;
                 }
                 "action" => {
-                    action = RootStateAccessAction::from_str(v.as_ref())?;
+                    action = GlobalStateAccessorAction::from_str(v.as_ref())?;
                 }
                 "page_index" => {
                     let v = v.as_ref().parse().map_err(|e| {
@@ -823,7 +822,7 @@ impl FrontProtocolHandler {
                 if is_cyfs_browser {
                     url = format!("cyfs:/{}", url);
                 }
-                tide::Redirect::new(url).into() 
+                tide::Redirect::new(url).into()
             }
         }
     }

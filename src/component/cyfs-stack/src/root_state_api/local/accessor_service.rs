@@ -6,13 +6,13 @@ use cyfs_lib::*;
 use std::sync::Arc;
 
 #[derive(Clone)]
-pub struct GlobalStateAccessService {
+pub struct GlobalStateAccessorService {
     device_id: DeviceId,
     root_state: Arc<GlobalStateManager>,
     noc: NamedObjectCacheRef,
 }
 
-impl GlobalStateAccessService {
+impl GlobalStateAccessorService {
     pub fn new(
         device_id: DeviceId,
         root_state: Arc<GlobalStateManager>,
@@ -25,7 +25,7 @@ impl GlobalStateAccessService {
         }
     }
 
-    pub fn clone_processor(&self) -> GlobalStateAccessInputProcessorRef {
+    pub fn clone_processor(&self) -> GlobalStateAccessorInputProcessorRef {
         Arc::new(Box::new(self.clone()))
     }
 
@@ -65,8 +65,8 @@ impl GlobalStateAccessService {
 
     pub async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathInputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
+        req: RootStateAccessorGetObjectByPathInputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathInputResponse> {
         info!("on access get_object_by_path request: {}", req);
 
         let dec_id = if req.common.target_dec_id.is_some() {
@@ -88,7 +88,7 @@ impl GlobalStateAccessService {
         source: RequestSourceInfo,
         dec_id: &Option<ObjectId>,
         inner_path: &str,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathInputResponse> {
         let (object_id, root_cache, root_info) = self.get_object_id(dec_id, inner_path).await?;
 
         let object_resp = match object_id.obj_type_code() {
@@ -132,7 +132,7 @@ impl GlobalStateAccessService {
             }
         };
 
-        let resp = RootStateAccessGetObjectByPathInputResponse {
+        let resp = RootStateAccessorGetObjectByPathInputResponse {
             object: object_resp,
             root: root_info.0,
             revision: root_info.1,
@@ -158,17 +158,15 @@ impl GlobalStateAccessService {
         })?;
 
         match resp {
-            Some(resp) => {
-                Ok(Some((resp.object.object.unwrap(), resp.object.object_raw)))
-            }
+            Some(resp) => Ok(Some((resp.object.object.unwrap(), resp.object.object_raw))),
             None => Ok(None),
         }
     }
 
     async fn list(
         &self,
-        req: RootStateAccessListInputRequest,
-    ) -> BuckyResult<RootStateAccessListInputResponse> {
+        req: RootStateAccessorListInputRequest,
+    ) -> BuckyResult<RootStateAccessorListInputResponse> {
         info!("on access list request: {}", req);
 
         let dec_id = if req.common.target_dec_id.is_some() {
@@ -177,16 +175,15 @@ impl GlobalStateAccessService {
             Some(req.common.source.dec)
         };
 
-
-        let (target, root_cache, root_info) = self
-            .get_object_id(&dec_id, &req.inner_path)
-            .await?;
+        let (target, root_cache, root_info) = self.get_object_id(&dec_id, &req.inner_path).await?;
 
         if target.obj_type_code() != ObjectTypeCode::ObjectMap {
-            let msg =
-                format!(
+            let msg = format!(
                 "list but target object is not objectmap! {}, path={}, target={}, type={:?}",
-                req.common.source, req.inner_path, target, target.obj_type_code(),
+                req.common.source,
+                req.inner_path,
+                target,
+                target.obj_type_code(),
             );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
@@ -206,7 +203,7 @@ impl GlobalStateAccessService {
         let page_index = req.page_index.unwrap_or(0) as usize;
         let page_size = req.page_size.unwrap_or(1024) as usize;
         if page_size == 0 {
-            return Ok(RootStateAccessListInputResponse {
+            return Ok(RootStateAccessorListInputResponse {
                 list: vec![],
                 root: root_info.0,
                 revision: root_info.1,
@@ -222,7 +219,7 @@ impl GlobalStateAccessService {
             let mut it = ObjectMapIterator::new(true, &obj, op_env_cache);
             let count = it.skip(&obj, begin).await?;
             if count < begin {
-                return Ok(RootStateAccessListInputResponse {
+                return Ok(RootStateAccessorListInputResponse {
                     list: vec![],
                     root: root_info.0,
                     revision: root_info.1,
@@ -236,7 +233,7 @@ impl GlobalStateAccessService {
 
         let list = it.next(&obj, page_size).await?;
 
-        Ok(RootStateAccessListInputResponse {
+        Ok(RootStateAccessorListInputResponse {
             list: list.list,
             root: root_info.0,
             revision: root_info.1,
@@ -245,18 +242,18 @@ impl GlobalStateAccessService {
 }
 
 #[async_trait::async_trait]
-impl GlobalStateAccessInputProcessor for GlobalStateAccessService {
+impl GlobalStateAccessorInputProcessor for GlobalStateAccessorService {
     async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathInputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
+        req: RootStateAccessorGetObjectByPathInputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathInputResponse> {
         Self::get_object_by_path(self, req).await
     }
 
     async fn list(
         &self,
-        req: RootStateAccessListInputRequest,
-    ) -> BuckyResult<RootStateAccessListInputResponse> {
+        req: RootStateAccessorListInputRequest,
+    ) -> BuckyResult<RootStateAccessorListInputResponse> {
         Self::list(self, req).await
     }
 }

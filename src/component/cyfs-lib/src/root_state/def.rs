@@ -1,8 +1,7 @@
 use cyfs_base::*;
 
-use std::str::FromStr;
 use serde::Serialize;
-
+use std::str::FromStr;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum RootStateAction {
@@ -131,11 +130,11 @@ impl FromStr for OpEnvAction {
             "metadata" => Self::Metadata,
 
             "get-current-root" => Self::GetCurrentRoot,
-            
+
             "next" => Self::Next,
             "reset" => Self::Reset,
             "list" => Self::List,
-            
+
             v @ _ => {
                 let msg = format!("unknown op_env action: {}", v);
                 error!("{}", msg);
@@ -148,14 +147,13 @@ impl FromStr for OpEnvAction {
     }
 }
 
-
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum RootStateAccessAction {
+pub enum GlobalStateAccessorAction {
     GetObjectByPath,
     List,
 }
 
-impl ToString for RootStateAccessAction {
+impl ToString for GlobalStateAccessorAction {
     fn to_string(&self) -> String {
         (match *self {
             Self::GetObjectByPath => "get-object-by-path",
@@ -165,7 +163,7 @@ impl ToString for RootStateAccessAction {
     }
 }
 
-impl FromStr for RootStateAccessAction {
+impl FromStr for GlobalStateAccessorAction {
     type Err = BuckyError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
@@ -220,7 +218,6 @@ impl FromStr for GlobalStateCategory {
         }
     }
 }
-
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
 pub enum GlobalStateAccessMode {

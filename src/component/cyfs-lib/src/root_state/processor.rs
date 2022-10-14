@@ -8,7 +8,7 @@ use std::sync::Arc;
 #[async_trait::async_trait]
 pub trait GlobalStateOutputProcessor: Sync + Send + 'static {
     fn get_category(&self) -> GlobalStateCategory;
-    
+
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootOutputRequest,
@@ -28,7 +28,7 @@ pub trait OpEnvOutputProcessor: Sync + Send + 'static {
     fn get_sid(&self) -> u64;
 
     fn get_category(&self) -> GlobalStateCategory;
-    
+
     // single_op_env methods
     async fn load(&self, req: OpEnvLoadOutputRequest) -> BuckyResult<()>;
 
@@ -37,7 +37,10 @@ pub trait OpEnvOutputProcessor: Sync + Send + 'static {
     async fn create_new(&self, req: OpEnvCreateNewOutputRequest) -> BuckyResult<()>;
 
     // get_current_root
-    async fn get_current_root(&self, req: OpEnvGetCurrentRootOutputRequest) -> BuckyResult<OpEnvGetCurrentRootOutputResponse>;
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootOutputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootOutputResponse>;
 
     // lock and transcation
     async fn lock(&self, req: OpEnvLockOutputRequest) -> BuckyResult<()>;
@@ -86,18 +89,17 @@ pub trait OpEnvOutputProcessor: Sync + Send + 'static {
 
 pub type OpEnvOutputProcessorRef = Arc<Box<dyn OpEnvOutputProcessor>>;
 
-
 #[async_trait::async_trait]
-pub trait GlobalStateAccessOutputProcessor: Sync + Send + 'static {
+pub trait GlobalStateAccessorOutputProcessor: Sync + Send + 'static {
     async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathOutputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathOutputResponse>;
+        req: RootStateAccessorGetObjectByPathOutputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathOutputResponse>;
 
     async fn list(
         &self,
-        req: RootStateAccessListOutputRequest,
-    ) -> BuckyResult<RootStateAccessListOutputResponse>;
+        req: RootStateAccessorListOutputRequest,
+    ) -> BuckyResult<RootStateAccessorListOutputResponse>;
 }
 
-pub type GlobalStateAccessOutputProcessorRef = Arc<Box<dyn GlobalStateAccessOutputProcessor>>;
+pub type GlobalStateAccessorOutputProcessorRef = Arc<Box<dyn GlobalStateAccessorOutputProcessor>>;

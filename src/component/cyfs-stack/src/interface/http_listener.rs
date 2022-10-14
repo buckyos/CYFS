@@ -133,8 +133,8 @@ impl ObjectHttpListener {
             &mut server,
         );
 
-        let handler = GlobalStateAccessRequestHandler::new(root_state.clone_access_processor());
-        GlobalStateAccessRequestHandlerEndpoint::register_server(
+        let handler = GlobalStateAccessorRequestHandler::new(root_state.clone_accessor_processor());
+        GlobalStateAccessorRequestHandlerEndpoint::register_server(
             zone_manager,
             &protocol,
             GlobalStateCategory::RootState.as_str(),
@@ -161,8 +161,9 @@ impl ObjectHttpListener {
             &mut server,
         );
 
-        let handler = GlobalStateAccessRequestHandler::new(local_cache.clone_access_processor());
-        GlobalStateAccessRequestHandlerEndpoint::register_server(
+        let handler =
+            GlobalStateAccessorRequestHandler::new(local_cache.clone_accessor_processor());
+        GlobalStateAccessorRequestHandlerEndpoint::register_server(
             zone_manager,
             &protocol,
             GlobalStateCategory::LocalCache.as_str(),
@@ -216,9 +217,13 @@ impl ObjectHttpListener {
         UtilRequestHandlerEndpoint::register_server(zone_manager, &protocol, &handler, &mut server);
 
         // trans service
-        let handler =
-            TransRequestHandler::new(services.trans_service.clone_processor());
-        TransRequestHandlerEndpoint::register_server(zone_manager, &protocol, &handler, &mut server);
+        let handler = TransRequestHandler::new(services.trans_service.clone_processor());
+        TransRequestHandlerEndpoint::register_server(
+            zone_manager,
+            &protocol,
+            &handler,
+            &mut server,
+        );
 
         Self { server }
     }

@@ -34,7 +34,7 @@ pub struct FrontRRequest {
 
     pub target_dec_id: Option<ObjectId>,
 
-    pub action: RootStateAccessAction,
+    pub action: GlobalStateAccessorAction,
     pub inner_path: Option<String>,
     pub range: Option<NDNDataRequestRange>,
 

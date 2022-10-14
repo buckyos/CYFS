@@ -5,16 +5,16 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
-pub(crate) struct GlobalStateAccessAclInputProcessor {
+pub(crate) struct GlobalStateAccessorAclInputProcessor {
     acl: AclManagerRef,
-    next: GlobalStateAccessInputProcessorRef,
+    next: GlobalStateAccessorInputProcessorRef,
 }
 
-impl GlobalStateAccessAclInputProcessor {
+impl GlobalStateAccessorAclInputProcessor {
     pub(crate) fn new(
         acl: AclManagerRef,
-        next: GlobalStateAccessInputProcessorRef,
-    ) -> GlobalStateAccessInputProcessorRef {
+        next: GlobalStateAccessorInputProcessorRef,
+    ) -> GlobalStateAccessorInputProcessorRef {
         let ret = Self { acl, next };
 
         Arc::new(Box::new(ret))
@@ -55,11 +55,11 @@ impl GlobalStateAccessAclInputProcessor {
 }
 
 #[async_trait::async_trait]
-impl GlobalStateAccessInputProcessor for GlobalStateAccessAclInputProcessor {
+impl GlobalStateAccessorInputProcessor for GlobalStateAccessorAclInputProcessor {
     async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathInputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
+        req: RootStateAccessorGetObjectByPathInputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathInputResponse> {
         // info!("get_object_by_path acl: {}", req);
 
         self.check_access(&req.common, &req.inner_path).await?;
@@ -69,8 +69,8 @@ impl GlobalStateAccessInputProcessor for GlobalStateAccessAclInputProcessor {
 
     async fn list(
         &self,
-        req: RootStateAccessListInputRequest,
-    ) -> BuckyResult<RootStateAccessListInputResponse> {
+        req: RootStateAccessorListInputRequest,
+    ) -> BuckyResult<RootStateAccessorListInputResponse> {
         // info!("list acl: {}", req);
 
         self.check_access(&req.common, &req.inner_path).await?;

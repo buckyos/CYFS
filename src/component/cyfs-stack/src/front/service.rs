@@ -6,21 +6,21 @@ use crate::ndn::NDNInputProcessorRef;
 use crate::ndn_api::NDNForwardObjectData;
 use crate::non::NONInputProcessorRef;
 use crate::resolver::OodResolver;
-use crate::root_state::GlobalStateAccessInputProcessorRef;
+use crate::root_state::GlobalStateAccessorInputProcessorRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
 enum GlobalStateResponse {
-    Object(RootStateAccessGetObjectByPathInputResponse),
-    List(RootStateAccessListInputResponse),
+    Object(RootStateAccessorGetObjectByPathInputResponse),
+    List(RootStateAccessorListInputResponse),
 }
 
 pub(crate) struct FrontService {
     non: NONInputProcessorRef,
     ndn: NDNInputProcessorRef,
 
-    root_state: GlobalStateAccessInputProcessorRef,
-    local_cache: GlobalStateAccessInputProcessorRef,
+    root_state: GlobalStateAccessorInputProcessorRef,
+    local_cache: GlobalStateAccessorInputProcessorRef,
 
     app: AppService,
 
@@ -31,8 +31,8 @@ impl FrontService {
     pub fn new(
         non: NONInputProcessorRef,
         ndn: NDNInputProcessorRef,
-        root_state: GlobalStateAccessInputProcessorRef,
-        local_cache: GlobalStateAccessInputProcessorRef,
+        root_state: GlobalStateAccessorInputProcessorRef,
+        local_cache: GlobalStateAccessorInputProcessorRef,
         app: AppService,
         ood_resolver: OodResolver,
     ) -> Self {
@@ -420,8 +420,8 @@ impl FrontService {
         };
 
         match req.action {
-            RootStateAccessAction::GetObjectByPath => {
-                let state_req = RootStateAccessGetObjectByPathInputRequest {
+            GlobalStateAccessorAction::GetObjectByPath => {
+                let state_req = RootStateAccessorGetObjectByPathInputRequest {
                     common,
                     inner_path: req.inner_path.unwrap_or("".to_owned()),
                 };
@@ -431,8 +431,8 @@ impl FrontService {
                     .await
                     .map(|resp| GlobalStateResponse::Object(resp))
             }
-            RootStateAccessAction::List => {
-                let state_req = RootStateAccessListInputRequest {
+            GlobalStateAccessorAction::List => {
+                let state_req = RootStateAccessorListInputRequest {
                     common,
                     inner_path: req.inner_path.unwrap_or("".to_owned()),
 
@@ -488,7 +488,7 @@ impl FrontService {
                             dec_id,
                             name,
                             Some(&web_req.version),
-                            &req.origin_url
+                            &req.origin_url,
                         );
                         FrontAResponse::Redirect(url)
                     }
@@ -519,7 +519,12 @@ impl FrontService {
                         let dec_id = dec.as_dec_id().or(req.dec.as_dec_id());
                         let name = dec.as_name().or(req.dec.as_name());
 
-                        let url = self.gen_app_not_installed_redirect_url(dec_id, name, None, &req.origin_url);
+                        let url = self.gen_app_not_installed_redirect_url(
+                            dec_id,
+                            name,
+                            None,
+                            &req.origin_url,
+                        );
                         FrontAResponse::Redirect(url)
                     }
                 }
@@ -565,13 +570,15 @@ impl FrontService {
         for (key, value) in origin_url.query_pairs() {
             let s = format!("{}=", key);
             if let Some(_) = querys.iter().find(|&v| v.starts_with(&s)) {
-                warn!("a protocol query name conflicts with reserved! key={}, value={}", key, value);
+                warn!(
+                    "a protocol query name conflicts with reserved! key={}, value={}",
+                    key, value
+                );
                 continue;
             }
 
             querys.push(format!("{}={}", key, value));
         }
-
 
         let url = if querys.len() > 0 {
             let querys = querys.join("&");
@@ -588,7 +595,7 @@ impl FrontService {
         dec_id: Option<&ObjectId>,
         name: Option<&str>,
         version: Option<&FrontARequestVersion>,
-        origin_url: &http_types::Url
+        origin_url: &http_types::Url,
     ) -> String {
         let mut querys = vec![];
 
@@ -623,7 +630,10 @@ impl FrontService {
         for (key, value) in origin_url.query_pairs() {
             let s = format!("{}=", key);
             if let Some(_) = querys.iter().find(|&v| v.starts_with(&s)) {
-                warn!("a protocol query name conflicts with reserved! key={}, value={}", key, value);
+                warn!(
+                    "a protocol query name conflicts with reserved! key={}, value={}",
+                    key, value
+                );
                 continue;
             }
 

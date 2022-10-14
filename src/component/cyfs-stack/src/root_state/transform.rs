@@ -649,16 +649,16 @@ impl OpEnvInputProcessor for OpEnvInputTransformer {
 }
 
 // 实现从output到input的转换
-pub(crate) struct GlobalStateAccessOutputTransformer {
-    processor: GlobalStateAccessInputProcessorRef,
+pub(crate) struct GlobalStateAccessorOutputTransformer {
+    processor: GlobalStateAccessorInputProcessorRef,
     source: RequestSourceInfo,
 }
 
-impl GlobalStateAccessOutputTransformer {
+impl GlobalStateAccessorOutputTransformer {
     pub fn new(
-        processor: GlobalStateAccessInputProcessorRef,
+        processor: GlobalStateAccessorInputProcessorRef,
         source: RequestSourceInfo,
-    ) -> GlobalStateAccessOutputProcessorRef {
+    ) -> GlobalStateAccessorOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
@@ -681,19 +681,19 @@ impl GlobalStateAccessOutputTransformer {
 }
 
 #[async_trait::async_trait]
-impl GlobalStateAccessOutputProcessor for GlobalStateAccessOutputTransformer {
+impl GlobalStateAccessorOutputProcessor for GlobalStateAccessorOutputTransformer {
     async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathOutputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathOutputResponse> {
-        let in_req = RootStateAccessGetObjectByPathInputRequest {
+        req: RootStateAccessorGetObjectByPathOutputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathOutputResponse> {
+        let in_req = RootStateAccessorGetObjectByPathInputRequest {
             common: self.convert_common(req.common),
             inner_path: req.inner_path,
         };
 
         let in_resp = self.processor.get_object_by_path(in_req).await?;
 
-        let resp = RootStateAccessGetObjectByPathOutputResponse {
+        let resp = RootStateAccessorGetObjectByPathOutputResponse {
             object: NONGetObjectOutputResponse {
                 object: in_resp.object.object,
                 object_expires_time: in_resp.object.object_expires_time,
@@ -709,9 +709,9 @@ impl GlobalStateAccessOutputProcessor for GlobalStateAccessOutputTransformer {
 
     async fn list(
         &self,
-        req: RootStateAccessListOutputRequest,
-    ) -> BuckyResult<RootStateAccessListOutputResponse> {
-        let in_req = RootStateAccessListInputRequest {
+        req: RootStateAccessorListOutputRequest,
+    ) -> BuckyResult<RootStateAccessorListOutputResponse> {
+        let in_req = RootStateAccessorListInputRequest {
             common: self.convert_common(req.common),
             page_index: req.page_index,
             page_size: req.page_size,
@@ -723,14 +723,14 @@ impl GlobalStateAccessOutputProcessor for GlobalStateAccessOutputTransformer {
 }
 
 // 实现从input到output的转换
-pub(crate) struct GlobalStateAccessInputTransformer {
-    processor: GlobalStateAccessOutputProcessorRef,
+pub(crate) struct GlobalStateAccessorInputTransformer {
+    processor: GlobalStateAccessorOutputProcessorRef,
 }
 
-impl GlobalStateAccessInputTransformer {
+impl GlobalStateAccessorInputTransformer {
     pub fn new(
-        processor: GlobalStateAccessOutputProcessorRef,
-    ) -> GlobalStateAccessInputProcessorRef {
+        processor: GlobalStateAccessorOutputProcessorRef,
+    ) -> GlobalStateAccessorInputProcessorRef {
         let ret = Self { processor };
         Arc::new(Box::new(ret))
     }
@@ -747,19 +747,19 @@ impl GlobalStateAccessInputTransformer {
 }
 
 #[async_trait::async_trait]
-impl GlobalStateAccessInputProcessor for GlobalStateAccessInputTransformer {
+impl GlobalStateAccessorInputProcessor for GlobalStateAccessorInputTransformer {
     async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathInputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
-        let out_req = RootStateAccessGetObjectByPathOutputRequest {
+        req: RootStateAccessorGetObjectByPathInputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathInputResponse> {
+        let out_req = RootStateAccessorGetObjectByPathOutputRequest {
             common: self.convert_common(req.common),
             inner_path: req.inner_path,
         };
 
         let out_resp = self.processor.get_object_by_path(out_req).await?;
 
-        let resp = RootStateAccessGetObjectByPathInputResponse {
+        let resp = RootStateAccessorGetObjectByPathInputResponse {
             object: NONGetObjectInputResponse {
                 object: out_resp.object.object,
                 object_expires_time: out_resp.object.object_expires_time,
@@ -775,9 +775,9 @@ impl GlobalStateAccessInputProcessor for GlobalStateAccessInputTransformer {
 
     async fn list(
         &self,
-        req: RootStateAccessListInputRequest,
-    ) -> BuckyResult<RootStateAccessListInputResponse> {
-        let out_req = RootStateAccessListOutputRequest {
+        req: RootStateAccessorListInputRequest,
+    ) -> BuckyResult<RootStateAccessorListInputResponse> {
+        let out_req = RootStateAccessorListOutputRequest {
             common: self.convert_common(req.common),
             page_index: req.page_index,
             page_size: req.page_size,

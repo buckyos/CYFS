@@ -365,17 +365,17 @@ where
 
 ////// access
 
-pub(crate) struct GlobalStateAccessRequestHandlerEndpoint {
+pub(crate) struct GlobalStateAccessorRequestHandlerEndpoint {
     zone_manager: ZoneManagerRef,
     protocol: RequestProtocol,
-    handler: GlobalStateAccessRequestHandler,
+    handler: GlobalStateAccessorRequestHandler,
 }
 
-impl GlobalStateAccessRequestHandlerEndpoint {
+impl GlobalStateAccessorRequestHandlerEndpoint {
     fn new(
         zone_manager: ZoneManagerRef,
         protocol: RequestProtocol,
-        handler: GlobalStateAccessRequestHandler,
+        handler: GlobalStateAccessorRequestHandler,
     ) -> Self {
         Self {
             zone_manager,
@@ -398,7 +398,7 @@ impl GlobalStateAccessRequestHandlerEndpoint {
         zone_manager: &ZoneManagerRef,
         protocol: &RequestProtocol,
         root_seg: &str,
-        handler: &GlobalStateAccessRequestHandler,
+        handler: &GlobalStateAccessorRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {
         // get_object_by_path & list
@@ -419,7 +419,7 @@ impl GlobalStateAccessRequestHandlerEndpoint {
 }
 
 #[async_trait]
-impl<State: Send> tide::Endpoint<State> for GlobalStateAccessRequestHandlerEndpoint
+impl<State: Send> tide::Endpoint<State> for GlobalStateAccessorRequestHandlerEndpoint
 where
     State: Clone + Send + Sync + 'static,
 {

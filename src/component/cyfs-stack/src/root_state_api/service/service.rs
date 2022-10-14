@@ -63,7 +63,7 @@ impl GlobalStateService {
         self.router.clone_op_env_processor()
     }
 
-    pub fn clone_access_processor(&self) -> GlobalStateAccessInputProcessorRef {
-        self.router.clone_access_processor()
+    pub fn clone_accessor_processor(&self) -> GlobalStateAccessorInputProcessorRef {
+        self.router.clone_accessor_processor()
     }
 }

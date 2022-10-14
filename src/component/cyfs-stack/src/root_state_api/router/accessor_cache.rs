@@ -5,20 +5,20 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
-pub struct GlobalStateAccessCacheProcessor {
-    next: GlobalStateAccessInputProcessorRef,
+pub struct GlobalStateAccessorCacheProcessor {
+    next: GlobalStateAccessorInputProcessorRef,
 
     device_id: DeviceId,
 
     noc: NONInputProcessorRef,
 }
 
-impl GlobalStateAccessCacheProcessor {
+impl GlobalStateAccessorCacheProcessor {
     pub(crate) fn new(
-        next: GlobalStateAccessInputProcessorRef,
+        next: GlobalStateAccessorInputProcessorRef,
         noc: NONInputProcessorRef,
         device_id: DeviceId,
-    ) -> GlobalStateAccessInputProcessorRef {
+    ) -> GlobalStateAccessorInputProcessorRef {
         let ret = Self {
             next,
             noc,
@@ -30,7 +30,7 @@ impl GlobalStateAccessCacheProcessor {
 
     pub async fn cache_object(
         &self,
-        req: RootStateAccessGetObjectByPathInputRequest,
+        req: RootStateAccessorGetObjectByPathInputRequest,
         object: &NONObjectInfo,
     ) {
         let put_req = NONPutObjectInputRequest {
@@ -50,11 +50,11 @@ impl GlobalStateAccessCacheProcessor {
 }
 
 #[async_trait::async_trait]
-impl GlobalStateAccessInputProcessor for GlobalStateAccessCacheProcessor {
+impl GlobalStateAccessorInputProcessor for GlobalStateAccessorCacheProcessor {
     async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathInputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
+        req: RootStateAccessorGetObjectByPathInputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathInputResponse> {
         let cache_req = req.clone();
         let resp = self.next.get_object_by_path(req).await?;
 
@@ -71,8 +71,8 @@ impl GlobalStateAccessInputProcessor for GlobalStateAccessCacheProcessor {
 
     async fn list(
         &self,
-        req: RootStateAccessListInputRequest,
-    ) -> BuckyResult<RootStateAccessListInputResponse> {
+        req: RootStateAccessorListInputRequest,
+    ) -> BuckyResult<RootStateAccessorListInputResponse> {
         self.next.list(req).await
     }
 }

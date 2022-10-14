@@ -937,12 +937,12 @@ impl OpEnvRequestHandler {
 }
 
 #[derive(Clone)]
-pub(crate) struct GlobalStateAccessRequestHandler {
-    processor: GlobalStateAccessInputProcessorRef,
+pub(crate) struct GlobalStateAccessorRequestHandler {
+    processor: GlobalStateAccessorInputProcessorRef,
 }
 
-impl GlobalStateAccessRequestHandler {
-    pub fn new(processor: GlobalStateAccessInputProcessorRef) -> Self {
+impl GlobalStateAccessorRequestHandler {
+    pub fn new(processor: GlobalStateAccessorInputProcessorRef) -> Self {
         Self { processor }
     }
 
@@ -989,13 +989,13 @@ impl GlobalStateAccessRequestHandler {
         // extract params from url querys
         let mut page_index: Option<u32> = None;
         let mut page_size: Option<u32> = None;
-        let mut action = RootStateAccessAction::GetObjectByPath;
+        let mut action = GlobalStateAccessorAction::GetObjectByPath;
 
         let pairs = req.request.url().query_pairs();
         for (k, v) in pairs {
             match k.as_ref() {
                 "action" => {
-                    action = RootStateAccessAction::from_str(v.as_ref())?;
+                    action = GlobalStateAccessorAction::from_str(v.as_ref())?;
                 }
                 "page_index" => {
                     let v = v.as_ref().parse().map_err(|e| {
@@ -1014,7 +1014,7 @@ impl GlobalStateAccessRequestHandler {
                     page_size = Some(v);
                 }
                 _ => {
-                    warn!("unknown global state access url query: {}={}", k, v);
+                    warn!("unknown global state accessor url query: {}={}", k, v);
                 }
             }
         }
@@ -1031,12 +1031,12 @@ impl GlobalStateAccessRequestHandler {
         let common = Self::decode_common_headers(&req)?;
 
         match action {
-            RootStateAccessAction::GetObjectByPath => {
-                let req = RootStateAccessGetObjectByPathInputRequest { common, inner_path };
+            GlobalStateAccessorAction::GetObjectByPath => {
+                let req = RootStateAccessorGetObjectByPathInputRequest { common, inner_path };
                 self.on_get_object_by_path(req).await
             }
-            RootStateAccessAction::List => {
-                let req = RootStateAccessListInputRequest {
+            GlobalStateAccessorAction::List => {
+                let req = RootStateAccessorListInputRequest {
                     common,
                     inner_path,
                     page_index,
@@ -1048,7 +1048,7 @@ impl GlobalStateAccessRequestHandler {
     }
 
     fn encode_get_object_by_path_response(
-        resp: RootStateAccessGetObjectByPathInputResponse,
+        resp: RootStateAccessorGetObjectByPathInputResponse,
     ) -> Response {
         let mut http_resp = NONRequestHandler::encode_get_object_response(
             resp.object,
@@ -1062,7 +1062,7 @@ impl GlobalStateAccessRequestHandler {
 
     async fn on_get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathInputRequest,
+        req: RootStateAccessorGetObjectByPathInputRequest,
     ) -> BuckyResult<Response> {
         let resp = self.processor.get_object_by_path(req).await?;
 
@@ -1070,7 +1070,7 @@ impl GlobalStateAccessRequestHandler {
         Ok(http_resp)
     }
 
-    async fn on_list(&self, req: RootStateAccessListInputRequest) -> BuckyResult<Response> {
+    async fn on_list(&self, req: RootStateAccessorListInputRequest) -> BuckyResult<Response> {
         let resp = self.processor.list(req).await?;
 
         let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);

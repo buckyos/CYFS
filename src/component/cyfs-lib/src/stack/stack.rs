@@ -33,10 +33,10 @@ struct CyfsStackProcessors {
     pub router_events: RouterEventManagerProcessorRef,
 
     pub root_state: GlobalStateOutputProcessorRef,
-    pub root_state_access: GlobalStateAccessOutputProcessorRef,
+    pub root_state_accessor: GlobalStateAccessorOutputProcessorRef,
 
     pub local_cache: GlobalStateOutputProcessorRef,
-    pub local_cache_access: GlobalStateAccessOutputProcessorRef,
+    pub local_cache_accessor: GlobalStateAccessorOutputProcessorRef,
 
     pub root_state_meta: GlobalStateMetaOutputProcessorRef,
     pub local_cache_meta: GlobalStateMetaOutputProcessorRef,
@@ -53,10 +53,10 @@ pub(crate) struct ObjectServices {
     sync_service: SyncRequestor,
 
     root_state: GlobalStateRequestor,
-    root_state_access: GlobalStateAccessRequestor,
+    root_state_accessor: GlobalStateAccessorRequestor,
 
     local_cache: GlobalStateRequestor,
-    local_cache_access: GlobalStateAccessRequestor,
+    local_cache_accessor: GlobalStateAccessorRequestor,
 
     root_state_meta: GlobalStateMetaRequestor,
     local_cache_meta: GlobalStateMetaRequestor,
@@ -322,8 +322,8 @@ impl SharedCyfsStack {
         let root_state =
             GlobalStateRequestor::new_root_state(Some(dec_id.clone()), requestor.clone());
 
-        let root_state_access =
-            GlobalStateAccessRequestor::new_root_state(Some(dec_id.clone()), requestor.clone());
+        let root_state_accessor =
+            GlobalStateAccessorRequestor::new_root_state(Some(dec_id.clone()), requestor.clone());
 
         let root_state_meta =
             GlobalStateMetaRequestor::new_root_state(Some(dec_id.clone()), requestor.clone());
@@ -333,8 +333,8 @@ impl SharedCyfsStack {
         let local_cache =
             GlobalStateRequestor::new_local_cache(Some(dec_id.clone()), requestor.clone());
 
-        let local_cache_access =
-            GlobalStateAccessRequestor::new_local_cache(Some(dec_id.clone()), requestor.clone());
+        let local_cache_accessor =
+            GlobalStateAccessorRequestor::new_local_cache(Some(dec_id.clone()), requestor.clone());
 
         let local_cache_meta =
             GlobalStateMetaRequestor::new_local_cache(Some(dec_id.clone()), requestor);
@@ -349,10 +349,10 @@ impl SharedCyfsStack {
             sync_service,
 
             root_state,
-            root_state_access,
+            root_state_accessor,
 
             local_cache,
-            local_cache_access,
+            local_cache_accessor,
 
             root_state_meta,
             local_cache_meta,
@@ -383,9 +383,9 @@ impl SharedCyfsStack {
             router_handlers: router_handlers.clone_processor(),
             router_events: router_events.clone_processor(),
             root_state: services.root_state.clone_processor(),
-            root_state_access: services.root_state_access.clone_processor(),
+            root_state_accessor: services.root_state_accessor.clone_processor(),
             local_cache: services.local_cache.clone_processor(),
-            local_cache_access: services.local_cache_access.clone_processor(),
+            local_cache_accessor: services.local_cache_accessor.clone_processor(),
             root_state_meta: services.root_state_meta.clone_processor(),
             local_cache_meta: services.local_cache_meta.clone_processor(),
         });
@@ -654,16 +654,16 @@ impl UniCyfsStack for SharedCyfsStack {
         &self.processors.root_state
     }
 
-    fn root_state_access(&self) -> &GlobalStateAccessOutputProcessorRef {
-        &self.processors.root_state_access
+    fn root_state_accessor(&self) -> &GlobalStateAccessorOutputProcessorRef {
+        &self.processors.root_state_accessor
     }
 
     fn local_cache(&self) -> &GlobalStateOutputProcessorRef {
         &self.processors.local_cache
     }
 
-    fn local_cache_access(&self) -> &GlobalStateAccessOutputProcessorRef {
-        &self.processors.local_cache_access
+    fn local_cache_accessor(&self) -> &GlobalStateAccessorOutputProcessorRef {
+        &self.processors.local_cache_accessor
     }
 
     fn root_state_meta(&self) -> &GlobalStateMetaOutputProcessorRef {

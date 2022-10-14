@@ -1,6 +1,6 @@
 use super::super::acl::*;
 use super::super::local::GlobalStateLocalService;
-use super::cache_access::GlobalStateAccessCacheProcessor;
+use super::accessor_cache::GlobalStateAccessorCacheProcessor;
 use crate::acl::AclManagerRef;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -19,7 +19,7 @@ pub struct GlobalStateRouter {
 
     global_state_processor: GlobalStateInputProcessorRef,
     op_env_processor: OpEnvInputProcessorRef,
-    access_processor: GlobalStateAccessInputProcessorRef,
+    accessor_processor: GlobalStateAccessorInputProcessorRef,
 
     zone_manager: ZoneManagerRef,
 
@@ -46,20 +46,20 @@ impl GlobalStateRouter {
         let global_state_processor = local_service.clone_global_state_processor();
         let op_env_processor = local_service.clone_op_env_processor();
 
-        let access_processor = local_service.clone_access_processor();
+        let accessor_processor = local_service.clone_accessor_processor();
 
         // acl limit processors
         let global_state_processor =
             GlobalStateAclZoneInputProcessor::new(acl.clone(), global_state_processor);
         let op_env_processor = OpEnvAclInnerInputProcessor::new(acl.clone(), op_env_processor);
 
-        let access_processor = GlobalStateAccessAclInputProcessor::new(acl, access_processor);
+        let accessor_processor = GlobalStateAccessorAclInputProcessor::new(acl, accessor_processor);
 
         Self {
             category,
             global_state_processor,
             op_env_processor,
-            access_processor,
+            accessor_processor,
 
             zone_manager,
             forward,
@@ -78,7 +78,7 @@ impl GlobalStateRouter {
         Arc::new(Box::new(self.clone()))
     }
 
-    pub fn clone_access_processor(&self) -> GlobalStateAccessInputProcessorRef {
+    pub fn clone_accessor_processor(&self) -> GlobalStateAccessorInputProcessorRef {
         Arc::new(Box::new(self.clone()))
     }
 
@@ -118,18 +118,18 @@ impl GlobalStateRouter {
         Ok(input_processor)
     }
 
-    async fn get_global_state_access_forward(
+    async fn get_global_state_accessor_forward(
         &self,
         target: DeviceId,
-    ) -> BuckyResult<GlobalStateAccessInputProcessorRef> {
+    ) -> BuckyResult<GlobalStateAccessorInputProcessorRef> {
         // 获取到目标的processor
         let requestor = self.forward.get(&target).await?;
 
-        let processor = GlobalStateAccessRequestor::new(self.category.clone(), None, requestor)
+        let processor = GlobalStateAccessorRequestor::new(self.category.clone(), None, requestor)
             .into_processor();
 
         // 转换为input processor
-        let input_processor = GlobalStateAccessInputTransformer::new(processor);
+        let input_processor = GlobalStateAccessorInputTransformer::new(processor);
 
         Ok(input_processor)
     }
@@ -185,19 +185,19 @@ impl GlobalStateRouter {
         }
     }
 
-    async fn get_global_state_access_processor(
+    async fn get_global_state_accessor_processor(
         &self,
         target: Option<&ObjectId>,
-    ) -> BuckyResult<GlobalStateAccessInputProcessorRef> {
+    ) -> BuckyResult<GlobalStateAccessorInputProcessorRef> {
         if let Some(device_id) = self.get_target(target).await? {
             debug!(
-                "global state access target resolved: {:?} -> {}",
+                "global state accessor target resolved: {:?} -> {}",
                 target, device_id
             );
-            let processor = self.get_global_state_access_forward(device_id).await?;
+            let processor = self.get_global_state_accessor_forward(device_id).await?;
 
             // insert a cache level
-            let processor = GlobalStateAccessCacheProcessor::new(
+            let processor = GlobalStateAccessorCacheProcessor::new(
                 processor,
                 self.noc_processor.clone(),
                 self.zone_manager.get_current_device_id().to_owned(),
@@ -205,7 +205,7 @@ impl GlobalStateRouter {
 
             Ok(processor)
         } else {
-            Ok(self.access_processor.clone())
+            Ok(self.accessor_processor.clone())
         }
     }
 }
@@ -419,23 +419,23 @@ impl OpEnvInputProcessor for GlobalStateRouter {
 }
 
 #[async_trait::async_trait]
-impl GlobalStateAccessInputProcessor for GlobalStateRouter {
+impl GlobalStateAccessorInputProcessor for GlobalStateRouter {
     async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathInputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse> {
+        req: RootStateAccessorGetObjectByPathInputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathInputResponse> {
         let processor = self
-            .get_global_state_access_processor(req.common.target.as_ref())
+            .get_global_state_accessor_processor(req.common.target.as_ref())
             .await?;
         processor.get_object_by_path(req).await
     }
 
     async fn list(
         &self,
-        req: RootStateAccessListInputRequest,
-    ) -> BuckyResult<RootStateAccessListInputResponse> {
+        req: RootStateAccessorListInputRequest,
+    ) -> BuckyResult<RootStateAccessorListInputResponse> {
         let processor = self
-            .get_global_state_access_processor(req.common.target.as_ref())
+            .get_global_state_accessor_processor(req.common.target.as_ref())
             .await?;
         processor.list(req).await
     }

@@ -1,5 +1,5 @@
 use super::super::core::*;
-use super::access_service::GlobalStateAccessService;
+use super::accessor_service::GlobalStateAccessorService;
 use crate::config::StackGlobalConfig;
 use crate::root_state::*;
 use cyfs_base::*;
@@ -12,7 +12,7 @@ pub struct GlobalStateLocalService {
     global_state: Arc<GlobalStateManager>,
 
     // only valid for global_state category
-    access_service: Arc<GlobalStateAccessService>,
+    accessor_service: Arc<GlobalStateAccessorService>,
 }
 
 impl GlobalStateLocalService {
@@ -27,12 +27,12 @@ impl GlobalStateLocalService {
             GlobalStateManager::load(category, device_id, owner, noc.clone(), config).await?;
         let global_state = Arc::new(global_state);
 
-        let access_service =
-            GlobalStateAccessService::new(device_id.to_owned(), global_state.clone(), noc);
+        let accessor_service =
+            GlobalStateAccessorService::new(device_id.to_owned(), global_state.clone(), noc);
 
         let ret = Self {
             global_state,
-            access_service: Arc::new(access_service),
+            accessor_service: Arc::new(accessor_service),
         };
 
         Ok(ret)
@@ -50,8 +50,8 @@ impl GlobalStateLocalService {
         Arc::new(Box::new(self.clone()))
     }
 
-    pub fn clone_access_processor(&self) -> GlobalStateAccessInputProcessorRef {
-        self.access_service.clone_processor()
+    pub fn clone_accessor_processor(&self) -> GlobalStateAccessorInputProcessorRef {
+        self.accessor_service.clone_processor()
     }
 
     pub fn get_target_dec_id(common: &RootStateInputRequestCommon) -> BuckyResult<&ObjectId> {

@@ -20,7 +20,7 @@ pub struct RootStateInputRequestCommon {
 impl fmt::Display for RootStateInputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.source)?;
-        
+
         if let Some(target_dec_id) = &self.target_dec_id {
             write!(f, ", target_dec_id: {}", target_dec_id)?;
         }
@@ -51,7 +51,6 @@ impl fmt::Display for RootStateGetCurrentRootInputRequest {
 }
 
 pub type RootStateGetCurrentRootInputResponse = RootStateGetCurrentRootOutputResponse;
-
 
 // create_op_env
 #[derive(Clone)]
@@ -102,7 +101,7 @@ impl fmt::Display for OpEnvInputRequestCommon {
         if let Some(target_dec_id) = &self.target_dec_id {
             write!(f, ", target_dec_id: {}", target_dec_id)?;
         }
-        
+
         if let Some(target) = &self.target {
             write!(f, ", target: {}", target)?;
         }
@@ -122,7 +121,6 @@ impl fmt::Display for OpEnvNoParamInputRequest {
         write!(f, "common: {}", self.common)
     }
 }
-
 
 /// single_op_env methods
 // load
@@ -214,7 +212,6 @@ pub type OpEnvCommitInputResponse = OpEnvCommitOutputResponse;
 
 // abort
 pub type OpEnvAbortInputRequest = OpEnvNoParamInputRequest;
-
 
 // metadata
 pub struct OpEnvMetadataInputRequest {
@@ -408,31 +405,31 @@ impl fmt::Display for OpEnvListInputRequest {
 pub type OpEnvListInputResponse = OpEnvNextOutputResponse;
 
 //////////////////////////
-/// root-state access requests
+/// global-state accessor requests
 
 // get_object_by_path
 #[derive(Clone)]
-pub struct RootStateAccessGetObjectByPathInputRequest {
+pub struct RootStateAccessorGetObjectByPathInputRequest {
     pub common: RootStateInputRequestCommon,
 
     pub inner_path: String,
 }
 
-impl fmt::Display for RootStateAccessGetObjectByPathInputRequest {
+impl fmt::Display for RootStateAccessorGetObjectByPathInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
         write!(f, ", inner_path: {}", self.inner_path)
     }
 }
 
-pub struct RootStateAccessGetObjectByPathInputResponse {
+pub struct RootStateAccessorGetObjectByPathInputResponse {
     pub object: NONGetObjectInputResponse,
     pub root: ObjectId,
     pub revision: u64,
 }
 
 // list
-pub struct RootStateAccessListInputRequest {
+pub struct RootStateAccessorListInputRequest {
     pub common: RootStateInputRequestCommon,
 
     pub inner_path: String,
@@ -442,7 +439,7 @@ pub struct RootStateAccessListInputRequest {
     pub page_size: Option<u32>,
 }
 
-impl fmt::Display for RootStateAccessListInputRequest {
+impl fmt::Display for RootStateAccessorListInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
 
@@ -454,4 +451,4 @@ impl fmt::Display for RootStateAccessListInputRequest {
     }
 }
 
-pub type RootStateAccessListInputResponse = RootStateAccessListOutputResponse;
+pub type RootStateAccessorListInputResponse = RootStateAccessorListOutputResponse;

@@ -1,6 +1,5 @@
 use cyfs_lib::*;
 
-
 pub(crate) struct CyfsStackProcessors {
     pub non_service: NONOutputProcessorRef,
     pub ndn_service: NDNOutputProcessorRef,
@@ -12,15 +11,14 @@ pub(crate) struct CyfsStackProcessors {
     pub router_events: RouterEventManagerProcessorRef,
 
     pub root_state: GlobalStateOutputProcessorRef,
-    pub root_state_access: GlobalStateAccessOutputProcessorRef,
+    pub root_state_accessor: GlobalStateAccessorOutputProcessorRef,
 
     pub local_cache: GlobalStateOutputProcessorRef,
-    pub local_cache_access: GlobalStateAccessOutputProcessorRef,
+    pub local_cache_accessor: GlobalStateAccessorOutputProcessorRef,
 
     pub root_state_meta: GlobalStateMetaOutputProcessorRef,
     pub local_cache_meta: GlobalStateMetaOutputProcessorRef,
 }
-
 
 impl UniCyfsStack for CyfsStackProcessors {
     fn non_service(&self) -> &NONOutputProcessorRef {
@@ -55,16 +53,16 @@ impl UniCyfsStack for CyfsStackProcessors {
         &self.root_state
     }
 
-    fn root_state_access(&self) -> &GlobalStateAccessOutputProcessorRef {
-        &self.root_state_access
+    fn root_state_accessor(&self) -> &GlobalStateAccessorOutputProcessorRef {
+        &self.root_state_accessor
     }
 
     fn local_cache(&self) -> &GlobalStateOutputProcessorRef {
         &self.local_cache
     }
 
-    fn local_cache_access(&self) -> &GlobalStateAccessOutputProcessorRef {
-        &self.local_cache_access
+    fn local_cache_accessor(&self) -> &GlobalStateAccessorOutputProcessorRef {
+        &self.local_cache_accessor
     }
 
     fn root_state_meta(&self) -> &GlobalStateMetaOutputProcessorRef {

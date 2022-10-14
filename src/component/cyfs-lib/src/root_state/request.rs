@@ -44,8 +44,8 @@ pub type OpEnvInsertResponse = OpEnvInsertOutputResponse;
 pub type OpEnvRemoveRequest = OpEnvRemoveOutputRequest;
 pub type OpEnvRemoveResponse = OpEnvRemoveOutputResponse;
 
-pub type RootStateAccessGetObjectByPathRequest = RootStateAccessGetObjectByPathOutputRequest;
-pub type RootStateAccessGetObjectByPathResponse = RootStateAccessGetObjectByPathOutputResponse;
+pub type RootStateAccessorGetObjectByPathRequest = RootStateAccessorGetObjectByPathOutputRequest;
+pub type RootStateAccessorGetObjectByPathResponse = RootStateAccessorGetObjectByPathOutputResponse;
 
-pub type RootStateAccessListRequest = RootStateAccessListOutputRequest;
-pub type RootStateAccessListResponse = RootStateAccessListOutputResponse;
+pub type RootStateAccessorListRequest = RootStateAccessorListOutputRequest;
+pub type RootStateAccessorListResponse = RootStateAccessorListOutputResponse;

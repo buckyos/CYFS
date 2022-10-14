@@ -25,7 +25,7 @@ pub type GlobalStateInputProcessorRef = Arc<Box<dyn GlobalStateInputProcessor>>;
 #[async_trait::async_trait]
 pub trait OpEnvInputProcessor: Sync + Send + 'static {
     fn get_category(&self) -> GlobalStateCategory;
-    
+
     // single_op_env methods
     async fn load(&self, req: OpEnvLoadInputRequest) -> BuckyResult<()>;
 
@@ -34,7 +34,10 @@ pub trait OpEnvInputProcessor: Sync + Send + 'static {
     async fn create_new(&self, req: OpEnvCreateNewInputRequest) -> BuckyResult<()>;
 
     // get_current_root
-    async fn get_current_root(&self, req: OpEnvGetCurrentRootInputRequest) -> BuckyResult<OpEnvGetCurrentRootInputResponse>;
+    async fn get_current_root(
+        &self,
+        req: OpEnvGetCurrentRootInputRequest,
+    ) -> BuckyResult<OpEnvGetCurrentRootInputResponse>;
 
     // lock
     async fn lock(&self, req: OpEnvLockInputRequest) -> BuckyResult<()>;
@@ -82,16 +85,16 @@ pub trait OpEnvInputProcessor: Sync + Send + 'static {
 pub type OpEnvInputProcessorRef = Arc<Box<dyn OpEnvInputProcessor>>;
 
 #[async_trait::async_trait]
-pub trait GlobalStateAccessInputProcessor: Sync + Send + 'static {
+pub trait GlobalStateAccessorInputProcessor: Sync + Send + 'static {
     async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathInputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathInputResponse>;
+        req: RootStateAccessorGetObjectByPathInputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathInputResponse>;
 
     async fn list(
         &self,
-        req: RootStateAccessListInputRequest,
-    ) -> BuckyResult<RootStateAccessListInputResponse>;
+        req: RootStateAccessorListInputRequest,
+    ) -> BuckyResult<RootStateAccessorListInputResponse>;
 }
 
-pub type GlobalStateAccessInputProcessorRef = Arc<Box<dyn GlobalStateAccessInputProcessor>>;
+pub type GlobalStateAccessorInputProcessorRef = Arc<Box<dyn GlobalStateAccessorInputProcessor>>;

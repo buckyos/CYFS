@@ -211,7 +211,6 @@ impl fmt::Display for OpEnvOutputRequestCommon {
             write!(f, ", target_dec_id: {}", target_dec_id)?;
         }
 
-
         if let Some(target) = &self.target {
             write!(f, ", target: {}", target)?;
         }
@@ -865,26 +864,26 @@ pub type OpEnvListOutputResponse = OpEnvNextOutputResponse;
 
 // get_object_by_path
 #[derive(Clone)]
-pub struct RootStateAccessGetObjectByPathOutputRequest {
+pub struct RootStateAccessorGetObjectByPathOutputRequest {
     pub common: RootStateOutputRequestCommon,
 
     pub inner_path: String,
 }
 
-impl fmt::Display for RootStateAccessGetObjectByPathOutputRequest {
+impl fmt::Display for RootStateAccessorGetObjectByPathOutputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
         write!(f, ", inner_path: {}", self.inner_path)
     }
 }
 
-pub struct RootStateAccessGetObjectByPathOutputResponse {
+pub struct RootStateAccessorGetObjectByPathOutputResponse {
     pub object: NONGetObjectOutputResponse,
     pub root: ObjectId,
     pub revision: u64,
 }
 
-impl fmt::Display for RootStateAccessGetObjectByPathOutputResponse {
+impl fmt::Display for RootStateAccessorGetObjectByPathOutputResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.object.fmt(f)?;
         write!(f, ", root: {}, revision: {}", self.root, self.revision)
@@ -892,7 +891,7 @@ impl fmt::Display for RootStateAccessGetObjectByPathOutputResponse {
 }
 
 // list
-pub struct RootStateAccessListOutputRequest {
+pub struct RootStateAccessorListOutputRequest {
     pub common: RootStateOutputRequestCommon,
 
     pub inner_path: String,
@@ -902,7 +901,7 @@ pub struct RootStateAccessListOutputRequest {
     pub page_size: Option<u32>,
 }
 
-impl fmt::Display for RootStateAccessListOutputRequest {
+impl fmt::Display for RootStateAccessorListOutputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
 
@@ -914,7 +913,7 @@ impl fmt::Display for RootStateAccessListOutputRequest {
     }
 }
 
-pub struct RootStateAccessListOutputResponse {
+pub struct RootStateAccessorListOutputResponse {
     pub list: Vec<ObjectMapContentItem>,
 
     pub root: ObjectId,
