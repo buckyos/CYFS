@@ -266,8 +266,7 @@ impl ConnectStreamAction for ConnectTcpStream {
                 Err(e)
             }
         }.map_err(|e| {
-            // 这里出错的话 标记 tunnel dead
-            self.0.tunnel.mark_dead(self.0.tunnel.state());
+            // self.0.tunnel.mark_dead(self.0.tunnel.state());
             e
         })?;
 

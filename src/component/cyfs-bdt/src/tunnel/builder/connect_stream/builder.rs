@@ -3,7 +3,7 @@ use std::{
     fmt, 
     //time::Duration,
     sync::RwLock, 
-    collections::BTreeMap
+    collections::{BTreeMap, LinkedList}
 };
 use async_std::{sync::{Arc}, task};
 use async_trait::{async_trait};
@@ -49,7 +49,7 @@ impl Connecting1State {
 }
 
 struct Connecting2State {
-    action: DynConnectStreamAction, 
+    actions: LinkedList<DynConnectStreamAction>, 
     waiter: StateWaiter
 }
 
@@ -342,30 +342,64 @@ impl ConnectStreamBuilder {
         // 第一个action进入establish 时，忽略其他action，builder进入pre establish， 调用 continue connect
         let builder = self.clone();
         task::spawn(async move {
-            let continue_action = match action.wait_pre_establish().await {
+            let _continue = match action.wait_pre_establish().await {
                 ConnectStreamState::PreEstablish => {
                     let state = &mut *builder.0.state.write().unwrap();
                     match state {
                         ConnectStreamBuilderState::Connecting1(ref mut connecting1) => {
                             info!("{} connecting1 => connecting2 use action {}", builder, action);
+                            let mut actions = LinkedList::new();
+                            actions.push_back(action.clone_as_connect_stream_action());
                             let connecting2 = Connecting2State {
                                 waiter: connecting1.waiter.transfer(), 
-                                action: action.clone_as_connect_stream_action()
+                                actions
                             };
                             *state = ConnectStreamBuilderState::Connecting2(connecting2);
-                            Some(action.clone_as_connect_stream_action())
+                            true
                         }, 
+                        ConnectStreamBuilderState::Connecting2(ref mut connecting2) => {
+                            info!("{} add pre establish action in connecting2, action {}", builder, action);
+                            connecting2.actions.push_back(action.clone_as_connect_stream_action());
+                            if connecting2.actions.len() == 1 {
+                                true
+                            } else {
+                                false
+                            }
+                        }
                         _ => {
-                            None
+                            false
                         }
                     }
                 },  
                 _ => {
-                    None
+                    false
                 }
             };
-            if let Some(continue_action) = continue_action {
-                let _ = continue_action.continue_connect().await;
+
+            if _continue {
+                loop {
+                    if let Some(action) = {
+                        let state = &*builder.0.state.read().unwrap();
+                        match state {
+                            ConnectStreamBuilderState::Connecting2(connecting2) => {
+                                connecting2.actions.front().map(|a| a.clone_as_connect_stream_action())
+                            }
+                            _ => {
+                                None
+                            }
+                        }
+                    } {
+                        if let Err(_) = action.continue_connect().await {
+                            let state = &mut *builder.0.state.write().unwrap();
+                            match state {
+                                ConnectStreamBuilderState::Connecting2(ref mut connecting2) => {
+                                    let _ = connecting2.actions.pop_front().unwrap();
+                                }
+                                _ => {}
+                            }
+                        } 
+                    }
+                }
             }
         });
     }
