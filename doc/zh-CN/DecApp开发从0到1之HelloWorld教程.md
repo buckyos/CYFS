@@ -8,7 +8,7 @@
 
 - mac 系统，在 ~/.cyfs_profile 目录下分别有 poeple.desc 和 people.sec 文件
 
-- windows 系统，在 C:\Users\<your-conputer-name>\.cyfs_profile 目录下分别有 poeple.desc 和 people.sec 文件
+- windows 系统，在 C:\Users\<username>\\.cyfs_profile 目录下分别有 poeple.desc 和 people.sec 文件
 
 2. 请确保已经在系统中安装好 nodejs 最新稳定版。
 3. 全局安装 cyfs-sdk、cyfs-tool 和 cyfs-dapp-cli 脚手架。
