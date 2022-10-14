@@ -1,29 +1,26 @@
 use super::super::RouterHandlersManager;
 use super::processor::*;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
+#[derive(Clone)]
 pub(crate) struct RouterHandlerHttpHandler {
     protocol: RequestProtocol,
 
     processor: RouterHandlerHttpProcessor,
+    zone_manager: ZoneManagerRef,
 }
 
-impl Clone for RouterHandlerHttpHandler {
-    fn clone(&self) -> Self {
-        Self {
-            protocol: self.protocol.clone(),
-            processor: self.processor.clone(),
-        }
-    }
-}
 
 impl RouterHandlerHttpHandler {
     pub fn new(protocol: RequestProtocol, manager: RouterHandlersManager) -> Self {
+        let zone_manager = manager.acl_manager().zone_manager().clone();
         let processor = RouterHandlerHttpProcessor::new(manager);
         Self {
             protocol,
             processor,
+            zone_manager,
         }
     }
 
@@ -128,7 +125,7 @@ impl RouterHandlerHttpHandler {
             source,
         };
 
-        let mut source = RequestSourceInfo::new_local_dec(add_req.dec_id.clone());
+        let mut source = self.zone_manager.get_current_source_info(&add_req.dec_id).await?;
         source.protocol = self.protocol;
 
         self.processor.on_add_handler_request(source, add_req).await

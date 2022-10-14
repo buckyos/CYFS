@@ -1,32 +1,29 @@
 use super::super::RouterHandlersManager;
 use super::processor::*;
 use crate::interface::{HttpRequestSource, InterfaceAuth};
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub(crate) struct RouterHandlerWebSocketHandler {
     protocol: RequestProtocol,
 
     processor: RouterHandlerWSProcessor,
-}
 
-impl Clone for RouterHandlerWebSocketHandler {
-    fn clone(&self) -> Self {
-        Self {
-            protocol: self.protocol.clone(),
-            processor: self.processor.clone(),
-        }
-    }
+    zone_manager: ZoneManagerRef,
 }
 
 impl RouterHandlerWebSocketHandler {
     pub fn new(protocol: RequestProtocol, manager: RouterHandlersManager) -> Self {
+        let zone_manager = manager.acl_manager().zone_manager().clone();
         let processor = RouterHandlerWSProcessor::new(manager);
         Self {
             protocol,
             processor,
+            zone_manager,
         }
     }
 
@@ -49,7 +46,7 @@ impl RouterHandlerWebSocketHandler {
                         auth.check_option_dec(req.dec_id.as_ref(), &source)?;
                     }
 
-                    let mut source = RequestSourceInfo::new_local_dec(req.dec_id.clone());
+                    let mut source = self.zone_manager.get_current_source_info(&req.dec_id).await?;
                     source.protocol = self.protocol;
 
                     self.on_add_handler_request(session_requestor, source, req)

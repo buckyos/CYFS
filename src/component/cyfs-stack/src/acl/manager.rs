@@ -130,6 +130,10 @@ impl AclManager {
         self.config.set(config).unwrap();
     }
 
+    pub fn zone_manager(&self) -> &ZoneManagerRef {
+        &self.zone_manager
+    }
+
     pub fn config(&self) -> &AclConfig {
         self.config.get().unwrap()
     }
