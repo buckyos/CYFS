@@ -1,7 +1,7 @@
 use super::request::*;
 
 use std::path::Path;
-use sysinfo::{DiskExt, DiskType, ProcessorExt, SystemExt};
+use sysinfo::{DiskExt, DiskType, SystemExt, CpuExt};
 
 pub(super) struct DeviceInfoGen;
 
@@ -40,7 +40,7 @@ impl DeviceInfoGen {
         let mac_address = "123".to_owned();
 
         let system = sysinfo::System::new_all();
-        let processor = system.global_processor_info();
+        let processor = system.global_cpu_info();
         let processor_brand = processor.brand();
         let memory = system.total_memory();
 
