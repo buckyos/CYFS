@@ -2183,14 +2183,16 @@ impl ObjectSignsHelper {
         let list = list.as_mut().unwrap();
 
         // 相同source的，只保留已有的签名，忽略时间和签名内容
-        for cur in list.iter() {
-            if cur.compare_source(&sign) {
-                warn!("desc sign with source already exists! sign={:?}", sign);
-                return;
+        if let Some(cur) = list.iter_mut().find(|v| v.compare_source(&sign)) {
+            if sign.sign_time() > cur.sign_time() {
+                info!("desc sign with same source will update! new={:?}, cur={:?}", sign, cur);
+                *cur = sign;
+            } else{
+                warn!("desc sign with same source already exists! sign={:?}", sign);
             }
+        } else {
+            list.push(sign);
         }
-
-        list.push(sign);
     }
 
     pub fn latest_sign_time(list: &Option<Vec<Signature>>) -> u64 {
@@ -2213,9 +2215,17 @@ impl ObjectSignsHelper {
                     Some(dest) => {
                         let mut ret = 0;
                         for src_item in src {
-                            if dest.iter().find(|s| s.compare_source(src_item)).is_none() {
-                                dest.push(src_item.clone());
-                                ret += 1;
+                            match dest.iter_mut().find(|s| s.compare_source(src_item)) {
+                                Some(dest_item) => {
+                                    if src_item.sign_time() > dest_item.sign_time() {
+                                        *dest_item = src_item.clone();
+                                    }
+                                }
+                                None => {
+                                    dest.push(src_item.clone());
+                                    ret += 1;
+                                }
+
                             }
                         }
                         ret
@@ -2225,13 +2235,16 @@ impl ObjectSignsHelper {
                         let mut ret = 0;
                         let mut dest_list: Vec<Signature> = Vec::new();
                         for src_item in src {
-                            if dest_list
-                                .iter()
-                                .find(|s| s.compare_source(src_item))
-                                .is_none()
-                            {
-                                dest_list.push(src_item.clone());
-                                ret += 1;
+                            match dest_list.iter_mut().find(|s| s.compare_source(src_item)) {
+                                Some(dest_item) => {
+                                    if src_item.sign_time() > dest_item.sign_time() {
+                                        *dest_item = src_item.clone();
+                                    }
+                                }
+                                None => {
+                                    dest_list.push(src_item.clone());
+                                    ret += 1;
+                                }
                             }
                         }
 
