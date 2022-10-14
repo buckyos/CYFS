@@ -12,8 +12,8 @@ if (process.platform === 'win32') {
 }
 const env = process.env;
 
-const buildnumber = process.env["CYFS_BUILD_NUMBER"] || "0"
-const channel = process.env["CYFS_BUILD_CHANNEL"] || "nightly"
+const buildnumber = process.env["VERSION"] || "0"
+const channel = process.env["CHANNEL"] || "nightly"
 
 function version_from_channel(channel) {
     if (channel === "nightly") {
