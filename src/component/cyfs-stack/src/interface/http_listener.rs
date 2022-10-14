@@ -161,7 +161,7 @@ impl ObjectHttpListener {
             &mut server,
         );
 
-        let handler = GlobalStateAccessRequestHandler::new(root_state.clone_access_processor());
+        let handler = GlobalStateAccessRequestHandler::new(local_cache.clone_access_processor());
         GlobalStateAccessRequestHandlerEndpoint::register_server(
             zone_manager,
             &protocol,
