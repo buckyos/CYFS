@@ -1,3 +1,4 @@
+use super::target_zone::TargetZoneManager;
 use super::zone_container::ZoneContainer;
 use super::{failed_cache::ZoneFailedCache, friends::FriendsManager};
 use crate::meta::*;
@@ -8,6 +9,7 @@ use cyfs_debug::Mutex;
 use cyfs_lib::*;
 use cyfs_util::*;
 
+use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
 // zone发生改变
@@ -75,6 +77,8 @@ pub struct ZoneManager {
     search_zone_reenter_call_manager: ReenterCallManager<DeviceId, BuckyResult<Zone>>,
     search_zone_ood_by_owner_reenter_call_manager:
         ReenterCallManager<ObjectId, BuckyResult<(ObjectId, OODWorkMode, Vec<DeviceId>)>>,
+
+    target_zone_manager: Arc<OnceCell<TargetZoneManager>>,
 }
 
 pub type ZoneManagerRef = Arc<ZoneManager>;
@@ -89,11 +93,11 @@ impl ZoneManager {
         fail_handler: ObjectFailHandler,
         root_state: GlobalStateOutputProcessorRef,
         local_cache: GlobalStateOutputProcessorRef,
-    ) -> Self {
+    ) -> ZoneManagerRef {
         let device_manager = Arc::new(device_manager);
         let meta_cache = Arc::new(meta_cache);
 
-        Self {
+        let ret = Self {
             noc: noc.clone(),
             device_manager,
             device_id: device_id.clone(),
@@ -107,7 +111,17 @@ impl ZoneManager {
             search_zone_reenter_call_manager: ReenterCallManager::new(),
             search_zone_ood_by_owner_reenter_call_manager: ReenterCallManager::new(),
             friends_manager: FriendsManager::new(root_state),
+            target_zone_manager: Arc::new(OnceCell::new()),
+        };
+
+        let ret = Arc::new(ret);
+
+        let target_zone_manager = TargetZoneManager::new(ret.clone());
+        if let Err(_) = ret.target_zone_manager.set(target_zone_manager) {
+            unreachable!();
         }
+
+        ret
     }
 
     pub fn device_manager(&self) -> &Box<dyn DeviceCache> {
@@ -116,6 +130,10 @@ impl ZoneManager {
 
     pub fn zone_changed_event(&self) -> &ZoneChangeEventManager {
         &self.zone_changed_event
+    }
+
+    pub fn target_zone_manager(&self) -> &TargetZoneManager {
+        self.target_zone_manager.get().unwrap()
     }
 
     pub async fn init(&self) -> BuckyResult<()> {
@@ -605,7 +623,7 @@ impl ZoneManager {
     // 查找一个owner的所在zone的ood列表
     // 核心流程是向上查找device的owner，直到people/simplegroup, owner的ood_list的第一个ood device
     // 目前owner只支持people和simplegroup两种
-    async fn search_zone_ood_by_owner(
+    pub(super) async fn search_zone_ood_by_owner(
         &self,
         owner_id: &mut ObjectId,
         mut object: Option<AnyNamedObject>,
@@ -808,68 +826,10 @@ impl ZoneManager {
         }
     }
 
-    // 解析目标device，target=None则指向当前zone的ood
-    pub async fn resolve_target(
+    pub async fn get_current_source_info(
         &self,
-        target: Option<&ObjectId>,
-        object_raw: Option<Vec<u8>>,
-    ) -> BuckyResult<(ZoneId, DeviceId)> {
-        match target {
-            None => {
-                // 没有指定target，那么目标是当前zone和当前zone的ood device
-                let info = self.get_current_info().await?;
-
-                Ok((info.zone_id.clone(), info.zone_device_ood_id.clone()))
-            }
-            Some(target) => {
-                let obj_type = target.obj_type_code();
-                match obj_type {
-                    ObjectTypeCode::Device => {
-                        let zone = self.resolve_zone(target, object_raw).await?;
-                        let device_id = target.try_into().unwrap();
-                        Ok((zone.zone_id(), device_id))
-                    }
-
-                    ObjectTypeCode::People | ObjectTypeCode::SimpleGroup => {
-                        let zone = self.resolve_zone(target, object_raw).await?;
-                        Ok((zone.zone_id(), zone.ood().clone()))
-                    }
-
-                    ObjectTypeCode::Custom => {
-                        // 从object_id无法判断是不是zone类型，这里强制当作zone_id来查询一次
-                        let zone_id = target.clone().try_into().map_err(|e| {
-                            let msg =
-                                format!("unknown custom target_id type! target={}, {}", target, e);
-                            error!("{}", msg);
-                            BuckyError::new(BuckyErrorCode::UnSupport, msg)
-                        })?;
-
-                        if let Some(zone) = self.query(&zone_id) {
-                            Ok((zone_id, zone.ood().clone()))
-                        } else {
-                            let msg = format!("zone_id not found or invalid: {}", zone_id);
-                            error!("{}", msg);
-
-                            Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
-                        }
-                    }
-
-                    _ => {
-                        // 其余类型暂不支持
-                        let msg = format!(
-                            "search zone for object type not support: type={:?}, obj={}",
-                            obj_type, target
-                        );
-                        error!("{}", msg);
-
-                        Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
-                    }
-                }
-            }
-        }
-    }
-
-    pub async fn get_current_source_info(&self, dec: &Option<ObjectId>,) -> BuckyResult<RequestSourceInfo> {
+        dec: &Option<ObjectId>,
+    ) -> BuckyResult<RequestSourceInfo> {
         let current_info = self.get_current_info().await?;
         let mut ret = RequestSourceInfo::new_local_dec(dec.to_owned());
         ret.zone.zone = Some(current_info.owner_id.clone());
@@ -935,7 +895,8 @@ impl ZoneManager {
                                 ret.zone.zone = Some(current_info.owner_id.clone());
                                 break ret;
                             } else {
-                                let mut ret = RequestSourceInfo::new_friend_zone_dec(dec.to_owned());
+                                let mut ret =
+                                    RequestSourceInfo::new_friend_zone_dec(dec.to_owned());
                                 ret.zone.zone = Some(zone.owner().clone());
                                 break ret;
                             }

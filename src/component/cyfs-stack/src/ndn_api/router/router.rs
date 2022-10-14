@@ -148,11 +148,11 @@ impl NDNRouter {
 
     // ndn层级下，不指定target那就是本地协议栈
     async fn resolve_target(&self, target: Option<&ObjectId>) -> BuckyResult<Option<DeviceId>> {
-        let (_, final_target) = self.zone_manager.resolve_target(target, None).await?;
-        let ret = if final_target == *self.acl.get_current_device_id() {
+        let info = self.zone_manager.target_zone_manager().resolve_target(target).await?;
+        let ret = if info.target_device == *self.acl.get_current_device_id() {
             None
         } else {
-            Some(final_target)
+            Some(info.target_device)
         };
 
         info!("resolve ndn target: {:?} => {:?}", target, ret);

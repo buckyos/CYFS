@@ -45,14 +45,15 @@ impl TransServiceRouter {
     async fn get_target(&self, target: Option<&ObjectId>) -> BuckyResult<Option<DeviceId>> {
         let ret = match target {
             Some(object_id) => {
-                let (_, device_id) = self
+                let info = self
                     .zone_manager
-                    .resolve_target(Some(object_id), None)
+                    .target_zone_manager()
+                    .resolve_target(Some(object_id))
                     .await?;
-                if device_id == *self.zone_manager.get_current_device_id() {
+                if info.target_device == *self.zone_manager.get_current_device_id() {
                     None
                 } else {
-                    Some(device_id)
+                    Some(info.target_device)
                 }
             }
             None => None,

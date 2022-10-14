@@ -196,7 +196,6 @@ impl CyfsStackImpl {
             root_state_processor,
             local_cache_processor,
         );
-        let zone_manager = Arc::new(zone_manager);
         zone_manager.init().await?;
 
         // first init current zone info
