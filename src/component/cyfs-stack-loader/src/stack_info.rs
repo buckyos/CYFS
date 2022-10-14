@@ -1,3 +1,4 @@
+use super::random_port::*;
 use crate::bdt_loader::*;
 use crate::cyfs_stack_loader::*;
 use crate::{DeviceInfo, LOCAL_DEVICE_MANAGER};
@@ -160,14 +161,14 @@ impl StackInfo {
 
         let mut init_sn_peers = vec![];
         let mut init_pn_peers = vec![];
-        
+
         // should not change the device's inner sn_list and pn_list
         info!("current device: {}", device_info.device.format_json());
 
         let sn = cyfs_util::get_default_sn_desc();
         let sn_id = sn.desc().device_id();
         info!("default sn: {}", sn_id);
-        
+
         init_sn_peers.push(sn);
 
         if let Some(pn) = cyfs_util::get_pn_desc() {
@@ -220,6 +221,10 @@ impl StackInfo {
 
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
+
+        // try generate random bdt port is configed with zero port
+        let device_id = device_info.device.desc().calculate_id().to_string();
+        RandomPortGenerator::prepare_endpoints(&device_id, &mut self.bdt_params.endpoint)?;
 
         device_info
             .device

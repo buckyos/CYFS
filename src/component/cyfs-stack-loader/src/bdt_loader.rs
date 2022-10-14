@@ -226,7 +226,7 @@ impl BdtConfigLoader {
             port = env_port;
         }
 
-        if port == 0 || protocol.is_none() {
+        if protocol.is_none() {
             let msg = format!("invalid bdt endpoint fields! node={:?}", endpoint_node);
             error!("{}", msg);
 
