@@ -19,7 +19,7 @@ log = "0.4"
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 async-h1 = "2.3.3"
 http-types = "2.12"
-sysinfo = "0.23"
+sysinfo = "0.26"
 tide = "0.16"
 hex = "0.4"
 futures = "0.3"
