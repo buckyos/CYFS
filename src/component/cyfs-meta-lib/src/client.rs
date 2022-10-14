@@ -1,9 +1,7 @@
 use cyfs_base::*;
 use cyfs_base_meta::*;
-
 use crate::MetaMinerTarget;
 
-use async_std::net::TcpStream;
 use http_types::{Method, Request, Url};
 use log::*;
 use serde_json::Value;

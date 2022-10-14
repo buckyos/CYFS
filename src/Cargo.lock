@@ -1999,33 +1999,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyfs-monitor"
-version = "0.5.0"
-dependencies = [
- "async-std",
- "async-trait",
- "chrono",
- "clap",
- "cyfs-base",
- "cyfs-base-meta",
- "cyfs-bdt",
- "cyfs-client",
- "cyfs-core",
- "cyfs-debug",
- "cyfs-meta-lib",
- "cyfs-util",
- "futures",
- "log 0.4.16",
- "once_cell",
- "rand 0.7.3",
- "serde",
- "serde_json",
- "surf",
- "toml",
- "url 2.3.0",
-]
-
-[[package]]
 name = "cyfs-ndc"
 version = "0.5.0"
 dependencies = [
@@ -2567,29 +2540,6 @@ dependencies = [
  "log 0.4.16",
  "rand 0.8.5",
  "sha2 0.8.2",
-]
-
-[[package]]
-name = "dsg-test"
-version = "0.5.0"
-dependencies = [
- "async-std",
- "async-trait",
- "cyfs-base",
- "cyfs-bdt",
- "cyfs-chunk-cache",
- "cyfs-core",
- "cyfs-debug",
- "cyfs-dsg-client",
- "cyfs-lib",
- "cyfs-ndc",
- "cyfs-stack",
- "cyfs-tracker-cache",
- "cyfs-util",
- "dsg-service",
- "futures",
- "log 0.4.16",
- "rand 0.8.5",
 ]
 
 [[package]]
@@ -3506,7 +3456,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1947510dc91e2bf586ea5ffb412caad7673264e14bb39fb9078da114a94ce1a5"
 dependencies = [
  "async-h1",
- "async-native-tls",
  "async-std",
  "async-tls",
  "async-trait",
@@ -6528,7 +6477,6 @@ version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "718b1ae6b50351982dedff021db0def601677f2120938b070eadb10ba4038dd7"
 dependencies = [
- "async-native-tls",
  "async-std",
  "async-trait",
  "cfg-if 1.0.0",
