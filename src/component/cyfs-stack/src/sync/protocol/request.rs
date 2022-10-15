@@ -96,7 +96,7 @@ pub(crate) struct SyncObjectsRequest {
     pub list: Vec<ObjectId>,
 }
 
-#[derive(Clone, RawDecode, RawEncode)]
+#[derive(Clone)]
 pub struct SyncResponseObjectMetaInfo {
     pub insert_time: u64,
     pub create_dec_id: Option<ObjectId>,

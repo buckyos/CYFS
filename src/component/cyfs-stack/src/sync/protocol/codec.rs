@@ -67,7 +67,10 @@ impl JsonCodec<SyncPingResponse> for SyncPingResponse {
         let owner = match owner {
             Some(s) => {
                 let v = s.as_str().from_base58().map_err(|e| {
-                    let msg = format!("decode owner from object_raw string error! s={}, {:?}", s, e);
+                    let msg = format!(
+                        "decode owner from object_raw string error! s={}, {:?}",
+                        s, e
+                    );
                     error!("{}", msg);
                     BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
                 })?;
@@ -206,3 +209,70 @@ impl JsonCodec<Self> for SyncChunksRequest {
     }
 }
 */
+
+use cyfs_core::codec::protos::core_objects as protos;
+
+impl TryFrom<protos::SyncResponseObjectMetaInfo> for SyncResponseObjectMetaInfo {
+    type Error = BuckyError;
+
+    fn try_from(mut value: protos::SyncResponseObjectMetaInfo) -> BuckyResult<Self> {
+        let insert_time = value.get_insert_time();
+        let create_dec_id = if value.has_create_dec_id() {
+            Some(ProtobufCodecHelper::decode_buf(value.take_create_dec_id())?)
+        } else {
+            None
+        };
+
+        let context = if value.has_context() {
+            Some(value.take_context())
+        } else {
+            None
+        };
+
+        let last_access_rpath = if value.has_last_access_rpath() {
+            Some(value.take_last_access_rpath())
+        } else {
+            None
+        };
+
+        let access_string = if value.has_access_string() {
+            Some(value.get_access_string())
+        } else {
+            None
+        };
+
+        Ok(Self {
+            insert_time,
+            create_dec_id,
+            context,
+            last_access_rpath,
+            access_string,
+        })
+    }
+}
+
+impl TryFrom<&SyncResponseObjectMetaInfo> for protos::SyncResponseObjectMetaInfo {
+    type Error = BuckyError;
+
+    fn try_from(value: &SyncResponseObjectMetaInfo) -> BuckyResult<Self> {
+        let mut ret = Self::new();
+        ret.set_insert_time(value.insert_time);
+
+        if let Some(id) = &value.create_dec_id {
+            ret.set_create_dec_id(id.to_vec()?);
+        }
+        if let Some(v) = &value.context {
+            ret.set_context(v.to_owned());
+        }
+        if let Some(v) = &value.last_access_rpath {
+            ret.set_last_access_rpath(v.to_owned());
+        }
+        if let Some(v) = &value.access_string {
+            ret.set_access_string(*v);
+        }
+
+        Ok(ret)
+    }
+}
+
+impl_default_protobuf_raw_codec!(SyncResponseObjectMetaInfo);

@@ -307,3 +307,11 @@ message NFTFileDesc {
 message NFTListDescContent {
     repeated NFTFileDesc nft_list = 1;
 }
+
+message SyncResponseObjectMetaInfo {
+    uint64 insert_time = 1;
+    optional bytes create_dec_id = 2;
+    optional string context = 3;
+    optional string last_access_rpath = 4;
+    optional uint32 access_string = 5;
+}
