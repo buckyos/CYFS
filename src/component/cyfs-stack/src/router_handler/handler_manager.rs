@@ -571,11 +571,6 @@ impl RouterHandlersManager {
             list.post_crypto = Some(data);
         }
 
-        let data = self.handler.dump_data();
-        if !data.is_empty() {
-            list.handler = Some(data);
-        }
-
         let data = self.acl.dump_data();
         if !data.is_empty() {
             list.acl = Some(data);
@@ -616,10 +611,6 @@ impl RouterHandlersManager {
         }
         if let Some(data) = list.post_crypto {
             self.post_crypto.load_data(data);
-        }
-
-        if let Some(data) = list.handler {
-            self.handler.load_data(data);
         }
 
         if let Some(data) = list.acl {
