@@ -333,51 +333,52 @@ impl ConnectStreamBuilder {
         // 第一个action进入establish 时，忽略其他action，builder进入pre establish， 调用 continue connect
         let builder = self.clone();
         task::spawn(async move {
-            let _continue = match action.wait_pre_establish().await {
+            let action = match action.wait_pre_establish().await {
                 ConnectStreamState::PreEstablish => {
                     let state = &mut *builder.0.state.write().unwrap();
                     match state {
                         ConnectStreamBuilderState::Connecting(ref mut connecting) => {
                             connecting.pre_established_actions.push_back(action.clone_as_connect_stream_action());
-                            connecting.pre_established_actions.len() == 1 
+                            if connecting.pre_established_actions.len() == 1 {
+                                connecting.pre_established_actions.front().map(|a| a.clone_as_connect_stream_action())
+                            } else {
+                                None
+                            }
                         }, 
                         _ => {
-                            false
+                            None
                         }
                     }
                 },  
                 _ => {
-                    false
+                    None
                 }
             };
 
-            if _continue {
+            
+            if let Some(action) = action {
+                let mut action = action;
                 loop {
-                    if let Some(action) = {
-                        let state = &*builder.0.state.read().unwrap();
-                        match state {
-                            ConnectStreamBuilderState::Connecting(connecting) => {
-                                connecting.pre_established_actions.front().map(|a| a.clone_as_connect_stream_action())
-                            }
-                            _ => {
-                                None
-                            }
-                        }
-                    } {
-                        match action.continue_connect().await {
-                            Ok(selector) => {
-                                let _ = builder.stream().as_ref().establish_with(selector, builder.stream()).await;
-                            }, 
-                            Err(_) => {
-                                let state = &mut *builder.0.state.write().unwrap();
-                                match state {
-                                    ConnectStreamBuilderState::Connecting(ref mut connecting) => {
-                                        let _ = connecting.pre_established_actions.pop_front().unwrap();
+                    match action.continue_connect().await {
+                        Ok(selector) => {
+                            let _ = builder.stream().as_ref().establish_with(selector, builder.stream()).await;
+                        }, 
+                        Err(_) => {
+                            let state = &mut *builder.0.state.write().unwrap();
+                            match state {
+                                ConnectStreamBuilderState::Connecting(ref mut connecting) => {
+                                    let _ = connecting.pre_established_actions.pop_front().unwrap();
+                                    if let Some(next) = connecting.pre_established_actions.front() {
+                                        action = next.clone_as_connect_stream_action();
+                                    } else {
+                                        break;    
                                     }
-                                    _ => {}
+                                }
+                                _ => {
+                                    break;
                                 }
                             }
-                        } 
+                        }
                     }
                 }
             }
