@@ -138,7 +138,6 @@ impl GlobalStateSyncServer {
 
         SelectResponseObjectInfo {
             meta: SelectResponseObjectMetaInfo {
-                size: info.object_raw.len() as u32,
                 insert_time: 0,
                 create_dec_id: None,
                 context: None,

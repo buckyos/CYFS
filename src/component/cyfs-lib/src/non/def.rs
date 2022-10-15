@@ -414,6 +414,29 @@ impl ObjectFormat for NONObjectInfo {
     }
 }
 
+impl RawEncode for NONObjectInfo {
+    fn raw_measure(&self, purpose: &Option<RawEncodePurpose>) -> Result<usize, BuckyError> {
+        self.object_raw.raw_measure(purpose)
+    }
+
+    fn raw_encode<'a>(
+        &self,
+        buf: &'a mut [u8],
+        purpose: &Option<RawEncodePurpose>,
+    ) -> Result<&'a mut [u8], BuckyError> {
+        self.object_raw.raw_encode(buf, purpose)
+    }
+}
+
+impl<'de> RawDecode<'de> for NONObjectInfo {
+    fn raw_decode(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (object_raw, buf) = Vec::raw_decode(buf)?;
+        let ret = Self::new_from_object_raw(object_raw)?;
+
+        Ok((ret, buf))
+    }
+}
+
 #[derive(Clone)]
 pub struct NONSlimObjectInfo {
     pub object_id: ObjectId,

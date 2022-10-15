@@ -160,7 +160,6 @@ impl ZoneSyncServer {
         for item in list.into_iter() {
             let resp_info = SelectResponseObjectInfo {
                 meta: SelectResponseObjectMetaInfo {
-                    size: item.object.object_raw.len() as u32,
                     create_dec_id: Some(item.meta.create_dec_id),
                     insert_time: item.meta.insert_time,
                     context: item.meta.context,

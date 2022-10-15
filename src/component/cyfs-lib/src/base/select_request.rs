@@ -111,9 +111,8 @@ impl fmt::Display for SelectOption {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, RawDecode, RawEncode)]
 pub struct SelectResponseObjectMetaInfo {
-    pub size: u32,
     pub insert_time: u64,
     pub create_dec_id: Option<ObjectId>,
     pub context: Option<String>,
@@ -121,7 +120,7 @@ pub struct SelectResponseObjectMetaInfo {
     pub access_string: Option<u32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, RawEncode, RawDecode)]
 pub struct SelectResponseObjectInfo {
     pub meta: SelectResponseObjectMetaInfo,
     pub object: Option<NONObjectInfo>,
@@ -142,7 +141,7 @@ impl SelectResponseObjectInfo {
 
 impl fmt::Display for SelectResponseObjectMetaInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "size:{}, insert_time:{}", self.size, self.insert_time)?;
+        write!(f, "insert_time:{}", self.insert_time)?;
 
         if let Some(v) = &self.create_dec_id {
             write!(f, ", create_dec_id:{} ", v)?;
@@ -175,8 +174,6 @@ impl JsonCodec<SelectResponseObjectMetaInfo> for SelectResponseObjectMetaInfo {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
 
-        obj.insert("size".to_owned(), Value::String(self.size.to_string()));
-
         obj.insert(
             "insert_time".to_owned(),
             Value::String(self.insert_time.to_string()),
@@ -192,7 +189,6 @@ impl JsonCodec<SelectResponseObjectMetaInfo> for SelectResponseObjectMetaInfo {
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
         Ok(Self {
-            size: JsonCodecHelper::decode_int_field(obj, "size")?,
             insert_time: JsonCodecHelper::decode_int_field(obj, "insert_time")?,
             create_dec_id: JsonCodecHelper::decode_option_string_field(obj, "create_dec_id")?,
             context: JsonCodecHelper::decode_option_string_field(obj, "context")?,
@@ -320,146 +316,54 @@ impl fmt::Display for SelectResponse {
 }
 
 impl SelectResponse {
-    pub fn encode_objects(http_resp: &mut Response, objects: &Vec<SelectResponseObjectInfo>) {
+    pub fn encode_objects(http_resp: &mut Response, objects: Vec<SelectResponseObjectInfo>) -> BuckyResult<()> {
         if objects.is_empty() {
-            return;
+            return Ok(());
         }
 
-        let mut total: usize = 0;
-        for item in objects {
-            total += item.meta.size as usize;
-        }
-
-        let mut all_buf = Vec::with_capacity(total);
-        unsafe {
-            all_buf.set_len(total);
-        }
-
-        let mut pos: usize = 0;
-        for item in objects {
-            // 只编码meta信息
-            let header = item.meta().encode_string();
-
-            // 输出一些诊断日志
-            if let Some(obj) = &item.object {
-                debug!(
-                    "encode selected object: {}, size={}",
-                    obj, item.meta.size,
-                );
-            } else {
-                warn!(
-                    "encode empty selected object: insert_time={}",
-                    item.meta.insert_time
-                );
-            }
-            http_resp.append_header(cyfs_base::CYFS_OBJECTS, header);
-
-            let size = item.meta.size as usize;
-            if size == 0 {
-                continue;
-            }
-
-            let dst = &mut all_buf[pos..pos + size];
-            pos += size;
-            let src = &item.object.as_ref().unwrap().object_raw[..];
-            unsafe {
-                std::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr() as *mut u8, size);
-            }
-        }
-
+        let buf = objects.to_vec()?;
+        
         debug!(
-            "will send select all_buf: len={}",
-            all_buf.len(),
+            "will send select all_buf: len={}, count={}",
+            buf.len(),
+            objects.len(),
             //hex::encode(&all_buf)
         );
 
-        http_resp.set_body(all_buf);
+        http_resp.set_body(buf);
+
+        Ok(())
     }
 
     pub fn into_resonse(self) -> BuckyResult<Response> {
         let mut resp = RequestorHelper::new_response(StatusCode::Ok);
         if !self.objects.is_empty() {
-            Self::encode_objects(&mut resp, &self.objects);
+            Self::encode_objects(&mut resp, self.objects)?;
         }
 
         Ok(resp)
     }
 
     pub async fn from_respone(mut resp: Response) -> BuckyResult<Self> {
-        let headers = resp.header(cyfs_base::CYFS_OBJECTS);
-        if headers.is_none() {
-            // 不存在cyfs-objects头，则表示查找结果为空
-            return Ok(Self {
-                objects: Vec::new(),
-            });
-        }
-
-        let headers = headers.unwrap();
-        let mut objects = Vec::new();
-        let mut total_size = 0;
-        for item in headers {
-            let meta = SelectResponseObjectMetaInfo::decode_string(item.as_str())?;
-            let info = SelectResponseObjectInfo::from_meta(meta);
-
-            debug!("select object item: {}", info);
-            total_size += info.meta.size;
-            objects.push(info);
-        }
-
         let all_buf = resp.body_bytes().await.map_err(|e| {
             let msg = format!("read select resp body bytes error: {}", e);
             error!("{}", msg);
 
-            BuckyError::from(msg)
+            BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
 
-        // buffer至少要满足total_size长度
-        if all_buf.len() < total_size as usize {
-            let msg = format!(
-                "invalid select resp buffer size! expect={}, got={}",
-                total_size,
-                all_buf.len()
-            );
-            error!("{}", msg);
-
-            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
-        }
-
+        let objects = if all_buf.len() > 0 {
+            let (objects, _) = Vec::raw_decode(&all_buf)?;
+            objects
+        } else {
+            vec![]
+        };
+        
         debug!(
-            "recv select all_buf: expect={}, len={}",
-            total_size,
-            all_buf.len()
+            "recv select all_buf: len={}, count={}",
+            all_buf.len(),
+            objects.len(),
         );
-
-        let mut pos: usize = 0;
-        for item in &mut objects {
-            let size = item.meta.size as usize;
-            if size == 0 {
-                // 允许有空的对象
-                continue;
-            }
-
-            let buf = &all_buf[pos..pos + size];
-
-            // FIXME 如果只有一个对象出错，是否要返回错误？
-            // 理论上不应该出错，除非client和server的编解码协议不一致了
-            item.bind_object(buf.to_vec()).map_err(|e| {
-                error!(
-                    "decode select object error: len={}, buf={}",
-                    size,
-                    hex::encode(&buf),
-                );
-                e
-            })?;
-
-            debug!(
-                "decode selected object:{} size={}",
-                item.object.as_ref().unwrap().object_id,
-                size,
-            );
-
-            pos += size;
-        }
 
         Ok(Self { objects })
     }

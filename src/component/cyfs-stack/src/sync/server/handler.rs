@@ -23,7 +23,10 @@ impl ZoneSyncRequestHandler {
         RequestorHelper::encode_opt_header(&mut http_resp, cyfs_base::CYFS_TARGET, &resp.target);
 
         if resp.objects.len() > 0 {
-            SyncObjectsResponse::encode_objects(&mut http_resp, &resp.objects);
+            if let Err(e)  = SyncObjectsResponse::encode_objects(&mut http_resp, resp.objects) {
+                error!("encode diff response error! {}", e);
+                return RequestorHelper::trans_error(e);
+            }
         }
 
         http_resp.into()

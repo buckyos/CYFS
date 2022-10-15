@@ -296,7 +296,10 @@ impl NONRequestHandler {
     pub fn encode_select_object_response(resp: NONSelectObjectInputResponse) -> Response {
         let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
 
-        SelectResponse::encode_objects(&mut http_resp, &resp.objects);
+        if let Err(e) = SelectResponse::encode_objects(&mut http_resp, resp.objects) {
+            error!("encode diff response error! {}", e);
+            return RequestorHelper::trans_error(e);
+        }
 
         http_resp.into()
     }
