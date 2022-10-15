@@ -134,6 +134,10 @@ impl GlobalStateManager {
         self.global_root_state.root_cache()
     }
 
+    pub fn is_dec_exists(&self, dec_id: &ObjectId) -> bool {
+        self.global_root_state.revision().is_dec_exists(dec_id)
+    }
+
     // return (global_root, revision, dec_root)
     pub async fn get_dec_root(
         &self,

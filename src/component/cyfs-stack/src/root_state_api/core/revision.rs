@@ -1,6 +1,6 @@
 use cyfs_base::*;
 
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::str::FromStr;
 
@@ -8,6 +8,9 @@ use std::str::FromStr;
 // 目前revision的管理只是动态内容，重启后会清空
 
 struct RevisionListImpl {
+    // keep all dec list
+    dec_list: HashSet<ObjectId>,
+
     // dec_root和global_root的映射
     dec_index: HashMap<ObjectId, ObjectId>,
 
@@ -18,9 +21,14 @@ struct RevisionListImpl {
 impl RevisionListImpl {
     pub fn new() -> Self {
         Self {
+            dec_list: HashSet::new(),
             dec_index: HashMap::new(),
             revision_list: HashMap::new(),
         }
+    }
+
+    pub fn is_dec_exists(&self, dec_id: &ObjectId) -> bool {
+        self.dec_list.contains(dec_id)
     }
 
     pub fn insert_dec_root(
@@ -29,6 +37,8 @@ impl RevisionListImpl {
         dec_root: ObjectId,
         global_root: ObjectId,
     ) {
+        self.dec_list.insert(dec_id.to_owned());
+
         match self.dec_index.entry(dec_root.clone()) {
             Entry::Vacant(v) => {
                 info!(
@@ -39,8 +49,8 @@ impl RevisionListImpl {
             }
             Entry::Occupied(o) => {
                 // 只需要第一次关联，如果相同的dec_root提交，但中间的global_root被其它dec改了，会造成不一致
-                info!("dec_root already exists! dec_root={}, current_global_root={}, new_global_root={},"
-                    , dec_root, o.get(), global_root);
+                info!("dec_root already exists! dec={}, dec_root={}, current_global_root={}, new_global_root={},"
+                    , dec_id, dec_root, o.get(), global_root);
             }
         }
     }
@@ -68,6 +78,10 @@ pub(crate) struct RevisionList(Arc<RwLock<RevisionListImpl>>);
 impl RevisionList {
     pub fn new() -> Self {
         Self(Arc::new(RwLock::new(RevisionListImpl::new())))
+    }
+
+    pub fn is_dec_exists(&self, dec_id: &ObjectId) -> bool {
+        self.0.read().unwrap().is_dec_exists(dec_id)
     }
 
     // dec至少commit一次后才会有映射关系
