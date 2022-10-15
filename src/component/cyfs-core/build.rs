@@ -33,6 +33,6 @@ fn gen_protos() {
 
 fn main() {
     println!("cargo:rerun-if-changed=protos");
-
+    println!("cargo:warning={}", format!("cyfs-core run build script, OUT_DIR={}", std::env::var("OUT_DIR").unwrap()));
     gen_protos();
 }
