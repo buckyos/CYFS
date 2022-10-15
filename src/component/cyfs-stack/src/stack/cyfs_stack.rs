@@ -665,10 +665,10 @@ impl CyfsStackImpl {
         noc: NamedObjectCacheRef,
         source: &RequestSourceInfo,
     ) -> GlobalStateMetaLocalService {
-        let root_state = root_state.clone_global_state_processor();
-        let root_state = GlobalStateOutputTransformer::new(root_state, source.clone());
+        let processor = root_state.clone_global_state_processor();
+        let processor = GlobalStateOutputTransformer::new(processor, source.clone());
 
-        GlobalStateMetaLocalService::new(isolate, root_state, noc.clone())
+        GlobalStateMetaLocalService::new(isolate, processor, root_state.clone(), noc.clone())
     }
 
     fn load_global_state_meta_service(

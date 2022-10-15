@@ -1,5 +1,6 @@
 use super::super::path::*;
 use crate::rmeta::*;
+use crate::root_state_api::GlobalStateLocalService;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -15,6 +16,7 @@ pub struct GlobalStatePathMetaItem {
 pub struct GlobalStatePathMetaManager {
     isolate: String,
     root_state: GlobalStateOutputProcessorRef,
+    root_state_service: GlobalStateLocalService,
     category: GlobalStateCategory,
     noc: NamedObjectCacheRef,
 
@@ -25,12 +27,14 @@ impl GlobalStatePathMetaManager {
     pub fn new(
         isotate: &str,
         root_state: GlobalStateOutputProcessorRef,
+        root_state_service: GlobalStateLocalService,
         category: GlobalStateCategory,
         noc: NamedObjectCacheRef,
     ) -> Self {
         Self {
             isolate: isotate.to_owned(),
             root_state,
+            root_state_service,
             category,
             noc,
             all: Arc::new(Mutex::new(HashMap::new())),
@@ -58,34 +62,26 @@ impl GlobalStatePathMetaManager {
         dec_id: &ObjectId,
         auto_create: bool,
     ) -> Option<GlobalStateDecPathMetaManagerRef> {
-        
-        if auto_create {
-            let mut list = self.all.lock().unwrap();
-            match list.entry(dec_id.to_owned()) {
-                Entry::Occupied(mut o) => {
-                    let item = o.get_mut();
-                    item.last_access = bucky_time_now();
-                    Some(item.manager.clone())
-                }
-                Entry::Vacant(v) => {
-                    let manager = self.new_dec_meta(v.key().to_owned());
-                    let item = GlobalStatePathMetaItem {
-                        manager: manager.clone(),
-                        last_access: bucky_time_now(),
-                    };
-
-                    v.insert(item);
-                    Some(manager)
-                }
+        let mut list = self.all.lock().unwrap();
+        match list.entry(dec_id.to_owned()) {
+            Entry::Occupied(mut o) => {
+                let item = o.get_mut();
+                item.last_access = bucky_time_now();
+                Some(item.manager.clone())
             }
-        } else {
-            let mut list = self.all.lock().unwrap();
-            match list.get_mut(&dec_id) {
-                Some(item) => {
-                    item.last_access = bucky_time_now();
-                    Some(item.manager.clone())
+            Entry::Vacant(v) => {
+                if !auto_create && !self.root_state_service.state().is_dec_exists(dec_id) {
+                    return None;
                 }
-                None => None,
+
+                let manager = self.new_dec_meta(v.key().to_owned());
+                let item = GlobalStatePathMetaItem {
+                    manager: manager.clone(),
+                    last_access: bucky_time_now(),
+                };
+
+                v.insert(item);
+                Some(manager)
             }
         }
     }
@@ -95,7 +91,9 @@ impl GlobalStatePathMetaManager {
         dec_id: &ObjectId,
         auto_create: bool,
     ) -> BuckyResult<GlobalStatePathMetaSyncCollection> {
-        let ret = self.get_option_global_state_meta(dec_id, auto_create).await?;
+        let ret = self
+            .get_option_global_state_meta(dec_id, auto_create)
+            .await?;
         if ret.is_none() {
             let msg = format!(
                 "global state path meta for dec not found! {}, dec={:?}",
@@ -138,7 +136,9 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaAddAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaAddAccessInputResponse> {
-        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), true).await?;
+        let meta = self
+            .get_global_state_meta(Self::get_dec_id(&req.common), true)
+            .await?;
         let updated = meta.add_access(req.item).await?;
 
         let resp = GlobalStateMetaAddAccessInputResponse { updated };
@@ -149,11 +149,13 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaRemoveAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaRemoveAccessInputResponse> {
-        let ret = self.get_option_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        let ret = self
+            .get_option_global_state_meta(Self::get_dec_id(&req.common), false)
+            .await?;
         if ret.is_none() {
             let resp = GlobalStateMetaRemoveAccessInputResponse { item: None };
 
-            return Ok(resp)
+            return Ok(resp);
         }
 
         let meta = ret.unwrap();
@@ -168,10 +170,12 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaClearAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearAccessInputResponse> {
-        let ret = self.get_option_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        let ret = self
+            .get_option_global_state_meta(Self::get_dec_id(&req.common), false)
+            .await?;
         if ret.is_none() {
             let resp = GlobalStateMetaClearAccessInputResponse { count: 0 };
-            return Ok(resp)
+            return Ok(resp);
         }
 
         let meta = ret.unwrap();
@@ -185,7 +189,9 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaAddLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaAddLinkInputResponse> {
-        let meta = self.get_global_state_meta(Self::get_dec_id(&req.common), true).await?;
+        let meta = self
+            .get_global_state_meta(Self::get_dec_id(&req.common), true)
+            .await?;
         let updated = meta.add_link(req.source, req.target).await?;
 
         let resp = GlobalStateMetaAddLinkInputResponse { updated };
@@ -196,11 +202,13 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaRemoveLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaRemoveLinkInputResponse> {
-        let ret = self.get_option_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        let ret = self
+            .get_option_global_state_meta(Self::get_dec_id(&req.common), false)
+            .await?;
         if ret.is_none() {
             let resp = GlobalStateMetaRemoveLinkInputResponse { item: None };
 
-            return Ok(resp)
+            return Ok(resp);
         }
 
         let meta = ret.unwrap();
@@ -215,10 +223,12 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         &self,
         req: GlobalStateMetaClearLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearLinkInputResponse> {
-        let ret = self.get_option_global_state_meta(Self::get_dec_id(&req.common), false).await?;
+        let ret = self
+            .get_option_global_state_meta(Self::get_dec_id(&req.common), false)
+            .await?;
         if ret.is_none() {
             let resp = GlobalStateMetaClearLinkInputResponse { count: 0 };
-            return Ok(resp)
+            return Ok(resp);
         }
 
         let meta = ret.unwrap();

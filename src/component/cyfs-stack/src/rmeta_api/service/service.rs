@@ -5,6 +5,7 @@ use super::default::GlobalStateDefaultMetas;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::rmeta::*;
+use crate::root_state_api::GlobalStateLocalService;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -23,12 +24,14 @@ impl GlobalStateMetaLocalService {
     pub(crate) fn new(
         isolate: &str,
         root_state: GlobalStateOutputProcessorRef,
+        root_state_service: GlobalStateLocalService,
         noc: NamedObjectCacheRef,
     ) -> Self {
         // root_state
         let root_state_meta = GlobalStatePathMetaManager::new(
             isolate,
             root_state.clone(),
+            root_state_service.clone(),
             GlobalStateCategory::RootState,
             noc.clone(),
         );
@@ -38,7 +41,8 @@ impl GlobalStateMetaLocalService {
         // local-cache
         let local_cache_meta = GlobalStatePathMetaManager::new(
             isolate,
-            root_state.clone(),
+            root_state,
+            root_state_service,
             GlobalStateCategory::LocalCache,
             noc,
         );
@@ -87,7 +91,7 @@ impl GlobalStateMetaLocalService {
         let target_dec_id = req_path.dec(source);
 
         let ret = rmeta
-            .get_option_global_state_meta(target_dec_id, true)
+            .get_option_global_state_meta(target_dec_id, false)
             .await?;
         if ret.is_none() {
             let msg = format!("global state check rmeta but target dec rmeta not found! target_dec={}, req_path={}", target_dec_id, req_path);
