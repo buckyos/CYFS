@@ -67,9 +67,9 @@ function version_from_channel(channel) {
 
 function meta_url(channel) {
     if (channel === "nightly") {
-        return 'http://154.31.50.111:1423'
+        return 'http://nightly.meta.cyfs.com:1423'
     } else if (channel === "beta") {
-        return "http://120.24.6.201:1423";
+        return "http://beta.meta.cyfs.com:1423";
     } else if (channel === "stable") {
         return ""
     } else {
