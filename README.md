@@ -53,8 +53,9 @@ We strongly recommend that you read the "Hello CYFS" series of articles in full 
 1. ["Compile and deploy DIY-OOD"](doc/en/Hello_CYFS/0.%20Compile%20and%20deploy%20DIY%20OOD.md)
 2. ["Create Your DID"](doc/en/Hello_CYFS/1.%20Create%20your%20DID.md)
 3. ["Publish File and Download"](doc/en/Hello_CYFS/2.%20Publish%20the%20file%20and%20download%20it.md)
-4. ["Publish Website and View"](doc/en/Hello_CYFS/3.%20Publish%20the%20web3%20site%20and%20view%20it.md)
-5. ["Tips your friend"](doc/en/Hello_CYFS/4.Tips%20your%20friend.md)
+4. ["Tips your friend"](doc/en/Hello_CYFS/3.%20Tips%20your%20friend.md)
+5. ["Publish Website and View"](doc/en/Hello_CYFS/4.%20Publish%20the%20web3%20site%20and%20view%20it.md)
+
 
 You can also use the following fast progress to have a first experience of "doing nothing without understand and save time"~
 
@@ -203,6 +204,22 @@ After understanding the logic of the above process, you can read the relevant co
     - 5.4 The router can identify the Chunk request packets sent by the BDT, intercept and forward them, and further optimize the overall load of the network
     - 5.5 Only OOD will upload Chunk
 6. When the first chunk of the FileObject is ready and verified, the HTTP GET request in step 1 starts to return data
+
+# DecApp development practice
+The following series of articles describes how to implement a message board DecApp based on CYFS. this is a long series of articles detailing the general process of developing a DecApp
+1. [Introduction](./doc/en/Decentralized_message_board_development/1.Introduction.md)
+2. [DEC App basic principle](doc/en/Decentralized_message_board_development/2.DEC_App_basic_principle.md)
+3. [Implement your own message service](doc/en/Decentralized_message_board_development/3.Implement_your_own_message_service.md)
+4. [Run and debug your own message service](doc/en/Decentralized_message_board_development/4.Run_and_debug_your_own_message_service.md)
+5. [Extended reading: Further explanation of the principles and introduction of some tools](doc/en/Decentralized_message_board_development/5.Extended_reading.md)
+6. [Implement the front end](doc/en/Decentralized_message_board_development/6.Implement_the_front_end.md)
+7. [Send it to your friends and understand the CYFS permission system](doc/en/Decentralized_message_board_development/7.Send_it_to_your_friends_and_understand_the_CYFS_permission_system.md)
+8. [Use the emulator to test the app across zones](doc/en/Decentralized_message_board_development/8.Use_the_emulator_to_test_the_app_across%20zones.md)
+9. [Extended reading: Decentralized, trusted data, semantic data, data property rights](doc/en/Decentralized_message_board_development/9.Extended_reading.md)
+10. [Add comments](doc/en/Decentralized_message_board_development/10.Add_comments.md)
+11. [DEC App data security and high availability](doc/en/Decentralized_message_board_development/11.DEC_App_data_security_and_high_availability.md)
+12. [Extended reading: Learn more about data exchange contracts and DAOs](doc/en/Decentralized_message_board_development/12.Extended_reading.md)
+13. [Summary](doc/en/Decentralized_message_board_development/13.%20Summary.md)
 
 # Directory Structure
 You have learned from the architecture diagram that the project implementation of CYFS is not small. To prevent you from getting lost, this chapter is a small map that will help you get a basic understanding of the CYFS code structure and understand where the key code will be.
