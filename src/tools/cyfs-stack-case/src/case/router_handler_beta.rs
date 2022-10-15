@@ -305,7 +305,7 @@ async fn put_object(device1: &SharedCyfsStack, device2: &SharedCyfsStack) {
         // let mut req = NONPutObjectOutputRequest::new_non(Some(device2.local_device_id()), object_id, q.to_vec().unwrap());
         // req.common.dec_id = Some(dec1.clone());
 
-        req.common.req_path = Some(req_path.to_string());
+        //req.common.req_path = Some(req_path.to_string());
         let ret = device1.non_service().put_object(req).await;
 
         match ret {
@@ -328,7 +328,7 @@ async fn put_object(device1: &SharedCyfsStack, device2: &SharedCyfsStack) {
 
         let mut req = NONPutObjectOutputRequest::new_router(Some(device2.local_device_id().object_id().to_owned()), object_id, q.to_vec().unwrap());
         req.common.dec_id = Some(dec1.clone());
-        req.common.req_path = Some(req_path.to_string());
+        //req.common.req_path = Some(req_path.to_string());
         let ret = device1.non_service().put_object(req).await;
         match ret {
             Ok(resp) => {
