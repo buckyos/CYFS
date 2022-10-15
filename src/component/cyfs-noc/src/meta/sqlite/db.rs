@@ -366,7 +366,7 @@ impl SqliteMetaStorage {
         &self,
         req: &NamedObjectMetaPutObjectRequest,
     ) -> BuckyResult<NamedObjectMetaPutObjectResponse> {
-        info!("noc meta will update: {}", req);
+        debug!("noc meta will update: {}", req);
 
         let mut retry_count = 0;
         loop {
@@ -1121,10 +1121,8 @@ impl SqliteMetaStorage {
         if count > 0 {
             assert_eq!(count, 1);
             info!(
-                "noc meta update existsing meta success: obj={}, update_time={} -> {}",
-                req.object_id,
-                current_info.update_time,
-                current_info.object_update_time.unwrap_or(0),
+                "noc meta update existsing meta success: {:?}",
+                req,
             );
         } else {
             warn!(

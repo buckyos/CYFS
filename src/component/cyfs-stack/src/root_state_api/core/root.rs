@@ -77,12 +77,15 @@ impl GlobalStateRoot {
             
 
             // 初始化全局root对象
-            let object_map = ObjectMap::new(ObjectMapSimpleContentType::Map, owner.clone(), None)
-                .no_create_time().class(ObjectMapClass::GlobalRoot).build();
+            let object_map = ObjectMap::new(
+                ObjectMapSimpleContentType::Map, 
+                owner.clone(), 
+                Some(cyfs_core::get_system_dec_app().to_owned())
+            ).no_create_time().class(ObjectMapClass::GlobalRoot).build();
 
             let root_id = object_map.flush_id();
 
-            info!("first init global state! category={}, owner={:?}, root={}", category, owner, root_id);
+            info!("first init global state root! category={}, owner={:?}, root={}", category, owner, root_id);
 
             // 需要立刻保存到noc
             noc_cache.put_object_map(root_id, object_map).await?;
