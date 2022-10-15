@@ -56,9 +56,10 @@ We strongly recommend that you read the "Hello CYFS" series of articles in full 
 4. ["Tips your friend"](doc/en/Hello_CYFS/3.%20Tips%20your%20friend.md)
 5. ["Publish Website and View"](doc/en/Hello_CYFS/4.%20Publish%20the%20web3%20site%20and%20view%20it.md)
 
-
 You can also use the following fast progress to have a first experience of "doing nothing without understand and save time"~
 
+## Advance CYFS DEC App develpe tutorial is online
+["Decentralized message board development"](doc/en/Decentralized_message_board_development/)
 # Quick Start
 
 The following will build your own Web3 environment by compiling the CYFS source code, and complete the basic experience of Web3 in this environment:
