@@ -269,25 +269,25 @@ impl ObjectMapSync {
         let sync_resp = self.requestor.sync_objects(sync_req).await?;
 
         // try cache the missing object list
-        list.into_iter().for_each(|id| {
+        for id in &list {
             let exists = sync_resp
                 .objects
                 .iter()
                 .find(|item| {
                     let object = item.object.as_ref().unwrap();
-                    object.object_id == id
+                    object.object_id == *id
                 })
                 .is_some();
             if !exists {
-                if id == self.target {
+                if *id == self.target {
                     let msg = format!("sync objects but target object is missing! {}", id);
                     error!("{}", msg);
-                    return Err(BuckyError::from(msg));
+                    return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
                 }
 
                 self.state_cache.miss_object(&id);
             }
-        });
+        }
 
         // extract all assoc objects/chunks
         sync_resp.objects.iter().for_each(|item| {
@@ -365,7 +365,11 @@ impl ObjectMapSync {
         Ok(())
     }
 
-    async fn put_others(&self, meta: SelectResponseObjectMetaInfo, object: NONObjectInfo) -> BuckyResult<()> {
+    async fn put_others(
+        &self,
+        meta: SelectResponseObjectMetaInfo,
+        object: NONObjectInfo,
+    ) -> BuckyResult<()> {
         let source = RequestSourceInfo::new_local_dec(meta.create_dec_id);
         let req = NamedObjectCachePutObjectRequest {
             source,

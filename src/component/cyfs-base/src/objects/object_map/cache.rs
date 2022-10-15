@@ -327,14 +327,14 @@ pub struct ObjectMapOpEnvMemoryCache {
     // 依赖的底层root缓存
     root_cache: ObjectMapRootCacheRef,
 
-    pending: Arc<Mutex<ObjectMapOpEnvMemoryCachePendingList>>,
+    pending: Mutex<ObjectMapOpEnvMemoryCachePendingList>,
 }
 
 impl ObjectMapOpEnvMemoryCache {
     pub fn new(root_cache: ObjectMapRootCacheRef) -> Self {
         Self {
             root_cache,
-            pending: Arc::new(Mutex::new(ObjectMapOpEnvMemoryCachePendingList::new())),
+            pending: Mutex::new(ObjectMapOpEnvMemoryCachePendingList::new()),
         }
     }
 
