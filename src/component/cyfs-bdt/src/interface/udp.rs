@@ -1,4 +1,5 @@
 use crate::{
+    types::*, 
     history::keystore,
     protocol::*,
     stack::{Stack, WeakStack}
@@ -11,7 +12,6 @@ use cyfs_base::*;
 use log::*;
 use std::{cell::RefCell, net::UdpSocket, sync::RwLock, thread};
 use socket2::{Socket, Domain, Type};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone)]
 pub struct Config {
@@ -275,7 +275,7 @@ impl Interface {
                         }
 
                         let _ = 
-                            stack.on_udp_raw_data(raw_data, (self.clone(), found_key.peerid, found_key.mix_key, from, found_key.enc_key));
+                            stack.on_udp_raw_data(raw_data, (self.clone(), found_key.peerid, found_key.key, from));
 
                         return;
                     }
@@ -408,14 +408,14 @@ impl Interface {
 
     pub fn send_raw_data_to(
         &self,
-        mix_key: &AesKey,
+        key: &MixAesKey,
         data: &mut [u8],
         to: &Endpoint,
     ) -> Result<usize, BuckyError> {
         if self.0.config.sn_only {
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, "interface is only for sn"));
         }
-        let mix_hash = mix_key.mix_hash(Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / 60));
+        let mix_hash = key.mix_hash();
         let _ = mix_hash.raw_encode(data, &None)?;
         data[0] |= 0x80;
         self.send_buf_to(data, to)
@@ -553,10 +553,10 @@ impl<'de> PackageBoxDecodeContext<'de> {
         self.keystore.public_key()
     }
 
-    pub fn key_from_mixhash(&self, mix_hash: &KeyMixHash) -> Option<(DeviceId, AesKey, AesKey)> {
+    pub fn key_from_mixhash(&self, mix_hash: &KeyMixHash) -> Option<(DeviceId, MixAesKey)> {
         self.keystore
             .get_key_by_mix_hash(mix_hash, true, true)
-            .map(|k| (k.peerid.clone(), k.enc_key.clone(), k.mix_key.clone()))
+            .map(|k| (k.peerid, k.key))
     }
 
     pub fn version_of(&self, _remote: &DeviceId) -> u8 {
@@ -597,7 +597,7 @@ impl RawEncodeWithContext<PackageBoxEncodeContext> for PackageBox {
         }
 
         // 写入 key的mixhash
-        let mixhash = self.mix_key().mix_hash(Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / 60));
+        let mixhash = self.key().mix_hash();
         let _ = mixhash.raw_encode(buf, purpose)?;
         if context.plaintext {
             buf[0] |= 0x80;
@@ -637,7 +637,7 @@ impl RawEncodeWithContext<PackageBoxEncodeContext> for PackageBox {
         let len = if context.plaintext {
             encrypt_in_len
         } else {
-            self.enc_key().inplace_encrypt(to_encrypt_buf, encrypt_in_len)?
+            self.key().enc_key.inplace_encrypt(to_encrypt_buf, encrypt_in_len)?
         };
 
         //info!("package_box udp encode: encrypt_in_len={} len={} buf_len={} plaintext={}", 
@@ -690,12 +690,12 @@ impl<'de>
         let mut mix_key = None;
         let (key_info, buf) = {
             match context.key_from_mixhash(&mix_hash) {
-                Some((remote, enc_key, found_mix_key)) => {
-                        mix_key = Some(found_mix_key);
+                Some((remote, key)) => {
+                        mix_key = Some(key.mix_key);
 
-                        (KeyInfo {
+                    (KeyInfo {
                         stub: KeyStub::Exist(remote), 
-                        enc_key, 
+                        enc_key: key.enc_key, 
                         mix_hash
                     }, hash_buf)
                 }, 
@@ -788,9 +788,13 @@ impl<'de>
             }
         }
 
+        let key = MixAesKey {
+            enc_key: key_info.enc_key, 
+            mix_key: mix_key.unwrap()
+        };
         match key_info.stub {
             KeyStub::Exist(remote) => {
-                let mut package_box = PackageBox::encrypt_box(remote, key_info.enc_key, mix_key.unwrap());
+                let mut package_box = PackageBox::encrypt_box(remote,key );
                 package_box.append(packages);
                 Ok((package_box, remain_buf))
             }
@@ -800,7 +804,7 @@ impl<'de>
                     exchange.key_encrypted = encrypted;
 
                     let mut package_box =
-                        PackageBox::encrypt_box(exchange.from_device_desc.desc().device_id(), key_info.enc_key, mix_key.unwrap());
+                        PackageBox::encrypt_box(exchange.from_device_desc.desc().device_id(), key);
                     package_box.append(packages);
                     Ok((package_box, remain_buf))
                 } else {

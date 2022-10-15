@@ -6,30 +6,28 @@ use super::{
 //TODO: Option<AesKey> 支持明文包
 pub struct PackageBox {
     remote: DeviceId,
-    enc_key: AesKey,
-    mix_key: AesKey,
+    key: MixAesKey, 
     packages: Vec<DynamicPackage>,
 }
 
 impl PackageBox {
-    pub fn from_packages(remote: DeviceId, enc_key: AesKey, mix_key: AesKey, packages: Vec<DynamicPackage>) -> Self {
+    pub fn from_packages(remote: DeviceId, key: MixAesKey, packages: Vec<DynamicPackage>) -> Self {
         // session package 的数组，不合并
-        let mut package_box = Self::encrypt_box(remote, enc_key, mix_key);
+        let mut package_box = Self::encrypt_box(remote, key);
         package_box.append(packages);
         package_box
     }
 
-    pub fn from_package(remote: DeviceId, enc_key: AesKey, mix_key: AesKey, package: DynamicPackage) -> Self {
-        let mut package_box = Self::encrypt_box(remote.clone(), enc_key, mix_key);
+    pub fn from_package(remote: DeviceId, key: MixAesKey, package: DynamicPackage) -> Self {
+        let mut package_box = Self::encrypt_box(remote.clone(), key);
         package_box.packages.push(package);
         package_box
     }
 
-    pub fn encrypt_box(remote: DeviceId, enc_key: AesKey, mix_key: AesKey) -> Self {
+    pub fn encrypt_box(remote: DeviceId, key: MixAesKey) -> Self {
         Self {
             remote,
-            enc_key,
-            mix_key,
+            key,
             packages: vec![],
         }
     }
@@ -57,12 +55,8 @@ impl PackageBox {
         &self.remote
     }
 
-    pub fn enc_key(&self) -> &AesKey {
-        &self.enc_key
-    }
-
-    pub fn mix_key(&self) -> &AesKey {
-        &self.mix_key
+    pub fn key(&self) -> &MixAesKey {
+        &self.key
     }
 
     pub fn has_exchange(&self) -> bool {

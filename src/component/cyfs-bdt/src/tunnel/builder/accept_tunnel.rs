@@ -75,7 +75,7 @@ impl AcceptTunnelBuilder {
                 from_device_desc: local,
                 send_time: 0
             };
-            let mut first_box = PackageBox::encrypt_box(caller_box.remote().clone(), caller_box.enc_key().clone(), caller_box.mix_key().clone());
+            let mut first_box = PackageBox::encrypt_box(caller_box.remote().clone(), caller_box.key().clone());
             first_box.append(vec![DynamicPackage::from(ack_tunnel)]);
             let first_box = Arc::new(first_box);
             let _ = self.explore_endpoint_pair(&syn_tunnel.from_device_desc, first_box.clone(), |_| true);

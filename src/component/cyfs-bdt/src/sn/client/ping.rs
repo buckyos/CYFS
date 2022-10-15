@@ -14,7 +14,7 @@ use core::{
 use cyfs_base::*;
 use cyfs_debug::Mutex;
 use crate::{
-    types::{TempSeqGenerator, TempSeq}, 
+    types::*, 
     protocol::{*, v0::*}, 
     interface::{NetListener, UpdateOuterResult, udp::{Interface, PackageBoxEncodeContext}}, 
     history::keystore, 
@@ -193,7 +193,7 @@ impl PingManager {
         }
     }
 
-    pub fn on_called(&self, called: &SnCalled, from: &Endpoint, from_interface: Interface) -> Result<(), BuckyError> {
+    pub fn on_called(&self, called: &SnCalled, in_box: &PackageBox, from: &Endpoint, from_interface: Interface) -> Result<(), BuckyError> {
         if &called.to_peer_id != Stack::from(&self.env.stack).local_device_id() {
             log::warn!("{} called, recv called to other: {}.", self, called.to_peer_id.to_string());
             return Err(BuckyError::new(BuckyErrorCode::AddrNotAvailable, "called to other"));
@@ -210,6 +210,7 @@ impl PingManager {
 
         let stack = Stack::from(&self.env.stack);
         let called = called.clone();
+        let key = in_box.key().clone();
         let from = from.clone();
         task::spawn(async move {
             let peer_info = &called.peer_info;
@@ -229,7 +230,7 @@ impl PingManager {
                 match client {
                     None => log::warn!("{} the sn maybe is removed when recv called-req.", stack.local_device_id()),
                     Some(client) => {
-                        client.on_called(&called, called.call_seq, bucky_time_to_system_time(called.call_send_time), &from, from_interface);
+                        client.on_called(&called, &key, called.call_seq, bucky_time_to_system_time(called.call_send_time), &from, from_interface);
                     }
                 };
             }
@@ -330,7 +331,7 @@ struct Client {
 }
 
 impl Client {
-    fn new(mgr: &PingManager, sn: &Device, is_encrypto: bool, appraiser: Box<dyn ServiceAppraiser>) -> Client {
+    fn new(mgr: &PingManager, sn: &Device, _is_encrypto: bool, appraiser: Box<dyn ServiceAppraiser>) -> Client {
         let mut last_receipt = SnServiceReceipt::default();
         last_receipt.version = SnServiceReceiptVersion::Invalid;
         last_receipt.start_time = UNIX_EPOCH;
@@ -353,13 +354,11 @@ impl Client {
             sessions.push(session);
         }
 
-        let mut inner = ClientInner {
+        let inner = ClientInner {
             env: mgr.env.clone(),
             create_time: Instant::now(),
             sn_peerid: sn_peerid.clone(),
             sn: sn.clone(),
-            enc_key: None,
-            mix_key: None,
             sessions: RwLock::new(sessions),
             active_session_index: AtomicU32::new(std::u32::MAX),
             client_status: AtomicU8::new(PING_CLIENT_STATUS_INIT),
@@ -384,11 +383,6 @@ impl Client {
             }
         };
 
-        if is_encrypto {
-            let found_key = Stack::from(&mgr.env.stack).keystore().create_key(sn.desc(), false);
-            inner.enc_key = Some(found_key.enc_key.clone());
-            inner.mix_key = Some(found_key.mix_key.clone());
-        }
 
         Client {
             inner: Arc::new(inner),
@@ -521,8 +515,8 @@ impl Client {
         });
     }
 
-    pub fn on_called(&self, called: &SnCalled, call_seq: TempSeq, call_time: SystemTime, from: &Endpoint, from_interface: Interface) {
-        let _ = self.inner.on_called(called, call_seq, call_time, from, from_interface);
+    pub fn on_called(&self, called: &SnCalled, key: &MixAesKey, call_seq: TempSeq, call_time: SystemTime, from: &Endpoint, from_interface: Interface) {
+        let _ = self.inner.on_called(called, key, call_seq, call_time, from, from_interface);
     }
 
     fn is_cached(&self) -> bool {
@@ -537,8 +531,6 @@ struct ClientInner {
     sn_peerid: DeviceId,
     sn: Device,
 
-    enc_key: Option<AesKey>,
-    mix_key: Option<AesKey>,
     sessions: RwLock<Vec<Session>>,
     active_session_index: AtomicU32,
 
@@ -671,11 +663,9 @@ impl ClientInner {
 
         let stack = Stack::from(&self.env.stack);
         let local_peer = stack.device_cache().local();
-        assert!(self.enc_key.is_some()); // <TODO>暂时不支持明文
-        let mut pkg_box = PackageBox::encrypt_box(self.sn_peerid.clone(), self.enc_key.as_ref().unwrap().clone(), self.mix_key.as_ref().unwrap().clone());
-
+        
         let last_resp_time = self.last_resp_time.load(atomic::Ordering::Acquire);
-        let to_session_index = if (last_resp_time == 0 || (now < last_resp_time || now - last_resp_time > 1000)) && self.enc_key.is_some() {
+        let to_session_index = if last_resp_time == 0 || (now < last_resp_time || now - last_resp_time > 1000) {
             self.active_session_index.store(std::u32::MAX, atomic::Ordering::Release);
             std::u32::MAX
         } else {
@@ -707,7 +697,7 @@ impl ClientInner {
                 protocol_version: 0, 
                 stack_version: 0, 
                 seq,
-                from_peer_id: if self.enc_key.is_some() { Some(stack.local_device_id().clone()) } else { None }, // 加密通信，密钥就能代表deviceid
+                from_peer_id: Some(stack.local_device_id().clone()),
                 sn_peer_id: self.sn_peerid.clone(),
                 peer_info: if last_update_seq != 0 { Some(local_peer.clone()) } else { None }, // 本地信息更新了信息，需要同步，或者服务器要求更新
                 send_time: now_abs_u64,
@@ -724,14 +714,15 @@ impl ClientInner {
             ping_pkg
         };
 
+        let key_stub = stack.keystore().create_key(self.sn.desc(), true);
 
-        let key_stub = stack
-                .keystore()
-                .get_key_by_mix_hash(&self.mix_key.as_ref().unwrap().mix_hash(None), false, false)
-                .ok_or_else(|| BuckyError::new(BuckyErrorCode::CryptoError, "key not exists"))?;
+        let mut pkg_box = PackageBox::encrypt_box(
+            self.sn_peerid.clone(), 
+            key_stub.key.clone());
+
         if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
             let stack = Stack::from(&self.env.stack);
-            let mut exchg = Exchange::from((&ping_pkg, local_peer.clone(), key_encrypted, key_stub.mix_key));
+            let mut exchg = Exchange::from((&ping_pkg, local_peer.clone(), key_encrypted, key_stub.key.mix_key));
             let _ = exchg.sign(stack.keystore().signer()).await;
             pkg_box.push(exchg);
         }
@@ -787,15 +778,18 @@ impl ClientInner {
         Ok(())
     }
 
-    fn on_called(&self, called: &SnCalled, call_seq: TempSeq, call_time: std::time::SystemTime, from: &Endpoint, from_interface: Interface) -> Result<(), BuckyError> {
+    fn on_called(&self, called: &SnCalled, key: &MixAesKey, call_seq: TempSeq, call_time: std::time::SystemTime, from: &Endpoint, from_interface: Interface) -> Result<(), BuckyError> {
         let resp = SnCalledResp {
             seq: called.seq,
             result: 0,
             sn_peer_id: self.sn_peerid.clone(),
         };
 
-        assert!(self.enc_key.is_some()); // <TODO>暂时不支持明文
-        let mut pkg_box = PackageBox::encrypt_box(self.sn_peerid.clone(), self.enc_key.as_ref().unwrap().clone(), self.mix_key.as_ref().unwrap().clone());
+        
+
+        let mut pkg_box = PackageBox::encrypt_box(
+            self.sn_peerid.clone(), 
+            key.clone());
         pkg_box.push(resp);
 
         let mut context = PackageBoxEncodeContext::default();

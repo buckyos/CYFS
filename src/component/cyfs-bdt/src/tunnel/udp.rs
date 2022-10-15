@@ -20,7 +20,6 @@ use super::{
     tunnel::{self, DynamicTunnel, TunnelOwner, ProxyType}, 
     TunnelContainer
 };
-use std::time::{SystemTime, UNIX_EPOCH};
 
 struct ConnectingState {
     container: TunnelContainer, 
@@ -30,8 +29,7 @@ struct ConnectingState {
 }
 
 struct ActiveState {
-    enc_key: AesKey, 
-    mix_key: AesKey,
+    key: MixAesKey, 
     // 记录active 这个tunnel时的，远端的 device body 的update time
     remote_timestamp: Timestamp, 
     container: TunnelContainer, 
@@ -50,9 +48,8 @@ impl std::fmt::Display for TunnelState {
         match self {
             TunnelState::Connecting(_) => write!(f, "connecting"), 
             TunnelState::Active(active_state) => 
-                write!(f, "Active:{{mix_key:{},enc_key:{}}}", 
-                    active_state.mix_key.mix_hash(None).to_string(), 
-                    active_state.enc_key.mix_hash(None).to_string()), 
+                write!(f, "Active:{{key:{}}}", 
+                    active_state.key), 
             TunnelState::Dead => write!(f, "dead")
         }
     }
@@ -164,10 +161,9 @@ impl Tunnel {
         let state = &mut *self.0.state.write().unwrap();
         match state {
             TunnelState::Active(active_state) => {
-                if active_state.mix_key != *by_box.mix_key() {
-                    debug!("{} update active state key from {} to {}", self, active_state.enc_key.mix_hash(None).to_string(), by_box.mix_key().mix_hash(None).to_string());
-                    active_state.mix_key = by_box.mix_key().clone();
-                    active_state.enc_key = by_box.enc_key().clone();
+                if active_state.key.mix_key != by_box.key().mix_key {
+                    debug!("{} update active state key from {} to {}", self, active_state.key, by_box.key());
+                    active_state.key = by_box.key().clone();
                     Ok(())
                 } else {
                     Err(BuckyError::new(BuckyErrorCode::ErrorState, "same key"))
@@ -203,10 +199,10 @@ impl Tunnel {
     }
 
     fn active_by_package(&self, by_box: &PackageBox, remote_timestamp: Option<Timestamp>) -> BuckyResult<TunnelContainer> {
-        self.active(by_box.mix_key(), by_box.has_exchange(), remote_timestamp, by_box.enc_key())
+        self.active(by_box.key(), by_box.has_exchange(), remote_timestamp)
     }
 
-    pub fn active(&self, mix_key: &AesKey, exchange: bool, remote_timestamp: Option<Timestamp>, enc_key: &AesKey) -> BuckyResult<TunnelContainer> { 
+    pub fn active(&self, key: &MixAesKey, exchange: bool, remote_timestamp: Option<Timestamp>) -> BuckyResult<TunnelContainer> { 
         let (container, to_sync, waiter) = {
             let state = &mut *self.0.state.write().unwrap(); 
             match state {
@@ -214,7 +210,7 @@ impl Tunnel {
                     if let Some(remote_timestamp) = remote_timestamp {
                         let mut waiter = StateWaiter::new();
                         connecting_state.waiter.transfer_into(&mut waiter);
-                        info!("{} change state from Connecting to Active with mix_key:{}", self, mix_key.mix_hash(None).to_string());
+                        info!("{} change state from Connecting to Active with mix_key:{}", self, key);
                         let owner = connecting_state.owner.clone_as_tunnel_owner();
                         let container = connecting_state.container.clone();
                         *state = TunnelState::Active(ActiveState {
@@ -222,8 +218,7 @@ impl Tunnel {
                             owner: owner.clone_as_tunnel_owner(), 
                             remote_timestamp, 
                             interface: connecting_state.interface.clone(),
-                            mix_key: mix_key.clone(),
-                            enc_key: enc_key.clone(),
+                            key: key.clone(),
                         });
                         Ok((container, 
                             Some((tunnel::TunnelState::Connecting, 
@@ -242,10 +237,9 @@ impl Tunnel {
                             active_state.remote_timestamp = remote_timestamp;
                         } 
                     }
-                    if exchange && *mix_key != active_state.mix_key {
-                        debug!("{} update active state mix_key from {} to {}", self, active_state.mix_key.mix_hash(None).to_string(), mix_key.mix_hash(None).to_string());
-                        active_state.mix_key = mix_key.clone();
-                        active_state.enc_key = enc_key.clone();
+                    if exchange && key.mix_key != active_state.key.mix_key {
+                        debug!("{} update active state key from {} to {}", self, active_state.key, key);
+                        active_state.key = key.clone();
                     }
                     Ok((active_state.container.clone(), 
                         Some((former_state, 
@@ -348,29 +342,29 @@ impl tunnel::Tunnel for Tunnel {
     }
 
     fn send_raw_data(&self, data: &mut [u8]) -> Result<usize, BuckyError> {
-        let (_enc_key, interface, mix_key) = {
+        let (key, interface) = {
             let state = &*self.0.state.read().unwrap();
             match state {
                 TunnelState::Connecting(_) => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel not active")), 
-                TunnelState::Active(active) => Ok((active.enc_key.clone(), active.interface.clone(), active.mix_key.clone())), 
+                TunnelState::Active(active) => Ok((active.key.clone(), active.interface.clone())), 
                 TunnelState::Dead => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel dead"))
             }
         }?;
 
         assert_eq!(data.len() > Self::raw_data_header_len_impl(), true);
         
-        interface.send_raw_data_to(&mix_key, data, tunnel::Tunnel::remote(self))
+        interface.send_raw_data_to(&key, data, tunnel::Tunnel::remote(self))
     }
 
     fn send_package(&self, package: DynamicPackage) -> Result<(), BuckyError> {
-        let (tunnel_container, interface, enc_key, mix_key) = {
+        let (tunnel_container, interface, key) = {
             if let TunnelState::Active(active_state) =  &*self.0.state.read().unwrap() {
-            Ok((active_state.container.clone(), active_state.interface.clone(), active_state.enc_key.clone(), active_state.mix_key.clone()))
+            Ok((active_state.container.clone(), active_state.interface.clone(), active_state.key.clone()))
         } else {
             Err(BuckyError::new(BuckyErrorCode::ErrorState, "send packages on tunnel not active"))
         }}?;
-        trace!("{} send packages with mix_key {}", self, mix_key.mix_hash(Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / 60)).to_string());
-        let package_box = PackageBox::from_package(tunnel_container.remote().clone(), enc_key, mix_key, package);
+        trace!("{} send packages with key {}", self, key);
+        let package_box = PackageBox::from_package(tunnel_container.remote().clone(), key, package);
         let mut context = PackageBoxEncodeContext::default();
         context.set_ignore_exchange(ProxyType::None != self.0.proxy);
         interface.send_box_to(&mut context, &package_box, tunnel::Tunnel::remote(self))?;
@@ -478,8 +472,7 @@ impl OnPackage<SynTunnel, &PackageBox> for Tunnel {
 
         let mut package_box = PackageBox::encrypt_box(
             container.remote().clone(), 
-            in_box.enc_key().clone(), 
-            in_box.mix_key().clone());
+            in_box.key().clone());
         package_box.append(vec![DynamicPackage::from(ack)]);
         let _ = self.send_box(&package_box);
          // 传回给 container 处理

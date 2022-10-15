@@ -10,6 +10,7 @@ use async_std::{
 };
 use cyfs_base::*;
 use crate::{
+    types::*, 
     protocol::{*, v0::*}, 
     interface::{*, udp::{self, OnUdpPackageBox, OnUdpRawData}, tcp::{OnTcpInterface}}, 
     sn::client::PingClientCalledEvent, 
@@ -147,8 +148,8 @@ impl OnUdpPackageBox for TunnelManager {
     }
 }
 
-impl OnUdpRawData<(udp::Interface,DeviceId,  AesKey, Endpoint, AesKey)> for TunnelManager {
-    fn on_udp_raw_data(&self, data: &[u8], context: (udp::Interface, DeviceId, AesKey, Endpoint, AesKey)) -> Result<(), BuckyError> {
+impl OnUdpRawData<(udp::Interface,DeviceId, MixAesKey, Endpoint)> for TunnelManager {
+    fn on_udp_raw_data(&self, data: &[u8], context: (udp::Interface, DeviceId, MixAesKey, Endpoint)) -> Result<(), BuckyError> {
         trace!("{} on_udp_raw_data from remote {}", self, context.1);
         if let Some(tunnel) = self.container_of(&context.1) {
             tunnel.on_udp_raw_data(data, context)

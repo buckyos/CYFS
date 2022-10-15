@@ -9,6 +9,7 @@ use async_std::{
 };
 use cyfs_base::*;
 use crate::{  
+    types::*, 
     protocol::{*, v0::*}, 
     interface::udp::*
 };
@@ -115,11 +116,10 @@ impl CommandTunnel {
                 let tunnel = self.clone();
                 if package_box.has_exchange() {
                     async_std::task::spawn(async move {
-                        let exchange: &Exchange = package_box.packages()[0].as_ref();
+                        // let exchange: &Exchange = package_box.packages()[0].as_ref();
                         service.keystore().add_key(
-                            package_box.enc_key(),
+                            package_box.key(),
                             package_box.remote(),
-                            &exchange.mix_key,
                         );
                         let _ = tunnel.on_package_box(package_box, from);
                     });
@@ -140,8 +140,8 @@ impl CommandTunnel {
         proxy_endpoint: BuckyResult<SocketAddr>,  
         syn_proxy: &SynProxy, 
         to: &SocketAddr, 
-        enc_key: &AesKey,
-        mix_key: &AesKey) -> BuckyResult<()> {
+        key: &MixAesKey
+    ) -> BuckyResult<()> {
         let (proxy_endpoint, err) = match proxy_endpoint {
             Ok(proxy_endpoint) => (Some(Endpoint::from((Protocol::Udp, proxy_endpoint))), None), 
             Err(err) => (None, Some(err.code()))
@@ -155,7 +155,7 @@ impl CommandTunnel {
         };
         let mut package_box = PackageBox::encrypt_box(
             syn_proxy.from_peer_info.desc().device_id(), 
-            enc_key.clone(), mix_key.clone());
+            key.clone());
         package_box.append(vec![DynamicPackage::from(ack_proxy)]);
         
         let mut context = PackageBoxEncodeContext::default();

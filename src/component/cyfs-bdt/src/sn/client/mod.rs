@@ -112,7 +112,7 @@ impl OnUdpPackageBox for ClientManager {
                     match pkg.as_any().downcast_ref::<SnCalled>() {
                         None => return Err(BuckyError::new(BuckyErrorCode::InvalidData, "should be SnCalled")),
                         Some(called) => {
-                            let _ = self.ping.on_called(called, &from, from_interface.clone());
+                            let _ = self.ping.on_called(called, package_box.as_ref(), &from, from_interface.clone());
                         }
                     }
                 },

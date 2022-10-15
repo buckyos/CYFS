@@ -124,8 +124,7 @@ impl ConnectTcpStream {
                                                                     *ca.remote(),
                                                                     tunnel_container.remote().clone(),
                                                                     tunnel_container.remote_const().clone(),
-                                                                    key.enc_key, 
-                                                                    key.mix_key,
+                                                                    key.key, 
                                                                     Stack::from(&ca.0.stack).config().tunnel.tcp.connect_timeout
                 ).await;
 
@@ -272,9 +271,8 @@ impl ConnectStreamAction for ConnectTcpStream {
 
         Ok(StreamProviderSelector::Tcp(
                 interface.socket().clone(), 
-                interface.mix_key().clone(), 
-                Some(ack.clone()), 
-                interface.enc_key().clone()))
+                interface.key().clone(), 
+                Some(ack.clone())))
     }
 }
 
@@ -470,9 +468,8 @@ impl ConnectStreamAction for AcceptReverseTcpStream {
 
         Ok(StreamProviderSelector::Tcp(
                 interface.socket().clone(), 
-                interface.mix_key().clone(), 
-                None, 
-                interface.enc_key().clone()))
+                interface.key().clone(), 
+                None))
     }
 }
 

@@ -17,6 +17,7 @@ use futures::{
 };
 use cyfs_base::*;
 use crate::{
+    types::*, 
     protocol::*,
     history::keystore::Keystore, 
     interface::{
@@ -440,9 +441,8 @@ impl UdpListener {
                             let resp_sender = MessageSender::Udp(UdpSender::new(
                                 self.0.clone(), 
                                 package_box.remote().clone(), 
-                                package_box.enc_key().clone(), 
-                                from, 
-                                package_box.mix_key().clone()));
+                                package_box.key().clone(), 
+                                from));
                             break Ok((package_box, resp_sender))
                         },
                         Err(e) => {
@@ -535,26 +535,24 @@ impl TcpAcceptor {
 pub struct UdpSender {
     handle: Arc<UdpInterface>,
     remote_device_id: DeviceId,
-    enc_key: AesKey,
+    key: MixAesKey,
     to_addr: SocketAddr,
-    mix_key: AesKey,
 }
 
 impl UdpSender {
-    fn new(handle: Arc<UdpInterface>, remote_device_id: DeviceId, enc_key: AesKey, to_addr: SocketAddr, mix_key: AesKey) -> UdpSender {
+    fn new(handle: Arc<UdpInterface>, remote_device_id: DeviceId, key: MixAesKey, to_addr: SocketAddr) -> UdpSender {
         UdpSender {
             handle,
             remote_device_id,
-            enc_key,
+            key,
             to_addr,
-            mix_key
         }
     }
 }
 
 impl UdpSender {
     pub fn box_pkg(&self, pkg: DynamicPackage) -> PackageBox {
-        let mut package_box = PackageBox::encrypt_box(self.remote_device_id.clone(), self.enc_key.clone(), self.mix_key.clone());
+        let mut package_box = PackageBox::encrypt_box(self.remote_device_id.clone(), self.key.clone());
         package_box.append(vec![pkg]);
         package_box
     }
@@ -606,8 +604,8 @@ impl UdpSender {
         )
     }
 
-    pub fn key(&self) -> &AesKey {
-        &self.enc_key
+    pub fn key(&self) -> &MixAesKey {
+        &self.key
     }
 }
 

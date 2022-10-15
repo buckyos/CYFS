@@ -556,11 +556,10 @@ impl OnUdpPackageBox for Stack {
         trace!("{} on_udp_package_box", self.local_device_id().as_ref());
         //FIXME: 用sequence 和 send time 过滤
         if package_box.as_ref().has_exchange() {
-            let exchange: &Exchange = package_box.as_ref().packages()[0].as_ref();
+            // let exchange: &Exchange = package_box.as_ref().packages()[0].as_ref();
             self.keystore().add_key(
-                package_box.as_ref().enc_key(),
-                package_box.as_ref().remote(),
-                &exchange.mix_key,
+                package_box.as_ref().key(),
+                package_box.as_ref().remote()
             );
         }
         if package_box.as_ref().is_tunnel() {
@@ -577,11 +576,11 @@ impl OnUdpPackageBox for Stack {
     }
 }
 
-impl OnUdpRawData<(udp::Interface, DeviceId, AesKey, Endpoint, AesKey)> for Stack {
+impl OnUdpRawData<(udp::Interface, DeviceId, MixAesKey, Endpoint)> for Stack {
     fn on_udp_raw_data(
         &self,
         data: &[u8],
-        context: (udp::Interface, DeviceId, AesKey, Endpoint, AesKey),
+        context: (udp::Interface, DeviceId, MixAesKey, Endpoint),
     ) -> Result<(), BuckyError> {
         self.tunnel_manager().on_udp_raw_data(data, context)
     }
@@ -595,9 +594,9 @@ impl OnTcpInterface for Stack {
     ) -> Result<OnPackageResult, BuckyError> {
         //FIXME: 用sequence 和 send time 过滤
         if first_box.has_exchange() {
-            let exchange: &Exchange = first_box.packages()[0].as_ref();
+            // let exchange: &Exchange = first_box.packages()[0].as_ref();
             self.keystore()
-                .add_key(first_box.enc_key(), first_box.remote(), &exchange.mix_key);
+                .add_key(first_box.key(), first_box.remote());
         }
         if first_box.is_tunnel() {
             self.tunnel_manager().on_tcp_interface(interface, first_box)
@@ -642,9 +641,8 @@ impl PingClientCalledEvent for Stack {
             err
         })?;
         if caller_box.has_exchange() {
-            let exchange: &Exchange = caller_box.packages()[0].as_ref();
-            self.keystore()
-                .add_key(caller_box.enc_key(), caller_box.remote(), &exchange.mix_key);
+            // let exchange: &Exchange = caller_box.packages()[0].as_ref();
+            self.keystore().add_key(caller_box.key(), caller_box.remote());
         }
         self.tunnel_manager().on_called(called, caller_box)
     }

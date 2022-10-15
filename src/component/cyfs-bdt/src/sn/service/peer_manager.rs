@@ -22,7 +22,7 @@ pub struct FoundPeer {
 struct CachedPeerInfo {
     pub desc: Device,
     pub sender: Arc<UdpSender>,
-    pub aes_key: Option<AesKey>,
+    pub aes_key: Option<MixAesKey>,
     pub last_send_time: Timestamp,
     pub last_call_time: Timestamp,
     pub is_wan: bool,
@@ -56,7 +56,7 @@ impl CachedPeerInfo {
     fn new(
         desc: Device, 
         sender: Arc<UdpSender>, 
-        aes_key: Option<&AesKey>, 
+        aes_key: Option<&MixAesKey>, 
         send_time: Timestamp, 
         seq: TempSeq) -> CachedPeerInfo {
         CachedPeerInfo {
@@ -81,7 +81,7 @@ impl CachedPeerInfo {
         }
     }
 
-    fn update_key(&mut self, aes_key: &AesKey) {
+    fn update_key(&mut self, aes_key: &MixAesKey) {
         if let Some(k) = self.aes_key.as_mut() {
             *k = aes_key.clone();
         } else {
@@ -180,7 +180,7 @@ impl PeerManager {
         peerid: DeviceId, 
         peer_desc: &Option<Device>, 
         sender: Arc<UdpSender>, 
-        aes_key: Option<&AesKey>, 
+        aes_key: Option<&MixAesKey>, 
         send_time: Timestamp, 
         seq: TempSeq) -> bool {
 
@@ -201,7 +201,7 @@ impl PeerManager {
             cached_peer.last_send_time = send_time;
             // 客户端被签名的地址才被更新，避免恶意伪装
             if contain_addr(&cached_peer.desc, sender.remote()) 
-                || cached_peer.sender.key() != sender.key() {
+                || cached_peer.sender.key().mix_key != sender.key().mix_key {
                 cached_peer.sender = sender.clone();
             }
 

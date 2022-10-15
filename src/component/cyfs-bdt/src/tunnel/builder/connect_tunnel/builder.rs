@@ -281,7 +281,7 @@ impl ConnectTunnelBuilder {
 
         let key_stub = stack.keystore().create_key(tunnel.remote_const(), true);
         // 生成第一个package box
-        let mut first_box = PackageBox::encrypt_box(tunnel.remote().clone(), key_stub.enc_key.clone(), key_stub.mix_key.clone());
+        let mut first_box = PackageBox::encrypt_box(tunnel.remote().clone(), key_stub.key.clone());
             
         let syn_tunnel = SynTunnel {
             protocol_version: self.0.tunnel.protocol_version(), 
@@ -292,7 +292,7 @@ impl ConnectTunnelBuilder {
             send_time: bucky_time_now()
         };
         if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
-            let mut exchange = Exchange::from((&syn_tunnel, key_encrypted, key_stub.mix_key));
+            let mut exchange = Exchange::from((&syn_tunnel, key_encrypted, key_stub.key.mix_key));
             let _ = exchange.sign(stack.keystore().signer()).await;
             first_box.push(exchange);
         }

@@ -137,9 +137,8 @@ impl OnPackage<SynProxy, (&PackageBox, &SocketAddr)> for Service {
         trace!("{} got {} from {:?}", self, syn_proxy, from);
         let service = self.clone();
         let syn_proxy = syn_proxy.clone();
-        let enc_key = in_box.enc_key().clone();
-        let mix_key = in_box.mix_key().clone();
         let from = *from; 
+        let key = in_box.key().clone();
         task::spawn(async move {
             let stub_pair = (ProxyDeviceStub {
                     id: syn_proxy.from_peer_info.desc().device_id(), 
@@ -155,10 +154,10 @@ impl OnPackage<SynProxy, (&PackageBox, &SocketAddr)> for Service {
             match filter_result {
                 Ok(_) => {
                     let ret = service.proxy_tunnels().create_tunnel(&syn_proxy.mix_key, stub_pair);
-                    let _ = service.command_tunnel().ack_proxy(ret, &syn_proxy, &from, &enc_key, &mix_key);
+                    let _ = service.command_tunnel().ack_proxy(ret, &syn_proxy, &from, &key);
                 }, 
                 Err(err) => {
-                    let _ = service.command_tunnel().ack_proxy(Err(err), &syn_proxy, &from, &enc_key, &mix_key);
+                    let _ = service.command_tunnel().ack_proxy(Err(err), &syn_proxy, &from, &key);
                 }
             }
         });

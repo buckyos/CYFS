@@ -219,9 +219,8 @@ impl SnService {
         let cmd_pkg = match first_pkg.cmd_code() {
             PackageCmdCode::Exchange => {
                 let exchg = <Box<dyn Any + Send>>::downcast::<Exchange>(first_pkg.into_any()); // pkg.into_any().downcast::<Exchange>();
-                if let Ok(exchg) = exchg {
-                    self.key_store()
-                        .add_key(pkg_box.enc_key(), pkg_box.remote(), &exchg.mix_key);
+                if let Ok(_) = exchg {
+                    self.key_store().add_key(pkg_box.key(), pkg_box.remote());
                 } else {
                     warn!("fetch exchange failed, from: {:?}.", resp_sender.remote());
                     return;
@@ -245,7 +244,7 @@ impl SnService {
                     self.handle_ping(
                         ping_req,
                         resp_sender,
-                        Some((pkg_box.enc_key(), pkg_box.remote())),
+                        Some((pkg_box.key(), pkg_box.remote())),
                         send_time,
                     );
                 } else {
@@ -259,7 +258,7 @@ impl SnService {
                     self.handle_call(
                         call_req,
                         resp_sender,
-                        Some((pkg_box.enc_key(), pkg_box.remote())),
+                        Some((pkg_box.key(), pkg_box.remote())),
                         send_time,
                     );
                 } else {
@@ -271,7 +270,7 @@ impl SnService {
                 let called_resp =
                     <Box<dyn Any + Send>>::downcast::<SnCalledResp>(cmd_pkg.into_any());
                 if let Ok(called_resp) = called_resp {
-                    self.handle_called_resp(called_resp, Some(pkg_box.enc_key()))
+                    self.handle_called_resp(called_resp, Some(pkg_box.key()))
                 } else {
                     warn!(
                         "fetch sn-called-resp failed, from: {:?}.",
@@ -288,7 +287,7 @@ impl SnService {
         &self,
         ping_req: Box<SnPing>,
         resp_sender: MessageSender,
-        encryptor: Option<(&AesKey, &DeviceId)>,
+        encryptor: Option<(&MixAesKey, &DeviceId)>,
         send_time: Timestamp,
     ) {
         let from_peer_id = match ping_req.from_peer_id.as_ref() {
@@ -460,7 +459,7 @@ impl SnService {
         &self,
         mut call_req: Box<SnCall>,
         resp_sender: MessageSender,
-        _encryptor: Option<(&AesKey, &DeviceId)>,
+        _encryptor: Option<(&MixAesKey, &DeviceId)>,
         _send_time: Timestamp,
     ) {
         let from_peer_id = &call_req.from_peer_id;
@@ -591,7 +590,7 @@ impl SnService {
         );
     }
 
-    fn handle_called_resp(&self, called_resp: Box<SnCalledResp>, _aes_key: Option<&AesKey>) {
+    fn handle_called_resp(&self, called_resp: Box<SnCalledResp>, _aes_key: Option<&MixAesKey>) {
         info!("called-resp seq {}.", called_resp.seq.value());
         self.resend_queue().confirm_pkg(called_resp.seq.value());
 

@@ -3,6 +3,7 @@ mod dep {
         package::PackageStream, stream_provider::StreamProvider, tcp::TcpStream,
     };
     pub use crate::{
+        types::*, 
         interface::*,
         protocol::{*, v0::*},
         stack::{Stack, WeakStack},
@@ -380,7 +381,7 @@ enum StreamStateImpl {
 struct PackageStreamProviderSelector {}
 pub enum StreamProviderSelector {
     Package(IncreaseId /*remote id*/, Option<SessionData>),
-    Tcp(async_std::net::TcpStream, AesKey, Option<TcpAckConnection>, AesKey),
+    Tcp(async_std::net::TcpStream, MixAesKey, Option<TcpAckConnection>),
 }
 
 pub struct StreamContainerImpl {
@@ -585,7 +586,7 @@ impl StreamContainerImpl {
                     answer_data,
                 )
             }
-            StreamProviderSelector::Tcp(socket, _mix_key, ack, enc_key) => {
+            StreamProviderSelector::Tcp(socket, key, ack) => {
                 let answer_data = match ack {
                     Some(tcp_ack_connection) => {
                         if tcp_ack_connection.payload.as_ref().len() > 0 {
@@ -599,7 +600,7 @@ impl StreamContainerImpl {
                     _ => vec![],
                 };
 
-                let stream = TcpStream::new(arc_self.clone(), socket, enc_key)?;
+                let stream = TcpStream::new(arc_self.clone(), socket, key.enc_key)?;
                 (
                     Box::new(stream.clone()) as Box<dyn StreamProvider>,
                     Box::new(stream) as Box<dyn StreamProvider>,

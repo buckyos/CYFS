@@ -370,7 +370,7 @@ impl CallClientInner {
                 Some(from) => from.clone(),
                 None => stack.device_cache().local()
             };
-            let exchg = Exchange::from((&call_pkg, local_device, encrypted.clone(), self.aes_key.mix_key.clone()));
+            let exchg = Exchange::from((&call_pkg, local_device, encrypted.clone(), self.aes_key.key.mix_key.clone()));
             self.pkgs.push(SendPackage::Exchange(exchg));
         }
 
@@ -415,9 +415,7 @@ impl CallClient {
 
     fn prepare_pkgs_to_send(&self) -> Result<PackageBox, BuckyError> {
         // <TODO>暂时不支持明文
-        let enc_key = self.inner.aes_key.enc_key.clone();
-        let mix_key = self.inner.aes_key.mix_key.clone();
-        let mut pkg_box = PackageBox::encrypt_box(self.inner.sn_peerid.clone(), enc_key, mix_key);
+        let mut pkg_box = PackageBox::encrypt_box(self.inner.sn_peerid.clone(), self.inner.aes_key.key.clone());
         let now_abs = bucky_time_now();
         for pkg in self.inner.pkgs.as_slice() {
             match pkg {
@@ -527,8 +525,7 @@ impl CallClient {
                             ep.clone(), 
                             inner.sn_peerid.clone(), 
                             inner.sn.desc().clone(), 
-                            pkg_box.enc_key().clone(), 
-                            pkg_box.mix_key().clone(), 
+                            pkg_box.key().clone(), 
                             time_limit))
                     );
                 }
