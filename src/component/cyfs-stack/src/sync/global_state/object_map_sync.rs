@@ -279,6 +279,12 @@ impl ObjectMapSync {
                 })
                 .is_some();
             if !exists {
+                if id == self.target {
+                    let msg = format!("sync objects but target object is missing! {}", id);
+                    error!("{}", msg);
+                    return Err(BuckyError::from(msg));
+                }
+
                 self.state_cache.miss_object(&id);
             }
         });

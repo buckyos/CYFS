@@ -156,7 +156,7 @@ impl ZoneSyncServer {
         let list = self.load_objects(&get_req.list).await;
 
         // 对所有结果转换为目标类型
-        let mut ret_objects: Vec<SelectResponseObjectInfo> = Vec::new();
+        let mut ret_objects: Vec<SelectResponseObjectInfo> = Vec::with_capacity(list.len());
         for item in list.into_iter() {
             let resp_info = SelectResponseObjectInfo {
                 meta: SelectResponseObjectMetaInfo {

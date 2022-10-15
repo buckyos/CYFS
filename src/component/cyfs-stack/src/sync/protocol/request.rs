@@ -224,8 +224,8 @@ impl SyncObjectsResponse {
             vec![]
         };
 
-        debug!(
-            "recv sync objects all_buf: len={}, count={}",
+        info!(
+            "recv sync objects: len={}, count={}",
             all_buf.len(),
             objects.len(),
         );
