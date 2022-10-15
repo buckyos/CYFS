@@ -87,7 +87,7 @@ impl GlobalStateMetaLocalService {
         let target_dec_id = req_path.dec(source);
 
         let ret = rmeta
-            .get_option_global_state_meta(target_dec_id, false)
+            .get_option_global_state_meta(target_dec_id, true)
             .await?;
         if ret.is_none() {
             let msg = format!("global state check rmeta but target dec rmeta not found! target_dec={}, req_path={}", target_dec_id, req_path);
