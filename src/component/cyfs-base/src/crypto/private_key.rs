@@ -153,7 +153,9 @@ impl PrivateKey {
 
             Self::Secp256k1(_) => {
                 // 目前secp256k1的非对称加解密只支持交换aes_key时候使用
-                unimplemented!();
+                let msg = format!("direct decyrpt with private key of secp256 not support!");
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
             }
         }
     }

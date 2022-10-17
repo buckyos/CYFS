@@ -72,7 +72,10 @@ impl PublicKey {
                 }
             }
             Self::Secp256k1(_) => {
-                unreachable!();
+                 // 目前secp256k1的非对称加解密只支持交换aes_key时候使用
+                 let msg = format!("direct encyrpt with private key of secp256 not support!");
+                 error!("{}", msg);
+                 Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
             }
             PublicKey::Invalid => panic!("Should not come here"),
         }
