@@ -5,10 +5,6 @@ const env = process.env;
 const ndk_home = "C:\\Users\\vip\\AppData\\Local\\Android\\Sdk\\ndk\\21.0.6113669"
 env["AR_aarch64-linux-android"] = `${ndk_home}\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android-ar.exe`
 env["CC_aarch64-linux-android"] = `${ndk_home}\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android21-clang.cmd`
-env["AR_armv7-linux-androideabi"] = `${ndk_home}\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\arm-linux-androideabi-ar.exe`
-env["CC_armv7-linux-androideabi"] = `${ndk_home}\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\armv7a-linux-androideabi21-clang.cmd`
-env["CC_aarch64_unknown_linux_gnu"] = `${aarch64_linux}/bin/aarch64-unknown-linux-gnueabi-cc`
-env["AR_aarch64_unknown_linux_gnu"] = `${aarch64_linux}/bin/aarch64-unknown-linux-gnueabi-ar`
 env["CARGO_HTTP_MULTIPLEXING"] = "false"
 const aarch64_linux_android_objcopy = `${ndk_home}\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android-objcopy.exe`
 
