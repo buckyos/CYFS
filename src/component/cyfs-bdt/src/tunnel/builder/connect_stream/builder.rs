@@ -185,6 +185,7 @@ impl ConnectStreamBuilder {
                 //buf[0..b.len()].as_ref()
                 let len = 2048 - b.len();
                 buf.truncate(len);
+                info!("{} encode first box to sn call, len: {}, package_box {:?}", self, len, first_box);
                 buf
             }).await?;
         

@@ -527,7 +527,7 @@ pub trait Package {
     fn cmd_code() -> PackageCmdCode;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Exchange {
     pub sequence: TempSeq,
     pub to_device_id: DeviceId, 
@@ -725,6 +725,7 @@ fn encode_protocol_exchange() {
     )
 }
 
+#[derive(Debug)]
 pub struct SynTunnel {
     pub protocol_version: u8,
     pub stack_version: u32,  
@@ -861,6 +862,8 @@ fn encode_protocol_syn_tunnel() {
 
 pub const ACK_TUNNEL_RESULT_OK: u8 = 0;
 pub const ACK_TUNNEL_RESULT_REFUSED: u8 = 1;
+
+#[derive(Debug)]
 pub struct AckTunnel {
     pub protocol_version: u8, 
     pub stack_version: u32, 
@@ -992,7 +995,7 @@ fn encode_protocol_ack_tunnel() {
 
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SnCall {
     pub protocol_version: u8, 
     pub stack_version: u32, 
@@ -1218,7 +1221,7 @@ fn encode_protocol_sn_call() {
     assert_eq!(dst.is_always_call, src.is_always_call);
 }
 
-
+#[derive(Debug)]
 pub struct SnPing {
     pub protocol_version: u8, 
     pub stack_version: u32, 
@@ -1431,7 +1434,7 @@ fn encode_protocol_sn_ping() {
 
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SynProxy {
     pub protocol_version: u8, 
     pub stack_version: u32, 

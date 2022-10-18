@@ -1724,7 +1724,7 @@ impl<'de> RawDecode<'de> for SizedSharedData<'de> {
 }
 
 // 拷贝的结尾数据
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TailedOwnedData(std::vec::Vec<u8>);
 
 impl std::fmt::Display for TailedOwnedData {

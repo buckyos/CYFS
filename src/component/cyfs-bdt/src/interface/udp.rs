@@ -367,7 +367,7 @@ impl Interface {
             let next_ptr = package_box
                 .raw_encode_with_context(crypto_buf, context, &None)
                 .map_err(|e| {
-                    error!("send_box_to encode failed, e:{}", &e);
+                    error!("send_box_to encode failed, package_box: {:?}, e:{}", package_box, &e);
                     e
                 })?;
             let send_len = buf_len - next_ptr.len();
@@ -387,7 +387,7 @@ impl Interface {
             let next_ptr = package_box
                 .raw_encode_with_context(crypto_buf, context, &None)
                 .map_err(|e| {
-                    error!("send_box_mult encode failed, e:{}", &e);
+                    error!("send_box_mult encode failed, package_box: {:?}, e:{}", package_box, &e);
                     e
                 })?;
             let send_len = buf_len - next_ptr.len();

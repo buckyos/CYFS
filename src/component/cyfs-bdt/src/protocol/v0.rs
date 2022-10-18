@@ -1,5 +1,6 @@
 use super::common::*;
 
+#[derive(Debug)]
 pub struct AckAckTunnel {
     seq: TempSeq,
 }
@@ -79,6 +80,7 @@ fn encode_protocol_ack_ack_tunnel() {
     assert_eq!(dst.seq, src.seq);
 }
 
+#[derive(Debug)]
 pub struct PingTunnel {
     pub package_id: u32,
     pub send_time: Timestamp,
@@ -171,6 +173,7 @@ fn encode_protocol_ping_tunnel() {
     assert_eq!(dst.recv_data, src.recv_data);
 }
 
+#[derive(Debug)]
 pub struct PingTunnelResp {
     pub ack_package_id: u32,
     pub send_time: Timestamp,
@@ -265,7 +268,7 @@ fn encode_protocol_ping_tunnel_resp() {
     assert_eq!(dst.recv_data, src.recv_data);
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum DatagramType {
     Data = 1,
 }
@@ -298,7 +301,7 @@ impl<'de> RawDecode<'de> for DatagramType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Datagram {
     pub to_vport: u16,
     pub from_vport: u16,
@@ -596,7 +599,7 @@ fn encode_protocol_datagram() {
     assert_eq!(dst_data, src_dsta);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SessionSynInfo {
     pub sequence: TempSeq,
     pub from_session_id: IncreaseId,
@@ -660,7 +663,7 @@ fn encode_protocol_session_syn_info() {
     assert_eq!(dst.to_vport, src.to_vport)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SessionDataPackageIdPart {
     pub package_id: IncreaseId,
     pub total_recv: u64,
@@ -717,7 +720,7 @@ fn encode_protocol_session_data_package_id_part() {
     assert_eq!(dst.total_recv, src.total_recv);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StreamRange {
     pub pos: u64,
     pub length: u32,
@@ -768,7 +771,7 @@ fn encode_protocol_stream_range() {
     assert_eq!(dst.length, src.length);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StreamRanges(Vec<StreamRange>);
 
 impl From<Vec<StreamRange>> for StreamRanges {
@@ -873,6 +876,7 @@ pub const SESSIONDATA_FLAG_RESET: u16 = 1 << 12;
 pub const SESSIONDATA_FLAG_PING: u16 = 1 << 13;
 pub const SESSIONDATA_FLAG_TO_SESSION_ID: u16 = 1 << 14;
 
+#[derive(Debug)]
 pub struct SessionData {
     pub stream_pos: u64,
     pub ack_stream_pos: u64,
@@ -885,6 +889,7 @@ pub struct SessionData {
     pub payload: TailedOwnedData,
     pub flags: u16,
 }
+
 
 impl std::fmt::Display for SessionData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1198,7 +1203,7 @@ impl<'de, Context: merge_context::Decode> RawDecodeWithContext<'de, &mut Context
 //     assert_eq!(dst.flags, src.flags);
 // }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TcpSynConnection {
     pub sequence: TempSeq,
     pub result: u8,
@@ -1391,7 +1396,7 @@ fn encode_protocol_tcp_syn_connection() {
 pub const TCP_ACK_CONNECTION_RESULT_OK: u8 = 0;
 pub const TCP_ACK_CONNECTION_RESULT_REFUSED: u8 = 1;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TcpAckConnection {
     pub sequence: TempSeq,
     pub to_session_id: IncreaseId,
@@ -1544,7 +1549,7 @@ fn encode_protocol_tcp_ack_connection() {
     assert_eq!(dst_payload, src_payload);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TcpAckAckConnection {
     pub sequence: TempSeq,
     pub result: u8,
@@ -1637,7 +1642,7 @@ fn encode_protocol_tcp_ack_ack_connection() {
 
 
 
-
+#[derive(Debug)]
 pub struct SnCallResp {
     //sn call的响应包
     pub seq: TempSeq,                 //序列事情
@@ -1754,7 +1759,7 @@ fn encode_protocol_sn_call_resp() {
     assert_eq!(dst_to_peer_info, src_to_peer_info);
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SnCalled {
     pub seq: TempSeq,
     pub sn_peer_id: DeviceId,
@@ -1937,6 +1942,7 @@ fn encode_protocol_sn_called() {
     assert_eq!(dst_payload, src_payload);
 }
 
+#[derive(Debug)]
 pub struct SnCalledResp {
     //sn called的应答报文
     pub seq: TempSeq,         //序列号
@@ -2045,7 +2051,7 @@ fn encode_protocol_sn_called_resp() {
 
 
 
-
+#[derive(Debug)]
 pub struct SnPingResp {
     //SN Server收到来自device的SNPing包时，返回device的外网地址
     pub seq: TempSeq,                      //包序列包

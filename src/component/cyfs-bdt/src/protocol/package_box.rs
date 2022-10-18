@@ -10,6 +10,19 @@ pub struct PackageBox {
     packages: Vec<DynamicPackage>,
 }
 
+impl std::fmt::Debug for PackageBox {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PackageBox:{{remote:{},key:{},packages:", self.remote, self.key)?;
+        for package in self.packages() {
+            use crate::protocol;
+            downcast_handle!(package, |p| {
+                let _ = write!(f, "{:?};", p);
+            });
+        }
+        write!(f, "}}")
+    }
+}
+
 impl PackageBox {
     pub fn from_packages(remote: DeviceId, key: MixAesKey, packages: Vec<DynamicPackage>) -> Self {
         // session package 的数组，不合并
