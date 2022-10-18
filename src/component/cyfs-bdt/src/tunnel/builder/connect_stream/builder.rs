@@ -363,6 +363,7 @@ impl ConnectStreamBuilder {
                     match action.continue_connect().await {
                         Ok(selector) => {
                             let _ = builder.stream().as_ref().establish_with(selector, builder.stream()).await;
+                            break;
                         }, 
                         Err(_) => {
                             let state = &mut *builder.0.state.write().unwrap();
