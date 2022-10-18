@@ -44,17 +44,16 @@ function build(prog, buildType, target, version, channel) {
         cmd = cmd.replace('cargo','~/.cargo/bin/cargo');
         cmd = `bash -c "export CARGO_HTTP_MULTIPLEXING=false;export VERSION=${version};export CHANNEL=${channel};${cmd}"`
     }
-    child_process.execSync(cmd, { stdio: 'inherit' })
-    if (target.includes("linux")) {
+    child_process.execSync(cmd, { stdio: 'inherit' })       
+
+    // split exe and debug info
+    if (target === 'aarch64-linux-android') {
+        let cmd = aarch64_linux_android_objcopy
+        child_process.execSync(`${cmd} --only-keep-debug target/${target}/${buildType}/${bin_name}${ext} target/${target}/${buildType}/${bin_name}${ext}.debug`)
+        child_process.execSync(`${cmd} --strip-debug --strip-unneeded target/${target}/${buildType}/${bin_name}${ext}`)
+    } else if(target.includes("linux")) {
         // split exe and debug info
         let cmd = 'objcopy'
-        child_process.execSync(`bash -c "${cmd} --only-keep-debug target/${target}/${buildType}/${bin_name}${ext} target/${target}/${buildType}/${bin_name}${ext}.debug"`)
-        child_process.execSync(`bash -c "${cmd} --strip-debug --strip-unneeded target/${target}/${buildType}/${bin_name}${ext}"`)
-    }
-
-    if (target === 'aarch64-linux-android') {
-        // split exe and debug info
-        let cmd = aarch64_linux_android_objcopy
         child_process.execSync(`bash -c "${cmd} --only-keep-debug target/${target}/${buildType}/${bin_name}${ext} target/${target}/${buildType}/${bin_name}${ext}.debug"`)
         child_process.execSync(`bash -c "${cmd} --strip-debug --strip-unneeded target/${target}/${buildType}/${bin_name}${ext}"`)
     }
