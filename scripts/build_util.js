@@ -45,11 +45,11 @@ function build(prog, buildType, target, version, channel) {
         cmd = `bash -c "export CARGO_HTTP_MULTIPLEXING=false;export VERSION=${version};export CHANNEL=${channel};${cmd}"`
     }
     child_process.execSync(cmd, { stdio: 'inherit' })
-    if (target.includes("unknown-linux")) {
+    if (target.includes("linux")) {
         // split exe and debug info
         
         let cmd = 'objcopy'
-        if (target === 'aarch64-unknown-linux-gnu') {
+        if (target === 'aarch64-linux-android') {
             cmd = aarch64_linux_android_objcopy;
         }
         child_process.execSync(`bash -c "${cmd} --only-keep-debug target/${target}/${buildType}/${bin_name}${ext} target/${target}/${buildType}/${bin_name}${ext}.debug"`)
