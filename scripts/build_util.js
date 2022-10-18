@@ -47,11 +47,14 @@ function build(prog, buildType, target, version, channel) {
     child_process.execSync(cmd, { stdio: 'inherit' })
     if (target.includes("linux")) {
         // split exe and debug info
-        
         let cmd = 'objcopy'
-        if (target === 'aarch64-linux-android') {
-            cmd = aarch64_linux_android_objcopy;
-        }
+        child_process.execSync(`bash -c "${cmd} --only-keep-debug target/${target}/${buildType}/${bin_name}${ext} target/${target}/${buildType}/${bin_name}${ext}.debug"`)
+        child_process.execSync(`bash -c "${cmd} --strip-debug --strip-unneeded target/${target}/${buildType}/${bin_name}${ext}"`)
+    }
+
+    if (target === 'aarch64-linux-android') {
+        // split exe and debug info
+        let cmd = aarch64_linux_android_objcopy
         child_process.execSync(`bash -c "${cmd} --only-keep-debug target/${target}/${buildType}/${bin_name}${ext} target/${target}/${buildType}/${bin_name}${ext}.debug"`)
         child_process.execSync(`bash -c "${cmd} --strip-debug --strip-unneeded target/${target}/${buildType}/${bin_name}${ext}"`)
     }
