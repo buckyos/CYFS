@@ -54,22 +54,28 @@ impl PublicKey {
     }
 
     pub fn encrypt(&self, data: &[u8], output: &mut [u8]) -> BuckyResult<usize> {
+        let encrypted_buf = self.encrypt_data(data)?;
+        if output.len() < encrypted_buf.len() {
+            let msg = format!(
+                "not enough buffer for public key encrypt buf: {} < {}",
+                output.len(),
+                encrypted_buf.len()
+            );
+            Err(BuckyError::new(BuckyErrorCode::OutOfLimit, msg))
+        } else {
+            output[..encrypted_buf.len()].copy_from_slice(encrypted_buf.as_slice());
+            Ok(encrypted_buf.len())
+        }
+    }
+
+    pub fn encrypt_data(&self, data: &[u8]) -> BuckyResult<Vec<u8>> {
         match self {
             Self::Rsa(public_key) => {
                 let mut rng = thread_rng();
                 let encrypted_buf =
                     public_key.encrypt(&mut rng, rsa::PaddingScheme::PKCS1v15Encrypt, data)?;
-                if output.len() < encrypted_buf.len() {
-                    let msg = format!(
-                        "not enough buffer for public key encrypt buf: {} < {}",
-                        output.len(),
-                        encrypted_buf.len()
-                    );
-                    Err(BuckyError::new(BuckyErrorCode::OutOfLimit, msg))
-                } else {
-                    output[..encrypted_buf.len()].copy_from_slice(encrypted_buf.as_slice());
-                    Ok(encrypted_buf.len())
-                }
+                
+                Ok(encrypted_buf)
             }
             Self::Secp256k1(_) => {
                  // 目前secp256k1的非对称加解密只支持交换aes_key时候使用
