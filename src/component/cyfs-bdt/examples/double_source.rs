@@ -104,14 +104,9 @@ async fn main() {
             &*down_stack,
             chunkid.clone(), 
             None, 
-            Some(SingleDownloadContext::streams(None, vec![
-                ref_stack.local_device_id().clone(),
-                src_stack.local_device_id().clone(),]
-            )),
-            vec![down_store.clone_as_writer()],
-        )
-        .await.unwrap();
-
+            Some(context), 
+            vec![ln_store.clone_as_writer()]).await.unwrap();
+        
         watch_resource(task);
 
         let recv = future::timeout(Duration::from_secs(50), watch_recv_chunk(ln_stack.clone(), chunkid.clone())).await.unwrap();
