@@ -50,20 +50,32 @@ message DsgContractBody {
     optional DsgChunkList extra_chunks = 1;
 }
 
-message DataSourceChangedState {
+message ReserveState {
     repeated bytes chunks = 1;
 }
 
-message DataSourcePreparedState {
+message DataSourceChangedState {
     repeated bytes chunks = 1;
-    bytes data_source_stub = 2;
+    optional bytes data_source_stub = 2;
+    enum StorageType {
+        Cache = 0;
+        Backup = 1;
+    }
+    optional StorageType storage_type = 4;
+    oneof storage {
+        CacheStorage cache_storage = 5;
+        BackupStorage backup_storage = 6;
+    }
+    optional bytes witness = 7;
+    optional bytes prev_change = 8;
+    optional bytes stored_hash = 9;
 }
 
 message ContractState {
     enum ContractStateType {
         Initial = 0;
-        DataSourceChanged = 1;
-        DataSourcePrepared = 2;
+        Reserve = 1;
+        DataSourceChanged = 2;
         DataSourceSyncing = 3;
         DataSourceStored = 4;
         ContractExecuted = 5;
@@ -71,8 +83,8 @@ message ContractState {
     }
     ContractStateType state_type = 1;
     oneof state {
-        DataSourceChangedState data_source_changed = 2;
-        DataSourcePreparedState data_source_prepared = 3;
+        ReserveState reserve = 2;
+        DataSourceChangedState data_source_changed = 3;
     }
 }
 

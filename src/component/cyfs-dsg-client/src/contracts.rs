@@ -542,12 +542,19 @@ where
     // 初始状态
     pub fn initial_state(&self) -> DsgContractStateObject {
         match self.data_source() {
-            DsgDataSource::Immutable(chunks) => DsgContractStateObjectRef::new(
-                self.id(),
-                DsgContractState::DataSourceChanged(DsgDataSourceChangedState {
-                    chunks,
-                }),
-            ),
+            DsgDataSource::Immutable(chunks) => {
+                let stored_hash = hash_data(chunks.to_vec().unwrap().as_slice());
+                DsgContractStateObjectRef::new(
+                    self.id(),
+                    DsgContractState::DataSourceChanged(DsgDataSourceChangedState {
+                        chunks,
+                        storage: Some(self.storage().clone()),
+                        witness: None,
+                        prev_change: None,
+                        stored_hash: Some(stored_hash)
+                    }),
+                )
+            },
             DsgDataSource::Mutable(_) => {
                 DsgContractStateObjectRef::new(self.id(), DsgContractState::Initial)
             }
@@ -586,8 +593,37 @@ where
 }
 
 #[derive(Clone, Debug)]
+pub struct ReserveState {
+    pub chunks: Vec<ChunkId>,
+}
+
+impl TryFrom<&ReserveState> for protos::ReserveState {
+    type Error = BuckyError;
+
+    fn try_from(rust: &ReserveState) -> BuckyResult<Self> {
+        let mut proto = protos::ReserveState::new();
+        proto.set_chunks(ProtobufCodecHelper::encode_buf_list(&rust.chunks)?);
+        Ok(proto)
+    }
+}
+
+impl TryFrom<protos::ReserveState> for ReserveState {
+    type Error = BuckyError;
+
+    fn try_from(mut proto: protos::ReserveState) -> BuckyResult<Self> {
+        Ok(Self {
+            chunks: ProtobufCodecHelper::decode_buf_list(proto.take_chunks())?,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct DsgDataSourceChangedState {
     pub chunks: Vec<ChunkId>,
+    pub storage: Option<DsgStorage>,
+    pub witness: Option<Vec<u8>>,
+    pub prev_change: Option<ObjectId>,
+    pub stored_hash: Option<HashValue>,
 }
 
 impl TryFrom<&DsgDataSourceChangedState> for protos::DataSourceChangedState {
@@ -596,6 +632,30 @@ impl TryFrom<&DsgDataSourceChangedState> for protos::DataSourceChangedState {
     fn try_from(rust: &DsgDataSourceChangedState) -> BuckyResult<Self> {
         let mut proto = protos::DataSourceChangedState::new();
         proto.set_chunks(ProtobufCodecHelper::encode_buf_list(&rust.chunks)?);
+        if rust.storage.is_some() {
+            match rust.storage.as_ref().unwrap() {
+                DsgStorage::Cache(cache) => {
+                    proto.set_storage_type(protos::DataSourceChangedState_StorageType::Cache);
+                    proto.set_cache_storage(protos::CacheStorage::try_from(cache)?);
+                }
+                DsgStorage::Backup(backup) => {
+                    proto.set_storage_type(protos::DataSourceChangedState_StorageType::Backup);
+                    proto.set_backup_storage(protos::BackupStorage::try_from(backup)?);
+                }
+            }
+        }
+
+        if rust.witness.is_some() {
+            proto.set_witness(rust.witness.clone().unwrap());
+        }
+
+        if rust.prev_change.is_some() {
+            proto.set_prev_change(rust.prev_change.as_ref().unwrap().as_slice().to_vec());
+        }
+
+        if rust.stored_hash.is_some() {
+            proto.set_stored_hash(rust.stored_hash.as_ref().unwrap().as_slice().to_vec());
+        }
         Ok(proto)
     }
 }
@@ -604,36 +664,24 @@ impl TryFrom<protos::DataSourceChangedState> for DsgDataSourceChangedState {
     type Error = BuckyError;
 
     fn try_from(mut proto: protos::DataSourceChangedState) -> BuckyResult<Self> {
+        let storage = if proto.has_storage_type() {
+            match proto.get_storage_type() {
+                protos::DataSourceChangedState_StorageType::Cache => {
+                    Some(DsgStorage::Cache(DsgCacheStorage::try_from(proto.take_cache_storage())?))
+                }
+                protos::DataSourceChangedState_StorageType::Backup => {
+                    Some(DsgStorage::Backup(DsgBackupStorage::try_from(proto.take_backup_storage())?))
+                }
+            }
+        } else {
+            None
+        };
         Ok(Self {
             chunks: ProtobufCodecHelper::decode_buf_list(proto.take_chunks())?,
-        })
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct DsgDataSourcePreparedState {
-    pub chunks: Vec<ChunkId>,
-    pub data_source_stub: ObjectId,
-}
-
-impl TryFrom<&DsgDataSourcePreparedState> for protos::DataSourcePreparedState {
-    type Error = BuckyError;
-
-    fn try_from(rust: &DsgDataSourcePreparedState) -> BuckyResult<Self> {
-        let mut proto = protos::DataSourcePreparedState::new();
-        proto.set_chunks(ProtobufCodecHelper::encode_buf_list(&rust.chunks)?);
-        proto.set_data_source_stub(rust.data_source_stub.to_vec()?);
-        Ok(proto)
-    }
-}
-
-impl TryFrom<protos::DataSourcePreparedState> for DsgDataSourcePreparedState {
-    type Error = BuckyError;
-
-    fn try_from(mut proto: protos::DataSourcePreparedState) -> BuckyResult<Self> {
-        Ok(Self {
-            chunks: ProtobufCodecHelper::decode_buf_list(proto.take_chunks())?,
-            data_source_stub: ProtobufCodecHelper::decode_buf(proto.take_data_source_stub())?,
+            storage,
+            witness: if proto.has_witness() {Some(proto.take_witness())} else {None},
+            prev_change: if proto.has_prev_change() {Some(ObjectId::clone_from_slice(proto.take_prev_change().as_slice()))} else {None},
+            stored_hash: if proto.has_stored_hash() {Some(HashValue::from(proto.take_stored_hash().as_slice()))} else {None}
         })
     }
 }
@@ -643,9 +691,9 @@ pub enum DsgContractState {
     Initial,
     // app -> dsg service
     // dsg service -> miner
-    DataSourceChanged(DsgDataSourceChangedState),
+    Reserve(ReserveState),
     // dsg -> app
-    DataSourcePrepared(DsgDataSourcePreparedState),
+    DataSourceChanged(DsgDataSourceChangedState),
     DataSourceSyncing,
     // app -> dsg
     DataSourceStored,
@@ -662,14 +710,13 @@ impl TryFrom<&DsgContractState> for protos::ContractState {
             DsgContractState::Initial => {
                 proto.set_state_type(protos::ContractState_ContractStateType::Initial);
             }
-            DsgContractState::DataSourceChanged(changed) => {
-                proto.set_state_type(protos::ContractState_ContractStateType::DataSourceChanged);
-                proto.set_data_source_changed(protos::DataSourceChangedState::try_from(changed)?);
+            DsgContractState::Reserve(changed) => {
+                proto.set_state_type(protos::ContractState_ContractStateType::Reserve);
+                proto.set_reserve(protos::ReserveState::try_from(changed)?);
             }
-            DsgContractState::DataSourcePrepared(prepared) => {
-                proto.set_state_type(protos::ContractState_ContractStateType::DataSourcePrepared);
-                proto
-                    .set_data_source_prepared(protos::DataSourcePreparedState::try_from(prepared)?);
+            DsgContractState::DataSourceChanged(prepared) => {
+                proto.set_state_type(protos::ContractState_ContractStateType::DataSourceChanged);
+                proto.set_data_source_changed(protos::DataSourceChangedState::try_from(prepared)?);
             }
             DsgContractState::DataSourceSyncing => {
                 proto.set_state_type(protos::ContractState_ContractStateType::DataSourceSyncing);
@@ -694,12 +741,12 @@ impl TryFrom<protos::ContractState> for DsgContractState {
     fn try_from(mut proto: protos::ContractState) -> BuckyResult<Self> {
         Ok(match proto.state_type {
             protos::ContractState_ContractStateType::Initial => Self::Initial,
-            protos::ContractState_ContractStateType::DataSourceChanged => Self::DataSourceChanged(
-                DsgDataSourceChangedState::try_from(proto.take_data_source_changed())?,
+            protos::ContractState_ContractStateType::Reserve => Self::Reserve(
+                ReserveState::try_from(proto.take_reserve())?,
             ),
-            protos::ContractState_ContractStateType::DataSourcePrepared => {
-                Self::DataSourcePrepared(DsgDataSourcePreparedState::try_from(
-                    proto.take_data_source_prepared(),
+            protos::ContractState_ContractStateType::DataSourceChanged => {
+                Self::DataSourceChanged(DsgDataSourceChangedState::try_from(
+                    proto.take_data_source_changed(),
                 )?)
             }
             protos::ContractState_ContractStateType::DataSourceSyncing => Self::DataSourceSyncing,
@@ -840,23 +887,26 @@ impl<'a> DsgContractStateObjectRef<'a> {
             DsgContractState::Initial => {
                 (DsgContractState::Initial, DsgContractStateBody { extra_chunks: None })
             }
+            DsgContractState::Reserve(state) => {
+                if state.chunks.len() > 2000 {
+                    (DsgContractState::Reserve(ReserveState {
+                        chunks: vec![],
+                    }), DsgContractStateBody { extra_chunks: Some(state.chunks) })
+                } else {
+                    (DsgContractState::Reserve(state), DsgContractStateBody { extra_chunks: None })
+                }
+            }
             DsgContractState::DataSourceChanged(state) => {
                 if state.chunks.len() > 2000 {
                     (DsgContractState::DataSourceChanged(DsgDataSourceChangedState {
                         chunks: vec![],
+                        storage: state.storage,
+                        witness: state.witness,
+                        prev_change: state.prev_change,
+                        stored_hash: state.stored_hash
                     }), DsgContractStateBody { extra_chunks: Some(state.chunks) })
                 } else {
                     (DsgContractState::DataSourceChanged(state), DsgContractStateBody { extra_chunks: None })
-                }
-            }
-            DsgContractState::DataSourcePrepared(state) => {
-                if state.chunks.len() > 2000 {
-                    (DsgContractState::DataSourcePrepared(DsgDataSourcePreparedState {
-                        chunks: vec![],
-                        data_source_stub: state.data_source_stub
-                    }), DsgContractStateBody { extra_chunks: Some(state.chunks) })
-                } else {
-                    (DsgContractState::DataSourcePrepared(state), DsgContractStateBody { extra_chunks: None })
                 }
             }
             DsgContractState::DataSourceSyncing => {
@@ -896,23 +946,26 @@ impl<'a> DsgContractStateObjectRef<'a> {
             DsgContractState::Initial => {
                 DsgContractState::Initial
             }
-            DsgContractState::DataSourceChanged(state) => {
+            DsgContractState::Reserve(state) => {
                 if state.chunks.len() == 0 && self.obj.body().as_ref().unwrap().content().extra_chunks.is_some() {
-                    DsgContractState::DataSourceChanged(DsgDataSourceChangedState {
+                    DsgContractState::Reserve(ReserveState {
                         chunks: self.obj.body().as_ref().unwrap().content().extra_chunks.as_ref().unwrap().clone()
                     })
                 } else {
-                    DsgContractState::DataSourceChanged(state.clone())
+                    DsgContractState::Reserve(state.clone())
                 }
             }
-            DsgContractState::DataSourcePrepared(state) => {
+            DsgContractState::DataSourceChanged(state) => {
                 if state.chunks.len() == 0 && self.obj.body().as_ref().unwrap().content().extra_chunks.is_some() {
-                    DsgContractState::DataSourcePrepared(DsgDataSourcePreparedState {
+                    DsgContractState::DataSourceChanged(DsgDataSourceChangedState {
                         chunks: self.obj.body().as_ref().unwrap().content().extra_chunks.as_ref().unwrap().clone(),
-                        data_source_stub: state.data_source_stub.clone()
+                        storage: state.storage.clone(),
+                        witness: state.witness.clone(),
+                        prev_change: state.prev_change.clone(),
+                        stored_hash: state.stored_hash.clone()
                     })
                 } else {
-                    DsgContractState::DataSourcePrepared(state.clone())
+                    DsgContractState::DataSourceChanged(state.clone())
                 }
             }
             DsgContractState::DataSourceSyncing => {
@@ -933,23 +986,23 @@ impl<'a> DsgContractStateObjectRef<'a> {
     pub fn next(&self, state: DsgContractState) -> BuckyResult<DsgContractStateObject> {
         let ref_objects = match &self.as_ref().desc().content().state {
             DsgContractState::Initial => match &state {
-                DsgContractState::DataSourceChanged(_) => Ok(vec![]),
+                DsgContractState::Reserve(_) => Ok(vec![]),
                 DsgContractState::ContractBroken => Ok(vec![]),
                 _ => Err(BuckyError::new(
                     BuckyErrorCode::ErrorState,
                     "state should be data source changed after initial",
                 )),
             },
-            DsgContractState::DataSourceChanged(_) => match &state {
-                DsgContractState::DataSourcePrepared(_) => Ok(vec![]),
+            DsgContractState::Reserve(_) => match &state {
+                DsgContractState::DataSourceChanged(_) => Ok(vec![]),
                 DsgContractState::ContractBroken => Ok(vec![]),
                 _ => Err(BuckyError::new(
                     BuckyErrorCode::ErrorState,
                     "state should be data source prepared after data source changed",
                 )),
             },
-            DsgContractState::DataSourcePrepared(prepared) => match &state {
-                DsgContractState::DataSourceSyncing => Ok(vec![prepared.data_source_stub.clone()]),
+            DsgContractState::DataSourceChanged(_) => match &state {
+                DsgContractState::DataSourceSyncing => Ok(vec![]),
                 DsgContractState::DataSourceStored => Ok(vec![]),
                 DsgContractState::ContractBroken => Ok(vec![]),
                 _ => Err(BuckyError::new(
@@ -988,23 +1041,26 @@ impl<'a> DsgContractStateObjectRef<'a> {
             DsgContractState::Initial => {
                 (DsgContractState::Initial, DsgContractStateBody { extra_chunks: None })
             }
+            DsgContractState::Reserve(state) => {
+                if state.chunks.len() > 2000 {
+                    (DsgContractState::Reserve(ReserveState {
+                        chunks: vec![],
+                    }), DsgContractStateBody { extra_chunks: Some(state.chunks) })
+                } else {
+                    (DsgContractState::Reserve(state), DsgContractStateBody { extra_chunks: None })
+                }
+            }
             DsgContractState::DataSourceChanged(state) => {
                 if state.chunks.len() > 2000 {
                     (DsgContractState::DataSourceChanged(DsgDataSourceChangedState {
                         chunks: vec![],
+                        storage: state.storage.clone(),
+                        witness: state.witness.clone(),
+                        prev_change: state.prev_change.clone(),
+                        stored_hash: state.stored_hash.clone()
                     }), DsgContractStateBody { extra_chunks: Some(state.chunks) })
                 } else {
                     (DsgContractState::DataSourceChanged(state), DsgContractStateBody { extra_chunks: None })
-                }
-            }
-            DsgContractState::DataSourcePrepared(state) => {
-                if state.chunks.len() > 2000 {
-                    (DsgContractState::DataSourcePrepared(DsgDataSourcePreparedState {
-                        chunks: vec![],
-                        data_source_stub: state.data_source_stub
-                    }), DsgContractStateBody { extra_chunks: Some(state.chunks) })
-                } else {
-                    (DsgContractState::DataSourcePrepared(state), DsgContractStateBody { extra_chunks: None })
                 }
             }
             DsgContractState::DataSourceSyncing => {

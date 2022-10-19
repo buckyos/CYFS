@@ -1,7 +1,7 @@
 
 use std::{
-    convert::TryFrom, 
-    time::Duration, 
+    convert::TryFrom,
+    time::Duration,
 };
 use async_std::{
     io::prelude::*
@@ -10,11 +10,9 @@ use async_std::{
 use sha2::Digest;
 use cyfs_base::*;
 use cyfs_bdt::*;
-use cyfs_lib::*;
 use crate::{
-    protos, 
-    obj_id, 
-    data_source::*, 
+    protos,
+    obj_id,
     contracts::dsg_dec_id
 };
 
@@ -52,11 +50,19 @@ impl TryFrom<protos::ChallengeSample> for DsgChallengeSample {
 
 impl_default_protobuf_raw_codec!(DsgChallengeSample, protos::ChallengeSample);
 
+#[derive(Copy, Clone)]
+#[repr(u32)]
+pub enum ChallengeType {
+    Full = 1,
+    State,
+}
+
 #[derive(Clone)]
 pub struct DsgChallengeDesc {
     contract_id: ObjectId,
     contract_state: ObjectId,
     samples: Vec<DsgChallengeSample>,
+    challenge_type: ChallengeType,
 }
 
 impl TryFrom<&DsgChallengeDesc> for protos::ChallengeDesc {
@@ -67,6 +73,7 @@ impl TryFrom<&DsgChallengeDesc> for protos::ChallengeDesc {
         proto.set_contract_id(rust.contract_id.to_vec()?);
         proto.set_contract_state(rust.contract_state.to_vec()?);
         proto.set_samples(ProtobufCodecHelper::encode_nested_list(&rust.samples)?);
+        proto.set_challenge_type(rust.challenge_type as u32);
         Ok(proto)
     }
 }
@@ -79,6 +86,7 @@ impl TryFrom<protos::ChallengeDesc> for DsgChallengeDesc {
             contract_id: ProtobufCodecHelper::decode_buf(proto.take_contract_id())?,
             contract_state: ProtobufCodecHelper::decode_buf(proto.take_contract_state())?,
             samples: ProtobufCodecHelper::decode_nested_list(proto.take_samples())?,
+            challenge_type: if proto.has_challenge_type() {if proto.get_challenge_type() == 1 {ChallengeType::Full} else {ChallengeType::State}} else {ChallengeType::State}
         })
     }
 }
@@ -115,7 +123,7 @@ pub struct DsgChallengeObjectRef<'a> {
 
 impl<'a> std::fmt::Display for DsgChallengeObjectRef<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DsgChallengeObject{{id={}, contract={}, state={}, create_at={}, expire_at={}, samples={:?}}}", 
+        write!(f, "DsgChallengeObject{{id={}, contract={}, state={}, create_at={}, expire_at={}, samples={:?}}}",
             self.id(), self.contract_id(), self.contract_state(), self.create_at(), self.expire_at(), self.samples())
     }
 }
@@ -168,12 +176,17 @@ impl<'a> DsgChallengeObjectRef<'a> {
         &self.obj.desc().content().samples
     }
 
+    pub fn challenge_type(&self) -> ChallengeType {
+        self.obj.desc().content().challenge_type
+    }
+
     pub fn new<'b>(
         owner: ObjectId,
         contract_id: ObjectId,
         contract_state: ObjectId,
         chunks: &Vec<ChunkId>,
         options: &DsgChallengeOptions,
+        challenge_type: ChallengeType,
     ) -> DsgChallengeObject {
         let chunk_list = ChunkListDesc::from_chunks(chunks);
         let mut samples = vec![];
@@ -195,6 +208,7 @@ impl<'a> DsgChallengeObjectRef<'a> {
             contract_id,
             contract_state: contract_state.clone(),
             samples,
+            challenge_type
         };
         let now = bucky_time_now();
         let challenge = NamedObjectBuilder::new(desc, DsgChallengeBody {})
@@ -340,21 +354,17 @@ impl<'a> DsgProofObjectRef<'a> {
 
     // 校验 proof
     pub async fn verify<'b>(
-        &self, 
-        stack: &SharedCyfsStack, 
+        &self,
         challenge_ref: DsgChallengeObjectRef<'b>,
-        merged: ChunkListDesc, 
-        sources: ChunkListDesc, 
-        stub: DsgDataSourceStubObjectRef<'b>,
+        chunks: &Vec<ChunkId>,
         reader: Box<dyn ChunkReader>,
     ) -> BuckyResult<bool> {
         let mut hasher = sha2::Sha256::new();
         hasher.input(&challenge_ref.id().to_vec()?[..]);
         for sample in challenge_ref.samples() {
-            let mut r = stub.read_sample(stack, &reader, merged.clone(), sources.clone(), sample).await?;
-            let mut buf = vec![0u8; sample.sample_len as usize];
-            let _ = r.read(buf.as_mut_slice()).await?;
-            hasher.input(&buf[..]);
+            let chunk_id = &chunks[sample.chunk_index as usize];
+            let chunk = reader.get(&chunk_id).await?;
+            hasher.input(&chunk.as_slice()[(sample.offset_in_chunk as usize..(sample.offset_in_chunk + sample.sample_len as u64) as usize)]);
         }
         let proof = hasher.result().into();
         Ok(self.as_ref().desc().content().proof == proof)

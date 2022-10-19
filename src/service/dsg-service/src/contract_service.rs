@@ -44,7 +44,7 @@ impl Default for DsgServiceConfig {
             repost_challenge_interval: Duration::from_secs(660),
             challenge_interval: Duration::from_secs(24 * 3600),
             merge_chunk_size: u32::MAX as u64,
-            split_chunk_size: 18 * 1024 * 1024
+            split_chunk_size: 16 * 1024 * 1024
         }
     }
 }
@@ -153,7 +153,7 @@ impl std::fmt::Display for DsgService {
 
 impl DsgService {
     pub async fn new(stack: Arc<SharedCyfsStack>, config: DsgServiceConfig) -> BuckyResult<Self> {
-        if config.split_chunk_size % DsgDataSourceStubObjectRef::enc_block_len() != 0 {
+        if config.split_chunk_size % ChunkAesCodec::enc_block_len() != 0 {
             return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "config split not n * key length"));
         }
         let service = Self(Arc::new(ServiceImpl {
@@ -163,7 +163,7 @@ impl DsgService {
         }));
 
         let _ = service.listen().await?;
-        //let _ = service.stack().wait_online(None).await?;
+        let _ = service.stack().wait_online(None).await?;
 
         {
             let service = service.clone();
@@ -216,7 +216,6 @@ impl DsgService {
                         log::error!("{} OnSyncContractState failed, id={} from={} err=decode state object {}", self.service, param.request.object.object_id, param.request.common.source, err);
                         err
                     })?;
-                // TODO： 这里需要一个来源设备，但是新的RequestSourceInfo可能没有来源Device信息了，先改的能通过编译, 逻辑可能不对
                 let new_state = self.service.sync_contract_state(state, param.request.common.source.zone.device.as_ref().map(|d|d.object_id().clone())).await?;
                 Ok(RouterHandlerPostObjectResult {
                     action: RouterHandlerAction::Response,
@@ -490,6 +489,18 @@ impl DsgService {
             pre_state_ref,
             state_ref).await {
             Ok(_) => {
+                if state_ref.prev_state_id().is_none() {
+                    op.set_with_key(
+                        format!("/dsg-service/contracts/{}/", state_ref.contract_id()),
+                        "contract",
+                        state_ref.contract_id(),
+                        None,
+                        true
+                    ).await.map_err(|err| {
+                        log::error!("{} on sync contract state failed, contract={}, state={}, err=op root state {}", self, state_ref.contract_id(), state_ref.id(), err);
+                        err
+                    })?;
+                }
                 op.set_with_key(
                     format!("/dsg-service/contracts/{}/", state_ref.contract_id()),
                     "state",
@@ -545,7 +556,7 @@ impl DsgService {
         &self,
         contract: DsgContractObjectRef<'a, DsgIgnoreWitness>,
         state: DsgContractStateObjectRef<'a>,
-        prepared: &'a DsgDataSourcePreparedState
+        prepared: &'a DsgDataSourceChangedState
     ) -> BuckyResult<()> {
         log::info!("{} sync data source to miner, contract={}, state={}", self, contract, state);
         let challenge = match self.get_contract_latest_challenge(&contract.id()).await {
@@ -564,7 +575,7 @@ impl DsgService {
                     log::error!("{} sync data source to miner failed, contract={}, state={}, reason=get latest challenge {}", self, contract.id(), state.id(), err);
                     Err(err)
                 } else {
-                    let challenge = self.create_challenge(state, prepared, &self.config().initial_challenge).await
+                    let challenge = self.create_challenge(state, &prepared.chunks, &self.config().initial_challenge, ChallengeType::State).await
                         .map_err(|err| {
                             log::error!("{} sync data source to miner failed, contract={}, state={}, reason=create challenge {}", self, contract.id(), state.id(), err);
                             err
@@ -592,7 +603,7 @@ impl DsgService {
         }?;
 
         let challenge_ref = DsgChallengeObjectRef::from(&challenge);
-        let _ = self.post_challenge(challenge_ref, self.get_miner_device_id(contract.miner()).await?).await
+        let _ = self.post_challenge(challenge_ref, self.get_miner_device_id(contract.miner()).await?, contract.witness_dec_id().map(|v| v.clone())).await
             .map_err(|err| {
                 log::error!("{} sync data source to miner failed, contract={}, state={}, challenge={}, reason=post challenge to {} {}", self, contract.id(), state.id(), challenge_ref.id(), contract.miner(), err);
                 err
@@ -614,51 +625,54 @@ impl DsgService {
         &self,
         contract: DsgContractObjectRef<'a, DsgIgnoreWitness>,
         state: DsgContractStateObjectRef<'a>,
-        changed: &'a DsgDataSourceChangedState
+        changed: &'a ReserveState
     ) -> BuckyResult<()> {
         log::info!("{} prepare data source, contract={}, changed={}", self, contract, state);
         // let service = self.clone();
-        let sources = ChunkListDesc::from_chunks(&changed.chunks);
-        let stub = match contract.storage() {
-            DsgStorage::Cache(_) => {
-                DsgDataSourceStubObjectRef::unchanged()
-            },
-            DsgStorage::Backup(_) => {
-                DsgDataSourceStubObjectRef::merge_with_key(
-                    self.stack(),
-                    sources.clone(),
-                    AesKey::random(),
-                    self.config().merge_chunk_size,
-                    self.config().split_chunk_size as u32)
-            }
-        };
-        let stub_ref = DsgDataSourceStubObjectRef::from(&stub);
-        log::info!("{} prepare data source with function, contract={}, changed={}, stub={}", self, contract.id(), state.id(), stub_ref);
+        // let sources = ChunkListDesc::from_chunks(&changed.chunks);
+        // let stub = match contract.storage() {
+        //     DsgStorage::Cache(_) => {
+        //         DsgDataSourceStubObjectRef::unchanged()
+        //     },
+        //     DsgStorage::Backup(_) => {
+        //         DsgDataSourceStubObjectRef::merge_with_key(
+        //             self.stack(),
+        //             sources.clone(),
+        //             AesKey::random(),
+        //             self.config().merge_chunk_size,
+        //             self.config().split_chunk_size as u32)
+        //     }
+        // };
+        // let stub_ref = DsgDataSourceStubObjectRef::from(&stub);
+        // log::info!("{} prepare data source with function, contract={}, changed={}, stub={}", self, contract.id(), state.id(), stub_ref);
+        //
+        // let to_store_chunks = stub_ref.apply(self.0.stack.clone(), sources).await
+        //     .map_err(|err| {
+        //         log::error!("{} prepare data source failed, contract={}, changed={}, stub={}, err=apply functions {}", self, contract.id(), state.id(), stub_ref.id(), err);
+        //         err
+        //     })?;
+        // self.put_object_to_noc(stub_ref.id(), stub_ref.as_ref()).await
+        //     .map_err(|err| {
+        //         log::error!("{} prepare data source failed, contract={}, changed={}, stub={}, err=put stub to noc {}", self, contract.id(), state.id(), stub_ref.id(), err);
+        //         err
+        //     })?;
 
-        let to_store_chunks = stub_ref.apply(self.0.stack.clone(), sources).await
-            .map_err(|err| {
-                log::error!("{} prepare data source failed, contract={}, changed={}, stub={}, err=apply functions {}", self, contract.id(), state.id(), stub_ref.id(), err);
-                err
-            })?;
-        self.put_object_to_noc(stub_ref.id(), stub_ref.as_ref()).await
-            .map_err(|err| {
-                log::error!("{} prepare data source failed, contract={}, changed={}, stub={}, err=put stub to noc {}", self, contract.id(), state.id(), stub_ref.id(), err);
-                err
-            })?;
-
-        let prepared = state.next(DsgContractState::DataSourcePrepared(
-            DsgDataSourcePreparedState {
-                chunks: to_store_chunks,
-                data_source_stub: stub_ref.id()
+        let prepared = state.next(DsgContractState::DataSourceChanged(
+            DsgDataSourceChangedState {
+                chunks: changed.chunks.clone(),
+                storage: None,
+                witness: None,
+                prev_change: None,
+                stored_hash: Some(hash_data(changed.chunks.to_vec()?.as_slice()))
             })).unwrap();
         self.put_object_to_noc(DsgContractStateObjectRef::from(&prepared).id(), &prepared).await
             .map_err(|err| {
-                log::error!("{} prepare data source failed, contract={}, changed={}, stub={}, err=put state to noc {}", self, contract.id(), state.id(), stub_ref.id(), err);
+                log::error!("{} prepare data source failed, contract={}, changed={}, err=put state to noc {}", self, contract.id(), state.id(), err);
                 err
             })?;
         self.on_sync_contract_state(prepared, None).await
             .map_err(|err| {
-                log::error!("{} prepare data source failed, contract={}, changed={}, stub={}, err={}", self, contract.id(), state.id(), stub_ref.id(), err);
+                log::error!("{} prepare data source failed, contract={}, changed={}, err={}", self, contract.id(), state.id(), err);
                 err
             })
             .map(|_| ())
@@ -717,11 +731,20 @@ impl DsgService {
         to_state: DsgContractStateObjectRef<'a>
     ) -> BuckyResult<()> {
         match to_state.state() {
-            DsgContractState::DataSourceChanged(changed) => {
+            DsgContractState::Reserve(changed) => {
                 let _ = self.prepare_data_source(contract, to_state, &changed).await?;
             },
-            DsgContractState::DataSourcePrepared(prepared) => {
-                let _ = self.sync_data_source_to_miner(contract, to_state, &prepared).await?;
+            DsgContractState::DataSourceChanged(prepared) => {
+                let contract = contract.as_ref().clone();
+                let state = to_state.as_ref().clone();
+                let this = self.clone();
+                async_std::task::spawn(async move {
+                    let contract_ref = DsgContractObjectRef::from(&contract);
+                    let state_ref = DsgContractStateObjectRef::from(&state);
+                    if let Err(e) = this.sync_data_source_to_miner(contract_ref, state_ref, &prepared).await {
+                        log::error!("sync_data_source_to_miner err {}", e);
+                    }
+                });
             },
             // DsgContractState::ContractBroken => {
             //     let _ = self.sync_data_source_to_miner(contract, to_state, prepared).await?;
@@ -781,139 +804,141 @@ impl DsgService {
                 log::error!("{} on proof failed, proof={}, err=op root state {} ", self, proof.id(), err);
                 err
             })?;
-        let posted_challenge = op.get_by_key(format!("/dsg-service/contracts/{}/", prepared_state_ref.contract_id()), "challenge").await
-            .map_err(|err| {
-                log::error!("{} on proof failed, proof={}, err=op root state {} ", self, proof.id(), err);
-                err
-            })?
-            .ok_or_else(|| {
-                let err = BuckyError::new(BuckyErrorCode::ErrorState, "no challenge");
-                log::error!("{} on proof failed, proof={}, err={}", self, proof.id(), err);
-                err
-            })?;
-        if posted_challenge != challenge_ref.id() {
-            let err = BuckyError::new(BuckyErrorCode::ErrorState, "mismatch challenge");
-            log::error!("{} on proof failed, proof={}, err={}", self, proof.id(), err);
-            Err(err)
-        } else {
-            //verify and sign it
-            if let DsgContractState::DataSourcePrepared(prepared) = prepared_state_ref.state() {
-                let changed = self.get_object_from_noc(prepared_state_ref.prev_state_id().unwrap().clone()).await
-                    .map_err(|err| {
-                        log::error!("{} on proof failed, proof={}, err=get changed object {} {}", self, proof.id(), prepared_state_ref.prev_state_id().unwrap(), err);
-                        err
-                    })?;
-                let changed_ref = DsgContractStateObjectRef::from(&changed);
-                let changed = if let DsgContractState::DataSourceChanged(changed) = changed_ref.state() {
-                    Ok(changed)
-                } else {
-                    Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
-                }?;
-
-                let stub = self.get_object_from_noc(prepared.data_source_stub.clone()).await
-                    .map_err(|err| {
-                        log::error!("{} on proof failed, proof={}, err=get data source stub {} {}", self, proof.id(), prepared.data_source_stub, err);
-                        err
-                    })?;
-                let stub_ref = DsgDataSourceStubObjectRef::from(&stub);
-                let sources = ChunkListDesc::from_chunks(&changed.chunks);
-                let merged = ChunkListDesc::from_chunks(&prepared.chunks);
-                let verified = proof.verify(self.stack(), challenge_ref, merged, sources, stub_ref, self.chunk_reader()).await
-                    .map_err(|err| {
-                        log::error!("{} on proof failed, proof={}, err=verify {}", self, proof.id(), err);
-                        err
-                    })?;
-                if verified {
-                    let cur_state_id = op.get_by_key(format!("/dsg-service/contracts/{}/", prepared_state_ref.contract_id()), "state").await
-                        .map_err(|err| {
-                            log::error!("{} on proof failed, proof={}, err=get cur state {}", self, proof.id(), err);
-                            err
-                        })?
-                        .ok_or_else(|| {
-                            log::error!("{} on proof failed, proof={}, err=get cur state no contract", self, proof.id());
-                            BuckyError::new(BuckyErrorCode::ErrorState, "no contract")
-                        })?;
-                    let cur_state: DsgContractStateObject = self.get_object_from_noc(cur_state_id.clone()).await
-                        .map_err(|err| {
-                            log::error!("{} on proof failed, proof={}, err=get cur state {}", self, proof.id(), err);
-                            err
-                        })?;
-                    let cur_state_ref = DsgContractStateObjectRef::from(&cur_state);
-                    match cur_state_ref.state() {
-                        DsgContractState::DataSourceSyncing => {
-                            if cur_state_ref.prev_state_id().is_none() || !cur_state_ref.prev_state_id().unwrap().eq(&prepared_state_ref.id()) {
-                                let err = BuckyError::new(BuckyErrorCode::ErrorState, "mismatch challenge");
-                                log::error!("{} on proof failed, proof={}, err=get cur state {}", self, proof.id(), err);
-                                Err(err)
-                            } else {
-                                let stored_state = prepared_state_ref.next(DsgContractState::DataSourceStored).unwrap();
-                                let stored_state_ref = DsgContractStateObjectRef::from(&stored_state);
-                                self.put_object_to_noc(stored_state_ref.id(), stored_state_ref.as_ref()).await
-                                    .map_err(|err| {
-                                        log::error!("{} on proof failed, proof={}, err=put signed proof {}", self, proof.id(), err);
-                                        err
-                                    })?;
-                                let _ = op.set_with_key(format!("/dsg-service/contracts/{}/", prepared_state_ref.contract_id()), "state", &stored_state_ref.id(), Some(cur_state_id), false).await
-                                    .map_err(|err| {
-                                        log::error!("{} on proof failed, proof={}, err=set contract state {}", self, proof.id(), err);
-                                        err
-                                    })?;
-                                let signed_proof = self.sign_proof(contract_ref.clone(), proof, &op).await
-                                    .map_err(|err| {
-                                        log::error!("{} on proof failed, proof={}, err=sign {}", self, proof.id(), err);
-                                        err
-                                    })?;
-                                let _ = op.commit().await
-                                    .map_err(|err| {
-                                        log::error!("{} on proof failed, proof={}, err=commit proof {}", self, proof.id(), err);
-                                        err
-                                    })?;
-                                self.contracts().finish_challenge(challenge_ref);
-                                let _ = self.on_post_contract_state_changed(contract_ref.clone(), Some(cur_state_ref), stored_state_ref).await
-                                    .map_err(|err| {
-                                        log::error!("{} on proof failed, proof={}, err=on post state changed {}", self, proof.id(), err);
-                                        err
-                                    })?;
-                                log::info!("{} on proof set contract stored, proof={}, contract={}", self, proof.id(), contract_ref);
-                                log::info!("{} on proof sign proof, proof={}", self, proof.id());
-                                Ok(signed_proof)
-                            }
-                        },
-                        DsgContractState::DataSourceStored => {
-                            if cur_state_ref.prev_state_id().is_none() || !cur_state_ref.prev_state_id().unwrap().eq(&prepared_state_ref.id()) {
-                                let err = BuckyError::new(BuckyErrorCode::ErrorState, "mismatch challenge");
-                                log::error!("{} on proof failed, proof={}, err={}", self, proof.id(), err);
-                                Err(err)
-                            } else {
-                                let signed_proof = self.sign_proof(contract_ref, proof, &op).await
-                                    .map_err(|err| {
-                                        log::error!("{} on proof failed, proof={}, err=sign {}", self, proof.id(), err);
-                                        err
-                                    })?;
-                                let _ = op.commit().await
-                                    .map_err(|err| {
-                                        log::error!("{} on proof failed, proof={}, err=commit op {}", self, proof.id(), err);
-                                        err
-                                    })?;
-                                self.contracts().finish_challenge(challenge_ref);
-                                log::info!("{} on proof sign proof, proof={}", self, proof.id());
-                                Ok(signed_proof)
-                            }
-                        },
-                        _ => {
-                            let err = BuckyError::new(BuckyErrorCode::ErrorState, "proof in error state");
-                            log::error!("{} on proof failed, proof={}, err={} {}", self, proof.id(), err, cur_state_ref);
-                            Err(err)
+        //verify and sign it
+        if let DsgContractState::DataSourceChanged(prepared) = prepared_state_ref.state() {
+            let chunks = match challenge_ref.challenge_type() {
+                ChallengeType::Full => {
+                    let op_env = self.stack().root_state_stub(None, None).create_path_op_env().await?;
+                    let (hash, chunks) = CyfsStackContractStoreChunkListManager::new(
+                        Arc::new(self.stack().clone()),
+                        &op_env,
+                        "/dsg-service/contracts".to_string()).get_chunk_list(prepared_state_ref.contract_id()).await?;
+                    assert_eq!(&hash, prepared.stored_hash.as_ref().unwrap());
+                    chunks
+                }
+                ChallengeType::State => {
+                    let op_env = self.stack().root_state_stub(None, None).create_path_op_env().await?;
+                    let manager = CyfsStackContractStoreChunkListManager::new(
+                        Arc::new(self.stack().clone()),
+                        &op_env,
+                        "/dsg-service/contracts".to_string());
+                    let (hash, mut chunks) = manager.get_chunk_list(prepared_state_ref.contract_id()).await?;
+                    if prepared.stored_hash.is_some() {
+                        if &hash != prepared.stored_hash.as_ref().unwrap() {
+                            chunks.append(&mut prepared.chunks.clone());
+                            let hash = manager.set_chunk_list(prepared_state_ref.contract_id(), chunks).await?;
+                            assert_eq!(&hash, prepared.stored_hash.as_ref().unwrap());
                         }
                     }
-                } else {
-                    let err = BuckyError::new(BuckyErrorCode::Reject, "verify failed");
+                    op_env.commit().await?;
+                    prepared.chunks
+                }
+            };
+            let verified = proof.verify(challenge_ref.clone(), &chunks, self.chunk_reader()).await
+                .map_err(|err| {
+                    log::error!("{} on proof failed, proof={}, err=verify {}", self, proof.id(), err);
+                    err
+                })?;
+            if verified {
+                let posted_challenge = op.get_by_key(format!("/dsg-service/contracts/{}/", prepared_state_ref.contract_id()), "challenge").await
+                    .map_err(|err| {
+                        log::error!("{} on proof failed, proof={}, err=op root state {} ", self, proof.id(), err);
+                        err
+                    })?;
+                if posted_challenge.is_some() && posted_challenge.as_ref().unwrap() != &challenge_ref.id() {
+                    let err = BuckyError::new(BuckyErrorCode::ErrorState, "mismatch challenge");
                     log::error!("{} on proof failed, proof={}, err={}", self, proof.id(), err);
-                    Err(err)
+                    return Err(err);
+                }
+                let cur_state_id = op.get_by_key(format!("/dsg-service/contracts/{}/", prepared_state_ref.contract_id()), "state").await
+                    .map_err(|err| {
+                        log::error!("{} on proof failed, proof={}, err=get cur state {}", self, proof.id(), err);
+                        err
+                    })?
+                    .ok_or_else(|| {
+                        log::error!("{} on proof failed, proof={}, err=get cur state no contract", self, proof.id());
+                        BuckyError::new(BuckyErrorCode::ErrorState, "no contract")
+                    })?;
+                let cur_state: DsgContractStateObject = self.get_object_from_noc(cur_state_id.clone()).await
+                    .map_err(|err| {
+                        log::error!("{} on proof failed, proof={}, err=get cur state {}", self, proof.id(), err);
+                        err
+                    })?;
+                let cur_state_ref = DsgContractStateObjectRef::from(&cur_state);
+                match cur_state_ref.state() {
+                    DsgContractState::DataSourceSyncing => {
+                        if cur_state_ref.prev_state_id().is_none() || !cur_state_ref.prev_state_id().unwrap().eq(&prepared_state_ref.id()) {
+                            let err = BuckyError::new(BuckyErrorCode::ErrorState, "mismatch challenge");
+                            log::error!("{} on proof failed, proof={}, err=get cur state {}", self, proof.id(), err);
+                            Err(err)
+                        } else {
+                            let stored_state = prepared_state_ref.next(DsgContractState::DataSourceStored).unwrap();
+                            let stored_state_ref = DsgContractStateObjectRef::from(&stored_state);
+                            self.put_object_to_noc(stored_state_ref.id(), stored_state_ref.as_ref()).await
+                                .map_err(|err| {
+                                    log::error!("{} on proof failed, proof={}, err=put signed proof {}", self, proof.id(), err);
+                                    err
+                                })?;
+                            let _ = op.set_with_key(format!("/dsg-service/contracts/{}/", prepared_state_ref.contract_id()), "state", &stored_state_ref.id(), Some(cur_state_id), false).await
+                                .map_err(|err| {
+                                    log::error!("{} on proof failed, proof={}, err=set contract state {}", self, proof.id(), err);
+                                    err
+                                })?;
+                            let signed_proof = self.sign_proof(contract_ref.clone(), proof, &op).await
+                                .map_err(|err| {
+                                    log::error!("{} on proof failed, proof={}, err=sign {}", self, proof.id(), err);
+                                    err
+                                })?;
+                            let _ = op.commit().await
+                                .map_err(|err| {
+                                    log::error!("{} on proof failed, proof={}, err=commit proof {}", self, proof.id(), err);
+                                    err
+                                })?;
+                            self.contracts().finish_challenge(challenge_ref);
+                            let _ = self.on_post_contract_state_changed(contract_ref.clone(), Some(cur_state_ref), stored_state_ref).await
+                                .map_err(|err| {
+                                    log::error!("{} on proof failed, proof={}, err=on post state changed {}", self, proof.id(), err);
+                                    err
+                                })?;
+                            log::info!("{} on proof set contract stored, proof={}, contract={}", self, proof.id(), contract_ref);
+                            log::info!("{} on proof sign proof, proof={}", self, proof.id());
+                            Ok(signed_proof)
+                        }
+                    },
+                    DsgContractState::DataSourceStored => {
+                        if cur_state_ref.prev_state_id().is_none() || !cur_state_ref.prev_state_id().unwrap().eq(&prepared_state_ref.id()) {
+                            let err = BuckyError::new(BuckyErrorCode::ErrorState, "mismatch challenge");
+                            log::error!("{} on proof failed, proof={}, err={}", self, proof.id(), err);
+                            Err(err)
+                        } else {
+                            let signed_proof = self.sign_proof(contract_ref, proof, &op).await
+                                .map_err(|err| {
+                                    log::error!("{} on proof failed, proof={}, err=sign {}", self, proof.id(), err);
+                                    err
+                                })?;
+                            let _ = op.commit().await
+                                .map_err(|err| {
+                                    log::error!("{} on proof failed, proof={}, err=commit op {}", self, proof.id(), err);
+                                    err
+                                })?;
+                            self.contracts().finish_challenge(challenge_ref);
+                            log::info!("{} on proof sign proof, proof={}", self, proof.id());
+                            Ok(signed_proof)
+                        }
+                    },
+                    _ => {
+                        let err = BuckyError::new(BuckyErrorCode::ErrorState, "proof in error state");
+                        log::error!("{} on proof failed, proof={}, err={} {}", self, proof.id(), err, cur_state_ref);
+                        Err(err)
+                    }
                 }
             } else {
-                unreachable!()
+                let err = BuckyError::new(BuckyErrorCode::Reject, "verify failed");
+                log::error!("{} on proof failed, proof={}, err={}", self, proof.id(), err);
+                Err(err)
             }
+        } else {
+            unreachable!()
         }
     }
 
@@ -1012,15 +1037,15 @@ impl DsgService {
         }
     }
 
-    async fn post_challenge<'a>(&self, challenge: DsgChallengeObjectRef<'a>, miner: ObjectId) -> BuckyResult<()> {
+    async fn post_challenge<'a>(&self, challenge: DsgChallengeObjectRef<'a>, miner: ObjectId, miner_dec_id: Option<ObjectId>) -> BuckyResult<()> {
         log::debug!("{} try post challenge, challenge={}", self, challenge);
 
-        let req_path = RequestGlobalStatePath::new(Some(dsg_dec_id()), Some("/dmc/dsg/miner/")).format_string();
+        let req_path = RequestGlobalStatePath::new(Some(miner_dec_id.unwrap_or(dsg_dec_id())), Some("/dmc/dsg/miner/")).format_string();
 
         let mut req = NONPostObjectOutputRequest::new(NONAPILevel::default(), challenge.id(), challenge.as_ref().to_vec().unwrap());
         req.common.target = Some(miner);
         req.common.req_path = Some(req_path);
-        
+
         if self.contracts().pre_post_challenge(challenge, self.config()) {
             let _ = self.stack().non_service().post_object(req).await
                 .map_err(|err| {
@@ -1081,7 +1106,7 @@ impl DsgService {
                         })?;
                     let state_ref = DsgContractStateObjectRef::from(&state);
                     let broken_state = match state_ref.state() {
-                        DsgContractState::DataSourcePrepared(_) => {
+                        DsgContractState::DataSourceChanged(_) => {
                             state_ref.next(DsgContractState::ContractBroken).unwrap()
                         },
                         DsgContractState::DataSourceSyncing => {
@@ -1099,7 +1124,7 @@ impl DsgService {
                 } else {
                     log::debug!("{} check contract repost challenge, contract={}, at={}, challenge={}", self, contract_id, now, challenge_ref);
                     // repost challenge to miner
-                    if let Ok(_) = self.post_challenge(challenge_ref, self.get_miner_device_id(contract_ref.miner()).await?).await {
+                    if let Ok(_) = self.post_challenge(challenge_ref, self.get_miner_device_id(contract_ref.miner()).await?, contract_ref.witness_dec_id().map(|v| v.clone())).await {
                         let state_id = op.get_by_key("state").await
                             .map_err(|err| {
                                 log::debug!("{} check contract failed, contract={}, at={}, err=get state {}", self, contract_id, now, err);
@@ -1116,7 +1141,7 @@ impl DsgService {
                                 err
                             })?;
                         let state_ref = DsgContractStateObjectRef::from(&state);
-                        if let DsgContractState::DataSourcePrepared(_) = state_ref.state() {
+                        if let DsgContractState::DataSourceChanged(_) = state_ref.state() {
                             let syncing_state = state_ref.next(DsgContractState::DataSourceSyncing).unwrap();
                             self.put_object_to_noc(DsgContractStateObjectRef::from(&syncing_state).id(), &syncing_state).await
                                 .map_err(|err| {
@@ -1169,7 +1194,7 @@ impl DsgService {
                                     })?;
                                 let prev_state_ref = DsgContractStateObjectRef::from(&prev_state);
                                 prev_state_id = prev_state_ref.prev_state_id().map(|i| i.clone());
-                                if let DsgContractState::DataSourcePrepared(_) = prev_state_ref.state() {
+                                if let DsgContractState::DataSourceChanged(_) = prev_state_ref.state() {
                                     prepared_state = Some(prev_state);
                                     break;
                                 }
@@ -1179,9 +1204,18 @@ impl DsgService {
                                 return Ok(());
                             }
 
+
+                            let (hash, stored_chunk_list) = {
+                                let op_env = self.stack().root_state_stub(None, None).create_path_op_env().await?;
+                                CyfsStackContractStoreChunkListManager::new(
+                                    Arc::new(self.stack().clone()),
+                                    &op_env,
+                                    "/dsg-service/contracts".to_string()).get_chunk_list(&contract_id).await?
+                            };
                             let prepared_state_ref = DsgContractStateObjectRef::from(prepared_state.as_ref().unwrap());
-                            if let DsgContractState::DataSourcePrepared(prepared) = prepared_state_ref.state() {
-                                let challenge = self.create_challenge(prepared_state_ref, &prepared, &self.config().store_challenge).await
+                            if let DsgContractState::DataSourceChanged(prepared) = prepared_state_ref.state() {
+                                assert_eq!(&hash, prepared.stored_hash.as_ref().unwrap());
+                                let challenge = self.create_challenge(prepared_state_ref, &stored_chunk_list, &self.config().store_challenge, ChallengeType::Full).await
                                     .map_err(|err| {
                                         log::debug!("{} check contract failed, contract={}, at={}, err=create challenge {}", self, contract_id, now, err);
                                         err
@@ -1214,7 +1248,7 @@ impl DsgService {
                                         err
                                     })?;
                                 log::info!("{} check contract create store challenge, contract={}, at={}, challenge={}", self, contract_id, now, challenge_ref);
-                                let _ = self.post_challenge(challenge_ref, self.get_miner_device_id(contract_ref.miner()).await?).await;
+                                let _ = self.post_challenge(challenge_ref, self.get_miner_device_id(contract_ref.miner()).await?, contract_ref.witness_dec_id().map(|v| v.clone())).await;
                             } else {
                                 unreachable!()
                             }
@@ -1262,16 +1296,18 @@ impl DsgService {
     async fn create_challenge<'a>(
         &self,
         state: DsgContractStateObjectRef<'a>,
-        prepared: &DsgDataSourcePreparedState,
-        options: &DsgChallengeOptions
+        chunks: &Vec<ChunkId>,
+        options: &DsgChallengeOptions,
+        challenge_type: ChallengeType,
     ) -> BuckyResult<DsgChallengeObject> {
         log::info!("{} try create challenge, state={}, options={:?}", self, state, options);
         let challenge = DsgChallengeObjectRef::new(
             self.stack().local_device_id().object_id().clone(),
             state.contract_id().clone(),
             state.id(),
-            &prepared.chunks,
-            options);
+            chunks,
+            options,
+            challenge_type);
         let challenge_ref = DsgChallengeObjectRef::from(&challenge);
         self.put_object_to_noc(challenge_ref.id(), challenge_ref.as_ref()).await
             .map_err(|err| {
@@ -1290,5 +1326,13 @@ impl DsgService {
         } else {
             Err(BuckyError::new(BuckyErrorCode::NotFound, "no challenge"))
         }
+    }
+
+    pub async fn recovery(&self, contract_id: &ObjectId, state_id: &ObjectId) -> BuckyResult<()> {
+        let op = self.stack().root_state_stub(None, None).create_single_op_env().await?;
+        op.load_by_path(format!("/dsg-service/contracts/{}/", contract_id)).await?;
+        op.set_with_key("state", state_id, None, true).await?;
+        op.commit().await?;
+        Ok(())
     }
 }

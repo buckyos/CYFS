@@ -1798,6 +1798,7 @@ dependencies = [
  "block-modes",
  "cyfs-base",
  "cyfs-bdt",
+ "cyfs-chunk-lib",
  "cyfs-core",
  "cyfs-debug",
  "cyfs-lib",

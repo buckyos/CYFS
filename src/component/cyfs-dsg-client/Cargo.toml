@@ -25,6 +25,7 @@ cyfs-util = { path = '../cyfs-util', version = '0.6' }
 cyfs-debug = { path = '../cyfs-debug', version = '0.6' }
 cyfs-core = { path = '../cyfs-core', version = '0.6' }
 cyfs-bdt = { path = '../cyfs-bdt', version = '0.6' }
+cyfs-chunk-lib = { path = '../cyfs-chunk-lib', version = '0.6'}
 
 [build-dependencies]
 protoc-rust = '2'
