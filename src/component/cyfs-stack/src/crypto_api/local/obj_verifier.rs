@@ -394,9 +394,9 @@ impl ObjectVerifier {
         }
 
         info!(
-            "verify object signs success! obj={}, pk={:?}, type={:?}",
+            "verify object signs success! obj={}, type={:?}",
             req.object_id,
-            verifier.public_key(),
+            // verifier.public_key(),
             verify_type
         );
 

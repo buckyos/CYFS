@@ -1223,20 +1223,20 @@ impl SqliteDBDataCache {
             UPDATE chunk SET update_time=?1 WHERE chunk_id=?2;
         "#;
 
-        let udpate_time = bucky_time_now() as i64;
-        let params = params![udpate_time, chunk_id];
+        let update_time = bucky_time_now() as i64;
+        let params = params![update_time, chunk_id];
 
         conn.execute(sql, params).map_err(|e| {
             let msg = format!(
                 "update chunk update_time error: chunk={}, update_time={}, err={}",
-                chunk_id, udpate_time, e
+                chunk_id, update_time, e
             );
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
         })?;
 
-        info!("update chunk update_time success! chunk={}, update_time={}", chunk_id, udpate_time);
+        info!("update chunk update_time success! chunk={}, update_time={}", chunk_id, update_time);
 
         Ok(())
     }
@@ -1312,7 +1312,7 @@ impl SqliteDBDataCache {
         }
         let old_state = old_state.unwrap();
 
-        let udpate_time = bucky_time_now() as i64;
+        let update_time = bucky_time_now() as i64;
 
         // 根据不同的条件更新
         let count = if let Some(current_state) = &req.current_state {
@@ -1327,7 +1327,7 @@ impl SqliteDBDataCache {
             let sql = r#"
                 UPDATE chunk SET state=?1, update_time=?2 WHERE chunk_id=?3 AND state=?4;
             "#;
-            let params = params![state, udpate_time, chunk_id, current_state];
+            let params = params![state, update_time, chunk_id, current_state];
 
             conn.execute(sql, params).map_err(|e| {
                 let msg = format!(
@@ -1343,7 +1343,7 @@ impl SqliteDBDataCache {
                 UPDATE chunk SET state=?1, update_time=?2 WHERE chunk_id=?3;
             "#;
 
-            let params = params![state, udpate_time, chunk_id];
+            let params = params![state, update_time, chunk_id];
 
             conn.execute(sql, params).map_err(|e| {
                 let msg = format!(

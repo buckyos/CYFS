@@ -105,7 +105,7 @@ impl SystemInfoManagerInner {
         self.handler.refresh_all();
         self.update_memory();
         self.update_cpu();
-        self.udpate_network();
+        self.update_network();
         self.update_disks();
     }
 
@@ -147,7 +147,7 @@ impl SystemInfoManagerInner {
         self.info_inner.cpu_usage = self.handler.global_cpu_info().cpu_usage();
     }
 
-    fn udpate_network(&mut self) {
+    fn update_network(&mut self) {
         let networks = self.handler.networks();
         let mut received_total = 0;
         let mut transmitted_total = 0;

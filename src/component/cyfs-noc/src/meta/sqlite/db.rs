@@ -133,7 +133,7 @@ impl SqliteMetaStorage {
             for version in old + 1..CURRENT_VERSION + 1 {
                 Self::update_db(conn.deref_mut(), version)?;
 
-                Self::udpate_db_version(&conn, version)?;
+                Self::update_db_version(&conn, version)?;
 
                 assert_eq!(Self::get_db_version(&conn).unwrap(), version);
             }
@@ -217,7 +217,7 @@ impl SqliteMetaStorage {
         Ok(ret)
     }
 
-    fn udpate_db_version(conn: &Connection, version: i32) -> BuckyResult<()> {
+    fn update_db_version(conn: &Connection, version: i32) -> BuckyResult<()> {
         let sql = format!("PRAGMA USER_VERSION = {}", version);
 
         let ret = conn.execute(&sql, []).map_err(|e| {
@@ -374,7 +374,7 @@ impl SqliteMetaStorage {
             retry_count += 1;
             if retry_count > 16 {
                 let msg = format!(
-                    "udpate object extend max retry count! obj={}",
+                    "update object extend max retry count! obj={}",
                     req.object_id
                 );
                 error!("{}", msg);
@@ -1009,7 +1009,7 @@ impl SqliteMetaStorage {
             retry_count += 1;
             if retry_count > 16 {
                 let msg = format!(
-                    "udpate object extend max retry count! obj={}",
+                    "update object extend max retry count! obj={}",
                     req.object_id
                 );
                 error!("{}", msg);

@@ -36,7 +36,7 @@ impl std::fmt::Display for CurrentZoneInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "device={},category={},ood={},zone={},zone_role={},ood_work_mode={},owner={},owner_udpatetime={}",
+            "device={},category={},ood={},zone={},zone_role={},ood_work_mode={},owner={},owner_updatetime={}",
             self.device_id,
             self.device_category,
             self.zone_device_ood_id,
