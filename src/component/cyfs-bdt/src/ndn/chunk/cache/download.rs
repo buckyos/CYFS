@@ -81,7 +81,16 @@ impl ChunkDownloader {
                         }
                     },
                     Err(_err) => {
-                        downloader.try_download(stream_cache);
+                        let state = &mut *downloader.0.state.write().unwrap();
+                        match &state {
+                            StateImpl::Loading => {
+                                *state = StateImpl::Downloading(DownloadingState { 
+                                    cache: stream_cache, 
+                                    session: None 
+                                });
+                            },
+                            _ => unreachable!()
+                        }
                     }
                 }
             });
@@ -114,69 +123,7 @@ impl ChunkDownloader {
         return Ok(cache)
     }
 
-    fn try_download(&self, stream_cache: ChunkStreamCache) {
-        let stack = Stack::from(&self.0.stack);
-        let mut sources = self.context().sources_of(|source| {
-            if source.object_id.is_none() || source.object_id.as_ref().unwrap() == self.chunk().as_object_id() {
-                true
-            } else {
-                false
-            }
-        }, 1);
-
-        if sources.len() > 0 {
-            let cache = stack.ndn().chunk_manager().raw_caches().alloc_mem(self.chunk().len());
-            let _ = stream_cache.load(false, cache.clone_as_raw_cache()).unwrap();
-
-            let source = sources.pop_front().unwrap();
-            let channel = stack.ndn().channel_manager().create_channel(&source.target);
-
-            let desc = match source.encode_desc {
-                ChunkEncodeDesc::Unknown => ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 
-                ChunkEncodeDesc::Stream(..) => source.encode_desc.fill_values(self.chunk()), 
-                _ => unimplemented!()
-            };
-            
-
-            let session = DownloadSession::new( 
-                self.chunk().clone(), 
-                stack.ndn().chunk_manager().gen_session_id(), 
-                channel.clone(), 
-                source.referer, 
-                desc, 
-                stream_cache.clone()
-            );
-           
-            let start = {
-                let state = &mut *self.0.state.write().unwrap();
-                match state {
-                    StateImpl::Loading => {
-                        let downloading = DownloadingState {
-                            cache: stream_cache.clone(), 
-                            session: Some(session.clone())
-                        };
-                        *state = StateImpl::Downloading(downloading);
-                        true
-                    }, 
-                    _ => false
-                }
-            };
-           
-            if start {
-                let _ = channel.download(session);
-            }
-        } 
-    }
-
-    pub fn add_context(&self, context: SingleDownloadContext) {
-        self.context().add_context(context);
-    }
-
-    pub fn remove_context(&self, context: &SingleDownloadContext) {
-        self.context().remove_context(context)
-    }
-
-    fn context(&self) -> &MultiDownloadContext {
+    pub fn context(&self) -> &MultiDownloadContext {
         &self.0.context
     }
 
@@ -228,13 +175,100 @@ impl ChunkDownloader {
     }
 
     pub fn on_drain(&self, _: u32) -> u32 {
-        if let Some(session) = {
+        let (session, cache) = {
             match &*self.0.state.read().unwrap() {
-                StateImpl::Downloading(downloading) => downloading.session.clone(), 
-                _ => None
+                StateImpl::Downloading(downloading) => (downloading.session.clone(), Some(downloading.cache.clone())), 
+                _ => (None, None)
             }
-        } {
-            session.cur_speed()
+        };
+        if let Some(session) = session {
+            let source = DownloadSource {
+                target: session.channel().remote().clone(), 
+                object_id: Some(self.chunk().object_id()), 
+                encode_desc: session.desc().clone(), 
+                referer: session.referer().cloned()
+            };
+            if !self.context().source_exists(&source) {
+                session.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "user canceled"));
+                let state = &mut *self.0.state.write().unwrap();
+                match state {
+                    StateImpl::Downloading(downloading) => {
+                        if let Some(exists) = downloading.session.clone() {
+                            if exists.ptr_eq(&session) {
+                                // info!("{} cancel session {}", self, session);
+                                downloading.session = None;
+                            }
+                        }
+                    }, 
+                    _ => {}
+                }
+            } else {
+                return session.cur_speed();
+            }
+        } 
+          
+        if cache.is_none() {
+            return 0;
+        }
+
+        let cache = cache.unwrap();
+        let stack = Stack::from(&self.0.stack);
+        let mut sources = self.context().sources_of(|source| {
+            if source.object_id.is_none() || source.object_id.as_ref().unwrap() == self.chunk().as_object_id() {
+                true
+            } else {
+                false
+            }
+        }, 1);
+
+        if sources.len() > 0 {
+            if !cache.loaded() {
+                let raw_cache = stack.ndn().chunk_manager().raw_caches().alloc_mem(self.chunk().len());
+                let _ = cache.load(false, raw_cache);
+            }
+           
+            let source = sources.pop_front().unwrap();
+            let channel = stack.ndn().channel_manager().create_channel(&source.target);
+
+            let desc = match source.encode_desc {
+                ChunkEncodeDesc::Unknown => ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 
+                ChunkEncodeDesc::Stream(..) => source.encode_desc.fill_values(self.chunk()), 
+                _ => unimplemented!()
+            };
+            
+
+            let session = DownloadSession::new( 
+                self.chunk().clone(), 
+                stack.ndn().chunk_manager().gen_session_id(), 
+                channel.clone(), 
+                source.referer, 
+                desc, 
+                cache.clone()
+            );
+        
+            let (start, exists) = {
+                let state = &mut *self.0.state.write().unwrap();
+                match state {
+                    StateImpl::Downloading(downloading) => {
+                        if let Some(exists) = &downloading.session {
+                            (false, Some(exists.clone()))
+                        } else {
+                            downloading.session = Some(session.clone());
+                            (true, None)
+                        }
+                    }, 
+                    _ => (false, None)
+                }
+            };
+        
+            if start {
+                let _ = channel.download(session.clone());
+                session.cur_speed()
+            } else if let Some(exists) = exists {
+                exists.cur_speed()
+            } else{
+                0
+            }
         } else {
             0
         }
