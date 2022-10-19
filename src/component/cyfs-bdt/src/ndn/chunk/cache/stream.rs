@@ -58,6 +58,10 @@ impl ChunkStreamCache {
         }))
     }
 
+    pub fn loaded(&self) -> bool {
+        self.0.state.read().unwrap().raw_cache.get().is_some()
+    }
+
     pub fn load(
         &self, 
         finished: bool, 

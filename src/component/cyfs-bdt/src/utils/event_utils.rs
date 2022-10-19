@@ -14,7 +14,6 @@ use crate::ndn::{
         DownloadSession
     }, 
 };
-
 pub struct RedirectHandle {
     redirect_target: DeviceId,
 }

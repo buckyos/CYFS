@@ -152,6 +152,46 @@ impl ChunkEncodeDesc {
             _ => unreachable!()
         }
     }
+
+    pub fn support_desc(&self, other: &Self) -> bool {
+        match self {
+            Self::Unknown => true, 
+            Self::Stream(self_start, self_end, self_step) => {
+                match other {
+                    Self::Unknown => true,
+                    Self::Stream(..) => {
+                        let (other_start, other_end, other_step) = other.unwrap_as_stream();
+                        if let Some(self_step) = self_step {
+                            if *self_step * other_step < 0 {
+                                return false
+                            }
+
+                            if other_step.abs() > self_step.abs() {
+                                return false;
+                            }
+                        }
+
+                        if let Some(self_start) = self_start {
+                            if *self_start > other_start {
+                                return false;
+                            }
+                        }
+
+                        if let Some(self_end) = self_end {
+                            if *self_end < other_end {
+                                return false;
+                            }
+                        }
+
+                        true
+                    }, 
+                    Self::Raptor(..) => false
+                }
+            }, 
+            Self::Raptor(..) => unimplemented!()
+        }
+
+    }
 }
 
 impl RawEncode for ChunkEncodeDesc {
