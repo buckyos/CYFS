@@ -4,7 +4,7 @@ use cyfs_lib::*;
 
 use lru_time_cache::LruCache;
 use std::collections::HashSet;
-use std::sync::Mutex;
+use cyfs_debug::Mutex;
 
 type NamedObjectCacheItem = NamedObjectCacheObjectRawData;
 

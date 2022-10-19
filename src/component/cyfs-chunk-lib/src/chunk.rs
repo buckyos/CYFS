@@ -3,12 +3,12 @@ use crate::SharedMemChunk;
 use crate::{MMapChunk, MemChunk};
 use cyfs_base::*;
 use cyfs_util::AsyncReadWithSeek;
+use cyfs_debug::Mutex;
 
 use std::future::Future;
 use std::io::SeekFrom;
 use std::ops::Deref;
 use std::pin::Pin;
-use std::sync::Mutex;
 use std::task::{Context, Poll};
 
 pub const CHUNK_SIZE: u64 = 4 * 1024 * 1024;

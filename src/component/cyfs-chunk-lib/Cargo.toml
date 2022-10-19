@@ -10,6 +10,7 @@ description = 'Rust cyfs-chunk-lib package'
 async-std = { version = '1.11', features = ['unstable', 'std'] }
 cyfs-base = { path = '../../component/cyfs-base', version = '0.6' }
 cyfs-util = { path = '../../component/cyfs-util', version = '0.6' }
+cyfs-debug = { path = "../../component/cyfs-debug" }
 memmap2 = '0.5.0'
 log = '0.4'
 async-trait = '0.1.53'

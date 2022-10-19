@@ -1,5 +1,5 @@
 
-use std::{sync::{Mutex}, collections::{BTreeSet}};
+use std::collections::{BTreeSet};
 
 use cyfs_base::*;
 use crate::{
@@ -14,6 +14,7 @@ use crate::ndn::{
         DownloadSession
     }, 
 };
+use cyfs_debug::Mutex;
 
 pub struct RedirectHandle {
     redirect_target: DeviceId,

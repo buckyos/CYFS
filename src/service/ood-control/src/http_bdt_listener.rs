@@ -4,7 +4,8 @@ use cyfs_bdt::{StackGuard, StreamGuard as BdtStream, StreamListenerGuard};
 
 use async_std::stream::StreamExt;
 use async_std::task;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 pub(super) struct HttpBdtListenerImpl {
     bdt_stack: StackGuard,

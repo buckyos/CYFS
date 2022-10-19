@@ -7,7 +7,8 @@ use cyfs_task_manager::*;
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use sha2::Digest;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 #[derive(RawEncode, RawDecode)]
 pub struct PublishLocalFile {

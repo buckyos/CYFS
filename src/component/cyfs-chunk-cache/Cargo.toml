@@ -8,9 +8,10 @@ description = "Rust cyfs-chunk-cache package"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cyfs-base = { path = "../../component/cyfs-base" }
-cyfs-util = { path = "../../component/cyfs-util" }
+cyfs-base = { path = "../cyfs-base" }
+cyfs-util = { path = "../cyfs-util" }
 cyfs-chunk-lib = { path = "../cyfs-chunk-lib" }
+cyfs-debug = { path = "../cyfs-debug" }
 async-std = { version = "1.11", features = ["unstable", "std"] }
 memmap2 = "0.5.0"
 log = "0.4"

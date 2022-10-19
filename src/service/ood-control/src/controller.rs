@@ -6,7 +6,9 @@ use cyfs_base::*;
 use once_cell::sync::OnceCell;
 use std::collections::hash_map::{Entry, HashMap};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
+
 
 pub(crate) struct ControllerImpl {
     desc_file: PathBuf,

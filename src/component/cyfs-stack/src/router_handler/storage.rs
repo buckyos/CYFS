@@ -2,7 +2,7 @@ use cyfs_base::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
-use std::sync::Mutex;
+use cyfs_debug::Mutex;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct RouterHandlerSavedData {

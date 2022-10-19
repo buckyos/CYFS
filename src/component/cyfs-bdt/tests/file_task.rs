@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Mutex}, 
+    sync::Arc, 
     time::Duration, 
     ops::Range
 };
@@ -17,6 +17,7 @@ use cyfs_bdt::{
     ChunkWriterExt, 
     download::*
 };
+use cyfs_debug::Mutex;
 mod utils;
 
 async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {

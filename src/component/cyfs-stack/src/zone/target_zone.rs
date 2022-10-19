@@ -1,8 +1,7 @@
 use super::zone_manager::*;
 use cyfs_base::*;
 use cyfs_core::*;
-
-use std::sync::Mutex;
+use cyfs_debug::Mutex;
 
 #[derive(Clone)]
 pub struct TargetZoneInfo {

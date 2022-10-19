@@ -4,7 +4,8 @@ use cyfs_lib::*;
 use async_std::sync::Mutex as AsyncMutex;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 struct SerializeExecutorLock {
     lock: AsyncMutex<u32>,

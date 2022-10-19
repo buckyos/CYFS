@@ -1,7 +1,7 @@
 use std::fs::{create_dir_all};
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::u64;
 use cyfs_base::*;
 use sysinfo::{DiskExt, RefreshKind, SystemExt};
@@ -11,6 +11,7 @@ use futures_lite::AsyncWriteExt;
 use num_traits::abs;
 use scan_dir::ScanDir;
 use cyfs_chunk_lib::ChunkMeta;
+use cyfs_debug::Mutex;
 
 #[derive(Clone, RawEncode, RawDecode)]
 pub(crate) struct LocalChunkCacheMetaRecord {

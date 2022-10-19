@@ -9,7 +9,8 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 use futures::future::{AbortHandle, Abortable};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 // sync的重试间隔
 const SYNC_RETRY_MIN_INTERVAL_SECS: u64 = 10;

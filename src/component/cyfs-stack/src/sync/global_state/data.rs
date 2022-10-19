@@ -10,7 +10,8 @@ use cyfs_lib::*;
 
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 struct AssociationChunks {
     list: HashSet<ChunkId>,

@@ -4,7 +4,8 @@ use cyfs_util::*;
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 // 保存的扩展信息
 #[derive(Serialize, Deserialize)]

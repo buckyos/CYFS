@@ -9,7 +9,8 @@ use sha2::Digest;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 pub struct VerifyFileRunnable {
     chunk_manager: Arc<ChunkManager>,

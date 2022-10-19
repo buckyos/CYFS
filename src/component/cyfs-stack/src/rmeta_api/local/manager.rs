@@ -5,7 +5,8 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 use std::collections::{hash_map::Entry, HashMap};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 pub struct GlobalStatePathMetaItem {
     manager: GlobalStateDecPathMetaManagerRef,

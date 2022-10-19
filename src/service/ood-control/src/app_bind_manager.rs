@@ -5,7 +5,8 @@ use cyfs_base::*;
 use cyfs_util::*;
 
 use futures::future::{AbortHandle, Abortable};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 #[derive(Clone)]
 struct BindNotify {

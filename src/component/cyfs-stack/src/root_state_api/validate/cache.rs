@@ -1,8 +1,8 @@
 use cyfs_base::*;
 
 use lru_time_cache::LruCache;
-use std::sync::{Arc, Mutex};
-
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
 pub struct GlobalStatePathCacheKey {

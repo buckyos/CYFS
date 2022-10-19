@@ -13,7 +13,8 @@ use cyfs_task_manager::*;
 
 use sha2::Digest;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 pub struct DownloadChunkTask {
     task_id: TaskId,

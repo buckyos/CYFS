@@ -19,7 +19,8 @@ use cyfs_bdt::StackGuard;
 use cyfs_lib::RequestProtocol;
 
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 pub struct ObjectListenerManagerParams {
     pub bdt_stack: StackGuard,

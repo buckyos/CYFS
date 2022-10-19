@@ -9,8 +9,8 @@ use futures::future::AbortHandle;
 use sha2::Digest;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::{Arc, Weak};
+use cyfs_debug::Mutex;
 
 #[derive(RawEncode, RawDecode)]
 pub struct BuildDirParams {
