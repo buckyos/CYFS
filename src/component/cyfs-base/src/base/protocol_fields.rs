@@ -36,10 +36,14 @@ pub const CYFS_VERIFY_SIGNS: &str = "cyfs-verify-signs";
 
 pub const CYFS_VERIFY_TYPE: &str = "cyfs-verify-type";
 pub const CYFS_SIGN_TYPE: &str = "cyfs-sign-type";
-pub const CYFS_SIGN_FLAGS: &str = "cyfs-sign-flags";
+pub const CYFS_CRYPTO_FLAGS: &str = "cyfs-crypto-flags";
 pub const CYFS_VERIFY_RET: &str = "cyfs-verify-ret";
-
 pub const CYFS_SIGN_RET: &str = "cyfs-sign-ret";
+
+pub const CYFS_ENCRYPT_TYPE: &str = "cyfs-encrypt-type";
+pub const CYFS_DECRYPT_TYPE: &str = "cyfs-decrypt-type";
+pub const CYFS_DECRYPT_RET: &str = "cyfs-decrypt-ret";
+pub const CYFS_AES_KEY: &str = "cyfs-aes-key";
 
 pub const CYFS_FLAGS: &str = "cyfs-flags";
 pub const CYFS_TARGET: &str = "cyfs-target";

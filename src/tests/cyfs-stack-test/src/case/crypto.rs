@@ -52,6 +52,8 @@ fn new_dec(name: &str) -> ObjectId {
 }
 
 pub async fn test() {
+    return test_codec().await;
+
     let dec_id = new_dec("crypto");
     let stack1 = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
     open_hook_access(&stack1).await;
@@ -282,6 +284,39 @@ fn add_acl_handlers_for_stack(name: &str, acl: &str, stack: &SharedCyfsStack, de
             Some(Box::new(listener)),
         )
         .unwrap();
+}
+
+async fn test_codec() {
+    let data = "123456789".as_bytes();
+    
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    let system_stack = stack
+        .fork_with_new_dec(Some(cyfs_core::get_system_dec_app().to_owned()))
+        .await.unwrap();
+    system_stack.wait_online(None).await.unwrap();
+
+    // normal data
+    let req = CryptoEncryptDataRequest::new();
+    let req = req.by_device().encrypt_data().data(data.to_owned());
+    let ret = system_stack.crypto().encrypt_data(req).await.unwrap();
+
+    let req = CryptoDecryptDataRequest::new(ret.result);
+    let req = req.by_device().decrypt_data();
+    let ret = system_stack.crypto().decrypt_data(req).await.unwrap();
+    assert_eq!(data, ret.data);
+
+    // aes_key
+    let req = CryptoEncryptDataRequest::new();
+    let req = req.by_device().gen_aeskey_and_encrypt();
+    let ret = system_stack.crypto().encrypt_data(req).await.unwrap();
+    assert!(ret.aes_key.is_some());
+    let aes_key = ret.aes_key.unwrap();
+
+    let req = CryptoDecryptDataRequest::new(ret.result);
+    let req = req.by_device().decrypt_aeskey();
+    let ret = system_stack.crypto().decrypt_data(req).await.unwrap();
+
+    assert_eq!(aes_key.as_slice(), ret.data);
 }
 
 async fn test_sign(dec_id: &ObjectId) {

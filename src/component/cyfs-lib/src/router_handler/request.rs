@@ -89,6 +89,10 @@ pub type RouterHandlerSignObjectRequest =
     RouterHandlerRequest<CryptoSignObjectInputRequest, CryptoSignObjectInputResponse>;
 pub type RouterHandlerVerifyObjectRequest =
     RouterHandlerRequest<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse>;
+pub type RouterHandlerEncryptDataRequest =
+    RouterHandlerRequest<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse>;
+pub type RouterHandlerDecryptDataRequest =
+    RouterHandlerRequest<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse>;
 
 pub type RouterHandlerAclRequest =
     RouterHandlerRequest<AclHandlerRequest, AclHandlerResponse>;
@@ -119,6 +123,10 @@ pub type RouterHandlerSignObjectResult =
     RouterHandlerResponse<CryptoSignObjectInputRequest, CryptoSignObjectInputResponse>;
 pub type RouterHandlerVerifyObjectResult =
     RouterHandlerResponse<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse>;
+pub type RouterHandlerEncryptDataResult =
+    RouterHandlerResponse<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse>;
+pub type RouterHandlerDecryptDataResult =
+    RouterHandlerResponse<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse>;
 
 pub type RouterHandlerAclResult =
     RouterHandlerResponse<AclHandlerRequest, AclHandlerResponse>;

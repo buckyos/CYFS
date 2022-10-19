@@ -98,7 +98,11 @@ impl RouterHandlerHttpProcessor {
         Ok(handler)
     }
 
-    pub async fn on_add_handler_request(&self, source: RequestSourceInfo, req: RouterAddHandlerRequest) -> BuckyResult<()> {
+    pub async fn on_add_handler_request(
+        &self,
+        source: RequestSourceInfo,
+        req: RouterAddHandlerRequest,
+    ) -> BuckyResult<()> {
         // check access
         self.manager
             .check_access(
@@ -165,16 +169,20 @@ impl RouterHandlerHttpProcessor {
             }
 
             RouterHandlerCategory::GetData => {
-                let handler =
-                    Self::create_handler::<NDNGetDataInputRequest, NDNGetDataInputResponse>(&source, req)?;
+                let handler = Self::create_handler::<
+                    NDNGetDataInputRequest,
+                    NDNGetDataInputResponse,
+                >(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .get_data()
                     .add_handler(handler)
             }
             RouterHandlerCategory::PutData => {
-                let handler =
-                    Self::create_handler::<NDNPutDataInputRequest, NDNPutDataInputResponse>(&source, req)?;
+                let handler = Self::create_handler::<
+                    NDNPutDataInputRequest,
+                    NDNPutDataInputResponse,
+                >(&source, req)?;
                 self.manager
                     .handlers(&chain)
                     .put_data()
@@ -212,14 +220,42 @@ impl RouterHandlerHttpProcessor {
                     .add_handler(handler)
             }
 
+            RouterHandlerCategory::EncryptData => {
+                let handler = Self::create_handler::<
+                    CryptoEncryptDataInputRequest,
+                    CryptoEncryptDataInputResponse,
+                >(&source, req)?;
+                self.manager
+                    .handlers(&chain)
+                    .encrypt_data()
+                    .add_handler(handler)
+            }
+            RouterHandlerCategory::DecryptData => {
+                let handler = Self::create_handler::<
+                    CryptoDecryptDataInputRequest,
+                    CryptoDecryptDataInputResponse,
+                >(&source, req)?;
+                self.manager
+                    .handlers(&chain)
+                    .decrypt_data()
+                    .add_handler(handler)
+            }
+
             RouterHandlerCategory::Acl => {
-                let handler = Self::create_handler::<AclHandlerRequest, AclHandlerResponse>(&source, req)?;
+                let handler =
+                    Self::create_handler::<AclHandlerRequest, AclHandlerResponse>(&source, req)?;
                 self.manager.handlers(&chain).acl().add_handler(handler)
-            }, 
+            }
 
             RouterHandlerCategory::Interest => {
-                let handler = Self::create_handler::<InterestHandlerRequest, InterestHandlerResponse>(&source, req)?;
-                self.manager.handlers(&chain).interest().add_handler(handler)
+                let handler = Self::create_handler::<
+                    InterestHandlerRequest,
+                    InterestHandlerResponse,
+                >(&source, req)?;
+                self.manager
+                    .handlers(&chain)
+                    .interest()
+                    .add_handler(handler)
             }
         }
     }
@@ -280,6 +316,17 @@ impl RouterHandlerHttpProcessor {
                 .manager
                 .handlers(&req.chain)
                 .verify_object()
+                .remove_handler(&req.id, req.dec_id),
+
+            RouterHandlerCategory::EncryptData => self
+                .manager
+                .handlers(&req.chain)
+                .encrypt_data()
+                .remove_handler(&req.id, req.dec_id),
+            RouterHandlerCategory::DecryptData => self
+                .manager
+                .handlers(&req.chain)
+                .decrypt_data()
                 .remove_handler(&req.id, req.dec_id),
 
             RouterHandlerCategory::Acl => self

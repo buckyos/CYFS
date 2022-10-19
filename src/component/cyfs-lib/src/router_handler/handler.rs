@@ -268,11 +268,26 @@ impl RouterHandlerManagerProcessor for RouterHandlerManager {
         self
     }
 
+    fn encrypt_data(
+        &self,
+    ) -> &dyn RouterHandlerProcessor<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse>
+    {
+        self
+    }
+    fn decrypt_data(
+        &self,
+    ) -> &dyn RouterHandlerProcessor<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse>
+    {
+        self
+    }
+
     fn acl(&self) -> &dyn RouterHandlerProcessor<AclHandlerRequest, AclHandlerResponse> {
         self
     }
 
-    fn interest(&self) -> &dyn RouterHandlerProcessor<InterestHandlerRequest, InterestHandlerResponse> {
+    fn interest(
+        &self,
+    ) -> &dyn RouterHandlerProcessor<InterestHandlerRequest, InterestHandlerResponse> {
         self
     }
 }

@@ -131,34 +131,58 @@ impl PrivateKey {
     }
 
     pub fn decrypt(&self, input: &[u8], output: &mut [u8]) -> BuckyResult<usize> {
+        let buf = self.decrypt_data(input)?;
+        if output.len() < buf.len() {
+            let msg = format!(
+                "rsa decrypt error, except={}, got={}",
+                buf.len(),
+                output.len()
+            );
+            error!("{}", msg);
+
+            Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
+        } else {
+            output[..buf.len()].copy_from_slice(buf.as_slice());
+            Ok(buf.len())
+        }
+    }
+
+    pub fn decrypt_data(&self, input: &[u8]) -> BuckyResult<Vec<u8>> {
         match self {
             Self::Rsa(private_key) => {
                 let buf = private_key
                     .decrypt(rsa::PaddingScheme::PKCS1v15Encrypt, input)
                     .map_err(|e| BuckyError::from(e))?;
-                if output.len() < buf.len() {
-                    let msg = format!(
-                        "rsa decrypt error, except={}, got={}",
-                        buf.len(),
-                        output.len()
-                    );
-                    error!("{}", msg);
-
-                    Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
-                } else {
-                    output[..buf.len()].copy_from_slice(buf.as_slice());
-                    Ok(buf.len())
-                }
+                Ok(buf)
             }
 
             Self::Secp256k1(_) => {
                 // 目前secp256k1的非对称加解密只支持交换aes_key时候使用
-                unimplemented!();
+                let msg = format!("direct decyrpt with private key of secp256 not support!");
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
             }
         }
     }
 
-    pub fn decrypt_aeskey<'dec>(&self, input: &'dec [u8], output: &mut [u8]) -> BuckyResult<(&'dec [u8], usize)> {
+    pub fn decrypt_aeskey<'d>(&self, input: &'d [u8], output: &mut [u8]) -> BuckyResult<(&'d [u8], usize)> {
+        let (input, data) = self.decrypt_aeskey_data(input)?;
+        if output.len() < data.len() {
+            let msg = format!(
+                "not enough buffer for decrypt aeskey result, except={}, got={}",
+                data.len(),
+                output.len()
+            );
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
+        output.copy_from_slice(&data);
+        Ok((input, data.len()))
+    }
+
+    pub fn decrypt_aeskey_data<'d>(&self, input: &'d [u8]) -> BuckyResult<(&'d [u8], Vec<u8>)> {
         match self {
             Self::Rsa(_) => {
                 let key_size = self.public().key_size();
@@ -173,9 +197,9 @@ impl PrivateKey {
                     return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
                 }
 
-                let len = self.decrypt(&input[..key_size], output)?;
+                let buf = self.decrypt_data(&input[..key_size])?;
 
-                Ok((&input[key_size..], len))
+                Ok((&input[key_size..], buf))
             },
 
             Self::Secp256k1(private_key) => {
@@ -201,20 +225,8 @@ impl PrivateKey {
                     BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
                 })?;
                 let aes_key = ::cyfs_ecies::utils::decapsulate(&ephemeral_pk, &private_key);
-                if output.len() < aes_key.len() {
-                    let msg = format!(
-                        "not enough buffer for secp256k1 ecies aeskey, except={}, got={}",
-                        aes_key.len(),
-                        output.len()
-                    );
-                    error!("{}", msg);
-
-                    return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
-                }
-
-                output.copy_from_slice(&aes_key);
-
-                Ok((&input[::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE..], aes_key.len()))
+                
+                Ok((&input[::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE..], aes_key.into()))
             }
         }
     }

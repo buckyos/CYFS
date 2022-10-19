@@ -60,4 +60,26 @@ impl CryptoInputProcessor for CryptoAclInputProcessor {
 
         self.next.sign_object(req).await
     }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataInputRequest,
+    ) -> BuckyResult<CryptoEncryptDataInputResponse> {
+        req.common.source.check_current_zone("crypto.encrypt_data")?;
+
+        self.check_access("encrypt_data", &req.common.source, RequestOpType::Call).await?;
+
+        self.next.encrypt_data(req).await
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataInputRequest,
+    ) -> BuckyResult<CryptoDecryptDataInputResponse> {
+        req.common.source.check_current_zone("crypto.decrypt_data")?;
+
+        self.check_access("decrypt_data", &req.common.source, RequestOpType::Call).await?;
+
+        self.next.decrypt_data(req).await
+    }
 }

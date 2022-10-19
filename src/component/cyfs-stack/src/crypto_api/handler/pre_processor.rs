@@ -1,5 +1,5 @@
-use crate::non_api::NONHandlerCaller;
 use crate::crypto::*;
+use crate::non_api::NONHandlerCaller;
 use crate::router_handler::{RouterHandlersContainer, RouterHandlersManager};
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -19,14 +19,12 @@ impl CryptoHandlerPreProcessor {
         next: CryptoInputProcessorRef,
         router_handlers: RouterHandlersManager,
     ) -> CryptoInputProcessorRef {
-        let handlers = router_handlers
-            .handlers(&chain)
-            .clone();
+        let handlers = router_handlers.handlers(&chain).clone();
         let ret = Self { next, handlers };
 
         Arc::new(Box::new(ret))
     }
-                                
+
     pub async fn sign_object(
         &self,
         request: CryptoSignObjectInputRequest,
@@ -68,6 +66,48 @@ impl CryptoHandlerPreProcessor {
 
         self.next.verify_object(param.request).await
     }
+
+    pub async fn encrypt_data(
+        &self,
+        request: CryptoEncryptDataInputRequest,
+    ) -> BuckyResult<CryptoEncryptDataInputResponse> {
+        let mut param = RouterHandlerEncryptDataRequest {
+            request,
+            response: None,
+        };
+
+        if let Some(handler) = self.handlers.try_encrypt_data() {
+            if !handler.is_empty() {
+                let mut handler = NONHandlerCaller::new(handler.emitter());
+                if let Some(resp) = handler.call("encrypt_data", &mut param).await? {
+                    return resp;
+                }
+            }
+        }
+
+        self.next.encrypt_data(param.request).await
+    }
+
+    pub async fn decrypt_data(
+        &self,
+        request: CryptoDecryptDataInputRequest,
+    ) -> BuckyResult<CryptoDecryptDataInputResponse> {
+        let mut param = RouterHandlerDecryptDataRequest {
+            request,
+            response: None,
+        };
+
+        if let Some(handler) = self.handlers.try_decrypt_data() {
+            if !handler.is_empty() {
+                let mut handler = NONHandlerCaller::new(handler.emitter());
+                if let Some(resp) = handler.call("decrypt_data", &mut param).await? {
+                    return resp;
+                }
+            }
+        }
+
+        self.next.decrypt_data(param.request).await
+    }
 }
 
 #[async_trait::async_trait]
@@ -84,5 +124,19 @@ impl CryptoInputProcessor for CryptoHandlerPreProcessor {
         req: CryptoVerifyObjectInputRequest,
     ) -> BuckyResult<CryptoVerifyObjectInputResponse> {
         CryptoHandlerPreProcessor::verify_object(&self, req).await
+    }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataInputRequest,
+    ) -> BuckyResult<CryptoEncryptDataInputResponse> {
+        Self::encrypt_data(&self, req).await
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataInputRequest,
+    ) -> BuckyResult<CryptoDecryptDataInputResponse> {
+        Self::decrypt_data(&self, req).await
     }
 }

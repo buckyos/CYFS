@@ -183,4 +183,20 @@ impl CryptoInputProcessor for CryptoRouter {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.sign_object(req).await
     }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataInputRequest,
+    ) -> BuckyResult<CryptoEncryptDataInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.encrypt_data(req).await
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataInputRequest,
+    ) -> BuckyResult<CryptoDecryptDataInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.decrypt_data(req).await
+    }
 }

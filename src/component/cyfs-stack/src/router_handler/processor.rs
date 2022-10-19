@@ -114,6 +114,17 @@ declare_router_handler_processor!(
     verify_object
 );
 
+declare_router_handler_processor!(
+    CryptoEncryptDataInputRequest,
+    CryptoEncryptDataInputResponse,
+    encrypt_data
+);
+declare_router_handler_processor!(
+    CryptoDecryptDataInputRequest,
+    CryptoDecryptDataInputResponse,
+    decrypt_data
+);
+
 // acl handlers
 declare_router_handler_processor!(AclHandlerRequest, AclHandlerResponse, acl);
 
@@ -181,6 +192,18 @@ impl RouterHandlerManagerProcessor for SharedRouterHandlersManager {
     {
         self
     }
+    fn encrypt_data(
+        &self,
+    ) -> &dyn RouterHandlerProcessor<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse> {
+        self
+    }
+
+    fn decrypt_data(
+        &self,
+    ) -> &dyn RouterHandlerProcessor<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse> {
+        self
+    }
+
 
     fn acl(&self) -> &dyn RouterHandlerProcessor<AclHandlerRequest, AclHandlerResponse> {
         self

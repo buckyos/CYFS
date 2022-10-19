@@ -186,7 +186,6 @@ impl FromStr for VerifySignType {
     }
 }
 
-
 // 需要校验的签名列表
 #[derive(Debug, Clone)]
 pub struct VerifySigns {
@@ -222,7 +221,7 @@ impl VerifyObjectType {
 
 impl ToString for VerifyObjectType {
     fn to_string(&self) -> String {
-       self.as_str().to_owned()
+        self.as_str().to_owned()
     }
 }
 
@@ -254,7 +253,7 @@ impl CryptoVerifyObjectOutputRequest {
         Self {
             common: CryptoOutputRequestCommon::default(),
             // 自校验只需要校验body即可
-            sign_type: VerifySignType::Body,    
+            sign_type: VerifySignType::Body,
             object,
             sign_object: VerifyObjectType::Owner,
         }
@@ -320,5 +319,254 @@ pub struct CryptoVerifyObjectOutputResponse {
 impl fmt::Display for CryptoVerifyObjectOutputResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "result: {:?}", self.result)
+    }
+}
+
+// encrypt
+// 可以选择使用owner(people)还是device
+pub const CRYPTO_REQUEST_FLAG_CRYPT_BY_OWNER: u32 = 0x01 << 1;
+pub const CRYPTO_REQUEST_FLAG_CRYPT_BY_DEVICE: u32 = 0x01 << 2;
+
+#[derive(Debug, Clone)]
+pub enum CryptoEncryptType {
+    EncryptData = 0,
+    GenAESKeyAndEncrypt = 1,
+}
+
+impl CryptoEncryptType {
+    pub fn as_str(&self) -> &str {
+        match *self {
+            Self::EncryptData => "encrypt_data",
+            Self::GenAESKeyAndEncrypt => "gen_aeskey_and_encrypt",
+        }
+    }
+}
+
+impl ToString for CryptoEncryptType {
+    fn to_string(&self) -> String {
+        self.as_str().to_owned()
+    }
+}
+
+impl FromStr for CryptoEncryptType {
+    type Err = BuckyError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let ret = match value {
+            "encrypt_data" => Self::EncryptData,
+            "gen_aeskey_and_encrypt" => Self::GenAESKeyAndEncrypt,
+            v @ _ => {
+                let msg = format!("unknown crypto encrypt type: {}", v);
+                error!("{}", msg);
+
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+        };
+
+        Ok(ret)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CryptoEncryptDataOutputRequest {
+    pub common: CryptoOutputRequestCommon,
+
+    pub encrypt_type: CryptoEncryptType,
+
+    pub data: Option<Vec<u8>>,
+
+    pub flags: u32,
+}
+
+impl CryptoEncryptDataOutputRequest {
+    pub fn new() -> Self {
+        Self {
+            common: CryptoOutputRequestCommon::default(),
+            encrypt_type: CryptoEncryptType::EncryptData,
+            data: None,
+            flags: CRYPTO_REQUEST_FLAG_CRYPT_BY_DEVICE,
+        }
+    }
+
+    pub fn by_owner(mut self) -> Self {
+        self.flags &= !CRYPTO_REQUEST_FLAG_CRYPT_BY_DEVICE;
+        self.flags |= CRYPTO_REQUEST_FLAG_CRYPT_BY_OWNER;
+        self
+    }
+
+    pub fn by_device(mut self) -> Self {
+        self.flags &= !CRYPTO_REQUEST_FLAG_CRYPT_BY_OWNER;
+        self.flags |= CRYPTO_REQUEST_FLAG_CRYPT_BY_DEVICE;
+        self
+    }
+
+    pub fn data(mut self, data: Vec<u8>) -> Self {
+        self.data = Some(data);
+        self
+    }
+
+    pub fn encrypt_data(mut self) -> Self {
+        self.encrypt_type = CryptoEncryptType::EncryptData;
+        self
+    }
+
+    pub fn gen_aeskey_and_encrypt(mut self) -> Self {
+        self.encrypt_type = CryptoEncryptType::GenAESKeyAndEncrypt;
+        self
+    }
+}
+pub struct CryptoEncryptDataOutputResponse {
+    pub aes_key: Option<AesKey>,
+
+    pub result: Vec<u8>,
+}
+
+impl fmt::Display for CryptoEncryptDataOutputResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(aes_key) = &self.aes_key {
+            write!(f, "aes_key: {}", aes_key.len())?;
+        }
+        write!(f, ", result: {}", self.result.len())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CryptoDecryptType {
+    DecryptData = 0,
+    DecryptAESKey = 1,
+}
+
+impl CryptoDecryptType {
+    pub fn as_str(&self) -> &str {
+        match *self {
+            Self::DecryptData => "decrypt_data",
+            Self::DecryptAESKey => "decrypt_aeskey",
+        }
+    }
+}
+
+impl ToString for CryptoDecryptType {
+    fn to_string(&self) -> String {
+        self.as_str().to_owned()
+    }
+}
+
+impl FromStr for CryptoDecryptType {
+    type Err = BuckyError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let ret = match value {
+            "decrypt_data" => Self::DecryptData,
+            "decrypt_aeskey" => Self::DecryptAESKey,
+            v @ _ => {
+                let msg = format!("unknown crypto decrypt type: {}", v);
+                error!("{}", msg);
+
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+        };
+
+        Ok(ret)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CryptoDecryptDataOutputRequest {
+    pub common: CryptoOutputRequestCommon,
+
+    pub decrypt_type: CryptoDecryptType,
+
+    pub data: Vec<u8>,
+
+    pub flags: u32,
+}
+
+impl CryptoDecryptDataOutputRequest {
+    pub fn new(data: Vec<u8>) -> Self {
+        Self {
+            common: CryptoOutputRequestCommon::default(),
+            decrypt_type: CryptoDecryptType::DecryptData,
+            data,
+            flags: CRYPTO_REQUEST_FLAG_CRYPT_BY_DEVICE,
+        }
+    }
+
+    pub fn by_owner(mut self) -> Self {
+        self.flags &= !CRYPTO_REQUEST_FLAG_CRYPT_BY_DEVICE;
+        self.flags |= CRYPTO_REQUEST_FLAG_CRYPT_BY_OWNER;
+        self
+    }
+
+    pub fn by_device(mut self) -> Self {
+        self.flags &= !CRYPTO_REQUEST_FLAG_CRYPT_BY_OWNER;
+        self.flags |= CRYPTO_REQUEST_FLAG_CRYPT_BY_DEVICE;
+        self
+    }
+
+    pub fn data(mut self, data: Vec<u8>) -> Self {
+        self.data = data;
+        self
+    }
+
+    pub fn decrypt_data(mut self) -> Self {
+        self.decrypt_type = CryptoDecryptType::DecryptData;
+        self
+    }
+
+    pub fn decrypt_aeskey(mut self) -> Self {
+        self.decrypt_type = CryptoDecryptType::DecryptAESKey;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum DecryptDataResult {
+    Decrypted,
+    Pending,
+}
+
+impl DecryptDataResult {
+    pub fn as_str(&self) -> &str {
+        match *self {
+            Self::Decrypted => "decrypted",
+            Self::Pending => "pending",
+        }
+    }
+}
+
+impl ToString for DecryptDataResult {
+    fn to_string(&self) -> String {
+        self.as_str().to_owned()
+    }
+}
+
+impl FromStr for DecryptDataResult {
+    type Err = BuckyError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let ret = match value {
+            "decrypted" => Self::Decrypted,
+            "pending" => Self::Pending,
+            v @ _ => {
+                let msg = format!("unknown decrypt data result : {}", v);
+                error!("{}", msg);
+
+                return Err(BuckyError::from(msg));
+            }
+        };
+
+        Ok(ret)
+    }
+}
+
+
+pub struct CryptoDecryptDataOutputResponse {
+    pub result: DecryptDataResult,
+    pub data: Vec<u8>,
+}
+
+impl fmt::Display for CryptoDecryptDataOutputResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "result: {}, data: {}", self.result.as_str(), self.data.len())
     }
 }
