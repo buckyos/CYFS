@@ -9,6 +9,8 @@ use tide::{Response, StatusCode};
 enum CryptoRequestType {
     SignObject,
     VerifyObject,
+    EncryptData,
+    DecryptData,
 }
 
 pub(crate) struct CryptoRequestHandlerEndpoint {
@@ -40,25 +42,20 @@ impl CryptoRequestHandlerEndpoint {
             Err(resp) => return resp,
         };
 
+        let body = match req.request.body_bytes().await {
+            Ok(body) => body,
+            Err(e) => {
+                error!("read crypto verify object request body error! err={}", e);
+
+                return RequestorHelper::new_response(StatusCode::BadRequest).into();
+            }
+        };
+
         match self.req_type {
-            CryptoRequestType::VerifyObject => match req.request.body_bytes().await {
-                Ok(body) => self.handler.process_verify_object(req, body).await,
-
-                Err(e) => {
-                    error!("read crypto verify object request body error! err={}", e);
-
-                    RequestorHelper::new_response(StatusCode::BadRequest).into()
-                }
-            },
-            CryptoRequestType::SignObject => match req.request.body_bytes().await {
-                Ok(body) => self.handler.process_sign_object(req, body).await,
-
-                Err(e) => {
-                    error!("read crypto sign object request body error! err={}", e);
-
-                    RequestorHelper::new_response(StatusCode::BadRequest).into()
-                }
-            },
+            CryptoRequestType::VerifyObject => self.handler.process_verify_object(req, body).await,
+            CryptoRequestType::SignObject => self.handler.process_sign_object(req, body).await,
+            CryptoRequestType::EncryptData => self.handler.process_encrypt_data(req, body).await,
+            CryptoRequestType::DecryptData => self.handler.process_decrypt_data(req, body).await,
         }
     }
 
@@ -97,6 +94,38 @@ impl CryptoRequestHandlerEndpoint {
             zone_manager.clone(),
             protocol.to_owned(),
             CryptoRequestType::SignObject,
+            handler.clone(),
+        ));
+
+        // encrypt
+        let mut route = server.at("/crypto/encrypt/");
+        route.post(CryptoRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            CryptoRequestType::EncryptData,
+            handler.clone(),
+        ));
+        let mut route = server.at("/crypto/encrypt");
+        route.post(CryptoRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            CryptoRequestType::EncryptData,
+            handler.clone(),
+        ));
+
+        // decrypt
+        let mut route = server.at("/crypto/decrypt/");
+        route.post(CryptoRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            CryptoRequestType::DecryptData,
+            handler.clone(),
+        ));
+        let mut route = server.at("/crypto/decrypt");
+        route.post(CryptoRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            CryptoRequestType::DecryptData,
             handler.clone(),
         ));
     }

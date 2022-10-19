@@ -606,7 +606,7 @@ impl ExpReservedTokenTranslator for NDNDeleteDataInputResponse {
 impl ExpReservedTokenTranslator for CryptoSignObjectInputRequest {
     fn trans(&self, token: &str) -> ExpTokenEvalValue {
         match token {
-            "sign_flags" => ExpTokenEvalValue::U32(self.flags),
+            "crypto_flags" => ExpTokenEvalValue::U32(self.flags),
             _ => {
                 if let Some(v) = ExpReservedTokenTranslatorHelper::trans_crypto_input_request_common(
                     token,
@@ -701,6 +701,63 @@ impl ExpReservedTokenTranslator for CryptoVerifyObjectInputResponse {
         match token {
             "valid" => ExpTokenEvalValue::Bool(self.result.valid),
             _ => ExpTokenEvalValue::None,
+        }
+    }
+}
+
+// encrypt_data
+impl ExpReservedTokenTranslator for CryptoEncryptDataInputRequest {
+    fn trans(&self, token: &str) -> ExpTokenEvalValue {
+        match token {
+            "encrypt_type" => ExpTokenEvalValue::String(self.encrypt_type.to_string()),
+            "crypto_flags" => ExpTokenEvalValue::U32(self.flags),
+            _ => {
+                if let Some(v) = ExpReservedTokenTranslatorHelper::trans_crypto_input_request_common(
+                    token,
+                    &self.common,
+                ) {
+                    return v;
+                }
+
+                unreachable!("unknown crypto encrypt_data reserved token: {}", token);
+            }
+        }
+    }
+}
+
+impl ExpReservedTokenTranslator for CryptoEncryptDataInputResponse {
+    fn trans(&self, _token: &str) -> ExpTokenEvalValue {
+        ExpTokenEvalValue::None
+    }
+}
+
+// decrypt_data
+impl ExpReservedTokenTranslator for CryptoDecryptDataInputRequest {
+    fn trans(&self, token: &str) -> ExpTokenEvalValue {
+        match token {
+            "decrypt_type" => ExpTokenEvalValue::String(self.decrypt_type.to_string()),
+            "crypto_flags" => ExpTokenEvalValue::U32(self.flags),
+            _ => {
+                if let Some(v) = ExpReservedTokenTranslatorHelper::trans_crypto_input_request_common(
+                    token,
+                    &self.common,
+                ) {
+                    return v;
+                }
+
+                unreachable!("unknown crypto decrypt_data reserved token: {}", token);
+            }
+        }
+    }
+}
+
+impl ExpReservedTokenTranslator for CryptoDecryptDataInputResponse {
+    fn trans(&self, token: &str) -> ExpTokenEvalValue {
+        match token {
+            "result" => ExpTokenEvalValue::from_string(&self.result),
+            _ => {
+                ExpTokenEvalValue::None
+            }
         }
     }
 }
@@ -848,6 +905,8 @@ pub struct RouterHandlerReservedTokenList {
 
     pub sign_object: ExpReservedTokenList,
     pub verify_object: ExpReservedTokenList,
+    pub encrypt_data: ExpReservedTokenList,
+    pub decrypt_data: ExpReservedTokenList,
 
     pub acl: ExpReservedTokenList,
     pub interest: ExpReservedTokenList, 
@@ -868,6 +927,8 @@ impl RouterHandlerReservedTokenList {
 
             sign_object: Self::gen_sign_object(),
             verify_object: Self::gen_verify_object(),
+            encrypt_data: Self::gen_encrypt_object(),
+            decrypt_data: Self::gen_decrypt_object(),
 
             acl: Self::gen_acl(),
             interest: Self::gen_interest(), 
@@ -1207,7 +1268,7 @@ impl RouterHandlerReservedTokenList {
         Self::add_crypto_input_request_common_tokens(&mut token_list);
         Self::add_object_info_tokens(&mut token_list);
 
-        token_list.add_u32("sign_flags");
+        token_list.add_u32("crypto_flags");
 
         token_list
     }
@@ -1270,6 +1331,59 @@ impl RouterHandlerReservedTokenList {
     fn gen_verify_object() -> ExpReservedTokenList {
         let mut list = Self::gen_verify_object_request();
         list.append(Self::gen_verify_object_response());
+
+        list
+    }
+
+    // encrypt_data
+    fn gen_encrypt_data_request() -> ExpReservedTokenList {
+        let mut token_list = ExpReservedTokenList::new();
+
+        Self::add_crypto_input_request_common_tokens(&mut token_list);
+    
+        token_list.add_u32("crypto_flags");
+        token_list.add_string("encrypt_type");
+
+        token_list
+    }
+
+    fn gen_encrypt_data_response() -> ExpReservedTokenList {
+        let mut token_list = ExpReservedTokenList::new();
+        token_list.translate_resp();
+
+        token_list
+    }
+
+    fn gen_encrypt_object() -> ExpReservedTokenList {
+        let mut list = Self::gen_encrypt_data_request();
+        list.append(Self::gen_encrypt_data_response());
+
+        list
+    }
+
+    // decrypt data
+    fn gen_decrypt_data_request() -> ExpReservedTokenList {
+        let mut token_list = ExpReservedTokenList::new();
+
+        Self::add_crypto_input_request_common_tokens(&mut token_list);
+    
+        token_list.add_u32("crypto_flags");
+        token_list.add_string("decrypt_type");
+
+        token_list
+    }
+
+    fn gen_decrypt_data_response() -> ExpReservedTokenList {
+        let mut token_list = ExpReservedTokenList::new();
+        token_list.add_string("result");
+        token_list.translate_resp();
+
+        token_list
+    }
+
+    fn gen_decrypt_object() -> ExpReservedTokenList {
+        let mut list = Self::gen_decrypt_data_request();
+        list.append(Self::gen_decrypt_data_response());
 
         list
     }
@@ -1371,9 +1485,11 @@ impl RouterHandlerReservedTokenList {
 
             RouterHandlerCategory::SignObject => &self.sign_object,
             RouterHandlerCategory::VerifyObject => &self.verify_object,
+            RouterHandlerCategory::EncryptData => &self.encrypt_data,
+            RouterHandlerCategory::DecryptData => &self.decrypt_data,
 
             RouterHandlerCategory::Acl => &self.acl, 
-            RouterHandlerCategory::Interest => &self.interest, 
+            RouterHandlerCategory::Interest => &self.interest,
         }
     }
 }

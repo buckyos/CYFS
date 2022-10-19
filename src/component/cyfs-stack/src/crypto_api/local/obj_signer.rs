@@ -76,7 +76,7 @@ impl ObjectSigner {
         // 至少要指定一个要使用的签名源
         if !self.need_sign(&req.flags) {
             let msg = format!(
-                "invalid sign flags, sign object support by device/people! flags={}",
+                "invalid sign flags, sign object support by device/owner! flags={}",
                 req.flags
             );
             error!("{}", msg);

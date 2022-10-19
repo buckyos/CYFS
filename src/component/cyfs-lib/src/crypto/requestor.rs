@@ -56,7 +56,11 @@ impl CryptoRequestor {
             }
         }
 
-        RequestorHelper::encode_opt_header_with_encoding(http_req, cyfs_base::CYFS_REQ_PATH, com_req.req_path.as_deref());
+        RequestorHelper::encode_opt_header_with_encoding(
+            http_req,
+            cyfs_base::CYFS_REQ_PATH,
+            com_req.req_path.as_deref(),
+        );
 
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
@@ -144,7 +148,7 @@ impl CryptoRequestor {
         let mut http_req = Request::new(Method::Post, url);
         self.encode_common_headers(&req.common, &mut http_req);
         http_req.insert_header(cyfs_base::CYFS_OBJECT_ID, req.object.object_id.to_string());
-        http_req.insert_header(cyfs_base::CYFS_SIGN_FLAGS, req.flags.to_string());
+        http_req.insert_header(cyfs_base::CYFS_CRYPTO_FLAGS, req.flags.to_string());
 
         http_req
     }
@@ -207,6 +211,145 @@ impl CryptoRequestor {
             Err(e)
         }
     }
+
+    // encrypt
+    fn encode_encrypt_data_request(&self, req: &CryptoEncryptDataOutputRequest) -> Request {
+        let url = self.service_url.join("encrypt").unwrap();
+
+        let mut http_req = Request::new(Method::Post, url);
+        self.encode_common_headers(&req.common, &mut http_req);
+        http_req.insert_header(cyfs_base::CYFS_ENCRYPT_TYPE, req.encrypt_type.to_string());
+        http_req.insert_header(cyfs_base::CYFS_CRYPTO_FLAGS, req.flags.to_string());
+
+        http_req
+    }
+
+    async fn decode_encrypt_data_response(
+        mut resp: Response,
+    ) -> BuckyResult<CryptoEncryptDataOutputResponse> {
+        let aes_key: Option<AesKey> =
+            RequestorHelper::decode_optional_header(&resp, cyfs_base::CYFS_AES_KEY)?;
+
+        let result = resp.body_bytes().await.map_err(|e| {
+            let msg = format!(
+                "get encrypt data from resp failed, read body bytes error! {}",
+                e
+            );
+            error!("{}", msg);
+
+            BuckyError::from(msg)
+        })?;
+
+        let resp = CryptoEncryptDataOutputResponse { aes_key, result };
+
+        Ok(resp)
+    }
+
+    pub async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataOutputRequest,
+    ) -> BuckyResult<CryptoEncryptDataOutputResponse> {
+        let mut http_req = self.encode_encrypt_data_request(&req);
+        let data_len = match &req.data {
+            Some(data) => data.len(),
+            None => 0,
+        };
+
+        if let Some(data) = req.data {
+            http_req.set_body(data);
+        }
+
+        let mut resp = self.requestor.request(http_req).await?;
+
+        if resp.status().is_success() {
+            let resp = Self::decode_encrypt_data_response(resp).await?;
+
+            info!(
+                "encrypt data success: data={}, type={}, ret={}",
+                data_len,
+                req.encrypt_type.to_string(),
+                resp.result.len(),
+            );
+
+            Ok(resp)
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!(
+                "encrypt data failed: data={}, type={}, {}",
+                data_len,
+                req.encrypt_type.to_string(),
+                e,
+            );
+            Err(e)
+        }
+    }
+
+    // decrypt
+    fn encode_decrypt_data_request(&self, req: &CryptoDecryptDataOutputRequest) -> Request {
+        let url = self.service_url.join("decrypt").unwrap();
+
+        let mut http_req = Request::new(Method::Post, url);
+        self.encode_common_headers(&req.common, &mut http_req);
+        http_req.insert_header(cyfs_base::CYFS_DECRYPT_TYPE, req.decrypt_type.to_string());
+        http_req.insert_header(cyfs_base::CYFS_CRYPTO_FLAGS, req.flags.to_string());
+
+        http_req
+    }
+
+    async fn decode_decrypt_data_response(
+        mut resp: Response,
+    ) -> BuckyResult<CryptoDecryptDataOutputResponse> {
+        let result: DecryptDataResult =
+            RequestorHelper::decode_header(&resp, cyfs_base::CYFS_DECRYPT_RET)?;
+
+        let data = resp.body_bytes().await.map_err(|e| {
+            let msg = format!(
+                "get decrypt data from resp failed, read body bytes error! {}",
+                e
+            );
+            error!("{}", msg);
+
+            BuckyError::from(msg)
+        })?;
+
+        let resp = CryptoDecryptDataOutputResponse { result, data };
+
+        Ok(resp)
+    }
+
+    pub async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataOutputRequest,
+    ) -> BuckyResult<CryptoDecryptDataOutputResponse> {
+        let mut http_req = self.encode_decrypt_data_request(&req);
+        let data_len = req.data.len();
+        http_req.set_body(req.data);
+
+        let mut resp = self.requestor.request(http_req).await?;
+
+        if resp.status().is_success() {
+            let resp = Self::decode_decrypt_data_response(resp).await?;
+
+            info!(
+                "decrypt data crypto success: data={}, type={}, {}",
+                data_len,
+                req.decrypt_type.to_string(),
+                resp,
+            );
+
+            Ok(resp)
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!(
+                "decrypt data crypto failed: data={}, type={}, {}",
+                data_len,
+                req.decrypt_type.to_string(),
+                e,
+            );
+
+            Err(e)
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -223,5 +366,19 @@ impl CryptoOutputProcessor for CryptoRequestor {
         req: CryptoSignObjectOutputRequest,
     ) -> BuckyResult<CryptoSignObjectOutputResponse> {
         Self::sign_object(&self, req).await
+    }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataOutputRequest,
+    ) -> BuckyResult<CryptoEncryptDataOutputResponse> {
+        Self::encrypt_data(&self, req).await
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataOutputRequest,
+    ) -> BuckyResult<CryptoDecryptDataOutputResponse> {
+        Self::decrypt_data(&self, req).await
     }
 }

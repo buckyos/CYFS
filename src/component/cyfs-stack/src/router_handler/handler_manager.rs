@@ -32,6 +32,11 @@ pub struct RouterHandlersContainer {
     pub verify_object:
         OnceCell<RouterHandlers<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse>>,
 
+    pub encrypt_data:
+        OnceCell<RouterHandlers<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse>>,
+    pub decrypt_data:
+        OnceCell<RouterHandlers<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse>>,
+
     pub acl: OnceCell<RouterHandlers<AclHandlerRequest, AclHandlerResponse>>,
     pub interest: OnceCell<RouterHandlers<InterestHandlerRequest, InterestHandlerResponse>>,
 }
@@ -56,6 +61,8 @@ impl RouterHandlersContainer {
 
             sign_object: OnceCell::new(),
             verify_object: OnceCell::new(),
+            encrypt_data: OnceCell::new(),
+            decrypt_data: OnceCell::new(),
 
             acl: OnceCell::new(),
             interest: OnceCell::new(),
@@ -186,6 +193,7 @@ impl RouterHandlersContainer {
         self.delete_data.get()
     }
 
+    // sign
     pub fn sign_object(
         &self,
     ) -> &RouterHandlers<CryptoSignObjectInputRequest, CryptoSignObjectInputResponse> {
@@ -202,6 +210,7 @@ impl RouterHandlersContainer {
         self.sign_object.get()
     }
 
+    // verify
     pub fn verify_object(
         &self,
     ) -> &RouterHandlers<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse> {
@@ -217,6 +226,42 @@ impl RouterHandlersContainer {
     ) -> Option<&RouterHandlers<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse>>
     {
         self.verify_object.get()
+    }
+
+    // encrypt
+    pub fn encrypt_data(
+        &self,
+    ) -> &RouterHandlers<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse> {
+        self.encrypt_data.get_or_init(|| {
+            RouterHandlers::<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse>::new(
+                self.chain.clone(),
+                self.storage.clone(),
+            )
+        })
+    }
+    pub fn try_encrypt_data(
+        &self,
+    ) -> Option<&RouterHandlers<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse>>
+    {
+        self.encrypt_data.get()
+    }
+
+    // decrypt
+    pub fn decrypt_data(
+        &self,
+    ) -> &RouterHandlers<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse> {
+        self.decrypt_data.get_or_init(|| {
+            RouterHandlers::<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse>::new(
+                self.chain.clone(),
+                self.storage.clone(),
+            )
+        })
+    }
+    pub fn try_decrypt_data(
+        &self,
+    ) -> Option<&RouterHandlers<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse>>
+    {
+        self.decrypt_data.get()
     }
 
     // acl
@@ -281,6 +326,12 @@ impl RouterHandlersContainer {
         if let Some(container) = self.verify_object.get() {
             changed |= container.clear_dec_handlers(dec_id)
         }
+        if let Some(container) = self.encrypt_data.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+        if let Some(container) = self.decrypt_data.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
 
         if let Some(container) = self.acl.get() {
             changed |= container.clear_dec_handlers(dec_id)
@@ -327,6 +378,12 @@ impl RouterHandlersContainer {
         if let Some(container) = self.verify_object.get() {
             result.verify_object = container.dump_data();
         }
+        if let Some(container) = self.encrypt_data.get() {
+            result.sign_object = container.dump_data();
+        }
+        if let Some(container) = self.decrypt_data.get() {
+            result.verify_object = container.dump_data();
+        }
 
         if let Some(container) = self.acl.get() {
             result.acl = container.dump_data();
@@ -371,6 +428,12 @@ impl RouterHandlersContainer {
         }
         if let Some(list) = data.verify_object {
             self.verify_object().load_data(list);
+        }
+        if let Some(list) = data.encrypt_data {
+            self.encrypt_data().load_data(list);
+        }
+        if let Some(list) = data.decrypt_data {
+            self.decrypt_data().load_data(list);
         }
 
         if let Some(list) = data.acl {

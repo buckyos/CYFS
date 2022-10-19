@@ -72,10 +72,18 @@ pub trait RouterHandlerManagerProcessor: Send + Sync {
     fn verify_object(
         &self,
     ) -> &dyn RouterHandlerProcessor<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse>;
+    fn encrypt_data(
+        &self,
+    ) -> &dyn RouterHandlerProcessor<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse>;
+    fn decrypt_data(
+        &self,
+    ) -> &dyn RouterHandlerProcessor<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse>;
 
     fn acl(&self) -> &dyn RouterHandlerProcessor<AclHandlerRequest, AclHandlerResponse>;
 
-    fn interest(&self) -> &dyn RouterHandlerProcessor<InterestHandlerRequest, InterestHandlerResponse>;
+    fn interest(
+        &self,
+    ) -> &dyn RouterHandlerProcessor<InterestHandlerRequest, InterestHandlerResponse>;
 }
 
 pub type RouterHandlerManagerProcessorRef = Arc<Box<dyn RouterHandlerManagerProcessor>>;

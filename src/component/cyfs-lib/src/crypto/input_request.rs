@@ -78,3 +78,65 @@ impl fmt::Display for CryptoVerifyObjectInputRequest {
 }
 
 pub type CryptoVerifyObjectInputResponse = CryptoVerifyObjectOutputResponse;
+
+#[derive(Debug, Clone)]
+pub struct CryptoEncryptDataInputRequest {
+    pub common: CryptoInputRequestCommon,
+
+    pub encrypt_type: CryptoEncryptType,
+
+    pub data: Option<Vec<u8>>,
+
+    pub flags: u32,
+}
+
+impl CryptoEncryptDataInputRequest {
+    pub fn data_len(&self) -> usize {
+        match &self.data {
+            Some(data) => data.len(),
+            None => 0,
+        }
+    }
+}
+
+impl fmt::Display for CryptoEncryptDataInputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)?;
+
+        write!(f, ", encrypt_type: {}", self.encrypt_type.as_str())?;
+        write!(
+            f,
+            ", data: {}",
+            match &self.data {
+                Some(data) => data.len(),
+                None => 0,
+            }
+        )?;
+        write!(f, ", flags: {}", self.flags)
+    }
+}
+
+pub type CryptoEncryptDataInputResponse = CryptoEncryptDataOutputResponse;
+
+#[derive(Debug, Clone)]
+pub struct CryptoDecryptDataInputRequest {
+    pub common: CryptoInputRequestCommon,
+
+    pub decrypt_type: CryptoDecryptType,
+
+    pub data: Vec<u8>,
+
+    pub flags: u32,
+}
+
+impl fmt::Display for CryptoDecryptDataInputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)?;
+
+        write!(f, ", decrypt_type: {}", self.decrypt_type.as_str())?;
+        write!(f, ", data: {}", self.data.len(),)?;
+        write!(f, ", flags: {}", self.flags)
+    }
+}
+
+pub type CryptoDecryptDataInputResponse = CryptoDecryptDataOutputResponse;

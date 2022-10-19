@@ -20,6 +20,8 @@ pub enum RouterHandlerCategory {
 
     SignObject,
     VerifyObject,
+    EncryptData,
+    DecryptData,
 
     Acl, 
     Interest, 
@@ -42,6 +44,8 @@ impl RouterHandlerCategory {
 
             Self::SignObject => "sign_object",
             Self::VerifyObject => "verify_object",
+            Self::EncryptData => "encrypt_data",
+            Self::DecryptData => "decrypt_data",
 
             Self::Acl => "acl", 
             Self::Interest => "interest", 
@@ -79,6 +83,8 @@ impl FromStr for RouterHandlerCategory {
 
             "sign_object" => Self::SignObject,
             "verify_object" => Self::VerifyObject,
+            "encrypt_data" => Self::EncryptData,
+            "decrypt_data" => Self::DecryptData,
 
             "acl" => Self::Acl,
 
@@ -158,6 +164,18 @@ impl RouterHandlerCategoryInfo for RouterHandlerSignObjectRequest {
 impl RouterHandlerCategoryInfo for RouterHandlerVerifyObjectRequest {
     fn category() -> RouterHandlerCategory {
         RouterHandlerCategory::VerifyObject
+    }
+}
+
+impl RouterHandlerCategoryInfo for RouterHandlerEncryptDataRequest {
+    fn category() -> RouterHandlerCategory {
+        RouterHandlerCategory::EncryptData
+    }
+}
+
+impl RouterHandlerCategoryInfo for RouterHandlerDecryptDataRequest {
+    fn category() -> RouterHandlerCategory {
+        RouterHandlerCategory::DecryptData
     }
 }
 

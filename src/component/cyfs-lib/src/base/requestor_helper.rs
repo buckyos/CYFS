@@ -532,17 +532,26 @@ impl RequestorHelper {
         }
     }
 
+    pub async fn decode_raw_data_body<R>(body: &mut R) -> BuckyResult<Vec<u8>>
+    where
+        R: BodyOp,
+    {
+        let buf = body.body_bytes().await.map_err(|e| {
+            let msg = format!("read raw body bytes error! {}", e);
+            error!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
+
+        Ok(buf)
+    }
+
     pub async fn decode_raw_object_body<R, T>(body: &mut R) -> BuckyResult<T>
     where
         R: BodyOp,
         T: for<'d> RawDecode<'d>,
     {
-        let buf = body.body_bytes().await.map_err(|e| {
-            let msg = format!("read object raw body bytes error! {}", e);
-            error!("{}", msg);
-
-            BuckyError::new(BuckyErrorCode::IoError, msg)
-        })?;
+        let buf = Self::decode_raw_data_body(body).await?;
 
         let (object, _) = T::raw_decode(&buf).map_err(|e| {
             error!("decode object from raw bytes error: {}", e,);

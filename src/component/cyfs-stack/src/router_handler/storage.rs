@@ -31,6 +31,8 @@ pub(crate) struct RouterHandlerContainerSavedData {
 
     pub sign_object: Option<BTreeMap<String, RouterHandlerSavedData>>,
     pub verify_object: Option<BTreeMap<String, RouterHandlerSavedData>>,
+    pub encrypt_data: Option<BTreeMap<String, RouterHandlerSavedData>>,
+    pub decrypt_data: Option<BTreeMap<String, RouterHandlerSavedData>>,
 
     pub acl: Option<BTreeMap<String, RouterHandlerSavedData>>, 
     pub interest: Option<BTreeMap<String, RouterHandlerSavedData>>, 
@@ -51,6 +53,8 @@ impl RouterHandlerContainerSavedData {
 
             sign_object: None,
             verify_object: None,
+            encrypt_data: None,
+            decrypt_data: None,
 
             acl: None,
             interest: None
@@ -75,6 +79,8 @@ impl RouterHandlerContainerSavedData {
             && Self::is_container_empty(&self.delete_data)
             && Self::is_container_empty(&self.sign_object)
             && Self::is_container_empty(&self.verify_object)
+            && Self::is_container_empty(&self.encrypt_data)
+            && Self::is_container_empty(&self.decrypt_data)
             && Self::is_container_empty(&self.acl)
             && Self::is_container_empty(&self.interest)
     }

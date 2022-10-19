@@ -179,7 +179,6 @@ impl RouterHandlerWSProcessor {
                     .sign_object()
                     .add_handler(handler)
             }
-
             RouterHandlerCategory::VerifyObject => {
                 let handler = Self::create_handler::<
                     CryptoVerifyObjectInputRequest,
@@ -188,6 +187,27 @@ impl RouterHandlerWSProcessor {
                 self.manager
                     .handlers(&req.chain)
                     .verify_object()
+                    .add_handler(handler)
+            }
+
+            RouterHandlerCategory::EncryptData => {
+                let handler = Self::create_handler::<
+                    CryptoEncryptDataInputRequest,
+                    CryptoEncryptDataInputResponse,
+               >(session_requestor, &source, &req)?;
+                self.manager
+                    .handlers(&req.chain)
+                    .encrypt_data()
+                    .add_handler(handler)
+            }
+            RouterHandlerCategory::DecryptData => {
+                let handler = Self::create_handler::<
+                    CryptoDecryptDataInputRequest,
+                    CryptoDecryptDataInputResponse,
+               >(session_requestor, &source, &req)?;
+                self.manager
+                    .handlers(&req.chain)
+                    .decrypt_data()
                     .add_handler(handler)
             }
 
@@ -268,6 +288,16 @@ impl RouterHandlerWSProcessor {
                 .manager
                 .handlers(&req.chain)
                 .verify_object()
+                .remove_handler(&req.id, req.dec_id),
+            RouterHandlerCategory::EncryptData => self
+                .manager
+                .handlers(&req.chain)
+                .encrypt_data()
+                .remove_handler(&req.id, req.dec_id),
+            RouterHandlerCategory::DecryptData => self
+                .manager
+                .handlers(&req.chain)
+                .decrypt_data()
                 .remove_handler(&req.id, req.dec_id),
 
             RouterHandlerCategory::Acl => self
