@@ -140,14 +140,18 @@ impl TestLoader {
     }
 
     pub async fn load_stack(user1: TestUser, user2: TestUser) {
+        use rand::Rng;
+
+        let port: u16 = rand::thread_rng().gen_range(30000, 50000);
+
         // 初始化协议栈
         let t1 = async_std::task::spawn(async move {
-            let zone = TestZone::new(true, 20000, 21000, user1);
+            let zone = TestZone::new(true, port, 21000, user1);
             zone.init().await;
         });
 
         let t2 = async_std::task::spawn(async move {
-            let zone = TestZone::new(true, 20010, 21010, user2);
+            let zone = TestZone::new(true, port + 10, 21010, user2);
             zone.init().await;
         });
 
