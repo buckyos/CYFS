@@ -123,15 +123,7 @@ impl ChunkDownloader {
         return Ok(cache)
     }
 
-    pub fn add_context(&self, context: SingleDownloadContext) {
-        self.context().add_context(context);
-    }
-
-    pub fn remove_context(&self, context: &SingleDownloadContext) {
-        self.context().remove_context(context)
-    }
-
-    fn context(&self) -> &MultiDownloadContext {
+    pub fn context(&self) -> &MultiDownloadContext {
         &self.0.context
     }
 
@@ -190,7 +182,29 @@ impl ChunkDownloader {
             }
         };
         if let Some(session) = session {
-            return session.cur_speed();
+            let source = DownloadSource {
+                target: session.channel().remote().clone(), 
+                object_id: Some(self.chunk().object_id()), 
+                encode_desc: session.desc().clone(), 
+                referer: session.referer().cloned()
+            };
+            if !self.context().source_exists(&source) {
+                session.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "user canceled"));
+                let state = &mut *self.0.state.write().unwrap();
+                match state {
+                    StateImpl::Downloading(downloading) => {
+                        if let Some(exists) = downloading.session.clone() {
+                            if exists.ptr_eq(&session) {
+                                // info!("{} cancel session {}", self, session);
+                                downloading.session = None;
+                            }
+                        }
+                    }, 
+                    _ => {}
+                }
+            } else {
+                return session.cur_speed();
+            }
         } 
           
         if cache.is_none() {

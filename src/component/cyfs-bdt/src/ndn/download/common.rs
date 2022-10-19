@@ -29,6 +29,10 @@ struct SingleContextImpl {
 pub struct SingleDownloadContext(Arc<SingleContextImpl>);
 
 impl SingleDownloadContext {
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
     pub fn new(referer: Option<String>) -> Self {
         Self(Arc::new(SingleContextImpl {
             referer, 
@@ -60,6 +64,11 @@ impl SingleDownloadContext {
         self.0.sources.write().unwrap().push_back(source);
     }
 
+    pub fn source_exists(&self, source: &DownloadSource) -> bool {
+        let sources = self.0.sources.read().unwrap();
+        sources.iter().find(|s| s.target == source.target && s.encode_desc.support_desc(&source.encode_desc)).is_some()
+    }
+
     pub fn sources_of(&self, filter: impl Fn(&DownloadSource) -> bool, limit: usize) -> LinkedList<DownloadSource> {
         let mut result = LinkedList::new();
         let mut count = 0;
@@ -83,8 +92,38 @@ impl SingleDownloadContext {
 }
 
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ContextState {
+    Normal, 
+    Paused
+}
+
+struct ContextCount {
+    normal_count: usize, 
+    paused_count: usize
+}
+
+impl ContextCount {
+    fn state(&self) -> ContextState {
+        if self.normal_count > 0 {
+            ContextState::Normal 
+        } else {
+            ContextState::Paused
+        }
+    }
+
+    fn task_count(&self) -> usize {
+        self.normal_count + self.paused_count
+    }
+}
+
+struct ContextStub {
+    context: SingleDownloadContext, 
+    count: ContextCount
+}
+
 struct MultiContextImpl {
-    contexts: RwLock<LinkedList<SingleDownloadContext>>
+    contexts: RwLock<LinkedList<ContextStub>>
 }
 
 #[derive(Clone)]
@@ -98,26 +137,69 @@ impl MultiDownloadContext {
     }
 
     pub fn add_context(&self, context: SingleDownloadContext) {
-        self.0.contexts.write().unwrap().push_back(context);
+        let mut contexts = self.0.contexts.write().unwrap();
+        if let Some(stub) = contexts.iter_mut().find(|s| s.context.ptr_eq(&context)) {
+            stub.count.normal_count += 1;
+        } else {
+            contexts.push_back(ContextStub {
+                context, 
+                count: ContextCount {
+                    normal_count: 1, 
+                    paused_count: 0
+                }
+            });
+        }
     }
 
-    pub fn remove_context(&self, _context: &SingleDownloadContext) {
-        unimplemented!()
+
+    pub fn remove_context(&self, context: &SingleDownloadContext, state: DownloadTaskState) {
+        let mut contexts = self.0.contexts.write().unwrap();
+        
+        let to_remove = if let Some((index, stub)) = contexts.iter_mut().enumerate().find(|(_, stub)| stub.context.ptr_eq(context)) {
+            match state {
+                DownloadTaskState::Paused => if stub.count.paused_count > 0 {
+                    stub.count.paused_count -= 1;
+                }, 
+                _ => if stub.count.paused_count > 0 {
+                    stub.count.normal_count -= 1;
+                }, 
+            }
+            if stub.count.task_count() == 0 {
+                Some(index)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(index) = to_remove {
+            let mut back_parts = contexts.split_off(index);
+            let _ = back_parts.pop_front();
+            contexts.append(&mut back_parts);
+            // contexts.remove(index);
+        }
     }
 
     pub fn sources_of(&self, filter: impl Fn(&DownloadSource) -> bool + Copy, limit: usize) -> LinkedList<DownloadSource> {
         let mut result = LinkedList::new();
         let mut limit = limit;
         let contexts = self.0.contexts.read().unwrap();
-        for context in contexts.iter() {
-            let mut part = context.sources_of(filter, limit);
-            limit -= part.len();
-            result.append(&mut part);
-            if limit == 0 {
-                break;
-            }
+        for stub in contexts.iter() {
+            if stub.count.state() == ContextState::Normal {
+                let mut part = stub.context.sources_of(filter, limit);
+                limit -= part.len();
+                result.append(&mut part);
+                if limit == 0 {
+                    break;
+                }
+            } 
         }   
         result
+    }
+
+    pub fn source_exists(&self, source: &DownloadSource) -> bool {
+        self.0.contexts.read().unwrap().iter().find(|stub| stub.context.source_exists(source)).is_some()
     }
 }
 

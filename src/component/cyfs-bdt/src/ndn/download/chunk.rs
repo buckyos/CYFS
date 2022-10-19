@@ -27,8 +27,13 @@ enum TaskStateImpl {
     Finished,
 }
 
+enum ControlStateImpl {
+    Normal(StateWaiter), 
+    Canceled,
+}
+
 struct StateImpl {
-    control_state: DownloadTaskControlState, 
+    control_state: ControlStateImpl, 
     task_state: TaskStateImpl,
 }
 
@@ -56,7 +61,7 @@ impl ChunkTask {
         stack: WeakStack, 
         chunk: ChunkId, 
         context: SingleDownloadContext, 
-        writers: Vec<Box <dyn ChunkWriter>>, 
+        writers: Vec<Box<dyn ChunkWriter>>, 
     ) -> Self {
         Self::with_range(
             stack, 
@@ -75,7 +80,8 @@ impl ChunkTask {
     ) -> Self {
         let strong_stack = Stack::from(&stack);
         let cache = strong_stack.ndn().chunk_manager().create_cache(&chunk);
-        cache.downloader().add_context(context.clone());
+        cache.downloader().context().add_context(context.clone());
+      
         let task = Self(Arc::new(ChunkTaskImpl {
             stack, 
             chunk, 
@@ -83,7 +89,7 @@ impl ChunkTask {
             context, 
             state: RwLock::new(StateImpl {
                 task_state: TaskStateImpl::Downloading(cache.clone()), 
-                control_state: DownloadTaskControlState::Normal,
+                control_state: ControlStateImpl::Normal(StateWaiter::new()),
             }), 
             writers,
         }));
@@ -111,16 +117,45 @@ impl ChunkTask {
         &self.0.context
     }
 
+    async fn wait_user_canceled(&self) -> BuckyError {
+        let waiter = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut state.control_state {
+                ControlStateImpl::Normal(waiters) => Some(waiters.new_waiter()), 
+                _ => None
+            }
+        };
+        
+        
+        if let Some(waiter) = waiter {
+            let _ = StateWaiter::wait(waiter, || self.control_state()).await;
+        } 
+
+        BuckyError::new(BuckyErrorCode::UserCanceled, "")
+    }
+
     async fn begin(&self, cache: ChunkCache) {
         let mut buffer = vec![0u8; self.chunk().len() as usize];
         
-        let _ = cache.read(0, buffer.as_mut_slice(), || async_std::future::pending::<BuckyError>()).await;
-        let content = Arc::new(buffer);
-        for writer in self.0.writers.iter() {
-            let _ = writer.write(self.chunk(), content.clone(), self.range()).await;
-            let _ = writer.finish().await;
+        let result = cache.read(0, buffer.as_mut_slice(), || self.wait_user_canceled()).await;
+        cache.downloader().context().remove_context(self.context(), self.state());
+
+        match result {
+            Ok(_) => {
+                self.0.state.write().unwrap().task_state = TaskStateImpl::Finished;
+                let content = Arc::new(buffer);
+                for writer in self.0.writers.iter() {
+                    let _ = writer.write(self.chunk(), content.clone(), self.range()).await;
+                    let _ = writer.finish().await;
+                }
+            }, 
+            Err(err) => {
+                self.0.state.write().unwrap().task_state = TaskStateImpl::Error(err.code());
+                for writer in self.0.writers.iter() {
+                    let _ = writer.err(err.code()).await;
+                }
+            }
         }
-       
     }
 }
 
@@ -138,7 +173,10 @@ impl DownloadTask for ChunkTask {
     }
 
     fn control_state(&self) -> DownloadTaskControlState {
-        self.0.state.read().unwrap().control_state.clone()
+        match &self.0.state.read().unwrap().control_state {
+            ControlStateImpl::Normal(_) => DownloadTaskControlState::Normal, 
+            ControlStateImpl::Canceled => DownloadTaskControlState::Canceled
+        }
     }
 
     fn priority_score(&self) -> u8 {
@@ -217,5 +255,23 @@ impl DownloadTask for ChunkTask {
         } else {
             0
         }
+    }
+
+    fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
+        let waiters = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut state.control_state {
+                ControlStateImpl::Normal(waiters) => {
+                    let waiters = Some(waiters.transfer());
+                    state.control_state = ControlStateImpl::Canceled;
+                    waiters
+                }, 
+                _ => None
+            }
+        };
+        if let Some(waiters) = waiters {
+            waiters.wake();
+        }
+        Ok(DownloadTaskControlState::Canceled)
     }
 }

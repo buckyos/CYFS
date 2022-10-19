@@ -89,7 +89,7 @@ pub enum BuckySystemErrorCode {
     ConnectInterZoneFailed = 41,
     InnerPathNotFound = 42,
     RangeNotSatisfiable = 43,
-
+    UserCanceled = 44, 
     Conflict = 50,
 
     OutofSessionLimit = 60,
@@ -201,6 +201,7 @@ pub enum BuckyErrorCode {
     ConnectInterZoneFailed,
     InnerPathNotFound,
     RangeNotSatisfiable,
+    UserCanceled,
 
     Conflict,
 
@@ -291,7 +292,7 @@ impl Into<BuckySystemErrorCode> for BuckyErrorCode {
             Self::ConnectInterZoneFailed => BuckySystemErrorCode::ConnectInterZoneFailed,
             Self::InnerPathNotFound => BuckySystemErrorCode::InnerPathNotFound,
             Self::RangeNotSatisfiable => BuckySystemErrorCode::RangeNotSatisfiable,
-
+            Self::UserCanceled => BuckySystemErrorCode::UserCanceled, 
             Self::Conflict => BuckySystemErrorCode::Conflict,
 
             Self::OutofSessionLimit => BuckySystemErrorCode::OutofSessionLimit,
@@ -379,6 +380,7 @@ impl Into<BuckyErrorCode> for BuckySystemErrorCode {
             Self::ConnectInterZoneFailed => BuckyErrorCode::ConnectInterZoneFailed,
             Self::InnerPathNotFound => BuckyErrorCode::InnerPathNotFound,
             Self::RangeNotSatisfiable => BuckyErrorCode::RangeNotSatisfiable,
+            Self::UserCanceled => BuckyErrorCode::UserCanceled, 
 
             Self::Conflict => BuckyErrorCode::Conflict,
 
