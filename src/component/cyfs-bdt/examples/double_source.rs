@@ -103,7 +103,8 @@ async fn main() {
         let task = download_chunk(
             &*ln_stack, 
             chunkid.clone(), 
-            context, 
+            None, 
+            Some(context), 
             vec![ln_store.clone_as_writer()]).await.unwrap();
         
         watch_resource(task);

@@ -481,16 +481,16 @@ pub async fn start_upload_task(
     to: &Channel, 
     owners: Vec<String>
 ) -> BuckyResult<Box<dyn UploadTask>> {
-    let session = stack.ndn().chunk_manager().start_upload(
-        interest.session_id.clone(), 
+    let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
+    let desc = interest.prefer_type.fill_values(&interest.chunk);
+    let encoder = cache.create_encoder(&desc);
+    let session = UploadSession::new(
         interest.chunk.clone(), 
-        interest.prefer_type.clone(), 
-        to.clone()).await?;
-    let _ =  stack.ndn().root_task().upload().add_task(None, session.clone_as_task());
-    // 加入到channel的 upload sessions中
-    let _ = to.upload(session.clone());
-    let _ = session.on_interest(interest)?;
-
+        interest.session_id.clone(), 
+        desc.clone(), 
+        encoder, 
+        to.clone());
+   
     if owners.len() > 0 {
         for owner in owners {
             let (owner, path) = create_upload_task_owner(stack, Some(owner))?;
@@ -499,6 +499,11 @@ pub async fn start_upload_task(
     } else {
         stack.ndn().root_task().upload().add_task(None, session.clone_as_task())?;
     }
+
+    
+    // 加入到channel的 upload sessions中
+    let _ = to.upload(session.clone());
+    let _ = session.on_interest(interest)?;
    
     Ok(session.clone_as_task())
 }

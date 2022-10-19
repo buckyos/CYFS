@@ -107,8 +107,9 @@ async fn main() {
             ) -> BuckyResult<()> {
                 let _ = download_chunk(
                     stack,
-                    interest.chunk.clone(),
-                    SingleDownloadContext::streams(None, vec![self.src_dev.desc().device_id()]),
+                    interest.chunk.clone(), 
+                    None, 
+                    Some(SingleDownloadContext::streams(None, vec![self.src_dev.desc().device_id()])),
                     vec![self.store.clone_as_writer()],
                 )
                 .await;
@@ -161,8 +162,9 @@ async fn main() {
 
     let _ = download_chunk(
         &*down_stack,
-        chunkid.clone(),
-        SingleDownloadContext::streams(None, vec![cache_stack.local_device_id().clone(),]),
+        chunkid.clone(), 
+        None, 
+        Some(SingleDownloadContext::streams(None, vec![cache_stack.local_device_id().clone(),])),
         vec![down_store.clone_as_writer()],
     )
     .await;
