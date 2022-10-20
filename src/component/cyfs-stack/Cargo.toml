@@ -5,7 +5,6 @@ authors = ["liyaxing <liyaxing@buckyos.com>"]
 edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust cyfs-stack package"
-rust-version = '1.63'
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

@@ -1,6 +1,6 @@
 ![CYFS Logo](./doc/logos/CYFS_logo.png)
 [![cyfs-lib-ver](https://img.shields.io/crates/v/cyfs-lib?label=cyfs-lib&style=plastic)](https://crates.io/crates/cyfs-lib)
-![rust](https://img.shields.io/badge/rustc-1.57%2B-green?style=plastic)
+![rust](https://img.shields.io/badge/rustc-1.63%2B-green?style=plastic)
 ![liscence](https://img.shields.io/crates/l/cyfs-base?style=plastic)
 ![Downloads](https://img.shields.io/crates/d/cyfs-base?style=plastic)
 
@@ -72,7 +72,7 @@ Note that this environment is normally not isolated, but can be added to the CYF
 Prepare an idle Linux host, preferably a VPS, with more than 2G of memory.
 Preparation:
 - Node.js 14 or above
-- rustc 1.57 or above
+- rustc 1.63 or above
 
 Run the following command to compile the OOD System.
 

@@ -1,6 +1,6 @@
 ![CYFS Logo](./doc/logos/CYFS_logo.png)
 [![cyfs-lib-ver](https://img.shields.io/crates/v/cyfs-lib?label=cyfs-lib&style=plastic)](https://crates.io/crates/cyfs-lib)
-![rust](https://img.shields.io/badge/rustc-1.57%2B-green?style=plastic)
+![rust](https://img.shields.io/badge/rustc-1.63%2B-green?style=plastic)
 ![liscence](https://img.shields.io/crates/l/cyfs-base?style=plastic)
 ![Downloads](https://img.shields.io/crates/d/cyfs-base?style=plastic)
 
@@ -72,7 +72,7 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 准备一台闲置的Linux主机，最好是VPS，有2G以上内存。
 准备工作:
 - node.js 14或以上版本
-- rustc 1.57或以上版本
+- rustc 1.63或以上版本
 
 运行下面命令进行OOD System的编译。
 
