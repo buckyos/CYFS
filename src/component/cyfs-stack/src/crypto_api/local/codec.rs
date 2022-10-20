@@ -95,6 +95,13 @@ impl CryptoCodec {
                 })
             }
             CryptoEncryptType::GenAESKeyAndEncrypt => {
+                if req.data.is_some() && req.data.as_ref().unwrap().len() > 0 {
+                    let msg = format!("encrypt data with GenAESKeyAndEncrypt not supports any data buf! flags={}, data={}", 
+                        req.flags, req.data.as_ref().unwrap().len());
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+
                 let (aes_key, result) = pk.gen_aeskey_and_encrypt()?;
                 Ok(CryptoEncryptDataInputResponse {
                     aes_key: Some(aes_key),
