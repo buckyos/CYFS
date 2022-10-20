@@ -173,20 +173,28 @@ impl ChunkReader for ChunkStoreReader {
         };
         let ret = self.tracker.get_position(&request).await?;
         if ret.len() == 0 {
+            let msg = format!("chunk not exists: {}", chunk);
+            warn!("{}", msg);
             Err(BuckyError::new(
                 BuckyErrorCode::NotFound,
-                format!("chunk not exists: {}", chunk),
+                msg,
             ))
         } else {
             for c in ret {
                 let mut read_indeed = true;
                 let read_ret = match &c.pos {
                     //FIXME
-                    TrackerPostion::File(path) => Self::read_chunk(chunk, Path::new(path), 0).await,
+                    TrackerPostion::File(path) => {
+                        info!("will read chunk from file: chunk={}, file={}", chunk, path);
+                        Self::read_chunk(chunk, Path::new(path), 0).await 
+                    }
                     TrackerPostion::FileRange(fr) => {
+                        info!("will read chunk from file range: chunk={}, file={}, range={}:{}", 
+                            chunk, fr.path, fr.range_begin, fr.range_end);
                         Self::read_chunk(chunk, Path::new(fr.path.as_str()), fr.range_begin).await
                     }
                     TrackerPostion::ChunkManager => {
+                        info!("will read chunk from chunk manager: chunk={}", chunk);
                         let chunk_body = self
                             .chunk_manager
                             .get_chunk(chunk, ChunkType::MemChunk)
@@ -197,12 +205,14 @@ impl ChunkReader for ChunkStoreReader {
                     value @ _ => {
                         read_indeed = false;
 
+                        let msg = format!(
+                            "unsupport tracker postion for chunk={}, position={:?}",
+                            chunk, value,
+                        );
+                        error!("{}", msg);
                         Err(BuckyError::new(
                             BuckyErrorCode::InvalidFormat,
-                            format!(
-                                "unsupport tracker postion for chunk={}, position={:?}",
-                                chunk, value,
-                            ),
+                            msg,
                         ))
                     }
                 };
