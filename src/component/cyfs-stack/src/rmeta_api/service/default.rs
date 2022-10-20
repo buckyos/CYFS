@@ -58,7 +58,7 @@ impl GlobalStateDefaultMetas {
         meta.add_access(item).await?;
         */
 
-        // allow crypto.verify_object for all zone dec call
+        // allow crypto.verify_object & crypto.encrypt_data for all zone dec call
         let mut permissions = AccessString::new(0);
         permissions.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Call);
         permissions.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Call);
@@ -66,6 +66,14 @@ impl GlobalStateDefaultMetas {
         permissions.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Call);
 
         let path = format!("{}/{}", CYFS_CRYPTO_VIRTUAL_PATH, "verify_object");
+        let item = GlobalStatePathAccessItem {
+            path,
+            access: GlobalStatePathGroupAccess::Default(permissions.value()),
+        };
+
+        meta.add_access(item).await?;
+
+        let path = format!("{}/{}", CYFS_CRYPTO_VIRTUAL_PATH, "encrypt_data");
         let item = GlobalStatePathAccessItem {
             path,
             access: GlobalStatePathGroupAccess::Default(permissions.value()),
