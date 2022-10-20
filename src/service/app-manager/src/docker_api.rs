@@ -201,7 +201,7 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
         std::fs::create_dir_all(log_dir.clone())?;
     }
 
-    let app_data_dir = get_cyfs_root_path().join("data").join("app");
+    let app_data_dir = get_cyfs_root_path().join("data").join("app").join(id);
     if !app_data_dir.exists() {
         std::fs::create_dir_all(app_data_dir.clone())?;
     }
@@ -214,16 +214,8 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
             read_only: Some(false),
             ..Default::default()
         },
-        // mount app data 目录(volume 形式)
-        // Mount {
-        //     target: Some("/cyfs/data/app".to_string()),
-        //     source: Some(id.to_string()),
-        //     typ: Some(bollard::models::MountTypeEnum::VOLUME),
-        //     read_only: Some(false),
-        //     ..Default::default()
-        // },
         Mount {
-            target: Some("/cyfs/data/app".to_string()),
+            target: Some(format!("/cyfs/data/app/{}", id)),
             source: Some(app_data_dir.as_path().display().to_string()),
             typ: Some(bollard::models::MountTypeEnum::BIND),
             read_only: Some(false),
