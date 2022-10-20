@@ -406,3 +406,25 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Read
         Ok(OnPackageResult::Handled)
     }
 }
+
+
+
+
+#[test]
+fn profile_debug_mutex() {
+    for i in 0..10000 {
+        use cyfs_debug::Mutex;
+        let m = Mutex::new(i);
+        *cyfs_debug::lock!(m).unwrap() = 0;
+    }
+}
+
+
+#[test]
+fn profile_mutex() {
+    for i in 0..10000 {
+        use std::sync::Mutex;
+        let m = Mutex::new(i);
+        *m.lock().unwrap() = 0;
+    }
+}

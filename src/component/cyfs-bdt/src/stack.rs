@@ -117,7 +117,7 @@ impl StackConfig {
                     },
                     package: stream::package::Config {
                         connect_resend_interval: Duration::from_millis(100),
-                        atomic_interval: Duration::from_millis(10),
+                        atomic_interval: Duration::from_millis(1),
                         break_overtime: Duration::from_secs(60),
                         msl: Duration::from_secs(60), 
                         cc: cc::Config {
@@ -139,7 +139,7 @@ impl StackConfig {
                 fragment_expired_us: 30 *1000*1000,
             },
             ndn: ndn::Config {
-                atomic_interval: Duration::from_millis(10), 
+                atomic_interval: Duration::from_millis(1), 
                 schedule_interval: Duration::from_secs(1), 
                 channel: ndn::channel::Config {
                     precoding_timeout: Duration::from_secs(900),

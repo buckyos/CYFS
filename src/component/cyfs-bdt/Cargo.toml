@@ -12,7 +12,7 @@ async-std = { version = '1.11', features = ['unstable', 'attributes'] }
 async-trait = '0.1.53'
 bytes = '0.4'
 cyfs-base = { path = '../cyfs-base', version = '0.6' }
-cyfs-debug = { path = '../cyfs-debug', version = '0.6' }
+cyfs-debug = { path = '../cyfs-debug', version = '0.6', default-features = false }
 chrono = '0.4'
 futures = { version = '0.3', features = ['default', 'thread-pool'] }
 libc = '0.2'
