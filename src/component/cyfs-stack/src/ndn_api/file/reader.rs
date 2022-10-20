@@ -85,6 +85,94 @@ impl ChunkStoreReader {
         Ok(Box::new(hash_reader))
     }
 
+    async fn read_impl(
+        &self,
+        chunk: &ChunkId,
+    ) -> BuckyResult<(Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>, TrackerPostion)> {
+        let request = GetTrackerPositionRequest {
+            id: chunk.to_string(),
+            direction: Some(TrackerDirection::Store),
+        };
+        let ret = self.tracker.get_position(&request).await?;
+        if ret.len() == 0 {
+            let msg = format!("chunk not exists: {}", chunk);
+            warn!("{}", msg);
+            Err(BuckyError::new(
+                BuckyErrorCode::NotFound,
+                msg,
+            ))
+        } else {
+            for c in ret {
+                let mut read_indeed = true;
+                let read_ret = match &c.pos {
+                    //FIXME
+                    TrackerPostion::File(path) => {
+                        info!("will read chunk from file: chunk={}, file={}", chunk, path);
+                        Self::read_chunk(chunk, Path::new(path), 0).await 
+                    }
+                    TrackerPostion::FileRange(fr) => {
+                        info!("will read chunk from file range: chunk={}, file={}, range={}:{}", 
+                            chunk, fr.path, fr.range_begin, fr.range_end);
+                        Self::read_chunk(chunk, Path::new(fr.path.as_str()), fr.range_begin).await
+                    }
+                    TrackerPostion::ChunkManager => {
+                        info!("will read chunk from chunk manager: chunk={}", chunk);
+                        let chunk_body = self
+                            .chunk_manager
+                            .get_chunk(chunk, ChunkType::MemChunk)
+                            .await?;
+                        let reader = ChunkRead::new(chunk_body);
+                        Ok(Box::new(reader) as Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>)
+                    }
+                    value @ _ => {
+                        read_indeed = false;
+
+                        let msg = format!(
+                            "unsupport tracker postion for chunk={}, position={:?}",
+                            chunk, value,
+                        );
+                        error!("{}", msg);
+                        Err(BuckyError::new(
+                            BuckyErrorCode::InvalidFormat,
+                            msg,
+                        ))
+                    }
+                };
+
+                match read_ret {
+                    Ok(content) => {
+                        return Ok((content, c.pos));
+                    }
+                    Err(e) => {
+                        if read_indeed {
+                            // 如果tracker中的pos无法正确读取，从tracker中删除这条记录
+                            let _ = self
+                                .tracker
+                                .remove_position(&RemoveTrackerPositionRequest {
+                                    id: chunk.to_string(),
+                                    direction: Some(TrackerDirection::Store),
+                                    pos: Some(c.pos.clone()),
+                                })
+                                .await;
+                            error!(
+                                "read {} from tracker position {:?} failed for {}",
+                                chunk, c.pos, e
+                            );
+                        }
+
+                        continue;
+                    }
+                }
+            }
+
+            error!("read {} from all tracker position failed", chunk);
+            Err(BuckyError::new(
+                BuckyErrorCode::NotFound,
+                format!("chunk not exists: {}", chunk),
+            ))
+        }
+    }
+
     /*
     async fn read_to_buf(chunk: &ChunkId, path: &Path, offset: u64) -> BuckyResult<Vec<u8>> {
         let mut reader = Self::read_chunk(chunk, path, offset).await?;
@@ -167,92 +255,12 @@ impl ChunkReader for ChunkStoreReader {
         &self,
         chunk: &ChunkId,
     ) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
-        let request = GetTrackerPositionRequest {
-            id: chunk.to_string(),
-            direction: Some(TrackerDirection::Store),
-        };
-        let ret = self.tracker.get_position(&request).await?;
-        if ret.len() == 0 {
-            let msg = format!("chunk not exists: {}", chunk);
-            warn!("{}", msg);
-            Err(BuckyError::new(
-                BuckyErrorCode::NotFound,
-                msg,
-            ))
-        } else {
-            for c in ret {
-                let mut read_indeed = true;
-                let read_ret = match &c.pos {
-                    //FIXME
-                    TrackerPostion::File(path) => {
-                        info!("will read chunk from file: chunk={}, file={}", chunk, path);
-                        Self::read_chunk(chunk, Path::new(path), 0).await 
-                    }
-                    TrackerPostion::FileRange(fr) => {
-                        info!("will read chunk from file range: chunk={}, file={}, range={}:{}", 
-                            chunk, fr.path, fr.range_begin, fr.range_end);
-                        Self::read_chunk(chunk, Path::new(fr.path.as_str()), fr.range_begin).await
-                    }
-                    TrackerPostion::ChunkManager => {
-                        info!("will read chunk from chunk manager: chunk={}", chunk);
-                        let chunk_body = self
-                            .chunk_manager
-                            .get_chunk(chunk, ChunkType::MemChunk)
-                            .await?;
-                        let reader = ChunkRead::new(chunk_body);
-                        Ok(Box::new(reader) as Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>)
-                    }
-                    value @ _ => {
-                        read_indeed = false;
-
-                        let msg = format!(
-                            "unsupport tracker postion for chunk={}, position={:?}",
-                            chunk, value,
-                        );
-                        error!("{}", msg);
-                        Err(BuckyError::new(
-                            BuckyErrorCode::InvalidFormat,
-                            msg,
-                        ))
-                    }
-                };
-
-                match read_ret {
-                    Ok(content) => {
-                        return Ok(content);
-                    }
-                    Err(e) => {
-                        if read_indeed {
-                            // 如果tracker中的pos无法正确读取，从tracker中删除这条记录
-                            let _ = self
-                                .tracker
-                                .remove_position(&RemoveTrackerPositionRequest {
-                                    id: chunk.to_string(),
-                                    direction: Some(TrackerDirection::Store),
-                                    pos: Some(c.pos.clone()),
-                                })
-                                .await;
-                            error!(
-                                "read {} from tracker position {:?} failed for {}",
-                                chunk, c.pos, e
-                            );
-                        }
-
-                        continue;
-                    }
-                }
-            }
-
-            error!("read {} from all tracker position failed", chunk);
-            Err(BuckyError::new(
-                BuckyErrorCode::NotFound,
-                format!("chunk not exists: {}", chunk),
-            ))
-        }
+        let (reader, _) = self.read_impl(chunk).await?;
+        Ok(reader)
     }
 
     async fn get(&self, chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>> {
-        let mut reader = self.read(chunk).await?;
+        let (mut reader, pos) = self.read_impl(chunk).await?;
 
         let mut content = vec![0u8; chunk.len()];
         let read = reader.read(content.as_mut_slice()).await?;
@@ -265,6 +273,15 @@ impl ChunkReader for ChunkStoreReader {
                 content.len()
             );
             error!("{}", msg);
+
+            let _ = self
+                .tracker
+                .remove_position(&RemoveTrackerPositionRequest {
+                    id: chunk.to_string(),
+                    direction: Some(TrackerDirection::Store),
+                    pos: Some(pos),
+                })
+                .await;
 
             return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
         }
