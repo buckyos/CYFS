@@ -27,7 +27,7 @@ use std::convert::TryFrom;
 use std::net::Shutdown;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
-use cyfs_bdt::stream_pool::{PooledStream, StreamPool};
+use cyfs_bdt::stream_pool::{PooledStream, StreamPool, StreamPoolConfig};
 use once_cell::sync::OnceCell;
 use cyfs_bdt::{StackGuard, DeviceCache};
 
@@ -189,7 +189,12 @@ impl NamedCacheClient {
         // 创建协议栈后等待stack在SN上线
         self.wait_sn_online(&stack).await;
 
-        let pool = StreamPool::new(stack.deref().clone(), 80, 10, 10)?;
+        let pool = StreamPool::new(stack.deref().clone(), 80, StreamPoolConfig {
+            capacity: 10,
+            backlog: 10,
+            atomic_interval: Duration::from_secs(5),
+            timeout: Duration::from_secs(60)
+        })?;
 
         info!("bdt stack created");
         let _ = self.stream_pool.set(pool);

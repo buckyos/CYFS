@@ -519,10 +519,10 @@ impl std::fmt::Display for StreamPool {
 
 #[derive(Debug)]
 pub struct StreamPoolConfig {
-    capacity: usize, 
-    backlog: usize,
-    atomic_interval: Duration,  
-    timeout: Duration, 
+    pub capacity: usize,
+    pub backlog: usize,
+    pub atomic_interval: Duration,
+    pub timeout: Duration,
 } 
 
 impl Default for StreamPoolConfig {
