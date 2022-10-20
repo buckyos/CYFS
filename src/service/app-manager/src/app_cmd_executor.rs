@@ -428,27 +428,19 @@ impl AppCmdExecutor {
 
         let mut target_status_code = AppLocalStatusCode::Uninstalled;
         let mut sub_err = SubErrorCode::None;
-        if let Err(e) = self.app_controller.uninstall_app(app_id).await {
-            //uninstall务必成功，这里先输出一个警告
-            warn!("uninstall app failed, app:{}, err:{}", app_id, e);
-            target_status_code = AppLocalStatusCode::UninstallFailed;
-            sub_err = e;
-        }
+
         if let Some(obj_id) = web_id {
             let _ = self
                 .non_helper
                 .remove_app_web_dir(app_id, &ver, &obj_id)
                 .await;
-            // if let Ok(dec_app) = self.non_helper.get_dec_app(app_id.object_id(), None).await {
-            //     let _ = self
-            //         .non_helper
-            //         .unregister_app_name(dec_app.name(), app_id)
-            //         .await;
-            //     let _ = self
-            //         .non_helper
-            //         .remove_app_web_dir(app_id, &ver, &obj_id)
-            //         .await;
-            // }
+        }
+
+        if let Err(e) = self.app_controller.uninstall_app(app_id).await {
+            //uninstall务必成功，这里先输出一个警告
+            warn!("uninstall app failed, app:{}, err:{}", app_id, e);
+            target_status_code = AppLocalStatusCode::UninstallFailed;
+            sub_err = e;
         }
 
         let _ = self
