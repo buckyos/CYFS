@@ -64,6 +64,7 @@ members = [
     "./misc/pn-miner",
 
     "./tests/cyfs-stack-test",
+    "./tests/cyfs-bench-mark",
     #"./tests/dsg-test",
 ]
 
