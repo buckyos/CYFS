@@ -1,6 +1,7 @@
 use log::*;
 use std::{
     collections::{LinkedList, BTreeMap}, 
+    time::Duration, 
     task::{Context, Poll, Waker}, 
     pin::Pin, 
     sync::{atomic::{AtomicBool, Ordering}}, 
@@ -9,6 +10,7 @@ use std::{
 };
 use cyfs_debug::Mutex;
 use async_std::{
+    future, 
     sync::{Arc}, 
     task, 
     channel::{bounded, Sender, Receiver}, 
@@ -137,7 +139,8 @@ struct StreamPoolConnectorImpl {
     remote: DeviceId, 
     port: u16, 
     capacity: usize, 
-    stream_list: Mutex<LinkedList<StreamGuard>>,
+    timeout: Duration, 
+    stream_list: Mutex<LinkedList<(StreamGuard, Timestamp)>>,
 }
 
 impl StreamPoolConnector {
@@ -145,14 +148,21 @@ impl StreamPoolConnector {
         stack: Stack, 
         remote: &DeviceId, 
         port: u16, 
-        capacity: usize) -> Self {
+        capacity: usize, 
+        timeout: Duration
+    ) -> Self {
         Self(Arc::new(StreamPoolConnectorImpl {
             stack, 
             remote: remote.clone(), 
             port, 
             capacity, 
+            timeout, 
             stream_list: Mutex::new(LinkedList::new()), 
         }))
+    }
+
+    pub fn stream_count(&self) -> usize {
+        self.0.stream_list.lock().unwrap().len()
     }
 
     pub fn remote(&self) -> (&DeviceId, u16) {
@@ -172,7 +182,7 @@ impl StreamPoolConnector {
             let mut stream_list = self.0.stream_list.lock().unwrap();
             stream_list.pop_front()
         };
-        if let Some(stream) = exists {
+        if let Some((stream, _)) = exists {
             debug!("{} connect return reused stream {}", self, stream);
             Ok(self.wrap_stream(stream))
         } else {
@@ -209,7 +219,7 @@ impl StreamPoolConnector {
             if !shutdown {
                 let mut stream_list = self.0.stream_list.lock().unwrap();
                 if stream_list.len() < self.0.capacity {
-                    stream_list.push_back(stream.clone());
+                    stream_list.push_back((stream.clone(), bucky_time_now()));
                 } else {
                     warn!("{} drop stream {} for full", self, stream);
                 }   
@@ -228,17 +238,17 @@ impl StreamPoolConnector {
             let mut remain = LinkedList::new();
             let mut remove = LinkedList::new();
             let mut streams = self.0.stream_list.lock().unwrap();
-            for stream in streams.iter() {
+            for (stream, last_used) in streams.pop_back() {
                 match stream.state() {
                     StreamState::Establish(remote) => {
                         if remote <= remote_timestamp {
-                            remove.push_back(stream.clone());
+                            remove.push_back((stream, last_used));
                         } else {
-                            remain.push_back(stream.clone());
+                            remain.push_back((stream, last_used));
                         }
                     },
                     _ => {
-                        remove.push_back(stream.clone());
+                        remove.push_back((stream, last_used));
                     }
                 }
             }
@@ -251,7 +261,7 @@ impl StreamPoolConnector {
             remove
         };
         
-        for stream in remove {
+        for (stream, _) in remove {
             let _ = stream.shutdown(Shutdown::Both);
         }
     }
@@ -269,6 +279,35 @@ impl StreamPoolConnector {
                 _ => {}
             }
         } 
+    }
+
+    fn on_time_escape(&self, now: Timestamp) {
+        let remove = {
+            let mut remain = LinkedList::new();
+            let mut remove = LinkedList::new();
+            let mut streams = self.0.stream_list.lock().unwrap();
+            for (stream, last_used) in streams.pop_front() {
+                match stream.state() {
+                    StreamState::Establish(_) => {
+                        if now > last_used && Duration::from_micros(now - last_used) > self.0.timeout {
+                            remove.push_back(stream);
+                        } else {
+                            remain.push_back((stream, last_used));
+                        }
+                    },
+                    _ => {
+                        remove.push_back(stream);
+                    }
+                }
+            }
+            *streams = remain;
+            remove
+        };
+        
+        for stream in remove {
+            info!("{} shutdown stream {} for pool timeout", self, stream);
+            let _ = stream.shutdown(Shutdown::Both);
+        }
     }
 }
 
@@ -462,8 +501,8 @@ impl async_std::stream::Stream for PooledStreamIncoming {
 
 struct StreamPoolImpl {
     stack: Stack, 
-    capacity: usize, 
     port: u16, 
+    config: StreamPoolConfig, 
     connectors: Mutex<BTreeMap<DeviceId, StreamPoolConnector>>, 
     listener: StreamPoolListener
 }
@@ -473,23 +512,65 @@ pub struct StreamPool(Arc<StreamPoolImpl>);
 
 impl std::fmt::Display for StreamPool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StreamPool {{local:{} port:{}}}", self.0.stack.local_device_id(), self.0.port)
+        write!(f, "StreamPool {{local:{} port:{}}}", self.0.stack.local_device_id(), self.port())
     }
 }
 
 
+#[derive(Debug)]
+pub struct StreamPoolConfig {
+    capacity: usize, 
+    backlog: usize,
+    atomic_interval: Duration,  
+    timeout: Duration, 
+} 
+
+impl Default for StreamPoolConfig {
+    fn default() -> Self {
+        Self {
+            capacity: 10, 
+            backlog: 100,
+            atomic_interval: Duration::from_secs(5),  
+            timeout: Duration::from_secs(30), 
+        }
+    }
+}
+
 impl StreamPool {
-    pub fn new(stack: Stack, port: u16, capacity: usize, backlog: usize) -> BuckyResult<Self> {
-        info!("create stream pool on port {} capacity:{} backlog:{}", port, capacity, backlog);
+    pub fn new(
+        stack: Stack, 
+        port: u16, 
+        config: StreamPoolConfig
+    ) -> BuckyResult<Self> {
+        info!("create stream pool on port {} config {:?}", port, config);
         let origin_listener = stack.stream_manager().listen(port)?;
-        let listener = StreamPoolListener::new(origin_listener, backlog);
-        Ok(Self(Arc::new(StreamPoolImpl {
+        let listener = StreamPoolListener::new(origin_listener, config.backlog);
+
+        let pool = Self(Arc::new(StreamPoolImpl {
             stack: stack.clone(), 
-            capacity, 
             port, 
+            config, 
             connectors: Mutex::new(BTreeMap::new()), 
             listener
-        })))
+        }));
+
+        {
+            let pool = pool.clone();
+            task::spawn(async move {
+                let _ = future::timeout(pool.config().atomic_interval, future::pending::<()>()).await;
+                pool.on_time_escape(bucky_time_now());
+            });
+        }
+
+        Ok(pool)
+    }
+
+    fn on_time_escape(&self, now: Timestamp) {
+        let connectors: Vec<StreamPoolConnector> = self.0.connectors.lock().unwrap().values().cloned().collect();
+
+        for connector in connectors {
+            connector.on_time_escape(now);
+        }
     }
 
     pub async fn connect(&self, remote: &DeviceId) -> BuckyResult<PooledStream> {
@@ -499,7 +580,7 @@ impl StreamPool {
             if let Some(connector) = connectors.get(remote) {
                 connector.clone()
             } else {
-                let connector = StreamPoolConnector::new(self.0.stack.clone(), remote, self.0.port, self.0.capacity);
+                let connector = StreamPoolConnector::new(self.0.stack.clone(), remote, self.port(), self.config().capacity, self.config().timeout);
                 connectors.insert(remote.clone(), connector.clone());
                 connector
             }
@@ -513,5 +594,9 @@ impl StreamPool {
 
     pub fn port(&self) -> u16 {
         self.0.port
+    }
+
+    pub fn config(&self) -> &StreamPoolConfig {
+        &self.0.config
     }
 }
