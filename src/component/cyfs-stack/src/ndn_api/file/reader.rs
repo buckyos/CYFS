@@ -263,7 +263,7 @@ impl ChunkReader for ChunkStoreReader {
         let (mut reader, pos) = self.read_impl(chunk).await?;
 
         let mut content = vec![0u8; chunk.len()];
-        let read = reader.read(content.as_mut_slice()).await?;
+        let read = reader.read_to_end(&mut content).await?;
 
         if read != content.len() {
             let msg = format!(

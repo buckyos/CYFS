@@ -82,7 +82,7 @@ impl LocalChunkReader {
 
         let mut content = vec![0u8; chunk.len()];
 
-        let read = file.read(content.as_mut_slice()).await?;
+        let read = file.read_to_end(&mut content).await?;
 
         if read != content.len() {
             let msg = format!(
