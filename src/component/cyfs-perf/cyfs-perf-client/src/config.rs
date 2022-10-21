@@ -99,7 +99,7 @@ impl PerfServerLoader {
 
     async fn load_perf_server_from_meta() -> BuckyResult<Option<DeviceId>> {
         // 查找perf_service的DeviceId
-        let meta_client = MetaClient::new_target(MetaMinerTarget::default()).with_timeout(std::time::Duration::from_secs(60 * 2));;
+        let meta_client = MetaClient::new_target(MetaMinerTarget::default()).with_timeout(std::time::Duration::from_secs(60 * 2));
         if let Some((info, _state)) = meta_client.get_name(CYFS_PERF_SERVICE_NAME).await? {
             if let NameLink::ObjectLink(obj) = info.record.link {
                 let device_id = DeviceId::try_from(obj)?;

@@ -152,7 +152,7 @@ impl Daemon {
     fn start_check_service_state() {
         task::spawn(async move {
             loop {
-                SERVICE_MANAGER.sync_all_service_state();
+                SERVICE_MANAGER.sync_all_service_state().await;
 
                 task::sleep(Duration::from_secs(60)).await;
             }

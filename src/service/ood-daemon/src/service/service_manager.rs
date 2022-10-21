@@ -6,6 +6,7 @@ use std::fmt::Formatter;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, str::FromStr};
+use async_std::sync::Mutex as AsyncMutex;
 
 use super::service::Service;
 use crate::config::*;
@@ -95,6 +96,8 @@ pub struct ServiceManager {
 
     service_list: Arc<Mutex<HashMap<String, ServiceItem>>>,
     service_root: PathBuf,
+
+    sync_lock: AsyncMutex<i32>,
 }
 
 impl ServiceManager {
@@ -104,6 +107,7 @@ impl ServiceManager {
             enable_gc: Arc::new(Mutex::new(true)),
             service_list: Arc::new(Mutex::new(HashMap::new())),
             service_root: PATHS.service_root.clone(),
+            sync_lock: AsyncMutex::new(0),
         }
     }
 
@@ -443,7 +447,13 @@ impl ServiceManager {
         Self::sync_service_target_state(&service_item);
     }
 
-    pub fn sync_all_service_state(&self) {
+    pub async fn sync_all_service_state(&self) {
+        let lock = self.sync_lock.try_lock();
+        if lock.is_none() {
+            info!("sync all service state but already in sync service packages!");
+            return;
+        }
+
         info!("will sync all service state");
         let service_list = self.service_list.lock().unwrap().clone();
         for (name, service_item) in service_list {
@@ -457,6 +467,8 @@ impl ServiceManager {
     }
 
     pub async fn sync_service_packages(&self) {
+        let _lock = self.sync_lock.lock().await;
+
         debug!("will sync all service packages");
 
         let mut futures = Vec::new();
