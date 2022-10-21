@@ -6,6 +6,12 @@ You can use Ctrl+F to search for specific service version
 
 ## [Unreleased]
 
+## [1.0.1.44] - 2022-10-21 [HOTFIX]
+- Fix some read_to_end related bugs for error empty content
+- Fix operation can stuck due to some timeout problem
+- Fix status error caused by concurrent sync states and sync packages in ood-daemon service
+- Fix Sqlite concurrent write error in some cases
+
 ## [1.0.1.42] - 2022-10-21
 ### Add
 - Add encryption and decryption to the crypto module of the cyfs stack
