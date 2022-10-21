@@ -8,7 +8,7 @@ use rusqlite::{named_params, Connection, OptionalExtension, ToSql};
 use std::cell::RefCell;
 use std::convert::{TryFrom, TryInto};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use thread_local::ThreadLocal;
 
 #[derive(Debug)]
@@ -30,11 +30,14 @@ impl<'a> UpdateObjectMetaRequest<'a> {
     }
 }
 
-#[derive(Clone)]
+
 pub(crate) struct SqliteMetaStorage {
     data_dir: PathBuf,
     data_file: PathBuf,
+
+    /* SQLite does not support multiple writers. */
     conn: Arc<ThreadLocal<RefCell<Connection>>>,
+    conn_rw_lock: RwLock<u32>,
 }
 
 impl SqliteMetaStorage {
@@ -54,6 +57,7 @@ impl SqliteMetaStorage {
             data_dir: root.to_owned(),
             data_file,
             conn: Arc::new(ThreadLocal::new()),
+            conn_rw_lock: RwLock::new(0),
         };
 
         if !file_exists {
@@ -238,6 +242,7 @@ impl SqliteMetaStorage {
         let sql = "SELECT COUNT(*) FROM data_namedobject_meta";
         let ret = {
             let conn = self.get_conn()?.borrow();
+            let _lock = self.conn_rw_lock.read().unwrap();
 
             conn.query_row(&sql, [], |row| {
                 let count: i64 = row.get(0).unwrap();
@@ -336,6 +341,8 @@ impl SqliteMetaStorage {
         };
 
         let conn = self.get_conn()?.borrow();
+        let _lock = self.conn_rw_lock.write().unwrap();
+
         let count = conn.execute(INSERT_NEW_SQL, params).map_err(|e| {
             let msg;
             let code = if Self::is_exists_error(&e) {
@@ -508,14 +515,18 @@ impl SqliteMetaStorage {
             ":access": req.access_string,
         };
 
-        let conn = self.get_conn()?.borrow();
-        let count = conn.execute(UPDATE_SQL, params).map_err(|e| {
-            let msg = format!("noc meta update existing error: {} {}", req.object_id, e);
-            error!("{}", msg);
+        let count = {
+            let conn = self.get_conn()?.borrow();
+            let _lock = self.conn_rw_lock.write().unwrap();
 
-            warn!("{}", msg);
-            BuckyError::new(BuckyErrorCode::SqliteError, msg)
-        })?;
+            conn.execute(UPDATE_SQL, params).map_err(|e| {
+                let msg = format!("noc meta update existing error: {} {}", req.object_id, e);
+                error!("{}", msg);
+
+                warn!("{}", msg);
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?
+        };
 
         if count > 0 {
             assert_eq!(count, 1);
@@ -547,9 +558,11 @@ impl SqliteMetaStorage {
             ":object_id" : object_id.to_string(),
         };
 
-        let conn = self.get_conn()?.borrow();
-        let ret = conn
-            .query_row(QUERY_UPDATE_SQL, params, |row| {
+        let ret = {
+            let conn = self.get_conn()?.borrow();
+            let _lock = self.conn_rw_lock.read().unwrap();
+
+            conn.query_row(QUERY_UPDATE_SQL, params, |row| {
                 Ok(NamedObjectMetaUpdateInfoRaw::try_from(row)?)
             })
             .optional()
@@ -558,7 +571,8 @@ impl SqliteMetaStorage {
                 error!("{}", msg);
 
                 BuckyError::new(BuckyErrorCode::SqliteError, msg)
-            })?;
+            })?
+        };
 
         match ret {
             Some(v) => Ok(Some(v.try_into()?)),
@@ -568,7 +582,6 @@ impl SqliteMetaStorage {
 
     fn query_access_info(
         &self,
-        conn: &Connection,
         object_id: &ObjectId,
     ) -> BuckyResult<Option<NamedObjectMetaAccessInfo>> {
         const QUERY_UPDATE_SQL: &str = r#"
@@ -579,8 +592,11 @@ impl SqliteMetaStorage {
             ":object_id" : object_id.to_string(),
         };
 
-        let ret = conn
-            .query_row(QUERY_UPDATE_SQL, params, |row| {
+        let ret = {
+            let conn = self.get_conn()?.borrow();
+            let _lock = self.conn_rw_lock.read().unwrap();
+
+            conn.query_row(QUERY_UPDATE_SQL, params, |row| {
                 Ok(NamedObjectMetaAccessInfoRaw::try_from(row)?)
             })
             .optional()
@@ -589,7 +605,8 @@ impl SqliteMetaStorage {
                 error!("{}", msg);
 
                 BuckyError::new(BuckyErrorCode::SqliteError, msg)
-            })?;
+            })?
+        };
 
         match ret {
             Some(v) => Ok(Some(v.try_into()?)),
@@ -615,9 +632,7 @@ impl SqliteMetaStorage {
         &self,
         req: &NamedObjectMetaGetObjectRequest,
     ) -> BuckyResult<Option<NamedObjectMetaData>> {
-        let conn = self.get_conn()?.borrow();
-
-        match self.get_raw(&conn, &req.object_id)? {
+        match self.get_raw(&req.object_id)? {
             Some(data) => {
                 if !req.source.is_verified(&data.create_dec_id) {
                     Self::check_access(
@@ -644,11 +659,7 @@ impl SqliteMetaStorage {
         }
     }
 
-    fn get_raw(
-        &self,
-        conn: &Connection,
-        object_id: &ObjectId,
-    ) -> BuckyResult<Option<NamedObjectMetaData>> {
+    fn get_raw(&self, object_id: &ObjectId) -> BuckyResult<Option<NamedObjectMetaData>> {
         const GET_SQL: &'static str = r#"
             SELECT * FROM data_namedobject_meta WHERE object_id = :object_id;
         "#;
@@ -657,8 +668,11 @@ impl SqliteMetaStorage {
             ":object_id": object_id.to_string(),
         };
 
-        let ret = conn
-            .query_row(GET_SQL, params, |row| {
+        let ret = {
+            let conn = self.get_conn()?.borrow();
+            let _lock = self.conn_rw_lock.read().unwrap();
+
+            conn.query_row(GET_SQL, params, |row| {
                 Ok(NamedObjectMetaDataRaw::try_from(row)?)
             })
             .optional()
@@ -667,7 +681,8 @@ impl SqliteMetaStorage {
                 error!("{}", msg);
 
                 BuckyError::new(BuckyErrorCode::SqliteError, msg)
-            })?;
+            })?
+        };
 
         match ret {
             Some(v) => {
@@ -698,14 +713,18 @@ impl SqliteMetaStorage {
             ":object_id": req.object_id.to_string(),
         };
 
-        let conn = self.get_conn()?.borrow();
-        let count = conn.execute(UPDATE_SQL, params).map_err(|e| {
-            let msg = format!("noc meta update last access error: {} {}", req.object_id, e);
-            error!("{}", msg);
+        let count = {
+            let conn = self.get_conn()?.borrow();
+            let _lock = self.conn_rw_lock.write().unwrap();
 
-            warn!("{}", msg);
-            BuckyError::new(BuckyErrorCode::SqliteError, msg)
-        })?;
+            conn.execute(UPDATE_SQL, params).map_err(|e| {
+                let msg = format!("noc meta update last access error: {} {}", req.object_id, e);
+                error!("{}", msg);
+
+                warn!("{}", msg);
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?
+        };
 
         if count > 0 {
             assert_eq!(count, 1);
@@ -754,9 +773,7 @@ impl SqliteMetaStorage {
                 break Err(BuckyError::from(msg));
             }
 
-            let conn = self.get_conn()?.borrow();
-
-            match self.get_raw(&conn, &req.object_id)? {
+            match self.get_raw(&req.object_id)? {
                 Some(data) => {
                     if !req.source.is_verified(&data.create_dec_id) {
                         Self::check_access(
@@ -773,7 +790,7 @@ impl SqliteMetaStorage {
                         access_string: data.access_string,
                     };
 
-                    let count = Self::try_delete(&conn, &req.object_id, &access_info)?;
+                    let count = self.try_delete(&req.object_id, &access_info)?;
                     if count > 0 {
                         let resp = NamedObjectMetaDeleteObjectResponse {
                             deleted_count: 1,
@@ -825,9 +842,7 @@ impl SqliteMetaStorage {
                 break Err(BuckyError::from(msg));
             }
 
-            let conn = self.get_conn()?.borrow();
-
-            let ret = self.query_access_info(&conn, &req.object_id)?;
+            let ret = self.query_access_info(&req.object_id)?;
             if ret.is_none() {
                 let resp = NamedObjectMetaDeleteObjectResponse {
                     deleted_count: 0,
@@ -850,7 +865,7 @@ impl SqliteMetaStorage {
                 )?;
             }
 
-            let count = Self::try_delete(&conn, &req.object_id, &access_info)?;
+            let count = self.try_delete(&req.object_id, &access_info)?;
             if count > 0 {
                 let resp = NamedObjectMetaDeleteObjectResponse {
                     deleted_count: 1,
@@ -867,7 +882,7 @@ impl SqliteMetaStorage {
     }
 
     fn try_delete(
-        conn: &Connection,
+        &self,
         object_id: &ObjectId,
         access_info: &NamedObjectMetaAccessInfo,
     ) -> BuckyResult<u32> {
@@ -881,15 +896,20 @@ impl SqliteMetaStorage {
             ":create_dec_id": access_info.create_dec_id.to_string(),
         };
 
-        let count = conn.execute(&DELETE_SQL, params).map_err(|e| {
-            let msg = format!(
-                "noc meta delete error: obj={}, create_dec={}, err={}",
-                object_id, access_info.create_dec_id, e
-            );
-            error!("{}", msg);
+        let count = {
+            let conn = self.get_conn()?.borrow();
+            let _lock = self.conn_rw_lock.write().unwrap();
 
-            BuckyError::new(BuckyErrorCode::SqliteError, msg)
-        })?;
+            conn.execute(&DELETE_SQL, params).map_err(|e| {
+                let msg = format!(
+                    "noc meta delete error: obj={}, create_dec={}, err={}",
+                    object_id, access_info.create_dec_id, e
+                );
+                error!("{}", msg);
+
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?
+        };
 
         let ret = if count > 0 {
             assert!(count == 1);
@@ -968,9 +988,11 @@ impl SqliteMetaStorage {
             ":object_id": req.object_id.to_string(),
         };
 
-        let conn = self.get_conn()?.borrow();
-        let count = conn
-            .query_row(&EXISTS_SQL, params, |row| {
+        let count = {
+            let conn = self.get_conn()?.borrow();
+            let _lock = self.conn_rw_lock.read().unwrap();
+
+            conn.query_row(&EXISTS_SQL, params, |row| {
                 let count: i64 = row.get(0).unwrap();
                 Ok(count)
             })
@@ -979,7 +1001,8 @@ impl SqliteMetaStorage {
                 error!("{}", msg);
 
                 BuckyError::new(BuckyErrorCode::SqliteError, msg)
-            })?;
+            })?
+        };
 
         let ret = if count > 0 {
             assert!(count == 1);
@@ -1106,24 +1129,25 @@ impl SqliteMetaStorage {
         assert!(sqls.len() > 0);
         let sql = UPDATE_SQL.replace("{}", &sqls.join(","));
 
-        let conn = self.get_conn()?.borrow();
-        let count = conn.execute(&sql, params.as_slice()).map_err(|e| {
-            let msg = format!(
-                "noc meta update existing meta error: {} {}",
-                req.object_id, e
-            );
-            error!("{}", msg);
+        let count = {
+            let conn = self.get_conn()?.borrow();
+            let _lock = self.conn_rw_lock.write().unwrap();
 
-            warn!("{}", msg);
-            BuckyError::new(BuckyErrorCode::SqliteError, msg)
-        })?;
+            conn.execute(&sql, params.as_slice()).map_err(|e| {
+                let msg = format!(
+                    "noc meta update existing meta error: {} {}",
+                    req.object_id, e
+                );
+                error!("{}", msg);
+
+                warn!("{}", msg);
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })?
+        };
 
         if count > 0 {
             assert_eq!(count, 1);
-            info!(
-                "noc meta update existsing meta success: {:?}",
-                req,
-            );
+            info!("noc meta update existsing meta success: {:?}", req,);
         } else {
             warn!(
                 "noc meta update existsing meta but not changed: obj={}",
