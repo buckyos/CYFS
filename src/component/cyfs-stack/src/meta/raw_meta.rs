@@ -20,7 +20,8 @@ pub(crate) struct RawMetaCache {
 impl RawMetaCache {
     pub fn new(target: MetaMinerTarget, noc: NamedObjectCacheRef) -> Self {
         info!("raw meta cache: {}", target.to_string());
-        let meta_client = MetaClient::new_target(target);
+        let meta_client =
+            MetaClient::new_target(target).with_timeout(std::time::Duration::from_secs(60 * 2));
 
         Self {
             noc,

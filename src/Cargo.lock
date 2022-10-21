@@ -1586,6 +1586,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyfs-bench-mark"
+version = "0.1.0"
+dependencies = [
+ "cyfs-debug",
+]
+
+[[package]]
 name = "cyfs-check"
 version = "0.5.0"
 dependencies = [

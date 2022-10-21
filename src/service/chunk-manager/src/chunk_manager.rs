@@ -21,7 +21,7 @@ impl ChunkManager {
     pub fn new(ctx: &ChunkContext) -> ChunkManager {
         ChunkManager{
             chunk_store: ChunkStore::new(&ctx.chunk_dir),
-            meta_client: MetaClient::new_target(MetaMinerTarget::default()),
+            meta_client: MetaClient::new_target(MetaMinerTarget::default()).with_timeout(std::time::Duration::from_secs(60 * 2));,
             ctx: ctx.clone(),
             device_id: ctx.get_device_id()
         }

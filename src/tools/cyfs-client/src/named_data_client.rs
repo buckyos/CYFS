@@ -149,7 +149,7 @@ impl NamedCacheClient {
 
         let target = meta_target.map(|s|MetaMinerTarget::from_str(&s).unwrap_or(MetaMinerTarget::default()))
             .unwrap_or(MetaMinerTarget::default());
-        let client = Arc::new(MetaClient::new_target(target));
+        let client = Arc::new(MetaClient::new_target(target).with_timeout(std::time::Duration::from_secs(60 * 2)));
         let _ = self.meta_client.set(client.clone());
 
         // desc.endpoints.clear();

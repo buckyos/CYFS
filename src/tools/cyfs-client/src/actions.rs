@@ -171,7 +171,7 @@ pub async fn create(file:&Path, owner_desc:&StandardObject, secret: &PrivateKey,
 pub async fn upload(owner_desc:&StandardObject, secret: &PrivateKey, desc:&File, meta_target: Option<String>)->BuckyResult<()>{
     let target = meta_target.map(|s|MetaMinerTarget::from_str(&s).unwrap_or(MetaMinerTarget::default()))
         .unwrap_or(MetaMinerTarget::default());
-    let meta_client = MetaClient::new_target(target);
+    let meta_client = MetaClient::new_target(target).with_timeout(std::time::Duration::from_secs(60 * 2));
     let fileid = desc.desc().calculate_id();
     if let Err(e) = meta_helper::create_file_desc_sync(&meta_client, owner_desc, secret, desc).await {
         error!("upload file {} desc failed, err {}", fileid, e);

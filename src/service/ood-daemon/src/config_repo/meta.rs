@@ -7,8 +7,8 @@ use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
 use std::str::FromStr;
+use std::sync::Mutex;
 
 #[derive(Serialize, Deserialize)]
 struct DeviceConfigGenerator {
@@ -38,7 +38,7 @@ impl DeviceConfigGenerator {
     }
 
     // 同步列表
-    pub fn sync_list(&mut self,  service_list: &AppList) {
+    pub fn sync_list(&mut self, service_list: &AppList) {
         // 相同名字去重
         self.service.dedup_by(|a, b| a.name == b.name);
 
@@ -50,7 +50,12 @@ impl DeviceConfigGenerator {
 
             let ret = DecAppId::from_str(&item.id);
             if ret.is_err() {
-                error!("invalid service id! id={}, name={}, {}", item.id, item.name, ret.unwrap_err());
+                error!(
+                    "invalid service id! id={}, name={}, {}",
+                    item.id,
+                    item.name,
+                    ret.unwrap_err()
+                );
                 return false;
             }
 
@@ -59,7 +64,10 @@ impl DeviceConfigGenerator {
             if service_list.app_list().contains_key(&service_id) {
                 true
             } else {
-                warn!("service removed from service list! id={}, name={}", item.id, item.name);
+                warn!(
+                    "service removed from service list! id={}, name={}",
+                    item.id, item.name
+                );
                 false
             }
         });
@@ -145,7 +153,8 @@ pub struct DeviceConfigMetaRepo {
 
 impl DeviceConfigMetaRepo {
     pub fn new() -> Self {
-        let meta_client = MetaClient::new_target(MetaMinerTarget::default());
+        let meta_client = MetaClient::new_target(MetaMinerTarget::default())
+            .with_timeout(std::time::Duration::from_secs(60 * 2));
 
         Self {
             desc: String::from(""),
@@ -169,9 +178,16 @@ impl DeviceConfigMetaRepo {
         let version = version.to_string();
 
         // 计算ServiceList对象id
-        let service_list_id = AppList::generate_id(device_id.object_id().to_owned(), &version, APPLIST_SERVICE_CATEGORY);
+        let service_list_id = AppList::generate_id(
+            device_id.object_id().to_owned(),
+            &version,
+            APPLIST_SERVICE_CATEGORY,
+        );
 
-        info!("device config repo: device_id={}, app_list_id={}, version={}", device_id, service_list_id, version);
+        info!(
+            "device config repo: device_id={}, app_list_id={}, version={}",
+            device_id, service_list_id, version
+        );
 
         self.service_list_id = Some(service_list_id);
         self.device_id = Some(device_id);
@@ -222,7 +238,11 @@ impl DeviceConfigMetaRepo {
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;
 
-        info!("load service list object success! id={:?}, list={:?}", self.service_list_id, list.app_list());
+        info!(
+            "load service list object success! id={:?}, list={:?}",
+            self.service_list_id,
+            list.app_list()
+        );
 
         Ok(list)
     }
@@ -285,7 +305,6 @@ impl DeviceConfigMetaRepo {
             NDNObjectInfo::ObjList(entries) => {
                 let ret = entries.object_map().get(&target);
                 if ret.is_none() {
-
                     // 添加zip后缀，再次判断
                     target = format!("{}.zip", target);
                     let ret = entries.object_map().get(&target);
@@ -295,17 +314,14 @@ impl DeviceConfigMetaRepo {
                             dir_id, target
                         );
                         error!("{}", msg);
-    
+
                         return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
                     }
                 }
 
                 let fid = format!("{}/{}", dir_id, target);
 
-                info!(
-                    "get fid from dir, dir={}, fid={}",
-                    dir_id, fid
-                );
+                info!("get fid from dir, dir={}, fid={}", dir_id, fid);
 
                 Ok(fid)
             }
