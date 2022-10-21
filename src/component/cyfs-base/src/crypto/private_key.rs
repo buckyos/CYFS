@@ -188,7 +188,7 @@ impl PrivateKey {
                 let key_size = self.public().key_size();
                 if input.len() < key_size {
                     let msg = format!(
-                        "not enough buffer for secp256k1 private key, except={}, got={}",
+                        "not enough buffer for RSA private key, except={}, got={}",
                         key_size,
                         input.len()
                     );
