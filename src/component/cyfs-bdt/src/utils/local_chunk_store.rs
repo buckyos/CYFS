@@ -80,16 +80,15 @@ impl LocalChunkReader {
             return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
         }
 
-        let mut content = vec![0u8; chunk.len()];
-
+        let mut content = Vec::with_capacity(chunk.len());
         let read = file.read_to_end(&mut content).await?;
 
-        if read != content.len() {
+        if read != chunk.len() {
             let msg = format!(
                 "read {} bytes from file {:?} but chunk len is {}",
                 read,
                 path, 
-                content.len()
+                chunk.len()
             );
             error!("{}", msg);
 

@@ -262,15 +262,15 @@ impl ChunkReader for ChunkStoreReader {
     async fn get(&self, chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>> {
         let (mut reader, pos) = self.read_impl(chunk).await?;
 
-        let mut content = vec![0u8; chunk.len()];
+        let mut content = Vec::with_capacity(chunk.len());
         let read = reader.read_to_end(&mut content).await?;
 
-        if read != content.len() {
+        if read != chunk.len() {
             let msg = format!(
                 "read {} bytes from chunk reader {} but chunk len is {}",
                 read,
                 chunk,
-                content.len()
+                chunk.len()
             );
             error!("{}", msg);
 
