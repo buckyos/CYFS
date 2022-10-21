@@ -41,6 +41,6 @@ for (const package of publish_packages) {
             process.exit(0)
         }
 
-        child_process.spawnSync('timeout /T 10 /NOBREAK', {stdio: 'inherit', shell: true})
+        child_process.spawnSync('timeout /T 3 /NOBREAK', {stdio: 'inherit', shell: true})
     }
 }
