@@ -216,8 +216,8 @@ impl ObjectHttpBdtListener {
 
         if let Err(e) = ret {
             error!(
-                "bdt http accept error, err={}, addr={}, remote={:?}, seq={:?}",
-                e, self.0.listen, remote_addr, seq
+                "bdt http accept error, err={}, addr={}, remote={:?}, seq={:?}, during={}",
+                e, self.0.listen, remote_addr, seq, begin.elapsed().as_millis(),
             );
             return Err(BuckyError::from(e));
         }

@@ -132,8 +132,8 @@ impl ObjectHttpTcpListener {
 
         if let Err(e) = ret {
             error!(
-                "tcp http accept error, err={}, addr={}, peer={}",
-                e, self.listen_url, peer_addr
+                "tcp http accept error, err={}, addr={}, peer={}, during={}ms",
+                e, self.listen_url, peer_addr, begin.elapsed().as_millis(),
             );
             // FIXME 一般是请求方直接断开导致的错误，是否需要判断并不再输出warn？
             //Err(BuckyError::from(e))
