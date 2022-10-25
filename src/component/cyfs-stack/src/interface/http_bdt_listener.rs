@@ -7,7 +7,6 @@ use cyfs_bdt::{StackGuard, StreamGuard as BdtStream, StreamListenerGuard};
 use async_std::stream::StreamExt;
 use async_std::task;
 use async_trait::async_trait;
-use cyfs_debug::Mutex;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -20,10 +19,6 @@ pub(super) struct ObjectHttpBdtListenerImpl {
 }
 
 impl ObjectHttpBdtListenerImpl {
-    pub fn get_listen(&self) -> &str {
-        &self.listen
-    }
-
     pub fn new(bdt_stack: StackGuard, vport: u16, server: HttpServerHandlerRef) -> Self {
         let listen = format!("{}:{}", bdt_stack.local_device_id().to_string(), vport);
         Self {
@@ -36,7 +31,7 @@ impl ObjectHttpBdtListenerImpl {
 }
 
 #[derive(Clone)]
-pub(super) struct ObjectHttpBdtListener(Arc<Mutex<ObjectHttpBdtListenerImpl>>);
+pub(super) struct ObjectHttpBdtListener(Arc<ObjectHttpBdtListenerImpl>);
 
 #[async_trait]
 impl ObjectListener for ObjectHttpBdtListener {
@@ -66,50 +61,33 @@ impl ObjectListener for ObjectHttpBdtListener {
 impl ObjectHttpBdtListener {
     pub fn new(bdt_stack: StackGuard, vport: u16, server: HttpServerHandlerRef) -> Self {
         let inner = ObjectHttpBdtListenerImpl::new(bdt_stack, vport, server);
-        Self(Arc::new(Mutex::new(inner)))
+        Self(Arc::new(inner))
     }
 
     async fn start(&self) -> BuckyResult<()> {
         // assert!(self.server.is_none());
 
-        let stack;
-        let vport;
-        let listen;
-        {
-            let listener = self.0.lock().unwrap();
-            stack = listener.bdt_stack.clone();
-            vport = listener.vport;
-            listen = listener.get_listen().to_owned();
-        }
-
-        let bdt_listener = stack.stream_manager().listen(vport);
+        let bdt_listener = self.0.bdt_stack.stream_manager().listen(self.0.vport);
         if let Err(e) = bdt_listener {
-            error!("interface bdt listen error! listen={} {}", listen, e);
+            error!("interface bdt listen error! listen={} {}", self.0.listen, e);
             return Err(e);
         } else {
-            info!("interface bdt listen: listen={}", listen);
+            info!("interface bdt listen: listen={}", self.0.listen);
         }
 
         let bdt_listener = bdt_listener.unwrap();
 
         let this = self.clone();
         task::spawn(async move {
-            let _ = this.run_inner(bdt_listener).await;
+            let _ = this.run(bdt_listener).await;
         });
 
         Ok(())
     }
 
-    async fn run_inner(&self, bdt_listener: StreamListenerGuard) -> BuckyResult<()> {
+    async fn run(&self, bdt_listener: StreamListenerGuard) -> BuckyResult<()> {
         // assert!(self.server.is_none());
 
-        let server;
-        let listen;
-        {
-            let listener = self.0.lock().unwrap();
-            server = listener.server.clone();
-            listen = listener.get_listen().to_owned();
-        }
 
         let mut incoming = bdt_listener.incoming();
         loop {
@@ -117,8 +95,8 @@ impl ObjectHttpBdtListener {
                 Some(Ok(pre_stream)) => {
                     // bdt内部一定会有info级别的日志，所以这个改为debug级别
                     debug!(
-                        "interface bdt recv new connection: listen={} remote={:?}, seq={:?}",
-                        listen,
+                        "bdt http recv new connection: listen={} remote={:?}, seq={:?}",
+                        self.0.listen,
                         pre_stream.stream.remote(),
                         pre_stream.stream.sequence(),
                     );
@@ -126,10 +104,9 @@ impl ObjectHttpBdtListener {
                     // FIXME 暂时打印一下引用计数用以诊断错误
                     // pre_stream.stream.display_ref_count();
 
-                    let server = server.clone();
-                    let addr = listen.clone();
+                    let this = self.clone();
                     task::spawn(async move {
-                        if let Err(_e) = Self::accept(&server, &addr, pre_stream.stream).await {
+                        if let Err(_e) = this.accept(pre_stream.stream).await {
                             /*
                             error!(
                                 "interface process bdt stream error: addr={} err={}",
@@ -142,12 +119,12 @@ impl ObjectHttpBdtListener {
                 Some(Err(e)) => {
                     // FIXME 返回错误后如何处理？是否要停止
                     error!(
-                        "interface bdt http recv connection error! listen={}, err={}",
-                        listen, e
+                        "bdt http recv connection error! listen={}, err={}",
+                        self.0.listen, e
                     );
                 }
                 None => {
-                    info!("interface bdt http finished! listen={}", listen);
+                    info!("bdt http finished! listen={}", self.0.listen);
                     break;
                 }
             }
@@ -157,8 +134,7 @@ impl ObjectHttpBdtListener {
     }
 
     async fn accept(
-        server: &HttpServerHandlerRef,
-        addr: &str,
+        &self,
         stream: BdtStream,
     ) -> BuckyResult<()> {
         let seq = stream.sequence();
@@ -166,8 +142,8 @@ impl ObjectHttpBdtListener {
         let remote_addr = (remote_addr.0.to_owned(), remote_addr.1);
 
         debug!(
-            "interface service starting accept new bdt connection at {} from {:?}, seq={:?}",
-            addr, remote_addr, seq,
+            "bdt http service starting accept new connection at {} from {:?}, seq={:?}",
+            self.0.listen, remote_addr, seq,
         );
 
         if let Err(e) = stream.confirm(&vec![]).await {
@@ -200,7 +176,7 @@ impl ObjectHttpBdtListener {
             req.insert_header(cyfs_base::CYFS_REMOTE_DEVICE, device_id_str.to_owned());
 
             let source = HttpRequestSource::Remote(remote_addr_ref.to_owned());
-            match server.respond(source, req).await {
+            match self.0.server.respond(source, req).await {
                 Ok(resp) => {
                     let during = begin.elapsed().as_millis();
                     let status = resp.status();
@@ -209,20 +185,17 @@ impl ObjectHttpBdtListener {
                             debug!(
                                 "bdt http request complete! seq={:?}, during={}ms",
                                 seq, during,
-                                
                             );
                         } else {
                             info!(
                                 "bdt http request complete! seq={:?}, during={}ms",
                                 seq, during,
-                                
                             );
                         }
                     } else {
                         warn!(
                             "bdt http request complete with error! status={}, seq={:?}, during={}ms",
                             status, seq, during,
-                            
                         );
                     }
                     
@@ -244,7 +217,7 @@ impl ObjectHttpBdtListener {
         if let Err(e) = ret {
             error!(
                 "bdt http accept error, err={}, addr={}, remote={:?}, seq={:?}",
-                e, addr, remote_addr, seq
+                e, self.0.listen, remote_addr, seq
             );
             return Err(BuckyError::from(e));
         }

@@ -428,10 +428,15 @@ impl NONRouter {
         if let Some(noc_processor) = noc_processor {
             match noc_processor.get_object(req.clone()).await {
                 Ok(resp) => {
-                    if router_info.next_hop.is_some() {
+                    if let Some(next) = &router_info.next_hop {
                         info!(
-                            "router get_object from local noc cache! id={}",
-                            req.object_id
+                            "router get_object from local noc cache! id={}, next_hop={}",
+                            req.object_id, next
+                        );
+                    } else {
+                        info!(
+                            "router get_object from local noc! id={}",
+                            req.object_id,
                         );
                     }
 

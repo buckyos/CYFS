@@ -1,4 +1,4 @@
-use super::http_server::{HttpServerHandlerRef, HttpRequestSource};
+use super::http_server::{HttpRequestSource, HttpServerHandlerRef};
 use super::ObjectListener;
 use cyfs_base::*;
 use cyfs_lib::{BaseTcpListener, BaseTcpListenerHandler, RequestProtocol};
@@ -11,6 +11,8 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(super) struct ObjectHttpTcpListener {
     tcp_server: BaseTcpListener,
+
+    listen_url: String,
 
     // 当前bdt协议栈的device_id
     device_id: DeviceId,
@@ -44,9 +46,11 @@ impl ObjectListener for ObjectHttpTcpListener {
 }
 
 impl ObjectHttpTcpListener {
-    pub fn new(listen: SocketAddr, device_id: DeviceId, server: HttpServerHandlerRef) -> Self {
+    pub fn new(addr: SocketAddr, device_id: DeviceId, server: HttpServerHandlerRef) -> Self {
+        let listen_url = format!("http://{}", addr);
         let ret = Self {
-            tcp_server: BaseTcpListener::new(listen),
+            tcp_server: BaseTcpListener::new(addr),
+            listen_url,
             device_id,
             server,
         };
@@ -61,79 +65,75 @@ impl ObjectHttpTcpListener {
         self.tcp_server.get_listen()
     }
 
-    async fn accept(
-        server: &HttpServerHandlerRef,
-        addr: &str,
-        device_id: &DeviceId,
-        stream: TcpStream,
-    ) -> BuckyResult<()> {
+    async fn accept(&self, stream: TcpStream) -> BuckyResult<()> {
         let peer_addr = stream.peer_addr()?;
         debug!(
             "starting accept new tcp connection at {} from {}",
-            addr, &peer_addr
+            self.listen_url, &peer_addr
         );
 
         // 一条连接上只accept一次
         let begin = std::time::Instant::now();
         let opts = async_h1::ServerOptions::default();
-        let ret = async_h1::accept_with_opts(stream, |mut req| async move {
-            info!(
-                "recv tcp http request: url={}, method={}, len={:?}, peer={}",
-                req.url(),
-                req.method(),
-                req.len(),
-                peer_addr,
-            );
+        let ret = async_h1::accept_with_opts(
+            stream,
+            |mut req| async move {
+                info!(
+                    "recv tcp http request: url={}, method={}, len={:?}, peer={}",
+                    req.url(),
+                    req.method(),
+                    req.len(),
+                    peer_addr,
+                );
 
-            // http请求都是同机请求，需要设定为当前device
-            req.insert_header(cyfs_base::CYFS_REMOTE_DEVICE, device_id.to_string());
+                // http请求都是同机请求，需要设定为当前device
+                req.insert_header(cyfs_base::CYFS_REMOTE_DEVICE, self.device_id.to_string());
 
-            let source = HttpRequestSource::Local(peer_addr.clone());
-            match server.respond(source, req).await {
-                Ok(resp) => {
-                    let during = begin.elapsed().as_millis();
-                    let status = resp.status();
-                    if status.is_success() {
-                        if during < 1000 {
-                            debug!(
-                                "tcp http request complete! peer={}, during={}ms",
-                                peer_addr, during,
-                                
-                            );
+                let source = HttpRequestSource::Local(peer_addr.clone());
+                match self.server.respond(source, req).await {
+                    Ok(resp) => {
+                        let during = begin.elapsed().as_millis();
+                        let status = resp.status();
+                        if status.is_success() {
+                            if during < 1000 {
+                                debug!(
+                                    "tcp http request complete! peer={}, during={}ms",
+                                    peer_addr, during,
+                                );
+                            } else {
+                                info!(
+                                    "tcp http request complete! peer={}, during={}ms",
+                                    peer_addr, during,
+                                );
+                            }
                         } else {
-                            info!(
-                                "tcp http request complete! peer={}, during={}ms",
-                                peer_addr, during,
-                                
-                            );
-                        }
-                    } else {
-                        warn!(
+                            warn!(
                             "tcp http request complete with error! status={}, peer={}, during={}ms",
                             status, peer_addr, during,
-                            
                         );
+                        }
+
+                        Ok(resp)
                     }
-                    
-                    Ok(resp)
+                    Err(e) => {
+                        error!(
+                            "tcp http request error! peer={}, during={}, {}ms",
+                            peer_addr,
+                            begin.elapsed().as_millis(),
+                            e
+                        );
+                        Err(e)
+                    }
                 }
-                Err(e) => {
-                    error!(
-                        "tcp http request error! peer={}, during={}, {}ms",
-                        peer_addr,
-                        begin.elapsed().as_millis(),
-                        e
-                    );
-                    Err(e)
-                }
-            }
-        }, opts)
+            },
+            opts,
+        )
         .await;
 
         if let Err(e) = ret {
             error!(
                 "tcp http accept error, err={}, addr={}, peer={}",
-                e, addr, peer_addr
+                e, self.listen_url, peer_addr
             );
             // FIXME 一般是请求方直接断开导致的错误，是否需要判断并不再输出warn？
             //Err(BuckyError::from(e))
@@ -147,11 +147,10 @@ impl ObjectHttpTcpListener {
 #[async_trait::async_trait]
 impl BaseTcpListenerHandler for ObjectHttpTcpListener {
     async fn on_accept(&self, tcp_stream: TcpStream) -> BuckyResult<()> {
-        let addr = format!("http://{}", self.get_addr());
-        if let Err(e) = Self::accept(&self.server, &addr, &self.device_id, tcp_stream).await {
+        if let Err(e) = self.accept(tcp_stream).await {
             error!(
                 "object tcp process http connection error: listen={} err={}",
-                addr, e
+                self.listen_url, e
             );
         }
 
