@@ -242,15 +242,8 @@ impl DatagramTunnel {
                     "pending on building tunnel",
                 ))
             } else {
-                if plaintext {
-                    tunnel
-                        .send_plaintext(DynamicPackage::from(datagram))
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.msg()))
-                } else {
-                    tunnel
-                        .send_package(DynamicPackage::from(datagram))
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.msg()))
-                }
+                tunnel.send_package(DynamicPackage::from(datagram), plaintext)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.msg()))
             }
         } else {
             debug!(
