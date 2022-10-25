@@ -2243,18 +2243,6 @@ name = "cyfs-stack-bench"
 version = "0.1.0"
 dependencies = [
  "ansi_term",
- "async-std",
- "async-trait",
- "clap",
- "cyfs-base",
- "cyfs-util",
- "log 0.4.16",
-]
-
-[[package]]
-name = "cyfs-stack-case"
-version = "0.5.0"
-dependencies = [
  "async-recursion",
  "async-std",
  "async-trait",
@@ -2267,7 +2255,6 @@ dependencies = [
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-noc",
- "cyfs-perf-client",
  "cyfs-stack-loader",
  "cyfs-util",
  "futures",

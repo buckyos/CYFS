@@ -1,8 +1,26 @@
+use async_trait::async_trait;
+use crate::{Bench, BenchEnv};
+use log::*;
+
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
 use cyfs_util::*;
 use zone_simulator::*;
+
+pub struct RouterHandlerBench {}
+
+#[async_trait]
+impl Bench for RouterHandlerBench {
+    async fn bench(&self, _env: BenchEnv, _t: u64) -> bool {
+        test().await;
+        true
+    }
+
+    fn name(&self) -> &str {
+        "Router Handler Bench"
+    }
+}
 
 fn new_dec(name: &str) -> ObjectId {
     let owner_id = &USER1_DATA.get().unwrap().people_id;
