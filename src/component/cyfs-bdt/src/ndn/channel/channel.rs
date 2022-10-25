@@ -33,10 +33,9 @@ use super::{
 
 #[derive(Clone)]
 pub struct Config { 
-    pub precoding_timeout: Duration,
     pub resend_interval: Duration, 
     pub resend_timeout: Duration,  
-    pub wait_redirect_timeout: Duration,
+    pub block_interval: Duration, 
     pub msl: Duration, 
     pub udp: udp::Config, 
     pub history_speed: HistorySpeedConfig
