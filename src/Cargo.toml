@@ -65,6 +65,7 @@ members = [
 
     "./tests/cyfs-stack-test",
     "./tests/cyfs-bench-mark",
+    "./tests/cyfs-stack-bench",
     #"./tests/dsg-test",
 ]
 
