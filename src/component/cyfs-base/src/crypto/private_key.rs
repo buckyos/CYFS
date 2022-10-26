@@ -53,7 +53,7 @@ impl FromStr for PrivateKeyType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum PrivateKey {
     Rsa(rsa::RSAPrivateKey),
     Secp256k1(::secp256k1::SecretKey),
@@ -271,7 +271,7 @@ impl PrivateKey {
                 }
 
                 let ephemeral_pk = ::secp256k1::PublicKey::parse_slice(
-                    &input,
+                    &input[..::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE],
                     Some(::secp256k1::PublicKeyFormat::Compressed),
                 )
                 .map_err(|e| {
@@ -402,5 +402,28 @@ mod test {
         assert!(buf.len() == 0);
 
         assert!(pk2.public().verify(msg, &sign));
+    }
+
+    #[test]
+    fn crypto() {
+        let pk1 = PrivateKey::generate_rsa(1024).unwrap();
+        let (aes_key, data) = pk1.public().gen_aeskey_and_encrypt().unwrap();
+        let (buf, data2) = pk1.decrypt_aeskey_data(&data).unwrap();
+        assert_eq!(buf.len(), 0);
+        assert_eq!(aes_key.as_slice(), data2);
+
+        let pk1 = PrivateKey::generate_secp256k1().unwrap();
+        let (aes_key, mut data) = pk1.public().gen_aeskey_and_encrypt().unwrap();
+        println!("secp256k1 aes_key encrypt len={}", data.len());
+        let (buf, data2) = pk1.decrypt_aeskey_data(&data).unwrap();
+        assert_eq!(buf.len(), 0);
+        assert_eq!(aes_key.as_slice(), data2);
+
+        let encrypt_len = data.len();
+        data.resize(1024, 0);
+        let mut output = vec![0; 48];
+        let (buf, size) = pk1.decrypt_aeskey(&data, &mut output).unwrap();
+        assert_eq!(buf.len(), 1024 - encrypt_len);
+        assert_eq!(aes_key.as_slice(), &output[0..size]);
     }
 }

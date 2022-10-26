@@ -449,3 +449,30 @@ impl<'r> RawEncode for PublicKeyRef<'r> {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{PrivateKey, RawConvertTo, RawDecode, SignatureSource, PublicKey};
+
+    #[test]
+    fn public_key() {
+        let sk1 = PrivateKey::generate_rsa(1024).unwrap();
+        let pk1_buf = sk1.public().to_vec().unwrap();
+        let (pk2, buf) = PublicKey::raw_decode(&pk1_buf).unwrap();
+        assert!(buf.len() == 0);
+
+        assert_eq!(sk1.public(), pk2);
+
+        let sk1 = PrivateKey::generate_secp256k1().unwrap();
+        let pk1_buf = sk1.to_vec().unwrap();
+        let (pk2, buf) = PrivateKey::raw_decode(&pk1_buf).unwrap();
+        assert!(buf.len() == 0);
+        assert_eq!(sk1, pk2);
+
+        let pk1_buf = sk1.public().to_vec().unwrap();
+        let (pk2, buf) = PublicKey::raw_decode(&pk1_buf).unwrap();
+        assert!(buf.len() == 0);
+
+        assert_eq!(sk1.public(), pk2);
+    }
+}
