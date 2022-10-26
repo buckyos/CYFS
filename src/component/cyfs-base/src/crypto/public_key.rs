@@ -182,7 +182,7 @@ impl RawEncode for PublicKey {
                     )),
                 }
             }
-            Self::Secp256k1(_) => Ok(::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE),
+            Self::Secp256k1(_) => Ok(::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE + 1),
             Self::Invalid => {
                 let msg = format!("invalid publicKey!");
                 error!("{}", msg);
