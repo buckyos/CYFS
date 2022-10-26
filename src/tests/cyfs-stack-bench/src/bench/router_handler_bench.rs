@@ -12,9 +12,16 @@ pub struct RouterHandlerBench {}
 
 #[async_trait]
 impl Bench for RouterHandlerBench {
-    async fn bench(&self, _env: BenchEnv, _t: u64) -> bool {
-        test().await;
-        true
+    async fn bench(&self, env: BenchEnv, _ood_path: String, _t: u64) -> bool {
+        let ret = if env == BenchEnv::Simulator {
+            test().await;
+            true
+        } else {
+            true
+        };
+
+        ret
+
     }
 
     fn name(&self) -> &str {
