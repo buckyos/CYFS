@@ -18,7 +18,12 @@ pub fn create_people_desc(area: Option<Area>, key_bits: usize, owner: Option<Obj
             Area::default()
         }
     };
-    let secret = PrivateKey::generate_rsa(key_bits).unwrap();
+    let secret;
+    if key_bits < 1024 {
+        secret = PrivateKey::generate_secp256k1().unwrap();
+    } else {
+        secret = PrivateKey::generate_rsa(key_bits).unwrap();
+    }
     let pubkey = secret.public();
     (People::new(owner, ood_list, pubkey, Some(area_code), None, None).build(), secret)
 }
