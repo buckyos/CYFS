@@ -230,7 +230,7 @@ impl ObjectFormat for PublicKey {
     fn format_json(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
 
-        JsonCodecHelper::encode_string_field(&mut map, "type", self.type_str());
+        JsonCodecHelper::encode_string_field(&mut map, "type", self.key_type_str());
 
         let raw = self.to_vec().unwrap();
         map.insert("raw_data".to_string(), Value::String(hex::encode(&raw)));

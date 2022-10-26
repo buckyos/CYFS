@@ -5,7 +5,6 @@ use rsa::{PublicKey as RSAPublicKeyTrait, PublicKeyParts};
 
 use std::convert::From;
 
-
 // RSA
 const RAW_PUBLIC_KEY_RSA_1024_CODE: u8 = 0_u8;
 const RAW_PUBLIC_KEY_RSA_1024_LENGTH: usize = 162;
@@ -18,7 +17,6 @@ const RAW_PUBLIC_KEY_RSA_3072_LENGTH: usize = 422;
 
 // SECP256K1
 const RAW_PUBLIC_KEY_SECP256K1_CODE: u8 = 10_u8;
-
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PublicKey {
@@ -34,10 +32,10 @@ impl Default for PublicKey {
 }
 
 impl PublicKey {
-    pub fn type_str(&self) -> &str {
+    pub fn key_type_str(&self) -> &str {
         match self {
-            Self::Rsa(_) => "rsa",
-            Self::Secp256k1(_) => "secp256k1",
+            Self::Rsa(_) => PrivateKeyType::Rsa.as_str(),
+            Self::Secp256k1(_) => PrivateKeyType::Secp256k1.as_str(),
             Self::Invalid => "invalid",
         }
     }
@@ -73,15 +71,29 @@ impl PublicKey {
             Self::Rsa(public_key) => {
                 let mut rng = thread_rng();
                 let encrypted_buf =
-                    public_key.encrypt(&mut rng, rsa::PaddingScheme::PKCS1v15Encrypt, data)?;
-                
+                    match public_key.encrypt(&mut rng, rsa::PaddingScheme::PKCS1v15Encrypt, data) {
+                        Ok(v) => v,
+                        Err(e) => match e {
+                            rsa::errors::Error::MessageTooLong => {
+                                let msg = format!(
+                                    "encrypt data is too long! data len={}, max len={}",
+                                    data.len(),
+                                    public_key.size() - 11
+                                );
+                                error!("{}", msg);
+                                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+                            }
+                            _ => return Err(BuckyError::from(e)),
+                        },
+                    };
+
                 Ok(encrypted_buf)
             }
             Self::Secp256k1(_) => {
-                 // 目前secp256k1的非对称加解密只支持交换aes_key时候使用
-                 let msg = format!("direct encyrpt with private key of secp256 not support!");
-                 error!("{}", msg);
-                 Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
+                // 目前secp256k1的非对称加解密只支持交换aes_key时候使用
+                let msg = format!("direct encyrpt with private key of secp256 not support!");
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
             }
             PublicKey::Invalid => panic!("Should not come here"),
         }
@@ -452,15 +464,22 @@ impl<'r> RawEncode for PublicKeyRef<'r> {
 
 #[cfg(test)]
 mod test {
-    use crate::{PrivateKey, RawConvertTo, RawDecode, SignatureSource, PublicKey};
+    use crate::{PrivateKey, PublicKey, RawConvertTo, RawDecode};
 
     #[test]
     fn public_key() {
         let sk1 = PrivateKey::generate_rsa(1024).unwrap();
         let pk1_buf = sk1.public().to_vec().unwrap();
+        println!("encrypt max len: {}", sk1.public().key_size() - 11);
         let (pk2, buf) = PublicKey::raw_decode(&pk1_buf).unwrap();
         assert!(buf.len() == 0);
+        assert_eq!(sk1.public(), pk2);
 
+        let sk1 = PrivateKey::generate_rsa(2048).unwrap();
+        let pk1_buf = sk1.public().to_vec().unwrap();
+        println!("encrypt max len: {}", sk1.public().key_size() - 11);
+        let (pk2, buf) = PublicKey::raw_decode(&pk1_buf).unwrap();
+        assert!(buf.len() == 0);
         assert_eq!(sk1.public(), pk2);
 
         let sk1 = PrivateKey::generate_secp256k1().unwrap();

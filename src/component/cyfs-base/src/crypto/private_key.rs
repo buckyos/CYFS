@@ -74,6 +74,13 @@ impl std::fmt::Display for PrivateKey {
 pub const CYFS_PRIVTAE_KEY_DEFAULT_RSA_BITS: usize = 1024;
 
 impl PrivateKey {
+    pub fn key_type(&self) -> PrivateKeyType {
+        match *self {
+            Self::Rsa(_) => PrivateKeyType::Rsa,
+            Self::Secp256k1(_) => PrivateKeyType::Secp256k1,
+        }
+    }
+
     // 生成rsa密钥的相关接口
     pub fn generate_rsa(bits: usize) -> Result<Self, BuckyError> {
         let mut rng = thread_rng();
