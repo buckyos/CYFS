@@ -1,5 +1,5 @@
 use crate::bip44::{ChildNumber, IntoDerivationPath};
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, PrivateKeyType};
 use cyfs_base::{PrivateKey, RawConvertTo};
 
 use hmac::{Hmac, Mac,};
@@ -13,14 +13,13 @@ use std::ops::Deref;
 struct PrivateKeySeedGen;
 
 impl PrivateKeySeedGen {
-    pub fn gen(seed: &[u8]) -> BuckyResult<PrivateKey> {
+    pub fn gen(seed: &[u8], pt: PrivateKeyType, bits: Option<usize>) -> BuckyResult<PrivateKey> {
         assert!(seed.len() == 32);
 
         // let mut rng: PBKDF2Rng = crate::pbkdf2_rand::PBKDF2Rng::from_seed(seed.try_into().expect("invalid seed bytes length"));
         let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed.try_into().expect("invalid seed bytes length"));
-        let ret = PrivateKey::generate_rsa_by_rng(&mut rng, 1024);
-        
-        ret
+
+        PrivateKey::generate_by_rng(&mut rng, bits, pt)
     }
 }
 
@@ -59,7 +58,7 @@ pub(crate) struct ExtendedPrivateKey {
 
 impl ExtendedPrivateKey {
     /// Attempts to derive an extended private key from a path.
-    pub fn derive<Path>(seed: &[u8], path: Path) -> BuckyResult<ExtendedPrivateKey>
+    pub fn derive<Path>(seed: &[u8], path: Path, pt: PrivateKeyType, bits: Option<usize>) -> BuckyResult<ExtendedPrivateKey>
     where
         Path: IntoDerivationPath,
     {
@@ -70,12 +69,12 @@ impl ExtendedPrivateKey {
         let (private_key, chain_code) = result.split_at(32);
 
         let mut sk = ExtendedPrivateKey {
-            private_key: PrivateKeySeedGen::gen(&private_key)?,
+            private_key: PrivateKeySeedGen::gen(&private_key, pt, bits)?,
             chain_code: Protected::from(chain_code),
         };
 
         for child in path.into()?.as_ref() {
-            sk = sk.child(*child)?;
+            sk = sk.child(*child, pt, bits)?;
         }
 
         Ok(sk)
@@ -85,7 +84,7 @@ impl ExtendedPrivateKey {
         &self.private_key
     }
 
-    pub fn child(&self, child: ChildNumber) -> BuckyResult<ExtendedPrivateKey> {
+    pub fn child(&self, child: ChildNumber, pt: PrivateKeyType, bits: Option<usize>) -> BuckyResult<ExtendedPrivateKey> {
         let mut hmac: Hmac<Sha512> = Hmac::new_from_slice(&self.chain_code).map_err(|e| {
             let msg = format!("invalid chain code, err={}", e);
             error!("{}", msg);
@@ -109,7 +108,7 @@ impl ExtendedPrivateKey {
         let (private_key, chain_code) = result.split_at(32);
 
         Ok(ExtendedPrivateKey {
-            private_key: PrivateKeySeedGen::gen(&private_key)?,
+            private_key: PrivateKeySeedGen::gen(&private_key, pt, bits)?,
             chain_code: Protected::from(&chain_code),
         })
     }
@@ -124,11 +123,7 @@ impl Into<PrivateKey> for ExtendedPrivateKey {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::seed::Seed;
-    use bip39::{Language, Mnemonic};
-    use cyfs_base::*;
     use rand::RngCore;
-    use std::str::FromStr;
 
     #[test]
     fn test_rng() {
@@ -138,7 +133,12 @@ mod tests {
         rng.fill_bytes(&mut bytes);
         println!("seed: {}", hex::encode(&bytes));
 
-        let pk = PrivateKeySeedGen::gen(&bytes).unwrap();
+        let pk = PrivateKeySeedGen::gen(&bytes, PrivateKeyType::Rsa, None).unwrap();
+        let buf = pk.to_vec().unwrap();
+        
+        println!("sk: {}", hex::encode(&buf));
+
+        let pk = PrivateKeySeedGen::gen(&bytes, PrivateKeyType::Secp256k1, None).unwrap();
         let buf = pk.to_vec().unwrap();
         
         println!("sk: {}", hex::encode(&buf));

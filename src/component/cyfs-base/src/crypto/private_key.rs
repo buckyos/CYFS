@@ -4,25 +4,74 @@ use generic_array::GenericArray;
 use libc::memcpy;
 use rand::{thread_rng, Rng};
 use rsa::PublicKeyParts;
-use std::os::raw::c_void;
+use std::{os::raw::c_void, str::FromStr};
 
 // 密钥类型的编码
 pub(crate) const KEY_TYPE_RSA: u8 = 0u8;
 pub(crate) const KEY_TYPE_RSA2048: u8 = 1u8;
 pub(crate) const KEY_TYPE_SECP256K1: u8 = 5u8;
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum PrivateKeyType {
+    Rsa,
+    Secp256k1,
+}
+
+impl PrivateKeyType {
+    pub fn as_str(&self) -> &str {
+        match *self {
+            Self::Rsa => "rsa",
+            Self::Secp256k1 => "secp256k1",
+        }
+    }
+}
+
+impl Default for PrivateKeyType {
+    fn default() -> Self {
+        Self::Rsa
+    }
+}
+
+impl std::fmt::Display for PrivateKeyType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for PrivateKeyType {
+    type Err = BuckyError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "rsa" => Self::Rsa,
+            "secp256k1" => Self::Secp256k1,
+             _ => {
+                let msg = format!("unknown PrivateKey type: {}", s);
+                warn!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg))
+             }
+        })
+    }
+}
+
 #[derive(Clone)]
 pub enum PrivateKey {
     Rsa(rsa::RSAPrivateKey),
     Secp256k1(::secp256k1::SecretKey),
 }
-// 避免私钥被日志打印出来
 
+// 避免私钥被日志打印出来
 impl std::fmt::Debug for PrivateKey {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "[Protected PrivateKey]")
     }
 }
+impl std::fmt::Display for PrivateKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "[Protected PrivateKey]")
+    }
+}
+
+pub const CYFS_PRIVTAE_KEY_DEFAULT_RSA_BITS: usize = 1024;
 
 impl PrivateKey {
     // 生成rsa密钥的相关接口
@@ -47,6 +96,13 @@ impl PrivateKey {
     pub fn generate_secp256k1_by_rng<R: Rng>(rng: &mut R) -> Result<Self, BuckyError> {
         let key = ::secp256k1::SecretKey::random(rng);
         Ok(Self::Secp256k1(key))
+    }
+
+    pub fn generate_by_rng<R: Rng>(rng: &mut R, bits: Option<usize>, pt: PrivateKeyType) -> BuckyResult<Self> {
+        match pt {
+            PrivateKeyType::Rsa => Self::generate_rsa_by_rng(rng, bits.unwrap_or(CYFS_PRIVTAE_KEY_DEFAULT_RSA_BITS)),
+            PrivateKeyType::Secp256k1 => Self::generate_secp256k1_by_rng(rng)
+        }
     }
 
     pub fn public(&self) -> PublicKey {

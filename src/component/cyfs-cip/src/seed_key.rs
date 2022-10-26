@@ -1,7 +1,7 @@
 use crate::bip32::ExtendedPrivateKey;
 use crate::path::*;
 use crate::seed::Seed;
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, PrivateKey};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, PrivateKey, PrivateKeyType};
 
 use bip39::{Language, Mnemonic};
 use memzero::Memzero;
@@ -87,19 +87,46 @@ impl CyfsSeedKeyBip {
         Ok(Self { seed })
     }
 
-    pub fn sub_key(&self, path: &CyfsChainBipPath) -> BuckyResult<PrivateKey> {
-        let path = path.to_string();
-        debug!("will derive by path={}", path);
+    pub fn sub_key(
+        &self,
+        path: &CyfsChainBipPath,
+    ) -> BuckyResult<PrivateKey> {
+        self.sub_key_ex(path, PrivateKeyType::Rsa, None)
+    }
 
-        let epk = ExtendedPrivateKey::derive(self.seed.as_ref(), path.as_str())?;
+    pub fn sub_key_ex(
+        &self,
+        path: &CyfsChainBipPath,
+        pt: PrivateKeyType,
+        bits: Option<usize>,
+    ) -> BuckyResult<PrivateKey> {
+        let path = path.to_string();
+        debug!("will derive private key by path={}, type={}, bits={:?}", path, pt, bits);
+
+        let epk = ExtendedPrivateKey::derive(self.seed.as_ref(), path.as_str(), pt, bits)?;
         Ok(epk.into())
     }
 
     // 直接从path来生成子密钥, 对path合法性不做检测
-    pub fn sub_key_direct_by_path(&self, path: &str) -> BuckyResult<PrivateKey> {
-        debug!("will derive direct by path={}", path);
+    pub fn sub_key_direct_by_path(
+        &self,
+        path: &str,
+    ) -> BuckyResult<PrivateKey> {
+        self.sub_key_direct_by_path_ex(path, PrivateKeyType::Rsa, None)
+    }
 
-        let epk = ExtendedPrivateKey::derive(self.seed.as_ref(), path)?;
+    pub fn sub_key_direct_by_path_ex(
+        &self,
+        path: &str,
+        pt: PrivateKeyType,
+        bits: Option<usize>,
+    ) -> BuckyResult<PrivateKey> {
+        debug!(
+            "will derive private key direct by path={}, type={}, bits={:?}",
+            path, pt, bits
+        );
+
+        let epk = ExtendedPrivateKey::derive(self.seed.as_ref(), path, pt, bits)?;
         Ok(epk.into())
     }
 }
