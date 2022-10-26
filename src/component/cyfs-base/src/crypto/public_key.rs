@@ -2,7 +2,6 @@ use crate::*;
 
 use rand::thread_rng;
 use rsa::{PublicKey as RSAPublicKeyTrait, PublicKeyParts};
-
 use std::convert::From;
 
 // RSA
@@ -182,16 +181,17 @@ impl RawFixedBytes for PublicKey {
 impl RawEncode for PublicKey {
     fn raw_measure(&self, _purpose: &Option<RawEncodePurpose>) -> Result<usize, BuckyError> {
         match self {
-            Self::Rsa(ref _pk) => {
-                match _pk.size() {
+            Self::Rsa(ref pk) => {
+                match pk.size() {
                     // 1024 bits, 128 bytes
-                    128 => Ok(RAW_PUBLIC_KEY_RSA_1024_LENGTH + 1),
-                    256 => Ok(RAW_PUBLIC_KEY_RSA_2048_LENGTH + 1),
-                    384 => Ok(RAW_PUBLIC_KEY_RSA_3072_LENGTH + 1),
-                    _ => Err(BuckyError::new(
-                        BuckyErrorCode::InvalidParam,
-                        "invalid rsa public key",
-                    )),
+                    RSA_KEY_BYTES => Ok(RAW_PUBLIC_KEY_RSA_1024_LENGTH + 1),
+                    RSA2048_KEY_BYTES => Ok(RAW_PUBLIC_KEY_RSA_2048_LENGTH + 1),
+                    RSA3072_KEY_BYTES => Ok(RAW_PUBLIC_KEY_RSA_3072_LENGTH + 1),
+                    len @ _ => {
+                        let msg = format!("invalid rsa public key length! {}", len);
+                        error!("{}", msg);
+                        Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+                    }
                 }
             }
             Self::Secp256k1(_) => Ok(::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE + 1),
@@ -213,22 +213,23 @@ impl RawEncode for PublicKey {
             Self::Rsa(ref pk) => {
                 let (code, len) = {
                     match pk.size() {
-                        128 => Ok((
+                        RSA_KEY_BYTES => Ok((
                             RAW_PUBLIC_KEY_RSA_1024_CODE,
                             RAW_PUBLIC_KEY_RSA_1024_LENGTH + 1,
                         )),
-                        256 => Ok((
+                        RSA2048_KEY_BYTES => Ok((
                             RAW_PUBLIC_KEY_RSA_2048_CODE,
                             RAW_PUBLIC_KEY_RSA_2048_LENGTH + 1,
                         )),
-                        384 => Ok((
+                        RSA3072_KEY_BYTES => Ok((
                             RAW_PUBLIC_KEY_RSA_3072_CODE,
                             RAW_PUBLIC_KEY_RSA_3072_LENGTH + 1,
                         )),
-                        _ => Err(BuckyError::new(
-                            BuckyErrorCode::InvalidParam,
-                            "invalid rsa public key",
-                        )),
+                        len @ _ => {
+                            let msg = format!("invalid rsa public key length! {}", len);
+                            error!("{}", msg);
+                            Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+                        }
                     }
                 }?;
                 if buf.len() < len {

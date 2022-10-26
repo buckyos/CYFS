@@ -9,7 +9,18 @@ use std::{os::raw::c_void, str::FromStr};
 // 密钥类型的编码
 pub(crate) const KEY_TYPE_RSA: u8 = 0u8;
 pub(crate) const KEY_TYPE_RSA2048: u8 = 1u8;
+pub(crate) const KEY_TYPE_RSA3072: u8 = 2u8;
 pub(crate) const KEY_TYPE_SECP256K1: u8 = 5u8;
+
+// rsa key size in bits
+pub(crate) const RSA_KEY_BITS: usize = 1024;
+pub(crate) const RSA2048_KEY_BITS: usize = 2048;
+pub(crate) const RSA3072_KEY_BITS: usize = 3072;
+
+// rsa key size in bytes
+pub(crate) const RSA_KEY_BYTES: usize = 128;
+pub(crate) const RSA2048_KEY_BYTES: usize = 256;
+pub(crate) const RSA3072_KEY_BYTES: usize = 384;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum PrivateKeyType {
@@ -81,13 +92,29 @@ impl PrivateKey {
         }
     }
 
+    fn check_bits(bits: usize) -> BuckyResult<()> {
+        match bits {
+            RSA_KEY_BITS | RSA2048_KEY_BITS | RSA3072_KEY_BITS=> {
+                Ok(())
+            }
+            _ => {
+                let msg = format!("unsupport rsa key bits: {}", bits);
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::UnSupport, msg))
+            }
+        }
+    }
     // 生成rsa密钥的相关接口
     pub fn generate_rsa(bits: usize) -> Result<Self, BuckyError> {
+        Self::check_bits(bits)?;
+
         let mut rng = thread_rng();
         Self::generate_rsa_by_rng(&mut rng, bits)
     }
 
     pub fn generate_rsa_by_rng<R: Rng>(rng: &mut R, bits: usize) -> Result<Self, BuckyError> {
+        Self::check_bits(bits)?;
+
         match rsa::RSAPrivateKey::new(rng, bits) {
             Ok(rsa) => Ok(Self::Rsa(rsa)),
             Err(e) => Err(BuckyError::from(e)),
@@ -121,28 +148,27 @@ impl PrivateKey {
         }
     }
 
-    pub fn sign(&self, data: &[u8], sign_source: SignatureSource) -> Signature {
+    pub fn sign(&self, data: &[u8], sign_source: SignatureSource) -> BuckyResult<Signature> {
         let create_time = bucky_time_now();
 
         // 签名必须也包含签名的时刻，这个时刻是敏感的不可修改
         let mut data_new = data.to_vec();
         data_new.resize(data.len() + create_time.raw_measure(&None).unwrap(), 0);
         create_time
-            .raw_encode(&mut data_new.as_mut_slice()[data.len()..], &None)
-            .unwrap();
+            .raw_encode(&mut data_new.as_mut_slice()[data.len()..], &None)?;
 
-        match self {
+        let sign = match self {
             Self::Rsa(private_key) => {
                 let hash = hash_data(&data_new);
                 let sign = private_key
                     .sign(
                         rsa::PaddingScheme::new_pkcs1v15_sign(Some(rsa::Hash::SHA2_256)),
                         &hash.as_slice(),
-                    )
-                    .unwrap();
+                    )?;
+                    
                 assert_eq!(sign.len(), private_key.size());
                 let sign_data = match private_key.size() {
-                    128 => {
+                    RSA_KEY_BYTES => {
                         let mut sign_array: [u32; 32] = [0; 32];
                         unsafe {
                             memcpy(
@@ -153,7 +179,7 @@ impl PrivateKey {
                         };
                         SignData::Rsa1024(GenericArray::from(sign_array))
                     }
-                    256 => {
+                    RSA2048_KEY_BYTES => {
                         let mut sign_array: [u32; 64] = [0; 64];
                         unsafe {
                             memcpy(
@@ -164,8 +190,23 @@ impl PrivateKey {
                         };
                         SignData::Rsa2048(*GenericArray::from_slice(&sign_array))
                     }
+                    RSA3072_KEY_BYTES => {
+                        let mut sign_array: [u32; 96] = [0; 96];
+                        unsafe {
+                            memcpy(
+                                sign_array.as_mut_ptr() as *mut c_void,
+                                sign.as_ptr() as *const c_void,
+                                sign.len(),
+                            )
+                        };
+                        SignData::Rsa3072(*GenericArray::from_slice(&sign_array))
+                    }
 
-                    _ => unreachable!(),
+                    len @ _ =>  {
+                        let msg = format!("unsupport rsa key length! {}", len);
+                        error!("{}", msg);
+                        return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
+                    }
                 };
 
                 Signature::new(sign_source, 0, create_time, sign_data)
@@ -190,7 +231,9 @@ impl PrivateKey {
                 let sign_data = SignData::Ecc(GenericArray::from(sign_array));
                 Signature::new(sign_source, 0, create_time, sign_data)
             }
-        }
+        };
+
+        Ok(sign)
     }
 
     pub fn decrypt(&self, input: &[u8], output: &mut [u8]) -> BuckyResult<usize> {
@@ -399,9 +442,15 @@ mod test {
 
     #[test]
     fn private_key() {
+        rsa_private_key_sign(1024);
+        rsa_private_key_sign(2048);
+        rsa_private_key_sign(3072);
+    }
+
+    fn rsa_private_key_sign(bits: usize) {
         let msg = b"112233445566778899";
-        let pk1 = PrivateKey::generate_rsa(1024).unwrap();
-        let sign = pk1.sign(msg, SignatureSource::RefIndex(0));
+        let pk1 = PrivateKey::generate_rsa(bits).unwrap();
+        let sign = pk1.sign(msg, SignatureSource::RefIndex(0)).unwrap();
         assert!(pk1.public().verify(msg, &sign));
 
         let pk1_buf = pk1.to_vec().unwrap();
@@ -413,11 +462,9 @@ mod test {
 
     #[test]
     fn crypto() {
-        let pk1 = PrivateKey::generate_rsa(1024).unwrap();
-        let (aes_key, data) = pk1.public().gen_aeskey_and_encrypt().unwrap();
-        let (buf, data2) = pk1.decrypt_aeskey_data(&data).unwrap();
-        assert_eq!(buf.len(), 0);
-        assert_eq!(aes_key.as_slice(), data2);
+        rsa_private_key_crypto(1024);
+        rsa_private_key_crypto(2048);
+        rsa_private_key_crypto(3072);
 
         let pk1 = PrivateKey::generate_secp256k1().unwrap();
         let (aes_key, mut data) = pk1.public().gen_aeskey_and_encrypt().unwrap();
@@ -432,5 +479,13 @@ mod test {
         let (buf, size) = pk1.decrypt_aeskey(&data, &mut output).unwrap();
         assert_eq!(buf.len(), 1024 - encrypt_len);
         assert_eq!(aes_key.as_slice(), &output[0..size]);
+    }
+
+    fn rsa_private_key_crypto(bits: usize) {
+        let pk1 = PrivateKey::generate_rsa(bits).unwrap();
+        let (aes_key, data) = pk1.public().gen_aeskey_and_encrypt().unwrap();
+        let (buf, data2) = pk1.decrypt_aeskey_data(&data).unwrap();
+        assert_eq!(buf.len(), 0);
+        assert_eq!(aes_key.as_slice(), data2);
     }
 }

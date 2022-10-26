@@ -22,8 +22,7 @@ impl Signer for RsaCPUObjectSigner {
     }
 
     async fn sign(&self, data: &[u8], sign_source: &SignatureSource) -> BuckyResult<Signature> {
-        let sig = self.secret.sign(data, sign_source.clone());
-        Ok(sig)
+        self.secret.sign(data, sign_source.clone())
     }
 }
 
