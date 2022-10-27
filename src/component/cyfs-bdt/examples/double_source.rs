@@ -94,7 +94,7 @@ async fn main() {
 
         let context = SingleDownloadContext::new(None);
         context.add_source(DownloadSource {
-            target: rn_stack.local_device_id().clone(), 
+            target: rn_stack.local_const().clone(), 
             object_id: None, 
             encode_desc: ChunkEncodeDesc::reverse_stream(None, None), 
             referer: None

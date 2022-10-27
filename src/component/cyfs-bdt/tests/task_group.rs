@@ -49,7 +49,7 @@ async fn one_task_group() {
             .await
             .unwrap();
     
-        let context = SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()]);
+        let context = SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()]);
     
         let _ = download_chunk(
             &*ln_stack,

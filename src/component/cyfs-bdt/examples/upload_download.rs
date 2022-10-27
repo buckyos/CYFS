@@ -109,7 +109,7 @@ async fn main() {
                     stack,
                     interest.chunk.clone(), 
                     None, 
-                    Some(SingleDownloadContext::streams(None, vec![self.src_dev.desc().device_id()])),
+                    Some(SingleDownloadContext::desc_streams(None, vec![self.src_dev.desc().clone()])),
                     vec![self.store.clone_as_writer()],
                 )
                 .await;
@@ -164,7 +164,7 @@ async fn main() {
         &*down_stack,
         chunkid.clone(), 
         None, 
-        Some(SingleDownloadContext::streams(None, vec![cache_stack.local_device_id().clone(),])),
+        Some(SingleDownloadContext::desc_streams(None, vec![cache_stack.local_const().clone(),])),
         vec![down_store.clone_as_writer()],
     )
     .await;

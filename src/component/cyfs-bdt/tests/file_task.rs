@@ -62,7 +62,7 @@ async fn one_small_file() {
         &*ln_stack, 
         file, 
         None, 
-        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
+        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
         vec![ln_store.clone_as_writer()]).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task)).await.unwrap();
     let _ = recv.unwrap();
@@ -102,7 +102,7 @@ async fn same_chunk_file() {
     let task = download_file(
         &*ln_stack, file, 
         None, 
-        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
+        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
         vec![ln_store.clone_as_writer()]).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task)).await.unwrap();
     let _ = recv.unwrap();
@@ -130,7 +130,7 @@ async fn empty_file() {
     let task = download_file(
         &*ln_stack, file, 
         None, 
-        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
+        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
         vec![ln_store.clone_as_writer()]).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task)).await.unwrap();
     let _ = recv.unwrap();
@@ -221,7 +221,7 @@ async fn one_small_file_with_ranges() {
         file, 
         Some(vec![range.clone(), range.start + 1024 * 1024..range.end + 1024 * 1024]), 
         None, 
-        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
+        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
         vec![RangeWriter::new(range_hash.result().into()).clone_as_writer()]).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task)).await.unwrap();
     let _ = recv.unwrap();

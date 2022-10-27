@@ -119,7 +119,7 @@ impl Downloaders {
             if match state {
                 DownloadSessionState::Finished => true, 
                 DownloadSessionState::Canceled(err) => {
-                    if err == BuckyErrorCode::Interrupted {
+                    if err == BuckyErrorCode::UserCanceled {
                         true 
                     } else {
                         false

@@ -94,7 +94,7 @@ async fn main() {
             &*ln_stack, 
             chunkid.clone(), 
             None, 
-            Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
+            Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
             vec![ln_store.clone_as_writer()]).await.unwrap();
         
         watch_resource(task);
