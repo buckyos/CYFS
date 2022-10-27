@@ -445,6 +445,10 @@ async fn main_run() -> BuckyResult<()> {
                             .long("type")
                             .default_value("app")
                             .possible_values(&["app", "service"]),
+                    ).arg(
+                        Arg::with_name("clear")
+                            .long("clear")
+                            .help("cleat list before update")
                     )
                     .arg(meta_arg.clone()),
                 ),
@@ -760,6 +764,9 @@ async fn main_run() -> BuckyResult<()> {
                             std::fs::File::open(matches.value_of("config").unwrap()).unwrap(),
                         )
                         .unwrap();
+                        if matches.is_present("clear") {
+                            list.clear();
+                        }
                         // 需要config格式：[{id, ver, status}]
                         for service in config.as_array().unwrap() {
                             let app_id = DecAppId::from_str(
