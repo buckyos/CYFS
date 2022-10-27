@@ -110,7 +110,7 @@ async fn main() {
         &*ln_stack,
         file, 
         None, 
-        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
+        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
         down_path.as_path(),
     )
     .await

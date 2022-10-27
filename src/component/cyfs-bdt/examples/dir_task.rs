@@ -167,7 +167,7 @@ async fn main() {
         &*ln_stack,
         dir.desc().dir_id(), 
         None, 
-        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
+        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
         down_dir.as_path(),
     ) {
         Ok((task, dir_task_control)) => {

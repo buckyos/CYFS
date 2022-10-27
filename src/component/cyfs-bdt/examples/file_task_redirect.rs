@@ -145,7 +145,7 @@ async fn main() {
     let task = download_file_to_path(
         &*ln_stack, file, 
         None, 
-        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
+        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
         down_path.as_path()).await.unwrap();
 
     let recv = future::timeout(Duration::from_secs(1), watch_task_finish(task)).await.unwrap();
