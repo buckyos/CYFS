@@ -7,7 +7,7 @@ use crate::{obj_id, protos};
 pub fn dsg_dec_id() -> ObjectId {
     DecApp::generate_id(
         ObjectId::from_str("5r4MYfFPKMeHa1fec7dHKmBfowySBfVFvRQvKB956dnF").unwrap(),
-        "cyfs dsg service",
+        "CYFS DSG Service",
     )
 }
 
