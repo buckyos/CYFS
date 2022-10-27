@@ -177,7 +177,7 @@ impl TestUser {
         let mut standby_ood = None;
         if ood_work_mode == OODWorkMode::ActiveStandby {
             let path = CyfsChainBipPath::new_device(0, None, Some(2));
-            let ood_sk = bip.sub_key(&path).unwrap();
+            let ood_sk = bip.sub_key_ex(&path, PrivateKeyType::Secp256k1, None).unwrap();
             let unique_id = format!("{}-ood2", name);
             let unique_id = UniqueId::create_with_hash(unique_id.as_bytes());
             let builder = Device::new(
