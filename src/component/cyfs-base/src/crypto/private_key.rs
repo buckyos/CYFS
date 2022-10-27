@@ -165,7 +165,7 @@ impl PrivateKey {
                         rsa::PaddingScheme::new_pkcs1v15_sign(Some(rsa::Hash::SHA2_256)),
                         &hash.as_slice(),
                     )?;
-                    
+
                 assert_eq!(sign.len(), private_key.size());
                 let sign_data = match private_key.size() {
                     RSA_KEY_BYTES => {
@@ -438,10 +438,11 @@ impl<'de> RawDecode<'de> for PrivateKey {
 
 #[cfg(test)]
 mod test {
-    use crate::{PrivateKey, RawConvertTo, RawDecode, SignatureSource};
+    use crate::{PrivateKey, RawConvertTo, RawDecode, SignatureSource, Signature, RawFrom};
 
     #[test]
     fn private_key() {
+        secp_private_key_sign();
         rsa_private_key_sign(1024);
         rsa_private_key_sign(2048);
         rsa_private_key_sign(3072);
@@ -458,6 +459,27 @@ mod test {
         assert!(buf.len() == 0);
 
         assert!(pk2.public().verify(msg, &sign));
+
+        let buf = sign.to_vec().unwrap();
+        let sign2 = Signature::clone_from_slice(&buf).unwrap();
+        assert_eq!(sign, sign2);
+    }
+
+    fn secp_private_key_sign() {
+        let msg = b"112233445566778899";
+        let pk1 = PrivateKey::generate_secp256k1().unwrap();
+        let sign = pk1.sign(msg, SignatureSource::RefIndex(0)).unwrap();
+        assert!(pk1.public().verify(msg, &sign));
+
+        let pk1_buf = pk1.to_vec().unwrap();
+        let (pk2, buf) = PrivateKey::raw_decode(&pk1_buf).unwrap();
+        assert!(buf.len() == 0);
+
+        assert!(pk2.public().verify(msg, &sign));
+
+        let buf = sign.to_vec().unwrap();
+        let sign2 = Signature::clone_from_slice(&buf).unwrap();
+        assert_eq!(sign, sign2);
     }
 
     #[test]
