@@ -265,7 +265,7 @@ impl SingleOpEnvStub {
     }
 
     // metadata
-    async fn metadata(&self) -> BuckyResult<ObjectMapMetaData> {
+    pub async fn metadata(&self) -> BuckyResult<ObjectMapMetaData> {
         let mut req = OpEnvMetadataOutputRequest::new(None);
         req.common.target = self.target.clone();
         req.common.target_dec_id = self.target_dec_id.clone();
@@ -561,7 +561,7 @@ impl PathOpEnvStub {
     }
 
     // metadata
-    async fn metadata(&self, path: impl Into<String>) -> BuckyResult<ObjectMapMetaData> {
+    pub async fn metadata(&self, path: impl Into<String>) -> BuckyResult<ObjectMapMetaData> {
         let mut req = OpEnvMetadataOutputRequest::new(Some(path.into()));
         req.common.target = self.target.clone();
         req.common.target_dec_id = self.target_dec_id.clone();
