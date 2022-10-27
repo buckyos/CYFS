@@ -10,6 +10,7 @@ mod mime;
 mod proxy;
 mod runtime;
 mod stack;
+mod ipfs_proxy;
 
 use cyfs_debug::*;
 use stack::PROXY_PORT;

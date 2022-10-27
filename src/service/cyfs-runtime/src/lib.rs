@@ -7,6 +7,7 @@ mod stack;
 mod mime;
 mod anonymous;
 mod file_cache;
+mod ipfs_proxy;
 
 // use once_cell::sync::OnceCell;
 // use crate::runtime::CyfsRuntime;

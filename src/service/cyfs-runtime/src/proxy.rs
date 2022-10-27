@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tide::listener::Listener;
 use tide::security::{CorsMiddleware, Origin};
+use crate::ipfs_proxy::IpfsProxy;
 
 struct NonHttpServerInner {
     http_server: HttpServerHandlerRef,
@@ -268,6 +269,10 @@ impl CyfsProxy {
 
         let file_cache = FileCacheRecevier::new();
         server.at("/file-cache").post(file_cache);
+
+        let ipfs_proxy = IpfsProxy::new(self.clone(), self.stack_config.proxy_port+1);
+        server.at("/ipfs/*").get(ipfs_proxy.clone());
+        server.at("/ipns/*").get(ipfs_proxy);
 
         server.at("/*").get(NonForward::new(self.clone()));
 
