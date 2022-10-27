@@ -6,7 +6,7 @@ use cyfs_lib::*;
 use async_std::io::ReadExt;
 use async_trait::async_trait;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{atomic::AtomicU64, Arc};
 
 #[derive(Clone)]
 pub(super) struct ObjectHttpWSService {
@@ -16,6 +16,7 @@ pub(super) struct ObjectHttpWSService {
     server_addr: SocketAddr,
 
     server: HttpServerHandlerRef,
+    seq: Arc<AtomicU64>,
 }
 
 #[async_trait]
@@ -47,9 +48,14 @@ impl ObjectHttpWSService {
             server_addr,
             device_id,
             server,
+            seq: Arc::new(AtomicU64::new(0)),
         };
 
         ret
+    }
+
+    fn next_seq(&self) -> u64 {
+        self.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
     }
 
     pub async fn process_request(
@@ -57,9 +63,13 @@ impl ObjectHttpWSService {
         session_requestor: Arc<WebSocketRequestManager>,
         request: Vec<u8>,
     ) -> BuckyResult<Vec<u8>> {
+        let seq = self.next_seq();
         let sid = session_requestor.sid();
 
-        debug!("starting recv new ws http request from {}", sid,);
+        debug!(
+            "starting recv new ws http request from {}, seq={}",
+            sid, seq
+        );
 
         let begin = std::time::Instant::now();
 
@@ -68,13 +78,19 @@ impl ObjectHttpWSService {
         let (mut req, _body) = async_h1::server::decode(request_reader)
             .await
             .map_err(|e| {
-                let msg = format!("decode http request from buffer error! sid={}, {}", sid, e);
+                let msg = format!(
+                    "decode http request from buffer error! sid={}, seq={}, {}",
+                    sid, seq, e
+                );
                 error!("{}", msg);
 
                 BuckyError::from(msg)
             })?
             .ok_or_else(|| {
-                let msg = format!("decode http request from buffer but got none! sid={}", sid);
+                let msg = format!(
+                    "decode http request from buffer but got none! sid={}, seq={}",
+                    sid, seq
+                );
                 error!("{}", msg);
 
                 BuckyError::from(msg)
@@ -85,7 +101,10 @@ impl ObjectHttpWSService {
 
         let session = session_requestor.session();
         if session.is_none() {
-            let msg = format!("ws http request but session is closed, sid={}", sid,);
+            let msg = format!(
+                "ws http request but session is closed, sid={}, seq={}",
+                sid, seq
+            );
             warn!("{}", msg);
 
             return Err(BuckyError::new(BuckyErrorCode::ConnectionReset, msg));
@@ -101,15 +120,22 @@ impl ObjectHttpWSService {
                 let mut encoder = async_h1::server::Encoder::new(resp, method);
                 let mut buf = vec![];
                 encoder.read_to_end(&mut buf).await.map_err(|e| {
-                    let msg = format!("encode http response to buffer error! sid={}, {}", sid, e);
+                    let msg = format!(
+                        "encode http response to buffer error! sid={}, seq={}, during={}ms, {}",
+                        sid,
+                        seq,
+                        begin.elapsed().as_millis(),
+                        e
+                    );
                     error!("{}", msg);
 
                     BuckyError::from(msg)
                 })?;
 
                 info!(
-                    "ws http request complete! sid={}, during={}ms",
+                    "ws http request complete! sid={}, seq={}, during={}ms",
                     sid,
+                    seq,
                     begin.elapsed().as_millis()
                 );
 
@@ -117,8 +143,9 @@ impl ObjectHttpWSService {
             }
             Err(e) => {
                 let msg = format!(
-                    "ws http request error, sid={}, during={}ms, err={}",
+                    "ws http request error, sid={}, seq={}, during={}ms, err={}",
                     sid,
+                    seq,
                     begin.elapsed().as_millis(),
                     e
                 );

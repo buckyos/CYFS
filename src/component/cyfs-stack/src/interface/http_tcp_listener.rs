@@ -7,6 +7,7 @@ use async_std::net::TcpStream;
 use async_trait::async_trait;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 #[derive(Clone)]
 pub(super) struct ObjectHttpTcpListener {
@@ -18,6 +19,8 @@ pub(super) struct ObjectHttpTcpListener {
     device_id: DeviceId,
 
     server: HttpServerHandlerRef,
+
+    seq: Arc<AtomicU64>,
 }
 
 #[async_trait]
@@ -53,6 +56,7 @@ impl ObjectHttpTcpListener {
             listen_url,
             device_id,
             server,
+            seq: Arc::new(AtomicU64::new(0)),
         };
 
         let tcp_handler = Arc::new(Box::new(ret.clone()) as Box<dyn BaseTcpListenerHandler>);
@@ -61,15 +65,23 @@ impl ObjectHttpTcpListener {
         ret
     }
 
+    fn next_seq(&self) -> u64 {
+        self
+            .seq
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    }
+
     pub fn get_listen(&self) -> String {
         self.tcp_server.get_listen()
     }
 
     async fn accept(&self, stream: TcpStream) -> BuckyResult<()> {
+        let seq = self.next_seq();
+
         let peer_addr = stream.peer_addr()?;
         debug!(
-            "starting accept new tcp connection at {} from {}",
-            self.listen_url, &peer_addr
+            "starting accept new tcp connection at {} from {}, seq={}",
+            self.listen_url, &peer_addr, seq,
         );
 
         // 一条连接上只accept一次
@@ -79,11 +91,12 @@ impl ObjectHttpTcpListener {
             stream,
             |mut req| async move {
                 info!(
-                    "recv tcp http request: url={}, method={}, len={:?}, peer={}",
+                    "recv tcp http request: url={}, method={}, len={:?}, peer={}, seq={}",
                     req.url(),
                     req.method(),
                     req.len(),
                     peer_addr,
+                    seq,
                 );
 
                 // http请求都是同机请求，需要设定为当前device
@@ -97,19 +110,19 @@ impl ObjectHttpTcpListener {
                         if status.is_success() {
                             if during < 1000 {
                                 debug!(
-                                    "tcp http request complete! peer={}, during={}ms",
-                                    peer_addr, during,
+                                    "tcp http request complete! peer={}, during={}ms, seq={}",
+                                    peer_addr, during, seq,
                                 );
                             } else {
                                 info!(
-                                    "tcp http request complete! peer={}, during={}ms",
-                                    peer_addr, during,
+                                    "tcp http request complete! peer={}, during={}ms, seq={}",
+                                    peer_addr, during, seq,
                                 );
                             }
                         } else {
                             warn!(
-                            "tcp http request complete with error! status={}, peer={}, during={}ms",
-                            status, peer_addr, during,
+                            "tcp http request complete with error! status={}, peer={}, during={}ms, seq={}",
+                            status, peer_addr, during, seq,
                         );
                         }
 
@@ -117,10 +130,11 @@ impl ObjectHttpTcpListener {
                     }
                     Err(e) => {
                         error!(
-                            "tcp http request error! peer={}, during={}, {}ms",
+                            "tcp http request error! peer={}, during={}, {}ms, seq={}",
                             peer_addr,
                             begin.elapsed().as_millis(),
-                            e
+                            e,
+                            seq,
                         );
                         Err(e)
                     }
@@ -132,8 +146,8 @@ impl ObjectHttpTcpListener {
 
         if let Err(e) = ret {
             error!(
-                "tcp http accept error, err={}, addr={}, peer={}, during={}ms",
-                e, self.listen_url, peer_addr, begin.elapsed().as_millis(),
+                "tcp http accept error, err={}, addr={}, peer={}, during={}ms, seq={}",
+                e, self.listen_url, peer_addr, begin.elapsed().as_millis(), seq,
             );
             // FIXME 一般是请求方直接断开导致的错误，是否需要判断并不再输出warn？
             //Err(BuckyError::from(e))
