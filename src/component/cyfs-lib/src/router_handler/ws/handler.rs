@@ -275,6 +275,8 @@ impl RouterWSHandlerManagerImpl {
                     task::spawn(async move {
                         let _ = handler_item.register(&requestor).await;
                     });
+                } else {
+                    warn!("add handler but ws session does not exist yet, now will pending! id={}", handler_item.id);
                 }
 
                 Ok(())

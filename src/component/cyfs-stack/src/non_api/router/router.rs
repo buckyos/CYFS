@@ -434,10 +434,7 @@ impl NONRouter {
                             req.object_id, next
                         );
                     } else {
-                        info!(
-                            "router get_object from local noc! id={}",
-                            req.object_id,
-                        );
+                        info!("router get_object from local noc! id={}", req.object_id,);
                     }
 
                     return Ok(resp);
@@ -566,7 +563,7 @@ impl NONRouter {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        info!("will handle router get_object request: {}", req);
+        info!("router will handle get_object request: {}", req);
         // 查找操作一定会转发到当前zone的ood来处理
         // final_target有下面几种情况，查找流程如下(其中-->表示跨协议栈转发操作)
         // 1. 当前协议栈： noc-->ood->noc->meta
@@ -591,7 +588,7 @@ impl NONRouter {
         &self,
         req: NONPostObjectInputRequest,
     ) -> BuckyResult<NONPostObjectInputResponse> {
-        debug!("router will process post object request: {}", req);
+        info!("router will handle post object request: {}", req);
 
         let router_info = self
             .resolve_router_info(
@@ -610,12 +607,11 @@ impl NONRouter {
         // 不再修正req的target，保留请求原始值
         assert!(router_info.target.is_some());
 
-        /*
         info!(
-            "will forward post object: target={}, direction={}",
-            forward_target, direction
+            "will forward post object: req={}, router={}",
+            req.object.object_id,
+            router_info,
         );
-        */
 
         let forward_processor = self
             .get_forward(router_info.next_hop.as_ref().unwrap())
@@ -635,7 +631,7 @@ impl NONRouter {
                 e
             })
             .map(|resp| {
-                info!("post_object response: req={}, resp={}", object_id, resp);
+                info!("forward post object response: req={}, resp={}", object_id, resp);
                 resp
             })
     }

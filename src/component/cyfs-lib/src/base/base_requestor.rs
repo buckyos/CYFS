@@ -1,17 +1,13 @@
-
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceId, Endpoint, NamedObject};
-use http_types::{
-    Request, Response,
-};
-use cyfs_bdt::{BuildTunnelParams, StackGuard};
 use super::protocol::*;
-
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceId, Endpoint, NamedObject};
+use cyfs_bdt::{BuildTunnelParams, StackGuard};
+use http_types::{Request, Response};
 
 use async_std::net::{SocketAddr, TcpStream};
 use async_trait::async_trait;
 use std::str::FromStr;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub enum HttpRequestConnectionInfo {
     None,
@@ -105,16 +101,21 @@ impl HttpRequestor for TcpHttpRequestor {
 
         let begin = std::time::Instant::now();
         let tcp_stream = TcpStream::connect(self.service_addr).await.map_err(|e| {
-            let msg = format!("tcp connect to {} error! during={:?}, {}", self.service_addr, std::time::Instant::now() - begin, e);
+            let msg = format!(
+                "tcp connect to {} error! during={}ms, {}",
+                self.service_addr,
+                begin.elapsed().as_millis(),
+                e
+            );
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::ConnectFailed, msg)
         })?;
 
         info!(
-            "tcp connect to {} success, during={:?}",
+            "tcp connect to {} success, during={}ms",
             self.remote_addr(),
-            std::time::Instant::now() - begin,
+            begin.elapsed().as_millis(),
         );
 
         if let Some(conn_info) = conn_info {
@@ -127,14 +128,19 @@ impl HttpRequestor for TcpHttpRequestor {
         match async_h1::connect(tcp_stream, req.take().unwrap()).await {
             Ok(resp) => {
                 info!(
-                    "http-tcp request to {} success! during={:?}",
+                    "http-tcp request to {} success! during={}ms",
                     self.remote_addr(),
-                    std::time::Instant::now() - begin
+                    begin.elapsed().as_millis()
                 );
                 Ok(resp)
             }
             Err(e) => {
-                let msg = format!("http-tcp request to {} failed! during={:?}, {}", self.remote_addr(),  std::time::Instant::now() - begin, e,);
+                let msg = format!(
+                    "http-tcp request to {} failed! during={}ms, {}",
+                    self.remote_addr(),
+                    begin.elapsed().as_millis(),
+                    e,
+                );
                 error!("{}", msg);
                 Err(BuckyError::from(msg))
             }
@@ -204,7 +210,12 @@ impl HttpRequestor for BdtHttpRequestor {
             .connect(self.vport, Vec::new(), build_params)
             .await
             .map_err(|e| {
-                let msg = format!("connect to {} failed! during={:?}, {}", self.remote_addr(), std::time::Instant::now() - begin, e);
+                let msg = format!(
+                    "connect to {} failed! during={}ms, {}",
+                    self.remote_addr(),
+                    begin.elapsed().as_millis(),
+                    e
+                );
                 warn!("{}", msg);
                 BuckyError::new(BuckyErrorCode::ConnectFailed, msg)
             })?;
@@ -218,28 +229,28 @@ impl HttpRequestor for BdtHttpRequestor {
 
         let seq = bdt_stream.sequence();
         info!(
-            "bdt connect to {} success, seq={:?}, during={:?}",
+            "bdt connect to {} success, seq={:?}, during={}ms",
             self.remote_addr(),
             seq,
-            std::time::Instant::now() - begin,
+            begin.elapsed().as_millis(),
         );
         // bdt_stream.display_ref_count();
-       
+
         match async_h1::connect(bdt_stream, req.take().unwrap()).await {
             Ok(resp) => {
                 info!(
-                    "http-bdt request to {} success! during={:?}, seq={:?}",
+                    "http-bdt request to {} success! during={}ms, seq={:?}",
                     self.remote_addr(),
-                    std::time::Instant::now() - begin,
+                    begin.elapsed().as_millis(),
                     seq,
                 );
                 Ok(resp)
             }
             Err(e) => {
                 let msg = format!(
-                    "http-bdt request to {} failed! during={:?}, seq={:?}, {}",
+                    "http-bdt request to {} failed! during={}ms, seq={:?}, {}",
                     self.remote_addr(),
-                    std::time::Instant::now() - begin,
+                    begin.elapsed().as_millis(),
                     seq,
                     e,
                 );
@@ -263,13 +274,11 @@ impl HttpRequestor for BdtHttpRequestor {
 }
 
 use crate::ws::*;
-use http_types::Url;
 use async_std::io::ReadExt;
+use http_types::Url;
 
 #[derive(Clone)]
-struct WSHttpRequestorHandler {
-
-}
+struct WSHttpRequestorHandler {}
 impl WSHttpRequestorHandler {
     pub fn new() -> Self {
         Self {}
@@ -287,13 +296,9 @@ impl WebSocketRequestHandler for WSHttpRequestorHandler {
         unreachable!();
     }
 
-    async fn on_session_begin(&self, _session: &Arc<WebSocketSession>) {
-        
-    }
+    async fn on_session_begin(&self, _session: &Arc<WebSocketSession>) {}
 
-    async fn on_session_end(&self, _session: &Arc<WebSocketSession>) {
-        
-    }
+    async fn on_session_end(&self, _session: &Arc<WebSocketSession>) {}
 
     fn clone_handler(&self) -> Box<dyn WebSocketRequestHandler> {
         Box::new(self.clone())
@@ -310,7 +315,7 @@ impl WSHttpRequestor {
         let handler = Box::new(WSHttpRequestorHandler::new());
         let client = WebSocketClient::new(service_url, handler);
         client.start();
-        
+
         Self { client }
     }
 }
@@ -322,7 +327,6 @@ impl HttpRequestor for WSHttpRequestor {
         req: &mut Option<Request>,
         conn_info: Option<&mut HttpRequestConnectionInfo>,
     ) -> BuckyResult<Response> {
-        
         let begin = std::time::Instant::now();
 
         // 选择一个ws session
@@ -330,7 +334,7 @@ impl HttpRequestor for WSHttpRequestor {
         if session.is_none() {
             error!("local ws disconnected! now will retry once");
             self.client.retry();
-            async_std::task::sleep(std::time::Duration::from_secs(2)).await; 
+            async_std::task::sleep(std::time::Duration::from_secs(2)).await;
 
             session = self.client.select_session();
             if session.is_none() {
@@ -355,27 +359,40 @@ impl HttpRequestor for WSHttpRequestor {
         let mut encoder = async_h1::client::Encoder::new(req);
         let mut buf = vec![];
         encoder.read_to_end(&mut buf).await.map_err(|e| {
-            let msg = format!("encode http request to buffer error!sid={}, {}", session.sid(), e);
+            let msg = format!(
+                "encode http request to buffer error! sid={}, during={}ms, {}",
+                session.sid(),
+                begin.elapsed().as_millis(),
+                e
+            );
             error!("{}", msg);
 
             BuckyError::from(msg)
         })?;
 
         // 发起请求并等待应答
-        let resp_buffer = session.requestor().post_bytes_req(HTTP_CMD_REQUEST, buf).await?;
+        let resp_buffer = session
+            .requestor()
+            .post_bytes_req(HTTP_CMD_REQUEST, buf)
+            .await?;
         let resp_reader = async_std::io::Cursor::new(resp_buffer);
         let resp = async_h1::client::decode(resp_reader).await.map_err(|e| {
-            let msg = format!("decode http response from buffer error! sid={}, {}", session.sid(), e);
+            let msg = format!(
+                "decode http response from buffer error! sid={}, during={}ms, {}",
+                session.sid(),
+                begin.elapsed().as_millis(),
+                e
+            );
             error!("{}", msg);
 
             BuckyError::from(msg)
         })?;
 
         info!(
-            "http-ws request to {} via sid={} success! during={:?}",
+            "http-ws request to {} via sid={} success! during={}ms",
             self.remote_addr(),
             session.sid(),
-            std::time::Instant::now() - begin
+            begin.elapsed().as_millis()
         );
 
         Ok(resp)
@@ -393,7 +410,6 @@ impl HttpRequestor for WSHttpRequestor {
         Box::new(self.clone())
     }
 }
-
 
 #[derive(Clone, Eq, PartialEq)]
 pub enum RequestorRetryStrategy {
@@ -456,7 +472,6 @@ impl HttpRequestor for RequestorWithRetry {
             match ret {
                 Ok(resp) => break Ok(resp),
                 Err(e) => {
-
                     // 只对连接失败的错误进行重试
                     // 请求超时的错误不能重试，req已经被消耗掉了
                     if e.code() != BuckyErrorCode::ConnectFailed {

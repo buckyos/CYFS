@@ -117,6 +117,9 @@ impl RouterHandlerManager {
         RESP: Send + Sync + 'static + JsonCodec<RESP> + fmt::Display,
         RouterHandlerRequest<REQ, RESP>: RouterHandlerCategoryInfo,
     {
+        info!("will add handler: chain={}, id={}, index={}, filter={:?}, req_path={:?}, default_action={}",
+            chain, id, index, filter, req_path, default_action);
+
         match self.inner.as_ref() {
             RouterHandlerManagerInner::Http(inner) => inner.add_handler(
                 chain,
@@ -147,6 +150,11 @@ impl RouterHandlerManager {
         category: RouterHandlerCategory,
         id: &str,
     ) -> BuckyResult<bool> {
+        info!(
+            "will remove handler: chain={}, category={}, id={}",
+            chain, id, category
+        );
+
         match self.inner.as_ref() {
             RouterHandlerManagerInner::Http(inner) => {
                 inner

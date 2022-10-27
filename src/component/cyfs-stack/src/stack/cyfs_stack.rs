@@ -741,19 +741,18 @@ impl CyfsStackImpl {
         let begin = std::time::Instant::now();
         let net_listener = bdt_stack.net_manager().listener().clone();
         let ret = net_listener.wait_online().await;
-        let during = std::time::Instant::now() - begin;
         if let Err(e) = ret {
             error!(
-                "bdt stack wait sn online failed! {}, during={}s, {}",
+                "bdt stack wait sn online failed! {}, during={}ms, {}",
                 bdt_stack.local_device_id(),
-                during.as_secs(),
+                begin.elapsed().as_millis(),
                 e
             );
         } else {
             info!(
-                "bdt stack sn online success! {}, during={}s",
+                "bdt stack sn online success! {}, during={}ms",
                 bdt_stack.local_device_id(),
-                during.as_secs()
+                begin.elapsed().as_millis(),
             );
         }
 
