@@ -64,8 +64,11 @@ async fn main() {
     cyfs_util::bind_cyfs_root_path(root);
 
     if matches.is_present("simulator") {
-        loader::load(true).await;
-
+        let ret = loader::load(true).await;
+        if let Err(e) = ret {
+            error!("Failed to load sim stack, {}", e);
+            std::process::exit(-1);
+        }
         for bench in &benchs {
             trace!("************************** SIMULATOR {} ********************************", bench.name());
             debug!("start {} {}", "SIMULATOR", bench.name());
@@ -81,8 +84,12 @@ async fn main() {
         }
     }
 
-    if !matches.is_present("real-stack") {
-        loader::load(false).await;
+    if matches.is_present("real-stack") {
+        let ret = loader::load(false).await;
+        if let Err(e) = ret {
+            error!("Failed to load sim stack, {}", e);
+            std::process::exit(-1);
+        }
         for bench in &benchs {
             trace!("************************** REAL STACK {} ********************************", bench.name());
             debug!("start {} {}", "REAL STACK", bench.name());
@@ -97,5 +104,7 @@ async fn main() {
             }
         }
     }
+
+    std::process::exit(0);
 
 }

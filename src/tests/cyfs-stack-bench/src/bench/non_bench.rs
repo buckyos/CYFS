@@ -29,47 +29,7 @@ impl Bench for NONBench {
             true
         } else {
             // Test Code
-            let id = "5aSixgNAmFYV4vgRk1CQeQmhG9532dtKMUMUfJYasE1n".to_string();
-            let stack = CyfsServiceLoader::shared_cyfs_stack(Some(&id));
-            let dec_id = ObjectId::from_base58("9tGpLNnDpa8deXEk2NaWGccEu4yFQ2DrTZJPLYLT7gj4").unwrap();
-            //let user1_stack = stack.fork_with_new_dec(Some(dec_id.clone())).await.unwrap();
-            //user1_stack.wait_online(None).await.unwrap();
-
-            let root_state = stack.root_state_stub(None, Some(dec_id));
-            let root_info = root_state.get_current_root().await.unwrap();
-            info!("current root: {:?}", root_info);
-
-            {
-                // create_path_op_env None access默认权限操作自己dec_id
-                let op_env = root_state.create_path_op_env().await.unwrap();
-                op_env.remove_with_path("/set", None).await.unwrap();
-
-                let x1_value = ObjectId::from_base58("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
-                let x2_value = ObjectId::from_base58("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
-
-                let ret = op_env.insert("/set/a", &x2_value).await.unwrap();
-                assert!(ret);
-
-                let ret = op_env.contains("/set/a", &x1_value).await.unwrap();
-                assert!(!ret);
-
-                let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-                assert!(ret);
-
-                let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-                assert!(!ret);
-
-                let ret = op_env.remove("/set/a", &x1_value).await.unwrap();
-                assert!(ret);
-
-                let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-                assert!(ret);
-
-                let root = op_env.commit().await.unwrap();
-                info!("new dec root is: {:?}", root);
-            }
-                
-            true
+            test().await
         };
 
         ret
@@ -96,6 +56,50 @@ fn new_dec(name: &str) -> ObjectId {
 
 pub async fn test() -> bool {
     test_non_object_req_path().await
+}
+
+pub async fn test_real_stack() -> bool {
+    let id = "5aSixgNAmFYV4vgRk1CQeQmhG9532dtKMUMUfJYasE1n".to_string();
+    let stack = CyfsServiceLoader::shared_cyfs_stack(Some(&id));
+    let dec_id = ObjectId::from_base58("9tGpLNnDpa8deXEk2NaWGccEu4yFQ2DrTZJPLYLT7gj4").unwrap();
+    //let user1_stack = stack.fork_with_new_dec(Some(dec_id.clone())).await.unwrap();
+    //user1_stack.wait_online(None).await.unwrap();
+
+    let root_state = stack.root_state_stub(None, Some(dec_id));
+    let root_info = root_state.get_current_root().await.unwrap();
+    info!("current root: {:?}", root_info);
+
+    {
+        // create_path_op_env None access默认权限操作自己dec_id
+        let op_env = root_state.create_path_op_env().await.unwrap();
+        op_env.remove_with_path("/set", None).await.unwrap();
+
+        let x1_value = ObjectId::from_base58("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
+        let x2_value = ObjectId::from_base58("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
+
+        let ret = op_env.insert("/set/a", &x2_value).await.unwrap();
+        assert!(ret);
+
+        let ret = op_env.contains("/set/a", &x1_value).await.unwrap();
+        assert!(!ret);
+
+        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
+        assert!(ret);
+
+        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
+        assert!(!ret);
+
+        let ret = op_env.remove("/set/a", &x1_value).await.unwrap();
+        assert!(ret);
+
+        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
+        assert!(ret);
+
+        let root = op_env.commit().await.unwrap();
+        info!("new dec root is: {:?}", root);
+    }
+
+    true
 }
 
 fn new_object(dec_id: &ObjectId, id: &str) -> Text {

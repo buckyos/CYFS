@@ -1,6 +1,6 @@
 use cyfs_base::*;
-use cyfs_stack_loader::{DeviceInfo, LOCAL_DEVICE_MANAGER, CyfsServiceLoader};
-use zone_simulator::{TestLoader, TestStack};
+use cyfs_stack_loader::{LOCAL_DEVICE_MANAGER, CyfsServiceLoader};
+use zone_simulator::TestStack;
 
 pub async fn load(is_sim: bool) -> BuckyResult<()> {
 
@@ -9,12 +9,12 @@ pub async fn load(is_sim: bool) -> BuckyResult<()> {
 
         zone_simulator::TestLoader::load_default().await;
     } else {
-        // TODO: support more devices
+        // FIXME: add more stack
         let arr = vec!["device, ood1, ood2"];
         for name in arr {
             let device_info = if let Ok(device_info) = LOCAL_DEVICE_MANAGER.load(name) {
                 info!(
-                    "will use {}/device.desc & deivce.sec",
+                    "will use {}/{name}.desc/sec",
                     LOCAL_DEVICE_MANAGER.get_root().display()
                 );
     
@@ -22,7 +22,7 @@ pub async fn load(is_sim: bool) -> BuckyResult<()> {
     
                 device_info
             } else {
-                let msg = format!("{}/device.desc/sec not found", LOCAL_DEVICE_MANAGER.get_root().display());
+                let msg = format!("{}/{name}.desc/sec not found", LOCAL_DEVICE_MANAGER.get_root().display());
                 error!("{}", msg);
                 return  Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
             };
