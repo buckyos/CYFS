@@ -664,7 +664,7 @@ impl TunnelContainer {
         Ok(())
     }
 
-    pub(super) fn on_raw_data(&self, data: &[u8]) -> BuckyResult<()> {
+    pub(super) fn on_raw_data(&self, data: &[u8], tunnel: DynamicTunnel) -> BuckyResult<()> {
         let tunnel_impl = &self.0;
         let (cmd_code, buf) = u8::raw_decode(data)?;
         let cmd_code = PackageCmdCode::try_from(cmd_code)?;
@@ -676,7 +676,7 @@ impl TunnelContainer {
             },
             PackageCmdCode::SessionData => unimplemented!(), 
             _ => {
-                Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_udp_raw_data(data, self)
+                Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_raw_data(data, (self, tunnel))
             }, 
         }
     }
@@ -923,7 +923,7 @@ impl OnUdpRawData<(interface::udp::Interface, DeviceId, MixAesKey, Endpoint)> fo
         // 为了udp 和 tcp tunnel的package 流向一致，直接把box转给udp tunnel，
         // 需要一致处理的package从udp/tcp tunnel回调container的 OnPackage
         let _ = udp_tunnel.active(&key, false, None);
-        self.on_raw_data(data)
+        self.on_raw_data(data, DynamicTunnel::new(udp_tunnel))
     }
 }
 

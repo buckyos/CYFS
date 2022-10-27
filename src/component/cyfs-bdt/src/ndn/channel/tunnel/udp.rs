@@ -68,12 +68,13 @@ struct RespEstimateStub {
 }
 
 struct TunnelImpl {
-    channel: Channel, 
+    config: Config, 
     raw_tunnel: RawTunnel, 
     start_at: Timestamp, 
     active_timestamp: Timestamp, 
     cc: Mutex<CcImpl>, 
-    resp_estimate: Mutex<RespEstimateStub>,
+    resp_estimate: Mutex<RespEstimateStub>, 
+    uploaders: Uploaders
 }
 
 #[derive(Clone)]
@@ -81,18 +82,18 @@ pub struct UdpTunnel(Arc<TunnelImpl>);
 
 impl std::fmt::Display for UdpTunnel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {{tunnel:{}}}", self.0.channel, self.0.raw_tunnel)
+        write!(f, "{{tunnel:{}}}", self.0.raw_tunnel)
     }
 }
 
 impl UdpTunnel {
     pub fn new(
-        channel: Channel, 
+        config: Config, 
         raw_tunnel: RawTunnel, 
         active_timestamp: Timestamp) -> Self {
-        let cc = CcImpl::new(&channel.config().udp.cc);
+        let cc = CcImpl::new(&config.cc);
         Self(Arc::new(TunnelImpl {
-            channel, 
+            config, 
             raw_tunnel, 
             start_at: bucky_time_now(), 
             active_timestamp, 
@@ -100,12 +101,13 @@ impl UdpTunnel {
             resp_estimate: Mutex::new(RespEstimateStub {
                 seq: TempSeq::default(), 
                 recved: 0
-            })
+            }), 
+            uploaders: Uploaders::new()
         }))
     }
 
     fn config(&self) -> &Config {
-        &self.0.channel.config().udp
+        &self.0.config
     }
 
     fn send_pieces(&self, piece_count: usize) {
@@ -138,7 +140,7 @@ impl UdpTunnel {
                     } else {
                         BufferIndex {index: 0, len: 0}
                     };
-                    let piece_len = self.0.channel.next_piece(&mut buffers[buf_index.index][tunnel.raw_data_header_len()..]);
+                    let piece_len = self.uploaders().next_piece(&mut buffers[buf_index.index][tunnel.raw_data_header_len()..]);
                     if piece_len > 0 {
                         sent += 1;
                         buf_index.len = piece_len;
@@ -352,6 +354,10 @@ impl ChannelTunnel for UdpTunnel {
         }?;
         self.send_pieces(send_count);
         Ok(())
+    }
+
+    fn uploaders(&self) -> &Uploaders {
+        &self.0.uploaders
     }
 }
 
