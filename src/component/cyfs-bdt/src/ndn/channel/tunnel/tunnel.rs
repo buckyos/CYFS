@@ -7,7 +7,8 @@ use crate::{
     tunnel::{DynamicTunnel, TunnelState}
 };
 use super::super::super::{
-    types::*
+    types::*, 
+    chunk::ChunkEncoder
 };
 
 use super::super::{
@@ -21,6 +22,7 @@ use super::{
 };
 
 
+
 pub trait ChannelTunnel: std::fmt::Display + Send + Sync {
     fn clone_as_tunnel(&self) -> DynamicChannelTunnel;
     fn state(&self) -> TunnelState; 
@@ -28,19 +30,19 @@ pub trait ChannelTunnel: std::fmt::Display + Send + Sync {
     fn active_timestamp(&self) -> Timestamp;
     fn start_at(&self) -> Timestamp;
 
-    fn on_resent_interest(&self, interest: &Interest) -> BuckyResult<()>;
-    fn send_piece_control(&self, control: PieceControl);
     fn on_piece_data(&self, piece: &PieceData) -> BuckyResult<()>;
     fn on_resp_estimate(&self, est: &ChannelEstimate) -> BuckyResult<()>;
-    fn on_piece_control(&self, ctrl: &mut PieceControl) -> BuckyResult<()>;
-
+   
     fn on_time_escape(&self, now: Timestamp) -> BuckyResult<()>;
     fn uploaders(&self) -> &Uploaders;
+
+    fn upload_state(&self, encoder: Box<dyn ChunkEncoder>) -> Box<dyn ChunkEncoder>;
+    fn download_state(&self) -> Box<dyn TunnelDownloadState>;
 }
 
 pub type DynamicChannelTunnel = Box<dyn ChannelTunnel>;
 
-pub(in super::super) fn new_channel_tunnel(channel: &Channel, raw_tunnel: DynamicTunnel) -> BuckyResult<DynamicChannelTunnel> {
+pub fn new_channel_tunnel(channel: &Channel, raw_tunnel: DynamicTunnel) -> BuckyResult<DynamicChannelTunnel> {
     if let TunnelState::Active(active_timestamp) = raw_tunnel.as_ref().state() {
         if raw_tunnel.as_ref().local().is_udp() {
             Ok(UdpTunnel::new(channel.config().udp.clone(), raw_tunnel.clone_as_tunnel(), active_timestamp).clone_as_tunnel())
@@ -62,7 +64,7 @@ struct UploadersImpl {
 }
 
 
-pub(in super::super) struct Uploaders(RwLock<UploadersImpl>);
+pub struct Uploaders(RwLock<UploadersImpl>);
 
 
 impl Uploaders {
@@ -215,4 +217,9 @@ impl Uploaders {
 }
 
 
+
+pub trait TunnelDownloadState: 'static + Send + Sync {
+    fn on_time_escape(&mut self, now: Timestamp) -> bool;
+    fn on_response(&mut self);
+}
 

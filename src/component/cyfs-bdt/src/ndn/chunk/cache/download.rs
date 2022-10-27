@@ -183,7 +183,7 @@ impl ChunkDownloader {
         };
         if let Some(session) = session {
             let source = DownloadSource {
-                target: session.channel().remote().clone(), 
+                target: session.channel().tunnel().remote_const().clone(), 
                 object_id: Some(self.chunk().object_id()), 
                 encode_desc: session.desc().clone(), 
                 referer: session.referer().cloned()
@@ -228,7 +228,7 @@ impl ChunkDownloader {
             }
            
             let source = sources.pop_front().unwrap();
-            let channel = stack.ndn().channel_manager().create_channel(&source.target);
+            let channel = stack.ndn().channel_manager().create_channel(&source.target).unwrap();
 
             let desc = match source.encode_desc {
                 ChunkEncodeDesc::Unknown => ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 

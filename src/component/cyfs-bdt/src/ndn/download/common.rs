@@ -4,6 +4,7 @@ use std::{
 };
 use cyfs_base::*;
 use crate::{
+    stack::Stack, 
     types::*
 };
 use super::super::{
@@ -12,7 +13,7 @@ use super::super::{
 
 #[derive(Clone)]
 pub struct DownloadSource {
-    pub target: DeviceId, 
+    pub target: DeviceDesc, 
     pub object_id: Option<ObjectId>, 
     pub encode_desc: ChunkEncodeDesc, 
     pub referer: Option<String>
@@ -49,7 +50,7 @@ impl SingleDownloadContext {
         }))
     }
 
-    pub fn streams(referer: Option<String>, remotes: Vec<DeviceId>) -> Self {
+    pub fn desc_streams(referer: Option<String>, remotes: Vec<DeviceDesc>) -> Self {
         let mut sources = LinkedList::new();
         for remote in remotes {
             sources.push_back(DownloadSource {
@@ -65,6 +66,24 @@ impl SingleDownloadContext {
         }))
     }
 
+    pub async fn id_streams(stack: &Stack, referer: Option<String>, remotes: Vec<DeviceId>) -> BuckyResult<Self> {
+        let mut sources = LinkedList::new();
+        for remote in remotes {
+            let device = stack.device_cache().get(&remote).await
+                .ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, "device desc not found"))?;
+            sources.push_back(DownloadSource {
+                target: device.desc().clone(), 
+                object_id: None, 
+                encode_desc: ChunkEncodeDesc::Stream(None, None, None), 
+                referer: None
+            });
+        } 
+        Ok(Self(Arc::new(SingleContextImpl {
+            referer, 
+            sources: RwLock::new(sources)
+        })))
+    }
+
     pub fn referer(&self) -> Option<&str> {
         self.0.referer.as_ref().map(|s| s.as_str())
     }
@@ -75,7 +94,7 @@ impl SingleDownloadContext {
 
     pub fn source_exists(&self, source: &DownloadSource) -> bool {
         let sources = self.0.sources.read().unwrap();
-        sources.iter().find(|s| s.target == source.target && s.encode_desc.support_desc(&source.encode_desc)).is_some()
+        sources.iter().find(|s| s.target.device_id() == source.target.device_id() && s.encode_desc.support_desc(&source.encode_desc)).is_some()
     }
 
     pub fn sources_of(&self, filter: impl Fn(&DownloadSource) -> bool, limit: usize) -> LinkedList<DownloadSource> {

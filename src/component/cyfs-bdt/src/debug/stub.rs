@@ -373,10 +373,13 @@ impl DebugStub {
         let local_path = command.local_path;
 
         let _ = tunnel.write_all("start downloading chunk..\r\n".as_ref()).await;
+        let stack = Stack::from(&self.0.stack);
+        let context = SingleDownloadContext::id_streams(&stack, None, remotes).await
+            .map_err(|e| format!("download err: {}\r\n", e))?;
         let task = download_chunk_to_path(&stack,
             chunk_id,
             None, 
-            Some(SingleDownloadContext::streams(None, remotes)),
+            Some(context),
             &local_path).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
 
@@ -402,12 +405,17 @@ impl DebugStub {
         let timeout = command.timeout;
         let local_path = command.local_path;
 
+
         let _ = tunnel.write_all("start downloading file..\r\n".as_ref()).await;
+
+        let stack = Stack::from(&self.0.stack);
+        let context = SingleDownloadContext::id_streams(&stack, None, remotes).await
+            .map_err(|e| format!("download err: {}\r\n", e))?;
         let task = download_file_to_path(
             &stack, 
             file_id, 
             None,  
-            Some(SingleDownloadContext::streams(None, remotes)),
+            Some(context),
             &local_path).await.map_err(|e| {
                 format!("download err: {}\r\n", e)
         })?;

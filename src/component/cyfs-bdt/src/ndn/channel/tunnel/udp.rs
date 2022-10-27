@@ -15,9 +15,13 @@ use crate::{
     tunnel::{udp::Tunnel as RawTunnel, Tunnel, DynamicTunnel, TunnelState}, 
     cc::{self, CongestionControl},
 };
+use super::super::super::{
+    types::*, 
+    chunk::ChunkEncoder
+};
 use super::super::{
     protocol::v0::*, 
-    channel::Channel
+    channel::{Channel}
 };
 use super::{
     tunnel::*
@@ -203,15 +207,6 @@ impl ChannelTunnel for UdpTunnel {
         self.0.active_timestamp
     }
 
-    fn on_resent_interest(&self, _interest: &Interest) -> BuckyResult<()> {
-        Ok(())
-    }
-
-    fn send_piece_control(&self, control: PieceControl) {
-        debug!("{} will send piece control {:?}", self, control);
-        let _ = control.split_send(&DynamicTunnel::new(self.0.raw_tunnel.clone()));
-    }
-
     fn on_piece_data(&self, piece: &PieceData) -> BuckyResult<()> {
         trace!("{} got piece data est_seq:{:?} chunk:{} desc:{:?} data:{}", self, piece.est_seq, piece.chunk, piece.desc, piece.data.len());
         if let Some(est_seq) = piece.est_seq {
@@ -294,9 +289,6 @@ impl ChannelTunnel for UdpTunnel {
         Ok(())
     }
 
-    fn on_piece_control(&self, _ctrl: &mut PieceControl) -> BuckyResult<()> {
-        Ok(())
-    }
 
 
     fn on_time_escape(&self, now: Timestamp) -> BuckyResult<()> {
@@ -359,5 +351,33 @@ impl ChannelTunnel for UdpTunnel {
     fn uploaders(&self) -> &Uploaders {
         &self.0.uploaders
     }
+
+    fn download_state(&self) -> Box<dyn TunnelDownloadState> {
+        Box::new(UdpDownloadState {
+            config: self.config().clone(), 
+            last_pushed: bucky_time_now()
+        })
+    }
+
+    fn upload_state(&self, encoder: Box<dyn ChunkEncoder>) -> Box<dyn ChunkEncoder> {
+        encoder
+    }
 }
 
+
+
+struct UdpDownloadState {
+    config: Config, 
+    last_pushed: Timestamp, 
+}
+
+impl TunnelDownloadState for UdpDownloadState {
+    fn on_response(&mut self) {
+        self.last_pushed = bucky_time_now()
+    }
+
+    fn on_time_escape(&mut self, now: Timestamp) -> bool {
+        // now > self.last_pushed && Duration::from_micros(now - self.last_pushed) > self.config.resend_interval 
+        false
+    }
+}
