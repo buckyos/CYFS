@@ -1,3 +1,6 @@
+use std::{
+    ops::Range
+};
 use async_std::{
     sync::Arc
 };
@@ -6,6 +9,10 @@ use crate::{
     types::*, 
     tunnel::{tcp::Tunnel as RawTunnel, Tunnel, DynamicTunnel, TunnelState}, 
     interface
+};
+use super::super::super::{
+    types::*, 
+    chunk::ChunkEncoder
 };
 use super::super::{
     protocol::v0::*, 
@@ -66,31 +73,12 @@ impl ChannelTunnel for TcpTunnel {
         self.0.active_timestamp
     }
 
-    fn on_resent_interest(&self, _interest: &Interest) -> BuckyResult<()> {
-        Err(BuckyError::new(BuckyErrorCode::Ignored, ""))
-    }
-
-    fn send_piece_control(&self, control: PieceControl) {
-        if control.command != PieceControlCommand::Continue {
-            info!("{} will send piece control {:?}", self, control);
-            let _ = control.split_send(&DynamicTunnel::new(self.0.raw_tunnel.clone()));
-        }
-    }
-
     fn on_piece_data(&self, _piece: &PieceData) -> BuckyResult<()> {
         Ok(())
     }
 
     fn on_resp_estimate(&self, _est: &ChannelEstimate) -> BuckyResult<()> {
         unreachable!()
-    }
-
-    fn on_piece_control(&self, ctrl: &mut PieceControl) -> BuckyResult<()> {
-        if PieceControlCommand::Continue == ctrl.command && ctrl.max_index.is_some() { 
-            info!("{} will discard send buffer to resend", self);
-            let _ = self.0.raw_tunnel.discard_data_piece();
-        }
-        Ok(())
     }
 
     fn on_time_escape(&self, _now: Timestamp) -> BuckyResult<()> {
@@ -109,5 +97,64 @@ impl ChannelTunnel for TcpTunnel {
 
     fn uploaders(&self) -> &Uploaders {
         &self.0.uploaders
+    }
+
+    fn download_state(&self) -> Box<dyn TunnelDownloadState> {
+        Box::new(TcpDownloadState {})
+    }
+
+    fn upload_state(&self, encoder: Box<dyn ChunkEncoder>) -> Box<dyn ChunkEncoder> {
+        WrapEncoder {origin: encoder}.clone_as_encoder()
+    }
+}
+
+struct WrapEncoder {
+    origin: Box<dyn ChunkEncoder>
+}
+
+impl ChunkEncoder for WrapEncoder {
+    fn clone_as_encoder(&self) -> Box<dyn ChunkEncoder> {
+        Box::new(Self {origin: self.origin.clone_as_encoder()})
+    }
+
+    fn chunk(&self) -> &ChunkId {
+        self.origin.chunk()
+    }
+
+    fn desc(&self) -> &ChunkEncodeDesc {
+        self.origin.desc()
+    }
+
+    fn next_piece(
+        &self, 
+        session_id: &TempSeq, 
+        buf: &mut [u8]
+    ) -> BuckyResult<usize> {
+        self.origin.next_piece(session_id, buf)
+    }
+
+    fn reset(&self) {
+
+    }
+
+    fn merge(
+        &self, 
+        _max_index: u32, 
+        _lost_index: Vec<Range<u32>>
+    ) {
+        
+    }
+}
+
+struct TcpDownloadState {
+}
+
+impl TunnelDownloadState for TcpDownloadState {
+    fn on_response(&mut self) {
+        
+    }
+
+    fn on_time_escape(&mut self, _now: Timestamp) -> bool {
+        false
     }
 }

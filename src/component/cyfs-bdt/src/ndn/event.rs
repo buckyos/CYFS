@@ -54,15 +54,13 @@ impl DefaultNdnEventHandler {
         let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
         let desc = interest.prefer_type.fill_values(&interest.chunk);
         let encoder = cache.create_encoder(&desc);
-        let session = UploadSession::new(
-            interest.chunk.clone(), 
-            interest.session_id.clone(), 
-            desc.clone(), 
-            encoder, 
-            to.clone());
-        let _ = group.add_task(path, session.clone_as_task());
         // 加入到channel的 upload sessions中
-        let _ = to.upload(session.clone());
+        let session = to.upload(
+            interest.chunk.clone(), 
+        interest.session_id.clone(), 
+        desc.clone(), 
+            encoder)?;
+        let _ = group.add_task(path, session.clone_as_task());
         let _ = session.on_interest(interest)?;
         Ok(session)
     }

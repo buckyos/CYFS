@@ -9,7 +9,7 @@ use async_std::{
 use futures::future::AbortRegistration;
 use cyfs_base::*;
 use crate::{
-    types::*, 
+    types::*
 };
 use super::super::{
     chunk::*, 
@@ -17,7 +17,11 @@ use super::super::{
 };
 use super::{
     protocol::v0::*,
-    channel::Channel, 
+    channel::Channel,
+    tunnel::{
+        DynamicChannelTunnel, 
+        TunnelDownloadState
+    } 
 };
 
 
@@ -31,7 +35,7 @@ struct InterestingState {
 
 struct DownloadingState {
     waiters: StateWaiter, 
-    last_pushed: Timestamp, 
+    tunnel_state: Box<dyn TunnelDownloadState>, 
     decoder: Box<dyn ChunkDecoder>, 
     speed_counter: SpeedCounter, 
     history_speed: HistorySpeed, 
@@ -86,7 +90,7 @@ pub struct DownloadSession(Arc<SessionImpl>);
 
 impl std::fmt::Display for DownloadSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DownloadSession{{session_id:{:?}, chunk:{}, remote:{}}}", self.session_id(), self.chunk(), self.channel().remote())
+        write!(f, "DownloadSession{{session_id:{:?}, chunk:{}, remote:{}}}", self.session_id(), self.chunk(), self.channel().tunnel().remote())
     }
 }
 
@@ -179,7 +183,7 @@ impl DownloadSession {
         }
     }
 
-    pub(super) fn push_piece_data(&self, piece: &PieceData) {
+    pub(super) fn push_piece_data(&self, piece: &PieceData, tunnel: &DynamicChannelTunnel) {
         enum NextStep {
             EnterDownloading, 
             RespControl(PieceControlCommand), 
@@ -237,7 +241,7 @@ impl DownloadSession {
                 match state {
                     Downloading(downloading) => {
                         if result.valid {
-                            downloading.last_pushed = bucky_time_now();
+                            downloading.tunnel_state.as_mut().on_response();
                         }
                         if result.finished {
                             let mut waiters = StateWaiter::new();
@@ -267,11 +271,11 @@ impl DownloadSession {
                         Interesting(interesting) => {
                             let decoder = StreamDecoder::new(self.chunk(), self.desc(), interesting.cache.clone());
                             let mut downloading = DownloadingState {
+                                tunnel_state: tunnel.as_ref().download_state(), 
                                 history_speed: interesting.history_speed.clone(), 
                                 speed_counter: SpeedCounter::new(piece.data.len()), 
                                 decoder: decoder.clone_as_decoder(), 
                                 waiters: StateWaiter::new(), 
-                                last_pushed: 0, 
                             };
                             std::mem::swap(&mut downloading.waiters, &mut interesting.waiters);
                             *state = Downloading(downloading);
@@ -306,7 +310,7 @@ impl DownloadSession {
                         interesting.next_send_time = bucky_time_now() + self.channel().config().block_interval.as_micros() as u64;  
                     }, 
                     Downloading(downloading) => {
-                        downloading.last_pushed = bucky_time_now();
+                        downloading.tunnel_state.on_response();
                     },
                     _ => {}
                 }   
@@ -386,21 +390,17 @@ impl DownloadSession {
                     }
                 }, 
                 StateImpl::Downloading(downloading) => {
-                    if now > downloading.last_pushed 
-                        && Duration::from_micros(now - downloading.last_pushed) > self.channel().config().resend_interval {
+                    if downloading.tunnel_state.as_mut().on_time_escape(now) {
                         if let Some((max_index, lost_index)) = downloading.decoder.require_index() {
-                            downloading.last_pushed = now;
-                            {
-                                debug!("{} dectect loss piece max_index:{:?} lost_index:{:?}", self, max_index, lost_index);
-                                NextStep::SendPieceControl(PieceControl {
-                                    sequence: self.channel().gen_command_seq(), 
-                                    session_id: self.session_id().clone(), 
-                                    chunk: downloading.decoder.chunk().clone(), 
-                                    command: PieceControlCommand::Continue, 
-                                    max_index, 
-                                    lost_index
-                                })
-                            }
+                            debug!("{} dectect loss piece max_index:{:?} lost_index:{:?}", self, max_index, lost_index);
+                            NextStep::SendPieceControl(PieceControl {
+                                sequence: self.channel().gen_command_seq(), 
+                                session_id: self.session_id().clone(), 
+                                chunk: downloading.decoder.chunk().clone(), 
+                                command: PieceControlCommand::Continue, 
+                                max_index, 
+                                lost_index
+                            })
                         } else {
                             NextStep::None
                         }

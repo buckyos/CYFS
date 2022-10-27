@@ -484,12 +484,11 @@ pub async fn start_upload_task(
     let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
     let desc = interest.prefer_type.fill_values(&interest.chunk);
     let encoder = cache.create_encoder(&desc);
-    let session = UploadSession::new(
+    let session = to.upload(
         interest.chunk.clone(), 
         interest.session_id.clone(), 
         desc.clone(), 
-        encoder, 
-        to.clone());
+        encoder)?;
    
     if owners.len() > 0 {
         for owner in owners {
@@ -499,10 +498,8 @@ pub async fn start_upload_task(
     } else {
         stack.ndn().root_task().upload().add_task(None, session.clone_as_task())?;
     }
-
-    
     // 加入到channel的 upload sessions中
-    let _ = to.upload(session.clone());
+    
     let _ = session.on_interest(interest)?;
    
     Ok(session.clone_as_task())

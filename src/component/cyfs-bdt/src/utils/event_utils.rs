@@ -62,7 +62,7 @@ impl ForwardEventHandle {
 #[async_trait::async_trait]
 impl NdnEventHandler for ForwardEventHandle {
     async fn on_newly_interest(&self, stack: &Stack, interest: &Interest, from: &Channel) -> BuckyResult<()> {
-        if !self.target.eq(from.remote()) {
+        if !self.target.eq(from.tunnel().remote()) {
             if let Some(target) = stack.ndn().channel_manager().channel_of(&self.target) {
                 {
                     let session_cache = &mut *self.session_cache.lock().unwrap();
@@ -78,7 +78,7 @@ impl NdnEventHandler for ForwardEventHandle {
                     Interest { session_id: interest.session_id.clone(), 
                                chunk: interest.chunk.clone(),
                                prefer_type: interest.prefer_type.clone(),
-                               from: Some(from.remote().clone()),
+                               from: Some(from.tunnel().remote().clone()),
                                referer: Some(String::default()),};
 
                 target.interest(interest);

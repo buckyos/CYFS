@@ -178,7 +178,7 @@ impl ChannelManager {
 
     pub fn on_raw_data(&self, data: &[u8], context: (&TunnelContainer, DynamicTunnel)) -> Result<(), BuckyError> {
         let (container, tunnel) = context;
-        let channel = self.channel_of(tunnel.as_ref().remote()).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "channel not exists"))?;
+        let channel = self.channel_of(container.remote()).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "channel not exists"))?;
         channel.on_raw_data(data, tunnel)
     }
 }

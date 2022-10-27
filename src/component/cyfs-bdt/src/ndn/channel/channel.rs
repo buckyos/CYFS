@@ -21,6 +21,7 @@ use crate::{
 };
 use super::super::{
     types::*, 
+    chunk::*, 
     upload::*,
 };
 use super::{
@@ -52,7 +53,6 @@ pub enum ChannelState {
     Active, 
     Dead
 }
-
 
 
 struct DownloadState {
@@ -163,13 +163,13 @@ impl Downloaders {
         self.0.read().unwrap().history_speed.average()
     }
 
-    fn on_piece_data(&self, piece: &PieceData) -> BuckyResult<()> {
+    fn on_piece_data(&self, piece: &PieceData, tunnel: &DynamicChannelTunnel) -> BuckyResult<()> {
         if let Some(session) = {
             let mut downloaders = self.0.write().unwrap();
             downloaders.speed_counter.on_recv(piece.data.len());
             downloaders.sessions.get(&piece.session_id).cloned()
         } {
-            session.push_piece_data(piece);
+            session.push_piece_data(piece, tunnel);
             Ok(())
         } else {
             Err(BuckyError::new(BuckyErrorCode::NotFound, "no session"))
@@ -219,7 +219,7 @@ pub struct Channel(Arc<ChannelImpl>);
 
 impl std::fmt::Display for Channel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Channel{{local:{}, remote:{}}}", Stack::from(&self.0.stack).local_device_id(), self.remote())
+        write!(f, "Channel{{local:{}, remote:{}}}", Stack::from(&self.0.stack).local_device_id(), self.tunnel().remote())
     }
 }
 
@@ -247,8 +247,8 @@ impl Channel {
     }
 
 
-    pub fn remote(&self) -> &DeviceId {
-        &self.0.tunnel.remote()
+    pub fn tunnel(&self) -> &TunnelGuard {
+        &self.0.tunnel
     }
 
     pub fn config(&self) -> &Config {
@@ -270,10 +270,17 @@ impl Channel {
         }
     }
 
-    pub fn upload(&self, session: UploadSession) -> BuckyResult<()> {
+    pub fn upload(
+        &self,  
+        chunk: ChunkId, 
+        session_id: TempSeq, 
+        piece_type: ChunkEncodeDesc, 
+        encoder: Box<dyn ChunkEncoder>
+    ) -> BuckyResult<UploadSession> {
         let tunnel = self.default_tunnel()?;
-        tunnel.uploaders().add(session);
-        Ok(())
+        let session = UploadSession::new(chunk, session_id, piece_type, tunnel.upload_state(encoder), self.clone());
+        tunnel.uploaders().add(session.clone());
+        Ok(session)
     }
 
     pub fn download(&self, session: DownloadSession) -> BuckyResult<()> {
@@ -302,7 +309,7 @@ impl Channel {
         let _ = self.0.command_tunnel.send_to(
             &buf[..len], 
             &mut options, 
-            self.remote(), 
+            self.tunnel().remote(), 
             datagram::ReservedVPort::Channel as u16);
 
     } 
@@ -319,16 +326,16 @@ impl Channel {
         let _ = self.0.command_tunnel.send_to(
             &buf[..len], 
             &mut options, 
-            self.remote(), 
+            self.tunnel().remote(), 
             datagram::ReservedVPort::Channel as u16);
     }
 
     
     // 明文tunnel发送PieceControl
     pub(super) fn send_piece_control(&self, control: PieceControl) {
-        if let Ok(tunnel) = self.default_tunnel() {
+        if let Ok(tunnel) = self.tunnel().default_tunnel() {
             info!("{} will send piece control {:?}", self, control);
-            tunnel.send_piece_control(control);
+            control.split_send(&tunnel);
         } else {
             debug!("{} ignore send piece control {:?} for channel dead", self, control);
         }
@@ -483,11 +490,10 @@ impl Channel {
             PackageCmdCode::PieceData => {
                 let piece = PieceData::decode_from_raw_data(buf)?;
                 let _ = tunnel.on_piece_data(&piece)?;
-                self.on_piece_data(piece)
+                self.on_piece_data(piece, &tunnel)
             }, 
             PackageCmdCode::PieceControl => {
                 let (mut ctrl, _) = PieceControl::raw_decode(buf)?;
-                let _ = tunnel.on_piece_control(&mut ctrl)?;
                 self.on_piece_control(&ctrl) 
             },
             PackageCmdCode::ChannelEstimate => {
@@ -498,14 +504,14 @@ impl Channel {
         }
     }
 
-    fn on_piece_data(&self, piece: PieceData) -> BuckyResult<()> {
+    fn on_piece_data(&self, piece: PieceData, tunnel: &DynamicChannelTunnel) -> BuckyResult<()> {
         trace!("{} got piece data est_seq:{:?} chunk:{} desc:{:?} data:{}", self, piece.est_seq, piece.chunk, piece.desc, piece.data.len());
-        if self.0.downloaders.on_piece_data(&piece).is_err() {
+        if self.0.downloaders.on_piece_data(&piece, tunnel).is_err() {
             let strong_stack = Stack::from(&self.0.stack);
             // 这里可能要保证同步到同线程处理,重入会比较麻烦
             match strong_stack.ndn().event_handler().on_unknown_piece_data(&self.stack(), &piece, self) {
                 Ok(session) => {
-                    session.push_piece_data(&piece);
+                    session.push_piece_data(&piece, tunnel);
                     //FIXME： 如果新建了任务，这里应当继续接受piece data
                 },
                 Err(_err) => {

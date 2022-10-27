@@ -1,8 +1,7 @@
 use log::*;
 use std::{
     ops::Range, 
-    time::Duration, 
-    sync::{RwLock, atomic::{AtomicU64, Ordering}}
+    sync::{RwLock}
 };
 use async_std::{
     sync::Arc, 
@@ -24,7 +23,6 @@ use super::{
 struct UploadingState {
     speed_counter: SpeedCounter,  
     history_speed: HistorySpeed, 
-    pending_from: Timestamp, 
     encoder: Box<dyn ChunkEncoder>
 }
 
@@ -39,14 +37,12 @@ enum TaskStateImpl {
     Error(BuckyErrorCode),
 }
 
-
 struct SessionImpl {
     chunk: ChunkId, 
     session_id: TempSeq, 
     piece_type: ChunkEncodeDesc, 
     channel: Channel, 
     state: RwLock<StateImpl>, 
-    last_active: AtomicU64, 
 }
 
 #[derive(Clone)]
@@ -54,7 +50,7 @@ pub struct UploadSession(Arc<SessionImpl>);
 
 impl std::fmt::Display for UploadSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "UploadSession{{session_id:{:?}, chunk:{}, remote:{}}}", self.session_id(), self.chunk(), self.channel().remote())
+        write!(f, "UploadSession{{session_id:{:?}, chunk:{}, remote:{}}}", self.session_id(), self.chunk(), self.channel().tunnel().remote())
     }
 }
 
@@ -72,7 +68,6 @@ impl UploadSession {
             piece_type, 
             state: RwLock::new(StateImpl{
                 task_state: TaskStateImpl::Uploading(UploadingState {
-                    pending_from: 0, 
                     history_speed: HistorySpeed::new(0, channel.config().history_speed.clone()), 
                     speed_counter: SpeedCounter::new(0), 
                     encoder
@@ -80,7 +75,6 @@ impl UploadSession {
                 control_state: UploadTaskControlState::Normal
             }), 
             channel, 
-            last_active: AtomicU64::new(0), 
         }))
     }
 
@@ -119,9 +113,6 @@ impl UploadSession {
                         TaskStateImpl::Uploading(uploading) => {
                             if len > 0 {
                                 uploading.speed_counter.on_recv(len);
-                                uploading.pending_from = 0;
-                            } else {
-                                uploading.pending_from = bucky_time_now();
                             }
                             Ok(len)
                         },
@@ -159,7 +150,6 @@ impl UploadSession {
             RespInterest(BuckyErrorCode), 
             None
         }
-        self.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
         let next_step = {
             let state = self.0.state.read().unwrap();
             match &state.task_state {
@@ -198,7 +188,6 @@ impl UploadSession {
     }
 
     pub(super) fn on_piece_control(&self, ctrl: &PieceControl) -> BuckyResult<()> {
-        self.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
         enum NextStep {
             MergeIndex(Box<dyn ChunkEncoder>, u32, Vec<Range<u32>>), 
             RespInterest(BuckyErrorCode), 
@@ -266,33 +255,6 @@ impl UploadSession {
             NextStep::None => {
                 Ok(())
             }
-        }
-    }
-
-    pub(super) fn on_time_escape(&self, now: Timestamp) -> Option<UploadTaskState> {
-        let mut state = self.0.state.write().unwrap();
-        match &mut state.task_state {
-            TaskStateImpl::Uploading(uploading) => {
-                if uploading.pending_from > 0 
-                    && now > uploading.pending_from 
-                    && Duration::from_micros(now - uploading.pending_from) > self.channel().config().resend_timeout {
-                    error!("{} canceled for pending timeout", self);
-                    state.task_state = TaskStateImpl::Error(BuckyErrorCode::Timeout);
-                    Some(UploadTaskState::Error(BuckyErrorCode::Timeout))
-                } else {
-                    Some(UploadTaskState::Uploading(0))
-                }
-            }, 
-            TaskStateImpl::Finished => None,
-            TaskStateImpl::Error(err) => {
-                let last_active = self.0.last_active.load(Ordering::SeqCst);
-                if now > last_active 
-                    && Duration::from_micros(now - last_active) > 2 * self.channel().config().msl {
-                    None
-                } else {
-                    Some(UploadTaskState::Error(*err))
-                }
-            },
         }
     }
 }
