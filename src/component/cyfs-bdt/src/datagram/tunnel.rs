@@ -213,7 +213,8 @@ impl DatagramTunnel {
         let stack = Stack::from(&self.as_ref().stack);
         let tunnel = stack.tunnel_manager().container_of(remote);
         if let Some(tunnel) = tunnel {
-            if tunnel.state() == TunnelState::Dead {
+            if tunnel.state() == TunnelState::Dead
+                || tunnel.state() == TunnelState::Connecting {
                 debug!(
                     "{} tunnel to {} dead, will build tunnel",
                     self.as_ref(),

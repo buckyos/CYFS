@@ -1,7 +1,7 @@
 use log::*;
 use std::{
     time::Duration, 
-    sync::{RwLock}
+    sync::{RwLock}, 
 };
 use async_std::{
     sync::Arc, 
@@ -22,9 +22,9 @@ use super::{
 
 
 struct InterestingState {
-    waiters: StateWaiter, 
-    start_send_time: Timestamp, 
+    waiters: StateWaiter,  
     last_send_time: Timestamp, 
+    next_send_time: Timestamp,  
     history_speed: HistorySpeed, 
     cache: ChunkStreamCache,
 }
@@ -32,7 +32,6 @@ struct InterestingState {
 struct DownloadingState {
     waiters: StateWaiter, 
     last_pushed: Timestamp, 
-    loss_count: u32, 
     decoder: Box<dyn ChunkDecoder>, 
     speed_counter: SpeedCounter, 
     history_speed: HistorySpeed, 
@@ -112,8 +111,8 @@ impl DownloadSession {
                     channel.initial_download_session_speed(), 
                     channel.config().history_speed.clone()), 
                 waiters: StateWaiter::new(), 
-                start_send_time: now, 
                 last_send_time: now, 
+                next_send_time: now + channel.config().resend_interval.as_micros() as u64,
                 cache
             })), 
             channel, 
@@ -239,7 +238,6 @@ impl DownloadSession {
                     Downloading(downloading) => {
                         if result.valid {
                             downloading.last_pushed = bucky_time_now();
-                            downloading.loss_count = 0;
                         }
                         if result.finished {
                             let mut waiters = StateWaiter::new();
@@ -274,7 +272,6 @@ impl DownloadSession {
                                 decoder: decoder.clone_as_decoder(), 
                                 waiters: StateWaiter::new(), 
                                 last_pushed: 0, 
-                                loss_count: 0
                             };
                             std::mem::swap(&mut downloading.waiters, &mut interesting.waiters);
                             *state = Downloading(downloading);
@@ -300,7 +297,20 @@ impl DownloadSession {
 
     pub(super) fn on_resp_interest(&self, resp_interest: &RespInterest) -> BuckyResult<()> {
         match &resp_interest.err {
-            BuckyErrorCode::Ok => unimplemented!(),
+            BuckyErrorCode::Ok => unimplemented!(), 
+            BuckyErrorCode::WouldBlock => {
+                use StateImpl::*;
+                let state = &mut *self.0.state.write().unwrap();
+                match state {
+                    Interesting(interesting) => {
+                        interesting.next_send_time = bucky_time_now() + self.channel().config().block_interval.as_micros() as u64;  
+                    }, 
+                    Downloading(downloading) => {
+                        downloading.last_pushed = bucky_time_now();
+                    },
+                    _ => {}
+                }   
+            }, 
             _ => {
                 self.cancel_by_error(BuckyError::new(resp_interest.err, "remote resp interest error"));
             }
@@ -309,16 +319,6 @@ impl DownloadSession {
     }
 
     fn resend_interest(&self) -> BuckyResult<()> {
-        {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                StateImpl::Interesting(interesting) => {
-                    interesting.last_send_time = bucky_time_now(); 
-                    Ok(())
-                }, 
-                _ => Err(BuckyError::new(BuckyErrorCode::ErrorState, "not in interesting state"))
-            }
-        }?;
         let interest = Interest {
             session_id: self.session_id().clone(), 
             chunk: self.chunk().clone(), 
@@ -377,11 +377,9 @@ impl DownloadSession {
             let state = &mut *self.0.state.write().unwrap();
             match state {
                 StateImpl::Interesting(interesting) => {
-                    if now > interesting.start_send_time
-                        && Duration::from_micros(now - interesting.start_send_time) > self.channel().config().resend_timeout {
-                        NextStep::Cancel
-                    } else if now > interesting.last_send_time 
-                        && Duration::from_micros(now - interesting.last_send_time) > self.channel().config().resend_interval {
+                    if now > interesting.next_send_time {
+                        interesting.next_send_time = now + 2 * (interesting.next_send_time - interesting.last_send_time);
+                        interesting.last_send_time = now;
                         NextStep::SendInterest
                     } else {
                         NextStep::None
@@ -392,11 +390,7 @@ impl DownloadSession {
                         && Duration::from_micros(now - downloading.last_pushed) > self.channel().config().resend_interval {
                         if let Some((max_index, lost_index)) = downloading.decoder.require_index() {
                             downloading.last_pushed = now;
-                            downloading.loss_count += 1;
-                            if self.channel().config().resend_interval * downloading.loss_count > self.channel().config().resend_timeout {
-                                error!("{} break", self);
-                                NextStep::Cancel
-                            } else {
+                            {
                                 debug!("{} dectect loss piece max_index:{:?} lost_index:{:?}", self, max_index, lost_index);
                                 NextStep::SendPieceControl(PieceControl {
                                     sequence: self.channel().gen_command_seq(), 

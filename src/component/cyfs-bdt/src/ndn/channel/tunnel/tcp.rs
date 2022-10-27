@@ -12,14 +12,14 @@ use super::super::{
     channel::Channel
 };
 use super::{
-    tunnel::{ChannelTunnel, DynamicChannelTunnel}
+    tunnel::*
 };
 
 struct TunnelImpl {
-    channel: Channel, 
     start_at: Timestamp, 
     active_timestamp: Timestamp, 
-    raw_tunnel: RawTunnel
+    raw_tunnel: RawTunnel, 
+    uploaders: Uploaders
 }
 
 #[derive(Clone)]
@@ -27,17 +27,20 @@ pub struct TcpTunnel(Arc<TunnelImpl>);
 
 impl std::fmt::Display for TcpTunnel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {{tunnel:{}}}", self.0.channel, self.0.raw_tunnel)
+        write!(f, "{{tunnel:{}}}", self.0.raw_tunnel)
     }
 }
 
 impl TcpTunnel {
-    pub fn new(channel: Channel, raw_tunnel: RawTunnel, active_timestamp: Timestamp) -> Self {
+    pub fn new(
+        raw_tunnel: RawTunnel, 
+        active_timestamp: Timestamp
+    ) -> Self {
         Self(Arc::new(TunnelImpl {
-            channel, 
             active_timestamp, 
             start_at: bucky_time_now(), 
-            raw_tunnel
+            raw_tunnel, 
+            uploaders: Uploaders::new()
         }))
     }
 }
@@ -93,7 +96,7 @@ impl ChannelTunnel for TcpTunnel {
     fn on_time_escape(&self, _now: Timestamp) -> BuckyResult<()> {
         while !self.0.raw_tunnel.is_data_piece_full()? {
             let mut piece_buf = [0u8; interface::udp::MTU];
-            let piece_len = self.0.channel.next_piece(&mut piece_buf[u16::raw_bytes().unwrap()..]);
+            let piece_len = self.uploaders().next_piece(&mut piece_buf[u16::raw_bytes().unwrap()..]);
             if piece_len > 0 {
                 let _ = (piece_len as u16).raw_encode(&mut piece_buf, &None).unwrap();
                 let _ = self.0.raw_tunnel.send_data_piece(&mut piece_buf)?;
@@ -102,5 +105,9 @@ impl ChannelTunnel for TcpTunnel {
             }
         }
         Ok(())
+    }
+
+    fn uploaders(&self) -> &Uploaders {
+        &self.0.uploaders
     }
 }

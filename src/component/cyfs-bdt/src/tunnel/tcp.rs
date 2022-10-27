@@ -893,13 +893,12 @@ impl Tunnel {
         owner: TunnelContainer, 
         interface: tcp::PackageInterface) {
         // recv loop
-
         let mut recv_buf = [0u8; udp::MTU];
         loop {
             // tunnel显式销毁时，需要shutdown tcp stream; 这里receive_package就会出错了
             match interface.receive_package(&mut recv_buf).await {
                 Ok(recv_box) => {
-                    tunnel.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
+                    // tunnel.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
 
                     match recv_box {
                         RecvBox::Package(package_box) => {
@@ -921,7 +920,7 @@ impl Tunnel {
                             }
                         }, 
                         RecvBox::RawData(raw_data) => {
-                            let _ = owner.on_raw_data(raw_data);
+                            let _ = owner.on_raw_data(raw_data, DynamicTunnel::new(tunnel.clone()));
                         }
                     }
                 }, 
