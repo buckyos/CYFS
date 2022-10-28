@@ -8,6 +8,7 @@ mod mime;
 mod anonymous;
 mod file_cache;
 mod ipfs_proxy;
+mod ipfs_stub;
 
 // use once_cell::sync::OnceCell;
 // use crate::runtime::CyfsRuntime;

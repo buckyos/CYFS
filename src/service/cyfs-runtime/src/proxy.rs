@@ -271,6 +271,7 @@ impl CyfsProxy {
         server.at("/file-cache").post(file_cache);
 
         let ipfs_proxy = IpfsProxy::new(self.clone(), self.stack_config.proxy_port+1);
+        ipfs_proxy.start_ipfs();
         server.at("/ipfs/*").get(ipfs_proxy.clone());
         server.at("/ipns/*").get(ipfs_proxy);
 

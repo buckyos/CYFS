@@ -11,6 +11,7 @@ mod proxy;
 mod runtime;
 mod stack;
 mod ipfs_proxy;
+mod ipfs_stub;
 
 use cyfs_debug::*;
 use stack::PROXY_PORT;
