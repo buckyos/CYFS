@@ -205,14 +205,16 @@ impl GlobalStateValidator {
             return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
         }
 
-        if obj.desc().dec_id().is_some() {
-            let msg = format!(
-                "the specified global root object's dec is not empty! {}, current_dec={:?}",
-                key.root,
-                obj.desc().dec_id()
-            );
-            error!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
+        if let Some(dec) = obj.desc().dec_id() {
+            if dec != cyfs_core::get_system_dec_app() {
+                let msg = format!(
+                    "the specified global root object's dec is not empty or system dec! root={}, dec={}",
+                    key.root,
+                    dec,
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
+            }
         }
 
         Ok(())
