@@ -2,6 +2,7 @@ mod acl;
 mod bdt;
 mod cache;
 mod data;
+mod forward;
 mod handler;
 mod ndc;
 mod ndn;

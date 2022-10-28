@@ -6,37 +6,23 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
-/*
-ndn 依赖的non对象加载
-1. 先通过无acl的本地noc加载
-2. 再通过带zone acl的non向target加载
-*/
 
 pub(crate) struct NDNForwardObjectProcessor {
     target: DeviceId,
-
-    local_object_loader: Option<NDNObjectLoader>,
-    target_object_loader: NDNObjectLoader,
-
+    object_loader: NDNObjectLoader,
     next: NDNInputProcessorRef,
 }
 
 impl NDNForwardObjectProcessor {
     pub fn new(
         target: DeviceId,
-
-        // 第一个是本地的loader，第二个是远程的loader
-        local_object_loader: Option<NDNObjectLoader>,
-        target_object_loader: NDNObjectLoader,
-
+        // used for load object
+        object_loader: Option<NDNObjectLoader>,
         next: NDNInputProcessorRef,
     ) -> NDNInputProcessorRef {
         let ret = Self {
             target,
-
-            local_object_loader,
-            target_object_loader,
-
+            object_loader,
             next,
         };
 
@@ -73,26 +59,12 @@ impl NDNForwardObjectProcessor {
 
     async fn get_file_object(&self, req: &NDNGetDataInputRequest) -> BuckyResult<(ObjectId, File)> {
       
-        // objectmap should not look from local noc, its always on target device!!!
-        if req.object_id.obj_type_code() != ObjectTypeCode::ObjectMap {
-            // 首先本地查询
-            if let Some(loader) = &self.local_object_loader {
-                debug!(
-                    "will get file object from local: object={}, inner_path={:?}",
-                    req.object_id, req.inner_path
-                );
-                if let Ok(ret) = loader.get_file_object(&req, Some(&self.target)).await {
-                    return Ok(ret);
-                }
-            }
-        }
-
-        // 远程查询
+        // load target object from non service
         debug!(
             "will get file object from target: object={}, inner_path={:?}, target={:?}",
             req.object_id, req.inner_path, self.target,
         );
-        self.target_object_loader
+        self.object_loader
             .get_file_object(&req, Some(&self.target))
             .await
     }
@@ -106,7 +78,7 @@ impl NDNInputProcessor for NDNForwardObjectProcessor {
     }
 
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
-        NDNForwardObjectProcessor::get_data(&self, req).await
+        Self::get_data(&self, req).await
     }
 
     async fn delete_data(
