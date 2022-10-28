@@ -229,6 +229,14 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
             ..Default::default()
         },
         Mount {
+            // container's dns  conf bind host config
+            target: Some("/etc/resolv.conf".to_string()),
+            source: Some("/etc/resolv.conf".to_string()),
+            typ: Some(bollard::models::MountTypeEnum::BIND),
+            read_only: Some(true),
+            ..Default::default()
+        },
+        Mount {
             // bind /etc/localtime 让容器内和宿主机的时区保持一致
             target: Some("/etc/localtime".to_string()),
             source: Some("/etc/localtime".to_string()),
