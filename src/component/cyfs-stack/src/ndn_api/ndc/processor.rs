@@ -24,8 +24,8 @@ impl NDCLevelInputProcessor {
         chunk_manager: Arc<ChunkManager>,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-
-        // 不带权限的non处理器
+        
+        // local non processor, only get_object from current stakc
         non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
         let object_loader = NDNObjectLoader::new(non_processor);
