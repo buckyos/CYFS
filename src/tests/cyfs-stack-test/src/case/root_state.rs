@@ -23,6 +23,8 @@ pub async fn test() {
     let device_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
     let device2_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
 
+    test_load_with_cache(&device_stack).await;
+
     test_storage(&device_stack).await;
 
     test_gbk_path(&stack).await;
@@ -33,6 +35,27 @@ pub async fn test() {
     test_path_env(&stack).await;
     test_path_env_update(&stack).await;
     test_iterator(&stack).await;
+}
+
+async fn test_load_with_cache(stack: &SharedCyfsStack) {
+    let root_state = stack.root_state_stub(None, None);
+
+    let root_info = root_state.get_current_root().await.unwrap();
+    info!("current root: {:?}", root_info);
+
+    for _ in 0..5 {
+        let op_env = root_state.create_path_op_env().await.unwrap();
+    
+        let ret = op_env.get_by_path("/dsg-service/contracts/").await.unwrap();
+        assert_eq!(ret, None);
+    }
+
+    for _ in 0..5 {
+        let op_env = root_state.create_single_op_env().await.unwrap();
+    
+        let ret = op_env.load_by_path("/dsg-service/contracts/").await;
+        assert!(ret.is_err());
+    }
 }
 
 pub async fn test_path_env_update(stack: &SharedCyfsStack) {
@@ -400,6 +423,9 @@ pub async fn test_rs_access(ood: &SharedCyfsStack, device: &SharedCyfsStack) {
 pub async fn test_storage(s: &SharedCyfsStack) {
     let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
     let x2_value = ObjectId::from_str("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
+
+    let s = s.fork_with_new_dec(Some(cyfs_core::get_system_dec_app().to_owned())).await.unwrap();
+    s.wait_online(None).await.unwrap();
 
     {
         let storage = s.global_state_storage_ex(
