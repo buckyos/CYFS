@@ -254,12 +254,14 @@ impl NOCLevelInputProcessor {
             Ok(ret) => {
                 let mut resp = NONDeleteObjectInputResponse { object: None };
 
-                if let Some(data) = ret.object {
-                    assert!(data.object.is_some());
-
-                    resp.object = Some(data);
+                if req.common.flags & CYFS_REQUEST_FLAG_DELETE_WITH_QUERY != 0 {
+                    if let Some(data) = ret.object {
+                        assert!(data.object.is_some());
+    
+                        resp.object = Some(data);
+                    }
                 }
-
+                
                 Ok(resp)
             }
             Err(e) => Err(e),

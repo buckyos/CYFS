@@ -445,8 +445,9 @@ impl NONRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         if resp.status().is_success() {
-            info!("delete object from non service success: {}", req.object_id);
-            self.decode_delete_object_response(&req, &mut resp).await
+            let ret = self.decode_delete_object_response(&req, &mut resp).await?;
+            info!("delete object from non service success: {}, obj={:?}", req.object_id, ret.object);
+            Ok(ret)
         } else {
             let e = RequestorHelper::error_from_resp(&mut resp).await;
             error!(
