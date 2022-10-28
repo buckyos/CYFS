@@ -26,8 +26,10 @@ async fn main1() {
 
     loader::load().await;
 
-    case::test().await;
-
+    async_std::task::spawn(async move {
+        case::test().await;
+    });
+    
     // info!("test process now will exits!");
     // async_std::task::sleep(std::time::Duration::from_secs(30)).await;
     // std::process::exit(0);

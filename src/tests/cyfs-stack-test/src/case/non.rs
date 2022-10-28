@@ -125,13 +125,20 @@ async fn zone_get_with_req_path() {
     let _resp = device2.non_service().delete_object(del_req.clone()).await.unwrap();
     info!("delete object success! {}", object_id);
 
-    // put object to ood with defualt access
-    let req =
+    // put object to ood with access without otherdec field
+    let mut req =
         NONPutObjectOutputRequest::new_router(None, object_id.clone(), object.to_vec().unwrap());
+    let mut access = AccessString::default();
+    access.clear_group_permissions(AccessGroup::OthersDec);
+    req.access = Some(access);
 
     device1.non_service().put_object(req).await.unwrap();
 
     let path = "/test/non/zone_same_dec_with_req_path";
+
+    // clear rmeta from ood
+    let stub = device1.root_state_meta_stub(Some(ood1.local_device_id().object_id().to_owned()), None);
+    stub.clear_access().await.unwrap();
 
     // dec1 modify ood's state with object_id
     let stub = device1.root_state_stub(Some(ood1.local_device_id().object_id().to_owned()), None);
@@ -148,7 +155,10 @@ async fn zone_get_with_req_path() {
     assert!(ret.is_ok());
     
     // must delete from device2(==device3)'s local cache
-    let _resp = device2.non_service().delete_object(del_req.clone()).await.unwrap();
+    let mut del_req_with_object = del_req.clone();
+    del_req_with_object.common.flags  = CYFS_REQUEST_FLAG_DELETE_WITH_QUERY;
+    let resp = device2.non_service().delete_object(del_req_with_object).await.unwrap();
+    assert!(resp.object.is_some());
 
     // dec3 get with req_path from ood, reject
     let ret = device3.non_service().get_object(get_req.clone()).await;
