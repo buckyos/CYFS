@@ -58,7 +58,7 @@ impl ObjectMapPath {
     }
 
     async fn get_root(&self) -> BuckyResult<ObjectMapRef> {
-        let root_id = self.root.lock().unwrap().clone();
+        let root_id = self.root();
         let ret = self.obj_map_cache.get_object_map(&root_id).await?;
         if ret.is_none() {
             let msg = format!("load root object but not found! id={}", root_id);

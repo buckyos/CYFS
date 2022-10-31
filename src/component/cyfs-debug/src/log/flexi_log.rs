@@ -4,23 +4,24 @@ use super::target::*;
 use cyfs_base::{BuckyError, BuckyResult};
 
 use flexi_logger::{
-    opt_format, Cleanup, Criterion, DeferredNow, LogSpecification, Logger, Naming, Record,
+    Cleanup, Criterion, DeferredNow, LogSpecification, Logger, Naming, Record,
 };
 use log::{Log, Metadata};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-fn cyfs_default_format(
+fn console_format(
     w: &mut dyn std::io::Write,
     now: &mut DeferredNow,
     record: &Record,
 ) -> Result<(), std::io::Error> {
     write!(
         w,
-        "[{}] {} [{}] {}",
-        now.now().format("%Y-%m-%d %H:%M:%S%.3f"),
+        "[{}] {} [{:?}] [{}] {}",
+        now.now().format("%Y-%m-%d %H:%M:%S%.6f"),
         record.level(),
+        std::thread::current().id(),
         record.module_path().unwrap_or("<unnamed>"),
         //record.file().unwrap_or("<unnamed>"),
         //record.line().unwrap_or(0),
@@ -28,24 +29,23 @@ fn cyfs_default_format(
     )
 }
 
-#[cfg(feature = "colors")]
-pub fn cyfs_colored_default_format(
+fn file_format(
     w: &mut dyn std::io::Write,
     now: &mut DeferredNow,
     record: &Record,
 ) -> Result<(), std::io::Error> {
-    let level = record.level();
     write!(
         w,
-        "[{}] {} [{}] {}",
-        style(level, now.now().format("%Y-%m-%d %H:%M:%S%.3f")),
-        style(level, record.level()),
-        record.module_path().unwrap_or("<unnamed>"),
-        //record.file().unwrap_or("<unnamed>"),
-        //record.line().unwrap_or(0),
-        style(level, &record.args())
+        "[{}] {} [{:?}] [{}:{}] {}",
+        now.now().format("%Y-%m-%d %H:%M:%S%.6f %:z"),
+        record.level(),
+        std::thread::current().id(),
+        record.file().unwrap_or("<unnamed>"),
+        record.line().unwrap_or(0),
+        &record.args()
     )
 }
+
 
 struct FlexiModuleLogger {
     config: LogModuleConfig,
@@ -184,12 +184,12 @@ impl FlexiModuleLogger {
                     Naming::Numbers,
                     Cleanup::KeepLogFiles(config.file_max_count as usize),
                 )
-                .format_for_files(opt_format);
+                .format_for_files(file_format);
         }
 
         if config.console != LogLevel::Off {
             logger = logger.duplicate_to_stderr(config.console.clone().into());
-            logger = logger.format_for_stderr(cyfs_default_format);
+            logger = logger.format_for_stderr(console_format);
 
             #[cfg(feature = "colors")]
             {
