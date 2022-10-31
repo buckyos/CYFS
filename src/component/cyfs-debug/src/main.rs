@@ -2,8 +2,7 @@ use log::*;
 
 use cyfs_debug::*;
 
-#[async_std::main]
-async fn main() {
+async fn main_run() {
     
     CyfsLoggerBuilder::new_app("cyfs-debug")
         .level("trace")
@@ -18,11 +17,18 @@ async fn main() {
         .build()
         .start();
 
-    
+    cyfs_debug::ProcessDeadHelper::instance().enable_exit_on_task_system_dead(None);
+
     debug!("output debug log");
     info!("output info log");
     warn!("output warn log");
     error!("output error log");
 
     async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
+}
+
+fn main() {
+    crate::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run())
 }

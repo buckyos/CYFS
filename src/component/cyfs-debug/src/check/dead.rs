@@ -1,4 +1,5 @@
-use cyfs_base::bucky_time_now;
+use crate::DebugConfig;
+use cyfs_base::*;
 
 use once_cell::sync::OnceCell;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -11,15 +12,62 @@ pub struct ProcessDeadHelper {
     task_system_last_active: Arc<AtomicU64>,
 
     exit_on_task_system_dead: Arc<AtomicU64>,
+
+    exit_on_dead: bool,
 }
 
 impl ProcessDeadHelper {
     fn new(interval_in_secs: u64) -> Self {
-        Self {
+        let exit_on_dead = match get_channel() {
+            CyfsChannel::Nightly => false,
+            _ => true,
+        };
+
+        let mut ret = Self {
             interval_in_secs,
             task_system_last_active: Arc::new(AtomicU64::new(bucky_time_now())),
             exit_on_task_system_dead: Arc::new(AtomicU64::new(0)),
+            exit_on_dead,
+        };
+
+        ret.load_config();
+        ret
+    }
+
+    fn load_config(&mut self) {
+        if let Some(config_node) = DebugConfig::get_config("check") {
+            if let Err(e) = self.load_config_value(config_node) {
+                println!("load process dead check config error! {}", e);
+            }
         }
+    }
+
+    pub fn load_config_value(&mut self, config_node: &toml::Value) -> BuckyResult<()> {
+        let node = config_node.as_table().ok_or_else(|| {
+            let msg = format!("invalid debug config format! content={}", config_node,);
+            error!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+
+        for (k, v) in node {
+            match k.as_str() {
+                "exit_on_dead" => {
+                    if let Some(v) = v.as_bool() {
+                        println!("load check.exit_on_dead from config: {}, current={}", v, self.exit_on_dead);
+                        self.exit_on_dead = v;
+                    } else {
+                        println!("unknown exit_on_dead config node: {:?}", v);
+                    }
+                }
+
+                key @ _ => {
+                    println!("unknown check config node: {}={:?}", key, v);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn patch_task_min_thread() {
@@ -63,7 +111,7 @@ impl ProcessDeadHelper {
 
     fn check_task_alive(&self) {
         let exit_timeout = self.exit_on_task_system_dead.load(Ordering::SeqCst);
-        if exit_timeout == 0 {
+        if exit_timeout == 0 || !self.exit_on_dead {
             return;
         }
 
@@ -149,7 +197,7 @@ mod tests {
         ProcessDeadHelper::instance().enable_exit_on_task_system_dead(Some(1000 * 1000 * 2));
 
         async_std::task::block_on(dead_lock());
-        
+
         // async_std::task::sleep(std::time::Duration::from_secs(60 * 5));
     }
 
