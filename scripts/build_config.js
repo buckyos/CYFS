@@ -126,6 +126,10 @@ const misc = [
     {
         "name": "sn-miner-rust",
         "include": formal_platform
+    },
+    {
+        "name": "cyfs-monitor",
+        "include": formal_platform
     }
 ]
 

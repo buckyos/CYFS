@@ -1,0 +1,2 @@
+[config]
+dingtalk_url = "https://oapi.dingtalk.com/robot/send?access_token=f204db50595160bc8445cae438579f74a97f0a2ee86f456982b1a86b94962ead"
