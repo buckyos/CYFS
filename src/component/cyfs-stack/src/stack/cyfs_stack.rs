@@ -16,7 +16,7 @@ use crate::interface::{
 use crate::meta::*;
 use crate::name::NameResolver;
 use crate::ndn::NDNOutputTransformer;
-use crate::ndn_api::{BdtNdnEventHandler, ChunkStoreReader, NDNService};
+use crate::ndn_api::{BdtNDNEventHandler, ChunkStoreReader, NDNService};
 use crate::non::NONOutputTransformer;
 use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
@@ -486,7 +486,7 @@ impl CyfsStackImpl {
 
             stack = s;
         }
-       
+
         // init admin manager
         stack.admin_manager.init(&system_router_handlers).await?;
 
@@ -525,9 +525,7 @@ impl CyfsStackImpl {
 
         // init app controller
         let app_controller = AppController::new(param.config.isolate.clone(), interface);
-        app_controller
-            .init(&system_router_handlers)
-            .await?;
+        app_controller.init(&system_router_handlers).await?;
 
         if let Err(_) = stack.app_controller.set(app_controller) {
             unreachable!();
@@ -721,7 +719,7 @@ impl CyfsStackImpl {
         bdt_params.outer_cache = Some(device_cache);
         bdt_params.chunk_store = Some(chunk_store);
 
-        bdt_params.ndn_event = Some(Box::new(BdtNdnEventHandler::new(
+        bdt_params.ndn_event = Some(Box::new(BdtNDNEventHandler::new(
             zone_manager,
             acl,
             router_handlers,

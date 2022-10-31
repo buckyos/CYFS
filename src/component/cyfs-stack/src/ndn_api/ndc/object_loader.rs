@@ -6,17 +6,14 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 /*
-加载文件数据，分为本地和远程加载
-需要分object和data两部分，也分两部分权限校验
+# 1. chunk
+直接向目标协议栈创建bdt task，同时附带referer_objects -> 目标协议栈收到请求后，通过referer_objects校验权限
 
-A: out-get-object  res=/B/dec_id/req_path/file_id target=B
-B: in-get-object res=/dec_id/req_path/file_id source=A
-A: out-get-data res=/B/dec_id/req_path/file_id target=B
-B: in-get-data res=/dec_id/req_path/file_id source=A
-
-所以关键点是
-1. 构造正确的request发起non操作，包括req_path
-2. 选择正确的non_processor
+# 2. file/dir+inner_path
+## 1. 需要先通过NON层，向目标协议栈获取对应的FileObject(如果本地有缓存，那么直接走本地逻辑)
+### 1. 如果是File并且指定了referer_object(dir+inner_path)，那么直接使用引用的dir+inner_path发起请求，确保获取到的file_id和目标object一致
+### 2. 如果是Dir+InnerPath或者File但没指定referer_object，那么直接获取目标File，并确保获取到的file_id和目标object一致
+## 2. 然后使用查询到的File向目标协议栈创建bdt task，并附带referer_objects
 */
 
 // 用以处理ndn请求里面对object的查找
@@ -32,10 +29,9 @@ impl NDNObjectLoader {
     }
 
     // get_file存在两种形式:
-    // 1. 
-    // 1. file_id + referer_object
-    // 2. dir_id + inner_path + referer_object
-    // 需要把referer_object合并到req_path里面
+    // 1. file_id
+    // 1. file_id + referer_object(dir + inner_path)
+    // 2. dir_id + inner_path (referer_object will been ignored)
     pub async fn get_file_object(
         &self,
         req: &NDNGetDataInputRequest,
@@ -92,6 +88,30 @@ impl NDNObjectLoader {
         }
     }
 
+    pub async fn get_file_or_dir_object(
+        &self,
+        req: &NDNGetDataInputRequest,
+        target: Option<&DeviceId>,
+    ) -> BuckyResult<NONObjectInfo> {
+        if req.common.referer_object.is_empty() {
+            let resp = self.get_object_with_referer(&req, None, target).await?;
+            Ok(resp.object)
+        } else {
+            let mut error = None;
+            for referer_object in &req.common.referer_object {
+                match self
+                    .get_object_with_referer(&req, Some(referer_object), target)
+                    .await
+                {
+                    Ok(ret) => return Ok(ret.object),
+                    Err(e) => error = Some(e),
+                }
+            }
+
+            Err(error.unwrap())
+        }
+    }
+
     async fn get_object_with_referer(
         &self,
         req: &NDNGetDataInputRequest,
@@ -102,6 +122,20 @@ impl NDNObjectLoader {
         let req_inner_path;
 
         match req.object_id.obj_type_code() {
+            ObjectTypeCode::Chunk => {
+                if let Some(referer) = referer_object {
+                    req_object = referer.object_id.clone();
+                    req_inner_path = referer.inner_path.clone();
+                } else {
+                    let msg = format!(
+                        "ndn get chunk request but referer objects is empty!: {}",
+                        req.object_id,
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
+                }
+            }
+
             ObjectTypeCode::File => {
                 if let Some(referer) = referer_object {
                     if referer.is_inner_path_empty() {
@@ -131,7 +165,7 @@ impl NDNObjectLoader {
             }
             code @ _ => {
                 let msg = format!(
-                    "support ndn get object request type code: {}, {:?}",
+                    "unsupport ndn get object request type code: {}, {:?}",
                     req.object_id, code
                 );
                 error!("{}", msg);

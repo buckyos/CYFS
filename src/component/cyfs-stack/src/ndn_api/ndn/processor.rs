@@ -32,7 +32,6 @@ pub(crate) struct NDNLevelInputProcessor {
     chunk_manager: ChunkManagerRef,
 
     // 对象加载器
-    local_object_loader: NDNObjectLoader,
     target_object_loader: NDNObjectLoader,
 
     // local ndn
@@ -64,15 +63,13 @@ impl NDNLevelInputProcessor {
             raw_noc_processor.clone(),
         );
 
-        // 第一个是本地查询器，第二个是远程查询器
-        let local_object_loader = NDNObjectLoader::new(raw_noc_processor);
+        // non level processor
         let target_object_loader = NDNObjectLoader::new(inner_non_processor);
 
         let ret = Self {
             acl,
             bdt_stack,
             chunk_manager,
-            local_object_loader,
             target_object_loader,
             ndc_processor,
             router_handlers,
@@ -112,10 +109,7 @@ impl NDNLevelInputProcessor {
         // 带同zone input acl的处理器
         let acl_processor = NDNAclInnerInputProcessor::new(raw_processor.clone());
 
-        // 使用acl switcher连接
-        let processor = NDNInputAclSwitcher::new(acl_processor, raw_processor);
-
-        processor
+        acl_processor
     }
 
     async fn get_data_forward(&self, target: DeviceId) -> BuckyResult<NDNInputProcessorRef> {
@@ -130,10 +124,9 @@ impl NDNLevelInputProcessor {
         );
 
         // 增加前置的object加载器
-        // 先尝试从本地加载, 再通过non从远程加载
+        // 通过合适的non processor加载目标object
         let processor = NDNForwardObjectProcessor::new(
             target,
-            Some(self.local_object_loader.clone()),
             self.target_object_loader.clone(),
             processor,
         );

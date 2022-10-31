@@ -2,6 +2,7 @@ use super::super::acl::*;
 use super::super::handler::*;
 use super::super::ndc::*;
 use super::super::ndn::*;
+use super::super::forward::*;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -108,10 +109,7 @@ impl NDNRouter {
         // 带input acl的处理器
         let acl_processor = NDNAclInputProcessor::new(acl, raw_processor.clone());
 
-        // 使用acl switcher连接
-        let processor = NDNInputAclSwitcher::new(acl_processor, raw_processor);
-
-        processor
+        acl_processor
     }
 
     async fn get_data_forward(&self, target: DeviceId) -> BuckyResult<NDNInputProcessorRef> {
@@ -127,7 +125,7 @@ impl NDNRouter {
 
         // 使用non router加载file
         let processor =
-            NDNForwardObjectProcessor::new(target, None, self.object_loader.clone(), processor);
+            NDNForwardObjectProcessor::new(target,self.object_loader.clone(), processor);
 
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(

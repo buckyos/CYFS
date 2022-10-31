@@ -2,8 +2,10 @@ use super::super::acl::NDNAclInputProcessor;
 use super::super::handler::*;
 use super::cache::*;
 use super::echo::BdtNdnEchoProcessor;
-use crate::ndn::*;
 use crate::acl::AclManagerRef;
+use crate::ndn::*;
+use crate::ndn_api::LocalDataManager;
+use crate::non::NONInputProcessorRef;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
@@ -11,18 +13,19 @@ use cyfs_lib::*;
 use cyfs_util::acl::*;
 
 #[derive(Clone)]
-pub struct BdtNdnDataAclProcessor {
-	zone_manager: ZoneManagerRef,
+pub struct BdtNDNDataAclProcessor {
+    zone_manager: ZoneManagerRef,
     processor: NDNInputProcessorRef,
     cache: BdtDataAclCache,
 }
 
-
-impl BdtNdnDataAclProcessor {
-   pub fn new(
+impl BdtNDNDataAclProcessor {
+    pub fn new(
         zone_manager: ZoneManagerRef,
         acl: AclManagerRef,
         router_handlers: RouterHandlersManager,
+        non_processor: NONInputProcessorRef,
+        data_manager: LocalDataManager,
     ) -> Self {
         // 最终的反射应答处理器
         let echo = BdtNdnEchoProcessor::new();
@@ -34,7 +37,7 @@ impl BdtNdnDataAclProcessor {
         // TODO 是否需要post-router的事件处理器?
 
         // 添加acl
-        let processor = NDNAclInputProcessor::new(acl, handler_processor);
+        let processor = NDNAclInputProcessor::new(acl, data_manager, handler_processor);
 
         let cache = BdtDataAclCache::new();
 
@@ -78,6 +81,30 @@ impl BdtNdnDataAclProcessor {
             .resolve_source_info(dec, req.source)
             .await?;
 
+        let access_without_acl = if let Some(referer) = &referer {
+            if referer.req_path.is_none() && referer.referer_object.is_empty() {
+                true
+            } else {
+                false
+            }
+        } else {
+            true
+        };
+
+        if access_without_acl {
+            if source.is_current_zone() {
+                // In the same zone, if you know the chunk_id, you can access it directly
+                return Ok(());
+            } else {
+                let msg = format!(
+                    "bdt get_data but neither referer_object nor req_path are specified! id={}",
+                    req.object_id
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+            }
+        }
+
         let mut ndn_req = NDNGetDataInputRequest {
             common: NDNInputRequestCommon {
                 req_path: None,
@@ -112,103 +139,6 @@ impl BdtNdnDataAclProcessor {
         Self::process_resp(resp)
     }
 
-    async fn put_data_without_cache(&self, req: BdtPutDataInputRequest) -> BuckyResult<()> {
-        info!("will process bdt put_data acl request: {}", req);
-
-        let referer = if let Some(referer) = req.referer {
-            Some(BdtDataRefererInfo::decode_string(&referer)?)
-        } else {
-            None
-        };
-
-        let dec = if let Some(referer) = &referer {
-            &referer.dec_id
-        } else {
-            &None
-        };
-
-        let source = self
-            .zone_manager
-            .resolve_source_info(dec, req.source)
-            .await?;
-
-        let mut ndn_req = NDNPutDataInputRequest {
-            common: NDNInputRequestCommon {
-                req_path: None,
-                source,
-                level: NDNAPILevel::Router,
-                referer_object: vec![],
-                target: None,
-                flags: 0,
-                user_data: None,
-            },
-            object_id: req.object_id,
-            data_type: NDNDataType::Mem,
-            length: req.length,
-            data: Box::new(async_std::io::Cursor::new(vec![])),
-        };
-
-        if let Some(referer) = referer {
-            ndn_req.object_id = referer.object_id;
-            ndn_req.common.req_path = referer.req_path;
-            ndn_req.common.flags = referer.flags;
-            if referer.referer_object.len() > 0 {
-                ndn_req.common.referer_object = referer.referer_object;
-            }
-        }
-
-        let resp = self.processor.put_data(ndn_req).await;
-        Self::process_resp(resp)
-    }
-
-    async fn delete_data_without_cache(&self, req: BdtDeleteDataInputRequest) -> BuckyResult<()> {
-        info!("will process bdt delete_data acl request: {}", req);
-
-        let referer = if let Some(referer) = req.referer {
-            Some(BdtDataRefererInfo::decode_string(&referer)?)
-        } else {
-            None
-        };
-
-        let dec = if let Some(referer) = &referer {
-            &referer.dec_id
-        } else {
-            &None
-        };
-
-        let source = self
-            .zone_manager
-            .resolve_source_info(dec, req.source)
-            .await?;
-
-        let mut ndn_req = NDNDeleteDataInputRequest {
-            common: NDNInputRequestCommon {
-                req_path: None,
-                source,
-                level: NDNAPILevel::Router,
-                referer_object: vec![],
-                target: None,
-                flags: 0,
-                user_data: None,
-            },
-            object_id: req.object_id,
-            inner_path: None,
-        };
-
-        if let Some(referer) = referer {
-            ndn_req.object_id = referer.object_id;
-            ndn_req.inner_path = referer.inner_path;
-            ndn_req.common.req_path = referer.req_path;
-            ndn_req.common.flags = referer.flags;
-            if referer.referer_object.len() > 0 {
-                ndn_req.common.referer_object = referer.referer_object;
-            }
-        }
-
-        let resp = self.processor.delete_data(ndn_req).await;
-        Self::process_resp(resp)
-    }
-
     pub async fn get_data(&self, mut req: BdtGetDataInputRequest) -> BuckyResult<()> {
         let key = BdtDataAclCacheKey {
             source: req.source.clone(),
@@ -226,54 +156,6 @@ impl BdtNdnDataAclProcessor {
 
         req.referer = key.referer.clone();
         let ret = self.get_data_without_cache(req).await;
-        self.cache.add(key, ret.clone());
-
-        ret
-    }
-
-    pub async fn put_data(&self, mut req: BdtPutDataInputRequest) -> BuckyResult<()> {
-        info!("will process bdt put_data acl request: {}", req);
-
-        let key = BdtDataAclCacheKey {
-            source: req.source.clone(),
-            referer: req.referer,
-            action: NDNAction::PutData,
-        };
-
-        if let Some(ret) = self.cache.get(&key) {
-            info!(
-                "bdt put_data acl request got cache: ret={:?}, object={}",
-                ret, req.object_id
-            );
-            return ret;
-        }
-
-        req.referer = key.referer.clone();
-        let ret = self.put_data_without_cache(req).await;
-        self.cache.add(key, ret.clone());
-
-        ret
-    }
-
-    pub async fn delete_data(&self, mut req: BdtDeleteDataInputRequest) -> BuckyResult<()> {
-        info!("will process bdt delete_data acl request: {}", req);
-
-        let key = BdtDataAclCacheKey {
-            source: req.source.clone(),
-            referer: req.referer,
-            action: NDNAction::DeleteData,
-        };
-
-        if let Some(ret) = self.cache.get(&key) {
-            info!(
-                "bdt delete_data acl request got cache: ret={:?}, object={}",
-                ret, req.object_id
-            );
-            return ret;
-        }
-
-        req.referer = key.referer.clone();
-        let ret = self.delete_data_without_cache(req).await;
         self.cache.add(key, ret.clone());
 
         ret

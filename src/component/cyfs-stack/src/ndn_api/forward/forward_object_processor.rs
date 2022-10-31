@@ -17,7 +17,7 @@ impl NDNForwardObjectProcessor {
     pub fn new(
         target: DeviceId,
         // used for load object
-        object_loader: Option<NDNObjectLoader>,
+        object_loader: NDNObjectLoader,
         next: NDNInputProcessorRef,
     ) -> NDNInputProcessorRef {
         let ret = Self {
