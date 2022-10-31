@@ -60,7 +60,10 @@ impl NFTStorage for SPVTxStorage {
             conn.execute_sql(sqlx::query(sql)).await?;
             let sql = r#"alter table nft add column "coin_id" BLOB default NULL"#;
             conn.execute_sql(sqlx::query(sql)).await?;
-            let sql = r#"alter table nft add column "creator" char(45) NOT NULL"#;
+        }
+
+        if sql.find("creator").is_none() {
+            let sql = r#"alter table nft add column "creator" char(45) default NULL"#;
             conn.execute_sql(sqlx::query(sql)).await?;
             let sql = r#"alter table nft add column "price_change_height" INTEGER default 0"#;
             conn.execute_sql(sqlx::query(sql)).await?;
