@@ -50,12 +50,12 @@ function build(prog, buildType, target, version, channel) {
     if (target === 'aarch64-linux-android') {
         let cmd = aarch64_linux_android_objcopy
         child_process.execSync(`${cmd} --only-keep-debug target/${target}/${buildType}/${bin_name}${ext} target/${target}/${buildType}/${bin_name}${ext}.debug`)
-        child_process.execSync(`${cmd} --strip-debug --add-gnu-debuglink=${bin_name}${ext}.debug target/${target}/${buildType}/${bin_name}${ext}`)
+        child_process.execSync(`${cmd} --strip-debug --add-gnu-debuglink=target/${target}/${buildType}/${bin_name}${ext}.debug target/${target}/${buildType}/${bin_name}${ext}`)
     } else if(target.includes("linux")) {
         // split exe and debug info
         let cmd = 'objcopy'
         child_process.execSync(`bash -c "${cmd} --only-keep-debug target/${target}/${buildType}/${bin_name}${ext} target/${target}/${buildType}/${bin_name}${ext}.debug"`)
-        child_process.execSync(`bash -c "${cmd} --strip-debug --add-gnu-debuglink=${bin_name}${ext}.debug target/${target}/${buildType}/${bin_name}${ext}"`)
+        child_process.execSync(`bash -c "${cmd} --strip-debug --add-gnu-debuglink=target/${target}/${buildType}/${bin_name}${ext}.debug target/${target}/${buildType}/${bin_name}${ext}"`)
     }
     return `${bin_name}${ext}`
 }
