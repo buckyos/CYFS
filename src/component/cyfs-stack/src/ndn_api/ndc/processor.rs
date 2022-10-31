@@ -25,7 +25,7 @@ impl NDCLevelInputProcessor {
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         
-        // local non processor, only get_object from current stakc
+        // local non processor, only get_object from current stack
         non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
         let object_loader = NDNObjectLoader::new(non_processor);
@@ -48,13 +48,10 @@ impl NDCLevelInputProcessor {
         // 不带input acl的处理器
         let raw_processor = Self::new_raw(chunk_manager, ndc, tracker, raw_noc_processor);
 
-        // 带local input acl的处理器
+        // 带local device acl的处理器
         let acl_processor = NDNAclLocalInputProcessor::new(raw_processor.clone());
 
-        // 使用acl switcher连接
-        let processor = NDNInputAclSwitcher::new(acl_processor, raw_processor);
-
-        processor
+        acl_processor
     }
 
     async fn put_chunk(

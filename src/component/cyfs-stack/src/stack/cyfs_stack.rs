@@ -16,7 +16,7 @@ use crate::interface::{
 use crate::meta::*;
 use crate::name::NameResolver;
 use crate::ndn::NDNOutputTransformer;
-use crate::ndn_api::{BdtNdnEventHandler, ChunkStoreReader, NDNService};
+use crate::ndn_api::{BdtNDNEventHandler, ChunkStoreReader, NDNService};
 use crate::non::NONOutputTransformer;
 use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
@@ -718,7 +718,7 @@ impl CyfsStackImpl {
         bdt_params.outer_cache = Some(device_cache);
         bdt_params.chunk_store = Some(chunk_store);
 
-        bdt_params.ndn_event = Some(Box::new(BdtNdnEventHandler::new(
+        bdt_params.ndn_event = Some(Box::new(BdtNDNEventHandler::new(
             zone_manager,
             acl,
             router_handlers,

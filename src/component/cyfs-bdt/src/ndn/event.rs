@@ -32,6 +32,7 @@ pub trait NdnEventHandler: Send + Sync {
 
 
 // 需要通知到stack层次的内部事件在这里统一实现；这里的代码属于策略，异变或者可以通过配置扩展
+#[derive(Clone)]
 pub struct DefaultNdnEventHandler {
    
 }
