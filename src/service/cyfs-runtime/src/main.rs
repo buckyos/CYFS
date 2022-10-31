@@ -17,6 +17,7 @@ use cyfs_debug::*;
 use stack::PROXY_PORT;
 
 use clap::{App, Arg};
+use crate::ipfs_stub::IPFSStub;
 
 pub const SERVICE_NAME: &str = ::cyfs_base::CYFS_RUNTIME_NAME;
 
@@ -59,7 +60,13 @@ async fn main_run() {
                 .long("proxy-port")
                 .takes_value(true)
                 .help(&proxy_port_help),
-        );
+        )
+        .arg(Arg::with_name("no-ipfs-proxy")
+            .long("no-ipfs-proxy")
+            .help("disable ipfs proxy"))
+        .arg(Arg::with_name("stop-ipfs-daemon")
+            .long("stop-ipfs-daemon")
+            .help("stop ipfs daemon which started by runtime"));
 
     let app = cyfs_util::process::prepare_args(app);
     let matches = app.get_matches();
@@ -75,6 +82,12 @@ async fn main_run() {
             error!("get user data dir failed!");
         }
     };
+
+    if matches.is_present("stop-ipfs-daemon") {
+        let stub = IPFSStub::new(None, None, None);
+        stub.stop_ipfs().await;
+        return;
+    }
 
     let root = cyfs_util::get_cyfs_root_path();
     if !root.is_dir() {
@@ -115,6 +128,7 @@ async fn main_run() {
 
     let anonymous = matches.is_present("anonymous");
     let random_id = matches.is_present("random-id");
+    let no_ipfs_proxy = matches.is_present("no-ipfs-proxy");
     let proxy_port = matches.value_of("proxy-port");
     let proxy_port = match proxy_port {
         Some(v) => v
@@ -132,7 +146,10 @@ async fn main_run() {
         anonymous,
         random_id,
         proxy_port,
+        no_ipfs_proxy
     };
+
+
 
     async_std::task::spawn(async {
         let mut runtime = runtime::CyfsRuntime::new(stack_config);

@@ -1,6 +1,5 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::Duration;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use async_std::process::Child;
@@ -8,19 +7,43 @@ use async_std::process::Child;
 pub struct IPFSStub {
     ipfs_data_path: PathBuf,
     ipfs_prog: PathBuf,
-    ipfs_file_name: PathBuf,
 }
+
+#[cfg(target_os = "windows")]
+const DEFAULT_IPFS_PROG_NAME: &str = "ipfs.exe";
+
+#[cfg(not(target_os = "windows"))]
+const DEFAULT_IPFS_PROG_NAME: &str = "ipfs";
 
 impl IPFSStub {
     // 构造函数
     // ipfs_data_path： IPFS程序的data dir目录位置
     // ipfs_prog: ipfs可执行程序的位置
-    pub fn new(ipfs_data_path: &Path, ipfs_prog: &Path) -> Self {
+    pub fn new(ipfs_data_path: Option<&Path>, ipfs_prog_path: Option<&Path>, ipfs_prog_name: Option<&str>) -> Self {
+        let ipfs_data_path = if let Some(path) = ipfs_data_path {
+            PathBuf::from(path)
+        } else {
+            cyfs_util::get_service_data_dir("ipfs")
+        };
+
+        let cur_exe_path = std::env::current_exe().unwrap();
+        let ipfs_prog = if let Some(path) = ipfs_prog_path {
+            path
+        } else {
+            cur_exe_path.parent().unwrap()
+        }.join(ipfs_prog_name.unwrap_or(DEFAULT_IPFS_PROG_NAME));
+
         Self {
-            ipfs_data_path: PathBuf::from(ipfs_data_path),
-            ipfs_prog: PathBuf::from(ipfs_prog),
-            ipfs_file_name: PathBuf::from(ipfs_prog.file_name().unwrap()),
+            ipfs_data_path,
+            ipfs_prog,
         }
+    }
+    pub fn is_valid(&self) -> bool {
+        self.ipfs_prog.exists()
+    }
+
+    pub fn ipfs_prog_path(&self) -> &Path {
+        &self.ipfs_prog
     }
 
     pub async fn init(&self, ipfs_gateway_port: u16, ipfs_api_port: u16, swarm_port: u16) -> BuckyResult<()> {
@@ -134,7 +157,7 @@ impl IPFSStub {
         }
     }
 
-    async fn stop_ipfs(&self) {
+    pub async fn stop_ipfs(&self) {
         if let Ok(mut child) = self.run_ipfs(&vec!["shutdown".as_ref()]) {
             let _ = child.status().await;
         }

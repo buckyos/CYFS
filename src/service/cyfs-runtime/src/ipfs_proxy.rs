@@ -27,29 +27,34 @@ pub struct IpfsProxyInner {
 }
 
 impl IpfsProxy {
-    pub(crate) fn new(proxy: CyfsProxy, ipfs_gateway_port: u16) -> Self {
+    pub(crate) fn new(proxy: CyfsProxy, ipfs_gateway_port: u16, no_ipfs_proxy: bool) -> Self {
         info!("create ipfs proxy, local gateway port {}", ipfs_gateway_port);
-        let ipfs_data_dir = cyfs_util::get_service_data_dir("ipfs");
-        let ipfs_prog = std::env::current_exe().unwrap().parent().unwrap().join("ipfs.exe");
-        let status = if ipfs_prog.exists() {
-            IpfsDaemonStatus::NotInit
-        } else {
-            warn!("ipfs daemon not found at {}, disable ipfs proxy", ipfs_prog.display());
+        let stub = IPFSStub::new(None, None, None);
+        let status = if no_ipfs_proxy {
+            info!("disable ipfs proxy because runtime param");
             IpfsDaemonStatus::Disable
+        } else {
+            if stub.is_valid() {
+                IpfsDaemonStatus::NotInit
+            } else {
+                warn!("ipfs daemon not found at {}, disable ipfs proxy", stub.ipfs_prog_path().display());
+                IpfsDaemonStatus::Disable
+            }
         };
+
         Self(Arc::new(IpfsProxyInner {
             proxy,
             ipfs_gateway_port,
-            stub: IPFSStub::new(&ipfs_data_dir, &ipfs_prog),
+            stub,
             status: RwLock::new(status)
         }))
     }
 
     pub(crate) fn start_ipfs(&self) {
-        info!("ipfs proxy start");
         if *self.0.status.read().unwrap() == IpfsDaemonStatus::Disable {
             return;
         }
+        info!("ipfs proxy start");
         let inner = self.0.clone();
         async_std::task::spawn(async move {
             info!("ipfs proxy start in task");

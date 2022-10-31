@@ -21,6 +21,9 @@ pub(crate) struct CyfsStackInsConfig {
 
     // local Proxy service'r port, default is 38090
     pub proxy_port: u16,
+
+    // disable ipfs proxy
+    pub no_ipfs_proxy: bool,
 }
 
 #[derive(Debug)]
