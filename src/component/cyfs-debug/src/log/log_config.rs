@@ -222,7 +222,7 @@ impl LogConfig {
         }
     }
 
-    pub fn load(&mut self, config_node: toml::Value) -> BuckyResult<()> {
+    pub fn load(&mut self, config_node: &toml::Value) -> BuckyResult<()> {
         
         let node = config_node.as_table().ok_or_else(|| {
             let msg = format!(
