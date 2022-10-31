@@ -299,7 +299,7 @@ impl ConnectStreamBuilder {
                         ConnectStreamBuilderState::Closed => {
                             // do nothing
                             // 时序上确实有builder先出错，但是stream 联通了的情况, 忽略就好
-                            unreachable!("connection never establish when builder has closed")
+                            // unreachable!("connection never establish when builder has closed")
                         }
                     }
                 },

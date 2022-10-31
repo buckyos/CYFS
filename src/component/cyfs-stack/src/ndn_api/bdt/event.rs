@@ -141,7 +141,19 @@ impl NdnEventHandler for BdtNdnEventHandler {
                     self.call_default_with_acl(stack, interest, from).await
                 }, 
                 InterestHandlerResponse::Upload(groups) => {
-                    let _ = download::start_upload_task(stack, interest, from, groups).await?;
+                    match download::start_upload_task(stack, interest, from, groups).await {
+                        Ok(_) => {},
+                        Err(err) => {
+                            from.resp_interest(RespInterest {
+                                session_id: interest.session_id.clone(), 
+                                chunk: interest.chunk.clone(),  
+                                err: err.code(), 
+                                redirect: None, 
+                                redirect_referer: None,
+                                to: None
+                            });
+                        }
+                    }
                     Ok(())
                 },  
                 InterestHandlerResponse::Transmit(to) => {

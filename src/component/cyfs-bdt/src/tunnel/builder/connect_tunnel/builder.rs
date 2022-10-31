@@ -157,7 +157,7 @@ impl ConnectTunnelBuilder {
                         }
                     }
                 }, 
-                TunnelState::Dead => {
+                TunnelState::Dead | TunnelState::Connecting => {
                     let state = &mut *builder.0.state.write().unwrap();
                     match state {
                         ConnectTunnelBuilderState::Connecting(connecting) => {
@@ -176,10 +176,7 @@ impl ConnectTunnelBuilder {
                             None
                         }
                     }
-                }, 
-                TunnelState::Connecting => {
-                    unreachable!()
-                }
+                },
             };
             if let Some(waiter) = waiter {
                 waiter.wake();
