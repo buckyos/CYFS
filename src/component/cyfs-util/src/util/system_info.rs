@@ -9,6 +9,7 @@ pub struct SystemInfo {
 
     pub cpu_usage: f32,
 
+    // memory size in bytes
     pub total_memory: u64,
     pub used_memory: u64,
 
@@ -16,11 +17,11 @@ pub struct SystemInfo {
     pub received_bytes: u64,
     pub transmitted_bytes: u64,
 
-    // SSD硬盘容量和可用容量，包括Unknown
+    // SSD硬盘容量和可用容量，包括Unknown, in bytes
     pub ssd_disk_total: u64,
     pub ssd_disk_avail: u64,
 
-    // HDD硬盘容量和可用容量
+    // HDD硬盘容量和可用容量, in bytes
     pub hdd_disk_total: u64,
     pub hdd_disk_avail: u64,
 }
