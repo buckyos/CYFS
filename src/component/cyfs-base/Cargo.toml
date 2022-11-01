@@ -10,7 +10,6 @@ rust-version = '1.63'
 
 [build-dependencies]
 protoc-rust = '2'
-chrono = '0.4'
 protoc-bin-vendored = '3'
 
 [dependencies]

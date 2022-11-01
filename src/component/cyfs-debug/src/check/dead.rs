@@ -4,6 +4,8 @@ use once_cell::sync::OnceCell;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
+use log::*;
+
 #[derive(Clone)]
 pub struct ProcessDeadHelper {
     interval_in_secs: u64,

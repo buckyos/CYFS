@@ -1,7 +1,5 @@
 use log::*;
 
-use cyfs_debug::*;
-
 #[async_std::main]
 async fn main() {
     

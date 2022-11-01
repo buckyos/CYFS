@@ -39,6 +39,16 @@ pub use zone::*;
 #[macro_use]
 extern crate log;
 
+static VERSION: once_cell::sync::OnceCell<&'static str> = once_cell::sync::OnceCell::new();
+
+fn version() -> &'static str {
+    VERSION.get().unwrap_or(&"version not inited")
+}
+
+pub fn set_version(version: &'static str) {
+    let _ = VERSION.set(version);
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

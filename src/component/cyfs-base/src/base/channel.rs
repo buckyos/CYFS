@@ -38,7 +38,7 @@ impl Display for CyfsChannel {
 }
 
 impl CyfsChannel {
-    fn get_ver(&self) -> u8 {
+    pub fn get_ver(&self) -> u8 {
         match self {
             CyfsChannel::Nightly => 0,
             CyfsChannel::Beta => 1,
@@ -47,21 +47,12 @@ impl CyfsChannel {
     }
 }
 
-pub fn get_version() -> &'static str {
-    &VERSION
-}
-
 pub fn get_channel() -> &'static CyfsChannel {
     &CHANNEL
 }
 
 pub fn get_target() -> &'static str {
     &TARGET
-}
-
-fn get_version_impl() -> String {
-    let channel_ver = get_channel().get_ver();
-    format!("1.0.{}.{}-{} ({})", channel_ver, env!("VERSION"), get_channel(), env!("BUILDDATE"))
 }
 
 fn get_channel_impl() -> CyfsChannel {
@@ -82,6 +73,5 @@ fn get_channel_impl() -> CyfsChannel {
 
 lazy_static::lazy_static! {
     static ref CHANNEL: CyfsChannel = get_channel_impl();
-    static ref VERSION: String = get_version_impl();
     static ref TARGET: &'static str = env!("TARGET");
 }

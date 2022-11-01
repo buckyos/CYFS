@@ -1,3 +1,4 @@
+use std::borrow::ToOwned;
 use super::constants::*;
 use super::flexi_log::*;
 use super::log_config::*;
@@ -204,7 +205,7 @@ impl CyfsLogger {
         // info!("current exe: {:?}", std::env::current_exe());
         info!("current dir: {:?}", std::env::current_dir());
 
-        info!("current version: {}", cyfs_base::get_version());
+        info!("current version: {}", cyfs_version::get_version());
 
         for (key, value) in std::env::vars() {
             info!("env: {}: {}", key, value);

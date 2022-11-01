@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Mutex;
 use std::time::Duration;
+use log::*;
 
 lazy_static::lazy_static! {
     static ref TIMER: Mutex<timer::Timer> = {

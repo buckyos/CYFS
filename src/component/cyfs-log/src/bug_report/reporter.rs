@@ -14,7 +14,7 @@ use crate::panic::CyfsPanicInfo;
 lazy_static::lazy_static! {
     /// The global buffer pool we use for storing incoming data.
     static ref TARGET: &'static str = get_target();
-    static ref VERSION: &'static str = get_version();
+    static ref VERSION: &'static str = cyfs_version::get_version();
 }
 
 // 默认的addr

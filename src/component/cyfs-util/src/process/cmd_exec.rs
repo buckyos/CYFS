@@ -192,22 +192,6 @@ pub fn check_process_status(service_name: &str, fid: Option<&str>) -> ProcessSta
     }
 }
 
-pub fn check_cmd_and_exec(service_name: &str) -> ProcessAction {
-    check_cmd_and_exec_ext(service_name, service_name)
-}
-
-pub fn check_cmd_and_exec_ext(service_name: &str, mutex_name: &str) -> ProcessAction {
-    let about = format!("{} ood service for cyfs system", service_name);
-    let app = App::new(&format!("{}", service_name))
-        .version(cyfs_base::get_version())
-        .about(&*about);
-
-    let app = prepare_args(app);
-    let matches = app.get_matches();
-
-    check_cmd_and_exec_with_args_ext(service_name, mutex_name, &matches)
-}
-
 pub fn check_cmd_and_exec_with_args(service_name: &str, matches: &ArgMatches) -> ProcessAction {
     check_cmd_and_exec_with_args_ext(service_name, service_name, matches)
 }

@@ -345,7 +345,7 @@ impl UtilLocalService {
         _req: UtilGetVersionInfoInputRequest,
     ) -> BuckyResult<UtilGetVersionInfoInputResponse> {
         let info = VersionInfo {
-            version: cyfs_base::get_version().to_owned(),
+            version: crate::version().to_owned(),
             channel: cyfs_base::get_channel().to_owned(),
             target: cyfs_base::get_target().to_owned(),
         };

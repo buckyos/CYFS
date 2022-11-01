@@ -1,0 +1,17 @@
+[package]
+name = "cyfs-version"
+version = "0.6.0"
+edition = "2021"
+authors = ['weiqiushi <weiqiushi@buckyos.com>']
+license = 'BSD-2-Clause'
+description = 'Rust cyfs-version package'
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[build-dependencies]
+chrono = '0.4'
+
+[dependencies]
+cyfs-base = {path="../cyfs-base", version="0.6"}
+cyfs-util = {path = "../cyfs-util", version = "0.6"}
+lazy_static = '1.4'
+clap = '2.34.0'

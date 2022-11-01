@@ -1827,11 +1827,8 @@ dependencies = [
  "cyfs-base",
  "cyfs-util",
  "flexi_logger",
- "formdata",
- "futures",
  "hex",
  "http-types",
- "hyper 0.10.16",
  "lazy_static",
  "log 0.4.16",
  "log-panics",
@@ -1841,11 +1838,9 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.8.2",
- "surf",
  "tide",
  "timer",
  "toml",
- "url 2.3.0",
 ]
 
 [[package]]
@@ -1919,6 +1914,40 @@ dependencies = [
  "serde",
  "serde_json",
  "tide",
+]
+
+[[package]]
+name = "cyfs-log"
+version = "0.6.0"
+dependencies = [
+ "async-h1",
+ "async-std",
+ "async-trait",
+ "backtrace",
+ "chrono",
+ "cyfs-base",
+ "cyfs-util",
+ "cyfs-version",
+ "flexi_logger",
+ "formdata",
+ "futures",
+ "hex",
+ "http-types",
+ "hyper 0.10.16",
+ "lazy_static",
+ "log 0.4.16",
+ "log-panics",
+ "num_cpus",
+ "once_cell",
+ "rand 0.7.3",
+ "serde",
+ "serde_json",
+ "sha2 0.8.2",
+ "surf",
+ "tide",
+ "timer",
+ "toml",
+ "url 2.3.0",
 ]
 
 [[package]]
@@ -2410,6 +2439,17 @@ dependencies = [
  "walkdir",
  "winapi",
  "zip",
+]
+
+[[package]]
+name = "cyfs-version"
+version = "0.6.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "cyfs-base",
+ "cyfs-util",
+ "lazy_static",
 ]
 
 [[package]]
@@ -3197,8 +3237,10 @@ dependencies = [
  "cyfs-core",
  "cyfs-debug",
  "cyfs-lib",
+ "cyfs-log",
  "cyfs-stack-loader",
  "cyfs-util",
+ "cyfs-version",
  "futures",
  "hex",
  "http-types",

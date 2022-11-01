@@ -23,3 +23,7 @@ pub use cyfs_stack::*;
 
 #[macro_use]
 extern crate log;
+
+pub fn set_version(ver: &'static str) {
+    cyfs_stack::set_version(ver);
+}

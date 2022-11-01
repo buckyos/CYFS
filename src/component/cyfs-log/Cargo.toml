@@ -1,16 +1,16 @@
 [package]
-name = "cyfs-debug"
+name = "cyfs-log"
 version = "0.6.0"
-authors = ["liyaxing <liyaxing@buckyos.com>"]
 edition = "2021"
-license = "BSD-2-Clause"
-description = "Rust cyfs-debug package"
+authors = ['weiqiushi <weiqiushi@buckyos.com>']
+license = 'BSD-2-Clause'
+description = 'Rust cyfs-log package'
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ['check']
-check = []
+trace = []
+http_report = ["url", "surf", "formdata", "futures", "hyper"]
 
 [dependencies]
 log = { version = "=0.4.16", features = [
@@ -37,4 +37,10 @@ serde = { version = "1.0", features = ["derive"] }
 toml = "0.5"
 async-trait = "0.1.53"
 rand = "0.7"
+url = { version = "2.2", optional = true }
+surf = { version = "2.3", optional = true }
+formdata = { version = "0.13", optional = true }
+futures = { version = "0.3", optional = true }
+hyper = { version = "0.10", optional = true }
 num_cpus = "^1.13"
+cyfs-version = {path="../cyfs-version", version = "0.6"}

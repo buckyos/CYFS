@@ -17,8 +17,9 @@ use clap::{App, Arg};
 pub const SERVICE_NAME: &str = ::cyfs_base::GATEWAY_NAME;
 
 async fn main_run() {
+    cyfs_stack_loader::set_version(cyfs_version::get_version());
     let app = App::new("gateway service")
-        .version(cyfs_base::get_version())
+        .version(cyfs_version::get_version())
         .about("gateway service for cyfs system")
         .author("CYFS <dev@cyfs.com>")
         .arg(
@@ -34,7 +35,7 @@ async fn main_run() {
 
     cyfs_util::process::check_cmd_and_exec_with_args(SERVICE_NAME, &matches);
 
-    cyfs_debug::CyfsLoggerBuilder::new_service(SERVICE_NAME)
+    cyfs_log::CyfsLoggerBuilder::new_service(SERVICE_NAME)
         .level("debug")
         .console("debug")
         .enable_bdt(Some("info"), Some("info"))
@@ -42,7 +43,7 @@ async fn main_run() {
         .unwrap()
         .start();
 
-    cyfs_debug::PanicBuilder::new("cyfs-service", SERVICE_NAME)
+    cyfs_log::PanicBuilder::new("cyfs-service", SERVICE_NAME)
         .exit_on_panic(true)
         .build()
         .start();
