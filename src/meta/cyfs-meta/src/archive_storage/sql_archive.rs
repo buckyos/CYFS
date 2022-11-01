@@ -127,7 +127,7 @@ impl Archive for SqlArchive {
         Ok(())
     }
 
-    async fn create_obj_desc_stat(&self, objid: &ObjectId, obj_type: u8) -> BuckyResult<()> {
+    async fn create_or_update_desc_stat(&self, objid: &ObjectId, obj_type: u8) -> BuckyResult<()> {
         let sql = "SELECT update_time FROM device_stat WHERE obj_id=?1";
         let mut conn = self.get_conn().await;
         let query_result = conn.query_one(sqlx::query(sql).bind(objid.to_string())).await;
@@ -140,7 +140,11 @@ impl Archive for SqlArchive {
                 Err(crate::meta_err!(ERROR_EXCEPTION))
             }
         } else {
-            Err(crate::meta_err!(ERROR_ALREADY_EXIST))
+            let sql = "UPDATE device_stat SET update_time=date('now') WHERE obj_id=?1";
+            let mut conn = self.get_conn().await;
+            conn.execute_sql(sqlx::query(sql).bind(objid.to_string())).await?;
+    
+            Ok(())
         }
     }
 
@@ -172,15 +176,6 @@ impl Archive for SqlArchive {
 
         let sum: i64 = row.try_get(0).unwrap_or(0);
         Ok(sum as u64)
-    }
-
-    async fn update_obj_desc_stat(&self, objid: &ObjectId, _obj_type: u8) -> BuckyResult<()> {
-        let sql = "UPDATE device_stat SET update_time=date('now') WHERE obj_id=?1";
-        let mut conn = self.get_conn().await;
-        conn.execute_sql(sqlx::query(sql).bind(objid.to_string())).await?;
-        trace!("obj_id: {}, sql: {}", objid, sql);
-
-        return Ok(());
     }
 
     async fn drop_desc_stat(&self, obj_id: &ObjectId) -> BuckyResult<()> {

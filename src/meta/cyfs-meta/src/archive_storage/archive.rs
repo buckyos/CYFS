@@ -11,7 +11,7 @@ pub trait Archive: Send + Sync {
     async fn init(&self) -> BuckyResult<()>;
 
     //desc stat
-    async fn create_obj_desc_stat(&self, objid: &ObjectId, obj_type: u8) -> BuckyResult<()>;
+    async fn create_or_update_desc_stat(&self, objid: &ObjectId, obj_type: u8) -> BuckyResult<()>;
     
     async fn get_obj_desc_stat(&self, obj_type: u8) -> BuckyResult<u64>;
 
@@ -25,10 +25,6 @@ pub trait Archive: Send + Sync {
         obj_type: u8,
         date: u64) -> BuckyResult<u64>;
 
-    async fn update_obj_desc_stat(
-        &self,
-        objid: &ObjectId,
-        obj_type:u8) -> BuckyResult<()>;
     async fn drop_desc_stat(&self, obj_id: &ObjectId) -> BuckyResult<()>;
 
     // meta raw object
