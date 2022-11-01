@@ -34,12 +34,12 @@ pub trait ChunkEncoder: Send + Sync {
         session_id: &TempSeq, 
         buf: &mut [u8]
     ) -> BuckyResult<usize>;
-    fn reset(&self);
+    fn reset(&self) -> bool;
     fn merge(
         &self, 
         max_index: u32, 
         lost_index: Vec<Range<u32>>
-    );
+    ) -> bool;
 }
 
 
@@ -442,13 +442,20 @@ impl OutcomeIndexQueue {
         }
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self) -> bool {
+        if self.queue.len() == 1 {
+            let r = self.queue.front().unwrap();
+            if r.start == self.start && r.end == self.end {
+                return false;
+            }
+        } 
         let mut queue = LinkedList::new();
         queue.push_back(self.start..self.end);
         self.queue = queue;
+        true
     }
 
-    pub fn merge(&mut self, max_index: u32, lost_index: Vec<Range<u32>>) {
+    pub fn merge(&mut self, max_index: u32, lost_index: Vec<Range<u32>>) -> bool {
         enum ChangeQueue {
             None, 
             Insert(usize), 
@@ -456,6 +463,8 @@ impl OutcomeIndexQueue {
             PushBack
         }
 
+        let mut changed = false;
+        
         let mut merge_one = |lost: Range<u32>, skip| {
             if self.queue.len() > 0 {
                 let mut change = ChangeQueue::PushBack;
@@ -468,14 +477,17 @@ impl OutcomeIndexQueue {
                         break;
                     } else if lost.end < next.start {
                         // 朝前附加
+                        changed = true;
                         ChangeQueue::Insert(i);
                         break;
                     } else if lost.end == next.start {
                         // 和当前合并
+                        changed = true;
                         next.start = lost.start;
                         change = ChangeQueue::None;
                         break;
                     } else if lost.start <= next.end {
+                        changed = true;
                         // 扩展当前，检查后面的是否合并
                         next.start = std::cmp::min(lost.start, next.start);
                         next.end = lost.end;
@@ -545,6 +557,9 @@ impl OutcomeIndexQueue {
                 merge_one(self.start..max_index, skip);
             }
         }
+
+
+        changed
         
     } 
 

@@ -61,7 +61,6 @@ impl DefaultNdnEventHandler {
         desc.clone(), 
             encoder)?;
         let _ = group.add_task(path, session.clone_as_task());
-        let _ = session.on_interest(interest)?;
         Ok(session)
     }
 }
@@ -84,34 +83,11 @@ impl NdnEventHandler for DefaultNdnEventHandler {
         interest: &Interest, 
         from: &Channel
     ) -> BuckyResult<()> {
-
-        let requestor = {
-            if let Some(requestor) = &interest.from {
-                if let Some(requestor) = stack.ndn().channel_manager().channel_of(&requestor) {
-                    requestor
-                } else {
-                    let resp_interest = 
-                        RespInterest {
-                            session_id: interest.session_id.clone(),
-                            chunk: interest.chunk.clone(),
-                            err: BuckyErrorCode::NotConnected,
-                            redirect: Some(stack.local_device_id().clone()),
-                            redirect_referer: interest.referer.clone(),
-                            to: Some(requestor.clone()),
-                        };
-
-                    from.resp_interest(resp_interest);
-                    return Ok(());
-                }
-            } else {
-                from.clone()
-            }
-        };
-
+        
         let _ = Self::start_upload_task(
             stack, 
             interest, 
-            &requestor, 
+            &from, 
             stack.ndn().root_task().upload(), 
             None
         ).await?;

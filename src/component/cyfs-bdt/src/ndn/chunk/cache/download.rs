@@ -237,37 +237,49 @@ impl ChunkDownloader {
             };
             
 
-            let session = DownloadSession::new( 
+            match channel.download( 
                 self.chunk().clone(), 
                 stack.ndn().chunk_manager().gen_session_id(), 
-                channel.clone(), 
                 source.referer, 
                 desc, 
                 cache.clone()
-            );
-        
-            let (start, exists) = {
-                let state = &mut *self.0.state.write().unwrap();
-                match state {
-                    StateImpl::Downloading(downloading) => {
-                        if let Some(exists) = &downloading.session {
-                            (false, Some(exists.clone()))
-                        } else {
-                            downloading.session = Some(session.clone());
-                            (true, None)
+            ) {
+                Ok(session) => {
+                    let (start, exists) = {
+                        let state = &mut *self.0.state.write().unwrap();
+                        match state {
+                            StateImpl::Downloading(downloading) => {
+                                if let Some(exists) = &downloading.session {
+                                    (false, Some(exists.clone()))
+                                } else {
+                                    downloading.session = Some(session.clone());
+                                    (true, None)
+                                }
+                            }, 
+                            _ => (false, None)
                         }
-                    }, 
-                    _ => (false, None)
+                    };
+                    if start {
+                        session.start();
+                        session.cur_speed()
+                    } else if let Some(session) = exists {
+                        session.cur_speed()
+                    } else {
+                        0
+                    }
+                }, 
+                Err(_) => {
+                    if let Some(session) = {
+                        match &*self.0.state.read().unwrap() {
+                            StateImpl::Downloading(downloading) => downloading.session.clone(), 
+                            _ => None
+                        }
+                    } {
+                        session.cur_speed()
+                    } else {
+                        0
+                    }
                 }
-            };
-        
-            if start {
-                let _ = channel.download(session.clone());
-                session.cur_speed()
-            } else if let Some(exists) = exists {
-                exists.cur_speed()
-            } else{
-                0
             }
         } else {
             0

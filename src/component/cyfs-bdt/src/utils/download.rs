@@ -499,8 +499,6 @@ pub async fn start_upload_task(
         stack.ndn().root_task().upload().add_task(None, session.clone_as_task())?;
     }
     // 加入到channel的 upload sessions中
-    
-    let _ = session.on_interest(interest)?;
    
     Ok(session.clone_as_task())
 }

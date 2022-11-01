@@ -526,45 +526,51 @@ impl ChunkEncoder for StreamEncoder {
         }
     }
 
-    fn reset(&self) {
+    fn reset(&self) -> bool {
         let mut state = self.0.state.write().unwrap();
-        state.indices.reset();
-
-        match &state.pending {
-            EncoderPendingState::Pending(next_desc) => {
-                let (index, _) = next_desc.unwrap_as_stream();
-                if state.indices.next() != Some(index) {
-                    state.pending = EncoderPendingState::None;
-                }
-            },
-            EncoderPendingState::Waiting(next_desc, _) => {
-                let (index, _) = next_desc.unwrap_as_stream();
-                if state.indices.next() != Some(index) {
-                    state.pending = EncoderPendingState::None;
-                }
-            },
-            _ => {}
+        if state.indices.reset() {
+            match &state.pending {
+                EncoderPendingState::Pending(next_desc) => {
+                    let (index, _) = next_desc.unwrap_as_stream();
+                    if state.indices.next() != Some(index) {
+                        state.pending = EncoderPendingState::None;
+                    }
+                },
+                EncoderPendingState::Waiting(next_desc, _) => {
+                    let (index, _) = next_desc.unwrap_as_stream();
+                    if state.indices.next() != Some(index) {
+                        state.pending = EncoderPendingState::None;
+                    }
+                },
+                _ => {}
+            }
+            true
+        } else {
+            false
         }
     }
 
-    fn merge(&self, max_index: u32, lost_index: Vec<Range<u32>>) {
+    fn merge(&self, max_index: u32, lost_index: Vec<Range<u32>>) -> bool {
         let mut state = self.0.state.write().unwrap();
-        state.indices.merge(max_index, lost_index);
-
-        match &state.pending {
-            EncoderPendingState::Pending(next_desc) => {
-                let (index, _) = next_desc.unwrap_as_stream();
-                if state.indices.next() != Some(index) {
-                    state.pending = EncoderPendingState::None;
-                }
-            },
-            EncoderPendingState::Waiting(next_desc, _) => {
-                let (index, _) = next_desc.unwrap_as_stream();
-                if state.indices.next() != Some(index) {
-                    state.pending = EncoderPendingState::None;
-                }
-            },
-            _ => {}
+        if state.indices.merge(max_index, lost_index) {
+            match &state.pending {
+                EncoderPendingState::Pending(next_desc) => {
+                    let (index, _) = next_desc.unwrap_as_stream();
+                    if state.indices.next() != Some(index) {
+                        state.pending = EncoderPendingState::None;
+                    }
+                },
+                EncoderPendingState::Waiting(next_desc, _) => {
+                    let (index, _) = next_desc.unwrap_as_stream();
+                    if state.indices.next() != Some(index) {
+                        state.pending = EncoderPendingState::None;
+                    }
+                },
+                _ => {}
+            }
+            true
+        } else {
+            false
         }
     }
 }

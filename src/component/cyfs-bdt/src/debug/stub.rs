@@ -366,7 +366,7 @@ impl DebugStub {
 
     async fn get_chunk(&self, tunnel: TcpStream, command: DebugCommandGetChunk) -> Result<(), String> {
         let mut tunnel = tunnel;
-        let stack = Stack::from(&self.0.stack);
+        
         let chunk_id = command.chunk_id;
         let remotes = command.remotes;
         let timeout = command.timeout;
@@ -399,7 +399,7 @@ impl DebugStub {
 
     async fn get_file(&self, tunnel: TcpStream, command: DebugCommandGetFile) -> Result<(), String> {
         let mut tunnel = tunnel;
-        let stack = Stack::from(&self.0.stack);
+
         let file_id = command.file_id;
         let remotes = command.remotes;
         let timeout = command.timeout;

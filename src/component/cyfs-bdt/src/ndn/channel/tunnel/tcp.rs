@@ -16,7 +16,6 @@ use super::super::super::{
 };
 use super::super::{
     protocol::v0::*, 
-    channel::Channel
 };
 use super::{
     tunnel::*
@@ -133,16 +132,16 @@ impl ChunkEncoder for WrapEncoder {
         self.origin.next_piece(session_id, buf)
     }
 
-    fn reset(&self) {
-
-    }
+    fn reset(&self) -> bool {
+        false
+    }   
 
     fn merge(
         &self, 
         _max_index: u32, 
         _lost_index: Vec<Range<u32>>
-    ) {
-        
+    ) -> bool {
+        false 
     }
 }
 
@@ -150,7 +149,11 @@ struct TcpDownloadState {
 }
 
 impl TunnelDownloadState for TcpDownloadState {
-    fn on_response(&mut self) {
+    fn on_piece_data(&mut self) {
+        
+    }
+
+    fn on_resp_interest(&mut self) {
         
     }
 

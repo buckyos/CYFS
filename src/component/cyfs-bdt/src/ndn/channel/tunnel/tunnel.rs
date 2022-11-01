@@ -45,7 +45,7 @@ pub type DynamicChannelTunnel = Box<dyn ChannelTunnel>;
 pub fn new_channel_tunnel(channel: &Channel, raw_tunnel: DynamicTunnel) -> BuckyResult<DynamicChannelTunnel> {
     if let TunnelState::Active(active_timestamp) = raw_tunnel.as_ref().state() {
         if raw_tunnel.as_ref().local().is_udp() {
-            Ok(UdpTunnel::new(channel.config().udp.clone(), raw_tunnel.clone_as_tunnel(), active_timestamp).clone_as_tunnel())
+            Ok(UdpTunnel::new(channel.config().clone(), raw_tunnel.clone_as_tunnel(), active_timestamp).clone_as_tunnel())
         } else if raw_tunnel.as_ref().local().is_tcp() {
             Ok(TcpTunnel::new(raw_tunnel.clone_as_tunnel(), active_timestamp).clone_as_tunnel())
         } else {
@@ -92,30 +92,16 @@ impl Uploaders {
         }
     }
 
-    // pub fn remove(&self, session_id: &TempSeq) -> Option<UploadSession> {
-    //     let mut sessions = self.sessions.write().unwrap();
-    //     if let Some((i, _)) = sessions.uploading.iter().enumerate().find(|(_, session)| session_id.eq(session.session_id())) {
-    //         let session = sessions.uploading.remove(i);
-    //         info!("{} remove {}", session.channel(), session);
-    //         Some(session)
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    // fn cancel_by_error(&self, err: BuckyError) {
-    //     let uploading = self.sessions.read().unwrap().uploading.clone();
-    //     for session in &uploading {
-    //         session.cancel_by_error(BuckyError::new(err.code(), err.msg().to_string()));
-    //     }
-    //     let mut sessions = self.sessions.write().unwrap();
-    //     for session in uploading {
-    //         if let Some((i, _)) = sessions.uploading.iter().enumerate().find(|(_, s)| session.session_id().eq(s.session_id())) {
-    //             let _ = sessions.uploading.remove(i);
-    //             sessions.canceled.push_back(session);
-    //         }
-    //     }
-    // }
+    pub fn remove(&self, session_id: &TempSeq) -> Option<UploadSession> {
+        let sessions = &mut self.0.write().unwrap().sessions;
+        if let Some((i, _)) = sessions.iter().enumerate().find(|(_, session)| session_id.eq(session.session_id())) {
+            let session = sessions.remove(i);
+            // info!("{} remove {}", session.channel(), session);
+            Some(session)
+        } else {
+            None
+        }
+    }
 
     pub fn next_piece(&self, buf: &mut [u8]) -> usize {
         let mut try_count = 0;
@@ -144,15 +130,7 @@ impl Uploaders {
                             }
                         }
                     },
-                    Err(err) => {
-                        // debug!("{} cancel {} for next piece failed for {}", session.channel(), session, err);
-                        {   
-                            let mut state = self.0.write().unwrap();
-                            if let Some((i, _)) = state.sessions.iter().enumerate().find(|(_, s)| session.session_id().eq(s.session_id())) {
-                                let _ = state.sessions.remove(i);
-                                // info!("{} remove {}", session.channel(), session);
-                            }
-                        }
+                    Err(_) => {
                         try_count += 1;
                         if try_count >= session_count {
                             break 0;
@@ -171,48 +149,10 @@ impl Uploaders {
         len
     }
 
-    // fn on_time_escape(&self, now: Timestamp) {
-    //     let mut sessions = self.sessions.write().unwrap();
-
-    //     let mut uploading = vec![];
-    //     std::mem::swap(&mut sessions.uploading, &mut uploading);
-        
-    //     for session in uploading {
-    //         if let Some(state) = session.on_time_escape(now) {
-    //             match state {
-    //                 UploadTaskState::Finished => {
-    //                     sessions.canceled.push_back(session);
-    //                 },
-    //                 UploadTaskState::Error(_) => {
-    //                     sessions.canceled.push_back(session);
-    //                 }, 
-    //                 _ => {
-    //                     sessions.uploading.push(session);
-    //                 }
-    //             }
-    //         } else {
-    //             info!("{} remove session {}", session.channel(), session);
-    //         }
-    //     }
-
-    //     let mut canceled = LinkedList::new();
-    //     std::mem::swap(&mut sessions.canceled, &mut canceled);
-    //     for session in canceled {
-    //         if let Some(_) = session.on_time_escape(now) {
-    //             sessions.canceled.push_back(session);
-    //         } else {
-    //             info!("{} remove session {}", session.channel(), session);
-    //         }
-    //     }
-    // }
-
-    // fn session_count(&self) -> u32 {
-    //     self.0.read().unwrap().uploading.len() as u32 
-    // }
-
-    fn calc_speed(&self, when: Timestamp) -> u32 {
+    pub fn calc_speed(&self, when: Timestamp) -> (u32, usize) {
         let mut state = self.0.write().unwrap();
-        state.speed_counter.update(when)
+        
+        (state.speed_counter.update(when), state.sessions.len())
     }
 }
 
@@ -220,6 +160,7 @@ impl Uploaders {
 
 pub trait TunnelDownloadState: 'static + Send + Sync {
     fn on_time_escape(&mut self, now: Timestamp) -> bool;
-    fn on_response(&mut self);
+    fn on_piece_data(&mut self);
+    fn on_resp_interest(&mut self);
 }
 

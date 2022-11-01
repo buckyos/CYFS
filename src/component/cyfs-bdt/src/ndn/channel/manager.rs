@@ -81,16 +81,11 @@ impl ChannelManager {
 
         Ok(channels.entries.get(&remote).map(|c| c.clone()).map_or_else(|| {
             info!("{} create channel on {}", self, remote);
-            let initial_download_speed = channels.download_history_speed.average() / (channels.entries.len() as u32 + 1);
-            let initial_upload_speed = channels.upload_history_speed.average() / (channels.entries.len() as u32 + 1);
 
             let channel = Channel::new(
                 self.0.stack.clone(), 
                 tunnel, 
-                self.0.command_tunnel.clone(), 
-                HistorySpeed::new(initial_download_speed, channels.download_history_speed.config().clone()), 
-                HistorySpeed::new(initial_upload_speed, channels.download_history_speed.config().clone()), 
-            );
+                self.0.command_tunnel.clone());
             channels.entries.insert(remote, channel.clone());
 
             channel

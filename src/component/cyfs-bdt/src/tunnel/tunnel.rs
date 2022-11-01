@@ -40,6 +40,7 @@ pub trait Tunnel: Send + Sync + std::fmt::Display {
     fn ptr_eq(&self, other: &DynamicTunnel) -> bool;
     fn retain_keeper(&self);
     fn release_keeper(&self);
+    fn mark_dead(&self, former_state: TunnelState);
     fn reset(&self);
     fn mtu(&self) -> usize;
 }
