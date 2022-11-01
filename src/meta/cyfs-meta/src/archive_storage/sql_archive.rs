@@ -141,7 +141,6 @@ impl Archive for SqlArchive {
             }
         } else {
             let sql = "UPDATE device_stat SET update_time=date('now') WHERE obj_id=?1";
-            let mut conn = self.get_conn().await;
             conn.execute_sql(sqlx::query(sql).bind(objid.to_string())).await?;
     
             Ok(())
