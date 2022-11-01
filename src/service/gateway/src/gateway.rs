@@ -1,6 +1,5 @@
 use lazy_static::lazy_static;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use crate::control::HttpControlInterface;
 use crate::server::http::HttpServerManager;
@@ -78,7 +77,7 @@ impl Gateway {
         }
     }
 
-    pub async fn load_config(&mut self) -> Result<(), BuckyError> {
+    pub async fn load_config(&self) -> BuckyResult<()> {
         let config_file = self.config_file.as_path();
         if !config_file.exists() {
             let msg = format!(
@@ -121,7 +120,7 @@ impl Gateway {
         Ok(u)
     }
 
-    async fn parse_config(&mut self, cfg_node: toml::Value) -> Result<(), BuckyError> {
+    async fn parse_config(&self, cfg_node: toml::Value) -> BuckyResult<()> {
         if !cfg_node.is_table() {
             let msg = format!(
                 "config root node invalid format! file={}",
@@ -204,5 +203,5 @@ impl Gateway {
 }
 
 lazy_static! {
-    pub static ref GATEWAY: Mutex<Gateway> = Mutex::new(Gateway::new());
+    pub static ref GATEWAY: Gateway = Gateway::new();
 }
