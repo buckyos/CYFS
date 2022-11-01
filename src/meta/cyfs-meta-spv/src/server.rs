@@ -109,6 +109,7 @@ impl SPVHttpServer {
                 resp.set_body(body_str);
                 Ok(resp)
             }
+
         });
 
         let tmp_storage = storage.clone();

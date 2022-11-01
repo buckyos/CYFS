@@ -50,7 +50,7 @@ impl SqlArchive {
 
     async fn init_api_stat_tbl(&self) -> BuckyResult<()> {
         let sql = r#"CREATE TABLE IF NOT EXISTS "meta_api_stat" (
-            "api"	    CHAR(64) PRIMARY KEY NOT NULL UNIQUE,
+            "api_name"	    CHAR(64) PRIMARY KEY NOT NULL UNIQUE,
             "success"	INTEGER NOT NULL,
             "failed"	INTEGER NOT NULL
         )"#;
@@ -217,7 +217,6 @@ impl Archive for SqlArchive {
             success += temp_success;
             failed  += temp_failed;
             let sql = "UPDATE meta_object_stat SET success=?1, failed=?2 WHERE obj_id=?3";
-            let mut conn = self.get_conn().await;
             conn.execute_sql(sqlx::query(sql).bind(success).bind(failed).bind(objid.to_string())).await?;
             Ok(())
         }
@@ -251,7 +250,6 @@ impl Archive for SqlArchive {
             success += temp_success;
             failed  += temp_failed;
             let sql = "UPDATE meta_api_stat SET success=?1, failed=?2 WHERE api_name=?3";
-            let mut conn = self.get_conn().await;
             conn.execute_sql(sqlx::query(sql).bind(success).bind(failed).bind(api_name)).await?;
             Ok(())
         }
