@@ -149,10 +149,12 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                       coinbase: ObjectId,
                       interval: u32,
                       bfc_spv_node: String,
-                      dir: &Path, new_storage: fn(path: &Path) -> StorageRef,
+                      dir: &Path, 
+                      new_storage: fn(path: &Path) -> StorageRef,
+                      archive_storage: fn(path: &Path) -> ArchiveStorageRef,
                       network: NETWORK,
                       miner_key: PrivateKey) -> BuckyResult<Self> {
-        let chain = Chain::load(dir, new_storage).await?;
+        let chain = Chain::load(dir, new_storage, archive_storage).await?;
         let (sender, receiver) = mpsc::channel();
         Ok(BFTMiner {
             chain_type,
@@ -255,7 +257,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 }
             }
 
-            let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+            let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
             if tip_desc.number() < block.desc().number() - 1 {
                 let node = {
                     let miners = self.get_miners().await?;
@@ -268,7 +270,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 };
                 let ret = self.sync_chain(node.clone()).await;
                 if ret.is_ok() {
-                    let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+                    let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
                     status_info.height = tip_desc.number() + 1;
                     if status_info.height == block.desc().number() {
                         status_info.view = request.view;
@@ -313,7 +315,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
 
 
         if self.verify_prepare_block_sign(&block).await? {
-            let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+            let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
             if &tip_desc.hash() != block.desc().pre_block_hash() || tip_desc.number() + 1 != block.desc().number() {
                 log::error!("pre block hash check err.local {} height {} recv {} height {}",
                             tip_desc.hash().to_string(),
@@ -325,6 +327,9 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
             let storage = self.base.as_chain().get_chain_storage().state_storage();
             let _ = storage.recovery(tip_desc.number()).await;
             // state_ref.being_transaction().await?;
+
+            let archive_storage = self.base.as_chain().get_chain_storage().archive_storage();
+
             log::info!("thread {:?} cur {} verify block {} {} ",
                        std::thread::current().id(),
                        self.self_index().await?,
@@ -332,6 +337,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                        block.desc().calculate_id().to_string());
             let ret = BlockExecutor::execute_and_verify_block(&block,
                                                               &storage,
+                                                              &archive_storage,
                                                               Some(self.base.as_chain().get_chain_storage()),
                                                               self.base.bfc_spv_node(),
                                                               Some(self.miner_key.clone()),
@@ -531,7 +537,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 };
                 let ret = self.sync_chain(node.clone()).await;
                 if ret.is_ok() {
-                    let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+                    let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
                     status_info.height = tip_desc.number() + 1;
                     status_info.view = change_view.view;
 
@@ -586,7 +592,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
     }
 
     async fn on_recv_get_height(&self) -> BuckyResult<Vec<u8>> {
-        let (block_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+        let (block_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
         let height = block_desc.number();
         let resp_obj = self.new_proto_obj(BFTProtoDescContent::GetHeightResp(height), Vec::new()).await?;
         resp_obj.to_vec()
@@ -944,17 +950,17 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 }
             };
             let ret = self.base.as_chain().get_chain_storage().get_tip_info().await;
-            let (number, storage) = if let Err(e) = &ret {
+            let (number, storage, archive_storage) = if let Err(e) = &ret {
                 let code = get_meta_err_code(e)?;
                 if code == ERROR_NOT_FOUND {
-                    (-1 as i64, self.base.as_chain().get_chain_storage().state_storage())
+                    (-1 as i64, self.base.as_chain().get_chain_storage().state_storage(), self.base.as_chain().get_chain_storage().archive_storage())
                 } else {
                     log::error!("get tip info err. code = {}", code);
                     return Err(meta_err!(code));
                 }
             } else {
-                let (block_desc, storage) = ret.as_ref().unwrap();
-                (block_desc.number(), storage)
+                let (block_desc, storage, archive_storage) = ret.as_ref().unwrap();
+                (block_desc.number(), storage, archive_storage)
             };
 
             if height <= number {
@@ -976,7 +982,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                         }
 
                         if i > 1 {
-                            let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+                            let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
                             if &tip_desc.hash() != block.desc().pre_block_hash() {
                                 self.base.as_chain().recovery(i - 2).await?;
                                 i = i - 1;
@@ -985,6 +991,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                         }
                         let ret = BlockExecutor::execute_and_verify_block(&block,
                                                                           &storage,
+                                                                          &archive_storage,
                                                                           Some(self.base.as_chain().get_chain_storage()),
                                                                           self.base.bfc_spv_node(),
                                                                           Some(self.miner_key.clone()),
@@ -1020,7 +1027,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
 
     async fn start_mine_block(&self) -> BuckyResult<()> {
         assert_eq!(std::thread::current().id(), self.mining_thread.lock().unwrap().as_ref().unwrap().thread().id());
-        let (block, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+        let (block, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
         let view = {
             let status_info = self.status_info.lock().unwrap();
             if status_info.status != BFTMinerStatus::Init && status_info.status != BFTMinerStatus::ChangeViewSuccess {
@@ -1118,7 +1125,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 }
 
                 let state_storage = self.base.as_chain().get_chain_storage().state_storage();
-                let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+                let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
                 let _ = state_storage.recovery(tip_desc.number()).await;
 
                 log::info!("cur {} start mine block", self.self_index().await?);

@@ -27,6 +27,7 @@ pub struct TxExecutor {
     pub event_manager: EventManagerWeakRef,
     pub union_withdraw_manager: UnionWithdrawManagerWeakRef,
     pub nft_auction: NFTAuctionWeakRef,
+    pub ref_archive: ArchiveWeakRef,
     pub evm_config: evm::Config,
     pub mint_url: String,
     pub miner_key: Option<PrivateKey>,
@@ -42,6 +43,7 @@ impl TxExecutor {
                , event_manager: &EventManagerRef
                , union_withdraw_manager: &UnionWithdrawManagerRef
                , nft_auction: &NFTAuctionRef
+               , archive: &ArchiveRef
                , mint_url: String
                , miner_key: Option<PrivateKey>
                , miner_id: ObjectId
@@ -88,6 +90,7 @@ impl TxExecutor {
             event_manager: EventManagerRef::downgrade(event_manager),
             union_withdraw_manager: UnionWithdrawManagerRef::downgrade(union_withdraw_manager),
             nft_auction: NFTAuctionRef::downgrade(nft_auction),
+            ref_archive: ArchiveRef::downgrade(archive),
             evm_config: evm::Config::istanbul(),    // 先把evm的config创建在这里，以后能自己设置了，应该是外边传进来的
             mint_url,
             miner_key,
@@ -158,6 +161,7 @@ impl TxExecutor {
         self.ref_state.to_rc()?.dec_balance(&CoinTokenId::Coin(tx.desc().content().gas_coin_id), caller.id(), total_fee).await.map_err(|_| crate::meta_err!(ERROR_INVALID))?;
 
         let mut context = ExecuteContext::new(&self.ref_state.to_rc()?,
+                                              &self.ref_archive.to_rc()?,
                                               owner_block,
                                               caller,
                                               &self.config.to_rc()?,
