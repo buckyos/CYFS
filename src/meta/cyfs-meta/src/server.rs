@@ -65,7 +65,7 @@ impl MetaHttpServer {
                 let archive_storage = miner.as_chain().get_chain_storage().archive_storage();
                 let ref_archive = archive_storage.create_archive(true).await;
                 let status = if let Ok(_) = result { 0u8 } else { 1u8 };
-                ref_archive.set_meta_api_stat("/nonce", status).await;
+                let _ = ref_archive.set_meta_api_stat("/nonce", status).await;
                 let body_str = result.to_hex()?;
                 debug!("nonce request:{} {}", account.to_string(), body_str);
                 let mut resp = Response::new(StatusCode::Ok);
@@ -84,7 +84,7 @@ impl MetaHttpServer {
                 let archive_storage = miner.as_chain().get_chain_storage().archive_storage();
                 let ref_archive = archive_storage.create_archive(true).await;
                 let status = if let Ok(_) = result { 0u8 } else { 1u8 };
-                ref_archive.set_meta_api_stat("/receipt", status).await;
+                let _ = ref_archive.set_meta_api_stat("/receipt", status).await;
                 resp.set_body(result.to_hex()?);
                 Ok(resp)
             }
@@ -141,7 +141,7 @@ impl MetaHttpServer {
                 let archive_storage = miner.as_chain().get_chain_storage().archive_storage();
                 let ref_archive = archive_storage.create_archive(true).await;
                 let status = if let Ok(_) = result { 0u8 } else { 1u8 };
-                ref_archive.set_meta_api_stat("/commit", status).await;
+                let _ = ref_archive.set_meta_api_stat("/commit", status).await;
 
                 let body_str = result.to_hex()?;
                 let mut resp = Response::new(StatusCode::Ok);
@@ -166,7 +166,7 @@ impl MetaHttpServer {
                 let archive_storage = miner.as_chain().get_chain_storage().archive_storage();
                 let ref_archive = archive_storage.create_archive(true).await;
                 let status = if let Ok(_) = result { 0u8 } else { 1u8 };
-                ref_archive.set_meta_api_stat("/view", status).await;
+                let _ = ref_archive.set_meta_api_stat("/view", status).await;
 
                 let body_str = result.to_hex().unwrap();
                 let mut resp = Response::new(tide::http::StatusCode::Ok);
@@ -179,21 +179,21 @@ impl MetaHttpServer {
         app.at("/status").get(move |_req: Request<()>| {
             let miner = tmp_miner.clone();
             async move {
-                 // TODO: API 调用记录日志
+                 let mut status = 0u8;
                 let result = match miner.as_chain().get_chain_storage().get_status().await {
                     Ok(ret) => {
                         RequestResult::from(ret)
                     }
                     Err(e) => {
                         info!("get balance error.{}", e);
+                        status = 1u8;
                         RequestResult::from_err(e)
                     }
                 };
                 // API 调用记录日志
                 let archive_storage = miner.as_chain().get_chain_storage().archive_storage();
                 let ref_archive = archive_storage.create_archive(true).await;
-                let status = if let Ok(_) = result { 0u8 } else { 1u8 };
-                ref_archive.set_meta_api_stat("/status", status).await;
+                let _ = ref_archive.set_meta_api_stat("/status", status).await;
 
                 let body_str = serde_json::to_string(&result).unwrap();
                 let mut resp = Response::new(tide::http::StatusCode::Ok);
@@ -223,7 +223,7 @@ impl MetaHttpServer {
                 // API 调用记录日志
                 let archive_storage = miner.as_chain().get_chain_storage().archive_storage();
                 let ref_archive = archive_storage.create_archive(true).await;          
-                ref_archive.set_meta_api_stat("/balance", status).await;
+                let _ = ref_archive.set_meta_api_stat("/balance", status).await;
 
                 let body_str = serde_json::to_string(&result).unwrap();
                 let mut resp = Response::new(tide::http::StatusCode::Ok);
@@ -254,7 +254,7 @@ impl MetaHttpServer {
                 // API 调用记录日志
                 let archive_storage = miner.as_chain().get_chain_storage().archive_storage();
                 let ref_archive = archive_storage.create_archive(true).await;          
-                ref_archive.set_meta_api_stat("/tx/:tx_hash", status).await;
+                let _ = ref_archive.set_meta_api_stat("/tx/:tx_hash", status).await;
 
                 let body_str = serde_json::to_string(&result).unwrap();
                 let mut resp = Response::new(tide::http::StatusCode::Ok);
@@ -285,7 +285,7 @@ impl MetaHttpServer {
                 // API 调用记录日志
                 let archive_storage = miner.as_chain().get_chain_storage().archive_storage();
                 let ref_archive = archive_storage.create_archive(true).await;          
-                ref_archive.set_meta_api_stat("/tx_full/:tx_hash", status).await;
+                let _ = ref_archive.set_meta_api_stat("/tx_full/:tx_hash", status).await;
                 let mut resp = Response::new(tide::http::StatusCode::Ok);
                 resp.set_body(result.to_vec().unwrap());
                 Ok(resp)
@@ -312,7 +312,7 @@ impl MetaHttpServer {
                 // API 调用记录日志
                 let archive_storage = miner.as_chain().get_chain_storage().archive_storage();
                 let ref_archive = archive_storage.create_archive(true).await;          
-                ref_archive.set_meta_api_stat("/blocks", status).await;
+                let _ = ref_archive.set_meta_api_stat("/blocks", status).await;
 
                 let body_str = serde_json::to_string(&result).unwrap();
                 let mut resp = Response::new(tide::http::StatusCode::Ok);
