@@ -1,0 +1,15 @@
+[package]
+name = "meta-stat"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cyfs-base= {path="../../component/cyfs-base"}
+async-std = { version = "1.11", features = ["attributes"] }
+async-trait = "0.1.53"
+sqlx = { version = "0.6", features = [ "runtime-async-std-rustls", "sqlite", "macros" ] }
+log = "0.4"
+simple_logger = "3.0"
+clap = "2.34.0"
