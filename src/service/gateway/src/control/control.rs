@@ -273,19 +273,17 @@ impl ControlServerInner {
     ) -> Result<(), BuckyError> {
         match server.server_type.as_str() {
             "http" => {
-                let mut gateway = GATEWAY.lock().unwrap();
                 let value: toml::Value = serde_json::from_str(&server.value).unwrap();
                 
-                gateway.http_server_manager.load_server(value.as_table().unwrap())?;
+                GATEWAY.http_server_manager.load_server(value.as_table().unwrap())?;
 
-                gateway.http_server_manager.start();
+                GATEWAY.http_server_manager.start();
             }
             "stream" => {
                 let value: toml::Value = serde_json::from_str(&server.value).unwrap();
-                let mut gateway = GATEWAY.lock().unwrap();
-                gateway.stream_server_manager.load_server(value.as_table().unwrap())?;
+                GATEWAY.stream_server_manager.load_server(value.as_table().unwrap())?;
 
-                gateway.stream_server_manager.start();
+                GATEWAY.stream_server_manager.start();
             }
             value @ _ => {
                 let msg = format!(
@@ -304,12 +302,10 @@ impl ControlServerInner {
     fn stop_server(server: &DynamicServerInfo) -> Result<(), BuckyError> {
         match server.server_type.as_str() {
             "http" => {
-                let mut gateway = GATEWAY.lock().unwrap();
-                gateway.http_server_manager.remove_server(&server.id)?;
+                GATEWAY.http_server_manager.remove_server(&server.id)?;
             }
             "stream" => {
-                let mut gateway = GATEWAY.lock().unwrap();
-                gateway.stream_server_manager.remove_server(&server.id)?;
+                GATEWAY.stream_server_manager.remove_server(&server.id)?;
             }
             value @ _ => {
                 let msg = format!(

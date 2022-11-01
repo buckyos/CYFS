@@ -59,12 +59,12 @@ async fn main_run() {
     }
 
     // gateway核心服务
-    if let Err(e) = GATEWAY.lock().unwrap().load_config().await {
+    if let Err(e) = GATEWAY.load_config().await {
         error!("load config failed! err={}", e);
         std::process::exit(-1);
     }
 
-    GATEWAY.lock().unwrap().start();
+    GATEWAY.start();
 
     control::GatewayControlServer::run().await;
 }

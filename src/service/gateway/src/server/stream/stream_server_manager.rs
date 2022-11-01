@@ -1,19 +1,25 @@
 use super::{StreamServer, TcpStreamServer, UdpStreamServer};
-use cyfs_base::{BuckyError, BuckyErrorCode};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
+
+use std::sync::Mutex;
 
 pub struct StreamServerManager {
-    server_list: Vec<(String, Box<dyn StreamServer>)>,
+    server_list: Mutex<Vec<(String, Box<dyn StreamServer>)>>,
 }
 
 impl StreamServerManager {
     pub fn new() -> StreamServerManager {
         StreamServerManager {
-            server_list: Vec::new(),
+            server_list: Mutex::new(Vec::new()),
         }
     }
 
-    pub fn load(&mut self, stream_node: &Vec<toml::Value>) -> Result<(), BuckyError> {
-        assert!(self.server_list.len() == 0);
+    pub fn count(&self) -> usize {
+        self.server_list.lock().unwrap().len()
+    }
+
+    pub fn load(&self, stream_node: &Vec<toml::Value>) -> BuckyResult<()> {
+        assert!(self.count() == 0);
 
         for v in stream_node {
             let node = v.as_table();
@@ -46,7 +52,7 @@ impl StreamServerManager {
         Ok(())
     }
 
-    pub fn load_server(&mut self, server_node: &toml::value::Table) -> Result<(), BuckyError> {
+    pub fn load_server(&self, server_node: &toml::value::Table) -> BuckyResult<()> {
         let id = match server_node.get("id") {
             Some(toml::Value::String(v)) => v,
             _ => {
@@ -67,7 +73,10 @@ impl StreamServerManager {
                     return Err(BuckyError::from(e));
                 }
 
-                self.server_list.push((id.to_owned(), Box::new(server)));
+                self.server_list
+                    .lock()
+                    .unwrap()
+                    .push((id.to_owned(), Box::new(server)));
 
                 Ok(())
             }
@@ -79,7 +88,10 @@ impl StreamServerManager {
                     return Err(BuckyError::from(e));
                 }
 
-                self.server_list.push((id.to_owned(), Box::new(server)));
+                self.server_list
+                    .lock()
+                    .unwrap()
+                    .push((id.to_owned(), Box::new(server)));
 
                 Ok(())
             }
@@ -93,27 +105,32 @@ impl StreamServerManager {
     }
 
     pub fn start(&self) {
-        for (_id, server) in &self.server_list {
+        let list = self.server_list.lock().unwrap();
+        for (_id, server) in list.iter() {
             let _r = server.start();
-            // let _r = server.start().await;
         }
     }
 
     // 停止并移除指定的server block
-    pub fn remove_server(&mut self, id: &str) -> Result<(), BuckyError> {
-        let pos = match self.server_list.iter().position(|v| v.0 == id) {
-            Some(pos) => pos,
-            None => {
-                let msg = format!("stream server not found! id={}", id);
-                error!("{}", msg);
+    pub fn remove_server(&self, id: &str) -> BuckyResult<()> {
+        let (id, server) = {
+            let mut list = self.server_list.lock().unwrap();
+            let pos = match list.iter().position(|v| v.0 == id) {
+                Some(pos) => pos,
+                None => {
+                    let msg = format!("stream server not found! id={}", id);
+                    error!("{}", msg);
 
-                return Err(BuckyError::new(BuckyErrorCode::NotFound, &msg));
-            }
+                    return Err(BuckyError::new(BuckyErrorCode::NotFound, &msg));
+                }
+            };
+
+            info!("will remove stream server: {}", id);
+            list.remove(pos)
         };
 
-        info!("will remove stream server: {}", id);
-        let server = self.server_list.remove(pos);
-        server.1.stop();
+        info!("will stop stream server: {}", id);
+        server.stop();
 
         Ok(())
     }
