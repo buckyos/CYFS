@@ -2,7 +2,7 @@ use log::*;
 use std::{
     collections::{LinkedList},
     time::{Duration},
-    cell::RefCell
+    cell::RefCell, 
 };
 use cyfs_debug::Mutex;
 use async_std::{
@@ -16,12 +16,11 @@ use crate::{
     cc::{self, CongestionControl},
 };
 use super::super::super::{
-    types::*, 
     chunk::ChunkEncoder
 };
 use super::super::{
     protocol::v0::*, 
-    channel::{Channel}
+    channel::{self}
 };
 use super::{
     tunnel::*
@@ -72,7 +71,7 @@ struct RespEstimateStub {
 }
 
 struct TunnelImpl {
-    config: Config, 
+    config: channel::Config, 
     raw_tunnel: RawTunnel, 
     start_at: Timestamp, 
     active_timestamp: Timestamp, 
@@ -92,10 +91,10 @@ impl std::fmt::Display for UdpTunnel {
 
 impl UdpTunnel {
     pub fn new(
-        config: Config, 
+        config: channel::Config, 
         raw_tunnel: RawTunnel, 
         active_timestamp: Timestamp) -> Self {
-        let cc = CcImpl::new(&config.cc);
+        let cc = CcImpl::new(&config.udp.cc);
         Self(Arc::new(TunnelImpl {
             config, 
             raw_tunnel, 
@@ -110,7 +109,7 @@ impl UdpTunnel {
         }))
     }
 
-    fn config(&self) -> &Config {
+    fn config(&self) -> &channel::Config {
         &self.0.config
     }
 
@@ -292,6 +291,9 @@ impl ChannelTunnel for UdpTunnel {
 
 
     fn on_time_escape(&self, now: Timestamp) -> BuckyResult<()> {
+        if TunnelState::Dead == self.0.raw_tunnel.state() {
+            return Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel's dead"));
+        }
         let send_count = {
             let mut cc = self.0.cc.lock().unwrap();
             cc.cc.on_time_escape(now);
@@ -310,7 +312,7 @@ impl ChannelTunnel for UdpTunnel {
             if let Some(index) = loss_from_index {
                 cc.no_resp_counter += 1;
                 cc.break_counter += 1;
-                if cc.break_counter > self.config().break_loss_count {
+                if cc.break_counter > self.config().udp.break_loss_count {
                     cc.no_resp_counter = 0;
                     cc.break_counter = 0;
                     cc.est_stubs = LinkedList::new();
@@ -319,7 +321,7 @@ impl ChannelTunnel for UdpTunnel {
                 } else {
                     cc.est_stubs = cc.est_stubs.split_off(index + 1);
                     cc.on_air -= loss_count;
-                    if cc.no_resp_counter > self.config().no_resp_loss_count  {
+                    if cc.no_resp_counter > self.config().udp.no_resp_loss_count  {
                         debug!("{} outcome on no resp {} rto {:?} ", self, loss_count, cc.cc.rto());
                         cc.no_resp_counter = 0;
                         cc.cc.on_no_resp(0);
@@ -343,7 +345,10 @@ impl ChannelTunnel for UdpTunnel {
                     Ok(0)
                 }
             }
-        }?;
+        }.map_err(|err| {
+            self.0.raw_tunnel.mark_dead(TunnelState::Active(self.0.active_timestamp));
+            err
+        })?;
         self.send_pieces(send_count);
         Ok(())
     }
@@ -355,7 +360,8 @@ impl ChannelTunnel for UdpTunnel {
     fn download_state(&self) -> Box<dyn TunnelDownloadState> {
         Box::new(UdpDownloadState {
             config: self.config().clone(), 
-            last_pushed: bucky_time_now()
+            last_pushed: None, 
+            next_send_time: None
         })
     }
 
@@ -365,19 +371,84 @@ impl ChannelTunnel for UdpTunnel {
 }
 
 
+#[derive(Clone, Copy)]
+enum LastPushed {
+    PieceData(Timestamp), 
+    RespInterest(Timestamp)
+}
+
+impl LastPushed {
+    fn time(&self) -> Timestamp {
+        match self {
+            Self::PieceData(at) => *at, 
+            Self::RespInterest(at) => *at
+        }
+    }
+}
 
 struct UdpDownloadState {
-    config: Config, 
-    last_pushed: Timestamp, 
+    config: channel::Config, 
+    last_pushed: Option<LastPushed>,  
+    next_send_time: Option<Timestamp>
 }
 
 impl TunnelDownloadState for UdpDownloadState {
-    fn on_response(&mut self) {
-        self.last_pushed = bucky_time_now()
+    fn on_piece_data(&mut self) {
+        let now = bucky_time_now();
+        if let Some(last_pushed) = self.last_pushed {
+            if now > last_pushed.time() {
+                match last_pushed {
+                    LastPushed::PieceData(at) => {
+                        let interval = u64::min(self.config.block_interval.as_micros() as u64, 2 * (now - at));
+                        self.last_pushed = Some(LastPushed::PieceData(now));
+                        self.next_send_time = Some(now + interval);
+                    },
+                    LastPushed::RespInterest(_) => {
+                        self.last_pushed = Some(LastPushed::PieceData(now));
+                        self.next_send_time = Some(now + self.config.block_interval.as_micros() as u64);
+                    }
+                }
+            }
+        } else {
+            self.last_pushed = Some(LastPushed::PieceData(now));
+            self.next_send_time = Some(now + self.config.block_interval.as_micros() as u64);
+        }
     }
 
+    fn on_resp_interest(&mut self) {
+        let now = bucky_time_now();
+        if let Some(last_pushed) = self.last_pushed {
+            if now > last_pushed.time() {
+                match last_pushed {
+                    LastPushed::PieceData(_) => {
+                        self.last_pushed = Some(LastPushed::RespInterest(now));
+                        self.next_send_time = Some(now + self.config.block_interval.as_micros() as u64);
+                    },
+                    LastPushed::RespInterest(at) => {
+                        let interval = 2 * (now - at);
+                        self.last_pushed = Some(LastPushed::RespInterest(now));
+                        self.next_send_time = Some(now + interval);
+                    }
+                }
+            }
+        } else {
+            self.last_pushed = Some(LastPushed::RespInterest(now));
+            self.next_send_time = Some(now + self.config.block_interval.as_micros() as u64);
+        }
+    }
+
+
     fn on_time_escape(&mut self, now: Timestamp) -> bool {
-        // now > self.last_pushed && Duration::from_micros(now - self.last_pushed) > self.config.resend_interval 
-        false
+        if let Some(next_send_time) = self.next_send_time {
+            if now > next_send_time {
+                let interval = next_send_time - self.last_pushed.clone().unwrap().time();
+                self.next_send_time = Some(next_send_time + interval);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 }

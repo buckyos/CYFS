@@ -137,54 +137,6 @@ impl Tunnel {
         tunnel
     }
 
-    pub fn mark_dead(&self, former_state: tunnel::TunnelState) {
-        let notify = match &former_state {
-            tunnel::TunnelState::Connecting => {
-                let state = &mut *self.0.state.lock().unwrap();
-                match state {
-                    TunnelState::Connecting(connecting) => {
-                        info!("{} Connecting=>Dead", self);
-                        let owner = connecting.owner.clone();
-                        *state = TunnelState::Dead;
-                        Some((owner, tunnel::TunnelState::Dead, None))
-                    }, 
-                    _ => {
-                        None
-                    }
-                }
-            }, 
-            tunnel::TunnelState::Active(remote_timestamp) => {
-                let remote_timestamp = *remote_timestamp;
-                let state = &mut *self.0.state.lock().unwrap();
-                match state {
-                    TunnelState::Active(active) => {
-                        let owner = active.owner.clone();
-                        if active.remote_timestamp == remote_timestamp {
-                            info!("{} Active({})=>Dead for active by {}", self, active.remote_timestamp, remote_timestamp);
-                            let mut dead_waiters = StateWaiter::new();
-                            std::mem::swap(&mut dead_waiters, &mut active.dead_waiters);
-                            *state = TunnelState::Dead;
-                            Some((owner, tunnel::TunnelState::Dead, Some(dead_waiters)))
-                        } else {
-                            None
-                        }
-                    }, 
-                    _ => {
-                        None
-                    }
-                }
-            }, 
-            tunnel::TunnelState::Dead => None
-        };
-
-        if let Some((owner, new_state, dead_waiters)) = notify {
-            if let Some(dead_waiters) = dead_waiters {
-                dead_waiters.wake();
-            }
-            owner.sync_tunnel_state(&DynamicTunnel::new(self.clone()), former_state, new_state);
-        }
-    }
-
     pub fn pre_active(&self, remote_timestamp: Timestamp) -> BuckyResult<TunnelContainer> {
         self.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
         struct NextStep {
@@ -1178,6 +1130,54 @@ impl tunnel::Tunnel for Tunnel {
             }
         } {
             dead_waiters.wake();
+        }
+    }
+
+    fn mark_dead(&self, former_state: tunnel::TunnelState) {
+        let notify = match &former_state {
+            tunnel::TunnelState::Connecting => {
+                let state = &mut *self.0.state.lock().unwrap();
+                match state {
+                    TunnelState::Connecting(connecting) => {
+                        info!("{} Connecting=>Dead", self);
+                        let owner = connecting.owner.clone();
+                        *state = TunnelState::Dead;
+                        Some((owner, tunnel::TunnelState::Dead, None))
+                    }, 
+                    _ => {
+                        None
+                    }
+                }
+            }, 
+            tunnel::TunnelState::Active(remote_timestamp) => {
+                let remote_timestamp = *remote_timestamp;
+                let state = &mut *self.0.state.lock().unwrap();
+                match state {
+                    TunnelState::Active(active) => {
+                        let owner = active.owner.clone();
+                        if active.remote_timestamp == remote_timestamp {
+                            info!("{} Active({})=>Dead for active by {}", self, active.remote_timestamp, remote_timestamp);
+                            let mut dead_waiters = StateWaiter::new();
+                            std::mem::swap(&mut dead_waiters, &mut active.dead_waiters);
+                            *state = TunnelState::Dead;
+                            Some((owner, tunnel::TunnelState::Dead, Some(dead_waiters)))
+                        } else {
+                            None
+                        }
+                    }, 
+                    _ => {
+                        None
+                    }
+                }
+            }, 
+            tunnel::TunnelState::Dead => None
+        };
+
+        if let Some((owner, new_state, dead_waiters)) = notify {
+            if let Some(dead_waiters) = dead_waiters {
+                dead_waiters.wake();
+            }
+            owner.sync_tunnel_state(&DynamicTunnel::new(self.clone()), former_state, new_state);
         }
     }
 }

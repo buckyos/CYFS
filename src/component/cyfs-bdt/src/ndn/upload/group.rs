@@ -42,6 +42,7 @@ impl UploadGroup {
     }
 }
 
+#[async_trait::async_trait]
 impl UploadTask for UploadGroup {
     fn clone_as_task(&self) -> Box<dyn UploadTask> {
         Box::new(self.clone())
@@ -49,6 +50,10 @@ impl UploadTask for UploadGroup {
 
     fn state(&self) -> UploadTaskState {
         UploadTaskState::Uploading(0)
+    }
+
+    async fn wait_finish(&self) -> UploadTaskState {
+        unimplemented!()
     }
 
     fn control_state(&self) -> UploadTaskControlState {
