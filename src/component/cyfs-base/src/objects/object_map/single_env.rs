@@ -421,7 +421,7 @@ impl ObjectMapSingleOpEnv {
     }
 
     pub fn abort(self) -> BuckyResult<()> {
-        info!("will abord single_op_env: sid={}", self.sid);
+        info!("will abort single_op_env: sid={}", self.sid);
         self.cache.abort();
 
         Ok(())
