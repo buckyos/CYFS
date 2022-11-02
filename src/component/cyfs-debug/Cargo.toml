@@ -15,7 +15,7 @@ trace = []
 http_report = ["url", "surf", "formdata", "futures", "hyper"]
 
 [dependencies]
-log = { version = "=0.4.16", features = [
+log = { version = "0.4", features = [
     "max_level_trace",
     "release_max_level_trace",
 ] }
