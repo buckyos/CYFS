@@ -4241,6 +4241,9 @@ dependencies = [
  "clap",
  "cyfs-base",
  "log 0.4.16",
+ "once_cell",
+ "serde",
+ "serde_json",
  "simple_logger 3.0.0",
  "sqlx 0.6.2",
 ]
