@@ -25,7 +25,6 @@ members = [
     "./component/cyfs-chunk-cache",
     "./component/cyfs-chunk-lib",
 	"./component/cyfs-mobile-stack",
-    "./component/cyfs-dsg-client",
 
     "./service/base",
     "./service/ood-control",
@@ -36,7 +35,6 @@ members = [
     "./service/file-manager",
     "./service/cyfs-runtime",
     "./service/app-manager-lib",
-    "./service/dsg-service",
 
     "./tools/cyfs-client",
     "./tools/pack-tools",
@@ -66,7 +64,6 @@ members = [
     "./tests/cyfs-stack-test",
     "./tests/cyfs-bench-mark",
     "./tests/cyfs-stack-bench",
-    #"./tests/dsg-test",
 ]
 
 [profile.release]

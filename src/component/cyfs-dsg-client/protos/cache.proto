@@ -1,6 +1,0 @@
-syntax = "proto3"; 
-
-message CacheDesc {
-    repeated bytes chunks = 1;
-    repeated bytes contracts = 2; 
-}
