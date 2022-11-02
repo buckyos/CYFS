@@ -35,6 +35,10 @@ mod tests {
             .build()
             .unwrap()
             .start();
+
+        info!("create minidump file");
+        let helper = dump::DumpHelper::get_instance();
+        helper.dump();
     }
 }
 

@@ -5,6 +5,7 @@ use once_cell::sync::OnceCell;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
+
 #[derive(Clone)]
 pub struct ProcessDeadHelper {
     interval_in_secs: u64,
@@ -42,7 +43,7 @@ impl ProcessDeadHelper {
         }
     }
 
-    pub fn load_config_value(&mut self, config_node: &toml::Value) -> BuckyResult<()> {
+    fn load_config_value(&mut self, config_node: &toml::Value) -> BuckyResult<()> {
         let node = config_node.as_table().ok_or_else(|| {
             let msg = format!("invalid debug config format! content={}", config_node,);
             error!("{}", msg);
@@ -124,6 +125,12 @@ impl ProcessDeadHelper {
                 exit_timeout / (1000 * 1000)
             );
             println!("process will exit on task system dead...");
+
+            let ins = crate::dump::DumpHelper::get_instance();
+            if ins.is_enable_dump() {
+                ins.dump();
+            }
+ 
             std::thread::sleep(std::time::Duration::from_secs(5));
             std::process::exit(-1);
         }
