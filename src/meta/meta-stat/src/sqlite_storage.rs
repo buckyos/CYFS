@@ -1,5 +1,5 @@
 use crate::storage::{Storage, map_sql_err, MetaStat, Period};
-use cyfs_base::{BuckyResult, BuckyError, BuckyErrorCode, bucky_time_now};
+use cyfs_base::{BuckyResult, BuckyError, BuckyErrorCode, bucky_time_now, bucky_time_to_js_time, js_time_to_bucky_time};
 use sqlx::sqlite::{SqlitePoolOptions, SqliteJournalMode, SqliteConnectOptions, SqliteRow};
 use sqlx::{Pool, Sqlite, Transaction, Row, Executor, ConnectOptions};
 use std::path::Path;
@@ -50,14 +50,34 @@ impl Storage for SqliteStorage {
 
     async fn get_desc_add(&self, obj_type: u8, period: Period) -> BuckyResult<u64> {
         let now = bucky_time_now();
-        let row = sqlx::query(GET_OBJ_ADD_DESC_NUM).bind(obj_type).bind(now as i64).bind(now as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
+        let mut start = bucky_time_to_js_time(now);
+        if period == Period::Daily {
+            start -= 86400 * 1000;
+        } else if period == Period::Weekly {
+            start -= 7 * 86400 * 1000;
+        } else {
+            start -= 30 * 86400 * 1000;
+        }
+        let start = js_time_to_bucky_time(start);
+
+        let row = sqlx::query(GET_OBJ_ADD_DESC_NUM).bind(obj_type).bind(start as i64).bind(now as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
         let sum: i64 = row.try_get(0).unwrap_or(0);
         Ok(sum as u64)
     }
 
     async fn get_desc_active(&self, obj_type: u8, period: Period) -> BuckyResult<u64> {
         let now = bucky_time_now();
-        let row = sqlx::query(GET_OBJ_ACTIVE_DESC_NUM).bind(obj_type).bind(now as i64).bind(now as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
+        let mut start = bucky_time_to_js_time(now);
+        if period == Period::Daily {
+            start -= 86400 * 1000;
+        } else if period == Period::Weekly {
+            start -= 7 * 86400 * 1000;
+        } else {
+            start -= 30 * 86400 * 1000;
+        }
+        let start = js_time_to_bucky_time(start);
+
+        let row = sqlx::query(GET_OBJ_ACTIVE_DESC_NUM).bind(obj_type).bind(start as i64).bind(now as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
         let sum: i64 = row.try_get(0).unwrap_or(0);
         Ok(sum as u64)
     }
