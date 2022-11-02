@@ -1833,6 +1833,7 @@ dependencies = [
  "http-types",
  "hyper 0.10.16",
  "lazy_static",
+ "libc",
  "log 0.4.16",
  "log-panics",
  "num_cpus",
@@ -1846,6 +1847,7 @@ dependencies = [
  "timer",
  "toml",
  "url 2.3.0",
+ "winapi",
 ]
 
 [[package]]
@@ -4004,9 +4006,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.136"
+version = "0.2.137"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55edcf6c0bb319052dea84732cf99db461780fd5e8d3eb46ab6ff312ab31f197"
+checksum = "fc7fcc620a3bff7cdd7a365be3376c97191aeaccc2a603e600951e452615bf89"
 
 [[package]]
 name = "libm"

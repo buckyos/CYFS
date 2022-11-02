@@ -1,10 +1,8 @@
-use std::path::Path;
 use log::*;
 
 use cyfs_debug::*;
 
 async fn main_run() {
-    
     CyfsLoggerBuilder::new_app("cyfs-debug")
         .level("trace")
         .console("trace")
@@ -25,10 +23,13 @@ async fn main_run() {
     warn!("output warn log");
     error!("output error log");
 
-    async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
+    // async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
 
     info!("create minidump file");
-    cyfs_debug::create_dump(Path::new("."), "minidump_%p.dmp", false);
+    let helper = cyfs_debug::DumpHelper::get_instance();
+    helper.dump();
+
+    // cyfs_debug::create_dump(Path::new("."), "minidump_%p.dmp", false);
 }
 
 fn main() {
