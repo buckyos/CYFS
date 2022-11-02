@@ -18,7 +18,7 @@ cyfs-base-meta = {path = "../../component/cyfs-base-meta"}
 cyfs-client = {path="../../tools/cyfs-client"}
 async-std = { version = "1.11", features = ["attributes", "tokio1"] }
 async-trait = "0.1.53"
-log = "=0.4.16"
+log = "0.4"
 url = "2.2"
 rand = "0.7"
 toml = "0.5"
