@@ -1,68 +1,59 @@
-
-use log::*;
-use async_trait::async_trait;
-use std::{
-    collections::BTreeSet, 
-    sync::{Arc, RwLock},
-    path::{Path, PathBuf},
-    ops::Range
+use crate::{
+    ndn::{ChunkListDesc, ChunkReader, ChunkWriter, ChunkWriterExt},
+    types::*,
 };
 use async_std::{
-    prelude::*, 
-    fs::{self, OpenOptions}, 
-    io::{SeekFrom}, 
     channel,
-    task
+    fs::{self, OpenOptions},
+    io::SeekFrom,
+    prelude::*,
+    task,
 };
+use async_trait::async_trait;
 use cyfs_base::*;
 use cyfs_util::*;
-use crate::{
-    types::*, 
-    ndn::{ChunkListDesc, ChunkWriter,ChunkWriterExt, ChunkReader}
+use log::*;
+use std::{
+    collections::BTreeSet,
+    ops::Range,
+    path::{Path, PathBuf},
+    sync::{Arc, RwLock},
 };
 
 struct ReaderImpl {
     ndc: Box<dyn NamedDataCache>,
-    tracker: Box<dyn TrackerCache>, 
+    tracker: Box<dyn TrackerCache>,
 }
 
 #[derive(Clone)]
 pub struct LocalChunkReader(Arc<ReaderImpl>);
 
 impl LocalChunkReader {
-    pub fn new(
-        ndc: &dyn NamedDataCache, 
-        tracker: &dyn TrackerCache
-    ) -> Self {
+    pub fn new(ndc: &dyn NamedDataCache, tracker: &dyn TrackerCache) -> Self {
         Self(Arc::new(ReaderImpl {
-            ndc: ndc.clone(), 
-            tracker: tracker.clone()
+            ndc: ndc.clone(),
+            tracker: tracker.clone(),
         }))
     }
 
-    async fn read_chunk_from_file(chunk: &ChunkId, path: &Path, offset: u64) -> BuckyResult<Vec<u8>> {
+    async fn read_chunk_from_file(
+        chunk: &ChunkId,
+        path: &Path,
+        offset: u64,
+    ) -> BuckyResult<Vec<u8>> {
         debug!("begin read {} from file {:?}", chunk, path);
         let mut file = OpenOptions::new()
             .read(true)
             .open(path)
             .await
             .map_err(|e| {
-                let msg = format!(
-                    "open file {:?} failed for {}",
-                    path, 
-                    e
-                );
+                let msg = format!("open file {:?} failed for {}", path, e);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::IoError, msg)
             })?;
-        
+
         let actual_offset = file.seek(SeekFrom::Start(offset)).await.map_err(|e| {
-            let msg = format!(
-                "seek file {:?} to offset {} failed for {}", 
-                path, 
-                offset,
-                e
-            );
+            let msg = format!("seek file {:?} to offset {} failed for {}", path, offset, e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::IoError, msg)
@@ -70,10 +61,8 @@ impl LocalChunkReader {
 
         if actual_offset != offset {
             let msg = format!(
-                "seek file {:?} to offset {} actual offset {}", 
-                path, 
-                offset,
-                actual_offset
+                "seek file {:?} to offset {} actual offset {}",
+                path, offset, actual_offset
             );
             error!("{}", msg);
 
@@ -81,19 +70,19 @@ impl LocalChunkReader {
         }
 
         let mut content = Vec::with_capacity(chunk.len());
-        let read = file.read_to_end(&mut content).await?;
-
-        if read != chunk.len() {
+        unsafe { content.set_len(chunk.len()) };
+        file.read_exact(&mut content).await.map_err(|e| {
             let msg = format!(
-                "read {} bytes from file {:?} but chunk len is {}",
-                read,
-                path, 
-                chunk.len()
+                "read chunk from file {:?} error, chunk={}, len={}, {}",
+                path,
+                chunk,
+                chunk.len(),
+                e
             );
             error!("{}", msg);
 
-            return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
-        }
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
 
         let actual_id = ChunkId::calculate(content.as_slice()).await?;
 
@@ -109,8 +98,8 @@ impl LocalChunkReader {
 
     async fn is_chunk_stored_in_file(&self, chunk: &ChunkId, path: &Path) -> BuckyResult<bool> {
         let request = GetTrackerPositionRequest {
-            id: chunk.to_string(), 
-            direction: Some(TrackerDirection::Store)
+            id: chunk.to_string(),
+            direction: Some(TrackerDirection::Store),
         };
         let ret = self.0.tracker.get_position(&request).await?;
         if ret.len() == 0 {
@@ -122,20 +111,18 @@ impl LocalChunkReader {
                         if path.eq(Path::new(exists)) {
                             return Ok(true);
                         }
-                    }, 
+                    }
                     TrackerPostion::FileRange(fr) => {
                         if path.eq(Path::new(&fr.path)) {
                             return Ok(true);
                         }
-                    }, 
-                    _ => {
-
                     }
+                    _ => {}
                 }
             }
             Ok(false)
         }
-    } 
+    }
 }
 
 #[async_trait]
@@ -156,7 +143,7 @@ impl ChunkReader for LocalChunkReader {
                 } else {
                     false
                 }
-            }, 
+            }
             Err(e) => {
                 error!("got chunk state {} from database failed for {}", chunk, e);
                 false
@@ -166,56 +153,74 @@ impl ChunkReader for LocalChunkReader {
 
     async fn get(&self, chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>> {
         let request = GetTrackerPositionRequest {
-            id: chunk.to_string(), 
-            direction: Some(TrackerDirection::Store)
+            id: chunk.to_string(),
+            direction: Some(TrackerDirection::Store),
         };
         let ret = self.0.tracker.get_position(&request).await?;
         if ret.len() == 0 {
-            Err(BuckyError::new(BuckyErrorCode::NotFound, "chunk not exists"))
+            Err(BuckyError::new(
+                BuckyErrorCode::NotFound,
+                "chunk not exists",
+            ))
         } else {
             for c in ret {
                 let read_ret = match &c.pos {
                     //FIXME
                     TrackerPostion::File(path) => {
                         Self::read_chunk_from_file(chunk, Path::new(path), 0).await
-                    }, 
-                    TrackerPostion::FileRange(fr) => {
-                        Self::read_chunk_from_file(chunk, Path::new(fr.path.as_str()), fr.range_begin).await
-                    }, 
-                    _ => {
-                        Err(BuckyError::new(BuckyErrorCode::InvalidFormat, "unsupport reader"))
                     }
+                    TrackerPostion::FileRange(fr) => {
+                        Self::read_chunk_from_file(
+                            chunk,
+                            Path::new(fr.path.as_str()),
+                            fr.range_begin,
+                        )
+                        .await
+                    }
+                    _ => Err(BuckyError::new(
+                        BuckyErrorCode::InvalidFormat,
+                        "unsupport reader",
+                    )),
                 };
-                
+
                 match read_ret {
                     Ok(content) => {
                         return Ok(Arc::new(content));
-                    }, 
+                    }
                     Err(e) => {
                         // 如果tracker中的pos无法正确读取，从tracker中删除这条记录
-                        let _ = self.0.tracker.remove_position(&RemoveTrackerPositionRequest {
-                            id: chunk.to_string(), 
-                            direction: Some(TrackerDirection::Store), 
-                            pos: Some(c.pos.clone())
-                        }).await;
-                        error!("read {} from tracker position {:?} failed for {}", chunk, c.pos, e);
+                        let _ = self
+                            .0
+                            .tracker
+                            .remove_position(&RemoveTrackerPositionRequest {
+                                id: chunk.to_string(),
+                                direction: Some(TrackerDirection::Store),
+                                pos: Some(c.pos.clone()),
+                            })
+                            .await;
+                        error!(
+                            "read {} from tracker position {:?} failed for {}",
+                            chunk, c.pos, e
+                        );
                         continue;
                     }
                 }
             }
 
             error!("read {} from all tracker position failed", chunk);
-            Err(BuckyError::new(BuckyErrorCode::NotFound, "chunk not exists"))
+            Err(BuckyError::new(
+                BuckyErrorCode::NotFound,
+                "chunk not exists",
+            ))
         }
     }
 }
 
-
 struct WriterImpl {
-    path: PathBuf, 
-    tmp_path: Option<PathBuf>, 
-    chunk: ChunkId, 
-    ndc: Box<dyn NamedDataCache>, 
+    path: PathBuf,
+    tmp_path: Option<PathBuf>,
+    chunk: ChunkId,
+    ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
 }
 
@@ -224,30 +229,37 @@ pub struct LocalChunkWriter(Arc<WriterImpl>);
 
 impl std::fmt::Display for LocalChunkWriter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "LocalChunkWriter{{chunk:{}, path:{:?}}}", self.chunk(), self.path())
+        write!(
+            f,
+            "LocalChunkWriter{{chunk:{}, path:{:?}}}",
+            self.chunk(),
+            self.path()
+        )
     }
 }
 
 impl LocalChunkWriter {
     pub fn from_path(
-        path: &Path, 
-        chunk: &ChunkId, 
-        ndc: &dyn NamedDataCache, 
-        tracker: &dyn TrackerCache
+        path: &Path,
+        chunk: &ChunkId,
+        ndc: &dyn NamedDataCache,
+        tracker: &dyn TrackerCache,
     ) -> Self {
-        let tmp_path = format!("{}-{}", path.file_name().unwrap().to_str().unwrap(), bucky_time_now());
+        let tmp_path = format!(
+            "{}-{}",
+            path.file_name().unwrap().to_str().unwrap(),
+            bucky_time_now()
+        );
         Self::new(
-            path.to_owned(), 
-            Some(path.parent().unwrap().join(tmp_path.as_str())), 
-            chunk, 
-            ndc, 
-            tracker
+            path.to_owned(),
+            Some(path.parent().unwrap().join(tmp_path.as_str())),
+            chunk,
+            ndc,
+            tracker,
         )
     }
 
-    pub async fn track_path(
-        &self
-    ) -> BuckyResult<()> {
+    pub async fn track_path(&self) -> BuckyResult<()> {
         let request = UpdateChunkStateRequest {
             chunk_id: self.chunk().clone(),
             current_state: None,
@@ -258,7 +270,7 @@ impl LocalChunkWriter {
             e
         })?;
         let request = AddTrackerPositonRequest {
-            id: self.chunk().to_string(), 
+            id: self.chunk().to_string(),
             direction: TrackerDirection::Store,
             pos: TrackerPostion::File(self.path().to_str().unwrap().to_string()),
             flags: 0,
@@ -272,17 +284,18 @@ impl LocalChunkWriter {
     }
 
     pub fn new(
-        path: PathBuf, 
-        tmp_path: Option<PathBuf>,  
-        chunk: &ChunkId, 
-        ndc: &dyn NamedDataCache, 
-        tracker: &dyn TrackerCache) -> Self {
+        path: PathBuf,
+        tmp_path: Option<PathBuf>,
+        chunk: &ChunkId,
+        ndc: &dyn NamedDataCache,
+        tracker: &dyn TrackerCache,
+    ) -> Self {
         Self(Arc::new(WriterImpl {
-            path, 
-            tmp_path, 
-            chunk: chunk.clone(),  
-            ndc: ndc.clone(), 
-            tracker: tracker.clone()
+            path,
+            tmp_path,
+            chunk: chunk.clone(),
+            ndc: ndc.clone(),
+            tracker: tracker.clone(),
         }))
     }
 
@@ -291,42 +304,37 @@ impl LocalChunkWriter {
             return Ok(());
         }
 
-        let path = self.0.tmp_path.as_ref().map(|p| p.as_path()).unwrap_or(self.path());
+        let path = self
+            .0
+            .tmp_path
+            .as_ref()
+            .map(|p| p.as_path())
+            .unwrap_or(self.path());
 
-        let mut file = OpenOptions::new().create(true).write(true).open(path).await
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(path)
+            .await
             .map_err(|e| {
-                let msg = format!(
-                    "{} open file failed for {}",
-                    self,
-                    e
-                );
+                let msg = format!("{} open file failed for {}", self, e);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::IoError, msg)
             })?;
 
-        let _ = file.write(content.as_slice()).await
-            .map_err(|e| {
-                let msg = format!(
-                    "{} write chunk file failed for {}",
-                    self, 
-                    e
-                );
-                error!("{}", msg);
+        let _ = file.write(content.as_slice()).await.map_err(|e| {
+            let msg = format!("{} write chunk file failed for {}", self, e);
+            error!("{}", msg);
 
-                BuckyError::new(BuckyErrorCode::IoError, msg)
-            })?;
-
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
 
         if self.0.tmp_path.is_some() {
             let tmp_path = self.0.tmp_path.as_ref().unwrap().as_path();
             let ret = fs::rename(tmp_path, self.path()).await;
             if ret.is_err() {
                 if !self.path().exists() {
-                    let msg = format!(
-                        "{} rename tmp file failed for {}",
-                        self, 
-                        ret.err().unwrap()
-                    );
+                    let msg = format!("{} rename tmp file failed for {}", self, ret.err().unwrap());
                     error!("{}", msg);
 
                     return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
@@ -334,10 +342,7 @@ impl LocalChunkWriter {
             }
         }
 
-        info!(
-            "{} writen chunk to file",
-            self
-        );
+        info!("{} writen chunk to file", self);
 
         self.track_path().await
     }
@@ -350,7 +355,6 @@ impl LocalChunkWriter {
         &self.0.chunk
     }
 }
-
 
 #[async_trait]
 impl ChunkWriter for LocalChunkWriter {
@@ -374,7 +378,7 @@ impl ChunkWriter for LocalChunkWriter {
             let tmp_path = self.0.tmp_path.as_ref().unwrap().as_path();
             let _ = fs::remove_file(tmp_path).await;
         }
-        
+
         ret
     }
 
@@ -384,37 +388,34 @@ impl ChunkWriter for LocalChunkWriter {
     }
 }
 
-
 struct WriteTaskImpl {
-    chunk: ChunkId, 
-    content: Arc<Vec<u8>>, 
-    waiter: StateWaiter
+    chunk: ChunkId,
+    content: Arc<Vec<u8>>,
+    waiter: StateWaiter,
 }
-
 
 enum WriteTask {
-    Write(WriteTaskImpl), 
-    Finish
+    Write(WriteTaskImpl),
+    Finish,
 }
 
-
 struct WrittingState {
-    written: BTreeSet<ChunkId>, 
-    task_sender: channel::Sender<WriteTask>, 
-    waiter: StateWaiter
-} 
+    written: BTreeSet<ChunkId>,
+    task_sender: channel::Sender<WriteTask>,
+    waiter: StateWaiter,
+}
 
 enum WriteState {
-    Writting(WrittingState), 
-    Finished
+    Writting(WrittingState),
+    Finished,
 }
 
 struct ListWriterImpl {
-    path: PathBuf, 
-    desc: ChunkListDesc, 
-    ndc: Box<dyn NamedDataCache>, 
+    path: PathBuf,
+    desc: ChunkListDesc,
+    ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
-    state: RwLock<WriteState>
+    state: RwLock<WriteState>,
 }
 
 #[derive(Clone)]
@@ -428,40 +429,34 @@ impl std::fmt::Display for LocalChunkListWriter {
 
 impl LocalChunkListWriter {
     pub fn new(
-        path: PathBuf, 
-        desc: &ChunkListDesc, 
-        ndc: &dyn NamedDataCache, 
-        tracker: &dyn TrackerCache) -> Self {
+        path: PathBuf,
+        desc: &ChunkListDesc,
+        ndc: &dyn NamedDataCache,
+        tracker: &dyn TrackerCache,
+    ) -> Self {
         //FIXME: 如果下载速度高于磁盘速度，这里就会出问题
         let (task_sender, task_recver) = channel::bounded(100);
         let writer = Self(Arc::new(ListWriterImpl {
-            path, 
-            desc: desc.clone(),  
-            ndc: ndc.clone(), 
-            tracker: tracker.clone(),  
+            path,
+            desc: desc.clone(),
+            ndc: ndc.clone(),
+            tracker: tracker.clone(),
             state: RwLock::new(WriteState::Writting(WrittingState {
-                written: BTreeSet::new(), 
-                task_sender, 
-                waiter: StateWaiter::new()
-            })), 
+                written: BTreeSet::new(),
+                task_sender,
+                waiter: StateWaiter::new(),
+            })),
         }));
 
         {
             let writer = writer.clone();
             //FIXME: stop it
-            task::spawn(async move {
-                writer.start(task_recver).await
-            });
+            task::spawn(async move { writer.start(task_recver).await });
         }
         writer
     }
 
-
-    async fn track_chunk_index(
-        &self, 
-        chunk: &ChunkId, 
-        index: usize
-    ) -> BuckyResult<()> {
+    async fn track_chunk_index(&self, chunk: &ChunkId, index: usize) -> BuckyResult<()> {
         let offset = self.chunk_list().offset_of(index).unwrap();
 
         let request = UpdateChunkStateRequest {
@@ -474,7 +469,7 @@ impl LocalChunkListWriter {
             e
         })?;
         let request = AddTrackerPositonRequest {
-            id: chunk.to_string(), 
+            id: chunk.to_string(),
             direction: TrackerDirection::Store,
             pos: TrackerPostion::FileRange(PostionFileRange {
                 path: self.path().to_str().unwrap().to_string(),
@@ -514,7 +509,7 @@ impl LocalChunkListWriter {
                         WriteTask::Write(task) => {
                             let _ = self.write_chunk(&task.chunk, task.content.as_slice()).await;
                             task.waiter.wake();
-                        }, 
+                        }
                         WriteTask::Finish => {
                             info!("{} finished", self);
                             let waiter = {
@@ -525,8 +520,8 @@ impl LocalChunkListWriter {
                                         writting.waiter.transfer_into(&mut waiter);
                                         *state = WriteState::Finished;
                                         waiter
-                                    }, 
-                                    WriteState::Finished => unreachable!()
+                                    }
+                                    WriteState::Finished => unreachable!(),
                                 }
                             };
 
@@ -538,11 +533,7 @@ impl LocalChunkListWriter {
                                     .open(self.path())
                                     .await
                                     .map_err(|e| {
-                                        let msg = format!(
-                                            "{} open file failed for {}",
-                                            self,
-                                            e
-                                        );
+                                        let msg = format!("{} open file failed for {}", self, e);
                                         error!("{}", msg);
                                         BuckyError::new(BuckyErrorCode::IoError, msg)
                                     });
@@ -552,7 +543,7 @@ impl LocalChunkListWriter {
                             break;
                         }
                     }
-                }, 
+                }
                 Err(e) => {
                     error!("{} break write loop for {}", self, e);
                     break;
@@ -562,23 +553,17 @@ impl LocalChunkListWriter {
         Ok(())
     }
 
-
     async fn write_chunk_index(
-        &self, 
-        chunk: &ChunkId, 
-        content: &[u8], 
-        index: usize, 
-        file: &mut async_std::fs::File
+        &self,
+        chunk: &ChunkId,
+        content: &[u8],
+        index: usize,
+        file: &mut async_std::fs::File,
     ) -> BuckyResult<()> {
         info!("{} will write {} to file", self, index);
         let offset = self.chunk_list().offset_of(index).unwrap();
         let actual_offset = file.seek(SeekFrom::Start(offset)).await.map_err(|e| {
-            let msg = format!(
-                "{} seek file to offset {} failed for {}",
-                self,
-                offset,
-                e
-            );
+            let msg = format!("{} seek file to offset {} failed for {}", self, offset, e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::IoError, msg)
@@ -587,33 +572,21 @@ impl LocalChunkListWriter {
         if actual_offset != offset {
             let msg = format!(
                 "{} seek file to offset {} actual offset {}",
-                self,
-                offset,
-                actual_offset
+                self, offset, actual_offset
             );
             error!("{}", msg);
 
             return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
         }
 
-        let _ = file.write(content).await
-            .map_err(|e| {
-                let msg = format!(
-                    "{} write chunk {} file failed for {}",
-                    self, 
-                    index,
-                    e
-                );
-                error!("{}", msg);
+        let _ = file.write(content).await.map_err(|e| {
+            let msg = format!("{} write chunk {} file failed for {}", self, index, e);
+            error!("{}", msg);
 
-                BuckyError::new(BuckyErrorCode::IoError, msg)
-            })?;
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
 
-        info!(
-            "{} writen chunk {} to file",
-            self, 
-            index
-        );
+        info!("{} writen chunk {} to file", self, index);
 
         self.track_chunk_index(chunk, index).await
     }
@@ -630,57 +603,59 @@ impl LocalChunkListWriter {
             .open(self.path())
             .await
             .map_err(|e| {
-                let msg = format!(
-                    "{} open file failed for {}",
-                    self,
-                    e
-                );
+                let msg = format!("{} open file failed for {}", self, e);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::IoError, msg)
             })?;
 
         // 强制设置为目标大小
-        file.set_len(self.chunk_list().total_len()).await.map_err(|e| {
-            let msg = format!(
-                "{} create trans data file with len {} failed for {}",
-                self, 
-                self.chunk_list().total_len(),
-                e
-            );
-            error!("{}", msg);
+        file.set_len(self.chunk_list().total_len())
+            .await
+            .map_err(|e| {
+                let msg = format!(
+                    "{} create trans data file with len {} failed for {}",
+                    self,
+                    self.chunk_list().total_len(),
+                    e
+                );
+                error!("{}", msg);
 
-            BuckyError::new(BuckyErrorCode::IoError, msg)
-        })?;
+                BuckyError::new(BuckyErrorCode::IoError, msg)
+            })?;
 
         let chunk_indies = self.chunk_list().index_of(chunk).unwrap();
 
         let mut has_err = None;
 
         for chunk_index in chunk_indies {
-            match self.write_chunk_index(chunk, content, *chunk_index, &mut file).await {
-                Ok(_) => continue, 
+            match self
+                .write_chunk_index(chunk, content, *chunk_index, &mut file)
+                .await
+            {
+                Ok(_) => continue,
                 Err(err) => {
                     has_err = Some(err);
                     break;
                 }
             }
         }
-        
+
         let time = std::time::Instant::now();
         info!("will flush file after write chunk {} : {}", chunk, self);
 
         file.flush().await.map_err(|e| {
-            let msg = format!(
-                "flush file {} error: {}",
-                self,
-                e
-            );
+            let msg = format!("flush file {} error: {}", self, e);
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
 
         if has_err.is_none() {
-            info!("write chunk {}, to file success! {}, during={}", chunk, self, time.elapsed().as_millis());
+            info!(
+                "write chunk {}, to file success! {}, during={}",
+                chunk,
+                self,
+                time.elapsed().as_millis()
+            );
             Ok(())
         } else {
             Err(has_err.unwrap())
@@ -698,11 +673,7 @@ impl ChunkWriter for LocalChunkListWriter {
         Ok(())
     }
 
-    async fn write(
-        &self, 
-        chunk: &ChunkId, 
-        content: Arc<Vec<u8>>) -> BuckyResult<()> {
-        
+    async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
         let task_sender = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
@@ -711,9 +682,12 @@ impl ChunkWriter for LocalChunkListWriter {
                         Ok(Some(writting.task_sender.clone()))
                     } else {
                         Ok(None)
-                    }  
-                } 
-                WriteState::Finished => Err(BuckyError::new(BuckyErrorCode::ErrorState, format!("{} finished", self)))
+                    }
+                }
+                WriteState::Finished => Err(BuckyError::new(
+                    BuckyErrorCode::ErrorState,
+                    format!("{} finished", self),
+                )),
             }
         }?;
 
@@ -722,23 +696,30 @@ impl ChunkWriter for LocalChunkListWriter {
             let notifier = waiter.new_waiter();
 
             let task = WriteTask::Write(WriteTaskImpl {
-                chunk: chunk.clone(), 
-                content, 
-                waiter});
-            
-            let _ = task_sender.send(task).await
-                .map_err(|e| BuckyError::new(BuckyErrorCode::ErrorState, format!("{} not writting {}", self, e)))?;
-            
+                chunk: chunk.clone(),
+                content,
+                waiter,
+            });
+
+            let _ = task_sender.send(task).await.map_err(|e| {
+                BuckyError::new(
+                    BuckyErrorCode::ErrorState,
+                    format!("{} not writting {}", self, e),
+                )
+            })?;
+
             StateWaiter::wait(notifier, || ()).await;
 
-            debug!("chunk file writer notified to return, writer:{}, chunk:{}", self, chunk);
+            debug!(
+                "chunk file writer notified to return, writer:{}, chunk:{}",
+                self, chunk
+            );
         }
 
         Ok(())
     }
 
     async fn finish(&self) -> BuckyResult<()> {
-
         let task = WriteTask::Finish;
 
         let (task_sender, waiter) = {
@@ -746,24 +727,33 @@ impl ChunkWriter for LocalChunkListWriter {
             match state {
                 WriteState::Writting(writting) => {
                     if writting.waiter.len() > 0 {
-                        Err(BuckyError::new(BuckyErrorCode::ErrorState, format!("{} has called finished", self)))
+                        Err(BuckyError::new(
+                            BuckyErrorCode::ErrorState,
+                            format!("{} has called finished", self),
+                        ))
                     } else {
                         Ok((writting.task_sender.clone(), writting.waiter.new_waiter()))
                     }
                 }
-                WriteState::Finished => Err(BuckyError::new(BuckyErrorCode::ErrorState, format!("{} not writting", self)))
+                WriteState::Finished => Err(BuckyError::new(
+                    BuckyErrorCode::ErrorState,
+                    format!("{} not writting", self),
+                )),
             }
         }?;
-        
-        let _ = task_sender.send(task).await
-            .map_err(|e| BuckyError::new(BuckyErrorCode::ErrorState, format!("{} not writting {}", self, e)))?;
+
+        let _ = task_sender.send(task).await.map_err(|e| {
+            BuckyError::new(
+                BuckyErrorCode::ErrorState,
+                format!("{} not writting {}", self, e),
+            )
+        })?;
 
         let _ = StateWaiter::wait(waiter, || ()).await;
 
         Ok(())
     }
 }
-
 
 #[async_trait]
 impl ChunkWriterExt for LocalChunkListWriter {
@@ -775,8 +765,12 @@ impl ChunkWriterExt for LocalChunkListWriter {
         Ok(())
     }
 
-    async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>, _range: Option<Range<u64>>) -> BuckyResult<()> {
-        
+    async fn write(
+        &self,
+        chunk: &ChunkId,
+        content: Arc<Vec<u8>>,
+        _range: Option<Range<u64>>,
+    ) -> BuckyResult<()> {
         let task_sender = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
@@ -785,9 +779,12 @@ impl ChunkWriterExt for LocalChunkListWriter {
                         Ok(Some(writting.task_sender.clone()))
                     } else {
                         Ok(None)
-                    }  
-                } 
-                WriteState::Finished => Err(BuckyError::new(BuckyErrorCode::ErrorState, format!("{} finished", self)))
+                    }
+                }
+                WriteState::Finished => Err(BuckyError::new(
+                    BuckyErrorCode::ErrorState,
+                    format!("{} finished", self),
+                )),
             }
         }?;
 
@@ -796,24 +793,30 @@ impl ChunkWriterExt for LocalChunkListWriter {
             let notifier = waiter.new_waiter();
 
             let task = WriteTask::Write(WriteTaskImpl {
-                chunk: chunk.clone(), 
-                content, 
-                waiter});
-            
-            let _ = task_sender.send(task).await
-                .map_err(|e| BuckyError::new(BuckyErrorCode::ErrorState, format!("{} not writting {}", self, e)))?;
-            
+                chunk: chunk.clone(),
+                content,
+                waiter,
+            });
+
+            let _ = task_sender.send(task).await.map_err(|e| {
+                BuckyError::new(
+                    BuckyErrorCode::ErrorState,
+                    format!("{} not writting {}", self, e),
+                )
+            })?;
+
             StateWaiter::wait(notifier, || ()).await;
 
-            debug!("chunk file writer notified to return, writer:{}, chunk:{}", self, chunk);
+            debug!(
+                "chunk file writer notified to return, writer:{}, chunk:{}",
+                self, chunk
+            );
         }
 
         Ok(())
     }
 
-
     async fn finish(&self) -> BuckyResult<()> {
-
         let task = WriteTask::Finish;
 
         let (task_sender, waiter) = {
@@ -821,21 +824,30 @@ impl ChunkWriterExt for LocalChunkListWriter {
             match state {
                 WriteState::Writting(writting) => {
                     if writting.waiter.len() > 0 {
-                        Err(BuckyError::new(BuckyErrorCode::ErrorState, format!("{} has called finished", self)))
+                        Err(BuckyError::new(
+                            BuckyErrorCode::ErrorState,
+                            format!("{} has called finished", self),
+                        ))
                     } else {
                         Ok((writting.task_sender.clone(), writting.waiter.new_waiter()))
                     }
                 }
-                WriteState::Finished => Err(BuckyError::new(BuckyErrorCode::ErrorState, format!("{} not writting", self)))
+                WriteState::Finished => Err(BuckyError::new(
+                    BuckyErrorCode::ErrorState,
+                    format!("{} not writting", self),
+                )),
             }
         }?;
-        
-        let _ = task_sender.send(task).await
-            .map_err(|e| BuckyError::new(BuckyErrorCode::ErrorState, format!("{} not writting {}", self, e)))?;
+
+        let _ = task_sender.send(task).await.map_err(|e| {
+            BuckyError::new(
+                BuckyErrorCode::ErrorState,
+                format!("{} not writting {}", self, e),
+            )
+        })?;
 
         let _ = StateWaiter::wait(waiter, || ()).await;
 
         Ok(())
     }
 }
-
