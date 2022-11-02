@@ -489,7 +489,7 @@ impl ObjectMapPathOpEnv {
     }
 
     pub fn abort(self) -> BuckyResult<()> {
-        info!("will abord path_op_env: sid={}", self.sid);
+        info!("will abort path_op_env: sid={}", self.sid);
 
         // 释放cache里面的pending
         self.cache.abort();
