@@ -18,7 +18,7 @@ async fn main() -> BuckyResult<()> {
     
     let matches = App::new("meta stat").version(cyfs_base::get_version())
         .arg(Arg::with_name("db_path").short("d").long("db_path").value_name("PATH").help("meta archive sqlite db path.\ndefault is current archive_db db path.").takes_value(true))
-        .arg(Arg::with_name("last").short("l").long("last").value_name("LAST").help("query last monthly_stat\ndefault is last month.").takes_value(true))
+        .arg(Arg::with_name("last").short("l").long("last").value_name("LAST").help("query last month stat\ndefault is last month.").takes_value(true))
         .get_matches(); 
 
     let db_path = matches.value_of("db_path").unwrap_or("./");

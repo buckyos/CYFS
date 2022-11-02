@@ -1,5 +1,5 @@
-use crate::storage::{Storage, map_sql_err, MetaStat};
-use cyfs_base::{BuckyResult, BuckyError, BuckyErrorCode};
+use crate::storage::{Storage, map_sql_err, MetaStat, Period};
+use cyfs_base::{BuckyResult, BuckyError, BuckyErrorCode, bucky_time_now};
 use sqlx::sqlite::{SqlitePoolOptions, SqliteJournalMode, SqliteConnectOptions, SqliteRow};
 use sqlx::{Pool, Sqlite, Transaction, Row, Executor, ConnectOptions};
 use std::path::Path;
@@ -9,6 +9,8 @@ use async_trait::async_trait;
 use once_cell::sync::OnceCell;
 
 const GET_OBJ_DESC_NUM: &str = r#"SELECT count(*) from device_stat where obj_type = ?1"#;
+const GET_OBJ_ADD_DESC_NUM: &str = r#"SELECT count(*) from device_stat where obj_type = ?1 and create_time >= ?2 and create_time <= ?3"#;
+const GET_OBJ_ACTIVE_DESC_NUM: &str = r#"SELECT count(*) from device_stat where obj_type = ?1 and update_time >= ?2 and update_time <= ?3"#;
 
 pub struct SqliteStorage {
     pool: OnceCell<Pool<Sqlite>>,
@@ -41,17 +43,23 @@ impl Storage for SqliteStorage {
     }
 
     async fn get_desc(&self, obj_type: u8) -> BuckyResult<u64> {
-        let row = sqlx::query(GET_OBJ_DESC_NUM).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
+        let row = sqlx::query(GET_OBJ_DESC_NUM).bind(obj_type).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
         let sum: i64 = row.try_get(0).unwrap_or(0);
         Ok(sum as u64)
     }
 
-    async fn get_desc_add_daily(&self, obj_type: u8) -> BuckyResult<u64> {
-        todo!()
+    async fn get_desc_add(&self, obj_type: u8, period: Period) -> BuckyResult<u64> {
+        let now = bucky_time_now();
+        let row = sqlx::query(GET_OBJ_ADD_DESC_NUM).bind(obj_type).bind(now as i64).bind(now as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
+        let sum: i64 = row.try_get(0).unwrap_or(0);
+        Ok(sum as u64)
     }
 
-    async fn get_desc_active_daily(&self, obj_type: u8) -> BuckyResult<u64> {
-        todo!()
+    async fn get_desc_active(&self, obj_type: u8, period: Period) -> BuckyResult<u64> {
+        let now = bucky_time_now();
+        let row = sqlx::query(GET_OBJ_ACTIVE_DESC_NUM).bind(obj_type).bind(now as i64).bind(now as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
+        let sum: i64 = row.try_get(0).unwrap_or(0);
+        Ok(sum as u64)
     }
 
     async fn get_meta_api_stat(&self) -> BuckyResult<Vec<MetaStat>> {

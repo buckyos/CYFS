@@ -133,15 +133,17 @@ impl Archive for SqlArchive {
         let query_result = conn.query_one(sqlx::query(sql).bind(objid.to_string())).await;
         return if let Err(err) = query_result {
             if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
-                let insert_sql = "INSERT INTO device_stat(obj_id,obj_type,create_time,update_time) VALUES (?1,?2,date('now'),date('now'))";
-                conn.execute_sql(sqlx::query(insert_sql).bind(objid.to_string()).bind(obj_type)).await?;
+                let insert_sql = "INSERT INTO device_stat(obj_id,obj_type,create_time,update_time) VALUES (?1,?2,?3,?4)";
+                let now = bucky_time_now();
+                conn.execute_sql(sqlx::query(insert_sql).bind(objid.to_string()).bind(obj_type).bind(now as i64).bind(now as i64)).await?;
                 Ok(())
             } else {
                 Err(crate::meta_err!(ERROR_EXCEPTION))
             }
         } else {
-            let sql = "UPDATE device_stat SET update_time=date('now') WHERE obj_id=?1";
-            conn.execute_sql(sqlx::query(sql).bind(objid.to_string())).await?;
+            let sql = "UPDATE device_stat SET update_time=?1 WHERE obj_id=?2";
+            let now = bucky_time_now();
+            conn.execute_sql(sqlx::query(sql).bind(now as i64).bind(objid.to_string())).await?;
     
             Ok(())
         }
@@ -275,8 +277,8 @@ impl ArchiveStorage for SqlArchiveStorage {
             let mut options = MetaConnectionOptions::from_str(format!("sqlite://{}", path).as_str()).unwrap()
                 .create_if_missing(true)
                 .journal_mode(SqliteJournalMode::Memory);
-            options.log_statements(LevelFilter::Debug)
-                .log_slow_statements(LevelFilter::Debug, Duration::new(10, 0));
+            options.log_statements(LevelFilter::Off)
+                .log_slow_statements(LevelFilter::Off, Duration::new(10, 0));
             let conn = MetaConnection::connect_with(&options).await;
             if let Err(e) = &conn {
                 let msg = format!("{:?}", e);
