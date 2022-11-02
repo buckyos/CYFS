@@ -45,3 +45,9 @@ formdata = { version = "0.13", optional = true }
 futures = { version = "0.3", optional = true }
 hyper = { version = "0.10", optional = true }
 num_cpus = "^1.13"
+
+[target.'cfg(windows)'.dependencies]
+winapi = {version = "0.3.9", features = ["std", "basetsd", "processthreadsapi"]}
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.137"
