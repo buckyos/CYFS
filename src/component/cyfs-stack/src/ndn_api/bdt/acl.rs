@@ -12,10 +12,12 @@ use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::acl::*;
 
+use std::sync::Arc;
+
 #[derive(Clone)]
 pub struct BdtNDNDataAclProcessor {
     zone_manager: ZoneManagerRef,
-    processor: NDNInputProcessorRef,
+    processor: Arc<NDNAclInputProcessor>,
     cache: BdtDataAclCache,
 }
 
@@ -24,7 +26,6 @@ impl BdtNDNDataAclProcessor {
         zone_manager: ZoneManagerRef,
         acl: AclManagerRef,
         router_handlers: RouterHandlersManager,
-        non_processor: NONInputProcessorRef,
         data_manager: LocalDataManager,
     ) -> Self {
         // 最终的反射应答处理器
@@ -43,9 +44,13 @@ impl BdtNDNDataAclProcessor {
 
         Self {
             zone_manager,
-            processor,
+            processor: Arc::new(processor),
             cache,
         }
+    }
+
+    pub fn bind_non_processor(&self, non_processor: NONInputProcessorRef) {
+        self.processor.bind_non_processor(non_processor)
     }
 
     fn process_resp<T>(resp: BuckyResult<T>) -> BuckyResult<()> {
@@ -70,6 +75,7 @@ impl BdtNDNDataAclProcessor {
             None
         };
 
+        // first resolve the request's source
         let dec = if let Some(referer) = &referer {
             &referer.dec_id
         } else {
@@ -81,8 +87,12 @@ impl BdtNDNDataAclProcessor {
             .resolve_source_info(dec, req.source)
             .await?;
 
+        // check if need verify by acl at top level
         let access_without_acl = if let Some(referer) = &referer {
-            if referer.req_path.is_none() && referer.referer_object.is_empty() {
+            if referer.req_path.is_none()
+                && referer.referer_object.is_empty()
+                && referer.object_id.obj_type_code() == ObjectTypeCode::Chunk
+            {
                 true
             } else {
                 false

@@ -34,7 +34,7 @@ use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use cyfs_base::*;
 use cyfs_bdt::{ChunkReader, DeviceCache, Stack, StackGuard, StackOpenParams};
-use cyfs_chunk_cache::ChunkManager;
+use cyfs_chunk_cache::{ChunkManager, ChunkManagerRef};
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
@@ -243,7 +243,7 @@ impl CyfsStackImpl {
         );
 
         // 初始化bdt协议栈
-        let bdt_stack = Self::init_bdt_stack(
+        let (bdt_stack, bdt_event) = Self::init_bdt_stack(
             zone_manager.clone(),
             acl_manager.clone(),
             bdt_param,
@@ -252,11 +252,7 @@ impl CyfsStackImpl {
             ndc.clone(),
             tracker.clone(),
             router_handlers.clone(),
-            Box::new(ChunkStoreReader::new(
-                chunk_manager.clone(),
-                ndc.clone(),
-                tracker.clone(),
-            )),
+            chunk_manager.clone(),
         )
         .await?;
 
@@ -318,6 +314,8 @@ impl CyfsStackImpl {
             fail_handler.clone(),
             chunk_manager.clone(),
         );
+
+        bdt_event.bind_non_processor(non_service.router_processor().clone());
 
         let trans_service = TransService::new(
             noc.clone(),
@@ -692,8 +690,23 @@ impl CyfsStackImpl {
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         router_handlers: RouterHandlersManager,
-        chunk_store: Box<dyn ChunkReader>,
-    ) -> BuckyResult<StackGuard> {
+        chunk_manager: ChunkManagerRef,
+    ) -> BuckyResult<(StackGuard, BdtNDNEventHandler)> {
+        let chunk_store = Box::new(ChunkStoreReader::new(
+            chunk_manager.clone(),
+            ndc.clone(),
+            tracker.clone(),
+        )) as Box<dyn ChunkReader>;
+
+        let event = BdtNDNEventHandler::new(
+            zone_manager,
+            acl,
+            router_handlers,
+            chunk_manager,
+            ndc.clone(),
+            tracker.clone(),
+        );
+
         let mut bdt_params = StackOpenParams::new(isolate);
 
         if !params.tcp_port_mapping.is_empty() {
@@ -718,11 +731,7 @@ impl CyfsStackImpl {
         bdt_params.outer_cache = Some(device_cache);
         bdt_params.chunk_store = Some(chunk_store);
 
-        bdt_params.ndn_event = Some(Box::new(BdtNDNEventHandler::new(
-            zone_manager,
-            acl,
-            router_handlers,
-        )));
+        bdt_params.ndn_event = Some(Box::new(event.clone()));
 
         let ret = Stack::open(params.device, params.secret, bdt_params).await;
 
@@ -756,7 +765,7 @@ impl CyfsStackImpl {
             );
         }
 
-        Ok(bdt_stack)
+        Ok((bdt_stack, event))
     }
 
     async fn init_raw_noc(
@@ -857,10 +866,7 @@ impl CyfsStackImpl {
         }
     }
 
-    async fn init_chunk_manager(
-        chunk_manager: &Arc<ChunkManager>,
-        isolate: &str,
-    ) -> BuckyResult<()> {
+    async fn init_chunk_manager(chunk_manager: &ChunkManagerRef, isolate: &str) -> BuckyResult<()> {
         match chunk_manager.init(isolate).await {
             Ok(()) => {
                 log::info!("init chunk manager success!");

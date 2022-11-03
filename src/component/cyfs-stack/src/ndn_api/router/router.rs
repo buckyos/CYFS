@@ -1,4 +1,3 @@
-use super::super::acl::*;
 use super::super::handler::*;
 use super::super::ndc::*;
 use super::super::ndn::*;
@@ -43,7 +42,7 @@ pub(crate) struct NDNRouter {
 }
 
 impl NDNRouter {
-    fn new_raw(
+    fn new(
         acl: AclManagerRef,
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
@@ -61,7 +60,8 @@ impl NDNRouter {
 
         // local的ndn也使用router加载file
         let ndc_processor =
-            NDCLevelInputProcessor::new_raw(chunk_manager.clone(), ndc, tracker, non_router);
+            NDCLevelInputProcessor::new(acl.clone(), chunk_manager.clone(), ndc, tracker, non_router);
+
         let ret = Self {
             acl,
             bdt_stack,
@@ -92,7 +92,7 @@ impl NDNRouter {
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
         // 不带input acl的处理器
-        let raw_processor = Self::new_raw(
+        let processor = Self::new(
             acl.clone(),
             bdt_stack,
             ndc,
@@ -106,10 +106,7 @@ impl NDNRouter {
             fail_handler,
         );
 
-        // 带input acl的处理器
-        let acl_processor = NDNAclInputProcessor::new(acl, raw_processor.clone());
-
-        acl_processor
+        processor
     }
 
     async fn get_data_forward(&self, target: DeviceId) -> BuckyResult<NDNInputProcessorRef> {

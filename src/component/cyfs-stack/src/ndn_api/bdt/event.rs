@@ -1,6 +1,8 @@
 use super::acl::BdtNDNDataAclProcessor;
+use crate::ndn_api::LocalDataManager;
 use crate::{
     acl::*,
+    non::NONInputProcessorRef,
     non_api::NONHandlerCaller,
     router_handler::{RouterHandlers, RouterHandlersManager},
     zone::*,
@@ -11,8 +13,10 @@ use cyfs_bdt::{
     ndn::channel::{protocol::v0::*, Channel, DownloadSession},
     DefaultNdnEventHandler, NdnEventHandler, Stack,
 };
+use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 use cyfs_util::acl::*;
+
 
 #[derive(Clone)]
 pub struct BdtNDNEventHandler {
@@ -26,12 +30,26 @@ impl BdtNDNEventHandler {
         zone_manager: ZoneManagerRef,
         acl: AclManagerRef,
         handlers: RouterHandlersManager,
+        chunk_manager: ChunkManagerRef,
+        ndc: Box<dyn NamedDataCache>,
+        tracker: Box<dyn TrackerCache>,
     ) -> Self {
+        let data_manager = LocalDataManager::new(chunk_manager, ndc, tracker);
+
         Self {
-            acl: BdtNDNDataAclProcessor::new(zone_manager, acl, handlers.clone()),
+            acl: BdtNDNDataAclProcessor::new(
+                zone_manager,
+                acl,
+                handlers.clone(),
+                data_manager,
+            ),
             handlers,
             default: DefaultNdnEventHandler::new(),
         }
+    }
+
+    pub fn bind_non_processor(&self, non_processor: NONInputProcessorRef) {
+        self.acl.bind_non_processor(non_processor)
     }
 
     async fn call_default_with_acl(

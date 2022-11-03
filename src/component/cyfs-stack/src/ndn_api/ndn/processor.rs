@@ -44,27 +44,27 @@ pub(crate) struct NDNLevelInputProcessor {
 }
 
 impl NDNLevelInputProcessor {
-    fn new_raw(
+    fn new(
         acl: AclManagerRef,
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        raw_noc_processor: NONInputProcessorRef,
-        inner_non_processor: NONInputProcessorRef,
+        non_processor: NONInputProcessorRef,
         router_handlers: RouterHandlersManager,
         chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
-        let ndc_processor = NDCLevelInputProcessor::new_raw(
+        let ndc_processor = NDCLevelInputProcessor::new(
+            acl.clone(),
             chunk_manager.clone(),
             ndc,
             tracker,
-            raw_noc_processor.clone(),
+            non_processor.clone(),
         );
 
-        // non level processor
-        let target_object_loader = NDNObjectLoader::new(inner_non_processor);
+        // target object loader
+        let target_object_loader = NDNObjectLoader::new(non_processor);
 
         let ret = Self {
             acl,
@@ -85,21 +85,19 @@ impl NDNLevelInputProcessor {
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        raw_noc_processor: NONInputProcessorRef,
-        inner_non_processor: NONInputProcessorRef,
+        non_processor: NONInputProcessorRef,
         router_handlers: RouterHandlersManager,
         chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
         // 不带input acl的处理器
-        let raw_processor = Self::new_raw(
-            acl.clone(),
+        let processor = Self::new(
+            acl,
             bdt_stack,
             ndc,
             tracker,
-            raw_noc_processor,
-            inner_non_processor,
+            non_processor,
             router_handlers,
             chunk_manager,
             forward,
@@ -107,7 +105,7 @@ impl NDNLevelInputProcessor {
         );
 
         // 带同zone input acl的处理器
-        let acl_processor = NDNAclInnerInputProcessor::new(raw_processor.clone());
+        let acl_processor = NDNAclInnerInputProcessor::new(processor);
 
         acl_processor
     }
