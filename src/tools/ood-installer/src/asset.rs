@@ -57,35 +57,39 @@ struct Asset;
 
 pub struct OODAsset {
     target: InstallTarget,
+    overwrite: bool
 }
 
 impl OODAsset {
-    pub fn new(target: &InstallTarget) -> Self {
+    pub fn new(target: &InstallTarget, overwrite: bool) -> Self {
+        if overwrite {
+            info!("ood-installer will overwrite all config files!");
+        }
         Self {
             target: target.to_owned(),
+            overwrite
         }
     }
 
-    pub fn extract(&self, no_cyfs_repo: bool, no_app_repo: bool) -> BuckyResult<()> {
-        if !no_cyfs_repo {
-            if let Err(e) = self.extract_cyfs_repo() {
-                return Err(e);
-            }
-        }
+    pub fn extract(&self) -> BuckyResult<()> {
+        self.extract_cyfs_repo().map_err(|e| {
+            error!("extract cyfs repo file err {}", e);
+            e
+        })?;
 
-        if let Err(e) = self.extract_gateway() {
-            return Err(e);
-        }
+        self.extract_gateway().map_err(|e| {
+            error!("extract gateway config file err {}", e);
+            e
+        })?;
 
         //if let Err(e) = self.extract_acc_service() {
         //    return Err(e);
         //}
 
-        if !no_app_repo {
-            if let Err(e) = self.extract_app_repo() {
-                return Err(e);
-            }
-        }
+        self.extract_app_repo().map_err(|e| {
+            error!("extract app repo file err {}", e);
+            e
+        })?;
         let _ = self.extract_debug_config();
         let _ = self.extract_acl_config();
         // 按照司司的说法，只有ood才需要设置pn。默认的pn desc在ood安装的时候释放出来
@@ -93,9 +97,7 @@ impl OODAsset {
 
         if self.target == InstallTarget::Default {
             #[cfg(unix)]
-            if let Err(e) = self.extract_service_script() {
-                return Err(e);
-            }
+            self.extract_service_script()?;
         }
 
         Ok(())
@@ -158,6 +160,9 @@ impl OODAsset {
     }
 
     fn extract_from_asset(&self, dest_path: &Path, asset_path: &str) -> BuckyResult<()> {
+        if !self.overwrite && dest_path.exists() {
+            return Ok(());
+        }
         if let Err(e) = std::fs::create_dir_all(dest_path.parent().unwrap()) {
             let msg = format!(
                 "create dir error! dir={}, err={}",
