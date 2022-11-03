@@ -2,6 +2,7 @@ use crate::ndn_api::LocalDataManager;
 use cyfs_base::*;
 use cyfs_lib::*;
 
+use async_std::io::ReadExt;
 use std::borrow::Cow;
 
 pub(crate) struct NDNChunkVerifier {
@@ -28,9 +29,7 @@ impl NDNChunkVerifier {
             }
             ObjectTypeCode::Dir => {
                 let dir = obj.as_dir();
-                self.dir
-                    .verify(obj_id, dir, target_chunk_id)
-                    .await
+                self.dir.verify(obj_id, dir, target_chunk_id).await
             }
             _ => {
                 let msg = format!(
@@ -193,31 +192,30 @@ impl DirVerifier {
         dir_id: &ObjectId,
         chunk_id: &ChunkId,
     ) -> BuckyResult<T> {
-        let ret = self.data_manager.get_chunk(chunk_id, None).await;
-        if ret.is_err() {
-            error!(
-                "load dir desc chunk error! dir={}, chunk={}, {}",
-                dir_id,
-                chunk_id,
-                ret.as_ref().unwrap_err()
-            );
+        let ret = self
+            .data_manager
+            .get_chunk(chunk_id, None)
+            .await
+            .map_err(|e| {
+                error!(
+                    "load dir desc chunk error! dir={}, chunk={}, {}",
+                    dir_id, chunk_id, e,
+                );
+                e
+            })?;
 
-            return ret;
-        }
-
-        let ret = ret.unwrap();
         if ret.is_none() {
             let msg = format!(
-                "load dir desc chunk but not found! dir={}, chunk={}, {}",
+                "load dir desc chunk but not found! dir={}, chunk={}",
                 dir_id, chunk_id
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        let (reader, len) = ret.unwrap();
+        let (mut reader, len) = ret.unwrap();
         let mut buf = vec![];
-        reader.read_to_end(&mut buf).map_err(|e| {
+        reader.read_to_end(&mut buf).await.map_err(|e| {
             let msg = format!(
                 "load dir desc chunk to buf error! dir={}, chunk={}, {}",
                 dir_id, chunk_id, e

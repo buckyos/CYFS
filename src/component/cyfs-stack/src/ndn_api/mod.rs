@@ -13,5 +13,5 @@ pub(crate) use bdt::*;
 pub(crate) use cache::*;
 pub use data::*;
 pub(crate) use ndc::NDCLevelInputProcessor;
-pub(crate) use ndn::*;
+pub(crate) use forward::*;
 pub(crate) use service::*;

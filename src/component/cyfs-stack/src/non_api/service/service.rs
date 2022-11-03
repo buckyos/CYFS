@@ -102,8 +102,6 @@ impl NONService {
             ood_resovler,
             zone_manager,
             router_handlers.clone(),
-            raw_noc_processor,
-            non_processor.clone(),
             router,
             chunk_manager.clone(),
             forward_manager,
@@ -115,6 +113,10 @@ impl NONService {
 
     pub(crate) fn raw_noc_processor(&self) -> &NONInputProcessorRef {
         &self.raw_noc_processor
+    }
+
+    pub(crate) fn router_processor(&self) -> &NONInputProcessorRef {
+        &self.router
     }
 
     pub(crate) fn clone_processor(&self) -> NONInputProcessorRef {
