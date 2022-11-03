@@ -11,8 +11,8 @@ use once_cell::sync::OnceCell;
 const GET_OBJ_DESC_NUM: &str = r#"SELECT count(*) from device_stat where obj_type = ?1"#;
 const GET_OBJ_ADD_DESC_NUM: &str = r#"SELECT count(*) from device_stat where obj_type = ?1 and create_time >= ?2 and create_time <= ?3"#;
 const GET_OBJ_ACTIVE_DESC_NUM: &str = r#"SELECT count(*) from device_stat where obj_type = ?1 and update_time >= ?2 and update_time <= ?3"#;
-const GET_META_OBJ_NUM: &str = r#"SELECT obj_id, success, failed from meta_object_stat where create_time >= ?1 and create_time <= ?2"#;
-const GET_META_API_NUM: &str = r#"SELECT api_name, success, failed from meta_api_stat"#;
+const GET_META_OBJ_NUM: &str = r#"SELECT id, success, failed from meta_object_stat where create_time >= ?1 and create_time <= ?2"#;
+const GET_META_API_NUM: &str = r#"SELECT id, success, failed from meta_api_stat"#;
 pub struct SqliteStorage {
     pool: OnceCell<Pool<Sqlite>>,
 }

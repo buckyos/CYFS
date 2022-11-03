@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use cyfs_base::{BuckyResult, BuckyError, BuckyErrorCode};
 use crate::notify::*;
-
 use crate::storage::{Storage, Period, MetaStat};
+use comfy_table::Table;
 
 pub struct Client {
     storage: Arc<Box<dyn Storage + Send + Sync>>,
@@ -23,24 +23,65 @@ impl Client {
 
     pub async fn run(&self) {
         // 概况
+        let mut table = Table::new();
+        table.set_header(vec!["People", "Device"]);
         if let Ok(ret) = self.get_desc().await {
-            info!("{:?}", ret);
+            let ret: Vec<u64> = ret.into_iter().map(|v| v.1).collect();
+            table.add_row(ret);
+            println!("{table}");
         }
+        let mut table1 = Table::new();
+        table1.set_header(vec!["People Add", "Device Add"]);
+
+        let mut table2 = Table::new();
+        table2.set_header(vec!["People Active", "Device Active"]);
+
         // 日/周/月表
         if let Ok(ret) = self.period_stat(Period::Daily).await {
-            info!("{:?}", ret);
+            let add: Vec<u64> = ret.0.into_iter().map(|v| v.1).collect();
+            let active: Vec<u64> = ret.1.into_iter().map(|v| v.1).collect();
+
+            table1.add_row(add);
+            
+            table2.add_row(active);
         }
         if let Ok(ret) = self.period_stat(Period::Weekly).await {
-            info!("{:?}", ret);
+            let add: Vec<u64> = ret.0.into_iter().map(|v| v.1).collect();
+            let active: Vec<u64> = ret.1.into_iter().map(|v| v.1).collect();
+
+            table1.add_row(add);
+            
+            table2.add_row(active);
         }
         if let Ok(ret) = self.period_stat(Period::Month).await {
-            info!("{:?}", ret);
+            let add: Vec<u64> = ret.0.into_iter().map(|v| v.1).collect();
+            let active: Vec<u64> = ret.1.into_iter().map(|v| v.1).collect();
+
+            table1.add_row(add);
+            
+            table2.add_row(active);
         }
 
+        println!("{table1}");
+        println!("{table2}");
+
+        let mut table3 = Table::new();
+        table3.set_header(vec!["Meta Object", "Success", "Failed"]);
+
+        let mut table4 = Table::new();
+        table4.set_header(vec!["Meta Api", "Success", "Failed"]);
         // object 查询 / api 调用情况
         if let Ok(ret) = self.meta_stat().await {
-            info!("{:?}", ret);
+            for v in ret.0.into_iter() {
+                table3.add_row(vec![v.id, v.success.to_string(), v.failed.to_string()]);
+            }
+
+            for v in ret.1.into_iter() {
+                table4.add_row(vec![v.id, v.success.to_string(), v.failed.to_string()]);
+            }
         }
+        println!("{table3}");
+        println!("{table4}");
 
         let _ = self.report().await;
 
