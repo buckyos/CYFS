@@ -370,27 +370,22 @@ impl Channel {
     }
 
     pub(super) fn on_datagram(&self, datagram: Datagram) -> BuckyResult<()> {
-        // if let Some(_) = self.active() {
-            let (command_code, buf) = u8::raw_decode(datagram.data.as_ref())?;
-            let command_code = CommandCode::try_from(command_code)?;
-            match command_code {
-                CommandCode::Interest => {
-                    let (interest, _) = Interest::raw_decode_with_context(buf, &datagram.options)?;
-                    let channel = self.clone();
-                    task::spawn(async move {
-                        let _ = channel.on_interest(&interest).await;
-                    });
-                    Ok(())
-                }, 
-                CommandCode::RespInterest => {
-                    let (resp_interest, _) = RespInterest::raw_decode_with_context(buf, &datagram.options)?;
-                    self.on_resp_interest(&resp_interest)
-                }, 
-                // _ => Err(BuckyError::new(BuckyErrorCode::InvalidInput, "invalid command"))
-            }
-        // } else {
-        //     Err(BuckyError::new(BuckyErrorCode::ErrorState, "channel's dead"))
-        // }
+        let (command_code, buf) = u8::raw_decode(datagram.data.as_ref())?;
+        let command_code = CommandCode::try_from(command_code)?;
+        match command_code {
+            CommandCode::Interest => {
+                let (interest, _) = Interest::raw_decode_with_context(buf, &datagram.options)?;
+                let channel = self.clone();
+                task::spawn(async move {
+                    let _ = channel.on_interest(&interest).await;
+                });
+                Ok(())
+            }, 
+            CommandCode::RespInterest => {
+                let (resp_interest, _) = RespInterest::raw_decode_with_context(buf, &datagram.options)?;
+                self.on_resp_interest(&resp_interest)
+            }, 
+        }
     }
 
     pub fn stack(&self) -> Stack {
@@ -438,18 +433,15 @@ impl Channel {
     }
 
     pub fn upload_session_count(&self) -> u32 {
-        // self.0.uploaders.session_count()
-        0
+        self.0.state.read().unwrap().tunnels.iter().map(|tunnel| tunnel.uploaders().count()).sum::<usize>() as u32
     }
 
     pub fn upload_cur_speed(&self) -> u32 {
-        // self.0.uploaders.cur_speed()
-        0
+        self.0.state.read().unwrap().upload.cur_speed()
     }
 
     pub fn upload_history_speed(&self) -> u32 {
-        // self.0.uploaders.history_speed()
-        0
+        self.0.state.read().unwrap().upload.history_speed()
     }
 
     async fn on_interest(&self, command: &Interest) -> BuckyResult<()> {
@@ -522,7 +514,7 @@ impl Channel {
             let strong_stack = Stack::from(&self.0.stack);
             // 这里可能要保证同步到同线程处理,重入会比较麻烦
             match strong_stack.ndn().event_handler().on_unknown_piece_data(&self.stack(), &piece, self) {
-                Ok(session) => {
+                Ok(_session) => {
                     //FIXME： 如果新建了任务，这里应当继续接受piece data
                 },
                 Err(_err) => {

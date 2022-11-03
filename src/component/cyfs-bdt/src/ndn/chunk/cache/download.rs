@@ -100,7 +100,7 @@ impl ChunkDownloader {
     }
 
     async fn load(&self, storage: Box<dyn ChunkReader>, raw_cache: &RawCacheManager) -> BuckyResult<Box<dyn RawCache>> {
-        let mut reader = storage.read(self.chunk()).await?;
+        let mut reader = storage.get(self.chunk()).await?;
 
         let cache = raw_cache.alloc(self.chunk().len()).await;
         let mut writer = cache.async_writer().await?;

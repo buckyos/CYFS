@@ -50,6 +50,7 @@ impl DownloadGroup {
     }
 }
 
+#[async_trait::async_trait]
 impl DownloadTask for DownloadGroup {
     fn context(&self) -> &SingleDownloadContext {
         &self.0.context
@@ -151,5 +152,9 @@ impl DownloadTask for DownloadGroup {
             state.running.sort_by(|l, r| r.drain_score().cmp(&l.drain_score()));
         }
         new_expect
+    }
+
+    async fn wait_user_canceled(&self) -> BuckyError {
+        unimplemented!()
     }
 }

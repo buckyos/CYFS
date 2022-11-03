@@ -76,6 +76,10 @@ impl Uploaders {
         }))
     }
 
+    pub fn count(&self) -> usize {
+        self.0.read().unwrap().sessions.len()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.read().unwrap().sessions.is_empty()
     }
