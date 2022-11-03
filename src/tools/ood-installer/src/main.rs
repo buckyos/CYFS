@@ -118,18 +118,10 @@ async fn main_run() {
                 .takes_value(false)
                 .help("Don't start ood-daemon service, default is yes"),
         )
-        .arg(
-            Arg::with_name("no_cyfs_repo")
-                .long("no-cyfs-repo")
-                .takes_value(false)
-                .help("Don't extract cyfs_repo.desc, default is yes"),
-        )
-        .arg(
-            Arg::with_name("no_app_repo")
-                .long("no-app-repo")
-                .takes_value(false)
-                .help("Don't extract app_repo.desc, default is yes"),
-        )
+        .arg(Arg::with_name("overwrite")
+            .long("overwrite")
+            .takes_value(false)
+            .help("overwrite any exists config file"))
         .arg(
             Arg::with_name("root")
                 .long("root")
@@ -269,10 +261,8 @@ async fn main_run() {
     };
 
     info!("current target: {}", target);
-    let asset = OODAsset::new(&target);
-    let no_cyfs_repo = matches.is_present("no_cyfs_repo");
-    let no_app_repo = matches.is_present("no_app_repo");
-    if let Err(_e) = asset.extract(no_cyfs_repo, no_app_repo) {
+    let asset = OODAsset::new(&target, matches.is_present("overwrite"));
+    if let Err(_e) = asset.extract() {
         std::process::exit(-1);
     }
 
