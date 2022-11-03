@@ -1,5 +1,6 @@
 use std::{
     sync::{Arc}, 
+    ops::Range, 
 };
 use cyfs_base::*;
 use crate::{
@@ -50,6 +51,44 @@ impl ChunkCache {
 
     pub fn create_encoder(&self, desc: &ChunkEncodeDesc) -> Box<dyn ChunkEncoder> {
         StreamEncoder::new(self.stream().clone(), desc).clone_as_encoder()
+    }
+
+    pub fn exists(&self, range: Range<usize>) -> Option<Range<usize>> {
+        if range.start >= self.chunk().len() {
+            return Some(self.chunk().len()..self.chunk().len());
+        }
+        if range.end == 0 {
+            return Some(0..0);
+        }
+        let range = usize::min(range.start, self.chunk().len())..usize::min(range.end, self.chunk().len());
+        let index_start = (range.start / PieceData::max_payload()) as u32;
+        let index_end = ((range.end - 1) / PieceData::max_payload()) as u32;
+        for index in index_start..index_end + 1 {
+            if !self.stream().exists(index).unwrap() {
+                return None;
+            }
+        }
+        return Some(range);
+    }
+
+    pub async fn wait_exists<T: futures::Future<Output=BuckyError>, A: Fn() -> T>(
+        &self, 
+        range: Range<usize>, 
+        abort: A
+    ) -> BuckyResult<Range<usize>> {
+        if range.start >= self.chunk().len() {
+            return Ok(self.chunk().len()..self.chunk().len());
+        }
+        if range.end == 0 {
+            return Ok(0..0);
+        }
+        let range = usize::min(range.start, self.chunk().len())..usize::min(range.end, self.chunk().len());
+        let index_start = (range.start / PieceData::max_payload()) as u32;
+        let index_end = ((range.end - 1) / PieceData::max_payload()) as u32;
+        for index in index_start..index_end + 1 {
+            self.stream().wait_exists(index, abort()).await?;
+        }
+        Ok(range)
     }
     
     pub async fn read<T: futures::Future<Output=BuckyError>, A: Fn() -> T>(

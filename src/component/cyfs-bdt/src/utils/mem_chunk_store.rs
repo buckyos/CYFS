@@ -4,10 +4,13 @@ use std::{
     collections::BTreeMap, 
     sync::{Arc, RwLock},
 };
+use async_std::{
+    io::Cursor
+};
 use cyfs_base::*;
-use cyfs_util::cache::*;
+use cyfs_util::*;
 use crate::{
-    ndn::{ChunkWriter, ChunkReader}
+    ndn::{ChunkReader}
 };
 
 struct StoreImpl {
@@ -50,6 +53,12 @@ impl MemChunkStore {
 
         Ok(())
     }
+
+    pub async fn write_chunk<R: async_std::io::Read + Unpin>(&self, id: &ChunkId, reader: R) -> BuckyResult<()> {
+        let mut buffer = vec![0u8; id.len()];
+        async_std::io::copy(reader, Cursor::new(&mut buffer[..])).await?;
+        self.add(id.clone(), Arc::new(buffer)).await
+    }
 }
 
 
@@ -63,37 +72,13 @@ impl ChunkReader for MemChunkStore {
         self.0.chunks.read().unwrap().get(chunk).is_some()
     }
 
-    async fn get(&self, chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>> {
-        self.0.chunks.read().unwrap().get(chunk).cloned()
-            .ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, "chunk not exists"))
+    async fn get(&self, chunk: &ChunkId) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
+        let content = self.0.chunks.read().unwrap().get(chunk).cloned()
+            .ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, "chunk not exists"))?;
+        Ok(Box::new(Cursor::new(content)))
     }
 }
 
-
-#[async_trait]
-impl ChunkWriter for MemChunkStore {
-    fn clone_as_writer(&self) -> Box<dyn ChunkWriter> {
-        Box::new(self.clone())
-    }
-
-    async fn err(&self, _e: BuckyErrorCode) -> BuckyResult<()> {
-        Ok(())
-    }
-
-
-    async fn write(&self, chunk: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
-        if chunk.len() == 0 {
-            return Ok(());
-        }
-
-        self.add(chunk.clone(), content).await
-    }
-
-    async fn finish(&self) -> BuckyResult<()> {
-        // do nothing
-        Ok(())
-    }
-}
 
 
 

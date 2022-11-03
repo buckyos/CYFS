@@ -3,11 +3,11 @@ use std::{
     sync::{RwLock},
 };
 use async_std::{
-    sync::Arc, 
+    io::Cursor
 };
 use async_trait::async_trait;
 use cyfs_base::*;
-use cyfs_util::cache::*;
+use cyfs_util::*;
 use crate::{
     types::*, 
     stack::{WeakStack, Stack},
@@ -56,9 +56,9 @@ impl ChunkReader for EmptyChunkWrapper {
         }
     }
 
-    async fn get(&self, chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>> {
+    async fn get(&self, chunk: &ChunkId) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         if chunk.len() == 0 {
-            Ok(Arc::new(vec![0u8; 0]))
+            Ok(Box::new(Cursor::new(vec![0u8; 0])))
         } else {
             self.0.get(chunk).await
         }
@@ -175,6 +175,10 @@ impl ChunkManager {
             caches.insert(chunk.clone(), cache.clone());
             cache
         }
+    }
+
+    pub fn cache_of(&self, chunk: &ChunkId) -> Option<ChunkCache> {
+        self.chunk_caches.read().unwrap().get(chunk).cloned()
     }
 
 }

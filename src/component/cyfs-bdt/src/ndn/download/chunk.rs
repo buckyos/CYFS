@@ -1,10 +1,8 @@
 use std::{
     sync::RwLock, 
-    ops::Range
 };
 use async_std::{
     sync::Arc, 
-    task
 };
 use cyfs_base::*;
 use crate::{
@@ -17,8 +15,6 @@ use super::super::{
 use super::{
     common::*
 };
-
-
 
 
 enum TaskStateImpl {
@@ -40,10 +36,8 @@ struct StateImpl {
 struct ChunkTaskImpl {
     stack: WeakStack, 
     chunk: ChunkId, 
-    range: Option<Range<u64>>, 
     context: SingleDownloadContext, 
     state: RwLock<StateImpl>,  
-    writers: Vec<Box <dyn ChunkWriterExt>>,
 }
 
 #[derive(Clone)]
@@ -52,7 +46,7 @@ pub struct ChunkTask(Arc<ChunkTaskImpl>);
 
 impl std::fmt::Display for ChunkTask {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ChunkTask{{chunk:{}, range:{:?}}}", self.chunk(), self.range())
+        write!(f, "ChunkTask{{chunk:{}}}", self.chunk())
     }
 }
 
@@ -61,104 +55,38 @@ impl ChunkTask {
         stack: WeakStack, 
         chunk: ChunkId, 
         context: SingleDownloadContext, 
-        writers: Vec<Box<dyn ChunkWriter>>, 
-    ) -> Self {
-        Self::with_range(
-            stack, 
-            chunk, 
-            None, 
-            context, 
-            writers.into_iter().map(|w| ChunkWriterExtWrapper::new(w).clone_as_writer()).collect())
-    } 
-
-    pub fn with_range(
-        stack: WeakStack, 
-        chunk: ChunkId, 
-        range: Option<Range<u64>>, 
-        context: SingleDownloadContext, 
-        writers: Vec<Box <dyn ChunkWriterExt>>, 
     ) -> Self {
         let strong_stack = Stack::from(&stack);
         let cache = strong_stack.ndn().chunk_manager().create_cache(&chunk);
         cache.downloader().context().add_context(context.clone());
-      
-        let task = Self(Arc::new(ChunkTaskImpl {
+        
+        Self(Arc::new(ChunkTaskImpl {
             stack, 
             chunk, 
-            range, 
             context, 
             state: RwLock::new(StateImpl {
                 task_state: TaskStateImpl::Downloading(cache.clone()), 
                 control_state: ControlStateImpl::Normal(StateWaiter::new()),
-            }), 
-            writers,
-        }));
-
-        {
-            let task = task.clone();
-            task::spawn(async move {
-                task.begin(cache).await;
-            });
-        }
-
-        task
+            }),
+        }))
     } 
-
 
     pub fn chunk(&self) -> &ChunkId {
         &self.0.chunk
-    }
-
-    pub fn range(&self) -> Option<Range<u64>> {
-        self.0.range.clone()
     }
 
     pub fn context(&self) -> &SingleDownloadContext  {
         &self.0.context
     }
 
-    async fn wait_user_canceled(&self) -> BuckyError {
-        let waiter = {
-            let mut state = self.0.state.write().unwrap();
-            match &mut state.control_state {
-                ControlStateImpl::Normal(waiters) => Some(waiters.new_waiter()), 
-                _ => None
-            }
-        };
-        
-        
-        if let Some(waiter) = waiter {
-            let _ = StateWaiter::wait(waiter, || self.control_state()).await;
-        } 
-
-        BuckyError::new(BuckyErrorCode::UserCanceled, "")
-    }
-
-    async fn begin(&self, cache: ChunkCache) {
-        let mut buffer = vec![0u8; self.chunk().len() as usize];
-        
-        let result = cache.read(0, buffer.as_mut_slice(), || self.wait_user_canceled()).await;
-        cache.downloader().context().remove_context(self.context(), self.state());
-
-        match result {
-            Ok(_) => {
-                self.0.state.write().unwrap().task_state = TaskStateImpl::Finished;
-                let content = Arc::new(buffer);
-                for writer in self.0.writers.iter() {
-                    let _ = writer.write(self.chunk(), content.clone(), self.range()).await;
-                    let _ = writer.finish().await;
-                }
-            }, 
-            Err(err) => {
-                self.0.state.write().unwrap().task_state = TaskStateImpl::Error(err.code());
-                for writer in self.0.writers.iter() {
-                    let _ = writer.err(err.code()).await;
-                }
-            }
-        }
+    pub fn reader(&self) -> DownloadTaskReader {
+        let strong_stack = Stack::from(&self.0.stack);
+        let cache = strong_stack.ndn().chunk_manager().create_cache(self.chunk());
+        DownloadTaskReader::new(cache, self.clone_as_task())
     }
 }
 
+#[async_trait::async_trait]
 impl DownloadTask for ChunkTask {
     fn context(&self) -> &SingleDownloadContext {
         &self.0.context
@@ -262,20 +190,55 @@ impl DownloadTask for ChunkTask {
     }
 
     fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
-        let waiters = {
+        let (cache, waiters) = {
             let mut state = self.0.state.write().unwrap();
-            match &mut state.control_state {
+            let waiters = match &mut state.control_state {
                 ControlStateImpl::Normal(waiters) => {
                     let waiters = Some(waiters.transfer());
                     state.control_state = ControlStateImpl::Canceled;
                     waiters
                 }, 
                 _ => None
-            }
+            };
+
+            let cache = match &state.task_state {
+                TaskStateImpl::Downloading(cache) => {
+                    let cache = Some(cache.clone());
+                    state.task_state = TaskStateImpl::Error(BuckyErrorCode::UserCanceled);
+                    cache
+                }, 
+                _ => None
+            };
+
+            (cache, waiters)
         };
+
         if let Some(waiters) = waiters {
             waiters.wake();
         }
+
+        if let Some(cache) = cache {
+            let strong_stack = Stack::from(&self.0.stack);
+            cache.downloader().context().remove_context(self.context(), self.state());
+        }
+        
         Ok(DownloadTaskControlState::Canceled)
+    }
+
+    async fn wait_user_canceled(&self) -> BuckyError {
+        let waiter = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut state.control_state {
+                ControlStateImpl::Normal(waiters) => Some(waiters.new_waiter()), 
+                _ => None
+            }
+        };
+        
+        
+        if let Some(waiter) = waiter {
+            let _ = StateWaiter::wait(waiter, || self.control_state()).await;
+        } 
+
+        BuckyError::new(BuckyErrorCode::UserCanceled, "")
     }
 }

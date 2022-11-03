@@ -376,16 +376,24 @@ impl DebugStub {
         let stack = Stack::from(&self.0.stack);
         let context = SingleDownloadContext::id_streams(&stack, None, remotes).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
-        let task = download_chunk_to_path(&stack,
-            chunk_id,
+        let task = download_chunk(&stack,
+            chunk_id.clone(),
             None, 
-            Some(context),
-            &local_path).await
+            Some(context)).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
+
+        local_chunk_writer(&stack, &chunk_id, local_path.clone()).await
+            .map_err(|e| {
+                format!("download err: {}\r\n", e)
+            })?
+            .write(task.reader()).await
+            .map_err(|e| {
+                format!("download err: {}\r\n", e)
+            })?;
 
         let _ = tunnel.write_all("waiting..\r\n".as_ref()).await;
         let task_start_time = Instant::now();
-        let ret = watchdog_download_finished(task, timeout).await;
+        let ret = watchdog_download_finished(task.clone_as_task(), timeout).await;
         if ret.is_ok() {
             let size = get_filesize(&local_path);
             let cost = Instant::now() - task_start_time;
@@ -411,17 +419,26 @@ impl DebugStub {
         let stack = Stack::from(&self.0.stack);
         let context = SingleDownloadContext::id_streams(&stack, None, remotes).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
-        let task = download_file_to_path(
+        let task = download_file(
             &stack, 
-            file_id, 
+            file_id.clone(), 
             None,  
-            Some(context),
-            &local_path).await.map_err(|e| {
+            Some(context))
+            .await.map_err(|e| {
                 format!("download err: {}\r\n", e)
-        })?;
+            })?;
+
+        local_file_writer(&stack, file_id, local_path).await
+            .map_err(|e| {
+                format!("download err: {}\r\n", e)
+            })?
+        .write(task.reader()).await
+            .map_err(|e| {
+                format!("download err: {}\r\n", e)
+            })?;
 
         let _ = tunnel.write_all("waitting..\r\n".as_ref()).await;
-        let ret = watchdog_download_finished(task, timeout).await;
+        let ret = watchdog_download_finished(task.clone_as_task(), timeout).await;
         if ret.is_ok() {
             let _ = tunnel.write_all("download file finish.\r\n".as_ref()).await;
         }
@@ -448,8 +465,14 @@ impl DebugStub {
 
             match ChunkId::calculate(content.as_slice()).await {
                 Ok(chunk_id) => {
-                    let _ = track_chunk_in_path(&stack, &chunk_id, local_path).await
-                        .map_err(|e|  format!("put chunk err: {}\r\n", e))?;
+                    local_chunk_writer(&stack, &chunk_id, local_path).await
+                    .map_err(|e| {
+                        format!("download err: {}\r\n", e)
+                    })?
+                    .track_path().await
+                    .map_err(|e| {
+                        format!("download err: {}\r\n", e)
+                    })?;
                     let _ = tunnel.write_all(format!("put chunk success. chunk_id: {}\r\n", 
                     chunk_id.to_string()).as_bytes()).await;
                     Ok(())

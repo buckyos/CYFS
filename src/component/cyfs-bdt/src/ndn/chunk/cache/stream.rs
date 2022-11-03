@@ -149,7 +149,7 @@ impl ChunkStreamCache {
         }
     }
 
-    fn exists(&self, index: u32) -> BuckyResult<bool> {
+    pub fn exists(&self, index: u32) -> BuckyResult<bool> {
         self.0.state.read().unwrap().indices.exists(index)
     }
 
@@ -225,7 +225,7 @@ impl ChunkStreamCache {
     }
 
 
-    fn sync_try_read(
+    pub fn sync_try_read(
         &self, 
         piece_desc: &PieceDesc, 
         offset_in_piece: usize,  
