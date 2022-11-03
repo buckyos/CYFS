@@ -11,7 +11,8 @@ use once_cell::sync::OnceCell;
 const GET_OBJ_DESC_NUM: &str = r#"SELECT count(*) from device_stat where obj_type = ?1"#;
 const GET_OBJ_ADD_DESC_NUM: &str = r#"SELECT count(*) from device_stat where obj_type = ?1 and create_time >= ?2 and create_time <= ?3"#;
 const GET_OBJ_ACTIVE_DESC_NUM: &str = r#"SELECT count(*) from device_stat where obj_type = ?1 and update_time >= ?2 and update_time <= ?3"#;
-
+const GET_META_OBJ_NUM: &str = r#"SELECT obj_id, success, failed from meta_object_stat where create_time >= ?1 and create_time <= ?2"#;
+const GET_META_API_NUM: &str = r#"SELECT api_name, success, failed from meta_api_stat"#;
 pub struct SqliteStorage {
     pool: OnceCell<Pool<Sqlite>>,
 }
@@ -20,6 +21,17 @@ impl SqliteStorage {
     pub(crate) fn new() -> Self {
         Self {
             pool: OnceCell::new(),
+        }
+    }
+
+    fn metainfo_from_row(&self, row: &SqliteRow) -> MetaStat {
+        let id: String = row.get("id");
+        let success: i64 = row.get("success");
+        let failed: i64 = row.get("failed");
+        MetaStat {
+            id,
+            success: success as u64,
+            failed: failed as u64,
         }
     }
 }
@@ -82,11 +94,30 @@ impl Storage for SqliteStorage {
         Ok(sum as u64)
     }
 
-    async fn get_meta_api_stat(&self) -> BuckyResult<Vec<MetaStat>> {
-        todo!()
-    }
+    async fn get_meta_stat(&self, meta_type: u8, period: Period) -> BuckyResult<Vec<MetaStat>> {
+        let rows = if 0 == meta_type {
+            let now = bucky_time_now();
+            let mut start = bucky_time_to_js_time(now);
+            if period == Period::Daily {
+                start -= 86400 * 1000;
+            } else if period == Period::Weekly {
+                start -= 7 * 86400 * 1000;
+            } else {
+                start -= 30 * 86400 * 1000;
+            }
+            let start = js_time_to_bucky_time(start);
+            sqlx::query(GET_META_OBJ_NUM)
+                .bind(start as i64)
+                .bind(now as i64)
+        } else {
+            sqlx::query(GET_META_API_NUM)
+        }
+        .fetch_all(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
 
-    async fn get_meta_object_stat(&self) -> BuckyResult<Vec<MetaStat>> {
-        todo!()
+        let mut ret = Vec::new();
+        for row in rows {
+            ret.push(self.metainfo_from_row(&row));
+        }
+        Ok(ret)
     }
 }

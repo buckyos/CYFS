@@ -3595,6 +3595,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1947510dc91e2bf586ea5ffb412caad7673264e14bb39fb9078da114a94ce1a5"
 dependencies = [
  "async-h1",
+ "async-native-tls",
  "async-std",
  "async-tls",
  "async-trait",
@@ -4246,6 +4247,7 @@ dependencies = [
  "serde_json",
  "simple_logger 3.0.0",
  "sqlx 0.6.2",
+ "surf",
 ]
 
 [[package]]
@@ -6788,6 +6790,7 @@ version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "718b1ae6b50351982dedff021db0def601677f2120938b070eadb10ba4038dd7"
 dependencies = [
+ "async-native-tls",
  "async-std",
  "async-trait",
  "cfg-if 1.0.0",

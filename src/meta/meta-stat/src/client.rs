@@ -1,19 +1,23 @@
 use std::sync::Arc;
 use std::collections::HashMap;
-use cyfs_base::BuckyResult;
+use cyfs_base::{BuckyResult, BuckyError, BuckyErrorCode};
+use crate::notify::*;
 
-use crate::storage::{Storage, Period};
+use crate::storage::{Storage, Period, MetaStat};
 
 pub struct Client {
     storage: Arc<Box<dyn Storage + Send + Sync>>,
     deadline: u16,
+    reporter: Notifier,
 }
 
 impl Client {
-    pub(crate) fn new(deadline: u16, storage: Arc<Box<dyn Storage + Send + Sync>>) -> Self {
+    pub(crate) fn new(url: &str, deadline: u16, storage: Arc<Box<dyn Storage + Send + Sync>>) -> Self {
+        let reporter = Notifier::new(url);
         Self {
             storage,
             deadline,
+            reporter,
         }
     }
 
@@ -33,9 +37,13 @@ impl Client {
             info!("{:?}", ret);
         }
 
-        // web hook dingding/email
+        // object 查询 / api 调用情况
+        if let Ok(ret) = self.meta_stat().await {
+            info!("{:?}", ret);
+        }
 
-        todo!()
+        let _ = self.report().await;
+
     }
 
     pub async fn get_desc(&self) -> BuckyResult<HashMap<u8, u64>> {
@@ -64,16 +72,19 @@ impl Client {
         Ok((add, active))
     }
 
-    pub async fn meta_object_stat(&self) -> BuckyResult<()> {
-        todo!()
-    }
-
-    pub async fn meta_api_stat(&self) -> BuckyResult<()> {
-        todo!()
+    pub async fn meta_stat(&self) -> BuckyResult<(Vec<MetaStat>, Vec<MetaStat>)> {
+        let v1 = self.storage.get_meta_stat(0u8, Period::Month).await?;
+        let v2 = self.storage.get_meta_stat(1u8, Period::Month).await?;
+        Ok((v1, v2))
     }
 
     pub async fn report(&self) -> BuckyResult<()> {
-        Ok(())
+        let info = MonitorErrorInfo {
+            service: "test".to_owned(),
+            error: BuckyError::new(BuckyErrorCode::Failed, "test message"),
+        };
+
+        self.reporter.report(&info).await
     }
 
 }

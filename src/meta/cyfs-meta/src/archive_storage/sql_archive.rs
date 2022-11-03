@@ -50,7 +50,7 @@ impl SqlArchive {
 
     async fn init_api_stat_tbl(&self) -> BuckyResult<()> {
         let sql = r#"CREATE TABLE IF NOT EXISTS "meta_api_stat" (
-            "api_name"	    CHAR(64) PRIMARY KEY NOT NULL UNIQUE,
+            "id"	    CHAR(64) PRIMARY KEY NOT NULL UNIQUE,
             "success"	INTEGER NOT NULL,
             "failed"	INTEGER NOT NULL
         )"#;
@@ -61,9 +61,10 @@ impl SqlArchive {
 
     async fn init_meta_object_tbl(&self) -> BuckyResult<()> {
         let sql = r#"CREATE TABLE IF NOT EXISTS "meta_object_stat" (
-            "obj_id"	    CHAR(64) PRIMARY KEY NOT NULL UNIQUE,
-            "success"	INTEGER NOT NULL,
-            "failed"	INTEGER NOT NULL
+            "id"	        CHAR(64) PRIMARY KEY NOT NULL UNIQUE,
+            "success"	    INTEGER NOT NULL,
+            "failed"	    INTEGER NOT NULL,
+            "create_time"	INTEGER NOT NULL
         )"#;
 
         self.get_conn().await.execute_sql(sqlx::query(sql)).await?;
@@ -194,13 +195,14 @@ impl Archive for SqlArchive {
         } else {
             failed = 1;
         }
-        let sql = "SELECT success, failed FROM meta_object_stat WHERE obj_id=?1";
+        let sql = "SELECT success, failed FROM meta_object_stat WHERE id=?1";
         let mut conn = self.get_conn().await;
         let query_result = conn.query_one(sqlx::query(sql).bind(objid.to_string())).await;
         return if let Err(err) = query_result {
             if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
-                let insert_sql = "INSERT INTO meta_object_stat(obj_id,success,failed) VALUES (?1,?2,?3)";
-                conn.execute_sql(sqlx::query(insert_sql).bind(objid.to_string()).bind(success).bind(failed)).await?;
+                let now = bucky_time_now();
+                let insert_sql = "INSERT INTO meta_object_stat(id,success,failed) VALUES (?1,?2,?3,?4)";
+                conn.execute_sql(sqlx::query(insert_sql).bind(objid.to_string()).bind(success).bind(failed).bind(now as i64)).await?;
                 Ok(())
             } else {
                 Err(crate::meta_err!(ERROR_EXCEPTION))
@@ -212,14 +214,14 @@ impl Archive for SqlArchive {
 
             success += temp_success;
             failed  += temp_failed;
-            let sql = "UPDATE meta_object_stat SET success=?1, failed=?2 WHERE obj_id=?3";
+            let sql = "UPDATE meta_object_stat SET success=?1, failed=?2 WHERE id=?3";
             conn.execute_sql(sqlx::query(sql).bind(success).bind(failed).bind(objid.to_string())).await?;
             Ok(())
         }
     }
 
 
-    async fn set_meta_api_stat(&self, api_name: &str, status: u8) -> BuckyResult<()> {
+    async fn set_meta_api_stat(&self, id: &str, status: u8) -> BuckyResult<()> {
         let mut success: i64 = 0;
         let mut failed:i64 = 0;
         if status == 0 {
@@ -227,13 +229,13 @@ impl Archive for SqlArchive {
         } else {
             failed = 1;
         }
-        let sql = "SELECT success, failed FROM meta_api_stat WHERE api_name=?1";
+        let sql = "SELECT success, failed FROM meta_api_stat WHERE id=?1";
         let mut conn = self.get_conn().await;
-        let query_result = conn.query_one(sqlx::query(sql).bind(api_name)).await;
+        let query_result = conn.query_one(sqlx::query(sql).bind(id)).await;
         return if let Err(err) = query_result {
             if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
-                let insert_sql = "INSERT INTO meta_api_stat(api_name,success,failed) VALUES (?1,?2,?3)";
-                conn.execute_sql(sqlx::query(insert_sql).bind(api_name).bind(success).bind(failed)).await?;
+                let insert_sql = "INSERT INTO meta_api_stat(id,success,failed) VALUES (?1,?2,?3)";
+                conn.execute_sql(sqlx::query(insert_sql).bind(id).bind(success).bind(failed)).await?;
                 Ok(())
             } else {
                 Err(crate::meta_err!(ERROR_EXCEPTION))
@@ -245,8 +247,8 @@ impl Archive for SqlArchive {
 
             success += temp_success;
             failed  += temp_failed;
-            let sql = "UPDATE meta_api_stat SET success=?1, failed=?2 WHERE api_name=?3";
-            conn.execute_sql(sqlx::query(sql).bind(success).bind(failed).bind(api_name)).await?;
+            let sql = "UPDATE meta_api_stat SET success=?1, failed=?2 WHERE id=?3";
+            conn.execute_sql(sqlx::query(sql).bind(success).bind(failed).bind(id)).await?;
             Ok(())
         }
     }

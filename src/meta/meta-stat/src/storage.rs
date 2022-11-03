@@ -17,7 +17,7 @@ pub fn map_sql_err(e: sqlx::Error) -> BuckyError {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct MetaStat {
     pub id: String,
     pub success: u64,
@@ -43,11 +43,8 @@ pub trait Storage {
     // people/device 活跃
     async fn get_desc_active(&self, obj_type: u8, period: Period) -> BuckyResult<u64>;
 
-    // meta api success/failed
-    async fn get_meta_api_stat(&self) -> BuckyResult<Vec<MetaStat>>;
-
-    // meta object success/failed
-    async fn get_meta_object_stat(&self) -> BuckyResult<Vec<MetaStat>>;
+    // meta success/failed
+    async fn get_meta_stat(&self, meta_type: u8, period: Period) -> BuckyResult<Vec<MetaStat>>;
 
 }
 
