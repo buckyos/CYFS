@@ -14,6 +14,7 @@ cyfs-bdt = { path = "../../component/cyfs-bdt" }
 cyfs-stack-loader = { path = "../../component/cyfs-stack-loader" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-chunk-lib = { path = "../../component/cyfs-chunk-lib" }
+cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
 cyfs-cip = { path = "../../component/cyfs-cip" }
 cyfs-noc = { path = "../../component/cyfs-noc" }
 zone-simulator = { path = "../../tools/zone-simulator" }

@@ -201,7 +201,7 @@ impl Archive for SqlArchive {
         return if let Err(err) = query_result {
             if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
                 let now = bucky_time_now();
-                let insert_sql = "INSERT INTO meta_object_stat(id,success,failed) VALUES (?1,?2,?3,?4)";
+                let insert_sql = "INSERT INTO meta_object_stat(id,success,failed,create_time) VALUES (?1,?2,?3,?4)";
                 conn.execute_sql(sqlx::query(insert_sql).bind(objid.to_string()).bind(success).bind(failed).bind(now as i64)).await?;
                 Ok(())
             } else {
