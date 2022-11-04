@@ -99,7 +99,7 @@ impl DirVerifier {
             }
         }
 
-        let ret = obj_list.object_map.iter().find(|(k, v)| match v.node() {
+        let ret = obj_list.object_map.iter().find(|(_k, v)| match v.node() {
             InnerNode::Chunk(id) => id == target_chunk_id,
             InnerNode::IndexInParentChunk(_, _) => false,
             InnerNode::ObjId(id) => id == target_chunk_id.as_object_id(),

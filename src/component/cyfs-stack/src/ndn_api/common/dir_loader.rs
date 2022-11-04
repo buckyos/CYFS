@@ -1,6 +1,5 @@
 use super::super::data::LocalDataManager;
 use cyfs_base::*;
-use cyfs_lib::*;
 
 use async_std::io::ReadExt;
 use std::borrow::Cow;
@@ -23,7 +22,7 @@ impl DirLoader {
             NDNObjectInfo::Chunk(id) => {
                 let body = self.load_body_obj_list(dir_id, dir).await?;
                 let list = self
-                    .load_from_body_and_chunk_manager(dir_id, dir, &id, &body)
+                    .load_from_body_and_chunk_manager(dir_id, &id, &body)
                     .await?;
                 Cow::Owned(list)
             }
@@ -46,7 +45,7 @@ impl DirLoader {
         let obj_list = match &dir.desc().content().obj_list() {
             NDNObjectInfo::Chunk(id) => {
                 let list = self
-                    .load_from_body_and_chunk_manager(dir_id, dir, &id, &body)
+                    .load_from_body_and_chunk_manager(dir_id, &id, &body)
                     .await?;
                 Cow::Owned(list)
             }
@@ -59,7 +58,6 @@ impl DirLoader {
     async fn load_from_body_and_chunk_manager<'a, T: for<'de> RawDecode<'de>>(
         &self,
         dir_id: &ObjectId,
-        dir: &'a Dir,
         chunk_id: &ChunkId,
         body: &Option<Cow<'a, DirBodyContentObjectList>>,
     ) -> BuckyResult<T> {
@@ -124,7 +122,7 @@ impl DirLoader {
 
         if ret.is_none() {
             let msg = format!(
-                "load dir desc chunk but not found! dir={}, chunk={}",
+                "load dir related chunk but not found! dir={}, chunk={}",
                 dir_id, chunk_id
             );
             error!("{}", msg);
@@ -133,14 +131,23 @@ impl DirLoader {
 
         let (mut reader, len) = ret.unwrap();
         let mut buf = vec![];
-        reader.read_to_end(&mut buf).await.map_err(|e| {
+        let read_len = reader.read_to_end(&mut buf).await.map_err(|e| {
             let msg = format!(
-                "load dir desc chunk to buf error! dir={}, chunk={}, {}",
+                "load dir related chunk to buf error! dir={}, chunk={}, {}",
                 dir_id, chunk_id, e
             );
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
+
+        if read_len as u64 != len {
+            let msg = format!(
+                "load dir related chunk to buf but len unmatch! dir={}, chunk={}, read={}, len={}",
+                dir_id, chunk_id, read_len, len,
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
+        }
 
         let (ret, _) = T::raw_decode(&buf)?;
         Ok(ret)
