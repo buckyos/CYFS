@@ -127,7 +127,7 @@ impl RawEncode for DeviceDescContent {
         if buf.len() < size {
             return Err(BuckyError::new(
                 BuckyErrorCode::OutOfLimit,
-                "[raw_encode] not enough buffer for DeviceDescContent",
+                format!("[raw_encode] not enough buffer for DeviceDescContent, except {}, actual {}", size, buf.len()),
             ));
         }
 
