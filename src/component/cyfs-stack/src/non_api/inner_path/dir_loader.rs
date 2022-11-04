@@ -81,14 +81,19 @@ impl NONDirLoader {
         let inner_path =
             Self::check_fix_inner_path(&req.object_id, req.inner_path.as_ref().unwrap())?;
 
-        let ret = desc.object_map.get(inner_path.as_ref());
+        let mut ret = desc.object_map.get(inner_path.as_ref());
         if ret.is_none() {
-            let msg = format!(
-                "load dir with inner_path but target not found! dir={}, inner_path={}",
-                req.object_id, inner_path
-            );
-            warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            // remove the leading '/' then have another retry
+            let inner_path2 = inner_path.trim_start_matches('/');
+            ret = desc.object_map.get(inner_path2);
+            if ret.is_none() {
+                let msg = format!(
+                    "load dir with inner_path but target not found! dir={}, inner_path={}",
+                    req.object_id, inner_path,
+                );
+                warn!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            }
         }
 
         let info = ret.unwrap();
@@ -126,12 +131,10 @@ impl NONDirLoader {
                     }
 
                     // then try load from noc
-                    let ret = self
-                        .load_object_from_non(&req.common, &object_id)
-                        .await?;
+                    let ret = self.load_object_from_non(&req.common, &object_id).await?;
                     if ret.is_none() {
-                        let msg = format!("load dir inner_path object from noc but not found! dir={}, inner_path={}, file={},", 
-                    req.object_id, inner_path, object_id);
+                        let msg = format!("load dir inner_path object from noc but not found! dir={}, inner_path={}, file={}", 
+                            req.object_id, inner_path, object_id);
                         warn!("{}", msg);
                         return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
                     }
@@ -145,7 +148,7 @@ impl NONDirLoader {
                 InnerNode::Chunk(chunk_id) => {
                     // 单文件chunk
                     info!(
-                        "got single chunk filedir={}, inner_path={},  chunk={}",
+                        "got single chunk file! dir={}, inner_path={},  chunk={}",
                         req.object_id, inner_path, chunk_id,
                     );
 
@@ -184,7 +187,6 @@ impl NONDirLoader {
         common: &NONInputRequestCommon,
         object_id: &ObjectId,
     ) -> BuckyResult<Option<(Arc<AnyNamedObject>, Vec<u8>)>> {
-
         let get_req = NONGetObjectInputRequest {
             common: common.to_owned(),
             object_id: object_id.to_owned(),
@@ -193,20 +195,14 @@ impl NONDirLoader {
 
         let ret = self.non.get_object(get_req).await;
         match ret {
-            Ok(resp) => {
-                Ok(Some((resp.object.object.unwrap(), resp.object.object_raw)))
-            }
-            Err(e) => {
-                match e.code() {
-                    BuckyErrorCode::NotFound => {
-                        Ok(None)
-                    }
-                    _ => {
-                        error!("load object from non error! id={}, {}", object_id, e);
-                        Err(e)
-                    }
+            Ok(resp) => Ok(Some((resp.object.object.unwrap(), resp.object.object_raw))),
+            Err(e) => match e.code() {
+                BuckyErrorCode::NotFound => Ok(None),
+                _ => {
+                    error!("load object from non error! id={}, {}", object_id, e);
+                    Err(e)
                 }
-            }
+            },
         }
     }
 }
