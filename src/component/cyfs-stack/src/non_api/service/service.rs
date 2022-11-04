@@ -41,23 +41,21 @@ impl NONService {
         chunk_manager: ChunkManagerRef,
     ) -> (NONService, NDNService) {
         // raw service with inner_path service support
-        let raw_noc_processor = NOCLevelInputProcessor::new_raw_with_inner_path_service(
+        let raw_noc_processor = NOCLevelInputProcessor::new_with_inner_path_service(
             noc.clone(),
             ndc.clone(),
             tracker.clone(),
-            ood_resovler.clone(),
             router_handlers.clone(),
             zone_manager.clone(),
             chunk_manager.clone(),
         );
 
         // meta处理器，从mete和noc处理get_object请求
-        let meta_processor = MetaInputProcessor::new_raw_with_inner_path_service(
+        let meta_processor = MetaInputProcessor::new_with_inner_path_service(
             None,
             meta_cache,
             ndc.clone(),
             tracker.clone(),
-            ood_resovler.clone(),
             chunk_manager.clone(),
             noc.clone(),
         );

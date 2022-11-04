@@ -16,13 +16,13 @@ pub enum DirResult {
 
 pub(crate) struct NONDirLoader {
     dir_loader: DirLoader,
-    noc: NamedObjectCacheRef,
+    non: NONInputProcessorRef,
 }
 
 impl NONDirLoader {
-    pub fn new(noc: NamedObjectCacheRef, data_manager: LocalDataManager) -> Self {
+    pub fn new(non: NONInputProcessorRef, data_manager: LocalDataManager) -> Self {
         Self {
-            noc,
+            non,
             dir_loader: DirLoader::new(data_manager),
         }
     }
@@ -61,7 +61,7 @@ impl NONDirLoader {
 
         // first load root dir object from noc
         let ret = self
-            .load_object_from_noc(req.common.source.clone(), &req.object_id)
+            .load_object_from_non(&req.common, &req.object_id)
             .await?;
         if ret.is_none() {
             let msg = format!("load dir from noc but not found! dir={}", req.object_id);
@@ -69,7 +69,7 @@ impl NONDirLoader {
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        let (obj, obj_raw) = ret.unwrap();
+        let (obj, _obj_raw) = ret.unwrap();
 
         // load the root dir with full parts
         let (desc, body) = self
@@ -127,7 +127,7 @@ impl NONDirLoader {
 
                     // then try load from noc
                     let ret = self
-                        .load_object_from_noc(req.common.source, &object_id)
+                        .load_object_from_non(&req.common, &object_id)
                         .await?;
                     if ret.is_none() {
                         let msg = format!("load dir inner_path object from noc but not found! dir={}, inner_path={}, file={},", 
@@ -179,25 +179,34 @@ impl NONDirLoader {
         Ok(ret)
     }
 
-    async fn load_object_from_noc(
+    async fn load_object_from_non(
         &self,
-        source: RequestSourceInfo,
+        common: &NONInputRequestCommon,
         object_id: &ObjectId,
     ) -> BuckyResult<Option<(Arc<AnyNamedObject>, Vec<u8>)>> {
-        let noc_req = NamedObjectCacheGetObjectRequest {
-            object_id: object_id.clone(),
-            source,
-            last_access_rpath: None,
+
+        let get_req = NONGetObjectInputRequest {
+            common: common.to_owned(),
+            object_id: object_id.to_owned(),
+            inner_path: None,
         };
 
-        let resp = self.noc.get_object(&noc_req).await.map_err(|e| {
-            error!("load object from noc error! id={}, {}", object_id, e);
-            e
-        })?;
-
-        match resp {
-            Some(resp) => Ok(Some((resp.object.object.unwrap(), resp.object.object_raw))),
-            None => Ok(None),
+        let ret = self.non.get_object(get_req).await;
+        match ret {
+            Ok(resp) => {
+                Ok(Some((resp.object.object.unwrap(), resp.object.object_raw)))
+            }
+            Err(e) => {
+                match e.code() {
+                    BuckyErrorCode::NotFound => {
+                        Ok(None)
+                    }
+                    _ => {
+                        error!("load object from non error! id={}, {}", object_id, e);
+                        Err(e)
+                    }
+                }
+            }
         }
     }
 }
