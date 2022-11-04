@@ -6,7 +6,6 @@ pub async fn load(is_sim: bool) -> BuckyResult<()> {
 
     if is_sim { 
         zone_simulator::TEST_PROFILE.load();
-
         zone_simulator::TestLoader::load_default().await;
     } else {
         // FIXME: add more stack

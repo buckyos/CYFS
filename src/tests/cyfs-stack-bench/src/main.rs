@@ -62,8 +62,8 @@ async fn main() {
     let root = root.parent().unwrap().join("cyfs");
     std::fs::create_dir_all(&root).unwrap();
     cyfs_util::bind_cyfs_root_path(root);
-
-    if matches.is_present("simulator") {
+    debug!("start benchmark");
+    if !matches.is_present("simulator") {
         let ret = loader::load(true).await;
         if let Err(e) = ret {
             error!("Failed to load sim stack, {}", e);
