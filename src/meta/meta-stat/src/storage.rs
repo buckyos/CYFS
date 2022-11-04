@@ -24,13 +24,6 @@ pub struct MetaStat {
     pub failed: u64,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub enum Period {
-    Daily = 0,
-    Weekly = 1,
-    Month = 2,
-}
-
 #[async_trait]
 pub trait Storage {
     async fn open(&mut self, db_path: &str) -> BuckyResult<()>;
@@ -39,12 +32,12 @@ pub trait Storage {
     // people/device 数目
     async fn get_desc(&self, obj_type: u8) -> BuckyResult<u64>;
     // people/device 新增
-    async fn get_desc_add(&self, obj_type: u8, period: Period) -> BuckyResult<u64>;
+    async fn get_desc_add(&self, obj_type: u8, start: u64, end: u64) -> BuckyResult<u64>;
     // people/device 活跃
-    async fn get_desc_active(&self, obj_type: u8, period: Period) -> BuckyResult<u64>;
+    async fn get_desc_active(&self, obj_type: u8, start: u64, end: u64) -> BuckyResult<u64>;
 
     // meta success/failed
-    async fn get_meta_stat(&self, meta_type: u8, period: Period) -> BuckyResult<Vec<MetaStat>>;
+    async fn get_meta_stat(&self, meta_type: u8, start: u64, end: u64) -> BuckyResult<Vec<MetaStat>>;
 
 }
 

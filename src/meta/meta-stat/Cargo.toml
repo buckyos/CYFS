@@ -18,3 +18,8 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 surf = { version = "2.3", default-features = false, features = ["h1-client"] }
 comfy-table = "6.1.2"
+toml = "0.5"
+plotters = "0.3.3"
+lettre = "0.9"
+lettre_email = "0.9"
+mime = "0.3.13"

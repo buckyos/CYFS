@@ -1,4 +1,4 @@
-use crate::storage::{Storage, map_sql_err, MetaStat, Period};
+use crate::storage::{Storage, map_sql_err, MetaStat};
 use cyfs_base::*;
 use sqlx::sqlite::{SqlitePoolOptions, SqliteJournalMode, SqliteConnectOptions, SqliteRow};
 use sqlx::{Pool, Sqlite, Row, ConnectOptions};
@@ -60,55 +60,23 @@ impl Storage for SqliteStorage {
         Ok(sum as u64)
     }
 
-    async fn get_desc_add(&self, obj_type: u8, period: Period) -> BuckyResult<u64> {
-        let now = bucky_time_now();
-        let mut start = bucky_time_to_js_time(now);
-        if period == Period::Daily {
-            start -= 86400 * 1000;
-        } else if period == Period::Weekly {
-            start -= 7 * 86400 * 1000;
-        } else {
-            start -= 30 * 86400 * 1000;
-        }
-        let start = js_time_to_bucky_time(start);
-
-        let row = sqlx::query(GET_OBJ_ADD_DESC_NUM).bind(obj_type).bind(start as i64).bind(now as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
+    async fn get_desc_add(&self, obj_type: u8, start: u64, end: u64) -> BuckyResult<u64> {
+        let row = sqlx::query(GET_OBJ_ADD_DESC_NUM).bind(obj_type).bind(start as i64).bind(end as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
         let sum: i64 = row.try_get(0).unwrap_or(0);
         Ok(sum as u64)
     }
 
-    async fn get_desc_active(&self, obj_type: u8, period: Period) -> BuckyResult<u64> {
-        let now = bucky_time_now();
-        let mut start = bucky_time_to_js_time(now);
-        if period == Period::Daily {
-            start -= 86400 * 1000;
-        } else if period == Period::Weekly {
-            start -= 7 * 86400 * 1000;
-        } else {
-            start -= 30 * 86400 * 1000;
-        }
-        let start = js_time_to_bucky_time(start);
-
-        let row = sqlx::query(GET_OBJ_ACTIVE_DESC_NUM).bind(obj_type).bind(start as i64).bind(now as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
+    async fn get_desc_active(&self, obj_type: u8, start: u64, end: u64) -> BuckyResult<u64> {
+        let row = sqlx::query(GET_OBJ_ACTIVE_DESC_NUM).bind(obj_type).bind(start as i64).bind(end as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
         let sum: i64 = row.try_get(0).unwrap_or(0);
         Ok(sum as u64)
     }
 
-    async fn get_meta_stat(&self, meta_type: u8, period: Period) -> BuckyResult<Vec<MetaStat>> {
+    async fn get_meta_stat(&self, meta_type: u8, start: u64, end: u64) -> BuckyResult<Vec<MetaStat>> {
         let rows = if 0 == meta_type {
-            let now = bucky_time_now();
-            let mut start = bucky_time_to_js_time(now);
-            if period == Period::Daily {
-                start -= 86400 * 1000;
-            } else if period == Period::Weekly {
-                start -= 7 * 86400 * 1000;
-            } else {
-                start -= 30 * 86400 * 1000;
-            }
-            let start = js_time_to_bucky_time(start);
             sqlx::query(GET_META_OBJ_NUM)
                 .bind(start as i64)
-                .bind(now as i64)
+                .bind(end as i64)
         } else {
             sqlx::query(GET_META_API_NUM)
         }

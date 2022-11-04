@@ -1,5 +1,5 @@
 use cyfs_base::*;
-
+use crate::def::*;
 /*
 const NOTIFY_MSG: &str = r#"{
     "msgtype": "text",
@@ -13,14 +13,8 @@ const NOTIFY_MSG: &str = r#"{
 };"#;
 */
 
-#[derive(Debug, Clone)]
-pub struct MonitorErrorInfo {
-    pub service: String,
-    pub error: BuckyError,
-}
-
 pub struct Notifier {
-    // 基于钉钉机器人的报警功能
+    // 基于钉钉机器人的通知功能
     dingtalk_url: String,
 }
 
@@ -31,8 +25,8 @@ impl Notifier {
         }
     }
     
-    pub async fn report(&self, info: &MonitorErrorInfo) -> BuckyResult<()> {
-        let content = format!("CYFS Monitor report: \nchannel:{}\nservice:{}\ncode:{:?}\nmsg:{}", get_channel(), info.service, info.error.code(), info.error.msg());
+    pub async fn report(&self, info: &StatInfo) -> BuckyResult<()> {
+        let content = format!("CYFS Stat report: \ncontext:{}", info.context);
 
         let msg = serde_json::json!({
             "msgtype": "text",
@@ -56,5 +50,12 @@ impl Notifier {
 
         info!("report to dingtalk success!");
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl StatReporter for  Notifier {
+    async fn report_stat(&self, info: &StatInfo) -> BuckyResult<()> {
+        self.report(info).await
     }
 }
