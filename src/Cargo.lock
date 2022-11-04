@@ -4540,6 +4540,7 @@ dependencies = [
  "mime 0.3.16",
  "once_cell",
  "plotters",
+ "rand 0.7.3",
  "serde",
  "serde_json",
  "simple_logger 3.0.0",

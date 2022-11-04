@@ -1,9 +1,0 @@
-db_path = "./"
-deadline = 30
-dingtalk_url = "https://oapi.dingtalk.com/robot/send?access_token=28788f9229a09bfe8b33e678d4447a2d2d80a334a594e1c942329cab8581f422"
-
-[email]
-email_receiver = "wangzhi@buckyos.com"
-mine_email = "yzbingchuan@gmail.com"
-smtp_server = "smtp.gmail.com"
-password = "lxuwxiiggrgzzlka"

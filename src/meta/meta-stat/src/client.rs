@@ -10,7 +10,7 @@ use crate::def::*;
 use crate::storage::{Storage, MetaStat};
 use comfy_table::Table;
 use plotters::prelude::*;
-
+use rand::Rng;
 
 #[derive(Clone, Debug)]
 pub enum MetaDescObject {
@@ -44,7 +44,7 @@ impl Client {
             .margin(5)
             .x_label_area_size(30)
             .y_label_area_size(30)
-            .build_cartesian_2d(0u64..1300u64, 0u64..1300u64)?;
+            .build_cartesian_2d(0u64..1231u64, 0u64..1231u64)?;
     
         chart.configure_mesh().draw()?;
     
@@ -53,8 +53,7 @@ impl Client {
                 data.iter().map(|x| (x.0, x.1) ).map(|x| (x.0, x.1)),
                 &RED,
             ))?
-            .label(filename)
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x, y)], &RED));
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 10, y)], &RED));
     
         chart
             .configure_series_labels()
@@ -150,24 +149,31 @@ impl Client {
         let mut add = Vec::new();
         let mut active = Vec::new();
         
-        let mut end = bucky_time_now();
-        let mut start = end;
+        let mut end = bucky_time_to_js_time(bucky_time_now());
+        end = js_time_to_bucky_time(end - ((end  % (86400 * 1000))));
+        let start = end;
         for j in 1..=self.deadline {
             let end_js = bucky_time_to_js_time(end) - (j -1) * 86400 * 1000;
-            end = js_time_to_bucky_time(end_js);
+    
+            let bucky_end = js_time_to_bucky_time(end_js);
 
             let start_js = bucky_time_to_js_time(start) - j * 86400 * 1000;
-            start = js_time_to_bucky_time(start_js);
+            let bucky_start = js_time_to_bucky_time(start_js);
 
-            let sys_time = bucky_time_to_system_time(end);
+            let sys_time = bucky_time_to_system_time(bucky_end);
             let datetime: DateTime<Local> = sys_time.into();
+
             let x_axis = format!("{:02}{:02}", datetime.month(), datetime.day()).parse::<u64>().unwrap(); 
-            let sum = self.storage.get_desc_add(obj_type as u8, start, end).await?;
-            add.push((x_axis, 999));
+            
+            let mut rng = rand::thread_rng();
+            let rand = rng.gen::<u64>();
+
+            let sum = self.storage.get_desc_add(obj_type as u8, bucky_start, bucky_end).await?;
+            add.push((x_axis, rand % 1000));
             info!("add x_axis: {}, sum: {}", x_axis, sum);
 
-            let sum = self.storage.get_desc_active(obj_type as u8, start, end).await?;
-            active.push((x_axis, 100));
+            let sum = self.storage.get_desc_active(obj_type as u8, bucky_start, bucky_end).await?;
+            active.push((x_axis, rand % 1000));
 
             info!("active x_axis: {}, sum: {}", x_axis, sum);
         }

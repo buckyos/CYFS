@@ -25,3 +25,4 @@ lettre_email = "0.9"
 mime = "0.3.13"
 chrono = "0.4"
 timer = "0.2"
+rand = '0.7'
