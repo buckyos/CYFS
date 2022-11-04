@@ -1,7 +1,6 @@
-mod echo;
 mod acl;
 mod cache;
+mod echo;
 mod event;
 
-pub use event::BdtNdnEventHandler;
-
+pub(crate) use event::BdtNDNEventHandler;

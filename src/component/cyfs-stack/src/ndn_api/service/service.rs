@@ -35,12 +35,6 @@ impl NDNService {
         zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
 
-        // 不带权限的本地noc处理器
-        raw_noc_processor: NONInputProcessorRef,
-
-        // 带inner权限的non处理器
-        inner_non_processor: NONInputProcessorRef,
-
         // 带acl的non router
         non_router: NONInputProcessorRef,
         chunk_manager: ChunkManagerRef,
@@ -49,10 +43,11 @@ impl NDNService {
         fail_handler: ObjectFailHandler,
     ) -> Self {
         let ndc_processor = NDCLevelInputProcessor::new_local(
+            acl.clone(),
             chunk_manager.clone(),
             ndc.clone(),
             tracker.clone(),
-            raw_noc_processor.clone(),
+            non_router.clone(),
         );
 
         let ndn_processor = NDNLevelInputProcessor::new_zone(
@@ -60,8 +55,7 @@ impl NDNService {
             bdt_stack.clone(),
             ndc.clone(),
             tracker.clone(),
-            raw_noc_processor.clone(),
-            inner_non_processor,
+            non_router.clone(),
             router_handlers.clone(),
             chunk_manager.clone(),
             forward.clone(),

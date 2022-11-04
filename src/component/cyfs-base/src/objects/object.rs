@@ -564,6 +564,10 @@ impl ObjectId {
     pub fn as_chunk_id(&self) -> &ChunkId {
         unsafe { std::mem::transmute::<&ObjectId, &ChunkId>(&self) }
     }
+
+    pub fn as_named_object_id<T: ObjectType>(&self) -> &NamedObjectId<T> {
+        unsafe { std::mem::transmute::<&ObjectId, &NamedObjectId<T>>(&self) }
+    }
 }
 
 impl RawFixedBytes for ObjectId {

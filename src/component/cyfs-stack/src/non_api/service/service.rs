@@ -40,33 +40,31 @@ impl NONService {
         fail_handler: ObjectFailHandler,
         chunk_manager: ChunkManagerRef,
     ) -> (NONService, NDNService) {
-        // raw service with inner_path support
-        let raw_noc_processor = NOCLevelInputProcessor::new_raw_with_inner_path_service(
+        // raw service with inner_path service support
+        let raw_noc_processor = NOCLevelInputProcessor::new_with_inner_path_service(
             noc.clone(),
             ndc.clone(),
             tracker.clone(),
-            ood_resovler.clone(),
             router_handlers.clone(),
             zone_manager.clone(),
             chunk_manager.clone(),
         );
 
         // meta处理器，从mete和noc处理get_object请求
-        let meta_processor = MetaInputProcessor::new_raw_with_inner_path_service(
+        let meta_processor = MetaInputProcessor::new_with_inner_path_service(
             None,
             meta_cache,
             ndc.clone(),
             tracker.clone(),
-            ood_resovler.clone(),
             chunk_manager.clone(),
             noc.clone(),
         );
 
-        // 带本地权限的noc processor
+        // noc processor with local device acl + rmeta acl + validate
         let local_noc_processor =
             NOCLevelInputProcessor::new_local(acl.clone(), raw_noc_processor.clone());
 
-        // 同zone权限的non processor
+        // non processor with zone acl + rmeta acl + validate
         let non_processor = NONLevelInputProcessor::new_zone(
             acl.clone(),
             raw_noc_processor.clone(),
@@ -75,7 +73,7 @@ impl NONService {
             router_handlers.clone(),
         );
 
-        // 标准acl权限的router
+        // 标准acl权限的router + rmeta acl + validate
         let router = NONRouter::new_acl(
             raw_noc_processor.clone(),
             forward_manager.clone(),
@@ -102,8 +100,6 @@ impl NONService {
             ood_resovler,
             zone_manager,
             router_handlers.clone(),
-            raw_noc_processor,
-            non_processor.clone(),
             router,
             chunk_manager.clone(),
             forward_manager,
@@ -115,6 +111,10 @@ impl NONService {
 
     pub(crate) fn raw_noc_processor(&self) -> &NONInputProcessorRef {
         &self.raw_noc_processor
+    }
+
+    pub(crate) fn router_processor(&self) -> &NONInputProcessorRef {
+        &self.router
     }
 
     pub(crate) fn clone_processor(&self) -> NONInputProcessorRef {

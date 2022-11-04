@@ -2,7 +2,7 @@ use super::reader::ChunkStoreReader;
 use super::stream_writer::FileChunkListStreamWriter;
 use cyfs_base::*;
 use cyfs_bdt::ChunkReader;
-use cyfs_chunk_cache::{ChunkManager, ChunkType};
+use cyfs_chunk_cache::{ChunkManagerRef, ChunkType};
 use cyfs_chunk_lib::{Chunk, ChunkReadWithRanges};
 use cyfs_lib::*;
 use cyfs_util::AsyncReadWithSeekAdapter;
@@ -10,10 +10,9 @@ use cyfs_util::AsyncReadWithSeekAdapter;
 use async_std::io::{Cursor, Read};
 use std::convert::TryFrom;
 use std::ops::Range;
-use std::sync::Arc;
 
 pub(crate) struct LocalDataManager {
-    chunk_manager: Arc<ChunkManager>,
+    chunk_manager: ChunkManagerRef,
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
 
@@ -22,7 +21,7 @@ pub(crate) struct LocalDataManager {
 
 impl LocalDataManager {
     pub(crate) fn new(
-        chunk_manager: Arc<ChunkManager>,
+        chunk_manager: ChunkManagerRef,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
     ) -> Self {

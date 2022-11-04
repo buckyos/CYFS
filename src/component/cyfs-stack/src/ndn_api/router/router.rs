@@ -1,7 +1,7 @@
-use super::super::acl::*;
 use super::super::handler::*;
 use super::super::ndc::*;
 use super::super::ndn::*;
+use super::super::forward::*;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -42,7 +42,7 @@ pub(crate) struct NDNRouter {
 }
 
 impl NDNRouter {
-    fn new_raw(
+    fn new(
         acl: AclManagerRef,
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
@@ -60,7 +60,8 @@ impl NDNRouter {
 
         // local的ndn也使用router加载file
         let ndc_processor =
-            NDCLevelInputProcessor::new_raw(chunk_manager.clone(), ndc, tracker, non_router);
+            NDCLevelInputProcessor::new(acl.clone(), chunk_manager.clone(), ndc, tracker, non_router);
+
         let ret = Self {
             acl,
             bdt_stack,
@@ -91,7 +92,7 @@ impl NDNRouter {
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
         // 不带input acl的处理器
-        let raw_processor = Self::new_raw(
+        let processor = Self::new(
             acl.clone(),
             bdt_stack,
             ndc,
@@ -104,12 +105,6 @@ impl NDNRouter {
             forward,
             fail_handler,
         );
-
-        // 带input acl的处理器
-        let acl_processor = NDNAclInputProcessor::new(acl, raw_processor.clone());
-
-        // 使用acl switcher连接
-        let processor = NDNInputAclSwitcher::new(acl_processor, raw_processor);
 
         processor
     }
@@ -127,7 +122,7 @@ impl NDNRouter {
 
         // 使用non router加载file
         let processor =
-            NDNForwardObjectProcessor::new(target, None, self.object_loader.clone(), processor);
+            NDNForwardObjectProcessor::new(target,self.object_loader.clone(), processor);
 
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(
@@ -146,7 +141,8 @@ impl NDNRouter {
         Ok(post_processor)
     }
 
-    // ndn层级下，不指定target那就是本地协议栈
+    // NDN resolve target logic is same as NON
+    // is target = current_device, return NONE
     async fn resolve_target(&self, target: Option<&ObjectId>) -> BuckyResult<Option<DeviceId>> {
         let info = self.zone_manager.target_zone_manager().resolve_target(target).await?;
         let ret = if info.target_device == *self.acl.get_current_device_id() {
@@ -159,6 +155,7 @@ impl NDNRouter {
         Ok(ret)
     }
 
+    // resolve final device from common.target param
     async fn get_data_processor(
         &self,
         target: Option<&ObjectId>,
@@ -171,66 +168,6 @@ impl NDNRouter {
         }
     }
 
-    // 从目标对象，解析出所在的源设备
-    async fn resolve_target_from_object(
-        &self,
-        req: &NDNGetDataInputRequest,
-    ) -> BuckyResult<Vec<DeviceId>> {
-        // 只需要查询object_id，不附带inner_path
-        let mut obj_req = req.clone();
-        obj_req.inner_path = None;
-        let object_info = self.object_loader.get_root_object(&obj_req, None).await?;
-
-        self.search_source_from_object(object_info).await
-    }
-
-    async fn search_source_from_object(
-        &self,
-        object_info: NONObjectInfo,
-    ) -> BuckyResult<Vec<DeviceId>> {
-        let mut sources = vec![];
-        match self
-            .ood_resolver
-            .get_ood_by_object(
-                object_info.object_id.clone(),
-                None,
-                object_info.object.unwrap(),
-            )
-            .await
-        {
-            Ok(list) => {
-                if list.is_empty() {
-                    info!(
-                        "get sources from file|dir owner but not found! file={}",
-                        object_info.object_id,
-                    );
-                } else {
-                    info!(
-                        "get sources from file|dir owner! file={}, sources={:?}",
-                        object_info.object_id, list
-                    );
-
-                    list.into_iter().for_each(|device_id| {
-                        // 这里需要列表去重
-                        if !sources.iter().any(|v| *v == device_id) {
-                            sources.push(device_id);
-                        }
-                    });
-                }
-
-                Ok(sources)
-            }
-            Err(e) => {
-                error!(
-                    "get sources from file|dir owner failed! file={}",
-                    object_info.object_id,
-                );
-                Err(e)
-            }
-        }
-    }
-
-    // put_data 直接put到target目标设备(如果=None则put到本地)
     async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
         debug!(
             "will put data to ndn: id={}, {}, target={:?}",
@@ -241,43 +178,13 @@ impl NDNRouter {
         processor.put_data(req).await
     }
 
-    async fn resolve_get_data_target(&self, req: &NDNGetDataInputRequest) -> Option<ObjectId> {
-        // 如果明确指定了target，那么尝试从target拉取
-        if let Some(target) = &req.common.target {
-            Some(target.to_owned())
-        } else {
-            match req.object_id.obj_type_code() {
-                ObjectTypeCode::Chunk => None,
-                _ => {
-                    // 从目标对象解析target
-                    if let Ok(list) = self.resolve_target_from_object(req).await {
-                        info!(
-                            "ndn resolve get data target: object={}, targets={:?}",
-                            req.object_id, list
-                        );
-                        if list.len() > 0 {
-                            Some(list[0].object_id().to_owned())
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                }
-            }
-        }
-    }
-
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
         debug!(
             "will get data from ndn: id={}, {}, target={:?}",
             req.object_id, req.common.source, req.common.target
         );
 
-        // 从req.target和目标对象，解析出所在的ood
-        let target = self.resolve_get_data_target(&req).await;
-
-        let processor = self.get_data_processor(target.as_ref()).await?;
+        let processor = self.get_data_processor(req.common.target.as_ref()).await?;
         processor.get_data(req).await
     }
 
@@ -352,24 +259,24 @@ impl NDNRouter {
 #[async_trait::async_trait]
 impl NDNInputProcessor for NDNRouter {
     async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
-        NDNRouter::put_data(&self, req).await
+        Self::put_data(&self, req).await
     }
 
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
-        NDNRouter::get_data(&self, req).await
+        Self::get_data(&self, req).await
     }
 
     async fn delete_data(
         &self,
         req: NDNDeleteDataInputRequest,
     ) -> BuckyResult<NDNDeleteDataInputResponse> {
-        NDNRouter::delete_data(&self, req).await
+        Self::delete_data(&self, req).await
     }
 
     async fn query_file(
         &self,
         req: NDNQueryFileInputRequest,
     ) -> BuckyResult<NDNQueryFileInputResponse> {
-        NDNRouter::query_file(&self, req).await
+        Self::query_file(&self, req).await
     }
 }

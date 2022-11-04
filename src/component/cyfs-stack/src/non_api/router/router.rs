@@ -36,7 +36,7 @@ pub(crate) struct NONRouter {
 }
 
 impl NONRouter {
-    fn new_raw(
+    fn new(
         // router内部的noc处理器，会经过acl和validate两层校验器
         noc_raw_processor: NONInputProcessorRef,
 
@@ -89,8 +89,9 @@ impl NONRouter {
         meta_processor: NONInputProcessorRef,
         fail_handler: ObjectFailHandler,
     ) -> NONInputProcessorRef {
-        // 不带input acl的处理器
-        let raw_router = Self::new_raw(
+
+        // router processor with rmeta acl and valdiate
+        let rmeta_validate_router = Self::new(
             raw_noc_processor,
             forward,
             acl.clone(),
@@ -106,7 +107,7 @@ impl NONRouter {
         // 增加router前置处理器
         let pre_processor = NONHandlerPreProcessor::new(
             RouterHandlerChain::PreRouter,
-            raw_router,
+            rmeta_validate_router,
             router_handlers.clone(),
         );
 

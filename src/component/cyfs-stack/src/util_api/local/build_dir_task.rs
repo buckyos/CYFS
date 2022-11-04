@@ -595,7 +595,7 @@ impl BuildDirTask {
                 .remove(path_str.as_str())
                 .unwrap()
         };
-        let noc = ObjectMapNOCCacheAdapter::new_noc_cache(&self.device_id, self.noc.clone());
+        let noc = ObjectMapNOCCacheAdapter::new_noc_cache(self.noc.clone());
         let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
