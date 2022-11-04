@@ -1,4 +1,5 @@
-use async_std::{future, io::{Cursor, prelude::*}, task};
+use std::{sync::Arc};
+use async_std::{future, io::{prelude::*}, task};
 use cyfs_base::*;
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
@@ -73,6 +74,11 @@ async fn main() {
         ln_params).await.unwrap();
 
     let mut rn_params = StackOpenParams::new("bdt-example-channel-upload");
+    let rn_tracker = MemTracker::new();
+    let rn_store = MemChunkStore::new(NamedDataCache::clone(&ln_tracker).as_ref());
+    rn_params.chunk_store = Some(rn_store.clone_as_reader());
+    rn_params.ndc = Some(NamedDataCache::clone(&rn_tracker));
+    rn_params.tracker = Some(TrackerCache::clone(&rn_tracker));
     rn_params.config.interface.udp.sim_loss_rate = 10;
     let rn_stack = Stack::open(
         rn_dev, 
@@ -84,10 +90,11 @@ async fn main() {
         let (chunk_len, chunk_data) = utils::random_mem(1024, 9);
         let chunk_hash = hash_data(&chunk_data[..]);
         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
-        
-        let dir = cyfs_util::get_named_data_root("bdt-example-channel-upload");
-        let path = dir.join(chunkid.to_string().as_str());
-        local_chunk_writer(&*rn_stack, &chunkid, path).await.unwrap().write(Cursor::new(chunk_data)).await.unwrap();
+
+        let _ = rn_store
+            .add(chunkid.clone(), Arc::new(chunk_data))
+            .await
+            .unwrap();
 
         let task = download_chunk(
             &*ln_stack, 

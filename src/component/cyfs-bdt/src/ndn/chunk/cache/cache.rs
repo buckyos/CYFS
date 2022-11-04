@@ -119,11 +119,12 @@ impl ChunkCache {
                 offset as usize, 
                 &mut buffer[read..], 
                 abort()).await?;
-            if this_read == 0 {
+            read += this_read;
+            if this_read == 0 
+                || read >= buffer.len() {
                 break;
             }
             index += 1;
-            read += this_read;
             offset = 0;
         }
         Ok(read)
