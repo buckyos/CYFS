@@ -132,12 +132,12 @@ impl FileTask {
 
     fn create_cache(&self, index: usize) -> BuckyResult<ChunkCache> {
         let stack = Stack::from(&self.0.stack);
-        let chunk = self.chunk_list().chunks()[index];
-        let cache = stack.ndn().chunk_manager().create_cache(&chunk);
+        let chunk = &self.chunk_list().chunks()[index];
+        let cache = stack.ndn().chunk_manager().create_cache(chunk);
         let mut state = self.0.state.write().unwrap();
         match &mut state.task_state {
             TaskStateImpl::Downloading(downloading) => {
-                if downloading.chunks.iter().find(|cache| cache.chunk().eq(&chunk)).is_none() {
+                if downloading.chunks.iter().find(|cache| cache.chunk().eq(chunk)).is_none() {
                     cache.downloader().context().add_context(self.context().clone());
                     downloading.chunks.push(cache.clone());
                 } 
@@ -225,8 +225,9 @@ impl DownloadTask for FileTask {
 
         let mut new_expect = 0;
         if chunks.len() > 0 {
+            let sub_expect = expect_speed / chunks.len() as u32;
             for cache in chunks {
-                new_expect += cache.downloader().on_drain(expect_speed / chunks.len() as u32);
+                new_expect += cache.downloader().on_drain(sub_expect);
             }
         }
        

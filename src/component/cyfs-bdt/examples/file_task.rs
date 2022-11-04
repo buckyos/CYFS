@@ -106,17 +106,17 @@ async fn main() {
 
     let down_dir = cyfs_util::get_named_data_root("bdt-example-file-task-downloader");
     let down_path = down_dir.join(file.desc().file_id().to_string().as_str());
-    let task = download_file_to_path(
+    let task = download_file(
         &*ln_stack,
-        file, 
+        file.clone(), 
         None, 
         Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
-        down_path.as_path(),
-    )
-    .await
-    .unwrap();
+    ).await.unwrap();
 
-    let recv = future::timeout(Duration::from_secs(1), watch_task_finish(task))
+    local_file_writer(&*rn_stack, file, down_path).await.unwrap().write(task.reader()).await.unwrap();
+
+
+    let recv = future::timeout(Duration::from_secs(1), watch_task_finish(task.clone_as_task()))
         .await
         .unwrap();
     let _ = recv.unwrap();

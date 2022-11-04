@@ -358,7 +358,7 @@ impl async_std::io::Read for DownloadTaskReader {
         buffer: &mut [u8],
     ) -> Poll<std::io::Result<usize>> {
         let pined = self.get_mut();
-        if let DownloadTaskState::Error(err) = self.task.state() {
+        if let DownloadTaskState::Error(err) = pined.task.state() {
             return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
         } 
         if let Some(range) = pined.cache.exists(pined.offset..pined.offset + buffer.len()) {

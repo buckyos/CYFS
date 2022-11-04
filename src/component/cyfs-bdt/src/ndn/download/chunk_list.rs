@@ -169,10 +169,10 @@ impl DownloadTask for ChunkListTask {
 
 
     fn calc_speed(&self, when: Timestamp) -> u32 {
-        let state = self.0.state.write().unwrap();
-        match &state.task_state {
+        let mut state = self.0.state.write().unwrap();
+        match &mut state.task_state {
             TaskStateImpl::Downloading(downloading) => {
-                let cur_speed = downloading.cur_cache.downloader().calc_speed();
+                let cur_speed = downloading.cur_cache.downloader().calc_speed(when);
                 downloading.history_speed.update(Some(cur_speed), when);
                 cur_speed
             }, 
@@ -260,7 +260,6 @@ impl DownloadTask for ChunkListTask {
         }
 
         if let Some(cache) = cache {
-            let strong_stack = Stack::from(&self.0.stack);
             cache.downloader().context().remove_context(self.context(), self.state());
         }
         
@@ -294,9 +293,9 @@ pub struct ChunkListTaskReader {
 }
 
 impl ChunkListTaskReader {
-    pub fn new(task: ChunkListTask, offset: usize) -> Self {
+    pub fn new(task: ChunkListTask, offset: u64) -> Self {
         Self {
-            offset: 0, 
+            offset, 
             task
         }
     }
@@ -317,10 +316,10 @@ impl async_std::io::Read for ChunkListTaskReader {
         if let DownloadTaskState::Error(err) = pined.task.state() {
             return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
         } 
-        let (index, range) = ranges[0];
-        let chunk = pined.task.chunk_list().chunks()[index];
+        let (index, range) = ranges[0].clone();
+        let chunk = &pined.task.chunk_list().chunks()[index];
         let stack = Stack::from(&pined.task.0.stack);
-        let cache = stack.ndn().chunk_manager().create_cache(&chunk);
+        let cache = stack.ndn().chunk_manager().create_cache(chunk);
         let mut reader = DownloadTaskReader::new(cache, pined.task.clone_as_task());
         use std::{io::{Seek, SeekFrom}};
         match reader.seek(SeekFrom::Start(range.start)) {

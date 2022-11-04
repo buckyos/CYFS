@@ -75,7 +75,15 @@ impl ChunkReader for MemChunkStore {
     async fn get(&self, chunk: &ChunkId) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         let content = self.0.chunks.read().unwrap().get(chunk).cloned()
             .ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, "chunk not exists"))?;
-        Ok(Box::new(Cursor::new(content)))
+
+        struct ArcWrap(Arc<Vec<u8>>);
+        impl AsRef<[u8]> for ArcWrap {
+            fn as_ref(&self) -> &[u8] {
+                self.0.as_ref()
+            }
+        }
+        
+        Ok(Box::new(Cursor::new(ArcWrap(content))))
     }
 }
 

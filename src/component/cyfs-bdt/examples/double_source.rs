@@ -1,4 +1,4 @@
-use async_std::{future, io::prelude::*, task};
+use async_std::{future, io::{prelude::*, Cursor}, task};
 use cyfs_base::*;
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
@@ -7,7 +7,6 @@ use cyfs_bdt::{
     DownloadSource, 
     ChunkEncodeDesc, 
     ChunkReader,
-    ChunkWriter,
     MemChunkStore,
     MemTracker,
     // StackConfig,
@@ -16,12 +15,12 @@ use cyfs_bdt::{
     StackOpenParams, 
     DownloadTask, 
 };
-use std::{sync::Arc, time::Duration};
+use std::{time::Duration};
 mod utils;
 
 async fn watch_recv_chunk(stack: StackGuard, chunkid: ChunkId) -> BuckyResult<ChunkId> {
     loop {
-        let ret = stack.ndn().chunk_manager().store().read(&chunkid).await;
+        let ret = stack.ndn().chunk_manager().store().get(&chunkid).await;
         if let Ok(mut reader) = ret {
             let mut content = vec![0u8; chunkid.len()];
             let _ = reader.read(content.as_mut_slice()).await?;
@@ -90,7 +89,7 @@ async fn main() {
         
         let dir = cyfs_util::get_named_data_root("bdt-example-channel-upload");
         let path = dir.join(chunkid.to_string().as_str());
-        let _ = track_chunk_to_path(&*rn_stack, &chunkid, Arc::new(chunk_data), path.as_path()).await.unwrap();
+        local_chunk_writer(&*rn_stack, &chunkid, path).await.unwrap().write(Cursor::new(chunk_data)).await.unwrap();
 
         let context = SingleDownloadContext::new(None);
         context.add_source(DownloadSource {
@@ -105,9 +104,9 @@ async fn main() {
             chunkid.clone(), 
             None, 
             Some(context), 
-            vec![ln_store.clone_as_writer()]).await.unwrap();
-        
-        watch_resource(task);
+        ).await.unwrap();
+        ln_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+        watch_resource(task.clone_as_task());
 
         let recv = future::timeout(Duration::from_secs(50), watch_recv_chunk(ln_stack.clone(), chunkid.clone())).await.unwrap();
         let recv_chunk_id = recv.unwrap();

@@ -218,7 +218,6 @@ impl DownloadTask for ChunkTask {
         }
 
         if let Some(cache) = cache {
-            let strong_stack = Stack::from(&self.0.stack);
             cache.downloader().context().remove_context(self.context(), self.state());
         }
         

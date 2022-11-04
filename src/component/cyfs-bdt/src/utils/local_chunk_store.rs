@@ -9,11 +9,6 @@ use async_std::{
     prelude::*, 
     fs::{self, OpenOptions}, 
     io::{SeekFrom, Cursor}, 
-    channel,
-    fs::{self, OpenOptions},
-    io::SeekFrom,
-    prelude::*,
-    task,
 };
 use async_trait::async_trait;
 use cyfs_base::*;
@@ -39,7 +34,7 @@ impl LocalChunkReader {
         }))
     }
 
-    async fn read_chunk_from_file(chunk: &ChunkId, path: &Path, offset: u64) -> BuckyResult<Box<dyn AsyncReadWithSeek>> {
+    async fn read_chunk_from_file(chunk: &ChunkId, path: &Path, offset: u64) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         debug!("begin read {} from file {:?}", chunk, path);
         let mut file = OpenOptions::new()
             .read(true)
@@ -410,20 +405,17 @@ impl LocalChunkListWriter {
         tracker: &dyn TrackerCache,
     ) -> Self {
         //FIXME: 如果下载速度高于磁盘速度，这里就会出问题
-        let (task_sender, task_recver) = channel::bounded(100);
-        let writer = Self(Arc::new(ListWriterImpl {
+        Self(Arc::new(ListWriterImpl {
             path, 
             desc: desc.clone(),  
             ndc: ndc.clone(), 
             tracker: tracker.clone(),  
-        }));
+        }))
+    }
 
-        {
-            let writer = writer.clone();
-            //FIXME: stop it
-            task::spawn(async move { writer.start(task_recver).await });
-        }
-        writer
+
+    async fn track_chunk_index(
+        &self, 
     }
 
     async fn track_chunk_index(&self, chunk: &ChunkId, index: usize) -> BuckyResult<()> {
