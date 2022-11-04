@@ -1,14 +1,14 @@
 use async_std::{future, io::prelude::*, task};
 use cyfs_base::*;
 use cyfs_bdt::{
-    download::*, SingleDownloadContext, ChunkWriter, StackGuard, 
+    download::*, SingleDownloadContext, StackGuard, 
 };
 use std::{sync::Arc, time::Duration};
 mod utils;
 
 async fn watch_recv_chunk(stack: StackGuard, chunkid: ChunkId) -> BuckyResult<ChunkId> {
     loop {
-        let ret = stack.ndn().chunk_manager().store().read(&chunkid).await;
+        let ret = stack.ndn().chunk_manager().store().get(&chunkid).await;
         if let Ok(mut reader) = ret {
             let mut content = vec![0u8; chunkid.len()];
             let _ = reader.read(content.as_mut_slice()).await?;
@@ -51,14 +51,14 @@ async fn one_task_group() {
     
         let context = SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()]);
     
-        let _ = download_chunk(
+        let task = download_chunk(
             &*ln_stack,
             chunkid.clone(), 
             Some("test-group::".to_owned()), 
             Some(context),
-            vec![ln_store.clone_as_writer()],
-        )
-        .await;
+        ).await.unwrap();
+        ln_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+
         let recv = future::timeout(
             Duration::from_secs(5),
             watch_recv_chunk(ln_stack.clone(), chunkid.clone()),
@@ -87,14 +87,13 @@ async fn one_task_group() {
             .await
             .unwrap();
     
-        let _ = download_chunk(
+        let task = download_chunk(
             &*ln_stack,
             chunkid.clone(), 
             Some("test-group::2".to_owned()), 
             None, 
-            vec![ln_store.clone_as_writer()],
-        )
-        .await;
+        ).await.unwrap();
+        ln_store.write_chunk(&chunkid, task.reader()).await.unwrap();
 
         let group = get_download_task(&*ln_stack, "test-group").unwrap();
 

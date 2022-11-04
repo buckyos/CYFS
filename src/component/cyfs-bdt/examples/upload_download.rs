@@ -5,7 +5,6 @@ use cyfs_bdt::{
     download::*,
     SingleDownloadContext, 
     ChunkReader,
-    ChunkWriter,
     MemChunkStore,
     MemTracker,
     // StackConfig,
@@ -21,7 +20,7 @@ mod utils;
 
 async fn watch_recv_chunk(stack: StackGuard, chunkid: ChunkId) -> BuckyResult<ChunkId> {
     loop {
-        let ret = stack.ndn().chunk_manager().store().read(&chunkid).await;
+        let ret = stack.ndn().chunk_manager().store().get(&chunkid).await;
         if let Ok(mut reader) = ret {
             let mut content = vec![0u8; chunkid.len()];
             let _ = reader.read(content.as_mut_slice()).await?;
@@ -105,14 +104,20 @@ async fn main() {
                 interest: &Interest, 
                 from: &Channel
             ) -> BuckyResult<()> {
-                let _ = download_chunk(
+                let task = download_chunk(
                     stack,
                     interest.chunk.clone(), 
                     None, 
                     Some(SingleDownloadContext::desc_streams(None, vec![self.src_dev.desc().clone()])),
-                    vec![self.store.clone_as_writer()],
-                )
-                .await;
+                ).await.unwrap();
+                {
+                    let store = self.store.clone();
+                    let chunk = interest.chunk.clone();
+                    let reader = task.reader();
+                    task::spawn(async move {
+                        store.write_chunk(&chunk, reader).await.unwrap();
+                    });
+                }
                 self.default.on_newly_interest(stack, interest, from).await
             }
         
@@ -160,14 +165,13 @@ async fn main() {
         .await
         .unwrap();
 
-    let _ = download_chunk(
+    let task = download_chunk(
         &*down_stack,
         chunkid.clone(), 
         None, 
         Some(SingleDownloadContext::desc_streams(None, vec![cache_stack.local_const().clone(),])),
-        vec![down_store.clone_as_writer()],
-    )
-    .await;
+    ).await.unwrap();
+    down_store.write_chunk(&chunkid, task.reader()).await.unwrap();
     let recv = future::timeout(
         Duration::from_secs(50),
         watch_recv_chunk(down_stack.clone(), chunkid.clone()),
