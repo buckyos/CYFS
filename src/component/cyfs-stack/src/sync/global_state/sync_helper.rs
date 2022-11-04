@@ -18,7 +18,7 @@ impl GlobalStateSyncHelper {
         device_id: &DeviceId,
         noc: NamedObjectCacheRef,
     ) -> Self {
-        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone());
+        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(noc.clone());
         let cache = ObjectMapRootMemoryCache::new_default_ref(noc_cache.clone());
 
         Self {
