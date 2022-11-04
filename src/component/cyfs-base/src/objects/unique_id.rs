@@ -163,3 +163,22 @@ impl ProtobufTransform<Vec<u8>> for UniqueId {
         Ok(id)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::*;
+
+    #[test]
+    fn test_codec() {
+        let id = UniqueId::default();
+        let len = id.raw_measure(&None).unwrap();
+        assert_eq!(len, 16);
+        let buf = id.to_vec().unwrap();
+        let (id2, left) = UniqueId::raw_decode(&buf).unwrap();
+        assert_eq!(id, id2);
+        assert!(left.is_empty());
+
+        let hash = id.raw_hash_value().unwrap();
+        println!("hash: {}", hash);
+    }
+}
