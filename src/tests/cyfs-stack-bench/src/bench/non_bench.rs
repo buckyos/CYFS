@@ -16,15 +16,21 @@ pub struct NONBench {}
 impl Bench for NONBench {
     async fn bench(&self, env: BenchEnv, _ood_path: String, t: u64) -> bool {
         let ret = if env == BenchEnv::Simulator {
-            let time = std::time::Instant::now();
+            
+            info!("begin test NONBench...");
+            let begin = std::time::Instant::now();
+
             static COUNT: AtomicU64 = AtomicU64::new(0);
-            //for _ in 0..t {
+            for _ in 0..t {
                 let ret = test().await;
-            //}
-    
-            let tps = if time.elapsed().as_secs() > 0 { t / time.elapsed().as_secs() } else { 0 };
+            }
+
+            let dur = begin.elapsed();
+            info!("end test NONBench: {:?}", dur);
+
+            // let tps = if time.elapsed().as_secs() > 0 { t / time.elapsed().as_secs() } else { 0 };
         
-            info!("non bench TPS: {}/{} = {}", t, time.elapsed().as_secs(), tps);
+            // info!("non bench TPS: {}/{} = {}", t, time.elapsed().as_secs(), tps);
 
             true
         } else {
@@ -145,10 +151,16 @@ async fn clear_all(dec_id: &ObjectId) {
 
 // 跨zone 调用req_path
 async fn test_non_object_req_path() -> bool {
+    info!("begin test wait_on_line...");
+    let begin = std::time::Instant::now();
+
     let dec_id = new_dec("test-non");
     let user1_stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
     let user1_stack = user1_stack.fork_with_new_dec(Some(dec_id.clone())).await.unwrap();
     user1_stack.wait_online(None).await.unwrap();
+
+    let dur = begin.elapsed();
+    info!("end test wait_on_line: {:?}", dur);
 
     async_std::task::spawn(async move {
         loop {
@@ -206,6 +218,9 @@ async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl 
 // object层 跨dec 在设置和不设置对应group情况下的操作是否正常
 // object层 跨zone在设置和不设置对应group情况下的操作是否正常, 不允许跨zone put, 允许跨zone get
 async fn test_outer_put_dec(_dec_id: &ObjectId) {
+
+    info!("begin test_outer_put_dec...");
+    let begin = std::time::Instant::now();
 
     let dec_id = TestLoader::get_shared_stack(DeviceIndex::User1Device2).dec_id().unwrap().to_owned();
     let (_q, a) = qa_pair();
@@ -303,6 +318,8 @@ async fn test_outer_put_dec(_dec_id: &ObjectId) {
     assert_eq!(resp.object.object_id, *a.text_id().object_id());
 
     info!("cross zone get object success");
+    let dur = begin.elapsed();
+    info!("end test test_outer_put_dec: {:?}", dur);
 
 }
 
@@ -323,6 +340,9 @@ async fn test_delete_object(
     stack: &SharedCyfsStack,
     target: &DeviceId,
 ) {
+    info!("begin test_delete_object...");
+    let begin = std::time::Instant::now();
+
     let mut req = NONDeleteObjectOutputRequest::new_router(
         Some(target.object_id().to_owned()),
         object_id.to_owned(),
@@ -333,9 +353,14 @@ async fn test_delete_object(
     req.common.target = Some(target.object_id().to_owned());
     let _resp = stack.non_service().delete_object(req).await.unwrap();
     info!("delete object success! {}", object_id);
+    let dur = begin.elapsed();
+    info!("end test_delete_object: {:?}", dur);
 }
 
 async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
+    info!("begin test_put_object...");
+    let begin = std::time::Instant::now();
+
     {
         let object = new_object(dec_id, "first-text");
         let object_id = object.text_id().object_id().to_owned();
@@ -413,9 +438,14 @@ async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
             }
         }
     }
+
+    let dur = begin.elapsed();
+    info!("end test_put_object: {:?}", dur);
 }
 
 async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &DeviceId) {
+    info!("begin test_get_object...");
+    let begin = std::time::Instant::now();
     let get_object_path = "/.cyfs/api/handler/pre_router/get_object/";
     // req_path 统一格式
     let req_path = RequestGlobalStatePath {
@@ -449,4 +479,6 @@ async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &De
     let resp = ret.unwrap();
 
     info!("test_get_object: {}", resp);
+    let dur = begin.elapsed();
+    info!("end test test_get_object: {:?}", dur);
 }
