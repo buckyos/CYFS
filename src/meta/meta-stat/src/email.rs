@@ -59,7 +59,7 @@ impl Lettre {
             info!("Could not send email: {:?}", result);
         }
 
-        info!("{:?}", result);
+        //info!("{:?}", result);
         mailer.close();
 
         Ok(())

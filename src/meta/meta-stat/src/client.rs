@@ -1,5 +1,8 @@
 use std::sync::Arc;
 use std::collections::HashMap;
+use chrono::DateTime;
+use chrono::Datelike;
+use chrono::Local;
 use cyfs_base::*;
 use crate::Config;
 use crate::reporter::*;
@@ -33,6 +36,7 @@ impl Client {
     }
 
     pub fn flow_chart(&self, data: Vec<(u64, u64)>, filename: &str) -> Result<(), Box<dyn std::error::Error>> {
+        info!("data {:?}", data);
         let root = BitMapBackend::new(filename, (640, 480)).into_drawing_area();
         root.fill(&WHITE)?;
         let mut chart = ChartBuilder::on(&root)
@@ -40,21 +44,21 @@ impl Client {
             .margin(5)
             .x_label_area_size(30)
             .y_label_area_size(30)
-            .build_cartesian_2d(0f32..10000f32, 0f32..10000f32)?;
+            .build_cartesian_2d(0u64..1300u64, 0u64..1300u64)?;
     
         chart.configure_mesh().draw()?;
     
         chart
             .draw_series(LineSeries::new(
-                data.into_iter().map(|x| (x.0 as f32, x.1 as f32) ).map(|x| (x.0, x.1)),
+                data.iter().map(|x| (x.0, x.1) ).map(|x| (x.0, x.1)),
                 &RED,
             ))?
             .label(filename)
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x, y)], &RED));
     
         chart
             .configure_series_labels()
-            .background_style(&WHITE.mix(0.8))
+            .background_style(&WHITE.mix(800f64))
             .border_style(&BLACK)
             .draw()?;
     
@@ -78,6 +82,8 @@ impl Client {
         }
 
         let t1 = format!("{table}");
+        stat_info.context += t1.as_str();
+        stat_info.context += "\n\n";
 
         let mut table1 = Table::new();
         table1.set_header(vec!["Query Meta Object", "Success", "Failed"]);
@@ -97,18 +103,35 @@ impl Client {
         println!("{table1}");
         println!("{table2}");
 
+        let t2 = format!("{table1}");
+        stat_info.context += t2.as_str();
+        stat_info.context += "\n\n";
+
+        let t3 = format!("{table2}");
+        stat_info.context += t3.as_str();
+        stat_info.context += "\n\n";
+
         // 日表
         if let Ok(ret) = self.period_stat(MetaDescObject::Device).await {
-            let _ = self.flow_chart(ret.0, "device_daily_add.png");
-            let _ = self.flow_chart(ret.1, "device_daily_active.png");
+            let f1 = "device_daily_add.png";
+            let f2 = "device_daily_active.png";
+            let _ = self.flow_chart(ret.0, f1);
+            let _ = self.flow_chart(ret.1, f2);
+
+            stat_info.attachment.push(f1.to_string());
+            stat_info.attachment.push(f2.to_string());
         }
 
         if let Ok(ret) = self.period_stat(MetaDescObject::People).await {
-            let _ = self.flow_chart(ret.0, "people_daily_add.png");
-            let _ = self.flow_chart(ret.1, "people_daily_active.png");
+            let f1 = "people_daily_add.png";
+            let f2 = "people_daily_active.png";
+            let _ = self.flow_chart(ret.0, f1);
+            let _ = self.flow_chart(ret.1, f2);
+            stat_info.attachment.push(f1.to_string());
+            stat_info.attachment.push(f2.to_string());
         }
 
-        let _ = self.report(&stat_info).await;
+        let _ = self.report(stat_info).await;
 
     }
 
@@ -123,22 +146,30 @@ impl Client {
     
     // FIXME: 默认取当前日期
     pub async fn period_stat(&self, obj_type: MetaDescObject) -> BuckyResult<(Vec<(u64, u64)>, Vec<(u64, u64)>)> {
-        let now = bucky_time_now();
 
         let mut add = Vec::new();
         let mut active = Vec::new();
-
+        
+        let mut end = bucky_time_now();
+        let mut start = end;
         for j in 1..=self.deadline {
-            let mut start = bucky_time_to_js_time(now);
-            let end = js_time_to_bucky_time(start);
-            start -= j * 86400 * 1000;
-            let start = js_time_to_bucky_time(start);
+            let end_js = bucky_time_to_js_time(end) - (j -1) * 86400 * 1000;
+            end = js_time_to_bucky_time(end_js);
 
+            let start_js = bucky_time_to_js_time(start) - j * 86400 * 1000;
+            start = js_time_to_bucky_time(start_js);
+
+            let sys_time = bucky_time_to_system_time(end);
+            let datetime: DateTime<Local> = sys_time.into();
+            let x_axis = format!("{:02}{:02}", datetime.month(), datetime.day()).parse::<u64>().unwrap(); 
             let sum = self.storage.get_desc_add(obj_type as u8, start, end).await?;
-            add.push((end, sum));
+            add.push((x_axis, 999));
+            info!("add x_axis: {}, sum: {}", x_axis, sum);
 
             let sum = self.storage.get_desc_active(obj_type as u8, start, end).await?;
-            active.push((end, sum));
+            active.push((x_axis, 100));
+
+            info!("active x_axis: {}, sum: {}", x_axis, sum);
         }
 
         add.reverse();
@@ -159,10 +190,10 @@ impl Client {
         Ok((v1, v2))
     }
 
-    pub async fn report(&self, stat: &StatInfo) -> BuckyResult<()> {
+    pub async fn report(&self, stat: StatInfo) -> BuckyResult<()> {
         self.stat_reporter.report(&StatInfo {
-            attachment: vec![],
-            context: "Stat info".to_string(),
+            attachment: stat.attachment,
+            context: stat.context,
         }).await
     }
 

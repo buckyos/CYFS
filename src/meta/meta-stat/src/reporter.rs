@@ -24,7 +24,7 @@ impl StatReportManager {
     }
 
     pub async fn report(&self, info: &StatInfo) -> BuckyResult<()> {
-        info!("will report error: {:?}", info);
+        info!("will report stat: {:?}", info);
 
         for item in &self.list {
             if let Err(e) = item.report_stat(info).await {
