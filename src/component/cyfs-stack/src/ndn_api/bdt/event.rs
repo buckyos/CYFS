@@ -19,7 +19,7 @@ use cyfs_util::acl::*;
 
 
 #[derive(Clone)]
-pub struct BdtNDNEventHandler {
+pub(crate) struct BdtNDNEventHandler {
     acl: BdtNDNDataAclProcessor,
     handlers: RouterHandlersManager,
     default: DefaultNdnEventHandler,

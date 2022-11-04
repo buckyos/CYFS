@@ -15,14 +15,14 @@ use cyfs_util::acl::*;
 use std::sync::Arc;
 
 #[derive(Clone)]
-pub struct BdtNDNDataAclProcessor {
+pub(crate) struct BdtNDNDataAclProcessor {
     zone_manager: ZoneManagerRef,
     processor: Arc<NDNAclInputProcessor>,
     cache: BdtDataAclCache,
 }
 
 impl BdtNDNDataAclProcessor {
-    pub fn new(
+    pub(crate) fn new(
         zone_manager: ZoneManagerRef,
         acl: AclManagerRef,
         router_handlers: RouterHandlersManager,

@@ -3,4 +3,4 @@ mod cache;
 mod echo;
 mod event;
 
-pub use event::BdtNDNEventHandler;
+pub(crate) use event::BdtNDNEventHandler;
