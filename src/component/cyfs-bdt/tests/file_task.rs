@@ -186,7 +186,7 @@ async fn one_small_file_with_ranges() {
         reader.read_exact(&mut buffer[..]).await.unwrap();
         hasher.input(&buffer[..]);
 
-        reader.seek(SeekFrom::Start(1024 * 1024)).unwrap();
+        reader.seek(SeekFrom::Start(1024 * 1024 + range.start)).unwrap();
         reader.read_exact(&mut buffer[..]).await.unwrap();
         hasher.input(&buffer[..]);
 

@@ -380,12 +380,13 @@ impl async_std::io::Read for DownloadTaskReader {
                     offset as usize, 
                     &mut buffer[read..]) {
                     Ok(this_read) => {
-                        if this_read == 0 {
+                        read += this_read;
+                        if this_read == 0 
+                            || read >= buffer.len() {
                             pined.offset += read;
                             break Ok(read);
                         }
                         index += 1;
-                        read += this_read;
                         offset = 0;
                     },
                     Err(err) => {

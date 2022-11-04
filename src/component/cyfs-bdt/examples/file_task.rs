@@ -1,3 +1,4 @@
+use std::io::{Seek, SeekFrom};
 use async_std::{fs, future, io::prelude::*};
 use cyfs_base::*;
 use cyfs_bdt::{
@@ -65,10 +66,14 @@ async fn main() {
     let mut chunkids = vec![];
     let mut chunks = vec![];
 
+    let mut range_hash = sha2::Sha256::new();
+    let range = 1000u64..1024u64;
+
     for _ in 0..2 {
-        let (chunk_len, chunk_data) = utils::random_mem(1024, 512);
+        let (chunk_len, chunk_data) = utils::random_mem(1024, 1024);
         let chunk_hash = hash_data(&chunk_data[..]);
         file_hash.input(&chunk_data[..]);
+        range_hash.input(&chunk_data[range.start as usize..range.end as usize]);
         file_len += chunk_len as u64;
         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
         chunkids.push(chunkid);
@@ -104,16 +109,27 @@ async fn main() {
         .await
         .unwrap();
 
-    let down_dir = cyfs_util::get_named_data_root("bdt-example-file-task-downloader");
-    let down_path = down_dir.join(file.desc().file_id().to_string().as_str());
+    
     let task = download_file(
-        &*ln_stack,
-        file.clone(), 
+        &*ln_stack, 
+        file, 
         None, 
         Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
     ).await.unwrap();
+    {
+        let mut hasher = sha2::Sha256::new(); 
+        let mut reader = task.reader();
+        let mut buffer = vec![0u8; (range.end - range.start) as usize];
+        reader.seek(SeekFrom::Start(range.start)).unwrap();
+        reader.read_exact(&mut buffer[..]).await.unwrap();
+        hasher.input(&buffer[..]);
 
-    local_file_writer(&*rn_stack, file, down_path).await.unwrap().write(task.reader()).await.unwrap();
+        reader.seek(SeekFrom::Start(1024 * 1024 + range.start)).unwrap();
+        reader.read_exact(&mut buffer[..]).await.unwrap();
+        hasher.input(&buffer[..]);
+
+        assert_eq!(range_hash.result(), hasher.result());
+    }
 
 
     let recv = future::timeout(Duration::from_secs(1), watch_task_finish(task.clone_as_task()))
