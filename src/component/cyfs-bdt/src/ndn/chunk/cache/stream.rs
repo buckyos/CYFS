@@ -123,25 +123,20 @@ impl ChunkStreamCache {
                 err
             })? {
             let len = (range.end - range.start) as usize;
-            if len == writer.write(&piece.data[..len]).map_err(|err| {
+            writer.write_all(&piece.data[..len]).map_err(|err| {
                 trace!("{} push piece data:{:?}, result:{}", self, piece.desc, err);
                 err
-            })? {
-                let (result, waiter) = {
-                    let mut state = self.0.state.write().unwrap();
-                    let result = state.indices.push(index..index + 1);
-                    (result, state.waiters.remove(&index))
-                };
-                if let Some(waiter) = waiter {
-                    waiter.wake();
-                }
-                trace!("{} push piece data:{:?}, result:{:?}", self, piece.desc, result);
-                Ok(result)
-            } else {
-                let err = BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch");
-                trace!("{} push piece data:{:?}, result:{}", self, piece.desc, err);
-                Err(err)
+            })?; 
+            let (result, waiter) = {
+                let mut state = self.0.state.write().unwrap();
+                let result = state.indices.push(index..index + 1);
+                (result, state.waiters.remove(&index))
+            };
+            if let Some(waiter) = waiter {
+                waiter.wake();
             }
+            trace!("{} push piece data:{:?}, result:{:?}", self, piece.desc, result);
+            Ok(result)
         } else {
             let err = BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch");
             trace!("{} push piece data:{:?}, result:{}", self, piece.desc, err);
@@ -154,6 +149,8 @@ impl ChunkStreamCache {
     }
 
     pub async fn wait_exists<T: futures::Future<Output=BuckyError>>(&self, index: u32, abort: T) -> BuckyResult<()> {
+        trace!("{} wait_exists:{}", self, index);
+
         let waiter = {
             let mut state = self.0.state.write().unwrap();
             match state.indices.exists(index) {
@@ -176,7 +173,17 @@ impl ChunkStreamCache {
                 waiter
             }
         };
-        StateWaiter::abort_wait(abort, waiter, || ()).await
+        let result = StateWaiter::abort_wait(abort, waiter, || ()).await;
+        match &result {
+            Ok(_) => {
+                trace!("{} wait_exists:{} returned", self, index);
+            },
+            Err(err) => {
+                trace!("{} wait_exists:{} failed: {}", self, index, err);
+            }
+        }
+        
+        result
     }
 
     pub async fn async_read<T: futures::Future<Output=BuckyError>>(
@@ -206,17 +213,13 @@ impl ChunkStreamCache {
             err
         })? {
             let len = (range.end - start) as usize;
-            if len == reader.read(&mut buffer[..len]).await.map_err(|err| {
+            let len = len.min(buffer.len());
+            reader.read_exact(&mut buffer[..len]).await.map_err(|err| {
                 trace!("{} async read:{:?}, read:{}", self, piece_desc, err);
                 err
-            })? {
-                trace!("{} async read:{:?}, read:{}", self, piece_desc, len);
-                Ok(len)
-            } else {
-                let err = BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch");
-                trace!("{} async read:{:?}, read:{}", self, piece_desc, err);
-                Err(err)
-            }
+            })?;
+            trace!("{} async read:{:?}, read:{}", self, piece_desc, len);
+            Ok(len)
         } else {
             let err = BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch");
             trace!("{} async read:{:?}, read:{}", self, piece_desc, err);
@@ -231,14 +234,18 @@ impl ChunkStreamCache {
         offset_in_piece: usize,  
         buffer: &mut [u8]
     ) -> BuckyResult<usize> {
+        trace!("{} sync_try_read desc: {:?},offset_in_piece: {}, buffer: {} ", self, piece_desc, offset_in_piece, buffer.len());
+
         let (index, range) = piece_desc.stream_piece_range(self.chunk());
         match self.exists(index) {
             Ok(exists) => {
                 if !exists {
+                    trace!("{} sync_try_read not exists, desc: {:?},offset_in_piece: {}, buffer: {} ", self, piece_desc, offset_in_piece, buffer.len());
                     return Err(BuckyError::new(BuckyErrorCode::NotFound, "not exists"));
                 }
             }, 
             Err(_) => {
+                trace!("{} sync_try_read exists 0, desc: {:?},offset_in_piece: {}, buffer: {} ", self, piece_desc, offset_in_piece, buffer.len());
                 return Ok(0);
             }
         }
@@ -248,12 +255,16 @@ impl ChunkStreamCache {
         let start = range.start + offset_in_piece as u64;
         if start == reader.seek(SeekFrom::Start(start))? {
             let len = (range.end - start) as usize;
-            if len == reader.read(&mut buffer[..len])? {
-                Ok(len)
-            } else {
-                Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
-            }
+            let len = len.min(buffer.len());
+            reader.read_exact(&mut buffer[..len])
+                .map_err(|err| {
+                    trace!("{} sync_try_read {}, desc: {:?},offset_in_piece: {}, buffer: {} ", self, err, piece_desc, offset_in_piece, buffer.len());
+                    err
+                })?;
+            trace!("{} sync_try_read {}, desc: {:?},offset_in_piece: {}, buffer: {} ", self, len, piece_desc, offset_in_piece, buffer.len());
+            Ok(len)
         } else {
+            trace!("{} sync_try_read invalid, desc: {:?},offset_in_piece: {}, buffer: {} ", self, piece_desc, offset_in_piece, buffer.len());
             Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
         }
     }
@@ -281,11 +292,9 @@ impl ChunkStreamCache {
         let start = range.start + offset_in_piece as u64;
         if start == reader.seek(SeekFrom::Start(start)).await? {
             let len = (range.end - start) as usize;
-            if len == reader.read(&mut buffer[..len]).await? {
-                Ok(len)
-            } else {
-                Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
-            }
+            let len = len.min(buffer.len());
+            reader.read_exact(&mut buffer[..len]).await?;
+            Ok(len)
         } else {
             Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
         }

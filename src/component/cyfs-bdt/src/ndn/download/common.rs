@@ -316,6 +316,12 @@ pub struct DownloadTaskReader {
     task: Box<dyn DownloadTask>
 }
 
+impl std::fmt::Display for DownloadTaskReader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "DownloadTaskReader{{chunk:{}}}", self.cache.chunk())
+    }
+}
+
 impl DownloadTaskReader {
     pub fn new(cache: ChunkCache, task: Box<dyn DownloadTask>) -> Self {
         Self {
@@ -358,10 +364,13 @@ impl async_std::io::Read for DownloadTaskReader {
         buffer: &mut [u8],
     ) -> Poll<std::io::Result<usize>> {
         let pined = self.get_mut();
+        trace!("{} poll_read: {} offset: {}", pined, buffer.len(), pined.offset);
         if let DownloadTaskState::Error(err) = pined.task.state() {
+            trace!("{} poll_read: {} offset: {} error: {}", pined, buffer.len(), pined.offset, err);
             return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
         } 
         if let Some(range) = pined.cache.exists(pined.offset..pined.offset + buffer.len()) {
+            trace!("{} poll_read: {} offset: {} exists {:?}", pined, buffer.len(), pined.offset, range);
             let (desc, mut offset) = PieceDesc::from_stream_offset(PieceData::max_payload(), range.start as u32);
             let (mut index, len) = desc.unwrap_as_stream();
             let mut read = 0;
