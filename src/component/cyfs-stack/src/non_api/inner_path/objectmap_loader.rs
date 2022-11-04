@@ -5,27 +5,25 @@ use cyfs_lib::*;
 use std::sync::Arc;
 
 pub(crate) struct NONObjectMapLoader {
-    device_id: DeviceId,
     noc: NamedObjectCacheRef,
     root_cache: ObjectMapRootCacheRef,
     op_env_cache: ObjectMapOpEnvCacheRef,
 }
 
 impl NONObjectMapLoader {
-    pub fn new(device_id: DeviceId, noc: NamedObjectCacheRef) -> Self {
-        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone());
+    pub fn new(noc: NamedObjectCacheRef) -> Self {
+        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(noc.clone());
         let root_cache = ObjectMapRootMemoryCache::new_ref(noc_cache, 60 * 5, 1024);
         let op_env_cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         Self {
-            device_id,
             noc,
             root_cache,
             op_env_cache,
         }
     }
 
-    pub async fn load(&self, req: NONGetObjectInputRequest,) -> BuckyResult<NONObjectInfo> {
+    pub async fn load(&self, req: NONGetObjectInputRequest) -> BuckyResult<NONObjectInfo> {
         let inner_path = req.inner_path.unwrap();
 
         info!(
@@ -65,7 +63,8 @@ impl NONObjectMapLoader {
                 None => None,
             }
         } else {
-            self.load_object_from_noc(req.common.source, &object_id).await?
+            self.load_object_from_noc(req.common.source, &object_id)
+                .await?
         };
 
         if ret.is_none() {
@@ -105,9 +104,7 @@ impl NONObjectMapLoader {
         })?;
 
         match resp {
-            Some(resp) => {
-                Ok(Some((resp.object.object.unwrap(), resp.object.object_raw)))
-            }
+            Some(resp) => Ok(Some((resp.object.object.unwrap(), resp.object.object_raw))),
             None => Ok(None),
         }
     }
