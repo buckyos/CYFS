@@ -27,6 +27,13 @@ struct CacheImpl {
 #[derive(Clone)]
 pub struct ChunkCache(Arc<CacheImpl>);
 
+
+impl std::fmt::Display for ChunkCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ChunkCache{{chunk:{}}}", self.chunk())
+    }
+}
+
 impl ChunkCache {
     pub fn new(stack: WeakStack, chunk: ChunkId) -> Self {
         let stream_cache = ChunkStreamCache::new(&chunk);
@@ -76,11 +83,16 @@ impl ChunkCache {
         range: Range<usize>, 
         abort: A
     ) -> BuckyResult<Range<usize>> {
+        trace!("{} wait_exists {:?}", self, range);
         if range.start >= self.chunk().len() {
-            return Ok(self.chunk().len()..self.chunk().len());
+            let r = self.chunk().len()..self.chunk().len();
+            trace!("{} wait_exists {:?} return {:?}", self, range, r);
+            return Ok(r);
         }
         if range.end == 0 {
-            return Ok(0..0);
+            let r = 0..0;
+            trace!("{} wait_exists {:?} return {:?}", self, range, r);
+            return Ok(r);
         }
         let range = usize::min(range.start, self.chunk().len())..usize::min(range.end, self.chunk().len());
         let index_start = (range.start / PieceData::max_payload()) as u32;
@@ -88,6 +100,7 @@ impl ChunkCache {
         for index in index_start..index_end + 1 {
             self.stream().wait_exists(index, abort()).await?;
         }
+        trace!("{} wait_exists {:?} return {:?}", self, range, range);
         Ok(range)
     }
     

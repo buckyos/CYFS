@@ -3,6 +3,7 @@ use std::{
 };
 use async_std::{
     sync::Arc, 
+    task
 };
 use cyfs_base::*;
 use crate::{
@@ -60,7 +61,7 @@ impl ChunkTask {
         let cache = strong_stack.ndn().chunk_manager().create_cache(&chunk);
         cache.downloader().context().add_context(context.clone());
         
-        Self(Arc::new(ChunkTaskImpl {
+        let task = Self(Arc::new(ChunkTaskImpl {
             stack, 
             chunk, 
             context, 
@@ -68,7 +69,16 @@ impl ChunkTask {
                 task_state: TaskStateImpl::Downloading(cache.clone()), 
                 control_state: ControlStateImpl::Normal(StateWaiter::new()),
             }),
-        }))
+        }));
+
+        {
+            let task = task.clone();
+            task::spawn(async move {
+                task.begin().await;
+            });
+        }
+
+        task
     } 
 
     pub fn chunk(&self) -> &ChunkId {
@@ -83,6 +93,23 @@ impl ChunkTask {
         let strong_stack = Stack::from(&self.0.stack);
         let cache = strong_stack.ndn().chunk_manager().create_cache(self.chunk());
         DownloadTaskReader::new(cache, self.clone_as_task())
+    }
+
+
+    async fn begin(&self) {
+        let stack = Stack::from(&self.0.stack);
+        let cache = stack.ndn().chunk_manager().create_cache(self.chunk());
+        if cache.wait_exists(0..self.chunk().len(), || self.wait_user_canceled()).await.is_err() {
+            return;
+        }
+
+        let mut state = self.0.state.write().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(_) => {
+                state.task_state = TaskStateImpl::Finished
+            },
+            _ => {}
+        }
     }
 }
 

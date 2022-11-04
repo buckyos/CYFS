@@ -80,8 +80,8 @@ async fn main() {
         rn_params).await.unwrap();
    
 
-    for _ in 1..2 {
-        let (chunk_len, chunk_data) = utils::random_mem(1024, 100);
+    for _ in 0..1 {
+        let (chunk_len, chunk_data) = utils::random_mem(1024, 9);
         let chunk_hash = hash_data(&chunk_data[..]);
         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
         
