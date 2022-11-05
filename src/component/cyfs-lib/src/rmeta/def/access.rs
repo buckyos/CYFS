@@ -262,7 +262,7 @@ mod test {
         let t = GlobalStatePathSpecifiedGroup {
             zone: None,
             zone_category: Some(DeviceZoneCategory::CurrentZone),
-            dec: Some(get_system_dec_app().object_id().clone()),
+            dec: Some(get_system_dec_app().clone()),
             access: 5,
         };
 
