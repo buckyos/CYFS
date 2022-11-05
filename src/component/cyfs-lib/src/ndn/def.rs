@@ -168,7 +168,7 @@ impl NDNDataRefererObject {
 
     pub fn to_string(&self) -> String {
         let last = if let Some(inner_path) = &self.inner_path {
-            format!("{}/{}", self.object_id.to_string(), inner_path)
+            format!("{}/{}", self.object_id.to_string(), inner_path.trim_start_matches('/'))
         } else {
             self.object_id.to_string()
         };
@@ -222,13 +222,13 @@ impl FromStr for NDNDataRefererObject {
             ObjectId::from_str(id_parts[0])
                 .map_err(|e| {
                     let msg = format!(
-                        "invalid NDNDataRefererObject object_id format! {}, {}",
+                        "invalid NDNDataRefererObject target format! {}, {}",
                         value, e
                     );
                     error!("{}", msg);
                     BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
                 })
-                .and_then(|o| {
+                .and_then(|t| {
                     ObjectId::from_str(id_parts[1])
                         .map_err(|e| {
                             let msg = format!(
@@ -238,7 +238,7 @@ impl FromStr for NDNDataRefererObject {
                             error!("{}", msg);
                             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
                         })
-                        .map(|t| (Some(t), o))
+                        .map(|o| (Some(t), o))
                 })
         } else {
             let msg = format!(
@@ -250,7 +250,13 @@ impl FromStr for NDNDataRefererObject {
         }?;
 
         let inner_path = if parts.len() > 1 {
-            Some(parts[..1].join("/"))
+            let inner_path = parts[1..].join("/");
+            let inner_path = if inner_path != "/" {
+                format!("/{}", inner_path)
+            } else {
+                inner_path
+            };
+            Some(inner_path)
         } else {
             None
         };
@@ -260,5 +266,65 @@ impl FromStr for NDNDataRefererObject {
             object_id,
             inner_path,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::*;
+    use cyfs_base::*;
+    use std::str::FromStr;
+
+    fn test_codec_impl(inner_path: &str) {
+        let target = DeviceId::from_str("5aSixgPJLRApy31v15U8mM7cVSndc8kjbECXSfP9o6Ef").unwrap();
+        let object_id = ObjectId::from_str("7jMmeXZcUvyomvtKAnfa8BCdCXCzdp1S5xavMsC7BcYJ").unwrap();
+
+        let referer_object = NDNDataRefererObject {
+            target: None,
+            object_id: object_id.clone(),
+            inner_path: Some(inner_path.to_owned()),
+        };
+
+        let s = referer_object.to_string();
+        println!("{}", s);
+
+        let referer_object2 = NDNDataRefererObject::from_str(&s).unwrap();
+        assert_eq!(referer_object, referer_object2);
+
+        let referer_object = NDNDataRefererObject {
+            target: Some(target.object_id().to_owned()),
+            object_id: object_id.clone(),
+            inner_path: Some(inner_path.to_owned()),
+        };
+
+        let s = referer_object.to_string();
+        println!("{}", s);
+
+        let referer_object2 = NDNDataRefererObject::from_str(&s).unwrap();
+        assert_eq!(referer_object, referer_object2);
+
+        let referer_object = NDNDataRefererObject {
+            target: None,
+            object_id: object_id.clone(),
+            inner_path: None,
+        };
+
+        let s = referer_object.to_string();
+        println!("{}", s);
+
+        let referer_object2 = NDNDataRefererObject::from_str(&s).unwrap();
+        assert_eq!(referer_object, referer_object2);
+    }
+
+    #[test]
+    fn test_codec() {
+        let inner_path = "/a/b/c/ddd";
+        test_codec_impl(inner_path);
+
+        let inner_path = "/";
+        test_codec_impl(inner_path);
+
+        let inner_path = "/abcd";
+        test_codec_impl(inner_path);
     }
 }
