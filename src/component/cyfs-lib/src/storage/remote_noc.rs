@@ -140,4 +140,10 @@ impl NamedObjectCache for RemoteNamedObjectCache {
     ) -> BuckyResult<NamedObjectCacheExistsObjectResponse> {
         unimplemented!();
     }
+
+    async fn check_object_access(&self, 
+        _req: &NamedObjectCacheCheckObjectAccessRequest
+    ) -> BuckyResult<Option<()>> {
+        unimplemented!();
+    }
 }
