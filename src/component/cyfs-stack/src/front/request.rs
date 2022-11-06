@@ -12,6 +12,9 @@ pub struct FrontORequest {
     pub inner_path: Option<String>,
     pub range: Option<NDNDataRequestRange>,
 
+    // for ndn requests
+    pub referer_objects: Vec<NDNDataRefererObject>,
+
     pub mode: FrontRequestGetMode,
     pub format: FrontRequestObjectFormat,
 
@@ -65,6 +68,8 @@ pub struct FrontNDNRequest {
     pub object: NONObjectInfo,
     pub range: Option<NDNDataRequestRange>,
 
+    pub referer_objects: Vec<NDNDataRefererObject>,
+
     pub flags: u32,
 }
 
@@ -77,18 +82,35 @@ impl FrontNDNRequest {
             target: req.target,
             object: NONObjectInfo::new(req.object_id, vec![], None),
             range: req.range,
+            referer_objects: req.referer_objects,
             flags: req.flags,
         }
     }
 
-    pub fn new_o_file(req: FrontORequest, object: NONObjectInfo) -> Self {
+    pub fn new_o_file(mut req: FrontORequest, object: NONObjectInfo) -> Self {
         assert_eq!(object.object_id.obj_type_code(), ObjectTypeCode::File);
+
+        let referer_objects = if req.object_id != object.object_id {
+            let referer_object = NDNDataRefererObject {
+                target: None,
+                object_id: req.object_id,
+                inner_path: req.inner_path,
+            };
+            let mut referer_objects= vec![referer_object];
+            if req.referer_objects.len() > 0 {
+                referer_objects.append(&mut req.referer_objects)
+            }
+            referer_objects
+        } else {
+            req.referer_objects
+        };
 
         FrontNDNRequest {
             source: req.source,
             target: req.target,
             object,
             range: req.range,
+            referer_objects,
             flags: req.flags,
         }
     }
@@ -104,6 +126,7 @@ impl FrontNDNRequest {
             target,
             object,
             range: req.range,
+            referer_objects: vec![],
             flags: req.flags,
         }
     }
@@ -164,6 +187,9 @@ pub struct FrontARequest {
     pub format: FrontRequestObjectFormat,
 
     pub origin_url: http_types::Url,
+
+    pub referer_objects: Vec<NDNDataRefererObject>,
+
     pub flags: u32,
 }
 
