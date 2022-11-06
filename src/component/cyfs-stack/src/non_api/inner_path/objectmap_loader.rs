@@ -33,6 +33,24 @@ impl NONObjectMapLoader {
 
         assert_eq!(req.object_id.obj_type_code(), ObjectTypeCode::ObjectMap);
 
+        // first check access at object level
+        let check_access_req = NamedObjectCacheCheckObjectAccessRequest {
+            source: req.common.source.clone(),
+            object_id: req.object_id.clone(),
+            required_access: AccessPermissions::ReadOnly,
+        };
+
+        let ret = self.noc.check_object_access(&check_access_req).await?;
+        if ret.is_none() {
+            let msg = format!(
+                "get_object with objectmap and inner_path but not found! object={}, inner_path={}",
+                req.object_id, inner_path,
+            );
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+        }
+
+        // load target object with inner_path
         let path = ObjectMapPath::new(req.object_id.clone(), self.op_env_cache.clone());
         let ret = path.get_by_path(&inner_path).await?;
         if ret.is_none() {
