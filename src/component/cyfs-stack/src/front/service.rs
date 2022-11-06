@@ -472,6 +472,8 @@ impl FrontService {
                             mode: req.mode,
                             format: req.format,
 
+                            referer_objects: req.referer_objects,
+
                             flags: req.flags,
                         };
 
@@ -509,6 +511,8 @@ impl FrontService {
                             mode: req.mode,
                             format: req.format,
 
+                            referer_objects: req.referer_objects,
+                            
                             flags: req.flags,
                         };
 

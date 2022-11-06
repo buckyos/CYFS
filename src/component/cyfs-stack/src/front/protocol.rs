@@ -213,6 +213,19 @@ impl FrontProtocolHandler {
         }
     }
 
+    fn referer_objects_from_request(url: &http_types::Url) -> BuckyResult<Vec<NDNDataRefererObject>> {
+        // try extract dec_id from query pairs
+        match RequestorHelper::value_from_querys("referer", url) {
+            Ok(Some(v)) => Ok(vec![v]),
+            Ok(None) => Ok(vec![]),
+            Err(e) => {
+                let msg = format!("invalid request url referer query param! {}, {}", url, e);
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+            }
+        }
+    }
+
     fn is_cyfs_browser(req: &http_types::Request) -> bool {
         let ret: BuckyResult<Option<String>> =
             RequestorHelper::decode_optional_header(req, http_types::headers::USER_AGENT);
@@ -359,6 +372,8 @@ impl FrontProtocolHandler {
 
         let range = Self::range_from_request(req.request.as_ref())?;
 
+        let referer_objects = Self::referer_objects_from_request(&url)?;
+
         /*
         /object_id
         /object_id/inner_path
@@ -398,6 +413,8 @@ impl FrontProtocolHandler {
                     mode,
                     format,
 
+                    referer_objects,
+
                     flags,
                 }
             }
@@ -426,6 +443,8 @@ impl FrontProtocolHandler {
 
                     mode,
                     format,
+
+                    referer_objects,
 
                     flags,
                 }
@@ -726,6 +745,7 @@ impl FrontProtocolHandler {
 
         let mode = Self::mode_from_request(url)?;
         let flags = Self::flags_from_request(url)?;
+        let referer_objects = Self::referer_objects_from_request(url)?;
 
         // TODO now target always be current zone's ood
         let target = self
@@ -746,6 +766,8 @@ impl FrontProtocolHandler {
             format,
 
             origin_url: url.to_owned(),
+            referer_objects,
+
             flags,
         };
 
