@@ -79,34 +79,24 @@ impl NDNAclInputProcessor {
     }
 
     async fn on_get_chunk(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputRequest> {
+        debug!(
+            "will check get_chunk access: req={}",
+            req,
+        );
+
         assert_eq!(req.object_id.obj_type_code(), ObjectTypeCode::Chunk);
+
+        // 同zone内，直接使用chunk_id访问
+        if req.common.source.is_current_zone() {
+            return Ok(req);
+        }
 
         let req_path = match &req.common.req_path {
             Some(req_path) => Some(RequestGlobalStatePath::from_str(req_path)?),
             None => None,
         };
 
-        if req.common.source.is_current_zone() {
-            let target_dec_id = match &req_path {
-                Some(v) => &v.dec_id,
-                None => &None,
-            };
-
-            if req
-                .common
-                .source
-                .check_target_dec_permission(&target_dec_id)
-            {
-                return Ok(req);
-            }
-        }
-
         if req.common.referer_object.is_empty() {
-            // 同zone内，可以不带referer_object，直接使用chunk_id访问
-            if req.common.source.is_current_zone() {
-                return Ok(req);
-            }
-
             if req_path.is_none() {
                 let msg = format!(
                     "get_data with chunk_id but referer_object and req_path is empty! chunk={}",

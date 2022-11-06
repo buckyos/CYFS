@@ -158,7 +158,7 @@ impl BdtNDNDataAclProcessor {
 
         if let Some(ret) = self.cache.get(&key) {
             info!(
-                "bdt get_data acl request got cache: ret={:?}, object={}",
+                "bdt get_data acl request hit cache: ret={:?}, object={}",
                 ret, req.object_id
             );
             return ret;
