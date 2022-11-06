@@ -282,10 +282,11 @@ impl SqliteMetaStorage {
         access_string: u32,
         source: &RequestSourceInfo,
         create_dec_id: &ObjectId,
-        op_type: RequestOpType,
+        permissions: impl Into<AccessPermissions>,
     ) -> BuckyResult<()> {
-        debug!("noc meta will check access: object={}, access={}, source={}, create_dec={}, op_type={:?}", 
-            object_id, AccessString::new(access_string), source, create_dec_id, op_type);
+        let permissions: AccessPermissions = permissions.into();
+        debug!("noc meta will check access: object={}, access={}, source={}, create_dec={}, require={}", 
+            object_id, AccessString::new(access_string), source, create_dec_id, permissions.as_str());
 
         // system dec in current zone is always allowed
         if source.is_current_zone() {
@@ -295,7 +296,7 @@ impl SqliteMetaStorage {
         }
 
         // Check permission first
-        let mask = source.mask(create_dec_id, op_type);
+        let mask = source.mask(create_dec_id, permissions);
 
         if access_string & mask != mask {
             let msg = format!(
@@ -1157,6 +1158,35 @@ impl SqliteMetaStorage {
 
         Ok(count)
     }
+
+    fn check_object_access(
+        &self,
+        req: &NamedObjectMetaCheckObjectAccessRequest,
+    ) -> BuckyResult<Option<()>> {
+        let ret = self.query_update_info(&req.object_id)?;
+        if ret.is_none() {
+            debug!(
+                "noc check object meta but not found! obj={}",
+                req.object_id
+            );
+            return Ok(None);
+        }
+
+        let current_info = ret.unwrap();
+        // info!("noc meta current info: {:?}", current_info);
+
+        if !req.source.is_verified(&current_info.create_dec_id) {
+            Self::check_access(
+                &req.object_id,
+                current_info.access_string,
+                &req.source,
+                &current_info.create_dec_id,
+                req.required_access,
+            )?;
+        }
+
+        Ok(Some(()))
+    }
 }
 
 #[async_trait::async_trait]
@@ -1201,6 +1231,13 @@ impl NamedObjectMeta for SqliteMetaStorage {
         req: &NamedObjectMetaUpdateObjectMetaRequest,
     ) -> BuckyResult<()> {
         Self::update_object_meta(&self, req)
+    }
+
+    async fn check_object_access(
+        &self,
+        req: &NamedObjectMetaCheckObjectAccessRequest,
+    ) -> BuckyResult<Option<()>> {
+        Self::check_object_access(&self, req)
     }
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat> {

@@ -171,6 +171,20 @@ impl NamedObjectCache for NamedObjectCacheSerializer {
         ret
     }
 
+    async fn check_object_access(&self, 
+        req: &NamedObjectCacheCheckObjectAccessRequest
+    ) -> BuckyResult<Option<()>> {
+        let lock = self.acquire_lock(&req.object_id);
+        let ret = {
+            let _guard = lock.lock.lock().await;
+            self.next.check_object_access(req).await
+        };
+
+        self.leave_lock(&req.object_id, lock);
+
+        ret
+    }
+
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         self.next.stat().await
     }
