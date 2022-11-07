@@ -298,6 +298,9 @@ pub trait DownloadTask: Send + Sync {
     fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask>> {
         None
     }
+    fn close(&self) -> BuckyResult<()> {
+        Ok(())
+    }
 
     fn calc_speed(&self, when: Timestamp) -> u32;
     fn cur_speed(&self) -> u32;
