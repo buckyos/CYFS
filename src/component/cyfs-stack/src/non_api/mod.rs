@@ -10,3 +10,4 @@ mod validate;
 
 pub(crate) use handler::*;
 pub(crate) use service::*;
+pub(crate) use validate::*;

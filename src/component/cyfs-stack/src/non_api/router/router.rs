@@ -1,7 +1,7 @@
 use super::super::acl::*;
 use super::super::handler::*;
 use super::super::non::NONOutputFailHandleProcessor;
-use super::super::validate::NONGlobalStateValidator;
+use super::super::validate::NONGlobalStateValidatorProcessor;
 use super::def::*;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
@@ -53,7 +53,7 @@ impl NONRouter {
     ) -> NONInputProcessorRef {
 
         // 带rmeta access的noc, 如果当前协议栈是router目标，那么使用此noc；如果是中间节点，那么使用raw_noc_processor来作为缓存查询
-        let validate_noc_processor = NONGlobalStateValidator::new(
+        let validate_noc_processor = NONGlobalStateValidatorProcessor::new(
             acl.global_state_validator().clone(),
             noc_raw_processor.clone(),
         );
