@@ -70,6 +70,35 @@ async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl 
 
 }
 
+async fn stat(stack: &SharedCyfsStack, key: &str, costs: u64) {
+    // 汇总本地数据 rate, min/avg/max
+    {
+        let local_cache = stack.local_cache_stub(None);
+        let local_op_env = local_cache.create_path_op_env().await.unwrap();
+
+        let path = format!("/stat_{}/{}", key, costs.to_string());
+        
+        let object = Text::build(key, "header", costs.to_string())
+        .no_create_time()
+        .build();
+        let object_id = object.text_id().object_id().to_owned();
+
+        local_op_env.insert_with_path(path.as_str(), &object_id).await.unwrap();
+
+        let root = local_op_env.commit().await.unwrap();
+        debug!("new local cache dec root is: {:?}", root);
+    }
+    {
+        let local_cache = stack.local_cache_stub(None);
+        let local_op_env = local_cache.create_path_op_env().await.unwrap();
+
+        let path = format!("/stat_{}", key);
+        let list = local_op_env.list(&path).await.unwrap();
+        info!("len: {}, list: {:?}", list.len(), list);
+    }
+}
+
+
 // 测试root-state的同zone的跨dec操作 需要配合权限
 async fn test_path_op_env_cross_dec(
     user1_stack: &SharedCyfsStack,
@@ -150,6 +179,9 @@ async fn test_path_op_env_cross_dec(
     let dur = begin.elapsed();
     info!("end test CrossRootState: {:?}", dur);
 
+    let costs = begin.elapsed().as_millis() as u64;
+    // 记录下耗时到本地device
+    stat(user1_stack, "cross_local_state", costs).await;
 
     {
         info!("begin test OwnerRootState...");
@@ -178,7 +210,7 @@ async fn test_path_op_env_cross_dec(
         assert!(ret);
 
         let root = op_env.commit().await.unwrap();
-        info!("new dec root is: {:?}", root);
+        debug!("new dec root is: {:?}", root);
 
         let dur = begin.elapsed();
         info!("end test OwnerRootState: {:?}", dur);
@@ -207,7 +239,6 @@ async fn test_single_op_env_cross_dec(
     let access = RootStateOpEnvAccess::new("/root/shared", AccessPermissions::ReadAndWrite);
     let op_env = root_state.create_single_op_env_with_access(Some(access)).await.unwrap();
     open_access(&user1_stack, &source_dec_id, "/root/shared", AccessPermissions::None).await;
-
 
     // 初始化
     let ret = op_env.load_by_path("/root/shared").await.unwrap();
