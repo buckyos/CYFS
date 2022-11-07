@@ -181,7 +181,7 @@ impl FrontProtocolHandler {
         let s: Option<String> = match RequestorHelper::decode_optional_header(req, "Range")? {
             Some(range) => Some(range),
             None => {
-                // try extract dec_id from query pairs
+                // try extract range from query pairs
                 match RequestorHelper::value_from_querys("range", req.url()) {
                     Ok(v) => v,
                     Err(e) => {
@@ -201,7 +201,7 @@ impl FrontProtocolHandler {
     }
 
     fn flags_from_request(url: &http_types::Url) -> BuckyResult<u32> {
-        // try extract dec_id from query pairs
+        // try extract flags from query pairs
         match RequestorHelper::value_from_querys("flags", url) {
             Ok(Some(v)) => Ok(v),
             Ok(None) => Ok(0),
@@ -214,7 +214,7 @@ impl FrontProtocolHandler {
     }
 
     fn referer_objects_from_request(url: &http_types::Url) -> BuckyResult<Vec<NDNDataRefererObject>> {
-        // try extract dec_id from query pairs
+        // try extract referer from query pairs
         match RequestorHelper::value_from_querys("referer", url) {
             Ok(Some(v)) => Ok(vec![v]),
             Ok(None) => Ok(vec![]),
