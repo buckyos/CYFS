@@ -81,7 +81,7 @@ impl NONObjectMapLoader {
                 None => None,
             }
         } else {
-            self.load_object_from_noc(req.common.source, &object_id)
+            self.load_object_from_noc(&object_id)
                 .await?
         };
 
@@ -107,12 +107,12 @@ impl NONObjectMapLoader {
 
     async fn load_object_from_noc(
         &self,
-        source: RequestSourceInfo,
         object_id: &ObjectId,
     ) -> BuckyResult<Option<(Arc<AnyNamedObject>, Vec<u8>)>> {
+        // objectmap + inner_path mode, only check the root object's access_string!
         let noc_req = NamedObjectCacheGetObjectRequest {
             object_id: object_id.clone(),
-            source,
+            source: RequestSourceInfo::new_local_system(),
             last_access_rpath: None,
         };
 
