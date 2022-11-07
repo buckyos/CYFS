@@ -1,42 +1,35 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 
 use async_trait::async_trait;
 use cyfs_stack_loader::CyfsServiceLoader;
-use crate::{Bench, BenchEnv};
+use crate::{Bench, BenchEnv, sim_zone::SimZone};
 use log::*;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
-use cyfs_util::*;
-use zone_simulator::*;
 
 pub struct NONBench {}
 
 #[async_trait]
 impl Bench for NONBench {
-    async fn bench(&self, env: BenchEnv, _ood_path: String, t: u64) -> bool {
+    async fn bench(&self, env: BenchEnv, zone: &SimZone, _ood_path: String, t: u64) -> bool {
+        info!("begin test NONBench...");
+        let begin = std::time::Instant::now();
         let ret = if env == BenchEnv::Simulator {
-            
-            info!("begin test NONBench...");
-            let begin = std::time::Instant::now();
-
             static COUNT: AtomicU64 = AtomicU64::new(0);
             for _ in 0..t {
-                let ret = test().await;
+                let _ret = test(zone).await;
             }
-
-            let dur = begin.elapsed();
-            info!("end test NONBench: {:?}", dur);
-
             // let tps = if time.elapsed().as_secs() > 0 { t / time.elapsed().as_secs() } else { 0 };
-        
             // info!("non bench TPS: {}/{} = {}", t, time.elapsed().as_secs(), tps);
 
             true
         } else {
-            // Test Code
-            test().await
+            test2().await
         };
+        
+        let dur = begin.elapsed();
+        info!("end test NONBench: {:?}", dur);
 
         ret
     }
@@ -47,24 +40,52 @@ impl Bench for NONBench {
 }
 
 
-fn new_dec(name: &str) -> ObjectId {
-    let owner_id = &USER1_DATA.get().unwrap().people_id;
+fn new_dec(name: &str, zone: &SimZone) -> ObjectId {
+    let people_id = zone.get_object_id_by_name("zone1_people");
 
-    let dec_id = DecApp::generate_id(owner_id.object_id().to_owned(), name);
+    let dec_id = DecApp::generate_id(people_id, name);
 
     info!(
         "generage test storage dec_id={}, people={}",
-        dec_id, owner_id
+        dec_id, people_id
     );
 
     dec_id
 }
 
-pub async fn test() -> bool {
-    test_non_object_req_path().await
+pub async fn test(zone: &SimZone) -> bool {
+    info!("begin test wait_on_line...");
+    let begin = std::time::Instant::now();
+    let dec_id = new_dec("test-non", zone);
+    let user1_stack = zone.get_shared_stack("zone1_ood");
+    let user1_stack = user1_stack.fork_with_new_dec(Some(dec_id.clone())).await.unwrap();
+    user1_stack.wait_online(None).await.unwrap();
+
+    let dur = begin.elapsed();
+    info!("end test wait_on_line: {:?}", dur);
+
+    let stack = zone.get_shared_stack("zone1_device2");
+    let dec_id = new_dec("test-non", zone);
+    test_put_object(&dec_id, &stack).await;
+
+    test_outer_put_dec(&dec_id, zone).await;
+
+    {
+        let stack = zone.get_shared_stack("zone1_device2");
+        let target = stack.local_device_id();
+        test_get_object(&dec_id, &stack, &target, zone).await;
+
+        let object = new_object(&dec_id, "first-text");
+        let object_id = object.text_id().object_id().to_owned();
+
+        test_delete_object(&object_id, &dec_id, &stack, &target).await;
+    }
+    info!("test all non case success!");
+
+    true
 }
 
-pub async fn test_real_stack() -> bool {
+pub async fn test2() -> bool {
     let id = "5aSixgNAmFYV4vgRk1CQeQmhG9532dtKMUMUfJYasE1n".to_string();
     let stack = CyfsServiceLoader::shared_cyfs_stack(Some(&id));
     let dec_id = ObjectId::from_base58("9tGpLNnDpa8deXEk2NaWGccEu4yFQ2DrTZJPLYLT7gj4").unwrap();
@@ -73,7 +94,7 @@ pub async fn test_real_stack() -> bool {
 
     let root_state = stack.root_state_stub(None, Some(dec_id));
     let root_info = root_state.get_current_root().await.unwrap();
-    info!("current root: {:?}", root_info);
+    debug!("current root: {:?}", root_info);
 
     {
         // create_path_op_env None access默认权限操作自己dec_id
@@ -102,7 +123,7 @@ pub async fn test_real_stack() -> bool {
         assert!(ret);
 
         let root = op_env.commit().await.unwrap();
-        info!("new dec root is: {:?}", root);
+        debug!("new dec root is: {:?}", root);
     }
 
     true
@@ -129,12 +150,12 @@ fn gen_text_object_list(dec_id: &ObjectId,) -> Vec<(Text,ObjectId)> {
     list
 }
 
-async fn clear_all(dec_id: &ObjectId) {
-    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+async fn clear_all(dec_id: &ObjectId, zone: &SimZone) {
+    let stack = zone.get_shared_stack("zone1_device1");
 
     let device1 = stack.local_device_id();
-    let device2 = TestLoader::get_shared_stack(DeviceIndex::User1Device2).local_device_id();
-    let ood = TestLoader::get_shared_stack(DeviceIndex::User1OOD).local_device_id();
+    let device2 = zone.get_shared_stack("zone1_device2").local_device_id();
+    let ood = zone.get_shared_stack("zone1_ood").local_device_id();
 
     let list= gen_text_object_list(dec_id);
     for (_, object_id) in list {
@@ -149,46 +170,7 @@ async fn clear_all(dec_id: &ObjectId) {
     }
 }
 
-// 跨zone 调用req_path
-async fn test_non_object_req_path() -> bool {
-    info!("begin test wait_on_line...");
-    let begin = std::time::Instant::now();
-
-    let dec_id = new_dec("test-non");
-    let user1_stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
-    let user1_stack = user1_stack.fork_with_new_dec(Some(dec_id.clone())).await.unwrap();
-    user1_stack.wait_online(None).await.unwrap();
-
-    let dur = begin.elapsed();
-    info!("end test wait_on_line: {:?}", dur);
-
-    async_std::task::spawn(async move {
-        loop {
-            let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-            let dec_id = new_dec("test-non");
-            test_put_object(&dec_id, &stack).await;
-            async_std::task::sleep(std::time::Duration::from_secs(60)).await;
-        }
-    });
-
-    test_outer_put_dec(&dec_id).await;
-
-    {
-        let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-        let target = stack.local_device_id();
-        test_get_object(&dec_id, &stack, &target).await;
-
-        let object = new_object(&dec_id, "first-text");
-        let object_id = object.text_id().object_id().to_owned();
-
-        test_delete_object(&object_id, &dec_id, &stack, &target).await;
-    }
-    info!("test all non case success!");
-
-    true
-}
-
-async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl Into<String>, _perm: AccessPermissions) {
+async fn open_access(stack: &SharedCyfsStack, _dec_id: &ObjectId, req_path: impl Into<String>, _perm: AccessPermissions) {
     // 开启权限 rmeta, 为当前Zone内的dec_id开放req_path的读写权限
     let meta = stack.root_state_meta_stub(None, None);
     let mut access = AccessString::new(0);
@@ -217,21 +199,21 @@ async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl 
 
 // object层 跨dec 在设置和不设置对应group情况下的操作是否正常
 // object层 跨zone在设置和不设置对应group情况下的操作是否正常, 不允许跨zone put, 允许跨zone get
-async fn test_outer_put_dec(_dec_id: &ObjectId) {
+async fn test_outer_put_dec(_dec_id: &ObjectId, zone: &SimZone) {
 
     info!("begin test_outer_put_dec...");
     let begin = std::time::Instant::now();
 
-    let dec_id = TestLoader::get_shared_stack(DeviceIndex::User1Device2).dec_id().unwrap().to_owned();
+    //let dec_id = zone.get_shared_stack("zone1_device2").dec_id().unwrap().to_owned();
     let (_q, a) = qa_pair();
     let object_id = a.text_id().object_id().to_owned();
 
-    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
-    let target_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device2);
+    let stack = zone.get_shared_stack("zone1_device1");
+    let target_stack = zone.get_shared_stack("zone2_device2");
 
     let mut req =
         NONPutObjectOutputRequest::new_router(None, object_id.clone(), a.to_vec().unwrap());
-    req.common.dec_id = Some(TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().to_owned());
+    req.common.dec_id = Some(zone.get_shared_stack("zone1_device1").dec_id().unwrap().to_owned());
     req.common.target = Some(stack.local_device_id().into());
     // req_path 统一格式, put_object 一般不需要req_path
     // object 层 add_access
@@ -255,7 +237,7 @@ async fn test_outer_put_dec(_dec_id: &ObjectId) {
     //open_access(&stack, dec_id, "/root/shared", AccessPermissions::Full).await;
     //open_access(&target_stack, dec_id, "/root/shared", AccessPermissions::Full).await;
 
-    let target_dec_id = TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().clone();
+    let target_dec_id = zone.get_shared_stack("zone1_device1").dec_id().unwrap().clone();
     let req_path = RequestGlobalStatePath {
         global_state_category: None,
         global_state_root: None,
@@ -280,10 +262,10 @@ async fn test_outer_put_dec(_dec_id: &ObjectId) {
     //let object_id = q.text_id().object_id().to_owned();
 
     let mut req = NONGetObjectOutputRequest::new_router(None, object_id, None);
-    req.common.dec_id = Some(TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().to_owned());
+    req.common.dec_id = Some(zone.get_shared_stack("zone1_device1").dec_id().unwrap().to_owned());
     req.common.target = Some(stack.local_device_id().into());
 
-    let new_dec = new_dec("cross_dec");
+    let new_dec = new_dec("cross_dec", zone);
     let stack1 = stack.fork_with_new_dec(Some(new_dec.clone())).await.unwrap();
     stack1.wait_online(None).await.unwrap();
     let ret = stack1.non_service().get_object(req.clone()).await;
@@ -301,7 +283,7 @@ async fn test_outer_put_dec(_dec_id: &ObjectId) {
 
     // cross zone add perm
     // 目标req_path层, dec-id开启对应的权限才可以操作
-    open_access(&stack, &TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().to_owned(), "/root/shared", AccessPermissions::Full).await;
+    open_access(&stack, &zone.get_shared_stack("zone1_device1").dec_id().unwrap().to_owned(), "/root/shared", AccessPermissions::Full).await;
     // 挂在树上
     let stub = stack.root_state_stub(Some(stack.local_device_id().object_id().to_owned()), None);
     let op_env = stub.create_path_op_env().await.unwrap();
@@ -309,7 +291,7 @@ async fn test_outer_put_dec(_dec_id: &ObjectId) {
     let _root_info = op_env.commit().await.unwrap();
 
     req.common.req_path = Some(req_path.format_string());
-    req.common.dec_id = Some(TestLoader::get_shared_stack(DeviceIndex::User1Device1).dec_id().unwrap().to_owned());
+    req.common.dec_id = Some(zone.get_shared_stack("zone1_device1").dec_id().unwrap().to_owned());
     req.common.target = Some(stack.local_device_id().into());
     let ret = target_stack.non_service().get_object(req.clone()).await;
     let resp = ret.unwrap();
@@ -443,7 +425,7 @@ async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
     info!("end test_put_object: {:?}", dur);
 }
 
-async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &DeviceId) {
+async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &DeviceId, zone: &SimZone) {
     info!("begin test_get_object...");
     let begin = std::time::Instant::now();
     let get_object_path = "/.cyfs/api/handler/pre_router/get_object/";
@@ -456,10 +438,8 @@ async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &De
     };
 
     let req_path = req_path.format_string();
-    debug!("haha: {}", req_path.to_owned());
-
     // req_path层的权限
-    let target_stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    let target_stack = zone.get_shared_stack("zone1_ood");
     open_access(&target_stack, dec_id, get_object_path.to_owned(), AccessPermissions::Full).await;
     open_access(&stack, dec_id, get_object_path.to_owned(), AccessPermissions::Full).await;
 
