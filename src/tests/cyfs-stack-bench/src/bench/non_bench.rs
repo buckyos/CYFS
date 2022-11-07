@@ -150,6 +150,35 @@ fn gen_text_object_list(dec_id: &ObjectId,) -> Vec<(Text,ObjectId)> {
     list
 }
 
+async fn stat(stack: &SharedCyfsStack, key: &str, costs: u64) {
+    // 汇总本地数据 rate, min/avg/max
+    {
+        let local_cache = stack.local_cache_stub(None);
+        let local_op_env = local_cache.create_path_op_env().await.unwrap();
+
+        let path = format!("/stat_{}/{}", key, costs.to_string());
+        
+        let object = Text::build(key, "header", costs.to_string())
+        .no_create_time()
+        .build();
+        let object_id = object.text_id().object_id().to_owned();
+
+        local_op_env.insert(path, &object_id).await.unwrap();
+
+        let root = local_op_env.commit().await.unwrap();
+        debug!("new local cache dec root is: {:?}", root);
+    }
+    {
+        let local_cache = stack.local_cache_stub(None);
+        let local_op_env = local_cache.create_path_op_env().await.unwrap();
+
+        let path = format!("/stat_{}", key);
+        let list = local_op_env.list(&path).await.unwrap();
+        
+        info!("len: {}, list: {:?}", list.len(), list);
+    }
+}
+
 async fn clear_all(dec_id: &ObjectId, zone: &SimZone) {
     let stack = zone.get_shared_stack("zone1_device1");
 
@@ -396,33 +425,11 @@ async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
         }
     }
 
-    {
-        let object = new_object(dec_id, "second-text");
-        let object_id = object.text_id().object_id().to_owned();
-
-        let mut req =
-            NONPutObjectOutputRequest::new_router(None, object_id, object.to_vec().unwrap());
-        req.common.dec_id = Some(dec_id.clone());
-
-        let ret = stack.non_service().put_object(req).await.unwrap();
-        match ret.result {
-            NONPutObjectResult::Accept => {
-                info!("first put_object success! {}", object_id);
-            }
-            NONPutObjectResult::Updated => {
-                info!("updated put_object success! {}", object_id);
-            }
-            NONPutObjectResult::AlreadyExists => {
-                info!("put_object but already exists! {}", object_id);
-            }
-            _ => {
-                unreachable!();
-            }
-        }
-    }
-
     let dur = begin.elapsed();
     info!("end test_put_object: {:?}", dur);
+    let costs = begin.elapsed().as_millis() as u64;
+    stat(stack, "non_put_object", costs).await;
+
 }
 
 async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &DeviceId, zone: &SimZone) {
