@@ -6,7 +6,7 @@
 
 ****CYFS：Next Generation Protocl Family to Build Web3****    
 + CYFS is short for CYberFileSystem
-+ CYFS Website: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index_en.html](cyfs://cyfs/index_en.html)  
++ CYFS Website: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index](cyfs://cyfs/index)  
 + Discord：[https://discord.gg/dXDxjXTEjT](https://discord.gg/dXDxjXTEjT)   
 + CYFS White Paper(Coming soon)  
 + Language: [中文](./README.zh-CN.md)
