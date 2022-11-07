@@ -165,15 +165,15 @@ impl Client {
 
             let x_axis = format!("{:02}{:02}", datetime.month(), datetime.day()).parse::<u64>().unwrap(); 
             
-            let mut rng = rand::thread_rng();
-            let rand = rng.gen::<u64>();
+            //let mut rng = rand::thread_rng();
+            //let rand = rng.gen::<u64>();
 
             let sum = self.storage.get_desc_add(obj_type as u8, bucky_start, bucky_end).await?;
-            add.push((x_axis, rand % 1000));
+            add.push((x_axis, sum));
             info!("add x_axis: {}, sum: {}", x_axis, sum);
 
             let sum = self.storage.get_desc_active(obj_type as u8, bucky_start, bucky_end).await?;
-            active.push((x_axis, rand % 1000));
+            active.push((x_axis, sum));
 
             info!("active x_axis: {}, sum: {}", x_axis, sum);
         }
