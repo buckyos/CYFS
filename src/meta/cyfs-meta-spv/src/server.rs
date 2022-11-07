@@ -388,21 +388,25 @@ impl SPVHttpServer {
         });
 
         let tmp_storage = storage.clone();
-        app.at("/nft_get_bid_list/:nft_id").get(move |req: Request<()>| {
+        app.at("/nft_get_bid_list/:nft_id/:offset/:length").get(move |req: Request<()>| {
             let storage = tmp_storage.clone();
             async move {
-                let ret: BuckyResult<Vec<NFTBidRecord>> = async move {
+                let ret: BuckyResult<Vec<SPVNFTBidRecord>> = async move {
                     let nft_id_str = req.param("nft_id")?;
                     let nft_id = ObjectId::from_str(nft_id_str)?;
+                    let offset = req.param("offset").unwrap_or("0").parse().unwrap_or(0);
+                    let length = req.param("length").unwrap_or("100").parse().unwrap_or(100);
 
                     let tx_storage = storage.create_tx_storage().await?;
-                    let list = tx_storage.nft_get_bid_list(&nft_id, 0, 100).await?;
+                    let list = tx_storage.nft_get_bid_list(&nft_id, offset, length).await?;
                     let mut ret_list = Vec::new();
-                    for (buyer_id, price, coin_id) in list.into_iter() {
-                        ret_list.push(NFTBidRecord {
+                    for (buyer_id, price, coin_id, block_number, block_time) in list.into_iter() {
+                        ret_list.push(SPVNFTBidRecord {
                             buyer_id: buyer_id.to_string(),
                             price,
-                            coin_id
+                            coin_id,
+                            block_number,
+                            block_time
                         });
                     }
 
