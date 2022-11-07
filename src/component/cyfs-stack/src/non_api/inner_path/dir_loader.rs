@@ -61,7 +61,7 @@ impl NONDirLoader {
 
         // first load root dir object from noc
         let ret = self
-            .load_object_from_non(&req.common, &req.object_id)
+            .load_object_from_non(&req.common, &req.object_id, true)
             .await?;
         if ret.is_none() {
             let msg = format!("load dir from noc but not found! dir={}", req.object_id);
@@ -131,7 +131,7 @@ impl NONDirLoader {
                     }
 
                     // then try load from noc
-                    let ret = self.load_object_from_non(&req.common, &object_id).await?;
+                    let ret = self.load_object_from_non(&req.common, &object_id, false).await?;
                     if ret.is_none() {
                         let msg = format!("load dir inner_path object from noc but not found! dir={}, inner_path={}, file={}", 
                             req.object_id, inner_path, object_id);
@@ -186,12 +186,18 @@ impl NONDirLoader {
         &self,
         common: &NONInputRequestCommon,
         object_id: &ObjectId,
+        is_root: bool,
     ) -> BuckyResult<Option<(Arc<AnyNamedObject>, Vec<u8>)>> {
-        let get_req = NONGetObjectInputRequest {
+        let mut get_req = NONGetObjectInputRequest {
             common: common.to_owned(),
             object_id: object_id.to_owned(),
             inner_path: None,
         };
+
+        // dir+inner_path mode, only check the root object's access_string
+        if !is_root {
+            get_req.common.source = RequestSourceInfo::new_local_system();
+        }
 
         let ret = self.non.get_object(get_req).await;
         match ret {
