@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::{Bench, BenchEnv};
+use crate::{Bench, BenchEnv, sim_zone::SimZone};
 use log::*;
 
 use cyfs_base::*;
@@ -12,13 +12,17 @@ pub struct RouterHandlerBench {}
 
 #[async_trait]
 impl Bench for RouterHandlerBench {
-    async fn bench(&self, env: BenchEnv, _ood_path: String, _t: u64) -> bool {
+    async fn bench(&self, env: BenchEnv, zone: &SimZone, _ood_path: String, _t: u64) -> bool {
+        info!("begin test RouterHandlerBench...");
+        let begin = std::time::Instant::now();
         let ret = if env == BenchEnv::Simulator {
-            test().await;
-            true
+            test(zone).await
         } else {
             true
         };
+
+        let dur = begin.elapsed();
+        info!("end test RouterHandlerBench: {:?}", dur);
 
         ret
 
@@ -50,18 +54,19 @@ fn qa_pair() -> (Text, Text) {
     (q, a)
 }
 
-pub async fn test() {
+pub async fn test(zone: &SimZone) -> bool {
     
-    //let user1_ood = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
-    let device1 = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
-    let device2 = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
+    let device1 = zone.get_shared_stack("zone1_device1");
+    let device2 = zone.get_shared_stack("zone1_device2");
 
     put_object(&device1, &device2).await;
     get_object(&device1, &device2).await;
 
     post_object(&device1, &device2).await;
 
-    info!("test all router handler case success!")
+    info!("test all router handler case success!");
+
+    true
 }
 
 struct OnPutObjectWatcher;
@@ -357,13 +362,13 @@ async fn put_object(device1: &SharedCyfsStack, device2: &SharedCyfsStack) {
         let ret = device1.non_service().put_object(req).await;
         match ret {
             Ok(resp) => {
-                error!(
+                info!(
                     "put_object but success! object_id={}, resp={}",
                     object_id, resp
                 );
             }
             Err(e) => {
-                info!("put_object failed! object_id={}, {}", object_id, e);
+                error!("put_object failed! object_id={}, {}", object_id, e);
                 assert_eq!(e.code(), BuckyErrorCode::NotSupport);
             }
         }

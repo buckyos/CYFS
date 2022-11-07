@@ -1,22 +1,25 @@
 use async_trait::async_trait;
-use crate::{Bench, BenchEnv};
+use crate::{Bench, BenchEnv, sim_zone::SimZone};
 use log::*;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
-use cyfs_util::*;
-use zone_simulator::*;
 pub struct RootStateBench {}
 
 #[async_trait]
 impl Bench for RootStateBench {
-    async fn bench(&self, env: BenchEnv, _ood_path: String, _t: u64) -> bool {
+    async fn bench(&self, env: BenchEnv, zone: &SimZone, _ood_path: String, _t: u64) -> bool {
+        info!("begin test RootStateBench...");
+        let begin = std::time::Instant::now();
         let ret = if env == BenchEnv::Simulator {
-            test().await;
+            test(zone).await;
             true
         } else {
             true
         };
+
+        let dur = begin.elapsed();
+        info!("end test RootStateBench: {:?}", dur);
 
         ret
 
@@ -28,30 +31,25 @@ impl Bench for RootStateBench {
 }
 
 
-fn new_dec(name: &str) -> ObjectId {
-    let owner_id = &USER1_DATA.get().unwrap().people_id;
+fn new_dec(name: &str, zone: &SimZone) -> ObjectId {
+    let people_id = zone.get_object_id_by_name("zone1_people");
 
-    let dec_id = DecApp::generate_id(owner_id.object_id().to_owned(), name);
+    let dec_id = DecApp::generate_id(people_id, name);
 
     info!(
         "generage test storage dec_id={}, people={}",
-        dec_id, owner_id
+        dec_id, people_id
     );
 
     dec_id
 }
 
-pub async fn test() {
-    let user1_stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
-    let user1_device1_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
-    // let user1_device2_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
+pub async fn test(zone: &SimZone) {
+    let user1_stack = zone.get_shared_stack("zone1_ood");
+    let user1_device1_stack = zone.get_shared_stack("zone1_device1");
 
-    // let user2_stack = TestLoader::get_shared_stack(DeviceIndex::User2OOD);
-    // let user2_device1_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
-    // let user2_device2_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device2);
-
-    test_path_op_env_cross_dec(&user1_stack, &user1_device1_stack).await;
-    test_single_op_env_cross_dec(&user1_stack, &user1_device1_stack).await;
+    test_path_op_env_cross_dec(&user1_stack, &user1_device1_stack, zone).await;
+    test_single_op_env_cross_dec(&user1_stack, &user1_device1_stack, zone).await;
 }
 
 async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl Into<String>, perm: AccessPermissions) {
@@ -75,25 +73,29 @@ async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl 
 // 测试root-state的同zone的跨dec操作 需要配合权限
 async fn test_path_op_env_cross_dec(
     user1_stack: &SharedCyfsStack,
-    user1_device1_stack: &SharedCyfsStack) {
+    user1_device1_stack: &SharedCyfsStack,
+    zone: &SimZone) {
     // source_dec_id 为 user1_stack.open传入的,  target_dec_id为user1_device1 open的dec_id
     // 目前的root_state 不支持 . ..
     let target_dec_id = user1_device1_stack.dec_id().unwrap().to_owned();
     let root_state = user1_stack.root_state_stub(None, Some(target_dec_id));
     let root_info = root_state.get_current_root().await.unwrap();
-    info!("current root: {:?}", root_info);
+    debug!("current root: {:?}", root_info);
 
 
     // 目标req_path层, dec-id开启对应的权限才可以操作
     open_access(&user1_device1_stack, &target_dec_id, "/root/shared", AccessPermissions::None).await;
 
-    let access = RootStateOpEnvAccess::new("/", AccessPermissions::Full);   // 对跨decc路径操作这个perm才work
+    let access = RootStateOpEnvAccess::new("/", AccessPermissions::Full);   // 对跨dec路径操作这个perm才work
     let op_env = root_state.create_path_op_env_with_access(Some(access)).await.unwrap();
 
 
     let x1_value = ObjectId::from_base58("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
     let x2_value = ObjectId::from_base58("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
     
+    info!("begin test CrossRootState...");
+    let begin = std::time::Instant::now();
+
     // test create_new
     op_env.remove_with_path("/root/shared/new", None).await.unwrap();
     op_env
@@ -145,8 +147,14 @@ async fn test_path_op_env_cross_dec(
     let root = op_env.commit().await.unwrap();
     info!("new dec root is: {:?}", root);
 
+    let dur = begin.elapsed();
+    info!("end test CrossRootState: {:?}", dur);
+
 
     {
+        info!("begin test OwnerRootState...");
+        let begin = std::time::Instant::now();
+
         // create_path_op_env None access默认权限操作自己dec_id
         let op_env = root_state.create_path_op_env().await.unwrap();
         op_env.remove_with_path("/set", None).await.unwrap();
@@ -171,6 +179,9 @@ async fn test_path_op_env_cross_dec(
 
         let root = op_env.commit().await.unwrap();
         info!("new dec root is: {:?}", root);
+
+        let dur = begin.elapsed();
+        info!("end test OwnerRootState: {:?}", dur);
     }
 
     info!("test root_state complete!");
@@ -179,14 +190,15 @@ async fn test_path_op_env_cross_dec(
 
 async fn test_single_op_env_cross_dec(
     user1_stack: &SharedCyfsStack,
-    user1_device1_stack: &SharedCyfsStack) {
+    user1_device1_stack: &SharedCyfsStack,
+    zone: &SimZone) {
     // source_dec_id 为 user1_stack.open传入的,  target_dec_id为user1_device1 open的dec_id
     // 目前的root_state 不支持 . ..
     let source_dec_id = user1_stack.dec_id().unwrap().to_owned();
     let target_dec_id = user1_device1_stack.dec_id().unwrap().to_owned();
     let root_state = user1_stack.root_state_stub(None, Some(target_dec_id));
     let root_info = root_state.get_current_root().await.unwrap();
-    info!("current root: {:?}", root_info);
+    debug!("current root: {:?}", root_info);
 
     // 目标req_path层, dec-id开启对应的权限才可以操作
     open_access(&user1_device1_stack, &target_dec_id, "/root/shared", AccessPermissions::None).await;
