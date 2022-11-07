@@ -149,6 +149,12 @@ impl BdtNDNDataAclProcessor {
         Self::process_resp(resp)
     }
 
+    pub async fn get_data(&self, req: BdtGetDataInputRequest) -> BuckyResult<()> {
+        self.get_data_without_cache(req).await
+    }
+
+    /*
+    // 暂时停用缓存加速，因为acl可能会动态改变，无法及时生效
     pub async fn get_data(&self, mut req: BdtGetDataInputRequest) -> BuckyResult<()> {
         let key = BdtDataAclCacheKey {
             source: req.source.clone(),
@@ -156,6 +162,7 @@ impl BdtNDNDataAclProcessor {
             action: NDNAction::GetData,
         };
 
+    
         if let Some(ret) = self.cache.get(&key) {
             info!(
                 "bdt get_data acl request hit cache: ret={:?}, object={}",
@@ -170,4 +177,5 @@ impl BdtNDNDataAclProcessor {
 
         ret
     }
+    */
 }
