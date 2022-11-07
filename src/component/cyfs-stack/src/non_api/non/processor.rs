@@ -1,6 +1,6 @@
 use super::super::acl::*;
 use super::super::handler::*;
-use super::super::validate::NONGlobalStateValidator;
+use super::super::validate::NONGlobalStateValidatorProcessor;
 use super::fail_handler::NONOutputFailHandleProcessor;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -49,7 +49,7 @@ impl NONLevelInputProcessor {
     ) -> NONInputProcessorRef {
         // shoule use validate
         let validate_noc_processor =
-            NONGlobalStateValidator::new(acl.global_state_validator().clone(), raw_noc_processor);
+        NONGlobalStateValidatorProcessor::new(acl.global_state_validator().clone(), raw_noc_processor);
 
         // should process with rmeta
         let rmeta_processor =

@@ -1,7 +1,7 @@
 use super::super::acl::*;
 use super::super::handler::*;
 use super::super::inner_path::NONInnerPathServiceProcessor;
-use super::super::validate::NONGlobalStateValidator;
+use super::super::validate::NONGlobalStateValidatorProcessor;
 use super::handler::NONRouterHandler;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
@@ -68,7 +68,7 @@ impl NOCLevelInputProcessor {
         raw_processor: NONInputProcessorRef,
     ) -> NONInputProcessorRef {
         // should use validate for req_path
-        let validate_noc_processor = NONGlobalStateValidator::new(
+        let validate_noc_processor = NONGlobalStateValidatorProcessor::new(
             acl.global_state_validator().clone(),
             raw_processor.clone(),
         );

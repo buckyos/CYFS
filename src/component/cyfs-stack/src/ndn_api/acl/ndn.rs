@@ -1,10 +1,12 @@
 use super::verifier::NDNChunkVerifier;
 use crate::acl::*;
 use crate::ndn::*;
-use crate::ndn_api::NDNForwardObjectData;
 use crate::ndn_api::ndc::NDNObjectLoader;
 use crate::ndn_api::LocalDataManager;
+use crate::ndn_api::NDNForwardObjectData;
 use crate::non::NONInputProcessorRef;
+use crate::non_api::NONGlobalStateValidator;
+
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -16,6 +18,8 @@ pub(crate) struct NDNAclInputProcessor {
     loader: OnceCell<NDNObjectLoader>,
     next: NDNInputProcessorRef,
 
+    // only used for validate on req_path+chunk mode
+    validator: NONGlobalStateValidator,
     verifier: NDNChunkVerifier,
 }
 
@@ -27,10 +31,11 @@ impl NDNAclInputProcessor {
     ) -> Self {
         let verifier = NDNChunkVerifier::new(data_manager);
         Self {
-            acl,
+            validator: NONGlobalStateValidator::new(acl.global_state_validator().to_owned()),
             verifier,
             loader: OnceCell::new(),
             next,
+            acl,
         }
     }
 
@@ -78,18 +83,13 @@ impl NDNAclInputProcessor {
         Ok(req_path.dec(source).to_owned())
     }
 
-    async fn on_get_chunk(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputRequest> {
-        debug!(
-            "will check get_chunk access: req={}",
-            req,
-        );
+    async fn on_get_chunk(
+        &self,
+        req: NDNGetDataInputRequest,
+    ) -> BuckyResult<NDNGetDataInputRequest> {
+        debug!("will check get_chunk access: req={}", req,);
 
         assert_eq!(req.object_id.obj_type_code(), ObjectTypeCode::Chunk);
-
-        // 同zone内，直接使用chunk_id访问
-        if req.common.source.is_current_zone() {
-            return Ok(req);
-        }
 
         let req_path = match &req.common.req_path {
             Some(req_path) => Some(RequestGlobalStatePath::from_str(req_path)?),
@@ -98,6 +98,11 @@ impl NDNAclInputProcessor {
 
         if req.common.referer_object.is_empty() {
             if req_path.is_none() {
+                // 同zone内，不指定referer_object，也不指定req_path，可直接使用chunk_id访问
+                if req.common.source.is_current_zone() {
+                    return Ok(req);
+                }
+
                 let msg = format!(
                     "get_data with chunk_id but referer_object and req_path is empty! chunk={}",
                     req.object_id
@@ -113,6 +118,11 @@ impl NDNAclInputProcessor {
                 RequestOpType::Read,
             )
             .await?;
+
+            // validate the req_path + chunk
+            self.validator
+                .validate(&req.common.source, req_path.unwrap(), &req.object_id)
+                .await?;
         } else {
             // 直接通过本地non加载引用的目标object，在non里面会check_access of object & verify object is on root-state
             let object = self.loader()?.get_file_or_dir_object(&req, None).await?;
@@ -130,7 +140,12 @@ impl NDNAclInputProcessor {
         Ok(req)
     }
 
-    async fn on_get_file(&self, mut req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputRequest> {
+    async fn on_get_file(
+        &self,
+        mut req: NDNGetDataInputRequest,
+    ) -> BuckyResult<NDNGetDataInputRequest> {
+        debug!("will check get_file access: req={}", req,);
+
         assert!(req.common.user_data.is_none());
 
         let (file_id, file) = self.loader()?.get_file_object(&req, None).await?;
@@ -159,9 +174,7 @@ impl NDNInputProcessor for NDNAclInputProcessor {
 
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
         let req = match req.object_id.obj_type_code() {
-            ObjectTypeCode::Chunk => {
-                self.on_get_chunk(req).await?
-            }
+            ObjectTypeCode::Chunk => self.on_get_chunk(req).await?,
             ObjectTypeCode::File | ObjectTypeCode::Dir | ObjectTypeCode::ObjectMap => {
                 self.on_get_file(req).await?
             }
