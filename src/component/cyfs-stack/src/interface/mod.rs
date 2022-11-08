@@ -7,6 +7,7 @@ mod http_ws_listener;
 mod listener_manager;
 mod sync_interface;
 mod ws_interface;
+mod browser_server;
 
 pub(crate) use auth::InterfaceAuth;
 use http_bdt_listener::*;

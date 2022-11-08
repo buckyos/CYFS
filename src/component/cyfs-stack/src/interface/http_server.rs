@@ -41,6 +41,22 @@ pub enum HttpRequestSource {
     Local(SocketAddr),
 }
 
+impl HttpRequestSource {
+    pub fn is_local(&self) -> bool {
+        match &self {
+            Self::Local(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_remote(&self) -> bool {
+        match &self {
+            Self::Remote(_) => true,
+            _ => false,
+        }
+    }
+}
+
 #[async_trait::async_trait]
 pub trait HttpServerHandler: Send + Sync {
     async fn respond(
