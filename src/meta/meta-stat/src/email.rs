@@ -29,7 +29,7 @@ impl Lettre {
         let mut email = Email::builder()
         .to(self.email_receiver.as_ref())
         .from(self.mine_email.as_ref())
-        .subject("subject")
+        .subject("Meta Chain Stat")
         .html("<h1>Stat Metrics</h1>")
         .text(info.context.to_owned());
 
@@ -56,7 +56,7 @@ impl Lettre {
         if result.is_ok() {
             info!("Email sent");
         } else {
-            info!("Could not send email: {:?}", result);
+            error!("Could not send email: {:?}", result);
         }
 
         //info!("{:?}", result);

@@ -51,9 +51,7 @@ impl Client {
             .draw_series(LineSeries::new(
                 data.iter().map(|x| (x.0, x.1) ).map(|x| (x.0, x.1)),
                 &RED,
-            ))?
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 10, y)], &RED));
-    
+            ))?;
         chart
             .configure_series_labels()
             .background_style(&WHITE.mix(800f64))
@@ -163,18 +161,13 @@ impl Client {
             let datetime: DateTime<Local> = sys_time.into();
 
             let x_axis = format!("{:02}{:02}", datetime.month(), datetime.day()).parse::<u64>().unwrap(); 
-            
-            //let mut rng = rand::thread_rng();
-            //let rand = rng.gen::<u64>();
 
             let sum = self.storage.get_desc_add(obj_type as u8, bucky_start, bucky_end).await?;
             add.push((x_axis, sum));
-            info!("add x_axis: {}, sum: {}", x_axis, sum);
 
             let sum = self.storage.get_desc_active(obj_type as u8, bucky_start, bucky_end).await?;
             active.push((x_axis, sum));
 
-            info!("active x_axis: {}, sum: {}", x_axis, sum);
         }
 
         add.reverse();

@@ -37,7 +37,7 @@ pub struct EmailConfig {
 
 #[async_std::main]
 async fn main() -> BuckyResult<()> {
-    simple_logger::init_with_level(log::Level::Debug).unwrap();
+    simple_logger::init_with_level(log::Level::Info).unwrap();
     
     let matches = App::new("meta stat").version(cyfs_base::get_version())
         .arg(Arg::with_name("db_path").short("d").long("db_path").value_name("PATH").help("meta archive sqlite db path.\ndefault is current archive_db db path.").takes_value(true))
@@ -54,7 +54,7 @@ async fn main() -> BuckyResult<()> {
     let db_path = matches.value_of("db_path").unwrap_or("./");
     let deadline = matches.value_of("last").unwrap_or("1").parse::<u16>().unwrap_or(1);
     let dingtalk = matches.value_of("dingtalk").unwrap_or("https://oapi.dingtalk.com/robot/send?access_token=28788f9229a09bfe8b33e678d4447a2d2d80a334a594e1c942329cab8581f422");
-    info!("db_path: {}, dl: {}, dingtalk: {}", db_path, deadline, dingtalk);
+    debug!("db_path: {}, dl: {}, dingtalk: {}", db_path, deadline, dingtalk);
 
     match toml::from_str::<Config>(std::fs::read_to_string(config_path).unwrap().as_str()) {
         Ok(config) => {
