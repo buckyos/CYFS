@@ -5,8 +5,10 @@ use tide::{Request, Response};
 use std::str::FromStr;
 use tide::http::Url;
 use log::*;
+use serde::Deserialize;
 use cyfs_base_meta::*;
 use serde_json::{Value};
+use tide::convert::Serialize;
 use tide::security::{CorsMiddleware, Origin};
 use tide::http::headers::HeaderValue;
 
@@ -391,15 +393,20 @@ impl SPVHttpServer {
         let tmp_storage = storage.clone();
         app.at("/nft_get_bid_list/:nft_id/:offset/:length").get(move |req: Request<()>| {
             let storage = tmp_storage.clone();
+            #[derive(Serialize, Deserialize)]
+            struct NFTResult {
+                sum: u64,
+                list: Vec<SPVNFTBidRecord>,
+            }
             async move {
-                let ret: BuckyResult<Vec<SPVNFTBidRecord>> = async move {
+                let ret: BuckyResult<NFTResult> = async move {
                     let nft_id_str = req.param("nft_id")?;
                     let nft_id = ObjectId::from_str(nft_id_str)?;
                     let offset = req.param("offset").unwrap_or("0").parse().unwrap_or(0);
                     let length = req.param("length").unwrap_or("100").parse().unwrap_or(100);
 
                     let tx_storage = storage.create_tx_storage().await?;
-                    let list = tx_storage.nft_get_bid_list(&nft_id, offset, length).await?;
+                    let (sum, list) = tx_storage.nft_get_bid_list(&nft_id, offset, length).await?;
                     let mut ret_list = Vec::new();
                     for (buyer_id, price, coin_id, block_number, block_time) in list.into_iter() {
                         ret_list.push(SPVNFTBidRecord {
@@ -411,7 +418,7 @@ impl SPVHttpServer {
                         });
                     }
 
-                    Ok(ret_list)
+                    Ok(NFTResult{sum, list: ret_list})
                 }.await;
 
                 let result = match ret {

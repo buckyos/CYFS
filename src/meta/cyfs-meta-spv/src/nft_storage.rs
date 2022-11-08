@@ -32,7 +32,7 @@ pub trait NFTStorage {
     async fn nft_remove_apply_buy(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId) -> BuckyResult<()>;
     async fn nft_add_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId, price: u64, coin_id: &CoinTokenId, block_number: i64, block_time: u64) -> BuckyResult<()>;
     async fn nft_get_bid(&self, nft_id: &ObjectId, buyer_id: &ObjectId) -> BuckyResult<Option<(u64, CoinTokenId)>>;
-    async fn nft_get_bid_list(&self, nft_id: &ObjectId, offset: u64, length: u64) -> BuckyResult<Vec<(ObjectId, u64, CoinTokenId, u64, u64)>>;
+    async fn nft_get_bid_list(&self, nft_id: &ObjectId, offset: u64, length: u64) -> BuckyResult<(u64, Vec<(ObjectId, u64, CoinTokenId, u64, u64)>)>;
     async fn nft_remove_all_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId) -> BuckyResult<()>;
     async fn nft_remove_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId) -> BuckyResult<()>;
     async fn nft_add_like(&self, conn: &mut MetaConnection, nft_id: &ObjectId, user_id: &ObjectId, block_number: u64, create_time: u64) -> BuckyResult<()>;
@@ -419,9 +419,11 @@ impl NFTStorage for SPVTxStorage {
 
     }
 
-    async fn nft_get_bid_list(&self, nft_id: &ObjectId, offset: u64, length: u64) -> BuckyResult<Vec<(ObjectId, u64, CoinTokenId, u64, u64)>> {
+    async fn nft_get_bid_list(&self, nft_id: &ObjectId, offset: u64, length: u64) -> BuckyResult<(u64, Vec<(ObjectId, u64, CoinTokenId, u64, u64)>)> {
         let mut conn = self.get_conn().await?;
-
+        let sql = "select count(*) as c from nft_bid where nft_id = ?1";
+        let row = conn.query_one(sqlx::query(sql).bind(nft_id.to_string())).await?;
+        let sum: i64 = row.get("c");
         let sql = "select * from nft_bid where nft_id = ?1 order by block_number desc limit ?2, ?3";
         let rows = conn.query_all(sqlx::query(sql).bind(nft_id.to_string()).bind(offset as i64).bind(length as i64)).await?;
         let mut list = Vec::new();
@@ -434,7 +436,7 @@ impl NFTStorage for SPVTxStorage {
                 row.get::<i64, _>("block_time") as u64,
             ));
         }
-        Ok(list)
+        Ok((sum as u64, list))
     }
 
     async fn nft_remove_all_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId) -> BuckyResult<()> {
