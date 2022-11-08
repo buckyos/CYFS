@@ -1,5 +1,5 @@
 use cyfs_base::BuckyResult;
-use cyfs_lib::SharedCyfsStack;
+use cyfs_lib::{SharedCyfsStack, BrowserSanboxMode};
 use cyfs_stack_loader::{
     BdtEndPointParams, CyfsServiceLoader, CyfsServiceLoaderConfig, CyfsServiceLoaderParam,
     CyfsStack,
@@ -127,6 +127,7 @@ impl NonStub {
             sync_service: true,
             is_mobile_stack: true,
             front_enable: true,
+            browser_mode: BrowserSanboxMode::default(),
         };
         let config = CyfsServiceLoaderConfig::new(param)?;
 

@@ -1,6 +1,7 @@
 use cyfs_base::*;
+use cyfs_lib::*;
 use cyfs_meta_lib::MetaMinerTarget;
-use crate::interface::BrowserSanboxMode;
+
 use async_std::net::SocketAddr;
 
 #[derive(Debug, Clone)]
@@ -35,7 +36,10 @@ pub struct CyfsStackFrontParams {
 
 impl Default for CyfsStackFrontParams {
     fn default() -> Self {
-        Self { enable: true, browser_mode: BrowserSanboxMode::Strict }
+        Self {
+            enable: true,
+            browser_mode: BrowserSanboxMode::default(),
+        }
     }
 }
 
