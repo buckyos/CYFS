@@ -26,7 +26,7 @@ impl<State> FrontInputHttpRequest<State> {
         protocol: &RequestProtocol,
         request: &tide::Request<State>,
     ) -> BuckyResult<RequestSourceInfo> {
-        let dec_id: Option<ObjectId> = RequestorHelper::dec_id_from_request(&request)?;
+        let dec_id: Option<ObjectId> = RequestorHelper::dec_id_from_request(request.as_ref())?;
 
         NONInputHttpRequest::extract_source_device(zone_manager, protocol, request, dec_id).await
     }
