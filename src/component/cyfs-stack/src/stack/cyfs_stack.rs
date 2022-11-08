@@ -504,6 +504,7 @@ impl CyfsStackImpl {
 
         interface.init(
             init_params,
+            &stack.config,
             &stack.services,
             &stack.router_handlers,
             &stack.router_events,

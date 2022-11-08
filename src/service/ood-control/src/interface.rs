@@ -264,5 +264,6 @@ mod test {
         let ip = "fe80::411c:ef94:73f1:8c17";
         let host = format!("{}:{}", ip, 100);
         let addr: SocketAddr = host.parse().unwrap();
+        println!("{}", addr);
     }
 }

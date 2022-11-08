@@ -1,6 +1,7 @@
 mod base_requestor;
 mod config;
 mod exp_filter;
+mod front;
 mod protocol;
 mod range;
 mod request;
@@ -13,6 +14,7 @@ mod zone;
 pub use base_requestor::*;
 pub use config::*;
 pub use exp_filter::*;
+pub use front::*;
 pub use protocol::*;
 pub use range::*;
 pub use request::*;

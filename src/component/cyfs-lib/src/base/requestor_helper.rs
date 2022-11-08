@@ -609,7 +609,7 @@ impl RequestorHelper {
     pub async fn decode_serde_json_body<R, T>(resp: &mut R) -> BuckyResult<T>
     where
         R: BodyOp,
-        T: for <'de> Deserialize<'de>,
+        T: for<'de> Deserialize<'de>,
     {
         let body = resp.body_string().await.map_err(|e| {
             let msg = format!("read body string error: {}", e);
@@ -707,7 +707,7 @@ impl RequestorHelper {
         let unix_time = cyfs_base::bucky_time_to_unix_time(bucky_time);
         let secs = unix_time / (1000 * 1000);
         let nsecs = if secs > 0 {
-            (unix_time % secs) * 1000 
+            (unix_time % secs) * 1000
         } else {
             0
         };
@@ -767,6 +767,35 @@ impl RequestorHelper {
                 Ok(Some(v))
             }
             _ => Ok(None),
+        }
+    }
+
+    // try extract dec_id from header and url query pairs(only valid for GET method)
+    pub fn dec_id_from_request(req: &http_types::Request) -> BuckyResult<Option<ObjectId>> {
+        // first extract dec_id from headers
+        match Self::decode_optional_header(req, cyfs_base::CYFS_DEC_ID)? {
+            Some(dec_id) => Ok(Some(dec_id)),
+            None => {
+                if req.method() == http_types::Method::Get {
+                    // try extract dec_id from query pairs
+                    let dec_id = match Self::value_from_querys("dec_id", req.url()) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            let msg = format!(
+                                "invalid request url dec_id query param! {}, {}",
+                                req.url(),
+                                e
+                            );
+                            error!("{}", msg);
+                            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                        }
+                    };
+
+                    Ok(dec_id)
+                } else{
+                    Ok(None)
+                }
+            }
         }
     }
 }

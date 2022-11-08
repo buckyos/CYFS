@@ -684,7 +684,7 @@ mod test {
         param.requestor_config = CyfsStackRequestorConfig::ws();
 
         let stack = SharedCyfsStack::open(param).await.unwrap();
-        stack.wait_online(None).await;
+        let _ = stack.wait_online(None).await;
 
         async_std::task::sleep(std::time::Duration::from_secs(60 * 2)).await;
     }

@@ -1,4 +1,5 @@
 use cyfs_base::*;
+use cyfs_lib::*;
 use cyfs_meta_lib::MetaMinerTarget;
 
 use async_std::net::SocketAddr;
@@ -29,11 +30,16 @@ impl Default for CyfsStackConfigParams {
 pub struct CyfsStackFrontParams {
     // if enable the front module
     pub enable: bool,
+
+    pub browser_mode: BrowserSanboxMode,
 }
 
 impl Default for CyfsStackFrontParams {
     fn default() -> Self {
-        Self { enable: true }
+        Self {
+            enable: true,
+            browser_mode: BrowserSanboxMode::default(),
+        }
     }
 }
 
