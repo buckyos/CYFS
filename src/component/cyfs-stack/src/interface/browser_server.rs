@@ -11,6 +11,12 @@ pub enum BrowserSanboxMode {
     Relaxed,
 }
 
+impl Default for BrowserSanboxMode {
+    fn default() -> Self {
+        Self::Strict
+    }
+}
+
 impl BrowserSanboxMode {
     pub fn as_str(&self) -> &str {
         match *self {
@@ -193,11 +199,14 @@ impl BrowserSanboxHttpServer {
             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
         }
 
+        let allow_system_dec;
         let req_origin = match origin {
             RequestOriginString::Origin(origin) => {
+                allow_system_dec = false;
                 Self::parse_origin(&req, origin)?
             }
             RequestOriginString::Host(host) => {
+                allow_system_dec = true;
                 Self::parse_host(host)?
             }
         };
@@ -211,7 +220,7 @@ impl BrowserSanboxHttpServer {
                 Ok(req)
             }
             RequestOrigin::Dec(dec_id) => {
-                if dec_id == *cyfs_core::get_system_dec_app() {
+                if !allow_system_dec && dec_id == *cyfs_core::get_system_dec_app() {
                     let msg = format!("browser request dec_id not cannot be specified as system_dec_id! req={}, origin={:?}", 
                         req.url(), 
                         origin, 
