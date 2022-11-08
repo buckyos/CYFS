@@ -237,3 +237,60 @@ impl HttpServerHandler for BrowserSanboxHttpServer {
         self.handler.respond(source, req).await
     }
 }
+
+/*
+Disable all the requests from browser
+*/
+pub(crate) struct DisableBrowserRequestHttpServer {
+    handler: HttpServerHandlerRef,
+}
+
+impl DisableBrowserRequestHttpServer {
+    pub fn new(handler: HttpServerHandlerRef) -> Self {
+        Self {
+            handler,
+        }
+    }
+
+    pub fn into(self) -> HttpServerHandlerRef {
+        Arc::new(Box::new(self))
+    }
+
+    fn check_browser_request(req: &http_types::Request) -> BuckyResult<()> {
+        let user_agent = req.header(http_types::headers::USER_AGENT);
+        // debug!("req user agent: {:?}", user_agent);
+        let origin = if let Some(header) = req.header(http_types::headers::ORIGIN) {
+            // debug!("req origin: {}", header.last().as_str());
+            Some(header)
+        } else if let Some(header) = req.header(http_types::headers::REFERER) {
+            // debug!("req referer: {}", header.last().as_str());
+            Some(header)
+        } else {
+            None
+        };
+
+        if user_agent.is_none() && origin.is_none() {
+            // request from non browser app
+            return Ok(());
+        }
+
+        let msg = format!("browser request not allowed on current interface! req={}, origin={:?}", req.url(), origin);
+        warn!("{}", msg);
+        Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
+    }
+}
+
+#[async_trait::async_trait]
+impl HttpServerHandler for DisableBrowserRequestHttpServer {
+    async fn respond(
+        &self,
+        source: HttpRequestSource,
+        req: http_types::Request,
+    ) -> http_types::Result<http_types::Response> {
+        if source.is_local() {
+            Self::check_browser_request(&req)?;
+        }
+        
+        self.handler.respond(source, req).await
+    }
+}
