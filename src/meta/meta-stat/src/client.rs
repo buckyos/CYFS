@@ -10,7 +10,6 @@ use crate::def::*;
 use crate::storage::{Storage, MetaStat};
 use comfy_table::Table;
 use plotters::prelude::*;
-use rand::Rng;
 
 #[derive(Clone, Debug)]
 pub enum MetaDescObject {
