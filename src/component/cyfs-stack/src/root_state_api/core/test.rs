@@ -136,6 +136,12 @@ impl NamedObjectCache for MemoryNOC {
         unreachable!();
     }
 
+    async fn check_object_access(&self, 
+        req: &NamedObjectCacheCheckObjectAccessRequest
+    ) -> BuckyResult<Option<()>> {
+        unreachable!();
+    }
+
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         unreachable!();
     }

@@ -430,6 +430,12 @@ mod build_file_task_test {
             todo!();
         }
     
+        async fn check_object_access(&self, 
+            req: &NamedObjectCacheCheckObjectAccessRequest
+        ) -> BuckyResult<Option<()>> {
+            todo!();
+        }
+        
         async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
             todo!();
         }
