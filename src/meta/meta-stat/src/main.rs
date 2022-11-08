@@ -64,7 +64,7 @@ async fn main() -> BuckyResult<()> {
                 e
             })?);
         
-            let client = Client::new(&config, storage); 
+            let client = Client::new(&config, storage);
             client.run().await;
         }
         Err(e) => {

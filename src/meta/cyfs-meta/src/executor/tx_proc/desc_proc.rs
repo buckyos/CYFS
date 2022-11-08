@@ -292,8 +292,6 @@ impl TxExecutor {
         }
         _context.ref_state().to_rc()?.drop_desc(&_tx.id).await?;
         self.rent_manager.to_rc()?.delete_rent_desc(&_tx.id).await?;
-
-
         // //FIXME: 这里删除记录应该不需要
         // if let Err(e) = _context
         // .ref_archive()

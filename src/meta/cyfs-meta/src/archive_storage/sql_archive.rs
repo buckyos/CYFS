@@ -7,23 +7,24 @@ use crate::helper::get_meta_err_code;
 use async_std::sync::{Mutex, MutexGuard, Arc};
 use std::str::FromStr;
 use log::*;
-use sha2::{Sha256, Digest};
 use std::path::{PathBuf, Path};
 use std::time::Duration;
 use sqlx::sqlite::{SqliteJournalMode};
 pub struct SqlArchive {
     conn: Mutex<ArchiveConnection>,
     transaction_seq: Mutex<i32>,
+    trace: bool,
 }
 
 pub type ArchiveRef = std::sync::Arc<SqlArchive>;
 pub type ArchiveWeakRef = std::sync::Weak<SqlArchive>;
 
 impl SqlArchive {
-    pub fn new(conn: ArchiveConnection) -> ArchiveRef {
+    pub fn new(conn: ArchiveConnection, trace: bool) -> ArchiveRef {
         ArchiveRef::new(SqlArchive {
             conn: Mutex::new(conn),
             transaction_seq: Mutex::new(0),
+            trace,
         })
     }
 
@@ -121,14 +122,18 @@ impl Archive for SqlArchive {
     }
 
     async fn init(&self) -> BuckyResult<()> {
-        self.init_api_stat_tbl().await?;
-        self.init_meta_object_tbl().await?;
-        self.init_obj_stat_table().await?;
-
+        if self.trace {
+            self.init_api_stat_tbl().await?;
+            self.init_meta_object_tbl().await?;
+            self.init_obj_stat_table().await?;
+        }
         Ok(())
     }
 
     async fn create_or_update_desc_stat(&self, objid: &ObjectId, obj_type: u8) -> BuckyResult<()> {
+        if !self.trace {
+            return Ok(());
+        }
         let sql = "SELECT update_time FROM device_stat WHERE obj_id=?1";
         let mut conn = self.get_conn().await;
         let query_result = conn.query_one(sqlx::query(sql).bind(objid.to_string())).await;
@@ -152,6 +157,9 @@ impl Archive for SqlArchive {
 
     // people/device 数目
     async fn get_obj_desc_stat(&self, obj_type: u8) -> BuckyResult<u64> {
+        if !self.trace {
+            return Ok(0u64);
+        }
         let sql = "SELECT count(*) FROM device_stat WHERE obj_type=?1";
         let mut conn = self.get_conn().await;
         let row = conn.query_one(sqlx::query(sql).bind(obj_type)).await?;
@@ -162,6 +170,9 @@ impl Archive for SqlArchive {
 
     // people/device 每日新增
     async fn get_daily_added_desc(&self, obj_type: u8, date: u64) -> BuckyResult<u64> {
+        if !self.trace {
+            return Ok(0u64);
+        }
         let sql = "SELECT count(*) FROM device_stat WHERE obj_type=?1 and create_time=?2";
         let mut conn = self.get_conn().await;
         let row = conn.query_one(sqlx::query(sql).bind(obj_type).bind(date as i64)).await?;
@@ -172,6 +183,9 @@ impl Archive for SqlArchive {
 
     // people/device 每日活跃
     async fn get_daily_active_desc(&self, obj_type: u8, date: u64) -> BuckyResult<u64> {
+        if !self.trace {
+            return Ok(0u64);
+        }
         let sql = "SELECT count(*) FROM device_stat WHERE obj_type=?1 and update_time=?2";
         let mut conn = self.get_conn().await;
         let row = conn.query_one(sqlx::query(sql).bind(obj_type).bind(date as i64)).await?;
@@ -181,6 +195,9 @@ impl Archive for SqlArchive {
     }
 
     async fn drop_desc_stat(&self, obj_id: &ObjectId) -> BuckyResult<()> {
+        if !self.trace {
+            return Ok(());
+        }
         let sql = "delete from device_stat where obj_id=?1";
         let mut conn = self.get_conn().await;
         conn.execute_sql(sqlx::query(sql).bind(obj_id.to_string())).await?;
@@ -188,6 +205,9 @@ impl Archive for SqlArchive {
     }
 
     async fn set_meta_object_stat(&self, objid: &ObjectId, status: u8) -> BuckyResult<()> {
+        if !self.trace {
+            return Ok(());
+        }
         let mut success: i64 = 0;
         let mut failed:i64 = 0;
         if status == 0 {
@@ -222,6 +242,9 @@ impl Archive for SqlArchive {
 
 
     async fn set_meta_api_stat(&self, id: &str, status: u8) -> BuckyResult<()> {
+        if !self.trace {
+            return Ok(());
+        }
         let mut success: i64 = 0;
         let mut failed:i64 = 0;
         if status == 0 {
@@ -257,6 +280,7 @@ impl Archive for SqlArchive {
 
 pub struct SqlArchiveStorage {
     path: PathBuf,
+    trace: bool,
     locker: Mutex<()>,
 }
 #[async_trait]
@@ -267,12 +291,12 @@ impl ArchiveStorage for SqlArchiveStorage {
 
     async fn create_archive(&self, _read_only: bool) -> ArchiveRef {
         let _locker = self.get_locker().await;
-        if *self.path.as_path() == *storage_in_mem_path() {
+        if *self.path.as_path() == *storage_in_mem_path() || !self.trace {
             let mut options = MetaConnectionOptions::new()
                 .journal_mode(SqliteJournalMode::Memory);
             options.log_statements(LevelFilter::Off)
                 .log_slow_statements(LevelFilter::Off, Duration::new(10, 0));
-            SqlArchive::new(options.connect().await.unwrap())
+            SqlArchive::new(options.connect().await.unwrap(), self.trace)
         } else {
             let path = self.path.to_str().unwrap();
             // info!("open db:{}", path);
@@ -287,19 +311,8 @@ impl ArchiveStorage for SqlArchiveStorage {
                 info!("{}", msg);
             }
             let conn = conn.unwrap();
-            SqlArchive::new(conn)
+            SqlArchive::new(conn, self.trace)
         }
-    }
-
-    async fn state_hash(&self) -> BuckyResult<StateHash> {
-        let _locker = self.get_locker().await;
-        static SQLITE_HEADER_SIZE: usize = 100;
-        let content = std::fs::read(self.path()).map_err(|err| {
-            error!("read file {} fail, err {}", self.path.display(), err);
-            crate::meta_err!(ERROR_NOT_FOUND)})?;
-        let mut hasher = Sha256::new();
-        hasher.input(&content[SQLITE_HEADER_SIZE..]);
-        Ok(HashValue::from(hasher.result()))
     }
 
     async fn get_locker(&self) -> MutexGuard<'_, ()> {
@@ -307,9 +320,10 @@ impl ArchiveStorage for SqlArchiveStorage {
     }
 }
 
-pub fn new_archive_storage(path: &Path) -> ArchiveStorageRef {
+pub fn new_archive_storage(path: &Path, trace: bool) -> ArchiveStorageRef {
     Arc::new(Box::new(SqlArchiveStorage {
         path: PathBuf::from(path.to_str().unwrap()),
+        trace,
         locker: Default::default()
     }))
 }

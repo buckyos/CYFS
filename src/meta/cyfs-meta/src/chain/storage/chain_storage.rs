@@ -39,18 +39,17 @@ impl ChainStorage {
         return &self.archive_storage;
     }
 
-    pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, archive_storage: fn (path: &Path) -> ArchiveStorageRef) -> BuckyResult<ChainStorageRef> {
+    pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, trace: bool, archive_storage: fn (path: &Path, trace: bool) -> ArchiveStorageRef) -> BuckyResult<ChainStorageRef> {
         let (block_storage, header_storage, tx_storage) = Self::init_components(dir).await?;
         let ret = header_storage.load_tip_header().await;
         let state_storage = new_storage(dir.join("state_db").as_path());
-        let archive_storage = archive_storage(dir.join("archive_db").as_path());
+        let archive_storage = archive_storage(dir.join("archive_db").as_path(), trace);
         if ret.is_ok() {
             let tip_header = ret.unwrap();
             for i in 0..5 {
                 if header_storage.backup_exist(tip_header.number() - i) && state_storage.backup_exist(tip_header.number() - i) {
                     header_storage.recovery(tip_header.number() - i)?;
                     state_storage.recovery(tip_header.number() - i).await?;
-                    archive_storage.recovery(tip_header.number() -i).await?;
                     break;
                 }
             }
@@ -488,7 +487,7 @@ pub mod chain_storage_tests {
 
         let mut archive_path = temp_dir.clone();
         archive_path.push("test3");
-        let archive_storage = new_archive_storage(archive_path.as_path());
+        let archive_storage = new_archive_storage(archive_path.as_path(), true);
         {
             let archive = archive_storage.create_archive(false).await;
             archive.init().await.unwrap();

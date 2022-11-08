@@ -25,7 +25,7 @@ impl Lettre {
     }
     
     pub async fn report(&self, info: &StatInfo) -> BuckyResult<()> {
-        // 发送邮件        
+        // 发送邮件
         let mut email = Email::builder()
         .to(self.email_receiver.as_ref())
         .from(self.mine_email.as_ref())

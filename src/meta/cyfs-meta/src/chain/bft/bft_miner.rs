@@ -151,10 +151,11 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                       bfc_spv_node: String,
                       dir: &Path, 
                       new_storage: fn(path: &Path) -> StorageRef,
-                      archive_storage: fn(path: &Path) -> ArchiveStorageRef,
+                      trace: bool,
+                      archive_storage: fn(path: &Path, trace: bool) -> ArchiveStorageRef,
                       network: NETWORK,
                       miner_key: PrivateKey) -> BuckyResult<Self> {
-        let chain = Chain::load(dir, new_storage, archive_storage).await?;
+        let chain = Chain::load(dir, new_storage, trace, archive_storage).await?;
         let (sender, receiver) = mpsc::channel();
         Ok(BFTMiner {
             chain_type,

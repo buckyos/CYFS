@@ -51,8 +51,8 @@ impl Chain {
         })
     }
 
-    pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, archive_storage: fn (path: &Path) -> ArchiveStorageRef) -> BuckyResult<Self> {
-        let chain_storage = ChainStorage::load(dir, new_storage, archive_storage).await?;
+    pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, trace: bool, archive_storage: fn (path: &Path, trace: bool) -> ArchiveStorageRef) -> BuckyResult<Self> {
+        let chain_storage = ChainStorage::load(dir, new_storage, trace, archive_storage).await?;
         let ret = chain_storage.get_tip_info().await;
         if ret.is_ok() {
             let (_tip_header, _, _) = ret.unwrap();

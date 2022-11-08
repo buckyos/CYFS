@@ -154,7 +154,6 @@ impl MetaHttpServer {
             let miner = tmp_miner.clone();
             async move {
                 let request: ViewRequest = ViewRequest::clone_from_hex(req.body_string().await?.as_str(), &mut Vec::new())?;
-                 // TODO: API 调用记录日志
                 let result = miner.as_chain().get_chain_storage().view(request).await.or_else(|e| {
                     if let BuckyErrorCode::MetaError(code) = e.code() {
                         Err(code)
@@ -311,7 +310,7 @@ impl MetaHttpServer {
 
                 // API 调用记录日志
                 let archive_storage = miner.as_chain().get_chain_storage().archive_storage();
-                let ref_archive = archive_storage.create_archive(true).await;          
+                let ref_archive = archive_storage.create_archive(true).await;
                 let _ = ref_archive.set_meta_api_stat("/blocks", status).await;
 
                 let body_str = serde_json::to_string(&result).unwrap();

@@ -36,7 +36,7 @@ lazy_static::lazy_static! {
 }
 
 impl ChainCreator {
-    pub fn create_chain(config_path: &Path, output_path: &Path, new_storage: fn (path: &Path) -> StorageRef, new_archive_storage: fn (path: &Path) -> ArchiveStorageRef) -> BuckyResult<MinerRef> {
+    pub fn create_chain(config_path: &Path, output_path: &Path, new_storage: fn (path: &Path) -> StorageRef, trace: bool, new_archive_storage: fn (path: &Path, trace: bool) -> ArchiveStorageRef) -> BuckyResult<MinerRef> {
         async_std::task::block_on(async move {
             let config_file = File::open(config_path).map_err(|err| {
                 error!("open file {} failed, err {}", config_path.display(), err);
@@ -50,7 +50,7 @@ impl ChainCreator {
             let root_path = config_path.parent().unwrap();
 
             let storage = new_storage(output_path.join("state_db").as_path());
-            let archive_storage = new_archive_storage(output_path.join("archive_db").as_path());
+            let archive_storage = new_archive_storage(output_path.join("archive_db").as_path(), trace);
             let header = BlockDesc::new(BlockDescContent::new(config.coinbase, None)).build();
             let mut block_body = BlockBody::new();
             {
@@ -271,7 +271,7 @@ impl ChainCreator {
         })
     }
 
-    pub fn start_miner_instance(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, new_archive_storage: fn (path: &Path) -> ArchiveStorageRef) -> BuckyResult<Arc<dyn Miner>> {
+    pub fn start_miner_instance(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, trace: bool, new_archive_storage: fn (path: &Path, trace: bool) -> ArchiveStorageRef) -> BuckyResult<Arc<dyn Miner>> {
         async_std::task::block_on(async move {
             let config_file = File::open(dir.join("config.json")).map_err(|err| {
                 error!("open config.json at {} failed, err {}", dir.display(), err);
@@ -286,6 +286,7 @@ impl ChainCreator {
                     config.bfc_spv_node.clone(),
                     dir,
                     new_storage,
+                    trace,
                     new_archive_storage).await?;
                 let miner_ref = Arc::new(miner);
                 let mut miner_lock = MINER.lock().unwrap();
@@ -318,6 +319,7 @@ impl ChainCreator {
                                            config.bfc_spv_node.clone(),
                                            dir,
                                            new_storage,
+                                           trace,
                                            new_archive_storage,
                                            network,
                                            miner_key).await?;
