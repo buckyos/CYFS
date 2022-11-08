@@ -399,12 +399,11 @@ impl std::fmt::Display for LocalChunkListWriter {
 
 impl LocalChunkListWriter {
     pub fn new(
-        path: PathBuf,
-        desc: &ChunkListDesc,
-        ndc: &dyn NamedDataCache,
-        tracker: &dyn TrackerCache,
-    ) -> Self {
-        //FIXME: 如果下载速度高于磁盘速度，这里就会出问题
+        path: PathBuf, 
+        desc: &ChunkListDesc, 
+        ndc: &dyn NamedDataCache, 
+        tracker: &dyn TrackerCache) -> Self {
+        
         Self(Arc::new(ListWriterImpl {
             path, 
             desc: desc.clone(),  
