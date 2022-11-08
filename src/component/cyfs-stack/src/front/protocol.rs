@@ -52,13 +52,59 @@ pub(crate) fn parse_front_host_with_dec_id(
 
     let s = &host[2..];
     match ObjectId::from_str(s) {
-        Ok(dec_id) => Ok(Some((ft, dec_id))),
+        Ok(dec_id) => {
+            Ok(Some((ft, dec_id)))
+        }
         Err(e) => {
             let msg = format!("invalid front host's dec_id! host={}, {}", host, e);
             warn!("{}", msg);
             Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
         }
     }
+}
+
+pub(crate) fn parse_front_host(
+    host: &str,
+) -> Option<FrontRequestType> {
+    let ft = match host {
+        "o" => FrontRequestType::O,
+        "a" => FrontRequestType::A,
+        "r" => FrontRequestType::R,
+        "l" => FrontRequestType::L,
+        _ => {
+            if host.starts_with("o.") {
+                FrontRequestType::O
+            } else if host.starts_with("a.") {
+                FrontRequestType::A
+            } else if host.starts_with("r.") {
+                FrontRequestType::R
+            } else if host.starts_with("l.") {
+                FrontRequestType::L
+            } else {
+                return None
+            }
+        },
+    };
+
+    Some(ft)
+}
+
+
+pub(crate) fn parse_front_host_with_anonymous_dec_id(
+    host: &str,
+) -> Option<(FrontRequestType, ObjectId)> {
+    let ft = match host {
+        "o" => FrontRequestType::O,
+        "a" => FrontRequestType::A,
+        "r" => FrontRequestType::R,
+        "l" => FrontRequestType::L,
+        _ => {
+            return None
+        },
+    };
+
+    
+    Some((ft, cyfs_core::get_anonymous_dec_app().to_owned()))
 }
 
 pub(crate) struct FrontProtocolHandler {

@@ -56,6 +56,12 @@ enum RequestOrigin {
     Other,
 }
 
+#[derive(Debug)]
+enum RequestOriginString<'a> {
+    Origin(&'a str),
+    Host(&'a str),
+}
+
 pub(crate) struct BrowserSanboxHttpServer {
     mode: BrowserSanboxMode,
     handler: HttpServerHandlerRef,
@@ -76,12 +82,23 @@ impl BrowserSanboxHttpServer {
         Arc::new(Box::new(self))
     }
 
+    /*
+    cyfs://static
+    cyfs://o.{dec_id}/
+    cyfs://o/
+    */
     fn parse_host(host: &str) -> BuckyResult<RequestOrigin> {
         if host == "static" {
             return Ok(RequestOrigin::System);
         } 
         
+        // Parse host in a|o|r|l.dec_id mode
         if let Some((_, dec_id)) = crate::front::parse_front_host_with_dec_id(host)? {
+            return Ok(RequestOrigin::Dec(dec_id));
+        } 
+
+        // Parse host in raw a|o|r|l mode, treat as anonymous dec_id
+        if let Some((_, dec_id)) = crate::front::parse_front_host_with_anonymous_dec_id(host) {
             return Ok(RequestOrigin::Dec(dec_id));
         } 
 
@@ -89,7 +106,23 @@ impl BrowserSanboxHttpServer {
         Ok(RequestOrigin::Other)
     }
 
-    fn extract_origin<'a>(req: &'a http_types::Request,) -> BuckyResult<Option<&'a str>> {
+    // http://127.0.0.1:xxx/a|o|r|l[.dec_id]/xxx -> a|o|r|l[.dec_id]
+    fn extract_front_root<'a>(req: &'a http_types::Request,) -> Option<&'a str> {
+        let mut ret = req.url().path().trim_start_matches('/').split('/');
+        let host = ret.next();
+        if host.is_none() {
+            return None;
+        }
+
+        let host = host.unwrap();
+        if crate::front::parse_front_host(host).is_none() {
+            return None;
+        }
+
+        Some(host)
+    }
+
+    fn extract_origin<'a>(req: &'a http_types::Request,) -> BuckyResult<Option<RequestOriginString<'a>>> {
         let user_agent = req.header(http_types::headers::USER_AGENT);
         debug!("req user agent: {:?}", user_agent);
         let origin = if let Some(header) = req.header(http_types::headers::ORIGIN) {
@@ -109,13 +142,18 @@ impl BrowserSanboxHttpServer {
 
         if origin.is_none() {
             // the request open in the browser new tab address bar! 
-            let msg = format!("request from browser but origin/referer header missing! url={}", req.url());
+            // Only the front protocol are allowed!
+            if let Some(root) = Self::extract_front_root(req) {
+                return Ok(Some(RequestOriginString::Host(root)));
+            }
+
+            let msg = format!("request from browser but invalid front request! url={}", req.url());
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
         }
 
         let origin_url = origin.unwrap().last().as_str();
-        Ok(Some(origin_url))
+        Ok(Some(RequestOriginString::Origin(origin_url)))
     }
 
     fn parse_origin(req: &http_types::Request, origin_url: &str) -> BuckyResult<RequestOrigin> {
@@ -150,12 +188,20 @@ impl BrowserSanboxHttpServer {
 
         let origin = ret.unwrap();
         if self.mode == BrowserSanboxMode::Forbidden {
-            let msg = format!("browser request not allowed in forbidden mode! req={}, origin={}", req.url(), origin);
+            let msg = format!("browser request not allowed in forbidden mode! req={}, origin={:?}", req.url(), origin);
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
         }
 
-        let req_origin = Self::parse_origin(&req, origin)?;
+        let req_origin = match origin {
+            RequestOriginString::Origin(origin) => {
+                Self::parse_origin(&req, origin)?
+            }
+            RequestOriginString::Host(host) => {
+                Self::parse_host(host)?
+            }
+        };
+        
         if req_origin == RequestOrigin::System {
             return Ok(req);
         }
@@ -170,7 +216,7 @@ impl BrowserSanboxHttpServer {
                 match ret {
                     Some(source_dec_id) => {
                         if source_dec_id != dec_id {
-                            let msg = format!("browser request dec_id and origin dec_id not matched! req={}, origin={}, source dec={}, origin dec={}", 
+                            let msg = format!("browser request dec_id and origin dec_id not matched! req={}, origin={:?}, source dec={}, origin dec={}", 
                                 req.url(), 
                                 origin, 
                                 source_dec_id, 
@@ -184,7 +230,7 @@ impl BrowserSanboxHttpServer {
                         }
                     }
                     None => {
-                        warn!("browser dec request but dec_id header or query pairs missing! req={}, origin={}", req.url(), origin);
+                        warn!("browser dec request but dec_id header or query pairs missing! req={}, origin={:?}", req.url(), origin);
                         drop(origin);
 
                         // insert the origin dec_id
@@ -196,7 +242,7 @@ impl BrowserSanboxHttpServer {
             RequestOrigin::Other => {
                 match self.mode {
                     BrowserSanboxMode::Strict => {
-                        let msg = format!("unknown browser request not allowed in strict mode! req={}, origin={}", req.url(), origin);
+                        let msg = format!("unknown browser request not allowed in strict mode! req={}, origin={:?}", req.url(), origin);
                         warn!("{}", msg);
                         Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
                     }
@@ -292,5 +338,31 @@ impl HttpServerHandler for DisableBrowserRequestHttpServer {
         }
         
         self.handler.respond(source, req).await
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn test_front_url() {
+        let url = "http://127.0.0.1:21000/r.9tGpLNnSzxs7kX2pbe27adjNjGQTgFzMCR9pDQ4rHRpM/$/9tGpLNnSzxs7kX2pbe27adjNjGQTgFzMCR9pDQ4rHRpM/.cyfs/meta/root-state?format=json";
+
+        let url = http_types::Url::parse(url).unwrap();
+        let mut ret = url.path().trim_start_matches('/').split('/');
+        //let first = ret.next();
+        //println!("{:?}", first);
+
+        let host = ret.next();
+        if host.is_none() {
+            unreachable!();
+        }
+
+        let host = host.unwrap();
+        if crate::front::parse_front_host(host).is_none() {
+            unreachable!();
+        }
+
+        println!("{}", host);
     }
 }
