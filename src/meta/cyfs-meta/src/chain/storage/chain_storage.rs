@@ -3,6 +3,7 @@ use std::sync::{Arc, Weak};
 use cyfs_base::*;
 use cyfs_base_meta::*;
 use crate::state_storage::*;
+use crate::archive_storage::*;
 use crate::executor::*;
 use crate::executor::context::Config;
 use std::str::FromStr;
@@ -19,6 +20,7 @@ pub struct ChainStorage {
     header_storage: BlockHeaderStorage,
     tx_storage: TxStorage,
     state_storage: StorageRef,
+    archive_storage: ArchiveStorageRef,
 }
 
 impl ChainStorage {
@@ -33,16 +35,22 @@ impl ChainStorage {
         return &self.state_storage
     }
 
-    pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef) -> BuckyResult<ChainStorageRef> {
+    pub fn archive_storage(&self) -> &ArchiveStorageRef {
+        return &self.archive_storage;
+    }
+
+    pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, archive_storage: fn (path: &Path) -> ArchiveStorageRef) -> BuckyResult<ChainStorageRef> {
         let (block_storage, header_storage, tx_storage) = Self::init_components(dir).await?;
         let ret = header_storage.load_tip_header().await;
         let state_storage = new_storage(dir.join("state_db").as_path());
+        let archive_storage = archive_storage(dir.join("archive_db").as_path());
         if ret.is_ok() {
             let tip_header = ret.unwrap();
             for i in 0..5 {
                 if header_storage.backup_exist(tip_header.number() - i) && state_storage.backup_exist(tip_header.number() - i) {
                     header_storage.recovery(tip_header.number() - i)?;
                     state_storage.recovery(tip_header.number() - i).await?;
+                    archive_storage.recovery(tip_header.number() -i).await?;
                     break;
                 }
             }
@@ -58,15 +66,21 @@ impl ChainStorage {
         let state_hash = state_storage.state_hash().await.unwrap();
         log::info!("load state_hash:{} db:{}", state_hash.to_string(), state_storage.path().to_str().unwrap());
 
+        {
+            let archive = archive_storage.create_archive(false).await;
+            archive.init().await?;
+        }
+
         Ok(Arc::new(Self {
             block_storage,
             header_storage,
             tx_storage,
-            state_storage
+            state_storage,
+            archive_storage,
         }))
     }
 
-    pub async fn reset(dir: PathBuf, block: Option<Block>, state_storage: StorageRef) -> BuckyResult<ChainStorageRef> {
+    pub async fn reset(dir: PathBuf, block: Option<Block>, state_storage: StorageRef, archive_storage: ArchiveStorageRef) -> BuckyResult<ChainStorageRef> {
         // assert_eq!(block.header().number(), 0);
         let (block_storage, header_storage, tx_storage) = Self::init_components(dir.as_path()).await?;
         if block.is_some() {
@@ -81,13 +95,15 @@ impl ChainStorage {
             block_storage,
             tx_storage,
             state_storage,
+            archive_storage,
         }))
     }
 
-    pub async fn get_tip_info(&self) -> BuckyResult<(BlockDesc, StorageRef)> {
+    pub async fn get_tip_info(&self) -> BuckyResult<(BlockDesc, StorageRef, ArchiveStorageRef)> {
         let tip_header = self.header_storage.load_tip_header().await?;
         let tip_storage = self.state_storage.clone();
-        Ok((tip_header, tip_storage))
+        let tip_archive = self.archive_storage.clone();
+        Ok((tip_header, tip_storage, tip_archive))
     }
 
     pub async fn block_header(&self, block: ViewBlockEnum) -> BuckyResult<BlockDesc> {
@@ -119,22 +135,23 @@ impl ChainStorage {
     pub async fn view(&self, request: ViewRequest) -> BuckyResult<ViewResponse> {
         let header = self.block_header(request.block).await?;
         let storage = self.state_storage.clone();
-        self.execute_view_request(&header, &storage.create_state(true).await, request.method).await
+        let archive_storage = self.archive_storage.clone();
+        self.execute_view_request(&header, &storage.create_state(true).await, &archive_storage.create_archive(false).await, request.method).await
     }
 
-    async fn execute_view_request(&self, block: &BlockDesc, ref_state: &StateRef, enum_method: ViewMethodEnum) -> BuckyResult<ViewResponse> {
+    async fn execute_view_request(&self, block: &BlockDesc, ref_state: &StateRef, ref_archive: &ArchiveRef, enum_method: ViewMethodEnum) -> BuckyResult<ViewResponse> {
         match enum_method {
             ViewMethodEnum::ViewBalance(method) => {
-                Ok(ViewResponse::ViewBalance(ViewMethodExecutor::new(block, ref_state, method).exec().await?))
+                Ok(ViewResponse::ViewBalance(ViewMethodExecutor::new(block, ref_state, ref_archive, method).exec().await?))
             },
             ViewMethodEnum::ViewName(method) => {
-                Ok(ViewResponse::ViewName(ViewMethodExecutor::new(block, ref_state, method).exec().await?))
+                Ok(ViewResponse::ViewName(ViewMethodExecutor::new(block, ref_state, ref_archive, method).exec().await?))
             },
             ViewMethodEnum::ViewDesc(method) => {
-                Ok(ViewResponse::ViewDesc(ViewMethodExecutor::new(block, ref_state, method).exec().await?))
+                Ok(ViewResponse::ViewDesc(ViewMethodExecutor::new(block, ref_state, ref_archive, method).exec().await?))
             },
             ViewMethodEnum::ViewRaw(method) => {
-                Ok(ViewResponse::ViewRaw(ViewMethodExecutor::new(block, ref_state, method).exec().await?))
+                Ok(ViewResponse::ViewRaw(ViewMethodExecutor::new(block, ref_state, ref_archive, method).exec().await?))
             },
             ViewMethodEnum::ViewStatus => {
                 Ok(ViewResponse::ViewStatus(self.get_status().await?))
@@ -146,13 +163,13 @@ impl ChainStorage {
                 Ok(ViewResponse::ViewTx(self.get_tx_full_info(&tx_id).await?))
             }
             ViewMethodEnum::ViewContract(method) => {
-                Ok(ViewResponse::ViewContract(ViewMethodExecutor::new(block, ref_state, method).exec().await?))
+                Ok(ViewResponse::ViewContract(ViewMethodExecutor::new(block, ref_state, ref_archive, method).exec().await?))
             }
             ViewMethodEnum::ViewBenifi(method) => {
-                Ok(ViewResponse::ViewBenefi(ViewMethodExecutor::new(block,ref_state, method).exec().await?))
+                Ok(ViewResponse::ViewBenefi(ViewMethodExecutor::new(block,ref_state, ref_archive, method).exec().await?))
             }
             ViewMethodEnum::ViewLog(method) => {
-                Ok(ViewResponse::ViewLog(ViewMethodExecutor::new(block,ref_state, method).exec().await?))
+                Ok(ViewResponse::ViewLog(ViewMethodExecutor::new(block,ref_state, ref_archive, method).exec().await?))
             }
             ViewMethodEnum::ViewNFT(nft_id) => {
                 let (desc, name, state) = ref_state.nft_get(&nft_id).await?;
@@ -408,7 +425,7 @@ pub mod chain_storage_tests {
     use std::fs::{remove_dir_all, create_dir};
     use cyfs_base_meta::*;
     use cyfs_base::*;
-    use crate::{new_sql_storage, BlockBody, State};
+    use crate::{new_sql_storage, BlockBody, State, new_archive_storage, Archive};
     use crate::chain::chain_storage::ChainStorageRef;
 
     pub fn create_people() -> StandardObject {
@@ -468,8 +485,17 @@ pub mod chain_storage_tests {
             state.init_genesis(&config.coins).await.unwrap();
         }
 
+
+        let mut archive_path = temp_dir.clone();
+        archive_path.push("test3");
+        let archive_storage = new_archive_storage(archive_path.as_path());
+        {
+            let archive = archive_storage.create_archive(false).await;
+            archive.init().await.unwrap();
+        }
+
         let block = Block::new(ObjectId::default(), None, HashValue::default(), BlockBody::new()).unwrap().build();
-        ChainStorage::reset(temp_dir, Some(block), storage).await.unwrap()
+        ChainStorage::reset(temp_dir, Some(block), storage, archive_storage).await.unwrap()
     }
 
     #[test]

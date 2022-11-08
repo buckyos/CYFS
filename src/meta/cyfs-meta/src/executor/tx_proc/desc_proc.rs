@@ -85,6 +85,15 @@ impl TxExecutor {
             if device.desc().owner().is_some() {
                 context.ref_state().to_rc()?.set_beneficiary(&device.desc().calculate_id(), device.desc().owner().as_ref().unwrap()).await?;
             }
+
+            // statistics people/device‘s number, active
+            if let Err(e) = context
+            .ref_archive()
+            .to_rc()?
+            .create_or_update_desc_stat(&objid, context::MetaDescObject::Device as u8)
+            .await {
+                warn!("archive storage create obj desc stat failed: {}", e);
+            }
         }
 
         self.rent_manager
@@ -180,6 +189,19 @@ impl TxExecutor {
             .update_desc_extra(&rent_state)
             .await?;
 
+        let mut obj_type = context::MetaDescObject::Device;
+        if let SavedMetaObject::People(_) = &desc {
+            obj_type = context::MetaDescObject::People;
+        }
+        // statistics people/device‘s number, active  放置末尾
+        if let Err(e) = context
+        .ref_archive()
+        .to_rc()?
+        .create_or_update_desc_stat(&objid, obj_type as u8)
+        .await {
+            warn!("archive storage update obj desc stat failed: {}", e);
+        }
+
         /*
         let obj_id = ObjectId::new();//TODO:从Desc中计算得到
         let mut db_t = meta_db.start_transaction().unwrap();
@@ -270,6 +292,17 @@ impl TxExecutor {
         }
         _context.ref_state().to_rc()?.drop_desc(&_tx.id).await?;
         self.rent_manager.to_rc()?.delete_rent_desc(&_tx.id).await?;
+
+
+        // //FIXME: 这里删除记录应该不需要
+        // if let Err(e) = _context
+        // .ref_archive()
+        // .to_rc()?
+        // .drop_desc_stat(&_tx.id)
+        // .await {
+        //     warn!("archive storage drop desc stat failed: {}", e);
+        // }
+
         Ok(())
     }
 }

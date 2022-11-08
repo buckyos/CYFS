@@ -2,6 +2,7 @@ use crate::{Chain};
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use crate::state_storage::StorageRef;
+use crate::archive_storage::ArchiveStorageRef;
 use cyfs_base::*;
 use crate::chain::{Miner, BaseMiner, MinerRuner};
 use std::thread;
@@ -56,8 +57,8 @@ impl StandaloneMiner {
         })
     }
 
-    pub async fn load(coinbase: ObjectId, interval: u32, bfc_spv_node: String, dir: &Path, new_storage: fn (path: &Path) -> StorageRef) -> BuckyResult<Self> {
-        let chain = Chain::load(dir, new_storage).await?;
+    pub async fn load(coinbase: ObjectId, interval: u32, bfc_spv_node: String, dir: &Path, new_storage: fn (path: &Path) -> StorageRef, archive_storage: fn (path: &Path) -> ArchiveStorageRef) -> BuckyResult<Self> {
+        let chain = Chain::load(dir, new_storage, archive_storage).await?;
         Ok(StandaloneMiner {
             base: BaseMiner::new(coinbase, interval, chain, bfc_spv_node, None)
         })
