@@ -211,6 +211,16 @@ impl BrowserSanboxHttpServer {
                 Ok(req)
             }
             RequestOrigin::Dec(dec_id) => {
+                if dec_id == *cyfs_core::get_system_dec_app() {
+                    let msg = format!("browser request dec_id not cannot be specified as system_dec_id! req={}, origin={:?}", 
+                        req.url(), 
+                        origin, 
+                    );
+
+                    warn!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+                }
+
                 // should check header and query pairs's dec_id if matched
                 let ret: Option<ObjectId> = RequestorHelper::dec_id_from_request(&req)?;
                 match ret {
