@@ -795,7 +795,7 @@ mod test_local_chunk_cache {
 
     #[async_trait::async_trait]
     impl ChunkCache for SingleDiskChunkCacheMock {
-        async fn get_chunk(&self, chunk_id: &ChunkId, chunk_type: ChunkType) -> BuckyResult<Box<dyn Chunk>> {
+        async fn get_chunk(&self, chunk_id: &ChunkId, _chunk_type: ChunkType) -> BuckyResult<Box<dyn Chunk>> {
             return match self.chunk_map.lock().unwrap().get(chunk_id) {
                 Some(chunk) => {
                     Ok(Box::new(ChunkMock {buf: Vec::from(chunk.as_ref().deref())}))
@@ -806,11 +806,11 @@ mod test_local_chunk_cache {
             }
         }
 
-        async fn new_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<Box<dyn ChunkMut>> {
+        async fn new_chunk(&self, _chunk_id: &ChunkId) -> BuckyResult<Box<dyn ChunkMut>> {
             todo!()
         }
 
-        async fn delete_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<()> {
+        async fn delete_chunk(&self, _chunk_id: &ChunkId) -> BuckyResult<()> {
             todo!()
         }
 
@@ -819,11 +819,11 @@ mod test_local_chunk_cache {
             Ok(())
         }
 
-        async fn is_exist(&self, chunk_id: &ChunkId) -> bool {
+        async fn is_exist(&self, _chunk_id: &ChunkId) -> bool {
             todo!()
         }
 
-        async fn get_chunk_meta(&self, chunk_id: &ChunkId, chunk_type: ChunkType) -> BuckyResult<ChunkMeta> {
+        async fn get_chunk_meta(&self, _chunk_id: &ChunkId, _chunk_type: ChunkType) -> BuckyResult<ChunkMeta> {
             todo!()
         }
     }
@@ -853,7 +853,7 @@ mod test_local_chunk_cache {
             Ok(self.buf.len())
         }
 
-        async fn seek(&mut self, pos: SeekFrom) -> BuckyResult<u64> {
+        async fn seek(&mut self, _pos: SeekFrom) -> BuckyResult<u64> {
             Ok(0)
         }
     }

@@ -247,7 +247,6 @@ impl Ord for GlobalStatePathAccessItem {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::*;
     use cyfs_core::*;
 
     use serde::{Deserialize, Serialize};

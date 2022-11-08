@@ -85,8 +85,6 @@ impl ChunkManager {
 
 #[cfg(test)]
 mod test_chunk_mananger {
-    use crate::{ChunkManager, MemChunk};
-
     #[test]
     fn test() {
         // async_std::task::block_on(async {
