@@ -1,4 +1,5 @@
 use super::auth::InterfaceAuth;
+use super::browser_server::BrowserSanboxHttpServer;
 use super::http_server::*;
 use super::{
     ObjectHttpBdtListener, ObjectHttpListener, ObjectHttpTcpListener, ObjectListener,
@@ -6,6 +7,7 @@ use super::{
 };
 use crate::acl::AclManagerRef;
 use crate::app::AuthenticatedAppList;
+use crate::config::StackGlobalConfig;
 use crate::events::RouterEventsManager;
 use crate::interface::http_ws_listener::ObjectHttpWSService;
 use crate::name::NameResolver;
@@ -16,11 +18,12 @@ use crate::stack::ObjectServices;
 use crate::zone::ZoneRoleManager;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
+use cyfs_core::AppCmdListObj;
 use cyfs_lib::RequestProtocol;
 
+use cyfs_debug::Mutex;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use cyfs_debug::Mutex;
 
 pub struct ObjectListenerManagerParams {
     pub bdt_stack: StackGuard,
@@ -119,6 +122,7 @@ impl ObjectListenerManager {
     pub(crate) fn init(
         &mut self,
         params: ObjectListenerManagerParams,
+        config: &StackGlobalConfig,
         services: &ObjectServices,
         router_handlers: &RouterHandlersManager,
         router_events: &RouterEventsManager,
@@ -173,6 +177,10 @@ impl ObjectListenerManager {
 
             let raw_handler = RawHttpServer::new(server.into_server());
             let http_server = DefaultHttpServer::new(raw_handler.into(), default_handler.clone());
+            let http_server = BrowserSanboxHttpServer::new(
+                http_server.into(),
+                config.get_stack_params().front.browser_mode,
+            );
             self.http_tcp_server = Some(http_server.into());
         }
 

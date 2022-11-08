@@ -11,6 +11,33 @@ pub enum BrowserSanboxMode {
     Relaxed,
 }
 
+impl BrowserSanboxMode {
+    pub fn as_str(&self) -> &str {
+        match *self {
+            Self::Forbidden => "forbidden",
+            Self::Strict => "strict",
+            Self::Relaxed => "relaxed",
+        }
+    }
+}
+
+impl std::str::FromStr for BrowserSanboxMode {
+    type Err = BuckyError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mode = match s {
+            "forbidden" => Self::Forbidden,
+            "strict" => Self::Strict,
+            "relaxed" => Self::Relaxed,
+            _ => {
+                let msg = format!("unknown browser mode: {}", s);
+                warn!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+            }
+        };
+        Ok(mode)
+    }
+}
+
 /*
 The browser only accepts requests from the following two types of pages:
 cyfs://static
