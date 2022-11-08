@@ -172,10 +172,12 @@ impl HttpServerHandler for AuthenticatedHttpServer {
         source: HttpRequestSource,
         mut req: http_types::Request,
     ) -> http_types::Result<http_types::Response> {
-        if let Err(e) = self.check_dec(&source, &mut req) {
-            return Ok(RequestorHelper::trans_error(e));
+        if req.method() != http_types::Method::Options {
+            if let Err(e) = self.check_dec(&source, &mut req) {
+                return Ok(RequestorHelper::trans_error(e));
+            }
         }
-
+        
         self.handler.respond(source, req).await
     }
 }

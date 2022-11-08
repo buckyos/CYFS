@@ -268,7 +268,7 @@ impl HttpServerHandler for BrowserSanboxHttpServer {
         source: HttpRequestSource,
         mut req: http_types::Request,
     ) -> http_types::Result<http_types::Response> {
-        if source.is_local() {
+        if source.is_local() && req.method() != http_types::Method::Options {
             let ret = self.verify_dec(req);
             match ret {
                 Ok(mreq) => {
@@ -333,7 +333,7 @@ impl HttpServerHandler for DisableBrowserRequestHttpServer {
         source: HttpRequestSource,
         req: http_types::Request,
     ) -> http_types::Result<http_types::Response> {
-        if source.is_local() {
+        if source.is_local() && req.method() != http_types::Method::Options {
             Self::check_browser_request(&req)?;
         }
         
