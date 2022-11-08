@@ -388,7 +388,7 @@ impl LocalChunkListWriter {
         desc: &ChunkListDesc, 
         ndc: &dyn NamedDataCache, 
         tracker: &dyn TrackerCache) -> Self {
-        //FIXME: 如果下载速度高于磁盘速度，这里就会出问题
+        
         Self(Arc::new(ListWriterImpl {
             path, 
             desc: desc.clone(),  

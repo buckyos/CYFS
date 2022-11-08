@@ -138,6 +138,10 @@ impl ChunkListTask {
     pub fn context(&self) -> &SingleDownloadContext {
         &self.0.context
     }
+
+    pub fn reader(&self, offset: u64) -> ChunkListTaskReader {
+        ChunkListTaskReader::new(self.clone(), offset)
+    }
 }
 
 
