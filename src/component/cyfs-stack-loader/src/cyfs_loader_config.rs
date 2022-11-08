@@ -51,7 +51,7 @@ isolate = "${isolate}"
 
 [stack.front]
 enable = ${front_enable}
-browser_mode = ${browser_mode}
+browser_mode = "${browser_mode}"
 
 [stack.meta]
 #target = dev
