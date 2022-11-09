@@ -1,12 +1,10 @@
-use std::sync::atomic::AtomicU64;
-
 use async_trait::async_trait;
-use cyfs_stack_loader::CyfsServiceLoader;
-use crate::{Bench, BenchEnv, sim_zone::SimZone};
+use crate::{Bench, BenchEnv, sim_zone::SimZone, Stat};
 use log::*;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
+use super::constant::*;
 
 pub struct NONBench {}
 
@@ -16,13 +14,9 @@ impl Bench for NONBench {
         info!("begin test NONBench...");
         let begin = std::time::Instant::now();
         let ret = if env == BenchEnv::Simulator {
-            static COUNT: AtomicU64 = AtomicU64::new(0);
             for _ in 0..t {
                 let _ret = test(zone).await;
             }
-            // let tps = if time.elapsed().as_secs() > 0 { t / time.elapsed().as_secs() } else { 0 };
-            // info!("non bench TPS: {}/{} = {}", t, time.elapsed().as_secs(), tps);
-
             true
         } else {
             test2().await
@@ -66,7 +60,8 @@ pub async fn test(zone: &SimZone) -> bool {
 
     let stack = zone.get_shared_stack("zone1_device2");
     let dec_id = new_dec("test-non", zone);
-    test_put_object(&dec_id, &stack).await;
+    let costs = test_put_object(&dec_id, &stack).await;
+    Stat::write(zone, NON_PUT_OBJECT, costs).await;
 
     test_outer_put_dec(&dec_id, zone).await;
 
@@ -148,35 +143,6 @@ fn gen_text_object_list(dec_id: &ObjectId,) -> Vec<(Text,ObjectId)> {
     list.push((object, object_id));
 
     list
-}
-
-async fn stat(stack: &SharedCyfsStack, key: &str, costs: u64) {
-    // 汇总本地数据 rate, min/avg/max
-    {
-        let local_cache = stack.local_cache_stub(None);
-        let local_op_env = local_cache.create_path_op_env().await.unwrap();
-
-        let path = format!("/stat_{}/{}", key, costs.to_string());
-        
-        let object = Text::build(key, "header", costs.to_string())
-        .no_create_time()
-        .build();
-        let object_id = object.text_id().object_id().to_owned();
-
-        local_op_env.insert(path, &object_id).await.unwrap();
-
-        let root = local_op_env.commit().await.unwrap();
-        debug!("new local cache dec root is: {:?}", root);
-    }
-    {
-        let local_cache = stack.local_cache_stub(None);
-        let local_op_env = local_cache.create_path_op_env().await.unwrap();
-
-        let path = format!("/stat_{}", key);
-        let list = local_op_env.list(&path).await.unwrap();
-        
-        info!("len: {}, list: {:?}", list.len(), list);
-    }
 }
 
 async fn clear_all(dec_id: &ObjectId, zone: &SimZone) {
@@ -368,7 +334,7 @@ async fn test_delete_object(
     info!("end test_delete_object: {:?}", dur);
 }
 
-async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
+async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) -> u64 {
     info!("begin test_put_object...");
     let begin = std::time::Instant::now();
 
@@ -428,7 +394,8 @@ async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
     let dur = begin.elapsed();
     info!("end test_put_object: {:?}", dur);
     let costs = begin.elapsed().as_millis() as u64;
-    stat(stack, "non_put_object", costs).await;
+
+    costs
 
 }
 

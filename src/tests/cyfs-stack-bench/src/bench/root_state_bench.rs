@@ -1,18 +1,22 @@
 use async_trait::async_trait;
-use crate::{Bench, BenchEnv, sim_zone::SimZone};
+use crate::{Bench, BenchEnv, sim_zone::SimZone, Stat};
 use log::*;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
+use super::constant::*;
+
 pub struct RootStateBench {}
 
 #[async_trait]
 impl Bench for RootStateBench {
-    async fn bench(&self, env: BenchEnv, zone: &SimZone, _ood_path: String, _t: u64) -> bool {
+    async fn bench(&self, env: BenchEnv, zone: &SimZone, _ood_path: String, t: u64) -> bool {
         info!("begin test RootStateBench...");
         let begin = std::time::Instant::now();
         let ret = if env == BenchEnv::Simulator {
-            test(zone).await;
+            for _ in 0..t {
+                let _ret = test(zone).await;
+            }
             true
         } else {
             true
@@ -69,35 +73,6 @@ async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl 
     meta.add_access(item).await.unwrap();
 
 }
-
-async fn stat(stack: &SharedCyfsStack, key: &str, costs: u64) {
-    // 汇总本地数据 rate, min/avg/max
-    {
-        let local_cache = stack.local_cache_stub(None);
-        let local_op_env = local_cache.create_path_op_env().await.unwrap();
-
-        let path = format!("/stat_{}/{}", key, costs.to_string());
-        
-        let object = Text::build(key, "header", costs.to_string())
-        .no_create_time()
-        .build();
-        let object_id = object.text_id().object_id().to_owned();
-
-        local_op_env.insert_with_path(path.as_str(), &object_id).await.unwrap();
-
-        let root = local_op_env.commit().await.unwrap();
-        debug!("new local cache dec root is: {:?}", root);
-    }
-    {
-        let local_cache = stack.local_cache_stub(None);
-        let local_op_env = local_cache.create_path_op_env().await.unwrap();
-
-        let path = format!("/stat_{}", key);
-        let list = local_op_env.list(&path).await.unwrap();
-        info!("len: {}, list: {:?}", list.len(), list);
-    }
-}
-
 
 // 测试root-state的同zone的跨dec操作 需要配合权限
 async fn test_path_op_env_cross_dec(
@@ -181,7 +156,7 @@ async fn test_path_op_env_cross_dec(
 
     let costs = begin.elapsed().as_millis() as u64;
     // 记录下耗时到本地device
-    stat(user1_stack, "cross_local_state", costs).await;
+    Stat::write(zone, CROSS_LOCAL_STATE, costs).await;
 
     {
         info!("begin test OwnerRootState...");

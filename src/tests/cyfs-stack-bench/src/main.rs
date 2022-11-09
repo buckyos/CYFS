@@ -4,12 +4,14 @@
 mod facade_logger;
 mod bench;
 mod sim_zone;
+mod stat;
 use clap::{App, Arg};
 use log::*;
 use async_trait::async_trait;
 use crate::facade_logger::FacadeLogger;
 use crate::bench::*;
 use crate::sim_zone::*;
+use crate::stat::Stat;
 
 #[macro_use]
 extern crate log;
@@ -33,11 +35,8 @@ async fn main() {
     .arg(Arg::with_name("path").short("p").long("path"))
     .arg(Arg::with_name("simulator").long("simulator"))
     .arg(Arg::with_name("physical").long("physical"))
-    .arg(Arg::with_name("times").short("t").long("times").default_value("1024"))
+    .arg(Arg::with_name("times").short("t").long("times").default_value("128"))
     .get_matches();
-
-    // TODO: desc-tool 生成一套身份device ood1, ood2, 内嵌三个协议栈
-    // bench times ex 1k
 
     let logger = if matches.occurrences_of("save") != 0 {
         FacadeLogger::new(matches.value_of("save"))
@@ -62,6 +61,7 @@ async fn main() {
     if matches.is_present("simulator") {
         // open 1-device/ 1-ood  1-other ood
         let zone = SimZone::init_zone().await;
+        Stat::clear(&zone).await;
 
         // 切换目录到当前exe的相对目录
         let root = std::env::current_exe().unwrap();
@@ -82,11 +82,15 @@ async fn main() {
                 break;
             }
         }
+
+        // 输出统计
+        Stat::read(&zone, times).await;
     }
 
     if matches.is_present("physical") {
         // open 1-device/ 1-ood  1-other ood
         let zone = SimZone::init_zone().await;
+        Stat::clear(&zone).await;
 
         // 切换目录到当前exe的相对目录
         let root = std::env::current_exe().unwrap();
@@ -107,7 +111,11 @@ async fn main() {
                 break;
             }
         }
+
+        // 输出统计
+        Stat::read(&zone, times).await;
     }
+
 
     std::process::exit(0);
 
