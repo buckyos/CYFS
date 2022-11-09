@@ -13,8 +13,8 @@ use async_std::{
 };
 use cyfs_base::*;
 use crate::{
-    types::*,  
-    interface::udp::MTU
+    types::*, 
+    interface::udp::MTU_LARGE
 };
 use std::time::{UNIX_EPOCH, SystemTime};
 
@@ -367,7 +367,7 @@ impl std::fmt::Display for ProxyInterface {
 }
 
 thread_local! {
-    static UDP_RECV_BUFFER: RefCell<[u8; MTU]> = RefCell::new([0u8; MTU]);
+    static UDP_RECV_BUFFER: RefCell<[u8; MTU_LARGE]> = RefCell::new([0u8; MTU_LARGE]);
 }
 
 impl ProxyInterface {

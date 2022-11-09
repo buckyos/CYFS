@@ -706,7 +706,7 @@ impl Tunnel {
             false,
             |sn_call| {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
-                let mut buf = vec![0u8; interface::udp::MTU];
+                let mut buf = vec![0u8; interface::udp::MTU_LARGE];
                 let enc_len = syn_box.raw_tail_encode_with_context(&mut buf, &mut context, &None).unwrap().len();
                 buf.truncate(enc_len);
                 buf
@@ -776,7 +776,7 @@ impl Tunnel {
 
             info!("{} send loop start, {}", tunnel, owner.config().tcp.piece_interval.as_millis());
             loop {
-                let mut send_buf = [0u8; udp::MTU];
+                let mut send_buf = [0u8; udp::MTU_LARGE];
               
                 fn handle_command(
                     piece_reader: &mut ringbuf::Consumer<u8>, 
@@ -893,8 +893,7 @@ impl Tunnel {
         owner: TunnelContainer, 
         interface: tcp::PackageInterface) {
         // recv loop
-
-        let mut recv_buf = [0u8; udp::MTU];
+        let mut recv_buf = [0u8; udp::MTU_LARGE];
         loop {
             // tunnel显式销毁时，需要shutdown tcp stream; 这里receive_package就会出错了
             match interface.receive_package(&mut recv_buf).await {
