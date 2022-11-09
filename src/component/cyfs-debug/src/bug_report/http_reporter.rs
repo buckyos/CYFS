@@ -4,48 +4,23 @@ use async_std::net::{SocketAddr, ToSocketAddrs, TcpStream};
 use http_types::{
     Request, Method, StatusCode, Mime,
 };
-use serde::{Serialize, Deserialize};
-use crate::panic::BugReportHandler;
 
+use crate::panic::BugReportHandler;
 use cyfs_base::*;
 use crate::panic::CyfsPanicInfo;
+use super::request::PanicReportRequest;
 
-// 从内置环境变量获取一些信息
-lazy_static::lazy_static! {
-    /// The global buffer pool we use for storing incoming data.
-    static ref TARGET: &'static str = get_target();
-    static ref VERSION: &'static str = get_version();
-}
 
 // 默认的addr
-const NOTIFY_ADDR: &str = "http://127.0.0.1:40001/bugs/";
+// const NOTIFY_ADDR: &str = "http://127.0.0.1:40001/bugs/";
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PanicReportRequest {
-    pub product_name: String,
-    pub service_name: String,
-    pub target: String,
-    pub exe_name: String,
-    pub version: String,
-
-    pub info: CyfsPanicInfo,
-}
 
 #[derive(Clone)]
-pub struct BugReporter {
+pub struct HttpBugReporter {
     notify_addr: Url,
 }
 
-impl Default for BugReporter {
-    fn default() -> Self {
-        let url = Url::from_str(NOTIFY_ADDR).unwrap();
-        Self {
-            notify_addr: url,
-        }
-    }
-}
-
-impl BugReporter {
+impl HttpBugReporter {
     pub fn new(addr: &str) -> Self {
         let url = Url::from_str(addr).unwrap();
         Self {
@@ -53,35 +28,8 @@ impl BugReporter {
         }
     }
 
-    pub async fn notify(&self, product_name: &str, service_name: &str, panic_info: CyfsPanicInfo) -> BuckyResult<()> {
-        let exe_name = match std::env::current_exe() {
-            Ok(path) => {
-                match path.file_name() {
-                    Some(v) => {
-                        v.to_str().unwrap_or("[unknown]").to_owned()
-                    }
-                    None => {
-                        "[unknown]".to_owned()
-                    }
-                }
-            }
-            Err(_e) => "[unknown]".to_owned(), 
-        };
-
-        let req = PanicReportRequest {
-            product_name: product_name.to_owned(),
-            service_name: service_name.to_owned(),
-            target: TARGET.to_owned(),
-            exe_name,
-            version: VERSION.to_owned(),
-            info: panic_info,
-        };
-
-        let s = serde_json::to_string(&req).map_err(|e| {
-            let msg = format!("encode panic req error: {}", e);
-            error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        })?;
+    pub async fn notify(&self, req: PanicReportRequest) -> BuckyResult<()> {
+        let s = req.to_string();
 
         self.post(&req.info.hash, s).await
     }
@@ -140,14 +88,12 @@ impl BugReporter {
     }
 }
 
-impl BugReportHandler for BugReporter {
+impl BugReportHandler for HttpBugReporter {
     fn notify(&self, product_name: &str, service_name: &str, panic_info: &CyfsPanicInfo) -> BuckyResult<()> {
-        let product_name = product_name.to_owned();
-        let service_name = service_name.to_owned();
-        let info = panic_info.clone();
+        let req = PanicReportRequest::new(product_name, service_name, panic_info.to_owned());
         let this = self.clone();
-        async_std::task::spawn(async move {
-            let _ = BugReporter::notify(&this, &product_name, &service_name, info).await;
+        async_std::task::block_on(async move {
+            let _ = this.notify(req).await;
         });
 
         Ok(())
