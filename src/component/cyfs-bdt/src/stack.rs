@@ -51,7 +51,7 @@ pub struct StackConfig {
     pub statistic_interval: Duration, 
     pub keystore: keystore::Config,
     pub interface: interface::Config, 
-    pub sn_client: sn::client::Config,
+    pub sn_client: sn::Config,
     pub tunnel: tunnel::Config,
     pub stream: stream::Config,
     pub datagram: datagram::Config,
@@ -74,7 +74,7 @@ impl StackConfig {
                     recv_buffer: 52428800
                 }
             }, 
-            sn_client: sn::client::Config {
+            sn_client: sn::Config {
                 ping_interval_init: Duration::from_millis(500),
                 ping_interval: Duration::from_millis(25000),
                 offline: Duration::from_millis(300000),

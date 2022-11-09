@@ -16,6 +16,7 @@ use crate::{
     history::keystore::{self, Keystore},
     protocol::{*, v0::*},
     types::*,
+    sn::Config,
 };
 
 use super::{
@@ -23,7 +24,7 @@ use super::{
     net_listener::{MessageSender, NetListener, UdpSender},
     peer_manager::PeerManager,
     receipt::*,
-    resend_queue::ResendQueue,
+    resend_queue::{ResendQueue, ResendCallbackTrait},
 };
 
 // const TRACKER_INTERVAL: Duration = Duration::from_secs(60);
@@ -43,7 +44,7 @@ struct ServiceImpl {
 
     // call_tracker: CallTracker,
     peer_mgr: PeerManager,
-    resend_queue: ResendQueue,
+    resend_queue: Option<ResendQueue>,
     call_stub: CallStub,
 }
 
@@ -58,7 +59,7 @@ impl SnService {
     ) -> SnService {
         let thread_pool = ThreadPool::new().unwrap();
 
-        Self(Arc::new(ServiceImpl {
+        let service = Self(Arc::new(ServiceImpl {
             seq_generator: TempSeqGenerator::new(),
             key_store: Keystore::new(
                 local_secret.clone(),
@@ -73,19 +74,26 @@ impl SnService {
                     capacity: 100000,
                 },
             ),
-            resend_queue: ResendQueue::new(thread_pool.clone(), Duration::from_millis(200), 5),
+            resend_queue: None,/* ResendQueue::new(thread_pool.clone(), Duration::from_millis(200), 5), */
             local_device_id: local_device.desc().device_id(),
             local_device: local_device.clone(),
             stopped: AtomicBool::new(false),
-            peer_mgr: PeerManager::new(Duration::from_secs(300)),
+            peer_mgr: PeerManager::new(Duration::from_secs(300), Config::default()),
             call_stub: CallStub::new(),
-            thread_pool,
+            thread_pool: thread_pool.clone(),
             contract,
             // call_tracker: CallTracker {
             //     calls: Default::default(),
             //     begin_time: Instant::now()
             // }
-        }))
+        }));
+
+        let resend_queue = ResendQueue::new(thread_pool, Duration::from_millis(200), 5, Box::new(service.clone()));
+
+        let mut_service = unsafe { &mut *(Arc::as_ptr(&service.0) as *mut ServiceImpl) };
+        mut_service.resend_queue = Some(resend_queue);
+
+        service
     }
 
     pub async fn start(&self) -> BuckyResult<()> {
@@ -157,7 +165,7 @@ impl SnService {
     }
 
     fn resend_queue(&self) -> &ResendQueue {
-        &self.0.resend_queue
+        self.0.resend_queue.as_ref().unwrap()
     }
 
     fn peer_manager(&self) -> &PeerManager {
@@ -496,6 +504,16 @@ impl SnService {
         //     call_result = BuckyErrorCode::NotFound;
         // };
 
+        let call_requestor = match self.peer_manager().find_peer(&call_req.from_peer_id) {
+            Some(peer) => peer,
+            None => {
+                warn!("{} without fromer.", log_key);
+                return;
+            }
+        };
+
+        call_requestor.peer_status.add_record(call_req.to_peer_id.clone(), call_req.seq);
+
         let call_resp =
             if let Some(to_peer_cache) = self.peer_manager().find_peer(&call_req.to_peer_id) {
                 // Self::call_stat_contract(to_peer_cache, &call_req);
@@ -583,6 +601,11 @@ impl SnService {
                 }
             };
 
+        match &call_resp.result {
+            0 => { /* wait confirm */ },
+            _ => call_requestor.peer_status.record(call_req.to_peer_id.clone(), call_req.seq, BuckyErrorCode::from(call_resp.result as u16)),
+        }
+
         self.send_resp(
             resp_sender,
             DynamicPackage::from(call_resp),
@@ -607,5 +630,21 @@ impl SnService {
         //         cached_peer.receipt.rto = ((cached_peer.receipt.rto as u32 * 7 + rto) / 8) as u16;
         //     }
         // }
+    }
+}
+
+impl ResendCallbackTrait for SnService {
+    fn on_callback(&self, pkg: Arc<PackageBox>, errno: BuckyErrorCode) {
+        if let Some(p) = pkg.packages_no_exchange()
+                                    .get(0)
+                                    .map(| p | {
+                                        let p: &SnCalled = p.as_ref();
+                                        p
+                                    }) {
+            self.peer_manager().find_peer(&p.peer_info.desc().device_id())
+                .map(| requestor | {
+                    requestor.peer_status.record(p.to_peer_id.clone(), p.call_seq, errno);
+                });
+        }
     }
 }
