@@ -19,6 +19,7 @@ In strict mode, requests for unknown pages are not accepted; in loose mode, anon
 enum RequestOrigin {
     System,
     Dec(ObjectId),
+    Extension,
     Other,
 }
 
@@ -88,6 +89,31 @@ impl BrowserSanboxHttpServer {
         Some(host)
     }
 
+    fn check_extension_request(req: &http_types::Request) -> BuckyResult<()> {
+        let ret: Option<ObjectId> = RequestorHelper::dec_id_from_request(&req)?;
+        match ret {
+            Some(source_dec_id) => {
+                if source_dec_id == *cyfs_core::get_system_dec_app() {
+                    let msg = format!("request from browser extensions's dec_id cannot be specified as system-dec-id! req={}", 
+                        req.url(), 
+                    );
+
+                    warn!("{}", msg);
+                    Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
+                } else {
+                    // debug!("request from browser extensions: {}", req.url());
+                    Ok(())
+                }
+            }
+            None => {
+                let msg = format!("request from browser extensions but dec_id header or query pairs missing! req={}", req.url());
+                warn!("{}", msg);
+
+                Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
+            }
+        }
+    }
+
     fn extract_origin<'a>(req: &'a http_types::Request,) -> BuckyResult<Option<RequestOriginString<'a>>> {
         let user_agent = req.header(http_types::headers::USER_AGENT);
         debug!("req user agent: {:?}", user_agent);
@@ -107,15 +133,23 @@ impl BrowserSanboxHttpServer {
         }
 
         if origin.is_none() {
-            // the request open in the browser new tab address bar! 
+            // check if the request open in the browser new tab address bar! 
             // Only the front protocol are allowed!
             if let Some(root) = Self::extract_front_root(req) {
                 return Ok(Some(RequestOriginString::Host(root)));
             }
 
+            // FIXME 为什么浏览器插件会发起这种不带Origin的请求
+            // request from the browser extensions! now will ignore the source verify, but will disable the used of system-dec-id
+            Self::check_extension_request(req)?;
+
+            return Ok(None);
+
+            /*
             let msg = format!("request from browser but invalid front request! url={}", req.url());
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+            */
         }
 
         let origin_url = origin.unwrap().last().as_str();
@@ -125,6 +159,11 @@ impl BrowserSanboxHttpServer {
     fn parse_origin(req: &http_types::Request, origin_url: &str) -> BuckyResult<RequestOrigin> {
         match http_types::Url::parse(origin_url) {
             Ok(url) => {
+                if url.scheme() == "chrome-extension" {
+                    debug!("request from browser extensions: url={}, ext={}", req.url(), url.host_str().unwrap_or(""));
+                    return Ok(RequestOrigin::Extension);
+                }
+
                 match url.host_str() {
                     Some(host) => {
                         let origin = Self::parse_host(host)?;
@@ -177,6 +216,10 @@ impl BrowserSanboxHttpServer {
 
         match req_origin {
             RequestOrigin::System => {
+                Ok(req)
+            }
+            RequestOrigin::Extension => {
+                Self::check_extension_request(&req)?;
                 Ok(req)
             }
             RequestOrigin::Dec(dec_id) => {
@@ -343,5 +386,11 @@ mod test {
         }
 
         println!("{}", host);
+
+        let origin = "chrome-extension://ehneemhfjdafhgiddamkeglfkmcljmpe";
+        let url = http_types::Url::parse(origin).unwrap();
+        println!("host={:?}", url.host_str());
+        let id = url.path().trim_start_matches('/');
+        println!("id={}", id);
     }
 }
