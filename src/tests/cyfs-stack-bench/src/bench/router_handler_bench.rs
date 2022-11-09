@@ -6,7 +6,6 @@ use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
 use cyfs_util::*;
-use zone_simulator::*;
 
 pub struct RouterHandlerBench {}
 
@@ -33,12 +32,15 @@ impl Bench for RouterHandlerBench {
     }
 }
 
-fn new_dec(name: &str) -> ObjectId {
-    let owner_id = &USER1_DATA.get().unwrap().people_id;
+fn new_dec(name: &str, zone: &SimZone) -> ObjectId {
+    let people_id = zone.get_object_id_by_name("zone1_people");
 
-    let dec_id = DecApp::generate_id(owner_id.object_id().to_owned(), name);
+    let dec_id = DecApp::generate_id(people_id, name);
 
-    info!("generage dec_id={}, people={}", dec_id, owner_id);
+    info!(
+        "generage test storage dec_id={}, people={}",
+        dec_id, people_id
+    );
 
     dec_id
 }
@@ -62,6 +64,7 @@ pub async fn test(zone: &SimZone) -> bool {
     put_object(&device1, &device2).await;
     get_object(&device1, &device2).await;
 
+    // handler xxxxxx
     post_object(&device1, &device2).await;
 
     info!("test all router handler case success!");

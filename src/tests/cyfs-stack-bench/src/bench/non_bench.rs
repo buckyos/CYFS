@@ -24,7 +24,8 @@ impl Bench for NONBench {
         
         let dur = begin.elapsed();
         info!("end test NONBench: {:?}", dur);
-
+        let costs = begin.elapsed().as_millis() as u64;
+        Stat::write(zone, NON_ALL_IN_ONE, costs).await;
         ret
     }
 
@@ -63,17 +64,20 @@ pub async fn test(zone: &SimZone) -> bool {
     let costs = test_put_object(&dec_id, &stack).await;
     Stat::write(zone, NON_PUT_OBJECT, costs).await;
 
-    test_outer_put_dec(&dec_id, zone).await;
+    let costs = test_outer_put_dec(&dec_id, zone).await;
+    Stat::write(zone, NON_PUT_OUTER_OBJECT, costs).await;
 
     {
         let stack = zone.get_shared_stack("zone1_device2");
         let target = stack.local_device_id();
-        test_get_object(&dec_id, &stack, &target, zone).await;
+        let costs = test_get_object(&dec_id, &stack, &target, zone).await;
+        Stat::write(zone, NON_GET_OBJECT, costs).await;
 
         let object = new_object(&dec_id, "first-text");
         let object_id = object.text_id().object_id().to_owned();
 
-        test_delete_object(&object_id, &dec_id, &stack, &target).await;
+        let costs = test_delete_object(&object_id, &dec_id, &stack, &target).await;
+        Stat::write(zone, NON_DELETE_OBJECT, costs).await;
     }
     info!("test all non case success!");
 
@@ -81,46 +85,6 @@ pub async fn test(zone: &SimZone) -> bool {
 }
 
 pub async fn test2() -> bool {
-    let id = "5aSixgNAmFYV4vgRk1CQeQmhG9532dtKMUMUfJYasE1n".to_string();
-    let stack = CyfsServiceLoader::shared_cyfs_stack(Some(&id));
-    let dec_id = ObjectId::from_base58("9tGpLNnDpa8deXEk2NaWGccEu4yFQ2DrTZJPLYLT7gj4").unwrap();
-    //let user1_stack = stack.fork_with_new_dec(Some(dec_id.clone())).await.unwrap();
-    //user1_stack.wait_online(None).await.unwrap();
-
-    let root_state = stack.root_state_stub(None, Some(dec_id));
-    let root_info = root_state.get_current_root().await.unwrap();
-    debug!("current root: {:?}", root_info);
-
-    {
-        // create_path_op_env None access默认权限操作自己dec_id
-        let op_env = root_state.create_path_op_env().await.unwrap();
-        op_env.remove_with_path("/set", None).await.unwrap();
-
-        let x1_value = ObjectId::from_base58("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
-        let x2_value = ObjectId::from_base58("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
-
-        let ret = op_env.insert("/set/a", &x2_value).await.unwrap();
-        assert!(ret);
-
-        let ret = op_env.contains("/set/a", &x1_value).await.unwrap();
-        assert!(!ret);
-
-        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-        assert!(ret);
-
-        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-        assert!(!ret);
-
-        let ret = op_env.remove("/set/a", &x1_value).await.unwrap();
-        assert!(ret);
-
-        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-        assert!(ret);
-
-        let root = op_env.commit().await.unwrap();
-        debug!("new dec root is: {:?}", root);
-    }
-
     true
 }
 
@@ -194,7 +158,7 @@ async fn open_access(stack: &SharedCyfsStack, _dec_id: &ObjectId, req_path: impl
 
 // object层 跨dec 在设置和不设置对应group情况下的操作是否正常
 // object层 跨zone在设置和不设置对应group情况下的操作是否正常, 不允许跨zone put, 允许跨zone get
-async fn test_outer_put_dec(_dec_id: &ObjectId, zone: &SimZone) {
+async fn test_outer_put_dec(_dec_id: &ObjectId, zone: &SimZone) -> u64 {
 
     info!("begin test_outer_put_dec...");
     let begin = std::time::Instant::now();
@@ -298,6 +262,10 @@ async fn test_outer_put_dec(_dec_id: &ObjectId, zone: &SimZone) {
     let dur = begin.elapsed();
     info!("end test test_outer_put_dec: {:?}", dur);
 
+    let costs = begin.elapsed().as_millis() as u64;
+
+    costs
+
 }
 
 fn qa_pair() -> (Text, Text) {
@@ -316,7 +284,7 @@ async fn test_delete_object(
     dec_id: &ObjectId,
     stack: &SharedCyfsStack,
     target: &DeviceId,
-) {
+) -> u64 {
     info!("begin test_delete_object...");
     let begin = std::time::Instant::now();
 
@@ -332,6 +300,10 @@ async fn test_delete_object(
     info!("delete object success! {}", object_id);
     let dur = begin.elapsed();
     info!("end test_delete_object: {:?}", dur);
+
+    let costs = begin.elapsed().as_millis() as u64;
+
+    costs
 }
 
 async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) -> u64 {
@@ -399,7 +371,7 @@ async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) -> u64 {
 
 }
 
-async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &DeviceId, zone: &SimZone) {
+async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &DeviceId, zone: &SimZone) -> u64 {
     info!("begin test_get_object...");
     let begin = std::time::Instant::now();
     let get_object_path = "/.cyfs/api/handler/pre_router/get_object/";
@@ -435,4 +407,9 @@ async fn test_get_object(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &De
     info!("test_get_object: {}", resp);
     let dur = begin.elapsed();
     info!("end test test_get_object: {:?}", dur);
+
+    let costs = begin.elapsed().as_millis() as u64;
+
+    costs
+
 }

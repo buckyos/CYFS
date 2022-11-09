@@ -35,27 +35,27 @@ impl Stat {
         let local_cache = stack.local_cache_stub(None);
         let local_op_env = local_cache.create_path_op_env().await.unwrap();
 
-        let arr = vec![NON_PUT_OBJECT, CROSS_LOCAL_STATE];
+        info!("Summary: ");
+        let arr = STAT_METRICS_LIST;
         for key in arr.into_iter() {
             let mut data = Vec::new();
             let path = format!("/stat-{}", key);
-            let list = local_op_env.list(&path).await.unwrap();
-            for item in list.into_iter() {
-                match item {
-                    ObjectMapContentItem::Map((key, _value)) => {
-                        data.push(key.parse::<u32>().unwrap());
+            if let Ok(list) = local_op_env.list(&path).await {
+                for item in list.into_iter() {
+                    match item {
+                        ObjectMapContentItem::Map((key, _value)) => {
+                            data.push(key.parse::<u32>().unwrap());
+                        }
+                        ObjectMapContentItem::Set(_value) => {
+                        }
+                        _ => unreachable!(),
                     }
-                    ObjectMapContentItem::Set(_value) => {
-                    }
-                    _ => unreachable!(),
                 }
+    
+                data.sort();
+                let sum: u32 = data.iter().sum();
+                info!("test: {}, samples: {}, avg: {}ms, min: {}ms, max: {}ms", key, samples, sum / data.len() as u32, data[0],  data[data.len() - 1]);
             }
-
-            data.sort();
-            let sum: u32 = data.iter().sum();
-            info!("-----------------------------------------------------------------------");
-            info!("test: {}, samples: {}, avg: {}ms, min: {}ms, max: {}ms", key, samples, sum / data.len() as u32, data[0],  data[data.len() - 1]);
-            info!("-----------------------------------------------------------------------");
 
         }
     }
@@ -64,7 +64,7 @@ impl Stat {
         let stack = zone.get_shared_stack("zone1_ood");
         stack.wait_online(None).await.unwrap();
 
-        let arr = vec![NON_PUT_OBJECT, CROSS_LOCAL_STATE];
+        let arr = STAT_METRICS_LIST;
         for key in arr.into_iter() {
             let local_cache = stack.local_cache_stub(None);
             let local_op_env = local_cache.create_path_op_env().await.unwrap();

@@ -24,6 +24,8 @@ impl Bench for RootStateBench {
 
         let dur = begin.elapsed();
         info!("end test RootStateBench: {:?}", dur);
+        let costs = begin.elapsed().as_millis() as u64;
+        Stat::write(zone, ROOT_STATE_ALL_IN_ONE, costs).await;
 
         ret
 
@@ -79,13 +81,15 @@ async fn test_path_op_env_cross_dec(
     user1_stack: &SharedCyfsStack,
     user1_device1_stack: &SharedCyfsStack,
     zone: &SimZone) {
+
+    info!("begin test PathOpEnv Cross Desc...");
+    let begin_root = std::time::Instant::now();
     // source_dec_id 为 user1_stack.open传入的,  target_dec_id为user1_device1 open的dec_id
     // 目前的root_state 不支持 . ..
     let target_dec_id = user1_device1_stack.dec_id().unwrap().to_owned();
     let root_state = user1_stack.root_state_stub(None, Some(target_dec_id));
     let root_info = root_state.get_current_root().await.unwrap();
     debug!("current root: {:?}", root_info);
-
 
     // 目标req_path层, dec-id开启对应的权限才可以操作
     open_access(&user1_device1_stack, &target_dec_id, "/root/shared", AccessPermissions::None).await;
@@ -96,9 +100,6 @@ async fn test_path_op_env_cross_dec(
 
     let x1_value = ObjectId::from_base58("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
     let x2_value = ObjectId::from_base58("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
-    
-    info!("begin test CrossRootState...");
-    let begin = std::time::Instant::now();
 
     // test create_new
     op_env.remove_with_path("/root/shared/new", None).await.unwrap();
@@ -129,34 +130,60 @@ async fn test_path_op_env_cross_dec(
         unreachable!();
     }
 
+    info!("begin test RootState Remove Operation...");
+    let begin = std::time::Instant::now();
+    
     // 首先移除老的值，如果存在的话
     op_env.remove_with_path("/root/shared/x/b", None).await.unwrap();
+    
+    let dur = begin.elapsed();
+    info!("end test RootState Remove Operation: {:?}", dur);
+    let costs = begin.elapsed().as_millis() as u64;
+    // 记录下耗时到本地device
+    Stat::write(zone, ROOT_STATE_REMOVE_OPERATION, costs).await;
 
     let ret = op_env.get_by_path("/root/shared/x/b").await.unwrap();
     assert_eq!(ret, None);
     let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
     assert_eq!(ret, None);
 
+    info!("begin test RootState Insert Operation...");
+    let begin = std::time::Instant::now();
     op_env
         .insert_with_key("/root/shared/x/b", "c", &x1_value)
         .await
         .unwrap();
 
+    let dur = begin.elapsed();
+    info!("end test RootState Insert Operation: {:?}", dur);
+    let costs = begin.elapsed().as_millis() as u64;
+    // 记录下耗时到本地device
+    Stat::write(zone, ROOT_STATE_INSERT_OPERATION, costs).await;
+
+    info!("begin test RootState Get Operation...");
+    let begin = std::time::Instant::now();
     let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
     assert_eq!(ret, Some(x1_value));
+
+    let dur = begin.elapsed();
+    info!("end test RootState Get Operation: {:?}", dur);
+    let costs = begin.elapsed().as_millis() as u64;
+    // 记录下耗时到本地device
+    Stat::write(zone, ROOT_STATE_GET_OPERATION, costs).await;
 
     let ret = op_env.remove_with_path("/root/shared/x/b/d", None).await.unwrap();
     assert_eq!(ret, None);
 
+    info!("begin test RootState Commit Operation...");
+    let begin = std::time::Instant::now();
+
     let root = op_env.commit().await.unwrap();
-    info!("new dec root is: {:?}", root);
-
     let dur = begin.elapsed();
-    info!("end test CrossRootState: {:?}", dur);
-
+    info!("end test RootState Commit Operation: {:?}", dur);
     let costs = begin.elapsed().as_millis() as u64;
     // 记录下耗时到本地device
-    Stat::write(zone, CROSS_LOCAL_STATE, costs).await;
+    Stat::write(zone, ROOT_STATE_COMMIT_OPERATION, costs).await;
+    info!("new dec root is: {:?}", root);
 
     {
         info!("begin test OwnerRootState...");
@@ -191,7 +218,12 @@ async fn test_path_op_env_cross_dec(
         info!("end test OwnerRootState: {:?}", dur);
     }
 
-    info!("test root_state complete!");
+    info!("test op env path complete!");
+
+    let dur = begin_root.elapsed();
+    info!("end test PathOpEnv Cross Desc: {:?}", dur);
+    let costs = begin_root.elapsed().as_millis() as u64;
+    Stat::write(zone, PATH_OP_ENV_CROSS_DEC, costs).await;
 
 }
 
@@ -199,6 +231,9 @@ async fn test_single_op_env_cross_dec(
     user1_stack: &SharedCyfsStack,
     user1_device1_stack: &SharedCyfsStack,
     zone: &SimZone) {
+
+    info!("begin test SinglehOpEnv Cross Desc...");
+    let begin = std::time::Instant::now();
     // source_dec_id 为 user1_stack.open传入的,  target_dec_id为user1_device1 open的dec_id
     // 目前的root_state 不支持 . ..
     let source_dec_id = user1_stack.dec_id().unwrap().to_owned();
@@ -275,6 +310,11 @@ async fn test_single_op_env_cross_dec(
         info!("dec root changed to {}", new_root);
     }
 
-    info!("test root_state complete!");
+    info!("test single op env complete!");
+
+    let dur = begin.elapsed();
+    info!("end test SinglehOpEnv Cross Desc: {:?}", dur);
+    let costs = begin.elapsed().as_millis() as u64;
+    Stat::write(zone, SINGLE_OP_ENV_CROSS_DEC, costs).await;
 
 }
