@@ -7,7 +7,6 @@ use cyfs_util::{SqliteStorage, AsyncStorage};
 use crate::{Timestamp, TempSeq};
 
 mod manager;
-mod storage;
 
 pub use manager::StatisticManager;
 
@@ -99,7 +98,7 @@ impl PeerStatus {
             PeerStatusKind::Online(_, _) => {
                 status.status = PeerStatusKind::Connecting(now);
             }
-            PeerStatusKind::Connecting(start_stamp) => {
+            PeerStatusKind::Connecting(_start_stamp) => {
                 if recod {
                     status.will_cache_record.push((None, None, StatusKind::OnlineResult(status.status.clone())));
                     status.status = PeerStatusKind::Connecting(now);
@@ -118,7 +117,7 @@ impl PeerStatus {
         let status = &mut *self.0.write().unwrap();
 
         match status.status {
-            PeerStatusKind::Online(start_stamp, online_stamp) => {
+            PeerStatusKind::Online(_start_stamp, _online_stamp) => {
                 // Ignore, continue
             }
             PeerStatusKind::Connecting(start_stamp) => {
