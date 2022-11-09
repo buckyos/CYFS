@@ -21,7 +21,7 @@ use crate::{
     protocol::*,
     history::keystore::Keystore, 
     interface::{
-        udp::{MTU, PackageBoxDecodeContext, PackageBoxEncodeContext},
+        udp::{PackageBoxDecodeContext, PackageBoxEncodeContext, MTU_LARGE},
         tcp::{AcceptInterface, PackageInterface},
     },
 };
@@ -427,7 +427,7 @@ impl UdpListener {
 
     async fn recv(&self) -> BuckyResult<(PackageBox, MessageSender)> {
         loop {
-            let mut recv_buf = [0; MTU];
+            let mut recv_buf = [0; MTU_LARGE];
             let rr = self.0.socket.recv_from(&mut recv_buf).await;
 
             match rr {
@@ -560,7 +560,7 @@ impl UdpSender {
     pub async fn send(&self,
                   pkg_box: &PackageBox) -> BuckyResult<()> {
 
-        let mut encode_buf = [0; MTU];
+        let mut encode_buf = [0; MTU_LARGE];
         let send_buf = {
             let mut context = PackageBoxEncodeContext::default();
 
@@ -615,7 +615,7 @@ pub struct TcpSender {
 
 impl TcpSender {
     pub async fn send(&mut self, pkg: DynamicPackage) -> BuckyResult<()> {
-        let mut send_buf = [0; MTU];
+        let mut send_buf = [0; MTU_LARGE];
 
         match self.handle.send_package(&mut send_buf, pkg, false).await {
             Ok(()) => Ok(()),

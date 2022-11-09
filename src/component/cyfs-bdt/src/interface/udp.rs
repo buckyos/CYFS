@@ -66,10 +66,11 @@ pub trait OnUdpRawData<Context> {
 }
 
 pub const MTU: usize = 1472;
+pub const MTU_LARGE: usize = 1024*30;
 
 thread_local! {
-    static UDP_RECV_BUFFER: RefCell<[u8; MTU]> = RefCell::new([0u8; MTU]);
-    static BOX_CRYPTO_BUFFER: RefCell<[u8; MTU]> = RefCell::new([0u8; MTU]);
+    static UDP_RECV_BUFFER: RefCell<[u8; MTU_LARGE]> = RefCell::new([0u8; MTU_LARGE]);
+    static BOX_CRYPTO_BUFFER: RefCell<[u8; MTU_LARGE]> = RefCell::new([0u8; MTU_LARGE]);
 }
 
 struct InterfaceImpl {

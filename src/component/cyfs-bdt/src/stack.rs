@@ -167,7 +167,7 @@ impl StackConfig {
                 chunk: ndn::chunk::Config{
                     raw_caches: RawCacheConfig {
                         mem_capacity: 1024 * 1024 * 1024, 
-                        tmp_dir: PathBuf::new("")
+                        tmp_dir: PathBuf::new()
                     }
                 }
             }, 

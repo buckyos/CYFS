@@ -21,7 +21,7 @@ mod dep {
     pub use std::{fmt, future::Future, net::Shutdown, ops::Deref, sync::RwLock, time::Duration};
 }
 
-const ANSWER_MAX_LEN: usize = 1380;
+const ANSWER_MAX_LEN: usize = 1024*25;
 
 mod connector {
     use super::dep::*;
