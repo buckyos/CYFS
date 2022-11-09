@@ -20,13 +20,17 @@ struct ManagerImpl {
 pub struct RawCacheManager(Arc<ManagerImpl>);
 
 impl RawCacheManager {
-    pub fn new() -> Self {
+    pub fn new(config: RawCacheConfig) -> Self {
         Self(Arc::new(ManagerImpl {
-            config: RawCacheConfig {}, 
+            config, 
             state: RwLock::new(ManagerState {
                 total_mem: 0
             })
         }))
+    }
+
+    pub fn config(&self) -> &RawCacheConfig {
+        &self.0.config
     }
 
     pub async fn alloc(&self, capacity: usize) -> Box<dyn RawCache> {

@@ -17,6 +17,11 @@ use super::{
     cache::*
 };
 
+#[derive(Clone)]
+pub struct Config {
+    pub raw_caches: RawCacheConfig
+}
+
 pub struct ChunkManager {
     stack: WeakStack, 
     ndc: Box<dyn NamedDataCache>, 
@@ -72,13 +77,14 @@ impl ChunkManager {
         tracker: Box<dyn TrackerCache>, 
         store: Box<dyn ChunkReader>
     ) -> Self {
+        let stack = Stack::from(&weak_stack);
         Self { 
             stack: weak_stack, 
             gen_session_id: TempSeqGenerator::new(), 
             ndc, 
             tracker, 
             store: Box::new(EmptyChunkWrapper::new(store)), 
-            raw_caches: RawCacheManager::new(), 
+            raw_caches: RawCacheManager::new(stack.config().ndn.chunk.raw_caches.clone()), 
             chunk_caches: RwLock::new(Default::default())
         }
     }

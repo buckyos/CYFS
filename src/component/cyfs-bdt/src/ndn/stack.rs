@@ -18,7 +18,7 @@ use crate::{
 };
 use super::{
     channel::{self, ChannelManager}, 
-    chunk::{ChunkManager, ChunkReader}, 
+    chunk::{self, ChunkManager, ChunkReader}, 
     event::*, 
     root::RootTask,
 };
@@ -28,6 +28,7 @@ pub struct Config {
     pub atomic_interval: Duration, 
     pub schedule_interval: Duration, 
     pub channel: channel::Config,
+    pub chunk: chunk::Config
 }
 
 

@@ -8,7 +8,7 @@ mod root;
 mod stack;
 
 pub use types::*;
-pub use chunk::{ChunkListDesc, ChunkReader};
+pub use chunk::{ChunkListDesc, ChunkReader, RawCacheConfig};
 pub use download::*;
 pub use upload::*;
 pub use stack::{NdnStack, Config};

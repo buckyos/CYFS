@@ -1,6 +1,5 @@
 
 use log::*;
-use async_trait::async_trait;
 use std::{
     sync::{Arc},
     path::{Path, PathBuf},
@@ -10,7 +9,6 @@ use async_std::{
     fs::{self, OpenOptions}, 
     io::{SeekFrom, Cursor}, 
 };
-use async_trait::async_trait;
 use cyfs_base::*;
 use cyfs_util::*;
 use crate::{
@@ -119,7 +117,7 @@ impl LocalChunkReader {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ChunkReader for LocalChunkReader {
     fn clone_as_reader(&self) -> Box<dyn ChunkReader> {
         Box::new(self.clone())
@@ -308,27 +306,11 @@ impl LocalChunkWriter {
             return Ok(());
         }
 
-        let path = self
-            .0
-            .tmp_path
-            .as_ref()
-            .map(|p| p.as_path())
-            .unwrap_or(self.path());
-
         let path = self.0.tmp_path.as_ref().map(|p| p.as_path()).unwrap_or(self.path());
 
         let file = OpenOptions::new().create(true).write(true).open(path).await
             .map_err(|e| {
                 let msg = format!("{} open file failed for {}", self, e);
-                error!("{}", msg);
-                BuckyError::new(BuckyErrorCode::IoError, msg)
-            })?;
-
-                let msg = format!(
-                    "{} open file failed for {}",
-                    self,
-                    e
-                );
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::IoError, msg)
             })?;
@@ -410,11 +392,6 @@ impl LocalChunkListWriter {
             ndc: ndc.clone(), 
             tracker: tracker.clone(),  
         }))
-    }
-
-
-    async fn track_chunk_index(
-        &self, 
     }
 
     async fn track_chunk_index(&self, chunk: &ChunkId, index: usize) -> BuckyResult<()> {

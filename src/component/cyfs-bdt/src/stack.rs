@@ -1,3 +1,20 @@
+use std::{
+    ops::Deref, 
+    time::Duration, 
+    path::PathBuf
+    // sync::{atomic::{AtomicU64, Ordering}}
+};
+use async_std::{
+    sync::{Arc, Weak}, 
+    task, 
+    future, 
+};
+use log::*;
+use cyfs_base::*;
+use cyfs_util::{
+    cache::*
+};
+
 use crate::{
     types::*,
     cc::{self},
@@ -18,24 +35,10 @@ use crate::{
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
     pn::client::ProxyManager,
-    ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler}, 
+    ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler, RawCacheConfig }, 
     debug::{self, DebugStub}
 };
-use cyfs_util::{
-    cache::*
-};
-use async_std::{
-    sync::{Arc, Weak}, 
-    task, 
-    future, 
-};
-use cyfs_base::*;
-use log::*;
-use std::{
-    ops::Deref, 
-    time::Duration, 
-    // sync::{atomic::{AtomicU64, Ordering}}
-};
+
 
 struct StackLazyComponents {
     sn_client: sn::client::ClientManager,
@@ -160,7 +163,13 @@ impl StackConfig {
                         expire: Duration::from_secs(20),  
                         atomic: Duration::from_secs(1)
                     }
-                },
+                }, 
+                chunk: ndn::chunk::Config{
+                    raw_caches: RawCacheConfig {
+                        mem_capacity: 1024 * 1024 * 1024, 
+                        tmp_dir: PathBuf::new("")
+                    }
+                }
             }, 
             debug: None
         }

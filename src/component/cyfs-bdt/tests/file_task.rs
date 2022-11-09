@@ -14,7 +14,6 @@ use cyfs_bdt::{
     SingleDownloadContext, 
     download::*
 };
-use cyfs_debug::Mutex;
 mod utils;
 
 async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use cyfs_base::*;
 use cyfs_util::{
     AsyncWriteWithSeek, 
@@ -21,5 +22,6 @@ pub trait RawCache: Send + Sync {
 
 #[derive(Clone)]
 pub struct RawCacheConfig {
-    
+    pub mem_capacity: usize, 
+    pub tmp_dir: PathBuf
 }
