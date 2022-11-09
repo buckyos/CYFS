@@ -5,13 +5,18 @@ mod facade_logger;
 mod bench;
 mod sim_zone;
 mod stat;
+mod dec_service;
+use std::sync::Arc;
+
 use clap::{App, Arg};
+use cyfs_lib::SharedCyfsStack;
 use log::*;
 use async_trait::async_trait;
 use crate::facade_logger::FacadeLogger;
 use crate::bench::*;
 use crate::sim_zone::*;
 use crate::stat::Stat;
+use crate::dec_service::*;
 
 #[macro_use]
 extern crate log;
@@ -36,6 +41,7 @@ async fn main() {
     .arg(Arg::with_name("simulator").long("simulator"))
     .arg(Arg::with_name("physical").long("physical"))
     .arg(Arg::with_name("times").short("t").long("times").default_value("128"))
+    .arg(Arg::with_name("dec-service").short("d").long("dec-service"))
     .get_matches();
 
     let logger = if matches.occurrences_of("save") != 0 {
@@ -56,6 +62,7 @@ async fn main() {
 
     let ood_path = matches.value_of("path").unwrap_or("./");
     let times = matches.value_of("times").unwrap_or_default().parse::<u64>().unwrap_or(1024);
+    let _dec_service = matches.value_of("dec-service").unwrap_or_default().parse::<bool>().unwrap_or(false);
 
     debug!("start benchmark");
     if matches.is_present("simulator") {
@@ -114,6 +121,20 @@ async fn main() {
 
         // 输出统计
         Stat::read(&zone, times).await;
+    }
+
+    if matches.is_present("dec-service") {
+        //使用默认配置初始化non-stack，因为是跑在gateway后面，共享了gateway的协议栈，所以配置使用默认即可
+        //FIXME: 这里需要用testservice app的app id来初始化SharedObjectStack
+        let cyfs_stack = SharedCyfsStack::open_default(None).await.unwrap();
+        let _ = cyfs_stack.online().await;
+
+        log::info!("test-dec-service run as {}", cyfs_stack.local_device_id());
+        let mut service = TestService::new(cyfs_stack);
+        service.init().await;
+
+        TestService::start(Arc::new(service));
+        async_std::task::block_on(async_std::future::pending::<()>());
     }
 
 
