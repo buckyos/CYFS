@@ -203,7 +203,13 @@ impl SnService {
 
     fn clean_timeout_resource(&self) {
         let now = bucky_time_now();
-        self.peer_manager().try_knock_timeout(now);
+
+        if let Some(drops) = self.peer_manager().try_knock_timeout(now) {
+            for device in &drops {
+                self.key_store().reset_peer(device)
+            }
+        }
+
         self.resend_queue().try_resend(now);
         self.0.call_stub.recycle(now);
         // {

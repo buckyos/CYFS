@@ -10,7 +10,6 @@ use crate::protocol::{*, v0::*};
 use std::future::Future;
 use crate::stack::{Stack, WeakStack};
 use crate::{SnServiceReceipt, SnServiceGrade};
-use std::time::Duration;
 
 pub struct ClientManager {
     ping: PingManager,

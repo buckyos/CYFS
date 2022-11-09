@@ -1,12 +1,12 @@
 
-use std::{sync::{RwLock, Arc}, collections::{BTreeMap, btree_map::Entry}, time::Duration};
+use std::{sync::{RwLock, Arc}, collections::{BTreeMap, }, time::Duration};
 
 use cyfs_base::{DeviceId, bucky_time_now, };
 use cyfs_util::SqliteStorage;
 
 use crate::Timestamp;
 
-use super::{PeerStatus, PeerStatusKind};
+use super::{PeerStatus, };
 
 const CACHE_MAX_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -89,14 +89,15 @@ impl StatisticManager {
 }
 
 mod test {
-    use cyfs_base::{DeviceId, bucky_time_now};
-
-    use crate::TempSeq;
-
-    use super::StatisticManager;
 
     #[test]
     fn test() {
+        use cyfs_base::{DeviceId, bucky_time_now};
+
+        use crate::TempSeq;
+    
+        use super::StatisticManager;
+
         let m = StatisticManager::default();
 
         let s1 = m.get_status(DeviceId::default(), bucky_time_now());

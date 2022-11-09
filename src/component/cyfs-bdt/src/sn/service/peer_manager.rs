@@ -292,17 +292,23 @@ impl PeerManager {
         }
     }
 
-    pub fn try_knock_timeout(&self, now: Timestamp) {
+    pub fn try_knock_timeout(&self, now: Timestamp) -> Option<Vec<DeviceId>> {
         let last_knock_time = self.last_knock_time.load(Ordering::SeqCst);
-        if now > last_knock_time && Duration::from_micros(now - last_knock_time) > self.timeout {
+        let drop_maps = if now > last_knock_time && Duration::from_micros(now - last_knock_time) > self.timeout {
             let mut peers = self.peers.lock().unwrap();
             let mut knock_peers = Default::default();
             std::mem::swap(&mut knock_peers, &mut peers.active_peers);
             std::mem::swap(&mut knock_peers, &mut peers.knock_peers);
             self.last_knock_time.store(now, Ordering::SeqCst);
-        }
+
+            Some(knock_peers.into_keys().collect())
+        } else {
+            None
+        };
 
         self.statistic_manager.on_time_escape(now);
+
+        drop_maps
     }
 
     pub fn find_peer(&self, id: &DeviceId) -> Option<FoundPeer> {
