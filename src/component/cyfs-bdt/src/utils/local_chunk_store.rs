@@ -375,7 +375,7 @@ impl LocalChunkWriter {
             let tmp_path = self.0.tmp_path.as_ref().unwrap().as_path();
             let _ = fs::remove_file(tmp_path).await;
         }
-
+        
         ret
     }
 }

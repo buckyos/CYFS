@@ -100,7 +100,7 @@ async fn main() {
         });
 
         let task = download_chunk(
-            &*down_stack,
+            &*ln_stack, 
             chunkid.clone(), 
             None, 
             Some(context), 
