@@ -8,6 +8,8 @@ pub(crate) struct BugReportManager {
     list: Vec<Box<dyn BugReportHandler>>,
 }
 
+const DINGTALK_NIGHTLY_URL: &str = "https://oapi.dingtalk.com/robot/send?access_token=f44614438c8f63c7ccdd01ae1c83a062291e01b71b888aa21b7fa2b6588e4a9d";
+
 impl BugReportManager {
     pub fn new() -> Self {
         let mut ret = Self { list: vec![] };
@@ -22,6 +24,11 @@ impl BugReportManager {
             if let Err(e) = self.load_config_value(config_node) {
                 println!("load report config error! {}", e);
             }
+        }
+
+        if self.list.is_empty() && *get_channel() == CyfsChannel::Nightly {
+            let reporter = DingtalkNotifier::new(DINGTALK_NIGHTLY_URL);
+            self.list.push(Box::new(reporter));
         }
     }
 
