@@ -1,8 +1,8 @@
 pub const NON_ALL_IN_ONE: &str = "non-all-in-one";
-pub const NON_PUT_OBJECT: &str = "non-inner-zone-diff-dec-put-object";
-pub const NON_GET_OBJECT: &str = "non-inner-zone-diff-dec-get-object";
-pub const NON_POST_OBJECT: &str = "non-inner-zone-diff-dec-post-object";
-pub const NON_DELETE_OBJECT: &str = "non-inner-zone-diff-dec-delete-object";
+pub const NON_PUT_OBJECT: &str = "non-inner-zone-put-object";
+pub const NON_GET_OBJECT: &str = "non-inner-zone-get-object";
+pub const NON_POST_OBJECT: &str = "non-inner-zone-post-object";
+pub const NON_DELETE_OBJECT: &str = "non-inner-zone-delete-object";
 
 pub const NON_OUTER_GET_OBJECT: &str = "non-outer-zone-diff-dec-post-object";
 pub const NON_OUTER_POST_OBJECT: &str = "non-outer-zone-diff-dec-delete-object";

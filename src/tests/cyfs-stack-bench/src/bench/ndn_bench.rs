@@ -6,7 +6,7 @@ pub struct NDNBench {}
 
 #[async_trait]
 impl Bench for NDNBench {
-    async fn bench(&self, env: BenchEnv, _zone: &SimZone, _ood_path: String, _t: u64) -> bool {
+    async fn bench(&self) -> bool {
         info!("begin test NDNBench...");
         let begin = std::time::Instant::now();
 

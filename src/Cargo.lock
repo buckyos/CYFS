@@ -2332,31 +2332,23 @@ dependencies = [
 name = "cyfs-stack-bench"
 version = "0.1.0"
 dependencies = [
- "ansi_term",
  "async-recursion",
  "async-std",
  "async-trait",
  "chrono",
  "clap",
  "cyfs-base",
- "cyfs-bdt",
- "cyfs-chunk-lib",
- "cyfs-cip",
  "cyfs-core",
  "cyfs-debug",
  "cyfs-lib",
- "cyfs-meta-lib",
- "cyfs-noc",
- "cyfs-stack-loader",
  "cyfs-util",
  "futures",
  "hex",
+ "lazy_static",
  "log 0.4.17",
- "once_cell",
  "rand 0.8.5",
  "serde",
- "serde_json",
- "zone-simulator",
+ "toml",
 ]
 
 [[package]]

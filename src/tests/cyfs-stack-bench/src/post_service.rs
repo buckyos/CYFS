@@ -5,9 +5,10 @@ use cyfs_lib::*;
 use std::sync::Arc;
 use std::str::FromStr;
 use cyfs_util::EventListenerAsyncRoutine;
+use crate::util::new_object;
 
 pub const TEST_DEC_ID_STR: &str = "5aSixgP8EPf6HkP54Qgybddhhsd1fgrkg7Atf2icJiiS";
-
+pub const CALL_PATH: &str = "/cyfs-bench-post";
 pub struct DeviceInfo {
     pub ood_id: DeviceId,
     pub owner_id: PeopleId,
@@ -24,17 +25,6 @@ impl DeviceInfo {
     }
 }
 
-fn qa_pair() -> (Text, Text) {
-    let q = Text::build("question", "test_header", "hello!")
-        .no_create_time()
-        .build();
-    let a = Text::build("answer", "test_header", "world!")
-        .no_create_time()
-        .build();
-
-    (q, a)
-}
-
 struct OnPostObject {
     owner: Arc<TestService>,
 }
@@ -49,41 +39,22 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
     ) -> BuckyResult<RouterHandlerPostObjectResult> {
         info!("handler_post_object: {}", param.request.object.object_id);
 
-        let (q, a) = qa_pair();
-
-        let object = Text::clone_from_slice(&param.request.object.object_raw).unwrap();
-        let result = if *object.text_id().object_id() == *q.text_id().object_id() {
-            let response = NONPostObjectInputResponse {
-                object: Some(NONObjectInfo::new(
-                    a.text_id().object_id().to_owned(),
-                    a.to_vec().unwrap(),
-                    None,
-                )),
-            };
-
-            // 使用answer对象应答
-            RouterHandlerPostObjectResult {
-                action: RouterHandlerAction::Response,
-                request: None,
-                response: Some(Ok(response)),
-            }
-        } else {
-            let msg = format!(
-                "post object id not support! req={}",
-                param.request.object.object_id
-            );
-            warn!("{}", msg);
-            let response = Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
-
-            // 其余对象，直接返回
-            RouterHandlerPostObjectResult {
-                action: RouterHandlerAction::Response,
-                request: None,
-                response: Some(response),
-            }
+        let object = Text::clone_from_slice(&param.request.object.object_raw)?;
+        let answer = new_object("answer", object.value());
+        let response = NONPostObjectInputResponse {
+            object: Some(NONObjectInfo::new(
+                answer.desc().calculate_id(),
+                answer.to_vec().unwrap(),
+                None,
+            )),
         };
 
-        Ok(result)
+        // 使用answer对象应答
+        Ok(RouterHandlerPostObjectResult {
+            action: RouterHandlerAction::Response,
+            request: None,
+            response: Some(Ok(response)),
+        })
     }
 }
 
@@ -109,28 +80,22 @@ impl TestService {
         }
     }
 
-    pub async fn init(&mut self) {
-
-    }
-
-    pub fn start(service: Arc<TestService>) {
+    pub fn start(self) {
+        let service = Arc::new(self);
         // 注册on_post_put_router事件
         let listener = OnPostObject {
             owner: service.clone(),
         };
 
-        let dec_id = ObjectId::from_str(TEST_DEC_ID_STR).unwrap();
-        let call_path = "/test_post";
-        let req_path = RequestGlobalStatePath::new(Some(dec_id.clone()), Some(call_path.to_owned()));
         // 只监听应用自己的DecObject
         service.cyfs_stack
             .router_handlers()
             .add_handler(
                 RouterHandlerChain::Handler,
-                "must_same_source_target_dec",
+                "cyfs-bench-service",
                 0,
                 None,
-                Some(req_path.to_string()),
+                Some(CALL_PATH.to_owned()),
                 RouterHandlerAction::Default,
                 Some(Box::new(listener)))
             .unwrap();
