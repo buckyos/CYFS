@@ -19,7 +19,9 @@ pub const ROOT_STATE_REMOVE_OPERATION: &str = "root-state-inner-zone-remove-oper
 pub const ROOT_STATE_INSERT_OPERATION: &str = "root-state-inner-zone-insert-operation";
 pub const ROOT_STATE_COMMIT_OPERATION: &str = "root-state-inner-zone-commit-operation";
 
-pub const STAT_METRICS_LIST: [&'static str; 17] = [
+pub const RMETA_INNER_ZONE_ACCESS: &str = "rmeta-inner-zone-access";
+
+pub const STAT_METRICS_LIST: [&'static str; 18] = [
     NON_ALL_IN_ONE,
 
     NON_PUT_OBJECT,
@@ -40,5 +42,7 @@ pub const STAT_METRICS_LIST: [&'static str; 17] = [
     ROOT_STATE_REMOVE_OPERATION,
     ROOT_STATE_INSERT_OPERATION,
     ROOT_STATE_COMMIT_OPERATION,
+
+    RMETA_INNER_ZONE_ACCESS,
 
 ];

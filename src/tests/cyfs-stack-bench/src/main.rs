@@ -57,6 +57,7 @@ async fn main() {
         Box::new(RootStateBench {}),
         Box::new(NDNBench {}),
         Box::new(TransBench {}),
+        Box::new(OtherBench {}),
     ];
 
     let ood_path = matches.value_of("path").unwrap_or("./");

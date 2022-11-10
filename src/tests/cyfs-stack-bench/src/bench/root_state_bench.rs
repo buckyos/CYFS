@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use serde::__private::de;
 use crate::{Bench, BenchEnv, sim_zone::SimZone, Stat};
 use log::*;
 use cyfs_base::*;
@@ -73,6 +72,36 @@ pub async fn test(zone: &SimZone) {
     .await
     .unwrap();
     ood2.wait_online(None).await.unwrap();
+
+    let call_path = "/root/shared";
+    let mut access = AccessString::new(0);
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::OthersZone, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Read);
+
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::OthersZone, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Write);
+
+    let item = GlobalStatePathAccessItem {
+        path: call_path.to_owned(),
+        access: GlobalStatePathGroupAccess::Default(access.value()),
+    };
+    device1
+        .root_state_meta_stub(None, None)
+        .add_access(item.clone())
+        .await
+        .unwrap();
+    ood2
+        .root_state_meta_stub(None, None)
+        .add_access(item)
+        .await
+        .unwrap();
+
     /* 
         测试root-state的同zone的跨dec操作 需要配合权限
     */
@@ -87,9 +116,8 @@ pub async fn test(zone: &SimZone) {
         let root_info = root_state.get_current_root().await.unwrap();
         debug!("current root: {:?}", root_info);
     
-        let op_path = "/root/shared";
         // 目标req_path层, dec-id开启对应的权限才可以操作
-        open_access(&device1, &dec1, op_path, AccessPermissions::None).await;
+        open_access(&device1, &dec1, call_path, AccessPermissions::None).await;
     
         let access = RootStateOpEnvAccess::new("/", AccessPermissions::Full);   // 对跨dec路径操作这个perm才work
         let op_env = root_state.create_path_op_env_with_access(Some(access)).await.unwrap();
@@ -152,13 +180,33 @@ pub async fn test(zone: &SimZone) {
         /* 
             root_state 跨zone access(get_object_by_key和list)
         */
-        {
-            // let root_state = ood2.root_state_stub(None, Some(dec1.to_owned()));
-            // let root_info = root_state.get_current_root().await.unwrap();
-            // debug!("current root: {:?}", root_info);
-            // let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
-            // assert_eq!(ret, None);
-        }
+        // {
+        //     // 权限控制acl root_state meta => rmeta
+        //     let meta = device1.root_state_meta_stub(None, None);
+        //     // 为其他Zone的desc_id开放req_path的读写权限
+        //     let item = GlobalStatePathAccessItem {
+        //         path: call_path.into(),
+        //         access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
+        //             zone: None,
+        //             zone_category: Some(DeviceZoneCategory::OtherZone),
+        //             dec: Some(dec3.to_owned()),
+        //             access: AccessPermissions::ReadAndWrite as u8,
+        //         }),
+        //     };
+
+        //     meta.add_access(item).await.unwrap();
+
+        //     assert_eq!(dec1.to_string(), "9tGpLNnA8xsobowPwB4WTb6j5D1w8h9k48F7NsrX9Vwi");
+
+        //     //let root_state = ood2.root_state_stub(None, Some(dec1.to_owned()));
+        //     // FIXME: direct operation get_by_path/list
+        //     let root_state = ood2.root_state_stub(None, Some(dec3.to_owned()));
+
+        //     let access = RootStateOpEnvAccess::new(call_path, AccessPermissions::ReadAndWrite); // 对跨dec路径操作这个perm才work
+        //     let op_env = root_state.create_path_op_env_with_access(Some(access)).await.unwrap();
+        //     let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
+        //     assert_eq!(ret, Some(x1_value));
+        // }
     
         let begin = std::time::Instant::now();
         let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
