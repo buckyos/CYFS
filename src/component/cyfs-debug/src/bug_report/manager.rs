@@ -8,6 +8,7 @@ pub(crate) struct BugReportManager {
     list: Vec<Box<dyn BugReportHandler>>,
 }
 
+// only used on nightly env!!!
 const DINGTALK_NIGHTLY_URL: &str = "https://oapi.dingtalk.com/robot/send?access_token=f44614438c8f63c7ccdd01ae1c83a062291e01b71b888aa21b7fa2b6588e4a9d";
 
 impl BugReportManager {
@@ -22,7 +23,7 @@ impl BugReportManager {
     fn load_config(&mut self) {
         if let Some(config_node) = DebugConfig::get_config("report") {
             if let Err(e) = self.load_config_value(config_node) {
-                println!("load report config error! {}", e);
+                error!("load report config error! {}", e);
             }
         }
 
@@ -44,26 +45,26 @@ impl BugReportManager {
             match k.as_str() {
                 "http" => {
                     if let Some(v) = v.as_str() {
-                        println!("load report.http from config: {}", v);
+                        info!("load report.http from config: {}", v);
 
                         let reporter = HttpBugReporter::new(v);
                         self.list.push(Box::new(reporter));
                     } else {
-                        println!("unknown report.http config node: {:?}", v);
+                        error!("unknown report.http config node: {:?}", v);
                     }
                 }
                 "dingtalk" => {
                     if let Some(v) = v.as_str() {
-                        println!("load report.dingtalk from config: {}", v,);
+                        info!("load report.dingtalk from config: {}", v);
                         let reporter = DingtalkNotifier::new(v);
                         self.list.push(Box::new(reporter));
                     } else {
-                        println!("unknown report.dingtalk config node: {:?}", v);
+                        error!("unknown report.dingtalk config node: {:?}", v);
                     }
                 }
 
                 key @ _ => {
-                    println!("unknown report config node: {}={:?}", key, v);
+                    error!("unknown report config node: {}={:?}", key, v);
                 }
             }
         }
