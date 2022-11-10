@@ -13,6 +13,7 @@ impl Bench for NDNBench {
         let ret = if env == BenchEnv::Simulator {
             true
         } else {
+            // TODO: support physical stack  ood/runtime
             true
         };
 

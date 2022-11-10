@@ -55,7 +55,6 @@ async fn main() {
     let benchs: Vec<Box<dyn Bench>> = vec![
         Box::new(NONBench {}),
         Box::new(RootStateBench {}),
-        Box::new(RouterHandlerBench {}),
         Box::new(NDNBench {}),
         Box::new(TransBench {}),
     ];
@@ -96,6 +95,7 @@ async fn main() {
 
     if matches.is_present("physical") {
         // open 1-device/ 1-ood  1-other ood
+        // FIXED: 使用真实协议栈open runtime/ood
         let zone = SimZone::init_zone().await;
         Stat::clear(&zone).await;
 

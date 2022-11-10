@@ -13,6 +13,7 @@ impl Bench for TransBench {
         let ret = if env == BenchEnv::Simulator {
             true
         } else {
+            // TODO: support physical stack  ood/runtime
             true
         };
 
