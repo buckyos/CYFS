@@ -10,17 +10,10 @@ impl Bench for NDNBench {
         info!("begin test NDNBench...");
         let begin = std::time::Instant::now();
 
-        let ret = if env == BenchEnv::Simulator {
-            true
-        } else {
-            // TODO: support physical stack  ood/runtime
-            true
-        };
-
         let dur = begin.elapsed();
         info!("end test NDNBench: {:?}", dur);
 
-        ret
+        true
         
     }
 
