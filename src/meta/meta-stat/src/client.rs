@@ -147,8 +147,8 @@ impl Client {
     }
 
     pub async fn get_desc(&self) -> BuckyResult<(u64, u64)> {
-        let total_peoples = self.storage.get_desc(0 as u8).await?;
-        let total_devices = self.storage.get_desc(1 as u8).await?;
+        let total_devices = self.storage.get_desc(0 as u8).await?;
+        let total_peoples = self.storage.get_desc(1 as u8).await?;
 
         Ok((total_peoples, total_devices))
     }
