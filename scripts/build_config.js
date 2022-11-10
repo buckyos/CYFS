@@ -120,6 +120,10 @@ const metas = [
         "name": "browser-meta-spv",
         "include": formal_platform
     },
+    {
+        "name": "meta-stat",
+        "include": formal_platform
+    },
 ]
 
 const misc = [
