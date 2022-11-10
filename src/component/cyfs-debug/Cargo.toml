@@ -39,7 +39,7 @@ toml = '0.5'
 async-trait = '0.1.53'
 rand = '0.7'
 url = { version = '2.2', optional = true }
-surf = { version = '2.3' }
+surf = { version = '2.3', default-features = false, features = ['h1-client-rustls'] }
 formdata = { version = '0.13', optional = true }
 futures = { version = '0.3', optional = true }
 hyper = { version = '0.10', optional = true }
