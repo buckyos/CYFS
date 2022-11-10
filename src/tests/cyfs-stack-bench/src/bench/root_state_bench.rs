@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde::__private::de;
 use crate::{Bench, BenchEnv, sim_zone::SimZone, Stat};
 use log::*;
 use cyfs_base::*;
@@ -11,7 +12,7 @@ pub struct RootStateBench {}
 #[async_trait]
 impl Bench for RootStateBench {
     async fn bench(&self, env: BenchEnv, zone: &SimZone, _ood_path: String, t: u64) -> bool {
-        info!("begin test RootStateBench...");
+        info!("begin test GlobalStateBench...");
         let begin = std::time::Instant::now();
         let ret = if env == BenchEnv::Simulator {
             for _ in 0..t {
@@ -24,9 +25,9 @@ impl Bench for RootStateBench {
         };
 
         let dur = begin.elapsed();
-        info!("end test RootStateBench: {:?}", dur);
+        info!("end test GlobalStateBench: {:?}", dur);
         let costs = begin.elapsed().as_millis() as u64;
-        Stat::write(zone, ROOT_STATE_ALL_IN_ONE, costs).await;
+        Stat::write(zone, GLOABL_STATE_ALL_IN_ONE, costs).await;
 
         ret
 
@@ -52,11 +53,249 @@ fn new_dec(name: &str, zone: &SimZone) -> ObjectId {
 }
 
 pub async fn test(zone: &SimZone) {
-    let user1_stack = zone.get_shared_stack("zone1_ood");
-    let user1_device1_stack = zone.get_shared_stack("zone1_device1");
+    let dec1 = new_dec("User1Device1.rootstate", zone);
+    let dec2 = new_dec("User1Device2.rootstate", zone);
+    let dec3 = new_dec("User2Ood.rootstate", zone);
+    let device1 = zone.get_shared_stack("zone1_device1")
+        .fork_with_new_dec(Some(dec1.clone()))
+        .await
+        .unwrap();
+    device1.wait_online(None).await.unwrap();
 
-    test_path_op_env_cross_dec(&user1_stack, &user1_device1_stack, zone).await;
-    test_single_op_env_cross_dec(&user1_stack, &user1_device1_stack, zone).await;
+    let device2 = zone.get_shared_stack("zone1_device2")
+        .fork_with_new_dec(Some(dec2.clone()))
+        .await
+        .unwrap();
+    device2.wait_online(None).await.unwrap();
+
+    let ood2 = zone.get_shared_stack("zone2_ood")
+    .fork_with_new_dec(Some(dec3.clone()))
+    .await
+    .unwrap();
+    ood2.wait_online(None).await.unwrap();
+    /* 
+        测试root-state的同zone的跨dec操作 需要配合权限
+    */
+    {
+        info!("begin test PathOpEnv diff dec...");
+        let begin_root = std::time::Instant::now();
+
+        let x1_value = ObjectId::from_base58("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
+        let x2_value = ObjectId::from_base58("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
+    
+        let root_state = device1.root_state_stub(None, None);
+        let root_info = root_state.get_current_root().await.unwrap();
+        debug!("current root: {:?}", root_info);
+    
+        let op_path = "/root/shared";
+        // 目标req_path层, dec-id开启对应的权限才可以操作
+        open_access(&device1, &dec1, op_path, AccessPermissions::None).await;
+    
+        let access = RootStateOpEnvAccess::new("/", AccessPermissions::Full);   // 对跨dec路径操作这个perm才work
+        let op_env = root_state.create_path_op_env_with_access(Some(access)).await.unwrap();
+    
+        // test create_new
+        op_env.remove_with_path("/root/shared/new", None).await.unwrap();
+        
+        let begin = std::time::Instant::now();
+        op_env
+            .create_new_with_path("/root/shared/new/a", ObjectMapSimpleContentType::Map)
+            .await
+            .unwrap();
+        let costs = begin.elapsed().as_millis() as u64;
+        Stat::write(zone, ROOT_STATE_CREATE_NEW_OPERATION, costs).await;
+        let begin = std::time::Instant::now();
+        op_env
+            .create_new_with_path("/root/shared/new/c", ObjectMapSimpleContentType::Set)
+            .await
+            .unwrap();
+        let costs = begin.elapsed().as_millis() as u64;
+        Stat::write(zone, ROOT_STATE_CREATE_NEW_OPERATION, costs).await;
+        if let Err(e) = op_env
+            .create_new_with_path("/root/shared/new/a", ObjectMapSimpleContentType::Map)
+            .await
+        {
+            assert!(e.code() == BuckyErrorCode::AlreadyExists);
+        } else {
+            unreachable!();
+        }
+    
+        if let Err(e) = op_env
+            .create_new_with_path("/root/shared/new/c", ObjectMapSimpleContentType::Map)
+            .await
+        {
+            assert!(e.code() == BuckyErrorCode::AlreadyExists);
+        } else {
+            unreachable!();
+        }
+    
+        let begin = std::time::Instant::now();
+        // 首先移除老的值，如果存在的话
+        op_env.remove_with_path("/root/shared/x/b", None).await.unwrap();
+        let costs = begin.elapsed().as_millis() as u64;
+        // 记录下耗时到本地device
+        Stat::write(zone, ROOT_STATE_REMOVE_OPERATION, costs).await;
+    
+        let ret = op_env.get_by_path("/root/shared/x/b").await.unwrap();
+        assert_eq!(ret, None);
+        let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
+        assert_eq!(ret, None);
+    
+        let begin = std::time::Instant::now();
+        op_env
+            .insert_with_key("/root/shared/x/b", "c", &x1_value)
+            .await
+            .unwrap();
+        let costs = begin.elapsed().as_millis() as u64;
+        Stat::write(zone, ROOT_STATE_INSERT_OPERATION, costs).await;
+
+        /* 
+            root_state 跨zone access(get_object_by_key和list)
+        */
+        {
+            // let root_state = ood2.root_state_stub(None, Some(dec1.to_owned()));
+            // let root_info = root_state.get_current_root().await.unwrap();
+            // debug!("current root: {:?}", root_info);
+            // let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
+            // assert_eq!(ret, None);
+        }
+    
+        let begin = std::time::Instant::now();
+        let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
+        assert_eq!(ret, Some(x1_value));
+        let costs = begin.elapsed().as_millis() as u64;
+        Stat::write(zone, ROOT_STATE_GET_OPERATION, costs).await;
+    
+        let ret = op_env.remove_with_path("/root/shared/x/b/d", None).await.unwrap();
+        assert_eq!(ret, None);
+    
+        let begin = std::time::Instant::now();
+    
+        let _root = op_env.commit().await.unwrap();
+        let costs = begin.elapsed().as_millis() as u64;
+        Stat::write(zone, ROOT_STATE_COMMIT_OPERATION, costs).await;
+
+        info!("test op env path complete!");
+    
+        let dur = begin_root.elapsed();
+        info!("end test PathOpEnv diff dec: {:?}", dur);
+        let costs = begin_root.elapsed().as_millis() as u64;
+        Stat::write(zone, ROOT_STATE_MAP, costs).await;
+
+        {
+            let begin = std::time::Instant::now();
+            // create_path_op_env None access默认权限操作自己dec_id
+            let op_env = root_state.create_path_op_env().await.unwrap();
+            op_env.remove_with_path("/set", None).await.unwrap();
+    
+            let ret = op_env.insert("/set/a", &x2_value).await.unwrap();
+            assert!(ret);
+    
+            let ret = op_env.contains("/set/a", &x1_value).await.unwrap();
+            assert!(!ret);
+    
+            let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
+            assert!(ret);
+    
+            let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
+            assert!(!ret);
+    
+            let ret = op_env.remove("/set/a", &x1_value).await.unwrap();
+            assert!(ret);
+    
+            let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
+            assert!(ret);
+    
+            let _root = op_env.commit().await.unwrap();
+    
+            let costs = begin.elapsed().as_millis() as u64;
+            Stat::write(zone, ROOT_STATE_SET, costs).await;
+        }
+    }
+
+    /* 
+        测试local-cache的同zone，覆盖map和set
+    */
+    {
+        let x1_value = ObjectId::from_base58("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
+        let x2_value = ObjectId::from_base58("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
+        {
+            let begin = std::time::Instant::now();
+            let local_cache = device1.local_cache_stub(None);
+            let op_env = local_cache.create_path_op_env().await.unwrap();
+            // test create_new
+            op_env.remove_with_path("/root/shared/new", None).await.unwrap();
+            
+            if let Err(e) = op_env
+                .create_new_with_path("/root/shared/new/a", ObjectMapSimpleContentType::Map)
+                .await
+            {
+                assert!(e.code() == BuckyErrorCode::AlreadyExists);
+            }
+
+            if let Err(e) = op_env
+                .create_new_with_path("/root/shared/new/c", ObjectMapSimpleContentType::Map)
+                .await
+            {
+                assert!(e.code() == BuckyErrorCode::AlreadyExists);
+            }
+
+            // 首先移除老的值，如果存在的话
+            op_env.remove_with_path("/root/shared/x/b", None).await.unwrap();
+        
+            let ret = op_env.get_by_path("/root/shared/x/b").await.unwrap();
+            assert_eq!(ret, None);
+            let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
+            assert_eq!(ret, None);
+        
+            op_env
+                .insert_with_key("/root/shared/x/b", "c", &x1_value)
+                .await
+                .unwrap();
+        
+            let _ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
+        
+            let ret = op_env.remove_with_path("/root/shared/x/b/d", None).await.unwrap();
+            assert_eq!(ret, None);
+                
+            let _root = op_env.commit().await.unwrap();
+        
+            let costs = begin.elapsed().as_millis() as u64;
+            Stat::write(zone, LOCAL_CACHE_MAP, costs).await;
+        }
+        {
+            let begin = std::time::Instant::now();
+            // create_path_op_env None access默认权限操作自己dec_id
+            let local_cache = device1.local_cache_stub(None);
+            let op_env = local_cache.create_path_op_env().await.unwrap();
+            op_env.remove_with_path("/set", None).await.unwrap();
+    
+            let ret = op_env.insert("/set/a", &x2_value).await.unwrap();
+            assert!(ret);
+    
+            let ret = op_env.contains("/set/a", &x1_value).await.unwrap();
+            assert!(!ret);
+    
+            let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
+            assert!(ret);
+    
+            let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
+            assert!(!ret);
+    
+            let ret = op_env.remove("/set/a", &x1_value).await.unwrap();
+            assert!(ret);
+    
+            let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
+            assert!(ret);
+    
+            let _root = op_env.commit().await.unwrap();
+    
+            let costs = begin.elapsed().as_millis() as u64;
+            Stat::write(zone, LOCAL_CACHE_SET, costs).await;
+        }
+
+    }
+
 }
 
 async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl Into<String>, perm: AccessPermissions) {
@@ -74,248 +313,5 @@ async fn open_access(stack: &SharedCyfsStack, dec_id: &ObjectId, req_path: impl 
     };
 
     meta.add_access(item).await.unwrap();
-
-}
-
-// 测试root-state的同zone的跨dec操作 需要配合权限
-async fn test_path_op_env_cross_dec(
-    user1_stack: &SharedCyfsStack,
-    user1_device1_stack: &SharedCyfsStack,
-    zone: &SimZone) {
-
-    info!("begin test PathOpEnv Cross Desc...");
-    let begin_root = std::time::Instant::now();
-    // source_dec_id 为 user1_stack.open传入的,  target_dec_id为user1_device1 open的dec_id
-    // 目前的root_state 不支持 . ..
-    let target_dec_id = user1_device1_stack.dec_id().unwrap().to_owned();
-    let root_state = user1_stack.root_state_stub(None, Some(target_dec_id));
-    let root_info = root_state.get_current_root().await.unwrap();
-    debug!("current root: {:?}", root_info);
-
-    // 目标req_path层, dec-id开启对应的权限才可以操作
-    open_access(&user1_device1_stack, &target_dec_id, "/root/shared", AccessPermissions::None).await;
-
-    let access = RootStateOpEnvAccess::new("/", AccessPermissions::Full);   // 对跨dec路径操作这个perm才work
-    let op_env = root_state.create_path_op_env_with_access(Some(access)).await.unwrap();
-
-
-    let x1_value = ObjectId::from_base58("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
-    let x2_value = ObjectId::from_base58("95RvaS5F94aENffFhjY1FTXGgby6vUW2AkqWYhtzrtHz").unwrap();
-
-    // test create_new
-    op_env.remove_with_path("/root/shared/new", None).await.unwrap();
-    op_env
-        .create_new_with_path("/root/shared/new/a", ObjectMapSimpleContentType::Map)
-        .await
-        .unwrap();
-    op_env
-        .create_new_with_path("/root/shared/new/c", ObjectMapSimpleContentType::Set)
-        .await
-        .unwrap();
-
-    if let Err(e) = op_env
-        .create_new_with_path("/root/shared/new/a", ObjectMapSimpleContentType::Map)
-        .await
-    {
-        assert!(e.code() == BuckyErrorCode::AlreadyExists);
-    } else {
-        unreachable!();
-    }
-
-    if let Err(e) = op_env
-        .create_new_with_path("/root/shared/new/c", ObjectMapSimpleContentType::Map)
-        .await
-    {
-        assert!(e.code() == BuckyErrorCode::AlreadyExists);
-    } else {
-        unreachable!();
-    }
-
-    info!("begin test RootState Remove Operation...");
-    let begin = std::time::Instant::now();
-    
-    // 首先移除老的值，如果存在的话
-    op_env.remove_with_path("/root/shared/x/b", None).await.unwrap();
-    
-    let dur = begin.elapsed();
-    info!("end test RootState Remove Operation: {:?}", dur);
-    let costs = begin.elapsed().as_millis() as u64;
-    // 记录下耗时到本地device
-    Stat::write(zone, ROOT_STATE_REMOVE_OPERATION, costs).await;
-
-    let ret = op_env.get_by_path("/root/shared/x/b").await.unwrap();
-    assert_eq!(ret, None);
-    let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
-    assert_eq!(ret, None);
-
-    info!("begin test RootState Insert Operation...");
-    let begin = std::time::Instant::now();
-    op_env
-        .insert_with_key("/root/shared/x/b", "c", &x1_value)
-        .await
-        .unwrap();
-
-    let dur = begin.elapsed();
-    info!("end test RootState Insert Operation: {:?}", dur);
-    let costs = begin.elapsed().as_millis() as u64;
-    // 记录下耗时到本地device
-    Stat::write(zone, ROOT_STATE_INSERT_OPERATION, costs).await;
-
-    info!("begin test RootState Get Operation...");
-    let begin = std::time::Instant::now();
-    let ret = op_env.get_by_path("/root/shared/x/b/c").await.unwrap();
-    assert_eq!(ret, Some(x1_value));
-
-    let dur = begin.elapsed();
-    info!("end test RootState Get Operation: {:?}", dur);
-    let costs = begin.elapsed().as_millis() as u64;
-    // 记录下耗时到本地device
-    Stat::write(zone, ROOT_STATE_GET_OPERATION, costs).await;
-
-    let ret = op_env.remove_with_path("/root/shared/x/b/d", None).await.unwrap();
-    assert_eq!(ret, None);
-
-    info!("begin test RootState Commit Operation...");
-    let begin = std::time::Instant::now();
-
-    let root = op_env.commit().await.unwrap();
-    let dur = begin.elapsed();
-    info!("end test RootState Commit Operation: {:?}", dur);
-    let costs = begin.elapsed().as_millis() as u64;
-    // 记录下耗时到本地device
-    Stat::write(zone, ROOT_STATE_COMMIT_OPERATION, costs).await;
-    info!("new dec root is: {:?}", root);
-
-    {
-        info!("begin test OwnerRootState...");
-        let begin = std::time::Instant::now();
-
-        // create_path_op_env None access默认权限操作自己dec_id
-        let op_env = root_state.create_path_op_env().await.unwrap();
-        op_env.remove_with_path("/set", None).await.unwrap();
-
-        let ret = op_env.insert("/set/a", &x2_value).await.unwrap();
-        assert!(ret);
-
-        let ret = op_env.contains("/set/a", &x1_value).await.unwrap();
-        assert!(!ret);
-
-        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-        assert!(ret);
-
-        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-        assert!(!ret);
-
-        let ret = op_env.remove("/set/a", &x1_value).await.unwrap();
-        assert!(ret);
-
-        let ret = op_env.insert("/set/a", &x1_value).await.unwrap();
-        assert!(ret);
-
-        let root = op_env.commit().await.unwrap();
-        debug!("new dec root is: {:?}", root);
-
-        let dur = begin.elapsed();
-        info!("end test OwnerRootState: {:?}", dur);
-    }
-
-    info!("test op env path complete!");
-
-    let dur = begin_root.elapsed();
-    info!("end test PathOpEnv Cross Desc: {:?}", dur);
-    let costs = begin_root.elapsed().as_millis() as u64;
-    Stat::write(zone, PATH_OP_ENV_CROSS_DEC, costs).await;
-
-}
-
-async fn test_single_op_env_cross_dec(
-    user1_stack: &SharedCyfsStack,
-    user1_device1_stack: &SharedCyfsStack,
-    zone: &SimZone) {
-
-    info!("begin test SinglehOpEnv Cross Desc...");
-    let begin = std::time::Instant::now();
-    // source_dec_id 为 user1_stack.open传入的,  target_dec_id为user1_device1 open的dec_id
-    // 目前的root_state 不支持 . ..
-    let source_dec_id = user1_stack.dec_id().unwrap().to_owned();
-    let target_dec_id = user1_device1_stack.dec_id().unwrap().to_owned();
-    let root_state = user1_stack.root_state_stub(None, Some(target_dec_id));
-    let root_info = root_state.get_current_root().await.unwrap();
-    debug!("current root: {:?}", root_info);
-
-    // 目标req_path层, dec-id开启对应的权限才可以操作
-    open_access(&user1_device1_stack, &target_dec_id, "/root/shared", AccessPermissions::None).await;
-    
-    // work
-    let access = RootStateOpEnvAccess::new("/root/shared", AccessPermissions::ReadAndWrite);
-    let op_env = root_state.create_single_op_env_with_access(Some(access)).await.unwrap();
-    open_access(&user1_stack, &source_dec_id, "/root/shared", AccessPermissions::None).await;
-
-    // 初始化
-    let ret = op_env.load_by_path("/root/shared").await.unwrap();
-
-    let x1_value = ObjectId::from_base58("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
-    let x2_value = ObjectId::from_base58("95RvaS5aZKKM8ghTYmsTyhSEWD4pAmALoUSJx1yNxSx5").unwrap();
-
-    // test create_new
-    // 首先移除老的值，如果存在的话
-    op_env.remove_with_key("b", None).await.unwrap();
-    op_env.remove_with_key("c", None).await.unwrap();
-
-    let ret = op_env.get_by_key("b").await.unwrap();
-    assert_eq!(ret, None);
-    let ret = op_env.get_by_key("c").await.unwrap();
-    assert_eq!(ret, None);
-
-    op_env
-        .insert_with_key("b", &x1_value)
-        .await
-        .unwrap();
-
-    let ret = op_env.get_by_key("b").await.unwrap();
-    assert_eq!(ret, Some(x1_value));
-
-    let ret = op_env.remove_with_key("/d", None).await.unwrap();
-    assert_eq!(ret, None);
-
-    let root = op_env.commit().await.unwrap();
-    info!("new dec root is: {:?}", root);
-
-    {
-        // create_single_op_env None access默认权限操作自己dec_id
-        // 首先尝试查询一下/a/b对应的object_map，用以后续校验id是否相同
-        let root_state = user1_stack.root_state_stub(None, None);
-
-        let single_op_env = root_state.create_single_op_env().await.unwrap();
-        single_op_env.load_by_path("/").await.unwrap();
-
-        let current_b = single_op_env.get_current_root().await;
-
-        single_op_env
-        .insert_with_key("c", &x2_value)
-        .await
-        .unwrap();
-
-        let test1_value = single_op_env.get_by_key("c").await.unwrap();
-        assert_eq!(test1_value, Some(x2_value));
-
-        let prev_value = single_op_env
-            .set_with_key("c", &x1_value, Some(x2_value), false)
-            .await
-            .unwrap();
-        assert_eq!(prev_value, Some(x2_value));
-
-        // 创建新的b，但老的仍然继续有效
-        let new_root = single_op_env.commit().await.unwrap();
-       
-        info!("dec root changed to {}", new_root);
-    }
-
-    info!("test single op env complete!");
-
-    let dur = begin.elapsed();
-    info!("end test SinglehOpEnv Cross Desc: {:?}", dur);
-    let costs = begin.elapsed().as_millis() as u64;
-    Stat::write(zone, SINGLE_OP_ENV_CROSS_DEC, costs).await;
 
 }
