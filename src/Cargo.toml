@@ -24,7 +24,7 @@ members = [
     "./component/cyfs-task-manager",
     "./component/cyfs-chunk-cache",
     "./component/cyfs-chunk-lib",
-	"./component/cyfs-mobile-stack",
+    "./component/cyfs-mobile-stack",
 
     "./service/base",
     "./service/ood-control",
