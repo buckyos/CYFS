@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::collections::HashMap;
 use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Local;
@@ -68,47 +67,50 @@ impl Client {
             attachment: vec![],
             context: "".to_owned(),
         };
-        // 概况
-        let mut table = Table::new();
-        table.set_header(vec!["Total People", "Total Device"]);
         if let Ok(ret) = self.get_desc().await {
-            let ret: Vec<u64> = ret.into_iter().map(|v| v.1).collect();
-            table.add_row(ret);
-            println!("{table}");
+            let t1 = format!("<p> Total Peoples: {}</p>", ret.0);
+            stat_info.context += t1.as_str();
+            stat_info.context += "\n\n";
+            let t2 = format!("<p> Total Devices: {}</p>", ret.1);
+            stat_info.context += t2.as_str();
+            stat_info.context += "\n\n";
         }
-
-        let t1 = format!("{table}");
-        stat_info.context += t1.as_str();
-        stat_info.context += "\n\n";
-
-        let mut table1 = Table::new();
-        table1.set_header(vec!["Query Meta Object", "Success", "Failed"]);
 
         let mut table2 = Table::new();
         table2.set_header(vec!["Call Meta Api", "Success", "Failed"]);
         // object 查询 / api 调用情况
         if let Ok(ret) = self.meta_stat().await {
             for v in ret.0.into_iter() {
-                table1.add_row(vec![v.id, v.success.to_string(), v.failed.to_string()]);
+                let t1 = format!("<p> Query Meta Object: {}, Success: {}, Failed:{}</p>", v.id, v.success.to_string(), v.failed.to_string());
+                stat_info.context += t1.as_str();
+                stat_info.context += "\n";
             }
 
             for v in ret.1.into_iter() {
-                table2.add_row(vec![v.id, v.success.to_string(), v.failed.to_string()]);
+                let t1 = format!("<p> Call Meta Api: {}, Success: {}, Failed:{}</p>", v.id, v.success.to_string(), v.failed.to_string());
+                stat_info.context += t1.as_str();
+                stat_info.context += "\n";
             }
         }
-        println!("{table1}");
-        println!("{table2}");
 
-        let t2 = format!("{table1}");
-        stat_info.context += t2.as_str();
         stat_info.context += "\n\n";
-
-        let t3 = format!("{table2}");
-        stat_info.context += t3.as_str();
         stat_info.context += "\n\n";
 
         // 日表
         if let Ok(ret) = self.period_stat(MetaDescObject::Device).await {
+
+            for v in ret.0.iter() {
+                let t1 = format!("<p> Date: {}, Device Add: {}</p>", v.0, v.1);
+                stat_info.context += t1.as_str();
+                stat_info.context += "\n";
+            }
+
+            for v in ret.1.iter() {
+                let t1 = format!("<p> Date: {}, Device Active: {}</p>", v.0, v.1);
+                stat_info.context += t1.as_str();
+                stat_info.context += "\n";
+            }
+
             let f1 = "device_daily_add.png";
             let f2 = "device_daily_active.png";
             let _ = self.flow_chart(ret.0, f1);
@@ -116,9 +118,22 @@ impl Client {
 
             stat_info.attachment.push(f1.to_string());
             stat_info.attachment.push(f2.to_string());
+
         }
 
         if let Ok(ret) = self.period_stat(MetaDescObject::People).await {
+            for v in ret.0.iter() {
+                let t1 = format!("<p> Date: {}, People Add: {}</p>", v.0, v.1);
+                stat_info.context += t1.as_str();
+                stat_info.context += "\n";
+            }
+
+            for v in ret.1.iter() {
+                let t1 = format!("<p> Date: {}, People Active: {}</p>", v.0, v.1);
+                stat_info.context += t1.as_str();
+                stat_info.context += "\n";
+            }
+
             let f1 = "people_daily_add.png";
             let f2 = "people_daily_active.png";
             let _ = self.flow_chart(ret.0, f1);
@@ -131,13 +146,11 @@ impl Client {
 
     }
 
-    pub async fn get_desc(&self) -> BuckyResult<HashMap<u8, u64>> {
-        let mut ret = HashMap::new();
-        for i in 0..2 {
-            let sum = self.storage.get_desc(i as u8).await?;
-            ret.insert(i, sum);
-        }
-        Ok(ret)
+    pub async fn get_desc(&self) -> BuckyResult<(u64, u64)> {
+        let total_peoples = self.storage.get_desc(0 as u8).await?;
+        let total_devices = self.storage.get_desc(1 as u8).await?;
+
+        Ok((total_peoples, total_devices))
     }
     
     // FIXME: 默认取当前日期
@@ -181,7 +194,7 @@ impl Client {
 
         let mut start = bucky_time_to_js_time(now);
         let end = js_time_to_bucky_time(start);
-        start -= 30 * 86400 * 1000;
+        start -= self.deadline * 86400 * 1000;
         let start = js_time_to_bucky_time(start);
         let v1 = self.storage.get_meta_stat(0u8, start, end).await?;
         let v2 = self.storage.get_meta_stat(1u8, start, end).await?;

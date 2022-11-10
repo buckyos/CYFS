@@ -31,7 +31,7 @@ impl Lettre {
         .from(self.mine_email.as_ref())
         .subject("Meta Chain Stat")
         .html("<h1>Stat Metrics</h1>")
-        .text(info.context.to_owned());
+        .html(info.context.to_owned());
 
         for v in info.attachment.iter() {
             email = email.attachment_from_file(&std::path::Path::new(v.as_str()), None, &mime::IMAGE_PNG).unwrap();
