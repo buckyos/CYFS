@@ -156,7 +156,7 @@ async fn open_hook_access(stack: &SharedCyfsStack) {
 pub async fn test(zone: &SimZone) -> bool {
     let dec1 = new_dec("User1Device1.non", zone);
     let dec2 = new_dec("User1Device2.non", zone);
-
+    let dec3 = new_dec("User2Ood.non", zone);
     let device1 = zone.get_shared_stack("zone1_device1")
         .fork_with_new_dec(Some(dec1.clone()))
         .await
@@ -168,6 +168,12 @@ pub async fn test(zone: &SimZone) -> bool {
         .await
         .unwrap();
     device2.wait_online(None).await.unwrap();
+
+    let ood2 = zone.get_shared_stack("zone2_ood")
+    .fork_with_new_dec(Some(dec3.clone()))
+    .await
+    .unwrap();
+    ood2.wait_online(None).await.unwrap();
 
     device1
         .root_state_meta_stub(None, None)
@@ -190,18 +196,24 @@ pub async fn test(zone: &SimZone) -> bool {
     let mut access = AccessString::new(0);
     access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Call);
     access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Call);
+    access.set_group_permission(AccessGroup::FriendZone, AccessPermission::Call);
     access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Call);
     access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Call);
+    access.set_group_permission(AccessGroup::OthersZone, AccessPermission::Call);
 
     access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
     access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::FriendZone, AccessPermission::Read);
     access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Read);
     access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::OthersZone, AccessPermission::Read);
 
     access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Write);
     access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::FriendZone, AccessPermission::Write);
     access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Write);
     access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Write);
+    access.set_group_permission(AccessGroup::OthersZone, AccessPermission::Write);
     
     let item = GlobalStatePathAccessItem {
         path: call_path.to_owned(),
@@ -209,10 +221,19 @@ pub async fn test(zone: &SimZone) -> bool {
     };
     device2
         .root_state_meta_stub(None, None)
+        .add_access(item.clone())
+        .await
+        .unwrap();
+
+    ood2
+        .root_state_meta_stub(None, None)
         .add_access(item)
         .await
         .unwrap();
 
+    /* 
+        同zone 跨dec
+    */
     // put_object_same_zone_diff_dec 不允许跨zone put, 允许跨zone get
     {
         info!("begin test_put_object...");
@@ -313,6 +334,101 @@ pub async fn test(zone: &SimZone) -> bool {
         info!("end test_delete_object: {:?}", dur);
         let costs = begin.elapsed().as_millis() as u64;
         Stat::write(zone, NON_DELETE_OBJECT, costs).await;
+    }
+
+    /* 
+        跨zone 跨dec  get/post object
+    */
+    {
+        // 生成临时object数据
+        let object = new_object(&dec1, "test_outer_non6");
+        let object_raw = object.to_vec().unwrap();
+        let object_id = object.desc().object_id();
+        let mut req =
+        NONPutObjectOutputRequest::new_router(Some(ood2.local_device_id().object_id().to_owned()), object_id, object_raw);
+        let req_path = RequestGlobalStatePath::new(Some(dec3.clone()), Some(call_path.to_owned()));
+        req.common.req_path = Some(req_path.to_string());
+        // 权限位操作
+        let mut access = AccessString::default();
+        access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Read);
+        access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Write);
+        access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Call);
+
+        access.set_group_permission(AccessGroup::OthersZone, AccessPermission::Read);
+        access.set_group_permission(AccessGroup::OthersZone, AccessPermission::Write);
+        access.set_group_permission(AccessGroup::OthersZone, AccessPermission::Call);
+
+        // 这里是object层对象
+        req.access = Some(access);
+
+        let ret = ood2.non_service().put_object(req.clone()).await.unwrap();
+        match ret.result {
+            NONPutObjectResult::Accept => {
+                info!("temp put_object success! {}", object_id);
+            }
+            _ => {
+                unreachable!();
+            }
+        }
+        // 跨zone跨dec get
+        {
+            info!("begin test_outer_get_object...");
+            let begin = std::time::Instant::now();
+    
+            let req =
+            NONGetObjectOutputRequest::new_router(Some(ood2.local_device_id().object_id().to_owned()), object_id, None);
+
+            let ret = device1.non_service().get_object(req.clone()).await.unwrap();
+            info!("test_outer_get_object: {}", ret);
+    
+            let dur = begin.elapsed();
+            info!("end test_outer_get_object: {:?}", dur);
+            let costs = begin.elapsed().as_millis() as u64;
+            Stat::write(zone, NON_OUTER_GET_OBJECT, costs).await;
+        }
+        // 跨zone跨dec post
+        {
+            info!("begin test_outer_post_object...");
+            let begin = std::time::Instant::now();
+            let req_path = RequestGlobalStatePath::new(Some(dec3.clone()), Some(call_path.to_owned()));
+            ood2.router_handlers().post_object().add_handler(
+                RouterHandlerChain::Handler,
+                "post_object_outer_zone_diff_dec",
+                0,
+                None,
+                Some(req_path.to_string()),
+                RouterHandlerAction::Default,
+                Some(Box::new(OnPostObject { })),
+            ).await.unwrap();
+        
+            // post_object (device1, dec1) -> (ood2, dec3) 
+            let (q, a) = qa_pair();
+            let object_id = q.text_id().object_id().to_owned();
+        
+            let mut req = NONPostObjectOutputRequest::new_router(Some(ood2.local_device_id().object_id().to_owned()), object_id, q.to_vec().unwrap());
+            req.common.dec_id = Some(dec3.clone());
+        
+        
+            let req_path = RequestGlobalStatePath::new(Some(dec3.clone()), Some(call_path.to_owned()));
+            req.common.req_path = Some(req_path.to_string());
+        
+            let ret = device1.non_service().post_object(req.clone()).await;
+            assert!(ret.is_ok());
+            let resp = ret.unwrap();
+        
+            let t = Text::clone_from_slice(&resp.object.unwrap().object_raw).unwrap();
+            assert_eq!(*t.text_id().object_id(), *a.text_id().object_id());
+    
+            let dur = begin.elapsed();
+            info!("end test_outer_post_object: {:?}", dur);
+            let costs = begin.elapsed().as_millis() as u64;
+            Stat::write(zone, NON_OUTER_POST_OBJECT, costs).await;
+        }
+
+        // 销毁临时object数据
+        let req =
+        NONDeleteObjectOutputRequest::new_router(Some(ood2.local_device_id().object_id().to_owned()), object_id, None);
+        let _ret = ood2.non_service().delete_object(req.clone()).await.unwrap();
     }
 
     info!("test all non case success!");
