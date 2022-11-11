@@ -60,8 +60,9 @@ pub fn id_from_desc(desc: &SavedMetaObject) -> ObjectId {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MetaDescObject {
     Device,
     People,
+    Unkown,
 }

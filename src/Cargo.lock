@@ -2075,6 +2075,7 @@ dependencies = [
  "cyfs-base",
  "cyfs-debug",
  "cyfs-meta",
+ "cyfs-meta-lib",
  "hex",
  "lazy_static",
  "log 0.4.17",

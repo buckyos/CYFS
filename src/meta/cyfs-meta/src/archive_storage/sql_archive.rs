@@ -61,11 +61,10 @@ impl SqlArchive {
         {
             let mut data = self.stat.write().unwrap();
             std::mem::swap(&mut *data, &mut empty);
-            info!("stat: {}, empty: {}", data.len(), empty.len());
+            //debug!("stat: {}, empty: {}", data.len(), empty.len());
         }
 
         if empty.is_empty() {
-            async_std::task::sleep(std::time::Duration::from_secs(60)).await;
             return Ok(());
         }
 
@@ -80,8 +79,8 @@ impl SqlArchive {
                 let query_result = conn.query_one(sqlx::query(sql).bind(stat.id.to_owned())).await;
                 if let Err(err) = query_result {
                     if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
-                        let insert_sql = "INSERT INTO device_stat(obj_id,obj_type,create_time,update_time) VALUES (?1,?2,?3,?4)";
-                        conn.execute_sql(sqlx::query(insert_sql).bind(stat.id.to_owned()).bind(stat.key).bind(stat.value as i64).bind(stat.value as i64)).await?;
+                        let insert_sql = "INSERT INTO device_stat(obj_id,obj_type,height,create_time,update_time) VALUES (?1,?2,?3,?4,?5)";
+                        conn.execute_sql(sqlx::query(insert_sql).bind(stat.id.to_owned()).bind(stat.key).bind(stat.extra as i64).bind(stat.value as i64).bind(stat.value as i64)).await?;
                     } else {
                     }
                 } else {
@@ -150,6 +149,7 @@ impl SqlArchive {
         let sql = format!("CREATE TABLE IF NOT EXISTS \"{}\"
             (\"obj_id\" CHAR(45) PRIMARY KEY NOT NULL UNIQUE,
             \"obj_type\" INTEGER NOT NULL,
+            \"height\" INTEGER NOT NULL,
             \"create_time\" INTEGER NOT NULL,
             \"update_time\" INTEGER NOT NULL);", self.stat_tbl_name());
         let mut conn = self.get_conn().await;
@@ -239,7 +239,7 @@ impl Archive for SqlArchive {
         Ok(())
     }
 
-    async fn create_or_update_desc_stat(&self, objid: &ObjectId, obj_type: u8) -> BuckyResult<()> {
+    async fn create_or_update_desc_stat(&self, objid: &ObjectId, obj_type: u8, height: u64) -> BuckyResult<()> {
         if !self.trace {
             return Ok(());
         }
@@ -247,7 +247,7 @@ impl Archive for SqlArchive {
         if let Ok( mut lock) = self.stat.write() {
             let id = format!("{}_desc", objid.to_string());
             let now = bucky_time_now();
-            lock.insert(id, Stat { id: objid.to_string(), key: obj_type, value: now, extra: 0 });
+            lock.insert(id, Stat { id: objid.to_string(), key: obj_type, value: now, extra: height });
         }
 
         Ok(())

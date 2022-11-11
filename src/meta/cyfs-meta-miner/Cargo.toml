@@ -20,3 +20,4 @@ async-std = { version = "1.11", features = ["attributes"] }
 lazy_static = "1.4"
 log = "0.4"
 clap = "2.34.0"
+cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }

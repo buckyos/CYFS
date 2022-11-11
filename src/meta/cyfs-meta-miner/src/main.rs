@@ -28,3 +28,43 @@ async fn main() {
     let server = MetaHttpServer::new(miner, chain_port);
     server.run().await.unwrap();
 }
+
+#[cfg(test)]
+mod main_tests {
+    use cyfs_base::*;
+    use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
+    use std::str::FromStr;
+
+    pub const OBJ_ID: &'static str = "5r4MYfFU8UfvqjN3FPxcf7Ta4gx9c56jrXdNwnVyp29e";
+    //cargo test -- --nocapture
+    #[async_std::test]
+    async fn test_get_meta_object() -> BuckyResult<()> {
+        let meta_client = MetaClient::new_target(MetaMinerTarget::from_str("http://127.0.0.1:1423")?)
+        .with_timeout(std::time::Duration::from_secs(60 * 2));
+
+        let object_id = ObjectId::from_str(OBJ_ID).unwrap();
+        let ret = MetaClientHelper::get_object(&meta_client, &object_id).await?;
+        if ret.is_none() {
+            let msg = format!(
+                "load object from meta chain but not found! id={}",
+                object_id
+            );
+            println!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+        }
+
+        let (_, object_raw) = ret.unwrap();
+
+        // 解码
+        let p = People::clone_from_slice(&object_raw).map_err(|e| {
+            let msg = format!("decode people object failed! id={}, {}", object_id, e);
+            println!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+        println!("people: {:?}, {:?}", p.name(), p.ood_list());
+
+        Ok(())
+    }
+}
