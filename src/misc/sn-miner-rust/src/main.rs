@@ -65,26 +65,9 @@ fn get_ep_list() -> Vec<Endpoint> {
     eps
 }
 
-fn get_debug_config(key: &str) -> Option<&str> {
-    let mut keys: LinkedList<&str> = key.split('.').collect();
-
-    let mut first = match keys.pop_front() {
-        Some(first) => DebugConfig::get_config(first),
-        None => None,
-    }?;
-
-    while let Some(key) = keys.pop_front() {
-        first = first.get(key)?;
-    }
-
-    first.as_str()
-}
-
 #[async_std::main]
 async fn main() {
     cyfs_util::process::check_cmd_and_exec(APP_NAME);
-
-    let report_url = get_debug_config("report.dingtalk");
 
     cyfs_debug::CyfsLoggerBuilder::new_app(APP_NAME)
         .level("info")
@@ -93,15 +76,10 @@ async fn main() {
         .unwrap()
         .start();
 
-    if let Some(report_url) = report_url {
-        cyfs_debug::PanicBuilder::new(APP_NAME, APP_NAME)
-        .http_bug_report(report_url)
-    } else {
-        cyfs_debug::PanicBuilder::new(APP_NAME, APP_NAME)
-    }
-    .exit_on_panic(true)
-    .build()
-    .start();
+    cyfs_debug::PanicBuilder::new(APP_NAME, APP_NAME)
+        .exit_on_panic(true)
+        .build()
+        .start();
 
     let data_folder = ::cyfs_util::get_app_data_dir(APP_NAME);
     let (local_device, private_key) = if let Ok(loaded_device) =
