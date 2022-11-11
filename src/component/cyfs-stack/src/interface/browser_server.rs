@@ -114,6 +114,24 @@ impl BrowserSanboxHttpServer {
         }
     }
 
+    fn is_browser(user_agent: &str) -> bool {
+        if user_agent.find("node-fetch").is_some() {
+            return false;
+        }
+
+        true
+
+        /*
+        const BROWSER_IDS: [&str] = ["Mozilla", "WebKit", "Chrome", "Safari", "Gecko", "Firefox", "MSIE"];
+        for id in &BROWSER_IDS {
+            if user_agent.find(id).is_some() {
+                return true;
+            }
+        }
+        false
+        */
+    }
+
     fn extract_origin<'a>(req: &'a http_types::Request,) -> BuckyResult<Option<RequestOriginString<'a>>> {
         let user_agent = req.header(http_types::headers::USER_AGENT);
         debug!("req user agent: {:?}", user_agent);
@@ -133,6 +151,12 @@ impl BrowserSanboxHttpServer {
         }
 
         if origin.is_none() {
+            // pass through the requests from none browser(eg. node js/sdk)
+            let user_agent_str = user_agent.as_ref().unwrap().last().as_str();
+            if !Self::is_browser(user_agent_str) {
+                return Ok(None)
+            }
+
             // check if the request open in the browser new tab address bar! 
             // Only the front protocol are allowed!
             if let Some(root) = Self::extract_front_root(req) {
