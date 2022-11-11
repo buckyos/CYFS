@@ -162,7 +162,7 @@ impl Client {
         let mut end = bucky_time_to_js_time(bucky_time_now());
         end = js_time_to_bucky_time(end - ((end  % (86400 * 1000))));
         let start = end;
-        for j in 1..=self.deadline {
+        for j in 0..=self.deadline {
             let end_js = bucky_time_to_js_time(end) - (j -1) * 86400 * 1000;
     
             let bucky_end = js_time_to_bucky_time(end_js);
@@ -170,7 +170,8 @@ impl Client {
             let start_js = bucky_time_to_js_time(start) - j * 86400 * 1000;
             let bucky_start = js_time_to_bucky_time(start_js);
 
-            let sys_time = bucky_time_to_system_time(bucky_end);
+            let date_end = js_time_to_bucky_time(end_js - 86400 * 1000);
+            let sys_time = bucky_time_to_system_time(date_end);
             let datetime: DateTime<Local> = sys_time.into();
 
             let x_axis = format!("{:02}{:02}", datetime.month(), datetime.day()).parse::<u64>().unwrap(); 

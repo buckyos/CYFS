@@ -61,12 +61,14 @@ impl Storage for SqliteStorage {
     }
 
     async fn get_desc_add(&self, obj_type: u8, start: u64, end: u64) -> BuckyResult<u64> {
+        info!("add obj_type: {}, start: {}, end: {}", obj_type, start, end);
         let row = sqlx::query(GET_OBJ_ADD_DESC_NUM).bind(obj_type).bind(start as i64).bind(end as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
         let sum: i64 = row.try_get(0).unwrap_or(0);
         Ok(sum as u64)
     }
 
     async fn get_desc_active(&self, obj_type: u8, start: u64, end: u64) -> BuckyResult<u64> {
+        info!("active obj_type: {}, start: {}, end: {}", obj_type, start, end);
         let row = sqlx::query(GET_OBJ_ACTIVE_DESC_NUM).bind(obj_type).bind(start as i64).bind(end as i64).fetch_one(self.pool.get().unwrap()).await.map_err(map_sql_err)?;
         let sum: i64 = row.try_get(0).unwrap_or(0);
         Ok(sum as u64)
