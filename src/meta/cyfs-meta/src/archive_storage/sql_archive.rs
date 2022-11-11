@@ -5,15 +5,27 @@ use cyfs_base::*;
 use sqlx::{Row, Connection, ConnectOptions};
 use crate::helper::get_meta_err_code;
 use async_std::sync::{Mutex, MutexGuard, Arc};
+use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::RwLock;
 use log::*;
 use std::path::{PathBuf, Path};
 use std::time::Duration;
 use sqlx::sqlite::{SqliteJournalMode};
+use async_std::prelude::StreamExt;
+
+#[derive(Clone, Debug)]
+pub struct Stat {
+    id: String,
+    key: u8,
+    value: u64,
+    extra: u64,
+}
 pub struct SqlArchive {
     conn: Mutex<ArchiveConnection>,
     transaction_seq: Mutex<i32>,
     trace: bool,
+    stat: RwLock<HashMap<String, Stat>>,
 }
 
 pub type ArchiveRef = std::sync::Arc<SqlArchive>;
@@ -21,13 +33,110 @@ pub type ArchiveWeakRef = std::sync::Weak<SqlArchive>;
 
 impl SqlArchive {
     pub fn new(conn: ArchiveConnection, trace: bool) -> ArchiveRef {
-        ArchiveRef::new(SqlArchive {
+        let ret = ArchiveRef::new(SqlArchive {
             conn: Mutex::new(conn),
             transaction_seq: Mutex::new(0),
             trace,
-        })
+            stat: RwLock::new(HashMap::new()),
+        });
+
+        let manager = ret.clone();
+        async_std::task::spawn(async move {
+            // 默认每1分钟存一次
+            let mut interval = async_std::stream::interval(Duration::from_secs(60));
+            while let Some(_) = interval.next().await {
+                let _ = manager.inner_save().await;
+            }
+        });
+
+        return ret;
     }
 
+    async fn inner_save(&self) -> BuckyResult<()> {
+        if !self.trace {
+            return Ok(());
+        }
+
+        let mut empty = HashMap::new();
+        {
+            let mut data = self.stat.write().unwrap();
+            std::mem::swap(&mut *data, &mut empty);
+            info!("stat: {}, empty: {}", data.len(), empty.len());
+        }
+
+        if empty.is_empty() {
+            async_std::task::sleep(std::time::Duration::from_secs(60)).await;
+            return Ok(());
+        }
+
+        let mut conn = self.get_conn().await;
+        
+        for (key, stat) in empty.iter() {
+
+            if key.contains("_desc") {
+                // device_stat
+                let sql = "SELECT update_time FROM device_stat WHERE obj_id=?1";
+
+                let query_result = conn.query_one(sqlx::query(sql).bind(stat.id.to_owned())).await;
+                if let Err(err) = query_result {
+                    if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
+                        let insert_sql = "INSERT INTO device_stat(obj_id,obj_type,create_time,update_time) VALUES (?1,?2,?3,?4)";
+                        conn.execute_sql(sqlx::query(insert_sql).bind(stat.id.to_owned()).bind(stat.key).bind(stat.value as i64).bind(stat.value as i64)).await?;
+                    } else {
+                    }
+                } else {
+                    let sql = "UPDATE device_stat SET update_time=?1 WHERE obj_id=?2";
+                    conn.execute_sql(sqlx::query(sql).bind(stat.value as i64).bind(stat.id.to_owned())).await?;
+                }
+            }
+            if key.contains("_meta_obj") {
+                // meta_object_stat
+                let sql = "SELECT success, failed FROM meta_object_stat WHERE id=?1";
+                let query_result = conn.query_one(sqlx::query(sql).bind(stat.id.to_owned())).await;
+                if let Err(err) = query_result {
+                    if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
+                        let now = bucky_time_now();
+                        let insert_sql = "INSERT INTO meta_object_stat(id,success,failed,create_time) VALUES (?1,?2,?3,?4)";
+                        conn.execute_sql(sqlx::query(insert_sql).bind(stat.id.to_owned()).bind(stat.value as i64).bind(stat.extra as i64).bind(now as i64)).await?;
+                    }
+                } else {
+                    let row = query_result?;
+                    let temp_success: i64 = row.get("success");
+                    let temp_failed: i64 = row.get("failed");
+
+                    let success = temp_success + stat.value as i64;
+                    let failed  = temp_failed + stat.extra as i64;
+                    let sql = "UPDATE meta_object_stat SET success=?1, failed=?2 WHERE id=?3";
+                    conn.execute_sql(sqlx::query(sql).bind(success).bind(failed).bind(stat.id.to_owned())).await?;
+                }
+
+            }
+            
+            if key.contains("_meta_api") {
+                // meta_api_stat
+                let sql = "SELECT success, failed FROM meta_api_stat WHERE id=?1";
+                let query_result = conn.query_one(sqlx::query(sql).bind(stat.id.to_owned())).await;
+                if let Err(err) = query_result {
+                    if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
+                        let insert_sql = "INSERT INTO meta_api_stat(id,success,failed) VALUES (?1,?2,?3)";
+                        conn.execute_sql(sqlx::query(insert_sql).bind(stat.id.to_owned()).bind(stat.value as i64).bind(stat.extra as i64)).await?;
+                    }
+                } else {
+                    let row = query_result?;
+                    let temp_success: i64 = row.get("success");
+                    let temp_failed: i64 = row.get("failed");
+
+                    let success = temp_success + stat.value as i64;
+                    let failed  = temp_failed + stat.extra as i64;
+                    let sql = "UPDATE meta_api_stat SET success=?1, failed=?2 WHERE id=?3";
+                    conn.execute_sql(sqlx::query(sql).bind(success).bind(failed).bind(stat.id.to_owned())).await?;
+                }
+            }
+        }
+
+        Ok(())
+
+    }
     pub async fn get_conn(&self) -> MutexGuard<'_, ArchiveConnection> {
         self.conn.lock().await
     }
@@ -134,73 +243,13 @@ impl Archive for SqlArchive {
         if !self.trace {
             return Ok(());
         }
-        let sql = "SELECT update_time FROM device_stat WHERE obj_id=?1";
-        let mut conn = self.get_conn().await;
-        let query_result = conn.query_one(sqlx::query(sql).bind(objid.to_string())).await;
-        return if let Err(err) = query_result {
-            if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
-                let insert_sql = "INSERT INTO device_stat(obj_id,obj_type,create_time,update_time) VALUES (?1,?2,?3,?4)";
-                let now = bucky_time_now();
-                conn.execute_sql(sqlx::query(insert_sql).bind(objid.to_string()).bind(obj_type).bind(now as i64).bind(now as i64)).await?;
-                Ok(())
-            } else {
-                Err(crate::meta_err!(ERROR_EXCEPTION))
-            }
-        } else {
-            let sql = "UPDATE device_stat SET update_time=?1 WHERE obj_id=?2";
+
+        if let Ok( mut lock) = self.stat.write() {
+            let id = format!("{}_desc", objid.to_string());
             let now = bucky_time_now();
-            conn.execute_sql(sqlx::query(sql).bind(now as i64).bind(objid.to_string())).await?;
-    
-            Ok(())
+            lock.insert(id, Stat { id: objid.to_string(), key: obj_type, value: now, extra: 0 });
         }
-    }
 
-    // people/device 数目
-    async fn get_obj_desc_stat(&self, obj_type: u8) -> BuckyResult<u64> {
-        if !self.trace {
-            return Ok(0u64);
-        }
-        let sql = "SELECT count(*) FROM device_stat WHERE obj_type=?1";
-        let mut conn = self.get_conn().await;
-        let row = conn.query_one(sqlx::query(sql).bind(obj_type)).await?;
-
-        let sum: i64 = row.try_get(0).unwrap_or(0);
-        Ok(sum as u64)
-    }
-
-    // people/device 每日新增
-    async fn get_daily_added_desc(&self, obj_type: u8, date: u64) -> BuckyResult<u64> {
-        if !self.trace {
-            return Ok(0u64);
-        }
-        let sql = "SELECT count(*) FROM device_stat WHERE obj_type=?1 and create_time=?2";
-        let mut conn = self.get_conn().await;
-        let row = conn.query_one(sqlx::query(sql).bind(obj_type).bind(date as i64)).await?;
-
-        let sum: i64 = row.try_get(0).unwrap_or(0);
-        Ok(sum as u64)
-    }
-
-    // people/device 每日活跃
-    async fn get_daily_active_desc(&self, obj_type: u8, date: u64) -> BuckyResult<u64> {
-        if !self.trace {
-            return Ok(0u64);
-        }
-        let sql = "SELECT count(*) FROM device_stat WHERE obj_type=?1 and update_time=?2";
-        let mut conn = self.get_conn().await;
-        let row = conn.query_one(sqlx::query(sql).bind(obj_type).bind(date as i64)).await?;
-
-        let sum: i64 = row.try_get(0).unwrap_or(0);
-        Ok(sum as u64)
-    }
-
-    async fn drop_desc_stat(&self, obj_id: &ObjectId) -> BuckyResult<()> {
-        if !self.trace {
-            return Ok(());
-        }
-        let sql = "delete from device_stat where obj_id=?1";
-        let mut conn = self.get_conn().await;
-        conn.execute_sql(sqlx::query(sql).bind(obj_id.to_string())).await?;
         Ok(())
     }
 
@@ -208,75 +257,45 @@ impl Archive for SqlArchive {
         if !self.trace {
             return Ok(());
         }
-        let mut success: i64 = 0;
-        let mut failed:i64 = 0;
-        if status == 0 {
-            success = 1;
-        } else {
-            failed = 1;
-        }
-        let sql = "SELECT success, failed FROM meta_object_stat WHERE id=?1";
-        let mut conn = self.get_conn().await;
-        let query_result = conn.query_one(sqlx::query(sql).bind(objid.to_string())).await;
-        return if let Err(err) = query_result {
-            if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
-                let now = bucky_time_now();
-                let insert_sql = "INSERT INTO meta_object_stat(id,success,failed,create_time) VALUES (?1,?2,?3,?4)";
-                conn.execute_sql(sqlx::query(insert_sql).bind(objid.to_string()).bind(success).bind(failed).bind(now as i64)).await?;
-                Ok(())
+        if let Ok( mut lock) = self.stat.write() {
+            let id = format!("{}_meta_obj", objid.to_string());
+            let stat = &Stat { id: objid.to_string(), key: status, value: 0, extra: 0  };
+            let cur_stat = lock.get(&id).unwrap_or(stat);
+            let mut success: u64 = cur_stat.value;
+            let mut failed:u64 = cur_stat.extra;
+            if status == 0 {
+                success += 1;
             } else {
-                Err(crate::meta_err!(ERROR_EXCEPTION))
+                failed += 1;
             }
-        } else {
-            let row = query_result?;
-            let temp_success: i64 = row.get("success");
-            let temp_failed: i64 = row.get("failed");
-
-            success += temp_success;
-            failed  += temp_failed;
-            let sql = "UPDATE meta_object_stat SET success=?1, failed=?2 WHERE id=?3";
-            conn.execute_sql(sqlx::query(sql).bind(success).bind(failed).bind(objid.to_string())).await?;
-            Ok(())
+            lock.insert(id, Stat { id: objid.to_string(), key: status, value: success, extra: failed  });
         }
+        Ok(())
     }
 
-
-    async fn set_meta_api_stat(&self, id: &str, status: u8) -> BuckyResult<()> {
+    async fn set_meta_api_stat(&self, api: &str, status: u8) -> BuckyResult<()> {
         if !self.trace {
             return Ok(());
         }
-        let mut success: i64 = 0;
-        let mut failed:i64 = 0;
-        if status == 0 {
-            success = 1;
-        } else {
-            failed = 1;
-        }
-        let sql = "SELECT success, failed FROM meta_api_stat WHERE id=?1";
-        let mut conn = self.get_conn().await;
-        let query_result = conn.query_one(sqlx::query(sql).bind(id)).await;
-        return if let Err(err) = query_result {
-            if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
-                let insert_sql = "INSERT INTO meta_api_stat(id,success,failed) VALUES (?1,?2,?3)";
-                conn.execute_sql(sqlx::query(insert_sql).bind(id).bind(success).bind(failed)).await?;
-                Ok(())
-            } else {
-                Err(crate::meta_err!(ERROR_EXCEPTION))
-            }
-        } else {
-            let row = query_result?;
-            let temp_success: i64 = row.get("success");
-            let temp_failed: i64 = row.get("failed");
 
-            success += temp_success;
-            failed  += temp_failed;
-            let sql = "UPDATE meta_api_stat SET success=?1, failed=?2 WHERE id=?3";
-            conn.execute_sql(sqlx::query(sql).bind(success).bind(failed).bind(id)).await?;
-            Ok(())
+        if let Ok( mut lock) = self.stat.write() {
+            let id = format!("{}_meta_api", api);
+            let stat = &Stat { id: api.to_string(), key: status, value: 0, extra: 0  };
+
+            let cur_stat = lock.get(&id).unwrap_or(stat);
+            let mut success: u64 = cur_stat.value;
+            let mut failed:u64 = cur_stat.extra;
+            if status == 0 {
+                success += 1;
+            } else {
+                failed += 1;
+            }
+            lock.insert(id, Stat { id: api.to_string(), key: status, value: success, extra: failed  });
         }
+
+        Ok(())
     }
 }
-
 
 pub struct SqlArchiveStorage {
     path: PathBuf,
@@ -288,7 +307,6 @@ impl ArchiveStorage for SqlArchiveStorage {
     fn path(&self) -> &Path {
         self.path.as_path()
     }
-
     async fn create_archive(&self, _read_only: bool) -> ArchiveRef {
         let _locker = self.get_locker().await;
         if *self.path.as_path() == *storage_in_mem_path() || !self.trace {
