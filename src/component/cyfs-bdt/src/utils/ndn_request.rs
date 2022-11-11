@@ -8,37 +8,63 @@ use crate::{
 };
 use super::local_chunk_store::{LocalChunkWriter, LocalChunkListWriter};
 
-pub struct NdnRequester {
-    stack: Stack, 
-    task: Box<dyn DownloadTask>
+// context -> referer 的过程
+
+// referer -> ToString
+
+// 从父context生成子context -》 知道如何转化成referer
+// 知道所在的task group
+
+// context id 
+
+
+// referer 包含 acl上下文; 传输组上下文
+
+
+// client
+struct NdnDataRequester {
+    stack: Stack,
+    root_context: Context
 }
 
-impl NdnRequester {
-    pub fn new(
-        stack: Stack, 
-        root: ObjectId, 
-        context: SingleDownloadContext
-    ) -> BuckyResult<Self> {
-        Self {
-            stack
-        }
-    }
-
-    pub fn close(&self) {
+impl NdnDataRequester {
+    fn get_context(inner_path: String) -> BuckyResult<Context> {
 
     }
 
-    pub fn cancel(&self) {
-
-    }
-
-    pub async fn get(
+    fn get_data(
         &self, 
-        object: ObjectId, 
-        inner_path: String
-    ) -> BuckyResult<(
-        Box<dyn std::io::Seek + async_std::io::Read>, 
-        Option<Box<dyn DownloadTask>>)> {
-        unimplemented!()
-    } 
+        object_id: ObjectId, 
+        inner_path: String, 
+        group: String
+    ) -> BuckyResult<impl Seek + Read> {
+        let context = self.get_context(inner_path)?;
+        let task = create_download_task(object_id, group, context);
+        task.reader()
+    }
 }
+
+
+struct Context {
+    parent: Context, 
+}
+
+
+impl Context {
+    fn add_source(&self)
+    fn get_source(&self)
+}
+
+struct DownloadGroup {
+    
+}
+
+
+
+// gateway
+
+struct NdnDataRequester {
+    stack: Stack,
+    root_context: Context
+}
+

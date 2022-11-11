@@ -12,7 +12,8 @@ use crate::{
 };
 use super::super::{
     chunk::*, 
-    types::*
+    types::*, 
+    download::*
 };
 use super::{
     protocol::v0::*,
@@ -79,8 +80,7 @@ struct SessionImpl {
     chunk: ChunkId, 
     channel: Channel, 
     session_id: TempSeq, 
-    desc: ChunkEncodeDesc, 
-    referer: Option<String>, 
+    source: DownloadSourceWithReferer<DeviceId>, 
     state: RwLock<StateImpl>, 
 }
 
@@ -99,19 +99,15 @@ impl DownloadSession {
         chunk: ChunkId, 
         session_id: TempSeq, 
         channel: Channel, 
-	    referer: Option<String>, 
-        desc: ChunkEncodeDesc,  
+        source: DownloadSourceWithReferer<DeviceId>, 
         cache: ChunkStreamCache,
     ) -> Self { 
         Self(Arc::new(SessionImpl {
             chunk, 
             session_id,  
-            desc,
-	        referer, 
+            source, 
             state: RwLock::new(StateImpl::Interesting(InterestingState { 
-                history_speed: HistorySpeed::new(
-                    0, 
-                    channel.config().history_speed.clone()), 
+                history_speed: HistorySpeed::new(0, channel.config().history_speed.clone()), 
                 waiters: StateWaiter::new(), 
                 last_send_time: None, 
                 next_send_time: None, 
@@ -119,6 +115,10 @@ impl DownloadSession {
             })), 
             channel, 
         }))
+    }
+
+    pub fn source(&self) -> &DownloadSourceWithReferer<DeviceId> {
+        &self.0.source
     }
 
     pub fn start(&self) {
@@ -143,8 +143,8 @@ impl DownloadSession {
             let interest = Interest {
                 session_id: self.session_id().clone(), 
                 chunk: self.chunk().clone(), 
-                prefer_type: self.desc().clone(), 
-                referer: self.referer().cloned(), 
+                prefer_type: self.source().encode_desc.clone(), 
+                referer: Some(self.source().referer.clone()), 
                 from: None
             };
             info!("{} sent {:?}", self, interest);
@@ -164,14 +164,6 @@ impl DownloadSession {
 
     pub fn chunk(&self) -> &ChunkId {
         &self.0.chunk
-    }
-
-    pub fn desc(&self) -> &ChunkEncodeDesc {
-        &self.0.desc
-    }
-
-    pub fn referer(&self) -> Option<&String> {
-        self.0.referer.as_ref()
     }
 
     pub fn channel(&self) -> &Channel {
@@ -292,7 +284,7 @@ impl DownloadSession {
                     let state = &mut *self.0.state.write().unwrap();
                     match state {
                         Interesting(interesting) => {
-                            let decoder = StreamDecoder::new(self.chunk(), self.desc(), interesting.cache.clone());
+                            let decoder = StreamDecoder::new(self.chunk(), &self.source().encode_desc, interesting.cache.clone());
                             let mut downloading = DownloadingState {
                                 tunnel_state: tunnel.as_ref().download_state(), 
                                 history_speed: interesting.history_speed.clone(), 
@@ -384,9 +376,9 @@ impl DownloadSession {
         let interest = Interest {
             session_id: self.session_id().clone(), 
             chunk: self.chunk().clone(), 
-            prefer_type: self.desc().clone(), 
+            prefer_type: self.source().encode_desc.clone(), 
+            referer: Some(self.source().referer.clone()), 
             from: None,
-            referer: self.referer().cloned()
         };
         info!("{} sent {:?}", self, interest);
         self.channel().interest(interest);

@@ -46,7 +46,6 @@ pub fn get_download_task(
 pub fn create_download_group(
     stack: &Stack, 
     path: String, 
-    context: Option<SingleDownloadContext>
 ) -> BuckyResult<Box<dyn DownloadTask>> {
     if let Some(group) = stack.ndn().root_task().download().sub_task(path.as_str()) {
         Ok(group)
@@ -58,7 +57,7 @@ pub fn create_download_group(
             if let Some(sub) = parent.sub_task(part) {
                 parent = sub;
             } else {
-                let sub = DownloadGroup::new(stack.config().ndn.channel.history_speed.clone(), None, context.clone().unwrap_or(parent.context().clone()));
+                let sub = DownloadGroup::new(stack.config().ndn.channel.history_speed.clone(), None);
                 parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
                 parent = sub.clone_as_task();
             }
@@ -70,8 +69,7 @@ pub fn create_download_group(
 
 fn create_download_task_owner(
     stack: &Stack, 
-    group: Option<String>, 
-    context: Option<SingleDownloadContext>, 
+    group: Option<String>
 ) -> BuckyResult<(Box<dyn DownloadTask>, Option<String>)> {
     if let Some(group) = group {
         if group.len() == 0 {
@@ -92,7 +90,7 @@ fn create_download_task_owner(
         parts.remove(parts.len() - 1);
 
         let group_path = parts.join("::"); 
-        Ok((create_download_group(stack, group_path, context.clone())?, last_part))
+        Ok((create_download_group(stack, group_path)?, last_part))
     } else {
         Ok((stack.ndn().root_task().download().clone_as_task(), None))
     }
@@ -102,20 +100,20 @@ pub async fn download_chunk(
     stack: &Stack, 
     chunk: ChunkId, 
     group: Option<String>, 
-    context: Option<SingleDownloadContext>
-) -> BuckyResult<ChunkTask> {
+    context: impl DownloadContext
+) -> BuckyResult<(Box<dyn DownloadTask>, ChunkTaskReader)> {
     let _ = stack.ndn().chunk_manager().track_chunk(&chunk).await?;
     
-    let (owner, path) = create_download_task_owner(stack, group, context.clone())?;
+    let (owner, path) = create_download_task_owner(stack, group)?;
     // 默认写到cache里面去
-    let task = ChunkTask::new(
+    let (task, reader) = ChunkTask::reader(
         stack.to_weak(), 
         chunk, 
-        context.unwrap_or(owner.context().clone()), 
+        context.clone_as_context()
     );
 
     let _ = owner.add_task(path, task.clone_as_task())?;
-    Ok(task)
+    Ok((task.clone_as_task(), reader))
 }
 
 pub async fn download_chunk_list(
@@ -123,21 +121,21 @@ pub async fn download_chunk_list(
     name: String, 
     chunks: &Vec<ChunkId>, 
     group: Option<String>, 
-    context: Option<SingleDownloadContext>, 
-) -> BuckyResult<ChunkListTask> {
+    context: impl DownloadContext, 
+) -> BuckyResult<(Box<dyn DownloadTask>, ChunkListTaskReader)> {
     let chunk_list = ChunkListDesc::from_chunks(chunks);
     let _ = futures::future::try_join_all(chunks.iter().map(|chunk| stack.ndn().chunk_manager().track_chunk(chunk))).await?;
 
-    let (owner, path) = create_download_task_owner(stack, group, context.clone())?;
-    let task = ChunkListTask::new(
+    let (owner, path) = create_download_task_owner(stack, group)?;
+    let (task, reader) = ChunkListTask::reader(
         stack.to_weak(), 
         name, 
         chunk_list, 
-        context.unwrap_or(owner.context().clone()), 
+        context.clone_as_context(), 
     );
     let _ = owner.add_task(path, task.clone_as_task())?;
 
-    Ok(task)
+    Ok((task.clone_as_task(), reader))
 }
 
 
@@ -159,21 +157,21 @@ pub async fn download_file(
     stack: &Stack, 
     file: File, 
     group: Option<String>, 
-    context: Option<SingleDownloadContext>
-) -> BuckyResult<FileTask> {
+    context: impl DownloadContext
+) -> BuckyResult<(Box<dyn DownloadTask>, ChunkListTaskReader)> {
     stack.ndn().chunk_manager().track_file(&file).await?;
 
-    let (owner, path) = create_download_task_owner(stack, group, context.clone())?;
+    let (owner, path) = create_download_task_owner(stack, group)?;
 
     let chunk_list = ChunkListDesc::from_file(&file)?;
-    let task = FileTask::new(
+    let (task, reader) = ChunkListTask::reader(
         stack.to_weak(), 
-        file, 
-        Some(chunk_list), 
-        context.unwrap_or(owner.context().clone()), 
+        file.desc().file_id().to_string(), 
+        chunk_list, 
+        context.clone_as_context()
     );
     let _ = owner.add_task(path, task.clone_as_task())?;
-    Ok(task)
+    Ok((task.clone_as_task(), reader))
 }
 
 

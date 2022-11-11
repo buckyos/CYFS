@@ -1,28 +1,15 @@
 use std::io::{Seek, SeekFrom};
-use async_std::{fs, future, io::prelude::*};
+use async_std::{fs, io::prelude::*};
 use cyfs_base::*;
 use cyfs_bdt::{
     download::*, 
     SingleDownloadContext,  
     Stack, 
     StackOpenParams, 
-    DownloadTask, 
-    DownloadTaskState, 
 };
 use sha2::Digest;
-use std::time::Duration;
 mod utils;
 
-async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {
-    loop {
-        match task.state() {
-            DownloadTaskState::Finished => {
-                break Ok(());
-            }
-            _ => {}
-        }
-    }
-}
 
 #[async_std::main]
 async fn main() {
@@ -110,15 +97,14 @@ async fn main() {
         .unwrap();
 
     
-    let task = download_file(
+    let (_, mut reader) = download_file(
         &*ln_stack, 
         file, 
         None, 
-        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
+        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     {
         let mut hasher = sha2::Sha256::new(); 
-        let mut reader = task.reader();
         let mut buffer = vec![0u8; (range.end - range.start) as usize];
         reader.seek(SeekFrom::Start(range.start)).unwrap();
         reader.read_exact(&mut buffer[..]).await.unwrap();
@@ -131,9 +117,4 @@ async fn main() {
         assert_eq!(range_hash.result(), hasher.result());
     }
 
-
-    let recv = future::timeout(Duration::from_secs(1), watch_task_finish(task.clone_as_task()))
-        .await
-        .unwrap();
-    let _ = recv.unwrap();
 }

@@ -21,7 +21,7 @@ impl RootTask {
     pub fn new(max_download_speed: u32, history_speed: HistorySpeedConfig) -> Self {
         Self(Arc::new(RootTaskImpl {
             max_download_speed, 
-            download: DownloadGroup::new(history_speed.clone(), None, SingleDownloadContext::default()), 
+            download: DownloadGroup::new(history_speed.clone(), None), 
             upload: UploadGroup::new(history_speed, None)
         }))
     }

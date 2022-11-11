@@ -38,7 +38,6 @@ struct StateImpl {
 }
 
 struct TaskImpl {
-    context: SingleDownloadContext, 
     priority: DownloadTaskPriority, 
     state: RwLock<StateImpl>
 }
@@ -50,11 +49,9 @@ impl DownloadGroup {
     pub fn new(
         history_speed: HistorySpeedConfig, 
         priority: Option<DownloadTaskPriority>, 
-        context: SingleDownloadContext
     ) -> Self {
         Self(Arc::new(TaskImpl {
             priority: priority.unwrap_or_default(), 
-            context, 
             state: RwLock::new(StateImpl {
                 task_state: TaskStateImpl::Downloading(DownloadingState {
                     entries: Default::default(), 
@@ -71,10 +68,6 @@ impl DownloadGroup {
 
 #[async_trait::async_trait]
 impl DownloadTask for DownloadGroup {
-    fn context(&self) -> &SingleDownloadContext {
-        &self.0.context
-    }
-
     fn clone_as_task(&self) -> Box<dyn DownloadTask> {
         Box::new(self.clone())
     }

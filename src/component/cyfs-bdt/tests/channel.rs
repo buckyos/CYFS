@@ -48,14 +48,14 @@ async fn one_small_chunk(ln_ep: &[&str], rn_ep: &[&str], uploader_config: Option
         .await
         .unwrap();
 
-    let task = download_chunk(
+    let (_, reader) = download_chunk(
         &*ln_stack,
         chunkid.clone(), 
         None, 
-        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])),
+        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]),
     ).await.unwrap();
 
-    ln_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+    ln_store.write_chunk(&chunkid, reader).await.unwrap();
     let recv = future::timeout(
         Duration::from_secs(5),
         watch_recv_chunk(ln_stack.clone(), chunkid.clone()),
@@ -101,14 +101,14 @@ async fn empty_chunk() {
     let chunk_hash = hash_data(&chunk_data[..]);
     let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
 
-    let task = download_chunk(
+    let (_, reader) = download_chunk(
         &*ln_stack,
         chunkid.clone(), 
         None, 
-        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
+        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
 
-    ln_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+    ln_store.write_chunk(&chunkid, reader).await.unwrap();
     let recv = future::timeout(
         Duration::from_secs(5),
         watch_recv_chunk(ln_stack.clone(), chunkid.clone()),
@@ -139,13 +139,13 @@ async fn one_small_chunk_with_refer() {
         .await
         .unwrap();
 
-    let task = download_chunk(
+    let (_, reader) = download_chunk(
         &*ln_stack,
         chunkid.clone(), 
         None, 
-        Some(SingleDownloadContext::desc_streams(Some("referer".to_owned()), vec![rn_stack.local_const().clone()])), 
+        SingleDownloadContext::desc_streams("referer".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
-    ln_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+    ln_store.write_chunk(&chunkid, reader).await.unwrap();
     let recv = future::timeout(
         Duration::from_secs(5),
         watch_recv_chunk(ln_stack.clone(), chunkid.clone()),
@@ -199,14 +199,14 @@ async fn one_small_chunk_in_file() {
     let path = dir.join(chunkid.to_string().as_str());
     local_chunk_writer(&*rn_stack, &chunkid, path).await.unwrap().write(Cursor::new(chunk_data)).await.unwrap();
 
-    let task = download_chunk(
+    let (_, reader) = download_chunk(
         &*ln_stack,
         chunkid.clone(), 
         None, 
-        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])),
+        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]),
     ).await.unwrap();
 
-    ln_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+    ln_store.write_chunk(&chunkid, reader).await.unwrap();
 
 
     let recv = future::timeout(
@@ -301,17 +301,17 @@ async fn one_small_chunk_double_source() {
         .await
         .unwrap();
 
-    let context = SingleDownloadContext::desc_streams(None, vec![
+    let context = SingleDownloadContext::desc_streams("".to_owned(), vec![
         ref_stack.local_const().clone(),
         src_stack.local_const().clone(),
     ]);
-    let task = download_chunk(
+    let (_, reader) = download_chunk(
         &*down_stack,
         chunkid.clone(), 
         None, 
-        Some(context),
+        context,
     ).await.unwrap();
-    down_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+    down_store.write_chunk(&chunkid, reader).await.unwrap();
 
 
     let recv = future::timeout(
@@ -402,17 +402,16 @@ async fn upload_from_downloader(ln_ep: &[&str], rn_ep: &[&str], uploader_config:
                 interest: &Interest, 
                 from: &Channel
             ) -> BuckyResult<()> {
-                let task = download_chunk(
+                let (_, reader) = download_chunk(
                     stack,
                     interest.chunk.clone(), 
                     None, 
-                    Some(SingleDownloadContext::desc_streams(None, vec![self.src_dev.desc().clone()])),
+                    SingleDownloadContext::desc_streams("".to_owned(), vec![self.src_dev.desc().clone()]),
                 ).await.unwrap();
 
                 {
                     let store = self.store.clone();
                     let chunk = interest.chunk.clone();
-                    let reader = task.reader();
                     task::spawn(async move {
                         store.write_chunk(&chunk, reader).await.unwrap();
                     });
@@ -465,14 +464,14 @@ async fn upload_from_downloader(ln_ep: &[&str], rn_ep: &[&str], uploader_config:
         .await
         .unwrap();
 
-    let task = download_chunk(
+    let (_, reader) = download_chunk(
         &*down_stack,
         chunkid.clone(), 
         None, 
-        Some(SingleDownloadContext::desc_streams(None, vec![cache_stack.local_const().clone()])),
+        SingleDownloadContext::desc_streams("".to_owned(), vec![cache_stack.local_const().clone()]),
     )
     .await.unwrap();
-    down_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+    down_store.write_chunk(&chunkid, reader).await.unwrap();
     let recv = future::timeout(
         Duration::from_secs(50),
         watch_recv_chunk(down_stack.clone(), chunkid.clone()),

@@ -104,16 +104,15 @@ async fn main() {
                 interest: &Interest, 
                 from: &Channel
             ) -> BuckyResult<()> {
-                let task = download_chunk(
+                let (_, reader) = download_chunk(
                     stack,
                     interest.chunk.clone(), 
                     None, 
-                    Some(SingleDownloadContext::desc_streams(None, vec![self.src_dev.desc().clone()])),
+                    SingleDownloadContext::desc_streams("".to_owned(), vec![self.src_dev.desc().clone()]),
                 ).await.unwrap();
                 {
                     let store = self.store.clone();
                     let chunk = interest.chunk.clone();
-                    let reader = task.reader();
                     task::spawn(async move {
                         store.write_chunk(&chunk, reader).await.unwrap();
                     });
@@ -165,13 +164,13 @@ async fn main() {
         .await
         .unwrap();
 
-    let task = download_chunk(
+    let (_, reader) = download_chunk(
         &*down_stack,
         chunkid.clone(), 
         None, 
-        Some(SingleDownloadContext::desc_streams(None, vec![cache_stack.local_const().clone(),])),
+        SingleDownloadContext::desc_streams("".to_owned(), vec![cache_stack.local_const().clone(),]),
     ).await.unwrap();
-    down_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+    down_store.write_chunk(&chunkid, reader).await.unwrap();
     let recv = future::timeout(
         Duration::from_secs(50),
         watch_recv_chunk(down_stack.clone(), chunkid.clone()),

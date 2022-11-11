@@ -20,18 +20,23 @@ use super::super::{
     channel::protocol::v0::*
 };
 
+
+pub trait DownloadContext: Send + Sync {
+    fn clone_as_context(&self) -> Box<dyn DownloadContext>;
+    fn referer(&self) -> &str;
+    fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool;
+    fn sources_of(&self, filter: Box<dyn Fn(&DownloadSource) -> bool>, limit: usize) -> LinkedList<DownloadSource>;
+}
+
 #[derive(Clone)]
 pub struct DownloadSource {
     pub target: DeviceDesc, 
-    pub object_id: Option<ObjectId>, 
     pub encode_desc: ChunkEncodeDesc, 
-    pub referer: Option<String>
 }
 
 
-
 struct SingleContextImpl {
-    referer: Option<String>, 
+    referer: String, 
     sources: RwLock<LinkedList<DownloadSource>>, 
 }
 
@@ -41,7 +46,7 @@ pub struct SingleDownloadContext(Arc<SingleContextImpl>);
 impl Default for SingleDownloadContext {
     fn default() -> Self {
         Self(Arc::new(SingleContextImpl {
-            referer: None, 
+            referer: "".to_owned(), 
             sources: RwLock::new(Default::default()), 
         }))
     }
@@ -52,21 +57,19 @@ impl SingleDownloadContext {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    pub fn new(referer: Option<String>) -> Self {
+    pub fn new(referer: String) -> Self {
         Self(Arc::new(SingleContextImpl {
             referer, 
             sources: RwLock::new(Default::default())
         }))
     }
 
-    pub fn desc_streams(referer: Option<String>, remotes: Vec<DeviceDesc>) -> Self {
+    pub fn desc_streams(referer: String, remotes: Vec<DeviceDesc>) -> Self {
         let mut sources = LinkedList::new();
         for remote in remotes {
             sources.push_back(DownloadSource {
                 target: remote, 
-                object_id: None, 
                 encode_desc: ChunkEncodeDesc::Stream(None, None, None), 
-                referer: None
             });
         } 
         Self(Arc::new(SingleContextImpl {
@@ -75,16 +78,14 @@ impl SingleDownloadContext {
         }))
     }
 
-    pub async fn id_streams(stack: &Stack, referer: Option<String>, remotes: Vec<DeviceId>) -> BuckyResult<Self> {
+    pub async fn id_streams(stack: &Stack, referer: String, remotes: Vec<DeviceId>) -> BuckyResult<Self> {
         let mut sources = LinkedList::new();
         for remote in remotes {
             let device = stack.device_cache().get(&remote).await
                 .ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, "device desc not found"))?;
             sources.push_back(DownloadSource {
                 target: device.desc().clone(), 
-                object_id: None, 
                 encode_desc: ChunkEncodeDesc::Stream(None, None, None), 
-                referer: None
             });
         } 
         Ok(Self(Arc::new(SingleContextImpl {
@@ -93,30 +94,36 @@ impl SingleDownloadContext {
         })))
     }
 
-    pub fn referer(&self) -> Option<&str> {
-        self.0.referer.as_ref().map(|s| s.as_str())
-    }
-
     pub fn add_source(&self, source: DownloadSource) {
         self.0.sources.write().unwrap().push_back(source);
     }
+}
 
-    pub fn source_exists(&self, source: &DownloadSource) -> bool {
-        let sources = self.0.sources.read().unwrap();
-        sources.iter().find(|s| s.target.device_id() == source.target.device_id() && s.encode_desc.support_desc(&source.encode_desc)).is_some()
+
+impl DownloadContext for SingleDownloadContext {
+    fn clone_as_context(&self) -> Box<dyn DownloadContext> {
+        Box::new(self.clone())
     }
 
-    pub fn sources_of(&self, filter: impl Fn(&DownloadSource) -> bool, limit: usize) -> LinkedList<DownloadSource> {
+    fn referer(&self) -> &str {
+        self.0.referer.as_str()
+    }
+
+    
+    fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool {
+        let sources = self.0.sources.read().unwrap();
+        sources.iter().find(|s| s.target.device_id().eq(target) && s.encode_desc.support_desc(encode_desc)).is_some()
+    }
+
+    fn sources_of(&self, filter: Box<dyn Fn(&DownloadSource) -> bool>, limit: usize) -> LinkedList<DownloadSource> {
         let mut result = LinkedList::new();
         let mut count = 0;
         let sources = self.0.sources.read().unwrap();
         for source in sources.iter() {
-            if filter(source) {
+            if (*filter)(source) {
                 result.push_back(DownloadSource {
                     target: source.target.clone(), 
-                    object_id: source.object_id.clone(), 
                     encode_desc: source.encode_desc.clone(), 
-                    referer: source.referer.clone().or(self.referer().map(|s| s.to_owned()))
                 });
                 count += 1;
                 if count >= limit {
@@ -129,114 +136,90 @@ impl SingleDownloadContext {
 }
 
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum ContextState {
-    Normal, 
-    Paused
+pub struct DownloadSourceWithReferer<T: Send + Sync> {
+    pub target: T, 
+    pub encode_desc: ChunkEncodeDesc, 
+    pub referer: String, 
+    context_id: IncreaseId 
 }
 
-struct ContextCount {
-    normal_count: usize, 
-    paused_count: usize
-}
-
-impl ContextCount {
-    fn state(&self) -> ContextState {
-        if self.normal_count > 0 {
-            ContextState::Normal 
-        } else {
-            ContextState::Paused
+impl Into<DownloadSourceWithReferer<DeviceId>> for DownloadSourceWithReferer<DeviceDesc> {
+    fn into(self) -> DownloadSourceWithReferer<DeviceId> {
+        DownloadSourceWithReferer {
+            target: self.target.device_id(), 
+            encode_desc: self.encode_desc, 
+            referer: self.referer, 
+            context_id: self.context_id 
         }
     }
-
-    fn task_count(&self) -> usize {
-        self.normal_count + self.paused_count
-    }
-}
-
-struct ContextStub {
-    context: SingleDownloadContext, 
-    count: ContextCount
 }
 
 struct MultiContextImpl {
-    contexts: RwLock<LinkedList<ContextStub>>
+    gen_id: IncreaseIdGenerator, 
+    contexts: LinkedList<(IncreaseId, Box<dyn DownloadContext>)>
 }
 
 #[derive(Clone)]
-pub struct MultiDownloadContext(Arc<MultiContextImpl>);
+pub struct MultiDownloadContext(Arc<RwLock<MultiContextImpl>>);
 
 impl MultiDownloadContext {
     pub fn new() -> Self {
-        Self(Arc::new(MultiContextImpl {
-            contexts: RwLock::new(LinkedList::new())
-        }))
+        Self(Arc::new(RwLock::new(MultiContextImpl {
+            gen_id: IncreaseIdGenerator::new(), 
+            contexts: (LinkedList::new())
+        })))
     }
 
-    pub fn add_context(&self, context: SingleDownloadContext) {
-        let mut contexts = self.0.contexts.write().unwrap();
-        if let Some(stub) = contexts.iter_mut().find(|s| s.context.ptr_eq(&context)) {
-            stub.count.normal_count += 1;
-        } else {
-            contexts.push_back(ContextStub {
-                context, 
-                count: ContextCount {
-                    normal_count: 1, 
-                    paused_count: 0
-                }
-            });
-        }
+    pub fn add_context(&self, context: &dyn DownloadContext) -> IncreaseId {
+        let mut state = self.0.write().unwrap();
+        let id = state.gen_id.generate();
+        state.contexts.push_back((id, context.clone_as_context()));
+        id
     }
 
 
-    pub fn remove_context(&self, context: &SingleDownloadContext, state: DownloadTaskState) {
-        let mut contexts = self.0.contexts.write().unwrap();
+    pub fn remove_context(&self, remove_id: &IncreaseId) {
+        let mut state = self.0.write().unwrap();
         
-        let to_remove = if let Some((index, stub)) = contexts.iter_mut().enumerate().find(|(_, stub)| stub.context.ptr_eq(context)) {
-            match state {
-                DownloadTaskState::Paused => if stub.count.paused_count > 0 {
-                    stub.count.paused_count -= 1;
-                }, 
-                _ => if stub.count.paused_count > 0 {
-                    stub.count.normal_count -= 1;
-                }, 
-            }
-            if stub.count.task_count() == 0 {
-                Some(index)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        if let Some(index) = to_remove {
-            let mut back_parts = contexts.split_off(index);
+        if let Some((index, _)) = state.contexts.iter().enumerate().find(|(_, (id, _))| id.eq(remove_id)) {
+            let mut back_parts = state.contexts.split_off(index);
             let _ = back_parts.pop_front();
-            contexts.append(&mut back_parts);
+            state.contexts.append(&mut back_parts);
             // contexts.remove(index);
         }
     }
 
-    pub fn sources_of(&self, filter: impl Fn(&DownloadSource) -> bool + Copy, limit: usize) -> LinkedList<DownloadSource> {
+    pub fn sources_of(&self, filter: impl Fn(&DownloadSource) -> bool + Copy + 'static, limit: usize) -> LinkedList<DownloadSourceWithReferer<DeviceDesc>> {
         let mut result = LinkedList::new();
         let mut limit = limit;
-        let contexts = self.0.contexts.read().unwrap();
-        for stub in contexts.iter() {
-            if stub.count.state() == ContextState::Normal {
-                let mut part = stub.context.sources_of(filter, limit);
-                limit -= part.len();
-                result.append(&mut part);
-                if limit == 0 {
-                    break;
-                }
-            } 
+        let state = self.0.read().unwrap();
+        for (id, context) in state.contexts.iter() {
+            let part = context.sources_of(Box::new(filter), limit);
+            limit -= part.len();
+            for source in part {
+                result.push_back(DownloadSourceWithReferer {
+                    target: source.target, 
+                    encode_desc: source.encode_desc, 
+                    referer: context.referer().to_owned(), 
+                    context_id: *id  
+                });
+            }
+            if limit == 0 {
+                break;
+            }
         }   
         result
     }
 
-    pub fn source_exists(&self, source: &DownloadSource) -> bool {
-        self.0.contexts.read().unwrap().iter().find(|stub| stub.context.source_exists(source)).is_some()
+    pub fn source_exists(&self, source: &DownloadSourceWithReferer<DeviceId>) -> bool {
+        let state = self.0.read().unwrap();
+        state.contexts.iter().find(|(id, context)|{
+            if source.context_id.eq(id) {
+                context.source_exists(&source.target, &source.encode_desc)
+            } else {
+                false
+            }
+        }).is_some()
     }
 }
 
@@ -273,7 +256,6 @@ pub enum DownloadTaskControlState {
 
 #[async_trait::async_trait]
 pub trait DownloadTask: Send + Sync {
-    fn context(&self) -> &SingleDownloadContext;
     fn clone_as_task(&self) -> Box<dyn DownloadTask>;
     fn state(&self) -> DownloadTaskState;
     fn control_state(&self) -> DownloadTaskControlState;
@@ -332,6 +314,10 @@ impl DownloadTaskReader {
             offset: 0, 
             task
         }
+    }
+
+    pub fn task(&self) -> &dyn DownloadTask {
+        self.task.as_ref()
     }
 }
 
@@ -411,4 +397,3 @@ impl async_std::io::Read for DownloadTaskReader {
         }
     }
 }
-

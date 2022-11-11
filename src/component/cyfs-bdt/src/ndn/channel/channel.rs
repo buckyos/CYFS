@@ -21,7 +21,8 @@ use crate::{
 use super::super::{
     types::*, 
     chunk::*, 
-    upload::*
+    upload::*, 
+    download::*
 };
 use super::{
     download::*, 
@@ -283,16 +284,14 @@ impl Channel {
         &self,  
         chunk: ChunkId, 
         session_id: TempSeq, 
-	    referer: Option<String>, 
-        desc: ChunkEncodeDesc,  
+        source: DownloadSourceWithReferer<DeviceId>, 
         cache: ChunkStreamCache
     ) -> BuckyResult<DownloadSession> {
         let session = DownloadSession::interest(
             chunk, 
             session_id, 
             self.clone(), 
-	        referer, 
-            desc,  
+	        source, 
             cache,
         );
 

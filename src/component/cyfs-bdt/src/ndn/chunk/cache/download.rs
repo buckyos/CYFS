@@ -182,13 +182,7 @@ impl ChunkDownloader {
             }
         };
         if let Some(session) = session {
-            let source = DownloadSource {
-                target: session.channel().tunnel().remote_const().clone(), 
-                object_id: Some(self.chunk().object_id()), 
-                encode_desc: session.desc().clone(), 
-                referer: session.referer().cloned()
-            };
-            if !self.context().source_exists(&source) {
+            if !self.context().source_exists(session.source()) {
                 session.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "user canceled"));
                 let state = &mut *self.0.state.write().unwrap();
                 match state {
@@ -213,13 +207,7 @@ impl ChunkDownloader {
 
         let cache = cache.unwrap();
         let stack = Stack::from(&self.0.stack);
-        let mut sources = self.context().sources_of(|source| {
-            if source.object_id.is_none() || source.object_id.as_ref().unwrap() == self.chunk().as_object_id() {
-                true
-            } else {
-                false
-            }
-        }, 1);
+        let mut sources = self.context().sources_of(|_| true, 1);
 
         if sources.len() > 0 {
             if !cache.loaded() {
@@ -229,19 +217,19 @@ impl ChunkDownloader {
            
             let source = sources.pop_front().unwrap();
             let channel = stack.ndn().channel_manager().create_channel(&source.target).unwrap();
-
-            let desc = match source.encode_desc {
+            
+           
+            let mut source: DownloadSourceWithReferer<DeviceId> = source.into();
+            source.encode_desc = match &source.encode_desc {
                 ChunkEncodeDesc::Unknown => ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 
                 ChunkEncodeDesc::Stream(..) => source.encode_desc.fill_values(self.chunk()), 
                 _ => unimplemented!()
             };
-            
 
             match channel.download( 
                 self.chunk().clone(), 
                 stack.ndn().chunk_manager().gen_session_id(), 
-                source.referer, 
-                desc, 
+                source, 
                 cache.clone()
             ) {
                 Ok(session) => {

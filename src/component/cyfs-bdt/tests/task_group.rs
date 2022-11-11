@@ -39,6 +39,7 @@ async fn one_task_group() {
             .await
             .unwrap();
 
+    let context = SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]);
     {
         let (chunk_len, chunk_data) = utils::random_mem(1024, 1024);
         let chunk_hash = hash_data(&chunk_data[..]);
@@ -49,15 +50,15 @@ async fn one_task_group() {
             .await
             .unwrap();
     
-        let context = SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()]);
+        
     
-        let task = download_chunk(
+        let (_, reader) = download_chunk(
             &*ln_stack,
             chunkid.clone(), 
             Some("test-group::".to_owned()), 
-            Some(context),
+            context.clone(), 
         ).await.unwrap();
-        ln_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+        ln_store.write_chunk(&chunkid, reader).await.unwrap();
 
         let recv = future::timeout(
             Duration::from_secs(5),
@@ -87,13 +88,13 @@ async fn one_task_group() {
             .await
             .unwrap();
     
-        let task = download_chunk(
+        let (_, reader) = download_chunk(
             &*ln_stack,
             chunkid.clone(), 
             Some("test-group::2".to_owned()), 
-            None, 
+            context.clone(), 
         ).await.unwrap();
-        ln_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+        ln_store.write_chunk(&chunkid, reader).await.unwrap();
 
         let group = get_download_task(&*ln_stack, "test-group").unwrap();
 

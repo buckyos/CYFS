@@ -374,19 +374,19 @@ impl DebugStub {
 
         let _ = tunnel.write_all("start downloading chunk..\r\n".as_ref()).await;
         let stack = Stack::from(&self.0.stack);
-        let context = SingleDownloadContext::id_streams(&stack, None, remotes).await
+        let context = SingleDownloadContext::id_streams(&stack, "".to_owned(), remotes).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
-        let task = download_chunk(&stack,
+        let (task, reader) = download_chunk(&stack,
             chunk_id.clone(),
             None, 
-            Some(context)).await
+            context).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
 
         local_chunk_writer(&stack, &chunk_id, local_path.clone()).await
             .map_err(|e| {
                 format!("download err: {}\r\n", e)
             })?
-            .write(task.reader()).await
+            .write(reader).await
             .map_err(|e| {
                 format!("download err: {}\r\n", e)
             })?;
@@ -417,13 +417,13 @@ impl DebugStub {
         let _ = tunnel.write_all("start downloading file..\r\n".as_ref()).await;
 
         let stack = Stack::from(&self.0.stack);
-        let context = SingleDownloadContext::id_streams(&stack, None, remotes).await
+        let context = SingleDownloadContext::id_streams(&stack, "".to_owned(), remotes).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
-        let task = download_file(
+        let (task, reader) = download_file(
             &stack, 
             file_id.clone(), 
             None,  
-            Some(context))
+            context)
             .await.map_err(|e| {
                 format!("download err: {}\r\n", e)
             })?;
@@ -432,7 +432,7 @@ impl DebugStub {
             .map_err(|e| {
                 format!("download err: {}\r\n", e)
             })?
-        .write(task.reader()).await
+        .write(reader).await
             .map_err(|e| {
                 format!("download err: {}\r\n", e)
             })?;

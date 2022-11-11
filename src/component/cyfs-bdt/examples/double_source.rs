@@ -91,21 +91,19 @@ async fn main() {
         let path = dir.join(chunkid.to_string().as_str());
         local_chunk_writer(&*rn_stack, &chunkid, path).await.unwrap().write(Cursor::new(chunk_data)).await.unwrap();
 
-        let context = SingleDownloadContext::new(None);
+        let context = SingleDownloadContext::new("".to_owned());
         context.add_source(DownloadSource {
             target: rn_stack.local_const().clone(), 
-            object_id: None, 
             encode_desc: ChunkEncodeDesc::reverse_stream(None, None), 
-            referer: None
         });
 
-        let task = download_chunk(
+        let (task, reader) = download_chunk(
             &*ln_stack, 
             chunkid.clone(), 
             None, 
-            Some(context), 
+            context, 
         ).await.unwrap();
-        ln_store.write_chunk(&chunkid, task.reader()).await.unwrap();
+        ln_store.write_chunk(&chunkid, reader).await.unwrap();
         watch_resource(task.clone_as_task());
 
         let recv = future::timeout(Duration::from_secs(50), watch_recv_chunk(ln_stack.clone(), chunkid.clone())).await.unwrap();

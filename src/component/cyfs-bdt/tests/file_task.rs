@@ -1,6 +1,5 @@
 use std::{
     sync::{Arc}, 
-    time::Duration, 
     io::{Seek, SeekFrom}
 };
 use async_std::{
@@ -9,23 +8,10 @@ use async_std::{
 use sha2::Digest;
 use cyfs_base::*;
 use cyfs_bdt::{
-    DownloadTask, 
-    DownloadTaskState, 
     SingleDownloadContext, 
     download::*
 };
 mod utils;
-
-async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {
-    loop {
-        match task.state() {
-            DownloadTaskState::Finished => {
-                break Ok(());
-            },
-            _ => {}
-        }
-    }
-}
 
 #[async_std::test]
 async fn one_small_file() {
@@ -54,15 +40,14 @@ async fn one_small_file() {
         ChunkList::ChunkInList(chunks)
     ).no_create_time().build();
 
-    let task = download_file(
+    let (_, reader) = download_file(
         &*ln_stack, 
         file, 
         None, 
-        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
+        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
-    async_std::io::copy(task.reader(), async_std::io::sink()).await.unwrap();
-    let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task.clone_as_task())).await.unwrap();
-    let _ = recv.unwrap();
+    async_std::io::copy(reader, async_std::io::sink()).await.unwrap();
+    
 }
 
 
@@ -96,14 +81,13 @@ async fn same_chunk_file() {
         ChunkList::ChunkInList(chunks)
     ).no_create_time().build();
 
-    let task = download_file(
+    let (_, reader) = download_file(
         &*ln_stack, file, 
         None, 
-        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
+        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
-    async_std::io::copy(task.reader(), async_std::io::sink()).await.unwrap();
-    let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task.clone_as_task())).await.unwrap();
-    let _ = recv.unwrap();
+    async_std::io::copy(reader, async_std::io::sink()).await.unwrap();
+  
 }
 
 
@@ -125,14 +109,13 @@ async fn empty_file() {
         ChunkList::ChunkInList(vec![])
     ).no_create_time().build();
 
-    let task = download_file(
+    let (_, reader) = download_file(
         &*ln_stack, file, 
         None, 
-        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
+        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
-    async_std::io::copy(task.reader(), async_std::io::sink()).await.unwrap();
-    let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task.clone_as_task())).await.unwrap();
-    let _ = recv.unwrap();
+    async_std::io::copy(reader, async_std::io::sink()).await.unwrap();
+   
 }
 
 
@@ -169,17 +152,16 @@ async fn one_small_file_with_ranges() {
     ).no_create_time().build();
 
     
-    let task = download_file(
+    let (_, mut reader) = download_file(
         &*ln_stack, 
         file, 
         None, 
-        Some(SingleDownloadContext::desc_streams(None, vec![rn_stack.local_const().clone()])), 
+        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     
     
     {
         let mut hasher = sha2::Sha256::new(); 
-        let mut reader = task.reader();
         let mut buffer = vec![0u8; (range.end - range.start) as usize];
         reader.seek(SeekFrom::Start(range.start)).unwrap();
         reader.read_exact(&mut buffer[..]).await.unwrap();
@@ -192,7 +174,4 @@ async fn one_small_file_with_ranges() {
         assert_eq!(range_hash.result(), hasher.result());
     }
     
-
-    let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task.clone_as_task())).await.unwrap();
-    let _ = recv.unwrap();
 }
