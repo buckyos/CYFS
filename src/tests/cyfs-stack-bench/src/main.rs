@@ -9,9 +9,9 @@ mod util;
 use std::sync::Arc;
 
 use clap::{App, Arg, ArgMatches};
-use cyfs_lib::{SharedCyfsStack};
+use cyfs_lib::{GlobalStatePathAccessItem, SharedCyfsStack};
 use log::*;
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
+use cyfs_base::{AccessPermissions, BuckyError, BuckyErrorCode, BuckyResult, DeviceId, ObjectId};
 use crate::bench::*;
 use crate::stat::Stat;
 use crate::post_service::*;
@@ -33,11 +33,24 @@ fn read_config(matches: &ArgMatches) -> BuckyResult<config::Config> {
     }
 }
 
+// 准备好对应的被动端协议栈，包括注册handler，开放权限等等, 返回这个协议栈的DeviceId
+async fn prepare_stack(stack: &SharedCyfsStack) -> DeviceId {
+    let _ = stack.online().await;
+
+    let stub = stack.root_state_meta_stub(None, None);
+    stub.add_access(GlobalStatePathAccessItem::new_group(NON_OBJECT_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
+
+    let service = TestService::new(stack.clone());
+    service.start().await;
+
+    stack.local_device_id()
+}
+
 #[async_std::main]
 async fn main() {
     let matches = App::new("cyfs-stack-bench").version(cyfs_base::get_version()).about("bench cyfs stack")
     .arg(Arg::with_name("simulator").long("simulator"))
-    .arg(Arg::with_name("times").short("t").long("times"))
+    .arg(Arg::with_name("times").short("t").long("times").takes_value(true))
     .arg(Arg::with_name("dec-service").short("d").long("dec-service"))
     .arg(Arg::with_name("config").short("c").long("config"))
     .get_matches();
@@ -58,12 +71,8 @@ async fn main() {
     if matches.is_present("dec-service") {
         //使用默认配置初始化non-stack，因为是跑在gateway后面，共享了gateway的协议栈，所以配置使用默认即可
         let cyfs_stack = SharedCyfsStack::open_default(Some(DEC_ID.clone())).await.unwrap();
-        let _ = cyfs_stack.online().await;
-
-        info!("start bench as service in {}", cyfs_stack.local_device_id());
-        let service = TestService::new(cyfs_stack);
-
-        service.start();
+        let stack_id = prepare_stack(&cyfs_stack).await;
+        info!("start bench as service in {}", stack_id);
         async_std::task::block_on(async_std::future::pending::<()>());
     }
 
@@ -71,14 +80,13 @@ async fn main() {
         Ok(mut config) => {
             if matches.is_present("simulator") {
                 info!("run benchmark on simulator, register service");
-                let service_stack = SharedCyfsStack::open_with_port(Some(DEC_ID.clone()), 21000, 21001).await.unwrap();
-                service_stack.online().await.unwrap();
+                let service_stack = SharedCyfsStack::open_with_port(Some(DEC_ID2.clone()), 21000, 21001).await.unwrap();
+                let stack_id = prepare_stack(&service_stack).await;
+                config.same_zone_target = Some(stack_id.object_id().clone());
 
-                let target_id = service_stack.local_device_id().object_id().clone();
-                let service = TestService::new(service_stack);
-                service.start();
-
-                config.target = Some(target_id);
+                let other_ood_stack = SharedCyfsStack::open_with_port(Some(DEC_ID2.clone()), 21010, 21011).await.unwrap();
+                let other_stack_id = prepare_stack(&other_ood_stack).await;
+                config.cross_zone_target = Some(other_stack_id.object_id().clone());
             }
 
             let run_times = matches.value_of("times").map(|times| {
@@ -91,11 +99,14 @@ async fn main() {
             let test_stack = SharedCyfsStack::open_with_port(Some(DEC_ID.clone()), config.http_port, config.ws_port).await.unwrap();
             test_stack.online().await.unwrap();
 
-            benchs.push(NONBench::new(test_stack.clone(), config.target.clone(), stat.clone(), run_times));
+            benchs.push(SameZoneNONBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(CrossZoneNONBench::new(test_stack.clone(), config.cross_zone_target.clone(), stat.clone(), run_times));
 
             for bench in &mut benchs {
-                debug!("start {} {}", "SIMULATOR", bench.name());
+                info!("begin test {}...", bench.name());
+                let begin = std::time::Instant::now();
                 let ret = bench.bench().await;
+                info!("end test {}, use {:?}", bench.name(), begin.elapsed());
                 if ret.is_err() {
                     error!("{} failed", bench.name());
                     break;
@@ -103,7 +114,7 @@ async fn main() {
             }
 
             // 输出统计
-            stat.print();
+            stat.print(benchs.as_slice());
         },
         Err(e) => {
             error!("read config error {}", e);
@@ -113,4 +124,5 @@ async fn main() {
 
 lazy_static::lazy_static! {
     static ref DEC_ID: ObjectId = cyfs_core::DecApp::generate_id(ObjectId::default(), "cyfs-stack-bench");
+    static ref DEC_ID2: ObjectId = cyfs_core::DecApp::generate_id(ObjectId::default(), "cyfs-stack-bench-2");
 }

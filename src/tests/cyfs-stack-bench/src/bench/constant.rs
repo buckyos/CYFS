@@ -46,3 +46,5 @@ pub const STAT_METRICS_LIST: [&'static str; 18] = [
     RMETA_INNER_ZONE_ACCESS,
 
 ];
+
+pub const NON_OBJECT_PATH: &str = "/non-objects";
