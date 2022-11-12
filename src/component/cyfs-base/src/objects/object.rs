@@ -499,7 +499,7 @@ impl ObjectId {
     }
 
     pub fn to_hash_value(&self) -> HashValue {
-        self.0.as_slice().into()
+        self.0.as_slice().try_into().unwrap()
     }
 
     pub fn from_base58(s: &str) -> BuckyResult<Self> {

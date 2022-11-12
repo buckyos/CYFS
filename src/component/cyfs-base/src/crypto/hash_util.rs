@@ -67,3 +67,36 @@ pub async fn hash_file(path: &Path) -> BuckyResult<(HashValue, u64)> {
 
     Ok((sha256.result().into(), file_len as u64))
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn hash_file_sync(path: &Path) -> BuckyResult<(HashValue, u64)> {
+    use std::io::Read;
+    
+    let mut file = std::fs::File::open(path)?;
+
+    let mut sha256 = sha2::Sha256::new();
+    let mut buf = Vec::with_capacity(1024 * 64);
+    unsafe {
+        buf.set_len(1024 * 64);
+    }
+    let mut file_len = 0;
+    loop {
+        match file.read(&mut buf) {
+            Ok(size) => {
+                if size == 0 {
+                    break;
+                }
+                sha256.input(&buf[0..size]);
+                file_len = file_len + size;
+            }
+            Err(e) => {
+                if let ErrorKind::Interrupted = e.kind() {
+                    continue; // Interrupted
+                }
+                return Err(BuckyError::from(e));
+            }
+        }
+    }
+
+    Ok((sha256.result().into(), file_len as u64))
+}
