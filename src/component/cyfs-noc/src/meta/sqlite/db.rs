@@ -133,6 +133,8 @@ impl SqliteMetaStorage {
         if old < CURRENT_VERSION {
             info!("will update noc meta db: {} -> {}", old, CURRENT_VERSION);
 
+            self.backup_db_file(old)?;
+
             for version in old + 1..CURRENT_VERSION + 1 {
                 Self::update_db(conn.deref_mut(), version)?;
 
@@ -149,6 +151,39 @@ impl SqliteMetaStorage {
             );
         }
 
+        Ok(())
+    }
+
+    fn backup_db_file(&self, old_version: i32) -> BuckyResult<()> {
+        let (hash, _len) = cyfs_base::hash_file_sync(&self.data_file)?;
+        let backup_file =
+            self.data_file
+                .with_extension(format!("{}.{}.db", old_version, hash.to_hex_string()));
+
+        if backup_file.exists() {
+            warn!(
+                "backup noc meta db file but already exists! file={}",
+                backup_file.display()
+            );
+            return Ok(());
+        }
+
+        if let Err(e) = std::fs::copy(&self.data_file, &backup_file) {
+            let msg = format!(
+                "copy noc meta db file to backup file error! {} -> {}, {}",
+                self.data_file.display(),
+                backup_file.display(),
+                e,
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
+        }
+
+        info!(
+            "copy noc meta db file to backup file success! {} -> {}",
+            self.data_file.display(),
+            backup_file.display()
+        );
         Ok(())
     }
 
