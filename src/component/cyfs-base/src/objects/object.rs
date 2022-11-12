@@ -72,7 +72,7 @@ impl From<[u8; 32]> for ObjectId {
         Self(GenericArray::from(v))
     }
 }
-
+/* 
 impl From<Vec<u8>> for ObjectId {
     fn from(v: Vec<u8>) -> Self {
         let ar: [u8; 32] = v.try_into().unwrap_or_else(|v: Vec<u8>| {
@@ -84,6 +84,24 @@ impl From<Vec<u8>> for ObjectId {
         });
 
         Self(GenericArray::from(ar))
+    }
+}
+*/
+impl TryFrom<Vec<u8>> for ObjectId {
+    type Error = BuckyError;
+    fn try_from(v: Vec<u8>) -> Result<Self, Self::Error> {
+        if v.len() != 32 {
+            let msg = format!(
+                "ObjectId expected bytes of length {} but it was {}",
+                32,
+                v.len()
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let ar: [u8; 32] = v.try_into().unwrap();
+        Ok(Self(GenericArray::from(ar)))
     }
 }
 
@@ -499,7 +517,7 @@ impl ObjectId {
             return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
         }
 
-        Ok(Self::from(buf))
+        Ok(Self::try_from(buf).unwrap())
     }
 
     pub fn to_base36(&self) -> String {
@@ -516,7 +534,7 @@ impl ObjectId {
             return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
         }
 
-        Ok(Self::from(buf))
+        Ok(Self::try_from(buf).unwrap())
     }
 
     pub fn object_category(&self) -> ObjectCategory {
