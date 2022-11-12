@@ -143,6 +143,7 @@ impl TryInto<NamedObjectMetaAccessInfo> for NamedObjectMetaAccessInfoRaw {
 
 pub(super) struct NamedObjectMetaDataRaw {
     pub object_id: String,
+    pub object_type: u16,
 
     pub owner_id: Option<String>,
     pub create_dec_id: String,
@@ -150,8 +151,13 @@ pub(super) struct NamedObjectMetaDataRaw {
     pub insert_time: u64,
     pub update_time: u64,
 
+    pub object_create_time: Option<u64>,
     pub object_update_time: Option<u64>,
     pub object_expired_time: Option<u64>,
+
+    // object related fields
+    pub author: Option<Vec<u8>>,
+    pub dec_id: Option<Vec<u8>>,
 
     pub storage_category: u8,
     pub context: Option<String>,
@@ -165,6 +171,7 @@ impl TryFrom<&Row<'_>> for NamedObjectMetaDataRaw {
 
     fn try_from(row: &Row<'_>) -> Result<Self, Self::Error> {
         Ok(Self {
+            // version 0
             object_id: row.get(0)?,
             owner_id: row.get(1)?,
             create_dec_id: row.get(2)?,
@@ -180,6 +187,12 @@ impl TryFrom<&Row<'_>> for NamedObjectMetaDataRaw {
 
             last_access_rpath: row.get(10)?,
             access_string: row.get(11)?,
+
+            // version 1
+            object_type: row.get(12)?,
+            object_create_time: row.get(13)?,
+            author: row.get(14)?,
+            dec_id: row.get(15)?,
         })
     }
 }
@@ -198,15 +211,25 @@ impl TryInto<NamedObjectMetaData> for NamedObjectMetaDataRaw {
     fn try_into(self) -> Result<NamedObjectMetaData, Self::Error> {
         Ok(NamedObjectMetaData {
             object_id: ObjectId::from_str(&self.object_id)?,
+            object_type: self.object_type,
             owner_id: convert_option_value(&self.owner_id)?,
             create_dec_id: ObjectId::from_str(&self.create_dec_id)?,
 
             insert_time: self.insert_time,
             update_time: self.update_time,
-            
+
+            object_create_time: self.object_create_time,
             object_update_time: self.object_update_time,
             object_expired_time: self.object_expired_time,
 
+            author: match self.author {
+                Some(v) => Some(ObjectId::try_from(v)?),
+                None => None,
+            },
+            dec_id: match self.dec_id {
+                Some(v) => Some(ObjectId::try_from(v)?),
+                None => None,
+            },
             storage_category: NamedObjectStorageCategory::try_from(self.storage_category)
                 .unwrap_or(NamedObjectStorageCategory::default()),
 

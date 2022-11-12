@@ -100,6 +100,7 @@ pub struct NamedObjectCacheGetObjectRequest {
 #[derive(Clone, Debug)]
 pub struct NamedObjectMetaData {
     pub object_id: ObjectId,
+    pub object_type: u16,
 
     pub owner_id: Option<ObjectId>,
     pub create_dec_id: ObjectId,
@@ -108,9 +109,14 @@ pub struct NamedObjectMetaData {
     pub insert_time: u64,
     pub update_time: u64,
 
-    // object's update_time and expired_time
+    // object's create_time, update_time and expired_time
+    pub object_create_time: Option<u64>,
     pub object_update_time: Option<u64>,
     pub object_expired_time: Option<u64>,
+
+    // object related fields
+    pub author: Option<ObjectId>,
+    pub dec_id: Option<ObjectId>,
 
     pub storage_category: NamedObjectStorageCategory,
     pub context: Option<String>,

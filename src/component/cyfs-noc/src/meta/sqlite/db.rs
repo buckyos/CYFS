@@ -30,7 +30,6 @@ impl<'a> UpdateObjectMetaRequest<'a> {
     }
 }
 
-
 pub(crate) struct SqliteMetaStorage {
     data_dir: PathBuf,
     data_file: PathBuf,
@@ -132,7 +131,7 @@ impl SqliteMetaStorage {
 
         let old = Self::get_db_version(&conn)?;
         if old < CURRENT_VERSION {
-            info!("will update noc sqlite db: {} -> {}", old, CURRENT_VERSION);
+            info!("will update noc meta db: {} -> {}", old, CURRENT_VERSION);
 
             for version in old + 1..CURRENT_VERSION + 1 {
                 Self::update_db(conn.deref_mut(), version)?;
@@ -142,10 +141,10 @@ impl SqliteMetaStorage {
                 assert_eq!(Self::get_db_version(&conn).unwrap(), version);
             }
 
-            info!("update noc meta table success!");
+            info!("update noc meta db success!");
         } else {
             info!(
-                "noc meta version match or newer: db={}, current={}",
+                "noc meta db version match or newer: db={}, current={}",
                 old, CURRENT_VERSION
             );
         }
@@ -154,6 +153,10 @@ impl SqliteMetaStorage {
     }
 
     fn update_db(conn: &mut Connection, to_version: i32) -> BuckyResult<()> {
+        info!(
+            "will exec update noc meta db sqls for version: {}",
+            to_version
+        );
         if to_version <= 0 || to_version as usize > MAIN_TABLE_UPDATE_LIST.len() {
             error!(
                 "invalid noc meta update sql list for version={}",
@@ -163,7 +166,7 @@ impl SqliteMetaStorage {
         }
 
         let tx = conn.transaction().map_err(|e| {
-            let msg = format!("noc meta transaction error: {}", e);
+            let msg = format!("noc meta db transaction error: {}", e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
@@ -175,7 +178,8 @@ impl SqliteMetaStorage {
                 if sql.is_empty() {
                     break;
                 }
-                tx.execute(sql, []).map_err(|e| {
+                info!("will exec update meta db sql: {}", sql);
+                tx.execute_batch(sql).map_err(|e| {
                     let msg = format!("noc meta exec query_row error: sql={}, {}", sql, e);
                     error!("{}", msg);
                     BuckyError::new(BuckyErrorCode::SqliteError, msg)
@@ -185,14 +189,14 @@ impl SqliteMetaStorage {
         })();
         if ret.is_ok() {
             tx.commit().map_err(|e| {
-                let msg = format!("commit transaction error: {}", e);
+                let msg = format!("commit update transaction error: {}", e);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::SqliteError, msg)
             })?;
             info!("update db to version={} success!", to_version);
         } else {
             tx.rollback().map_err(|e| {
-                let msg = format!("rollback transaction error: {}", e);
+                let msg = format!("rollback update transaction error: {}", e);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::SqliteError, msg)
             })?;
@@ -314,22 +318,39 @@ impl SqliteMetaStorage {
 
     fn insert_new(&self, req: &NamedObjectMetaPutObjectRequest) -> BuckyResult<usize> {
         const INSERT_NEW_SQL: &str = r#"INSERT INTO data_namedobject_meta 
-        (object_id, owner_id, create_dec_id, insert_time, update_time, 
-            object_update_time, object_expired_time, storage_category, context, last_access_time, last_access_rpath, access) VALUES
-            (:object_id, :owner_id, :create_dec_id, :insert_time, :update_time, :object_update_time, 
-            :object_expired_time, :storage_category, :context, :last_access_time, :last_access_rpath, :access) "#;
+        (   object_id, owner_id, object_type, 
+            create_dec_id, insert_time, update_time, 
+            object_create_time, object_update_time, object_expired_time,
+            author, dec_id, prev, body_prev_version, ref_objs, nonce,
+            storage_category, context, last_access_time, last_access_rpath, access
+        ) VALUES
+        (   :object_id, :owner_id, :object_type,
+            :create_dec_id, :insert_time, :update_time, 
+            :object_create_time, :object_update_time, :object_expired_time,
+            :author, :dec_id, :prev, :body_prev_version, :ref_objs, :nonce,
+            :storage_category, :context, :last_access_time, :last_access_rpath, :access
+        ) "#;
 
         let last_access_time = bucky_time_now();
         let params = named_params! {
             ":object_id": req.object_id.to_string(),
             ":owner_id": req.owner_id.map(|v| v.to_string()),
             ":create_dec_id": req.source.dec.to_string(),
+            ":object_type": req.object_type,
 
             ":insert_time": req.insert_time,
             ":update_time": req.insert_time,  // Will not update if object_id already exists!
 
+            ":object_create_time": req.object_create_time.unwrap_or(0),
             ":object_update_time": req.object_update_time.unwrap_or(0),
             ":object_expired_time": req.object_expired_time.unwrap_or(0),
+
+            ":author": req.author.as_ref().map(|v| v.as_slice()),
+            ":dec_id": req.dec_id.as_ref().map(|v| v.as_slice()),
+            ":prev": req.prev.as_ref().map(|v| v.as_slice()),
+            ":body_prev_version": req.body_prev_version.as_ref().map(|v| v.as_slice()),
+            ":ref_objs": req.ref_objs.as_ref().map(|v| v.to_vec().unwrap()),
+            ":nonce": req.nonce.as_ref().map(|v| v.to_be_bytes()),
 
             ":storage_category": req.storage_category.as_u8(),
 
@@ -1165,10 +1186,7 @@ impl SqliteMetaStorage {
     ) -> BuckyResult<Option<()>> {
         let ret = self.query_update_info(&req.object_id)?;
         if ret.is_none() {
-            debug!(
-                "noc check object meta but not found! obj={}",
-                req.object_id
-            );
+            debug!("noc check object meta but not found! obj={}", req.object_id);
             return Ok(None);
         }
 
