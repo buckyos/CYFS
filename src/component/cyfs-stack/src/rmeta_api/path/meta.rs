@@ -14,6 +14,8 @@ pub struct GlobalStatePathMeta {
     access: GlobalStatePathAccessList,
     link: GlobalStatePathLinkList,
     config: GlobalStatePathConfigList,
+
+    #[serde(default)]
     object: GlobalStateObjectMetaList,
 }
 
@@ -264,11 +266,19 @@ impl GlobalStatePathMetaSyncCollection {
         Ok(ret)
     }
 
-    pub fn check_object_meta_access<'o, 'd, 's>(
+    pub fn is_object_access_available(&self) -> bool {
+        let meta = self.meta.coll().read().unwrap();
+        !meta.object.is_empty()
+    }
+
+    pub fn check_object_access(
         &self,
-        req: GlobalStateObjectAccessRequest<'o, 'd, 's>,
+        target_dec_id: &ObjectId,
+        object_data: &impl ObjectSelectorDataProvider,
+        source: &RequestSourceInfo,
+        permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>> {
         let meta = self.meta.coll().read().unwrap();
-        meta.object.check(req)
+        meta.object.check(target_dec_id, object_data, source, permissions)
     }
 }

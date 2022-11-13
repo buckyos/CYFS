@@ -94,7 +94,7 @@ impl GlobalStateMetaLocalService {
             .get_option_global_state_meta(target_dec_id, false)
             .await?;
         if ret.is_none() {
-            let msg = format!("global state check rmeta but target dec rmeta not found! target_dec={}, req_path={}", target_dec_id, req_path);
+            let msg = format!("global state check access but target dec rmeta not found! target_dec={}, req_path={}", target_dec_id, req_path);
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
         }
@@ -110,9 +110,58 @@ impl GlobalStateMetaLocalService {
 
         if let Err(e) = dec_rmeta.check_access(check_req) {
             error!(
-                "global check check rmeta but been rejected! source={}, req_path={}, permissons={}",
+                "global check access but been rejected! source={}, req_path={}, permissons={}",
                 source,
                 req_path,
+                permissions.as_str()
+            );
+            return Err(e);
+        }
+
+        Ok(())
+    }
+
+    pub async fn is_object_access_available(&self, target_dec_id: &ObjectId) -> BuckyResult<bool> {
+        let rmeta = self.get_meta_manager(GlobalStateCategory::RootState);
+        let ret = rmeta
+            .get_option_global_state_meta(target_dec_id, false)
+            .await?;
+        match ret {
+            Some(meta) => {
+                Ok(meta.is_object_access_available())
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub async fn check_object_access(
+        &self,
+        target_dec_id: &ObjectId,
+        source: &RequestSourceInfo,
+        object_data: &impl ObjectSelectorDataProvider,
+        permissions: impl Into<AccessPermissions>,
+    ) -> BuckyResult<()> {
+        let rmeta = self.get_meta_manager(GlobalStateCategory::RootState);
+
+        let ret = rmeta
+            .get_option_global_state_meta(target_dec_id, false)
+            .await?;
+        if ret.is_none() {
+            let msg = format!("global state check object access but target dec rmeta not found! target_dec={}, req={}", target_dec_id, object_data.object_id());
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+        }
+
+        let dec_rmeta = ret.unwrap();
+        let permissions = permissions.into();
+
+        if let Err(e) =
+            dec_rmeta.check_object_access(&target_dec_id, object_data, source, permissions)
+        {
+            error!(
+                "global check object access but been rejected! source={}, req={}, permissons={}",
+                source,
+                object_data.object_id(),
                 permissions.as_str()
             );
             return Err(e);

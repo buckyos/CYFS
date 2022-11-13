@@ -23,8 +23,7 @@ impl std::fmt::Display for GlobalStateObjectMetaItem {
 }
 
 pub trait ObjectSelectorDataProvider: Send + Sync {
-    fn obj_type_code(&self) -> ObjectTypeCode;
-    fn obj_category(&self) -> ObjectCategory;
+    fn object_id(&self) -> &ObjectId;
     fn obj_type(&self) -> u16;
 
     fn object_dec_id(&self) -> &Option<ObjectId>;
@@ -78,8 +77,8 @@ where
 {
     fn trans(&self, token: &str) -> ExpTokenEvalValue {
         match token {
-            "obj_type_code" => ExpTokenEvalValue::U16(self.obj_type_code().into()),
-            "obj_category" => ExpTokenEvalValue::from_string(&self.obj_category()),
+            "obj_type_code" => ExpTokenEvalValue::U16(self.object_id().obj_type_code().into()),
+            "obj_category" => ExpTokenEvalValue::from_string(&self.object_id().object_category()),
             "obj_type" => ExpTokenEvalValue::U16(self.obj_type()),
 
             "object.dec_id" => ExpTokenEvalValue::from_opt_string(&self.object_dec_id()),

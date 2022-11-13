@@ -66,25 +66,3 @@ impl<'de> Deserialize<'de> for ObjectSelector {
         deserializer.deserialize_str(TStringVisitor::<Self>::new())
     }
 }
-
-use std::borrow::Cow;
-
-pub struct GlobalStateObjectAccessRequest<'o, 'd, 's> {
-    pub dec: Cow<'d, ObjectId>,
-    pub object_id: Cow<'o, ObjectId>,
-    pub object_data: &impl ObjectSelectorDataProvider,
-    pub source: Cow<'s, RequestSourceInfo>,
-    pub permissions: AccessPermissions,
-}
-
-impl<'o, 'd, 's> std::fmt::Display for GlobalStateObjectAccessRequest<'o, 'd, 's> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "object={}, {}, permissions={}",
-            self.object_id,
-            self.source,
-            self.permissions.as_str()
-        )
-    }
-}

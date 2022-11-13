@@ -5,7 +5,7 @@ use cyfs_lib::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, PartialOrd, Ord)]
-pub struct ObjectMeta {
+pub(crate) struct ObjectMeta {
     // Object dynamic selector
     pub selector: ObjectSelector,
 
@@ -69,7 +69,7 @@ impl GlobalStateObjectMetaList {
     }
 
     // return true if any changed
-    pub fn add(&mut self, mut item: ObjectMeta) -> bool {
+    pub fn add(&mut self, item: ObjectMeta) -> bool {
         if let Ok(i) = self.list.binary_search(&item) {
             if item == self.list[i] {
                 return false;
@@ -106,21 +106,28 @@ impl GlobalStateObjectMetaList {
         count
     }
 
-    pub fn check<'o, 'd, 's>(
+    pub fn is_empty(&self) -> bool {
+        self.list.is_empty()
+    }
+
+    pub fn check(
         &self,
-        req: GlobalStateObjectAccessRequest<'o, 'd, 's>,
+        target_dec_id: &ObjectId,
+        object_data: &impl ObjectSelectorDataProvider,
+        source: &RequestSourceInfo,
+        permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>> {
         if self.list.is_empty() {
             return Ok(None);
         }
 
         for item in &self.list {
-            let ret = item.selector.eval(&req.object_data);
+            let ret = item.selector.eval(object_data);
             if ret.is_err() {
                 error!(
                     "eval object meta exp error! exp={}, object={}, {}",
                     item.selector.exp(),
-                    req.object_id,
+                    object_data.object_id(),
                     ret.unwrap_err()
                 );
                 continue;
@@ -133,31 +140,31 @@ impl GlobalStateObjectMetaList {
             debug!(
                 "eval object meta matched! exp={}, object={}",
                 item.selector.exp(),
-                req.object_id
+                object_data.object_id(),
             );
 
             match &item.access {
                 GlobalStatePathGroupAccess::Default(access) => {
-                    let mask = req.source.mask(&req.dec, req.permissions);
+                    let mask = source.mask(target_dec_id, permissions);
                     if mask & access == mask {
-                        info!("object meta match item: req={}, access={}", req, item);
+                        info!("object meta match item: req={}, access={}", object_data.object_id(), item);
                         return Ok(Some(()));
                     } else {
                         let msg =
-                            format!("object meta reject by item: req={}, access={}", req, item);
+                            format!("object meta reject by item: req={}, access={}", object_data.object_id(), item);
                         warn!("{}", msg);
                         return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                     }
                 }
                 GlobalStatePathGroupAccess::Specified(user) => {
-                    if user.compare(&req.source) {
-                        let permissons = req.permissions as u8;
+                    if user.compare(&source) {
+                        let permissons = permissions as u8;
                         if permissons & user.access == permissons {
-                            info!("object meta match item: req={}, access={}", req, item);
+                            info!("object meta match item: req={}, access={}", object_data.object_id(), item);
                             return Ok(Some(()));
                         } else {
                             let msg =
-                                format!("object meta reject by item: req={}, access={}", req, item);
+                                format!("object meta reject by item: req={}, access={}", object_data.object_id(), item);
                             warn!("{}", msg);
                             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                         }
