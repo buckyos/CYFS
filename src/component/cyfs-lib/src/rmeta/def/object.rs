@@ -36,7 +36,6 @@ pub trait ObjectSelectorDataProvider: Send + Sync {
 
     fn update_time(&self) -> &u64;
     fn insert_time(&self) -> &u64;
-    fn last_access_time(&self) -> &u64;
 }
 
 pub struct ObjectSelectorTokenList;
@@ -60,7 +59,6 @@ impl ObjectSelectorTokenList {
 
         token_list.add_u64("insert_time");
         token_list.add_u64("update_time");
-        token_list.add_u64("last_access_time");
 
         token_list
     }
@@ -91,7 +89,6 @@ where
 
             "insert_time" => ExpTokenEvalValue::U64(*self.insert_time()),
             "update_time" => ExpTokenEvalValue::U64(*self.update_time()),
-            "last_access_time" => ExpTokenEvalValue::U64(*self.last_access_time()),
 
             _ => {
                 unreachable!("unknown object selector token! {}", token);

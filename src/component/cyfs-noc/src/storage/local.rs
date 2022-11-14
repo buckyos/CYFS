@@ -545,4 +545,11 @@ impl NamedObjectCache for NamedObjectLocalStorage {
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         Self::stat(&self).await
     }
+
+    fn bind_object_meta_access_provider(
+        &self,
+        object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    ) {
+        self.meta.bind_object_meta_access_provider(object_meta_access_provider)
+    }
 }

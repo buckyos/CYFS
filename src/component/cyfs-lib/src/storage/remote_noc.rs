@@ -165,4 +165,11 @@ impl NamedObjectCache for RemoteNamedObjectCache {
     ) -> BuckyResult<Option<()>> {
         unimplemented!();
     }
+
+    fn bind_object_meta_access_provider(
+        &self,
+        _object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    ) {
+        unimplemented!();
+    }
 }

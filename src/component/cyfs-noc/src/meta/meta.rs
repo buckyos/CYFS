@@ -177,6 +177,11 @@ pub trait NamedObjectMeta: Sync + Send {
     ) -> BuckyResult<Option<()>>;
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat>;
+
+    fn bind_object_meta_access_provider(
+        &self,
+        object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    );
 }
 
 pub type NamedObjectMetaRef = Arc<Box<dyn NamedObjectMeta>>;

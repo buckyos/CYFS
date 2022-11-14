@@ -1,4 +1,5 @@
 use super::super::meta::*;
+use super::super::access::*;
 use super::data::*;
 use super::sql::*;
 use cyfs_base::*;
@@ -34,6 +35,8 @@ pub(crate) struct SqliteMetaStorage {
     data_dir: PathBuf,
     data_file: PathBuf,
 
+    access: NamedObjecAccessHelper,
+
     /* SQLite does not support multiple writers. */
     conn: Arc<ThreadLocal<RefCell<Connection>>>,
     conn_rw_lock: RwLock<u32>,
@@ -55,6 +58,7 @@ impl SqliteMetaStorage {
         let ret = Self {
             data_dir: root.to_owned(),
             data_file,
+            access: NamedObjecAccessHelper::new(),
             conn: Arc::new(ThreadLocal::new()),
             conn_rw_lock: RwLock::new(0),
         };
@@ -316,41 +320,6 @@ impl SqliteMetaStorage {
         Ok(stat)
     }
 
-    fn check_access(
-        object_id: &ObjectId,
-        access_string: u32,
-        source: &RequestSourceInfo,
-        create_dec_id: &ObjectId,
-        permissions: impl Into<AccessPermissions>,
-    ) -> BuckyResult<()> {
-        let permissions: AccessPermissions = permissions.into();
-        debug!("noc meta will check access: object={}, access={}, source={}, create_dec={}, require={}", 
-            object_id, AccessString::new(access_string), source, create_dec_id, permissions.as_str());
-
-        // system dec in current zone is always allowed
-        if source.is_current_zone() {
-            if source.is_system_dec() {
-                return Ok(());
-            }
-        }
-
-        // Check permission first
-        let mask = source.mask(create_dec_id, permissions);
-
-        if access_string & mask != mask {
-            let msg = format!(
-                "noc meta object access been rejected! obj={}, access={}, require access={}",
-                object_id,
-                AccessString::new(access_string),
-                AccessString::new(mask)
-            );
-            warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
-        }
-
-        Ok(())
-    }
-
     fn insert_new(&self, req: &NamedObjectMetaPutObjectRequest) -> BuckyResult<usize> {
         const INSERT_NEW_SQL: &str = r#"INSERT INTO data_namedobject_meta 
         (   object_id, owner_id, object_type, 
@@ -426,7 +395,7 @@ impl SqliteMetaStorage {
         Ok(count)
     }
 
-    fn update(
+    async fn update(
         &self,
         req: &NamedObjectMetaPutObjectRequest,
     ) -> BuckyResult<NamedObjectMetaPutObjectResponse> {
@@ -470,15 +439,15 @@ impl SqliteMetaStorage {
                         let current_info = ret.unwrap();
                         // info!("noc meta current info: {:?}", current_info);
 
-                        if !req.source.is_verified(&current_info.create_dec_id) {
-                            Self::check_access(
+                        self.access
+                            .check_access_with_meta_update_info(
                                 &req.object_id,
-                                current_info.access_string,
                                 &req.source,
+                                &current_info,
                                 &current_info.create_dec_id,
                                 RequestOpType::Write,
-                            )?;
-                        }
+                            )
+                            .await?;
 
                         // Check object_update_time
                         let current_update_time = current_info.object_update_time.unwrap_or(0);
@@ -608,7 +577,9 @@ impl SqliteMetaStorage {
         object_id: &ObjectId,
     ) -> BuckyResult<Option<NamedObjectMetaUpdateInfo>> {
         const QUERY_UPDATE_SQL: &str = r#"
-            SELECT create_dec_id, insert_time, update_time, object_update_time, object_expired_time, access FROM data_namedobject_meta WHERE object_id = :object_id;
+            SELECT create_dec_id, insert_time, update_time, object_update_time, object_expired_time, access, 
+            object_type, object_create_time, owner_id, author, dec_id
+            FROM data_namedobject_meta WHERE object_id = :object_id;
         "#;
 
         let params = named_params! {
@@ -685,21 +656,22 @@ impl SqliteMetaStorage {
         false
     }
 
-    fn get(
+    async fn get(
         &self,
         req: &NamedObjectMetaGetObjectRequest,
     ) -> BuckyResult<Option<NamedObjectMetaData>> {
         match self.get_raw(&req.object_id)? {
             Some(data) => {
-                if !req.source.is_verified(&data.create_dec_id) {
-                    Self::check_access(
+                // first check access
+                self.access
+                    .check_access_with_meta_data(
                         &req.object_id,
-                        data.access_string,
                         &req.source,
+                        &data,
                         &data.create_dec_id,
                         RequestOpType::Read,
-                    )?;
-                }
+                    )
+                    .await?;
 
                 // Update the last access info
                 let update_req = NamedObjectMetaUpdateLastAccessRequest {
@@ -801,18 +773,18 @@ impl SqliteMetaStorage {
         Ok(count)
     }
 
-    fn delete(
+    async fn delete(
         &self,
         req: &NamedObjectMetaDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectMetaDeleteObjectResponse> {
         if req.flags & CYFS_NOC_FLAG_DELETE_WITH_QUERY != 0 {
-            self.delete_with_query(req)
+            self.delete_with_query(req).await
         } else {
-            self.delete_only(req)
+            self.delete_only(req).await
         }
     }
 
-    fn delete_with_query(
+    async fn delete_with_query(
         &self,
         req: &NamedObjectMetaDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectMetaDeleteObjectResponse> {
@@ -832,15 +804,16 @@ impl SqliteMetaStorage {
 
             match self.get_raw(&req.object_id)? {
                 Some(data) => {
-                    if !req.source.is_verified(&data.create_dec_id) {
-                        Self::check_access(
+                    // first check access
+                    self.access
+                        .check_access_with_meta_data(
                             &req.object_id,
-                            data.access_string,
                             &req.source,
+                            &data,
                             &data.create_dec_id,
                             RequestOpType::Write,
-                        )?;
-                    }
+                        )
+                        .await?;
 
                     let access_info = NamedObjectMetaAccessInfo {
                         create_dec_id: data.create_dec_id.clone(),
@@ -873,15 +846,15 @@ impl SqliteMetaStorage {
         }
     }
 
-    fn delete_only(
+    async fn delete_only(
         &self,
         req: &NamedObjectMetaDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectMetaDeleteObjectResponse> {
         // Even if the upper-level req-path permission verification is passed, check whether the dec-id matches
-        self.delete_only_with_check_access(req)
+        self.delete_only_with_check_access(req).await
     }
 
-    fn delete_only_with_check_access(
+    async fn delete_only_with_check_access(
         &self,
         req: &NamedObjectMetaDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectMetaDeleteObjectResponse> {
@@ -899,7 +872,7 @@ impl SqliteMetaStorage {
                 break Err(BuckyError::from(msg));
             }
 
-            let ret = self.query_access_info(&req.object_id)?;
+            let ret = self.query_update_info(&req.object_id)?;
             if ret.is_none() {
                 let resp = NamedObjectMetaDeleteObjectResponse {
                     deleted_count: 0,
@@ -909,19 +882,23 @@ impl SqliteMetaStorage {
                 break Ok(resp);
             }
 
-            let access_info = ret.unwrap();
+            let current_info = ret.unwrap();
 
             // Check permission first
-            if !req.source.is_verified(&access_info.create_dec_id) {
-                Self::check_access(
+            self.access
+                .check_access_with_meta_update_info(
                     &req.object_id,
-                    access_info.access_string,
                     &req.source,
-                    &access_info.create_dec_id,
+                    &current_info,
+                    &current_info.create_dec_id,
                     RequestOpType::Write,
-                )?;
-            }
+                )
+                .await?;
 
+            let access_info = NamedObjectMetaAccessInfo {
+                create_dec_id: current_info.create_dec_id.clone(),
+                access_string: current_info.access_string,
+            };
             let count = self.try_delete(&req.object_id, &access_info)?;
             if count > 0 {
                 let resp = NamedObjectMetaDeleteObjectResponse {
@@ -932,7 +909,7 @@ impl SqliteMetaStorage {
                 break Ok(resp);
             } else {
                 warn!("noc meta try delete object but unmatch! now will retry! obj={}, create_dec={}, access={}",
-                req.object_id, access_info.create_dec_id, access_info.access_string,);
+                req.object_id, current_info.create_dec_id, current_info.access_string,);
                 continue;
             }
         }
@@ -1076,7 +1053,10 @@ impl SqliteMetaStorage {
         Ok(ret)
     }
 
-    fn update_object_meta(&self, req: &NamedObjectMetaUpdateObjectMetaRequest) -> BuckyResult<()> {
+    async fn update_object_meta(
+        &self,
+        req: &NamedObjectMetaUpdateObjectMetaRequest,
+    ) -> BuckyResult<()> {
         info!("noc meta will update object meta: {:?}", req);
 
         if req.is_empty() {
@@ -1110,15 +1090,15 @@ impl SqliteMetaStorage {
             let current_info = ret.unwrap();
             // info!("noc meta current info: {:?}", current_info);
 
-            if !req.source.is_verified(&current_info.create_dec_id) {
-                Self::check_access(
+            self.access
+                .check_access_with_meta_update_info(
                     &req.object_id,
-                    current_info.access_string,
                     &req.source,
+                    &current_info,
                     &current_info.create_dec_id,
                     RequestOpType::Write,
-                )?;
-            }
+                )
+                .await?;
 
             let meta_req = UpdateObjectMetaRequest {
                 object_id: &req.object_id,
@@ -1215,7 +1195,7 @@ impl SqliteMetaStorage {
         Ok(count)
     }
 
-    fn check_object_access(
+    async fn check_object_access(
         &self,
         req: &NamedObjectMetaCheckObjectAccessRequest,
     ) -> BuckyResult<Option<()>> {
@@ -1228,15 +1208,15 @@ impl SqliteMetaStorage {
         let current_info = ret.unwrap();
         // info!("noc meta current info: {:?}", current_info);
 
-        if !req.source.is_verified(&current_info.create_dec_id) {
-            Self::check_access(
+        self.access
+            .check_access_with_meta_update_info(
                 &req.object_id,
-                current_info.access_string,
                 &req.source,
+                &current_info,
                 &current_info.create_dec_id,
                 req.required_access,
-            )?;
-        }
+            )
+            .await?;
 
         Ok(Some(()))
     }
@@ -1248,21 +1228,21 @@ impl NamedObjectMeta for SqliteMetaStorage {
         &self,
         req: &NamedObjectMetaPutObjectRequest,
     ) -> BuckyResult<NamedObjectMetaPutObjectResponse> {
-        self.update(req)
+        self.update(req).await
     }
 
     async fn get_object(
         &self,
         req: &NamedObjectMetaGetObjectRequest,
     ) -> BuckyResult<Option<NamedObjectMetaData>> {
-        self.get(req)
+        self.get(req).await
     }
 
     async fn delete_object(
         &self,
         req: &NamedObjectMetaDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectMetaDeleteObjectResponse> {
-        self.delete(req)
+        self.delete(req).await
     }
 
     async fn exists_object(&self, req: &NamedObjectMetaExistsObjectRequest) -> BuckyResult<bool> {
@@ -1283,17 +1263,25 @@ impl NamedObjectMeta for SqliteMetaStorage {
         &self,
         req: &NamedObjectMetaUpdateObjectMetaRequest,
     ) -> BuckyResult<()> {
-        Self::update_object_meta(&self, req)
+        Self::update_object_meta(&self, req).await
     }
 
     async fn check_object_access(
         &self,
         req: &NamedObjectMetaCheckObjectAccessRequest,
     ) -> BuckyResult<Option<()>> {
-        Self::check_object_access(&self, req)
+        Self::check_object_access(&self, req).await
     }
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat> {
         Self::stat(&self).await
+    }
+
+    fn bind_object_meta_access_provider(
+        &self,
+        object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    ) {
+        self.access
+            .bind_object_meta_access_provider(object_meta_access_provider)
     }
 }
