@@ -1412,7 +1412,7 @@ pub mod bft_miner_test {
     pub fn init_test_log() {
         unsafe {
             if !INIT_LOG {
-                cyfs_base::init_log("test_bft_miner", None);
+                cyfs_util::init_log("test_bft_miner", None);
             }
             INIT_LOG = true;
         }
@@ -1684,7 +1684,7 @@ pub mod bft_miner_test {
         block_body.add_transaction(tx).unwrap();
 
         // state.being_transaction().await?;
-        let ret = BlockExecutor::execute_block(&header, &mut block_body, &state, &meta_config, None, "".to_string(), None, ObjectId::default()).await;
+        let ret = BlockExecutor::execute_block(&header, &mut block_body, &state, new_archive_storage(Path::new(""), false).create_archive(false).await, &meta_config, None, "".to_string(), None, ObjectId::default()).await;
         if ret.is_ok() {
             // state.commit().await?;
         } else {
@@ -1699,7 +1699,7 @@ pub mod bft_miner_test {
 
         let chain = Chain::new(PathBuf::from(temp_dir),
                                Some(block),
-                               storage).await?;
+                               storage, new_archive_storage(Path::new(""), false)).await?;
 
         let addr = network.local_addr().await?;
         let miner = Arc::new(BFTMiner::new("bft".to_owned(),
@@ -1743,7 +1743,7 @@ pub mod bft_miner_test {
 
         let chain = Chain::new(PathBuf::from(temp_dir),
                                None,
-                               storage).await?;
+                               storage, new_archive_storage(Path::new(""), false)).await?;
 
         let addr = network.local_addr().await?;
         let miner = Arc::new(BFTMiner::new("bft".to_owned(),
@@ -1827,7 +1827,7 @@ pub mod bft_miner_test {
 
         let id = caller.id();
         // state.being_transaction().await?;
-        let ret = BlockExecutor::execute_block(&header, &mut block_body, &state, &meta_config, None, "".to_owned(), None, ObjectId::default()).await;
+        let ret = BlockExecutor::execute_block(&header, &mut block_body, &state, new_archive_storage(Path::new(""), false).create_archive(false).await, &meta_config, None, "".to_owned(), None, ObjectId::default()).await;
         if ret.is_ok() {
             // state.commit().await?;
         } else {
@@ -1842,7 +1842,7 @@ pub mod bft_miner_test {
 
         let chain = Chain::new(PathBuf::from(temp_dir),
                                Some(block),
-                               storage).await?;
+                               storage, new_archive_storage(Path::new(""), false)).await?;
 
         let addr = network.local_addr().await?;
         let miner = Arc::new(BFTMiner::new("bft".to_owned(),
@@ -1886,7 +1886,7 @@ pub mod bft_miner_test {
 
         let chain = Chain::new(PathBuf::from(temp_dir),
                                None,
-                               storage).await?;
+                               storage, new_archive_storage(Path::new(""), false)).await?;
 
         let addr = network.local_addr().await?;
         let miner = Arc::new(BFTMiner::new("bft".to_owned(),
@@ -1960,7 +1960,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 0);
 
                 let status_info = miner.get_mine_status_info();
@@ -1976,7 +1976,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 1);
 
                 let status_info = miner.get_mine_status_info();
@@ -1992,7 +1992,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 2);
 
                 let status_info = miner.get_mine_status_info();
@@ -2008,7 +2008,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 3);
 
                 let status_info = miner.get_mine_status_info();
@@ -2024,7 +2024,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 4);
 
                 let status_info = miner.get_mine_status_info();
@@ -2040,7 +2040,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 5);
 
                 let status_info = miner.get_mine_status_info();
@@ -2056,7 +2056,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 6);
 
                 let status_info = miner.get_mine_status_info();
@@ -2093,7 +2093,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 0);
 
                 let status_info = miner.get_mine_status_info();
@@ -2105,7 +2105,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 0);
 
                 let status_info = miner.get_mine_status_info();
@@ -2121,7 +2121,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 1);
 
                 let status_info = miner.get_mine_status_info();
@@ -2142,7 +2142,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 0);
 
                 let status_info = miner.get_mine_status_info();
@@ -2158,7 +2158,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 1);
 
                 let status_info = miner.get_mine_status_info();
@@ -2174,7 +2174,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 2);
 
                 let status_info = miner.get_mine_status_info();
@@ -2190,7 +2190,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 3);
 
                 let status_info = miner.get_mine_status_info();
@@ -2206,7 +2206,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 4);
 
                 let status_info = miner.get_mine_status_info();
@@ -2222,7 +2222,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 5);
 
                 let status_info = miner.get_mine_status_info();
@@ -2238,7 +2238,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 6);
 
                 let status_info = miner.get_mine_status_info();
@@ -2260,7 +2260,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 0);
 
                 let status_info = miner.get_mine_status_info();
@@ -2396,7 +2396,7 @@ pub mod bft_miner_test {
 
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
-                let (desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 println!("{} height {}", i, desc.number());
             }
         });

@@ -2,7 +2,7 @@ use crate::*;
 use crate::state_storage::{State, NameExtra, DescExtra, Storage, storage_in_mem_path, StorageRef};
 use async_trait::async_trait;
 use cyfs_base::*;
-use sqlx::{Row, Connection, ConnectOptions};
+use sqlx::{Row, Connection, ConnectOptions, Sqlite};
 use crate::helper::get_meta_err_code;
 use async_std::sync::{Mutex, MutexGuard, Arc};
 use std::str::FromStr;
@@ -1947,6 +1947,7 @@ impl State for SqlState {
 pub struct SqlStorage {
     path: PathBuf,
     locker: Mutex<()>,
+    conn_pool: sqlx::SqlitePool
 }
 
 // impl Drop for SqlState {
@@ -1963,40 +1964,13 @@ impl Storage for SqlStorage {
 
     async fn create_state(&self, _read_only: bool) -> StateRef {
         let _locker = self.get_locker().await;
-        if *self.path.as_path() == *storage_in_mem_path() {
-            let mut options = MetaConnectionOptions::new()
-                .journal_mode(SqliteJournalMode::Memory);
-            options.log_statements(LevelFilter::Off)
-                .log_slow_statements(LevelFilter::Off, Duration::new(10, 0));
-            SqlState::new(options.connect().await.unwrap())
-        } else {
-            let path = self.path.to_str().unwrap();
-            // info!("open db:{}", path);
-            let mut options = MetaConnectionOptions::from_str(format!("sqlite://{}", path).as_str()).unwrap()
-                .create_if_missing(true)
-                .journal_mode(SqliteJournalMode::Memory);
-            options.log_statements(LevelFilter::Off)
-                .log_slow_statements(LevelFilter::Off, Duration::new(10, 0));
-            let conn = MetaConnection::connect_with(&options).await;
-            if let Err(e) = &conn {
-                let msg = format!("{:?}", e);
-                info!("{}", msg);
-            }
-            let conn = conn.unwrap();
-            // let handle = conn.as_raw_handle();
-            // unsafe {
-            //     let mut arg = 1_i32;
-            //     let ret = libsqlite3_sys::sqlite3_file_control(handle,
-            //                                                    0 as *const _,
-            //                                                    libsqlite3_sys::SQLITE_FCNTL_PERSIST_WAL,
-            //                                                    arg.to_le_bytes().as_ptr() as *mut _);
-            //     if ret != 0 {
-            //         let err_msg = libsqlite3_sys::sqlite3_errmsg(handle);
-            //         println!("sqlite3_file_control ret:{} msg:{}", ret, CStr::from_ptr(err_msg).to_str().unwrap());
-            //     }
-            // }
-            SqlState::new(conn)
+        let conn = self.conn_pool.acquire().await;
+        if let Err(e) = &conn {
+            let msg = format!("{:?}", e);
+            info!("{}", msg);
         }
+        let conn = conn.unwrap();
+        SqlState::new(conn)
     }
 
     async fn state_hash(&self) -> BuckyResult<StateHash> {
@@ -2016,9 +1990,22 @@ impl Storage for SqlStorage {
 }
 
 pub fn new_sql_storage(path: &Path) -> StorageRef {
+    let mut options= if path == storage_in_mem_path() {
+        MetaConnectionOptions::new()
+            .journal_mode(SqliteJournalMode::Memory)
+    } else {
+        MetaConnectionOptions::from_str(format!("sqlite://{}", path.to_str().unwrap()).as_str()).unwrap()
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Memory)
+    };
+    options
+        .log_statements(LevelFilter::Off)
+        .log_slow_statements(LevelFilter::Off, Duration::new(10, 0));
+
     Arc::new(Box::new(SqlStorage {
         path: PathBuf::from(path.to_str().unwrap()),
-        locker: Default::default()
+        locker: Default::default(),
+        conn_pool: sqlx::Pool::connect_lazy_with(options)
     }))
 }
 
@@ -2071,7 +2058,8 @@ pub mod sql_storage_tests {
             .journal_mode(SqliteJournalMode::Memory);
         options.log_statements(LevelFilter::Off)
             .log_slow_statements(LevelFilter::Off, Duration::new(10, 0));
-        let state = SqlState::new(options.connect().await.unwrap());
+        let pool = sqlx::SqlitePool::connect_lazy_with(options);
+        let state = SqlState::new(pool.acquire().await.unwrap());
         state.init_genesis(&vec![GenesisCoinConfig {
             coin_id: 0,
             pre_balance: vec![]
@@ -2080,7 +2068,8 @@ pub mod sql_storage_tests {
         Arc::new(Box::new(TestStorage {
             storage: SqlStorage {
                 path: storage_in_mem_path().to_path_buf(),
-                locker: Default::default()
+                locker: Default::default(),
+                conn_pool: pool
             },
             state,
             locker: Default::default()

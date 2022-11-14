@@ -82,12 +82,13 @@ impl DerefMut for StandaloneMiner {
 #[cfg(test)]
 mod test {
     use cyfs_base_meta::*;
-    use crate::{new_sql_storage, BlockDesc, State};
+    use crate::{new_sql_storage, BlockDesc, State, new_archive_storage};
     use cyfs_base::{ObjectId, HashValue};
     use crate::chain::{BlockExecutor};
     use crate::executor::context::Config;
     use crate::mint::btc_mint::BTCMint;
     use std::fs::{create_dir, remove_dir_all};
+    use std::path::Path;
 
     #[test]
     fn test() {
@@ -129,7 +130,8 @@ mod test {
             //     block.add_transaction(tx).unwrap();
             // }
 
-            BlockExecutor::execute_block(&header, &mut block_body, &state, &meta_config, None, "".to_string(), None, ObjectId::default()).await.unwrap();
+            new_archive_storage(Path::new(""), false).create_archive(false);
+            BlockExecutor::execute_block(&header, &mut block_body, &state, new_archive_storage(Path::new(""), false).create_archive(false).await, &meta_config, None, "".to_string(), None, ObjectId::default()).await.unwrap();
             let _block = Block::new(ObjectId::default(), None, HashValue::default(), block_body).unwrap().build();
             // let chain = Chain::new(temp_dir.as_path(), new_sql_storage, block, &storage).await.unwrap();
             // let ret = StandaloneMiner::new(ObjectId::default(),  0, chain, "".to_string());

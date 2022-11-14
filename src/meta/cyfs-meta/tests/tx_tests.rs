@@ -1,6 +1,6 @@
 use cyfs_base::*;
 use cyfs_base_meta::*;
-use ffs_meta::*;
+use cyfs_meta::*;
 
 static TEST_CONFIG: &str = r#"
     {

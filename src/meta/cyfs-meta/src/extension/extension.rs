@@ -66,6 +66,7 @@ mod test_extension {
     use crate::executor::tx_executor::TxExecutor;
     use std::str::FromStr;
     use std::convert::TryFrom;
+    use std::path::Path;
     use async_trait::async_trait;
     use std::sync::Arc;
 
@@ -116,7 +117,7 @@ mod test_extension {
             let union_withdraw_manager = UnionWithdrawManager::new(&state, &config, &event_manager);
             let nft_auction = NFTAuction::new(&state, &config, &event_manager);
             let executor = TxExecutor::new(&state, &config, &rent_manager, &auction, &event_manager,
-                                           &union_withdraw_manager, &nft_auction, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
+                                           &union_withdraw_manager, &nft_auction, new_archive_storage(Path::new(""), false).create_archive(false).await, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
 
             let baseid1 = ObjectId::from_str("5r4MYfF7qVAbn1gdNy9JaNQUW5DfFM8yD3pnwFWY8nn6").unwrap();
 

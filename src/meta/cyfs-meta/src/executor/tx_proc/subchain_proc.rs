@@ -178,7 +178,8 @@ impl TxExecutor {
 
 #[cfg(test)]
 mod test_sub_chain_tx {
-    use crate::{NFTAuction, sql_storage_tests, State};
+    use std::path::Path;
+    use crate::{new_archive_storage, NFTAuction, sql_storage_tests, State};
     use crate::executor::context::{Config, UnionWithdrawManager};
     use crate::events::event_manager::EventManager;
     use crate::rent::rent_manager::RentManager;
@@ -203,7 +204,7 @@ mod test_sub_chain_tx {
             let union_withdraw_manager = UnionWithdrawManager::new(&state, &config, &event_manager);
             let nft_auction = NFTAuction::new(&state, &config, &event_manager);
             let executor = TxExecutor::new(&state, &config, &rent_manager, &auction, &event_manager,
-                                           &union_withdraw_manager, &nft_auction, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
+                                           &union_withdraw_manager, &nft_auction, new_archive_storage(Path::new(""), false).create_archive(false).await, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
 
 
             let private_key = PrivateKey::generate_rsa(1024).unwrap();
