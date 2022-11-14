@@ -3,12 +3,11 @@ use std::{
     io::{Seek, SeekFrom}
 };
 use async_std::{
-    future, io::ReadExt, 
+    io::ReadExt, 
 };
 use sha2::Digest;
 use cyfs_base::*;
 use cyfs_bdt::{
-    SingleDownloadContext, 
     download::*
 };
 mod utils;

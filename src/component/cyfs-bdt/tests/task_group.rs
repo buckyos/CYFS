@@ -1,7 +1,7 @@
 use async_std::{future, io::prelude::*, task};
 use cyfs_base::*;
 use cyfs_bdt::{
-    download::*, SingleDownloadContext, StackGuard, 
+    download::*, StackGuard, 
 };
 use std::{sync::Arc, time::Duration};
 mod utils;

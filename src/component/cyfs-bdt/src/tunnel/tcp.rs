@@ -729,6 +729,7 @@ impl Tunnel {
             info!("{} send loop start, {}", tunnel, owner.config().tcp.piece_interval.as_millis());
             loop {
                 let mut send_buf = [0u8; udp::MTU_LARGE];
+                let mut piece_buf = [0u8; udp::MTU];
               
                 fn handle_command(
                     piece_reader: &mut ringbuf::Consumer<u8>, 
@@ -798,7 +799,7 @@ impl Tunnel {
                                 match handle_signal(&interface, &mut piece_reader, &mut send_buf, signal).await {
                                     Ok(_) => {
                                         if signal_reader.len() == 0 {
-                                            match handle_piece(&interface, &mut send_buf, &mut piece_reader, &signal_reader).await {
+                                            match handle_piece(&interface, &mut piece_buf, &mut piece_reader, &signal_reader).await {
                                                 Ok(_) => {
                                                     // continue
                                                 }, 
@@ -824,7 +825,7 @@ impl Tunnel {
                         }
                     }
                     Err(_err) => {
-                        match handle_piece(&interface, &mut send_buf, &mut piece_reader, &signal_reader).await {
+                        match handle_piece(&interface, &mut piece_buf, &mut piece_reader, &signal_reader).await {
                             Ok(_) => {
                                 // continue
                             }, 
