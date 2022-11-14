@@ -122,7 +122,7 @@ impl WebSocketRequestContainer {
     ) {
         let seq = self.next_seq;
         self.next_seq += 1;
-        if self.next_seq == 0 {
+        if self.next_seq == u16::MAX {
             warn!("ws request seq roll back! sid={}", sid);
             self.next_seq = 1;
         }
