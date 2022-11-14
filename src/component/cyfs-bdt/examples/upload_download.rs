@@ -3,7 +3,6 @@ use cyfs_base::*;
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
     download::*,
-    SingleDownloadContext, 
     ChunkReader,
     MemChunkStore,
     MemTracker,

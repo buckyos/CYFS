@@ -22,6 +22,19 @@ use super::local_chunk_store::{LocalChunkWriter, LocalChunkListWriter};
 
 
 // client
+struct CyfsStack {
+    
+}
+
+
+impl CyfsStack {
+    fn get_data()
+}
+
+
+// ood 
+struct CyfsStack
+
 struct NdnDataRequester {
     stack: Stack,
     root_context: Context

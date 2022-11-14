@@ -3,7 +3,6 @@ use cyfs_base::*;
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
     download::*,
-    SingleDownloadContext, 
     DownloadSource, 
     ChunkEncodeDesc, 
     ChunkReader,
@@ -13,7 +12,7 @@ use cyfs_bdt::{
     Stack,
     StackGuard,
     StackOpenParams, 
-    DownloadTask, 
+    DownloadTask,  
 };
 use std::{time::Duration};
 mod utils;

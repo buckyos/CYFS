@@ -23,7 +23,6 @@ use crate::{
     DownloadTask, 
     DownloadTaskState, 
     types::*,
-    SingleDownloadContext
 };
 use super::command::*;
 use super::super::sn::client::SnStatus;

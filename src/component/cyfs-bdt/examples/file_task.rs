@@ -3,7 +3,6 @@ use async_std::{fs, io::prelude::*};
 use cyfs_base::*;
 use cyfs_bdt::{
     download::*, 
-    SingleDownloadContext,  
     Stack, 
     StackOpenParams, 
 };
