@@ -49,13 +49,21 @@ impl CallManager {
                   with_local: bool,
                   payload_generater: impl Fn(&SnCall) -> Vec<u8>
     ) -> impl Future<Output = Result<Device, BuckyError>> {
+        let stack = Stack::from(&self.stack);
+
+        // get nearest sn for remote peer
+        let sn = 
+            stack.device_cache()
+                .get_nearest_of(remote_peerid)
+                .map_or_else(|| sn.clone(), |d| d);
+
         let seq = self.seq_genarator.generate();
         let call_result = Arc::new(RwLock::new(CallResult { found_peer: None, waker: None }));
 
         let session = Arc::new(CallSession::create(self,
                                                    reverse_endpoints,
                                                    remote_peerid,
-                                                   sn,
+                                                   &sn,
                                                    is_always_call,
                                                    is_encrypto,
                                                    with_local,
@@ -68,7 +76,27 @@ impl CallManager {
             sessions.insert(seq, session.clone());
         }
 
-        session.start(self.call_interval, self.timeout, self.on_stop.clone());
+        let stack = Stack::from(&self.stack);
+        let sn_peer_id = sn.desc().device_id();
+
+        let call_interval = self.call_interval;
+        let timeout = self.timeout;
+        let on_stop = self.on_stop.clone();
+
+        async_std::task::spawn(async move {
+            match async_std::future::timeout(timeout, stack.sn_client().ping.wait_online(&sn_peer_id)).await {
+                Ok(r) => {
+                    if r {
+                        session.start(call_interval, timeout, on_stop);
+                    } else {
+                        session.on_call_error(BuckyError::new(BuckyErrorCode::Timeout, format!("Failed {} online at sn={} with timeout.", stack.local_device_id(), sn_peer_id)));
+                    }
+                }
+                Err(e) => {
+                    session.on_call_error(BuckyError::new(BuckyErrorCode::Timeout, format!("Failed {} online at sn={} with {}.", stack.local_device_id(), sn_peer_id, e)));
+                }
+            }
+        });
 
         CallFuture {
             call_result
@@ -159,7 +187,11 @@ impl CallSession {
         };
         call_pkg.payload = SizedOwnedData::from(payload_generater(&call_pkg));
 
-        if !with_local && stack.sn_client().ping.is_cached(&sn_peerid) {
+        if !stack.sn_client().ping.is_cached(&sn_peerid) {
+            stack.sn_client().add_sn_ping(sn, true, None);
+        }
+
+        if !with_local {
             call_pkg.peer_info = None;
         }
 
@@ -273,6 +305,25 @@ impl CallSession {
                 }
             }
         });
+    }
+
+    fn on_call_error(&self, err: BuckyError) {
+        let waker = {
+            let call_result = &mut *self.call_result.write().unwrap();
+
+            match call_result.found_peer {
+                Some(_) => {}
+                None => {
+                    call_result.found_peer = Some(Err(err));
+                }
+            }
+
+            call_result.waker.clone()
+        };
+
+        if let Some(waker) = waker {
+            waker.wake();
+        }
     }
 
     fn on_call_resp(&self, resp: &SnCallResp, from: &Endpoint) -> Result<(), BuckyError> {

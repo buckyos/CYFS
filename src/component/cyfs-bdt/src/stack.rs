@@ -360,11 +360,17 @@ impl Stack {
         let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
         stack_impl.ndn = Some(ndn);
 
-
-       
-        for sn in known_sn {
+        for sn in known_sn.iter() {
             stack.device_cache().add(&sn.desc().device_id(), &sn);
+            stack.device_cache().add_sn(&sn);
+            // stack.sn_client().add_sn_ping(&sn, true, None);
+        }
+        // get nearest sn in sn-list
+        if let Some(sn) = stack.device_cache().get_nearest_of(stack.local_device_id()) {
             stack.sn_client().add_sn_ping(&sn, true, None);
+        } else {
+            // don't find nearest sn
+            warn!("failed found SN-device sn-list: {}", known_sn.len());
         }
 
         let mut known_device = vec![];

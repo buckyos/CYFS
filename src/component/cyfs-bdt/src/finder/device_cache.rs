@@ -4,7 +4,7 @@ use std::{
 };
 use cyfs_base::*;
 use super::outer_device_cache::*;
-
+use crate::dht::DeviceBucketes;
 
 pub struct DeviceCache {
     local_id: DeviceId,
@@ -12,6 +12,8 @@ pub struct DeviceCache {
     outer: Option<Box<dyn OuterDeviceCache>>,
     //FIXME 先简单干一个
     cache: RwLock<HashMap<DeviceId, Device>>,
+    // sn-dht
+    sn_dht_cache: RwLock<DeviceBucketes>,
 }
 
 impl DeviceCache {
@@ -21,6 +23,7 @@ impl DeviceCache {
             local: RwLock::new(local),
             cache: RwLock::new(HashMap::new()),
             outer,
+            sn_dht_cache: RwLock::new(DeviceBucketes::new()),
         }
     }
 
@@ -73,5 +76,18 @@ impl DeviceCache {
         } else {
             None
         }
+    }
+}
+
+impl DeviceCache {
+    pub fn add_sn(&self, sn: &Device) {
+        let _ = self.sn_dht_cache.write().unwrap()
+            .set(&sn.desc().object_id(), sn);
+    }
+
+    pub fn get_nearest_of(&self, id:& DeviceId) -> Option<Device> {
+        self.sn_dht_cache.read().unwrap()
+            .get_nearest_of(id.object_id())
+            .cloned()
     }
 }

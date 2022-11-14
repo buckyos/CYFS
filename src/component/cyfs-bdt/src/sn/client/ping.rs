@@ -257,6 +257,20 @@ impl PingManager {
             c.reset();
         }
     }
+
+    pub async fn wait_online(&self, sn: &DeviceId) -> bool {
+        let client = {
+            self.clients.read().unwrap()
+                .get(sn)
+                .cloned()
+        };
+
+        if let Some(client) = client {
+            client.wait_online().await
+        } else {
+            false
+        }
+    }
 }
 
 const PING_CLIENT_STATUS_INIT: u8 = 0;
@@ -362,6 +376,7 @@ impl Client {
             sessions: RwLock::new(sessions),
             active_session_index: AtomicU32::new(std::u32::MAX),
             client_status: AtomicU8::new(PING_CLIENT_STATUS_INIT),
+            ping_status: RwLock::new(PingState::Connecting(StateWaiter::new())),
             sn_status: AtomicU8::new(SN_STATUS_INIT),
             last_ping_time: AtomicU64::new(0),
             last_resp_time: AtomicU64::new(0),
@@ -402,6 +417,16 @@ impl Client {
         self.inner.last_ping_time.store(0, atomic::Ordering::Release);
         self.inner.last_resp_time.store(0, atomic::Ordering::Release);
         self.inner.last_update_seq.store(1, atomic::Ordering::Release);
+
+        {
+            let state = &mut *self.inner.ping_status.write().unwrap();
+            match state {
+                PingState::Connecting(_) => {},
+                PingState::Online => {
+                    *state = PingState::Connecting(StateWaiter::new());
+                }
+            }
+        }
 
         let net_listener = Stack::from(&self.inner.env.stack).net_manager().listener().clone();
         for udp in net_listener.udp() {
@@ -522,6 +547,27 @@ impl Client {
     fn is_cached(&self) -> bool {
         self.inner.last_update_seq.load(atomic::Ordering::Acquire) == 0
     }
+
+    pub async fn wait_online(&self) -> bool {
+        let waiter = {
+            let state = &mut *self.inner.ping_status.write().unwrap();
+            match state {
+                PingState::Connecting(waiter) => Some(waiter.new_waiter()),
+                PingState::Online => None,
+            }
+        };
+
+        if let Some(waiter) = waiter {
+            StateWaiter::wait(waiter, || true).await
+        } else {
+            true
+        }
+    }
+}
+
+enum PingState {
+    Connecting(StateWaiter),
+    Online,
 }
 
 struct ClientInner {
@@ -534,6 +580,7 @@ struct ClientInner {
     sessions: RwLock<Vec<Session>>,
     active_session_index: AtomicU32,
 
+    ping_status: RwLock<PingState>,
     client_status: AtomicU8,
     sn_status: AtomicU8,
 
@@ -569,7 +616,7 @@ impl ClientInner {
                         if now < last_resp_time || now - last_resp_time < env.offline_ms as u64 {
                             // online
                             if self.sn_status.compare_exchange(SN_STATUS_CONNECTING, SN_STATUS_ONLINE, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst).is_ok() {
-                                PingClientStateEvent::online(&Stack::from(&self.env.stack), &self.sn);
+                                self.online(&self.sn);
                             }
                             SN_STATUS_ONLINE
                         } else {
@@ -582,7 +629,7 @@ impl ClientInner {
 
                     if cur_status != SN_STATUS_ONLINE && now > last_ping_time && now - last_ping_time > env.offline_ms as u64 {
                         if self.sn_status.compare_exchange(SN_STATUS_CONNECTING, SN_STATUS_OFFLINE, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst).is_ok() {
-                            PingClientStateEvent::offline(&Stack::from(&self.env.stack), &self.sn);
+                            self.offline(&self.sn);
                         }
                     }
                 }
@@ -591,7 +638,7 @@ impl ClientInner {
                 if last_resp_time != 0 {
                     if now < last_resp_time || now - last_resp_time < env.offline_ms as u64 {
                         if self.sn_status.compare_exchange(SN_STATUS_OFFLINE, SN_STATUS_ONLINE, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst).is_ok() {
-                            PingClientStateEvent::online(&Stack::from(&self.env.stack), &self.sn);
+                            self.online(&self.sn);
                         }
                     }
                 }
@@ -600,7 +647,7 @@ impl ClientInner {
                 assert!(last_resp_time > 0);
                 if now > last_resp_time && now - last_resp_time > env.offline_ms as u64 {
                     if self.sn_status.compare_exchange(SN_STATUS_ONLINE, SN_STATUS_OFFLINE, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst).is_ok() {
-                        PingClientStateEvent::offline(&Stack::from(&self.env.stack), &self.sn);
+                        self.offline(&self.sn);
                     }
                 }
             }
@@ -798,6 +845,38 @@ impl ClientInner {
         self.contract.on_called(called, call_seq, call_time);
 
         Ok(())
+    }
+}
+
+impl PingClientStateEvent for ClientInner{
+    fn online(&self, sn: &Device) {
+        PingClientStateEvent::online(&Stack::from(&self.env.stack), sn);
+
+        let waker = {
+            let state = &mut *self.ping_status.write().unwrap();
+            match state {
+                PingState::Connecting(waker) => Some(waker.transfer()),
+                PingState::Online => None,
+            }
+        };
+
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+
+    fn offline(&self, sn: &Device) {
+        PingClientStateEvent::offline(&Stack::from(&self.env.stack), sn);
+
+        {
+            let state = &mut *self.ping_status.write().unwrap();
+            match state {
+                PingState::Connecting(_) => {},
+                PingState::Online => {
+                    *state = PingState::Connecting(StateWaiter::new());
+                }
+            }
+        }
     }
 }
 

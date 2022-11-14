@@ -1,13 +1,11 @@
 mod init_log;
 
-use std::collections::LinkedList;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::str::FromStr;
 
 use cyfs_base::*;
 use cyfs_bdt::{sn::service::*, ReceiptWithSignature, SnServiceReceipt};
-use cyfs_debug::DebugConfig;
 
 const APP_NAME: &str = "sn-miner";
 
