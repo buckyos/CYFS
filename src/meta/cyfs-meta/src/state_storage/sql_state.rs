@@ -2,7 +2,7 @@ use crate::*;
 use crate::state_storage::{State, NameExtra, DescExtra, Storage, storage_in_mem_path, StorageRef};
 use async_trait::async_trait;
 use cyfs_base::*;
-use sqlx::{Row, Connection, ConnectOptions, Sqlite};
+use sqlx::{Row, Connection, ConnectOptions, Sqlite, SqlitePool};
 use crate::helper::get_meta_err_code;
 use async_std::sync::{Mutex, MutexGuard, Arc};
 use std::str::FromStr;
@@ -16,7 +16,7 @@ use primitive_types::H256;
 const PEERID_LENGTH: u32 = 32;
 
 pub struct SqlState {
-    conn: Mutex<MetaConnection>,
+    pool: SqlitePool,
     transaction_seq: Mutex<i32>,
 }
 
@@ -24,15 +24,15 @@ pub type StateRef = std::sync::Arc<SqlState>;
 pub type StateWeakRef = std::sync::Weak<SqlState>;
 
 impl SqlState {
-    pub fn new(conn: MetaConnection) -> StateRef {
+    pub fn new(pool: SqlitePool) -> StateRef {
         StateRef::new(SqlState {
-            conn: Mutex::new(conn),
+            pool,
             transaction_seq: Mutex::new(0),
         })
     }
 
-    pub async fn get_conn(&self) -> MutexGuard<'_, MetaConnection> {
-        self.conn.lock().await
+    pub async fn get_conn(&self) -> MetaConnection {
+        self.pool.acquire().await.unwrap()
     }
 
     fn single_balance_tbl_name(&self, ctid: &CoinTokenId) -> String {
@@ -1964,13 +1964,7 @@ impl Storage for SqlStorage {
 
     async fn create_state(&self, _read_only: bool) -> StateRef {
         let _locker = self.get_locker().await;
-        let conn = self.conn_pool.acquire().await;
-        if let Err(e) = &conn {
-            let msg = format!("{:?}", e);
-            info!("{}", msg);
-        }
-        let conn = conn.unwrap();
-        SqlState::new(conn)
+        SqlState::new(self.conn_pool.clone())
     }
 
     async fn state_hash(&self) -> BuckyResult<StateHash> {
