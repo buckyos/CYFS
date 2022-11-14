@@ -132,7 +132,9 @@ impl TestLoader {
 
         if dump {
             let etc_dir = cyfs_util::get_service_config_dir("zone-simulator");
+            info!("dump user1 people & device .desc and .sec to {}", etc_dir.join("user1").display());
             user1.dump(&etc_dir.join("user1"));
+            info!("dump user1 people & device .desc and .sec to {}", etc_dir.join("user2").display());
             user2.dump(&etc_dir.join("user2"));
         }
 
