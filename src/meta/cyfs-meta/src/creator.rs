@@ -64,7 +64,6 @@ impl ChainCreator {
 	            log::info!("create state_hash:{}", state_hash.to_string());
 
                 let archive = archive_storage.create_archive(false).await;
-                archive.init().await?;
 
 	            if config.chain_type.is_none() || config.chain_type.as_ref().unwrap() == "standalone" {
                     let btc_mint = BTCMint::new(&state, &meta_config, config.bfc_spv_node.as_str());

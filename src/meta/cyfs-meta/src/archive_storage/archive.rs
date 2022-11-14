@@ -4,10 +4,6 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait Archive: Send + Sync {
 
-    async fn being_transaction(&self) -> BuckyResult<()>;
-    async fn rollback(&self) -> BuckyResult<()>;
-    async fn commit(&self) -> BuckyResult<()>;
-
     async fn init(&self) -> BuckyResult<()>;
 
     //desc stat

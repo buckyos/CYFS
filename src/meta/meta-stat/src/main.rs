@@ -45,9 +45,11 @@ async fn main() -> BuckyResult<()> {
         .arg(Arg::with_name("dingtalk").short("t").long("dingtalk").value_name("DINGTALK").help("dingding talk url").takes_value(true))
         .get_matches(); 
 
-    let config_path = Path::new("./config.toml");
+    // 切换目录到当前exe的相对目录
+    let root = std::env::current_exe().unwrap();
+    let config_path = root.parent().unwrap().join("config.toml");            
     if !config_path.exists() {
-        error!("cannot find config file.");
+        error!("cannot find config file. {}", config_path.display());
         std::process::exit(1);
     }
 

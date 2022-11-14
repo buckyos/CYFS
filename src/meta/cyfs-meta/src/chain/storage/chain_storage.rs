@@ -65,11 +65,6 @@ impl ChainStorage {
         let state_hash = state_storage.state_hash().await.unwrap();
         log::info!("load state_hash:{} db:{}", state_hash.to_string(), state_storage.path().to_str().unwrap());
 
-        {
-            let archive = archive_storage.create_archive(false).await;
-            archive.init().await?;
-        }
-
         Ok(Arc::new(Self {
             block_storage,
             header_storage,
@@ -135,7 +130,7 @@ impl ChainStorage {
         let header = self.block_header(request.block).await?;
         let storage = self.state_storage.clone();
         let archive_storage = self.archive_storage.clone();
-        self.execute_view_request(&header, &storage.create_state(true).await, &archive_storage.create_archive(false).await, request.method).await
+        self.execute_view_request(&header, &storage.create_state(true).await, archive_storage.create_archive(false).await, request.method).await
     }
 
     async fn execute_view_request(&self, block: &BlockDesc, ref_state: &StateRef, ref_archive: &ArchiveRef, enum_method: ViewMethodEnum) -> BuckyResult<ViewResponse> {
@@ -488,10 +483,6 @@ pub mod chain_storage_tests {
         let mut archive_path = temp_dir.clone();
         archive_path.push("test3");
         let archive_storage = new_archive_storage(archive_path.as_path(), true);
-        {
-            let archive = archive_storage.create_archive(false).await;
-            archive.init().await.unwrap();
-        }
 
         let block = Block::new(ObjectId::default(), None, HashValue::default(), BlockBody::new()).unwrap().build();
         ChainStorage::reset(temp_dir, Some(block), storage, archive_storage).await.unwrap()
