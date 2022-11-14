@@ -136,6 +136,7 @@ impl CyfsStackImpl {
         // 加载全局状态
         let (local_root_state, local_cache) =
             Self::load_global_state(&device_id, &device, noc.clone(), &config).await?;
+
         let current_root = local_root_state.state().get_current_root();
 
         // 初始化data cache和tracker
@@ -211,6 +212,8 @@ impl CyfsStackImpl {
 
         // init global-state validator
         let validator = GlobalStateValidatorManager::new(&local_root_state, &local_cache);
+
+        noc.bind_object_meta_access_provider(Arc::new(Box::new(local_global_state_meta.clone())));
 
         // acl
         let acl_manager = Arc::new(AclManager::new(

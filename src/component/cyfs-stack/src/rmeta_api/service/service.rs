@@ -121,53 +121,50 @@ impl GlobalStateMetaLocalService {
         Ok(())
     }
 
-    pub async fn is_object_access_available(&self, target_dec_id: &ObjectId) -> BuckyResult<bool> {
-        let rmeta = self.get_meta_manager(GlobalStateCategory::RootState);
-        let ret = rmeta
-            .get_option_global_state_meta(target_dec_id, false)
-            .await?;
-        match ret {
-            Some(meta) => {
-                Ok(meta.is_object_access_available())
-            }
-            None => Ok(false),
-        }
-    }
-
     pub async fn check_object_access(
         &self,
         target_dec_id: &ObjectId,
         source: &RequestSourceInfo,
-        object_data: &impl ObjectSelectorDataProvider,
+        object_data: &dyn ObjectSelectorDataProvider,
         permissions: impl Into<AccessPermissions>,
-    ) -> BuckyResult<()> {
+    ) -> BuckyResult<Option<()>> {
         let rmeta = self.get_meta_manager(GlobalStateCategory::RootState);
 
         let ret = rmeta
             .get_option_global_state_meta(target_dec_id, false)
             .await?;
         if ret.is_none() {
-            let msg = format!("global state check object access but target dec rmeta not found! target_dec={}, req={}", target_dec_id, object_data.object_id());
-            warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+            return Ok(None);
         }
 
         let dec_rmeta = ret.unwrap();
         let permissions = permissions.into();
 
-        if let Err(e) =
-            dec_rmeta.check_object_access(&target_dec_id, object_data, source, permissions)
-        {
-            error!(
-                "global check object access but been rejected! source={}, req={}, permissons={}",
-                source,
-                object_data.object_id(),
-                permissions.as_str()
-            );
-            return Err(e);
+        match dec_rmeta.check_object_access(&target_dec_id, object_data, source, permissions) {
+            Ok(ret) => Ok(ret),
+            Err(e) => {
+                error!(
+                    "global check object meta access but been rejected! source={}, req={}, permissons={}",
+                    source,
+                    object_data.object_id(),
+                    permissions.as_str()
+                );
+                Err(e)
+            }
         }
+    }
+}
 
-        Ok(())
+#[async_trait::async_trait]
+impl NamedObjectCacheObjectMetaAccessProvider for GlobalStateMetaLocalService {
+    async fn check_access(
+        &self,
+        target_dec_id: &ObjectId,
+        object_data: &dyn ObjectSelectorDataProvider,
+        source: &RequestSourceInfo,
+        permissions: AccessPermissions,
+    ) -> BuckyResult<Option<()>> {
+        self.check_object_access(target_dec_id, source, object_data, permissions).await
     }
 }
 

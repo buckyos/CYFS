@@ -274,7 +274,7 @@ impl GlobalStatePathMetaSyncCollection {
     pub fn check_object_access(
         &self,
         target_dec_id: &ObjectId,
-        object_data: &impl ObjectSelectorDataProvider,
+        object_data: &dyn ObjectSelectorDataProvider,
         source: &RequestSourceInfo,
         permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>> {

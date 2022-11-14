@@ -132,7 +132,7 @@ impl NamedObjecAccessHelper {
             }
         } else {
             warn!(
-                "check object access but object meta provider has not been inited yet! id=={}",
+                "check object access but object meta provider has not been inited yet! id={}",
                 object_id
             );
         }

@@ -113,7 +113,7 @@ impl GlobalStateObjectMetaList {
     pub fn check(
         &self,
         target_dec_id: &ObjectId,
-        object_data: &impl ObjectSelectorDataProvider,
+        object_data: &dyn ObjectSelectorDataProvider,
         source: &RequestSourceInfo,
         permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>> {

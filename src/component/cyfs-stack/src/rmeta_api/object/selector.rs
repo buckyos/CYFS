@@ -32,8 +32,8 @@ impl ObjectSelector {
         self.0.exp()
     }
 
-    pub fn eval(&self, object_data: &impl ObjectSelectorDataProvider) -> BuckyResult<bool> {
-        self.0.eval(object_data)
+    pub fn eval(&self, object_data: &dyn ObjectSelectorDataProvider) -> BuckyResult<bool> {
+        self.0.eval(&object_data)
     }
 
     pub fn into_exp(self) -> String {

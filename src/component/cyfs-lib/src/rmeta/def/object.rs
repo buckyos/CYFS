@@ -4,7 +4,7 @@ use cyfs_base::*;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GlobalStateObjectMetaItem {
     // Object dynamic selector
     pub selector: String,
@@ -69,9 +69,7 @@ impl ObjectSelectorTokenList {
     }
 }
 
-impl<T> ExpReservedTokenTranslator for T
-where
-    T: ObjectSelectorDataProvider,
+impl ExpReservedTokenTranslator for &dyn ObjectSelectorDataProvider
 {
     fn trans(&self, token: &str) -> ExpTokenEvalValue {
         match token {
