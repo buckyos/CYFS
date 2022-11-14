@@ -12,6 +12,10 @@ pub enum MetaAction {
     GlobalStateAddLink,
     GlobalStateRemoveLink,
     GlobalStateClearLink,
+
+    GlobalStateAddObjectMeta,
+    GlobalStateRemoveObjectMeta,
+    GlobalStateClearObjectMeta,
 }
 
 impl ToString for MetaAction {
@@ -24,6 +28,10 @@ impl ToString for MetaAction {
             Self::GlobalStateAddLink => "global-state-add-link",
             Self::GlobalStateRemoveLink => "global-state-remove-link",
             Self::GlobalStateClearLink => "global-state-clear-link",
+
+            Self::GlobalStateAddObjectMeta => "global-state-add-object-meta",
+            Self::GlobalStateRemoveObjectMeta => "global-state-remove-object-meta",
+            Self::GlobalStateClearObjectMeta => "global-state-clear-object-meta",
         })
         .to_owned()
     }
@@ -41,6 +49,10 @@ impl FromStr for MetaAction {
             "global-state-add-link" => Self::GlobalStateAddLink,
             "global-state-remove-link" => Self::GlobalStateRemoveLink,
             "global-state-clear-link" => Self::GlobalStateClearLink,
+
+            "global-state-add-object-meta" => Self::GlobalStateAddObjectMeta,
+            "global-state-remove-object-meta" => Self::GlobalStateRemoveObjectMeta,
+            "global-state-clear-object-meta" => Self::GlobalStateClearObjectMeta,
 
             v @ _ => {
                 let msg = format!("unknown meta action: {}", v);

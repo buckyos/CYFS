@@ -106,6 +106,42 @@ impl GlobalStateMetaOutputProcessor for GlobalStateMetaOutputTransformer {
 
         self.processor.clear_link(in_req).await
     }
+
+    async fn add_object_meta(
+        &self,
+        req: GlobalStateMetaAddObjectMetaOutputRequest,
+    ) -> BuckyResult<GlobalStateMetaAddObjectMetaOutputResponse> {
+        let in_req = GlobalStateMetaAddObjectMetaInputRequest {
+            common: self.convert_common(req.common),
+            item: req.item,
+        };
+
+        self.processor.add_object_meta(in_req).await
+    }
+
+    async fn remove_object_meta(
+        &self,
+        req: GlobalStateMetaRemoveObjectMetaOutputRequest,
+    ) -> BuckyResult<GlobalStateMetaRemoveObjectMetaOutputResponse> {
+        let in_req = GlobalStateMetaRemoveObjectMetaInputRequest {
+            common: self.convert_common(req.common),
+            item: req.item,
+        };
+
+        self.processor.remove_object_meta(in_req).await
+    }
+
+    async fn clear_object_meta(
+        &self,
+        req: GlobalStateMetaClearObjectMetaOutputRequest,
+    ) -> BuckyResult<GlobalStateMetaClearObjectMetaOutputResponse> {
+        let in_req = GlobalStateMetaClearObjectMetaInputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.clear_object_meta(in_req).await
+    }
+
 }
 
 ///////////////////////////////////////////////////
@@ -203,5 +239,40 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaInputTransformer {
         };
 
         self.processor.clear_link(in_req).await
+    }
+
+    async fn add_object_meta(
+        &self,
+        req: GlobalStateMetaAddObjectMetaInputRequest,
+    ) -> BuckyResult<GlobalStateMetaAddObjectMetaInputResponse> {
+        let in_req = GlobalStateMetaAddObjectMetaOutputRequest {
+            common: self.convert_common(req.common),
+            item: req.item,
+        };
+
+        self.processor.add_object_meta(in_req).await
+    }
+
+    async fn remove_object_meta(
+        &self,
+        req: GlobalStateMetaRemoveObjectMetaInputRequest,
+    ) -> BuckyResult<GlobalStateMetaRemoveObjectMetaInputResponse> {
+        let in_req = GlobalStateMetaRemoveObjectMetaOutputRequest {
+            common: self.convert_common(req.common),
+            item: req.item,
+        };
+
+        self.processor.remove_object_meta(in_req).await
+    }
+
+    async fn clear_object_meta(
+        &self,
+        req: GlobalStateMetaClearObjectMetaInputRequest,
+    ) -> BuckyResult<GlobalStateMetaClearObjectMetaInputResponse> {
+        let in_req = GlobalStateMetaClearObjectMetaOutputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.clear_object_meta(in_req).await
     }
 }

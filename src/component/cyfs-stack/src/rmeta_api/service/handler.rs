@@ -343,4 +343,155 @@ impl GlobalStateMetaRequestHandler {
 
         self.processor.clear_link(clear_request).await
     }
+
+    // add_object_meta
+    pub fn encode_add_object_meta_response(resp: GlobalStateMetaAddObjectMetaInputResponse) -> Response {
+        let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+
+        http_resp.set_body(serde_json::to_string(&resp).unwrap());
+        http_resp.into()
+    }
+
+    pub async fn process_add_object_meta_request<State: Send>(
+        &self,
+        req: NONInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_add_object_meta(req).await;
+        match ret {
+            Ok(resp) => Self::encode_add_object_meta_response(resp),
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_add_object_meta<State: Send>(
+        &self,
+        mut req: NONInputHttpRequest<State>,
+    ) -> BuckyResult<GlobalStateMetaAddObjectMetaInputResponse> {
+        // 检查action
+        let action = Self::decode_action(&req, MetaAction::GlobalStateAddObjectMeta)?;
+        if action != MetaAction::GlobalStateAddObjectMeta {
+            let msg = format!("invalid global state meta add object meta action! {:?}", action);
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let common = Self::decode_common_headers(&req)?;
+
+        let req: GlobalStateMetaAddObjectMetaOutputRequest =
+            RequestorHelper::decode_serde_json_body(&mut req.request).await?;
+
+        let add_request = GlobalStateMetaAddObjectMetaInputRequest {
+            common,
+            item: req.item,
+        };
+
+        info!(
+            "recv global state meta add object meta request: {:?}",
+            add_request
+        );
+
+        self.processor.add_object_meta(add_request).await
+    }
+
+    // remove_object_meta
+    pub fn encode_remove_object_meta_response(
+        resp: GlobalStateMetaRemoveObjectMetaInputResponse,
+    ) -> Response {
+        let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+
+        http_resp.set_body(serde_json::to_string(&resp).unwrap());
+        http_resp.into()
+    }
+
+    pub async fn process_remove_object_meta_request<State: Send>(
+        &self,
+        req: NONInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_remove_object_meta(req).await;
+        match ret {
+            Ok(resp) => Self::encode_remove_object_meta_response(resp),
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_remove_object_meta<State: Send>(
+        &self,
+        mut req: NONInputHttpRequest<State>,
+    ) -> BuckyResult<GlobalStateMetaRemoveObjectMetaInputResponse> {
+        // 检查action
+        let action = Self::decode_action(&req, MetaAction::GlobalStateRemoveObjectMeta)?;
+        if action != MetaAction::GlobalStateRemoveObjectMeta {
+            let msg = format!(
+                "invalid global state meta remove object meta action! {:?}",
+                action
+            );
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let common = Self::decode_common_headers(&req)?;
+
+        let req: GlobalStateMetaAddObjectMetaOutputRequest =
+            RequestorHelper::decode_serde_json_body(&mut req.request).await?;
+
+        let add_request = GlobalStateMetaRemoveObjectMetaInputRequest {
+            common,
+            item: req.item,
+        };
+
+        info!(
+            "recv global state meta remove object meta request: {:?}",
+            add_request
+        );
+
+        self.processor.remove_object_meta(add_request).await
+    }
+
+    // clear_object_meta
+    pub fn encode_clear_object_meta_response(resp: GlobalStateMetaClearObjectMetaInputResponse) -> Response {
+        let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+
+        http_resp.set_body(serde_json::to_string(&resp).unwrap());
+        http_resp.into()
+    }
+
+    pub async fn process_clear_object_meta_request<State: Send>(
+        &self,
+        req: NONInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_clear_object_meta(req).await;
+        match ret {
+            Ok(resp) => Self::encode_clear_object_meta_response(resp),
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_clear_object_meta<State: Send>(
+        &self,
+        req: NONInputHttpRequest<State>,
+    ) -> BuckyResult<GlobalStateMetaClearObjectMetaInputResponse> {
+        // 检查action
+        let action = Self::decode_action(&req, MetaAction::GlobalStateClearObjectMeta)?;
+        if action != MetaAction::GlobalStateClearObjectMeta {
+            let msg = format!(
+                "invalid global state meta clear object meta action! {:?}",
+                action
+            );
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let common = Self::decode_common_headers(&req)?;
+        let clear_request = GlobalStateMetaClearObjectMetaInputRequest { common };
+
+        info!(
+            "recv global state meta clear object meta request: {:?}",
+            clear_request
+        );
+
+        self.processor.clear_object_meta(clear_request).await
+    }
 }
