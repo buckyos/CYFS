@@ -10,7 +10,6 @@ use clap::{App, Arg};
 
 use cyfs_base::BuckyResult;
 use std::sync::Arc;
-use std::path::Path;
 use serde::{Deserialize};
 use crate::storage::create_storage;
 use crate::client::Client;
