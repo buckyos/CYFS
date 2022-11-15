@@ -12,8 +12,8 @@ pub struct DeviceCache {
     outer: Option<Box<dyn OuterDeviceCache>>,
     //FIXME 先简单干一个
     cache: RwLock<HashMap<DeviceId, Device>>,
-    // sn-dht
-    sn_dht_cache: RwLock<DeviceBucketes>,
+    // sn
+    sn_area_cache: RwLock<DeviceBucketes>,
 }
 
 impl DeviceCache {
@@ -23,7 +23,7 @@ impl DeviceCache {
             local: RwLock::new(local),
             cache: RwLock::new(HashMap::new()),
             outer,
-            sn_dht_cache: RwLock::new(DeviceBucketes::new()),
+            sn_area_cache: RwLock::new(DeviceBucketes::new()),
         }
     }
 
@@ -81,12 +81,12 @@ impl DeviceCache {
 
 impl DeviceCache {
     pub fn add_sn(&self, sn: &Device) {
-        let _ = self.sn_dht_cache.write().unwrap()
+        let _ = self.sn_area_cache.write().unwrap()
             .set(&sn.desc().object_id(), sn);
     }
 
     pub fn get_nearest_of(&self, id:& DeviceId) -> Option<Device> {
-        self.sn_dht_cache.read().unwrap()
+        self.sn_area_cache.read().unwrap()
             .get_nearest_of(id.object_id())
             .cloned()
     }

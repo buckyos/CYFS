@@ -210,42 +210,30 @@ impl PeerManager {
                 log::debug!("ping without device-info.");
             }
 
-            match (send_time - cached_peer.last_send_time) / self.config.ping_interval.as_micros() as u64 {
+
+            let recount_req = match (send_time - cached_peer.last_send_time) / self.config.ping_interval.as_micros() as u64 {
                 0 => {
-                    cached_peer.peer_status.wait_online(send_time, 
-                        if cached_peer.last_ping_seq >= seq {
-                            false
-                        } else {
-                            (seq.value() - cached_peer.last_ping_seq.value()) > 50
-                        });
+                    let recode = if cached_peer.last_ping_seq >= seq {
+                        false
+                    } else {
+                        (seq.value() - cached_peer.last_ping_seq.value()) > 50
+                    };
+
+                    cached_peer.peer_status.wait_online(send_time, recode);
+
+                    recode
                 }
                 _ => {
                     cached_peer.peer_status.online(seq, send_time);
+                    true
                 }
-            }
-
-            /*
-            // statistic ping req
-            match (send_time - cached_peer.last_send_time) / self.config.ping_interval_init.as_micros() as u64 {
-                0 | 1 => {
-                    match cached_peer.peer_status.status() {
-                        PeerStatusKind::Connecting(_) => {},
-                        _ => cached_peer.peer_status = self.statistic_manager.get_status(peerid.clone(), send_time),
-                    }
-                }
-                _ => {
-                    match cached_peer.peer_status.status() {
-                        PeerStatusKind::Connecting(_) => {
-                            cached_peer.peer_status.online(send_time);
-                        }
-                        _ => {},
-                    }
-                }
-            }
-            */
+            };
 
             cached_peer.last_send_time = send_time;
-            cached_peer.last_ping_seq = seq;
+            if recount_req {
+                cached_peer.last_ping_seq = seq;
+            }
+
 
             // 客户端被签名的地址才被更新，避免恶意伪装
             if contain_addr(&cached_peer.desc, sender.remote()) 
@@ -309,6 +297,7 @@ impl PeerManager {
         self.statistic_manager.on_time_escape(now);
 
         drop_maps
+
     }
 
     pub fn find_peer(&self, id: &DeviceId) -> Option<FoundPeer> {

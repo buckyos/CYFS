@@ -46,6 +46,7 @@ struct ServiceImpl {
     peer_mgr: PeerManager,
     resend_queue: Option<ResendQueue>,
     call_stub: CallStub,
+
 }
 
 #[derive(Clone)]
@@ -510,15 +511,12 @@ impl SnService {
         //     call_result = BuckyErrorCode::NotFound;
         // };
 
-        let call_requestor = match self.peer_manager().find_peer(&call_req.from_peer_id) {
-            Some(peer) => peer,
-            None => {
-                warn!("{} without fromer.", log_key);
-                return;
-            }
-        };
 
-        call_requestor.peer_status.add_record(call_req.to_peer_id.clone(), call_req.seq);
+        let call_requestor = self.peer_manager().find_peer(&call_req.from_peer_id);
+
+        if let Some(call_requestor) = call_requestor.as_ref() {
+            call_requestor.peer_status.add_record(call_req.to_peer_id.clone(), call_req.seq);
+        }
 
         let call_resp =
             if let Some(to_peer_cache) = self.peer_manager().find_peer(&call_req.to_peer_id) {
@@ -609,7 +607,13 @@ impl SnService {
 
         match &call_resp.result {
             0 => { /* wait confirm */ },
-            _ => call_requestor.peer_status.record(call_req.to_peer_id.clone(), call_req.seq, BuckyErrorCode::from(call_resp.result as u16)),
+
+            _ => {
+                if let Some(call_requestor) = call_requestor.as_ref() {
+                    call_requestor.peer_status.record(call_req.to_peer_id.clone(), call_req.seq, BuckyErrorCode::from(call_resp.result as u16));
+                }
+            }
+
         }
 
         self.send_resp(
