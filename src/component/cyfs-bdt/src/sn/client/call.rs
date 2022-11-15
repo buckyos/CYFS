@@ -76,27 +76,11 @@ impl CallManager {
             sessions.insert(seq, session.clone());
         }
 
-        let stack = Stack::from(&self.stack);
-        let sn_peer_id = sn.desc().device_id();
-
         let call_interval = self.call_interval;
         let timeout = self.timeout;
         let on_stop = self.on_stop.clone();
 
-        async_std::task::spawn(async move {
-            match async_std::future::timeout(timeout, stack.sn_client().ping.wait_online(&sn_peer_id)).await {
-                Ok(r) => {
-                    if r {
-                        session.start(call_interval, timeout, on_stop);
-                    } else {
-                        session.on_call_error(BuckyError::new(BuckyErrorCode::Timeout, format!("Failed {} online at sn={} with timeout.", stack.local_device_id(), sn_peer_id)));
-                    }
-                }
-                Err(e) => {
-                    session.on_call_error(BuckyError::new(BuckyErrorCode::Timeout, format!("Failed {} online at sn={} with {}.", stack.local_device_id(), sn_peer_id, e)));
-                }
-            }
-        });
+        session.start(call_interval, timeout, on_stop);
 
         CallFuture {
             call_result

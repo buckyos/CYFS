@@ -855,7 +855,11 @@ impl PingClientStateEvent for ClientInner{
         let waker = {
             let state = &mut *self.ping_status.write().unwrap();
             match state {
-                PingState::Connecting(waker) => Some(waker.transfer()),
+                PingState::Connecting(waker) => {
+                    let waker = waker.transfer();
+                    *state = PingState::Online;
+                    Some(waker)
+                },
                 PingState::Online => None,
             }
         };
