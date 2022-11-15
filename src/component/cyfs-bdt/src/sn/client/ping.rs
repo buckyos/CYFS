@@ -20,7 +20,7 @@ use crate::{
     history::keystore, 
     sn::{
         types::{SnServiceReceiptVersion, SnServiceGrade, SnServiceReceipt, ReceiptWithSignature}, 
-        client::{Config},
+        Config,
     },  
     stack::{WeakStack, Stack}
 };
