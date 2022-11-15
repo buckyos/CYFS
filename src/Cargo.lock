@@ -4382,8 +4382,7 @@ checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
 [[package]]
 name = "mime-sniffer"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e98f7cfbbaf64674624e2aa35327d75e3de8e4d1b2555ef70dcf0c107a95490"
+source = "git+https://github.com/buckyos/rust-mime-sniffer?rev=99c00bba5091810514741bfe0f05d8c9ca244796#99c00bba5091810514741bfe0f05d8c9ca244796"
 dependencies = [
  "mime 0.3.16",
  "url 1.7.2",

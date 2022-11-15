@@ -2,8 +2,7 @@ use cyfs_base::*;
 use cyfs_lib::*;
 use zone_simulator::*;
 
-const SVG_IMAGE: &str = r##"
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+const SVG_IMAGE: &str = r##"<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="391" height="391" viewBox="-70.5 -70.5 391 391" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
 <rect fill="#fff" stroke="#000" x="-70" y="-70" width="390" height="390"/>
@@ -13,8 +12,7 @@ const SVG_IMAGE: &str = r##"
 	<polyline points="50,150 50,200 200,200 200,100" stroke="red" stroke-width="4" fill="none" />
 	<line x1="50" y1="50" x2="200" y2="200" stroke="blue" stroke-width="4" />
 </g>
-</svg>
-"##;
+</svg>"##;
 
 pub async fn test() {
     add_svg().await;
