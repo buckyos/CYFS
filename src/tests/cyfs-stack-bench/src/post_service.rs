@@ -6,11 +6,13 @@ use std::sync::Arc;
 use std::str::FromStr;
 use cyfs_util::EventListenerAsyncRoutine;
 use crate::DEC_ID;
+use crate::bench::GLOABL_STATE_PATH;
 use crate::util::new_object;
 
 pub const TEST_DEC_ID_STR: &str = "5aSixgP8EPf6HkP54Qgybddhhsd1fgrkg7Atf2icJiiS";
 pub const CALL_PATH: &str = "/cyfs-bench-post";
 pub const NON_CALL_PATH: &str = "/cyfs-bench-non";
+pub const ROOT_STATE_CALL_PATH: &str = "/cyfs-bench-root-state";
 pub struct DeviceInfo {
     pub ood_id: DeviceId,
     pub owner_id: PeopleId,
@@ -29,7 +31,8 @@ impl DeviceInfo {
 
 enum ServiceType {
     TestPost,
-    CrossZoneNonTest
+    CrossZoneNonTest,
+    CrossZoneRootStateTest,
 }
 
 struct OnPostObject {
@@ -125,6 +128,77 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
                     })
                 }
             }
+
+            ServiceType::CrossZoneRootStateTest => {
+                if object.id() == "add" {
+                    let value = object.header().parse::<usize>()?;
+                    info!("generating test objects...");
+
+                    let root_state = self.owner.cyfs_stack.root_state_stub(None, None);
+                    let root_info = root_state.get_current_root().await.unwrap();
+                    debug!("current root: {:?}", root_info);
+                    let access = RootStateOpEnvAccess::new(GLOABL_STATE_PATH, AccessPermissions::ReadAndWrite);   // 对跨dec路径操作这个perm才work
+                    let op_env = root_state.create_path_op_env_with_access(Some(access)).await.unwrap();
+                    
+                    let ret = op_env.get_by_path("/global-states/x/b").await.unwrap();
+                    assert_eq!(ret, None);
+                    let ret = op_env.get_by_path("/global-states/x/b/c").await.unwrap();
+                    assert_eq!(ret, None);
+
+                    for i in 0..value {
+                        let obj = new_object("obj", &i.to_string());
+                        op_env
+                            .insert_with_key("/global-states/x/b", obj.desc().calculate_id().to_string(), &obj.desc().calculate_id())
+                            .await
+                            .unwrap();
+                    }
+
+                    let answer = new_object("add", "finish");
+                    let response = NONPostObjectInputResponse {
+                        object: Some(NONObjectInfo::new(
+                            answer.desc().calculate_id(),
+                            answer.to_vec().unwrap(),
+                            None,
+                        )),
+                    };
+
+                    Ok(RouterHandlerPostObjectResult {
+                        action: RouterHandlerAction::Response,
+                        request: None,
+                        response: Some(Ok(response)),
+                    })
+                } else if object.id() == "remove" {
+                    info!("delete test objects...");
+                    let root_state = self.owner.cyfs_stack.root_state_stub(None, None);
+                    let root_info = root_state.get_current_root().await.unwrap();
+                    debug!("current root: {:?}", root_info);
+                    let access = RootStateOpEnvAccess::new(GLOABL_STATE_PATH, AccessPermissions::ReadAndWrite);   // 对跨dec路径操作这个perm才work
+                    let op_env = root_state.create_path_op_env_with_access(Some(access)).await.unwrap();
+
+                    op_env.remove_with_path("/global-states/x/b", None).await.unwrap();
+
+                    let answer = new_object("remove", "finish");
+                    let response = NONPostObjectInputResponse {
+                        object: Some(NONObjectInfo::new(
+                            answer.desc().calculate_id(),
+                            answer.to_vec().unwrap(),
+                            None,
+                        )),
+                    };
+
+                    Ok(RouterHandlerPostObjectResult {
+                        action: RouterHandlerAction::Response,
+                        request: None,
+                        response: Some(Ok(response)),
+                    })
+                } else {
+                    Ok(RouterHandlerPostObjectResult {
+                        action: RouterHandlerAction::Response,
+                        request: None,
+                        response: Some(Err(BuckyError::from(BuckyErrorCode::NotSupport))),
+                    })
+                }
+            }
         }
 
     }
@@ -156,6 +230,9 @@ impl TestService {
         let stub = self.cyfs_stack.root_state_meta_stub(None, None);
         stub.add_access(GlobalStatePathAccessItem::new_group(NON_CALL_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
         stub.add_access(GlobalStatePathAccessItem::new_group(CALL_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
+        stub.add_access(GlobalStatePathAccessItem::new_group(ROOT_STATE_CALL_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::Full as u8)).await.unwrap();
+        stub.add_access(GlobalStatePathAccessItem::new_group(CYFS_CRYPTO_VIRTUAL_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
+
         let service = Arc::new(self);
 
         // 只监听应用自己的DecObject
@@ -187,6 +264,21 @@ impl TestService {
                 Some(Box::new(OnPostObject {
                     owner: service.clone(),
                     service_type: ServiceType::CrossZoneNonTest
+                })))
+            .unwrap();
+
+        service.cyfs_stack
+            .router_handlers()
+            .add_handler(
+                RouterHandlerChain::Handler,
+                "cyfs-bench-root-state",
+                0,
+                None,
+                Some(ROOT_STATE_CALL_PATH.to_owned()),
+                RouterHandlerAction::Default,
+                Some(Box::new(OnPostObject {
+                    owner: service.clone(),
+                    service_type: ServiceType::CrossZoneRootStateTest
                 })))
             .unwrap();
     }

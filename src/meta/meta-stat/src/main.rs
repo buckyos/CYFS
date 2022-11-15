@@ -46,7 +46,7 @@ async fn main() -> BuckyResult<()> {
 
     // 切换目录到当前exe的相对目录
     let root = std::env::current_exe().unwrap();
-    let config_path = root.parent().unwrap().join("config.toml");            
+    let config_path = root.parent().unwrap().join("config.toml");
     if !config_path.exists() {
         error!("cannot find config file. {}", config_path.display());
         std::process::exit(1);

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
-use crate::{Bench, DEC_ID, DEC_ID2, Stat};
+use crate::{Bench, DEC_ID2, Stat};
 use log::*;
 use cyfs_base::*;
 use cyfs_core::*;
@@ -75,6 +75,7 @@ impl CrossZoneNONBench {
         Ok(ids)
     }
 
+    // delete_object only allow within the same zone, use post_object driven target delete operation
     async fn remove_objects(&self, ids: Vec<ObjectId>) -> BuckyResult<()> {
         let mut q = new_object("remove", &self.run_times.to_string());
         *q.body_mut_expect("").content_mut().value_mut() = ids.to_hex().unwrap();

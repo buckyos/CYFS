@@ -39,6 +39,8 @@ async fn prepare_stack(stack: &SharedCyfsStack) -> DeviceId {
 
     let stub = stack.root_state_meta_stub(None, None);
     stub.add_access(GlobalStatePathAccessItem::new_group(NON_OBJECT_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
+    stub.add_access(GlobalStatePathAccessItem::new_group(GLOABL_STATE_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
+    stub.add_access(GlobalStatePathAccessItem::new_group("/a/b", None, None, Some(DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
 
     let service = TestService::new(stack.clone());
     service.start().await;
@@ -68,6 +70,7 @@ async fn main() {
 
     let mut benchs: Vec<Box<dyn Bench>> = vec![];
 
+    // physical vood env
     if matches.is_present("dec-service") {
         //使用默认配置初始化non-stack，因为是跑在gateway后面，共享了gateway的协议栈，所以配置使用默认即可
         let cyfs_stack = SharedCyfsStack::open_default(Some(DEC_ID.clone())).await.unwrap();
@@ -80,10 +83,11 @@ async fn main() {
         Ok(mut config) => {
             if matches.is_present("simulator") {
                 info!("run benchmark on simulator, register service");
+                // zone1_ood as server
                 let service_stack = SharedCyfsStack::open_with_port(Some(DEC_ID2.clone()), 21000, 21001).await.unwrap();
                 let stack_id = prepare_stack(&service_stack).await;
                 config.same_zone_target = Some(stack_id.object_id().clone());
-
+                // zone2_ood as server
                 let other_ood_stack = SharedCyfsStack::open_with_port(Some(DEC_ID2.clone()), 21010, 21011).await.unwrap();
                 let other_stack_id = prepare_stack(&other_ood_stack).await;
                 config.cross_zone_target = Some(other_stack_id.object_id().clone());
@@ -96,11 +100,16 @@ async fn main() {
                 }).unwrap_or(128)
             }).unwrap_or(config.run_times.unwrap_or(128));
 
+            // device as requestor
             let test_stack = SharedCyfsStack::open_with_port(Some(DEC_ID.clone()), config.http_port, config.ws_port).await.unwrap();
             test_stack.online().await.unwrap();
 
             benchs.push(SameZoneNONBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
             benchs.push(CrossZoneNONBench::new(test_stack.clone(), config.cross_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(SameZoneGlobalStateBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(CrossZoneRootStateBench::new(test_stack.clone(), config.cross_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(SameZoneRmetaBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(SameZoneCryptoBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
 
             for bench in &mut benchs {
                 info!("begin test {}...", bench.name());
