@@ -6,7 +6,6 @@ shared_stack_stub=false
 shared_stack = true
 
 [stack.noc]
-type = "sqlite"
 
 [[stack.interface]]
 type = "http"
