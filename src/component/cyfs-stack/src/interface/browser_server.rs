@@ -16,7 +16,7 @@ other pages
 In strict mode, requests for unknown pages are not accepted; in loose mode, anonymous dec-id is uniformly used for unknown pages
 */
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
-enum RequestOrigin {
+enum RequestSource {
     System,
     Dec(ObjectId),
     Extension,
@@ -24,9 +24,10 @@ enum RequestOrigin {
 }
 
 #[derive(Debug)]
-enum RequestOriginString<'a> {
+enum RequestSourceString<'a> {
     Origin(&'a str),
     Host(&'a str),
+    Other,
 }
 
 pub(crate) struct BrowserSanboxHttpServer {
@@ -53,27 +54,29 @@ impl BrowserSanboxHttpServer {
     cyfs://static
     cyfs://o.{dec_id}/
     cyfs://o/
+    cyfs://{object-id}
     */
-    fn parse_host(host: &str) -> BuckyResult<RequestOrigin> {
+    fn parse_host(host: &str) -> BuckyResult<RequestSource> {
         if host == "static" {
-            return Ok(RequestOrigin::System);
+            return Ok(RequestSource::System);
         } 
         
         // Parse host in a|o|r|l.dec_id mode
         if let Some((_, dec_id)) = crate::front::parse_front_host_with_dec_id(host)? {
-            return Ok(RequestOrigin::Dec(dec_id));
+            return Ok(RequestSource::Dec(dec_id));
         } 
 
         // Parse host in raw a|o|r|l mode, treat as anonymous dec_id
         if let Some((_, dec_id)) = crate::front::parse_front_host_with_anonymous_dec_id(host) {
-            return Ok(RequestOrigin::Dec(dec_id));
+            return Ok(RequestSource::Dec(dec_id));
         } 
 
         warn!("unknown request origin/referer host! host={}", host);
-        Ok(RequestOrigin::Other)
+        Ok(RequestSource::Other)
     }
 
     // http://127.0.0.1:xxx/a|o|r|l[.dec_id]/xxx -> a|o|r|l[.dec_id]
+    // http://127.0.0.1:xxx/{object_id} -> {object_id}
     fn extract_front_root<'a>(req: &'a http_types::Request,) -> Option<&'a str> {
         let mut ret = req.url().path().trim_start_matches('/').split('/');
         let host = ret.next();
@@ -114,6 +117,33 @@ impl BrowserSanboxHttpServer {
         }
     }
 
+    // FIXME 目前chrome插件的请求，不确定的原因导致部分请求不带origin，所以会进入到此处理Other分支
+    // 所以我们这里先判断下，如果提供了cyfs-dec-id的header，那么认为是插件sdk发起的请求，只需要校验身份不能是system-dec-id
+    fn check_other_request<'a>(req: &http_types::Request) -> BuckyResult<Option<RequestSourceString<'a>>> {
+        let ret: Option<ObjectId> = RequestorHelper::dec_id_from_request(&req)?;
+        match ret {
+            Some(source_dec_id) => {
+                // FIXME 暂时认为是插件发起的请求
+                if source_dec_id == *cyfs_core::get_system_dec_app() {
+                    let msg = format!("request from browser extensions's dec_id cannot be specified as system-dec-id! req={}", 
+                        req.url(), 
+                    );
+
+                    warn!("{}", msg);
+                    Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
+                } else {
+                    // debug!("request from browser extensions: {}", req.url());
+                    Ok(None)
+                }
+            }
+            None => {
+                warn!("request from unknown source, will treat as other! req={}", req.url());
+                // 其余一律认为是未知的Other请求
+                Ok(Some(RequestSourceString::Other))
+            }
+        }
+    }
+
     fn is_browser(user_agent: &str) -> bool {
         if user_agent.find("node-fetch").is_some() {
             return false;
@@ -132,7 +162,7 @@ impl BrowserSanboxHttpServer {
         */
     }
 
-    fn extract_origin<'a>(req: &'a http_types::Request,) -> BuckyResult<Option<RequestOriginString<'a>>> {
+    fn extract_source<'a>(req: &'a http_types::Request,) -> BuckyResult<Option<RequestSourceString<'a>>> {
         let user_agent = req.header(http_types::headers::USER_AGENT);
         debug!("req user agent: {:?}", user_agent);
         let origin = if let Some(header) = req.header(http_types::headers::ORIGIN) {
@@ -151,7 +181,7 @@ impl BrowserSanboxHttpServer {
         }
 
         if origin.is_none() {
-            // pass through the requests from none browser(eg. node js/sdk)
+            // pass through the requests from none browser env(eg. nodejs/sdk)
             let user_agent_str = user_agent.as_ref().unwrap().last().as_str();
             if !Self::is_browser(user_agent_str) {
                 return Ok(None)
@@ -160,32 +190,24 @@ impl BrowserSanboxHttpServer {
             // check if the request open in the browser new tab address bar! 
             // Only the front protocol are allowed!
             if let Some(root) = Self::extract_front_root(req) {
-                return Ok(Some(RequestOriginString::Host(root)));
+                return Ok(Some(RequestSourceString::Host(root)));
             }
 
             // FIXME 为什么浏览器插件会发起这种不带Origin的请求
-            // request from the browser extensions! now will ignore the source verify, but will disable the used of system-dec-id
-            Self::check_extension_request(req)?;
-
-            return Ok(None);
-
-            /*
-            let msg = format!("request from browser but invalid front request! url={}", req.url());
-            warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
-            */
+            // request from the cyfs browser extensions or none cyfs browser's html tag! now will ignore the source verify, but will disable the used of system-dec-id
+            return Self::check_other_request(req);
         }
 
         let origin_url = origin.unwrap().last().as_str();
-        Ok(Some(RequestOriginString::Origin(origin_url)))
+        Ok(Some(RequestSourceString::Origin(origin_url)))
     }
 
-    fn parse_origin(req: &http_types::Request, origin_url: &str) -> BuckyResult<RequestOrigin> {
+    fn parse_origin(req: &http_types::Request, origin_url: &str) -> BuckyResult<RequestSource> {
         match http_types::Url::parse(origin_url) {
             Ok(url) => {
                 if url.scheme() == "chrome-extension" {
                     debug!("request from browser extensions: url={}, ext={}", req.url(), url.host_str().unwrap_or(""));
-                    return Ok(RequestOrigin::Extension);
+                    return Ok(RequestSource::Extension);
                 }
 
                 match url.host_str() {
@@ -210,7 +232,7 @@ impl BrowserSanboxHttpServer {
     }
 
     fn verify_dec(&self, mut req: http_types::Request,) -> BuckyResult<http_types::Request> {
-        let ret = Self::extract_origin(&req)?;
+        let ret = Self::extract_source(&req)?;
         if ret.is_none() {
             return Ok(req);
         }
@@ -224,29 +246,33 @@ impl BrowserSanboxHttpServer {
 
         let allow_system_dec;
         let req_origin = match origin {
-            RequestOriginString::Origin(origin) => {
+            RequestSourceString::Origin(origin) => {
                 allow_system_dec = false;
                 Self::parse_origin(&req, origin)?
             }
-            RequestOriginString::Host(host) => {
+            RequestSourceString::Host(host) => {
                 allow_system_dec = true;
                 Self::parse_host(host)?
             }
+            RequestSourceString::Other => {
+                allow_system_dec = false;
+                RequestSource::Other
+            }
         };
         
-        if req_origin == RequestOrigin::System {
+        if req_origin == RequestSource::System {
             return Ok(req);
         }
 
         match req_origin {
-            RequestOrigin::System => {
+            RequestSource::System => {
                 Ok(req)
             }
-            RequestOrigin::Extension => {
+            RequestSource::Extension => {
                 Self::check_extension_request(&req)?;
                 Ok(req)
             }
-            RequestOrigin::Dec(dec_id) => {
+            RequestSource::Dec(dec_id) => {
                 if !allow_system_dec && dec_id == *cyfs_core::get_system_dec_app() {
                     let msg = format!("browser request dec_id not cannot be specified as system_dec_id! req={}, origin={:?}", 
                         req.url(), 
@@ -285,7 +311,7 @@ impl BrowserSanboxHttpServer {
                     }
                 }
             }
-            RequestOrigin::Other => {
+            RequestSource::Other => {
                 match self.mode {
                     BrowserSanboxMode::Strict => {
                         let msg = format!("unknown browser request not allowed in strict mode! req={}, origin={:?}", req.url(), origin);
