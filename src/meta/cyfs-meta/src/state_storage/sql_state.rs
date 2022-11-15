@@ -2,7 +2,7 @@ use crate::*;
 use crate::state_storage::{State, NameExtra, DescExtra, Storage, storage_in_mem_path, StorageRef};
 use async_trait::async_trait;
 use cyfs_base::*;
-use sqlx::{Row, Connection, ConnectOptions, Sqlite, SqlitePool};
+use sqlx::{Row, Connection, ConnectOptions, Sqlite};
 use crate::helper::get_meta_err_code;
 use async_std::sync::{Mutex, MutexGuard, Arc};
 use std::str::FromStr;
@@ -16,23 +16,23 @@ use primitive_types::H256;
 const PEERID_LENGTH: u32 = 32;
 
 pub struct SqlState {
-    pool: SqlitePool,
+    conn: Mutex<MetaConnection>,
     transaction_seq: Mutex<i32>,
 }
 
-pub type StateRef = std::sync::Arc<SqlState>;
+pub type StateRef = Arc<SqlState>;
 pub type StateWeakRef = std::sync::Weak<SqlState>;
 
 impl SqlState {
-    pub fn new(pool: SqlitePool) -> StateRef {
+    pub fn new(conn: MetaConnection) -> StateRef {
         StateRef::new(SqlState {
-            pool,
+            conn: Mutex::new(conn),
             transaction_seq: Mutex::new(0),
         })
     }
 
-    pub async fn get_conn(&self) -> MetaConnection {
-        self.pool.acquire().await.unwrap()
+    pub async fn get_conn(&self) -> MutexGuard<'_, MetaConnection> {
+        self.conn.lock().await
     }
 
     fn single_balance_tbl_name(&self, ctid: &CoinTokenId) -> String {
@@ -376,7 +376,7 @@ impl SqlState {
                 if get_meta_err_code(&e)? == ERROR_NOT_FOUND && default.is_some() {
                     Ok(default.unwrap())
                 } else {
-                    Err(crate::meta_err!(ERROR_EXCEPTION))
+                    Err(meta_err!(ERROR_EXCEPTION))
                 }
             }
         }
@@ -484,7 +484,7 @@ impl State for SqlState {
                 if get_meta_err_code(&e)? == ERROR_NOT_FOUND {
                     Ok(default.to_owned())
                 } else {
-                    Err(crate::meta_err!(ERROR_EXCEPTION))
+                    Err(meta_err!(ERROR_EXCEPTION))
                 }
             }
         }
@@ -535,7 +535,7 @@ impl State for SqlState {
                 if get_meta_err_code(&e)? == ERROR_NOT_FOUND {
                     Ok(0)
                 } else {
-                    Err(crate::meta_err!(ERROR_EXCEPTION))
+                    Err(meta_err!(ERROR_EXCEPTION))
                 }
             }
         }
@@ -553,7 +553,7 @@ impl State for SqlState {
                 let insert_sql = format!("INSERT INTO {} (id, nonce) VALUES (?1, ?2)", self.account_tbl_name());
                 conn.execute_sql(sqlx::query(insert_sql.as_str()).bind(account.to_string()).bind(nonce)).await?;
             } else {
-                return Err(crate::meta_err!(ERROR_EXCEPTION));
+                return Err(meta_err!(ERROR_EXCEPTION));
             }
         } else {
             nonce = query_result.unwrap().get::<i64, &str>("nonce") + 1;
@@ -574,7 +574,7 @@ impl State for SqlState {
                 let insert_sql = format!("INSERT INTO {} (id, nonce) VALUES (?1, ?2)", self.account_tbl_name());
                 conn.execute_sql(sqlx::query(insert_sql.as_str()).bind(account.to_string()).bind(nonce)).await?;
             } else {
-                return Err(crate::meta_err!(ERROR_EXCEPTION));
+                return Err(meta_err!(ERROR_EXCEPTION));
             }
         } else {
             let update_sql = format!("UPDATE {} SET nonce=?1 WHERE id=?2", self.account_tbl_name());
@@ -643,7 +643,7 @@ impl State for SqlState {
         let mut conn = self.get_conn().await;
         let changed = conn.execute_sql(sqlx::query(&sql).bind(v).bind(account.to_string())).await?;
         if changed.rows_affected() != 1 {
-            Err(crate::meta_err!(ERROR_EXCEPTION))
+            Err(meta_err!(ERROR_EXCEPTION))
         } else {
             Ok(())
         }
@@ -660,7 +660,7 @@ impl State for SqlState {
             let insert_sql = format!("INSERT INTO {} (balance, id) VALUES (?1, ?2)", self.single_balance_tbl_name(ctid));
             let changed = conn.execute_sql(sqlx::query(&insert_sql).bind(v).bind(account.to_string())).await?;
             if changed.rows_affected() != 1 {
-                return Err(crate::meta_err!(ERROR_EXCEPTION));
+                return Err(meta_err!(ERROR_EXCEPTION));
             }
         }
         Ok(())
@@ -675,7 +675,7 @@ impl State for SqlState {
         let changed = conn.execute_sql(sqlx::query(&sql).bind(v).bind(account.to_string())).await?;
         if changed.rows_affected() != 1 {
             warn!("dec {} balance {} fail", account, v);
-            Err(crate::meta_err!(ERROR_NO_ENOUGH_BALANCE))
+            Err(meta_err!(ERROR_NO_ENOUGH_BALANCE))
         } else {
             Ok(())
         }
@@ -695,7 +695,7 @@ impl State for SqlState {
             if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
                 Ok(UnionBalance::default())
             } else {
-                Err(crate::meta_err!(ERROR_EXCEPTION))
+                Err(meta_err!(ERROR_EXCEPTION))
             }
         } else {
             let row = query_result.unwrap();
@@ -715,7 +715,7 @@ impl State for SqlState {
            let query_result = conn.query_one(sqlx::query(sql.as_str()).bind(union.to_string())).await;
         if let Err(e) = query_result {
             error!("get deviation seq err {}", e);
-            Err(crate::meta_err!(ERROR_EXCEPTION))
+            Err(meta_err!(ERROR_EXCEPTION))
         } else {
             Ok(query_result.unwrap().get("seq"))
         }
@@ -731,7 +731,7 @@ impl State for SqlState {
             .bind(balance.deviation)
             .bind(union.to_string())).await?;
         if changed.rows_affected() != 1 {
-            Err(crate::meta_err!(ERROR_EXCEPTION))
+            Err(meta_err!(ERROR_EXCEPTION))
         } else {
             Ok(())
         }
@@ -749,7 +749,7 @@ impl State for SqlState {
             };
             let changed = conn.execute_sql(sqlx::query(insert_sql.as_str()).bind(union.to_string()).bind(v)).await?;
             if changed.rows_affected() != 1 {
-                return Err(crate::meta_err!(ERROR_EXCEPTION));
+                return Err(meta_err!(ERROR_EXCEPTION));
             }
         }
         Ok(())
@@ -780,7 +780,7 @@ impl State for SqlState {
                     Ok(left_balance)
                 } else {
                     warn!("withdraw left {}", left_balance);
-                    Err(crate::meta_err!(ERROR_NO_ENOUGH_BALANCE))
+                    Err(meta_err!(ERROR_NO_ENOUGH_BALANCE))
                 }
             },
             PeerOfUnion::Right => {
@@ -792,7 +792,7 @@ impl State for SqlState {
                     Ok(right_balance)
                 } else {
                     warn!("withdraw right {}", right_balance);
-                    Err(crate::meta_err!(ERROR_NO_ENOUGH_BALANCE))
+                    Err(meta_err!(ERROR_NO_ENOUGH_BALANCE))
                 }
             }
         };
@@ -801,18 +801,18 @@ impl State for SqlState {
     async fn update_union_deviation(&self, ctid: &CoinTokenId, union: &ObjectId, deviation: i64, seq: i64) -> BuckyResult<()> {
         let old_seq = self.get_union_deviation_seq(ctid, union).await?;
         if old_seq >= seq {
-            return Err(crate::meta_err!(ERROR_ACCESS_DENIED));
+            return Err(meta_err!(ERROR_ACCESS_DENIED));
         }
 
         let balance = self.get_union_balance(ctid, union).await?;
         if balance.left + deviation < 0 || balance.right - deviation < 0 {
-            return Err(crate::meta_err!(ERROR_NO_ENOUGH_BALANCE));
+            return Err(meta_err!(ERROR_NO_ENOUGH_BALANCE));
         }
         let update_sql = format!("UPDATE {} SET deviation=?1, seq=?2 WHERE id=?3", self.union_balance_tbl_name(ctid));
         let mut conn = self.get_conn().await;
         let changed = conn.execute_sql(sqlx::query(update_sql.as_str()).bind(deviation).bind(seq).bind(union.to_string())).await?;
         if changed.rows_affected() != 1 {
-            return Err(crate::meta_err!(ERROR_NOT_FOUND));
+            return Err(meta_err!(ERROR_NOT_FOUND));
         }
         Ok(())
     }
@@ -992,8 +992,8 @@ impl State for SqlState {
         ,rent_value,buy_coin_id,buy_price) VALUES (?1,?2,?3,?4,0, 0, 0, 0, 0)"#;
                 let name_info_data_raw = info.to_vec();
                 if name_info_data_raw.is_err() {
-                    log::error!("serialize name info error!");
-                    return Err(crate::meta_err!(ERROR_PARAM_ERROR));
+                    error!("serialize name info error!");
+                    return Err(meta_err!(ERROR_PARAM_ERROR));
                 }
                 let name_info_data_raw = name_info_data_raw.unwrap();
                 // Create的时候，Name一定是Auction1状态
@@ -1009,14 +1009,14 @@ impl State for SqlState {
                     .bind(owner)).await?;
 
                 if insert_result.rows_affected() != 1 {
-                    return Err(crate::meta_err!(ERROR_ALREADY_EXIST));
+                    return Err(meta_err!(ERROR_ALREADY_EXIST));
                 }
                 Ok(())
             } else {
-                Err(crate::meta_err!(ERROR_EXCEPTION))
+                Err(meta_err!(ERROR_EXCEPTION))
             }
         } else {
-            Err(crate::meta_err!(ERROR_ALREADY_EXIST))
+            Err(meta_err!(ERROR_ALREADY_EXIST))
         }
     }
 
@@ -1028,7 +1028,7 @@ impl State for SqlState {
             if let ERROR_NOT_FOUND = get_meta_err_code(&err)? {
                 Ok(None)
             } else {
-                Err(crate::meta_err!(ERROR_EXCEPTION))
+                Err(meta_err!(ERROR_EXCEPTION))
             }
         } else {
             let row = query_result.unwrap();
@@ -1045,7 +1045,7 @@ impl State for SqlState {
         let sql = "select name_id from all_names where owner=?1";
         let mut conn = self.get_conn().await;
         let rows = conn.query_all(sqlx::query(sql).bind(owner.to_string())).await.map_err(|_| {
-            crate::meta_err!(ERROR_EXCEPTION)
+            meta_err!(ERROR_EXCEPTION)
         })?;
         let mut ret = vec![];
         for row in rows {
@@ -1068,8 +1068,8 @@ impl State for SqlState {
         let sql = "UPDATE all_names SET name_info=?1, owner=?3 WHERE name_id=?2";
         let name_info_data_raw = info.to_vec();
         if name_info_data_raw.is_err() {
-            log::error!("serialize name info error!");
-            return Err(crate::meta_err!(ERROR_PARAM_ERROR));
+            error!("serialize name info error!");
+            return Err(meta_err!(ERROR_PARAM_ERROR));
         }
         let name_info_data_raw = name_info_data_raw.unwrap();
         let mut owner = "".to_owned();
@@ -1084,7 +1084,7 @@ impl State for SqlState {
             .bind(owner)).await?;
 
         return if done.rows_affected() != 1 {
-            Err(crate::meta_err!(ERROR_NOT_FOUND))
+            Err(meta_err!(ERROR_NOT_FOUND))
         } else {
             Ok(())
         }
@@ -1095,7 +1095,7 @@ impl State for SqlState {
         let mut conn = self.get_conn().await;
         let done = conn.execute_sql(sqlx::query(sql).bind(state as i32).bind(name)).await?;
         return if done.rows_affected() != 1 {
-            Err(crate::meta_err!(ERROR_NOT_FOUND))
+            Err(meta_err!(ERROR_NOT_FOUND))
         } else {
             Ok(())
         }
@@ -1106,7 +1106,7 @@ impl State for SqlState {
         let mut conn = self.get_conn().await;
         let done = conn.execute_sql(sqlx::query(sql).bind(rent_arrears).bind(name)).await?;
         return if done.rows_affected() != 1 {
-            Err(crate::meta_err!(ERROR_NOT_FOUND))
+            Err(meta_err!(ERROR_NOT_FOUND))
         } else {
             Ok(())
         }
@@ -1122,18 +1122,18 @@ impl State for SqlState {
                 //TODO:没有正确的插入desc的更新时间
                 let desc_data = desc.to_vec();
                 if desc_data.is_err() {
-                    log::error!("serialize desc error!");
-                    return Err(crate::meta_err!(ERROR_PARAM_ERROR));
+                    error!("serialize desc error!");
+                    return Err(meta_err!(ERROR_PARAM_ERROR));
                 }
                 let desc_data_raw = desc_data.unwrap();
                 let insert_sql = "INSERT INTO all_descs (obj_id,desc,update_time) VALUES (?1,?2,date('now'))";
                 conn.execute_sql(sqlx::query(insert_sql).bind(objid.to_string()).bind(desc_data_raw)).await?;
                 Ok(())
             } else {
-                Err(crate::meta_err!(ERROR_EXCEPTION))
+                Err(meta_err!(ERROR_EXCEPTION))
             }
         } else {
-            Err(crate::meta_err!(ERROR_ALREADY_EXIST))
+            Err(meta_err!(ERROR_ALREADY_EXIST))
         }
     }
 
@@ -1144,7 +1144,7 @@ impl State for SqlState {
 
         let desc_data: Vec<u8> = row.get("desc");
         let desc_result = SavedMetaObject::clone_from_slice(desc_data.as_slice()).map_err(|_| {
-            crate::meta_err!(ERROR_NOT_FOUND)
+            meta_err!(ERROR_NOT_FOUND)
         })?;
         return Ok(desc_result);
 
@@ -1154,8 +1154,8 @@ impl State for SqlState {
         let sql = "UPDATE all_descs SET desc=?1 WHERE obj_id=?2";
         let desc_data = desc.to_vec();
         if desc_data.is_err() {
-            log::error!("serialize desc error!");
-            return Err(crate::meta_err!(ERROR_PARAM_ERROR));
+            error!("serialize desc error!");
+            return Err(meta_err!(ERROR_PARAM_ERROR));
         }
         let desc_data_raw = desc_data.unwrap();
         let mut conn = self.get_conn().await;
@@ -1949,12 +1949,13 @@ pub struct SqlStorage {
     locker: Mutex<()>,
     conn_pool: sqlx::SqlitePool
 }
-
-// impl Drop for SqlState {
-//     fn drop(&mut self) {
-//         info!("drop db connection");
-//     }
-// }
+/*
+impl Drop for SqlState {
+    fn drop(&mut self) {
+        info!("drop db connection");
+    }
+}
+ */
 
 #[async_trait]
 impl Storage for SqlStorage {
@@ -1964,7 +1965,13 @@ impl Storage for SqlStorage {
 
     async fn create_state(&self, _read_only: bool) -> StateRef {
         let _locker = self.get_locker().await;
-        SqlState::new(self.conn_pool.clone())
+        let conn = self.conn_pool.acquire().await;
+        if let Err(e) = &conn {
+            let msg = format!("{:?}", e);
+            info!("{}", msg);
+        }
+        let conn = conn.unwrap();
+        SqlState::new(conn)
     }
 
     async fn state_hash(&self) -> BuckyResult<StateHash> {
@@ -1972,7 +1979,7 @@ impl Storage for SqlStorage {
         static SQLITE_HEADER_SIZE: usize = 100;
         let content = std::fs::read(self.path()).map_err(|err| {
             error!("read file {} fail, err {}", self.path.display(), err);
-            crate::meta_err!(ERROR_NOT_FOUND)})?;
+            meta_err!(ERROR_NOT_FOUND)})?;
         let mut hasher = Sha256::new();
         hasher.input(&content[SQLITE_HEADER_SIZE..]);
         Ok(HashValue::from(hasher.result()))
