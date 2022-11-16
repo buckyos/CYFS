@@ -147,21 +147,20 @@ impl BrowserSanboxHttpServer {
     }
 
     fn is_browser(user_agent: &str) -> bool {
-        if user_agent.find("node-fetch").is_some() {
-            return false;
+        const NONE_BROWSER_IDS: [&str; 2] = ["node-fetch", "okhttp"];
+        for id in &NONE_BROWSER_IDS {
+            if user_agent.find(id).is_some() {
+                return false;
+            }
         }
 
-        true
-
-        /*
-        const BROWSER_IDS: [&str] = ["Mozilla", "WebKit", "Chrome", "Safari", "Gecko", "Firefox", "MSIE"];
+        const BROWSER_IDS: [&str; 7] = ["Mozilla", "WebKit", "Chrome", "Safari", "Gecko", "Firefox", "MSIE"];
         for id in &BROWSER_IDS {
             if user_agent.find(id).is_some() {
                 return true;
             }
         }
         false
-        */
     }
 
     fn extract_source<'a>(req: &'a http_types::Request,) -> BuckyResult<Option<RequestSourceString<'a>>> {
