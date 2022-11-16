@@ -1,8 +1,13 @@
+use std::sync::Arc;
 use async_trait::async_trait;
-use crate::{Bench, BenchEnv, sim_zone::SimZone};
+use crate::{Bench, OOD_DEC_ID, Stat};
 use log::*;
+use cyfs_base::*;
+use cyfs_lib::*;
+use crate::post_service::{CALL_PATH, NON_CALL_PATH};
+use crate::util::new_object;
 
-pub struct NDNBench {
+pub struct CrossZoneNDNBench {
     run_times: usize,
     stack: SharedCyfsStack,
     target: Option<ObjectId>,
@@ -10,22 +15,24 @@ pub struct NDNBench {
     objects: Vec<ObjectId>,
 }
 
+const LIST: [&str;1] = ["get-chunk"];
+
 #[async_trait]
-impl Bench for NDNBench {
+impl Bench for CrossZoneNDNBench {
     async fn bench(&mut self) -> BuckyResult<()> {
         self.test().await
     }
 
     fn name(&self) -> &str {
-        "NDN Bench"
+        "CrossZone NDN Bench"
     }
 
     fn print_list(&self) -> Option<&[&str]> {
-        None
+        Some(&LIST)
     }
 }
 
-impl NDNBench {
+impl CrossZoneNDNBench {
     pub fn new(stack: SharedCyfsStack, target: Option<ObjectId>, stat: Arc<Stat>, run_times: usize) -> Box<Self> {
         Box::new(Self {
             run_times,

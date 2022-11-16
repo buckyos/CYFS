@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
-use crate::{Bench, DEC_ID2, Stat};
+use crate::{Bench, OOD_DEC_ID, Stat};
 use log::*;
 use cyfs_base::*;
 use cyfs_core::*;
@@ -71,7 +71,7 @@ impl SameZoneNONBench {
     async fn test_put_object(&self, i: usize) -> BuckyResult<()> {
         let mut req =
             NONPutObjectOutputRequest::new_router(self.target.clone(), self.objects[i].0.clone(), self.objects[i].1.to_vec().unwrap());
-        req.common.req_path = Some(RequestGlobalStatePath::new(Some(DEC_ID2.clone()), Some(NON_OBJECT_PATH)).format_string());
+        req.common.req_path = Some(RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(NON_OBJECT_PATH)).format_string());
         req.access = Some(AccessString::full());
         let begin = std::time::Instant::now();
         let _ = self.stack.non_service().put_object(req).await?;
@@ -83,7 +83,7 @@ impl SameZoneNONBench {
     async fn test_get_object(&self, i: usize) -> BuckyResult<()> {
         let req =
             NONGetObjectOutputRequest::new_router(self.target.clone(), self.objects[i].0.clone(), None);
-        // req.common.req_path = Some(RequestGlobalStatePath::new(Some(DEC_ID2.clone()), Some(NON_OBJECT_PATH)).format_string());
+        // req.common.req_path = Some(RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(NON_OBJECT_PATH)).format_string());
         let begin = std::time::Instant::now();
         let _ = self.stack.non_service().get_object(req).await?;
         self.stat.write(self.name(),"get-object", begin.elapsed().as_millis() as u64);
@@ -94,7 +94,7 @@ impl SameZoneNONBench {
     async fn test_delete_object(&self, i: usize) -> BuckyResult<()> {
         let req =
             NONDeleteObjectOutputRequest::new_router(self.target.clone(), self.objects[i].0.clone(), None);
-        // req.common.req_path = Some(RequestGlobalStatePath::new(Some(DEC_ID2.clone()), Some(NON_OBJECT_PATH)).format_string());
+        // req.common.req_path = Some(RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(NON_OBJECT_PATH)).format_string());
         let begin = std::time::Instant::now();
         let _ = self.stack.non_service().delete_object(req).await?;
         self.stat.write(self.name(),"delete-object-from-ood", begin.elapsed().as_millis() as u64);
@@ -115,7 +115,7 @@ impl SameZoneNONBench {
 
             let mut req = NONPostObjectOutputRequest::new_router(self.target.clone(), q.desc().calculate_id(), q.to_vec().unwrap());
 
-            let req_path = RequestGlobalStatePath::new(Some(DEC_ID2.clone()), Some(CALL_PATH.to_owned()));
+            let req_path = RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(CALL_PATH.to_owned()));
             req.common.req_path = Some(req_path.to_string());
 
             let ret = self.stack.non_service().post_object(req.clone()).await?;

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use async_trait::async_trait;
 use cyfs_core::TextObj;
-use crate::{Bench, DEC_ID, Stat, util::new_object, DEC_ID2};
+use crate::{Bench, DEVICE_DEC_ID, Stat, util::new_object};
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -49,7 +49,7 @@ impl SameZoneCryptoBench {
     async fn test(&mut self) -> BuckyResult<()> {
         for i in 0..self.run_times {
             let begin = std::time::Instant::now();
-            //self.test_sign(i).await?;
+            self.test_sign(i).await?;
             self.test_crypto(i).await?;
 
             self.stat.write(self.name(),CRYPTO_INNER_ZONE_ACCESS, begin.elapsed().as_millis() as u64);
@@ -69,11 +69,38 @@ impl SameZoneCryptoBench {
             | CRYPTO_REQUEST_FLAG_SIGN_PUSH_DESC
             | CRYPTO_REQUEST_FLAG_SIGN_PUSH_BODY;
         let mut req = CryptoSignObjectRequest::new(id.object_id().to_owned(), object_raw, sign_flags);
-        req.common.dec_id = Some(DEC_ID.to_owned());
+        req.common.dec_id = Some(DEVICE_DEC_ID.to_owned());
         req.common.req_path = Some(
-            RequestGlobalStatePath::new(Some(DEC_ID.to_owned()), Some("/tests/test_sign".to_owned()))
+            RequestGlobalStatePath::new(Some(DEVICE_DEC_ID.to_owned()), Some("/tests/test_sign".to_owned()))
                 .to_string(),
         );
+
+        let meta = self.stack.root_state_meta_stub(None, None);
+        meta.clear_access().await.unwrap();
+
+        // 需要使用system-dec身份操作
+        let dec_id = self.stack.dec_id().unwrap().to_owned();
+        assert_eq!(dec_id.to_string(), DEVICE_DEC_ID.to_string());
+
+        let system_stack = self.stack
+            .fork_with_new_dec(Some(cyfs_core::get_system_dec_app().to_owned()))
+            .await
+            .unwrap();
+        system_stack.wait_online(None).await.unwrap();
+    
+        // 开启权限，需要修改system's rmeta
+        let meta = system_stack.root_state_meta_stub(None, None);
+        let item = GlobalStatePathAccessItem {
+            path: CYFS_CRYPTO_VIRTUAL_PATH.to_owned(),
+            access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
+                zone: None,
+                zone_category: Some(DeviceZoneCategory::CurrentZone),
+                dec: Some(DEVICE_DEC_ID.clone()),
+                access: AccessPermissions::CallOnly as u8,
+            }),
+        };
+
+        meta.add_access(item).await.unwrap();
 
         let resp = self.stack.crypto().sign_object(req).await.unwrap();
         let object_info = resp.object.unwrap();
@@ -92,7 +119,7 @@ impl SameZoneCryptoBench {
             object_info.clone(),
             sign_object,
         );
-        verify_req.common.dec_id = Some(DEC_ID.to_owned());
+        verify_req.common.dec_id = Some(DEVICE_DEC_ID.to_owned());
 
         let resp = self.stack.crypto().verify_object(verify_req).await.unwrap();
         assert!(resp.result.valid);
@@ -100,7 +127,7 @@ impl SameZoneCryptoBench {
         // 错误校验
         let mut verify_req =
             CryptoVerifyObjectRequest::new_verify_by_owner(VerifySignType::Both, object_info);
-        verify_req.common.dec_id = Some(DEC_ID.to_owned());
+        verify_req.common.dec_id = Some(DEVICE_DEC_ID.to_owned());
 
         // 由于object没有owner，所以这里会返回错误
         let resp = self.stack.crypto().verify_object(verify_req).await;

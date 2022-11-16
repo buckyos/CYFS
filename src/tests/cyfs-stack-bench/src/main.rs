@@ -38,9 +38,8 @@ async fn prepare_stack(stack: &SharedCyfsStack) -> DeviceId {
     let _ = stack.online().await;
 
     let stub = stack.root_state_meta_stub(None, None);
-    stub.add_access(GlobalStatePathAccessItem::new_group(NON_OBJECT_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
-    stub.add_access(GlobalStatePathAccessItem::new_group(GLOABL_STATE_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
-    stub.add_access(GlobalStatePathAccessItem::new_group("/a/b", None, None, Some(DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
+    stub.add_access(GlobalStatePathAccessItem::new_group(NON_OBJECT_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
+    stub.add_access(GlobalStatePathAccessItem::new_group(GLOABL_STATE_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
 
     let service = TestService::new(stack.clone());
     service.start().await;
@@ -73,7 +72,7 @@ async fn main() {
     // physical vood env
     if matches.is_present("dec-service") {
         //使用默认配置初始化non-stack，因为是跑在gateway后面，共享了gateway的协议栈，所以配置使用默认即可
-        let cyfs_stack = SharedCyfsStack::open_default(Some(DEC_ID.clone())).await.unwrap();
+        let cyfs_stack = SharedCyfsStack::open_default(Some(DEVICE_DEC_ID.clone())).await.unwrap();
         let stack_id = prepare_stack(&cyfs_stack).await;
         info!("start bench as service in {}", stack_id);
         async_std::task::block_on(async_std::future::pending::<()>());
@@ -84,11 +83,11 @@ async fn main() {
             if matches.is_present("simulator") {
                 info!("run benchmark on simulator, register service");
                 // zone1_ood as server
-                let service_stack = SharedCyfsStack::open_with_port(Some(DEC_ID2.clone()), 21000, 21001).await.unwrap();
+                let service_stack = SharedCyfsStack::open_with_port(Some(OOD_DEC_ID.clone()), 21000, 21001).await.unwrap();
                 let stack_id = prepare_stack(&service_stack).await;
                 config.same_zone_target = Some(stack_id.object_id().clone());
                 // zone2_ood as server
-                let other_ood_stack = SharedCyfsStack::open_with_port(Some(DEC_ID2.clone()), 21010, 21011).await.unwrap();
+                let other_ood_stack = SharedCyfsStack::open_with_port(Some(OOD_DEC_ID.clone()), 21010, 21011).await.unwrap();
                 let other_stack_id = prepare_stack(&other_ood_stack).await;
                 config.cross_zone_target = Some(other_stack_id.object_id().clone());
             }
@@ -99,9 +98,9 @@ async fn main() {
                     e
                 }).unwrap_or(128)
             }).unwrap_or(config.run_times.unwrap_or(128));
-
+            info!("ood dec_id: {}, device dec_id: {}", OOD_DEC_ID.to_string(), DEVICE_DEC_ID.to_string());
             // device as requestor
-            let test_stack = SharedCyfsStack::open_with_port(Some(DEC_ID.clone()), config.http_port, config.ws_port).await.unwrap();
+            let test_stack = SharedCyfsStack::open_with_port(Some(DEVICE_DEC_ID.clone()), config.http_port, config.ws_port).await.unwrap();
             test_stack.online().await.unwrap();
 
             benchs.push(SameZoneNONBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
@@ -110,6 +109,11 @@ async fn main() {
             benchs.push(CrossZoneRootStateBench::new(test_stack.clone(), config.cross_zone_target.clone(), stat.clone(), run_times));
             benchs.push(SameZoneRmetaBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
             benchs.push(SameZoneCryptoBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
+
+            benchs.push(TransBench::new(test_stack.clone(), config.cross_zone_target.clone(), stat.clone(), run_times));
+
+            benchs.push(SameZoneNDNBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(CrossZoneNDNBench::new(test_stack.clone(), config.cross_zone_target.clone(), stat.clone(), run_times));
 
             for bench in &mut benchs {
                 info!("begin test {}...", bench.name());
@@ -132,6 +136,6 @@ async fn main() {
 }
 
 lazy_static::lazy_static! {
-    static ref DEC_ID: ObjectId = cyfs_core::DecApp::generate_id(ObjectId::default(), "cyfs-stack-bench");
-    static ref DEC_ID2: ObjectId = cyfs_core::DecApp::generate_id(ObjectId::default(), "cyfs-stack-bench-2");
+    static ref DEVICE_DEC_ID: ObjectId = cyfs_core::DecApp::generate_id(ObjectId::default(), "cyfs-stack-bench");
+    static ref OOD_DEC_ID: ObjectId = cyfs_core::DecApp::generate_id(ObjectId::default(), "cyfs-stack-bench-2");
 }

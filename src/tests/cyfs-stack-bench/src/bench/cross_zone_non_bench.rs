@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
-use crate::{Bench, DEC_ID2, Stat};
+use crate::{Bench, OOD_DEC_ID, Stat};
 use log::*;
 use cyfs_base::*;
 use cyfs_core::*;
@@ -65,7 +65,7 @@ impl CrossZoneNONBench {
 
         let mut req = NONPostObjectOutputRequest::new_router(self.target.clone(), q.desc().calculate_id(), q.to_vec().unwrap());
 
-        let req_path = RequestGlobalStatePath::new(Some(DEC_ID2.clone()), Some(NON_CALL_PATH.to_owned()));
+        let req_path = RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(NON_CALL_PATH.to_owned()));
         req.common.req_path = Some(req_path.to_string());
 
         let ret = self.stack.non_service().post_object(req.clone()).await?;
@@ -82,7 +82,7 @@ impl CrossZoneNONBench {
 
         let mut req = NONPostObjectOutputRequest::new_router(self.target.clone(), q.desc().calculate_id(), q.to_vec().unwrap());
 
-        let req_path = RequestGlobalStatePath::new(Some(DEC_ID2.clone()), Some(NON_CALL_PATH.to_owned()));
+        let req_path = RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(NON_CALL_PATH.to_owned()));
         req.common.req_path = Some(req_path.to_string());
 
         let ret = self.stack.non_service().post_object(req.clone()).await?;
@@ -94,7 +94,7 @@ impl CrossZoneNONBench {
     async fn test_get_object(&self, id: ObjectId) -> BuckyResult<()> {
         let req =
             NONGetObjectOutputRequest::new_router(self.target.clone(), id, None);
-        // req.common.req_path = Some(RequestGlobalStatePath::new(Some(DEC_ID2.clone()), Some(NON_OBJECT_PATH)).format_string());
+        // req.common.req_path = Some(RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(NON_OBJECT_PATH)).format_string());
         let begin = std::time::Instant::now();
         let _ = self.stack.non_service().get_object(req).await?;
         self.stat.write(self.name(),"get-object", begin.elapsed().as_millis() as u64);
@@ -111,7 +111,7 @@ impl CrossZoneNONBench {
 
             let mut req = NONPostObjectOutputRequest::new_router(self.target.clone(), q.desc().calculate_id(), q.to_vec().unwrap());
 
-            let req_path = RequestGlobalStatePath::new(Some(DEC_ID2.clone()), Some(CALL_PATH.to_owned()));
+            let req_path = RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(CALL_PATH.to_owned()));
             req.common.req_path = Some(req_path.to_string());
 
             let ret = self.stack.non_service().post_object(req.clone()).await?;

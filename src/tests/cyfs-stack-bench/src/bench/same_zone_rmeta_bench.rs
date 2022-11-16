@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
-use crate::{Bench, DEC_ID2, Stat, DEC_ID};
+use crate::{Bench, OOD_DEC_ID, Stat};
 use log::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -55,24 +55,30 @@ impl SameZoneRmetaBench {
 
     async fn test_rmeta(&self, _i: usize) -> BuckyResult<()> {
         info!("begin test_rmeta_access...");    
-        {
-            let meta =
-            self.stack.root_state_meta_stub(None, Some(cyfs_core::get_system_dec_app().to_owned()));
+        // {
+        //     let meta =
+        //     self.stack.root_state_meta_stub(None, Some(cyfs_core::get_system_dec_app().to_owned()));
     
-            let access = AccessString::dec_default();
-            let item = GlobalStatePathAccessItem {
-                path: "/a/b".to_owned(),
-                access: GlobalStatePathGroupAccess::Default(access.value()),
-            };
+        //     let access = AccessString::dec_default();
+        //     let item = GlobalStatePathAccessItem {
+        //         path: "/a/b".to_owned(),
+        //         access: GlobalStatePathGroupAccess::Default(access.value()),
+        //     };
     
-            if let Err(e) = meta.add_access(item).await {
-                assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
-            } else {
-                unreachable!();
-            }
-        }
+        //     if let Err(e) = meta.add_access(item).await {
+        //         assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
+        //     } else {
+        //         unreachable!();
+        //     }
+        // }
     
-        let meta = self.stack.root_state_meta_stub(None, Some(DEC_ID.clone()));
+        self.stack
+        .root_state_meta_stub(None, None)
+        .clear_access()
+        .await
+        .unwrap();
+
+        let meta = self.stack.root_state_meta_stub(None, None);
     
         let access = AccessString::dec_default();
         let item = GlobalStatePathAccessItem {
@@ -88,7 +94,7 @@ impl SameZoneRmetaBench {
             access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
                 zone: None,
                 zone_category: Some(DeviceZoneCategory::CurrentZone),
-                dec: Some(DEC_ID.clone()),
+                dec: Some(OOD_DEC_ID.clone()),
                 access: perm,
             }),
         };
@@ -101,7 +107,7 @@ impl SameZoneRmetaBench {
             access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
                 zone: None,
                 zone_category: None,
-                dec: Some(DEC_ID.clone()),
+                dec: Some(OOD_DEC_ID.clone()),
                 access: 0,
             }),
         };
@@ -115,7 +121,7 @@ impl SameZoneRmetaBench {
             access: GlobalStatePathGroupAccess::Specified(GlobalStatePathSpecifiedGroup {
                 zone: None,
                 zone_category: Some(DeviceZoneCategory::CurrentZone),
-                dec: Some(DEC_ID.clone()),
+                dec: Some(OOD_DEC_ID.clone()),
                 access: 0,
             }),
         };
@@ -126,7 +132,7 @@ impl SameZoneRmetaBench {
         assert_eq!(current.path, "/a/b/");
         if let GlobalStatePathGroupAccess::Specified(value) = current.access {
             assert_eq!(value.access, perm);
-            assert_eq!(value.dec, Some(DEC_ID.clone()));
+            assert_eq!(value.dec, Some(OOD_DEC_ID.clone()));
             assert!(value.zone.is_none());
         } else {
             unreachable!();

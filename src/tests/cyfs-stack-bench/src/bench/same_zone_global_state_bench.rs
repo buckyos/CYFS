@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
-use crate::{Bench, DEC_ID, Stat};
+use crate::{Bench, DEVICE_DEC_ID, Stat};
 use log::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -90,7 +90,7 @@ impl SameZoneGlobalStateBench {
     // 测试root-state的同zone的跨dec操作 需要配合权限
     async fn test_root_state(&self, _i: usize) -> BuckyResult<()> {
         let begin_root = std::time::Instant::now();
-        let root_state = self.stack.root_state_stub(None, Some(DEC_ID.clone()));
+        let root_state = self.stack.root_state_stub(None, Some(DEVICE_DEC_ID.clone()));
         let root_info = root_state.get_current_root().await.unwrap();
         debug!("current root: {:?}", root_info);
 

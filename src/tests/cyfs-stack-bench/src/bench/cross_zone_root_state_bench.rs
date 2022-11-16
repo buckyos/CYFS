@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
-use crate::{Bench, DEC_ID2, Stat};
+use crate::{Bench, OOD_DEC_ID, Stat};
 use log::*;
 use cyfs_base::*;
 use cyfs_core::*;
@@ -57,7 +57,7 @@ impl CrossZoneRootStateBench {
 
         let mut req = NONPostObjectOutputRequest::new_router(self.target.clone(), q.desc().calculate_id(), q.to_vec().unwrap());
 
-        let req_path = RequestGlobalStatePath::new(Some(DEC_ID2.clone()), Some(ROOT_STATE_CALL_PATH.to_owned()));
+        let req_path = RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(ROOT_STATE_CALL_PATH.to_owned()));
         req.common.req_path = Some(req_path.to_string());
 
         let ret = self.stack.non_service().post_object(req.clone()).await?;
@@ -72,7 +72,7 @@ impl CrossZoneRootStateBench {
 
         let mut req = NONPostObjectOutputRequest::new_router(self.target.clone(), q.desc().calculate_id(), q.to_vec().unwrap());
 
-        let req_path = RequestGlobalStatePath::new(Some(DEC_ID2.clone()), Some(ROOT_STATE_CALL_PATH.to_owned()));
+        let req_path = RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(ROOT_STATE_CALL_PATH.to_owned()));
         req.common.req_path = Some(req_path.to_string());
 
         let ret = self.stack.non_service().post_object(req.clone()).await?;
@@ -82,26 +82,26 @@ impl CrossZoneRootStateBench {
     }
 
     async fn test_get_object_by_key(&self) -> BuckyResult<()> {
-        let root_state = self.stack.root_state_stub(self.target.clone(), Some(DEC_ID2.clone()));
+        //let root_state = self.stack.root_state_stub(self.target.clone(), Some(OOD_DEC_ID.clone()));
         //let root_info = root_state.get_current_root().await.unwrap();
         //debug!("current root: {:?}", root_info);
-        match root_state.get_current_root().await {
-            Err(e) => {
-                assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
-            }
-            Ok(_) => {
-                unreachable!();
-            }
-        }
+        // match root_state.get_current_root().await {
+        //     Err(e) => {
+        //         assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
+        //     }
+        //     Ok(_) => {
+        //         unreachable!();
+        //     }
+        // }
     
-        match root_state.create_path_op_env().await {
-            Err(e) => {
-                assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
-            }
-            Ok(_) => {
-                unreachable!();
-            }
-        }
+        // match root_state.create_path_op_env().await {
+        //     Err(e) => {
+        //         assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
+        //     }
+        //     Ok(_) => {
+        //         unreachable!();
+        //     }
+        // }
 
         // let begin = std::time::Instant::now();
         // let access = RootStateOpEnvAccess::new(GLOABL_STATE_PATH, AccessPermissions::ReadAndWrite);   // 对跨dec路径操作这个perm才work

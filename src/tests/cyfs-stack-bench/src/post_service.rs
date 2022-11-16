@@ -5,7 +5,7 @@ use cyfs_lib::*;
 use std::sync::Arc;
 use std::str::FromStr;
 use cyfs_util::EventListenerAsyncRoutine;
-use crate::DEC_ID;
+use crate::DEVICE_DEC_ID;
 use crate::bench::GLOABL_STATE_PATH;
 use crate::util::new_object;
 
@@ -228,10 +228,10 @@ impl TestService {
 
     pub async fn start(self) {
         let stub = self.cyfs_stack.root_state_meta_stub(None, None);
-        stub.add_access(GlobalStatePathAccessItem::new_group(NON_CALL_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
-        stub.add_access(GlobalStatePathAccessItem::new_group(CALL_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
-        stub.add_access(GlobalStatePathAccessItem::new_group(ROOT_STATE_CALL_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::Full as u8)).await.unwrap();
-        stub.add_access(GlobalStatePathAccessItem::new_group(CYFS_CRYPTO_VIRTUAL_PATH, None, None, Some(DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
+        stub.add_access(GlobalStatePathAccessItem::new_group(NON_CALL_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
+        stub.add_access(GlobalStatePathAccessItem::new_group(CALL_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
+        stub.add_access(GlobalStatePathAccessItem::new_group(ROOT_STATE_CALL_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::Full as u8)).await.unwrap();
+        stub.add_access(GlobalStatePathAccessItem::new_group(CYFS_CRYPTO_VIRTUAL_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
 
         let service = Arc::new(self);
 
