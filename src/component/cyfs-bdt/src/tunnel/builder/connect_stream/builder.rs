@@ -11,7 +11,7 @@ use cyfs_base::*;
 use crate::{
     types::*, 
     protocol::{*, v0::*}, 
-    interface::*, 
+    interface::{*, udp::MTU_LARGE}, 
     history::keystore, 
     sn::client::PingClientCalledEvent, 
     stack::{WeakStack, Stack}, 
@@ -180,10 +180,10 @@ impl ConnectStreamBuilder {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 //FIXME 先不调用raw_measure_with_context
                 //let len = first_box.raw_measure_with_context(&mut context).unwrap();
-                let mut buf = vec![0u8; 2048];
+                let mut buf = vec![0u8; MTU_LARGE];
                 let b = first_box.raw_encode_with_context(&mut buf, &mut context, &None).unwrap();
                 //buf[0..b.len()].as_ref()
-                let len = 2048 - b.len();
+                let len = MTU_LARGE - b.len();
                 buf.truncate(len);
                 info!("{} encode first box to sn call, len: {}, package_box {:?}", self, len, first_box);
                 buf
