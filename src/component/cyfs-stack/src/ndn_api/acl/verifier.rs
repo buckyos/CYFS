@@ -49,7 +49,7 @@ impl FileVerifier {
         file_id: &ObjectId,
         file: &File,
         target_chunk_id: &ChunkId,
-    ) -> BuckyResult<bool> {
+    ) -> BuckyResult<()> {
         let ret = match file.body() {
             Some(body) => match body.content().inner_chunk_list() {
                 Some(list) => list.contains(&target_chunk_id),
