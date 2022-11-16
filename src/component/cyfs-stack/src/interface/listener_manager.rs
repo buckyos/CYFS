@@ -18,7 +18,7 @@ use crate::stack::ObjectServices;
 use crate::zone::ZoneRoleManager;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_lib::RequestProtocol;
+use cyfs_lib::{RequestProtocol, BrowserSanboxMode};
 
 use cyfs_debug::Mutex;
 use std::net::SocketAddr;
@@ -176,11 +176,16 @@ impl ObjectListenerManager {
 
             let raw_handler = RawHttpServer::new(server.into_server());
             let http_server = DefaultHttpServer::new(raw_handler.into(), default_handler.clone());
-            let http_server = BrowserSanboxHttpServer::new(
-                http_server.into(),
-                config.get_stack_params().front.browser_mode,
-            );
-            self.http_tcp_server = Some(http_server.into());
+            let http_server = match config.get_stack_params().front.browser_mode {
+                BrowserSanboxMode::None => http_server.into(),
+                mode @ _ => {
+                    BrowserSanboxHttpServer::new(
+                        http_server.into(),
+                        mode,
+                    ).into()
+                }
+            };
+            self.http_tcp_server = Some(http_server);
         }
 
         {

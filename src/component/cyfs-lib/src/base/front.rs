@@ -5,6 +5,7 @@ pub enum BrowserSanboxMode {
     Forbidden,
     Strict,
     Relaxed,
+    None,
 }
 
 impl Default for BrowserSanboxMode {
@@ -19,6 +20,7 @@ impl BrowserSanboxMode {
             Self::Forbidden => "forbidden",
             Self::Strict => "strict",
             Self::Relaxed => "relaxed",
+            Self::None => "none",
         }
     }
 }
@@ -30,6 +32,7 @@ impl std::str::FromStr for BrowserSanboxMode {
             "forbidden" => Self::Forbidden,
             "strict" => Self::Strict,
             "relaxed" => Self::Relaxed,
+            "none" => Self::None,
             _ => {
                 let msg = format!("unknown browser mode: {}", s);
                 warn!("{}", msg);

@@ -30,7 +30,7 @@ enum RequestSourceString<'a> {
     Other,
 }
 
-pub(crate) struct BrowserSanboxHttpServer {
+pub(super) struct BrowserSanboxHttpServer {
     mode: BrowserSanboxMode,
     handler: HttpServerHandlerRef,
 }
@@ -40,6 +40,8 @@ impl BrowserSanboxHttpServer {
         handler: HttpServerHandlerRef,
         mode: BrowserSanboxMode,
     ) -> Self {
+        assert_ne!(mode, BrowserSanboxMode::None);
+
         Self {
             handler,
             mode,
