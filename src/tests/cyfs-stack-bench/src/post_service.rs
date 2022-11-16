@@ -5,13 +5,14 @@ use cyfs_lib::*;
 use std::sync::Arc;
 use std::str::FromStr;
 use cyfs_util::EventListenerAsyncRoutine;
-use crate::DEVICE_DEC_ID;
-use crate::bench::GLOABL_STATE_PATH;
+use crate::{DEVICE_DEC_ID, OOD_DEC_ID};
+use crate::bench::{GLOABL_STATE_PATH, NDN_CHUNKS_PATH};
 use crate::util::new_object;
 
 pub const TEST_DEC_ID_STR: &str = "5aSixgP8EPf6HkP54Qgybddhhsd1fgrkg7Atf2icJiiS";
 pub const CALL_PATH: &str = "/cyfs-bench-post";
 pub const NON_CALL_PATH: &str = "/cyfs-bench-non";
+pub const NDN_CALL_PATH: &str = "/cyfs-bench-ndn";
 pub const ROOT_STATE_CALL_PATH: &str = "/cyfs-bench-root-state";
 pub struct DeviceInfo {
     pub ood_id: DeviceId,
@@ -33,6 +34,7 @@ enum ServiceType {
     TestPost,
     CrossZoneNonTest,
     CrossZoneRootStateTest,
+    CrossZoneNdnTest,
 }
 
 struct OnPostObject {
@@ -199,6 +201,53 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
                     })
                 }
             }
+
+            ServiceType::CrossZoneNdnTest => {
+                if object.id() == "add_chunk" {
+                    let value = object.header().parse::<usize>()?;
+                    info!("generating test chunks...");
+                    let mut ids = Vec::with_capacity(value);
+                    for _i in 0..value {
+                        let buf: Vec<u8> = (0..3000).map(|_| rand::random::<u8>()).collect();
+                        let chunk_id = ChunkId::calculate(&buf).await.unwrap();
+                
+                        let mut req = NDNPutDataRequest::new_with_buffer(
+                            NDNAPILevel::Router,
+                            chunk_id.object_id().to_owned(),
+                            buf.clone(),
+                        );
+                        req.common.target = Some(self.owner.cyfs_stack.local_device_id().into());
+                        req.common.req_path = Some(RequestGlobalStatePath::new(Some(OOD_DEC_ID.clone()), Some(NDN_CHUNKS_PATH)).format_string());
+                        if let Err(e) = self.owner.cyfs_stack.ndn_service().put_data(req).await {
+                            error!("put chunk error! {}", e);
+                            unreachable!();
+                        }
+                        ids.push(chunk_id);
+                    }
+
+                    let mut answer = new_object("add_chunks", "finish");
+                    *answer.body_mut_expect("").content_mut().value_mut() = ids.to_hex().unwrap();
+                    let response = NONPostObjectInputResponse {
+                        object: Some(NONObjectInfo::new(
+                            answer.desc().calculate_id(),
+                            answer.to_vec().unwrap(),
+                            None,
+                        )),
+                    };
+
+                    Ok(RouterHandlerPostObjectResult {
+                        action: RouterHandlerAction::Response,
+                        request: None,
+                        response: Some(Ok(response)),
+                    })
+                } else {
+                    Ok(RouterHandlerPostObjectResult {
+                        action: RouterHandlerAction::Response,
+                        request: None,
+                        response: Some(Err(BuckyError::from(BuckyErrorCode::NotSupport))),
+                    })
+                }
+            }
         }
 
     }
@@ -232,6 +281,7 @@ impl TestService {
         stub.add_access(GlobalStatePathAccessItem::new_group(CALL_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
         stub.add_access(GlobalStatePathAccessItem::new_group(ROOT_STATE_CALL_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::Full as u8)).await.unwrap();
         stub.add_access(GlobalStatePathAccessItem::new_group(CYFS_CRYPTO_VIRTUAL_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::CallOnly as u8)).await.unwrap();
+        stub.add_access(GlobalStatePathAccessItem::new_group(NDN_CALL_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::Full as u8)).await.unwrap();
 
         let service = Arc::new(self);
 
@@ -279,6 +329,21 @@ impl TestService {
                 Some(Box::new(OnPostObject {
                     owner: service.clone(),
                     service_type: ServiceType::CrossZoneRootStateTest
+                })))
+            .unwrap();
+        
+        service.cyfs_stack
+            .router_handlers()
+            .add_handler(
+                RouterHandlerChain::Handler,
+                "cyfs-bench-ndn",
+                0,
+                None,
+                Some(NDN_CALL_PATH.to_owned()),
+                RouterHandlerAction::Default,
+                Some(Box::new(OnPostObject {
+                    owner: service.clone(),
+                    service_type: ServiceType::CrossZoneNdnTest
                 })))
             .unwrap();
     }

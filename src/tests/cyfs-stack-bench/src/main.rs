@@ -40,6 +40,7 @@ async fn prepare_stack(stack: &SharedCyfsStack) -> DeviceId {
     let stub = stack.root_state_meta_stub(None, None);
     stub.add_access(GlobalStatePathAccessItem::new_group(NON_OBJECT_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
     stub.add_access(GlobalStatePathAccessItem::new_group(GLOABL_STATE_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
+    stub.add_access(GlobalStatePathAccessItem::new_group(NDN_CHUNKS_PATH, None, None, Some(DEVICE_DEC_ID.clone()), AccessPermissions::ReadAndWrite as u8)).await.unwrap();
 
     let service = TestService::new(stack.clone());
     service.start().await;
