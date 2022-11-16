@@ -127,7 +127,7 @@ impl NonStub {
             sync_service: true,
             is_mobile_stack: true,
             front_enable: true,
-            browser_mode: BrowserSanboxMode::default(),
+            browser_mode: BrowserSanboxMode::None,
         };
         let config = CyfsServiceLoaderConfig::new(param)?;
 
