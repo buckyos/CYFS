@@ -163,7 +163,7 @@ pub struct PeerManager {
     last_knock_time: AtomicU64,
     timeout: Duration,
     config: Config,
-    statistic_manager: StatisticManager,
+    statistic_manager: &'static StatisticManager,
 }
 
 enum FindPeerReason {
@@ -182,7 +182,7 @@ impl PeerManager {
             last_knock_time: AtomicU64::new(bucky_time_now()),
             timeout,
             config,
-            statistic_manager: StatisticManager::default(),
+            statistic_manager: StatisticManager::get_instance(),
         }
     }
 
@@ -272,7 +272,7 @@ impl PeerManager {
         // 3.新建cache
         match peer_desc {
             Some(desc) => {
-                let old = peers.active_peers.insert(peerid.clone(), CachedPeerInfo::new(desc.clone(), sender, aes_key, send_time, seq, self.statistic_manager.get_status(peerid.clone(), send_time)));
+                let old = peers.active_peers.insert(peerid.clone(), CachedPeerInfo::new(desc.clone(), sender, aes_key, send_time, seq, self.statistic_manager.get_peer_status(peerid.clone(), send_time)));
                 assert!(old.is_none());
                 true
             }
