@@ -164,6 +164,8 @@ impl TransRequestHandler {
             auto_start: JsonCodecHelper::decode_bool_field(&body, "auto_start")?
         };
 
+        req.check_valid()?;
+        
         self.processor.create_task(req).await
     }
 

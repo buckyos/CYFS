@@ -1687,6 +1687,20 @@ impl ObjectMapSimpleContentType {
             Self::DiffSet => "diffset",
         }
     }
+
+    pub fn is_map(&self) -> bool {
+        match self {
+            Self::Map => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_set(&self) -> bool {
+        match self {
+            Self::Set => true,
+            _ => false,
+        }
+    }
 }
 
 impl ToString for ObjectMapSimpleContentType {

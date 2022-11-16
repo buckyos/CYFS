@@ -333,6 +333,8 @@ impl NDNRequestHandler {
 
         info!("recv get_data request: {}", get_req);
 
+        get_req.check_valid()?;
+
         self.processor.get_data(get_req).await
     }
 
