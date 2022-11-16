@@ -1,8 +1,9 @@
 
 use std::{sync::{RwLock, Arc}, collections::{BTreeMap, }, time::Duration};
 
-use cyfs_base::{DeviceId, bucky_time_now, };
+use cyfs_base::{DeviceId, bucky_time_now, SocketAddr, };
 use cyfs_util::SqliteStorage;
+use once_cell::sync::OnceCell;
 
 use crate::Timestamp;
 
@@ -16,18 +17,18 @@ struct StatisticImpl {
 struct StatisticManagerImpl {
     storage: Option<Arc<SqliteStorage>>,
     last_cache_timestamp: Timestamp,
-    devices: BTreeMap<DeviceId, PeerStatus>,
+    statistics: BTreeMap<String, PeerStatus>,
 }
 
 #[derive(Clone)]
 pub struct StatisticManager(Arc<RwLock<StatisticManagerImpl>>);
 
-impl std::default::Default for StatisticManager {
-    fn default() -> Self {
+impl StatisticManager {
+    fn new() -> Self {
         let ret = Self(Arc::new(RwLock::new(StatisticManagerImpl{
             storage: None,
             last_cache_timestamp: bucky_time_now(),
-            devices: BTreeMap::new(),
+            statistics: BTreeMap::new(),
         })));
 
         let arc_ret = ret.clone();
@@ -50,11 +51,24 @@ impl std::default::Default for StatisticManager {
 }
 
 impl StatisticManager {
-    pub fn get_status(&self, id: DeviceId, now: Timestamp) -> PeerStatus {
+    pub fn get_instance() -> &'static Self {
+        static INSTANCE: OnceCell<StatisticManager> = OnceCell::new();
+        INSTANCE.get_or_init(|| Self::new())
+    }
+
+    pub fn get_peer_status(&self, id: DeviceId, now: Timestamp) -> PeerStatus {
         self.0.write().unwrap()
-            .devices
-            .entry(id.clone())
-            .or_insert(PeerStatus::new(id, now))
+            .statistics
+            .entry(id.to_string())
+            .or_insert(PeerStatus::with_peer(id, now))
+            .clone()
+    }
+
+    pub fn get_endpoint_status(&self, endpoint: SocketAddr) -> PeerStatus {
+        self.0.write().unwrap()
+            .statistics
+            .entry(endpoint.to_string())
+            .or_insert(PeerStatus::with_endpoint(endpoint))
             .clone()
     }
 }
@@ -66,7 +80,7 @@ impl StatisticManager {
 
             if now > manager.last_cache_timestamp &&
                now - manager.last_cache_timestamp >= CACHE_MAX_TIMEOUT.as_micros() as u64 {
-                let all: Vec<PeerStatus> = manager.devices.values().cloned().collect();
+                let all: Vec<PeerStatus> = manager.statistics.values().cloned().collect();
                 manager.last_cache_timestamp = now;
                 (Some(all), manager.storage.clone())
             } else {
@@ -98,15 +112,15 @@ mod test {
     
         use super::StatisticManager;
 
-        let m = StatisticManager::default();
+        let m = StatisticManager::get_instance();
 
-        let s1 = m.get_status(DeviceId::default(), bucky_time_now());
+        let s1 = m.get_peer_status(DeviceId::default(), bucky_time_now());
         // s1.online(bucky_time_now()+10);
         s1.online(TempSeq::default(), bucky_time_now()+10);
 
         std::thread::sleep(std::time::Duration::from_secs(1));
 
-        let _s2 = m.get_status(DeviceId::default(), bucky_time_now());
+        let _s2 = m.get_peer_status(DeviceId::default(), bucky_time_now());
 
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
