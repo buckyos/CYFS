@@ -33,7 +33,7 @@ impl TransRequestHandler {
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
         let level = RequestorHelper::decode_header(&req.request, CYFS_API_LEVEL)?;
-        let referer_object = RequestorHelper::decode_optional_headers(&req.request, CYFS_REFERER_OBJECT)?.unwrap_or(vec![]);
+        let referer_object = RequestorHelper::decode_optional_headers_with_utf8_decoding(&req.request, CYFS_REFERER_OBJECT)?.unwrap_or(vec![]);
 
         let ret = NDNInputRequestCommon {
             req_path,
