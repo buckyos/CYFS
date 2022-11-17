@@ -165,6 +165,7 @@ impl BuckyErrorStatusCodeTrans {
             | BuckyErrorCode::InvalidInput
             | BuckyErrorCode::InvalidParam
             | BuckyErrorCode::InvalidData => StatusCode::BadRequest,
+            BuckyErrorCode::AlreadyExists => StatusCode::Conflict,
 
             BuckyErrorCode::NotFound | BuckyErrorCode::InnerPathNotFound => StatusCode::NotFound,
             BuckyErrorCode::PermissionDenied => StatusCode::Forbidden,
