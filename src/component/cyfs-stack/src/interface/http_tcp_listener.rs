@@ -76,20 +76,19 @@ impl ObjectHttpTcpListener {
     }
 
     async fn accept(&self, stream: TcpStream) -> BuckyResult<()> {
-        let seq = self.next_seq();
-
         let peer_addr = stream.peer_addr()?;
         debug!(
-            "starting accept new tcp connection at {} from {}, seq={}",
-            self.listen_url, &peer_addr, seq,
+            "starting accept new tcp connection at {} from {}",
+            self.listen_url, &peer_addr,
         );
 
-        // 一条连接上只accept一次
         let begin = std::time::Instant::now();
         let opts = async_h1::ServerOptions::default();
         let ret = async_h1::accept_with_opts(
             stream,
             |mut req| async move {
+                let seq = self.next_seq();
+
                 info!(
                     "recv tcp http request: url={}, method={}, len={:?}, peer={}, seq={}",
                     req.url(),
@@ -146,8 +145,8 @@ impl ObjectHttpTcpListener {
 
         if let Err(e) = ret {
             error!(
-                "tcp http accept error, err={}, addr={}, peer={}, during={}ms, seq={}",
-                e, self.listen_url, peer_addr, begin.elapsed().as_millis(), seq,
+                "tcp http accept error, err={}, addr={}, peer={}, during={}ms",
+                e, self.listen_url, peer_addr, begin.elapsed().as_millis(),
             );
             // FIXME 一般是请求方直接断开导致的错误，是否需要判断并不再输出warn？
             //Err(BuckyError::from(e))
