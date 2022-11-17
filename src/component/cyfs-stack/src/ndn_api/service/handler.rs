@@ -1,6 +1,5 @@
 use crate::ndn::*;
 use crate::non::NONInputHttpRequest;
-use crate::non_api::NONRequestUrlParser;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -14,6 +13,7 @@ pub(crate) type NDNInputHttpRequest<State> = NONInputHttpRequest<State>;
 // 从url params里面解析出所需要的参数
 struct NDNGetDataUrlParams {
     common: NDNInputRequestCommon,
+    object_id: ObjectId,
     inner_path: Option<String>,
     action: Option<NDNAction>,
 }
@@ -33,10 +33,16 @@ impl NDNRequestHandler {
         req: &NDNInputHttpRequest<State>,
         default_action: NDNAction,
     ) -> BuckyResult<NDNAction> {
-        match RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_NDN_ACTION)? {
+        match Self::decode_option_action(req)? {
             Some(v) => Ok(v),
             None => Ok(default_action),
         }
+    }
+
+    fn decode_option_action<State>(
+        req: &NDNInputHttpRequest<State>,
+    ) -> BuckyResult<Option<NDNAction>> {
+        RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_NDN_ACTION)
     }
 
     // 从url里面解析
@@ -50,9 +56,14 @@ impl NDNRequestHandler {
         let mut referer_object = vec![];
         let mut inner_path = None;
         let mut action = None;
+        let mut req_path = None;
+        let mut object_id = None;
 
         for (k, v) in req.request.url().query_pairs() {
             match k.as_ref() {
+                cyfs_base::CYFS_OBJECT_ID => {
+                    object_id = Some(RequestorHelper::decode_url_param(k, v)?);
+                }
                 cyfs_base::CYFS_NDN_ACTION => {
                     action = Some(RequestorHelper::decode_url_param(k, v)?);
                 }
@@ -69,10 +80,14 @@ impl NDNRequestHandler {
                     target = Some(RequestorHelper::decode_url_param(k, v)?);
                 }
                 cyfs_base::CYFS_REFERER_OBJECT => {
-                    referer_object.push(RequestorHelper::decode_url_param(k, v)?);
+                    referer_object
+                        .push(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
                 }
                 cyfs_base::CYFS_INNER_PATH => {
-                    inner_path = Some(RequestorHelper::decode_url_param(k, v)?);
+                    inner_path = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
+                }
+                cyfs_base::CYFS_REQ_PATH => {
+                    req_path = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
                 }
                 _ => {
                     warn!("unknown ndn url param: {}={}", k, v);
@@ -80,11 +95,23 @@ impl NDNRequestHandler {
             }
         }
 
-        // FIXME header dec_id vs query pairs dec_id? 
-        let source = req.source.clone().dec(dec_id.unwrap_or(cyfs_core::get_anonymous_dec_app().to_owned()));
+        if object_id.is_none() {
+            let msg = format!(
+                "invalid ndn download data request's object_id! url={}",
+                req.request.url()
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
+        // FIXME header dec_id vs query pairs dec_id?
+        let source = req
+            .source
+            .clone()
+            .dec(dec_id.unwrap_or(cyfs_core::get_anonymous_dec_app().to_owned()));
 
         let common = NDNInputRequestCommon {
-            req_path: None,
+            req_path,
 
             source,
             level: level.unwrap_or_default(),
@@ -101,6 +128,7 @@ impl NDNRequestHandler {
         let ret = NDNGetDataUrlParams {
             common,
             action,
+            object_id: object_id.unwrap(),
             inner_path,
         };
 
@@ -111,10 +139,16 @@ impl NDNRequestHandler {
     fn decode_common_headers<State>(
         req: &NDNInputHttpRequest<State>,
     ) -> BuckyResult<NDNInputRequestCommon> {
+        // req_path
+        let req_path = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            &req.request,
+            cyfs_base::CYFS_REQ_PATH,
+        )?;
+
         // 尝试提取flags
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
-            
+
         // 提取api level字段
         let level =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_API_LEVEL)?;
@@ -124,10 +158,13 @@ impl NDNRequestHandler {
 
         // 提取关联对象
         let referer_object: Option<Vec<NDNDataRefererObject>> =
-            RequestorHelper::decode_optional_headers(&req.request, cyfs_base::CYFS_REFERER_OBJECT)?;
+            RequestorHelper::decode_optional_headers_with_utf8_decoding(
+                &req.request,
+                cyfs_base::CYFS_REFERER_OBJECT,
+            )?;
 
         let ret = NDNInputRequestCommon {
-            req_path: None,
+            req_path,
 
             source: req.source.clone(),
             level: level.unwrap_or_default(),
@@ -176,8 +213,9 @@ impl NDNRequestHandler {
             return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
         }
 
-        let param = NONRequestUrlParser::parse_put_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
+        let common = Self::decode_common_headers(&req)?;
+
+        let object_id = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
 
         // 提取body
         let data = req.request.take_body();
@@ -193,13 +231,10 @@ impl NDNRequestHandler {
 
         let data = Box::new(data);
 
-        common.req_path = param.req_path;
-        // common.request = Some(req.request.into());
-
         let put_req = if action == NDNAction::PutData {
             NDNPutDataInputRequest {
                 common,
-                object_id: param.object_id,
+                object_id,
 
                 data_type: NDNDataType::Mem,
                 length: length.unwrap() as u64,
@@ -208,7 +243,7 @@ impl NDNRequestHandler {
         } else {
             NDNPutDataInputRequest {
                 common,
-                object_id: param.object_id,
+                object_id,
 
                 data_type: NDNDataType::SharedMem,
                 length: length.unwrap() as u64,
@@ -221,7 +256,6 @@ impl NDNRequestHandler {
         self.processor.put_data(put_req).await
     }
 
-
     pub fn encode_get_data_response(resp: NDNGetDataInputResponse) -> Response {
         let mut http_resp = match resp.range {
             Some(range) => {
@@ -229,9 +263,7 @@ impl NDNRequestHandler {
                 resp.insert_header(cyfs_base::CYFS_DATA_RANGE, range.encode_string());
                 resp
             }
-            None => {
-                RequestorHelper::new_response(StatusCode::Ok)
-            }
+            None => RequestorHelper::new_response(StatusCode::Ok),
         };
 
         // resp里面增加action的具体类型，方便一些需要根据请求类型做二次处理的地方
@@ -251,22 +283,22 @@ impl NDNRequestHandler {
             let body = tide::Body::from_reader(reader, Some(resp.length as usize));
             http_resp.set_body(body);
         }
-        
+
         http_resp.into()
     }
 
     pub async fn process_get_request<State>(&self, req: NDNInputHttpRequest<State>) -> Response {
-        let action = Self::decode_action(&req, NDNAction::GetData);
-        if action.is_err() {
-            return RequestorHelper::trans_error(action.unwrap_err());
+        match Self::decode_option_action(&req) {
+            Ok(Some(action)) => {
+                if action == NDNAction::QueryFile {
+                    self.process_query_file_request(req).await
+                } else {
+                    self.process_get_data_request(action, req).await
+                }
+            }
+            Ok(None) => self.process_download_data_request(req).await,
+            Err(e) => RequestorHelper::trans_error(e),
         }
-
-        let action = action.unwrap();
-        if action == NDNAction::QueryFile {
-            return self.process_query_file_request(req).await;
-        }
-
-        self.process_get_data_request(action, req).await
     }
 
     async fn process_get_data_request<State>(
@@ -293,28 +325,22 @@ impl NDNRequestHandler {
             return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
         }
 
-        let param = NONRequestUrlParser::parse_get_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
+        let common = Self::decode_common_headers(&req)?;
 
-        // 优先尝试从header里面提取
-        let inner_path = match RequestorHelper::decode_optional_header(
+        let object_id = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
+        let inner_path = RequestorHelper::decode_optional_header_with_utf8_decoding(
             &req.request,
             cyfs_base::CYFS_INNER_PATH,
-        )? {
-            Some(v) => Some(v),
-            None => param.inner_path,
-        };
+        )?;
 
         // check if range header applied
         let range = RequestorHelper::decode_optional_header(&req.request, "Range")?
             .map(|s: String| NDNDataRequestRange::new_unparsed(s));
 
-        common.req_path = param.req_path;
-
         let get_req = if action == NDNAction::GetData {
             NDNGetDataInputRequest {
                 common,
-                object_id: param.object_id,
+                object_id,
 
                 data_type: NDNDataType::Mem,
                 range,
@@ -323,7 +349,7 @@ impl NDNRequestHandler {
         } else {
             NDNGetDataInputRequest {
                 common,
-                object_id: param.object_id,
+                object_id,
 
                 data_type: NDNDataType::SharedMem,
                 range,
@@ -370,10 +396,7 @@ impl NDNRequestHandler {
 
         let param = NDNQueryFileParam::from_key_pair(&t.unwrap(), &value.unwrap())?;
 
-        let mut common = Self::decode_common_headers(&req)?;
-        let url_param = NONRequestUrlParser::parse_select_param(&req.request)?;
-
-        common.req_path = url_param.req_path;
+        let common = Self::decode_common_headers(&req)?;
 
         let query_req = NDNQueryFileInputRequest { common, param };
 
@@ -440,28 +463,19 @@ impl NDNRequestHandler {
             return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
         }
 
-        let param = NONRequestUrlParser::parse_get_param(&req.request)?;
-        let mut common = get_data_params.common;
-
-        // 优先尝试从header里面提取
-        let inner_path = match get_data_params.inner_path {
-            Some(v) => Some(v),
-            None => param.inner_path,
-        };
+        let common = get_data_params.common;
 
         // check if range header applied
         let range = RequestorHelper::decode_optional_header(&req.request, "Range")?
             .map(|s: String| NDNDataRequestRange::new_unparsed(s));
 
-        common.req_path = param.req_path;
-
         let get_req = NDNGetDataInputRequest {
             common,
-            object_id: param.object_id,
+            object_id: get_data_params.object_id,
 
             data_type: NDNDataType::Mem,
             range,
-            inner_path,
+            inner_path: get_data_params.inner_path,
         };
 
         info!("recv get_data as download request: {}", get_req);
@@ -507,16 +521,18 @@ impl NDNRequestHandler {
             return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
         }
 
-        let param = NONRequestUrlParser::parse_get_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
+        let common = Self::decode_common_headers(&req)?;
 
-        common.req_path = param.req_path;
-        // common.request = Some(req.request.into());
+        let object_id = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
+        let inner_path = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            &req.request,
+            cyfs_base::CYFS_INNER_PATH,
+        )?;
 
         let delete_req = NDNDeleteDataInputRequest {
             common,
-            object_id: param.object_id,
-            inner_path: param.inner_path,
+            object_id,
+            inner_path,
         };
 
         info!("recv delete_data request: {}", delete_req);
