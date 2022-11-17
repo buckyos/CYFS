@@ -399,7 +399,7 @@ mod test {
         let mut obj_map = HashMap::new();
         obj_map.insert(chunk_id.object_id(), data);
 
-        let builder = Dir::new(attr.clone(), NDNObjectInfo::Chunk(chunk_id), obj_map);
+        let builder = Dir::new(attr.clone(), NDNObjectInfo::Chunk(chunk_id.clone()), obj_map.clone());
         let dir = builder.no_create_time().update_time(0).build();
         let dir_id2 = dir.desc().calculate_id();
         info!("dir id2={}", dir_id2);
@@ -411,6 +411,16 @@ mod test {
 
         // 上述两种模式生成的dir_id应该是相同
         assert_eq!(dir_id, dir_id2);
+
+        // body也可以放到chunk,由于只是影响body的结构，所以不影响dir的object_id
+        let body_data = obj_map.to_vec().unwrap();
+        let body_chunk_id = ChunkId::calculate_sync(&body_data).unwrap();
+        // 注意： body_chunk_id需要额外的保存到本地，put_data(body_chunk, body_chunk_id)
+
+        let builder = Dir::new_with_chunk_body(attr.clone(), NDNObjectInfo::Chunk(chunk_id), body_chunk_id);
+        let dir = builder.no_create_time().update_time(0).build();
+        let dir_id3 = dir.desc().calculate_id();
+        assert_eq!(dir_id, dir_id3);
     }
 
     #[test]
