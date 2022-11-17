@@ -433,7 +433,7 @@ impl PathOpEnvStub {
         Ok(())
     }
 
-    pub async fn insert_with_path(&self, full_path: &str, value: &ObjectId) -> BuckyResult<()> {
+    pub async fn insert_with_path(&self, full_path: impl Into<String>, value: &ObjectId) -> BuckyResult<()> {
         let mut req =
             OpEnvInsertWithKeyOutputRequest::new_full_path_and_value(full_path, value.to_owned());
         req.common.target = self.target.clone();
