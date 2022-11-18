@@ -85,13 +85,13 @@ impl Client {
                 success_sum += v.success;
                 failed_sum  += v.failed;
             }
-            let t1 = format!("<p> Query Meta Object: Num: {}, Success: {}, Failed:{}</p>", count, success_sum, failed_sum);
+            let t1 = format!("<p> Last {} Days Query Meta Object: Num: {}, Success: {}, Failed:{}</p>", self.deadline, count, success_sum, failed_sum);
             stat_info.context += t1.as_str();
             stat_info.context += "\n";
 
 
             for v in ret.1.into_iter() {
-                let t1 = format!("<p> Call Meta Api: {}, Success: {}, Failed:{}</p>", v.id, v.success.to_string(), v.failed.to_string());
+                let t1 = format!("<p> Total Meta Api: {}, Success: {}, Failed:{}</p>", v.id, v.success.to_string(), v.failed.to_string());
                 stat_info.context += t1.as_str();
                 stat_info.context += "\n";
             }
