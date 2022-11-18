@@ -6,7 +6,6 @@ use crate::stack::SharedObjectStackDecID;
 use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};
-use std::borrow::Cow;
 use std::sync::Arc;
 
 pub struct NDNRequestorHelper;

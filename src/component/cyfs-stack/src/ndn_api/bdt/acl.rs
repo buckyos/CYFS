@@ -56,7 +56,7 @@ impl BdtNDNDataAclProcessor {
     fn process_resp<T>(resp: BuckyResult<T>) -> BuckyResult<()> {
         match resp {
             Err(e) => {
-                debug!("bdt processor acl response: {}", e);
+                debug!("bdt process acl response: {}", e);
                 match e.code() {
                     BuckyErrorCode::NotImplement => Ok(()),
                     _ => Err(e),
