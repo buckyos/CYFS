@@ -1,4 +1,3 @@
-
 use log::*;
 use std::{
     sync::{Arc},
@@ -11,27 +10,116 @@ use async_std::{
 };
 use cyfs_base::*;
 use cyfs_util::*;
-use crate::{
-    ndn::{ChunkListDesc, ChunkReader}
+use crate::{ 
+    ndn::*
 };
 
-struct ReaderImpl {
-    ndc: Box<dyn NamedDataCache>,
+
+struct StoreImpl {
+    ndc: Box<dyn NamedDataCache>, 
     tracker: Box<dyn TrackerCache>, 
 }
 
 
 #[derive(Clone)]
-pub struct LocalChunkReader(Arc<ReaderImpl>);
+pub struct TrackedChunkStore(Arc<StoreImpl>);
 
-impl LocalChunkReader {
-    pub fn new(ndc: &dyn NamedDataCache, tracker: &dyn TrackerCache) -> Self {
-        Self(Arc::new(ReaderImpl {
-            ndc: ndc.clone(),
-            tracker: tracker.clone(),
+impl TrackedChunkStore {
+    pub fn new(
+        ndc: Box<dyn NamedDataCache>, 
+        tracker: Box<dyn TrackerCache>, 
+    ) -> Self {
+        Self(Arc::new(StoreImpl { 
+            ndc, 
+            tracker, 
         }))
     }
 
+    pub async fn track_chunk(&self, chunk: &ChunkId) -> BuckyResult<()> {
+        let request = InsertChunkRequest {
+            chunk_id: chunk.to_owned(),
+            state: ChunkState::Unknown,
+            ref_objects: None,
+            trans_sessions: None,
+            flags: 0,
+        };
+
+        self.ndc().insert_chunk(&request).await.map_err(|e| {
+            error!("record file chunk to ndc error! chunk={}, {}",chunk, e);
+            e
+        })
+    }
+
+    pub async fn track_file(&self, file: &File) -> BuckyResult<()> {
+        let file_id = file.desc().calculate_id();
+        match file.body() {
+            Some(body) => {
+                let chunk_list = body.content().inner_chunk_list();
+                match chunk_list {
+                    Some(chunks) => {
+                        for chunk in chunks {
+                            // 先添加到chunk索引
+                            let ref_obj = ChunkObjectRef {
+                                object_id: file_id.to_owned(),
+                                relation: ChunkObjectRelation::FileBody,
+                            };
+                
+                            let req = InsertChunkRequest {
+                                chunk_id: chunk.to_owned(),
+                                state: ChunkState::Unknown,
+                                ref_objects: Some(vec![ref_obj]),
+                                trans_sessions: None,
+                                flags: 0,
+                            };
+                
+                            self.ndc().insert_chunk(&req).await.map_err(|e| {
+                                error!("record file chunk to ndc error! file={}, chunk={}, {}", file_id, chunk, e);
+                                e
+                            })?;
+
+                            info!("insert chunk of file to ndc, chunk:{}, file:{}", chunk, file_id);
+                        }
+                        Ok(())
+                    }
+                    None => Err(BuckyError::new(
+                        BuckyErrorCode::NotSupport,
+                        format!("file object should has chunk list: {}", file_id),
+                    )),
+                }
+            }
+            None => {
+                Err(BuckyError::new(
+                    BuckyErrorCode::InvalidFormat,
+                    format!("file object should has body: {}", file_id),
+                ))
+            }
+        }
+    }
+
+
+    pub async fn track_file_in_path(
+        &self, 
+        file: File, 
+        path: PathBuf 
+    ) -> BuckyResult<()> {
+        let _ = self.track_file(&file).await?;
+        TrackedChunkListWriter::new(
+            path, 
+            &ChunkListDesc::from_file(&file)?,  
+            self.ndc(), 
+            self.tracker()
+        ).track_path().await
+    }
+
+    fn ndc(&self) -> &dyn NamedDataCache {
+        self.0.ndc.as_ref()
+    }
+
+    fn tracker(&self) -> &dyn TrackerCache {
+        self.0.tracker.as_ref()
+    }
+
+    
     async fn read_chunk_from_file(chunk: &ChunkId, path: &Path, offset: u64) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         debug!("begin read {} from file {:?}", chunk, path);
         let mut file = OpenOptions::new()
@@ -117,8 +205,9 @@ impl LocalChunkReader {
     }
 }
 
+
 #[async_trait::async_trait]
-impl ChunkReader for LocalChunkReader {
+impl ChunkReader for TrackedChunkStore {
     fn clone_as_reader(&self) -> Box<dyn ChunkReader> {
         Box::new(self.clone())
     }
@@ -128,7 +217,7 @@ impl ChunkReader for LocalChunkReader {
             chunk_id: chunk.clone(),
             flags: 0,
         };
-        match self.0.ndc.get_chunk(&request).await {
+        match self.ndc().get_chunk(&request).await {
             Ok(c) => {
                 if let Some(c) = c {
                     c.state == ChunkState::Ready
@@ -148,7 +237,7 @@ impl ChunkReader for LocalChunkReader {
             id: chunk.to_string(),
             direction: Some(TrackerDirection::Store),
         };
-        let ret = self.0.tracker.get_position(&request).await?;
+        let ret = self.tracker().get_position(&request).await?;
         if ret.len() == 0 {
             Err(BuckyError::new(
                 BuckyErrorCode::NotFound,
@@ -208,6 +297,7 @@ impl ChunkReader for LocalChunkReader {
     }
 }
 
+
 struct WriterImpl {
     path: PathBuf,
     tmp_path: Option<PathBuf>,
@@ -217,21 +307,17 @@ struct WriterImpl {
 }
 
 #[derive(Clone)]
-pub struct LocalChunkWriter(Arc<WriterImpl>);
+pub struct TrackedChunkWriter(Arc<WriterImpl>);
 
-impl std::fmt::Display for LocalChunkWriter {
+impl std::fmt::Display for TrackedChunkWriter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "LocalChunkWriter{{chunk:{}, path:{:?}}}",
-            self.chunk(),
-            self.path()
-        )
+        write!(f, "TrackedChunkWriter{{path:{:?}}}", self.path())
     }
 }
 
-impl LocalChunkWriter {
-    pub fn from_path(
+
+impl TrackedChunkWriter {
+    fn from_path(
         path: &Path,
         chunk: &ChunkId,
         ndc: &dyn NamedDataCache,
@@ -249,6 +335,23 @@ impl LocalChunkWriter {
             ndc,
             tracker,
         )
+    }
+
+
+    fn new(
+        path: PathBuf,
+        tmp_path: Option<PathBuf>,
+        chunk: &ChunkId,
+        ndc: &dyn NamedDataCache,
+        tracker: &dyn TrackerCache,
+    ) -> Self {
+        Self(Arc::new(WriterImpl {
+            path,
+            tmp_path,
+            chunk: chunk.clone(),
+            ndc: ndc.clone(),
+            tracker: tracker.clone(),
+        }))
     }
 
     pub async fn track_path(&self) -> BuckyResult<()> {
@@ -275,23 +378,7 @@ impl LocalChunkWriter {
         Ok(())
     }
 
-    pub fn new(
-        path: PathBuf,
-        tmp_path: Option<PathBuf>,
-        chunk: &ChunkId,
-        ndc: &dyn NamedDataCache,
-        tracker: &dyn TrackerCache,
-    ) -> Self {
-        Self(Arc::new(WriterImpl {
-            path,
-            tmp_path,
-            chunk: chunk.clone(),
-            ndc: ndc.clone(),
-            tracker: tracker.clone(),
-        }))
-    }
-
-
+    
     fn path(&self) -> &Path {
         self.0.path.as_path()
     }
@@ -371,16 +458,16 @@ struct ListWriterImpl {
 }
 
 #[derive(Clone)]
-pub struct LocalChunkListWriter(Arc<ListWriterImpl>);
+pub struct TrackedChunkListWriter(Arc<ListWriterImpl>);
 
-impl std::fmt::Display for LocalChunkListWriter {
+impl std::fmt::Display for TrackedChunkListWriter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "LocalChunkListWriter{{path:{:?}}}", self.path())
+        write!(f, "TrackedChunkListWriter{{path:{:?}}}", self.path())
     }
 }
 
-impl LocalChunkListWriter {
-    pub fn new(
+impl TrackedChunkListWriter {
+    fn new(
         path: PathBuf, 
         desc: &ChunkListDesc, 
         ndc: &dyn NamedDataCache, 
@@ -499,5 +586,26 @@ impl LocalChunkListWriter {
         }
 
         Ok(())
+    }
+}
+
+
+impl TrackedChunkStore {
+    pub async fn chunk_writer(
+        &self,
+        chunk: &ChunkId, 
+        path: PathBuf
+    ) -> BuckyResult<TrackedChunkWriter> {
+        let _ = self.track_chunk(chunk).await?;
+        Ok(TrackedChunkWriter::new(path, None, chunk, self.ndc(), self.tracker()))
+    }
+
+    pub async fn file_writer(
+        &self,
+        file: &File, 
+        path: PathBuf 
+    ) -> BuckyResult<TrackedChunkListWriter> {
+        let _ = self.track_file(file).await?;
+        Ok(TrackedChunkListWriter::new(path, &ChunkListDesc::from_file(&file)?, self.ndc(), self.tracker()))
     }
 }

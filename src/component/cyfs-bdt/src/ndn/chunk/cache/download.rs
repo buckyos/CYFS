@@ -228,7 +228,6 @@ impl ChunkDownloader {
 
             match channel.download( 
                 self.chunk().clone(), 
-                stack.ndn().chunk_manager().gen_session_id(), 
                 source, 
                 cache.clone()
             ) {

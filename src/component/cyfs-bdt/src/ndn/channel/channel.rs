@@ -285,13 +285,12 @@ impl Channel {
     pub fn download(
         &self,  
         chunk: ChunkId, 
-        session_id: TempSeq, 
         source: DownloadSourceWithReferer<DeviceId>, 
         cache: ChunkStreamCache
     ) -> BuckyResult<DownloadSession> {
         let session = DownloadSession::interest(
             chunk, 
-            session_id, 
+            self.gen_download_seq(), 
             self.clone(), 
 	        source, 
             cache,

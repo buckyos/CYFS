@@ -1,19 +1,8 @@
-use std::{sync::Arc};
+use std::{sync::Arc, time::Duration};
 use async_std::{future, io::{prelude::*}, task};
 use cyfs_base::*;
-use cyfs_util::cache::{NamedDataCache, TrackerCache};
-use cyfs_bdt::{
-    download::*,
-    ChunkReader,
-    MemChunkStore,
-    MemTracker,
-    // StackConfig,
-    Stack,
-    StackGuard,
-    StackOpenParams, 
-    DownloadTask, 
-};
-use std::{time::Duration};
+use cyfs_bdt::*;
+
 mod utils;
 
 async fn watch_recv_chunk(stack: StackGuard, chunkid: ChunkId) -> BuckyResult<ChunkId> {
@@ -60,11 +49,8 @@ async fn main() {
     let (rn_dev, rn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4tcp127.0.0.1:10001"]).unwrap();
     
     let mut ln_params = StackOpenParams::new("bdt-example-channel-download");
-    let ln_tracker = MemTracker::new();
-    let ln_store = MemChunkStore::new(NamedDataCache::clone(&ln_tracker).as_ref());
+    let ln_store = MemChunkStore::new();
     ln_params.chunk_store = Some(ln_store.clone_as_reader());
-    ln_params.ndc = Some(NamedDataCache::clone(&ln_tracker));
-    ln_params.tracker = Some(TrackerCache::clone(&ln_tracker));
     
     ln_params.known_device = Some(vec![rn_dev.clone()]);
     let ln_stack = Stack::open(
@@ -73,11 +59,8 @@ async fn main() {
         ln_params).await.unwrap();
 
     let mut rn_params = StackOpenParams::new("bdt-example-channel-upload");
-    let rn_tracker = MemTracker::new();
-    let rn_store = MemChunkStore::new(NamedDataCache::clone(&ln_tracker).as_ref());
+    let rn_store = MemChunkStore::new();
     rn_params.chunk_store = Some(rn_store.clone_as_reader());
-    rn_params.ndc = Some(NamedDataCache::clone(&rn_tracker));
-    rn_params.tracker = Some(TrackerCache::clone(&rn_tracker));
     rn_params.config.interface.udp.sim_loss_rate = 10;
     let rn_stack = Stack::open(
         rn_dev, 

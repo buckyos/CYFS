@@ -75,7 +75,7 @@ impl DownloadGroup {
             Ok(group)
         } else {
             let parts = path.split("/");
-            let mut parent = Self.clone_as_task();
+            let mut parent = self.clone_as_task();
             
             for part in parts {
                 if let Some(sub) = parent.sub_task(part) {

@@ -97,12 +97,17 @@ impl UploadGroup {
         }
     }
 
-    pub fn create_sub_task(&self, path: Option<String>, task: &dyn DownloadTask) -> BuckyResult<()> {
-        let (owner, path) = self.makesure_path(path)?;
-        let _ = owner.add_task(path, task.clone_as_task())?;
-        Ok(())
+    pub fn create_sub_task(&self, pathes: Vec<String>, task: &dyn UploadTask) -> BuckyResult<()> {
+        if pathes.len() > 0 {
+            for path in pathes {
+                let (owner, path) = self.makesure_path(Some(path))?;
+                let _ = owner.add_task(path, task.clone_as_task())?;
+            }
+            Ok(())
+        } else {
+            self.add_task(None, task.clone_as_task())
+        }
     }
-
 }
 
 #[async_trait::async_trait]

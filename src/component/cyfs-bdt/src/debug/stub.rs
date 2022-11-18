@@ -11,18 +11,17 @@ use async_std::{
     stream::StreamExt,
     future, 
     io::prelude::*,
-    fs::File, 
+    // fs::File, 
 };
 
 use cyfs_base::*;
 use crate::{
     stack::{WeakStack, Stack}, 
     tunnel::{BuildTunnelParams}, 
-    datagram::{self, DatagramOptions},
-    download::*,
-    DownloadTask, 
-    DownloadTaskState, 
+    datagram::{self, DatagramOptions}, 
     types::*,
+    ndn::*, 
+    utils::*
 };
 use super::command::*;
 use super::super::sn::client::SnStatus;
@@ -381,11 +380,7 @@ impl DebugStub {
             context).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
 
-        local_chunk_writer(&stack, &chunk_id, local_path.clone()).await
-            .map_err(|e| {
-                format!("download err: {}\r\n", e)
-            })?
-            .write(reader).await
+        LocalChunkWriter::new(local_path.clone(), None, &chunk_id).write(reader).await
             .map_err(|e| {
                 format!("download err: {}\r\n", e)
             })?;
@@ -427,11 +422,11 @@ impl DebugStub {
                 format!("download err: {}\r\n", e)
             })?;
 
-        local_file_writer(&stack, file_id, local_path).await
+        LocalChunkListWriter::from_file(local_path, &file_id)
             .map_err(|e| {
                 format!("download err: {}\r\n", e)
             })?
-        .write(reader).await
+            .write(reader).await
             .map_err(|e| {
                 format!("download err: {}\r\n", e)
             })?;
@@ -444,111 +439,114 @@ impl DebugStub {
         ret
      }
 
-     async fn put_chunk(&self, tunnel: TcpStream, command: DebugCommandPutChunk) -> Result<(), String> {
-        let mut tunnel = tunnel;
-        let stack = Stack::from(&self.0.stack);
-        let local_path = command.local_path;
+     async fn put_chunk(&self, _tunnel: TcpStream, _command: DebugCommandPutChunk) -> Result<(), String> {
+        // FIXME: impl put chunk debug command with 
+        // let mut tunnel = tunnel;
+        // let stack = Stack::from(&self.0.stack);
+        // let local_path = command.local_path;
 
-        if local_path.as_path().exists() {
-            let mut file = async_std::fs::File::open(local_path.as_path()).await.map_err(|e| {
-                format!("open file err: {}\r\n", e)
-            })?;
-            let mut content = Vec::<u8>::new();
-            let _ = file.read_to_end(&mut content).await.map_err(|e| {
-                format!("read file err: {}\r\n", e)
-            })?;
+        // if local_path.as_path().exists() {
+        //     let mut file = async_std::fs::File::open(local_path.as_path()).await.map_err(|e| {
+        //         format!("open file err: {}\r\n", e)
+        //     })?;
+        //     let mut content = Vec::<u8>::new();
+        //     let _ = file.read_to_end(&mut content).await.map_err(|e| {
+        //         format!("read file err: {}\r\n", e)
+        //     })?;
 
-            if content.len() == 0 {
-                return Err(format!("file size is zero\r\n"));
-            }
+        //     if content.len() == 0 {
+        //         return Err(format!("file size is zero\r\n"));
+        //     }
 
-            match ChunkId::calculate(content.as_slice()).await {
-                Ok(chunk_id) => {
-                    local_chunk_writer(&stack, &chunk_id, local_path).await
-                    .map_err(|e| {
-                        format!("download err: {}\r\n", e)
-                    })?
-                    .track_path().await
-                    .map_err(|e| {
-                        format!("download err: {}\r\n", e)
-                    })?;
-                    let _ = tunnel.write_all(format!("put chunk success. chunk_id: {}\r\n", 
-                    chunk_id.to_string()).as_bytes()).await;
-                    Ok(())
-                }, 
-                Err(e) => {
-                    Err(format!("calculate chunk id err: {}\r\n", e))
-                }
-            }
-        } else {
-            Err(format!("file not exists: {}\r\n", local_path.to_str().unwrap()))
-        }
+        //     match ChunkId::calculate(content.as_slice()).await {
+        //         Ok(chunk_id) => {
+        //             LocalChunkWriter::new(&chunk_id, local_path, None).await
+        //             .map_err(|e| {
+        //                 format!("download err: {}\r\n", e)
+        //             })?
+        //             .track_path().await
+        //             .map_err(|e| {
+        //                 format!("download err: {}\r\n", e)
+        //             })?;
+        //             let _ = tunnel.write_all(format!("put chunk success. chunk_id: {}\r\n", 
+        //             chunk_id.to_string()).as_bytes()).await;
+        //             Ok(())
+        //         }, 
+        //         Err(e) => {
+        //             Err(format!("calculate chunk id err: {}\r\n", e))
+        //         }
+        //     }
+        // } else {
+        //     Err(format!("file not exists: {}\r\n", local_path.to_str().unwrap()))
+        // }
+        Err("not supported now".to_owned())
      }
 
-     async fn put_file(&self, tunnel: TcpStream, command: DebugCommandPutFile) -> Result<(), String> {
-        let mut tunnel = tunnel;
-        let stack = Stack::from(&self.0.stack);
-        let local_path = command.local_path;
+     async fn put_file(&self, _tunnel: TcpStream, _command: DebugCommandPutFile) -> Result<(), String> {
+        // let mut tunnel = tunnel;
+        // let stack = Stack::from(&self.0.stack);
+        // let local_path = command.local_path;
 
-        if local_path.as_path().exists() {
-            let chunkids = {
-                let _ = tunnel.write_all("calculate chunkid by file..\r\n".as_ref()).await;
+        // if local_path.as_path().exists() {
+        //     let chunkids = {
+        //         let _ = tunnel.write_all("calculate chunkid by file..\r\n".as_ref()).await;
 
-                let chunk_size: usize = 10 * 1024 * 1024;
-                let mut chunkids = Vec::new();
-                let mut file = File::open(local_path.as_path()).await.map_err(|e| {
-                    format!("open file err: {}\r\n", e)
-                })?;
-                loop {
-                    let mut buf = vec![0u8; chunk_size];
-                    let len = file.read(&mut buf).await.map_err(|e| {
-                        format!("read file err: {}\r\n", e)
-                    })?;
-                    if len > 0 {
-                        if len < chunk_size {
-                            buf.truncate(len);
-                        }
-                        let hash = hash_data(&buf[..]);
-                        let chunkid = ChunkId::new(&hash, buf.len() as u32);
-                        chunkids.push(chunkid);
-                    }
-                    if len < chunk_size {
-                        break ;
-                    }
-                }
-                chunkids
-            };
+        //         let chunk_size: usize = 10 * 1024 * 1024;
+        //         let mut chunkids = Vec::new();
+        //         let mut file = File::open(local_path.as_path()).await.map_err(|e| {
+        //             format!("open file err: {}\r\n", e)
+        //         })?;
+        //         loop {
+        //             let mut buf = vec![0u8; chunk_size];
+        //             let len = file.read(&mut buf).await.map_err(|e| {
+        //                 format!("read file err: {}\r\n", e)
+        //             })?;
+        //             if len > 0 {
+        //                 if len < chunk_size {
+        //                     buf.truncate(len);
+        //                 }
+        //                 let hash = hash_data(&buf[..]);
+        //                 let chunkid = ChunkId::new(&hash, buf.len() as u32);
+        //                 chunkids.push(chunkid);
+        //             }
+        //             if len < chunk_size {
+        //                 break ;
+        //             }
+        //         }
+        //         chunkids
+        //     };
 
-            let (hash, len) = hash_file(local_path.as_path()).await.map_err(|e| {
-                format!("hash file err: {}\r\n", e)
-            })?;
-            let file = cyfs_base::File::new(
-                ObjectId::default(),
-                len,
-                hash,
-                ChunkList::ChunkInList(chunkids)
-            ).no_create_time().build();
+        //     let (hash, len) = hash_file(local_path.as_path()).await.map_err(|e| {
+        //         format!("hash file err: {}\r\n", e)
+        //     })?;
+        //     let file = cyfs_base::File::new(
+        //         ObjectId::default(),
+        //         len,
+        //         hash,
+        //         ChunkList::ChunkInList(chunkids)
+        //     ).no_create_time().build();
 
-            let buf_len_ret = file.raw_measure(&None);
-            if buf_len_ret.is_err() {
-                return Err(format!("raw_measure err\r\n"));
-            }
-            let mut buf = vec![0u8; buf_len_ret.unwrap()];
-            let encode_ret = file.raw_encode(buf.as_mut_slice(), &None);
-            if encode_ret.is_err() {
-                return Err(format!("raw_encode err\r\n"));
-            }
+        //     let buf_len_ret = file.raw_measure(&None);
+        //     if buf_len_ret.is_err() {
+        //         return Err(format!("raw_measure err\r\n"));
+        //     }
+        //     let mut buf = vec![0u8; buf_len_ret.unwrap()];
+        //     let encode_ret = file.raw_encode(buf.as_mut_slice(), &None);
+        //     if encode_ret.is_err() {
+        //         return Err(format!("raw_encode err\r\n"));
+        //     }
 
-            track_file_in_path(&stack, file, local_path).await
-                .map_err(|e| format!("track file err {}\r\n", e))?;
+        //     track_file_in_path(&stack, file, local_path).await
+        //         .map_err(|e| format!("track file err {}\r\n", e))?;
 
-            let _ = tunnel.write_all(format!("put file sucess. file_id: {}\r\n", 
-                hex::encode(buf)).as_bytes()).await;
+        //     let _ = tunnel.write_all(format!("put file sucess. file_id: {}\r\n", 
+        //         hex::encode(buf)).as_bytes()).await;
 
-            Ok(())
-        } else {
-            Err(format!("{} not exists\r\n", &local_path.to_str().unwrap()))
-        }
+        //     Ok(())
+        // } else {
+        //     Err(format!("{} not exists\r\n", &local_path.to_str().unwrap()))
+        // }
+        Err("not supported now".to_owned())
     }
 }
 

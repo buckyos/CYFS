@@ -1,9 +1,8 @@
 use async_std::{future, io::{Cursor, prelude::*}, task};
+use cyfs_util::cache::*;
 use cyfs_base::*;
-use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
     *, 
-    download::*, 
     ndn::channel::{*, protocol::v0::*},
 };
 use std::{sync::Arc, time::Duration};
@@ -177,18 +176,20 @@ async fn one_small_chunk_in_file() {
     .unwrap();
 
     let mut ln_params = StackOpenParams::new("");
-    let ln_tracker = MemTracker::new();
-    let ln_store = MemChunkStore::new(NamedDataCache::clone(&ln_tracker).as_ref());
+    let ln_store = MemChunkStore::new();
     ln_params.chunk_store = Some(ln_store.clone_as_reader());
-    ln_params.ndc = Some(NamedDataCache::clone(&ln_tracker));
-    ln_params.tracker = Some(TrackerCache::clone(&ln_tracker));
-
     ln_params.known_device = Some(vec![rn_dev.clone()]);
+
     let ln_stack = Stack::open(ln_dev.clone(), ln_secret, ln_params)
         .await
         .unwrap();
 
-    let rn_params = StackOpenParams::new("");
+    let mut rn_params = StackOpenParams::new("");
+    let rn_tracker = MemTracker::new();
+    let rn_store = TrackedChunkStore::new(NamedDataCache::clone(&rn_tracker), TrackerCache::clone(&rn_tracker));
+    rn_params.chunk_store = Some(rn_store.clone_as_reader());
+   
+
     let rn_stack = Stack::open(rn_dev, rn_secret, rn_params).await.unwrap();
 
     let (chunk_len, chunk_data) = utils::random_mem(1024, 1024);
@@ -197,7 +198,7 @@ async fn one_small_chunk_in_file() {
 
     let dir = cyfs_util::get_named_data_root(rn_stack.local_device_id().to_string().as_str());
     let path = dir.join(chunkid.to_string().as_str());
-    local_chunk_writer(&*rn_stack, &chunkid, path).await.unwrap().write(Cursor::new(chunk_data)).await.unwrap();
+    rn_store.chunk_writer(&chunkid, path).await.unwrap().write(Cursor::new(chunk_data)).await.unwrap();
 
     let (_, reader) = download_chunk(
         &*ln_stack,
@@ -246,11 +247,10 @@ async fn one_small_chunk_double_source() {
 
     let (down_stack, down_store) = {
         let mut params = StackOpenParams::new("bdt-example-double-source-download");
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
+
+        let store = MemChunkStore::new();
         params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
+        
         params.known_device = Some(vec![ref_dev.clone(), src_dev.clone()]);
         (
             Stack::open(down_dev.clone(), down_secret, params)
@@ -262,11 +262,9 @@ async fn one_small_chunk_double_source() {
 
     let (ref_stack, ref_store) = {
         let mut params = StackOpenParams::new("bdt-example-double-source-ref");
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
+    
+        let store = MemChunkStore::new();
         params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
         (
             Stack::open(ref_dev, ref_secret, params).await.unwrap(),
             store,
@@ -276,11 +274,10 @@ async fn one_small_chunk_double_source() {
     let (src_stack, src_store) = {
         let mut params = StackOpenParams::new("bdt-example-double-source-src");
         params.config.interface.udp.sim_loss_rate = 10;
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
+      
+        let store = MemChunkStore::new();
         params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
+    
         (
             Stack::open(src_dev, src_secret, params).await.unwrap(),
             store,
@@ -365,11 +362,10 @@ async fn upload_from_downloader(ln_ep: &[&str], rn_ep: &[&str], uploader_config:
 
     let (down_stack, down_store) = {
         let mut params = StackOpenParams::new("bdt-example-upload-from-downloader-down");
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
+       
+        let store = MemChunkStore::new();
         params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
+      
         params.known_device = Some(vec![cache_dev.clone(), src_dev.clone()]);
         (
             Stack::open(down_dev.clone(), down_secret, params)
@@ -381,11 +377,10 @@ async fn upload_from_downloader(ln_ep: &[&str], rn_ep: &[&str], uploader_config:
 
     let (cache_stack, _cache_store) = {
         let mut params = StackOpenParams::new("bdt-example-upload-from-downloader-cache");
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
+       
+        let store = MemChunkStore::new();
         params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
+      
         params.known_device = Some(vec![src_dev.clone()]);
 
         struct DownloadFromSource {
@@ -443,11 +438,9 @@ async fn upload_from_downloader(ln_ep: &[&str], rn_ep: &[&str], uploader_config:
     let (_src_stack, src_store) = {
         let mut params = StackOpenParams::new("bdt-example-upload-from-downloader-src");
         params.config.interface.udp.sim_loss_rate = 10;
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
+        let store = MemChunkStore::new();
         params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
+    
         (
             Stack::open(src_dev, src_secret, params).await.unwrap(),
             store,
