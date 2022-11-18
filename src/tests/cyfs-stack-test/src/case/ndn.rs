@@ -39,6 +39,8 @@ pub async fn test() {
     let stack = TestLoader::get_shared_stack(DeviceIndex::User2Device2);
     get_file(&dir_id, &dec_id, &stack, false).await;
 
+    test_chunk_in_bundle().await;
+    
     info!("test all ndn case success!");
 }
 
