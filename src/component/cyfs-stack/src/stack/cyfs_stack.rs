@@ -315,7 +315,7 @@ impl CyfsStackImpl {
             chunk_manager.clone(),
         );
 
-        bdt_event.bind_non_processor(non_service.router_processor().clone());
+        bdt_event.bind_non_processor(non_service.rmeta_noc_processor().clone());
 
         let trans_service = TransService::new(
             noc.clone(),
