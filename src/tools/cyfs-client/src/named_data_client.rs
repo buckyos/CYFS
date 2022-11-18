@@ -430,7 +430,7 @@ impl NamedCacheClient {
         fileid: &ObjectId,
         owner: Option<&ObjectId>,
     ) -> BuckyResult<StandardObject> {
-        info!("get file desc for id {}", fileid);
+        info!("get desc for id {}", fileid);
         //1. 尝试从内存cache里取
         if let Some(obj) = self.object_cache.read().unwrap().get(fileid) {
             return Ok(obj.clone());
@@ -443,7 +443,7 @@ impl NamedCacheClient {
         */
 
         //2. 如果找不到，尝试用meta chain查找desc
-        info!("try get file desc {} from meta", fileid);
+        info!("try get desc {} from meta", fileid);
         if let Ok(ret) = self.meta_client.get().unwrap().get_desc(fileid).await {
             let obj = match ret {
                 SavedMetaObject::File(p) => {
@@ -775,7 +775,7 @@ impl NamedCacheClient {
             },
             StandardObject::People(people) => {
                 let people_id = people.desc().calculate_id();
-                let mut device_id = if let SavedMetaObject::People(people) = self.meta_client.get().unwrap().get_desc(&people_id).await? {
+                let mut device_id = if let StandardObject::People(people) = self.get_desc(&people_id, None).await? {
                     let ood_list = people.body_expect("").content().ood_list();
                     if ood_list.len() > 0 {
                         Ok(ood_list[0].clone())
