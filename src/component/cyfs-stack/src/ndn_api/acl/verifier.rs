@@ -2,18 +2,18 @@ use super::super::common::DirLoader;
 use crate::ndn_api::LocalDataManager;
 use cyfs_base::*;
 
-pub(crate) struct NDNChunkVerifier {
+pub(crate) struct NDNRefererVerifier {
     dir: DirVerifier,
 }
 
-impl NDNChunkVerifier {
+impl NDNRefererVerifier {
     pub fn new(data_manager: LocalDataManager) -> Self {
         Self {
             dir: DirVerifier::new(data_manager),
         }
     }
 
-    pub async fn verify_chunk(
+    pub async fn verify_referer(
         &self,
         obj_id: &ObjectId,
         obj: &AnyNamedObject,

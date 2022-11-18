@@ -64,7 +64,7 @@ impl TargetDataManager {
         }
 
         info!(
-            "will get_file from target: target={}, file={}, file_len={}, len={}, ranges={:?}, referer={}",
+            "will get file data from target: target={}, file={}, file_len={}, len={}, ranges={:?}, referer={}",
             self.target, file_id, file_obj.len(), total_size, ranges, referer
         );
 
@@ -131,7 +131,7 @@ impl TargetDataManager {
         }
 
         info!(
-            "will get_chunk from target: target={}, chunk={}, len={}, ranges={:?}, referer={}",
+            "will get chunk data from target: target={}, chunk={}, len={}, ranges={:?}, referer={}",
             self.target, chunk_id, total_size, ranges, referer
         );
 
