@@ -32,7 +32,7 @@ struct PublishLocalFileTask {
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
     noc: NamedObjectCacheRef,
-    device_id: DeviceId,
+    dec_id: ObjectId,
     local_path: String,
     owner: ObjectId,
     file: File,
@@ -49,7 +49,7 @@ impl PublishLocalFileTask {
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         noc: NamedObjectCacheRef,
-        device_id: DeviceId,
+        dec_id: ObjectId,
     ) -> Self {
         let mut sha256 = sha2::Sha256::new();
         sha256.input(PUBLISH_TASK_CATEGORY.0.to_be_bytes());
@@ -62,7 +62,7 @@ impl PublishLocalFileTask {
             ndc,
             tracker,
             noc,
-            device_id,
+            dec_id,
             local_path,
             owner,
             file,
@@ -102,7 +102,7 @@ impl Runnable for PublishLocalFileTask {
             self.ndc.clone(),
             self.tracker.clone(),
             self.noc.clone(),
-            self.device_id.clone(),
+            self.dec_id.clone(),
         );
 
         file_recorder
@@ -138,7 +138,6 @@ struct PublishLocalFileTaskFactory {
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
     noc: NamedObjectCacheRef,
-    device_id: DeviceId,
 }
 
 impl PublishLocalFileTaskFactory {
@@ -146,13 +145,11 @@ impl PublishLocalFileTaskFactory {
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         noc: NamedObjectCacheRef,
-        device_id: DeviceId,
     ) -> Self {
         Self {
             ndc,
             tracker,
             noc,
-            device_id,
         }
     }
 }
@@ -174,7 +171,7 @@ impl TaskFactory for PublishLocalFileTaskFactory {
             self.ndc.clone(),
             self.tracker.clone(),
             self.noc.clone(),
-            self.device_id.clone(),
+            cyfs_core::get_system_dec_app().to_owned(),
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
@@ -195,7 +192,7 @@ impl TaskFactory for PublishLocalFileTaskFactory {
             self.ndc.clone(),
             self.tracker.clone(),
             self.noc.clone(),
-            self.device_id.clone(),
+            cyfs_core::get_system_dec_app().to_owned(),
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
@@ -213,7 +210,7 @@ struct PublishLocalDirTask {
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
     noc: NamedObjectCacheRef,
-    device_id: DeviceId,
+    dec_id: ObjectId,
     local_path: String,
     root_id: ObjectId,
     task_state: Mutex<PublishLocalFileTaskStatus>,
@@ -226,7 +223,7 @@ impl PublishLocalDirTask {
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         noc: NamedObjectCacheRef,
-        device_id: DeviceId,
+        dec_id: ObjectId,
     ) -> Self {
         let mut sha256 = sha2::Sha256::new();
         sha256.input(PUBLISH_TASK_CATEGORY.0.to_be_bytes());
@@ -239,7 +236,7 @@ impl PublishLocalDirTask {
             ndc,
             tracker,
             noc,
-            device_id,
+            dec_id,
             local_path,
             root_id,
             task_state: Mutex::new(PublishLocalFileTaskStatus::Stopped),
@@ -268,7 +265,7 @@ impl PublishLocalDirTask {
                             let resp = self
                                 .noc
                                 .get_object(&NamedObjectCacheGetObjectRequest {
-                                    source: RequestSourceInfo::new_local_system(),
+                                    source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
                                     object_id: object_id.clone(),
                                     last_access_rpath: None,
                                 })
@@ -281,7 +278,7 @@ impl PublishLocalDirTask {
                                     self.ndc.clone(),
                                     self.tracker.clone(),
                                     self.noc.clone(),
-                                    self.device_id.clone(),
+                                    self.dec_id.clone(),
                                 );
 
                                 let sub_path = Path::new(item.path.as_str());
@@ -358,7 +355,6 @@ struct PublishLocalDirTaskFactory {
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
     noc: NamedObjectCacheRef,
-    device_id: DeviceId,
 }
 
 impl PublishLocalDirTaskFactory {
@@ -366,13 +362,11 @@ impl PublishLocalDirTaskFactory {
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         noc: NamedObjectCacheRef,
-        device_id: DeviceId,
     ) -> Self {
         Self {
             ndc,
             tracker,
             noc,
-            device_id,
         }
     }
 }
@@ -392,7 +386,7 @@ impl TaskFactory for PublishLocalDirTaskFactory {
             self.ndc.clone(),
             self.tracker.clone(),
             self.noc.clone(),
-            self.device_id.clone(),
+            cyfs_core::get_system_dec_app().to_owned(),
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
@@ -411,7 +405,7 @@ impl TaskFactory for PublishLocalDirTaskFactory {
             self.ndc.clone(),
             self.tracker.clone(),
             self.noc.clone(),
-            self.device_id.clone(),
+            cyfs_core::get_system_dec_app().to_owned(),
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
@@ -435,7 +429,6 @@ impl PublishManager {
                 ndc.clone(),
                 tracker.clone(),
                 noc.clone(),
-                device_id.clone(),
             ))
             .unwrap();
         task_manager
@@ -443,7 +436,6 @@ impl PublishManager {
                 ndc,
                 tracker,
                 noc,
-                device_id.clone(),
             ))
             .unwrap();
 
