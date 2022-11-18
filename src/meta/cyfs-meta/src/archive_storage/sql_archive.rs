@@ -121,6 +121,10 @@ impl SqlArchive {
                     conn.execute_sql(sqlx::query(sql).bind(success).bind(failed).bind(stat.id.to_owned())).await?;
                 }
 
+                // 同步刷新device_stat
+                let sql = "UPDATE device_stat SET update_time=?1 WHERE obj_id=?2";
+                conn.execute_sql(sqlx::query(sql).bind(bucky_time_now() as i64).bind(stat.id.to_owned())).await?;
+
             }
             
             if key.contains("_meta_api") {

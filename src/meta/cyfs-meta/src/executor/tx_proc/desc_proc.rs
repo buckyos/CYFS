@@ -85,15 +85,23 @@ impl TxExecutor {
             if device.desc().owner().is_some() {
                 context.ref_state().to_rc()?.set_beneficiary(&device.desc().calculate_id(), device.desc().owner().as_ref().unwrap()).await?;
             }
-            
+        }
+
+        let mut obj_type = context::MetaDescObject::Unkown;
+        if let SavedMetaObject::People(_) = &desc {
+            obj_type = context::MetaDescObject::People;
+        } else if let SavedMetaObject::Device(_) = &desc {
+            obj_type = context::MetaDescObject::Device;
+        }
+        if obj_type != context::MetaDescObject::Unkown {
             let height = context.block().number();
-            // statistics people/device‘s number, active
+            // statistics people/device‘s number, active  放置末尾
             if let Err(e) = context
             .ref_archive()
             .to_rc()?
-            .create_or_update_desc_stat(&objid, context::MetaDescObject::Device as u8, height as u64)
+            .create_or_update_desc_stat(&objid, obj_type as u8, height as u64)
             .await {
-                warn!("archive storage create obj desc stat failed: {}", e);
+                warn!("archive storage update obj desc stat failed: {}", e);
             }
         }
 

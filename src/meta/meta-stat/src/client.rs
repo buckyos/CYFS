@@ -7,7 +7,6 @@ use crate::Config;
 use crate::reporter::*;
 use crate::def::*;
 use crate::storage::{Storage, MetaStat};
-use comfy_table::Table;
 use plotters::prelude::*;
 
 #[derive(Clone, Debug)]
@@ -76,15 +75,20 @@ impl Client {
             stat_info.context += "\n\n";
         }
 
-        let mut table2 = Table::new();
-        table2.set_header(vec!["Call Meta Api", "Success", "Failed"]);
         // object 查询 / api 调用情况
         if let Ok(ret) = self.meta_stat().await {
+            let mut success_sum = 0;
+            let mut failed_sum = 0;
+            let mut count = 0;
             for v in ret.0.into_iter() {
-                let t1 = format!("<p> Query Meta Object: {}, Success: {}, Failed:{}</p>", v.id, v.success.to_string(), v.failed.to_string());
-                stat_info.context += t1.as_str();
-                stat_info.context += "\n";
+                count += 1;
+                success_sum += v.success;
+                failed_sum  += v.failed;
             }
+            let t1 = format!("<p> Query Meta Object: Num: {}, Success: {}, Failed:{}</p>", count, success_sum, failed_sum);
+            stat_info.context += t1.as_str();
+            stat_info.context += "\n";
+
 
             for v in ret.1.into_iter() {
                 let t1 = format!("<p> Call Meta Api: {}, Success: {}, Failed:{}</p>", v.id, v.success.to_string(), v.failed.to_string());
@@ -116,8 +120,8 @@ impl Client {
             let _ = self.flow_chart(ret.0, f1);
             let _ = self.flow_chart(ret.1, f2);
 
-            stat_info.attachment.push(f1.to_string());
-            stat_info.attachment.push(f2.to_string());
+            //stat_info.attachment.push(f1.to_string());
+            //stat_info.attachment.push(f2.to_string());
 
         }
 
@@ -138,8 +142,8 @@ impl Client {
             let f2 = "people_daily_active.png";
             let _ = self.flow_chart(ret.0, f1);
             let _ = self.flow_chart(ret.1, f2);
-            stat_info.attachment.push(f1.to_string());
-            stat_info.attachment.push(f2.to_string());
+            //stat_info.attachment.push(f1.to_string());
+            //stat_info.attachment.push(f2.to_string());
         }
 
         let _ = self.report(stat_info).await;
