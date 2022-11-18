@@ -39,6 +39,7 @@ struct StateImpl {
 
 struct TaskImpl {
     priority: DownloadTaskPriority, 
+    history_speed: HistorySpeedConfig, 
     state: RwLock<StateImpl>
 }
 
@@ -52,6 +53,7 @@ impl DownloadGroup {
     ) -> Self {
         Self(Arc::new(TaskImpl {
             priority: priority.unwrap_or_default(), 
+            history_speed: history_speed.clone(), 
             state: RwLock::new(StateImpl {
                 task_state: TaskStateImpl::Downloading(DownloadingState {
                     entries: Default::default(), 
@@ -63,6 +65,66 @@ impl DownloadGroup {
                 control_state: ControlStateImpl::Normal(StateWaiter::new())
             })
         }))
+    }
+
+    pub fn create_sub_group(
+        &self, 
+        path: String, 
+    ) -> BuckyResult<Box<dyn DownloadTask>> {
+        if let Some(group) = self.sub_task(path.as_str()) {
+            Ok(group)
+        } else {
+            let parts = path.split("/");
+            let mut parent = Self.clone_as_task();
+            
+            for part in parts {
+                if let Some(sub) = parent.sub_task(part) {
+                    parent = sub;
+                } else {
+                    let sub = DownloadGroup::new(self.0.history_speed.clone(), None);
+                    parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
+                    parent = sub.clone_as_task();
+                }
+            }
+
+            Ok(parent)
+        }
+    }
+
+    pub fn makesure_path(
+        &self, 
+        path: Option<String>
+    ) -> BuckyResult<(Box<dyn DownloadTask>, Option<String>)> {
+        if let Some(group) = path {
+            if group.len() == 0 {
+                return Ok((self.clone_as_task(), None));
+            } 
+
+            let mut parts: Vec<&str> = group.split("/").collect();
+            if parts.len() == 0 {
+                return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "invalid group path"))
+            } 
+            
+            let last_part = if parts[parts.len() - 1].len() == 0 {
+                None 
+            } else {
+                Some(parts[parts.len() - 1].to_owned())
+            };
+
+            parts.remove(parts.len() - 1);
+
+            let group_path = parts.join("/"); 
+            Ok((self.create_sub_group(group_path)?, last_part))
+        } else {
+            Ok((self.clone_as_task(), None))
+        }
+    }
+
+
+    pub fn create_sub_task(&self, path: Option<String>, task: &dyn DownloadTask) -> BuckyResult<()> {
+        let (owner, path) = self.makesure_path(path)?;
+        let _ = owner.add_task(path, task.clone_as_task())?;
+        Ok(())
     }
 }
 
