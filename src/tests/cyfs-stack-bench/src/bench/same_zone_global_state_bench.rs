@@ -115,14 +115,14 @@ impl SameZoneGlobalStateBench {
             .await
             .unwrap();
 
-        if let Err(e) = op_env
-            .create_new_with_path("/global-states/new/a", ObjectMapSimpleContentType::Map)
-            .await
-        {
-            assert!(e.code() == BuckyErrorCode::AlreadyExists);
-        } else {
-            unreachable!();
-        }
+        // if let Err(e) = op_env
+        //     .create_new_with_path("/global-states/new/a", ObjectMapSimpleContentType::Map)
+        //     .await
+        // {
+        //     assert!(e.code() == BuckyErrorCode::AlreadyExists);
+        // } else {
+        //     unreachable!();
+        // }
 
         let begin = std::time::Instant::now();
         // 首先移除老的值，如果存在的话
@@ -212,14 +212,14 @@ impl SameZoneGlobalStateBench {
             .await
             .unwrap();
 
-        if let Err(e) = op_env
-            .create_new_with_path("/global-states/new/a", ObjectMapSimpleContentType::Map)
-            .await
-        {
-            assert!(e.code() == BuckyErrorCode::AlreadyExists);
-        } else {
-            unreachable!();
-        }
+        // if let Err(e) = op_env
+        //     .create_new_with_path("/global-states/new/a", ObjectMapSimpleContentType::Map)
+        //     .await
+        // {
+        //     assert!(e.code() == BuckyErrorCode::AlreadyExists);
+        // } else {
+        //     unreachable!();
+        // }
 
         let begin = std::time::Instant::now();
         // 首先移除老的值，如果存在的话
