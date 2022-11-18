@@ -177,7 +177,10 @@ impl NDNObjectLoader {
                 source: req.common.source.clone(),
                 level: req.common.level.clone().into(),
                 target: target.map(|v| v.object_id().to_owned()),
-                flags: req.common.flags,
+
+                // should not pass the ndn flags to non loader request!
+                // flags: req.common.flags,
+                flags: 0,
             },
 
             object_id: req_object,
