@@ -3,7 +3,24 @@ use cyfs_lib::*;
 use zone_simulator::*;
 
 pub async fn test() {
+
     let (stack, file_id, owner_id) =  add_file().await;
+
+    let item = GlobalStateObjectMetaItem {
+        selector: format!("obj_type == {}", ObjectTypeCode::File.to_u16()),
+        access: GlobalStatePathGroupAccess::Default(AccessString::full_except_write().value()),
+        depth: None,
+    };
+
+    // remove object meta access
+    {
+        let meta =
+            stack.root_state_meta_stub(None, None);
+
+        meta.remove_object_meta(item.clone()).await.unwrap();
+    }
+
+    
     let ret = get_file(&file_id, &stack.local_device_id()).await;
     assert!(ret.is_err());
 
@@ -18,15 +35,13 @@ pub async fn test() {
             depth: None,
         };
 
-        if let Err(e) = meta.add_object_meta(item).await {
-            assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
-        } else {
-            unreachable!();
-        }
+        meta.add_object_meta(item).await.unwrap();
     }
 
     let ret = get_file(&file_id, &stack.local_device_id()).await;
     assert!(ret.is_ok());
+
+    info!("test object meta cases success!");
 }
 
 async fn get_file(file_id: &ObjectId, target: &DeviceId) -> BuckyResult<()> {
@@ -50,7 +65,7 @@ async fn add_file() -> (SharedCyfsStack, ObjectId, ObjectId) {
     let owner_id = &USER1_DATA.get().unwrap().people_id;
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
 
-    let data = "test chunk".as_bytes().to_owned();
+    let data = format!("test chunk {}", bucky_time_now()).as_bytes().to_owned();
     let chunk_id = ChunkId::calculate_sync(&data).unwrap();
     let req = NDNPutDataOutputRequest::new_with_buffer(
         NDNAPILevel::NDC,
