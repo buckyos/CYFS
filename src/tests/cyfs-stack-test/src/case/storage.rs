@@ -17,14 +17,12 @@ fn new_dec(name: &str) -> ObjectId {
 }
 
 pub async fn test() {
-    let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
     let device_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
-    let device2_stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
 
     test_storage(&device_stack).await;
 }
 
-async fn test_storage(stack: &SharedCyfsStack) {}
+async fn test_storage(_stack: &SharedCyfsStack) {}
 
 
 #[test]

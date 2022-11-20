@@ -42,6 +42,7 @@ pub async fn test() {
 
     //root_state::test().await;
     mime::test().await;
+    ndn::test().await;
     //non::test().await;
     //call::test().await;
     return;

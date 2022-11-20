@@ -40,7 +40,7 @@ pub async fn test() {
     get_file(&dir_id, &dec_id, &stack, false).await;
 
     test_chunk_in_bundle().await;
-    
+
     info!("test all ndn case success!");
 }
 
@@ -367,7 +367,7 @@ async fn get_chunk(dir_id: &DirId, file_id: &FileId, inner_path: &str, chunk_id:
 
     // change the file permisssions
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
-    let mut access = AccessString::full_except_write();
+    let access = AccessString::full_except_write();
     let mut update_req = NONUpdateObjectMetaRequest::new_router(
         None, file_id.object_id().clone(), Some(access),
     );
@@ -499,9 +499,27 @@ async fn test_range_file(dec_id: &ObjectId) {
     let origin_buf = read_file_range(&local_path, range.clone()).await;
 
     get_req.range = Some(NDNDataRequestRange::new_data_range(vec![range]));
+
+   
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+    
+    /*
+    // use a not exists req_path. will been rejected by rmeta access!
     get_req.common.req_path = Some("/range/file".to_owned());
 
-    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+    let dec_id2 = new_dec("test-range-file-get");
+    let stack = stack.fork_with_new_dec(Some(dec_id2)).await.unwrap();
+    stack.wait_online(None).await.unwrap()
+    let ret = stack.ndn_service().get_data(get_req.clone()).await;
+    if let Err(e) = ret {
+        assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
+    } else {
+        unreachable!();
+    }
+    */
+
+    // direct use the object level access
+    get_req.common.req_path = None;
     let mut resp = stack.ndn_service().get_data(get_req.clone()).await.unwrap();
 
     info!("get range file resp: {}", resp);
