@@ -395,7 +395,7 @@ impl UtilLocalService {
                 local_path: req.local_path.to_string_lossy().to_string(),
                 owner: req.owner,
                 chunk_size: req.chunk_size,
-                device_id: self.bdt_stack.local_device_id().clone(),
+                device_id: self.bdt_stack.local_device_id().object_id().clone(),
             };
             let task_id = self
                 .task_manager

@@ -5,10 +5,10 @@ use crate::trans_api::{DownloadTaskTracker, TransStore};
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::*;
 use cyfs_bdt::{
-    self, 
-    SingleDownloadContext, 
-    ChunkWriter, 
-    StackGuard, 
+    self,
+    SingleDownloadContext,
+    ChunkWriter,
+    StackGuard,
 };
 use cyfs_task_manager::*;
 
@@ -50,6 +50,7 @@ impl DownloadFileTask {
         task_status: DownloadFileTaskStatus,
     ) -> Self {
         let mut sha256 = sha2::Sha256::new();
+        sha256.input(DOWNLOAD_FILE_TASK.0.to_le_bytes());
         sha256.input(file.desc().calculate_id().as_slice());
         if save_path.is_some() {
             sha256.input(save_path.as_ref().unwrap().as_bytes());
@@ -133,7 +134,7 @@ impl Task for DownloadFileTask {
             } else {
                 None
             }, self.device_list.clone());
-        
+
 
         let writers: Box<dyn ChunkWriter> =
             if self.save_path.is_some() && !self.save_path.as_ref().unwrap().is_empty() {
@@ -158,8 +159,8 @@ impl Task for DownloadFileTask {
         *session = Some(
             cyfs_bdt::download::download_file(
                 &self.bdt_stack,
-                self.file.clone(), 
-                None, 
+                self.file.clone(),
+                None,
                 Some(context),
                 vec![writers],
             )
@@ -361,7 +362,7 @@ impl Task for DownloadFileTask {
                             sum_size: self.file.desc().content().len() as u64,
                         }
                     }
-                   
+
                 }
             }
         } else {
@@ -379,8 +380,9 @@ impl Task for DownloadFileTask {
     }
 }
 
-#[derive(RawEncode, RawDecode)]
-pub struct DownloadFileParamV1 {
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
+#[cyfs_protobuf_type(super::super::trans_proto::DownloadFileParam)]
+pub struct DownloadFileParam {
     pub file: File,
     pub device_list: Vec<DeviceId>,
     pub referer: String,
@@ -388,71 +390,78 @@ pub struct DownloadFileParamV1 {
     pub context_id: Option<ObjectId>,
 }
 
-#[derive(RawEncode, RawDecode)]
-pub enum DownloadFileParam {
-    V1(DownloadFileParamV1),
+impl ProtobufTransform<super::super::trans_proto::DownloadFileParam> for DownloadFileParam {
+    fn transform(value: crate::trans_api::local::trans_proto::DownloadFileParam) -> BuckyResult<Self> {
+        let mut device_list = Vec::new();
+        for item in value.device_list.iter() {
+            device_list.push(DeviceId::clone_from_slice(item.as_slice())?);
+        }
+        Ok(Self {
+            file: File::clone_from_slice(value.file.as_slice())?,
+            device_list,
+            referer: value.referer,
+            save_path: value.save_path,
+            context_id: if value.context_id.is_some() {Some(ObjectId::clone_from_slice(value.context_id.as_ref().unwrap().as_slice()))} else {None}
+        })
+    }
 }
 
-#[derive(RawEncode, RawDecode)]
-struct DownloadFileTaskStateV1 {
+impl ProtobufTransform<&DownloadFileParam> for super::super::trans_proto::DownloadFileParam {
+    fn transform(value: &DownloadFileParam) -> BuckyResult<Self> {
+        let mut device_list = Vec::new();
+        for item in value.device_list.iter() {
+            device_list.push(item.to_vec()?);
+        }
+        Ok(Self {
+            file: value.file.to_vec()?,
+            device_list,
+            referer: value.referer.clone(),
+            save_path: value.save_path.clone(),
+            context_id: if value.context_id.is_some() {Some(value.context_id.as_ref().unwrap().to_vec()?)} else {None}
+        })
+    }
+}
+
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[cyfs_protobuf_type(super::super::trans_proto::DownloadFileTaskState)]
+struct DownloadFileTaskState {
     download_progress: u64,
-}
-
-#[derive(RawEncode, RawDecode)]
-enum DownloadFileTaskState {
-    V1(DownloadFileTaskStateV1),
 }
 
 impl DownloadFileTaskState {
     pub fn new(download_progress: u64) -> Self {
-        DownloadFileTaskState::V1(DownloadFileTaskStateV1 { download_progress })
+        DownloadFileTaskState { download_progress }
     }
 
     pub fn download_progress(&self) -> u64 {
-        match self {
-            Self::V1(state) => state.download_progress,
-        }
+        self.download_progress
     }
 
     pub fn set_download_progress(&mut self, download_progress: u64) {
-        match self {
-            Self::V1(state) => {
-                if download_progress > state.download_progress {
-                    state.download_progress = download_progress;
-                }
-            }
+        if download_progress > self.download_progress {
+            self.download_progress = download_progress;
         }
     }
 }
 impl DownloadFileParam {
     pub fn file(&self) -> &File {
-        match self {
-            DownloadFileParam::V1(param) => &param.file,
-        }
+        &self.file
     }
 
     pub fn device_list(&self) -> &Vec<DeviceId> {
-        match self {
-            DownloadFileParam::V1(param) => &param.device_list,
-        }
+        &self.device_list
     }
 
     pub fn referer(&self) -> &str {
-        match self {
-            DownloadFileParam::V1(param) => param.referer.as_str(),
-        }
+        self.referer.as_str()
     }
 
     pub fn save_path(&self) -> &Option<String> {
-        match self {
-            DownloadFileParam::V1(param) => &param.save_path,
-        }
+        &self.save_path
     }
 
     pub fn context_id(&self) -> &Option<ObjectId> {
-        match self {
-            DownloadFileParam::V1(param) => &param.context_id,
-        }
+        &self.context_id
     }
 }
 

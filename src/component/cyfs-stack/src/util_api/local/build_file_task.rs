@@ -5,7 +5,8 @@ use cyfs_util::*;
 use sha2::Digest;
 use std::sync::Arc;
 
-#[derive(RawEncode, RawDecode)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[cyfs_protobuf_type(super::util_proto::BuildFileParams)]
 pub struct BuildFileParams {
     pub local_path: String,
     pub owner: ObjectId,
@@ -415,27 +416,27 @@ mod build_file_task_test {
         ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
             todo!();
         }
-    
+
         async fn exists_object(
             &self,
             req: &NamedObjectCacheExistsObjectRequest,
         ) -> BuckyResult<NamedObjectCacheExistsObjectResponse> {
             todo!();
         }
-    
+
         async fn update_object_meta(
             &self,
             req: &NamedObjectCacheUpdateObjectMetaRequest,
         ) -> BuckyResult<()> {
             todo!();
         }
-    
-        async fn check_object_access(&self, 
+
+        async fn check_object_access(&self,
             req: &NamedObjectCacheCheckObjectAccessRequest
         ) -> BuckyResult<Option<()>> {
             todo!();
         }
-        
+
         async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
             todo!();
         }

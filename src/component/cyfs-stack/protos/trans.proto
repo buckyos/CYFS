@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+message DownloadTaskState {
+    int32 task_status = 1;
+    optional uint32 err_code = 2;
+    uint64 speed = 3;
+    uint64 upload_speed = 4;
+    uint64 download_progress = 5;
+    uint64 sum_size = 6;
+}
+
+message DownloadFileParam {
+    bytes file = 1;
+    repeated bytes device_list = 2;
+    string referer = 3;
+    optional string save_path = 4;
+    optional bytes context_id = 5;
+}
+
+message DownloadFileTaskState {
+    uint64 download_progress = 1;
+}
+
+message DownloadChunkParam {
+    bytes chunk_id = 1;
+    repeated bytes device_list = 2;
+    string referer = 3;
+    optional string save_path = 4;
+    optional bytes context_id = 5;
+}
+
+message PublishLocalFile {
+    string local_path = 1;
+    bytes owner = 2;
+    bytes file = 3;
+    uint32 chunk_size = 4;
+}
+
+message PublishLocalDir {
+    string local_path = 1;
+    bytes root_id = 2;
+}

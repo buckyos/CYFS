@@ -12,12 +12,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use cyfs_debug::Mutex;
 
-#[derive(RawEncode, RawDecode)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[cyfs_protobuf_type(super::util_proto::BuildDirParams)]
 pub struct BuildDirParams {
     pub local_path: String,
     pub owner: ObjectId,
     pub chunk_size: u32,
-    pub device_id: DeviceId,
+    pub device_id: ObjectId,
 }
 
 pub struct BuildDirTaskFactory {
@@ -44,7 +45,7 @@ impl TaskFactory for BuildDirTaskFactory {
             params.owner,
             params.chunk_size,
             self.task_manager.clone(),
-            params.device_id,
+            DeviceId::try_from(params.device_id)?,
             self.noc.clone(),
         );
         Ok(Box::new(task))
@@ -64,7 +65,7 @@ impl TaskFactory for BuildDirTaskFactory {
             params.owner,
             params.chunk_size,
             self.task_manager.clone(),
-            params.device_id,
+            DeviceId::try_from(params.device_id)?,
             self.noc.clone(),
             task_state,
         );

@@ -10,12 +10,35 @@ use std::path::Path;
 use std::sync::Arc;
 use cyfs_debug::Mutex;
 
-#[derive(RawEncode, RawDecode)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
+#[cyfs_protobuf_type(super::trans_proto::PublishLocalFile)]
 pub struct PublishLocalFile {
     local_path: String,
     owner: ObjectId,
     file: File,
     chunk_size: u32,
+}
+
+impl ProtobufTransform<super::trans_proto::PublishLocalFile> for PublishLocalFile {
+    fn transform(value: crate::trans_api::local::trans_proto::PublishLocalFile) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path,
+            owner: ObjectId::clone_from_slice(value.owner.as_slice()),
+            file: File::clone_from_slice(value.file.as_slice())?,
+            chunk_size: value.chunk_size
+        })
+    }
+}
+
+impl ProtobufTransform<&PublishLocalFile> for super::trans_proto::PublishLocalFile {
+    fn transform(value: &PublishLocalFile) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path.clone(),
+            owner: value.owner.as_slice().to_vec(),
+            file: value.file.to_vec()?,
+            chunk_size: value.chunk_size
+        })
+    }
 }
 
 #[derive(RawEncode, RawDecode)]
@@ -198,7 +221,8 @@ impl TaskFactory for PublishLocalFileTaskFactory {
     }
 }
 
-#[derive(RawEncode, RawDecode)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[cyfs_protobuf_type(super::trans_proto::PublishLocalDir)]
 pub struct PublishLocalDir {
     local_path: String,
     root_id: ObjectId,
@@ -554,7 +578,7 @@ impl PublishManager {
                 local_path: local_path.clone(),
                 owner,
                 chunk_size,
-                device_id: self.device_id.clone(),
+                device_id: self.device_id.object_id().clone(),
             };
 
             let task_id = self
