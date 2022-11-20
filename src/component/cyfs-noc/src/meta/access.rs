@@ -43,13 +43,6 @@ impl NamedObjecAccessHelper {
         debug!("noc meta will check access: object={}, access={}, source={}, create_dec={}, require={}", 
             object_id, AccessString::new(access_string), source, create_dec_id, permissions.as_str());
 
-        // system dec in current zone is always allowed
-        if source.is_current_zone() {
-            if source.is_system_dec() {
-                return Ok(());
-            }
-        }
-
         // Check permission first
         let mask = source.mask(create_dec_id, permissions);
 
@@ -103,6 +96,13 @@ impl NamedObjecAccessHelper {
     ) -> BuckyResult<()> {
         if source.is_verified(&create_dec_id) {
             return Ok(());
+        }
+
+        // system dec or same dec in current zone is always allowed
+        if source.is_current_zone() {
+            if source.check_target_dec_permission2(Some(create_dec_id)) {
+                return Ok(());
+            }
         }
 
         let permissions = permissions.into();
