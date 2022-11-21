@@ -3,7 +3,7 @@ use std::{
     io::SeekFrom, 
 };
 use async_std::{
-    pin::Pin, 
+    pin::{Pin}, 
     task::{Context, Poll}
 };
 use cyfs_base::*;
@@ -19,7 +19,7 @@ use super::{
 };
 
 struct CacheImpl {
-    manager: RawCacheManager, 
+    manager: Option<RawCacheManager>, 
     cache: RwLock<Vec<u8>>
 }
 
@@ -31,7 +31,9 @@ impl CacheImpl {
 
 impl Drop for CacheImpl {
     fn drop(&mut self) {
-        self.manager.release_mem(self.capacity())
+        if let Some(manager) = self.manager.as_ref() {
+            manager.release_mem(self.capacity())
+        }
     }
 }
 
@@ -39,11 +41,29 @@ impl Drop for CacheImpl {
 pub struct MemCache(Arc<CacheImpl>);
 
 impl MemCache {
-    pub fn new(manager: RawCacheManager, capacity: usize) -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self::new(capacity, None)
+    }
+
+    pub async fn from_reader(capacity: usize, reader: impl async_std::io::Read + Unpin) -> BuckyResult<Self> {
+        let cache = Self::with_capacity(capacity);
+        let read = async_std::io::copy(reader, SeekWrapper::new(&cache)).await? as usize;
+        if read != capacity {
+            Err(BuckyError::new(BuckyErrorCode::InvalidData, "misatch read length"))
+        } else {
+            Ok(cache)
+        }
+    }
+
+    fn new(capacity: usize, manager: Option<RawCacheManager>) -> Self {
         Self(Arc::new(CacheImpl {
             manager, 
             cache: RwLock::new(vec![0u8; capacity])
         }))
+    }
+
+    fn capacity(&self) -> usize {
+        self.0.capacity()
     }
 
     fn seek(&self, cur: usize, pos: SeekFrom) -> usize {
@@ -185,8 +205,18 @@ impl std::io::Write for SeekWrapper {
 
 impl SyncWriteWithSeek for SeekWrapper {}
 
+
+#[derive(Clone)]
+pub(crate) struct MemCacheGuard(Arc<MemCache>);
+
+impl MemCacheGuard {
+    pub fn new(manager: RawCacheManager, capacity: usize) -> Self {
+        Self(Arc::new(MemCache::new(capacity, Some(manager))))
+    }
+}
+
 #[async_trait::async_trait]
-impl RawCache for MemCache {
+impl RawCache for MemCacheGuard {
     fn capacity(&self) -> usize {
         self.0.capacity()
     }
@@ -196,19 +226,19 @@ impl RawCache for MemCache {
     }
 
     async fn async_reader(&self) -> BuckyResult<Box<dyn Unpin + Send + Sync + AsyncReadWithSeek>> {
-        Ok(Box::new(SeekWrapper::new(self)))
+        Ok(Box::new(SeekWrapper::new(&self.0)))
     }
 
     fn sync_reader(&self) -> BuckyResult<Box<dyn SyncReadWithSeek>> {
-        Ok(Box::new(SeekWrapper::new(self)))
+        Ok(Box::new(SeekWrapper::new(&self.0)))
     }
     
     async fn async_writer(&self) -> BuckyResult<Box<dyn  Unpin + Send + Sync + AsyncWriteWithSeek>> {
-        Ok(Box::new(SeekWrapper::new(self)))
+        Ok(Box::new(SeekWrapper::new(&self.0)))
     }   
 
     fn sync_writer(&self) -> BuckyResult<Box<dyn SyncWriteWithSeek>> {
-        Ok(Box::new(SeekWrapper::new(self)))
+        Ok(Box::new(SeekWrapper::new(&self.0)))
     }
 }
 

@@ -1,7 +1,7 @@
 use cyfs_base::*;
 use crate::{
     stack::{Stack}, 
-    ndn::{*, channel::{*, protocol::v0::*}}
+    ndn::{*, channel::{*, protocol::v0::*}, chunk::{ChunkStreamCache, RawCache}}
 };
 
 
@@ -11,9 +11,36 @@ pub async fn start_upload_task(
     to: &Channel, 
     owners: Vec<String>, 
 ) -> BuckyResult<Box<dyn UploadTask>> {
-    let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
     let desc = interest.prefer_type.fill_values(&interest.chunk);
+    let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
     let encoder = cache.create_encoder(&desc);
+   
+    
+    let session = to.upload(
+        interest.chunk.clone(), 
+        interest.session_id.clone(), 
+        desc.clone(), 
+        encoder)?;
+    
+    let _ = stack.ndn().root_task().upload().create_sub_task(owners, &session)?;
+  
+    Ok(session.clone_as_task())
+}
+
+pub async fn start_upload_task_from_cache<T: RawCache + 'static>(
+    stack: &Stack, 
+    interest: &Interest, 
+    to: &Channel, 
+    owners: Vec<String>, 
+    cache: T
+) -> BuckyResult<Box<dyn UploadTask>> {
+    let desc = interest.prefer_type.fill_values(&interest.chunk);
+
+    let stream_cache = ChunkStreamCache::new(&interest.chunk);
+    stream_cache.load(true, Box::new(cache))?;
+    let encoder = stream_cache.create_encoder(&desc);
+
+     
     let session = to.upload(
         interest.chunk.clone(), 
         interest.session_id.clone(), 
@@ -64,7 +91,7 @@ impl NdnEventHandler for DefaultNdnEventHandler {
             stack, 
             interest, 
             &from, 
-            vec![]
+            vec![],
         ).await?;
 
         Ok(())

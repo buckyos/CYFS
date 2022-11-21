@@ -63,10 +63,14 @@ impl Drop for FileCache {
 
 
 #[derive(Clone)]
-struct FileCache(Arc<CacheImpl>);
+pub struct FileCache(Arc<CacheImpl>);
 
 
 impl FileCache {
+    pub fn from_path(path: PathBuf, range: Range<u64>) -> Self {
+        Self::new(path, range, false)
+    }
+
     fn new(path: PathBuf, range: Range<u64>, to_remove: bool) -> Self {
         let cache = Self(Arc::new(CacheImpl {
             state: RwLock::new(CacheState::Creating(StateWaiter::new())), 
@@ -231,7 +235,7 @@ impl async_std::io::Read for FileCacheReader {
 impl AsyncReadWithSeek for FileCacheReader {}
 
 #[derive(Clone)]
-pub struct FileCacheGuard(Arc<FileCache>);
+pub(crate) struct FileCacheGuard(Arc<FileCache>);
 
 impl FileCacheGuard {
     pub fn new(path: PathBuf, range: Range<u64>, to_remove: bool) -> Self {

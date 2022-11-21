@@ -58,6 +58,10 @@ impl ChunkStreamCache {
         }))
     }
 
+    pub fn create_encoder(&self, desc: &ChunkEncodeDesc) -> Box<dyn ChunkEncoder> {
+        StreamEncoder::new(self.clone(), desc).clone_as_encoder()
+    }
+
     pub fn loaded(&self) -> bool {
         self.0.state.read().unwrap().raw_cache.get().is_some()
     }
