@@ -91,12 +91,12 @@ impl NDNAclInputProcessor {
 
         assert_eq!(req.object_id.obj_type_code(), ObjectTypeCode::Chunk);
 
-        let req_path = match &req.common.req_path {
-            Some(req_path) => Some(RequestGlobalStatePath::from_str(req_path)?),
-            None => None,
-        };
-
         if req.common.referer_object.is_empty() {
+            let req_path = match &req.common.req_path {
+                Some(req_path) => Some(RequestGlobalStatePath::from_str(req_path)?),
+                None => None,
+            };
+            
             if req_path.is_none() {
                 // 同zone内，不指定referer_object，也不指定req_path，可直接使用chunk_id访问
                 if req.common.source.is_current_zone() {

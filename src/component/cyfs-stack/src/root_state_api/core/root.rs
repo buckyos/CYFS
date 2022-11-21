@@ -75,7 +75,6 @@ impl GlobalStateRoot {
         let mut root = root_index.get_root_state().root_state;
         if root.is_none() {
             
-
             // 初始化全局root对象
             let object_map = ObjectMap::new(
                 ObjectMapSimpleContentType::Map, 

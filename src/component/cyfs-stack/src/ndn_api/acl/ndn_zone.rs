@@ -4,11 +4,11 @@ use cyfs_lib::*;
 
 use std::sync::Arc;
 
-pub(crate) struct NDNAclInnerInputProcessor {
+pub(crate) struct NDNAclZoneInputProcessor {
     next: NDNInputProcessorRef,
 }
 
-impl NDNAclInnerInputProcessor {
+impl NDNAclZoneInputProcessor {
     pub fn new(next: NDNInputProcessorRef) -> NDNInputProcessorRef {
         let ret = Self { next };
         Arc::new(Box::new(ret))
@@ -20,7 +20,7 @@ impl NDNAclInnerInputProcessor {
 }
 
 #[async_trait::async_trait]
-impl NDNInputProcessor for NDNAclInnerInputProcessor {
+impl NDNInputProcessor for NDNAclZoneInputProcessor {
     async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
         self.check_access("ndn.put_data", &req.common)?;
 
@@ -51,4 +51,3 @@ impl NDNInputProcessor for NDNAclInnerInputProcessor {
         self.next.query_file(req).await
     }
 }
-
