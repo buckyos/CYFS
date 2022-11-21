@@ -1,7 +1,7 @@
-use crate::root_state_api::ObjectMapNOCCacheAdapter;
 use crate::util_api::{BuildFileParams, BuildFileTaskStatus};
 use async_std::task::JoinHandle;
 use cyfs_base::*;
+use cyfs_debug::Mutex;
 use cyfs_lib::*;
 use cyfs_task_manager::*;
 use cyfs_util::*;
@@ -10,13 +10,13 @@ use sha2::Digest;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
-use cyfs_debug::Mutex;
 
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
 #[cyfs_protobuf_type(super::util_proto::BuildDirParams)]
 pub struct BuildDirParams {
     pub local_path: String,
     pub owner: ObjectId,
+    pub dec_id: ObjectId,
     pub chunk_size: u32,
     pub device_id: ObjectId,
 }
@@ -43,6 +43,7 @@ impl TaskFactory for BuildDirTaskFactory {
         let task = BuildDirTask::new(
             params.local_path,
             params.owner,
+            params.dec_id,
             params.chunk_size,
             self.task_manager.clone(),
             DeviceId::try_from(params.device_id)?,
@@ -63,6 +64,7 @@ impl TaskFactory for BuildDirTaskFactory {
         let task = BuildDirTask::restore(
             params.local_path,
             params.owner,
+            params.dec_id,
             params.chunk_size,
             self.task_manager.clone(),
             DeviceId::try_from(params.device_id)?,
@@ -379,6 +381,7 @@ pub struct BuildDirTask {
     task_store: Option<Arc<dyn TaskStore>>,
     local_path: String,
     owner: ObjectId,
+    dec_id: ObjectId,
     chunk_size: u32,
     device_id: DeviceId,
     noc: NamedObjectCacheRef,
@@ -391,6 +394,7 @@ impl BuildDirTask {
     fn new(
         local_path: String,
         owner: ObjectId,
+        dec_id: ObjectId,
         chunk_size: u32,
         task_manager: Weak<TaskManager>,
         device_id: DeviceId,
@@ -398,7 +402,8 @@ impl BuildDirTask {
     ) -> Self {
         let mut sha2 = sha2::Sha256::new();
         sha2.input(local_path.as_bytes());
-        sha2.input(owner.to_string().as_bytes());
+        sha2.input(owner.as_slice());
+        sha2.input(dec_id.as_slice());
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_DIR_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
@@ -407,6 +412,7 @@ impl BuildDirTask {
             task_store: None,
             local_path,
             owner,
+            dec_id,
             chunk_size,
             device_id,
             noc,
@@ -419,6 +425,7 @@ impl BuildDirTask {
     fn restore(
         local_path: String,
         owner: ObjectId,
+        dec_id: ObjectId,
         chunk_size: u32,
         task_manager: Weak<TaskManager>,
         device_id: DeviceId,
@@ -427,7 +434,8 @@ impl BuildDirTask {
     ) -> Self {
         let mut sha2 = sha2::Sha256::new();
         sha2.input(local_path.as_bytes());
-        sha2.input(owner.to_string().as_bytes());
+        sha2.input(owner.as_slice());
+        sha2.input(dec_id.as_slice());
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_DIR_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
@@ -436,6 +444,7 @@ impl BuildDirTask {
             task_store: None,
             local_path,
             owner,
+            dec_id,
             chunk_size,
             device_id,
             noc,
@@ -489,12 +498,13 @@ impl BuildDirTask {
             let build_file_params = BuildFileParams {
                 local_path: sub_file.to_string_lossy().to_string(),
                 owner: self.owner.clone(),
+                dec_id: self.dec_id.clone(),
                 chunk_size: self.chunk_size,
             };
 
             let task_id = task_manager
                 .create_task(
-                    ObjectId::default(),
+                    self.dec_id.clone(),
                     self.device_id.clone(),
                     BUILD_FILE_TASK,
                     build_file_params,
@@ -597,7 +607,7 @@ impl BuildDirTask {
                 .unwrap()
         };
         let noc = ObjectMapNOCCacheAdapter::new_noc_cache(self.noc.clone());
-        let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
+        let root_cache = ObjectMapRootMemoryCache::new_default_ref(Some(self.dec_id.clone()), noc);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         let mut object_map = ObjectMap::new(

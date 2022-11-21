@@ -32,11 +32,13 @@ message DownloadChunkParam {
 message PublishLocalFile {
     string local_path = 1;
     bytes owner = 2;
-    bytes file = 3;
-    uint32 chunk_size = 4;
+    bytes dec_id = 3;
+    bytes file = 4;
+    uint32 chunk_size = 5;
 }
 
 message PublishLocalDir {
     string local_path = 1;
     bytes root_id = 2;
+    bytes dec_id = 3;
 }

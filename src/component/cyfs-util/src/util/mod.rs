@@ -1,6 +1,5 @@
 mod bdt_util;
 mod condvar_helper;
-mod dir_helper;
 mod event;
 mod file_obj_builder;
 mod io_bridge;
@@ -16,7 +15,6 @@ mod read_seek;
 
 pub use bdt_util::*;
 pub use condvar_helper::*;
-pub use dir_helper::*;
 pub use event::*;
 pub use file_obj_builder::*;
 pub use io_bridge::*;
