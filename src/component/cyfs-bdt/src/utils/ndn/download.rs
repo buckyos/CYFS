@@ -4,7 +4,7 @@ use std::{
 };
 use cyfs_base::*;
 use crate::{
-    ndn::{*, channel::{*, protocol::v0::*}}, 
+    ndn::{*}, 
     stack::{Stack}, 
 };
 
@@ -164,23 +164,3 @@ pub async fn download_file(
     Ok((task.clone_as_task(), reader))
 }
 
-
-pub async fn start_upload_task(
-    stack: &Stack, 
-    interest: &Interest, 
-    to: &Channel, 
-    owners: Vec<String>, 
-) -> BuckyResult<Box<dyn UploadTask>> {
-    let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
-    let desc = interest.prefer_type.fill_values(&interest.chunk);
-    let encoder = cache.create_encoder(&desc);
-    let session = to.upload(
-        interest.chunk.clone(), 
-        interest.session_id.clone(), 
-        desc.clone(), 
-        encoder)?;
-    
-    let _ = stack.ndn().root_task().upload().create_sub_task(owners, &session)?;
-  
-    Ok(session.clone_as_task())
-}
