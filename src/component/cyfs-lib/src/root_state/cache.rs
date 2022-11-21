@@ -1,9 +1,9 @@
 use cyfs_base::*;
-use cyfs_lib::*;
+use crate::*;
 
 use std::sync::Arc;
 
-pub(crate) struct ObjectMapNOCCacheAdapter {
+pub struct ObjectMapNOCCacheAdapter {
     noc: NamedObjectCacheRef,
 }
 
@@ -24,10 +24,10 @@ impl ObjectMapNOCCacheAdapter {
 
 #[async_trait::async_trait]
 impl ObjectMapNOCCache for ObjectMapNOCCacheAdapter {
-    async fn exists(&self, object_id: &ObjectId) -> BuckyResult<bool> {
+    async fn exists(&self, dec_id: Option<ObjectId>, object_id: &ObjectId) -> BuckyResult<bool> {
         let noc_req = NamedObjectCacheExistsObjectRequest {
             object_id: object_id.clone(),
-            source: RequestSourceInfo::new_local_system(),
+            source: RequestSourceInfo::new_local_dec_or_system(dec_id),
         };
 
         let resp = self.noc.exists_object(&noc_req).await.map_err(|e| {
@@ -42,9 +42,9 @@ impl ObjectMapNOCCache for ObjectMapNOCCacheAdapter {
         }
     }
 
-    async fn get_object_map(&self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMap>> {
+    async fn get_object_map(&self, dec_id: Option<ObjectId>, object_id: &ObjectId) -> BuckyResult<Option<ObjectMap>> {
         let noc_req = NamedObjectCacheGetObjectRequest {
-            source: RequestSourceInfo::new_local_system(),
+            source: RequestSourceInfo::new_local_dec_or_system(dec_id),
             object_id: object_id.clone(),
             last_access_rpath: None,
         };
@@ -73,17 +73,14 @@ impl ObjectMapNOCCache for ObjectMapNOCCacheAdapter {
         }
     }
 
-    async fn put_object_map(&self, object_id: ObjectId, object: ObjectMap) -> BuckyResult<()> {
-        let dec_id = object.desc().dec_id().to_owned();
-
-        let source = RequestSourceInfo::new_local_dec(dec_id);
+    async fn put_object_map(&self, dec_id: Option<ObjectId>, object_id: ObjectId, object: ObjectMap) -> BuckyResult<()> {
 
         let object_raw = object.to_vec().unwrap();
         let object = AnyNamedObject::Standard(StandardObject::ObjectMap(object));
         let object = NONObjectInfo::new(object_id, object_raw, Some(Arc::new(object)));
  
         let req = NamedObjectCachePutObjectRequest {
-            source,
+            source: RequestSourceInfo::new_local_dec_or_system(dec_id),
             object,
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,

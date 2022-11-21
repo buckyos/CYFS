@@ -19,7 +19,7 @@ impl GlobalStateSyncHelper {
         noc: NamedObjectCacheRef,
     ) -> Self {
         let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(noc.clone());
-        let cache = ObjectMapRootMemoryCache::new_default_ref(noc_cache.clone());
+        let cache = ObjectMapRootMemoryCache::new_default_ref(None, noc_cache.clone());
 
         Self {
             state,

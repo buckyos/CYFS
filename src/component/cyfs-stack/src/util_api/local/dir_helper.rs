@@ -1,104 +1,49 @@
-use crate::*;
+use cyfs_lib::*;
 use cyfs_base::*;
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
-pub struct DirHelper;
-
-#[async_trait::async_trait]
-pub trait ObjectCache: Send + Sync {
-    async fn get_value(&self, object_id: ObjectId) -> BuckyResult<Option<Vec<u8>>>;
-    async fn put_value(&self, object_id: ObjectId, object_raw: Vec<u8>) -> BuckyResult<()>;
-    async fn is_exist(&self, object_id: ObjectId) -> BuckyResult<bool>;
-}
-pub type ObjectCacheRef = Arc<dyn ObjectCache>;
-
-struct ObjectMapCache {
-    object_cache: ObjectCacheRef,
-}
-
-impl ObjectMapCache {
-    pub fn new(object_cache: ObjectCacheRef) -> Self {
-        Self {
-            object_cache,
-        }
-    }
-
-    pub fn new_noc_cache(
-        object_cache: ObjectCacheRef,
-    ) -> ObjectMapNOCCacheRef {
-        let ret = Self::new(object_cache);
-        Arc::new(Box::new(ret) as Box<dyn ObjectMapNOCCache>)
-    }
-}
-
-#[async_trait::async_trait]
-impl ObjectMapNOCCache for ObjectMapCache {
-    async fn exists(&self, object_id: &ObjectId) -> BuckyResult<bool> {
-        match self.object_cache.get_value(object_id.clone()).await {
-            Ok(_) => {
-                Ok(true)
-            },
-            Err(e) => {
-                if e.code() == BuckyErrorCode::NotFound {
-                    Ok(false)
-                } else {
-                    error!("load object map from noc error! id={}, {}", object_id, e);
-                    Err(e)
-                }
-            }
-        }
-    }
-
-    async fn get_object_map(&self, object_id: &ObjectId) -> BuckyResult<Option<ObjectMap>> {
-        let resp = self.object_cache.get_value(object_id.clone()).await.map_err(|e| {
-            error!("load object map from noc error! id={}, {}", object_id, e);
-            e
-        })?;
-
-        if resp.is_none() {
-            return Ok(None);
-        }
-
-        match ObjectMap::raw_decode(resp.unwrap().as_slice()) {
-            Ok((obj, _)) => {
-                // 首次加载后，直接设置id缓存，减少一次id计算
-                obj.direct_set_object_id_on_init(object_id);
-
-                Ok(Some(obj))
-            }
-            Err(e) => {
-                error!("decode ObjectMap object error: id={}, {}", object_id, e);
-                Err(e)
-            }
-        }
-    }
-
-    async fn put_object_map(&self, object_id: ObjectId, object: ObjectMap) -> BuckyResult<()> {
-        let object_raw = object.to_vec().unwrap();
-        self.object_cache.put_value(object_id, object_raw).await.map_err(|e| {
-            error!(
-                "insert object map to noc error! id={}, {}",
-                object_id, e
-            );
-            e
-        })?;
-
-        Ok(())
-    }
-}
-
-fn new_object_map_cache(object_cache: ObjectCacheRef) -> ObjectMapOpEnvCacheRef {
-    let noc = ObjectMapCache::new_noc_cache(object_cache);
-    let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
-    let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
-    cache
-}
+pub(crate) struct DirHelper;
 
 impl DirHelper {
-    pub async fn build_zip_dir_from_object_map(object_cache: ObjectCacheRef, object_map_id: &ObjectId) -> BuckyResult<ObjectId> {
-        let map_cache = new_object_map_cache(object_cache.clone());
+    async fn get_value(noc: &NamedObjectCacheRef, source: &RequestSourceInfo, object_id: ObjectId) -> BuckyResult<Option<Vec<u8>>> {
+        let resp = 
+            noc
+            .get_object(&NamedObjectCacheGetObjectRequest {
+                source: source.to_owned(),
+                object_id,
+                last_access_rpath: None,
+            })
+            .await?;
+            
+        if resp.is_none() {
+            Ok(None)
+        } else {
+            Ok(Some(resp.unwrap().object.object_raw))
+        }
+    }
+
+    async fn put_value(noc: &NamedObjectCacheRef, source: &RequestSourceInfo, object_id: ObjectId, object_raw: Vec<u8>) -> BuckyResult<()> {
+        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
+
+        let req = NamedObjectCachePutObjectRequest {
+            source: source.to_owned(),
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: None,
+        };
+
+        noc.put_object(&req).await.map_err(|e| {
+            error!("insert object map to noc error! id={}, {}", object_id, e);
+            e
+        })?;
+        Ok(())
+    }
+
+
+    pub async fn build_zip_dir_from_object_map(source: &RequestSourceInfo, noc: &NamedObjectCacheRef, map_cache: ObjectMapOpEnvCacheRef, object_map_id: &ObjectId) -> BuckyResult<ObjectId> {
         let root_map = map_cache.get_object_map(object_map_id).await?;
         if root_map.is_none() {
             let msg = format!("object map {} is not exist", object_map_id.to_string());
@@ -120,7 +65,7 @@ impl DirHelper {
             for item in list.list.into_iter() {
                 if let ObjectMapContentItem::Map((name, object_id)) = item.value {
                     if object_id.obj_type_code() == ObjectTypeCode::File {
-                        let file_raw = object_cache.get_value(object_id.clone()).await?;
+                        let file_raw = Self::get_value(noc, source, object_id.clone()).await?;
                         if file_raw.is_none() {
                             let msg = format!("file object {} is not exist", object_id.to_string());
                             log::error!("{}", msg.as_str());
@@ -180,7 +125,7 @@ impl DirHelper {
 
         let dir_id = dir.desc().calculate_id();
 
-        object_cache.put_value(dir_id.clone(), dir.to_vec()?).await?;
+        Self::put_value(noc, source, dir_id.clone(), dir.to_vec()?).await?;
 
         Ok(dir_id)
     }

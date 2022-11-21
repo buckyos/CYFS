@@ -1,4 +1,5 @@
 use super::bdt_access_info::BdtNetworkAccessInfoManager;
+use super::dir_helper::*;
 use crate::config::StackGlobalConfig;
 use crate::resolver::OodResolver;
 use crate::sync::DeviceSyncClient;
@@ -18,69 +19,6 @@ use once_cell::sync::OnceCell;
 
 use cyfs_task_manager::{TaskManager, BUILD_DIR_TASK, BUILD_FILE_TASK};
 use std::sync::Arc;
-
-struct NOCObjectCache {
-    device_id: DeviceId,
-    noc: NamedObjectCacheRef,
-}
-
-impl NOCObjectCache {
-    pub fn new(device_id: DeviceId, noc: NamedObjectCacheRef) -> ObjectCacheRef {
-        Arc::new(Self { device_id, noc })
-    }
-}
-
-#[async_trait::async_trait]
-impl ObjectCache for NOCObjectCache {
-    async fn get_value(&self, object_id: ObjectId) -> BuckyResult<Option<Vec<u8>>> {
-        let resp = self
-            .noc
-            .get_object(&NamedObjectCacheGetObjectRequest {
-                source: RequestSourceInfo::new_local_system(),
-                object_id,
-                last_access_rpath: None,
-            })
-            .await?;
-        if resp.is_none() {
-            Ok(None)
-        } else {
-            Ok(Some(resp.unwrap().object.object_raw))
-        }
-    }
-
-    async fn put_value(&self, object_id: ObjectId, object_raw: Vec<u8>) -> BuckyResult<()> {
-        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
-
-        let req = NamedObjectCachePutObjectRequest {
-            source: RequestSourceInfo::new_local_system(),
-            object,
-            storage_category: NamedObjectStorageCategory::Storage,
-            context: None,
-            last_access_rpath: None,
-            access_string: None,
-        };
-
-        self.noc.put_object(&req).await.map_err(|e| {
-            error!("insert object map to noc error! id={}, {}", object_id, e);
-            e
-        })?;
-        Ok(())
-    }
-
-    async fn is_exist(&self, object_id: ObjectId) -> BuckyResult<bool> {
-        let noc_req = NamedObjectCacheExistsObjectRequest {
-            object_id: object_id.clone(),
-            source: RequestSourceInfo::new_local_system(),
-        };
-
-        let resp = self.noc.exists_object(&noc_req).await.map_err(|e| {
-            error!("load object map from noc error! id={}, {}", object_id, e);
-            e
-        })?;
-
-        Ok(resp.meta && resp.object)
-    }
-}
 
 pub(crate) struct UtilLocalService {
     noc: NamedObjectCacheRef,
@@ -361,6 +299,7 @@ impl UtilLocalService {
             let params = BuildFileParams {
                 local_path: req.local_path.to_string_lossy().to_string(),
                 owner: req.owner,
+                dec_id: req.common.source.dec.clone(),
                 chunk_size: req.chunk_size,
             };
             let task_id = self
@@ -394,6 +333,7 @@ impl UtilLocalService {
             let params = BuildDirParams {
                 local_path: req.local_path.to_string_lossy().to_string(),
                 owner: req.owner,
+                dec_id: req.common.source.dec.clone(),
                 chunk_size: req.chunk_size,
                 device_id: self.bdt_stack.local_device_id().object_id().clone(),
             };
@@ -431,10 +371,19 @@ impl UtilLocalService {
         &self,
         req: UtilBuildDirFromObjectMapInputRequest,
     ) -> BuckyResult<UtilBuildDirFromObjectMapInputResponse> {
-        let object_cache =
-            NOCObjectCache::new(self.bdt_stack.local_device_id().clone(), self.noc.clone());
-        let dir_id =
-            DirHelper::build_zip_dir_from_object_map(object_cache, &req.object_map_id).await?;
+        let dec_id = req.common.source.dec.clone();
+
+        let noc = ObjectMapNOCCacheAdapter::new_noc_cache(self.noc.clone());
+        let root_cache = ObjectMapRootMemoryCache::new_default_ref(Some(dec_id), noc);
+        let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
+
+        let dir_id = DirHelper::build_zip_dir_from_object_map(
+            &req.common.source,
+            &self.noc,
+            cache,
+            &req.object_map_id,
+        )
+        .await?;
         Ok(UtilBuildDirFromObjectMapInputResponse { object_id: dir_id })
     }
 }

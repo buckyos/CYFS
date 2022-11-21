@@ -5,6 +5,7 @@ mod build_dir_task;
 mod util_proto {
     include!(concat!(env!("OUT_DIR"), "/util_proto.rs"));
 }
+mod dir_helper;
 
 pub(crate) use local::*;
 pub use build_file_task::*;
