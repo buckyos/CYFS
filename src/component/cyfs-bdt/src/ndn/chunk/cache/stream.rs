@@ -517,7 +517,7 @@ impl ChunkEncoder for StreamEncoder {
                                 Ok(header_len + len)
                             }, 
                             Err(err) => {
-                                if BuckyErrorCode::UnSupport == err.code() {
+                                if BuckyErrorCode::NotSupport == err.code() {
                                     state.pending = EncoderPendingState::Pending(piece_desc.clone());
                                     let encoder = self.clone();
                                     task::spawn(async move {

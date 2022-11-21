@@ -71,7 +71,7 @@ impl FileCache {
         Self::new(path, range, false)
     }
 
-    fn new(path: PathBuf, range: Range<u64>, to_remove: bool) -> Self {
+    pub(super) fn new(path: PathBuf, range: Range<u64>, to_remove: bool) -> Self {
         let cache = Self(Arc::new(CacheImpl {
             state: RwLock::new(CacheState::Creating(StateWaiter::new())), 
             path,
@@ -137,10 +137,6 @@ impl FileCache {
     fn path(&self) -> &Path {
         self.0.path.as_path()
     }
-
-    fn capacity(&self) -> usize {
-        (self.0.range.end - self.0.range.start) as usize
-    } 
 
     fn range(&self) -> &Range<u64> {
         &self.0.range
@@ -234,19 +230,10 @@ impl async_std::io::Read for FileCacheReader {
 
 impl AsyncReadWithSeek for FileCacheReader {}
 
-#[derive(Clone)]
-pub(crate) struct FileCacheGuard(Arc<FileCache>);
-
-impl FileCacheGuard {
-    pub fn new(path: PathBuf, range: Range<u64>, to_remove: bool) -> Self {
-        Self(Arc::new(FileCache::new(path, range, to_remove)))
-    }
-}
-
 #[async_trait::async_trait]
-impl RawCache for FileCacheGuard {
+impl RawCache for FileCache {
     fn capacity(&self) -> usize {
-        self.0.capacity()
+        (self.range().end - self.range().start) as usize
     }
 
     fn clone_as_raw_cache(&self) -> Box<dyn RawCache> {
@@ -254,12 +241,11 @@ impl RawCache for FileCacheGuard {
     }
 
     async fn async_reader(&self) -> BuckyResult<Box<dyn Unpin + Send + Sync + AsyncReadWithSeek>> {
-        let cache = &self.0;
-        let file = cache.wait_created().await?;
+        let file = self.wait_created().await?;
         
         Ok(Box::new(FileCacheReader {
             file, 
-            cache: self.0.as_ref().clone(),
+            cache: self.clone(),
             offset: 0
         }))
     }

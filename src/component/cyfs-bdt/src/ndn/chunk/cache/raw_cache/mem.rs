@@ -55,15 +55,11 @@ impl MemCache {
         }
     }
 
-    fn new(capacity: usize, manager: Option<RawCacheManager>) -> Self {
+    pub(super) fn new(capacity: usize, manager: Option<RawCacheManager>) -> Self {
         Self(Arc::new(CacheImpl {
             manager, 
             cache: RwLock::new(vec![0u8; capacity])
         }))
-    }
-
-    fn capacity(&self) -> usize {
-        self.0.capacity()
     }
 
     fn seek(&self, cur: usize, pos: SeekFrom) -> usize {
@@ -206,17 +202,8 @@ impl std::io::Write for SeekWrapper {
 impl SyncWriteWithSeek for SeekWrapper {}
 
 
-#[derive(Clone)]
-pub(crate) struct MemCacheGuard(Arc<MemCache>);
-
-impl MemCacheGuard {
-    pub fn new(manager: RawCacheManager, capacity: usize) -> Self {
-        Self(Arc::new(MemCache::new(capacity, Some(manager))))
-    }
-}
-
 #[async_trait::async_trait]
-impl RawCache for MemCacheGuard {
+impl RawCache for MemCache {
     fn capacity(&self) -> usize {
         self.0.capacity()
     }
@@ -226,19 +213,19 @@ impl RawCache for MemCacheGuard {
     }
 
     async fn async_reader(&self) -> BuckyResult<Box<dyn Unpin + Send + Sync + AsyncReadWithSeek>> {
-        Ok(Box::new(SeekWrapper::new(&self.0)))
+        Ok(Box::new(SeekWrapper::new(self)))
     }
 
     fn sync_reader(&self) -> BuckyResult<Box<dyn SyncReadWithSeek>> {
-        Ok(Box::new(SeekWrapper::new(&self.0)))
+        Ok(Box::new(SeekWrapper::new(self)))
     }
     
     async fn async_writer(&self) -> BuckyResult<Box<dyn  Unpin + Send + Sync + AsyncWriteWithSeek>> {
-        Ok(Box::new(SeekWrapper::new(&self.0)))
+        Ok(Box::new(SeekWrapper::new(self)))
     }   
 
     fn sync_writer(&self) -> BuckyResult<Box<dyn SyncWriteWithSeek>> {
-        Ok(Box::new(SeekWrapper::new(&self.0)))
+        Ok(Box::new(SeekWrapper::new(self)))
     }
 }
 
