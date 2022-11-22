@@ -196,6 +196,7 @@ struct ChannelImpl {
     tunnel: TunnelGuard, 
     command_tunnel: DatagramTunnelGuard, 
     command_seq: TempSeqGenerator,  
+    download_seq: TempSeqGenerator, 
     state: RwLock<StateImpl>, 
 }
 
@@ -221,6 +222,7 @@ impl Channel {
             tunnel, 
             command_tunnel, 
             command_seq: TempSeqGenerator::new(), 
+            download_seq: TempSeqGenerator::new(), 
             state: RwLock::new(StateImpl {
                 upload: UploadState::new(HistorySpeed::new(0, config.history_speed.clone())), 
                 download: DownloadState::new(HistorySpeed::new(0, config.history_speed.clone())), 
@@ -283,13 +285,12 @@ impl Channel {
     pub fn download(
         &self,  
         chunk: ChunkId, 
-        session_id: TempSeq, 
         source: DownloadSourceWithReferer<DeviceId>, 
         cache: ChunkStreamCache
     ) -> BuckyResult<DownloadSession> {
         let session = DownloadSession::interest(
             chunk, 
-            session_id, 
+            self.gen_download_seq(), 
             self.clone(), 
 	        source, 
             cache,
@@ -322,6 +323,10 @@ impl Channel {
 
     pub(super) fn gen_command_seq(&self) -> TempSeq {
         self.0.command_seq.generate()
+    }
+
+    pub(super) fn gen_download_seq(&self) -> TempSeq {
+        self.0.download_seq.generate()
     }
 
     // 从 datagram tunnel 发送控制命令

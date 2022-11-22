@@ -14,7 +14,6 @@ use crate::{
 };
 
 struct StoreImpl {
-    ndc: Box<dyn NamedDataCache>, 
     chunks: RwLock<BTreeMap<ChunkId, Arc<Vec<u8>>>>
 }
 
@@ -28,29 +27,14 @@ impl std::fmt::Display for MemChunkStore {
 }
 
 impl MemChunkStore {
-    pub fn new(ndc: &dyn NamedDataCache) -> Self {
+    pub fn new() -> Self {
         Self(Arc::new(StoreImpl {
-            ndc: NamedDataCache::clone(ndc), 
             chunks: RwLock::new(BTreeMap::new())
         }))
     }
 
     pub async fn add(&self, id: ChunkId, chunk: Arc<Vec<u8>>) -> BuckyResult<()> {
-        let request = InsertChunkRequest {
-            chunk_id: id.to_owned(),
-            state: ChunkState::Ready,
-            ref_objects: None,
-            trans_sessions: None,
-            flags: 0,
-        };
-
-        let _ = self.0.ndc.insert_chunk(&request).await.map_err(|e| {
-            error!("record file chunk to ndc error! chunk={}, {}",id, e);
-            e
-        });
-
         self.0.chunks.write().unwrap().insert(id, chunk);
-
         Ok(())
     }
 

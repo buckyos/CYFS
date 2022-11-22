@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, RwLock}, 
+    sync::{Arc, RwLock, Mutex}, 
     ops::Range, 
     io::SeekFrom, 
     collections::BTreeMap
@@ -9,6 +9,7 @@ use async_std::{
 };
 use once_cell::sync::OnceCell;
 use cyfs_base::*;
+use cyfs_util::*;
 use crate::{
     interface::udp::MTU, 
     types::*
@@ -56,6 +57,10 @@ impl ChunkStreamCache {
                 waiters: BTreeMap::new()
             })
         }))
+    }
+
+    pub fn create_encoder(&self, desc: &ChunkEncodeDesc) -> Box<dyn ChunkEncoder> {
+        SyncStreamEncoder::new(self.clone(), desc).clone_as_encoder()
     }
 
     pub fn loaded(&self) -> bool {
@@ -227,7 +232,6 @@ impl ChunkStreamCache {
         }
     }
 
-
     pub fn sync_try_read(
         &self, 
         piece_desc: &PieceDesc, 
@@ -268,6 +272,11 @@ impl ChunkStreamCache {
             Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
         }
     }
+
+    fn raw_cache(&self) -> Option<Box<dyn RawCache>> {
+        self.0.state.read().unwrap().raw_cache.get().map(|c| c.clone_as_raw_cache())
+    }
+
 
     async fn async_try_read(
         &self, 
@@ -380,45 +389,46 @@ impl ChunkDecoder for StreamDecoder {
 }
 
 
-enum EncoderPendingState {
+
+enum AsyncEncoderPendingState {
     None, 
     Pending(PieceDesc), 
     // FIXME: may not allocated every time
     Waiting(PieceDesc, BuckyResult<Vec<u8>>)
 }
 
-struct EncoderStateImpl {
-    pending: EncoderPendingState, 
+struct AsyncEncoderStateImpl {
+    pending: AsyncEncoderPendingState, 
     indices: OutcomeIndexQueue, 
 }
 
-struct EncoderImpl {
+struct AsyncEncoderImpl {
     desc: ChunkEncodeDesc, 
     cache: ChunkStreamCache,  
-    state: RwLock<EncoderStateImpl>
+    state: RwLock<AsyncEncoderStateImpl>
 }
 
 #[derive(Clone)]
-pub struct StreamEncoder(Arc<EncoderImpl>);
+pub struct AsyncStreamEncoder(Arc<AsyncEncoderImpl>);
 
-impl std::fmt::Display for StreamEncoder {
+impl std::fmt::Display for AsyncStreamEncoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "StreamEncoder{{chunk:{},desc:{:?}}}", self.chunk(), self.desc())
     }
 }
 
 
-impl StreamEncoder {
+impl AsyncStreamEncoder {
     pub fn new(
         cache: ChunkStreamCache, 
         desc: &ChunkEncodeDesc
     ) -> Self {
         let (start, end, step) = desc.unwrap_as_stream();
-        Self(Arc::new(EncoderImpl {
+        Self(Arc::new(AsyncEncoderImpl {
             desc: desc.clone(), 
             cache, 
-            state: RwLock::new(EncoderStateImpl {
-                pending: EncoderPendingState::None, 
+            state: RwLock::new(AsyncEncoderStateImpl {
+                pending: AsyncEncoderPendingState::None, 
                 indices: OutcomeIndexQueue::new(start, end, step)
             })
         }))
@@ -432,9 +442,9 @@ impl StreamEncoder {
         let mut buffer = vec![0u8; MTU];
         let result = self.cache().async_try_read(&piece_desc, 0, &mut buffer[..]).await;
         let mut state = self.0.state.write().unwrap();
-        if let EncoderPendingState::Pending(pending_desc) = &state.pending {
+        if let AsyncEncoderPendingState::Pending(pending_desc) = &state.pending {
             if pending_desc.eq(&piece_desc) {
-                state.pending = EncoderPendingState::Waiting(piece_desc, result.map(|len| {
+                state.pending = AsyncEncoderPendingState::Waiting(piece_desc, result.map(|len| {
                     buffer.truncate(len);
                     buffer
                 }));
@@ -443,7 +453,7 @@ impl StreamEncoder {
     }
 }
 
-impl ChunkEncoder for StreamEncoder {
+impl ChunkEncoder for AsyncStreamEncoder {
     fn clone_as_encoder(&self) -> Box<dyn ChunkEncoder> {
         Box::new(self.clone())
     }
@@ -459,12 +469,12 @@ impl ChunkEncoder for StreamEncoder {
     fn next_piece(&self, session_id: &TempSeq, buf: &mut [u8]) -> BuckyResult<usize> {
         let mut state = self.0.state.write().unwrap();
         match &mut state.pending {
-            EncoderPendingState::Pending(_) => Ok(0), 
-            EncoderPendingState::Waiting(piece_desc, _result) => {
+            AsyncEncoderPendingState::Pending(_) => Ok(0), 
+            AsyncEncoderPendingState::Waiting(piece_desc, _result) => {
                 let mut result = Err(BuckyError::new(BuckyErrorCode::Ok, ""));
                 std::mem::swap(&mut result, _result);
                 let piece_desc = piece_desc.clone(); 
-                state.pending = EncoderPendingState::None;
+                state.pending = AsyncEncoderPendingState::None;
                 match result {
                     Ok(buffer) => {
                         let (index, _) = piece_desc.unwrap_as_stream();
@@ -489,7 +499,7 @@ impl ChunkEncoder for StreamEncoder {
                     }
                 }
             }, 
-            EncoderPendingState::None => {
+            AsyncEncoderPendingState::None => {
                 if let Some(index) = state.indices.next() {
                     trace!("{} try pop next piece {}", self, index);
                     if self.cache().exists(index)
@@ -513,12 +523,14 @@ impl ChunkEncoder for StreamEncoder {
                                 Ok(header_len + len)
                             }, 
                             Err(err) => {
-                                if BuckyErrorCode::UnSupport == err.code() {
-                                    state.pending = EncoderPendingState::Pending(piece_desc.clone());
+                                if BuckyErrorCode::NotSupport == err.code() {
+                                    state.pending = AsyncEncoderPendingState::Pending(piece_desc.clone());
                                     let encoder = self.clone();
                                     task::spawn(async move {
                                         encoder.async_next_piece(piece_desc).await;
                                     });
+                                    Ok(0)
+                                } else if BuckyErrorCode::WouldBlock == err.code() {
                                     Ok(0)
                                 } else {
                                     Err(err)
@@ -539,16 +551,16 @@ impl ChunkEncoder for StreamEncoder {
         let mut state = self.0.state.write().unwrap();
         if state.indices.reset() {
             match &state.pending {
-                EncoderPendingState::Pending(next_desc) => {
+                AsyncEncoderPendingState::Pending(next_desc) => {
                     let (index, _) = next_desc.unwrap_as_stream();
                     if state.indices.next() != Some(index) {
-                        state.pending = EncoderPendingState::None;
+                        state.pending = AsyncEncoderPendingState::None;
                     }
                 },
-                EncoderPendingState::Waiting(next_desc, _) => {
+                AsyncEncoderPendingState::Waiting(next_desc, _) => {
                     let (index, _) = next_desc.unwrap_as_stream();
                     if state.indices.next() != Some(index) {
-                        state.pending = EncoderPendingState::None;
+                        state.pending = AsyncEncoderPendingState::None;
                     }
                 },
                 _ => {}
@@ -563,16 +575,16 @@ impl ChunkEncoder for StreamEncoder {
         let mut state = self.0.state.write().unwrap();
         if state.indices.merge(max_index, lost_index) {
             match &state.pending {
-                EncoderPendingState::Pending(next_desc) => {
+                AsyncEncoderPendingState::Pending(next_desc) => {
                     let (index, _) = next_desc.unwrap_as_stream();
                     if state.indices.next() != Some(index) {
-                        state.pending = EncoderPendingState::None;
+                        state.pending = AsyncEncoderPendingState::None;
                     }
                 },
-                EncoderPendingState::Waiting(next_desc, _) => {
+                AsyncEncoderPendingState::Waiting(next_desc, _) => {
                     let (index, _) = next_desc.unwrap_as_stream();
                     if state.indices.next() != Some(index) {
-                        state.pending = EncoderPendingState::None;
+                        state.pending = AsyncEncoderPendingState::None;
                     }
                 },
                 _ => {}
@@ -581,5 +593,135 @@ impl ChunkEncoder for StreamEncoder {
         } else {
             false
         }
+    }
+}
+
+
+
+
+
+struct SyncEncoderStateImpl {
+    reader: Option<Box<dyn SyncReadWithSeek + Send + Sync>>, 
+    indices: OutcomeIndexQueue, 
+}
+
+struct SyncEncoderImpl {
+    desc: ChunkEncodeDesc, 
+    cache: ChunkStreamCache,  
+    state: Mutex<SyncEncoderStateImpl>
+}
+
+#[derive(Clone)]
+pub struct SyncStreamEncoder(Arc<SyncEncoderImpl>);
+
+impl std::fmt::Display for SyncStreamEncoder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "StreamEncoder{{chunk:{},desc:{:?}}}", self.chunk(), self.desc())
+    }
+}
+
+
+impl SyncStreamEncoder {
+    pub fn new(
+        cache: ChunkStreamCache, 
+        desc: &ChunkEncodeDesc
+    ) -> Self {
+        let (start, end, step) = desc.unwrap_as_stream();
+        Self(Arc::new(SyncEncoderImpl {
+            desc: desc.clone(), 
+            cache, 
+            state: Mutex::new(SyncEncoderStateImpl {
+                reader: None, 
+                indices: OutcomeIndexQueue::new(start, end, step)
+            })
+        }))
+    }
+
+    fn cache(&self) -> &ChunkStreamCache {
+        &self.0.cache
+    }
+}
+
+impl ChunkEncoder for SyncStreamEncoder {
+    fn clone_as_encoder(&self) -> Box<dyn ChunkEncoder> {
+        Box::new(self.clone())
+    }
+
+    fn chunk(&self) -> &ChunkId {
+        self.cache().chunk()
+    }
+
+    fn desc(&self) -> &ChunkEncodeDesc {
+        &self.0.desc
+    }
+
+    fn next_piece(&self, session_id: &TempSeq, buf: &mut [u8]) -> BuckyResult<usize> {
+        let mut state = self.0.state.lock().unwrap();
+        if let Some(index) = state.indices.next() {
+            if self.cache().exists(index)
+                .map_err(|err| {
+                    error!("{} exists error {}", self, index);
+                    err
+                }).unwrap() {
+                let (_, _, step) = self.desc().unwrap_as_stream();
+                let piece_desc = PieceDesc::Range(index, step.abs() as u16);
+                let buf_len = buf.len();
+                let buf = PieceData::encode_header(
+                    buf, 
+                    session_id,
+                    self.chunk(), 
+                    &piece_desc)?;
+                let header_len = buf_len - buf.len();
+                if state.reader.is_none() {
+                    let raw_cache = self.cache().raw_cache().unwrap();
+                    match raw_cache.sync_reader() {
+                        Ok(reader) => {
+                            state.reader = Some(reader);
+                        },
+                        Err(err) => {
+                            let ret = if BuckyErrorCode::WouldBlock == err.code() {
+                                Ok(0)
+                            } else {
+                                Err(err)
+                            };
+                            return ret;
+                        }
+                    }
+                }
+                let reader = state.reader.as_mut().unwrap();
+                let (_, range) = piece_desc.stream_piece_range(self.chunk());
+                use std::io::{Read, Seek};
+
+                let start = range.start;
+                if start == reader.seek(SeekFrom::Start(start))? {
+                    let len = (range.end - start) as usize;
+                    let len = len.min(buf.len());
+                    reader.read_exact(&mut buf[..len])
+                        .map_err(|err| {
+                            trace!("{} sync_try_read {}, desc: {:?}, buffer: {} ", self, err, piece_desc, buf.len());
+                            err
+                        })?;
+                    trace!("{} sync_try_read {}, desc: {:?},buffer: {} ", self, len, piece_desc, buf.len());
+                    let _ = state.indices.pop_next();
+                    trace!("{} pop next piece {:?}", self, piece_desc);
+                    Ok(header_len + len)
+                } else {
+                    trace!("{} sync_try_read invalid, desc: {:?}, buffer: {} ", self, piece_desc, buf.len());
+                    Err(BuckyError::new(BuckyErrorCode::InvalidInput, "len mismatch"))
+                }
+            } else {
+                Ok(0)
+            }
+        } else {
+            Ok(0)
+        }
+    }
+
+    fn reset(&self) -> bool {
+        self.0.state.lock().unwrap().indices.reset()
+    }
+
+    fn merge(&self, max_index: u32, lost_index: Vec<Range<u32>>) -> bool {
+        self.0.state.lock().unwrap().indices.merge(max_index, lost_index)
     }
 }

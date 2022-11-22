@@ -3,7 +3,7 @@ use std::{
     io::SeekFrom, 
 };
 use async_std::{
-    pin::Pin, 
+    pin::{Pin}, 
     task::{Context, Poll}
 };
 use cyfs_base::*;
@@ -19,7 +19,7 @@ use super::{
 };
 
 struct CacheImpl {
-    manager: RawCacheManager, 
+    manager: Option<RawCacheManager>, 
     cache: RwLock<Vec<u8>>
 }
 
@@ -31,7 +31,9 @@ impl CacheImpl {
 
 impl Drop for CacheImpl {
     fn drop(&mut self) {
-        self.manager.release_mem(self.capacity())
+        if let Some(manager) = self.manager.as_ref() {
+            manager.release_mem(self.capacity())
+        }
     }
 }
 
@@ -39,7 +41,21 @@ impl Drop for CacheImpl {
 pub struct MemCache(Arc<CacheImpl>);
 
 impl MemCache {
-    pub fn new(manager: RawCacheManager, capacity: usize) -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self::new(capacity, None)
+    }
+
+    pub async fn from_reader(capacity: usize, reader: impl async_std::io::Read + Unpin) -> BuckyResult<Self> {
+        let cache = Self::with_capacity(capacity);
+        let read = async_std::io::copy(reader, SeekWrapper::new(&cache)).await? as usize;
+        if read != capacity {
+            Err(BuckyError::new(BuckyErrorCode::InvalidData, "misatch read length"))
+        } else {
+            Ok(cache)
+        }
+    }
+
+    pub(super) fn new(capacity: usize, manager: Option<RawCacheManager>) -> Self {
         Self(Arc::new(CacheImpl {
             manager, 
             cache: RwLock::new(vec![0u8; capacity])
@@ -185,6 +201,7 @@ impl std::io::Write for SeekWrapper {
 
 impl SyncWriteWithSeek for SeekWrapper {}
 
+
 #[async_trait::async_trait]
 impl RawCache for MemCache {
     fn capacity(&self) -> usize {
@@ -199,7 +216,7 @@ impl RawCache for MemCache {
         Ok(Box::new(SeekWrapper::new(self)))
     }
 
-    fn sync_reader(&self) -> BuckyResult<Box<dyn SyncReadWithSeek>> {
+    fn sync_reader(&self) -> BuckyResult<Box<dyn SyncReadWithSeek + Send + Sync>> {
         Ok(Box::new(SeekWrapper::new(self)))
     }
     

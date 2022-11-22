@@ -40,7 +40,7 @@ impl RawCacheManager {
 
     pub fn alloc_mem(&self, capacity: usize) -> Box<dyn RawCache> {
         self.0.state.write().unwrap().total_mem += capacity as u64;
-        MemCache::new(self.clone(), capacity).clone_as_raw_cache()
+        MemCache::new(capacity, Some(self.clone())).clone_as_raw_cache()
     }
 
     pub(super) fn release_mem(&self, capacity: usize) {

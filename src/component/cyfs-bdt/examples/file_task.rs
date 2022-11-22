@@ -1,12 +1,10 @@
 use std::io::{Seek, SeekFrom};
 use async_std::{fs, io::prelude::*};
-use cyfs_base::*;
-use cyfs_bdt::{
-    download::*, 
-    Stack, 
-    StackOpenParams, 
-};
 use sha2::Digest;
+use cyfs_base::*;
+use cyfs_util::cache::*;
+use cyfs_bdt::*;
+
 mod utils;
 
 
@@ -38,14 +36,18 @@ async fn main() {
 
     let mut ln_params = StackOpenParams::new("bdt-example-file-task-downloader");
     ln_params.known_device = Some(vec![rn_dev.clone()]);
-
-    let rn_params = StackOpenParams::new("bdt-example-file-task-uploader");
-
     let ln_stack = Stack::open(ln_dev.clone(), ln_secret, ln_params)
         .await
         .unwrap();
 
+
+
+    let mut rn_params = StackOpenParams::new("bdt-example-file-task-uploader");
+    let rn_tracker = MemTracker::new();
+    let rn_store = TrackedChunkStore::new(NamedDataCache::clone(&rn_tracker), TrackerCache::clone(&rn_tracker));
+    rn_params.chunk_store = Some(rn_store.clone_as_reader());
     let rn_stack = Stack::open(rn_dev, rn_secret, rn_params).await.unwrap();
+
 
     let mut file_hash = sha2::Sha256::new();
     let mut file_len = 0u64;
@@ -91,7 +93,7 @@ async fn main() {
         }
     }
 
-    let _ = track_file_in_path(&*rn_stack, file.clone(), up_path)
+    let _ = rn_store.track_file_in_path(file.clone(), up_path)
         .await
         .unwrap();
 

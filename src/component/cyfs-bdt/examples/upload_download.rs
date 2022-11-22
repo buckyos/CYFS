@@ -1,20 +1,11 @@
+use std::{sync::Arc, time::Duration};
 use async_std::{future, io::prelude::*, task};
 use cyfs_base::*;
-use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
-    download::*,
-    ChunkReader,
-    MemChunkStore,
-    MemTracker,
-    // StackConfig,
-    Stack,
-    StackGuard,
-    StackOpenParams, 
-    NdnEventHandler,  
-    DefaultNdnEventHandler, 
+    *, 
     ndn::{channel::{Channel, DownloadSession, protocol::v0::*}}, 
 };
-use std::{sync::Arc, time::Duration};
+
 mod utils;
 
 async fn watch_recv_chunk(stack: StackGuard, chunkid: ChunkId) -> BuckyResult<ChunkId> {
@@ -66,11 +57,8 @@ async fn main() {
 
     let (down_stack, down_store) = {
         let mut params = StackOpenParams::new("bdt-example-upload-from-downloader-down");
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
+        let store = MemChunkStore::new();
         params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
         params.known_device = Some(vec![cache_dev.clone(), src_dev.clone()]);
         (
             Stack::open(down_dev.clone(), down_secret, params)
@@ -82,11 +70,9 @@ async fn main() {
 
     let (cache_stack, _cache_store) = {
         let mut params = StackOpenParams::new("bdt-example-upload-from-downloader-cache");
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
+       
+        let store = MemChunkStore::new();
         params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
         params.known_device = Some(vec![src_dev.clone()]);
 
         struct DownloadFromSource {
@@ -142,11 +128,10 @@ async fn main() {
     let (_src_stack, src_store) = {
         let mut params = StackOpenParams::new("bdt-example-upload-from-downloader-src");
         params.config.interface.udp.sim_loss_rate = 10;
-        let tracker = MemTracker::new();
-        let store = MemChunkStore::new(NamedDataCache::clone(&tracker).as_ref());
+      
+        let store = MemChunkStore::new();
         params.chunk_store = Some(store.clone_as_reader());
-        params.ndc = Some(NamedDataCache::clone(&tracker));
-        params.tracker = Some(TrackerCache::clone(&tracker));
+   
         (
             Stack::open(src_dev, src_secret, params).await.unwrap(),
             store,

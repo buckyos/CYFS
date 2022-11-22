@@ -7,9 +7,7 @@ use async_std::{
 };
 use sha2::Digest;
 use cyfs_base::*;
-use cyfs_bdt::{
-    download::*
-};
+use cyfs_bdt::*;
 mod utils;
 
 #[async_std::test]

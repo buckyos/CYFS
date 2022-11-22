@@ -22,6 +22,7 @@ struct StateImpl {
 
 struct TaskImpl {
     priority: UploadTaskPriority, 
+    history_speed: HistorySpeedConfig, 
     state: RwLock<StateImpl>
 }
 
@@ -32,6 +33,7 @@ impl UploadGroup {
     pub fn new(history_speed: HistorySpeedConfig, priority: Option<UploadTaskPriority>) -> Self {
         Self(Arc::new(TaskImpl {
             priority: priority.unwrap_or_default(), 
+            history_speed: history_speed.clone(), 
             state: RwLock::new(StateImpl { 
                 entries: Default::default(), 
                 running: Default::default(), 
@@ -39,6 +41,72 @@ impl UploadGroup {
                 control_state: UploadTaskControlState::Normal
             })
         }))
+    }
+
+    
+    pub fn create_sub_group(
+        &self, 
+        path: String
+    ) -> BuckyResult<Box<dyn UploadTask>> {
+        if let Some(group) = self.sub_task(path.as_str()) {
+            Ok(group)
+        } else {
+            let parts = path.split("/");
+            let mut parent = self.clone_as_task();
+            
+            for part in parts {
+                if let Some(sub) = parent.sub_task(part) {
+                    parent = sub;
+                } else {
+                    let sub = UploadGroup::new(self.0.history_speed.clone(), None);
+                    parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
+                    parent = sub.clone_as_task();
+                }
+            }
+
+            Ok(parent)
+        }
+    }
+
+    pub fn makesure_path(
+        &self, 
+        path: Option<String>, 
+    ) -> BuckyResult<(Box<dyn UploadTask>, Option<String>)> {
+        if let Some(group) = path {
+            if group.len() == 0 {
+                return Ok((self.clone_as_task(), None));
+            } 
+
+            let mut parts: Vec<&str> = group.split("/").collect();
+            if parts.len() == 0 {
+                return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "invalid group path"))
+            } 
+            
+            let last_part = if parts[parts.len() - 1].len() == 0 {
+                None 
+            } else {
+                Some(parts[parts.len() - 1].to_owned())
+            };
+
+            parts.remove(parts.len() - 1);
+
+            let group_path = parts.join("/"); 
+            Ok((self.create_sub_group(group_path)?, last_part))
+        } else {
+            Ok((self.clone_as_task(), None))
+        }
+    }
+
+    pub fn create_sub_task(&self, pathes: Vec<String>, task: &dyn UploadTask) -> BuckyResult<()> {
+        if pathes.len() > 0 {
+            for path in pathes {
+                let (owner, path) = self.makesure_path(Some(path))?;
+                let _ = owner.add_task(path, task.clone_as_task())?;
+            }
+            Ok(())
+        } else {
+            self.add_task(None, task.clone_as_task())
+        }
     }
 }
 

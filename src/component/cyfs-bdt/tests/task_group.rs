@@ -1,8 +1,6 @@
 use async_std::{future, io::prelude::*, task};
 use cyfs_base::*;
-use cyfs_bdt::{
-    download::*, StackGuard, 
-};
+use cyfs_bdt::*;
 use std::{sync::Arc, time::Duration};
 mod utils;
 
@@ -91,12 +89,12 @@ async fn one_task_group() {
         let (_, reader) = download_chunk(
             &*ln_stack,
             chunkid.clone(), 
-            Some("test-group::2".to_owned()), 
+            Some("test-group/2".to_owned()), 
             context.clone(), 
         ).await.unwrap();
         ln_store.write_chunk(&chunkid, reader).await.unwrap();
 
-        let group = get_download_task(&*ln_stack, "test-group").unwrap();
+        let group = ln_stack.ndn().root_task().download().sub_task("test-group").unwrap();
 
         let _ = group.sub_task("2").unwrap();
 

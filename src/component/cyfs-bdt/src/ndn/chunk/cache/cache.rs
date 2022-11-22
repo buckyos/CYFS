@@ -57,7 +57,7 @@ impl ChunkCache {
     }
 
     pub fn create_encoder(&self, desc: &ChunkEncodeDesc) -> Box<dyn ChunkEncoder> {
-        StreamEncoder::new(self.stream().clone(), desc).clone_as_encoder()
+        self.stream().create_encoder(desc).clone_as_encoder()
     }
 
     pub fn exists(&self, range: Range<usize>) -> Option<Range<usize>> {

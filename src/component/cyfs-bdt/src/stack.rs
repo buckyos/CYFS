@@ -11,9 +11,7 @@ use async_std::{
 };
 use log::*;
 use cyfs_base::*;
-use cyfs_util::{
-    cache::*
-};
+
 
 use crate::{
     types::*,
@@ -198,9 +196,6 @@ pub struct StackOpenParams {
     pub passive_pn: Option<Vec<Device>>, 
 
     pub outer_cache: Option<Box<dyn OuterDeviceCache>>,
-
-    pub ndc: Option<Box<dyn NamedDataCache>>,
-    pub tracker: Option<Box<dyn TrackerCache>>, 
     pub chunk_store: Option<Box<dyn ChunkReader>>, 
 
     pub ndn_event: Option<Box<dyn NdnEventHandler>>,
@@ -216,8 +211,6 @@ impl StackOpenParams {
             active_pn: None, 
             passive_pn: None,
             outer_cache: None,
-            ndc: None, 
-            tracker: None, 
             chunk_store: None, 
             ndn_event: None,
         }
@@ -354,17 +347,13 @@ impl Stack {
         let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
         stack_impl.lazy_components = Some(components);
 
-        let mut ndc = None;
-        std::mem::swap(&mut ndc, &mut params.ndc);
-        let mut tracker = None;
-        std::mem::swap(&mut tracker, &mut params.tracker);
         let mut ndn_event = None;
         std::mem::swap(&mut ndn_event, &mut params.ndn_event);
 
         let mut chunk_store = None;
         std::mem::swap(&mut chunk_store, &mut params.chunk_store);
 
-        let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
+        let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
         let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
         stack_impl.ndn = Some(ndn);
 
