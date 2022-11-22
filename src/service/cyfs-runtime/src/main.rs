@@ -36,6 +36,20 @@ async fn main_run() {
         "Specify cyfs-runtime proxy service's local port, default is {}",
         PROXY_PORT
     );
+    let default_root = match dirs::data_dir() {
+        Some(dir) => {
+            let dir = dir.join("cyfs");
+            info!("will use user data dir: {}", dir.display());
+            dir
+        }
+        None => {
+            error!("get user data dir failed!");
+            cyfs_util::default_cyfs_root_path()
+        }
+    };
+    
+    let cyfs_root_help = format!("Specify cyfs root dir, default is {}", default_root.display());
+
     let app = App::new("cyfs-runtime service")
         .version(cyfs_base::get_version())
         .about("runtime service for cyfs system")
@@ -57,22 +71,26 @@ async fn main_run() {
                 .long("proxy-port")
                 .takes_value(true)
                 .help(&proxy_port_help),
+        ).arg(
+            Arg::with_name("cyfs-root")
+                .long("cyfs-root")
+                .takes_value(true)
+                .help(&cyfs_root_help),
         );
 
     let app = cyfs_util::process::prepare_args(app);
     let matches = app.get_matches();
 
     // 切换root目录
-    match dirs::data_dir() {
-        Some(dir) => {
-            let dir = dir.join("cyfs");
-            info!("will use user data dir: {}", dir.display());
-            cyfs_util::bind_cyfs_root_path(dir);
-        }
-        None => {
-            error!("get user data dir failed!");
-        }
+    let root_dir = if let Some(cyfs_root) = matches.value_of("cyfs-root") {
+        cyfs_root.into()
+    } else {
+        default_root
     };
+
+    info!("will use dir as cyfs root dir: {}", root_dir.display());
+    cyfs_util::bind_cyfs_root_path(root_dir);
+
 
     let root = cyfs_util::get_cyfs_root_path();
     if !root.is_dir() {
