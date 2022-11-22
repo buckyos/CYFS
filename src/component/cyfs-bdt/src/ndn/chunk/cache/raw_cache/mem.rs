@@ -216,7 +216,7 @@ impl RawCache for MemCache {
         Ok(Box::new(SeekWrapper::new(self)))
     }
 
-    fn sync_reader(&self) -> BuckyResult<Box<dyn SyncReadWithSeek>> {
+    fn sync_reader(&self) -> BuckyResult<Box<dyn SyncReadWithSeek + Send + Sync>> {
         Ok(Box::new(SeekWrapper::new(self)))
     }
     

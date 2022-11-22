@@ -7,8 +7,7 @@ use std::{
 use async_std::{
     pin::Pin, 
     task::{self, Context, Poll},
-    fs::{self, File},
-    io::{prelude::SeekExt}
+    fs
 };
 use cyfs_base::*;
 use cyfs_util::{
@@ -26,7 +25,7 @@ use super::{
 
 enum CacheState {
     Creating(StateWaiter),
-    Created(File), 
+    Created(async_std::fs::File), 
     Error(BuckyErrorCode, String)
 }
 
@@ -107,8 +106,9 @@ impl FileCache {
         cache
     }
 
-    async fn create(&self) -> BuckyResult<File> {
-        let mut file = File::open(self.path()).await?;
+    async fn create(&self) -> BuckyResult<async_std::fs::File> {
+        let mut file = async_std::fs::File::open(self.path()).await?;
+        use async_std::io::prelude::SeekExt;
         let offset = file.seek(SeekFrom::Start(self.0.range.start)).await?;
         if offset == self.range().start {
             Ok(file)
@@ -142,7 +142,16 @@ impl FileCache {
         &self.0.range
     }
 
-    async fn wait_created(&self) -> BuckyResult<File> {
+
+    fn is_created(&self) -> BuckyResult<async_std::fs::File> {
+        match &*self.0.state.read().unwrap() {
+            CacheState::Creating(_) => Err(BuckyError::new(BuckyErrorCode::WouldBlock, "")), 
+            CacheState::Created(file) => Ok(file.clone()), 
+            CacheState::Error(err, msg) => Err(BuckyError::new(*err, msg.clone()))
+        }
+    }
+
+    async fn wait_created(&self) -> BuckyResult<async_std::fs::File> {
         let (ret, waiter) = {
             match &mut *self.0.state.write().unwrap() {
                 CacheState::Creating(waiters) => (None, Some(waiters.new_waiter())),
@@ -167,14 +176,14 @@ impl FileCache {
 }
 
 
-pub struct FileCacheReader {
-    file: File, 
+pub struct FileCacheAsyncReader {
+    file: async_std::fs::File, 
     cache: FileCache, 
     offset: usize
 }
 
 
-impl async_std::io::Seek for FileCacheReader {
+impl async_std::io::Seek for FileCacheAsyncReader {
     fn poll_seek(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -201,7 +210,7 @@ impl async_std::io::Seek for FileCacheReader {
     }
 }
 
-impl async_std::io::Read for FileCacheReader {
+impl async_std::io::Read for FileCacheAsyncReader {
     fn poll_read(
             self: Pin<&mut Self>,
             cx: &mut Context<'_>,
@@ -228,7 +237,43 @@ impl async_std::io::Read for FileCacheReader {
     }
 }
 
-impl AsyncReadWithSeek for FileCacheReader {}
+impl AsyncReadWithSeek for FileCacheAsyncReader {}
+
+
+pub struct FileCacheSyncReader {
+    file: std::fs::File, 
+    cache: FileCache, 
+    offset: usize
+}
+
+
+impl std::io::Seek for FileCacheSyncReader {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        let file_offset = self.cache.seek(self.offset, pos) as u64 + self.cache.range().start;
+
+        let file_offset = std::io::Seek::seek(&mut self.file, SeekFrom::Start(file_offset))?;
+
+        let offset = file_offset - self.cache.range().start;
+
+        self.offset = offset as usize;
+
+        Ok(offset)
+    }
+}
+
+impl std::io::Read for FileCacheSyncReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let new_offset = self.cache.seek(self.offset, SeekFrom::Current(buf.len() as i64));
+        let cliped = &mut buf[0..new_offset - self.offset];
+
+        let read = std::io::Read::read(&mut self.file, cliped)?;
+
+        self.offset += read;
+        Ok(read)
+    }
+}
+
+impl SyncReadWithSeek for FileCacheSyncReader {}
 
 #[async_trait::async_trait]
 impl RawCache for FileCache {
@@ -243,15 +288,29 @@ impl RawCache for FileCache {
     async fn async_reader(&self) -> BuckyResult<Box<dyn Unpin + Send + Sync + AsyncReadWithSeek>> {
         let file = self.wait_created().await?;
         
-        Ok(Box::new(FileCacheReader {
+        Ok(Box::new(FileCacheAsyncReader {
             file, 
             cache: self.clone(),
             offset: 0
         }))
     }
 
-    fn sync_reader(&self) -> BuckyResult<Box<dyn SyncReadWithSeek>> {
-        Err(BuckyError::new(BuckyErrorCode::NotSupport, "file cache does not support sync reader"))
+    fn sync_reader(&self) -> BuckyResult<Box<dyn SyncReadWithSeek + Send + Sync>> {
+        let _ = self.is_created()?;
+
+        let mut file = std::fs::File::open(self.path())?;
+
+        use std::io::Seek;
+        let offset = file.seek(SeekFrom::Start(self.range().start))?;
+        if offset == self.range().start {
+            Ok(Box::new(FileCacheSyncReader {
+                file, 
+                cache: self.clone(),
+                offset: 0
+            }))
+        } else {
+            Err(BuckyError::new(BuckyErrorCode::InvalidData,"offset to range failed"))
+        }   
     }
     
     async fn async_writer(&self) -> BuckyResult<Box<dyn  Unpin + Send + Sync + AsyncWriteWithSeek>> {

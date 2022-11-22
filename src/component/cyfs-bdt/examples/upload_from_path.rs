@@ -50,7 +50,7 @@ async fn main() {
     cyfs_util::process::check_cmd_and_exec("bdt-example-upload-from-path");
     cyfs_debug::CyfsLoggerBuilder::new_app("bdt-example-upload-from-path")
         .level("trace")
-        .console("debug")
+        .console("info")
         .build()
         .unwrap()
         .start();
