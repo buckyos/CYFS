@@ -35,7 +35,7 @@ struct StateImpl {
 enum TaskStateImpl {
     Uploading(UploadingState),
     Finished, 
-    Error(BuckyErrorCode),
+    Error(BuckyError),
 }
 
 struct SessionImpl {
@@ -144,7 +144,7 @@ impl UploadSession {
                     let mut waiters = StateWaiter::new();
                     uploading.waiters.transfer_into(&mut waiters);
                     info!("{} canceled by err:{}", self, err);
-                    state.task_state = TaskStateImpl::Error(err.code());
+                    state.task_state = TaskStateImpl::Error(err.clone());
                     Some(waiters)
                 }
             }
@@ -179,7 +179,7 @@ impl UploadSession {
                     NextStep::ResetEncoder(uploading.encoder.clone_as_encoder())
                 }, 
                 TaskStateImpl::Error(err) => {
-                    NextStep::RespInterest(*err)
+                    NextStep::RespInterest(err.code())
                 }, 
                 _ => {
                     NextStep::None
@@ -251,7 +251,7 @@ impl UploadSession {
                         info!("{} finished", self);
                         let mut waiters = StateWaiter::new();
                         uploading.waiters.transfer_into(&mut waiters); 
-                        state.task_state = TaskStateImpl::Error(BuckyErrorCode::Interrupted);
+                        state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::Interrupted, "cancel by remote"));
                         NextStep::Notify(waiters)
                     }, 
                     _ => {
@@ -269,7 +269,7 @@ impl UploadSession {
                             NextStep::None
                         }
                     },
-                    TaskStateImpl::Error(err) => NextStep::RespInterest(*err),  
+                    TaskStateImpl::Error(err) => NextStep::RespInterest(err.code()),  
                     _ => NextStep::None
                 }
             },
@@ -324,7 +324,7 @@ impl UploadTask for UploadSession {
         match &self.0.state.read().unwrap().task_state {
             TaskStateImpl::Uploading(_) => UploadTaskState::Uploading(0), 
             TaskStateImpl::Finished => UploadTaskState::Finished, 
-            TaskStateImpl::Error(err) => UploadTaskState::Error(*err),
+            TaskStateImpl::Error(err) => UploadTaskState::Error(err.clone()),
         }
     }
 

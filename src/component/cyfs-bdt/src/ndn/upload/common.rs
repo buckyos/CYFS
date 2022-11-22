@@ -23,7 +23,7 @@ pub enum UploadTaskState {
     Pending, 
     Uploading(u32/*速度*/),
     Paused,
-    Error(BuckyErrorCode/*被cancel的原因*/), 
+    Error(BuckyError/*被cancel的原因*/), 
     Finished
 }
 

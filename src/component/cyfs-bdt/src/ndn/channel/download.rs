@@ -54,7 +54,7 @@ struct CanceledState {
 pub enum DownloadSessionState {
     Downloading(u32), 
     Finished,
-    Canceled(BuckyErrorCode),
+    Canceled(BuckyError),
 }
 
 enum StateImpl {
@@ -70,7 +70,7 @@ impl StateImpl {
             Self::Interesting(_) => DownloadSessionState::Downloading(0), 
             Self::Downloading(_) => DownloadSessionState::Downloading(0), 
             Self::Finished(_) => DownloadSessionState::Finished, 
-            Self::Canceled(canceled) => DownloadSessionState::Canceled(canceled.err.code()),
+            Self::Canceled(canceled) => DownloadSessionState::Canceled(canceled.err.clone()),
         }
     }
 }
@@ -193,7 +193,7 @@ impl DownloadSession {
                 StateImpl::Interesting(interesting) => NextStep::Wait(interesting.waiters.new_waiter()), 
                 StateImpl::Downloading(downloading) => NextStep::Wait(downloading.waiters.new_waiter()),
                 StateImpl::Finished(_) => NextStep::Return(DownloadSessionState::Finished), 
-                StateImpl::Canceled(canceled) => NextStep::Return(DownloadSessionState::Canceled(canceled.err.code())),
+                StateImpl::Canceled(canceled) => NextStep::Return(DownloadSessionState::Canceled(canceled.err.clone())),
             }
         };
         match next_step {

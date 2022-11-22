@@ -141,7 +141,7 @@ impl Default for DownloadTaskPriority {
 pub enum DownloadTaskState {
     Downloading(u32/*速度*/, f32/*进度*/),
     Paused,
-    Error(BuckyErrorCode/*被cancel的原因*/), 
+    Error(BuckyError/*被cancel的原因*/), 
     Finished
 }
 

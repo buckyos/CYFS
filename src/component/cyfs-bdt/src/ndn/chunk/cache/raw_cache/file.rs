@@ -26,7 +26,7 @@ use super::{
 enum CacheState {
     Creating(StateWaiter),
     Created(async_std::fs::File), 
-    Error(BuckyErrorCode, String)
+    Error(BuckyError)
 }
 
 struct CacheImpl {
@@ -46,7 +46,7 @@ impl Drop for FileCache {
                     CacheState::Created(_) => true, 
                     _ => false
                 };
-                *state = CacheState::Error(BuckyErrorCode::NotInit, "closed".to_owned());
+                *state = CacheState::Error(BuckyError::new(BuckyErrorCode::NotInit, "closed"));
                 to_remove
             };
             
@@ -85,7 +85,7 @@ impl FileCache {
 
                 let new_state = match ret {
                     Ok(file) => CacheState::Created(file), 
-                    Err(err) => CacheState::Error(err.code(), err.msg().to_owned())
+                    Err(err) => CacheState::Error(err)
                 };
                 let waiters = {
                     let state = &mut *cache.0.state.write().unwrap();
@@ -147,7 +147,7 @@ impl FileCache {
         match &*self.0.state.read().unwrap() {
             CacheState::Creating(_) => Err(BuckyError::new(BuckyErrorCode::WouldBlock, "")), 
             CacheState::Created(file) => Ok(file.clone()), 
-            CacheState::Error(err, msg) => Err(BuckyError::new(*err, msg.clone()))
+            CacheState::Error(err) => Err(err.clone())
         }
     }
 
@@ -156,7 +156,7 @@ impl FileCache {
             match &mut *self.0.state.write().unwrap() {
                 CacheState::Creating(waiters) => (None, Some(waiters.new_waiter())),
                 CacheState::Created(file) => (Some(Ok(file.clone())), None), 
-                CacheState::Error(err, msg) => (Some(Err(BuckyError::new(err.clone(), msg.clone()))), None)
+                CacheState::Error(err) => (Some(Err(err.clone())), None)
             }
         };
         if let Some(ret) = ret {
@@ -166,7 +166,7 @@ impl FileCache {
                 match &*self.0.state.read().unwrap() {
                     CacheState::Creating(_) => unreachable!(),
                     CacheState::Created(file) => Ok(file.clone()), 
-                    CacheState::Error(err, msg) => Err(BuckyError::new(*err, msg.clone()))
+                    CacheState::Error(err) => Err(err.clone())
                 }
             }).await
         } else {

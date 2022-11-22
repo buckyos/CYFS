@@ -23,7 +23,7 @@ use super::{
 
 enum TaskStateImpl {
     Downloading(IncreaseId, ChunkCache),
-    Error(BuckyErrorCode), 
+    Error(BuckyError), 
     Finished(ChunkCache),
 }
 
@@ -89,7 +89,7 @@ impl DownloadTask for ChunkTask {
     fn state(&self) -> DownloadTaskState {
         match &self.0.state.read().unwrap().task_state {
             TaskStateImpl::Downloading(..) => DownloadTaskState::Downloading(0, 0.0), 
-            TaskStateImpl::Error(err) => DownloadTaskState::Error(*err), 
+            TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone()), 
             TaskStateImpl::Finished(_) => DownloadTaskState::Finished
         }
     }
@@ -194,7 +194,7 @@ impl DownloadTask for ChunkTask {
             let cancel = match &state.task_state {
                 TaskStateImpl::Downloading(id, cache) => {
                     let cancel = Some((*id, cache.clone()));
-                    state.task_state = TaskStateImpl::Error(BuckyErrorCode::UserCanceled);
+                    state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
                     cancel
                 }, 
                 _ => None

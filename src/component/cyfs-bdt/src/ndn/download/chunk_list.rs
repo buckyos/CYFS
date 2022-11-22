@@ -35,7 +35,7 @@ enum ControlStateImpl {
 enum TaskStateImpl {
     Pending, 
     Downloading(DownloadingState), 
-    Error(BuckyErrorCode), 
+    Error(BuckyError), 
     Finished
 }
 
@@ -116,7 +116,7 @@ impl ChunkListTask {
                     Ok(cancel)
                 },
                 TaskStateImpl::Finished => Ok(None), 
-                TaskStateImpl::Error(err) => Err(BuckyError::new(*err, ""))
+                TaskStateImpl::Error(err) => Err(err.clone())
             }
         }?;
 
@@ -139,7 +139,7 @@ impl DownloadTask for ChunkListTask {
             TaskStateImpl::Pending => DownloadTaskState::Downloading(0 ,0.0), 
             TaskStateImpl::Downloading(_) => DownloadTaskState::Downloading(0 ,0.0), 
             TaskStateImpl::Finished => DownloadTaskState::Finished, 
-            TaskStateImpl::Error(err) => DownloadTaskState::Error(*err), 
+            TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone()), 
         }
     }
 
@@ -218,7 +218,7 @@ impl DownloadTask for ChunkListTask {
             let cancel = match &state.task_state {
                 TaskStateImpl::Downloading(downloading) => {
                     let cancel = Some(downloading.cur_cache.clone());
-                    state.task_state = TaskStateImpl::Error(BuckyErrorCode::UserCanceled);
+                    state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
                     cancel
                 }, 
                 _ => None

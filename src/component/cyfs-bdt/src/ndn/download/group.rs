@@ -24,7 +24,7 @@ struct DownloadingState {
 enum TaskStateImpl {
     Downloading(DownloadingState), 
     Finished, 
-    Error(BuckyErrorCode), 
+    Error(BuckyError), 
 }
 
 enum ControlStateImpl {
@@ -306,7 +306,7 @@ impl DownloadTask for DownloadGroup {
             let tasks = match &mut state.task_state {
                 TaskStateImpl::Downloading(downloading) => {
                     let tasks: Vec<Box<dyn DownloadTask>> = downloading.running.iter().map(|t| t.clone_as_task()).collect();
-                    state.task_state = TaskStateImpl::Error(BuckyErrorCode::UserCanceled);
+                    state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
                     tasks
                 },
                 _ => vec![]
