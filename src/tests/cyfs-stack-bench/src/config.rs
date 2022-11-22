@@ -1,11 +1,11 @@
 use serde::{Deserialize};
-use cyfs_base::ObjectId;
+//use cyfs_base::ObjectId;
 
 #[derive(Deserialize)]
 pub struct Config {
     pub run_times: Option<usize>,
-    pub same_zone_target: Option<ObjectId>,
-    pub cross_zone_target: Option<ObjectId>,
+    pub same_zone_target: Option<String>,
+    pub cross_zone_target: Option<String>,
     pub http_port: u16,
     pub ws_port: u16
 }

@@ -17,16 +17,27 @@ use crate::stat::Stat;
 use crate::post_service::*;
 use cyfs_core::DecAppObj;
 use cyfs_debug::LogLevel;
+use std::str::FromStr;
 mod config;
 
 fn read_config(matches: &ArgMatches) -> BuckyResult<config::Config> {
     if matches.is_present("simulator") {
         Ok(config::Config::simulator())
-    } else if let Some(config_path) = matches.value_of("config") {
-        Ok(toml::from_slice(&std::fs::read(config_path)?).map_err(|e| {
-            error!("load config {} err {}", config_path, e);
-            BuckyError::from(BuckyErrorCode::InvalidFormat)
-        })?)
+    } else if matches.is_present("config") {
+        let root = std::env::current_exe().unwrap();
+        let config_path = root.parent().unwrap().join("config.toml");
+        if !config_path.exists() {
+            error!("cannot find config file. {}", config_path.display());
+            std::process::exit(1);
+        }
+        match toml::from_str::<config::Config>(std::fs::read_to_string(config_path).unwrap().as_str()) {
+            Ok(config) => {
+                Ok(config)
+            }
+            Err(_e) => {
+                Err(BuckyError::from(BuckyErrorCode::InvalidFormat))
+            }
+        }
     } else {
         error!("no config. use --simulator to test on zone-simulator or use --config to specify config path");
         Err(BuckyError::from(BuckyErrorCode::NotFound))
@@ -73,7 +84,7 @@ async fn main() {
     // physical vood env
     if matches.is_present("dec-service") {
         //使用默认配置初始化non-stack，因为是跑在gateway后面，共享了gateway的协议栈，所以配置使用默认即可
-        let cyfs_stack = SharedCyfsStack::open_default(Some(DEVICE_DEC_ID.clone())).await.unwrap();
+        let cyfs_stack = SharedCyfsStack::open_default(Some(OOD_DEC_ID.clone())).await.unwrap();
         let stack_id = prepare_stack(&cyfs_stack).await;
         info!("start bench as service in {}", stack_id);
         async_std::task::block_on(async_std::future::pending::<()>());
@@ -86,11 +97,11 @@ async fn main() {
                 // zone1_ood as server
                 let service_stack = SharedCyfsStack::open_with_port(Some(OOD_DEC_ID.clone()), 21000, 21001).await.unwrap();
                 let stack_id = prepare_stack(&service_stack).await;
-                config.same_zone_target = Some(stack_id.object_id().clone());
+                config.same_zone_target = Some(stack_id.object_id().clone().to_string());
                 // zone2_ood as server
                 let other_ood_stack = SharedCyfsStack::open_with_port(Some(OOD_DEC_ID.clone()), 21010, 21011).await.unwrap();
                 let other_stack_id = prepare_stack(&other_ood_stack).await;
-                config.cross_zone_target = Some(other_stack_id.object_id().clone());
+                config.cross_zone_target = Some(other_stack_id.object_id().clone().to_string());
             }
 
             let run_times = matches.value_of("times").map(|times| {
@@ -104,17 +115,20 @@ async fn main() {
             let test_stack = SharedCyfsStack::open_with_port(Some(DEVICE_DEC_ID.clone()), config.http_port, config.ws_port).await.unwrap();
             test_stack.online().await.unwrap();
 
-            benchs.push(SameZoneNONBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
-            benchs.push(CrossZoneNONBench::new(test_stack.clone(), config.cross_zone_target.clone(), stat.clone(), run_times));
-            benchs.push(SameZoneGlobalStateBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
-            benchs.push(CrossZoneRootStateBench::new(test_stack.clone(), config.cross_zone_target.clone(), stat.clone(), run_times));
-            benchs.push(SameZoneRmetaBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
-            benchs.push(SameZoneCryptoBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
+            let same_zone_target = Some(ObjectId::from_str(config.same_zone_target.unwrap().as_str()).unwrap());
+            let cross_zone_target = Some(ObjectId::from_str(config.cross_zone_target.unwrap().as_str()).unwrap());
 
-            benchs.push(TransBench::new(test_stack.clone(), config.cross_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(SameZoneNONBench::new(test_stack.clone(), same_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(CrossZoneNONBench::new(test_stack.clone(), cross_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(SameZoneGlobalStateBench::new(test_stack.clone(), same_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(CrossZoneRootStateBench::new(test_stack.clone(), cross_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(SameZoneRmetaBench::new(test_stack.clone(), same_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(SameZoneCryptoBench::new(test_stack.clone(), same_zone_target.clone(), stat.clone(), run_times));
 
-            benchs.push(SameZoneNDNBench::new(test_stack.clone(), config.same_zone_target.clone(), stat.clone(), run_times));
-            benchs.push(CrossZoneNDNBench::new(test_stack.clone(), config.cross_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(TransBench::new(test_stack.clone(), cross_zone_target.clone(), stat.clone(), run_times));
+
+            benchs.push(SameZoneNDNBench::new(test_stack.clone(), same_zone_target.clone(), stat.clone(), run_times));
+            benchs.push(CrossZoneNDNBench::new(test_stack.clone(), cross_zone_target.clone(), stat.clone(), run_times));
 
             for bench in &mut benchs {
                 info!("begin test {}...", bench.name());
