@@ -600,6 +600,17 @@ impl TrackedChunkStore {
         Ok(TrackedChunkWriter::new(path, None, chunk, self.ndc(), self.tracker()))
     }
 
+    pub async fn chunk_list_writer(
+        &self,  
+        chunk_list: &ChunkListDesc, 
+        path: PathBuf
+    ) -> BuckyResult<TrackedChunkListWriter> {
+        for chunk in chunk_list.chunks() {
+            let _ = self.track_chunk(chunk).await?;
+        }
+        Ok(TrackedChunkListWriter::new(path, chunk_list, self.ndc(), self.tracker()))
+    }
+
     pub async fn file_writer(
         &self,
         file: &File, 
