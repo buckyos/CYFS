@@ -150,6 +150,10 @@ pub mod object_type_helper {
         object_type >= OBJECT_TYPE_STANDARD_START && object_type <= OBJECT_TYPE_STANDARD_END
     }
 
+    pub fn is_custom_object(object_type: u16) -> bool {
+        object_type >= OBJECT_TYPE_CORE_START
+    }
+
     pub fn is_core_object(object_type: u16) -> bool {
         object_type >= OBJECT_TYPE_CORE_START && object_type <= OBJECT_TYPE_CORE_END
     }
