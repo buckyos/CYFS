@@ -17,14 +17,16 @@ pub enum ObjectCategory {
     Standard,
     Core,
     DecApp,
+    Data,
 }
 
 impl ToString for ObjectCategory {
     fn to_string(&self) -> String {
         (match *self {
-            ObjectCategory::Standard => "standard",
-            ObjectCategory::Core => "core",
-            ObjectCategory::DecApp => "dec_app",
+            Self::Standard => "standard",
+            Self::Core => "core",
+            Self::DecApp => "dec_app",
+            Self::Data => "data,"
         })
         .to_owned()
     }
@@ -35,9 +37,10 @@ impl FromStr for ObjectCategory {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let ret = match value {
-            "standard" => ObjectCategory::Standard,
-            "core" => ObjectCategory::Core,
-            "dec_app" => ObjectCategory::DecApp,
+            "standard" => Self::Standard,
+            "core" => Self::Core,
+            "dec_app" => Self::DecApp,
+            "data" => Self::Data,
             v @ _ => {
                 let msg = format!("unknown object category: {}", v);
                 error!("{}", msg);
@@ -156,6 +159,7 @@ impl ProtobufTransform<Vec<u8>> for ObjectId {
     }
 }
 
+pub const OBJECT_ID_DATA: u8 = 0b_00000000;
 pub const OBJECT_ID_STANDARD: u8 = 0b_00000001;
 pub const OBJECT_ID_CORE: u8 = 0b_00000010;
 pub const OBJECT_ID_DEC_APP: u8 = 0b_00000011;
@@ -185,15 +189,17 @@ pub struct DecAppObjectIdInfo {
     pub has_mn_key: bool,
 }
 
-pub enum ObjectIdInfo {
+pub enum ObjectIdInfo<'a> {
+    Data(&'a [u8]),
     Standard(StandardObjectIdInfo),
     Core(CoreObjectIdInfo),
     DecApp(DecAppObjectIdInfo),
 }
 
-impl ObjectIdInfo {
+impl<'a> ObjectIdInfo<'a> {
     pub fn area(&self) -> &Option<Area> {
         match self {
+            Self::Data(_) => &None,
             Self::Standard(v) => &v.area,
             Self::Core(v) => &v.area,
             Self::DecApp(v) => &v.area,
@@ -202,6 +208,7 @@ impl ObjectIdInfo {
 
     pub fn into_area(self) -> Option<Area> {
         match self {
+            Self::Data(_) => None,
             Self::Standard(v) => v.area,
             Self::Core(v) => v.area,
             Self::DecApp(v) => v.area,
@@ -349,6 +356,42 @@ where
     }
 }
 
+pub struct ObjectIdDataBuilder<'a> {
+    data: Option<&'a [u8]>,
+}
+
+impl<'a> ObjectIdDataBuilder<'a> {
+    pub fn new() -> Self {
+        Self { data: None }
+    }
+
+    pub fn data(mut self, data: &'a (impl AsRef<[u8]> + ?Sized)) -> Self {
+        self.data = Some(data.as_ref());
+        self
+    }
+
+    pub fn build_empty() -> ObjectId {
+        ObjectIdDataBuilder::new().build().unwrap()
+    }
+
+    pub fn build(self) -> BuckyResult<ObjectId> {
+        let mut id = GenericArray::<u8, U32>::default();
+        if let Some(data) = self.data {
+            let len = data.len();
+            if len > 31 {
+                let msg = format!("invalid object id data len! len={}, max={}", len, 31);
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+            }
+
+            id.as_mut_slice()[0] = len as u8;
+            id.as_mut_slice()[1..(len + 1)].copy_from_slice(data);
+        }
+
+        Ok(ObjectId::new(id))
+    }
+}
+
 #[derive(Copy, Clone, PartialOrd, PartialEq, Ord, Eq)]
 pub struct ObjectIdDistance(GenericArray<u8, U32>);
 
@@ -455,6 +498,7 @@ impl ObjectId {
                     area,
                 })
             }
+            OBJECT_ID_DATA => ObjectIdInfo::Data(self.data()),
             _ => {
                 unreachable!();
             }
@@ -521,31 +565,48 @@ impl ObjectId {
     }
 
     pub fn object_category(&self) -> ObjectCategory {
-        if self.is_stand_object() {
-            ObjectCategory::Standard
-        } else if self.is_core_object() {
-            ObjectCategory::Core
-        } else {
-            ObjectCategory::DecApp
+        let flags = self.as_slice()[0] >> 6;
+        match  flags {
+            OBJECT_ID_DATA => {
+                ObjectCategory::Data
+            }
+            OBJECT_ID_STANDARD => {
+                ObjectCategory::Standard
+            }
+            OBJECT_ID_CORE => {
+                ObjectCategory::Core
+            }
+            OBJECT_ID_DEC_APP => {
+                ObjectCategory::DecApp
+            }
+            _ => {
+                unreachable!();
+            }
         }
+    }
+
+    pub fn is_data(&self) -> bool {
+        let buf = self.as_slice();
+        let flag = buf[0];
+        flag >> 6 == OBJECT_ID_DATA
     }
 
     pub fn is_stand_object(&self) -> bool {
         let buf = self.as_slice();
         let flag = buf[0];
-        flag >> 6 == 0b_00000001
+        flag >> 6 == OBJECT_ID_STANDARD
     }
 
     pub fn is_core_object(&self) -> bool {
         let buf = self.as_slice();
         let flag = buf[0];
-        flag >> 6 == 0b_00000010
+        flag >> 6 == OBJECT_ID_CORE
     }
 
     pub fn is_dec_app_object(&self) -> bool {
         let buf = self.as_slice();
         let flag = buf[0];
-        flag >> 6 == 0b_00000011
+        flag >> 6 == OBJECT_ID_DEC_APP
     }
 
     pub fn distance_of(&self, other: &Self) -> ObjectIdDistance {
@@ -560,6 +621,31 @@ impl ObjectId {
             v[i] = *l ^ *r;
         }
         ObjectIdDistance(v)
+    }
+
+    pub fn data_len(&self) -> u8 {
+        self.as_slice()[0] & 0b_00111111
+    }
+
+    pub fn data(&self) -> &[u8] {
+        let len = self.data_len();
+        &self.as_slice()[1..len as usize + 1]
+    }
+
+    pub fn data_as_utf8_string(&self) -> BuckyResult<&str> {
+        std::str::from_utf8(self.data()).map_err(|e| {
+            let msg = format!(
+                "invalid object id data as utf8 string! id={}, {}",
+                self.to_string(),
+                e
+            );
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidData, msg)
+        })
+    }
+
+    pub fn data_as_utf8_string_unchecked(&self) -> &str {
+        unsafe { std::str::from_utf8_unchecked(self.data()) }
     }
 
     pub fn as_chunk_id(&self) -> &ChunkId {
@@ -715,5 +801,57 @@ impl<'de> RawPatch<'de> for ObjectId {
             e
         })?;
         Ok((ObjectId::from(data), buf))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::*;
+
+    #[test]
+    fn test_data() {
+        let data = "hello!!! first id";
+        let id = ObjectIdDataBuilder::new().data(data).build().unwrap();
+        assert!(id.is_data());
+        assert!(!id.is_stand_object());
+        assert!(!id.is_core_object());
+        assert!(!id.is_dec_app_object());
+
+        println!("len={}, {}", id.data_len(), id.to_string());
+
+        let data2 = id.data();
+        assert_eq!(data2.len(), data.as_bytes().len());
+        assert_eq!(data2, data.as_bytes());
+        assert_eq!(id.data_as_utf8_string_unchecked(), data);
+
+        let id = ObjectIdDataBuilder::build_empty();
+        assert!(id.is_data());
+        println!("len={}, {}", id.data_len(), id.to_string());
+        assert_eq!(id.data_len(), 0);
+        assert_eq!(id.data().len(), 0);
+
+        let error_data = "1234567890123456789012345678901234567890";
+        let ret = ObjectIdDataBuilder::new().data(error_data).build();
+        assert!(ret.is_err());
+
+        let data = hash_data("1233".as_bytes());
+        let id = ObjectIdDataBuilder::new().data(&data.as_slice()[0..31]).build().unwrap();
+        println!("len={}, {}", id.data_len(), id.to_string());
+
+        assert_eq!(id.data_len(), 31);
+        assert_eq!(id.data(), &data.as_slice()[0..31]);
+        id.data_as_utf8_string().unwrap_err();
+
+        assert_eq!(id.object_category(), ObjectCategory::Data);
+
+        match id.info() {
+            ObjectIdInfo::Data(v) => {
+                assert_eq!(v, &data.as_slice()[0..31]);
+            }
+            _ => unreachable!(),
+        }
+
+        // let s = id.data_as_utf8_string_unchecked();
+        // println!("{}", s);
     }
 }
