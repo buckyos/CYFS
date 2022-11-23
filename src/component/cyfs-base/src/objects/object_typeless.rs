@@ -1195,8 +1195,8 @@ impl<T: TypeCatagoryMark> NamedObjectBase<TypelessObjectType<T>> {
                 // ignore
             }
             TypelessCatagory::Standard => {
-                assert!(self.desc().is_stand_object());
-                if !self.desc().is_stand_object() {
+                assert!(self.desc().is_standard_object());
+                if !self.desc().is_standard_object() {
                     return Err(BuckyError::new(
                         BuckyErrorCode::NotMatch,
                         format!(

@@ -26,7 +26,7 @@ impl ToString for ObjectCategory {
             Self::Standard => "standard",
             Self::Core => "core",
             Self::DecApp => "dec_app",
-            Self::Data => "data,"
+            Self::Data => "data",
         })
         .to_owned()
     }
@@ -275,7 +275,7 @@ where
         hash_value[3] = 0;
         hash_value[4] = 0;
 
-        if !self.t.is_stand_object() {
+        if !self.t.is_standard_object() {
             // 用户类型
             //4个可用flag
             let mut type_code = if self.t.obj_type() > OBJECT_TYPE_CORE_END {
@@ -566,19 +566,11 @@ impl ObjectId {
 
     pub fn object_category(&self) -> ObjectCategory {
         let flags = self.as_slice()[0] >> 6;
-        match  flags {
-            OBJECT_ID_DATA => {
-                ObjectCategory::Data
-            }
-            OBJECT_ID_STANDARD => {
-                ObjectCategory::Standard
-            }
-            OBJECT_ID_CORE => {
-                ObjectCategory::Core
-            }
-            OBJECT_ID_DEC_APP => {
-                ObjectCategory::DecApp
-            }
+        match flags {
+            OBJECT_ID_DATA => ObjectCategory::Data,
+            OBJECT_ID_STANDARD => ObjectCategory::Standard,
+            OBJECT_ID_CORE => ObjectCategory::Core,
+            OBJECT_ID_DEC_APP => ObjectCategory::DecApp,
             _ => {
                 unreachable!();
             }
@@ -591,7 +583,7 @@ impl ObjectId {
         flag >> 6 == OBJECT_ID_DATA
     }
 
-    pub fn is_stand_object(&self) -> bool {
+    pub fn is_standard_object(&self) -> bool {
         let buf = self.as_slice();
         let flag = buf[0];
         flag >> 6 == OBJECT_ID_STANDARD
@@ -813,7 +805,7 @@ mod test {
         let data = "hello!!! first id";
         let id = ObjectIdDataBuilder::new().data(data).build().unwrap();
         assert!(id.is_data());
-        assert!(!id.is_stand_object());
+        assert!(!id.is_standard_object());
         assert!(!id.is_core_object());
         assert!(!id.is_dec_app_object());
 
@@ -835,7 +827,10 @@ mod test {
         assert!(ret.is_err());
 
         let data = hash_data("1233".as_bytes());
-        let id = ObjectIdDataBuilder::new().data(&data.as_slice()[0..31]).build().unwrap();
+        let id = ObjectIdDataBuilder::new()
+            .data(&data.as_slice()[0..31])
+            .build()
+            .unwrap();
         println!("len={}, {}", id.data_len(), id.to_string());
 
         assert_eq!(id.data_len(), 31);

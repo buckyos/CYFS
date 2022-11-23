@@ -12,7 +12,7 @@ pub trait ObjectDesc {
         t.into()
     }
 
-    fn is_stand_object(&self) -> bool {
+    fn is_standard_object(&self) -> bool {
         let c = self.obj_type_code();
         c != ObjectTypeCode::Custom
     }
@@ -26,8 +26,7 @@ pub trait ObjectDesc {
     fn is_dec_app_object(&self) -> bool {
         let t = self.obj_type();
         let c = self.obj_type_code();
-        c == ObjectTypeCode::Custom
-            && object_type_helper::is_dec_app_object(t)
+        c == ObjectTypeCode::Custom && object_type_helper::is_dec_app_object(t)
     }
 
     fn object_id(&self) -> ObjectId {
@@ -215,7 +214,7 @@ impl NamedObjectContext {
     }
 
     pub fn is_standard_object(&self) -> bool {
-        object_type_helper::is_stand_object(self.obj_type)
+        object_type_helper::is_standard_object(self.obj_type)
     }
 
     pub fn is_core_object(&self) -> bool {
@@ -1046,8 +1045,6 @@ where
     }
 }
 
-
-
 pub trait NamedObject<O>
 where
     O: ObjectType,
@@ -1096,7 +1093,6 @@ where
         std::cmp::max(update_time, latest_sign_time)
     }
 }
-
 
 // TODO concat_idents!目前是unstable功能
 #[macro_export]
