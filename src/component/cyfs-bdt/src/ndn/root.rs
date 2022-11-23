@@ -1,7 +1,10 @@
 use async_std::{
     sync::Arc, 
 };
-use crate::Timestamp;
+use cyfs_base::*;
+use crate::{
+    types::*
+};
 use super::{
     types::*, 
     download::*,
@@ -10,8 +13,67 @@ use super::{
 
 struct RootTaskImpl {
     max_download_speed: u32, 
-    download: DownloadGroup, 
+    download: DownloadRoot, 
     upload: UploadGroup
+}
+
+
+pub struct DownloadRoot {
+    id_gen: IncreaseIdGenerator, 
+    sub: DownloadGroup
+}
+
+impl DownloadRoot {
+    fn next_index(&self) -> String {
+        self.id_gen.generate().to_string()
+    }
+
+    pub fn makesure_path(
+        &self, 
+        path: String
+    ) -> BuckyResult<(Box<dyn DownloadTask>, String, Option<String>)> {
+        if path.len() == 0 {
+            return Ok((self.sub.clone_as_task(), "/".to_owned(), None));
+        } 
+
+        let mut parts: Vec<&str> = path.split("/").collect();
+        if parts.len() == 0 {
+            return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "invalid group path"))
+        } 
+        
+        let last_part = if parts[parts.len() - 1].len() == 0 {
+            None 
+        } else {
+            Some(parts[parts.len() - 1].to_owned())
+        };
+
+        parts.remove(parts.len() - 1);
+
+        let parent_path = (parts.join("/") + "/").to_owned();
+        let mut parent = self.sub.clone_as_task();
+        for part in parts {
+            if let Some(sub) = parent.sub_task(part) {
+                parent = sub;
+            } else {
+                let sub = DownloadGroup::new(self.sub.history_config().clone(), None);
+                parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
+                parent = sub.clone_as_task();
+            }
+        }
+        Ok((parent, parent_path, last_part))
+    }
+
+
+    pub fn add_task(&self, path: String, task: &dyn DownloadTask) -> BuckyResult<String> {
+        let (parent, parent_path, rel_path) = self.makesure_path(path)?;
+        let rel_path = rel_path.unwrap_or(self.next_index());
+        let _ = parent.add_task(Some(rel_path.clone()), task.clone_as_task())?;
+        Ok([parent_path, rel_path].join("/"))
+    }
+
+    pub fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {
+        self.sub.sub_task(path)
+    }
 }
 
 #[derive(Clone)]
@@ -21,7 +83,10 @@ impl RootTask {
     pub fn new(max_download_speed: u32, history_speed: HistorySpeedConfig) -> Self {
         Self(Arc::new(RootTaskImpl {
             max_download_speed, 
-            download: DownloadGroup::new(history_speed.clone(), None), 
+            download: DownloadRoot {
+                sub: DownloadGroup::new(history_speed.clone(), None), 
+                id_gen: IncreaseIdGenerator::new()
+            }, 
             upload: UploadGroup::new(history_speed, None)
         }))
     }
@@ -30,13 +95,13 @@ impl RootTask {
         &self.0.upload
     }
 
-    pub fn download(&self) -> &DownloadGroup {
+    pub fn download(&self) -> &DownloadRoot {
         &self.0.download
     }
 
     pub fn on_schedule(&self, now: Timestamp) {
-        self.download().calc_speed(now);
-        self.download().on_drain(self.0.max_download_speed);
+        self.download().sub.calc_speed(now);
+        self.download().sub.on_drain(self.0.max_download_speed);
         self.upload().calc_speed(now);
     }
 }

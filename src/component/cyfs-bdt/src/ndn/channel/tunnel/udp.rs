@@ -324,10 +324,10 @@ impl ChannelTunnel for UdpTunnel {
                     if cc.no_resp_counter > self.config().udp.no_resp_loss_count  {
                         debug!("{} outcome on no resp {} rto {:?} ", self, loss_count, cc.cc.rto());
                         cc.no_resp_counter = 0;
-                        cc.cc.on_no_resp(0);
+                        cc.cc.on_no_resp(loss_count);
                     } else {
                         debug!("{} outcome on loss count {} rto {:?} ", self, loss_count, cc.cc.rto());
-                        cc.cc.on_loss(0);
+                        cc.cc.on_loss(loss_count);
                     }
 
                     let cwnd = (cc.cc.cwnd() / PieceData::max_payload() as u64) as usize;

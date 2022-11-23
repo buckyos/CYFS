@@ -100,27 +100,18 @@ impl ChunkDownloader {
     }
 
     async fn load(&self, storage: Box<dyn ChunkReader>, raw_cache: &RawCacheManager) -> BuckyResult<Box<dyn RawCache>> {
-        let mut reader = storage.get(self.chunk()).await?;
+        let reader = storage.get(self.chunk()).await?;
 
         let cache = raw_cache.alloc(self.chunk().len()).await;
-        let mut writer = cache.async_writer().await?;
+        let writer = cache.async_writer().await?;
 
-        let (_, end, step) = ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()).unwrap_as_stream();
-        let mut buffer = vec![0u8; step as usize];
-
-        use async_std::io::prelude::*;
-        for index in 0..end {
-            let (_, range) = PieceDesc::Range(index, step as u16).stream_piece_range(self.chunk());
-            let len = reader.read(&mut buffer[..]).await?;
-            if len != (range.end - range.start) as usize {
-                return Err(BuckyError::new(BuckyErrorCode::InvalidInput, ""));
-            }
-            if len != writer.write(&buffer[..len]).await? {
-                return Err(BuckyError::new(BuckyErrorCode::InvalidInput, ""));
-            }
-        }
+        let written = async_std::io::copy(reader, writer).await? as usize;
         
-        return Ok(cache)
+        if written != self.chunk().len() {
+            Err(BuckyError::new(BuckyErrorCode::InvalidInput, ""))
+        } else {
+            Ok(cache)
+        }
     }
 
     pub fn context(&self) -> &MultiDownloadContext {

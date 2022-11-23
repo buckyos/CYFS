@@ -116,14 +116,14 @@ pub async fn download_chunk(
     chunk: ChunkId, 
     group: Option<String>, 
     context: impl DownloadContext
-) -> BuckyResult<(Box<dyn DownloadTask>, ChunkTaskReader)> {
+) -> BuckyResult<(String, ChunkTaskReader)> {
     let (task, reader) = ChunkTask::reader(
         stack.to_weak(), 
         chunk, 
         context.clone_as_context()
     );
-    let _ = stack.ndn().root_task().download().create_sub_task(group, &task)?;
-    Ok((task.clone_as_task(), reader))
+    let path = stack.ndn().root_task().download().add_task(group.unwrap_or_default(), &task)?;
+    Ok((path, reader))
 }
 
 pub async fn download_chunk_list(
@@ -132,7 +132,7 @@ pub async fn download_chunk_list(
     chunks: &Vec<ChunkId>, 
     group: Option<String>, 
     context: impl DownloadContext, 
-) -> BuckyResult<(Box<dyn DownloadTask>, ChunkListTaskReader)> {
+) -> BuckyResult<(String, ChunkListTaskReader)> {
     let chunk_list = ChunkListDesc::from_chunks(chunks);
    
     let (task, reader) = ChunkListTask::reader(
@@ -141,9 +141,9 @@ pub async fn download_chunk_list(
         chunk_list, 
         context.clone_as_context(), 
     );
-    let _ = stack.ndn().root_task().download().create_sub_task(group, &task)?;
+    let path = stack.ndn().root_task().download().add_task(group.unwrap_or_default(), &task)?;
 
-    Ok((task.clone_as_task(), reader))
+    Ok((path, reader))
 }
 
 
@@ -152,7 +152,7 @@ pub async fn download_file(
     file: File, 
     group: Option<String>, 
     context: impl DownloadContext
-) -> BuckyResult<(Box<dyn DownloadTask>, ChunkListTaskReader)> {
+) -> BuckyResult<(String, ChunkListTaskReader)> {
     let chunk_list = ChunkListDesc::from_file(&file)?;
     let (task, reader) = ChunkListTask::reader(
         stack.to_weak(), 
@@ -160,7 +160,7 @@ pub async fn download_file(
         chunk_list, 
         context.clone_as_context()
     );
-    let _ = stack.ndn().root_task().download().create_sub_task(group, &task)?;
-    Ok((task.clone_as_task(), reader))
+    let path = stack.ndn().root_task().download().add_task(group.unwrap_or_default(), &task)?;
+    Ok((path, reader))
 }
 
