@@ -10,22 +10,18 @@ use crate::{
     types::*, 
     stack::{WeakStack, Stack}
 };
-use super::super::super::{ 
+use super::super::{ 
     types::*, 
     channel::*, 
     download::*,
 };
-use super::super::{
+use super::{
+    cache::*, 
     storage::{ChunkReader}, 
 };
-use super::{
-    raw_cache::*,  
-    stream::*
-};
-
 
 struct DownloadingState {
-    cache: ChunkStreamCache, 
+    cache: ChunkCache, 
     session: Option<DownloadSession>
 }
 
@@ -52,7 +48,7 @@ impl ChunkDownloader {
     pub fn new(
         stack: WeakStack, 
         chunk: ChunkId, 
-        stream_cache: ChunkStreamCache,  
+        chunk_cache: ChunkCache,  
     ) -> Self {
         let downloader = Self(Arc::new(ChunkDowloaderImpl {
             stack: stack.clone(), 
@@ -71,7 +67,7 @@ impl ChunkDownloader {
                     stack.ndn().chunk_manager().store().clone_as_reader(), 
                     stack.ndn().chunk_manager().raw_caches()).await {
                     Ok(cache) => {
-                        let _ = stream_cache.load(true, cache).unwrap();
+                        let _ = chunk_cache.stream().load(true, cache).unwrap();
                         let state = &mut *downloader.0.state.write().unwrap();
                         match &state {
                             StateImpl::Loading => {
@@ -85,7 +81,7 @@ impl ChunkDownloader {
                         match &state {
                             StateImpl::Loading => {
                                 *state = StateImpl::Downloading(DownloadingState { 
-                                    cache: stream_cache, 
+                                    cache: chunk_cache, 
                                     session: None 
                                 });
                             },
@@ -100,27 +96,18 @@ impl ChunkDownloader {
     }
 
     async fn load(&self, storage: Box<dyn ChunkReader>, raw_cache: &RawCacheManager) -> BuckyResult<Box<dyn RawCache>> {
-        let mut reader = storage.get(self.chunk()).await?;
+        let reader = storage.get(self.chunk()).await?;
 
         let cache = raw_cache.alloc(self.chunk().len()).await;
-        let mut writer = cache.async_writer().await?;
+        let writer = cache.async_writer().await?;
 
-        let (_, end, step) = ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()).unwrap_as_stream();
-        let mut buffer = vec![0u8; step as usize];
-
-        use async_std::io::prelude::*;
-        for index in 0..end {
-            let (_, range) = PieceDesc::Range(index, step as u16).stream_piece_range(self.chunk());
-            let len = reader.read(&mut buffer[..]).await?;
-            if len != (range.end - range.start) as usize {
-                return Err(BuckyError::new(BuckyErrorCode::InvalidInput, ""));
-            }
-            if len != writer.write(&buffer[..len]).await? {
-                return Err(BuckyError::new(BuckyErrorCode::InvalidInput, ""));
-            }
-        }
+        let written = async_std::io::copy(reader, writer).await? as usize;
         
-        return Ok(cache)
+        if written != self.chunk().len() {
+            Err(BuckyError::new(BuckyErrorCode::InvalidInput, ""))
+        } else {
+            Ok(cache)
+        }
     }
 
     pub fn context(&self) -> &MultiDownloadContext {
@@ -210,9 +197,9 @@ impl ChunkDownloader {
         let mut sources = self.context().sources_of(|_| true, 1);
 
         if sources.len() > 0 {
-            if !cache.loaded() {
+            if !cache.stream().loaded() {
                 let raw_cache = stack.ndn().chunk_manager().raw_caches().alloc_mem(self.chunk().len());
-                let _ = cache.load(false, raw_cache);
+                let _ = cache.stream().load(false, raw_cache);
             }
            
             let source = sources.pop_front().unwrap();
@@ -229,7 +216,7 @@ impl ChunkDownloader {
             match channel.download( 
                 self.chunk().clone(), 
                 source, 
-                cache.clone()
+                cache.stream().clone()
             ) {
                 Ok(session) => {
                     let (start, exists) = {

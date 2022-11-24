@@ -81,14 +81,14 @@ async fn main() {
             encode_desc: ChunkEncodeDesc::reverse_stream(None, None), 
         });
 
-        let (task, reader) = download_chunk(
+        let (_, reader) = download_chunk(
             &*ln_stack, 
             chunkid.clone(), 
             None, 
             context, 
         ).await.unwrap();
         ln_store.write_chunk(&chunkid, reader).await.unwrap();
-        watch_resource(task.clone_as_task());
+        // watch_resource(task.clone_as_task());
 
         let recv = future::timeout(Duration::from_secs(50), watch_recv_chunk(ln_stack.clone(), chunkid.clone())).await.unwrap();
         let recv_chunk_id = recv.unwrap();

@@ -22,7 +22,7 @@ use super::{
 
 
 enum TaskStateImpl {
-    Downloading(IncreaseId, ChunkCache),
+    Downloading(IncreaseId, DownloadingChunkCache),
     Error(BuckyError), 
     Finished(ChunkCache),
 }
@@ -278,7 +278,7 @@ impl ChunkTask {
             }),
         }));
 
-        let reader = ChunkTaskReader(DownloadTaskReader::new(cache, task.clone_as_task()));
+        let reader = ChunkTaskReader(DownloadTaskReader::new(cache.cache().clone(), task.clone_as_task()));
 
         (task, reader)
     }

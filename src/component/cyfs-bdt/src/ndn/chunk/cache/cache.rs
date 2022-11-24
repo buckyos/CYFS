@@ -3,9 +3,6 @@ use std::{
     ops::Range, 
 };
 use cyfs_base::*;
-use crate::{
-    stack::{WeakStack}, 
-};
 use super::super::super::{
     types::*, 
     channel::protocol::v0::PieceData
@@ -13,14 +10,10 @@ use super::super::super::{
 use super::{
     encode::*, 
     stream::*, 
-    download::*
 };
-
-
 
 struct CacheImpl {
     chunk: ChunkId, 
-    downloader: ChunkDownloader, 
     stream_cache: ChunkStreamCache, 
 }
 
@@ -35,10 +28,9 @@ impl std::fmt::Display for ChunkCache {
 }
 
 impl ChunkCache {
-    pub fn new(stack: WeakStack, chunk: ChunkId) -> Self {
+    pub fn new(chunk: ChunkId) -> Self {
         let stream_cache = ChunkStreamCache::new(&chunk);
         Self(Arc::new(CacheImpl {
-            downloader: ChunkDownloader::new(stack.clone(), chunk.clone(), stream_cache.clone()), 
             chunk, 
             stream_cache, 
         }))
@@ -46,10 +38,6 @@ impl ChunkCache {
 
     pub fn chunk(&self) -> &ChunkId {
         &self.0.chunk
-    }
-
-    pub fn downloader(&self) -> &ChunkDownloader {
-        &self.0.downloader
     }
 
     pub fn stream(&self) -> &ChunkStreamCache {

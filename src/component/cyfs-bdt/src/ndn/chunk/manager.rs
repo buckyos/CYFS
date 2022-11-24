@@ -13,7 +13,8 @@ use crate::{
 };
 use super::{
     storage::*,  
-    cache::*
+    cache::*,
+    download::*
 };
 
 #[derive(Clone)]
@@ -21,11 +22,28 @@ pub struct Config {
     pub raw_caches: RawCacheConfig
 }
 
+#[derive(Clone)]
+pub struct DownloadingChunkCache {
+    cache: ChunkCache, 
+    downloader: ChunkDownloader
+}
+
+impl DownloadingChunkCache {
+    pub fn cache(&self) -> &ChunkCache{
+        &self.cache
+    }
+
+    pub fn downloader(&self) -> &ChunkDownloader {
+        &self.downloader
+    }
+}
+
+
 pub struct ChunkManager {
     stack: WeakStack, 
     store: Box<dyn ChunkReader>, 
     raw_caches: RawCacheManager, 
-    chunk_caches: RwLock<BTreeMap<ChunkId, ChunkCache>>, 
+    chunk_caches: RwLock<BTreeMap<ChunkId, DownloadingChunkCache>>, 
 }
 
 impl std::fmt::Display for ChunkManager {
@@ -66,6 +84,8 @@ impl ChunkReader for EmptyChunkWrapper {
     }
 }
 
+
+
 impl ChunkManager {
     pub(crate) fn new(
         weak_stack: WeakStack, 
@@ -88,18 +108,23 @@ impl ChunkManager {
         &self.raw_caches
     }
 
-    pub fn create_cache(&self, chunk: &ChunkId) -> ChunkCache {
+    pub fn create_cache(&self, chunk: &ChunkId) -> DownloadingChunkCache {
         let mut caches = self.chunk_caches.write().unwrap();
         if let Some(cache) = caches.get(chunk).cloned() {
             cache
         } else {
-            let cache = ChunkCache::new(self.stack.clone(), chunk.clone());
-            caches.insert(chunk.clone(), cache.clone());
-            cache
+            let cache = ChunkCache::new(chunk.clone());
+            let downloader = ChunkDownloader::new(self.stack.clone(), chunk.clone(), cache.clone());
+            let downlading_cache = DownloadingChunkCache {
+                cache, 
+                downloader
+            };
+            caches.insert(chunk.clone(), downlading_cache.clone());
+            downlading_cache
         }
     }
 
-    pub fn cache_of(&self, chunk: &ChunkId) -> Option<ChunkCache> {
+    pub fn cache_of(&self, chunk: &ChunkId) -> Option<DownloadingChunkCache> {
         self.chunk_caches.read().unwrap().get(chunk).cloned()
     }
 

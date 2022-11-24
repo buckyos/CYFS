@@ -374,29 +374,29 @@ impl DebugStub {
         let stack = Stack::from(&self.0.stack);
         let context = SingleDownloadContext::id_streams(&stack, "".to_owned(), remotes).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
-        let (task, reader) = download_chunk(&stack,
+        let (_, reader) = download_chunk(&stack,
             chunk_id.clone(),
             None, 
             context).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
 
-        LocalChunkWriter::new(local_path.clone(), None, &chunk_id).write(reader).await
+        let _ = future::timeout(Duration::from_secs(timeout as u64), LocalChunkWriter::new(local_path.clone(), None, &chunk_id).write(reader)).await
             .map_err(|e| {
                 format!("download err: {}\r\n", e)
             })?;
 
         let _ = tunnel.write_all("waiting..\r\n".as_ref()).await;
         let task_start_time = Instant::now();
-        let ret = watchdog_download_finished(task.clone_as_task(), timeout).await;
-        if ret.is_ok() {
+        // let ret = watchdog_download_finished(path, timeout).await;
+        // if ret.is_ok() {
             let size = get_filesize(&local_path);
             let cost = Instant::now() - task_start_time;
             let cost_sec = (cost.as_millis() as f64) / 1000.0;
             let speed = (size as f64) * 8.0 / cost_sec / 1000000.0;
             let _ = tunnel.write_all(format!("download chunk finish.\r\nsize: {:.1} MB\r\ncost: {:.1} s\r\nspeed: {:.1} Mbps\r\n", 
             size/1024/1024, cost_sec, speed).as_bytes()).await;
-        }
-        ret
+        // }
+        Ok(())
     }
 
     async fn get_file(&self, tunnel: TcpStream, command: DebugCommandGetFile) -> Result<(), String> {
@@ -413,7 +413,7 @@ impl DebugStub {
         let stack = Stack::from(&self.0.stack);
         let context = SingleDownloadContext::id_streams(&stack, "".to_owned(), remotes).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
-        let (task, reader) = download_file(
+        let (_, reader) = download_file(
             &stack, 
             file_id.clone(), 
             None,  
@@ -421,6 +421,8 @@ impl DebugStub {
             .await.map_err(|e| {
                 format!("download err: {}\r\n", e)
             })?;
+        
+        let _ = future::timeout(Duration::from_secs(timeout as u64), tunnel.write_all("waitting..\r\n".as_ref())).await;
 
         LocalChunkListWriter::from_file(local_path, &file_id)
             .map_err(|e| {
@@ -431,12 +433,10 @@ impl DebugStub {
                 format!("download err: {}\r\n", e)
             })?;
 
-        let _ = tunnel.write_all("waitting..\r\n".as_ref()).await;
-        let ret = watchdog_download_finished(task.clone_as_task(), timeout).await;
-        if ret.is_ok() {
-            let _ = tunnel.write_all("download file finish.\r\n".as_ref()).await;
-        }
-        ret
+       
+        // let ret = watchdog_download_finished(task.clone_as_task(), timeout).await;
+        let _ = tunnel.write_all("download file finish.\r\n".as_ref()).await;
+        Ok(())
      }
 
      async fn put_chunk(&self, _tunnel: TcpStream, _command: DebugCommandPutChunk) -> Result<(), String> {

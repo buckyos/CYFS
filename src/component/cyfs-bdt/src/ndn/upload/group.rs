@@ -142,7 +142,7 @@ impl UploadTask for UploadGroup {
     }
 
     fn sub_task(&self, path: &str) -> Option<Box<dyn UploadTask>> {
-        let mut names = path.split("::");
+        let mut names = path.split("/");
         let name = names.next().unwrap();
 
         let mut sub = self.0.state.read().unwrap().entries.get(name).map(|t| t.clone_as_task());
@@ -154,7 +154,7 @@ impl UploadTask for UploadGroup {
                 if sub.is_none() {
                     break;
                 }
-            }
+            } 
             
             sub
         }

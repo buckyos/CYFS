@@ -78,7 +78,7 @@ async fn main() {
             .await
             .unwrap();
 
-        let (task, reader) = download_chunk(
+        let (_, reader) = download_chunk(
             &*ln_stack, 
             chunkid.clone(), 
             None, 
@@ -86,7 +86,7 @@ async fn main() {
         ).await.unwrap();
         ln_store.write_chunk(&chunkid, reader).await.unwrap();
         
-        watch_resource(task.clone_as_task());
+        // watch_resource(task.clone_as_task());
 
         let recv = future::timeout(Duration::from_secs(5), watch_recv_chunk(ln_stack.clone(), chunkid.clone())).await.unwrap();
         let recv_chunk_id = recv.unwrap();
