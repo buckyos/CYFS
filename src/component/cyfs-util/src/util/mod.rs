@@ -13,6 +13,7 @@ mod async_h1;
 mod read_helper;
 mod read_seek;
 mod dir_loader;
+mod sn_dir;
 
 pub use bdt_util::*;
 pub use condvar_helper::*;
@@ -29,3 +30,4 @@ pub use self::async_h1::*;
 pub use read_helper::*;
 pub use read_seek::*;
 pub use dir_loader::*;
+pub use sn_dir::*;

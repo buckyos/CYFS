@@ -42,7 +42,7 @@ pub fn get_userdata_from_desc(desc: &Device) -> BuckyResult<(&[u8], u64)> {
     }
 }
 
-fn load_device_objects_list(root: &Path) -> Vec<(DeviceId, Device)> {
+pub(crate) fn load_device_objects_list(root: &Path) -> Vec<(DeviceId, Device)> {
     if !root.is_dir() {
         return vec![];
     }
