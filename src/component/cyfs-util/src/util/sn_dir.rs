@@ -3,7 +3,7 @@ use cyfs_base::*;
 pub struct SNDirParser;
 
 impl SNDirParser {
-    pub fn parse(id: &ObjectId, object_raw: Vec<u8>) -> BuckyResult<Vec<(DeviceId, Device)>> {
+    pub fn parse(id: &ObjectId, object_raw: &[u8]) -> BuckyResult<Vec<(DeviceId, Device)>> {
         let dir = Dir::clone_from_slice(&object_raw)?;
 
         let mut sn_list = vec![];

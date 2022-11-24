@@ -1,9 +1,6 @@
 use super::name_cache::*;
-use crate::meta::MetaCache;
-use cyfs_base::{
-    bucky_time_now, BuckyError, BuckyErrorCode, BuckyResult, NameInfo, NameLink, NameState,
-    ObjectId,
-};
+use crate::meta::*;
+use cyfs_base::*;
 use cyfs_lib::*;
 
 use cyfs_debug::Mutex;
@@ -46,7 +43,7 @@ struct NameResolvingItem {
 #[derive(Clone)]
 pub struct NameResolver {
     cache: NOCCollectionSync<NameCache>,
-    meta_cache: Arc<Box<dyn MetaCache>>,
+    meta_cache: MetaCacheRef,
 
     resolving_list: Arc<Mutex<HashMap<String, NameResolvingItem>>>,
 
@@ -84,6 +81,17 @@ impl NameResolver {
         self.cache
             .start_save(std::time::Duration::from_secs(60 * 5));
         Ok(())
+    }
+
+    pub fn reset_name(&self, name: &str) -> bool {
+        let mut data = self.cache.coll().lock().unwrap();
+        match data.try_get(name) {
+            Some(item) => {
+                item.reset(name);
+                true
+            }
+            None => false,
+        }
     }
 
     pub async fn lookup(&self, name: &str) -> BuckyResult<NameResult> {
