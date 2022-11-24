@@ -10,22 +10,18 @@ use crate::{
     types::*, 
     stack::{WeakStack, Stack}
 };
-use super::super::super::{ 
+use super::super::{ 
     types::*, 
     channel::*, 
     download::*,
 };
-use super::super::{
+use super::{
+    cache::*, 
     storage::{ChunkReader}, 
 };
-use super::{
-    raw_cache::*,  
-    stream::*
-};
-
 
 struct DownloadingState {
-    cache: ChunkStreamCache, 
+    cache: ChunkCache, 
     session: Option<DownloadSession>
 }
 
@@ -52,7 +48,7 @@ impl ChunkDownloader {
     pub fn new(
         stack: WeakStack, 
         chunk: ChunkId, 
-        stream_cache: ChunkStreamCache,  
+        chunk_cache: ChunkCache,  
     ) -> Self {
         let downloader = Self(Arc::new(ChunkDowloaderImpl {
             stack: stack.clone(), 
@@ -71,7 +67,7 @@ impl ChunkDownloader {
                     stack.ndn().chunk_manager().store().clone_as_reader(), 
                     stack.ndn().chunk_manager().raw_caches()).await {
                     Ok(cache) => {
-                        let _ = stream_cache.load(true, cache).unwrap();
+                        let _ = chunk_cache.stream().load(true, cache).unwrap();
                         let state = &mut *downloader.0.state.write().unwrap();
                         match &state {
                             StateImpl::Loading => {
@@ -85,7 +81,7 @@ impl ChunkDownloader {
                         match &state {
                             StateImpl::Loading => {
                                 *state = StateImpl::Downloading(DownloadingState { 
-                                    cache: stream_cache, 
+                                    cache: chunk_cache, 
                                     session: None 
                                 });
                             },
@@ -201,9 +197,9 @@ impl ChunkDownloader {
         let mut sources = self.context().sources_of(|_| true, 1);
 
         if sources.len() > 0 {
-            if !cache.loaded() {
+            if !cache.stream().loaded() {
                 let raw_cache = stack.ndn().chunk_manager().raw_caches().alloc_mem(self.chunk().len());
-                let _ = cache.load(false, raw_cache);
+                let _ = cache.stream().load(false, raw_cache);
             }
            
             let source = sources.pop_front().unwrap();
@@ -220,7 +216,7 @@ impl ChunkDownloader {
             match channel.download( 
                 self.chunk().clone(), 
                 source, 
-                cache.clone()
+                cache.stream().clone()
             ) {
                 Ok(session) => {
                     let (start, exists) = {

@@ -494,9 +494,8 @@ async fn upload_from_downloader() {
 
 #[async_std::test]
 async fn upload_from_path() {
-    use std::str::FromStr;
-    
-    unreachable!("{}", ChunkId::from_str("7C8WXUGvBTaZgygedP8U5txciGCQh54JauGbXcw1YDVp").unwrap().len());
+    // use std::str::FromStr;
+    // unreachable!("{}", ChunkId::from_str("7C8WXUGvBTaZgygedP8U5txciGCQh54JauGbXcw1YDVp").unwrap().len());
     let (down_dev, down_secret) = utils::create_device(
         "5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR",
         &["W4udp127.0.0.1:10016"],

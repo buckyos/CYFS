@@ -13,7 +13,7 @@ pub async fn start_upload_task(
 ) -> BuckyResult<Box<dyn UploadTask>> {
     let desc = interest.prefer_type.fill_values(&interest.chunk);
     let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
-    let encoder = cache.create_encoder(&desc);
+    let encoder = cache.cache().create_encoder(&desc);
    
     
     let session = to.upload(

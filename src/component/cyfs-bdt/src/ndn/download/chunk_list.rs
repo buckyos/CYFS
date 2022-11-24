@@ -22,7 +22,7 @@ use super::{
 };
 
 struct DownloadingState { 
-    cur_cache: (IncreaseId, ChunkCache), 
+    cur_cache: (IncreaseId, DownloadingChunkCache), 
     history_speed: HistorySpeed,
     drain_score: i64
 }
@@ -124,7 +124,7 @@ impl ChunkListTask {
             cache.downloader().context().remove_context(&id);
         }
 
-        Ok(cache)
+        Ok(cache.cache().clone())
     }
 }
 
