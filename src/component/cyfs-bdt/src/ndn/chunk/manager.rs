@@ -113,14 +113,14 @@ impl ChunkManager {
         if let Some(cache) = caches.get(chunk).cloned() {
             cache
         } else {
-            let cache = ChunkCache::new(chunk.clone());
+            let cache = ChunkCache::new(self.stack.clone(), chunk.clone());
             let downloader = ChunkDownloader::new(self.stack.clone(), chunk.clone(), cache.clone());
-            let downlading_cache = DownloadingChunkCache {
+            let downloading_cache = DownloadingChunkCache {
                 cache, 
                 downloader
             };
-            caches.insert(chunk.clone(), downlading_cache.clone());
-            downlading_cache
+            caches.insert(chunk.clone(), downloading_cache.clone());
+            downloading_cache
         }
     }
 

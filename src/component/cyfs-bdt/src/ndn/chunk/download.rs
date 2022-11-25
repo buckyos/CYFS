@@ -17,7 +17,6 @@ use super::super::{
 };
 use super::{
     cache::*, 
-    storage::{ChunkReader}, 
 };
 
 struct DownloadingState {
@@ -43,12 +42,11 @@ struct ChunkDowloaderImpl {
 #[derive(Clone)]
 pub struct ChunkDownloader(Arc<ChunkDowloaderImpl>);
 
-// 不同于Uploader，Downloader可以被多个任务复用；
 impl ChunkDownloader {
     pub fn new(
         stack: WeakStack, 
         chunk: ChunkId, 
-        chunk_cache: ChunkCache,  
+        chunk_cache: ChunkCache,
     ) -> Self {
         let downloader = Self(Arc::new(ChunkDowloaderImpl {
             stack: stack.clone(), 
@@ -61,53 +59,31 @@ impl ChunkDownloader {
             let downloader = downloader.clone();
             
             task::spawn(async move {
-                let stack = Stack::from(&downloader.0.stack);
-                
-                match downloader.load(
-                    stack.ndn().chunk_manager().store().clone_as_reader(), 
-                    stack.ndn().chunk_manager().raw_caches()).await {
-                    Ok(cache) => {
-                        let _ = chunk_cache.stream().load(true, cache).unwrap();
-                        let state = &mut *downloader.0.state.write().unwrap();
-                        match &state {
-                            StateImpl::Loading => {
-                                *state = StateImpl::Finished;
-                            },
-                            _ => unreachable!()
+                let finished = chunk_cache.wait_loaded().await;
+                {   
+                    let state = &mut *downloader.0.state.write().unwrap();
+                    if let StateImpl::Loading = state {
+                        if finished {
+                            *state = StateImpl::Finished;
+                        } else {
+                            *state = StateImpl::Downloading(DownloadingState { 
+                                cache: chunk_cache, 
+                                session: None 
+                            });
                         }
-                    },
-                    Err(_err) => {
-                        let state = &mut *downloader.0.state.write().unwrap();
-                        match &state {
-                            StateImpl::Loading => {
-                                *state = StateImpl::Downloading(DownloadingState { 
-                                    cache: chunk_cache, 
-                                    session: None 
-                                });
-                            },
-                            _ => unreachable!()
-                        }
+                    } else {
+                        unreachable!()
                     }
                 }
+               
+                if !finished {
+                    downloader.on_drain(0);
+                }
+                
             });
         }
         
         downloader
-    }
-
-    async fn load(&self, storage: Box<dyn ChunkReader>, raw_cache: &RawCacheManager) -> BuckyResult<Box<dyn RawCache>> {
-        let reader = storage.get(self.chunk()).await?;
-
-        let cache = raw_cache.alloc(self.chunk().len()).await;
-        let writer = cache.async_writer().await?;
-
-        let written = async_std::io::copy(reader, writer).await? as usize;
-        
-        if written != self.chunk().len() {
-            Err(BuckyError::new(BuckyErrorCode::InvalidInput, ""))
-        } else {
-            Ok(cache)
-        }
     }
 
     pub fn context(&self) -> &MultiDownloadContext {
@@ -196,12 +172,7 @@ impl ChunkDownloader {
         let stack = Stack::from(&self.0.stack);
         let mut sources = self.context().sources_of(|_| true, 1);
 
-        if sources.len() > 0 {
-            if !cache.stream().loaded() {
-                let raw_cache = stack.ndn().chunk_manager().raw_caches().alloc_mem(self.chunk().len());
-                let _ = cache.stream().load(false, raw_cache);
-            }
-           
+        if sources.len() > 0 { 
             let source = sources.pop_front().unwrap();
             let channel = stack.ndn().channel_manager().create_channel(&source.target).unwrap();
             
