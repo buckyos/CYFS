@@ -21,6 +21,9 @@ use super::super::{
 
 
 pub trait DownloadContext: Send + Sync {
+    fn is_mergable(&self) -> bool {
+        true
+    }
     fn clone_as_context(&self) -> Box<dyn DownloadContext>;
     fn referer(&self) -> &str;
     fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool;

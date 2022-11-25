@@ -21,8 +21,14 @@ use super::{
     common::*, 
 };
 
+struct DownloadingChunk {
+    context_id: IncreaseId, 
+    downloader: ChunkDownloader, 
+    cache: ChunkCache
+}
+
 struct DownloadingState { 
-    cur_cache: (IncreaseId, DownloadingChunkCache), 
+    cur_chunk: DownloadingChunk, 
     history_speed: HistorySpeed,
     drain_score: i64
 }
@@ -95,24 +101,38 @@ impl ChunkListTask {
     fn create_cache(&self, index: usize) -> BuckyResult<ChunkCache> {
         let stack = Stack::from(&self.0.stack);
         let chunk = &self.chunk_list().chunks()[index];
+
         let cache = stack.ndn().chunk_manager().create_cache(chunk);
+        let downloader = if self.context().is_mergable() {
+            cache.downloader().clone()
+        } else {
+            ChunkDownloader::new(self.0.stack.clone(), chunk.clone(), cache.cache().clone())
+        };
 
         let cancel = {
             let mut state = self.0.state.write().unwrap();
             match &mut state.task_state {
                 TaskStateImpl::Pending => {
-                    let id = cache.downloader().context().add_context(self.context());
+                    let context_id = downloader.context().add_context(self.context());
                     state.task_state = TaskStateImpl::Downloading(DownloadingState { 
-                        cur_cache: (id, cache.clone()), 
+                        cur_chunk: DownloadingChunk {
+                            context_id, 
+                            downloader, 
+                            cache: cache.cache().clone()
+                        }, 
                         history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
                         drain_score: 0 
                     });
                     Ok(None)
                 }, 
                 TaskStateImpl::Downloading(downloading) => {
-                    let id = cache.downloader().context().add_context(self.context());
-                    let cancel = Some(downloading.cur_cache.clone());
-                    downloading.cur_cache = (id, cache.clone());
+                    let context_id = downloader.context().add_context(self.context());
+                    let cancel = Some((downloading.cur_chunk.context_id, downloading.cur_chunk.downloader.clone()));
+                    downloading.cur_chunk = DownloadingChunk {
+                        context_id, 
+                        downloader, 
+                        cache: cache.cache().clone()
+                    };
                     Ok(cancel)
                 },
                 TaskStateImpl::Finished => Ok(None), 
@@ -120,8 +140,8 @@ impl ChunkListTask {
             }
         }?;
 
-        if let Some((id, cache)) = cancel {
-            cache.downloader().context().remove_context(&id);
+        if let Some((id, downloader)) = cancel {
+            downloader.context().remove_context(&id);
         }
 
         Ok(cache.cache().clone())
@@ -155,7 +175,7 @@ impl DownloadTask for ChunkListTask {
         let mut state = self.0.state.write().unwrap();
         match &mut state.task_state {
             TaskStateImpl::Downloading(downloading) => {
-                let cur_speed = downloading.cur_cache.1.downloader().calc_speed(when);
+                let cur_speed = downloading.cur_chunk.downloader.calc_speed(when);
                 downloading.history_speed.update(Some(cur_speed), when);
                 cur_speed
             }
@@ -188,14 +208,14 @@ impl DownloadTask for ChunkListTask {
     }
 
     fn on_drain(&self, expect_speed: u32) -> u32 {
-        if let Some(cache) = {
+        if let Some(downloader) = {
             let state = self.0.state.read().unwrap();
             match &state.task_state {
-                TaskStateImpl::Downloading(downloading) => Some(downloading.cur_cache.1.clone()), 
+                TaskStateImpl::Downloading(downloading) => Some(downloading.cur_chunk.downloader.clone()), 
                 _ => None
             }
         } {
-            cache.downloader().on_drain(expect_speed)
+            downloader.on_drain(expect_speed)
         } else {
             0
         }
@@ -217,7 +237,7 @@ impl DownloadTask for ChunkListTask {
 
             let cancel = match &state.task_state {
                 TaskStateImpl::Downloading(downloading) => {
-                    let cancel = Some(downloading.cur_cache.clone());
+                    let cancel = Some((downloading.cur_chunk.context_id, downloading.cur_chunk.downloader.clone()));
                     state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
                     cancel
                 }, 
@@ -231,8 +251,8 @@ impl DownloadTask for ChunkListTask {
             waiters.wake();
         }
 
-        if let Some((id, cache)) = cancel {
-            cache.downloader().context().remove_context(&id);
+        if let Some((id, downloader)) = cancel {
+            downloader.context().remove_context(&id);
         }
         
         Ok(DownloadTaskControlState::Canceled)
