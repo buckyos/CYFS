@@ -500,6 +500,9 @@ impl CyfsStackImpl {
         // init admin manager
         stack.admin_manager.init(&system_router_handlers).await?;
 
+        // bind bdt stack and start sync
+        sn_config_manager.bind_bdt_stack(stack.bdt_stack.clone());
+
         // 初始化对外interface
         let mut interface = ObjectListenerManager::new(device_id.clone());
         let mut init_params = ObjectListenerManagerParams {

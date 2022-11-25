@@ -3,7 +3,7 @@ use std::fs;
 // use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use cyfs_base::{BuckyResult, BuckyError, BuckyErrorCode, NamedObject, ObjectDesc};
+use cyfs_base::{BuckyResult, BuckyError, BuckyErrorCode, NamedObject};
 use cyfs_base::{RawConvertTo, RawFrom, bucky_time_now};
 use cyfs_base::{ObjectId, DeviceId, Device, NDNObjectInfo, Dir, Attributes, NDNObjectList, InnerNode, InnerNodeInfo};
 
@@ -192,7 +192,7 @@ impl SNDirGenerator {
             .no_create_time()
             .update_time(bucky_time_now())
             .build();
-        let dir_id = dir.desc().calculate_id();
+        
         Ok(dir)
     }
 }

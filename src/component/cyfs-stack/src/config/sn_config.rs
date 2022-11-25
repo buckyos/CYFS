@@ -1,6 +1,7 @@
 use crate::meta::*;
 use crate::name::*;
 use cyfs_base::*;
+use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
 
 use cyfs_util::SNDirParser;
@@ -41,7 +42,6 @@ declare_collection_codec_for_serde!(SNConfig);
 
 type SNConfigCollection = NOCCollectionRWSync<SNConfig>;
 
-
 #[derive(Debug)]
 enum SyncSNResult {
     Success,
@@ -58,6 +58,8 @@ pub struct SNConfigManager {
 
     sn_list: Arc<Mutex<Vec<(DeviceId, Device)>>>,
     coll: Arc<OnceCell<SNConfigCollection>>,
+
+    bdt_stack: Arc<OnceCell<StackGuard>>,
 }
 
 impl SNConfigManager {
@@ -74,7 +76,16 @@ impl SNConfigManager {
             noc,
             sn_list: Arc::new(Mutex::new(vec![])),
             coll: Arc::new(OnceCell::new()),
+            bdt_stack: Arc::new(OnceCell::new()),
         }
+    }
+
+    pub fn bind_bdt_stack(&self, bdt_stack: StackGuard) {
+        if let Err(_) = self.bdt_stack.set(bdt_stack) {
+            unreachable!();
+        }
+
+        self.try_start_sync_from_meta();
     }
 
     pub fn get_sn_list(&self) -> Vec<(DeviceId, Device)> {
@@ -104,14 +115,28 @@ impl SNConfigManager {
             if flush_at_once {
                 self.name_resolver.reset_name(CYFS_SN_NAME);
             }
+        }
 
+        Ok(())
+    }
+
+    fn try_start_sync_from_meta(&self) {
+        let source = self
+            .coll
+            .get()
+            .unwrap()
+            .coll()
+            .read()
+            .unwrap()
+            .source
+            .clone();
+
+        if source == SNConfigListSource::Meta {
             let this = self.clone();
             async_std::task::spawn(async move {
                 this.sync().await;
             });
         }
-
-        Ok(())
     }
 
     async fn sync(&self) {
@@ -132,13 +157,17 @@ impl SNConfigManager {
                 }
             };
 
-            info!("sync sn config complete: result={:?}, will retry after {}s", ret, interval);
+            info!(
+                "sync sn config complete: result={:?}, will retry after {}s",
+                ret, interval
+            );
             async_std::task::sleep(std::time::Duration::from_secs(interval)).await;
         }
     }
 
     async fn sync_once(&self) -> SyncSNResult {
-        let ret = self.name_resolver.lookup(CYFS_SN_NAME).await;
+        // FIXME should use lookup with name cache instead?
+        let ret = self.name_resolver.resolve(CYFS_SN_NAME).await;
         match ret {
             Ok(NameResult::ObjectLink(id)) => {
                 info!("got sn id from meta: {} -> {}", CYFS_SN_NAME, id);
@@ -180,7 +209,7 @@ impl SNConfigManager {
             Ok(Some(object)) => {
                 info!("load sn from noc: {}", id);
                 let list = SNDirParser::parse(Some(id), &object.object.object_raw)?;
-                *self.sn_list.lock().unwrap() = list;
+                self.on_sn_list_changed(list);
 
                 Ok(())
             }
@@ -224,7 +253,7 @@ impl SNConfigManager {
             }
 
             if cache.sn == Some(id) {
-                warn!(
+                info!(
                     "load sn from meta success but state's id is the same! {:?}",
                     id
                 );
@@ -239,9 +268,10 @@ impl SNConfigManager {
         }
 
         let coll = self.coll.get().unwrap().clone();
-        async_std::task::spawn(async move {
-            let _ = coll.save().await;
-        });
+        coll.set_dirty(true);
+        if let Err(e) = coll.save().await {
+            error!("save sn config to state failed! {}", e);
+        }
 
         // save sn object to noc
         let mut object = NONObjectInfo::new(id, object.object_raw, None);
@@ -267,7 +297,16 @@ impl SNConfigManager {
     }
 
     fn on_sn_list_changed(&self, list: Vec<(DeviceId, Device)>) {
-        *self.sn_list.lock().unwrap() = list;
+        let mut current = self.sn_list.lock().unwrap();
+        let current_list: Vec<&DeviceId> = current.iter().map(|v| &v.0).collect();
+        let new_list: Vec<&DeviceId> = list.iter().map(|v| &v.0).collect();
+        info!("sn list updated: {:?} => {:?}", current_list, new_list);
+
+        if let Some(bdt_stack) = self.bdt_stack.get() {
+
+        }
+
+        *current = list;
     }
 
     async fn load_state(&self) -> BuckyResult<SNConfigCollection> {
