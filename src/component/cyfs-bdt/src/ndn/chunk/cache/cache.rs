@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Mutex}, 
+    sync::{Arc, Weak, Mutex}, 
     ops::Range, 
 };
 use async_std::{
@@ -36,6 +36,21 @@ struct CacheImpl {
 
 #[derive(Clone)]
 pub struct ChunkCache(Arc<CacheImpl>);
+
+
+pub struct WeakChunkCache(Weak<CacheImpl>);
+
+impl WeakChunkCache {
+    pub fn to_strong(&self) -> Option<ChunkCache> {
+        Weak::upgrade(&self.0).map(|arc| ChunkCache(arc))
+    }
+}
+
+impl ChunkCache {
+    pub fn to_weak(&self) -> WeakChunkCache {
+        WeakChunkCache(Arc::downgrade(&self.0))
+    }
+}
 
 
 impl std::fmt::Display for ChunkCache {

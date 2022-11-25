@@ -20,7 +20,6 @@ impl Default for UploadTaskPriority {
 // 对scheduler的接口
 #[derive(Debug)]
 pub enum UploadTaskState {
-    Pending, 
     Uploading(u32/*速度*/),
     Paused,
     Error(BuckyError/*被cancel的原因*/), 

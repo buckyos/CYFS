@@ -71,6 +71,10 @@ impl MultiDownloadContext {
         })))
     }
 
+    pub fn count(&self) -> usize {
+        self.0.read().unwrap().contexts.len()
+    }
+
     pub fn add_context(&self, context: &dyn DownloadContext) -> IncreaseId {
         let mut state = self.0.write().unwrap();
         let id = state.gen_id.generate();

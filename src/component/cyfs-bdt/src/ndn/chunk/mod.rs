@@ -8,4 +8,4 @@ pub use chunk_list::*;
 pub use storage::*;
 pub use cache::*;
 pub use download::*;
-pub use manager::{Config, DownloadingChunkCache, ChunkManager};
+pub use manager::{Config, ChunkManager};

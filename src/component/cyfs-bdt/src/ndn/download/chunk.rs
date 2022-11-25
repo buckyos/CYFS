@@ -23,8 +23,7 @@ use super::{
 
 struct DownloadingState {
     context_id: IncreaseId, 
-    downloader: ChunkDownloader, 
-    cache: ChunkCache
+    downloader: ChunkDownloader,
 }
 
 enum TaskStateImpl {
@@ -44,9 +43,7 @@ struct StateImpl {
 }
 
 struct ChunkTaskImpl {
-    stack: WeakStack, 
     chunk: ChunkId, 
-    context: Box<dyn DownloadContext>, 
     state: RwLock<StateImpl>,  
 }
 
@@ -66,24 +63,15 @@ impl ChunkTask {
         context: Box<dyn DownloadContext>, 
     ) -> Self {
         let strong_stack = Stack::from(&stack);
-        let cache = strong_stack.ndn().chunk_manager().create_cache(&chunk);
-        let downloader = if context.is_mergable() {
-            cache.downloader().clone()
-        } else {
-            ChunkDownloader::new(stack.clone(), chunk.clone(), cache.cache().clone())
-        };
-
+        let downloader = strong_stack.ndn().chunk_manager().create_downloader(&chunk, context.is_mergable());
         let context_id = downloader.context().add_context(context.as_ref());
         
-        Self(Arc::new(ChunkTaskImpl {
-            stack, 
+        Self(Arc::new(ChunkTaskImpl { 
             chunk, 
-            context, 
             state: RwLock::new(StateImpl {
                 task_state: TaskStateImpl::Downloading(DownloadingState {
                     context_id, 
                     downloader, 
-                    cache: cache.cache().clone()
                 }), 
                 control_state: ControlStateImpl::Normal(StateWaiter::new()),
             }),
@@ -286,7 +274,7 @@ impl ChunkTask {
 
         let cache = strong_stack.ndn().chunk_manager().create_cache(task.chunk());
 
-        let reader = ChunkTaskReader(DownloadTaskReader::new(cache.cache().clone(), task.clone_as_task()));
+        let reader = ChunkTaskReader(DownloadTaskReader::new(cache, task.clone_as_task()));
 
         (task, reader)
     }

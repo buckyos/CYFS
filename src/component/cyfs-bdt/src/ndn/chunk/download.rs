@@ -1,8 +1,7 @@
 use std::{
-    sync::{RwLock},
+    sync::{RwLock, Arc, Weak},
 };
-use async_std::{
-    sync::Arc, 
+use async_std::{ 
     task, 
 };
 use cyfs_base::*;
@@ -20,7 +19,6 @@ use super::{
 };
 
 struct DownloadingState {
-    cache: ChunkCache, 
     session: Option<DownloadSession>
 }
 
@@ -30,27 +28,39 @@ enum StateImpl {
     Finished
 }
 
-
-
 struct ChunkDowloaderImpl { 
     stack: WeakStack, 
-    chunk: ChunkId, 
     context: MultiDownloadContext, 
+    cache: ChunkCache, 
     state: RwLock<StateImpl>, 
 }
 
 #[derive(Clone)]
 pub struct ChunkDownloader(Arc<ChunkDowloaderImpl>);
 
+pub struct WeakChunkDownloader(Weak<ChunkDowloaderImpl>);
+
+impl WeakChunkDownloader {
+    pub fn to_strong(&self) -> Option<ChunkDownloader> {
+        Weak::upgrade(&self.0).map(|arc| ChunkDownloader(arc))
+    }
+}
+
+impl ChunkDownloader {
+    pub fn to_weak(&self) -> WeakChunkDownloader {
+        WeakChunkDownloader(Arc::downgrade(&self.0))
+    }
+}
+
+
 impl ChunkDownloader {
     pub fn new(
         stack: WeakStack, 
-        chunk: ChunkId, 
-        chunk_cache: ChunkCache,
+        cache: ChunkCache,
     ) -> Self {
         let downloader = Self(Arc::new(ChunkDowloaderImpl {
-            stack: stack.clone(), 
-            chunk, 
+            stack, 
+            cache, 
             state: RwLock::new(StateImpl::Loading), 
             context: MultiDownloadContext::new(), 
         }));
@@ -59,7 +69,7 @@ impl ChunkDownloader {
             let downloader = downloader.clone();
             
             task::spawn(async move {
-                let finished = chunk_cache.wait_loaded().await;
+                let finished = downloader.cache().wait_loaded().await;
                 {   
                     let state = &mut *downloader.0.state.write().unwrap();
                     if let StateImpl::Loading = state {
@@ -67,7 +77,6 @@ impl ChunkDownloader {
                             *state = StateImpl::Finished;
                         } else {
                             *state = StateImpl::Downloading(DownloadingState { 
-                                cache: chunk_cache, 
                                 session: None 
                             });
                         }
@@ -90,8 +99,12 @@ impl ChunkDownloader {
         &self.0.context
     }
 
+    pub fn cache(&self) -> &ChunkCache {
+        &self.0.cache
+    }
+
     pub fn chunk(&self) -> &ChunkId {
-        &self.0.chunk
+        self.cache().chunk()
     }
 
     pub fn calc_speed(&self, when: Timestamp) -> u32 {
@@ -138,10 +151,10 @@ impl ChunkDownloader {
     }
 
     pub fn on_drain(&self, _: u32) -> u32 {
-        let (session, cache) = {
+        let (session, start) = {
             match &*self.0.state.read().unwrap() {
-                StateImpl::Downloading(downloading) => (downloading.session.clone(), Some(downloading.cache.clone())), 
-                _ => (None, None)
+                StateImpl::Downloading(downloading) => (downloading.session.clone(), true), 
+                _ => (None, false)
             }
         };
         if let Some(session) = session {
@@ -164,11 +177,11 @@ impl ChunkDownloader {
             }
         } 
           
-        if cache.is_none() {
+        if !start {
             return 0;
         }
 
-        let cache = cache.unwrap();
+        let cache = &self.0.cache;
         let stack = Stack::from(&self.0.stack);
         let mut sources = self.context().sources_of(|_| true, 1);
 

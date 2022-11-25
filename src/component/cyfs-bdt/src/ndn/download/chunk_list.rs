@@ -24,7 +24,6 @@ use super::{
 struct DownloadingChunk {
     context_id: IncreaseId, 
     downloader: ChunkDownloader, 
-    cache: ChunkCache
 }
 
 struct DownloadingState { 
@@ -102,13 +101,8 @@ impl ChunkListTask {
         let stack = Stack::from(&self.0.stack);
         let chunk = &self.chunk_list().chunks()[index];
 
-        let cache = stack.ndn().chunk_manager().create_cache(chunk);
-        let downloader = if self.context().is_mergable() {
-            cache.downloader().clone()
-        } else {
-            ChunkDownloader::new(self.0.stack.clone(), chunk.clone(), cache.cache().clone())
-        };
-
+        let downloader = stack.ndn().chunk_manager().create_downloader(chunk, self.context().is_mergable());
+        let cache = downloader.cache().clone();
         let cancel = {
             let mut state = self.0.state.write().unwrap();
             match &mut state.task_state {
@@ -118,7 +112,6 @@ impl ChunkListTask {
                         cur_chunk: DownloadingChunk {
                             context_id, 
                             downloader, 
-                            cache: cache.cache().clone()
                         }, 
                         history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
                         drain_score: 0 
@@ -131,7 +124,6 @@ impl ChunkListTask {
                     downloading.cur_chunk = DownloadingChunk {
                         context_id, 
                         downloader, 
-                        cache: cache.cache().clone()
                     };
                     Ok(cancel)
                 },
@@ -144,7 +136,7 @@ impl ChunkListTask {
             downloader.context().remove_context(&id);
         }
 
-        Ok(cache.cache().clone())
+        Ok(cache)
     }
 }
 
