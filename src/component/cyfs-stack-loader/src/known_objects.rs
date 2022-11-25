@@ -1,15 +1,14 @@
 use cyfs_base::*;
 use cyfs_debug::Mutex;
 use cyfs_stack::KnownObject;
+use cyfs_util::DirObjectsSyncLoader;
 
-use async_std::fs;
-use async_std::prelude::*;
 use lazy_static::lazy_static;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 struct KnownObjectsLoader {
-    roots: Vec<PathBuf>,
+    desc_folder: PathBuf,
     objects: Vec<KnownObject>,
 }
 
@@ -18,67 +17,25 @@ impl KnownObjectsLoader {
         let desc_folder = cyfs_util::get_cyfs_root_path().join("etc").join("desc");
 
         Self {
-            roots: vec![desc_folder],
+            desc_folder,
             objects: Vec::new(),
         }
     }
 
     pub async fn load(&mut self) {
-        self.scan().await;
-    }
+        let mut loader = DirObjectsSyncLoader::new(self.desc_folder.clone());
+        loader.load();
 
-    async fn scan(&mut self) {
-        let mut i = 0;
-        loop {
-            if i >= self.roots.len() {
-                break;
-            }
-
-            let root = self.roots[i].clone();
-            let _ = self.scan_root(&root).await;
-
-            i += 1;
-        }
-    }
-
-    async fn scan_root(&mut self, root: &Path) -> BuckyResult<()> {
-        if !root.is_dir() {
-            return Ok(());
-        }
-
-        let mut entries = fs::read_dir(root).await.map_err(|e| {
-            error!(
-                "read known object dir failed! dir={}, {}",
-                root.display(),
-                e
-            );
-            e
-        })?;
-
-        while let Some(res) = entries.next().await {
-            let entry = res.map_err(|e| {
-                error!("read entry error: {}", e);
-                e
-            })?;
-
-            let file_path = root.join(entry.file_name());
-            if file_path.is_dir() {
-                self.roots.push(file_path);
+        let objects = loader.into_objects();
+        for (file_path, data) in objects {
+            let ret = self.load_obj(&file_path, data).await;
+            if ret.is_err() {
                 continue;
             }
 
-            if !file_path.is_file() {
-                warn!("path is not file: {}", file_path.display());
-                continue;
-            }
+            let ret = ret.unwrap();
 
-            if !Self::is_desc_file(&file_path) {
-                debug!("not desc file: {}", file_path.display());
-                continue;
-            }
-
-            if let Ok(ret) = self.load_obj(&file_path).await {
-                if !self
+            if !self
                     .objects
                     .iter()
                     .any(|item| item.object_id == ret.object_id)
@@ -91,36 +48,10 @@ impl KnownObjectsLoader {
                         file_path.display()
                     );
                 }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn is_desc_file(file_path: &Path) -> bool {
-        match file_path.extension() {
-            Some(ext) => {
-                let ext = ext.to_string_lossy();
-
-                #[cfg(windows)]
-                let ext = ext.to_lowercase();
-
-                if ext == "desc" {
-                    true
-                } else {
-                    false
-                }
-            }
-            None => false,
         }
     }
-
-    async fn load_obj(&self, file: &Path) -> BuckyResult<KnownObject> {
-        let buf = fs::read(file).await.map_err(|e| {
-            error!("load known object failed! file={}, {}", file.display(), e);
-            e
-        })?;
-
+   
+    async fn load_obj(&self, file: &Path, buf: Vec<u8>) -> BuckyResult<KnownObject> {
         let (object, _) = AnyNamedObject::raw_decode(&buf).map_err(|e| {
             let msg = format!(
                 "invalid known object body buffer: file={}, {}",

@@ -64,7 +64,7 @@ pub struct ZoneManager {
     // 当前的zone信息
     current_info: Arc<Mutex<Option<Arc<CurrentZoneInfo>>>>,
 
-    meta_cache: Arc<Box<dyn MetaCache>>,
+    meta_cache: Arc<MetaCacheRef>,
 
     zone_changed_event: ZoneChangeEventManager,
 
@@ -89,7 +89,7 @@ impl ZoneManager {
         device_manager: Box<dyn DeviceCache>,
         device_id: DeviceId,
         device_category: DeviceCategory,
-        meta_cache: Box<dyn MetaCache>,
+        meta_cache: MetaCacheRef,
         fail_handler: ObjectFailHandler,
         root_state: GlobalStateOutputProcessorRef,
         local_cache: GlobalStateOutputProcessorRef,

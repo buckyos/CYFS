@@ -167,9 +167,11 @@ impl NamedCacheClient {
 
         //TODO:需要的时候可以选择和gateway用同一个bdt stack
         let mut init_sn_peers = vec![];
-        let sn = cyfs_util::get_default_sn_desc();
-        self.desc.get_mut().unwrap().body_mut().as_mut().unwrap().content_mut().mut_sn_list().push(sn.desc().device_id());
-        init_sn_peers.push(sn);
+        let list = cyfs_util::get_sn_desc().to_owned();
+        for (id, sn) in list {
+            self.desc.get_mut().unwrap().body_mut().as_mut().unwrap().content_mut().mut_sn_list().push(id);
+            init_sn_peers.push(sn);
+        }
 
         let device_cache = BdtDeviceCache::new(client);
 

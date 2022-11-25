@@ -6622,6 +6622,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple_logger"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e190a521c2044948158666916d9e872cbb9984f755e9bb3b5b75a836205affcd"
+dependencies = [
+ "atty",
+ "colored",
+ "log 0.4.17",
+ "time 0.3.17",
+ "windows-sys 0.42.0",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6659,6 +6672,20 @@ dependencies = [
  "log 0.4.17",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "sn-updater"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "clap",
+ "cyfs-base",
+ "cyfs-base-meta",
+ "cyfs-meta-lib",
+ "cyfs-util",
+ "log 0.4.17",
+ "simple_logger 4.0.0",
 ]
 
 [[package]]
