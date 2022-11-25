@@ -11,16 +11,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 // name缓存超时时间，默认一天
-// const NAME_CACHE_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60 * 24;
-const NAME_CACHE_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
+const NAME_CACHE_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60 * 24;
+// const NAME_CACHE_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
 
 // name查询但不存在的超时时间，默认一小时
-//const NAME_CACHE_NOT_FOUND_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60;
-const NAME_CACHE_NOT_FOUND_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
+const NAME_CACHE_NOT_FOUND_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60;
+// const NAME_CACHE_NOT_FOUND_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
 
 // 查询出错重试的最大时长，共享同一个
-// const NAME_CACHE_ERROR_MAX_RETRY_INTERVAL_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60;
-const NAME_CACHE_ERROR_MAX_RETRY_INTERVAL_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
+const NAME_CACHE_ERROR_MAX_RETRY_INTERVAL_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60;
+// const NAME_CACHE_ERROR_MAX_RETRY_INTERVAL_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
 
 // 递归解析的最大深度
 const NAME_RESOLVE_MAX_DEPTH: u8 = 8;
