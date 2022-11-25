@@ -18,17 +18,19 @@ pub(crate) struct RawMetaCache {
 }
 
 impl RawMetaCache {
-    pub fn new(target: MetaMinerTarget, noc: NamedObjectCacheRef) -> Self {
+    pub fn new(target: MetaMinerTarget, noc: NamedObjectCacheRef) -> MetaCacheRef {
         info!("raw meta cache: {}", target.to_string());
         let meta_client =
             MetaClient::new_target(target).with_timeout(std::time::Duration::from_secs(60 * 2));
 
-        Self {
+        let ret = Self {
             noc,
             meta_client: Arc::new(meta_client),
             device_id: DeviceId::default(),
             fail_cache: MetaFailCache::new(),
-        }
+        };
+
+        Arc::new(Box::new(ret))
     }
 
     async fn get_from_meta(

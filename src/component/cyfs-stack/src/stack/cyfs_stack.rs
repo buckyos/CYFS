@@ -133,6 +133,13 @@ impl CyfsStackImpl {
 
         let noc = Self::init_raw_noc(isolate, known_objects).await?;
 
+        // meta with cache
+        let raw_meta_cache = RawMetaCache::new(param.meta.target, noc.clone());
+
+        // 名字解析服务
+        let name_resolver = NameResolver::new(raw_meta_cache.clone(), noc.clone());
+        name_resolver.start().await?;
+
         // 加载全局状态
         let (local_root_state, local_cache) =
             Self::load_global_state(&device_id, &device, noc.clone(), &config).await?;
@@ -146,10 +153,7 @@ impl CyfsStackImpl {
         let trans_store = create_trans_store(isolate).await?;
         let chunk_manager = Arc::new(ChunkManager::new());
 
-        // 不使用rules的meta_client
-        // 内部依赖带rule-noc，需要使用延迟绑定策略
-        let raw_meta_cache = RawMetaCache::new(param.meta.target, noc.clone());
-
+        // let sn_config_manager = SNConfigManager::new(name_resolver.clone(), )
         // init object searcher for global use
         let obj_searcher = CompoundObjectSearcher::new(
             noc.clone(),
@@ -174,7 +178,7 @@ impl CyfsStackImpl {
         );
 
         let fail_handler =
-            ObjectFailHandler::new(raw_meta_cache.clone_meta(), device_manager.clone_cache());
+            ObjectFailHandler::new(raw_meta_cache.clone(), device_manager.clone_cache());
 
         // Init zone manager
         let root_state_processor = GlobalStateOutputTransformer::new(
@@ -191,7 +195,7 @@ impl CyfsStackImpl {
             device_manager.clone_cache(),
             device_id.clone(),
             device_category,
-            raw_meta_cache.clone_meta(),
+            raw_meta_cache.clone(),
             fail_handler.clone(),
             root_state_processor,
             local_cache_processor,
@@ -284,10 +288,6 @@ impl CyfsStackImpl {
             router_handlers.clone(),
         );
 
-        // 名字解析服务
-        let name_resolver = NameResolver::new(raw_meta_cache.clone_meta(), noc.clone());
-        name_resolver.start().await?;
-
         let util_service = UtilService::new(
             noc.clone(),
             ndc.clone(),
@@ -310,7 +310,7 @@ impl CyfsStackImpl {
             zone_manager.clone(),
             ood_resoler.clone(),
             router_handlers.clone(),
-            raw_meta_cache.clone_meta(),
+            raw_meta_cache.clone(),
             fail_handler.clone(),
             chunk_manager.clone(),
         );

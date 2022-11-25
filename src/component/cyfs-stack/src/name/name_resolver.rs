@@ -51,10 +51,10 @@ pub struct NameResolver {
 }
 
 impl NameResolver {
-    pub fn new(meta_cache: Box<dyn MetaCache>, noc: NamedObjectCacheRef) -> Self {
+    pub fn new(meta_cache: MetaCacheRef, noc: NamedObjectCacheRef) -> Self {
         let id = "cyfs-name-cache";
         Self {
-            meta_cache: Arc::new(meta_cache),
+            meta_cache,
             cache: NOCCollectionSync::new(id, noc),
             resolving_list: Arc::new(Mutex::new(HashMap::new())),
             next_retry_interval: Arc::new(AtomicU64::new(1000 * 1000 * 2)),

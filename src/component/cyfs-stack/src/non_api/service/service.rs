@@ -3,7 +3,7 @@ use super::super::noc::*;
 use super::super::non::*;
 use super::super::router::*;
 use crate::forward::ForwardProcessorManager;
-use crate::meta::{MetaCache, ObjectFailHandler};
+use crate::meta::{MetaCacheRef, ObjectFailHandler};
 use crate::ndn_api::*;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
@@ -37,7 +37,7 @@ impl NONService {
         ood_resovler: OodResolver,
 
         router_handlers: RouterHandlersManager,
-        meta_cache: Box<dyn MetaCache>,
+        meta_cache: MetaCacheRef,
         fail_handler: ObjectFailHandler,
         chunk_manager: ChunkManagerRef,
     ) -> (NONService, NDNService) {
