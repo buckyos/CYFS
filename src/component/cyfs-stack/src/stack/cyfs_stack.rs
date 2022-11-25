@@ -153,7 +153,19 @@ impl CyfsStackImpl {
         let trans_store = create_trans_store(isolate).await?;
         let chunk_manager = Arc::new(ChunkManager::new());
 
-        // let sn_config_manager = SNConfigManager::new(name_resolver.clone(), )
+        // init sn config manager
+        let root_state_processor = GlobalStateOutputTransformer::new(
+            local_root_state.clone_global_state_processor(),
+            RequestSourceInfo::new_local_system(),
+        );
+        let sn_config_manager = SNConfigManager::new(
+            name_resolver.clone(),
+            raw_meta_cache.clone(),
+            root_state_processor,
+            noc.clone(),
+        );
+        sn_config_manager.init().await?;
+
         // init object searcher for global use
         let obj_searcher = CompoundObjectSearcher::new(
             noc.clone(),
@@ -161,7 +173,7 @@ impl CyfsStackImpl {
             raw_meta_cache.clone_meta(),
         );
 
-        // 内部依赖带rule-noc，需要使用延迟绑定策略
+        // init signs verifier
         let verifier = ObjectVerifier::new(
             bdt_param.device.desc().device_id().to_owned(),
             raw_meta_cache.clone_meta(),

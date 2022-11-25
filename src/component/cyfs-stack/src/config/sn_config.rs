@@ -41,6 +41,8 @@ declare_collection_codec_for_serde!(SNConfig);
 
 type SNConfigCollection = NOCCollectionRWSync<SNConfig>;
 
+
+#[derive(Debug)]
 enum SyncSNResult {
     Success,
     ErrorState,
@@ -115,7 +117,8 @@ impl SNConfigManager {
     async fn sync(&self) {
         let mut next_interval = 60;
         loop {
-            let interval = match self.sync_once().await {
+            let ret = self.sync_once().await;
+            let interval = match ret {
                 SyncSNResult::Success => 60 * 60 * 24,
                 SyncSNResult::ErrorState => 60 * 60,
                 SyncSNResult::Failed => {
@@ -129,6 +132,7 @@ impl SNConfigManager {
                 }
             };
 
+            info!("sync sn config complete: result={:?}, will retry after {}s", ret, interval);
             async_std::task::sleep(std::time::Duration::from_secs(interval)).await;
         }
     }
