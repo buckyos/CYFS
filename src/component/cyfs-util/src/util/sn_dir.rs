@@ -3,8 +3,9 @@ use cyfs_base::*;
 pub struct SNDirParser;
 
 impl SNDirParser {
-    pub fn parse(id: &ObjectId, object_raw: &[u8]) -> BuckyResult<Vec<(DeviceId, Device)>> {
+    pub fn parse(id: Option<&ObjectId>, object_raw: &[u8]) -> BuckyResult<Vec<(DeviceId, Device)>> {
         let dir = Dir::clone_from_slice(&object_raw)?;
+        let id = id.cloned().unwrap_or(dir.desc().calculate_id());
 
         let mut sn_list = vec![];
         match dir.desc().content().obj_list() {
@@ -12,7 +13,7 @@ impl SNDirParser {
                 for (path, node) in list.object_map() {
                     let path = path.trim_start_matches('/');
                     if path.starts_with("list/") {
-                        let (sn_id, buf) = Self::load_sn_node(id, &dir, &node)?;
+                        let (sn_id, buf) = Self::load_sn_node(&id, &dir, &node)?;
                         match Device::clone_from_slice(&buf) {
                             Ok(device) => {
                                 let real_id = device.desc().device_id();
@@ -176,7 +177,7 @@ mod test {
         let dir = SNDirGenerator::gen_from_dir(&None, &root).unwrap();
         let object_raw = dir.to_vec().unwrap();
         let dir_id = dir.desc().calculate_id();
-        let list = SNDirParser::parse(&dir_id, object_raw).unwrap();
+        let list = SNDirParser::parse(Some(&dir_id), &object_raw).unwrap();
         for item in list {
             info!("got sn item: {}", item.0);
         }

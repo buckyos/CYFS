@@ -179,7 +179,7 @@ impl SNConfigManager {
         match self.noc.get_object(&noc_req).await {
             Ok(Some(object)) => {
                 info!("load sn from noc: {}", id);
-                let list = SNDirParser::parse(&id, &object.object.object_raw)?;
+                let list = SNDirParser::parse(Some(id), &object.object.object_raw)?;
                 *self.sn_list.lock().unwrap() = list;
 
                 Ok(())
@@ -211,7 +211,7 @@ impl SNConfigManager {
 
         let object = ret.unwrap();
         let id = object.object.object_id();
-        let list = SNDirParser::parse(&id, &object.object_raw)?;
+        let list = SNDirParser::parse(Some(&id), &object.object_raw)?;
 
         {
             let mut cache = self.coll.get().unwrap().coll().write().unwrap();

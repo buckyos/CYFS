@@ -269,6 +269,7 @@ impl CyfsStackImpl {
             tracker.clone(),
             router_handlers.clone(),
             chunk_manager.clone(),
+            &sn_config_manager,
         )
         .await?;
 
@@ -704,6 +705,7 @@ impl CyfsStackImpl {
         tracker: Box<dyn TrackerCache>,
         router_handlers: RouterHandlersManager,
         chunk_manager: ChunkManagerRef,
+        sn_config_manager: &SNConfigManager,
     ) -> BuckyResult<(StackGuard, BdtNDNEventHandler)> {
         let chunk_store = Box::new(ChunkStoreReader::new(
             chunk_manager.clone(),
@@ -730,9 +732,19 @@ impl CyfsStackImpl {
             bdt_params.config.interface.udp.sn_only = sn_only;
         }
 
+        // priority: params sn(always loaded from config dir) > sn config manager(always loaded from meta) > buildin sn
         if !params.known_sn.is_empty() {
             bdt_params.known_sn = Some(params.known_sn);
+        } else {
+            // use sn from sn config manager
+            let mut sn_list = sn_config_manager.get_sn_list();
+            if sn_list.is_empty() {
+                sn_list = cyfs_util::get_default_sn_desc().clone();
+            }
+
+            bdt_params.known_sn = Some(sn_list.into_iter().map(|v| v.1).collect());
         }
+
         if !params.known_device.is_empty() {
             bdt_params.known_device = Some(params.known_device);
         }

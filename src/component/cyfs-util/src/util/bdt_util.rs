@@ -98,10 +98,8 @@ fn load_device_object(file: &Path) -> Vec<(DeviceId, Device)> {
     }
 }
 
-// 读取本地的pn配置，在{root}/etc/desc/pn.desc
-// 如果函数返回None，就不配置pn
-// 如果函数返回Some，就一定将返回值配置成pn
-fn load_pn_desc() -> Vec<(DeviceId, Device)> {
+// 读取本地的pn配置，在{root}/etc/desc/pn.desc and {root}/etc/desc/pn
+fn load_local_pn_desc() -> Vec<(DeviceId, Device)> {
     let mut default_pn_file = get_cyfs_root_path();
     default_pn_file.push("etc");
     default_pn_file.push("desc");
@@ -119,13 +117,13 @@ fn load_pn_desc() -> Vec<(DeviceId, Device)> {
     }
 }
 
-fn load_default_sn_desc() -> Vec<(DeviceId, Device)> {
+fn load_local_sn_desc() -> Vec<(DeviceId, Device)> {
     let mut default_sn_file = get_cyfs_root_path();
     default_sn_file.push("etc");
     default_sn_file.push("desc");
 
     let dir = default_sn_file.join("sn");
-    let ret = if dir.is_dir() {
+    if dir.is_dir() {
         load_device_objects_list(&dir)
     } else {
         default_sn_file.push("sn.desc");
@@ -134,12 +132,10 @@ fn load_default_sn_desc() -> Vec<(DeviceId, Device)> {
         } else {
             vec![]
         }
-    };
-
-    if ret.len() > 0 {
-        return ret;
     }
+}
 
+fn load_default_sn_desc() -> Vec<(DeviceId, Device)> {
     let sn_raw = match cyfs_base::get_channel() {
         CyfsChannel::Nightly => env!("NIGHTLY_SN_RAW"),
         CyfsChannel::Beta => env!("BETA_SN_RAW"),
@@ -147,8 +143,9 @@ fn load_default_sn_desc() -> Vec<(DeviceId, Device)> {
             unreachable!()
         }
     };
-    let (desc, _) = Device::raw_decode(&hex::decode(sn_raw).unwrap()).unwrap();
-    vec![(desc.desc().device_id(), desc)]
+
+    let object_raw = hex::decode(sn_raw).unwrap();
+    SNDirParser::parse(None, &object_raw).unwrap()
 }
 
 pub fn get_default_known_peers() -> Vec<Device> {
@@ -201,22 +198,44 @@ pub fn get_device_desc(name: &str) -> BuckyResult<(Device, PrivateKey)> {
 }
 
 lazy_static::lazy_static! {
+    pub static ref LOCAL_SN: Vec<(DeviceId, Device)> = load_local_sn_desc();
+    pub static ref LOCAL_PN: Vec<(DeviceId, Device)> = load_local_pn_desc();
+
     pub static ref DEFAULT_SN: Vec<(DeviceId, Device)> = load_default_sn_desc();
-    pub static ref DEFAULT_PN: Vec<(DeviceId, Device)> = load_pn_desc();
 }
 
-pub fn get_pn_desc() -> &'static Vec<(DeviceId, Device)> {
-    &DEFAULT_PN
+// get configed pn
+pub fn get_local_pn_desc() -> &'static Vec<(DeviceId, Device)> {
+    &LOCAL_PN
 }
 
-pub fn get_pn_desc_id_list() -> Vec<DeviceId> {
-    DEFAULT_PN.iter().map(|item| item.0.clone()).collect()
+pub fn get_local_pn_desc_id_list() -> Vec<DeviceId> {
+    LOCAL_PN.iter().map(|item| item.0.clone()).collect()
 }
 
+// configed sn
+pub fn get_local_sn_desc() -> &'static Vec<(DeviceId, Device)> {
+    &LOCAL_SN
+}
+
+pub fn get_local_sn_desc_id_list() -> Vec<DeviceId> {
+    LOCAL_SN.iter().map(|item| item.0.clone()).collect()
+}
+
+// buildin default sn
 pub fn get_default_sn_desc() -> &'static Vec<(DeviceId, Device)> {
     &DEFAULT_SN
 }
 
 pub fn get_default_sn_desc_id_list() -> Vec<DeviceId> {
     DEFAULT_SN.iter().map(|item| item.0.clone()).collect()
+}
+
+// get local sn, if empty, get the buildin sn
+pub fn get_sn_desc() -> &'static Vec<(DeviceId, Device)> {
+    if LOCAL_SN.len() > 0 {
+        &LOCAL_SN
+    } else {
+        &DEFAULT_SN
+    }
 }
