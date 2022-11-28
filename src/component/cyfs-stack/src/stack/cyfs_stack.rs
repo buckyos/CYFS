@@ -111,16 +111,15 @@ pub struct CyfsStackImpl {
 }
 
 impl CyfsStackImpl {
-    // known_objects 外部指定的已知对象列表
     pub async fn open(
         bdt_param: BdtStackParams,
         param: CyfsStackParams,
-        known_objects: Vec<KnownObject>,
+        known_objects: Vec<KnownObject>, // known_objects 外部指定的已知对象列表
     ) -> BuckyResult<Self> {
         Self::register_custom_objects_format();
 
         let stack_params = param.clone();
-        let config = StackGlobalConfig::new(stack_params);
+        let config = StackGlobalConfig::new(stack_params, bdt_param.clone());
 
         let device = bdt_param.device.clone();
         let device_id = device.desc().device_id();
@@ -163,6 +162,7 @@ impl CyfsStackImpl {
             raw_meta_cache.clone(),
             root_state_processor,
             noc.clone(),
+            config.clone(),
         );
         sn_config_manager.init().await?;
 

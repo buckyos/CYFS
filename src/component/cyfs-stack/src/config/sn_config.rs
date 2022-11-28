@@ -1,13 +1,18 @@
+use crate::config::*;
 use crate::meta::*;
 use crate::name::*;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
-
 use cyfs_util::SNDirParser;
+
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+
+/*
+sn config priority: local configuration file > meta > buildin
+*/
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 enum SNConfigListSource {
@@ -55,6 +60,7 @@ pub struct SNConfigManager {
     meta_cache: MetaCacheRef,
     root_state: GlobalStateOutputProcessorRef,
     noc: NamedObjectCacheRef,
+    config: StackGlobalConfig,
 
     sn_list: Arc<Mutex<Vec<(DeviceId, Device)>>>,
     coll: Arc<OnceCell<SNConfigCollection>>,
@@ -68,12 +74,15 @@ impl SNConfigManager {
         meta_cache: MetaCacheRef,
         root_state: GlobalStateOutputProcessorRef,
         noc: NamedObjectCacheRef,
+        config: StackGlobalConfig,
     ) -> Self {
         Self {
             name_resolver,
             meta_cache,
             root_state,
             noc,
+            config,
+
             sn_list: Arc::new(Mutex::new(vec![])),
             coll: Arc::new(OnceCell::new()),
             bdt_stack: Arc::new(OnceCell::new()),
@@ -93,6 +102,12 @@ impl SNConfigManager {
     }
 
     pub async fn init(&self) -> BuckyResult<()> {
+        // Local file sn configuration has the highest priority
+        if !self.config.get_bdt_params().known_sn.is_empty() {
+            warn!("will use local configed sn config instead of meta sn config!");
+            return Ok(());
+        }
+
         let coll = self.load_state().await?;
         if let Err(_) = self.coll.set(coll) {
             unreachable!();
@@ -302,9 +317,7 @@ impl SNConfigManager {
         let new_list: Vec<&DeviceId> = list.iter().map(|v| &v.0).collect();
         info!("sn list updated: {:?} => {:?}", current_list, new_list);
 
-        if let Some(bdt_stack) = self.bdt_stack.get() {
-
-        }
+        if let Some(bdt_stack) = self.bdt_stack.get() {}
 
         *current = list;
     }

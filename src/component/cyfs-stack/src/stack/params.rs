@@ -150,6 +150,7 @@ impl CyfsStackParams {
     }
 }
 
+#[derive(Clone)]
 pub struct BdtStackParams {
     pub device: Device,
     pub tcp_port_mapping: Vec<(Endpoint, u16)>,
