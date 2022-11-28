@@ -55,7 +55,8 @@ impl AppController {
         self.shared_stack = Some(shared_stack);
         self.owner = Some(owner);
         let mut named_cache_client = NamedCacheClient::new();
-        named_cache_client.init(None, None, None).await?;
+        // TODO: 需要从gateway定期更新sn_list
+        named_cache_client.init(None, None, None, None).await?;
         self.named_cache_client = Some(named_cache_client);
 
         Ok(())

@@ -70,6 +70,7 @@ async fn main_run() {
         .arg(Arg::with_name("url_file").long("url_file").takes_value(true).help("save ffs url to path(optional)"))
         .arg(Arg::with_name("desc").short("d").long("desc").takes_value(true).help("bdt init desc, use on own risk"))
         .arg(Arg::with_name("output").long("output").takes_value(true).help("chunk save path"))
+        .arg(Arg::with_name("stack_sn").long("use-stack-sn").hidden(true).help("use local runtime`s newest sn list"))
         .arg(meta_arg.clone());
 
     let matches = App::new("cyfs-client").version(cyfs_base::get_version())
@@ -79,6 +80,7 @@ async fn main_run() {
             .arg(Arg::with_name("url").required(true).help("file url to get").index(1))
             .arg(Arg::with_name("dest").help("dest file path").index(2))
             .arg(Arg::with_name("desc").short("d").long("desc").takes_value(true).help("bdt init desc, use on own risk"))
+            .arg(Arg::with_name("stack_sn").long("use-stack-sn").hidden(true).help("use local runtime`s newest sn list"))
             .arg(meta_arg.clone())
         )
         .subcommand(put_command.clone().name("create").about("create filedesc, only for test"))
@@ -114,7 +116,8 @@ async fn main_run() {
             let mut client = NamedCacheClient::new();
             let (device_desc, device_secret) = get_device_desc(&matches, "desc");
             let meta_target = matches.value_of("meta_target").map(str::to_string);
-            client.init(device_desc, device_secret, meta_target).await.unwrap();
+            let sn_list = cyfs_util::get_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect();
+            client.init(device_desc, device_secret, meta_target, Some(sn_list)).await.unwrap();
 
             if let Some((owner_desc, secret)) = get_desc(&matches, "owner") {
                 info!("@put...");
@@ -139,7 +142,8 @@ async fn main_run() {
             let mut client = NamedCacheClient::new();
             let (device_desc, device_sec) = get_device_desc(matches, "desc");
             let meta_target = matches.value_of("meta_target").map(str::to_string);
-            client.init(device_desc, device_sec, meta_target).await.unwrap();
+            let sn_list = cyfs_util::get_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect();
+            client.init(device_desc, device_sec, meta_target, Some(sn_list)).await.unwrap();
             async_std::task::spawn(async move {
                 if get(&client, &url, &dest_path).await.is_err() {
                     std::process::exit(1);
@@ -155,7 +159,8 @@ async fn main_run() {
             let mut client = NamedCacheClient::new();
             let (device_desc, device_sec) = get_device_desc(matches, "desc");
             let meta_target = matches.value_of("meta_target").map(str::to_string);
-            client.init(device_desc, device_sec, meta_target).await.unwrap();
+            let sn_list = cyfs_util::get_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect();
+            client.init(device_desc, device_sec, meta_target, Some(sn_list)).await.unwrap();
             async_std::task::spawn(async move {
                 if get_by_id(&client, &fileid, &dest_path, None).await.is_err() {
                     std::process::exit(1);
@@ -214,7 +219,8 @@ async fn main_run() {
             let mut client = NamedCacheClient::new();
             let meta_target = matches.value_of("meta_target").map(str::to_string);
             let url = matches.value_of("url").unwrap().to_owned();
-            client.init(None, None, meta_target).await.unwrap();
+            let sn_list = cyfs_util::get_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect();
+            client.init(None, None, meta_target, Some(sn_list)).await.unwrap();
             async_std::task::spawn(async move {
                 match client.extract_cyfs_url(&url).await {
                     Ok((owner, id, inner)) => {
