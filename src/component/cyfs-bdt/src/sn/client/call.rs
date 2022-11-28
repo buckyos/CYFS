@@ -49,14 +49,6 @@ impl CallManager {
                   with_local: bool,
                   payload_generater: impl Fn(&SnCall) -> Vec<u8>
     ) -> impl Future<Output = Result<Device, BuckyError>> {
-        let stack = Stack::from(&self.stack);
-
-        // get nearest sn for remote peer
-        let sn = 
-            stack.device_cache()
-                .get_nearest_of(remote_peerid)
-                .map_or_else(|| sn.clone(), |d| d);
-
         let seq = self.seq_genarator.generate();
         let call_result = Arc::new(RwLock::new(CallResult { found_peer: None, waker: None }));
 
