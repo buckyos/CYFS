@@ -246,6 +246,8 @@ impl UtilLocalService {
 
             owner_id,
             cyfs_root,
+
+            sn_list: self.bdt_stack.sn_client().sn_list().clone(),
         };
 
         Ok(UtilGetDeviceStaticInfoInputResponse { info })
