@@ -191,17 +191,12 @@ impl HttpRequestor for BdtHttpRequestor {
             self.remote_addr()
         );
 
-        // 如果device对象里面没有指定sn_list，那么使用默认值
-        let mut sn_list = self.device.connect_info().sn_list().clone();
-        if sn_list.is_empty() {
-            sn_list = cyfs_util::get_default_sn_desc_id_list();
-        }
 
         let begin = std::time::Instant::now();
         let build_params = BuildTunnelParams {
             remote_const: self.device.desc().clone(),
-            remote_sn: sn_list,
-            remote_desc: None,
+            remote_sn: vec![],
+            remote_desc: Some(self.device.clone()),
         };
 
         let bdt_stream = self
