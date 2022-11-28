@@ -742,7 +742,7 @@ impl CyfsStackImpl {
             // use sn from sn config manager
             let mut sn_list = sn_config_manager.get_sn_list();
             if sn_list.is_empty() {
-                sn_list = cyfs_util::get_default_sn_desc().clone();
+                sn_list = cyfs_util::get_builtin_sn_desc().clone();
             }
 
             bdt_params.known_sn = Some(sn_list.into_iter().map(|v| v.1).collect());

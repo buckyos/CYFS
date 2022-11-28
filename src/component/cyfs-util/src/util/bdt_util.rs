@@ -222,12 +222,12 @@ pub fn get_local_sn_desc_id_list() -> Vec<DeviceId> {
     LOCAL_SN.iter().map(|item| item.0.clone()).collect()
 }
 
-// buildin default sn
-pub fn get_default_sn_desc() -> &'static Vec<(DeviceId, Device)> {
+// builtin sn
+pub fn get_builtin_sn_desc() -> &'static Vec<(DeviceId, Device)> {
     &DEFAULT_SN
 }
 
-pub fn get_default_sn_desc_id_list() -> Vec<DeviceId> {
+pub fn get_builtin_sn_desc_id_list() -> Vec<DeviceId> {
     DEFAULT_SN.iter().map(|item| item.0.clone()).collect()
 }
 
