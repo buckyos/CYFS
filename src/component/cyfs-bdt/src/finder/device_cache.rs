@@ -80,6 +80,18 @@ impl DeviceCache {
 }
 
 impl DeviceCache {
+    pub fn reset_sn_list(&self, sn_list: &Vec<Device>) {
+        let mut bucketes = DeviceBucketes::new();
+
+        sn_list.iter()
+            .for_each(| device | {
+                let _ = bucketes.set(&device.desc().object_id(), device);
+            });
+
+        let caches = &mut *self.sn_area_cache.write().unwrap();
+        std::mem::swap(&mut bucketes, caches);
+    }
+
     pub fn add_sn(&self, sn: &Device) {
         let _ = self.sn_area_cache.write().unwrap()
             .set(&sn.desc().object_id(), sn);

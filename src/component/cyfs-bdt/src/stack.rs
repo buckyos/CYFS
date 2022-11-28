@@ -513,6 +513,27 @@ impl Stack {
         self.tunnel_manager().reset();
     }
 
+    pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
+        info!("{} reset_sn_list {:?}", self, sn_list);
+        self.device_cache().reset_sn_list(&sn_list);
+
+        // need get nearest sn
+        if let Some(sn) = self.device_cache().get_nearest_of(self.local_device_id()) {
+            let sn_id = sn.desc().device_id();
+            if self.sn_client().sn_list().contains(&sn_id) {
+                info!("{} has been exists in sn clients.", sn_id);
+            } else {
+                let _ = self.sn_client().stop_ping();
+                self.sn_client().add_sn_ping(&sn, true, None);
+            }
+        } else {
+            // don't find nearest sn
+            unreachable!("failed found SN-device sn-list: {}", sn_list.len());
+        }
+
+        Ok(())
+    }
+
     pub async fn reset(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {
         info!("{} reset {:?}", self, endpoints);
         let listener = self.net_manager().reset(endpoints.as_slice())?;
