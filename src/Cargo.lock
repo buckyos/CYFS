@@ -1852,6 +1852,7 @@ dependencies = [
  "cyfs-chunk",
  "cyfs-chunk-client",
  "cyfs-debug",
+ "cyfs-lib",
  "cyfs-meta-lib",
  "cyfs-util",
  "hex",

@@ -12,6 +12,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
+use std::time::Duration;
 
 pub type AppActionResult<T> = Result<T, SubErrorCode>;
 
@@ -26,6 +27,19 @@ pub struct AppController {
     docker_api: Option<DockerApi>,
     named_cache_client: Option<NamedCacheClient>,
     use_docker: bool,
+}
+
+async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
+    stack.wait_online(Some(Duration::from_secs(5))).await?;
+
+    let info = stack.util().get_device_static_info(UtilGetDeviceStaticInfoOutputRequest::new()).await?;
+    let mut devices = vec![];
+    for sn_id in &info.info.sn_list {
+        let resp = stack.non_service().get_object(NONGetObjectOutputRequest::new_noc(sn_id.object_id().clone(), None)).await?;
+        devices.push(Device::clone_from_slice(&resp.object.object_raw)?);
+    }
+
+    Ok(devices)
 }
 
 impl AppController {
@@ -52,11 +66,16 @@ impl AppController {
         shared_stack: SharedCyfsStack,
         owner: ObjectId,
     ) -> BuckyResult<()> {
+        let sn_list = get_sn_list(&shared_stack).await.unwrap_or_else(|e| {
+            error!("get sn list from runtime err {}, use built-in sn list", e);
+            get_builtin_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect()
+        });
+
         self.shared_stack = Some(shared_stack);
         self.owner = Some(owner);
         let mut named_cache_client = NamedCacheClient::new();
         // TODO: 需要从gateway定期更新sn_list
-        named_cache_client.init(None, None, None, None).await?;
+        named_cache_client.init(None, None, None, Some(sn_list)).await?;
         self.named_cache_client = Some(named_cache_client);
 
         Ok(())
