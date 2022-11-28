@@ -28,7 +28,8 @@ use crate::{
     },
     sn::client::PingClientCalledEvent, 
     stream::{StreamContainer, RemoteSequence}, 
-    stack::{Stack, WeakStack},
+    stack::{Stack, WeakStack}, 
+    dht::KadId, 
     MTU
 };
 use super::{
@@ -43,6 +44,21 @@ pub struct BuildTunnelParams {
     pub remote_const: DeviceDesc, 
     pub remote_sn: Vec<DeviceId>, 
     pub remote_desc: Option<Device>,
+}
+
+
+impl BuildTunnelParams {
+    pub(crate) async fn nearest_sn(&self, stack: &Stack) -> BuckyResult<Device> {
+        let remote = self.remote_const.device_id();
+        let sn_id = self.remote_desc.as_ref().and_then(|device| {
+            device.connect_info().sn_list().get(0).cloned()
+        }).or_else(|| self.remote_sn.iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).cloned())
+        .or_else(|| stack.device_cache().nearest_sn_of(&remote))
+        .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidParam, "neither remote device nor sn in build params"))?;
+
+        stack.device_cache().get(&sn_id).await
+            .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"))
+    }
 }
 
 #[derive(Clone)]

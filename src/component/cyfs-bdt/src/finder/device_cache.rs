@@ -3,8 +3,8 @@ use std::{
     collections::hash_map::HashMap
 };
 use cyfs_base::*;
+use crate::dht::*;
 use super::outer_device_cache::*;
-use crate::dht::DeviceBucketes;
 
 pub struct DeviceCache {
     local_id: DeviceId,
@@ -13,7 +13,7 @@ pub struct DeviceCache {
     //FIXME 先简单干一个
     cache: RwLock<HashMap<DeviceId, Device>>,
     // sn
-    sn_area_cache: RwLock<DeviceBucketes>,
+    sn_list: RwLock<Vec<DeviceId>>,
 }
 
 impl DeviceCache {
@@ -23,7 +23,7 @@ impl DeviceCache {
             local: RwLock::new(local),
             cache: RwLock::new(HashMap::new()),
             outer,
-            sn_area_cache: RwLock::new(DeviceBucketes::new()),
+            sn_list: RwLock::new(vec![]),
         }
     }
 
@@ -81,25 +81,18 @@ impl DeviceCache {
 
 impl DeviceCache {
     pub fn reset_sn_list(&self, sn_list: &Vec<Device>) {
-        let mut bucketes = DeviceBucketes::new();
-
-        sn_list.iter()
-            .for_each(| device | {
-                let _ = bucketes.set(&device.desc().object_id(), device);
-            });
-
-        let caches = &mut *self.sn_area_cache.write().unwrap();
-        std::mem::swap(&mut bucketes, caches);
+        let id_list: Vec<DeviceId> = sn_list.iter().map(|d| d.desc().device_id()).collect();
+        for (id, device) in id_list.iter().zip(sn_list.iter()) {
+            self.add(id, device);
+        }
+        *self.sn_list.write().unwrap() = id_list;
     }
 
-    pub fn add_sn(&self, sn: &Device) {
-        let _ = self.sn_area_cache.write().unwrap()
-            .set(&sn.desc().object_id(), sn);
+    pub fn nearest_sn_of(&self, remote: &DeviceId) -> Option<DeviceId> {
+        self.sn_list.read().unwrap().iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).cloned()
     }
 
-    pub fn get_nearest_of(&self, id:& DeviceId) -> Option<Device> {
-        self.sn_area_cache.read().unwrap()
-            .get_nearest_of(id.object_id())
-            .cloned()
+    pub fn sn_list(&self) -> Vec<DeviceId> {
+        self.sn_list.read().unwrap().clone()
     }
 }

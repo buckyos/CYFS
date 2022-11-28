@@ -252,11 +252,6 @@ impl Stack {
             local_secret.clone(),
         );
 
-        let mut known_sn = vec![];
-        if params.known_sn.is_some() {
-            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
-        }
-
         let mut passive_pn = vec![];
         if params.passive_pn.is_some() {
             std::mem::swap(&mut passive_pn, params.passive_pn.as_mut().unwrap());
@@ -269,12 +264,6 @@ impl Stack {
             let bound_endpoints = net_manager.listener().endpoints();
             for ep in bound_endpoints {
                 device_endpoints.push(ep);
-            }
-
-
-            let sn_list = device.mut_connect_info().mut_sn_list();
-            for sn in known_sn.iter().map(|d| d.desc().device_id()) {
-                sn_list.push(sn);
             }
             
             let passive_pn_list = device.mut_connect_info().mut_passive_pn_list();
@@ -313,6 +302,13 @@ impl Stack {
             lazy_components: None, 
             ndn: None
         }));
+
+        let mut known_sn = vec![];
+        if params.known_sn.is_some() {
+            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
+        }
+        stack.device_cache().reset_sn_list(&known_sn);
+
         let datagram_manager = DatagramManager::new(stack.to_weak());
 
         let proxy_manager = ProxyManager::new(stack.to_weak());
@@ -360,14 +356,9 @@ impl Stack {
         let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
         stack_impl.ndn = Some(ndn);
 
-        for sn in known_sn.iter() {
-            stack.device_cache().add(&sn.desc().device_id(), &sn);
-            stack.device_cache().add_sn(&sn);
-            // stack.sn_client().add_sn_ping(&sn, true, None);
-        }
         // get nearest sn in sn-list
-        if let Some(sn) = stack.device_cache().get_nearest_of(stack.local_device_id()) {
-            stack.sn_client().add_sn_ping(&sn, true, None);
+        if let Some(sn) = stack.device_cache().nearest_sn_of(stack.local_device_id()) {
+            stack.sn_client().add_sn_ping(&stack.device_cache().get(&sn).await.unwrap(), true, None);
         } else {
             // don't find nearest sn
             warn!("failed found SN-device sn-list: {}", known_sn.len());
@@ -521,13 +512,12 @@ impl Stack {
         self.device_cache().reset_sn_list(&sn_list);
 
         // need get nearest sn
-        if let Some(sn) = self.device_cache().get_nearest_of(self.local_device_id()) {
-            let sn_id = sn.desc().device_id();
+        if let Some(sn_id) = self.device_cache().nearest_sn_of(self.local_device_id()) {
             if self.sn_client().sn_list().contains(&sn_id) {
                 info!("{} has been exists in sn clients.", sn_id);
             } else {
                 let _ = self.sn_client().stop_ping();
-                self.sn_client().add_sn_ping(&sn, true, None);
+                self.sn_client().add_sn_ping(&self.device_cache().get(&sn_id).await.unwrap(), true, None);
             }
         } else {
             // don't find nearest sn

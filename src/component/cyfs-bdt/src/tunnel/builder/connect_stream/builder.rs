@@ -90,16 +90,15 @@ impl ConnectStreamBuilder {
         }))
     }
 
-    pub async fn build(&self) {
-        self.sync_state_with_stream();
+    async fn build_inner(&self) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
-        let stream = &self.0.stream;
+
         let local = stack.local().clone();
         let build_params = &self.0.params;
         
         let first_box = self.first_box(&local).await;
         if first_box.is_none() {
-            return ;
+            return Ok(());
         }
 
         let first_box = Arc::new(first_box.unwrap());
@@ -111,34 +110,25 @@ impl ConnectStreamBuilder {
         };
         
         if actions.len() == 0 {
-            let remote_sn = if build_params.remote_sn.len() == 0 {
-                stack.device_cache().get_nearest_of(&build_params.remote_const.device_id())
+            let remote_sn = build_params.nearest_sn(&stack).await?;
+            let actions = self.call_sn(remote_sn, first_box).await?;
+            if actions.len() == 0 {
+                Err(BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"))
             } else {
-                if let Some(sn) = stack.device_cache().get(&build_params.remote_sn[0]).await {
-                    Some(sn)
-                } else {
-                    let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"));
-                    return;
-                }
-            };
-
-            if let Some(remote_sn) = remote_sn {
-                match self.call_sn(remote_sn, first_box).await {
-                    Ok(actions) => {
-                        if actions.len() == 0 {
-                            let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"));
-                        }
-                    },
-                    Err(err) => {
-                        let msg = format!("call sn err:{}", err.msg());
-                        let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(err.code(), msg.as_str()));
-                    }
-                }
-            } else {
-                let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::InvalidParam, "neither remote device nor sn in build params"));
-                return;
+                Ok(())
             }
+        } else {
+            Ok(())
         }
+    }
+
+    pub async fn build(&self) {
+        self.sync_state_with_stream();
+
+        let _ = self.build_inner().await
+            .map_err(|err| {
+                let _ = self.0.stream.as_ref().cancel_connecting_with(&err);
+            });
     }
 
     async fn first_box(&self, local: &Device) -> Option<PackageBox> {
@@ -173,7 +163,7 @@ impl ConnectStreamBuilder {
         Some(first_box)
     }
 
-    async fn call_sn(&self, sn: Device, first_box: Arc<PackageBox>) -> Result<Vec<DynConnectStreamAction>, BuckyError> {
+    async fn call_sn(&self, sn: Device, first_box: Arc<PackageBox>) -> BuckyResult<Vec<DynConnectStreamAction>> {
         let stack = Stack::from(&self.0.stack);
         let stream = &self.0.stream;
         let tunnel = stream.as_ref().tunnel();
