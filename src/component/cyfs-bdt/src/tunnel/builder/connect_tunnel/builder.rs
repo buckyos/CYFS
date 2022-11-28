@@ -78,26 +78,26 @@ impl ConnectTunnelBuilder {
    
         if actions.len() == 0 {
             match {
-                if build_params.remote_sn.len() == 0 {
-                    Err(BuckyError::new(BuckyErrorCode::InvalidParam, "neither remote device nor sn in build params"))
+                if let Some(sn) = if build_params.remote_sn.len() == 0 {
+                    stack.device_cache().get_nearest_of(&build_params.remote_const.device_id())
                 } else {
-                    if let Some(sn) = stack.device_cache().get(&build_params.remote_sn[0]).await {
-                        match self.call_sn(sn, first_box).await {
-                            Ok(actions) => {
-                                if actions.len() == 0 {
-                                    Err(BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"))
-                                } else {
-                                    Ok(actions)
-                                }
-                            },
-                            Err(err) => {
-                                let msg = format!("call sn err:{}", err.msg());
-                                Err(BuckyError::new(err.code(), msg.as_str()))
+                    stack.device_cache().get(&build_params.remote_sn[0]).await
+                } {
+                    match self.call_sn(sn, first_box).await {
+                        Ok(actions) => {
+                            if actions.len() == 0 {
+                                Err(BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"))
+                            } else {
+                                Ok(actions)
                             }
+                        },
+                        Err(err) => {
+                            let msg = format!("call sn err:{}", err.msg());
+                            Err(BuckyError::new(err.code(), msg.as_str()))
                         }
-                    } else {
-                        Err(BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"))
-                    } 
+                    }
+                } else {
+                    Err(BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"))
                 }
             } {
                 Ok(_actions) => {

@@ -111,12 +111,19 @@ impl ConnectStreamBuilder {
         };
         
         if actions.len() == 0 {
-            if build_params.remote_sn.len() == 0 {
-                let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::InvalidParam, "neither remote device nor sn in build params"));
-                return;
-            } 
-            if let Some(sn) = stack.device_cache().get(&build_params.remote_sn[0]).await {
-                match self.call_sn(sn, first_box).await {
+            let remote_sn = if build_params.remote_sn.len() == 0 {
+                stack.device_cache().get_nearest_of(&build_params.remote_const.device_id())
+            } else {
+                if let Some(sn) = stack.device_cache().get(&build_params.remote_sn[0]).await {
+                    Some(sn)
+                } else {
+                    let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"));
+                    return;
+                }
+            };
+
+            if let Some(remote_sn) = remote_sn {
+                match self.call_sn(remote_sn, first_box).await {
                     Ok(actions) => {
                         if actions.len() == 0 {
                             let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"));
@@ -128,8 +135,9 @@ impl ConnectStreamBuilder {
                     }
                 }
             } else {
-                let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"));
-            } 
+                let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::InvalidParam, "neither remote device nor sn in build params"));
+                return;
+            }
         }
     }
 
