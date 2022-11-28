@@ -224,7 +224,7 @@ impl SNConfigManager {
             Ok(Some(object)) => {
                 info!("load sn from noc: {}", id);
                 let list = SNDirParser::parse(Some(id), &object.object.object_raw)?;
-                self.on_sn_list_changed(list);
+                self.on_sn_list_changed(list).await;
 
                 Ok(())
             }
@@ -306,20 +306,31 @@ impl SNConfigManager {
         }
 
         // update current sn list cache
-        self.on_sn_list_changed(list);
+        self.on_sn_list_changed(list).await;
 
         Ok(())
     }
 
-    fn on_sn_list_changed(&self, list: Vec<(DeviceId, Device)>) {
-        let mut current = self.sn_list.lock().unwrap();
-        let current_list: Vec<&DeviceId> = current.iter().map(|v| &v.0).collect();
-        let new_list: Vec<&DeviceId> = list.iter().map(|v| &v.0).collect();
-        info!("sn list updated: {:?} => {:?}", current_list, new_list);
+    async fn on_sn_list_changed(&self, list: Vec<(DeviceId, Device)>) {
+        {
+            let mut current = self.sn_list.lock().unwrap();
+            let current_list: Vec<&DeviceId> = current.iter().map(|v| &v.0).collect();
+            let new_list: Vec<&DeviceId> = list.iter().map(|v| &v.0).collect();
+            info!("sn list updated: {:?} => {:?}", current_list, new_list);
 
-        if let Some(bdt_stack) = self.bdt_stack.get() {}
+            *current = list.clone();
+        }
 
-        *current = list;
+        // notify bdt stack
+        if let Some(bdt_stack) = self.bdt_stack.get() {
+            let sn_list = list.into_iter().map(|v| v.1).collect();
+
+            if let Err(e) = bdt_stack.reset_sn_list(sn_list).await {
+                error!("reset bdt sn list error! {}", e);
+            } else {
+                info!("reset bdt sn list success!");
+            }
+        }
     }
 
     async fn load_state(&self) -> BuckyResult<SNConfigCollection> {
