@@ -331,34 +331,39 @@ impl Stack {
             None
         };
 
-        let components = StackLazyComponents {
-            sn_client: sn::client::ClientManager::create(stack.to_weak()),
-            tunnel_manager: TunnelManager::new(stack.to_weak()),
-            stream_manager: StreamManager::new(stack.to_weak()),
-            datagram_manager, 
-            proxy_manager, 
-            debug_stub: debug_stub.clone()
-        };
-        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-        stack_impl.lazy_components = Some(components);
-
-        let mut ndc = None;
-        std::mem::swap(&mut ndc, &mut params.ndc);
-        let mut tracker = None;
-        std::mem::swap(&mut tracker, &mut params.tracker);
-        let mut ndn_event = None;
-        std::mem::swap(&mut ndn_event, &mut params.ndn_event);
-
-        let mut chunk_store = None;
-        std::mem::swap(&mut chunk_store, &mut params.chunk_store);
-
-        let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
-        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-        stack_impl.ndn = Some(ndn);
+        {
+            let components = StackLazyComponents {
+                sn_client: sn::client::ClientManager::create(stack.to_weak()),
+                tunnel_manager: TunnelManager::new(stack.to_weak()),
+                stream_manager: StreamManager::new(stack.to_weak()),
+                datagram_manager, 
+                proxy_manager, 
+                debug_stub: debug_stub.clone()
+            };
+            
+            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+            stack_impl.lazy_components = Some(components);
+    
+            let mut ndc = None;
+            std::mem::swap(&mut ndc, &mut params.ndc);
+            let mut tracker = None;
+            std::mem::swap(&mut tracker, &mut params.tracker);
+            let mut ndn_event = None;
+            std::mem::swap(&mut ndn_event, &mut params.ndn_event);
+    
+            let mut chunk_store = None;
+            std::mem::swap(&mut chunk_store, &mut params.chunk_store);
+    
+            let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
+            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+            stack_impl.ndn = Some(ndn);
+        }   
+        
 
         // get nearest sn in sn-list
         if let Some(sn) = stack.device_cache().nearest_sn_of(stack.local_device_id()) {
-            stack.sn_client().add_sn_ping(&stack.device_cache().get(&sn).await.unwrap(), true, None);
+            let sn_device = stack.device_cache().get(&sn).await.unwrap();
+            stack.sn_client().add_sn_ping(&sn_device, true, None);
         } else {
             // don't find nearest sn
             warn!("failed found SN-device sn-list: {}", known_sn.len());
