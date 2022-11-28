@@ -100,7 +100,9 @@ impl AppManager {
         app_controller
             .prepare_start(self.shared_stack.clone(), self.owner.clone())
             .await?;
-        self.app_controller = Some(Arc::new(app_controller));
+        let controller = Arc::new(app_controller);
+        AppController::start_monitor_sn(controller.clone()).await;
+        self.app_controller = Some(controller);
 
         self.cmd_executor = Some(AppCmdExecutor::new(
             self.owner.clone(),

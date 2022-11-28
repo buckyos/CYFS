@@ -178,10 +178,7 @@ impl NamedCacheClient {
 
         let desc = self.desc.get().unwrap().clone();
         let secret = self.secret.get().unwrap().clone();
-        let stack = async_std::task::spawn(async move {
-            cyfs_bdt::Stack::open(desc,
-            secret, params).await
-        }).await?;
+        let stack = cyfs_bdt::Stack::open(desc, secret, params).await?;
 
         let pool = StreamPool::new(stack.deref().clone(), 80, StreamPoolConfig {
             capacity: 10,
@@ -220,9 +217,9 @@ impl NamedCacheClient {
         }
     }
 
-    pub async fn reset(&self, sn_list: Option<Vec<Device>>) -> BuckyResult<()> {
+    pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
         if let Some(stack) = self.stack.get() {
-            // TODO: reset bdt stack
+            stack.reset_sn_list(sn_list).await?;
             Ok(())
         } else {
             Err(BuckyError::from(BuckyErrorCode::NotInit))
