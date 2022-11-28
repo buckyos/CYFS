@@ -161,7 +161,7 @@ impl StackConfig {
                         expire: Duration::from_secs(20),  
                         atomic: Duration::from_secs(1)
                     }
-
+                }
             }, 
             debug: None
         }
