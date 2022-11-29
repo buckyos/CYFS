@@ -13,10 +13,17 @@ pub enum Protocol {
     Udp = 2,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum EndpointArea {
+    Lan, 
+    Default, 
+    Wan, 
+    Mapped
+}
+
 #[derive(Debug, Copy, Clone, Eq)]
 pub struct Endpoint {
-    is_sys_default: bool,
-    is_static_wan: bool,
+    area: EndpointArea,
     protocol: Protocol,
     addr: SocketAddr,
 }
@@ -54,8 +61,7 @@ impl Endpoint {
             Protocol::Tcp => Self::default_tcp(ep),
             Protocol::Udp => Self::default_udp(ep),
             _ => Self {
-                is_sys_default: true,
-                is_static_wan: false,
+                area: EndpointArea::Lan,
                 protocol: Protocol::Unk,
                 addr: match ep.addr().is_ipv4() {
                     true => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)),
@@ -72,8 +78,7 @@ impl Endpoint {
 
     pub fn default_tcp(ep: &Endpoint) -> Self {
         Self {
-            is_sys_default: true,
-            is_static_wan: false,
+            area: EndpointArea::Lan,
             protocol: Protocol::Tcp,
             addr: match ep.addr().is_ipv4() {
                 true => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)),
@@ -89,8 +94,7 @@ impl Endpoint {
 
     pub fn default_udp(ep: &Endpoint) -> Self {
         Self {
-            is_sys_default: true,
-            is_static_wan: false,
+            area: EndpointArea::Lan,
             protocol: Protocol::Udp,
             addr: match ep.addr().is_ipv4() {
                 true => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)),
@@ -111,24 +115,26 @@ impl Endpoint {
         self.protocol == Protocol::Tcp
     }
     pub fn is_sys_default(&self) -> bool {
-        self.is_sys_default
+        self.area == EndpointArea::Default
     }
     pub fn is_static_wan(&self) -> bool {
-        self.is_static_wan
+        self.area == EndpointArea::Wan
+            || self.area == EndpointArea::Mapped
     }
-    pub fn set_static_wan(&mut self, is_wan: bool) {
-        self.is_static_wan = is_wan;
+
+    pub fn is_mapped_wan(&self) -> bool {
+        self.area == EndpointArea::Mapped
     }
-    pub fn set_system_default(&mut self, is_system_default: bool) {
-        self.is_sys_default = is_system_default;
+
+    pub fn set_area(&mut self, area: EndpointArea) {
+        self.area = area;
     }
 }
 
 impl Default for Endpoint {
     fn default() -> Self {
         Self {
-            is_sys_default: true,
-            is_static_wan: false,
+            area: EndpointArea::Lan,
             protocol: Protocol::Unk,
             addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)),
         }
@@ -138,8 +144,7 @@ impl Default for Endpoint {
 impl From<(Protocol, SocketAddr)> for Endpoint {
     fn from(ps: (Protocol, SocketAddr)) -> Self {
         Self {
-            is_sys_default: false,
-            is_static_wan: false,
+            area: EndpointArea::Lan,
             protocol: ps.0,
             addr: ps.1,
         }
@@ -149,8 +154,7 @@ impl From<(Protocol, SocketAddr)> for Endpoint {
 impl From<(Protocol, IpAddr, u16)> for Endpoint {
     fn from(piu: (Protocol, IpAddr, u16)) -> Self {
         Self {
-            is_sys_default: false,
-            is_static_wan: false,
+            area: EndpointArea::Lan,
             protocol: piu.0,
             addr: SocketAddr::new(piu.1, piu.2),
         }
@@ -198,14 +202,11 @@ impl std::fmt::Display for Endpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
 
-        result += if self.is_static_wan {
-            "W" // WAN
-        } else {
-            if self.is_sys_default {
-                "D" // DEFAULT
-            } else {
-                "L" // LOCAL
-            }
+        result += match self.area {
+            EndpointArea::Lan => "L", // LOCAL
+            EndpointArea::Default => "D", // DEFAULT, 
+            EndpointArea::Wan =>  "W", // WAN, 
+            EndpointArea::Mapped => "M" // MAPPED WAN, 
         };
 
         result += match self.addr {
@@ -228,11 +229,12 @@ impl std::fmt::Display for Endpoint {
 impl FromStr for Endpoint {
     type Err = BuckyError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (is_static_wan, is_sys_default) = {
+        let area = {
             match &s[0..1] {
-                "W" => Ok((true, false)),
-                "L" => Ok((false, false)),
-                "D" => Ok((false, true)),
+                "W" => Ok(EndpointArea::Wan),
+                "M" => Ok(EndpointArea::Mapped),
+                "L" => Ok(EndpointArea::Lan),
+                "D" => Ok(EndpointArea::Default),
                 _ => Err(BuckyError::new(
                     BuckyErrorCode::InvalidInput,
                     "invalid endpoint string",
@@ -262,8 +264,7 @@ impl FromStr for Endpoint {
             ));
         }
         Ok(Endpoint {
-            is_static_wan,
-            is_sys_default,
+            area, 
             protocol,
             addr,
         })
@@ -347,11 +348,11 @@ impl Endpoint {
             Protocol::Unk => ENDPOINT_PROTOCOL_UNK,
             Protocol::Udp => ENDPOINT_PROTOCOL_UDP,
         };
-        flags |= match self.is_static_wan {
+        flags |= match self.is_static_wan() {
             true => ENDPOINT_FLAG_STATIC_WAN,
             false => 0,
         };
-        flags |= match self.is_sys_default {
+        flags |= match self.is_sys_default() {
             true => ENDPOINT_FLAG_DEFAULT,
             false => 0,
         };
@@ -418,8 +419,14 @@ impl Endpoint {
             _ => Protocol::Tcp,
         };
 
-        let is_static_wan = flags & ENDPOINT_FLAG_STATIC_WAN != 0;
-        let is_sys_default = flags & ENDPOINT_FLAG_DEFAULT != 0;
+        let area = if flags & ENDPOINT_FLAG_STATIC_WAN != 0 {
+            EndpointArea::Wan
+        } else if flags & ENDPOINT_FLAG_DEFAULT != 0 {
+            EndpointArea::Default
+        } else {
+            EndpointArea::Lan
+        };
+       
 
         let port = {
             let mut b = [0u8; 2];
@@ -456,8 +463,7 @@ impl Endpoint {
         }?;
 
         let ep = Endpoint {
-            is_sys_default,
-            is_static_wan,
+            area, 
             protocol,
             addr,
         };

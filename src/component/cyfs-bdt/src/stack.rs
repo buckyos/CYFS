@@ -51,7 +51,7 @@ pub struct StackConfig {
     pub statistic_interval: Duration, 
     pub keystore: keystore::Config,
     pub interface: interface::Config, 
-    pub sn_client: sn::Config,
+    pub sn_client: sn::client::Config,
     pub tunnel: tunnel::Config,
     pub stream: stream::Config,
     pub datagram: datagram::Config,
@@ -74,13 +74,14 @@ impl StackConfig {
                     recv_buffer: 52428800
                 }
             }, 
-            sn_client: sn::Config {
+            sn_client: sn::client::Config {
+                ping_sn: true,
                 ping_interval_init: Duration::from_millis(500),
                 ping_interval: Duration::from_millis(25000),
                 offline: Duration::from_millis(300000),
                 call_interval: Duration::from_millis(200),
                 call_timeout: Duration::from_millis(3000),
-            },
+            },     
             tunnel: tunnel::Config {
                 retain_timeout: Duration::from_secs(60),
                 connect_timeout: Duration::from_secs(5),
@@ -182,7 +183,6 @@ pub struct StackImpl {
 
 pub struct StackOpenParams {
     pub config: StackConfig, 
-
     pub tcp_port_mapping: Option<Vec<(Endpoint, u16)>>, 
     pub known_sn: Option<Vec<Device>>,
     pub known_device: Option<Vec<Device>>, 
@@ -238,14 +238,6 @@ impl Stack {
                 &params.config.interface, 
                 &local_device.connect_info().endpoints(), 
                 tcp_port_mapping)?;
-        
-        /* only for debug
-        let device = local_device.to_vec().unwrap();
-        let pk = local_device.desc().public_key().to_vec().unwrap();
-        let sk = local_secret.to_vec().unwrap();
-        info!("device={}, pk={}, sk={}", hex::encode(device), hex::encode(pk), hex::encode(sk));
-        info!("device={}", local_device.format_json().to_string());
-        */
 
         let signer = RsaCPUObjectSigner::new(
             local_device.desc().public_key().clone(),

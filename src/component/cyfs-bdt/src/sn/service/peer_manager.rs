@@ -7,11 +7,25 @@ use cyfs_debug::Mutex;
 use cyfs_base::*;
 use crate::{
     types::*, 
-    sn::Config,
 };
 use super::{
     net_listener::UdpSender, statistic::{PeerStatus, StatisticManager, }
 };
+
+struct Config {
+    pub client_ping_interval: Duration, 
+    pub client_ping_timeout: Duration
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            client_ping_interval: Duration::from_millis(25000),
+            client_ping_timeout: Duration::from_secs(300)
+        }
+    }
+}
+
 
 pub struct FoundPeer {
     pub desc: Device,
@@ -30,7 +44,6 @@ struct CachedPeerInfo {
     pub is_wan: bool,
 
     pub last_ping_seq: TempSeq,
-
     pub peer_status: PeerStatus,
     // pub call_peers: HashMap<DeviceId, TempSeq>, // <peerid, last_call_seq>
     // pub receipt: SnServiceReceipt,
@@ -161,7 +174,6 @@ impl Peers {
 pub struct PeerManager {
     peers: Mutex<Peers>, 
     last_knock_time: AtomicU64,
-    timeout: Duration,
     config: Config,
     statistic_manager: &'static StatisticManager,
 }
@@ -173,15 +185,14 @@ enum FindPeerReason {
 
 
 impl PeerManager {
-    pub fn new(timeout: Duration, config: Config) -> PeerManager {
+    pub fn new() -> PeerManager {
         PeerManager {
             peers: Mutex::new(Peers {
                 active_peers: Default::default(),
                 knock_peers: Default::default(),
             }),
             last_knock_time: AtomicU64::new(bucky_time_now()),
-            timeout,
-            config,
+            config: Default::default(),
             statistic_manager: StatisticManager::get_instance(),
         }
     }
@@ -211,7 +222,7 @@ impl PeerManager {
             }
 
 
-            let recount_req = match (send_time - cached_peer.last_send_time) / self.config.ping_interval.as_micros() as u64 {
+            let recount_req = match (send_time - cached_peer.last_send_time) / self.config.client_ping_interval.as_micros() as u64 {
                 0 => {
                     let recode = if cached_peer.last_ping_seq >= seq {
                         false
@@ -282,7 +293,7 @@ impl PeerManager {
 
     pub fn try_knock_timeout(&self, now: Timestamp) -> Option<Vec<DeviceId>> {
         let last_knock_time = self.last_knock_time.load(Ordering::SeqCst);
-        let drop_maps = if now > last_knock_time && Duration::from_micros(now - last_knock_time) > self.timeout {
+        let drop_maps = if now > last_knock_time && Duration::from_micros(now - last_knock_time) > self.config.client_ping_timeout {
             let mut peers = self.peers.lock().unwrap();
             let mut knock_peers = Default::default();
             std::mem::swap(&mut knock_peers, &mut peers.active_peers);

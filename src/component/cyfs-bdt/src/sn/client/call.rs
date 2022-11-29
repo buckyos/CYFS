@@ -13,9 +13,11 @@ use crate::{
     types::{TempSeqGenerator, TempSeq},
     interface::{udp::{Interface, PackageBoxEncodeContext}, tcp}, 
     protocol::{*, v0::*}, 
-    sn::Config,
     history::keystore, 
     stack::{WeakStack, Stack}
+};
+use super::{
+    Config,
 };
 
 pub struct CallManager {

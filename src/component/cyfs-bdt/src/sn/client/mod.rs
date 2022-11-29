@@ -1,15 +1,34 @@
 mod ping;
 mod call;
 
-pub use ping::*;
-use crate::sn::client::call::CallManager;
-use crate::interface::udp::OnUdpPackageBox;
-use crate::interface::udp;
+use std::{
+    time::Duration, 
+    future::Future
+};
+
 use cyfs_base::*;
-use crate::protocol::{*, v0::*};
-use std::future::Future;
-use crate::stack::{Stack, WeakStack};
-use crate::{SnServiceReceipt, SnServiceGrade};
+use crate::{
+    interface::udp::{self, OnUdpPackageBox}, 
+    protocol::{*, v0::*}, 
+    stack::{Stack, WeakStack}
+};
+use super::{
+    types::*, 
+};
+
+pub use ping::*; 
+pub use call::*;
+
+#[derive(Copy, Clone)]
+pub struct Config {
+    pub ping_sn: bool, 
+    pub ping_interval_init: Duration,
+    pub ping_interval: Duration,
+    pub offline: Duration,
+
+    pub call_interval: Duration,
+    pub call_timeout: Duration,
+}
 
 pub struct ClientManager {
     ping: PingManager,
