@@ -91,7 +91,7 @@ impl std::fmt::Display for Interface {
 
 
 impl Interface {
-    pub fn bind(local: &Endpoint, config: Config) -> Result<Self, BuckyError> {
+    pub fn bind(local: Endpoint, out: Option<Endpoint>, config: Config) -> Result<Self, BuckyError> {
         fn bind_socket(bind_addr: &Endpoint, recv_buffer: usize) -> Result<UdpSocket, BuckyError> {
             let domain = if bind_addr.addr().is_ipv6() {
                 Domain::IPV6
@@ -112,7 +112,7 @@ impl Interface {
             if local.addr().is_ipv6() {
                 #[cfg(windows)]
                 {
-                    let mut default_local = Endpoint::default_udp(local);
+                    let mut default_local = Endpoint::default_udp(&local);
                     default_local.mut_addr().set_port(local.addr().port());
                     match bind_socket(&default_local, config.recv_buffer) {
                         Ok(socket) => {
@@ -179,12 +179,12 @@ impl Interface {
             } else {
                 let bind_addr = {
                     if local.is_sys_default() {
-                        let mut default_local = Endpoint::default_udp(local);
+                        let mut default_local = Endpoint::default_udp(&local);
                         default_local.mut_addr().set_port(local.addr().port());
         
                         default_local
                     } else {
-                        *local
+                        local
                     }
                 };
 
@@ -194,9 +194,9 @@ impl Interface {
 
         Ok(Self(Arc::new(InterfaceImpl {
             config, 
-            local: RwLock::new(local.clone()),
+            local: RwLock::new(local),
             socket,
-            outer: RwLock::new(None),
+            outer: RwLock::new(out),
         })))
     }
 

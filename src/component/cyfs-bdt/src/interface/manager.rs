@@ -53,7 +53,15 @@ impl NetListener {
         local: DeviceId, 
         config: &Config, 
         endpoints: &[Endpoint], 
-        tcp_port_mapping: Option<Vec<(Endpoint, u16)>>) -> Result<Self, BuckyError> {
+        tcp_port_mapping: Option<Vec<(Endpoint, u16)>>
+    ) -> BuckyResult<Self> {
+        let ep_len = endpoints.len();
+        if ep_len == 0 {
+            let err = BuckyError::new(BuckyErrorCode::InvalidParam, "no endpoint");
+            warn!("NetListener{{local:{}}} bind failed for {}", local, err);
+            return Err(err);
+        }
+
         let mut listener = NetListenerImpl {
             local: local.clone(), 
             udp: vec![], 
@@ -63,10 +71,43 @@ impl NetListener {
             state: RwLock::new(NetListenerState::Init(StateWaiter::new()))
         };
         let mut port_mapping = tcp_port_mapping.unwrap_or(vec![]);
-        for ep in endpoints {
+
+        let mut ep_index = 0;
+
+        while ep_index < ep_len {
+            let ep = &endpoints[ep_index];
+            let ep_pair = if ep.is_mapped_wan() {
+                let local_index = ep_index + 1;
+                let ep_pair = if local_index == ep_len {
+                    Err(BuckyError::new(BuckyErrorCode::InvalidParam, format!("mapped wan endpoint {} has no local endpoint", ep)))
+                } else {
+                    let local_ep = &endpoints[local_index];
+                    if !(local_ep.is_same_ip_version(ep) 
+                        && local_ep.protocol() == ep.protocol()
+                        && !local_ep.is_static_wan()) {
+                        Err(BuckyError::new(BuckyErrorCode::InvalidParam, format!("mapped wan endpoint {} has invalid local endpoint {}", ep, local_ep)))
+                    } else {
+                        Ok((*local_ep, Some(*ep)))
+                    }
+                };
+                ep_index = local_index;
+                ep_pair
+            } else {
+                Ok((*ep, None))
+            };
+            ep_index += 1;
+
+            if ep_pair.is_err() {
+                let err = ep_pair.unwrap_err();
+                warn!("NetListener{{local:{}}} bind on {:?} failed for {:?}", local, ep, err);
+                continue;
+            }
+
+            let (local, out) = ep_pair.unwrap();
+          
             let r = match ep.protocol() {
                 Protocol::Udp => {
-                    udp::Interface::bind(ep, config.udp.clone()).map(|i| {
+                    udp::Interface::bind(local, out, config.udp.clone()).map(|i| {
                         listener.udp.push(i);
                         ep
                     })
@@ -85,7 +126,7 @@ impl NetListener {
                             dst_port
                         })
                     };
-                    tcp::Listener::bind(ep, mapping_port).map(|l| {
+                    tcp::Listener::bind(local, out, mapping_port).map(|l| {
                         listener.tcp.push(l);
                         ep
                     })
