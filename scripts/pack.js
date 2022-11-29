@@ -119,8 +119,8 @@ async function run() {
 
     // check file repo balance
     let file_repo_id = get_obj_id(file_repo_path+".desc")
-    let out = JSON.parse(await post(meta_url(channel)+"/balance", [[0, file_repo_id]]));
-    let balance = BigInt(out.result[0])
+    out = JSON.parse(await post(meta_url(channel)+"/balance", [[0, file_repo_id]]));
+    balance = BigInt(out.result[0])
     if (balance < 10000) {
         let msg = `file repo account ${file_repo_id} balance ${balance} less then 10000!! channel ${channel}`;
         await send_msg(msg)
