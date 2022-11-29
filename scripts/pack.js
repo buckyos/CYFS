@@ -159,7 +159,7 @@ async function run() {
                 child_process.execSync(`bash -c "./pack-tools -d apps/${app.name}"`, { cwd: 'dist', stdio: 'inherit' })
             }
     
-            child_process.execSync(`cyfs-client ${action} apps/${app.name}.zip -f fid -o ${file_repo_id}`, { cwd: 'dist', stdio: 'inherit' })
+            child_process.execSync(`cyfs-client ${action} apps/${app.name}.zip -f fid -o ${file_repo_path}`, { cwd: 'dist', stdio: 'inherit' })
             let fid = fs.readFileSync('dist/fid', {encoding: 'utf-8'});
             app_config.apps.push({ "id": app.appid, "ver": `${version}`, "status": 1 })
     
@@ -207,7 +207,7 @@ async function run() {
                 }
             }
     
-            child_process.execSync(`cyfs-client ${action} services/${service.name} -f fid -o ${file_repo_id}`, { cwd: 'dist', stdio: 'inherit' })
+            child_process.execSync(`cyfs-client ${action} services/${service.name} -f fid -o ${file_repo_path}`, { cwd: 'dist', stdio: 'inherit' })
             let fid = fs.readFileSync('dist/fid', {encoding: 'utf-8'})
             device_config.push({ "id": service.id, "ver": `${version}`, "status": 1 })
     

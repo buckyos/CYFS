@@ -30,6 +30,10 @@ const tools = [
         "include": ["x86_64-pc-windows-msvc"]
     },
     {
+        "name": "sn-updater",
+        "include": ["x86_64-pc-windows-msvc"]
+    },
+    {
         "name": "pack-tools",
         "include": formal_platform
     },
