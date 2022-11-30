@@ -225,20 +225,12 @@ impl CallSession {
 
         task::spawn(async move {
             let mut is_tcp_try = false;
-            let mut sign_futures = vec![];
-            for client in clients.values() {
-                unsafe {
-                    let client = &mut *(Arc::as_ptr(&client.inner) as *mut CallClientInner);
-                    sign_futures.push(client.sign_exchange());
-                }
-            }
-            futures::future::join_all(sign_futures).await;
-
+            
             loop {
                 // UDP重发
                 let mut send_count = 0;
                 for client in clients.values() {
-                    send_count += client.send_udp_pkg();
+                    send_count += client.send_udp_pkg().await;
                 }
 
                 // UDP没有发包的情况下，尽快启用TCP测试一次
@@ -276,7 +268,7 @@ impl CallSession {
                 if !is_tcp_try {
                     is_tcp_try = true;
                     for client in clients.values() {
-                        client.try_send_tcp_pkg(timeout);
+                        client.try_send_tcp_pkg(timeout).await;
                     }
                 }
             }
@@ -404,12 +396,6 @@ impl CallClientInner {
         
         self.pkgs.push(SendPackage::Call(call_pkg));
     }
-
-    async fn sign_exchange(&mut self) {
-        if let SendPackage::Exchange(exchg) = self.pkgs.get_mut(0).unwrap() {
-            let _ = exchg.sign(Stack::from(&self.stack).keystore().signer()).await;
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -440,7 +426,7 @@ impl CallClient {
         *last_resp_time = self.inner.last_resp_time.swap(now, atomic::Ordering::Release);
     }
 
-    fn prepare_pkgs_to_send(&self) -> Result<PackageBox, BuckyError> {
+    async fn prepare_pkgs_to_send(&self) -> BuckyResult<PackageBox> {
         // <TODO>暂时不支持明文
         let mut pkg_box = PackageBox::encrypt_box(self.inner.sn_peerid.clone(), self.inner.aes_key.key.clone());
         let now_abs = bucky_time_now();
@@ -449,6 +435,7 @@ impl CallClient {
                 SendPackage::Exchange(exchg) => {
                     let mut exchg = (*exchg).clone();
                     exchg.send_time = now_abs;
+                    exchg.sign(Stack::from(&self.inner.stack).keystore().signer()).await?;
                     pkg_box.push(exchg);
                 },
                 SendPackage::Call(call) => {
@@ -462,7 +449,7 @@ impl CallClient {
         Ok(pkg_box)
     }
 
-    fn send_udp_pkg(&self) -> usize {
+    async fn send_udp_pkg(&self) -> usize {
         // 已经有返回
         if self.inner.last_resp_time.load(atomic::Ordering::Acquire) > 0 {
             return 0;
@@ -473,7 +460,7 @@ impl CallClient {
             return 0;
         }
 
-        if let Ok(pkg_box) = self.prepare_pkgs_to_send() {
+        if let Ok(pkg_box) = self.prepare_pkgs_to_send().await {
             let mut context = PackageBoxEncodeContext::default();
 
             struct SendIter<'a> {
@@ -532,9 +519,9 @@ impl CallClient {
         }
     }
 
-    fn try_send_tcp_pkg(&self, time_limit: Duration) {
+    async fn try_send_tcp_pkg(&self, time_limit: Duration) {
         let inner = self.inner.clone();
-        let pkg_box = match self.prepare_pkgs_to_send() {
+        let pkg_box = match self.prepare_pkgs_to_send().await {
             Ok(pkg_box) => pkg_box,
             Err(e) => {
                 log::error!("call prepare pkg for tcp failed, e: {}", e);
