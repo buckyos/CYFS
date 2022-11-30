@@ -31,7 +31,13 @@ pub trait ServiceAppraiser: Send + Sync {
     // 因为客户端向SN提供的服务清单可能丢失，所以还要参照上次提供给SN的服务清单：
     // local_receipt：从上次向SN提供服务清单后产生的服务清单
     // last_receipt: 上次向SN提供的可能丢失的服务清单
-    fn appraise(&self, sn: &Device, local_receipt: &Option<SnServiceReceipt>, last_receipt: &Option<SnServiceReceipt>, receipt_from_sn: &Option<SnServiceReceipt>) -> SnServiceGrade;
+    fn appraise(
+        &self, 
+        sn: &Device, 
+        local_receipt: &Option<SnServiceReceipt>, 
+        last_receipt: &Option<SnServiceReceipt>, 
+        receipt_from_sn: &Option<SnServiceReceipt>
+    ) -> SnServiceGrade;
 }
 
 pub trait PingClientStateEvent: Send + Sync {
@@ -45,7 +51,7 @@ pub trait PingClientCalledEvent<Context=()>: Send + Sync {
 
 
 struct PingEnv {
-    stack: WeakStack,
+    stack: WeakStack, 
     ping_interval_init_ms: u32,
     ping_interval_ms: u32,
     offline_ms: u32,
