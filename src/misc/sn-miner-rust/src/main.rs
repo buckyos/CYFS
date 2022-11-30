@@ -80,7 +80,7 @@ async fn main() {
         .start();
 
     let data_folder = ::cyfs_util::get_app_data_dir(APP_NAME);
-    let (local_device, private_key) = if let Ok(loaded_device) =
+    let (mut local_device, private_key) = if let Ok(loaded_device) =
         load_device_info(data_folder.as_path())
     {
         /*
@@ -143,6 +143,20 @@ async fn main() {
             }
         }
     };
+
+
+    let ep_list = local_device.mut_connect_info().mut_endpoints();
+    for endpoint in ep_list {
+        let mut addr = endpoint.addr().clone();
+        if addr.is_ipv4() {
+            addr.set_ip("0.0.0.0".parse().unwrap());
+            *endpoint = Endpoint::from((endpoint.protocol(), addr));
+        } else {
+            addr.set_ip("::".parse().unwrap());
+            *endpoint = Endpoint::from((endpoint.protocol(), addr));
+        };
+    }
+    
 
     let service = SnService::new(
         local_device,
