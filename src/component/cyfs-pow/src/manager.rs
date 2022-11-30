@@ -76,8 +76,8 @@ impl PoWStateManagerInner {
                     error!("pow thread finished but already exists! id={}", state.id);
                 }
 
-                if let Some(index) = self.active_threads.iter().find(|item| **item == state.id) {
-                    self.active_threads.remove(*index as usize);
+                if let Some(index) = self.active_threads.iter().position(|item| **item == state.id) {
+                    self.active_threads.remove(index);
                 } else {
                     error!(
                         "pow thread finished state but not found in active threads! state={:?}",

@@ -51,6 +51,7 @@ impl PowRunner {
 
                 loop {
                     if let Some(state) = sync.select() {
+                        info!("pow thread select state: index={}, state={:?}", index, state);
                         if !Self::pow(state, sync.clone()) {
                             break;
                         }
@@ -91,15 +92,16 @@ impl PowRunner {
             }
 
             count += 1;
-            if count > 1000 * 1000 * 10 {
-                state.range.end = current;
+            if count > 1000 * 1000 * 100 {
+                count = 0;
+                state.range.start = current;
                 if !sync.sync(&state, PowThreadStatus::Sync) {
                     break;
                 }
             }
         }
 
-        state.range.end = current;
+        state.range.start = current;
         sync.sync(&state, PowThreadStatus::Finished);
 
         out_of_range
