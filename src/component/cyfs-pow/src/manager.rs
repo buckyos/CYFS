@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 pub struct PoWStateManagerInner {
     active_threads: Vec<u32>,
     state: PoWState,
+    storage: Option<PoWStateStorageRef>,
 }
 
 impl PoWStateManagerInner {
@@ -15,6 +16,7 @@ impl PoWStateManagerInner {
         Self {
             active_threads: vec![],
             state: PoWState::new(object_id, difficulty, id_range),
+            storage: None,
         }
     }
 
@@ -30,14 +32,16 @@ impl PoWStateManagerInner {
             nonce: None,
         };
 
-        let ret = match storage.load(&data).await? {
+        let mut ret = match storage.load(&data).await? {
             Some(state) => Self {
                 active_threads: vec![],
                 state,
+                storage: None,
             },
             None => Self::new(object_id, difficulty, id_range),
         };
 
+        ret.storage = Some(storage);
         Ok(ret)
     }
 
@@ -55,7 +59,10 @@ impl PoWStateManagerInner {
                 self.state.data = state.data.clone();
             }
 
-            info!("pow thread stated updated: id={}, {:?} -> {:?}", state.id, thread.range, state.range);
+            info!(
+                "pow thread stated updated: id={}, {:?} -> {:?}",
+                state.id, thread.range, state.range
+            );
             *thread = state.to_owned();
         } else {
             error!("sync pow thread state but not found! state={:?}", state);
@@ -76,7 +83,11 @@ impl PoWStateManagerInner {
                     error!("pow thread finished but already exists! id={}", state.id);
                 }
 
-                if let Some(index) = self.active_threads.iter().position(|item| **item == state.id) {
+                if let Some(index) = self
+                    .active_threads
+                    .iter()
+                    .position(|item| *item == state.id)
+                {
                     self.active_threads.remove(index);
                 } else {
                     error!(
@@ -103,7 +114,12 @@ impl PoWStateManagerInner {
             return Some(thread.to_owned());
         }
 
-        match self.state.id_range.clone().find(|id| !self.is_exists(*id) && !self.is_finished(*id)) {
+        match self
+            .state
+            .id_range
+            .clone()
+            .find(|id| !self.is_exists(*id) && !self.is_finished(*id))
+        {
             Some(id) => {
                 let thread = PoWThreadState::new(self.state.data.clone(), id);
                 self.state.threads.push(thread.clone());
@@ -153,6 +169,28 @@ impl PoWStateManager {
         Ok(Self(Arc::new(Mutex::new(
             PoWStateManagerInner::load_or_new(object_id, difficulty, id_range, storage).await?,
         ))))
+    }
+
+    pub fn start_save(&self) {
+        let this = self.clone();
+        async_std::task::spawn(async move {
+            loop {
+                let (state, storage) = {
+                    let inner = this.0.lock().unwrap();
+                    (inner.state.clone(), inner.storage.clone())
+                };
+
+                if let Some(storage) = storage {
+                    if let Err(e) = storage.save(&state).await {
+                        error!("auto save pow state failed! {}", e);
+                    }
+                } else {
+                    break;
+                }
+
+                async_std::task::sleep(std::time::Duration::from_secs(60)).await;
+            }
+        });
     }
 }
 

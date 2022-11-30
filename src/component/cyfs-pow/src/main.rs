@@ -26,6 +26,8 @@ async fn run(object_id: ObjectId, difficulty: u8, threads: u32) -> BuckyResult<(
     let manager =
         PoWStateManager::load_or_new(object_id, difficulty, id_range, state_storage.clone())
             .await?;
+    manager.start_save();
+    
     let sync = Arc::new(Box::new(manager) as Box<dyn PoWThreadStateSync>);
     let state = sync.state();
 
