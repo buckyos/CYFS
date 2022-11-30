@@ -94,7 +94,9 @@ impl SNConfigManager {
             unreachable!();
         }
 
-        self.try_start_sync_from_meta();
+        if self.coll.get().is_some() {
+            self.try_start_sync_from_meta();
+        }
     }
 
     pub fn get_sn_list(&self) -> Vec<(DeviceId, Device)> {
