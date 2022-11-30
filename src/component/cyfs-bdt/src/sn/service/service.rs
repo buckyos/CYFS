@@ -101,13 +101,10 @@ impl SnService {
         let mut endpoints_v4 = vec![];
         let mut endpoints_v6 = vec![];
         for endpoint in self.0.local_device.connect_info().endpoints() {
-            let mut addr = endpoint.addr().clone();
-            if addr.is_ipv4() {
-                addr.set_ip("0.0.0.0".parse().unwrap());
-                endpoints_v4.push(Endpoint::from((endpoint.protocol(), addr)));
+            if endpoint.addr().is_ipv4() {
+                endpoints_v4.push(endpoint.clone());
             } else {
-                addr.set_ip("::".parse().unwrap());
-                endpoints_v6.push(Endpoint::from((endpoint.protocol(), addr)));
+                endpoints_v6.push(endpoint.clone());
             };
         }
 
