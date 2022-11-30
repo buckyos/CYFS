@@ -2228,6 +2228,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyfs-pow"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "clap",
+ "cyfs-base",
+ "cyfs-debug",
+ "cyfs-util",
+ "log 0.4.17",
+ "num_cpus",
+ "serde",
+ "serde_json",
+ "thread-priority",
+]
+
+[[package]]
 name = "cyfs-raptorq"
 version = "1.6.1"
 dependencies = [
@@ -7205,6 +7222,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "thread-priority"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "978519ae4c6891352f964b88da4ab5a3a9b74a40247cda5baee145dae6cd3b71"
+dependencies = [
+ "cfg-if 1.0.0",
+ "libc",
+ "log 0.4.17",
+ "winapi",
 ]
 
 [[package]]
