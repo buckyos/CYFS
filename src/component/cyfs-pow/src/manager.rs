@@ -59,7 +59,7 @@ impl PoWStateManagerInner {
                 self.state.data = state.data.clone();
             }
 
-            info!(
+            debug!(
                 "pow thread stated updated: id={}, {:?} -> {:?}",
                 state.id, thread.range, state.range
             );
@@ -81,6 +81,20 @@ impl PoWStateManagerInner {
 
                 if !self.state.finished.insert(state.id) {
                     error!("pow thread finished but already exists! id={}", state.id);
+                }
+
+                if let Some(index) = self
+                    .state
+                    .threads
+                    .iter()
+                    .position(|item| item.id == state.id)
+                {
+                    self.state.threads.remove(index);
+                } else {
+                    error!(
+                        "pow thread finished state but not found in threads! state={:?}",
+                        state
+                    );
                 }
 
                 if let Some(index) = self
@@ -171,10 +185,16 @@ impl PoWStateManager {
         ))))
     }
 
+    pub fn check_complete(&self) -> bool {
+        self.0.lock().unwrap().state.data.check_complete()
+    }
+    
     pub fn start_save(&self) {
         let this = self.clone();
         async_std::task::spawn(async move {
             loop {
+                async_std::task::sleep(std::time::Duration::from_secs(60)).await;
+
                 let (state, storage) = {
                     let inner = this.0.lock().unwrap();
                     (inner.state.clone(), inner.storage.clone())
@@ -187,8 +207,6 @@ impl PoWStateManager {
                 } else {
                     break;
                 }
-
-                async_std::task::sleep(std::time::Duration::from_secs(60)).await;
             }
         });
     }

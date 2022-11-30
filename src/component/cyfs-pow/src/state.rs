@@ -13,6 +13,23 @@ pub struct PoWData {
     pub nonce: Option<u128>,
 }
 
+impl PoWData {
+    pub fn check_complete(&mut self) -> bool {
+        if let Some(nonce) = &self.nonce {
+            let (diff, _) = ObjectDifficulty::difficulty(self.object_id.as_slice(), nonce);
+            if diff < self.difficulty {
+                error!("unmatched difficulty for current nonce! data={:?}, got difficulty={}", self, diff);
+                self.nonce = None;
+                false
+            } else {
+                true
+            }
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PoWThreadState {
     pub data: PoWData,

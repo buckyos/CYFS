@@ -81,8 +81,6 @@ impl PowRunner {
                 break;
             }
 
-            current += 1;
-
             let (diff, _hash) =
                 ObjectDifficulty::difficulty(&state.data.object_id.as_slice(), &current);
             if diff >= state.data.difficulty {
@@ -92,18 +90,24 @@ impl PowRunner {
             }
 
             count += 1;
-            if count > 1000 * 1000 * 100 {
+            if count > 1000 * 1000 * 10 {
                 count = 0;
                 state.range.start = current;
                 if !sync.sync(&state, PowThreadStatus::Sync) {
                     break;
                 }
             }
+            current += 1;
         }
 
         state.range.start = current;
-        sync.sync(&state, PowThreadStatus::Finished);
 
+        if out_of_range || state.data.nonce.is_some() {
+            sync.sync(&state, PowThreadStatus::Finished);
+        } else {
+            sync.sync(&state, PowThreadStatus::Sync);
+        }
+        
         out_of_range
     }
 }
