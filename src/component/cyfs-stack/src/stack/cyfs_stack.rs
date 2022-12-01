@@ -42,15 +42,6 @@ use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
-// 用来增加一些已知对象到本地noc
-#[derive(Clone)]
-pub struct KnownObject {
-    // 对象内容
-    pub object_id: ObjectId,
-
-    pub object_raw: Vec<u8>,
-    pub object: Arc<AnyNamedObject>,
-}
 
 #[derive(Clone)]
 pub(crate) struct ObjectServices {
@@ -114,7 +105,7 @@ impl CyfsStackImpl {
     pub async fn open(
         bdt_param: BdtStackParams,
         param: CyfsStackParams,
-        known_objects: Vec<KnownObject>, // known_objects 外部指定的已知对象列表
+        known_objects: CyfsStackKnownObjects, // known_objects 外部指定的已知对象列表
     ) -> BuckyResult<Self> {
         Self::register_custom_objects_format();
 
@@ -798,7 +789,7 @@ impl CyfsStackImpl {
 
     async fn init_raw_noc(
         isolate: &str,
-        known_objects: Vec<KnownObject>,
+        known_objects: CyfsStackKnownObjects,
     ) -> BuckyResult<NamedObjectCacheRef> {
         let isolate = isolate.to_owned();
 
@@ -819,10 +810,9 @@ impl CyfsStackImpl {
 
         // 这里异步的初始化一些已知对象
         let noc2 = noc.clone();
-        async_std::task::spawn(async move {
+        let task = async_std::task::spawn(async move {
             // 初始化known_objects
-            for item in known_objects.into_iter() {
-                let object = NONObjectInfo::new(item.object_id, item.object_raw, Some(item.object));
+            for object in known_objects.list.into_iter() {
 
                 let req = NamedObjectCachePutObjectRequest {
                     source: RequestSourceInfo::new_local_system(),
@@ -835,6 +825,11 @@ impl CyfsStackImpl {
                 let _ = noc2.put_object(&req).await;
             }
         });
+
+        if known_objects.mode == CyfsStackKnownObjectsInitMode::Sync {
+            task.await;
+        }
+        
         Ok(noc)
     }
 
@@ -1063,7 +1058,7 @@ impl CyfsStack {
     pub async fn open(
         bdt_param: BdtStackParams,
         param: CyfsStackParams,
-        known_objects: Vec<KnownObject>,
+        known_objects: CyfsStackKnownObjects,
     ) -> BuckyResult<CyfsStack> {
         info!("will init object stack: {:?}", param);
 

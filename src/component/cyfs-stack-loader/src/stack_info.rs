@@ -6,7 +6,7 @@ use crate::{KNOWN_OBJECTS_MANAGER, VAR_MANAGER};
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_lib::SharedCyfsStack;
-use cyfs_stack::{BdtStackParams, CyfsStack};
+use cyfs_stack::{BdtStackParams, CyfsStack, CyfsStackKnownObjects};
 
 pub(crate) struct StackInfo {
     pub stack_params: CyfsStackLoaderParams,
@@ -132,11 +132,16 @@ impl StackInfo {
         // 准备bdt协议栈的初始化必要参数
         let btd_stack_params = self.init_bdt_stack_params();
 
+        let known_objects = CyfsStackKnownObjects {
+            list: KNOWN_OBJECTS_MANAGER.clone_objects(),
+            mode: KNOWN_OBJECTS_MANAGER.get_mode(),
+        };
+
         // 初始化object_stack
         let cyfs_stack = CyfsStack::open(
             btd_stack_params,
             self.stack_params.cyfs_stack_params.clone(),
-            KNOWN_OBJECTS_MANAGER.clone_objects(),
+            known_objects,
         )
         .await?;
 

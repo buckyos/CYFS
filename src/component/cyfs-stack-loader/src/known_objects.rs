@@ -1,7 +1,8 @@
 use cyfs_base::*;
 use cyfs_debug::Mutex;
-use cyfs_stack::KnownObject;
+use cyfs_lib::NONObjectInfo;
 use cyfs_util::DirObjectsSyncLoader;
+use cyfs_stack::CyfsStackKnownObjectsInitMode;
 
 use lazy_static::lazy_static;
 use std::path::{Path, PathBuf};
@@ -9,7 +10,7 @@ use std::sync::Arc;
 
 struct KnownObjectsLoader {
     desc_folder: PathBuf,
-    objects: Vec<KnownObject>,
+    objects: Vec<NONObjectInfo>,
 }
 
 impl KnownObjectsLoader {
@@ -51,10 +52,10 @@ impl KnownObjectsLoader {
         }
     }
    
-    async fn load_obj(&self, file: &Path, buf: Vec<u8>) -> BuckyResult<KnownObject> {
-        let (object, _) = AnyNamedObject::raw_decode(&buf).map_err(|e| {
+    async fn load_obj(&self, file: &Path, buf: Vec<u8>) -> BuckyResult<NONObjectInfo> {
+        let object = NONObjectInfo::new_from_object_raw(buf).map_err(|e| {
             let msg = format!(
-                "invalid known object body buffer: file={}, {}",
+                "invalid known object buffer: file={}, {}",
                 file.display(),
                 e
             );
@@ -62,32 +63,21 @@ impl KnownObjectsLoader {
 
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;
-
-        let object_id = object.calculate_id();
-        info!(
-            "find known object: file={}, object={}",
-            file.display(),
-            object_id
-        );
-
-        let ret = KnownObject {
-            object_id,
-            object: Arc::new(object),
-            object_raw: buf,
-        };
-
-        Ok(ret)
+    
+        Ok(object)
     }
 }
 
 pub(crate) struct KnownObjectsManagerImpl {
-    objects: Vec<KnownObject>,
+    objects: Vec<NONObjectInfo>,
+    mode: CyfsStackKnownObjectsInitMode,
 }
 
 impl KnownObjectsManagerImpl {
     pub fn new() -> Self {
         Self {
             objects: Vec::new(),
+            mode: CyfsStackKnownObjectsInitMode::Async,
         }
     }
 
@@ -98,7 +88,7 @@ impl KnownObjectsManagerImpl {
         self.append(loader.objects);
     }
 
-    pub fn append(&mut self, known_objects: Vec<KnownObject>) {
+    pub fn append(&mut self, known_objects: Vec<NONObjectInfo>) {
         for item in known_objects.into_iter() {
             if !self.objects.iter().any(|v| v.object_id == item.object_id) {
                 self.objects.push(item);
@@ -121,6 +111,14 @@ impl KnownObjectsManager {
         Self(Arc::new(Mutex::new(KnownObjectsManagerImpl::new())))
     }
 
+    pub fn get_mode(&self) -> CyfsStackKnownObjectsInitMode {
+        self.0.lock().unwrap().mode.clone()
+    }
+
+    pub fn set_mode(&self, mode: CyfsStackKnownObjectsInitMode) {
+        self.0.lock().unwrap().mode = mode;
+    }
+
     pub async fn load(&self) {
         let mut loader = KnownObjectsLoader::new();
         loader.load().await;
@@ -128,19 +126,12 @@ impl KnownObjectsManager {
         self.0.lock().unwrap().append(loader.objects);
     }
 
-    pub fn append(&self, known_objects: Vec<KnownObject>) {
+    pub fn append(&self, known_objects: Vec<NONObjectInfo>) {
         self.0.lock().unwrap().append(known_objects)
     }
 
-    pub fn clone_objects(&self) -> Vec<KnownObject> {
+    pub fn clone_objects(&self) -> Vec<NONObjectInfo> {
         self.0.lock().unwrap().objects.clone()
-    }
-
-    pub fn into_objects(self) -> Vec<KnownObject> {
-        let mut ret = Vec::new();
-        ret.append(&mut self.0.lock().unwrap().objects);
-
-        ret
     }
 
     pub fn clear(&self) {
