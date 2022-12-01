@@ -135,11 +135,11 @@ impl ProtobufCodecHelper {
         Ok((value, buf))
     }
 
-    pub fn decode_buf<T>(buf: Vec<u8>) -> BuckyResult<T>
+    pub fn decode_buf<T>(buf: impl AsRef<[u8]>) -> BuckyResult<T>
     where
         T: for<'de> RawDecode<'de>,
     {
-        let (item, _) = T::raw_decode(&buf)?;
+        let (item, _) = T::raw_decode(buf.as_ref())?;
 
         Ok(item)
     }

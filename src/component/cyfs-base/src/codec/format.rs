@@ -371,7 +371,7 @@ where
         }
 
         if let Some(nonce) = self.nonce() {
-            JsonCodecHelper::encode_string_field(&mut map, "nonce", &nonce);
+            JsonCodecHelper::encode_string_field(&mut map, "nonce", &nonce.nonce);
         }
 
         map.into()

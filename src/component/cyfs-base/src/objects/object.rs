@@ -1081,7 +1081,7 @@ where
 
     fn signs_mut(&mut self) -> &mut ObjectSigns;
 
-    fn nonce(&self) -> &Option<u128>;
+    fn nonce(&self) -> &Option<Nonce>;
 
     // 获取body和sign部分的最新的修改时间
     fn latest_update_time(&self) -> u64 {

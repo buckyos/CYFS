@@ -29,6 +29,7 @@ mod tx;
 mod union_account;
 mod unique_id;
 mod difficulty;
+mod nonce;
 
 pub use self::diff::*;
 pub use action::*;
@@ -62,3 +63,4 @@ pub use tx::*;
 pub use union_account::*;
 pub use unique_id::*;
 pub use difficulty::*;
+pub use nonce::*;

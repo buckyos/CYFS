@@ -99,3 +99,10 @@ message ProofData {
 message ProofOfServiceBodyContent {
     ProofData data = 1;
 }
+
+// nonce
+message Nonce {
+    bytes nonce = 1;
+    repeated bytes signs = 2;
+    uint32 flags = 3;
+}

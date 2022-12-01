@@ -1537,7 +1537,7 @@ where
     desc: O::DescType,
     body: Option<ObjectMutBody<O::ContentType, O>>,
     signs: ObjectSigns,
-    nonce: Option<u128>,
+    nonce: Option<Nonce>,
 }
 
 pub struct NamedObjectBaseBuilder<O>
@@ -1548,7 +1548,7 @@ where
     desc: O::DescType,
     body: Option<ObjectMutBody<O::ContentType, O>>,
     signs: ObjectSigns,
-    nonce: Option<u128>,
+    nonce: Option<Nonce>,
 }
 
 impl<O> NamedObjectBaseBuilder<O>
@@ -1575,12 +1575,12 @@ where
         self
     }
 
-    pub fn nonce(mut self, value: u128) -> Self {
+    pub fn nonce(mut self, value: Nonce) -> Self {
         self.nonce = Some(value);
         self
     }
 
-    pub fn option_nonce(mut self, value: Option<u128>) -> Self {
+    pub fn option_nonce(mut self, value: Option<Nonce>) -> Self {
         self.nonce = value;
         self
     }
@@ -1615,7 +1615,7 @@ where
         }
     }
 
-    pub fn new_desc(desc: O::DescType, signs: ObjectSigns, nonce: Option<u128>) -> Self {
+    pub fn new_desc(desc: O::DescType, signs: ObjectSigns, nonce: Option<Nonce>) -> Self {
         Self {
             desc,
             body: None,
@@ -1629,7 +1629,7 @@ where
     /// * desc: O::DescType,
     /// * body: Option<ObjectMutBody<O::ContentType, O>>
     /// * signs: ObjectSigns,
-    /// * nonce: Option<u128>,
+    /// * nonce: Option<Nonce>,
     ///
     /// 可进一步对body.unwrap().split()
     pub fn split(
@@ -1638,7 +1638,7 @@ where
         O::DescType,
         Option<ObjectMutBody<O::ContentType, O>>,
         ObjectSigns,
-        Option<u128>,
+        Option<Nonce>,
     ) {
         let desc = self.desc;
         let body = self.body;
@@ -1707,7 +1707,7 @@ where
         &mut self.signs
     }
 
-    fn nonce(&self) -> &Option<u128> {
+    fn nonce(&self) -> &Option<Nonce> {
         &self.nonce
     }
 }
@@ -1924,7 +1924,7 @@ where
 
         // nonce
         let (nonce, buf) = if ctx_ref.has_nonce() {
-            let (nonce, buf) = u128::raw_decode(buf).map_err(|e|{
+            let (nonce, buf) = Nonce::raw_decode(buf).map_err(|e|{
                 error!("NamedObjectBase<O>::raw_decode/nonce error:{}, obj_type:{}, obj_type_code:{:?}", e, O::obj_type(), O::obj_type_code()); 
                 e
             })?;
@@ -1996,7 +1996,7 @@ where
     desc_builder: NamedObjectDescBuilder<DC>,
     body_builder: ObjectMutBodyBuilder<BC, NamedObjType<DC, BC>>,
     signs_builder: ObjectSignsBuilder,
-    nonce: Option<u128>,
+    nonce: Option<Nonce>,
 }
 
 impl<DC, BC> NamedObjectBuilder<DC, BC>
@@ -2183,7 +2183,7 @@ where
     }
 
     // nonce
-    pub fn nonce(mut self, nonce: u128) -> Self {
+    pub fn nonce(mut self, nonce: Nonce) -> Self {
         self.nonce = Some(nonce);
         self
     }
