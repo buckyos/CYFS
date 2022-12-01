@@ -173,6 +173,9 @@ impl NamedCacheClient {
         let _ = self.device_cache.set(device_cache.clone());
 
         let mut params = cyfs_bdt::StackOpenParams::new("cyfs-client");
+        if let Some(sn_list) = &sn_list {
+            info!("named data client use param`s sn list {:?}", sn_list);
+        }
         params.known_sn = sn_list;
         params.outer_cache = Some(Box::new(device_cache));
 
