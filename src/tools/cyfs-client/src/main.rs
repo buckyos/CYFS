@@ -53,8 +53,9 @@ async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
     stack.wait_online(Some(Duration::from_secs(5))).await?;
 
     let info = stack.util().get_device_static_info(UtilGetDeviceStaticInfoOutputRequest::new()).await?;
+    info!("get sn list from runtime: {:?}", info.info.known_sn_list);
     let mut devices = vec![];
-    for sn_id in &info.info.sn_list {
+    for sn_id in &info.info.known_sn_list {
         let resp = stack.non_service().get_object(NONGetObjectOutputRequest::new_noc(sn_id.object_id().clone(), None)).await?;
         devices.push(Device::clone_from_slice(&resp.object.object_raw)?);
     }
