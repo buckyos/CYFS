@@ -9,8 +9,6 @@ use cyfs_stack_loader::*;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
-//const USER_MNEMONIC: &str =
-//    "paper grant gap across doctor hockey life decline sauce what aunt jelly";
 
 pub static USER1_DATA: OnceCell<TestUserData> = OnceCell::new();
 pub static USER2_DATA: OnceCell<TestUserData> = OnceCell::new();
@@ -117,6 +115,7 @@ impl TestLoader {
         CyfsServiceLoader::prepare_env().await.unwrap();
 
         KNOWN_OBJECTS_MANAGER.clear();
+        KNOWN_OBJECTS_MANAGER.set_mode(CyfsStackKnownObjectsInitMode::Sync);
 
         // 首先创建people/device信息组
         let (user1, user2) = Self::create_users(mnemonic).await;
@@ -164,50 +163,52 @@ impl TestLoader {
 
     fn init_user_objects(user: &TestUser) {
         let mut list = Vec::new();
-        let obj = KnownObject {
+
+        
+        let obj = NONObjectInfo {
             object_id: user.people.desc().calculate_id(),
             object_raw: user.people.to_vec().unwrap(),
-            object: Arc::new(AnyNamedObject::Standard(StandardObject::People(
+            object: Some(Arc::new(AnyNamedObject::Standard(StandardObject::People(
                 user.people.clone(),
-            ))),
+            )))),
         };
         list.push(obj);
 
-        let obj = KnownObject {
+        let obj = NONObjectInfo {
             object_id: user.ood.device.desc().calculate_id(),
             object_raw: user.ood.device.to_vec().unwrap(),
-            object: Arc::new(AnyNamedObject::Standard(StandardObject::Device(
+            object: Some(Arc::new(AnyNamedObject::Standard(StandardObject::Device(
                 user.ood.device.clone(),
-            ))),
+            )))),
         };
         list.push(obj);
 
         if let Some(info) = &user.standby_ood {
-            let obj = KnownObject {
+            let obj = NONObjectInfo {
                 object_id: info.device.desc().calculate_id(),
                 object_raw: info.device.to_vec().unwrap(),
-                object: Arc::new(AnyNamedObject::Standard(StandardObject::Device(
+                object: Some(Arc::new(AnyNamedObject::Standard(StandardObject::Device(
                     info.device.clone(),
-                ))),
+                )))),
             };
             list.push(obj);
         }
 
-        let obj = KnownObject {
+        let obj = NONObjectInfo {
             object_id: user.device1.device.desc().calculate_id(),
             object_raw: user.device1.device.to_vec().unwrap(),
-            object: Arc::new(AnyNamedObject::Standard(StandardObject::Device(
+            object: Some(Arc::new(AnyNamedObject::Standard(StandardObject::Device(
                 user.device1.device.clone(),
-            ))),
+            )))),
         };
         list.push(obj);
 
-        let obj = KnownObject {
+        let obj = NONObjectInfo {
             object_id: user.device2.device.desc().calculate_id(),
             object_raw: user.device2.device.to_vec().unwrap(),
-            object: Arc::new(AnyNamedObject::Standard(StandardObject::Device(
+            object: Some(Arc::new(AnyNamedObject::Standard(StandardObject::Device(
                 user.device2.device.clone(),
-            ))),
+            )))),
         };
         list.push(obj);
 
