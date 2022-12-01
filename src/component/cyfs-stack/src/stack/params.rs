@@ -160,3 +160,14 @@ pub struct BdtStackParams {
     pub known_passive_pn: Vec<Device>,
     pub udp_sn_only: Option<bool>,
 }
+
+#[derive(Clone, Eq, PartialEq)]
+pub enum CyfsStackKnownObjectsInitMode {
+    Sync,
+    Async,
+}
+
+pub struct CyfsStackKnownObjects {
+    pub list: Vec<NONObjectInfo>,
+    pub mode: CyfsStackKnownObjectsInitMode,
+}
