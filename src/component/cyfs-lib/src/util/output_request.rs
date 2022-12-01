@@ -315,6 +315,7 @@ pub struct DeviceStaticInfo {
 
     // current sn list config
     pub sn_list: Vec<DeviceId>,
+    pub known_sn_list: Vec<DeviceId>,
 }
 
 #[derive(Debug, Clone)]
