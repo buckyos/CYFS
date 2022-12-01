@@ -104,9 +104,14 @@ impl PingManager {
 
     pub fn stop(&self) -> Result<(), BuckyError> {
         log::info!("{} stopping.", self);
-        self.is_started.store(false, atomic::Ordering::Release);
-        let clients: Vec<Arc<Client>> = self.clients.read().unwrap().iter().map(|c| c.1.clone()).collect();
-        for client in clients {
+        let to_stop = {
+            let mut clients = self.clients.write().unwrap();
+            let to_stop: Vec<Arc<Client>> = clients.values().cloned().collect();
+            clients.clear();
+            to_stop
+        };
+        
+        for client in to_stop {
             client.stop();
         }
 

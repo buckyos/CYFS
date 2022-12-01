@@ -163,10 +163,6 @@ impl CallSession {
         };
         call_pkg.payload = SizedOwnedData::from(payload_generater(&call_pkg));
 
-        if !stack.sn_client().ping.is_cached(&sn_peerid) {
-            stack.sn_client().add_sn_ping(sn, true, None);
-        }
-
         if !with_local {
             call_pkg.peer_info = None;
         }
