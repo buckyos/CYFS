@@ -126,7 +126,7 @@ impl PublicKey {
         }
     }
 
-    pub fn verify_hash_data(&self, hash: HashValue, sign: &SignData) -> bool {
+    pub fn verify_hash_data(&self, hash: &HashValue, sign: &SignData) -> bool {
         match self {
             Self::Rsa(public_key) => {
                 public_key
@@ -170,7 +170,7 @@ impl PublicKey {
             .unwrap();
 
         let hash = hash_data(&data_new);
-        self.verify_hash_data(hash, sign.sign())
+        self.verify_hash_data(&hash, sign.sign())
     }
 }
 

@@ -1,17 +1,10 @@
-use generic_array::typenum::U32;
-use generic_array::GenericArray;
-
 use crate::*;
 
 pub struct ObjectDifficulty {}
 
 impl ObjectDifficulty {
-    pub fn difficulty(hash: &[u8], nonce: &u128) -> (u8, GenericArray<u8, U32>) {
-        use sha2::Digest;
-        let mut sha256 = sha2::Sha256::new();
-        sha256.input(&hash);
-        sha256.input(&nonce.to_be_bytes());
-        let hash = sha256.result();
+    pub fn difficulty(hash: &HashValue) -> u8 {
+        let hash = hash.as_slice();
         let mut i = 0;
         let mut diff = 0;
         while i < hash.len() {
@@ -24,7 +17,7 @@ impl ObjectDifficulty {
             i += 1;
         }
 
-        (diff, hash)
+        diff
     }
 
     fn leading_zero(byte: u8) -> u8 {
@@ -57,11 +50,6 @@ impl ObjectDifficulty {
     }
 }
 
-impl ObjectId {
-    pub fn difficulty(&self, nonce: &u128) -> u8 {
-        ObjectDifficulty::difficulty(self.as_slice(), nonce).0
-    }
-}
 
 #[cfg(test)]
 mod test {
@@ -90,7 +78,7 @@ mod test {
         let ins = std::time::Instant::now();
         loop {
             let (diff, hash) = ObjectDifficulty::difficulty(&object_id.as_slice(), &nonce);
-            if diff >= 35 {
+            if diff >= 20 {
                 ObjectDifficulty::format_binary(hash.as_slice());
                 println!("got diff: nonce={}", nonce);
                 break;
