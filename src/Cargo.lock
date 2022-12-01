@@ -6664,15 +6664,12 @@ name = "sn-miner-rust"
 version = "0.5.0"
 dependencies = [
  "async-std",
- "async-trait",
+ "clap",
  "cyfs-base",
  "cyfs-bdt",
  "cyfs-debug",
  "cyfs-util",
- "libc",
  "log 0.4.17",
- "serde",
- "serde_json",
 ]
 
 [[package]]
