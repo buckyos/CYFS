@@ -49,7 +49,10 @@ impl JsonCodec<DeviceStaticInfo> for DeviceStaticInfo {
         if self.sn_list.len() > 0 {
             JsonCodecHelper::encode_str_array_field(&mut obj, "sn_list", &self.sn_list);
         }
-        
+        if self.known_sn_list.len() > 0 {
+            JsonCodecHelper::encode_str_array_field(&mut obj, "known_sn_list", &self.known_sn_list);
+        }
+
         obj
     }
 
@@ -69,6 +72,7 @@ impl JsonCodec<DeviceStaticInfo> for DeviceStaticInfo {
             owner_id: JsonCodecHelper::decode_option_string_field(obj, "owner_id")?,
             cyfs_root: JsonCodecHelper::decode_string_field(obj, "cyfs_root")?,
             sn_list: JsonCodecHelper::decode_str_array_field(obj, "sn_list")?,
+            known_sn_list: JsonCodecHelper::decode_str_array_field(obj, "known_sn_list")?,
         };
 
         Ok(ret)

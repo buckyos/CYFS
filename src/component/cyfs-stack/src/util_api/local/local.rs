@@ -248,6 +248,7 @@ impl UtilLocalService {
             cyfs_root,
 
             sn_list: self.bdt_stack.sn_client().sn_list().clone(),
+            known_sn_list: self.bdt_stack.device_cache().sn_list(),
         };
 
         Ok(UtilGetDeviceStaticInfoInputResponse { info })
