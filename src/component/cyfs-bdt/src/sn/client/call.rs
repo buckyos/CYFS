@@ -165,7 +165,6 @@ impl CallSession {
         };
         call_pkg.payload = SizedOwnedData::from(payload_generater(&call_pkg));
 
-
         if !with_local {
             call_pkg.peer_info = None;
         }
