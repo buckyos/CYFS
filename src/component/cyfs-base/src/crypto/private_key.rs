@@ -148,26 +148,17 @@ impl PrivateKey {
         }
     }
 
-    pub fn sign(&self, data: &[u8], sign_source: SignatureSource) -> BuckyResult<Signature> {
-        let create_time = bucky_time_now();
-
-        // 签名必须也包含签名的时刻，这个时刻是敏感的不可修改
-        let mut data_new = data.to_vec();
-        data_new.resize(data.len() + create_time.raw_measure(&None).unwrap(), 0);
-        create_time
-            .raw_encode(&mut data_new.as_mut_slice()[data.len()..], &None)?;
-
+    pub fn sign_data_hash(&self, hash: HashValue) -> BuckyResult<SignData> {
         let sign = match self {
             Self::Rsa(private_key) => {
-                let hash = hash_data(&data_new);
                 let sign = private_key
                     .sign(
                         rsa::PaddingScheme::new_pkcs1v15_sign(Some(rsa::Hash::SHA2_256)),
-                        &hash.as_slice(),
+                        hash.as_slice(),
                     )?;
 
                 assert_eq!(sign.len(), private_key.size());
-                let sign_data = match private_key.size() {
+                match private_key.size() {
                     RSA_KEY_BYTES => {
                         let mut sign_array: [u32; 32] = [0; 32];
                         unsafe {
@@ -207,13 +198,10 @@ impl PrivateKey {
                         error!("{}", msg);
                         return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
                     }
-                };
-
-                Signature::new(sign_source, 0, create_time, sign_data)
+                }
             }
 
             Self::Secp256k1(private_key) => {
-                let hash = hash_data(&data_new);
                 assert_eq!(HashValue::len(), ::secp256k1::util::MESSAGE_SIZE);
                 let ctx = ::secp256k1::Message::parse(hash.as_slice().try_into().unwrap());
 
@@ -228,12 +216,25 @@ impl PrivateKey {
                         sign_buf.len(),
                     )
                 };
-                let sign_data = SignData::Ecc(GenericArray::from(sign_array));
-                Signature::new(sign_source, 0, create_time, sign_data)
+                SignData::Ecc(GenericArray::from(sign_array))
             }
         };
 
         Ok(sign)
+    }
+
+    pub fn sign(&self, data: &[u8], sign_source: SignatureSource) -> BuckyResult<Signature> {
+        let create_time = bucky_time_now();
+
+        // 签名必须也包含签名的时刻，这个时刻是敏感的不可修改
+        let mut data_new = data.to_vec();
+        data_new.resize(data.len() + create_time.raw_measure(&None).unwrap(), 0);
+        create_time
+            .raw_encode(&mut data_new.as_mut_slice()[data.len()..], &None)?;
+
+        let hash = hash_data(&data_new);
+        let sign_data = self.sign_data_hash(hash)?;
+        Ok(Signature::new(sign_source, 0, create_time, sign_data))
     }
 
     pub fn decrypt(&self, input: &[u8], output: &mut [u8]) -> BuckyResult<usize> {

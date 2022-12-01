@@ -126,17 +126,9 @@ impl PublicKey {
         }
     }
 
-    pub fn verify(&self, data: &[u8], sign: &Signature) -> bool {
-        let create_time = sign.sign_time();
-        let mut data_new = data.to_vec();
-        data_new.resize(data.len() + create_time.raw_measure(&None).unwrap(), 0);
-        create_time
-            .raw_encode(&mut data_new.as_mut_slice()[data.len()..], &None)
-            .unwrap();
-
+    pub fn verify_hash_data(&self, hash: HashValue, sign: &SignData) -> bool {
         match self {
             Self::Rsa(public_key) => {
-                let hash = hash_data(&data_new);
                 public_key
                     .verify(
                         rsa::PaddingScheme::new_pkcs1v15_sign(Some(rsa::Hash::SHA2_256)),
@@ -147,7 +139,6 @@ impl PublicKey {
             }
             Self::Secp256k1(public_key) => {
                 // 生成消息摘要
-                let hash = hash_data(&data_new);
                 assert_eq!(HashValue::len(), ::secp256k1::util::MESSAGE_SIZE);
                 let ctx = ::secp256k1::Message::parse(hash.as_slice().try_into().unwrap());
 
@@ -163,8 +154,23 @@ impl PublicKey {
                 // 使用公钥进行校验
                 secp256k1::verify(&ctx, &sign, &public_key)
             }
-            Self::Invalid => panic!("Should not come here"),
+            Self::Invalid => {
+                error!("verify hash with invalid public key!");
+                false
+            }
         }
+    }
+
+    pub fn verify(&self, data: &[u8], sign: &Signature) -> bool {
+        let create_time = sign.sign_time();
+        let mut data_new = data.to_vec();
+        data_new.resize(data.len() + create_time.raw_measure(&None).unwrap(), 0);
+        create_time
+            .raw_encode(&mut data_new.as_mut_slice()[data.len()..], &None)
+            .unwrap();
+
+        let hash = hash_data(&data_new);
+        self.verify_hash_data(hash, sign.sign())
     }
 }
 
