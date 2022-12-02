@@ -52,24 +52,6 @@ message FileBodyContent {
     ChunkList chunk_list = 1;
 }
 
-// org
-message Director {
-    bytes id = 1;
-    uint32 right = 2;
-}
-
-message OrgMember {
-    bytes id = 1;
-    uint32 right = 2;
-    uint64 shares = 3;
-}
-
-message OrgBodyContent {
-    repeated OrgMember members = 1;
-    repeated Director directors = 2;
-    uint64 total_equity = 3;
-}
-
 // people
 message PeopleBodyContent {
     repeated bytes ood_list = 1;
@@ -78,12 +60,79 @@ message PeopleBodyContent {
     optional string ood_work_mode = 4;
 }
 
+message GroupMember {
+    bytes id = 1;
+    string title = 2;
+    string role = 3; // for acl
+    uint64 shares = 4;
+}
+
+message GroupMethodACL {
+    string name = 1;
+
+    // target
+    optional bytes target_dec_id = 2;
+    optional string r_path = 3;
+
+    double min_support_percent = 4;
+    string permissions = 5; // ACL-String
+}
+
+message GroupRoleACL {
+    string name = 1;
+
+    // target
+    optional bytes target_dec_id = 2;
+    optional string r_path = 3;
+
+    string method = 4;
+    double right_percent = 5;
+    bool is_operator = 6;
+    string permissions = 7; // ACL-String
+}
 
 // simple_group
+message SimpleGroupDescContent {
+    repeated GroupMember admins = 1;
+    uint32 conclusion_limit = 2; // the admins can make any conclusion with the signatures more than ${conclusion_limit}
+}
+
 message SimpleGroupBodyContent {
     repeated bytes members = 1;
-    repeated bytes ood_list = 2;
-    optional string ood_work_mode = 3;
+
+    uint64 total_equity = 3;
+
+    // acl
+    repeated GroupMethodACL methods = 5;
+    repeated GroupRoleACL roles = 6;
+
+    repeated bytes ood_list = 7;
+
+    optional uint64 history_block_max = 8;
+    optional uint64 history_block_lifespan = 9;
+}
+
+// org
+message OrgBodyContent {
+    repeated GroupMember admins = 1;
+    repeated GroupMember members = 2;
+
+    uint64 total_equity = 3;
+    
+    optional bytes token_contract = 4;
+
+    // acl
+    repeated GroupMethodACL methods = 5;
+    repeated GroupRoleACL roles = 6;
+
+    repeated bytes ood_list = 7;
+
+    optional uint64 history_block_max = 8;
+    optional uint64 history_block_lifespan = 9;
+}
+
+message GroupPackedBodyContent {
+    bytes packed_body_id = 1;
 }
 
 // tx
