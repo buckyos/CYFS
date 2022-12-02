@@ -199,12 +199,15 @@ mod test {
     use crate::*;
     use super::*;
     use std::str::FromStr;
+    // use std::path::PathBuf;
 
     #[test]
     fn test() {
         let object_id = ObjectId::from_str("95RvaS58mfCGmpqHWM5xdBmbgmZaAQaq24GcQTQxA7q6").unwrap();
 
         let sk = PrivateKey::generate_secp256k1().unwrap();
+        // let path: PathBuf = "C:/cyfs/etc/desc/device_secp.sec".into();
+        // sk.encode_to_file(&path, false).unwrap();
 
         let builder = NonceBuilder::new(vec![sk]);
 

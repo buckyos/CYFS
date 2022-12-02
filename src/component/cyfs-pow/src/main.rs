@@ -2,6 +2,7 @@ mod local_storage;
 mod manager;
 mod runner;
 mod state;
+mod factor;
 
 #[macro_use]
 extern crate log;
@@ -89,7 +90,6 @@ fn main() {
                 .short("o")
                 .long("object")
                 .takes_value(true)
-                .required(true)
                 .help("The object id used to calculate the difficulty"),
         )
         .arg(
@@ -104,7 +104,7 @@ fn main() {
                 .short("d")
                 .long("diff")
                 .takes_value(true)
-                .required(true)
+                //.required(true)
                 .help("Target difficulty, value range 0-255"),
         )
         .arg(
@@ -112,11 +112,23 @@ fn main() {
                 .short("p")
                 .long("private-key")
                 .takes_value(true)
-                .required(true)
+                //.required(true)
                 .help("Private key, support multiple, separated by semicolon"),
+        ).arg(
+            Arg::with_name("factor")
+                .short("f")
+                .long("factor")
+                .takes_value(false)
+                .required(false)
+                .help("Run private key factor test"),
         );
 
     let matches = app.get_matches();
+
+    if matches.is_present("factor") {
+        factor::run();
+        std::process::exit(0);
+    }
 
     let obj = match matches.value_of("object") {
         Some(v) => match ObjectId::from_str(v) {
