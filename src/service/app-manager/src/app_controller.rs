@@ -37,7 +37,7 @@ async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
 
     let info = stack.util().get_device_static_info(UtilGetDeviceStaticInfoOutputRequest::new()).await?;
     let mut devices = vec![];
-    for sn_id in &info.info.sn_list {
+    for sn_id in &info.info.known_sn_list {
         let resp = stack.non_service().get_object(NONGetObjectOutputRequest::new_noc(sn_id.object_id().clone(), None)).await?;
         devices.push(Device::clone_from_slice(&resp.object.object_raw)?);
     }
@@ -90,24 +90,29 @@ impl AppController {
         async_std::task::spawn(async move {
             let mut interval = async_std::stream::interval(Duration::from_secs(5*60));
             while let Some(_) = interval.next().await {
-                let sn_list = get_sn_list(this.shared_stack.as_ref().unwrap()).await.unwrap_or_else(|e| {
-                    error!("get sn list from stack err {}, use built-in sn list", e);
-                    get_builtin_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect()
-                });
-                let sn_hash = hash_data(&sn_list.to_vec().unwrap());
-                let old_hash = this.sn_hash.read().unwrap().clone();
-                if old_hash != sn_hash {
-                    info!("sn list from stack changed, {:?}", &sn_list);
-                    match this.named_cache_client.as_ref().unwrap().reset_sn_list(sn_list).await {
-                        Ok(_) => {
-                            *this.sn_hash.write().unwrap() = sn_hash;
-                        }
-                        Err(e) => {
-                            error!("change named cache client sn list err {}", e);
+                match get_sn_list(this.shared_stack.as_ref().unwrap()).await {
+                    Ok(sn_list) => {
+                        let sn_hash = hash_data(&sn_list.to_vec().unwrap());
+                        let old_hash = this.sn_hash.read().unwrap().clone();
+                        if old_hash != sn_hash {
+                            info!("sn list from stack changed, {:?}", &sn_list);
+                            match this.named_cache_client.as_ref().unwrap().reset_sn_list(sn_list).await {
+                                Ok(_) => {
+                                    *this.sn_hash.write().unwrap() = sn_hash;
+                                }
+                                Err(e) => {
+                                    error!("change named cache client sn list err {}", e);
+                                }
+                            }
+
                         }
                     }
-
+                    Err(e) => {
+                        error!("get sn list from stack err {}, skip", e);
+                        continue
+                    }
                 }
+
             }
         });
     }
