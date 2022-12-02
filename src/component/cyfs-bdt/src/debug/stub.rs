@@ -144,27 +144,6 @@ impl DebugStub {
         let mut tunnel = tunnel;
 
         let stack = Stack::from(&self.0.stack);
-        let dev_id_option = {
-            if command.sn.is_none() {
-                let sn_list = stack.sn_client().sn_list();
-                let sn = sn_list.get(0);
-                match sn {
-                    Some(sn) => {
-                        let sn = sn.clone();
-                        Some(sn)
-                    },
-                    _ => None,
-                }
-            } else {
-                command.sn
-            }
-        };
-        if dev_id_option.is_none() {
-            let _ = tunnel.write_all("Err: sn is none\r\n".as_ref()).await;
-            return Ok(())
-        }
-
-        let sn_dev_id = dev_id_option.unwrap();
         let timeout = {
             if command.timeout_sec == 0 {
                 6
@@ -176,17 +155,12 @@ impl DebugStub {
         let sleep_ms = 200; 
         let mut counter = timeout*(1000/sleep_ms);
         loop {
-            let sn_status = stack.sn_client().status_of(&sn_dev_id);
+            let sn_status = stack.sn_client().ping().status();
 
-            match sn_status {
-                Some(st) => {
-                    if st == SnStatus::Online {
-                        let _ = tunnel.write_all("Ok: sn connected\r\n".as_ref()).await;
+            if let SnStatus::Online(_) = sn_status {
+                let _ = tunnel.write_all("Ok: sn connected\r\n".as_ref()).await;
 
-                        return Ok(())
-                    }
-                },
-                _ => {}
+                return Ok(())
             }
 
             counter -= 1;

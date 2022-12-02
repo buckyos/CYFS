@@ -149,18 +149,21 @@ impl NetListener {
         Ok(Self(Arc::new(listener)))
     }
 
-    pub fn reset(&self, endpoints: &[Endpoint]) -> BuckyResult<Self> {
-        let mut all_default = true;
-        for ep in endpoints {
-            if !ep.is_sys_default() {
-                all_default = false;
-                break;
+    pub fn reset(&self, endpoints: Option<&[Endpoint]>) -> BuckyResult<Self> {
+        if let Some(endpoints) = endpoints {
+            let mut all_default = true;
+            for ep in endpoints {
+                if !ep.is_sys_default() {
+                    all_default = false;
+                    break;
+                }
+            }
+            //TODO: 支持显式绑定本地ip的 reset
+            if !all_default {
+                return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "reset should be endpoint with default flag"));
             }
         }
-        //TODO: 支持显式绑定本地ip的 reset
-        if !all_default {
-            return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "reset should be endpoint with default flag"));
-        }
+       
 
         let waiter = {
             let state = &mut *self.0.state.write().unwrap();
@@ -185,28 +188,32 @@ impl NetListener {
             waiter.wake();
         }
 
-        fn local_of(former: Endpoint, endpoints: &[Endpoint]) -> Endpoint {
-            for ep in endpoints {
-                if former.is_same_ip_version(ep) 
-                    && former.protocol() == ep.protocol() 
-                    && former.addr().port() == ep.addr().port() {
-                    return *ep;
+        fn local_of(former: Endpoint, endpoints: &Option<&[Endpoint]>) -> Endpoint {
+            if let Some(endpoints) = endpoints {
+                for ep in *endpoints {
+                    if former.is_same_ip_version(ep) 
+                        && former.protocol() == ep.protocol() 
+                        && former.addr().port() == ep.addr().port() {
+                        return *ep;
+                    }
                 }
+                Endpoint::default_of(&former)
+            } else {
+                former
             }
-            Endpoint::default_of(&former)
         }
 
         let mut ip_set = BTreeSet::new(); 
         let mut ep_set = BTreeSet::new(); 
         let udp = Vec::from_iter(self.0.udp.iter().map(|udp| {
-            let new_ep = local_of(udp.local(), endpoints);
+            let new_ep = local_of(udp.local(), &endpoints);
             ep_set.insert(new_ep);
             ip_set.insert(new_ep.addr().ip());
             udp.reset(&new_ep)
         }));
 
         let tcp = Vec::from_iter(self.0.tcp.iter().map(|tcp| {
-            let new_ep = local_of(tcp.local(), endpoints);
+            let new_ep = local_of(tcp.local(), &endpoints);
             ep_set.insert(new_ep);
             ip_set.insert(new_ep.addr().ip());
             tcp.reset(&new_ep)
@@ -425,7 +432,7 @@ impl NetManager {
     }
 
     pub fn reset(&self, endpoints: &[Endpoint]) -> BuckyResult<NetListener> {
-        self.listener().reset(endpoints).map(|listener| {
+        self.listener().reset(Some(endpoints)).map(|listener| {
             *self.listener.write().unwrap() = listener.clone();
             listener
         })

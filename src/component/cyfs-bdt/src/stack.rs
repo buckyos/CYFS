@@ -75,10 +75,13 @@ impl StackConfig {
                 }
             }, 
             sn_client: sn::client::Config {
-                ping_sn: true,
-                ping_interval_init: Duration::from_millis(500),
-                ping_interval: Duration::from_millis(25000),
-                offline: Duration::from_millis(300000),
+                ping: sn::client::ping::Config {
+                    udp: sn::client::ping::udp::Config {
+                        ping_interval_init: Duration::from_millis(500),
+                        ping_interval: Duration::from_millis(25000),
+                        offline: Duration::from_millis(300000),
+                    }
+                }, 
                 call_interval: Duration::from_millis(200),
                 call_timeout: Duration::from_millis(3000),
             },     
@@ -238,6 +241,7 @@ impl Stack {
                 &params.config.interface, 
                 &local_device.connect_info().endpoints(), 
                 tcp_port_mapping)?;
+        let net_listener = net_manager.listener();
 
         let signer = RsaCPUObjectSigner::new(
             local_device.desc().public_key().clone(),
@@ -325,7 +329,7 @@ impl Stack {
 
         {
             let components = StackLazyComponents {
-                sn_client: sn::client::ClientManager::create(stack.to_weak()),
+                sn_client: sn::client::ClientManager::create(stack.to_weak(), net_listener),
                 tunnel_manager: TunnelManager::new(stack.to_weak()),
                 stream_manager: StreamManager::new(stack.to_weak()),
                 datagram_manager, 
@@ -350,16 +354,6 @@ impl Stack {
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
             stack_impl.ndn = Some(ndn);
         }   
-        
-
-        // get nearest sn in sn-list
-        if let Some(sn) = stack.device_cache().nearest_sn_of(stack.local_device_id()) {
-            let sn_device = stack.device_cache().get(&sn).await.unwrap();
-            stack.sn_client().add_sn_ping(&sn_device, true, None);
-        } else {
-            // don't find nearest sn
-            warn!("failed found SN-device sn-list: {}", known_sn.len());
-        }
 
         let mut known_device = vec![];
         if params.known_device.is_some() {
@@ -373,7 +367,7 @@ impl Stack {
 
         let net_listener = stack.net_manager().listener();
         net_listener.start(stack.to_weak());
-        stack.sn_client().start_ping();
+        stack.sn_client().reset(net_listener, known_sn);
         stack.ndn().start();
 
         if let Some(debug_stub) = debug_stub {
@@ -454,7 +448,6 @@ impl Stack {
     }
 
     pub fn close(&self) {
-        let _ = self.sn_client().stop_ping();
         //unimplemented!()
     }
 
@@ -507,26 +500,14 @@ impl Stack {
     pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
         info!("{} reset_sn_list {:?}", self, sn_list);
         self.device_cache().reset_sn_list(&sn_list);
-
-        // need get nearest sn
-        if let Some(sn_id) = self.device_cache().nearest_sn_of(self.local_device_id()) {
-            if self.sn_client().sn_list().contains(&sn_id) {
-                info!("{} has been exists in sn clients.", sn_id);
-            } else {
-                let _ = self.sn_client().stop_ping();
-                self.sn_client().add_sn_ping(&self.device_cache().get(&sn_id).await.unwrap(), true, None);
-            }
-        } else {
-            // don't find nearest sn
-            unreachable!("failed found SN-device sn-list: {}", sn_list.len());
-        }
-
+        self.sn_client().reset(self.net_manager().listener(), sn_list);
         Ok(())
     }
 
-    pub async fn reset(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {
+    pub async fn reset_endpoints(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {
         info!("{} reset {:?}", self, endpoints);
         let listener = self.net_manager().reset(endpoints.as_slice())?;
+        
         let mut local = self.local().clone();
         let device_endpoints = local.mut_connect_info().mut_endpoints();
         device_endpoints.clear();
@@ -547,7 +528,9 @@ impl Stack {
         .await;
         self.device_cache().update_local(&local);
         self.tunnel_manager().reset();
-        self.sn_client().reset();
+
+        let sn_list = self.sn_client().ping().sn_list().clone();
+        self.sn_client().reset(listener.clone(), sn_list);
 
         listener.wait_online().await
     }

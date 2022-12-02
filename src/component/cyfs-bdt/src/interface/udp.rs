@@ -202,9 +202,10 @@ impl Interface {
 
     pub fn reset(&self, local: &Endpoint) -> Self {
         info!("{} reset with {}", self, local);
-        *self.0.local.write().unwrap() = local.clone();
-        *self.0.outer.write().unwrap() = None;
-        self.clone()
+        let new =  self.clone();
+        *new.0.local.write().unwrap() = local.clone();
+        *new.0.outer.write().unwrap() = None;
+        new
     }
 
     pub fn start(&self, stack: WeakStack) {
