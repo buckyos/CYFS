@@ -72,6 +72,8 @@ impl PowRunner {
     }
 
     fn pow(mut state: PoWThreadState, sync: PoWThreadStateSyncRef) -> bool {
+        let builder = NonceBuilder::new(sync.private_key());
+       
         let mut current = state.range.start;
         let mut count: u32 = 0;
         let mut out_of_range = false;
@@ -81,8 +83,7 @@ impl PowRunner {
                 break;
             }
 
-            let (diff, _hash) =
-                ObjectDifficulty::difficulty(&state.data.object_id.as_slice(), &current);
+            let diff = builder.calc_difficulty(&state.data.object_id, current).unwrap();
             if diff >= state.data.difficulty {
                 state.data.nonce = Some(current);
                 state.data.difficulty = diff;
@@ -90,7 +91,7 @@ impl PowRunner {
             }
 
             count += 1;
-            if count > 1000 * 1000 * 10 {
+            if count > 1000 * 100 {
                 count = 0;
                 state.range.start = current;
                 if !sync.sync(&state, PowThreadStatus::Sync) {

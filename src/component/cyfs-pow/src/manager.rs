@@ -8,20 +8,25 @@ pub struct PoWStateManagerInner {
     active_threads: Vec<u32>,
     state: PoWState,
     storage: Option<PoWStateStorageRef>,
+    private_key: Vec<PrivateKey>,
 }
 
 impl PoWStateManagerInner {
-    pub fn new(object_id: ObjectId, difficulty: u8, id_range: Range<u32>) -> Self {
+    pub fn new(object_id: ObjectId, private_key: Vec<PrivateKey>, difficulty: u8, id_range: Range<u32>) -> Self {
+        assert!(!private_key.is_empty());
         assert!(!id_range.is_empty());
+        
         Self {
             active_threads: vec![],
             state: PoWState::new(object_id, difficulty, id_range),
             storage: None,
+            private_key,
         }
     }
 
     pub async fn load_or_new(
         object_id: ObjectId,
+        private_key: Vec<PrivateKey>,
         difficulty: u8,
         id_range: Range<u32>,
         storage: PoWStateStorageRef,
@@ -37,8 +42,9 @@ impl PoWStateManagerInner {
                 active_threads: vec![],
                 state,
                 storage: None,
+                private_key,
             },
-            None => Self::new(object_id, difficulty, id_range),
+            None => Self::new(object_id, private_key, difficulty, id_range),
         };
 
         ret.storage = Some(storage);
@@ -168,25 +174,27 @@ impl PoWStateManagerInner {
 pub struct PoWStateManager(Arc<Mutex<PoWStateManagerInner>>);
 
 impl PoWStateManager {
-    pub fn new(object_id: ObjectId, difficulty: u8, id_range: Range<u32>) -> Self {
+    pub fn new(object_id: ObjectId, private_key: Vec<PrivateKey>, difficulty: u8, id_range: Range<u32>) -> Self {
         Self(Arc::new(Mutex::new(PoWStateManagerInner::new(
-            object_id, difficulty, id_range,
+            object_id, private_key, difficulty, id_range,
         ))))
     }
 
     pub async fn load_or_new(
         object_id: ObjectId,
+        private_key: Vec<PrivateKey>,
         difficulty: u8,
         id_range: Range<u32>,
         storage: PoWStateStorageRef,
     ) -> BuckyResult<Self> {
         Ok(Self(Arc::new(Mutex::new(
-            PoWStateManagerInner::load_or_new(object_id, difficulty, id_range, storage).await?,
+            PoWStateManagerInner::load_or_new(object_id, private_key, difficulty, id_range, storage).await?,
         ))))
     }
 
     pub fn check_complete(&self) -> bool {
-        self.0.lock().unwrap().state.data.check_complete()
+        let private_key = self.0.lock().unwrap().private_key.clone();
+        self.0.lock().unwrap().state.data.check_complete(private_key)
     }
     
     pub fn start_save(&self) {
@@ -214,6 +222,10 @@ impl PoWStateManager {
 
 #[async_trait::async_trait]
 impl PoWThreadStateSync for PoWStateManager {
+    fn private_key(&self) -> Vec<PrivateKey> {
+        self.0.lock().unwrap().private_key.clone()
+    }
+
     fn state(&self) -> PoWState {
         self.0.lock().unwrap().state.clone()
     }

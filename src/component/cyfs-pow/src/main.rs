@@ -16,16 +16,27 @@ use state::*;
 use clap::{App, Arg};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::path::PathBuf;
 
-async fn run(object_id: ObjectId, difficulty: u8, threads: u32) -> BuckyResult<()> {
+async fn run(
+    object_id: ObjectId,
+    private_key: Vec<PrivateKey>,
+    difficulty: u8,
+    threads: u32,
+) -> BuckyResult<()> {
     let state_storage = PowStateLocalStorage::new_default();
     let state_storage = Arc::new(Box::new(state_storage) as Box<dyn PoWStateStorage>);
 
     let id_range = 0..1024;
 
-    let manager =
-        PoWStateManager::load_or_new(object_id, difficulty, id_range, state_storage.clone())
-            .await?;
+    let manager = PoWStateManager::load_or_new(
+        object_id,
+        private_key,
+        difficulty,
+        id_range,
+        state_storage.clone(),
+    )
+    .await?;
     if manager.check_complete() {
         let state = manager.state();
         let msg = format!(
@@ -95,6 +106,14 @@ fn main() {
                 .takes_value(true)
                 .required(true)
                 .help("Target difficulty, value range 0-255"),
+        )
+        .arg(
+            Arg::with_name("private-key")
+                .short("p")
+                .long("private-key")
+                .takes_value(true)
+                .required(true)
+                .help("Private key, support multiple, separated by semicolon"),
         );
 
     let matches = app.get_matches();
@@ -142,9 +161,43 @@ fn main() {
         }
     };
 
+    let private_key = match matches.value_of("private-key") {
+        Some(v) => {
+            let list: Vec<&str> = v.split(";").collect();
+            let mut sk_list = vec![];
+            for s in list {
+                let mut buf = vec![];
+                let path: PathBuf = s.into();
+                let (sk, _) = PrivateKey::decode_from_file(&path, &mut buf)
+                    .map_err(|e| {
+                        println!("load private key from file failed: {}, {}", s, e);
+                        std::process::exit(-1);
+                    })
+                    .unwrap();
+                println!(
+                    "load private key from file! {}, type={:?}",
+                    s,
+                    sk.key_type()
+                );
+                sk_list.push(sk);
+            }
+
+            if sk_list.is_empty() {
+                println!("private key list is empty!");
+                std::process::exit(-1);
+            }
+
+            sk_list
+        }
+        None => {
+            println!("private key param is missing!");
+            std::process::exit(-1);
+        }
+    };
+
     CyfsLoggerBuilder::new_app("cyfs-pow")
-        .level("info")
-        .console("info")
+        .level("debug")
+        .console("debug")
         .enable_bdt(Some("warn"), Some("warn"))
         .build()
         .unwrap()
@@ -156,7 +209,7 @@ fn main() {
         .start();
 
     async_std::task::block_on(async move {
-        match run(obj, difficulty, threads).await {
+        match run(obj, private_key, difficulty, threads).await {
             Ok(_) => std::process::exit(0),
             Err(e) => {
                 println!("Error occured during calc difficulty! {}", e);

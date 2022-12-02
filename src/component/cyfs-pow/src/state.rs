@@ -14,9 +14,10 @@ pub struct PoWData {
 }
 
 impl PoWData {
-    pub fn check_complete(&mut self) -> bool {
+    pub fn check_complete(&mut self, private_key: Vec<PrivateKey>) -> bool {
         if let Some(nonce) = &self.nonce {
-            let (diff, _) = ObjectDifficulty::difficulty(self.object_id.as_slice(), nonce);
+            let builder = NonceBuilder::new(private_key);
+            let diff = builder.calc_difficulty(&self.object_id, *nonce).unwrap();
             if diff < self.difficulty {
                 error!("unmatched difficulty for current nonce! data={:?}, got difficulty={}", self, diff);
                 self.nonce = None;
@@ -90,6 +91,7 @@ pub enum PowThreadStatus {
 }
 
 pub trait PoWThreadStateSync: Send + Sync {
+    fn private_key(&self) -> Vec<PrivateKey>;
     fn state(&self) -> PoWState;
     fn select(&self) -> Option<PoWThreadState>;
     fn sync(&self, state: &PoWThreadState, status: PowThreadStatus) -> bool;  // return true will continue; false will stop
