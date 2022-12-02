@@ -54,7 +54,6 @@ impl ObjectDifficulty {
 #[cfg(test)]
 mod test {
     use crate::*;
-    use std::str::FromStr;
 
     #[test]
     fn calc_diff() {
@@ -70,25 +69,5 @@ mod test {
 
         assert_eq!(ObjectDifficulty::leading_zero(0xFF), 0);
         assert_eq!(ObjectDifficulty::leading_zero(0x0F), 4);
-
-        use rand::Rng;
-        let mut nonce: u128 = rand::thread_rng().gen();
-        let object_id = ObjectId::from_str("95RvaS58mfCGmpqHWM5xdBmbgmZaAQaq24GcQTQxA7q6").unwrap();
-        let mut count: u64 = 0;
-        let ins = std::time::Instant::now();
-        loop {
-            let (diff, hash) = ObjectDifficulty::difficulty(&object_id.as_slice(), &nonce);
-            if diff >= 20 {
-                ObjectDifficulty::format_binary(hash.as_slice());
-                println!("got diff: nonce={}", nonce);
-                break;
-            }
-
-            nonce += 1;
-            count += 1;
-            if count % (1000 * 1000) == 0 {
-                println!("calcing {}, dur={}s......", count, ins.elapsed().as_secs());
-            }
-        }
     }
 }

@@ -192,3 +192,53 @@ impl<'a> NonceVerifier<'a> {
         }
     }
 }
+
+
+#[cfg(test)]
+mod test {
+    use crate::*;
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test() {
+        let object_id = ObjectId::from_str("95RvaS58mfCGmpqHWM5xdBmbgmZaAQaq24GcQTQxA7q6").unwrap();
+
+        let sk = PrivateKey::generate_secp256k1().unwrap();
+
+        let builder = NonceBuilder::new(vec![sk]);
+
+        use rand::Rng;
+        let mut nonce: u128 = rand::thread_rng().gen();
+
+        loop {
+            let diff = builder.calc_difficulty(&object_id, nonce).unwrap();
+            if diff >= 20 {
+                println!("{} -> {}", nonce, diff);
+                break;
+            }
+            nonce += 1;
+        }
+    }
+
+    #[test]
+    fn nonce() {
+        let object_id = ObjectId::from_str("95RvaS58mfCGmpqHWM5xdBmbgmZaAQaq24GcQTQxA7q6").unwrap();
+
+        let sk = PrivateKey::generate_secp256k1().unwrap();
+        let pk = sk.public();
+
+        let builder = NonceBuilder::new(vec![sk]);
+
+        use rand::Rng;
+        let value: u128 = rand::thread_rng().gen();
+
+        let nonce = builder.build(&object_id, value).unwrap();
+        let diff = builder.calc_difficulty(&object_id, value).unwrap();
+
+        let verifier = NonceVerifier::new(&pk);
+        let diff2 = verifier.calc_difficulty(&object_id, &nonce, true).unwrap();
+
+        assert_eq!(diff, diff2);
+    }
+}
