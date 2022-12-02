@@ -192,8 +192,9 @@ impl ChunkView {
                     ), false)
                 }, 
                 ChunkState::Pending => {
-                    return Err(BuckyError::new(BuckyErrorCode::Pending, 
-                                               format!("{} is pending, please wait ...", self.chunk())));
+                    (state.downloader.as_ref().unwrap().clone(), false)
+                    // return Err(BuckyError::new(BuckyErrorCode::Pending, 
+                    //                            format!("{} is pending, please wait ...", self.chunk())));
                 }
                 _ => unreachable!()
             }
