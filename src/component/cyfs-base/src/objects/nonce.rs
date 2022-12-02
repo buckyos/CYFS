@@ -38,51 +38,74 @@ impl TryFrom<&Nonce> for protos::Nonce {
 inner_impl_default_protobuf_raw_codec!(Nonce);
 
 pub struct NonceBuilder {
-    sk: PrivateKey,
+    sk: Vec<PrivateKey>,
 }
 
 impl NonceBuilder {
+    pub fn new(sk: Vec<PrivateKey>) -> Self {
+        Self {
+            sk,
+        }
+    }
+
     pub fn build(&self, object_id: &ObjectId, nonce: u128) -> BuckyResult<Nonce> {
-        let (_hash, sign_data) = self.hash(object_id, nonce)?;
+        let (_hash, signs) = self.hash(object_id, nonce)?;
 
         Ok(Nonce {
             nonce,
-            signs: vec![sign_data],
+            signs,
             flags: 0,
         })
     }
 
     pub fn calc_difficulty(&self, object_id: &ObjectId, nonce: u128) -> BuckyResult<u8> {
-        let (hash, _sign_data) = self.hash(object_id, nonce)?;
+        let (hash, _signs) = self.hash(object_id, nonce)?;
         let diff = ObjectDifficulty::difficulty(&hash);
 
         Ok(diff)
     }
 
-    fn hash(&self, object_id: &ObjectId, nonce: u128) -> BuckyResult<(HashValue, SignData)> {
+    fn hash(&self, object_id: &ObjectId, nonce: u128) -> BuckyResult<(HashValue, Vec<SignData>)> {
         use sha2::Digest;
 
         let mut sha256 = sha2::Sha256::new();
         sha256.input(&nonce.to_be_bytes());
         sha256.input(object_id.as_slice());
 
-        let hash = sha256.clone().result();
+        let hash = sha256.clone().result().into();
 
-        let sign_data = self.sk.sign_data_hash(hash.into())?;
-        sha256.input(sign_data.as_slice());
+        let mut list = Vec::with_capacity(self.sk.len());
+        for sk in &self.sk {
+            let sign_data = sk.sign_data_hash(&hash)?;
+            sha256.input(sign_data.as_slice());
+            list.push(sign_data);
+        }
+
         let hash = sha256.result();
 
-        Ok((hash.into(), sign_data))
+        Ok((hash.into(), list))
     }
 
     // hash(nonce, object_id, sign(hash(nonce, object_id)))
 }
 
 pub struct NonceVerifier<'a> {
-    pk: &'a PublicKeyValue,
+    pk: PublicKeyRef<'a>,
 }
 
 impl<'a> NonceVerifier<'a> {
+    pub fn new(desc: &'a impl SingleKeyObjectDesc) -> Self {
+        Self {
+            pk: PublicKeyRef::Single(desc.public_key()),
+        }
+    }
+
+    pub fn new_mn(desc: &'a impl MNKeyObjectDesc) -> Self {
+        Self {
+            pk: PublicKeyRef::MN(desc.mn_public_key()),
+        }
+    }
+
     pub fn calc_difficulty(
         &self,
         object_id: &ObjectId,
@@ -119,7 +142,7 @@ impl<'a> NonceVerifier<'a> {
 
     pub fn verify(&self, object_id: &ObjectId, hash: &HashValue, nonce: &Nonce) -> bool {
         match self.pk {
-            PublicKeyValue::Single(pk) => {
+            PublicKeyRef::Single(pk) => {
                 if nonce.signs.len() != 1 {
                     warn!(
                         "verify nonce but invalid signs! obj={}, nonce={}, signs={}",
@@ -132,7 +155,7 @@ impl<'a> NonceVerifier<'a> {
 
                 pk.verify_hash_data(hash, &nonce.signs[0])
             }
-            PublicKeyValue::MN((threshold, pk_list)) => {
+            PublicKeyRef::MN((threshold, pk_list)) => {
                 if nonce.signs.len() < *threshold as usize {
                     return false;
                 }

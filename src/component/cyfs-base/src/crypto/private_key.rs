@@ -148,7 +148,7 @@ impl PrivateKey {
         }
     }
 
-    pub fn sign_data_hash(&self, hash: HashValue) -> BuckyResult<SignData> {
+    pub fn sign_data_hash(&self, hash: &HashValue) -> BuckyResult<SignData> {
         let sign = match self {
             Self::Rsa(private_key) => {
                 let sign = private_key
@@ -233,7 +233,7 @@ impl PrivateKey {
             .raw_encode(&mut data_new.as_mut_slice()[data.len()..], &None)?;
 
         let hash = hash_data(&data_new);
-        let sign_data = self.sign_data_hash(hash)?;
+        let sign_data = self.sign_data_hash(&hash)?;
         Ok(Signature::new(sign_source, 0, create_time, sign_data))
     }
 
