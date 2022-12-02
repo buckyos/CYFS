@@ -71,16 +71,19 @@ impl AppController {
         owner: ObjectId,
     ) -> BuckyResult<()> {
         let sn_list = get_sn_list(&shared_stack).await.unwrap_or_else(|e| {
-            error!("get sn list from runtime err {}, use built-in sn list", e);
+            error!("get sn list from stack err {}, use built-in sn list", e);
             get_builtin_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect()
         });
+
+        let area = shared_stack.local_device_id().object_id().info().into_area();
+        info!("get area from stack: {:?}", area);
 
         let sn_hash = hash_data(&sn_list.to_vec().unwrap());
         *self.sn_hash.write().unwrap() = sn_hash;
         self.shared_stack = Some(shared_stack);
         self.owner = Some(owner);
         let mut named_cache_client = NamedCacheClient::new();
-        named_cache_client.init(None, None, None, Some(sn_list)).await?;
+        named_cache_client.init(None, None, None, Some(sn_list), area).await?;
         self.named_cache_client = Some(named_cache_client);
         Ok(())
     }

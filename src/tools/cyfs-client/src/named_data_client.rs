@@ -120,7 +120,7 @@ impl NamedCacheClient {
         }
     }
 
-    pub async fn init(&mut self, desc: Option<Device>, secret: Option<PrivateKey>, meta_target: Option<String>, sn_list: Option<Vec<Device>>) -> BuckyResult<()> {
+    pub async fn init(&mut self, desc: Option<Device>, secret: Option<PrivateKey>, meta_target: Option<String>, sn_list: Option<Vec<Device>>, area: Option<Area>) -> BuckyResult<()> {
         // 避免并行init
         let mut ret = self.init_ret.lock().await;
         if *ret {
@@ -133,12 +133,7 @@ impl NamedCacheClient {
             info!("no input peerdesc, create random one.");
             let secret = PrivateKey::generate_rsa(1024)?;
             let public = secret.public();
-            let area = Area {
-                country: 0,
-                carrier: 0,
-                city: 0,
-                inner: 0,
-            };
+            let area = area.unwrap_or(Area::default());
             let mut uni = [0 as u8; 16];
             rand::thread_rng().fill_bytes(&mut uni);
             let uni_id = UniqueId::create(&uni);
