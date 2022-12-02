@@ -703,7 +703,7 @@ impl Tunnel {
             &sn, 
             true, 
             true,
-            false,
+            true,
             |sn_call| {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 let mut buf = vec![0u8; interface::udp::MTU_LARGE];

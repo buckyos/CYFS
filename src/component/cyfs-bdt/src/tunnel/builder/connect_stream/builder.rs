@@ -173,7 +173,7 @@ impl ConnectStreamBuilder {
             &sn, 
             true, 
             true,
-            false,
+            true,
             |sn_call| {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 //FIXME 先不调用raw_measure_with_context
