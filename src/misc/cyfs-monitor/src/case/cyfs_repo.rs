@@ -48,7 +48,7 @@ impl MonitorRunner for CyfsRepoMonitor {
                 let mut client = NamedCacheClient::new();
                 let device = cyfs_base::Device::clone_from_hex(DEVICE_DESC, &mut vec![])?;
                 let secret = cyfs_base::PrivateKey::clone_from_hex(DEVICE_SEC, &mut vec![])?;
-                client.init(Some(device), Some(secret), None, None).await?;
+                client.init(Some(device), Some(secret), None, None, None).await?;
                 self.cyfs_client.set(client);
             }
 
