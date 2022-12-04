@@ -30,7 +30,7 @@ impl NamedDataRepo {
         let mut client = NamedCacheClient::new();
 
         // service desc确保它有固定外网地址，连接不走sn。这里sn_list就可以传None
-        if let Err(e) = client.init(None, None, None, None).await {
+        if let Err(e) = client.init(None, None, None, None, None).await {
             let msg = format!("init named cache client for repo failed! err={}", e);
             error!("{}", msg);
 
