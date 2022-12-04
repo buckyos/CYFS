@@ -1,4 +1,5 @@
 use super::auth::InterfaceAuth;
+use super::browser_server::{BrowserSanboxHttpServer, DisableBrowserRequestHttpServer};
 use super::http_server::*;
 use super::{
     ObjectHttpBdtListener, ObjectHttpListener, ObjectHttpTcpListener, ObjectListener,
@@ -6,6 +7,7 @@ use super::{
 };
 use crate::acl::AclManagerRef;
 use crate::app::AuthenticatedAppList;
+use crate::config::StackGlobalConfig;
 use crate::events::RouterEventsManager;
 use crate::interface::http_ws_listener::ObjectHttpWSService;
 use crate::name::NameResolver;
@@ -16,11 +18,11 @@ use crate::stack::ObjectServices;
 use crate::zone::ZoneRoleManager;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_lib::RequestProtocol;
+use cyfs_lib::{RequestProtocol, BrowserSanboxMode};
 
+use cyfs_debug::Mutex;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use cyfs_debug::Mutex;
 
 pub struct ObjectListenerManagerParams {
     pub bdt_stack: StackGuard,
@@ -119,6 +121,7 @@ impl ObjectListenerManager {
     pub(crate) fn init(
         &mut self,
         params: ObjectListenerManagerParams,
+        config: &StackGlobalConfig,
         services: &ObjectServices,
         router_handlers: &RouterHandlersManager,
         router_events: &RouterEventsManager,
@@ -173,7 +176,16 @@ impl ObjectListenerManager {
 
             let raw_handler = RawHttpServer::new(server.into_server());
             let http_server = DefaultHttpServer::new(raw_handler.into(), default_handler.clone());
-            self.http_tcp_server = Some(http_server.into());
+            let http_server = match config.get_stack_params().front.browser_mode {
+                BrowserSanboxMode::None => http_server.into(),
+                mode @ _ => {
+                    BrowserSanboxHttpServer::new(
+                        http_server.into(),
+                        mode,
+                    ).into()
+                }
+            };
+            self.http_tcp_server = Some(http_server);
         }
 
         {
@@ -193,8 +205,8 @@ impl ObjectListenerManager {
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
-
-            self.http_auth_raw_server = Some(raw_handler.into());
+            let http_handler = DisableBrowserRequestHttpServer::new(raw_handler.into());
+            self.http_auth_raw_server = Some(http_handler.into());
         }
 
         // save default_handler for dynamic auth interface

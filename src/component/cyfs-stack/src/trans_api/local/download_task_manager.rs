@@ -12,7 +12,8 @@ use sha2::Digest;
 use std::path::PathBuf;
 use std::sync::{Arc};
 
-#[derive(RawEncode, RawDecode)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
+#[cyfs_protobuf_type(super::trans_proto::DownloadTaskState)]
 pub struct DownloadTaskState {
     pub task_status: TaskStatus,
     pub err_code: Option<BuckyErrorCode>,
@@ -20,6 +21,32 @@ pub struct DownloadTaskState {
     pub upload_speed: u64,
     pub downloaded_progress: u64,
     pub sum_size: u64,
+}
+
+impl ProtobufTransform<super::trans_proto::DownloadTaskState> for DownloadTaskState {
+    fn transform(value: crate::trans_api::local::trans_proto::DownloadTaskState) -> BuckyResult<Self> {
+        Ok(Self {
+            task_status: TaskStatus::try_from(value.task_status)?,
+            err_code: value.err_code.map(|v| BuckyErrorCode::from(v)),
+            speed: value.speed,
+            upload_speed: value.upload_speed,
+            downloaded_progress: value.download_progress,
+            sum_size: value.sum_size
+        })
+    }
+}
+
+impl ProtobufTransform<&DownloadTaskState> for super::trans_proto::DownloadTaskState {
+    fn transform(value: &DownloadTaskState) -> BuckyResult<Self> {
+        Ok(Self {
+            task_status: value.task_status.into(),
+            err_code: value.err_code.map(|v| v.into()),
+            speed: value.speed,
+            upload_speed: value.upload_speed,
+            download_progress: value.downloaded_progress,
+            sum_size: value.sum_size
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -62,6 +89,7 @@ impl DownloadTaskManager {
 
     pub fn gen_task_id(obj_id: &ObjectId, local_path: Option<String>) -> TaskId {
         let mut sha256 = sha2::Sha256::new();
+        sha256.input(DOWNLOAD_FILE_TASK.0.to_le_bytes());
         sha256.input(obj_id.as_slice());
         if local_path.is_some() {
             sha256.input(local_path.as_ref().unwrap().as_bytes());
@@ -94,13 +122,13 @@ impl DownloadTaskManager {
                 file_id.to_string()
             );
         }
-        let params = DownloadFileParam::V1(DownloadFileParamV1 {
+        let params = DownloadFileParam {
             file,
             device_list,
             referer,
             save_path: local_path.clone(),
             context_id: context_id.clone(),
-        });
+        };
 
         let task_id = self
             .task_manager
@@ -143,13 +171,13 @@ impl DownloadTaskManager {
                 chunk_id.to_string()
             );
         }
-        let params = DownloadChunkParam::V1(DownloadChunkParamV1 {
+        let params = DownloadChunkParam {
             chunk_id,
             device_list,
             referer,
             save_path: local_path,
             context_id: context_id.clone(),
-        });
+        };
         let task_id = self
             .task_manager
             .create_task(dec_id.clone(), source.clone(), DOWNLOAD_CHUNK_TASK, params)

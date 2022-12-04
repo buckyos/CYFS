@@ -7,15 +7,17 @@ use cyfs_debug::Mutex;
 use cyfs_base::*;
 use crate::{
     types::*, 
+    sn::Config,
 };
 use super::{
-    net_listener::UdpSender
+    net_listener::UdpSender, statistic::{PeerStatus, StatisticManager, }
 };
 
 pub struct FoundPeer {
     pub desc: Device,
     pub sender: Arc<UdpSender>,
     pub is_wan: bool,
+    pub peer_status: PeerStatus,
 }
 
 
@@ -28,6 +30,8 @@ struct CachedPeerInfo {
     pub is_wan: bool,
 
     pub last_ping_seq: TempSeq,
+
+    pub peer_status: PeerStatus,
     // pub call_peers: HashMap<DeviceId, TempSeq>, // <peerid, last_call_seq>
     // pub receipt: SnServiceReceipt,
     // pub last_receipt_request_time: ReceiptRequestTime,
@@ -58,7 +62,8 @@ impl CachedPeerInfo {
         sender: Arc<UdpSender>, 
         aes_key: Option<&MixAesKey>, 
         send_time: Timestamp, 
-        seq: TempSeq) -> CachedPeerInfo {
+        seq: TempSeq, 
+        peer_status: PeerStatus) -> CachedPeerInfo {
         CachedPeerInfo {
             is_wan: has_wan_endpoint(&desc),
             last_ping_seq: seq,
@@ -67,6 +72,7 @@ impl CachedPeerInfo {
             aes_key: aes_key.map(|k| k.clone()),
             last_send_time: send_time,
             last_call_time: 0,
+            peer_status,
             // call_peers: Default::default(),
             // receipt: Default::default(),
             // last_receipt_request_time: ReceiptRequestTime::None,
@@ -77,7 +83,8 @@ impl CachedPeerInfo {
         FoundPeer {
             desc: self.desc.clone(), 
             sender: self.sender.clone(), 
-            is_wan: self.is_wan
+            is_wan: self.is_wan,
+            peer_status: self.peer_status.clone(),
         }
     }
 
@@ -154,7 +161,9 @@ impl Peers {
 pub struct PeerManager {
     peers: Mutex<Peers>, 
     last_knock_time: AtomicU64,
-    timeout: Duration
+    timeout: Duration,
+    config: Config,
+    statistic_manager: &'static StatisticManager,
 }
 
 enum FindPeerReason {
@@ -164,14 +173,16 @@ enum FindPeerReason {
 
 
 impl PeerManager {
-    pub fn new(timeout: Duration) -> PeerManager {
+    pub fn new(timeout: Duration, config: Config) -> PeerManager {
         PeerManager {
             peers: Mutex::new(Peers {
                 active_peers: Default::default(),
                 knock_peers: Default::default(),
             }),
             last_knock_time: AtomicU64::new(bucky_time_now()),
-            timeout
+            timeout,
+            config,
+            statistic_manager: StatisticManager::get_instance(),
         }
     }
 
@@ -198,7 +209,32 @@ impl PeerManager {
             } else {
                 log::debug!("ping without device-info.");
             }
+
+
+            let recount_req = match (send_time - cached_peer.last_send_time) / self.config.ping_interval.as_micros() as u64 {
+                0 => {
+                    let recode = if cached_peer.last_ping_seq >= seq {
+                        false
+                    } else {
+                        (seq.value() - cached_peer.last_ping_seq.value()) > 50
+                    };
+
+                    cached_peer.peer_status.wait_online(send_time, recode);
+
+                    recode
+                }
+                _ => {
+                    cached_peer.peer_status.online(seq, send_time);
+                    true
+                }
+            };
+
             cached_peer.last_send_time = send_time;
+            if recount_req {
+                cached_peer.last_ping_seq = seq;
+            }
+
+
             // 客户端被签名的地址才被更新，避免恶意伪装
             if contain_addr(&cached_peer.desc, sender.remote()) 
                 || cached_peer.sender.key().mix_key != sender.key().mix_key {
@@ -236,7 +272,7 @@ impl PeerManager {
         // 3.新建cache
         match peer_desc {
             Some(desc) => {
-                let old = peers.active_peers.insert(peerid, CachedPeerInfo::new(desc.clone(), sender, aes_key, send_time, seq));
+                let old = peers.active_peers.insert(peerid.clone(), CachedPeerInfo::new(desc.clone(), sender, aes_key, send_time, seq, self.statistic_manager.get_peer_status(peerid.clone(), send_time)));
                 assert!(old.is_none());
                 true
             }
@@ -244,15 +280,24 @@ impl PeerManager {
         }
     }
 
-    pub fn try_knock_timeout(&self, now: Timestamp) {
+    pub fn try_knock_timeout(&self, now: Timestamp) -> Option<Vec<DeviceId>> {
         let last_knock_time = self.last_knock_time.load(Ordering::SeqCst);
-        if now > last_knock_time && Duration::from_micros(now - last_knock_time) > self.timeout {
+        let drop_maps = if now > last_knock_time && Duration::from_micros(now - last_knock_time) > self.timeout {
             let mut peers = self.peers.lock().unwrap();
             let mut knock_peers = Default::default();
             std::mem::swap(&mut knock_peers, &mut peers.active_peers);
             std::mem::swap(&mut knock_peers, &mut peers.knock_peers);
             self.last_knock_time.store(now, Ordering::SeqCst);
-        }
+
+            Some(knock_peers.into_keys().collect())
+        } else {
+            None
+        };
+
+        self.statistic_manager.on_time_escape(now);
+
+        drop_maps
+
     }
 
     pub fn find_peer(&self, id: &DeviceId) -> Option<FoundPeer> {

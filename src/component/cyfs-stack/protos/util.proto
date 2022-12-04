@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+message BuildFileParams {
+  string local_path = 1;
+  bytes owner = 2;
+  bytes dec_id = 3;
+  uint32 chunk_size = 4;
+}
+
+message BuildDirParams {
+  string local_path = 1;
+  bytes owner = 2;
+  bytes dec_id = 3;
+  uint32 chunk_size = 4;
+  bytes device_id = 5;
+}

@@ -1,6 +1,9 @@
 // Every app has one
 pub const CYFS_GLOBAL_STATE_META_PATH: &str = "/.cyfs/meta";
 
+// Config path, the system-dec must has one
+pub const CYFS_GLOBAL_STATE_CONFIG_PATH: &str = "/.cyfs/config";
+
 // Friends, in system dec's global state
 pub const CYFS_FRIENDS_PATH: &str = "/user/friends";
 pub const CYFS_FRIENDS_LIST_PATH: &str = "/user/friends/list";

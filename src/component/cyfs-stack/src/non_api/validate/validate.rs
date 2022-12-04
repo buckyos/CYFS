@@ -6,29 +6,31 @@ use cyfs_lib::*;
 use std::str::FromStr;
 use std::sync::Arc;
 
-pub struct NONGlobalStateValidator {
+pub(crate) struct NONGlobalStateValidator {
     validator: GlobalStateValidatorManager,
-    next: NONInputProcessorRef,
 }
 
 impl NONGlobalStateValidator {
-    pub(crate) fn new(
-        validator: GlobalStateValidatorManager,
-        next: NONInputProcessorRef,
-    ) -> NONInputProcessorRef {
-        let ret = Self { validator, next };
-        Arc::new(Box::new(ret))
+    pub(crate) fn new(validator: GlobalStateValidatorManager) -> Self {
+        Self { validator }
     }
 
-    async fn validate(
+    pub async fn validate(
         &self,
         source: &RequestSourceInfo,
-        req_path: &str,
+        req_path: RequestGlobalStatePath,
         object_id: &ObjectId,
-    ) -> BuckyResult<GlobalStateValidateResponse> {
+    ) -> BuckyResult<()> {
         // debug!("will validate object: req_path={}, object={}", req_path, object_id);
-        
-        let req_path = RequestGlobalStatePath::from_str(req_path)?;
+
+    
+        // 同zone+同dec，或者同zone+system，那么不需要validate
+        if source.is_current_zone() {
+            if source.check_target_dec_permission(&req_path.dec_id) {
+                return Ok(());
+            }
+        }
+
         let category = req_path.category();
         let dec_id = req_path.dec(source).to_owned();
 
@@ -52,12 +54,42 @@ impl NONGlobalStateValidator {
         self.validator
             .get_validator(category)
             .validate(validate_req)
-            .await
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn validate_raw_req_path(
+        &self,
+        source: &RequestSourceInfo,
+        req_path: &str,
+        object_id: &ObjectId,
+    ) -> BuckyResult<()> {
+        let req_path = RequestGlobalStatePath::from_str(req_path)?;
+        self.validate(source, req_path, object_id).await
+    }
+}
+
+pub(crate) struct NONGlobalStateValidatorProcessor {
+    validator: NONGlobalStateValidator,
+    next: NONInputProcessorRef,
+}
+
+impl NONGlobalStateValidatorProcessor {
+    pub(crate) fn new(
+        validator: GlobalStateValidatorManager,
+        next: NONInputProcessorRef,
+    ) -> NONInputProcessorRef {
+        let ret = Self {
+            validator: NONGlobalStateValidator::new(validator),
+            next,
+        };
+        Arc::new(Box::new(ret))
     }
 }
 
 #[async_trait::async_trait]
-impl NONInputProcessor for NONGlobalStateValidator {
+impl NONInputProcessor for NONGlobalStateValidatorProcessor {
     async fn put_object(
         &self,
         req: NONPutObjectInputRequest,
@@ -70,9 +102,10 @@ impl NONInputProcessor for NONGlobalStateValidator {
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
         if let Some(req_path) = &req.common.req_path {
-            let _resp = self.validate(&req.common.source, req_path, &req.object_id).await?;
+            self.validator.validate_raw_req_path(&req.common.source, req_path, &req.object_id)
+                .await?;
         }
-        
+
         self.next.get_object(req).await
     }
 
@@ -95,7 +128,8 @@ impl NONInputProcessor for NONGlobalStateValidator {
         req: NONDeleteObjectInputRequest,
     ) -> BuckyResult<NONDeleteObjectInputResponse> {
         if let Some(req_path) = &req.common.req_path {
-            let _resp = self.validate(&req.common.source, req_path, &req.object_id).await?;
+            self.validator.validate_raw_req_path(&req.common.source, req_path, &req.object_id)
+                .await?;
         }
 
         self.next.delete_object(req).await

@@ -1,8 +1,6 @@
 use super::super::inner_path::NONInnerPathServiceProcessor;
 use crate::meta::*;
-use crate::ndn_api::NDCLevelInputProcessor;
 use crate::non::*;
-use crate::resolver::OodResolver;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -11,38 +9,34 @@ use std::sync::Arc;
 
 pub(crate) struct MetaInputProcessor {
     next: Option<NONInputProcessorRef>,
-    meta_cache: Box<dyn MetaCache>,
+    meta_cache: MetaCacheRef,
 }
 
 impl MetaInputProcessor {
-    fn new_raw(
+    fn new(
         next: Option<NONInputProcessorRef>,
-        meta_cache: Box<dyn MetaCache>,
+        meta_cache: MetaCacheRef,
     ) -> NONInputProcessorRef {
         let ret = Self { next, meta_cache };
         Arc::new(Box::new(ret))
     }
 
     // Integrate noc with inner_path+meta service
-    pub(crate) fn new_raw_with_inner_path_service(
+    pub(crate) fn new_with_inner_path_service(
         noc_processor: Option<NONInputProcessorRef>,
-        meta_cache: Box<dyn MetaCache>,
+        meta_cache: MetaCacheRef,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        ood_resolver: OodResolver,
         chunk_manager: Arc<ChunkManager>,
         noc: NamedObjectCacheRef,
     ) -> NONInputProcessorRef {
-        let noc_with_meta_processor = Self::new_raw(noc_processor, meta_cache);
-
-        let ndc_processor =
-            NDCLevelInputProcessor::new_raw(chunk_manager, ndc, tracker, noc_with_meta_processor.clone());
+        let noc_with_meta_processor = Self::new(noc_processor, meta_cache);
 
         let inner_path_processor = NONInnerPathServiceProcessor::new(
-            NONAPILevel::NOC,
             noc_with_meta_processor,
-            ndc_processor,
-            ood_resolver,
+            chunk_manager,
+            ndc,
+            tracker,
             noc,
         );
 

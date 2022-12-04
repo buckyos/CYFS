@@ -247,7 +247,6 @@ impl Ord for GlobalStatePathAccessItem {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::*;
     use cyfs_core::*;
 
     use serde::{Deserialize, Serialize};
@@ -262,7 +261,7 @@ mod test {
         let t = GlobalStatePathSpecifiedGroup {
             zone: None,
             zone_category: Some(DeviceZoneCategory::CurrentZone),
-            dec: Some(get_system_dec_app().object_id().clone()),
+            dec: Some(get_system_dec_app().clone()),
             access: 5,
         };
 

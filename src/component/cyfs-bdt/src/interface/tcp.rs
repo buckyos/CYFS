@@ -509,7 +509,7 @@ impl AcceptInterface {
         let remote = Endpoint::from((endpoint::Protocol::Tcp, remote));
         let local = Endpoint::from((endpoint::Protocol::Tcp, local));
 
-        let mut recv_buf = [0u8; udp::MTU];
+        let mut recv_buf = [0u8; udp::MTU_LARGE];
         let (box_type, box_buf) =
             future::timeout(timeout, receive_box(&socket, &mut recv_buf)).await??;
         if box_type != BoxType::Package {
@@ -574,7 +574,7 @@ impl AcceptInterface {
     }
 
     pub async fn confirm_accept(&self, packages: Vec<DynamicPackage>) -> Result<(), BuckyError> {
-        let mut send_buffer = [0u8; udp::MTU];
+        let mut send_buffer = [0u8; udp::MTU_LARGE];
         let mut context = PackageBoxEncodeContext(OtherBoxEncodeContext {
             plaintext: false,
         });
@@ -682,7 +682,7 @@ impl Interface {
             .keystore()
             .get_key_by_mix_hash(&self.key().mix_hash(), false, false)
             .ok_or_else(|| BuckyError::new(BuckyErrorCode::CryptoError, "key not exists"))?;
-        let mut buffer = [0u8; udp::MTU];
+        let mut buffer = [0u8; udp::MTU_LARGE];
         let mut package_box =
             PackageBox::encrypt_box(self.0.remote_device_id.clone(), self.0.key.clone());
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {

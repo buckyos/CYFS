@@ -1,4 +1,3 @@
-use super::cache::*;
 use super::root::*;
 use super::root_index::RootInfo;
 use crate::config::StackGlobalConfig;
@@ -34,7 +33,7 @@ impl GlobalStateManager {
         noc: NamedObjectCacheRef,
         config: StackGlobalConfig,
     ) -> BuckyResult<Self> {
-        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone());
+        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(noc.clone());
         let global_root_state = GlobalStateRoot::load(
             category.clone(),
             device_id,

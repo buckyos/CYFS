@@ -15,6 +15,9 @@ use clap::{App, Arg};
 
 
 async fn main_run() {
+    let default_root = cyfs_util::default_cyfs_root_path();
+    let cyfs_root_help = format!("Specify cyfs root dir, default is {}", default_root.display());
+
     let app = App::new("zone-simulator")
         .version(cyfs_base::get_version())
         .about("zone-simulator tools for cyfs system")
@@ -32,6 +35,11 @@ async fn main_run() {
                 .long("random")
                 .takes_value(false)
                 .help("Generate random random mnemonic"),
+        ).arg(
+            Arg::with_name("cyfs_root")
+                .long("cyfs-root")
+                .takes_value(true)
+                .help(&cyfs_root_help),
         );
 
     let matches = app.get_matches();
@@ -40,6 +48,10 @@ async fn main_run() {
     if random_mnemonic {
         loader::random_mnemonic();
         std::process::exit(0);
+    }
+
+    if let Some(cyfs_root) = matches.value_of("cyfs_root") {
+        cyfs_util::bind_cyfs_root_path(cyfs_root);
     }
 
     let dump = matches.is_present("dump");

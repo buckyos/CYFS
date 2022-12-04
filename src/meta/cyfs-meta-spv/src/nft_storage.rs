@@ -1,8 +1,18 @@
 use std::str::FromStr;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use cyfs_base::*;
 use cyfs_base_meta::*;
 use crate::{DBExecutor, get_meta_err_code, HashValueEx, MetaConnection, SPVTxStorage};
+
+#[derive(Serialize, Deserialize)]
+pub struct SPVNFTBidRecord {
+    pub buyer_id: String,
+    pub price: u64,
+    pub coin_id: CoinTokenId,
+    pub block_number: u64,
+    pub block_time: u64,
+}
 
 #[async_trait::async_trait]
 pub trait NFTStorage {
@@ -15,14 +25,14 @@ pub trait NFTStorage {
     async fn nft_get_latest_of_user(&self, user_id: &ObjectId, block_number: i64) -> BuckyResult<Vec<NFTDetail>>;
     async fn nft_change_beneficiary(&self, conn: &mut MetaConnection, nft_id: &ObjectId, creator_id: &ObjectId, beneficiary: &ObjectId, block_number: i64, record_transfer: bool, nft_cached: Option<ObjectId>) -> BuckyResult<()>;
     async fn nft_update_state(&self, conn: &mut MetaConnection, object_id: &ObjectId, state: &NFTState) -> BuckyResult<()>;
-    async fn nft_add_apply_buy(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId, price: u64, coin_id: &CoinTokenId) -> BuckyResult<()>;
+    async fn nft_add_apply_buy(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId, price: u64, coin_id: &CoinTokenId, block_number: u64, block_time: u64) -> BuckyResult<()>;
     async fn nft_get_apply_buy(&self, nft_id: &ObjectId, buyer_id: &ObjectId) -> BuckyResult<Option<(u64, CoinTokenId)>>;
-    async fn nft_get_apply_buy_list(&self, nft_id: &ObjectId) -> BuckyResult<Vec<(ObjectId, u64, CoinTokenId)>>;
+    async fn nft_get_apply_buy_list(&self, nft_id: &ObjectId) -> BuckyResult<Vec<(ObjectId, u64, CoinTokenId, u64, u64)>>;
     async fn nft_remove_all_apply_buy(&self, conn: &mut MetaConnection, nft_id: &ObjectId) -> BuckyResult<()>;
     async fn nft_remove_apply_buy(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId) -> BuckyResult<()>;
-    async fn nft_add_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId, price: u64, coin_id: &CoinTokenId, block_number: i64) -> BuckyResult<()>;
+    async fn nft_add_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId, price: u64, coin_id: &CoinTokenId, block_number: i64, block_time: u64) -> BuckyResult<()>;
     async fn nft_get_bid(&self, nft_id: &ObjectId, buyer_id: &ObjectId) -> BuckyResult<Option<(u64, CoinTokenId)>>;
-    async fn nft_get_bid_list(&self, nft_id: &ObjectId, offset: u64, length: u64) -> BuckyResult<Vec<(ObjectId, u64, CoinTokenId)>>;
+    async fn nft_get_bid_list(&self, nft_id: &ObjectId, offset: u64, length: u64) -> BuckyResult<(u64, Vec<(ObjectId, u64, CoinTokenId, u64, u64)>)>;
     async fn nft_remove_all_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId) -> BuckyResult<()>;
     async fn nft_remove_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId) -> BuckyResult<()>;
     async fn nft_add_like(&self, conn: &mut MetaConnection, nft_id: &ObjectId, user_id: &ObjectId, block_number: u64, create_time: u64) -> BuckyResult<()>;
@@ -87,6 +97,13 @@ impl NFTStorage for SPVTxStorage {
         )"#;
         conn.execute_sql(sqlx::query(sql)).await?;
 
+        let sql = r#"select type, name, tbl_name, sql from sqlite_master where type = "table" and name = "nft_bid""#;
+        let row = conn.query_one(sqlx::query(sql)).await?;
+        let sql: String = row.get("sql");
+        if sql.find("block_time").is_none() {
+            let sql = r#"alter table nft_bid add column "block_time" integer default 0"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+        }
         let sql = r#"create index if not exists nft_bid_index on nft_bid(nft_id, block_number)"#;
         conn.execute_sql(sqlx::query(sql)).await?;
 
@@ -98,6 +115,16 @@ impl NFTStorage for SPVTxStorage {
             PRIMARY KEY(nft_id, buyer_id)
         )"#;
         conn.execute_sql(sqlx::query(sql)).await?;
+
+        let sql = r#"select type, name, tbl_name, sql from sqlite_master where type = "table" and name = "nft_apply_buy""#;
+        let row = conn.query_one(sqlx::query(sql)).await?;
+        let sql: String = row.get("sql");
+        if sql.find("block_time").is_none() {
+            let sql = r#"alter table nft_apply_buy add column "block_number" integer default 0"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+            let sql = r#"alter table nft_apply_buy add column "block_time" integer default 0"#;
+            conn.execute_sql(sqlx::query(sql)).await?;
+        }
 
         let sql = r#"create index if not exists nft_apply_buy_index on nft_apply_buy(nft_id)"#;
         conn.execute_sql(sqlx::query(sql)).await?;
@@ -288,14 +315,23 @@ impl NFTStorage for SPVTxStorage {
         Ok(())
     }
 
-    async fn nft_add_apply_buy(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId, price: u64, coin_id: &CoinTokenId) -> BuckyResult<()> {
-        let sql = r#"insert into nft_apply_buy (nft_id, buyer_id, price, coin_id) values (?1, ?2, ?3, ?4)
+    async fn nft_add_apply_buy(&self,
+                               conn: &mut MetaConnection,
+                               nft_id: &ObjectId,
+                               buyer_id: &ObjectId,
+                               price: u64,
+                               coin_id: &CoinTokenId,
+                               block_number: u64,
+                               block_time: u64) -> BuckyResult<()> {
+        let sql = r#"insert into nft_apply_buy (nft_id, buyer_id, price, coin_id, block_number, block_time) values (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(nft_id, buyer_id) do update set price = ?3, coin_id = ?4"#;
         conn.execute_sql(sqlx::query(sql)
             .bind(nft_id.to_string())
             .bind(buyer_id.to_string())
             .bind(price as i64)
-            .bind(coin_id.to_vec()?)).await?;
+            .bind(coin_id.to_vec()?)
+            .bind(block_number as i64)
+            .bind(block_time as i64)).await?;
         Ok(())
     }
 
@@ -320,7 +356,7 @@ impl NFTStorage for SPVTxStorage {
 
     }
 
-    async fn nft_get_apply_buy_list(&self, nft_id: &ObjectId) -> BuckyResult<Vec<(ObjectId, u64, CoinTokenId)>> {
+    async fn nft_get_apply_buy_list(&self, nft_id: &ObjectId) -> BuckyResult<Vec<(ObjectId, u64, CoinTokenId, u64, u64)>> {
         let mut conn = self.get_conn().await?;
 
         let sql = "select * from nft_apply_buy where nft_id = ?1";
@@ -330,7 +366,9 @@ impl NFTStorage for SPVTxStorage {
             list.push((
                 ObjectId::from_str(row.get("buyer_id"))?,
                 row.get::<i64, _>("price") as u64,
-                CoinTokenId::clone_from_slice(row.get("coin_id"))?
+                CoinTokenId::clone_from_slice(row.get("coin_id"))?,
+                row.get::<i64, _>("block_number") as u64,
+                row.get::<i64, _>("block_time") as u64,
             ));
         }
         Ok(list)
@@ -348,15 +386,16 @@ impl NFTStorage for SPVTxStorage {
         Ok(())
     }
 
-    async fn nft_add_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId, price: u64, coin_id: &CoinTokenId, block_number: i64) -> BuckyResult<()> {
-        let sql = r#"insert into nft_bid (nft_id, buyer_id, price, coin_id, block_number) values (?1, ?2, ?3, ?4, ?5)
+    async fn nft_add_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId, buyer_id: &ObjectId, price: u64, coin_id: &CoinTokenId, block_number: i64, block_time: u64) -> BuckyResult<()> {
+        let sql = r#"insert into nft_bid (nft_id, buyer_id, price, coin_id, block_number, block_time) values (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(nft_id, buyer_id) do update set price = ?3, coin_id = ?4, block_number = ?5"#;
         conn.execute_sql(sqlx::query(sql)
             .bind(nft_id.to_string())
             .bind(buyer_id.to_string())
             .bind(price as i64)
             .bind(coin_id.to_vec()?)
-            .bind(block_number)).await?;
+            .bind(block_number)
+            .bind(block_time as i64)).await?;
         Ok(())
     }
 
@@ -380,9 +419,11 @@ impl NFTStorage for SPVTxStorage {
 
     }
 
-    async fn nft_get_bid_list(&self, nft_id: &ObjectId, offset: u64, length: u64) -> BuckyResult<Vec<(ObjectId, u64, CoinTokenId)>> {
+    async fn nft_get_bid_list(&self, nft_id: &ObjectId, offset: u64, length: u64) -> BuckyResult<(u64, Vec<(ObjectId, u64, CoinTokenId, u64, u64)>)> {
         let mut conn = self.get_conn().await?;
-
+        let sql = "select count(*) as c from nft_bid where nft_id = ?1";
+        let row = conn.query_one(sqlx::query(sql).bind(nft_id.to_string())).await?;
+        let sum: i64 = row.get("c");
         let sql = "select * from nft_bid where nft_id = ?1 order by block_number desc limit ?2, ?3";
         let rows = conn.query_all(sqlx::query(sql).bind(nft_id.to_string()).bind(offset as i64).bind(length as i64)).await?;
         let mut list = Vec::new();
@@ -390,10 +431,12 @@ impl NFTStorage for SPVTxStorage {
             list.push((
                 ObjectId::from_str(row.get("buyer_id"))?,
                 row.get::<i64, _>("price") as u64,
-                CoinTokenId::clone_from_slice(row.get("coin_id"))?
+                CoinTokenId::clone_from_slice(row.get("coin_id"))?,
+                row.get::<i64, _>("block_number") as u64,
+                row.get::<i64, _>("block_time") as u64,
             ));
         }
-        Ok(list)
+        Ok((sum as u64, list))
     }
 
     async fn nft_remove_all_bid(&self, conn: &mut MetaConnection, nft_id: &ObjectId) -> BuckyResult<()> {

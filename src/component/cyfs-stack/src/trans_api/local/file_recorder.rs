@@ -14,7 +14,7 @@ pub(in crate::trans_api) struct FileRecorder {
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
     noc: NamedObjectCacheRef,
-    device_id: DeviceId,
+    dec_id: ObjectId,
 }
 
 impl Clone for FileRecorder {
@@ -23,7 +23,7 @@ impl Clone for FileRecorder {
             ndc: self.ndc.clone(),
             tracker: self.tracker.clone(),
             noc: self.noc.clone(),
-            device_id: self.device_id.clone(),
+            dec_id: self.dec_id.clone(),
         }
     }
 }
@@ -33,13 +33,13 @@ impl FileRecorder {
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         noc: NamedObjectCacheRef,
-        device_id: DeviceId,
+        dec_id: ObjectId,
     ) -> Self {
         Self {
             ndc,
             tracker,
             noc,
-            device_id,
+            dec_id,
         }
     }
 
@@ -195,7 +195,7 @@ impl FileRecorder {
         let object = NONObjectInfo::new(file_id.object_id().to_owned(), object_raw, Some(object));
 
         let req = NamedObjectCachePutObjectRequest {
-            source: RequestSourceInfo::new_local_system(),
+            source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
             object,
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
@@ -434,7 +434,7 @@ impl FileRecorder {
         let object = NONObjectInfo::new(dir_id.object_id().to_owned(), object_raw, Some(object));
 
         let req = NamedObjectCachePutObjectRequest {
-            source: RequestSourceInfo::new_local_system(),
+            source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
             object,
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,

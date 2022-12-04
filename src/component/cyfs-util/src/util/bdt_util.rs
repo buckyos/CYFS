@@ -1,10 +1,12 @@
-use cyfs_base::*;
 use crate::*;
+use cyfs_base::*;
 
 use std::path::Path;
 
-
-pub fn get_desc_from_file(desc_path: &Path, secret_path: &Path) -> BuckyResult<(StandardObject, PrivateKey)> {
+pub fn get_desc_from_file(
+    desc_path: &Path,
+    secret_path: &Path,
+) -> BuckyResult<(StandardObject, PrivateKey)> {
     debug!("will open secret file: {}", secret_path.display());
     let (secret, _) = PrivateKey::decode_from_file(secret_path, &mut vec![])?;
     debug!("will open desc file: {}", desc_path.display());
@@ -12,7 +14,10 @@ pub fn get_desc_from_file(desc_path: &Path, secret_path: &Path) -> BuckyResult<(
     Ok((desc, secret))
 }
 
-pub fn get_device_from_file(desc_path: &Path, secret_path: &Path) -> BuckyResult<(Device, PrivateKey)> {
+pub fn get_device_from_file(
+    desc_path: &Path,
+    secret_path: &Path,
+) -> BuckyResult<(Device, PrivateKey)> {
     let (obj, sec) = get_desc_from_file(desc_path, secret_path)?;
     if let StandardObject::Device(device) = obj {
         Ok((device, sec))
@@ -28,62 +33,120 @@ pub fn get_json_userdata_from_desc(desc: &Device) -> BuckyResult<(serde_json::Va
 
 pub fn get_userdata_from_desc(desc: &Device) -> BuckyResult<(&[u8], u64)> {
     if let Some(userdata) = desc.body().as_ref().unwrap().user_data() {
-        Ok((userdata.as_slice(), desc.body().as_ref().unwrap().update_time()))
+        Ok((
+            userdata.as_slice(),
+            desc.body().as_ref().unwrap().update_time(),
+        ))
     } else {
         return Err(BuckyError::from(BuckyErrorCode::NotFound));
     }
 }
 
-// 读取本地的pn配置，在{root}/etc/desc/pn.desc
-// 如果函数返回None，就不配置pn
-// 如果函数返回Some，就一定将返回值配置成pn
-fn load_pn_desc() -> Option<Device> {
+pub(crate) fn load_device_objects_list(root: &Path) -> Vec<(DeviceId, Device)> {
+    if !root.is_dir() {
+        return vec![];
+    }
+
+    let mut loader = DirObjectsSyncLoader::new(root);
+    loader.load();
+
+    let objects = loader.into_objects();
+    let mut result = Vec::with_capacity(objects.len());
+    for (file_path, data) in objects {
+        match Device::clone_from_slice(&data) {
+            Ok(device) => {
+                let id = device.desc().device_id();
+                info!(
+                    "load local device object: file={}, id={}",
+                    file_path.display(),
+                    id
+                );
+                result.push((id, device));
+            }
+            Err(e) => {
+                error!(
+                    "invalid local device object: file={}, {}",
+                    file_path.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    result
+}
+
+fn load_device_object(file: &Path) -> Vec<(DeviceId, Device)> {
+    match Device::decode_from_file(&file, &mut vec![]) {
+        Ok((device, _)) => {
+            let id = device.desc().device_id();
+            info!(
+                "load local device object: file={}, id={}",
+                file.display(),
+                id
+            );
+            vec![(id, device)]
+        }
+        Err(e) => {
+            error!(
+                "invalid local device object: file={}, {}",
+                file.display(),
+                e
+            );
+            vec![]
+        }
+    }
+}
+
+// 读取本地的pn配置，在{root}/etc/desc/pn.desc and {root}/etc/desc/pn
+fn load_local_pn_desc() -> Vec<(DeviceId, Device)> {
     let mut default_pn_file = get_cyfs_root_path();
     default_pn_file.push("etc");
     default_pn_file.push("desc");
-    default_pn_file.push("pn.desc");
-    if default_pn_file.exists() {
-        match  Device::decode_from_file(&default_pn_file, &mut vec![]) {
-            Ok((device, _))=> {
-                info!("use local config pn server: file={}, id={}", default_pn_file.display(), device.desc().object_id());
-                return Some(device);
-            }
-            Err(e) => {
-                error!("invalid pn device: {}, {}", default_pn_file.display(), e);
-            }
+
+    let dir = default_pn_file.join("pn");
+    if dir.is_dir() {
+        load_device_objects_list(&dir)
+    } else {
+        default_pn_file.push("pn.desc");
+        if default_pn_file.exists() {
+            load_device_object(&default_pn_file)
+        } else {
+            vec![]
         }
     }
-
-    None
 }
 
-
-fn load_default_sn_desc() -> Device {
+fn load_local_sn_desc() -> Vec<(DeviceId, Device)> {
     let mut default_sn_file = get_cyfs_root_path();
     default_sn_file.push("etc");
     default_sn_file.push("desc");
-    default_sn_file.push("sn.desc");
-    if default_sn_file.exists() {
-        match Device::decode_from_file(&default_sn_file, &mut vec![]) {
-            Ok((device, _)) =>  {
-                info!("use local config sn server: file={}, id={}", default_sn_file.display(), device.desc().object_id());
-                return device;
-            }
-            Err(e) => {
-                error!("invalid sn device: {}, {}", default_sn_file.display(), e);
-            }
+
+    let dir = default_sn_file.join("sn");
+    if dir.is_dir() {
+        load_device_objects_list(&dir)
+    } else {
+        default_sn_file.push("sn.desc");
+        if default_sn_file.exists() {
+            load_device_object(&default_sn_file)
+        } else {
+            vec![]
         }
     }
+}
 
+fn load_default_sn_desc() -> Vec<(DeviceId, Device)> {
     let sn_raw = match cyfs_base::get_channel() {
         CyfsChannel::Nightly => env!("NIGHTLY_SN_RAW"),
         CyfsChannel::Beta => env!("BETA_SN_RAW"),
-        CyfsChannel::Stable => {unreachable!()}
+        CyfsChannel::Stable => {
+            unreachable!()
+        }
     };
-    let (desc, _) = Device::raw_decode(&hex::decode(sn_raw).unwrap()).unwrap();
-    desc
-}
 
+    let object_raw = hex::decode(sn_raw).unwrap();
+    SNDirParser::parse(None, &object_raw).unwrap()
+}
 
 pub fn get_default_known_peers() -> Vec<Device> {
     let mut ret = vec![];
@@ -91,8 +154,10 @@ pub fn get_default_known_peers() -> Vec<Device> {
     default_known_peer_dir.push("etc");
     default_known_peer_dir.push("known_peers");
     if default_known_peer_dir.exists() {
-        for desc_file in walkdir::WalkDir::new(&default_known_peer_dir).into_iter()
-            .filter_map(|e|e.ok()) {
+        for desc_file in walkdir::WalkDir::new(&default_known_peer_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             if desc_file.path().extension().unwrap_or("".as_ref()) == "desc" {
                 match Device::decode_from_file(desc_file.path(), &mut vec![]) {
                     Ok((p, _)) => {
@@ -132,16 +197,45 @@ pub fn get_device_desc(name: &str) -> BuckyResult<(Device, PrivateKey)> {
     )
 }
 
+lazy_static::lazy_static! {
+    pub static ref LOCAL_SN: Vec<(DeviceId, Device)> = load_local_sn_desc();
+    pub static ref LOCAL_PN: Vec<(DeviceId, Device)> = load_local_pn_desc();
 
-lazy_static::lazy_static!{
-    pub static ref DEFAULT_SN: Device = load_default_sn_desc();
-    pub static ref DEFAULT_PN: Option<Device> = load_pn_desc();
+    pub static ref DEFAULT_SN: Vec<(DeviceId, Device)> = load_default_sn_desc();
 }
 
-pub fn get_pn_desc() -> Option<Device> {
-    DEFAULT_PN.clone()
+// get configed pn
+pub fn get_local_pn_desc() -> &'static Vec<(DeviceId, Device)> {
+    &LOCAL_PN
 }
 
-pub fn get_default_sn_desc() -> Device {
-    DEFAULT_SN.clone()
+pub fn get_local_pn_desc_id_list() -> Vec<DeviceId> {
+    LOCAL_PN.iter().map(|item| item.0.clone()).collect()
+}
+
+// configed sn
+pub fn get_local_sn_desc() -> &'static Vec<(DeviceId, Device)> {
+    &LOCAL_SN
+}
+
+pub fn get_local_sn_desc_id_list() -> Vec<DeviceId> {
+    LOCAL_SN.iter().map(|item| item.0.clone()).collect()
+}
+
+// builtin sn
+pub fn get_builtin_sn_desc() -> &'static Vec<(DeviceId, Device)> {
+    &DEFAULT_SN
+}
+
+pub fn get_builtin_sn_desc_id_list() -> Vec<DeviceId> {
+    DEFAULT_SN.iter().map(|item| item.0.clone()).collect()
+}
+
+// get local sn, if empty, get the buildin sn
+pub fn get_sn_desc() -> &'static Vec<(DeviceId, Device)> {
+    if LOCAL_SN.len() > 0 {
+        &LOCAL_SN
+    } else {
+        &DEFAULT_SN
+    }
 }

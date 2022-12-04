@@ -14,7 +14,7 @@ use super::{
 };
 use log::*;
 
-const QUESTION_MAX_LEN: usize = 1380;
+const QUESTION_MAX_LEN: usize = 1024*25;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct RemoteSequence(DeviceId, TempSeq);

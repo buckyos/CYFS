@@ -3,7 +3,7 @@ use super::super::noc::*;
 use super::super::non::*;
 use super::super::router::*;
 use crate::forward::ForwardProcessorManager;
-use crate::meta::{MetaCache, ObjectFailHandler};
+use crate::meta::{MetaCacheRef, ObjectFailHandler};
 use crate::ndn_api::*;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
@@ -20,6 +20,7 @@ use std::sync::Arc;
 pub struct NONService {
     raw_noc_processor: NONInputProcessorRef,
     noc: NONInputProcessorRef,
+    rmeta_noc_processor: NONInputProcessorRef,
     non: NONInputProcessorRef,
     router: NONInputProcessorRef,
 }
@@ -36,37 +37,39 @@ impl NONService {
         ood_resovler: OodResolver,
 
         router_handlers: RouterHandlersManager,
-        meta_cache: Box<dyn MetaCache>,
+        meta_cache: MetaCacheRef,
         fail_handler: ObjectFailHandler,
         chunk_manager: ChunkManagerRef,
     ) -> (NONService, NDNService) {
-        // raw service with inner_path support
-        let raw_noc_processor = NOCLevelInputProcessor::new_raw_with_inner_path_service(
+        // raw service with inner_path service support
+        let raw_noc_processor = NOCLevelInputProcessor::new_with_inner_path_service(
             noc.clone(),
             ndc.clone(),
             tracker.clone(),
-            ood_resovler.clone(),
             router_handlers.clone(),
             zone_manager.clone(),
             chunk_manager.clone(),
         );
 
         // meta处理器，从mete和noc处理get_object请求
-        let meta_processor = MetaInputProcessor::new_raw_with_inner_path_service(
+        let meta_processor = MetaInputProcessor::new_with_inner_path_service(
             None,
             meta_cache,
             ndc.clone(),
             tracker.clone(),
-            ood_resovler.clone(),
             chunk_manager.clone(),
             noc.clone(),
         );
 
-        // 带本地权限的noc processor
+        // noc processor with local device acl + rmeta acl + validate
         let local_noc_processor =
-            NOCLevelInputProcessor::new_local(acl.clone(), raw_noc_processor.clone());
+            NOCLevelInputProcessor::new_local_rmeta_acl(acl.clone(), raw_noc_processor.clone());
 
-        // 同zone权限的non processor
+        // noc processor only with rmeta acl + validate
+        let rmeta_noc_processor =
+            NOCLevelInputProcessor::new_rmeta_acl(acl.clone(), raw_noc_processor.clone());
+
+        // non processor with zone acl + rmeta acl + validate
         let non_processor = NONLevelInputProcessor::new_zone(
             acl.clone(),
             raw_noc_processor.clone(),
@@ -75,7 +78,7 @@ impl NONService {
             router_handlers.clone(),
         );
 
-        // 标准acl权限的router
+        // 标准acl权限的router + rmeta acl + validate
         let router = NONRouter::new_acl(
             raw_noc_processor.clone(),
             forward_manager.clone(),
@@ -89,6 +92,7 @@ impl NONService {
         let non_service = Self {
             raw_noc_processor: raw_noc_processor.clone(),
             noc: local_noc_processor,
+            rmeta_noc_processor,
             non: non_processor.clone(),
             router: router.clone(),
         };
@@ -102,8 +106,6 @@ impl NONService {
             ood_resovler,
             zone_manager,
             router_handlers.clone(),
-            raw_noc_processor,
-            non_processor.clone(),
             router,
             chunk_manager.clone(),
             forward_manager,
@@ -115,6 +117,14 @@ impl NONService {
 
     pub(crate) fn raw_noc_processor(&self) -> &NONInputProcessorRef {
         &self.raw_noc_processor
+    }
+
+    pub(crate) fn rmeta_noc_processor(&self) -> &NONInputProcessorRef {
+        &self.rmeta_noc_processor
+    }
+
+    pub(crate) fn router_processor(&self) -> &NONInputProcessorRef {
+        &self.router
     }
 
     pub(crate) fn clone_processor(&self) -> NONInputProcessorRef {

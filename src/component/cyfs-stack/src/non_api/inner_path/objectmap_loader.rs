@@ -1,31 +1,30 @@
-use crate::root_state_api::ObjectMapNOCCacheAdapter;
 use cyfs_base::*;
 use cyfs_lib::*;
 
 use std::sync::Arc;
 
 pub(crate) struct NONObjectMapLoader {
-    device_id: DeviceId,
     noc: NamedObjectCacheRef,
     root_cache: ObjectMapRootCacheRef,
     op_env_cache: ObjectMapOpEnvCacheRef,
 }
 
 impl NONObjectMapLoader {
-    pub fn new(device_id: DeviceId, noc: NamedObjectCacheRef) -> Self {
-        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone());
-        let root_cache = ObjectMapRootMemoryCache::new_ref(noc_cache, 60 * 5, 1024);
+    pub fn new(noc: NamedObjectCacheRef) -> Self {
+        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(noc.clone());
+
+        // loader's dec already been system dec, will check access for the root object which will been required!
+        let root_cache = ObjectMapRootMemoryCache::new_ref(None, noc_cache, 60 * 5, 1024);
         let op_env_cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         Self {
-            device_id,
             noc,
             root_cache,
             op_env_cache,
         }
     }
 
-    pub async fn load(&self, req: NONGetObjectInputRequest,) -> BuckyResult<NONObjectInfo> {
+    pub async fn load(&self, req: NONGetObjectInputRequest) -> BuckyResult<NONObjectInfo> {
         let inner_path = req.inner_path.unwrap();
 
         info!(
@@ -35,6 +34,24 @@ impl NONObjectMapLoader {
 
         assert_eq!(req.object_id.obj_type_code(), ObjectTypeCode::ObjectMap);
 
+        // first check access at object level
+        let check_access_req = NamedObjectCacheCheckObjectAccessRequest {
+            source: req.common.source.clone(),
+            object_id: req.object_id.clone(),
+            required_access: AccessPermissions::ReadOnly,
+        };
+
+        let ret = self.noc.check_object_access(&check_access_req).await?;
+        if ret.is_none() {
+            let msg = format!(
+                "get_object with objectmap and inner_path but not found! object={}, inner_path={}",
+                req.object_id, inner_path,
+            );
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+        }
+
+        // load target object with inner_path
         let path = ObjectMapPath::new(req.object_id.clone(), self.op_env_cache.clone());
         let ret = path.get_by_path(&inner_path).await?;
         if ret.is_none() {
@@ -65,7 +82,8 @@ impl NONObjectMapLoader {
                 None => None,
             }
         } else {
-            self.load_object_from_noc(req.common.source, &object_id).await?
+            self.load_object_from_noc(&object_id)
+                .await?
         };
 
         if ret.is_none() {
@@ -90,12 +108,12 @@ impl NONObjectMapLoader {
 
     async fn load_object_from_noc(
         &self,
-        source: RequestSourceInfo,
         object_id: &ObjectId,
     ) -> BuckyResult<Option<(Arc<AnyNamedObject>, Vec<u8>)>> {
+        // objectmap + inner_path mode, only check the root object's access_string!
         let noc_req = NamedObjectCacheGetObjectRequest {
             object_id: object_id.clone(),
-            source,
+            source: RequestSourceInfo::new_local_system(),
             last_access_rpath: None,
         };
 
@@ -105,9 +123,7 @@ impl NONObjectMapLoader {
         })?;
 
         match resp {
-            Some(resp) => {
-                Ok(Some((resp.object.object.unwrap(), resp.object.object_raw)))
-            }
+            Some(resp) => Ok(Some((resp.object.object.unwrap(), resp.object.object_raw))),
             None => Ok(None),
         }
     }

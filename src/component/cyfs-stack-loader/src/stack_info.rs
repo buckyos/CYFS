@@ -6,7 +6,7 @@ use crate::{KNOWN_OBJECTS_MANAGER, VAR_MANAGER};
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_lib::SharedCyfsStack;
-use cyfs_stack::{BdtStackParams, CyfsStack};
+use cyfs_stack::{BdtStackParams, CyfsStack, CyfsStackKnownObjects};
 
 pub(crate) struct StackInfo {
     pub stack_params: CyfsStackLoaderParams,
@@ -132,11 +132,16 @@ impl StackInfo {
         // 准备bdt协议栈的初始化必要参数
         let btd_stack_params = self.init_bdt_stack_params();
 
+        let known_objects = CyfsStackKnownObjects {
+            list: KNOWN_OBJECTS_MANAGER.clone_objects(),
+            mode: KNOWN_OBJECTS_MANAGER.get_mode(),
+        };
+
         // 初始化object_stack
         let cyfs_stack = CyfsStack::open(
             btd_stack_params,
             self.stack_params.cyfs_stack_params.clone(),
-            KNOWN_OBJECTS_MANAGER.clone_objects(),
+            known_objects,
         )
         .await?;
 
@@ -165,17 +170,15 @@ impl StackInfo {
         // should not change the device's inner sn_list and pn_list
         info!("current device: {}", device_info.device.format_json());
 
-        let sn = cyfs_util::get_default_sn_desc();
-        let sn_id = sn.desc().device_id();
-        info!("default sn: {}", sn_id);
+        // only use the sn in local config dir
+        for (id, sn) in cyfs_util::get_local_sn_desc() {
+            info!("will use sn: {}", id);
+            init_sn_peers.push(sn.to_owned());
+        }
 
-        init_sn_peers.push(sn);
-
-        if let Some(pn) = cyfs_util::get_pn_desc() {
-            let pn_id = pn.desc().device_id();
-            info!("default pn: {}", pn_id);
-
-            init_pn_peers.push(pn);
+        for (id, pn) in cyfs_util::get_local_pn_desc() {
+            info!("will use pn: {}", id);
+            init_pn_peers.push(pn.to_owned());
         }
 
         let init_known_peers = cyfs_util::get_default_known_peers();

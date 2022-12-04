@@ -1,5 +1,6 @@
 use cyfs_base_meta::*;
 use crate::state_storage::{StateRef, StateWeakRef};
+use crate::archive_storage::*;
 use super::context;
 use crate::{ViewBalanceResult, State};
 use crate::executor::context::AccountMethods;
@@ -19,15 +20,17 @@ impl ViewExecuteContext {
 pub struct ViewMethodExecutor<M: ViewMethod> {
     method: M,
     ref_state: StateWeakRef,
+    ref_archive: ArchiveWeakRef,
     block: BlockDesc,
     evm_config: evm::Config
 }
 
 impl <M: ViewMethod> ViewMethodExecutor<M> {
-    pub fn new(block: &BlockDesc, ref_state: &StateRef, method: M) -> ViewMethodExecutor<M> {
+    pub fn new(block: &BlockDesc, ref_state: &StateRef, ref_archive: &ArchiveRef, method: M) -> ViewMethodExecutor<M> {
         ViewMethodExecutor {
             method,
             ref_state: StateRef::downgrade(ref_state),
+            ref_archive: ArchiveRef::downgrade(ref_archive),
             block: block.clone(),
             evm_config: evm::Config::istanbul(),    // 先把evm的config创建在这里，以后能自己设置了，应该是外边传进来的
         }
@@ -71,21 +74,33 @@ impl ViewMethodExecutor<ViewNameMethod> {
     }
 }
 
+// 查询objects
 impl ViewMethodExecutor<ViewRawMethod> {
     pub async fn exec(&self) -> BuckyResult<<ViewRawMethod as ViewMethod>::Result> {
-        let obj = self.ref_state.to_rc()?.get_obj_desc(&self.method.id).await?;
-        match obj {
-            SavedMetaObject::Device(obj) => Ok(obj.to_vec()?),
-            SavedMetaObject::People(obj) => Ok(obj.to_vec()?),
-            SavedMetaObject::UnionAccount(obj) => Ok(obj.to_vec()?),
-            SavedMetaObject::Group(obj) => Ok(obj.to_vec()?),
-            SavedMetaObject::File(obj) => Ok(obj.to_vec()?),
-            SavedMetaObject::Data(obj) => Ok(obj.data),
-            SavedMetaObject::Org(obj) => Ok(obj.to_vec()?),
-            SavedMetaObject::MinerGroup(obj) => Ok(obj.to_vec()?),
-            SavedMetaObject::SNService(obj) => Ok(obj.to_vec()?),
-            SavedMetaObject::Contract(obj) => Ok(obj.to_vec()?),
-        }
+        match self.ref_state.to_rc()?.get_obj_desc(&self.method.id).await {
+            Ok(obj) => {
+                let status: u8 = 0/* success*/;
+                let _ = self.ref_archive.to_rc()?.set_meta_object_stat(&self.method.id, status).await;
+                match obj {
+                    SavedMetaObject::Device(obj) => Ok(obj.to_vec()?),
+                    SavedMetaObject::People(obj) => Ok(obj.to_vec()?),
+                    SavedMetaObject::UnionAccount(obj) => Ok(obj.to_vec()?),
+                    SavedMetaObject::Group(obj) => Ok(obj.to_vec()?),
+                    SavedMetaObject::File(obj) => Ok(obj.to_vec()?),
+                    SavedMetaObject::Data(obj) => Ok(obj.data),
+                    SavedMetaObject::Org(obj) => Ok(obj.to_vec()?),
+                    SavedMetaObject::MinerGroup(obj) => Ok(obj.to_vec()?),
+                    SavedMetaObject::SNService(obj) => Ok(obj.to_vec()?),
+                    SavedMetaObject::Contract(obj) => Ok(obj.to_vec()?),
+                }
+            },
+            Err(e) => {
+                let status: u8 = 1 /* failed */;
+                let _ = self.ref_archive.to_rc()?.set_meta_object_stat(&self.method.id, status).await;
+                return Err(e);
+            },
+        }        
+
     }
 }
 

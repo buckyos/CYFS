@@ -152,16 +152,7 @@ impl GlobalStateValidator {
         // Check if target is matched
         match &req.object_id {
             Some(id) => {
-                if target != *id {
-                    let msg = format!(
-                        "global state path validate unmatch! req={}, expect={}, got={}",
-                        debug_info, id, target
-                    );
-                    warn!("{}", msg);
-                    return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
-                }
-
-                info!("global state path validate success! req={}", debug_info);
+                self.check_target(&target, &id, &debug_info).await?;
             }
             None => {
                 info!(
@@ -281,5 +272,72 @@ impl GlobalStateValidator {
 
         let path = ObjectMapPath::new(key.root.clone(), self.op_env_cache.clone());
         path.get_by_path(&key.inner_path).await
+    }
+
+    async fn check_target(
+        &self,
+        target: &ObjectId,
+        req_object_id: &ObjectId,
+        debug_info: &str,
+    ) -> BuckyResult<()> {
+        if target == req_object_id {
+            info!("global state path validate success! req={}", debug_info);
+            return Ok(());
+        }
+
+        if target.obj_type_code() == ObjectTypeCode::ObjectMap {
+            // check if contains
+            let contains = self
+                .check_contains(target, req_object_id, debug_info)
+                .await.map_err(|e| {
+                    let msg = format!("global state path validate got error! {}", e);
+                    BuckyError::new(BuckyErrorCode::PermissionDenied, msg)
+                })?;
+            if contains {
+                info!(
+                    "global state path validate with contains success! req={}",
+                    debug_info
+                );
+                return Ok(());
+            }
+        }
+
+        let msg = format!(
+            "global state path validate unmatch or uncontains! req={}, expect={}, got={}",
+            debug_info, req_object_id, target
+        );
+        warn!("{}", msg);
+        Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
+    }
+
+    async fn check_contains(
+        &self,
+        target: &ObjectId,
+        req_object_id: &ObjectId,
+        debug_info: &str,
+    ) -> BuckyResult<bool> {
+        let ret = self
+            .global_state
+            .root_cache()
+            .get_object_map(&target)
+            .await?;
+
+        if ret.is_none() {
+            let msg = format!(
+                "global state path target objectmap not found! target={}, req={}",
+                target, debug_info
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+        }
+
+        let item = ret.unwrap();
+        let item = item.lock().await;
+        if item.content_type().is_set() {
+            let ret = item.contains(&self.op_env_cache, req_object_id).await?;
+            Ok(ret)
+        } else {
+            Ok(false)
+        }
     }
 }

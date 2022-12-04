@@ -23,11 +23,19 @@ async fn main_run() {
     warn!("output warn log");
     error!("output error log");
 
+    
+    async_std::task::spawn(async move {
+        async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+        unreachable!("test cyfs-debug panic");
+    });
+
     // async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
 
-    info!("create minidump file");
-    let helper = cyfs_debug::DumpHelper::get_instance();
-    helper.dump();
+    // info!("create minidump file");
+    // let helper = cyfs_debug::DumpHelper::get_instance();
+    // helper.dump();
+
+    async_std::task::sleep(std::time::Duration::from_secs(1000)).await;
 
     // cyfs_debug::create_dump(Path::new("."), "minidump_%p.dmp", false);
 }

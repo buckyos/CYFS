@@ -6,8 +6,8 @@ use cyfs_lib::{BaseTcpListener, BaseTcpListenerHandler, RequestProtocol};
 use async_std::net::TcpStream;
 use async_trait::async_trait;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub(super) struct ObjectHttpTcpListener {
@@ -66,9 +66,7 @@ impl ObjectHttpTcpListener {
     }
 
     fn next_seq(&self) -> u64 {
-        self
-            .seq
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        self.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn get_listen(&self) -> String {
@@ -76,20 +74,19 @@ impl ObjectHttpTcpListener {
     }
 
     async fn accept(&self, stream: TcpStream) -> BuckyResult<()> {
-        let seq = self.next_seq();
-
         let peer_addr = stream.peer_addr()?;
         debug!(
-            "starting accept new tcp connection at {} from {}, seq={}",
-            self.listen_url, &peer_addr, seq,
+            "starting accept new tcp connection at {} from {}",
+            self.listen_url, &peer_addr,
         );
 
-        // 一条连接上只accept一次
         let begin = std::time::Instant::now();
         let opts = async_h1::ServerOptions::default();
         let ret = async_h1::accept_with_opts(
             stream,
             |mut req| async move {
+                let seq = self.next_seq();
+
                 info!(
                     "recv tcp http request: url={}, method={}, len={:?}, peer={}, seq={}",
                     req.url(),
@@ -121,9 +118,9 @@ impl ObjectHttpTcpListener {
                             }
                         } else {
                             warn!(
-                            "tcp http request complete with error! status={}, peer={}, during={}ms, seq={}",
-                            status, peer_addr, during, seq,
-                        );
+                                "tcp http request complete with error! status={}, peer={}, during={}ms, seq={}",
+                                status, peer_addr, during, seq,
+                            );
                         }
 
                         Ok(resp)
@@ -145,9 +142,12 @@ impl ObjectHttpTcpListener {
         .await;
 
         if let Err(e) = ret {
-            error!(
-                "tcp http accept error, err={}, addr={}, peer={}, during={}ms, seq={}",
-                e, self.listen_url, peer_addr, begin.elapsed().as_millis(), seq,
+            warn!(
+                "tcp http accept error, err={}, addr={}, peer={}, during={}ms",
+                e,
+                self.listen_url,
+                peer_addr,
+                begin.elapsed().as_millis(),
             );
             // FIXME 一般是请求方直接断开导致的错误，是否需要判断并不再输出warn？
             //Err(BuckyError::from(e))

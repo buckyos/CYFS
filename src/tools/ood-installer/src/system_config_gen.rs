@@ -1,8 +1,7 @@
 use super::asset::InstallTarget;
 use cyfs_base::{BuckyError, BuckyResult};
 
-const SYSTEM_CONFIG_TEMPLATE: &str = r#"
-[device]
+const SYSTEM_CONFIG_TEMPLATE: &str = r#"[device]
 target = "${target}"
 config_desc = "${config_repo}"
 

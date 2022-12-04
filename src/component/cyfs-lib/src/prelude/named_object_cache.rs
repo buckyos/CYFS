@@ -166,6 +166,15 @@ pub struct NamedObjectCacheExistsObjectResponse {
     pub object: bool,
 }
 
+// check_access
+pub struct NamedObjectCacheCheckObjectAccessRequest {
+    pub source: RequestSourceInfo,
+
+    pub object_id: ObjectId,
+    pub required_access: AccessPermissions,
+}
+
+
 // stat
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NamedObjectCacheStat {
@@ -221,6 +230,10 @@ pub trait NamedObjectCache: Sync + Send {
         &self,
         req: &NamedObjectCacheUpdateObjectMetaRequest,
     ) -> BuckyResult<()>;
+
+    async fn check_object_access(&self, 
+        req: &NamedObjectCacheCheckObjectAccessRequest
+    ) -> BuckyResult<Option<()>>;
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat>;
 }

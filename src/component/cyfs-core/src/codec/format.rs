@@ -76,24 +76,6 @@ impl ObjectFormatAutoWithSerde for ZoneDescContent {}
 impl ObjectFormatAutoWithSerde for ZoneBodyContent {}
 
 
-#[test]
-fn test() {
-    use std::str::FromStr;
-
-    let obj = Text::create("id1", "header1", "value1");
-
-    let value = obj.format_json();
-    let s = value.to_string();
-    println!("{}", s);
-
-    let mut friend_list = FriendList::create(ObjectId::from_str("5r4MYfFMPYJr5UqgAh2XcM4kdui5TZrhdssWpQ7XCp2y").unwrap(), true);
-    friend_list.set_auto_msg("auto_msg".to_owned());
-    friend_list.friend_list_mut().insert(ObjectId::from_str("5r4MYfFMPYJr5UqgAh2XcM4kdui5TZrhdssWpQ7XCp2y").unwrap(), FriendContent {});
-
-    println!("{}", friend_list.format_json().to_string())
-}
-
-
 pub fn register_core_objects_format() {
     FORMAT_FACTORY.register(CoreObjectType::Zone, format_json::<Zone>);
     FORMAT_FACTORY.register(CoreObjectType::Storage, format_json::<Storage>);

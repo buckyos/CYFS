@@ -461,7 +461,7 @@ impl ObjectMapRootManager {
         let begin_sid = sid1 as u64 * sid2 as u64;
 
         let lock = ObjectMapPathLock::new();
-        let cache = ObjectMapRootMemoryCache::new_ref(noc, 60 * 5, 1024);
+        let cache = ObjectMapRootMemoryCache::new_ref(dec_id.clone(), noc, 60 * 5, 1024);
         Self {
             owner,
             dec_id,

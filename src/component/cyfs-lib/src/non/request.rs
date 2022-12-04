@@ -16,3 +16,5 @@ pub type NONSelectObjectResponse = NONSelectObjectOutputResponse;
 
 pub type NONDeleteObjectRequest = NONDeleteObjectOutputRequest;
 pub type NONDeleteObjectResponse = NONDeleteObjectOutputResponse;
+
+pub type NONUpdateObjectMetaRequest = NONUpdateObjectMetaOutputRequest;

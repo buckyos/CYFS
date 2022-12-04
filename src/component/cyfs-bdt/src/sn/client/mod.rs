@@ -10,17 +10,6 @@ use crate::protocol::{*, v0::*};
 use std::future::Future;
 use crate::stack::{Stack, WeakStack};
 use crate::{SnServiceReceipt, SnServiceGrade};
-use std::time::Duration;
-
-#[derive(Copy, Clone)]
-pub struct Config {
-    pub ping_interval_init: Duration,
-    pub ping_interval: Duration,
-    pub offline: Duration,
-
-    pub call_interval: Duration,
-    pub call_timeout: Duration,
-}
 
 pub struct ClientManager {
     ping: PingManager,

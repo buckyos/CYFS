@@ -69,7 +69,7 @@ impl NamedObjectCacheSerializer {
                 Entry::Occupied(o) => {
                     let item = o.get().clone();
                     item.add_ref();
-                    item.clone()
+                    item
                 }
             }
         };
@@ -89,7 +89,9 @@ impl NamedObjectCacheSerializer {
 
         // should check once before been removed!!
         if lock.ref_count() <= 0 {
-            locks.remove_entry(object_id).unwrap();
+            // consider the seq: leave -> ref <= 0 -> begin release -> {acquire and release again} -> begin release2
+            // then there is two try_release_lock ops appending, which will try remove_entry twice 
+            locks.remove_entry(object_id);
         }
     }
 }
@@ -164,6 +166,20 @@ impl NamedObjectCache for NamedObjectCacheSerializer {
         let ret = {
             let _guard = lock.lock.lock().await;
             self.next.update_object_meta(req).await
+        };
+
+        self.leave_lock(&req.object_id, lock);
+
+        ret
+    }
+
+    async fn check_object_access(&self, 
+        req: &NamedObjectCacheCheckObjectAccessRequest
+    ) -> BuckyResult<Option<()>> {
+        let lock = self.acquire_lock(&req.object_id);
+        let ret = {
+            let _guard = lock.lock.lock().await;
+            self.next.check_object_access(req).await
         };
 
         self.leave_lock(&req.object_id, lock);

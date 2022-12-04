@@ -51,7 +51,7 @@ pub struct StackConfig {
     pub statistic_interval: Duration, 
     pub keystore: keystore::Config,
     pub interface: interface::Config, 
-    pub sn_client: sn::client::Config,
+    pub sn_client: sn::Config,
     pub tunnel: tunnel::Config,
     pub stream: stream::Config,
     pub datagram: datagram::Config,
@@ -74,7 +74,7 @@ impl StackConfig {
                     recv_buffer: 52428800
                 }
             }, 
-            sn_client: sn::client::Config {
+            sn_client: sn::Config {
                 ping_interval_init: Duration::from_millis(500),
                 ping_interval: Duration::from_millis(25000),
                 offline: Duration::from_millis(300000),
@@ -161,7 +161,7 @@ impl StackConfig {
                         expire: Duration::from_secs(20),  
                         atomic: Duration::from_secs(1)
                     }
-                },
+                }
             }, 
             debug: None
         }
@@ -252,11 +252,6 @@ impl Stack {
             local_secret.clone(),
         );
 
-        let mut known_sn = vec![];
-        if params.known_sn.is_some() {
-            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
-        }
-
         let mut passive_pn = vec![];
         if params.passive_pn.is_some() {
             std::mem::swap(&mut passive_pn, params.passive_pn.as_mut().unwrap());
@@ -269,12 +264,6 @@ impl Stack {
             let bound_endpoints = net_manager.listener().endpoints();
             for ep in bound_endpoints {
                 device_endpoints.push(ep);
-            }
-
-
-            let sn_list = device.mut_connect_info().mut_sn_list();
-            for sn in known_sn.iter().map(|d| d.desc().device_id()) {
-                sn_list.push(sn);
             }
             
             let passive_pn_list = device.mut_connect_info().mut_passive_pn_list();
@@ -313,6 +302,13 @@ impl Stack {
             lazy_components: None, 
             ndn: None
         }));
+
+        let mut known_sn = vec![];
+        if params.known_sn.is_some() {
+            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
+        }
+        stack.device_cache().reset_sn_list(&known_sn);
+
         let datagram_manager = DatagramManager::new(stack.to_weak());
 
         let proxy_manager = ProxyManager::new(stack.to_weak());
@@ -335,36 +331,42 @@ impl Stack {
             None
         };
 
-        let components = StackLazyComponents {
-            sn_client: sn::client::ClientManager::create(stack.to_weak()),
-            tunnel_manager: TunnelManager::new(stack.to_weak()),
-            stream_manager: StreamManager::new(stack.to_weak()),
-            datagram_manager, 
-            proxy_manager, 
-            debug_stub: debug_stub.clone()
-        };
-        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-        stack_impl.lazy_components = Some(components);
+        {
+            let components = StackLazyComponents {
+                sn_client: sn::client::ClientManager::create(stack.to_weak()),
+                tunnel_manager: TunnelManager::new(stack.to_weak()),
+                stream_manager: StreamManager::new(stack.to_weak()),
+                datagram_manager, 
+                proxy_manager, 
+                debug_stub: debug_stub.clone()
+            };
+            
+            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+            stack_impl.lazy_components = Some(components);
+    
+            let mut ndc = None;
+            std::mem::swap(&mut ndc, &mut params.ndc);
+            let mut tracker = None;
+            std::mem::swap(&mut tracker, &mut params.tracker);
+            let mut ndn_event = None;
+            std::mem::swap(&mut ndn_event, &mut params.ndn_event);
+    
+            let mut chunk_store = None;
+            std::mem::swap(&mut chunk_store, &mut params.chunk_store);
+    
+            let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
+            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+            stack_impl.ndn = Some(ndn);
+        }   
+        
 
-        let mut ndc = None;
-        std::mem::swap(&mut ndc, &mut params.ndc);
-        let mut tracker = None;
-        std::mem::swap(&mut tracker, &mut params.tracker);
-        let mut ndn_event = None;
-        std::mem::swap(&mut ndn_event, &mut params.ndn_event);
-
-        let mut chunk_store = None;
-        std::mem::swap(&mut chunk_store, &mut params.chunk_store);
-
-        let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
-        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-        stack_impl.ndn = Some(ndn);
-
-
-       
-        for sn in known_sn {
-            stack.device_cache().add(&sn.desc().device_id(), &sn);
-            stack.sn_client().add_sn_ping(&sn, true, None);
+        // get nearest sn in sn-list
+        if let Some(sn) = stack.device_cache().nearest_sn_of(stack.local_device_id()) {
+            let sn_device = stack.device_cache().get(&sn).await.unwrap();
+            stack.sn_client().add_sn_ping(&sn_device, true, None);
+        } else {
+            // don't find nearest sn
+            warn!("failed found SN-device sn-list: {}", known_sn.len());
         }
 
         let mut known_device = vec![];
@@ -508,6 +510,26 @@ impl Stack {
         .await;
         self.device_cache().update_local(&local);
         self.tunnel_manager().reset();
+    }
+
+    pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
+        info!("{} reset_sn_list {:?}", self, sn_list);
+        self.device_cache().reset_sn_list(&sn_list);
+
+        // need get nearest sn
+        if let Some(sn_id) = self.device_cache().nearest_sn_of(self.local_device_id()) {
+            if self.sn_client().sn_list().contains(&sn_id) {
+                info!("{} has been exists in sn clients.", sn_id);
+            } else {
+                let _ = self.sn_client().stop_ping();
+                self.sn_client().add_sn_ping(&self.device_cache().get(&sn_id).await.unwrap(), true, None);
+            }
+        } else {
+            // don't find nearest sn
+            unreachable!("failed found SN-device sn-list: {}", sn_list.len());
+        }
+
+        Ok(())
     }
 
     pub async fn reset(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {

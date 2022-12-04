@@ -86,6 +86,12 @@ if (!repo_path) {
     process.exit(1)
 }
 
+let file_repo_path = process.env.FFS_SERVICE_FILE_REPO_DESC;
+if (!file_repo_path) {
+    file_repo_path = repo_path
+    console.warn('no service file repo desc path, set to the same as FFS_SERVICE_REPO_DESC')
+}
+
 function get_obj_id(desc_file) {
     let out = child_process.execSync(`${path.join('dist', 'desc-tool')} show ${desc_file}`, {encoding: 'utf8'})
     let obj_id
@@ -110,6 +116,18 @@ async function run() {
         process.exit(1)
     }
     console.log(`get repo account ${repo_id} balance ${balance}`)
+
+    // check file repo balance
+    let file_repo_id = get_obj_id(file_repo_path+".desc")
+    out = JSON.parse(await post(meta_url(channel)+"/balance", [[0, file_repo_id]]));
+    balance = BigInt(out.result[0])
+    if (balance < 10000) {
+        let msg = `file repo account ${file_repo_id} balance ${balance} less then 10000!! channel ${channel}`;
+        await send_msg(msg)
+        console.error(msg)
+        process.exit(1)
+    }
+    console.log(`get file repo account ${file_repo_id} balance ${balance}`)
     
     if (type.includes("apps")) {
         try { fs.rmSync('dist/app_config.cfg') } catch (error) { }
@@ -141,7 +159,7 @@ async function run() {
                 child_process.execSync(`bash -c "./pack-tools -d apps/${app.name}"`, { cwd: 'dist', stdio: 'inherit' })
             }
     
-            child_process.execSync(`cyfs-client ${action} apps/${app.name}.zip -f fid -o ${repo_path}`, { cwd: 'dist', stdio: 'inherit' })
+            child_process.execSync(`cyfs-client ${action} apps/${app.name}.zip -f fid -o ${file_repo_path}`, { cwd: 'dist', stdio: 'inherit' })
             let fid = fs.readFileSync('dist/fid', {encoding: 'utf-8'});
             app_config.apps.push({ "id": app.appid, "ver": `${version}`, "status": 1 })
     
@@ -189,7 +207,7 @@ async function run() {
                 }
             }
     
-            child_process.execSync(`cyfs-client ${action} services/${service.name} -f fid -o ${repo_path}`, { cwd: 'dist', stdio: 'inherit' })
+            child_process.execSync(`cyfs-client ${action} services/${service.name} -f fid -o ${file_repo_path}`, { cwd: 'dist', stdio: 'inherit' })
             let fid = fs.readFileSync('dist/fid', {encoding: 'utf-8'})
             device_config.push({ "id": service.id, "ver": `${version}`, "status": 1 })
     

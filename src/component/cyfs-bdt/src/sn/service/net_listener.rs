@@ -21,9 +21,9 @@ use crate::{
     protocol::*,
     history::keystore::Keystore, 
     interface::{
-        udp::{MTU, PackageBoxDecodeContext, PackageBoxEncodeContext},
+        udp::{PackageBoxDecodeContext, PackageBoxEncodeContext, MTU_LARGE},
         tcp::{AcceptInterface, PackageInterface},
-    },
+    }, sn::service::statistic::StatisticManager, 
 };
 use super::SnService;
 
@@ -41,11 +41,15 @@ impl NetListener {
                 let exchg = first_pkg.as_any().downcast_ref::<Exchange>();
                 if let Some(exchg) = exchg {
                     if !exchg.verify(service.local_device_id()).await {
-                        warn!("exchange sign-verify failed, from: {:?}.", resp_sender.remote());
+                        let error_message = format!("exchange sign-verify failed, from: {:?}.", resp_sender.remote());
+                        warn!("{}", error_message);
+                        StatisticManager::get_instance().get_peer_status(service.local_device_id().clone(), bucky_time_now()).recod_error(error_message);
                         return;
                     }
                 } else {
-                    warn!("fetch exchange failed, from: {:?}.", resp_sender.remote());
+                    let error_message = format!("fetch exchange failed, from: {:?}.", resp_sender.remote());
+                    warn!("{}", error_message);
+                    StatisticManager::get_instance().get_peer_status(service.local_device_id().clone(), bucky_time_now()).recod_error(error_message);
                     return;
                 }
                 cmd_pkg = pkg_box.packages().get(1);
@@ -65,12 +69,16 @@ impl NetListener {
                             match verify_object_body_sign(&RsaCPUObjectVerifier::new(peer_info.desc().public_key().clone()), peer_info, sig).await {
                                 Ok(is_ok) => {
                                     if !is_ok {
-                                        log::warn!("sn-ping verify but unmatch, from {:?}", resp_sender.remote());
+                                        let error_message = format!("sn-ping verify but unmatch, from {:?}", resp_sender.remote());
+                                        warn!("{}", error_message);
+                                        StatisticManager::get_instance().get_peer_status(service.local_device_id().clone(), bucky_time_now()).recod_error(error_message);
                                         return;
                                     }
                                 },
                                 Err(e) => {
-                                    log::warn!("sn-ping verify failed, from {:?}, {}", resp_sender.remote(), e);
+                                    let error_message = format!("sn-ping verify failed, from {:?}, {}", resp_sender.remote(), e);
+                                    warn!("{}", error_message);
+                                    StatisticManager::get_instance().get_peer_status(service.local_device_id().clone(), bucky_time_now()).recod_error(error_message);
                                     return;
                                 }
                             }
@@ -427,7 +435,7 @@ impl UdpListener {
 
     async fn recv(&self) -> BuckyResult<(PackageBox, MessageSender)> {
         loop {
-            let mut recv_buf = [0; MTU];
+            let mut recv_buf = [0; MTU_LARGE];
             let rr = self.0.socket.recv_from(&mut recv_buf).await;
 
             match rr {
@@ -446,7 +454,9 @@ impl UdpListener {
                             break Ok((package_box, resp_sender))
                         },
                         Err(e) => {
-                            warn!("udp({}) decode failed, len={}, from={}, e={}, first-u16: {}", self.0.addr, recv.len(), from, e, u16::raw_decode(recv).unwrap_or((0, recv)).0);
+                            let error_message = format!("udp({}) decode failed, len={}, from={}, e={}, first-u16: {}", self.0.addr, recv.len(), from, e, u16::raw_decode(recv).unwrap_or((0, recv)).0);
+                            warn!("{}", error_message);
+                            StatisticManager::get_instance().get_endpoint_status(from).recod_error(error_message);
                         }
                     }
                 },
@@ -509,7 +519,9 @@ impl TcpAcceptor {
                             })))
                         },
                         Err(e) => {
-                            warn!("tcp-listener({}) accept a stream, but the first package read failed, from {:?}. err: {}", self.addr, from_addr, e);
+                            let error_message = format!("tcp-listener({}) accept a stream, but the first package read failed, from {:?}. err: {}", self.addr, from_addr, e);
+                            warn!("{}", error_message);
+                            StatisticManager::get_instance().get_endpoint_status(from_addr).recod_error(error_message);
                             let _ = socket.shutdown(Shutdown::Both);
                         }
                     }
@@ -560,7 +572,7 @@ impl UdpSender {
     pub async fn send(&self,
                   pkg_box: &PackageBox) -> BuckyResult<()> {
 
-        let mut encode_buf = [0; MTU];
+        let mut encode_buf = [0; MTU_LARGE];
         let send_buf = {
             let mut context = PackageBoxEncodeContext::default();
 
@@ -615,7 +627,7 @@ pub struct TcpSender {
 
 impl TcpSender {
     pub async fn send(&mut self, pkg: DynamicPackage) -> BuckyResult<()> {
-        let mut send_buf = [0; MTU];
+        let mut send_buf = [0; MTU_LARGE];
 
         match self.handle.send_package(&mut send_buf, pkg, false).await {
             Ok(()) => Ok(()),

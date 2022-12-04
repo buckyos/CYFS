@@ -9,14 +9,18 @@ use chrono::DateTime;
 use std::panic;
 use std::path::PathBuf;
 use std::sync::Arc;
-use once_cell::sync::OnceCell;
 
 // 触发了panic
 pub type FnOnPanic = dyn EventListenerAsyncRoutine<CyfsPanicInfo, ()>;
 type OnPanicEventManager = SyncEventManagerSync<CyfsPanicInfo, ()>;
 
 pub trait BugReportHandler: Send + Sync {
-    fn notify(&self, product_name: &str, service_name: &str, panic_info: &CyfsPanicInfo) -> BuckyResult<()>;
+    fn notify(
+        &self,
+        product_name: &str,
+        service_name: &str,
+        panic_info: &CyfsPanicInfo,
+    ) -> BuckyResult<()>;
 }
 
 struct PanicManagerImpl {
@@ -31,12 +35,19 @@ struct PanicManagerImpl {
     on_panic: OnPanicEventManager,
 
     // 上报器
-    reporter: OnceCell<Box<dyn BugReportHandler>>,
+    reporter: Box<dyn BugReportHandler>,
 }
 
 impl PanicManagerImpl {
     pub fn new(builder: PanicBuilder) -> Self {
-    
+        let reporter = match builder.bug_reporter {
+            Some(item) => item,
+            None => {
+                let manager = BugReportManager::new();
+                Box::new(manager)
+            }
+        };
+
         Self {
             product_name: builder.product_name,
             service_name: builder.service_name,
@@ -45,7 +56,7 @@ impl PanicManagerImpl {
             exit_on_panic: builder.exit_on_panic,
 
             on_panic: OnPanicEventManager::new(),
-            reporter: OnceCell::new(),
+            reporter,
         }
     }
 }
@@ -71,7 +82,7 @@ impl PanicManager {
         }));
     }
 
-    pub fn event(&self) ->  OnPanicEventManager {
+    pub fn event(&self) -> OnPanicEventManager {
         self.0.on_panic.clone()
     }
 
@@ -80,16 +91,18 @@ impl PanicManager {
             self.log_to_file(&info);
         }
 
-        if let Some(reporter) = self.0.reporter.get() {
-            let _ = reporter.notify(&self.0.product_name, &self.0.service_name, &info);
-        }
+        info!("will report panic......");
+        let _ = self
+            .0
+            .reporter
+            .notify(&self.0.product_name, &self.0.service_name, &info);
 
         // 触发事件
         let _ = self.0.on_panic.emit(&info);
 
         if self.0.exit_on_panic {
             crate::CyfsLogger::flush();
-            
+
             error!("process will exit on panic......");
             std::thread::sleep(std::time::Duration::from_secs(3));
             error!("process exit on panic......");
@@ -180,14 +193,13 @@ impl PanicBuilder {
         self
     }
 
-    // use default http bug_report impl for 
+    // use default http bug_report impl for
     pub fn http_bug_report(mut self, url: &str) -> Self {
-        let handler = BugReporter::new(url);
+        let handler = HttpBugReporter::new(url);
         self.bug_reporter = Some(Box::new(handler));
         self
     }
 
-    
     // panic后是否结束进程，默认不结束
     pub fn exit_on_panic(mut self, exit: bool) -> Self {
         self.exit_on_panic = exit;

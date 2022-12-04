@@ -1,9 +1,8 @@
 use super::super::acl::*;
-use super::super::inner_path::NONInnerPathServiceProcessor;
 use super::super::handler::*;
+use super::super::inner_path::NONInnerPathServiceProcessor;
+use super::super::validate::NONGlobalStateValidatorProcessor;
 use super::handler::NONRouterHandler;
-use crate::ndn_api::NDCLevelInputProcessor;
-use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
 use crate::{non::*, AclManagerRef};
@@ -21,7 +20,7 @@ pub(crate) struct NOCLevelInputProcessor {
 }
 
 impl NOCLevelInputProcessor {
-    fn new_raw(
+    fn new(
         zone_manager: ZoneManagerRef,
         router_handlers: &RouterHandlersManager,
         noc: NamedObjectCacheRef,
@@ -31,28 +30,20 @@ impl NOCLevelInputProcessor {
         Arc::new(Box::new(ret))
     }
 
-    // 带file服务的noc processor
-    pub(crate) fn new_raw_with_inner_path_service(
+    // noc processor with inner_path service
+    pub(crate) fn new_with_inner_path_service(
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        ood_resolver: OodResolver,
         router_handlers: RouterHandlersManager,
         zone_manager: ZoneManagerRef,
         chunk_manager: Arc<ChunkManager>,
     ) -> NONInputProcessorRef {
-        let raw_processor = Self::new_raw(zone_manager, &router_handlers, noc.clone());
+        let raw_processor = Self::new(zone_manager, &router_handlers, noc.clone());
 
-        let ndc =
-            NDCLevelInputProcessor::new_raw(chunk_manager, ndc, tracker, raw_processor.clone());
-
-        let inner_path_processor = NONInnerPathServiceProcessor::new(
-            NONAPILevel::NOC,
-            raw_processor,
-            ndc,
-            ood_resolver,
-            noc,
-        );
+        // add inner_path supports
+        let inner_path_processor =
+            NONInnerPathServiceProcessor::new(raw_processor, chunk_manager, ndc, tracker, noc);
 
         // 增加pre-noc前置处理器
         let pre_processor = NONHandlerPreProcessor::new(
@@ -71,15 +62,32 @@ impl NOCLevelInputProcessor {
         post_processor
     }
 
-    // 创建一个带本地权限的processor
-    pub(crate) fn new_local(
+    // processor with rmeta acl + valdiate
+    pub(crate) fn new_rmeta_acl(
+        acl: AclManagerRef,
+        raw_processor: NONInputProcessorRef,
+    ) -> NONInputProcessorRef {
+        // should use validate for req_path
+        let validate_noc_processor = NONGlobalStateValidatorProcessor::new(
+            acl.global_state_validator().clone(),
+            raw_processor.clone(),
+        );
+
+        // should process with rmeta
+        let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl, validate_noc_processor);
+
+        rmeta_processor
+    }
+
+    // processor with local device acl + rmeta acl + valdiate
+    pub(crate) fn new_local_rmeta_acl(
         acl: AclManagerRef,
         raw_processor: NONInputProcessorRef,
     ) -> NONInputProcessorRef {
         // should process with rmeta
-        let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl, raw_processor);
+        let rmeta_processor = Self::new_rmeta_acl(acl, raw_processor);
 
-        // only allowed in current device
+        // only allowed on current device
         let acl_processor = NONLocalAclInputProcessor::new(rmeta_processor);
 
         acl_processor

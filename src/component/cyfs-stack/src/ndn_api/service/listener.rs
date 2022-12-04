@@ -8,7 +8,6 @@ use tide::Response;
 enum NDNRequestType {
     PutData,
     Get,
-    DownloadData,
     DeleteData,
 }
 
@@ -42,7 +41,6 @@ impl NDNRequestHandlerEndpoint {
 
         match self.req_type {
             NDNRequestType::Get => self.handler.process_get_request(req).await,
-            NDNRequestType::DownloadData => self.handler.process_download_data_request(req).await,
             NDNRequestType::PutData => self.handler.process_put_data_request(req).await,
             NDNRequestType::DeleteData => self.handler.process_delete_data_request(req).await,
         }
@@ -54,30 +52,29 @@ impl NDNRequestHandlerEndpoint {
         handler: &NDNRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {
-        // get_data/query_file
-        server.at("/ndn/*must").post(NDNRequestHandlerEndpoint::new(
+        // get_data/query_file/download_data
+        server.at("/ndn").get(NDNRequestHandlerEndpoint::new(
             zone_manager.clone(),
             protocol.to_owned(),
             NDNRequestType::Get,
             handler.clone(),
         ));
 
-        server.at("/ndn/").post(NDNRequestHandlerEndpoint::new(
+        server.at("/ndn/").get(NDNRequestHandlerEndpoint::new(
             zone_manager.clone(),
             protocol.to_owned(),
             NDNRequestType::Get,
-            handler.clone(),
-        ));
-
-        server.at("/ndn/*must").get(NDNRequestHandlerEndpoint::new(
-            zone_manager.clone(),
-            protocol.to_owned(),
-            NDNRequestType::DownloadData,
             handler.clone(),
         ));
 
         // put_data
-        server.at("/ndn/*must").put(NDNRequestHandlerEndpoint::new(
+        server.at("/ndn").put(NDNRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            NDNRequestType::PutData,
+            handler.clone(),
+        ));
+        server.at("/ndn/").put(NDNRequestHandlerEndpoint::new(
             zone_manager.clone(),
             protocol.to_owned(),
             NDNRequestType::PutData,
@@ -86,7 +83,15 @@ impl NDNRequestHandlerEndpoint {
 
         // delete_data
         server
-            .at("/ndn/*must")
+            .at("/ndn")
+            .delete(NDNRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                NDNRequestType::DeleteData,
+                handler.clone(),
+            ));
+        server
+            .at("/ndn/")
             .delete(NDNRequestHandlerEndpoint::new(
                 zone_manager.clone(),
                 protocol.to_owned(),

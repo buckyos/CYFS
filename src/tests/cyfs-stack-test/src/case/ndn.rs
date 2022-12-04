@@ -26,7 +26,9 @@ pub async fn test() {
     test_range_file(&dec_id).await;
 
     // 添加目录到user1ood
-    let (dir_id, _file_id) = add_dir(&dec_id).await;
+    let (dir_id, file_id, inner_path, chunk_id) = add_dir(&dec_id).await;
+
+    get_chunk(&dir_id, &file_id, &inner_path, &chunk_id, &dec_id).await;
 
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
     get_file(&dir_id, &dec_id, &stack, true).await;
@@ -36,6 +38,8 @@ pub async fn test() {
 
     let stack = TestLoader::get_shared_stack(DeviceIndex::User2Device2);
     get_file(&dir_id, &dec_id, &stack, false).await;
+
+    test_chunk_in_bundle().await;
 
     info!("test all ndn case success!");
 }
@@ -57,7 +61,7 @@ fn gen_random_dir(dir: &Path) {
     })
 }
 
-async fn add_dir(dec_id: &ObjectId) -> (DirId, FileId) {
+async fn add_dir(dec_id: &ObjectId) -> (DirId, FileId, String, ChunkId) {
     let data_dir = cyfs_util::get_app_data_dir("cyfs-stack-test").join("root");
     gen_random_dir(&data_dir);
 
@@ -130,10 +134,11 @@ async fn add_dir(dec_id: &ObjectId) -> (DirId, FileId) {
 
     let dir_id = DirId::try_from(&dir_id).unwrap();
 
+    let inner_path = "/test1/1.log";
     let object = {
         let mut req = NONGetObjectRequest::new_noc(
             dir_id.object_id().to_owned(),
-            Some("/test1/1.log".to_owned()),
+            Some(inner_path.to_owned()),
         );
         req.common.req_path = Some("/tests/non_file".to_owned());
 
@@ -150,7 +155,12 @@ async fn add_dir(dec_id: &ObjectId) -> (DirId, FileId) {
         test_query_file(dec_id, &file_id, &file).await;
     }
 
-    (dir_id, file_id)
+    // get a chunk from file for later test cases
+    let chunk_list = object.object().as_file().body_expect("").content().inner_chunk_list().unwrap();
+    assert!(chunk_list.len() > 0);
+    info!("got file's chunk: file={}, chunk={}", file_id, chunk_list[0]);
+
+    (dir_id, file_id, inner_path.to_owned(), chunk_list[0].clone())
 }
 
 async fn test_query_file(_dec_id: &ObjectId, id: &FileId, file: &File) {
@@ -292,11 +302,99 @@ async fn get_file(dir_id: &DirId, dec_id: &ObjectId, stack: &SharedCyfsStack, ac
     }
 }
 
-/*
-async fn get_file_with_task(dir_id: &DirId, dec_id: &ObjectId, stack: &SharedCyfsStack) {
+async fn get_chunk(dir_id: &DirId, file_id: &FileId, inner_path: &str, chunk_id: &ChunkId, dec_id: &ObjectId) {
 
+    let other_dec_id = new_dec("test-ndn-other");
+
+    // get chunk in same zone + other dec, will been allowed
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+    let target_stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    let target = target_stack.local_device_id();
+
+    let referer_object = NDNDataRefererObject {
+        target: None,
+        object_id: dir_id.object_id().to_owned(),
+        inner_path: Some(inner_path.to_owned()),
+    };
+
+    let mut get_req = NDNGetDataOutputRequest::new_router(
+        Some(target.object_id().to_owned()),
+        chunk_id.object_id().to_owned(),
+        None,
+    );
+
+    get_req.common.dec_id = Some(other_dec_id.to_owned());
+    get_req.common.req_path = None;
+    get_req.common.referer_object = vec![referer_object.clone()];
+
+    stack.ndn_service().get_data(get_req).await.unwrap();
+
+
+    // get chunk in diff zone + other dec, will been rejected
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
+    let mut get_req = NDNGetDataOutputRequest::new_router(
+        Some(target.object_id().to_owned()),
+        chunk_id.object_id().to_owned(),
+        None,
+    );
+
+    get_req.common.dec_id = Some(other_dec_id.to_owned());
+    get_req.common.req_path = None;
+    get_req.common.referer_object = vec![referer_object.clone()];
+
+    let ret = stack.ndn_service().get_data(get_req).await;
+    assert!(ret.is_err());
+    
+    // get chunk in diff zone, with file referer, will been rejected
+    let referer_object2 = NDNDataRefererObject {
+        target: None,
+        object_id: file_id.object_id().to_owned(),
+        inner_path: None,
+    };
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
+    let mut get_req = NDNGetDataOutputRequest::new_router(
+        Some(target.object_id().to_owned()),
+        chunk_id.object_id().to_owned(),
+        None,
+    );
+
+    get_req.common.dec_id = Some(other_dec_id.to_owned());
+    get_req.common.req_path = None;
+    get_req.common.referer_object = vec![referer_object2.clone()];
+
+    let ret = stack.ndn_service().get_data(get_req).await;
+    assert!(ret.is_err());
+
+    // change the file permisssions
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+    let access = AccessString::full_except_write();
+    let mut update_req = NONUpdateObjectMetaRequest::new_router(
+        None, file_id.object_id().clone(), Some(access),
+    );
+    update_req.common.dec_id = Some(dec_id.clone());
+
+    stack.non_service().update_object_meta(update_req).await.unwrap();
+
+    // get chunk in diff zone, with file referer, will success
+    let referer_object2 = NDNDataRefererObject {
+        target: None,
+        object_id: file_id.object_id().to_owned(),
+        inner_path: None,
+    };
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User2Device1);
+    let mut get_req = NDNGetDataOutputRequest::new_router(
+        Some(target.object_id().to_owned()),
+        chunk_id.object_id().to_owned(),
+        None,
+    );
+
+    get_req.common.dec_id = Some(other_dec_id.to_owned());
+    get_req.common.req_path = None;
+    get_req.common.referer_object = vec![referer_object2.clone()];
+
+    let ret = stack.ndn_service().get_data(get_req).await;
+    assert!(ret.is_ok());
 }
-*/
 
 async fn gen_all_random_file(local_path: &Path) {
     if local_path.exists() {
@@ -401,9 +499,27 @@ async fn test_range_file(dec_id: &ObjectId) {
     let origin_buf = read_file_range(&local_path, range.clone()).await;
 
     get_req.range = Some(NDNDataRequestRange::new_data_range(vec![range]));
+
+   
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+    
+    /*
+    // use a not exists req_path. will been rejected by rmeta access!
     get_req.common.req_path = Some("/range/file".to_owned());
 
-    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+    let dec_id2 = new_dec("test-range-file-get");
+    let stack = stack.fork_with_new_dec(Some(dec_id2)).await.unwrap();
+    stack.wait_online(None).await.unwrap()
+    let ret = stack.ndn_service().get_data(get_req.clone()).await;
+    if let Err(e) = ret {
+        assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
+    } else {
+        unreachable!();
+    }
+    */
+
+    // direct use the object level access
+    get_req.common.req_path = None;
     let mut resp = stack.ndn_service().get_data(get_req.clone()).await.unwrap();
 
     info!("get range file resp: {}", resp);
@@ -439,4 +555,106 @@ async fn test_range_file(dec_id: &ObjectId) {
     }
 
     info!("test ndn file range success!")
+}
+
+
+pub async fn test_chunk_in_bundle() {
+    let data_dir = cyfs_util::get_app_data_dir("cyfs-stack-test").join("root");
+    std::fs::create_dir_all(&data_dir).unwrap();
+    let local_path = data_dir.join("test-chunk-in-bundle");
+    gen_all_random_file(&local_path).await;
+
+    let stack = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
+    let req = TransPublishFileOutputRequest {
+        common: NDNOutputRequestCommon {
+            req_path: None,
+            dec_id: None,
+            level: Default::default(),
+            target: None,
+            referer_object: vec![],
+            flags: 0,
+        },
+        owner: USER1_DATA.get().unwrap().people_id.object_id().to_owned(),
+
+        // 文件的本地路径
+        local_path: local_path.clone(),
+
+        // chunk大小
+        chunk_size: 1024 * 1024,
+
+        // 关联的dirs
+        file_id: None,
+        dirs: None,
+    };
+
+    let ret = stack.trans().publish_file(&req).await;
+    if ret.is_err() {
+        error!("trans add_dir error! {}", ret.unwrap_err());
+        unreachable!();
+    }
+
+    let resp = ret.unwrap();
+    info!("ndn add bundle file success! id={}", resp.file_id);
+
+    // get file object
+    let req = NONGetObjectRequest::new_noc(resp.file_id.clone(), None);
+    let resp = stack.non_service().get_object(req).await.unwrap();
+    let obj = resp.object.object();
+
+    let file = obj.as_file();
+    let chunk_list = file.body().as_ref().unwrap().content().inner_chunk_list().unwrap().to_owned();
+    info!("chunk in bundle list: {:?}", chunk_list);
+
+    // create chunk in bundle file
+    let bundle = ChunkBundle::new(chunk_list.clone(), ChunkBundleHashMethod::Serial);
+    let hash = bundle.calc_hash_value();
+    let chunks = ChunkList::ChunkInBundle(bundle);
+    let bundle_file = File::new(obj.owner().unwrap().to_owned(), 
+        file.len(), hash, chunks)
+            .no_create_time()
+            .build();
+
+    let bundle_file_id = bundle_file.desc().calculate_id();
+    info!("bundle file id: {}", bundle_file_id);
+
+    let req_path = "/ndn/chunk_in_bundle";
+
+    // add chunk list to specified set to allow access
+    let op_env = stack.root_state_stub(None, None).create_path_op_env().await.unwrap();
+    for item in &chunk_list {
+        op_env.insert(req_path, item.as_object_id()).await.unwrap();
+    }
+    op_env.commit().await.unwrap();
+
+    // open the access for req_path
+    {
+        let meta =
+            stack.root_state_meta_stub(None, None);
+
+        let access = AccessString::full_except_write();
+        let item = GlobalStatePathAccessItem {
+            path: req_path.to_owned(),
+            access: GlobalStatePathGroupAccess::Default(access.value()),
+        };
+
+        meta.add_access(item).await.unwrap();
+    }
+
+    let target = stack.local_device_id();
+    let other_stack = TestLoader::get_shared_stack(DeviceIndex::User2OOD);
+
+    // save bundle file to local
+    let put_req = NONPutObjectRequest::new_noc(bundle_file_id.clone(), bundle_file.to_vec().unwrap());
+    other_stack.non_service().put_object(put_req).await.unwrap();
+
+    // test get from other zone, without CYFS_REQUEST_FLAG_CHUNK_LEVEL_ACL flag
+    let mut ndn_req = NDNGetDataRequest::new_router(Some(target.object_id().to_owned()), bundle_file_id.clone(), None);
+    ndn_req.common.req_path = Some(req_path.to_owned());
+    let ret = other_stack.ndn_service().get_data(ndn_req.clone()).await;
+    assert!(ret.is_err());
+
+    // test get from other zone, with CYFS_REQUEST_FLAG_CHUNK_LEVEL_ACL flag
+    ndn_req.common.flags = CYFS_REQUEST_FLAG_CHUNK_LEVEL_ACL;
+    let ret = other_stack.ndn_service().get_data(ndn_req.clone()).await;
+    assert!(ret.is_ok());
 }

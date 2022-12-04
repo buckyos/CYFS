@@ -15,7 +15,6 @@ const publish_packages = [
     "cyfs-raptorq",
     "cyfs-sha2",
     "cyfs-task-manager",
-    "cyfs-dsg-client",
     "cyfs-cip"
 ]
 

@@ -3,7 +3,7 @@ use cyfs_base::*;
 use cyfs_base_meta::*;
 use log::*;
 use crate::*;
-use sqlx::{ConnectOptions, Row};
+use sqlx::{ConnectOptions, Row, SqlitePool};
 use std::time::Duration;
 use sqlx::sqlite::SqliteJournalMode;
 
@@ -31,7 +31,8 @@ impl BlockVerifyState {
 }
 
 pub struct BlockHeaderStorage {
-    db_path: PathBuf
+    db_path: PathBuf,
+    pool: SqlitePool
 }
 
 static INSERT_HEADER_SQL: &str = "INSERT INTO headers (hash, pre, raw, verified) VALUES(?1, ?2, ?3, ?4)";
@@ -39,18 +40,19 @@ static EXTEND_BEST_SQL: &str = "INSERT INTO best (hash, number, timestamp) VALUE
 
 impl BlockHeaderStorage {
     pub async fn new(path: PathBuf) -> BuckyResult<Self> {
+        let mut options = MetaConnectionOptions::new().filename(path.as_path()).create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Memory).busy_timeout(Duration::new(10, 0));
+        options.log_statements(LevelFilter::Off).log_slow_statements(LevelFilter::Off, Duration::new(10, 0));
         let storage = BlockHeaderStorage {
-            db_path: path
+            db_path: path,
+            pool: SqlitePool::connect_lazy_with(options)
         };
         storage.init().await?;
         Ok(storage)
     }
 
     async fn get_conn(&self, _read_only: bool) -> BuckyResult<MetaConnection> {
-        let mut options = MetaConnectionOptions::new().filename(self.db_path.as_path()).create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Memory).busy_timeout(Duration::new(10, 0));
-        options.log_statements(LevelFilter::Off).log_slow_statements(LevelFilter::Off, Duration::new(10, 0));
-        options.connect().await.map_err(map_sql_err)
+        self.pool.acquire().await.map_err(map_sql_err)
     }
 
     // fn release_conn(&self, conn: rusqlite::Connection) {

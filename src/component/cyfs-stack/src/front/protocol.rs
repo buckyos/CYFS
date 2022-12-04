@@ -35,6 +35,92 @@ const KNOWN_ROOTS: &[&str] = &[
     "a",
 ];
 
+pub(crate) fn parse_front_host_with_dec_id(
+    host: &str,
+) -> BuckyResult<Option<(FrontRequestType, ObjectId)>> {
+    let ft = if host.starts_with("o.") {
+        FrontRequestType::O
+    } else if host.starts_with("a.") {
+        FrontRequestType::A
+    } else if host.starts_with("r.") {
+        FrontRequestType::R
+    } else if host.starts_with("l.") {
+        FrontRequestType::L
+    } else {
+        return Ok(None);
+    };
+
+    let s = &host[2..];
+    match ObjectId::from_str(s) {
+        Ok(dec_id) => Ok(Some((ft, dec_id))),
+        Err(e) => {
+            let msg = format!("invalid front host's dec_id! host={}, {}", host, e);
+            warn!("{}", msg);
+            Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
+        }
+    }
+}
+
+fn is_host_object_id(host: &str) -> bool {
+    if OBJECT_ID_BASE36_RANGE.contains(&host.len()) || OBJECT_ID_BASE58_RANGE.contains(&host.len())
+    {
+        match ObjectId::from_str(host) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    } else {
+        false
+    }
+}
+
+pub(crate) fn parse_front_host(host: &str) -> Option<FrontRequestType> {
+    let ft = match host {
+        "o" => FrontRequestType::O,
+        "a" => FrontRequestType::A,
+        "r" => FrontRequestType::R,
+        "l" => FrontRequestType::L,
+        _ => {
+            if host.starts_with("o.") {
+                FrontRequestType::O
+            } else if host.starts_with("a.") {
+                FrontRequestType::A
+            } else if host.starts_with("r.") {
+                FrontRequestType::R
+            } else if host.starts_with("l.") {
+                FrontRequestType::L
+            } else {
+                if is_host_object_id(host) {
+                    FrontRequestType::O
+                } else {
+                    return None;
+                }
+            }
+        }
+    };
+
+    Some(ft)
+}
+
+pub(crate) fn parse_front_host_with_anonymous_dec_id(
+    host: &str,
+) -> Option<(FrontRequestType, ObjectId)> {
+    let ft = match host {
+        "o" => FrontRequestType::O,
+        "a" => FrontRequestType::A,
+        "r" => FrontRequestType::R,
+        "l" => FrontRequestType::L,
+        _ => {
+            if is_host_object_id(host) {
+                FrontRequestType::O
+            } else {
+                return None;
+            }
+        }
+    };
+
+    Some((ft, cyfs_core::get_anonymous_dec_app().to_owned()))
+}
+
 pub(crate) struct FrontProtocolHandler {
     name_resolver: NameResolver,
     zone_manager: ZoneManagerRef,
@@ -181,7 +267,7 @@ impl FrontProtocolHandler {
         let s: Option<String> = match RequestorHelper::decode_optional_header(req, "Range")? {
             Some(range) => Some(range),
             None => {
-                // try extract dec_id from query pairs
+                // try extract range from query pairs
                 match RequestorHelper::value_from_querys("range", req.url()) {
                     Ok(v) => v,
                     Err(e) => {
@@ -201,12 +287,27 @@ impl FrontProtocolHandler {
     }
 
     fn flags_from_request(url: &http_types::Url) -> BuckyResult<u32> {
-        // try extract dec_id from query pairs
+        // try extract flags from query pairs
         match RequestorHelper::value_from_querys("flags", url) {
             Ok(Some(v)) => Ok(v),
             Ok(None) => Ok(0),
             Err(e) => {
                 let msg = format!("invalid request url flags query param! {}, {}", url, e);
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+            }
+        }
+    }
+
+    fn referer_objects_from_request(
+        url: &http_types::Url,
+    ) -> BuckyResult<Vec<NDNDataRefererObject>> {
+        // try extract referer from query pairs
+        match RequestorHelper::value_from_querys("referer", url) {
+            Ok(Some(v)) => Ok(vec![v]),
+            Ok(None) => Ok(vec![]),
+            Err(e) => {
+                let msg = format!("invalid request url referer query param! {}, {}", url, e);
                 error!("{}", msg);
                 Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
             }
@@ -295,20 +396,17 @@ impl FrontProtocolHandler {
             }
             FrontRequestType::Any => {
                 let route_param = Self::extract_option_route_param(&req.request)?;
-                let resp = self.process_any_request(req, route_param, format).await?;
-
-                let http_resp = self.encode_o_response(resp, format).await;
-                Ok(http_resp)
+                self.process_any_request(req, route_param, format).await
             }
         }
     }
 
     async fn process_any_request<State>(
         &self,
-        req: FrontInputHttpRequest<State>,
+        mut req: FrontInputHttpRequest<State>,
         route_param: Option<String>,
         format: FrontRequestObjectFormat,
-    ) -> BuckyResult<FrontOResponse> {
+    ) -> BuckyResult<tide::Response> {
         let name = req.request.param("name").map_err(|e| {
             let msg = format!(
                 "invalid request url root param! {}, {}",
@@ -319,7 +417,37 @@ impl FrontProtocolHandler {
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
 
-        if KNOWN_ROOTS.iter().find(|v| **v == name).is_some() {
+        let req_type;
+        let req_route_param;
+        if let Some((ft, dec_id)) = parse_front_host_with_dec_id(name)? {
+            // check dec if matched
+            if let Some(dec) = req.source.get_opt_dec() {
+                if *dec != dec_id {
+                    let msg = format!(
+                        "request source id not matched! url={}, req dec={}",
+                        req.request.url(),
+                        dec,
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
+                }
+            } else {
+                warn!(
+                    "request source dec missing! now will set as host.dec_id! url={}",
+                    req.request.url()
+                );
+                req.source.set_dec(dec_id);
+            }
+
+            if route_param.is_none() {
+                let msg = format!("request url route param missing! {}", req.request.url(),);
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+
+            req_type = ft;
+            req_route_param = route_param.unwrap();
+        } else if KNOWN_ROOTS.iter().find(|v| **v == name).is_some() {
             let msg = format!(
                 "reserved request url root param! {}, root={}",
                 req.request.url(),
@@ -327,14 +455,38 @@ impl FrontProtocolHandler {
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        } else {
+            // treat as o request default
+            req_type = FrontRequestType::O;
+            req_route_param = match route_param {
+                Some(param) => format!("{}/{}", name, param),
+                None => name.to_owned(),
+            };
         }
 
-        let route_param = match route_param {
-            Some(param) => format!("{}/{}", name, param),
-            None => name.to_owned(),
-        };
-
-        self.process_o_request(req, route_param, format).await
+        match req_type {
+            FrontRequestType::O => {
+                let resp = self.process_o_request(req, req_route_param, format).await?;
+                let http_resp = self.encode_o_response(resp, format).await;
+                Ok(http_resp)
+            }
+            FrontRequestType::A => {
+                let is_cyfs_browser = Self::is_cyfs_browser(&req.request.as_ref());
+                let resp = self.process_a_request(req, req_route_param, format).await?;
+                let http_resp = self.encode_a_response(resp, format, is_cyfs_browser).await;
+                Ok(http_resp)
+            }
+            FrontRequestType::R | FrontRequestType::L => {
+                let resp = self
+                    .process_r_request(req_type, req, req_route_param)
+                    .await?;
+                let http_resp = self.encode_r_response(resp, format).await;
+                Ok(http_resp)
+            }
+            FrontRequestType::Any => {
+                unreachable!()
+            }
+        }
     }
 
     async fn process_o_request<State>(
@@ -358,6 +510,8 @@ impl FrontProtocolHandler {
         let flags = Self::flags_from_request(url)?;
 
         let range = Self::range_from_request(req.request.as_ref())?;
+
+        let referer_objects = Self::referer_objects_from_request(&url)?;
 
         /*
         /object_id
@@ -398,6 +552,8 @@ impl FrontProtocolHandler {
                     mode,
                     format,
 
+                    referer_objects,
+
                     flags,
                 }
             }
@@ -426,6 +582,8 @@ impl FrontProtocolHandler {
 
                     mode,
                     format,
+
+                    referer_objects,
 
                     flags,
                 }
@@ -726,6 +884,7 @@ impl FrontProtocolHandler {
 
         let mode = Self::mode_from_request(url)?;
         let flags = Self::flags_from_request(url)?;
+        let referer_objects = Self::referer_objects_from_request(url)?;
 
         // TODO now target always be current zone's ood
         let target = self
@@ -746,6 +905,8 @@ impl FrontProtocolHandler {
             format,
 
             origin_url: url.to_owned(),
+            referer_objects,
+
             flags,
         };
 

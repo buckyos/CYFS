@@ -39,7 +39,6 @@ pub(crate) struct LocalTransService {
     noc: NamedObjectCacheRef,
     bdt_stack: StackGuard,
 
-    file_recorder: FileRecorder,
     ood_resolver: OodResolver,
     chunk_manager: Arc<ChunkManager>,
     tracker: Box<dyn TrackerCache>,
@@ -53,7 +52,6 @@ impl Clone for LocalTransService {
             publish_manager: self.publish_manager.clone(),
             noc: self.noc.clone(),
             bdt_stack: self.bdt_stack.clone(),
-            file_recorder: self.file_recorder.clone(),
             ood_resolver: self.ood_resolver.clone(),
             chunk_manager: self.chunk_manager.clone(),
             tracker: self.tracker.clone(),
@@ -87,19 +85,11 @@ impl LocalTransService {
             bdt_stack.local_device_id().clone(),
         );
 
-        let file_recorder = FileRecorder::new(
-            ndc.clone(),
-            tracker.clone(),
-            noc.clone(),
-            bdt_stack.local_device_id().to_owned(),
-        );
-
         Self {
             download_tasks: Arc::new(tasks),
             publish_manager: Arc::new(publish_manager),
             noc,
             bdt_stack,
-            file_recorder,
             ood_resolver,
             chunk_manager,
             tracker,
@@ -155,7 +145,7 @@ impl LocalTransService {
             let file = match self
                 .noc
                 .get_object(&NamedObjectCacheGetObjectRequest {
-                    source: req.common.source,
+                    source: req.common.source.clone(),
                     object_id: req.file_id.unwrap(),
                     last_access_rpath: None,
                 })
@@ -173,7 +163,7 @@ impl LocalTransService {
                     self.ndc.clone(),
                     self.tracker.clone(),
                     self.noc.clone(),
-                    self.bdt_stack.local_device_id().clone(),
+                    req.common.source.dec.clone(),
                 );
                 file_recorder
                     .add_file_to_ndc(file.as_ref().unwrap(), None)

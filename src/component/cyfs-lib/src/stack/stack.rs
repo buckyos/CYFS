@@ -202,6 +202,19 @@ impl SharedCyfsStackParam {
         }
     }
 
+    // 打开指定端口的shareobjectstack
+    pub fn gen(dec_id: Option<ObjectId>, http_port: u16, ws_port: u16) -> Self {
+        let (service_url, ws_url) = Self::gen_url(http_port, ws_port);
+
+        Self {
+            dec_id,
+            service_url,
+            event_type: CyfsStackEventType::WebSocket(ws_url.clone()),
+            ws_url,
+            requestor_config: CyfsStackRequestorConfig::default(),
+        }
+    }
+
     /*
     #[deprecated(
         note = "Please use the websocket mode instead"
@@ -262,6 +275,10 @@ impl SharedCyfsStack {
 
     pub async fn open_runtime(dec_id: Option<ObjectId>) -> BuckyResult<Self> {
         Self::open(SharedCyfsStackParam::default_runtime(dec_id)).await
+    }
+
+    pub async fn open_with_port(dec_id: Option<ObjectId>, http_port: u16, ws_port: u16) -> BuckyResult<Self> {
+        Self::open(SharedCyfsStackParam::gen(dec_id, http_port, ws_port)).await
     }
 
     fn select_requestor(
@@ -684,7 +701,7 @@ mod test {
         param.requestor_config = CyfsStackRequestorConfig::ws();
 
         let stack = SharedCyfsStack::open(param).await.unwrap();
-        stack.wait_online(None).await;
+        let _ = stack.wait_online(None).await;
 
         async_std::task::sleep(std::time::Duration::from_secs(60 * 2)).await;
     }

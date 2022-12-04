@@ -19,7 +19,7 @@ cyfs-util = { path = '../../../component/cyfs-util', version = '0.6' }
 cyfs-debug = { path = '../../../component/cyfs-debug', version = '0.6' }
 cyfs-base = { path = '../../../component/cyfs-base', version = '0.6' }
 cyfs-core = { path = '../../../component/cyfs-core', version = '0.6' }
-cyfs-lib = { path = '../../../component/cyfs-lib', version = '0.6' }
+cyfs-lib = { path = '../../../component/cyfs-lib', version = '0.7' }
 cyfs-meta-lib = { path = '../../../component/cyfs-meta-lib', version = '0.6' }
 async-std = { version = '1.11', features = ['unstable', 'attributes'] }
 rand = '0.7'

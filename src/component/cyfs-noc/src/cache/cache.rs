@@ -45,14 +45,16 @@ impl NamedObjectCacheMemoryCache {
         access_string: u32,
         source: &RequestSourceInfo,
         create_dec_id: &ObjectId,
-        op_type: RequestOpType,
+        permissions: impl Into<AccessPermissions>,
     ) -> BuckyResult<()> {
+        let permissions: AccessPermissions = permissions.into();
         debug!(
-            "noc cache will check access: object={}, access={}, source={}, create_dec={}",
+            "noc cache will check access: object={}, access={}, source={}, create_dec={}, require={}",
             object_id,
             AccessString::new(access_string),
             source,
-            create_dec_id
+            create_dec_id,
+            permissions.as_str(),
         );
 
         // system dec in current zone is always allowed
@@ -63,7 +65,7 @@ impl NamedObjectCacheMemoryCache {
         }
 
         // Check permission first
-        let mask = source.mask(create_dec_id, op_type);
+        let mask = source.mask(create_dec_id, permissions);
 
         if access_string & mask != mask {
             let msg = format!(
@@ -128,6 +130,29 @@ impl NamedObjectCacheMemoryCache {
                 assert!(ret);
             }
         }
+    }
+
+    async fn check_object_access(&self, req: &NamedObjectCacheCheckObjectAccessRequest) -> BuckyResult<Option<()>> {
+        let mut cache = self.cache.lock().unwrap();
+        let ret = cache.get_mut(&req.object_id);
+        if ret.is_none() {
+            return Ok(None);
+        }
+
+        let item = ret.unwrap();
+
+        // check the access permissions
+        if !req.source.is_verified(&item.meta.create_dec_id) {
+            Self::check_access(
+                &req.object_id,
+                item.meta.access_string,
+                &req.source,
+                &item.meta.create_dec_id,
+                req.required_access,
+            )?;
+        }
+
+        Ok(Some(()))
     }
 }
 
@@ -222,6 +247,15 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
         }
 
         Ok(())
+    }
+
+    async fn check_object_access(&self, req: &NamedObjectCacheCheckObjectAccessRequest) -> BuckyResult<Option<()>> {
+        let ret = Self::check_object_access(&self, req).await?;
+        if ret.is_some() {
+            return Ok(ret);
+        }
+
+        self.next.check_object_access(req).await
     }
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {

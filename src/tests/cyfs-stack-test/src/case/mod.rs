@@ -24,6 +24,7 @@ mod role;
 mod storage;
 mod meta;
 mod call;
+mod mime;
 
 pub async fn test_restart() {
     let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
@@ -39,8 +40,11 @@ pub async fn test() {
 
     // crypto::test().await;
 
-    non::test().await;
-    call::test().await;
+    //root_state::test().await;
+    mime::test().await;
+    ndn::test().await;
+    //non::test().await;
+    //call::test().await;
     return;
 
     meta::test().await;

@@ -12,6 +12,6 @@ pub use sql_state::*;
 use crate::AnsiDBTransactionSqlCreator;
 
 pub type MetaDatabase = sqlx::Sqlite;
-pub type MetaConnection = sqlx::SqliteConnection;
+pub type MetaConnection = sqlx::pool::PoolConnection<MetaDatabase>;
 pub type MetaConnectionOptions = sqlx::sqlite::SqliteConnectOptions;
 pub type MetaTransactionSqlCreator = AnsiDBTransactionSqlCreator;

@@ -1,4 +1,4 @@
-use crate::stack::CyfsStackParams;
+use crate::stack::{CyfsStackParams, BdtStackParams};
 use cyfs_lib::*;
 
 use crossbeam::atomic::AtomicCell;
@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 pub struct StackGlobalConfigInner {
     stack_params: CyfsStackParams,
+    bdt_params: BdtStackParams,
 
     // global state access mode
     root_state_access_mode: AtomicCell<GlobalStateAccessMode>,
@@ -14,9 +15,10 @@ pub struct StackGlobalConfigInner {
 }
 
 impl StackGlobalConfigInner {
-    pub fn new(stack_params: CyfsStackParams) -> Self {
+    pub fn new(stack_params: CyfsStackParams, bdt_params: BdtStackParams,) -> Self {
         Self {
             stack_params,
+            bdt_params,
             root_state_access_mode: AtomicCell::new(GlobalStateAccessMode::Read),
             local_cache_access_mode: AtomicCell::new(GlobalStateAccessMode::Write),
         }
@@ -24,6 +26,10 @@ impl StackGlobalConfigInner {
 
     pub fn get_stack_params(&self) -> &CyfsStackParams {
         &self.stack_params
+    }
+
+    pub fn get_bdt_params(&self) -> &BdtStackParams {
+        &self.bdt_params
     }
 
     pub fn get_access_mode(&self, category: GlobalStateCategory) -> GlobalStateAccessMode {
@@ -60,8 +66,8 @@ impl StackGlobalConfigInner {
 pub struct StackGlobalConfig(Arc<StackGlobalConfigInner>);
 
 impl StackGlobalConfig {
-    pub fn new(stack_params: CyfsStackParams) -> Self {
-        Self(Arc::new(StackGlobalConfigInner::new(stack_params)))
+    pub fn new(stack_params: CyfsStackParams, bdt_params: BdtStackParams,) -> Self {
+        Self(Arc::new(StackGlobalConfigInner::new(stack_params, bdt_params)))
     }
 }
 

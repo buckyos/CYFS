@@ -1,12 +1,12 @@
 use super::super::acl::*;
 use super::super::handler::*;
 use super::super::non::NONOutputFailHandleProcessor;
-use super::super::validate::NONGlobalStateValidator;
 use super::def::*;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::*;
 use crate::non::*;
+use crate::non_api::noc::NOCLevelInputProcessor;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::*;
 use cyfs_base::*;
@@ -36,7 +36,7 @@ pub(crate) struct NONRouter {
 }
 
 impl NONRouter {
-    fn new_raw(
+    fn new(
         // router内部的noc处理器，会经过acl和validate两层校验器
         noc_raw_processor: NONInputProcessorRef,
 
@@ -50,15 +50,12 @@ impl NONRouter {
         meta_processor: NONInputProcessorRef,
         fail_handler: ObjectFailHandler,
     ) -> NONInputProcessorRef {
-        // 带rmeta access的noc, 如果当前协议栈是router目标，那么使用此noc；如果是中间节点，那么使用raw_noc_processor来作为缓存查询
-        let validate_noc_processor = NONGlobalStateValidator::new(
-            acl.global_state_validator().clone(),
-            noc_raw_processor.clone(),
-        );
         let noc_acl_processor =
-            NONGlobalStateMetaAclInputProcessor::new(acl.clone(), validate_noc_processor);
+            NOCLevelInputProcessor::new_rmeta_acl(acl.clone(), noc_raw_processor.clone());
 
         let ret = Self {
+            // noc_acl_processor 带rmeta access的noc, 如果当前协议栈是router目标，那么使用此noc；
+            // 如果是中间节点，那么使用raw_noc_processor来作为缓存查询
             noc_raw_processor,
             noc_acl_processor,
 
@@ -89,8 +86,8 @@ impl NONRouter {
         meta_processor: NONInputProcessorRef,
         fail_handler: ObjectFailHandler,
     ) -> NONInputProcessorRef {
-        // 不带input acl的处理器
-        let raw_router = Self::new_raw(
+        // router processor with rmeta acl and valdiate
+        let rmeta_validate_router = Self::new(
             raw_noc_processor,
             forward,
             acl.clone(),
@@ -106,7 +103,7 @@ impl NONRouter {
         // 增加router前置处理器
         let pre_processor = NONHandlerPreProcessor::new(
             RouterHandlerChain::PreRouter,
-            raw_router,
+            rmeta_validate_router,
             router_handlers.clone(),
         );
 
@@ -609,8 +606,7 @@ impl NONRouter {
 
         info!(
             "will forward post object: req={}, router={}",
-            req.object.object_id,
-            router_info,
+            req.object.object_id, router_info,
         );
 
         let forward_processor = self
@@ -631,7 +627,10 @@ impl NONRouter {
                 e
             })
             .map(|resp| {
-                info!("forward post object response: req={}, resp={}", object_id, resp);
+                info!(
+                    "forward post object response: req={}, resp={}",
+                    object_id, resp
+                );
                 resp
             })
     }

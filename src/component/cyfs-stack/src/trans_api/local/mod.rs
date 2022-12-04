@@ -6,6 +6,9 @@ mod trans_store;
 mod db_helper;
 mod download_task_tracker;
 mod task;
+mod trans_proto {
+    include!(concat!(env!("OUT_DIR"), "/trans_proto.rs"));
+}
 
 pub use download_task_manager::*;
 pub use file_recorder::*;

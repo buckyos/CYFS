@@ -276,9 +276,11 @@ impl NONRequestor {
 
         http_req.insert_header(cyfs_base::CYFS_OBJECT_ID, req.object_id.to_string());
 
-        if let Some(inner_path) = &req.inner_path {
-            http_req.insert_header(cyfs_base::CYFS_INNER_PATH, inner_path);
-        }
+        RequestorHelper::encode_opt_header_with_encoding(
+            &mut http_req,
+            cyfs_base::CYFS_INNER_PATH,
+            req.inner_path.as_deref(),
+        );
 
         http_req
     }
@@ -414,9 +416,11 @@ impl NONRequestor {
 
         http_req.insert_header(cyfs_base::CYFS_OBJECT_ID, req.object_id.to_string());
 
-        if let Some(inner_path) = &req.inner_path {
-            http_req.insert_header(cyfs_base::CYFS_INNER_PATH, inner_path);
-        }
+        RequestorHelper::encode_opt_header_with_encoding(
+            &mut http_req,
+            cyfs_base::CYFS_INNER_PATH,
+            req.inner_path.as_deref(),
+        );
 
         http_req
     }
@@ -446,7 +450,10 @@ impl NONRequestor {
 
         if resp.status().is_success() {
             let ret = self.decode_delete_object_response(&req, &mut resp).await?;
-            info!("delete object from non service success: {}, obj={:?}", req.object_id, ret.object);
+            info!(
+                "delete object from non service success: {}, obj={:?}",
+                req.object_id, ret.object
+            );
             Ok(ret)
         } else {
             let e = RequestorHelper::error_from_resp(&mut resp).await;

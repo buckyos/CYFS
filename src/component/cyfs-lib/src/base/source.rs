@@ -269,6 +269,16 @@ impl RequestSourceInfo {
         }
     }
 
+    // dec-id = system-dec-id if None
+    pub fn new_local_dec_or_system(dec: Option<ObjectId>) -> Self {
+        Self {
+            protocol: RequestProtocol::Native,
+            zone: DeviceZoneInfo::new_local(),
+            dec: dec.unwrap_or(get_system_dec_app().to_owned()),
+            verified: None,
+        }
+    }
+
     // dec-id = anonymous-dec-id if None
     pub fn new_zone_dec(dec: Option<ObjectId>) -> Self {
         Self {

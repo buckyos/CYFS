@@ -8,7 +8,7 @@ use cyfs_base::*;
 use crate::{
     types::*, 
     protocol::{*, v0::*},
-    interface::*, 
+    interface::{*, udp::MTU_LARGE}, 
     history::keystore, 
     sn::client::PingClientCalledEvent, 
     tunnel::{TunnelState, TunnelContainer, ProxyType, BuildTunnelParams}, 
@@ -62,8 +62,8 @@ impl ConnectTunnelBuilder {
             }))
         }))
     }
-    pub async fn build(&self) {
-        self.sync_tunnel_state();
+
+    async fn build_inner(&self) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
         let local = stack.local().clone();
         let build_params = &self.0.params;
@@ -77,60 +77,47 @@ impl ConnectTunnelBuilder {
         };
    
         if actions.len() == 0 {
-            match {
-                if build_params.remote_sn.len() == 0 {
-                    Err(BuckyError::new(BuckyErrorCode::InvalidParam, "neither remote device nor sn in build params"))
-                } else {
-                    if let Some(sn) = stack.device_cache().get(&build_params.remote_sn[0]).await {
-                        match self.call_sn(sn, first_box).await {
-                            Ok(actions) => {
-                                if actions.len() == 0 {
-                                    Err(BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"))
-                                } else {
-                                    Ok(actions)
-                                }
-                            },
-                            Err(err) => {
-                                let msg = format!("call sn err:{}", err.msg());
-                                Err(BuckyError::new(err.code(), msg.as_str()))
-                            }
-                        }
-                    } else {
-                        Err(BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"))
-                    } 
-                }
-            } {
-                Ok(_actions) => {
-                    // do nothing
-                }, 
-                Err(err) => {
-                    error!("{} build failed for {}", self, err);
-                    let waiter = {
-                        let state = &mut *self.0.state.write().unwrap();
-                        match state {
-                            ConnectTunnelBuilderState::Connecting(connecting) => {
-                                info!("{} connecting=>dead", self);
-                                let mut ret_waiter = StateWaiter::new();
-                                connecting.waiter.transfer_into(&mut ret_waiter);
-                                *state = ConnectTunnelBuilderState::Closed;
-                                Some(ret_waiter)
-                            }, 
-                            ConnectTunnelBuilderState::Closed => {
-                                //存在closed之后tunnel dead的情况，忽略
-                                None
-                            }, 
-                            ConnectTunnelBuilderState::Establish => {
-                                //存在establish之后tunnel dead的情况，忽略
-                                None
-                            }
-                        }
-                    };
-                    if let Some(waiter) = waiter {
-                        waiter.wake();
-                    }
-                }
+            let remote_sn = build_params.nearest_sn(&stack).await?;
+            let actions = self.call_sn(remote_sn, first_box).await?;
+            if actions.len() == 0 {
+                Err(BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"))
+            } else {
+                Ok(())
             }
+        } else {
+            Ok(())
         }
+    }
+
+    pub async fn build(&self) {
+        self.sync_tunnel_state();
+        let _ = self.build_inner().await.
+            map_err(|err| {
+                error!("{} build failed for {}", self, err);
+                let waiter = {
+                    let state = &mut *self.0.state.write().unwrap();
+                    match state {
+                        ConnectTunnelBuilderState::Connecting(connecting) => {
+                            info!("{} connecting=>dead", self);
+                            let mut ret_waiter = StateWaiter::new();
+                            connecting.waiter.transfer_into(&mut ret_waiter);
+                            *state = ConnectTunnelBuilderState::Closed;
+                            Some(ret_waiter)
+                        }, 
+                        ConnectTunnelBuilderState::Closed => {
+                            //存在closed之后tunnel dead的情况，忽略
+                            None
+                        }, 
+                        ConnectTunnelBuilderState::Establish => {
+                            //存在establish之后tunnel dead的情况，忽略
+                            None
+                        }
+                    }
+                };
+                if let Some(waiter) = waiter {
+                    waiter.wake();
+                }
+            });
     }
 
     fn sync_tunnel_state(&self) {
@@ -184,7 +171,7 @@ impl ConnectTunnelBuilder {
         });
     }
 
-    async fn call_sn(&self, sn: Device, first_box: Arc<PackageBox>) -> Result<Vec<DynBuildTunnelAction>, BuckyError> {
+    async fn call_sn(&self, sn: Device, first_box: Arc<PackageBox>) -> BuckyResult<Vec<DynBuildTunnelAction>> {
         let stack = Stack::from(&self.0.stack);
         let tunnel = &self.0.tunnel;
 
@@ -194,15 +181,15 @@ impl ConnectTunnelBuilder {
             &sn, 
             true, 
             true,
-            false,
+            true,
             |sn_call| {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 //FIXME 先不调用raw_measure_with_context
                 //let len = first_box.raw_measure_with_context(&mut context).unwrap();
-                let mut buf = vec![0u8; 2048];
+                let mut buf = vec![0u8; MTU_LARGE];
                 let b = first_box.raw_encode_with_context(&mut buf, &mut context, &None).unwrap();
                 //buf[0..b.len()].as_ref()
-                let len = 2048 - b.len();
+                let len = MTU_LARGE - b.len();
                 buf.truncate(len);
                 buf
             }).await?;
