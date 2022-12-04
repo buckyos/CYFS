@@ -79,10 +79,10 @@ fn load_device_info(folder_path: &Path) -> BuckyResult<(Device, PrivateKey)> {
 
     for endpoint in device.mut_connect_info().mut_endpoints() {
         match endpoint.mut_addr() {
-            SocketAddr::V4(mut addr) => {
+            SocketAddr::V4(ref mut addr) => {
                 addr.set_ip(Ipv4Addr::UNSPECIFIED)
             }
-            SocketAddr::V6(mut addr) => {
+            SocketAddr::V6(ref mut addr) => {
                 addr.set_ip(Ipv6Addr::UNSPECIFIED)
             }
         }
