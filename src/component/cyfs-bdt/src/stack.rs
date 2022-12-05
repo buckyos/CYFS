@@ -513,7 +513,6 @@ impl Stack {
     }
 
     pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
-        info!("{} reset_sn_list {:?}", self, sn_list);
         self.device_cache().reset_sn_list(&sn_list);
 
         // need get nearest sn
