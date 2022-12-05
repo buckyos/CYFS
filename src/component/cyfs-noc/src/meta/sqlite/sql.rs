@@ -1,5 +1,6 @@
 // 当前的数据库版本
 pub(super) const CURRENT_VERSION: i32 = 1;
+const SET_DB_VERSION: &'static str = concat!("PRAGMA USER_VERSION = ", 1);
 
 pub(super) const DATA_NAMEDOBJECT_META_INIT: &'static str = r#"
 CREATE TABLE IF NOT EXISTS data_namedobject_meta (
@@ -45,7 +46,8 @@ pub(super) const DATA_NAMEDOBJECT_META_INSERT_LAST_ACCESS_INDEX: &'static str = 
 CREATE INDEX IF NOT EXISTS `data_namedobject_meta_last_access_time_index` on `data_namedobject_meta` (`last_access_time`);
 "#;
 
-pub(super) const INIT_NAMEDOBJECT_META_SQL_LIST: [&'static str; 3] = [
+pub(super) const INIT_NAMEDOBJECT_META_SQL_LIST: [&'static str; 4] = [
+    SET_DB_VERSION,
     DATA_NAMEDOBJECT_META_INIT,
     DATA_NAMEDOBJECT_META_INSERT_TIME_INDEX,
     DATA_NAMEDOBJECT_META_INSERT_LAST_ACCESS_INDEX,
