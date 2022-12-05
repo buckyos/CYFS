@@ -325,13 +325,15 @@ impl SqliteMetaStorage {
         (   object_id, owner_id, object_type, 
             create_dec_id, insert_time, update_time, 
             object_create_time, object_update_time, object_expired_time,
-            author, dec_id, prev, body_prev_version, ref_objs, nonce,
+            author, dec_id, prev, body_prev_version, ref_objs, 
+            nonce, difficulty,
             storage_category, context, last_access_time, last_access_rpath, access
         ) VALUES
         (   :object_id, :owner_id, :object_type,
             :create_dec_id, :insert_time, :update_time, 
             :object_create_time, :object_update_time, :object_expired_time,
-            :author, :dec_id, :prev, :body_prev_version, :ref_objs, :nonce,
+            :author, :dec_id, :prev, :body_prev_version, :ref_objs, 
+            :nonce, :difficulty,
             :storage_category, :context, :last_access_time, :last_access_rpath, :access
         ) "#;
 
@@ -354,7 +356,9 @@ impl SqliteMetaStorage {
             ":prev": req.prev.as_ref().map(|v| v.as_slice()),
             ":body_prev_version": req.body_prev_version.as_ref().map(|v| v.as_slice()),
             ":ref_objs": req.ref_objs.as_ref().map(|v| v.to_vec().unwrap()),
+
             ":nonce": req.nonce.as_ref().map(|v| v.to_be_bytes()),
+            ":difficulty": 0,
 
             ":storage_category": req.storage_category.as_u8(),
 
@@ -521,7 +525,10 @@ impl SqliteMetaStorage {
 
         const UPDATE_SQL: &str = r#"
         UPDATE data_namedobject_meta SET update_time = :update_time, object_update_time = :object_update_time, 
-            context = :context, last_access_time = :last_access_time, last_access_rpath = :last_access_rpath, access = :access 
+            context = :context,
+            last_access_time = :last_access_time, last_access_rpath = :last_access_rpath,
+            body_prev_version = :body_prev_version,
+            access = :access
             WHERE object_id = :object_id 
             AND object_update_time = :current_object_update_time 
             AND update_time = :current_update_time 
@@ -538,6 +545,7 @@ impl SqliteMetaStorage {
             ":current_object_update_time": current_info.object_update_time.unwrap_or(0),
             ":current_update_time": current_info.update_time,
             ":current_insert_time": current_info.insert_time,
+            ":body_prev_version": req.body_prev_version.as_ref().map(|v| v.as_slice()),
             ":access": req.access_string,
         };
 

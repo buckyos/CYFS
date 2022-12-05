@@ -3,7 +3,7 @@ pub(super) const CURRENT_VERSION: i32 = 1;
 
 pub(super) const DATA_NAMEDOBJECT_META_INIT: &'static str = r#"
 CREATE TABLE IF NOT EXISTS data_namedobject_meta (
-    // version 0
+    /* version 0 */
     object_id TEXT PRIMARY KEY NOT NULL UNIQUE, 
     
     owner_id TEXT,
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS data_namedobject_meta (
 
     access INTEGER,
 
-    // version 1
+    /* version 1 */
     object_type SMALLINT,
     object_create_time INTEGER,
     author BLOB,
@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS data_namedobject_meta (
     prev BLOB,
     body_prev_version BLOB,
     ref_objs BLOB,
+
     nonce BLOB,
+    difficulty INTEGER
 );"#;
 
 pub(super) const DATA_NAMEDOBJECT_META_INSERT_TIME_INDEX: &'static str = r#"
@@ -59,6 +61,7 @@ ALTER TABLE `data_namedobject_meta` ADD COLUMN prev BLOB DEFAULT NULL;
 ALTER TABLE `data_namedobject_meta` ADD COLUMN body_prev_version BLOB DEFAULT NULL;
 ALTER TABLE `data_namedobject_meta` ADD COLUMN ref_objs BLOB DEFAULT NULL;
 ALTER TABLE `data_namedobject_meta` ADD COLUMN nonce BLOB DEFAULT NULL;
+ALTER TABLE `data_namedobject_meta` ADD COLUMN difficulty BLOB DEFAULT 0;
 "#;
 
 // For all version upgrades, MAIN_TABLE_UPDATE_LIST[CURRENT_VERSION - 1] is the corresponding upgrade sql
