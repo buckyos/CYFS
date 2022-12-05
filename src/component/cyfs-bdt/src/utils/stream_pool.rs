@@ -191,7 +191,7 @@ impl StreamPoolConnector {
             if let Some(remote_device) = stack.device_cache().get(&self.0.remote).await {
                 let build_params = BuildTunnelParams {
                     remote_const: remote_device.desc().clone(), 
-                    remote_sn: stack.sn_client().sn_list(), 
+                    remote_sn: stack.device_cache().sn_list(), 
                     remote_desc: Some(remote_device)
                 };
                 let stream = stack.stream_manager().connect(
