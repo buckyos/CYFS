@@ -55,11 +55,12 @@ impl fmt::Display for BuildTunnelParams {
 impl BuildTunnelParams {
     pub(crate) async fn nearest_sn(&self, stack: &Stack) -> BuckyResult<Device> {
         let remote = self.remote_const.device_id();
-        let sn_id = self.remote_desc.as_ref().and_then(|device| {
-            device.connect_info().sn_list().get(0).map(|id| {
-                info!("{} neareset sn use remote device {}", self, id);
-                id.clone()
-            })
+        let sn_id = self.remote_desc.as_ref().and_then(|_device| {
+            // device.connect_info().sn_list().get(0).map(|id| {
+            //     info!("{} neareset sn use remote device {}", self, id);
+            //     id.clone()
+            // })
+            None
         }).or_else(|| self.remote_sn.iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).map(|id| {
             info!("{} neareset sn use remote sn list {}", self, id);
             id.clone()
