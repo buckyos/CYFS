@@ -46,14 +46,28 @@ pub struct BuildTunnelParams {
     pub remote_desc: Option<Device>,
 }
 
+impl fmt::Display for BuildTunnelParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "BuildTunnelParams{{remote_sn: {:?}, remote_desc:{}}}", self.remote_sn, self.remote_desc.is_some())
+    }
+}
 
 impl BuildTunnelParams {
     pub(crate) async fn nearest_sn(&self, stack: &Stack) -> BuckyResult<Device> {
         let remote = self.remote_const.device_id();
         let sn_id = self.remote_desc.as_ref().and_then(|device| {
-            device.connect_info().sn_list().get(0).cloned()
-        }).or_else(|| self.remote_sn.iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).cloned())
-        .or_else(|| stack.device_cache().nearest_sn_of(&remote))
+            device.connect_info().sn_list().get(0).map(|id| {
+                info!("{} neareset sn use remote device {}", self, id);
+                id.clone()
+            })
+        }).or_else(|| self.remote_sn.iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).map(|id| {
+            info!("{} neareset sn use remote sn list {}", self, id);
+            id.clone()
+        }))
+        .or_else(|| stack.device_cache().nearest_sn_of(&remote).map(|id| {
+            info!("{} neareset sn use known sn list {}", self, id);
+            id.clone()
+        }))
         .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidParam, "neither remote device nor sn in build params"))?;
 
         stack.device_cache().get(&sn_id).await

@@ -82,6 +82,7 @@ impl DeviceCache {
 impl DeviceCache {
     pub fn reset_sn_list(&self, sn_list: &Vec<Device>) {
         let id_list: Vec<DeviceId> = sn_list.iter().map(|d| d.desc().device_id()).collect();
+        info!("device cache {} reset_sn_list {:?}", self.local_id, sn_list);
         for (id, device) in id_list.iter().zip(sn_list.iter()) {
             self.add(id, device);
         }
