@@ -21,7 +21,7 @@ pub enum EndpointArea {
     Mapped
 }
 
-#[derive(Debug, Copy, Clone, Eq)]
+#[derive(Copy, Clone, Eq)]
 pub struct Endpoint {
     area: EndpointArea,
     protocol: Protocol,
@@ -197,6 +197,13 @@ impl Ord for Endpoint {
         self.partial_cmp(other).unwrap()
     }
 }
+
+impl std::fmt::Debug for Endpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 
 impl std::fmt::Display for Endpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

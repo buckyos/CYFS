@@ -1,3 +1,4 @@
+use log::*;
 use std::{
     sync::{Arc, RwLock,}, 
     time::{Duration}
@@ -53,12 +54,12 @@ struct ClientInner {
     state: RwLock<ClientState>    
 }
 
+#[derive(Debug)]
 struct SendPingOptions {
     seq: TempSeq, 
     with_device: bool, 
     sessions: Vec<(Interface, Vec<Endpoint>)>
 }
-
 
 struct SendPingIter {
     sessions: Vec<(Interface, Vec<Endpoint>)>, 
@@ -124,6 +125,7 @@ impl PingClient for UdpClient {
     }
 
     fn start(&self) {
+        info!("{} starting", self);
         let client = self.clone();
         task::spawn(async move {
             client.start_inner().await;
@@ -132,15 +134,16 @@ impl PingClient for UdpClient {
 
     fn stop(&self) {
         self.0.state.write().unwrap().client_status = ClientStatus::Stopped;
+        info!("{} stoped", self);
     }
 
     
-    fn on_udp_ping_resp(&self, resp: &SnPingResp, from: &Endpoint, from_interface: Interface) -> BuckyResult<()> {
+    fn on_udp_ping_resp(&self, resp: &SnPingResp, _from: &Endpoint, interface: Interface) -> BuckyResult<()> {
         let now = bucky_time_now();
         
         let handled = {
             let mut state = self.0.state.write().unwrap();
-            if let Some(session) = state.sessions.iter_mut().find(|s| s.local.is_same(&from_interface)) {
+            if let Some(session) = state.sessions.iter_mut().find(|s| s.local.is_same(&interface)) {
                 if session.last_resp_time < now {
                     session.last_resp_time = now;
                 } 
@@ -183,7 +186,7 @@ impl PingClient for UdpClient {
                 Some(UpdateOuterResult::None)
             } else if resp.end_point_array.len() > 0 {
                 let out_endpoint = resp.end_point_array.get(0).unwrap();
-                let result = self.0.net_listener.update_outer(&from_interface.local(), &out_endpoint);
+                let result = self.0.net_listener.update_outer(&interface.local(), &out_endpoint);
                 if result > UpdateOuterResult::None {
                    Some(result)
                 } else {
@@ -208,13 +211,10 @@ impl PingClient for UdpClient {
 
 
 impl UdpClient {
-    fn new(stack: WeakStack, config: Config, sn: Device, net_listener: NetListener) -> Self {
+    pub fn new(stack: WeakStack, config: Config, sn: Device, net_listener: NetListener) -> Self {
         let sn_id = sn.desc().device_id();
 
-        let strong_stack = Stack::from(&stack);
-
         let mut sessions = Vec::default();
-        let net_listener = strong_stack.net_manager().listener().clone();
 
         for udp in net_listener.udp() {
             if let Some(session) = UdpSession::new(udp.clone(), &sn) {
@@ -328,7 +328,7 @@ impl UdpClient {
                     Some(SendPingOptions {
                         seq, 
                         with_device, 
-                        sessions: UdpSession::sessions(state.sessions.iter(), UdpSessionFilter::Latestest)
+                        sessions: UdpSession::sessions(state.sessions.iter(), UdpSessionFilter::Latest)
                     })
                 },
             }
@@ -363,7 +363,7 @@ impl UdpClient {
                     Some(SendPingOptions {
                         seq, 
                         with_device: true, 
-                        sessions: UdpSession::sessions(state.sessions.iter(), UdpSessionFilter::Latestest)
+                        sessions: UdpSession::sessions(state.sessions.iter(), UdpSessionFilter::Latest)
                     })
                 },
             }
@@ -385,7 +385,7 @@ impl UdpClient {
             seq,
             from_peer_id: Some(stack.local_device_id().clone()),
             sn_peer_id: self.sn().clone(),
-            peer_info: if options.with_device { Some(local_device.clone()) } else { None }, // 本地信息更新了信息，需要同步，或者服务器要求更新
+            peer_info: if options.with_device { Some(local_device.clone()) } else { None }, 
             send_time: bucky_time_now(),
             contract_id: None, 
             receipt: None
@@ -402,7 +402,9 @@ impl UdpClient {
             let _ = exchg.sign(stack.keystore().signer()).await;
             pkg_box.push(exchg);
         }
-
+        pkg_box.push(ping_pkg);
+        
+        info!("{} send sn ping, options={:?}", self, options);
         let mut context = PackageBoxEncodeContext::default();
         let iter: SendPingIter = options.into();
         let _ = Interface::send_box_mult(
@@ -427,7 +429,7 @@ struct UdpSession {
 enum UdpSessionFilter {
     All, 
     Active(Duration), 
-    Latestest, 
+    Latest, 
 }
 
 impl UdpSession {
@@ -446,7 +448,21 @@ impl UdpSession {
     }
 
     fn sessions<'a>(iter: impl Iterator<Item=&'a Self>, filter: UdpSessionFilter) -> Vec<(Interface, Vec<Endpoint>)> {
-        unimplemented!()
+        match filter {
+            UdpSessionFilter::All => iter.map(|session| (session.local.clone(), session.endpoints.clone())).collect(), 
+            UdpSessionFilter::Active(timeout) => {
+                let now = bucky_time_now();
+                iter.filter(|session|  !(now > session.last_resp_time && Duration::from_micros(now - session.last_resp_time) > timeout))
+                    .map(|session| (session.local.clone(), session.endpoints.clone())).collect()
+            },
+            UdpSessionFilter::Latest => {
+                if let Some(session) = iter.max_by(|l, r| l.last_resp_time.cmp(&r.last_resp_time)) {
+                    vec![(session.local.clone(), session.endpoints.clone())]
+                } else {
+                    vec![]
+                }
+            }
+        }
     }
 }
 

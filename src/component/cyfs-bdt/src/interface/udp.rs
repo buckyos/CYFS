@@ -89,6 +89,13 @@ impl std::fmt::Display for Interface {
     }
 }
 
+impl std::fmt::Debug for Interface {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "UdpInterface {{local:{}}}", self.local())
+    }
+}
+
+
 
 impl Interface {
     pub fn bind(local: Endpoint, out: Option<Endpoint>, config: Config) -> Result<Self, BuckyError> {

@@ -71,14 +71,18 @@ impl PingManager {
         }
         let strong_stack = Stack::from(&stack);
         
-        let client = if let Some(sn_id) = Self::next_sn(strong_stack.local_device_id(), &mut remain) {
-            let sn = sn_list.iter().find(|d| d.desc().device_id().eq(&sn_id)).cloned().unwrap();
-            let client = Self::new_client(&net_listener, sn);
-            client.start();
-            Some(client)
-        } else {
-            None
+        let client = loop {
+            if let Some(sn_id) = Self::next_sn(strong_stack.local_device_id(), &mut remain) {
+                let sn = sn_list.iter().find(|d| d.desc().device_id().eq(&sn_id)).cloned().unwrap();
+                if let Some(client) = Self::new_client(&stack, &strong_stack.config().sn_client.ping, sn, &net_listener) {
+                    client.start();
+                    break Some(client);
+                }
+            } else {
+                break None;
+            }
         };
+        
 
         Self(Arc::new(ManagerImpl {
             stack, 
@@ -86,7 +90,7 @@ impl PingManager {
             sn_list, 
             state: RwLock::new(ManagerState {
                 remain, 
-                client: client
+                client
             }),
         }))
     }
@@ -129,8 +133,8 @@ impl PingManager {
         }
     }
 
-    fn new_client(net_listener: &NetListener, sn: Device) -> Box<dyn PingClient> {
-        unimplemented!()
+    fn new_client(stack: &WeakStack, config: &Config, sn: Device, net_listener: &NetListener) -> Option<Box<dyn PingClient>> {
+        Some(UdpClient::new(stack.clone(), config.udp.clone(), sn, net_listener.clone()).clone_as_ping_client())
     }
 
     fn client_of(&self, sn_id: &DeviceId) -> Option<Box<dyn PingClient>> {
@@ -173,7 +177,7 @@ impl PingManager {
         let mut context = PackageBoxEncodeContext::default();
         let _ = from_interface.send_box_to(&mut context, &pkg_box, from);
 
-        stack.on_called(&called, ());
+        let _ = stack.on_called(&called, ());
 
         Ok(())
     }
