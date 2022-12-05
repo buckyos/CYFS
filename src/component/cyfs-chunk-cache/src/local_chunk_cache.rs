@@ -508,10 +508,21 @@ impl SingleDiskChunkCache {
         {
             let hash_str = file_id.to_base36();
             let (tmp, last) = hash_str.split_at(hash_str.len() - 3);
-            let (first, mid) = tmp.split_at(tmp.len() - 3);
+            let (mut first, mut mid) = tmp.split_at(tmp.len() - 3);
+   
+            /* Do not use the following reserved names as filenames: CON、PRN、AUX、NUL、COM1、COM2、COM3、COM4、COM5、COM6、COM7、COM8、COM9、LPT1、LPT2、LPT3、LPT4、LPT5、 LPT6、LPT7、LPT8、 LPT9 */
+            match mid {
+                "con" | "aux" | "nul" | "prn" => {
+                    (first, mid) = tmp.split_at(tmp.len() - 4);
+                }
+                _ => {},
+            }
+            
             let path = self.path.join(last).join(mid);
             if is_create && !path.exists() {
-                let _ = create_dir_all(path.as_path());
+                if let Err(e) = create_dir_all(path.as_path()) {
+                    log::error!("create dir failed! {}, {}", path.display(), e);
+                }
             }
             path.join(first)
         }
@@ -522,7 +533,9 @@ impl SingleDiskChunkCache {
             let (first, mid) = tmp.split_at(tmp.len() - 2);
             let path = self.path.join(last).join(mid);
             if is_create && !path.exists() {
-                let _ = create_dir_all(path.as_path());
+                if let Err(e) = create_dir_all(path.as_path()) {
+                    log::error!("create dir failed! {}, {}", path.display(), e);
+                }
             }
             path.join(first)
         }
