@@ -438,6 +438,10 @@ impl ObjectMapOpEnvMemoryCacheGC {
 
     fn touch_item(&mut self, id: &ObjectId) {
         debug!("gc touch item: {}", id);
+        if id.is_data()  {
+            return;
+        }
+
         if let Some(v) = self.pending.get_mut(id) {
             v.is_touched = true;
         }

@@ -329,6 +329,18 @@ async fn test_ood_change(stack: &SharedCyfsStack, indexer: Indexer) {
             .await
             .unwrap();
 
+        // data in object_id
+        let id = ObjectIdDataBuilder::new().data(&format!("test_{}", index)).build().unwrap();
+        info!("data object_id: {}", id);
+        op_env
+            .set_with_path("/data/object_id1", &id, None, true)
+            .await
+            .unwrap();
+        op_env
+            .set_with_path("/data/object_id2", &id, None, true)
+            .await
+            .unwrap();
+
         let root = op_env.commit().await.unwrap();
         info!("new dec root is: {:?}, text={}", root, text_id);
 
@@ -370,6 +382,21 @@ async fn test_standby_ood_get(stack: &SharedCyfsStack, indexer: Indexer) {
         let expect = indexer.get(&root_info.root).unwrap();
         assert_eq!(expect, v);
 
+        let ret = op_env.get_by_path("/data/object_id1").await.unwrap();
+        let v = ret.unwrap();
+        assert!(v.is_data());
+
+        let req = RootStateAccessorGetObjectByPathOutputRequest::new("/data/object_id1");
+        let ret = stack.root_state_accessor().get_object_by_path(req).await;
+        assert!(ret.is_ok());
+        let ret = ret.unwrap();
+        assert!(ret.object.object.is_empty());
+        assert!(ret.object.object.object_id.is_data());
+
+        let object = stack.root_state_accessor_stub(None, None).get_object_by_path("/data/object_id1").await.unwrap();
+        assert!(object.object.is_empty());
+        assert!(object.object.object_id.is_data());
+        
         info!("device will get text_object: {}", v);
         let req = NONGetObjectRequest::new_noc(v, None);
         let resp = stack.non_service().get_object(req).await.unwrap();

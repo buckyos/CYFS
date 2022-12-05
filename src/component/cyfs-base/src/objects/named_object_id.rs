@@ -67,7 +67,7 @@ impl<T: ObjectType> Default for NamedObjectId<T> {
         let mut id = ObjectId::default();
         let hash_value = id.as_mut_slice();
 
-        if !T::is_stand_object() {
+        if !T::is_standard_object() {
             // 用户类型
             //4个可用flag
             let type_code = if T::is_dec_app_object() {
