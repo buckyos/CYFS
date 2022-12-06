@@ -393,7 +393,19 @@ impl DisableBrowserRequestHttpServer {
             return Ok(());
         }
 
-        let msg = format!("browser request not allowed on current interface! req={}, origin={:?}", req.url(), origin);
+        if origin.is_none() {
+            // pass through the requests from none browser env(eg. nodejs/sdk)
+            let user_agent_str = user_agent.as_ref().unwrap().last().as_str();
+            if !BrowserSanboxHttpServer::is_browser(user_agent_str) {
+                return Ok(());
+            }
+        }
+
+        let msg = format!("browser request not allowed on current interface! req={}, user_agent={:?}, origin={:?}", 
+            req.url(), 
+            user_agent, 
+            origin
+        );
         warn!("{}", msg);
         Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
     }
