@@ -1,5 +1,4 @@
 use tide::{Request, Response, StatusCode};
-use async_std::prelude::*;
 
 use cyfs_base::*;
 
@@ -16,7 +15,9 @@ async fn get_chunk_data(trace:&str, chunk_manager: &ChunkManager, chunk_get_req:
     // }
 
     info!("{} client peer id is the data owner, and request raw data, just return, chunk id:{}", trace, chunk_get_req.chunk_id());
-    let mut read = chunk_manager.get(chunk_get_req.chunk_id()).await?;
+    let reader = chunk_manager.get(chunk_get_req.chunk_id()).await?;
+
+    /*
     let mut chunk_data = Vec::new();
     let _ = read.read_to_end(&mut chunk_data).await.map_err(|e|{
         error!("{} read chunk data failed, msg:{}", trace, e.to_string());
@@ -30,10 +31,11 @@ async fn get_chunk_data(trace:&str, chunk_manager: &ChunkManager, chunk_get_req:
         chunk_manager.delete(chunk_get_req.chunk_id())?;
         return Err(BuckyError::from(BuckyErrorCode::NotMatch));
     }
+    */
 
     info!("{} get chunk data success, resp", trace);
     let mut resp = Response::new(StatusCode::Ok);
-    resp.set_body(chunk_data);
+    resp.set_body(http_types::Body::from_reader(reader, None));
 
     info!("{} OK", trace);
     return Ok(resp);
@@ -46,11 +48,7 @@ async fn get_chunk_data_with_meta(trace:&str, chunk_manager: &ChunkManager, chun
     // }
 
     info!("{} client peer id is the data owner, and request raw data with meta, just return, chunk id:{}", trace, chunk_get_req.chunk_id());
-    let mut read = chunk_manager.get(chunk_get_req.chunk_id()).await?;
-    let mut chunk_data = Vec::new();
-    let _ = read.read_to_end(&mut chunk_data).await.map_err(|e|{
-        BuckyError::from(e)
-    })?;
+    let chunk_data = chunk_manager.get_data(chunk_get_req.chunk_id()).await?;
 
     info!("{} get chunk data with meta success, resp", trace);
     let chunk_get_resp = cyfs_chunk::ChunkGetResp::new_raw(
