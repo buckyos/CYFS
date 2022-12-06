@@ -1,5 +1,4 @@
 use cyfs_base::{BuckyError, BuckyResult};
-use cyfs_util::ZipPackage;
 
 use std::path::PathBuf;
 use async_std::prelude::*;
@@ -13,57 +12,6 @@ impl LocalPackageManager {
         Self {
             root,
         }
-    }
-
-    pub fn check_package_hash(&self, fid: &str) -> BuckyResult<bool> {
-        let current = self.root.join(fid);
-
-        // 检查是否存在.lock文件
-        let lock_path = current.join(".lock");
-        if lock_path.exists() {
-            warn!("dir lock file exists! file={}", lock_path.display());
-            return Ok(true);
-        }
-
-        // 检查是否存在.hash文件
-        let hash_path = current.join(".hash");
-        if !hash_path.exists() {
-            let msg = format!(
-                ".hash not found in service dir! file={}",
-                hash_path.display()
-            );
-            error!("{}", msg);
-            return Err(BuckyError::from(msg));
-        }
-
-        // 读取hash
-        let configed_hash = match std::fs::read_to_string(hash_path.clone()) {
-            Ok(hash) => hash,
-            Err(e) => {
-                let msg = format!("load .hash error! file={}, err={}", hash_path.display(), e);
-                error!("{}", msg);
-                return Err(BuckyError::from(msg));
-            }
-        };
-
-        // 计算包的hash
-        let mut zip = ZipPackage::new();
-        zip.load(&current);
-
-        let dir_hash = match zip.calc_hash() {
-            Ok(hash) => hash,
-            Err(e) => {
-                let msg = format!("calc dir hash error! dir={}, err={}", current.display(), e);
-                error!("{}", msg);
-                return Err(BuckyError::from(msg));
-            }
-        };
-
-        if dir_hash != configed_hash {
-            return Ok(false);
-        }
-
-        Ok(true)
     }
 
     pub async fn gc(&self, mut reserved_list: Vec<String>) -> BuckyResult<()> {
