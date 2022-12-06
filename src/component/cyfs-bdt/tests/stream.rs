@@ -53,7 +53,7 @@ async fn large_stream(ln_ep: &[&str], rn_ep: &[&str]) {
             signal_sender.send(recv_large_stream(rn_stack).await).await.unwrap();
         });
     }
-    send_large_stream(&ln_stack, rn_stack.local(), sample.as_ref()).await.unwrap();
+    send_large_stream(&ln_stack, rn_stack.sn_client().ping().default_local_device(), sample.as_ref()).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), signal_recver.recv()).await.unwrap().unwrap();
     let recv_sample = recv.unwrap();
 
@@ -88,7 +88,7 @@ async fn large_udp_stream_with_loss() {
             signal_sender.send(recv_large_stream(rn_stack).await).await.unwrap();
         });
     }
-    send_large_stream(&ln_stack, rn_stack.local(), sample.as_ref()).await.unwrap();
+    send_large_stream(&ln_stack, rn_stack.sn_client().ping().default_local_device(), sample.as_ref()).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), signal_recver.recv()).await.unwrap().unwrap();
     let recv_sample = recv.unwrap();
 

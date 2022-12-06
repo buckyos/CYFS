@@ -242,34 +242,6 @@ impl NetListener {
         self.check_state();
     }
 
-    pub async fn wait_online(&self) -> BuckyResult<()> {
-        let (waiter, ret) = {
-            match &mut *self.0.state.write().unwrap() {
-                NetListenerState::Init(waiter) => {
-                    (Some(waiter.new_waiter()), Ok(()))
-                }, 
-                NetListenerState::Online => {
-                    (None, Ok(()))
-                }, 
-                NetListenerState::Closed => {
-                    (None, Err(BuckyError::new(BuckyErrorCode::ErrorState, "net listener closed")))
-                }
-            }
-        };
-
-        if let Some(waiter) = waiter {
-            StateWaiter::wait(waiter, || {
-                match &*self.0.state.read().unwrap() {
-                    NetListenerState::Init(_) => unreachable!(), 
-                    NetListenerState::Online => Ok(()), 
-                    NetListenerState::Closed => Err(BuckyError::new(BuckyErrorCode::ErrorState, "net listener closed"))
-                }
-            }).await
-        } else {
-            ret
-        }
-    }
-
     fn check_state(&self) {
         let udps = self.udp();
         let online = if udps.len() == 0 {

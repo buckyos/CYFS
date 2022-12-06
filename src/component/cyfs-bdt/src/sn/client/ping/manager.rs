@@ -27,9 +27,10 @@ pub enum SnStatus {
 }
 
 
-pub(super) trait PingClient: Send + Sync {
+pub trait PingClient: Send + Sync {
     fn sn(&self) -> &DeviceId;
     fn clone_as_ping_client(&self) -> Box<dyn PingClient>;
+    fn local_device(&self) -> Device;
     fn status(&self) -> SnStatus;
     fn start(&self);
     fn stop(&self);
@@ -41,7 +42,15 @@ pub struct Config {
     pub udp: udp::Config
 }
 
+enum ManagerStatus {
+    Connecting(StateWaiter), 
+    Online(Timestamp), 
+    Offline(Timestamp), 
+    Closed 
+}
+
 struct ManagerState {
+    status: ManagerStatus, 
     remain: LinkedList<DeviceId>, 
     client: Option<Box<dyn PingClient>>
 }
@@ -50,6 +59,7 @@ struct ManagerImpl {
     stack: WeakStack, 
     net_listener: NetListener, 
     sn_list: Vec<Device>, 
+    local_device: Device, 
     state: RwLock<ManagerState>
 }
 
@@ -64,7 +74,12 @@ impl std::fmt::Display for PingManager {
 }
 
 impl PingManager {
-    pub(crate) fn new(stack: WeakStack, net_listener: NetListener, sn_list: Vec<Device>) -> Self {
+    pub(crate) fn new(
+        stack: WeakStack, 
+        net_listener: NetListener, 
+        sn_list: Vec<Device>, 
+        local_device: Device
+    ) -> Self {
         let mut remain = LinkedList::new();
         for sn_id in sn_list.iter().map(|d| d.desc().device_id()) {
             remain.push_back(sn_id);
@@ -74,8 +89,7 @@ impl PingManager {
         let client = loop {
             if let Some(sn_id) = Self::next_sn(strong_stack.local_device_id(), &mut remain) {
                 let sn = sn_list.iter().find(|d| d.desc().device_id().eq(&sn_id)).cloned().unwrap();
-                if let Some(client) = Self::new_client(&stack, &strong_stack.config().sn_client.ping, sn, &net_listener) {
-                    client.start();
+                if let Some(client) = Self::new_client(&stack, &strong_stack.config().sn_client.ping, sn, &net_listener, local_device.clone()) {
                     break Some(client);
                 }
             } else {
@@ -84,15 +98,31 @@ impl PingManager {
         };
         
 
-        Self(Arc::new(ManagerImpl {
+        let manager = Self(Arc::new(ManagerImpl {
             stack, 
             net_listener, 
-            sn_list, 
+            local_device, 
             state: RwLock::new(ManagerState {
+                status: if client.is_some() {
+                    ManagerStatus::Connecting(StateWaiter::new())
+                } else {
+                    if sn_list.len() == 0 {
+                        ManagerStatus::Online(bucky_time_now())
+                    } else {
+                        ManagerStatus::Offline(bucky_time_now())
+                    }
+                }, 
                 remain, 
                 client
             }),
-        }))
+            sn_list, 
+        }));
+
+        manager
+    }
+
+    pub async fn wait_online(&self) -> BuckyResult<()> {
+        unimplemented!()
     }
 
     pub fn sn_list(&self) -> &Vec<Device> {
@@ -118,6 +148,14 @@ impl PingManager {
         }
     }
 
+    pub fn default_local_device(&self) -> Device {
+        self.default_client().map(|c| c.local_device()).unwrap_or(self.0.local_device.clone())
+    }
+
+    pub fn default_client(&self) -> Option<Box<dyn PingClient>> {
+        self.0.state.read().unwrap().client.as_ref().map(|c| c.clone_as_ping_client())
+    }
+
     fn device_of(&self, sn_id: &DeviceId) -> Device {
         self.0.sn_list.iter().find(|d| d.desc().device_id().eq(sn_id)).cloned().unwrap()
     }
@@ -133,8 +171,14 @@ impl PingManager {
         }
     }
 
-    fn new_client(stack: &WeakStack, config: &Config, sn: Device, net_listener: &NetListener) -> Option<Box<dyn PingClient>> {
-        Some(UdpClient::new(stack.clone(), config.udp.clone(), sn, net_listener.clone()).clone_as_ping_client())
+    fn new_client(
+        stack: &WeakStack, 
+        config: &Config, 
+        sn: Device, 
+        net_listener: &NetListener, 
+        local_device: Device
+    ) -> Option<Box<dyn PingClient>> {
+        Some(UdpClient::new(stack.clone(), config.udp.clone(), sn, net_listener.reset(None).unwrap(), local_device).clone_as_ping_client())
     }
 
     fn client_of(&self, sn_id: &DeviceId) -> Option<Box<dyn PingClient>> {

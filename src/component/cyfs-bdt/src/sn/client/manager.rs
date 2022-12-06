@@ -39,11 +39,11 @@ pub struct ClientManager {
 }
 
 impl ClientManager {
-    pub fn create(stack: WeakStack, net_listener: NetListener) -> ClientManager {
+    pub fn create(stack: WeakStack, net_listener: NetListener, local_device: Device) -> ClientManager {
         let strong_stack = Stack::from(&stack); 
         let config = &strong_stack.config().sn_client;
         ClientManager {
-            ping: RwLock::new(PingManager::new(stack.clone(), net_listener, vec![])),
+            ping: RwLock::new(PingManager::new(stack.clone(), net_listener, vec![], local_device)),
             call: CallManager::create(stack.clone(), config), 
             stack, 
         }
@@ -53,11 +53,11 @@ impl ClientManager {
         self.ping.read().unwrap().clone()
     }
 
-    pub fn reset(&self, net_listener: NetListener, sn_list: Vec<Device>) -> PingManager {
+    pub fn reset(&self, net_listener: NetListener, sn_list: Vec<Device>, local_device: Device) -> PingManager {
         let (to_start, to_close) = {
             let mut ping = self.ping.write().unwrap();
             let to_close = ping.clone();
-            let to_start = PingManager::new(self.stack.clone(), net_listener, sn_list);
+            let to_start = PingManager::new(self.stack.clone(), net_listener, sn_list, local_device);
             *ping = to_start.clone();
             (to_start, to_close)
         };

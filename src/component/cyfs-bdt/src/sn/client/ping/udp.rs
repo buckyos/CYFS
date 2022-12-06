@@ -28,6 +28,19 @@ pub struct Config {
 }
 
 
+enum SnStatusImpl {
+    Connecting {
+        waiter: StateWaiter, 
+        last_ping_time: Timestamp,
+    }, 
+    Online {
+        last_ping_time: Timestamp,
+    }, 
+        (Timestamp), 
+    Offline(Timestamp), 
+}
+
+
 #[derive(Debug, Clone)]
 enum ClientStatus {
     Running {
@@ -38,8 +51,9 @@ enum ClientStatus {
 }
 
 struct ClientState {
+    local_device: Device, 
     sessions: Vec<UdpSession>,
-    client_status: ClientStatus,
+    client_status: ClientStatus, 
     sn_status: SnStatus
 }
 
@@ -50,7 +64,6 @@ struct ClientInner {
     sn: Device, 
     net_listener: NetListener, 
     seq_genarator: TempSeqGenerator,
-
     state: RwLock<ClientState>    
 }
 
@@ -114,6 +127,10 @@ impl std::fmt::Display for UdpClient {
 impl PingClient for UdpClient {
     fn sn(&self) -> &DeviceId {
         &self.0.sn_id
+    }
+
+    fn local_device(&self) -> Device {
+        self.0.state.read().unwrap().local_device.clone()
     }
 
     fn clone_as_ping_client(&self) -> Box<dyn PingClient> {
@@ -211,7 +228,13 @@ impl PingClient for UdpClient {
 
 
 impl UdpClient {
-    pub fn new(stack: WeakStack, config: Config, sn: Device, net_listener: NetListener) -> Self {
+    pub fn new(
+        stack: WeakStack, 
+        config: Config, 
+        sn: Device, 
+        net_listener: NetListener, 
+        local_device: Device
+    ) -> Self {
         let sn_id = sn.desc().device_id();
 
         let mut sessions = Vec::default();
@@ -232,6 +255,7 @@ impl UdpClient {
             net_listener, 
             seq_genarator, 
             state: RwLock::new(ClientState {
+                local_device, 
                 sessions,  
                 sn_status: SnStatus::Connecting, 
                 client_status: ClientStatus::Running {
@@ -344,16 +368,28 @@ impl UdpClient {
 
     async fn on_outer_updated(&self, result: UpdateOuterResult) {
         let stack = Stack::from(&self.0.stack);
-        if result == UpdateOuterResult::Update {
-            stack.update_local().await;
-        } else if result == UpdateOuterResult::Reset {
-            stack.reset_local().await;
+        let local_device = if result == UpdateOuterResult::Update 
+            || result == UpdateOuterResult::Reset {
+            let mut local = self.local_device().clone();
+            let device_endpoints = local.mut_connect_info().mut_endpoints();
+            device_endpoints.clear();
+            let bound_endpoints = self.0.net_listener.endpoints();
+            for ep in bound_endpoints {
+                device_endpoints.push(ep);
+            }
+            let _ = sign_and_set_named_object_body(
+                stack.keystore().signer(),
+                &mut local,
+                &SignatureSource::RefIndex(0),
+            ).await;
+            local
         } else {
             unreachable!();
-        }
+        };
 
         let options = {
             let mut state = self.0.state.write().unwrap();
+            state.local_device = local_device;
             match &mut state.client_status {
                 ClientStatus::Stopped => None, 
                 ClientStatus::Running {last_ping_time, last_update_seq} => {
@@ -377,7 +413,7 @@ impl UdpClient {
 
     async fn send_ping_inner(&self, options: SendPingOptions) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
-        let local_device = stack.device_cache().local().clone();
+        let local_device = self.local_device().clone();
         let seq = options.seq; 
         let ping_pkg = SnPing {
             protocol_version: 0, 

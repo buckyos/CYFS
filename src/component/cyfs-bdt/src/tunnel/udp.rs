@@ -467,7 +467,7 @@ impl OnPackage<SynTunnel, &PackageBox> for Tunnel {
             result: 0,
             send_time: 0,
             mtu: udp::MTU as u16,
-            to_device_desc: container.stack().device_cache().local()       
+            to_device_desc: container.stack().sn_client().ping().default_local_device()
         };
 
         let mut package_box = PackageBox::encrypt_box(

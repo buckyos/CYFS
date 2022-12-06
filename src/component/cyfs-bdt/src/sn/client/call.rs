@@ -152,7 +152,7 @@ impl CallSession {
 
         let stack = Stack::from(&mgr.stack);
         let mut call_pkg = {
-            let local_peer = stack.device_cache().local().clone();
+            let local_peer = stack.sn_client().ping().default_local_device();
             CallSession::init_call_pkg(
                 &stack.local_device_id(), 
                 local_peer, 
@@ -386,7 +386,7 @@ impl CallClientInner {
             let stack = Stack::from(&self.stack);
             let local_device = match call_pkg.peer_info.as_ref() {
                 Some(from) => from.clone(),
-                None => stack.device_cache().local()
+                None => stack.sn_client().ping().default_local_device()
             };
             let exchg = Exchange::from((&call_pkg, local_device, encrypted.clone(), self.aes_key.key.mix_key.clone()));
             self.pkgs.push(SendPackage::Exchange(exchg));

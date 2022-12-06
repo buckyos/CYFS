@@ -293,7 +293,7 @@ impl Stack {
             local_const: local_device.desc().clone(),
             id_generator: IncreaseIdGenerator::new(),
             keystore: key_store,
-            device_cache: DeviceCache::new(init_local_device, outer_cache),
+            device_cache: DeviceCache::new(outer_cache),
             net_manager,
             lazy_components: None, 
             ndn: None
@@ -329,7 +329,7 @@ impl Stack {
 
         {
             let components = StackLazyComponents {
-                sn_client: sn::client::ClientManager::create(stack.to_weak(), net_listener),
+                sn_client: sn::client::ClientManager::create(stack.to_weak(), net_listener, init_local_device.clone()),
                 tunnel_manager: TunnelManager::new(stack.to_weak()),
                 stream_manager: StreamManager::new(stack.to_weak()),
                 datagram_manager, 
@@ -367,7 +367,7 @@ impl Stack {
 
         let net_listener = stack.net_manager().listener();
         net_listener.start(stack.to_weak());
-        stack.sn_client().reset(net_listener, known_sn);
+        
         stack.ndn().start();
 
         if let Some(debug_stub) = debug_stub {
@@ -435,10 +435,6 @@ impl Stack {
         &self.0.local_const
     }
 
-    pub fn local(&self) -> Device {
-        self.0.device_cache.local()
-    }
-
     pub fn sn_client(&self) -> &sn::client::ClientManager {
         &self.0.lazy_components.as_ref().unwrap().sn_client
     }
@@ -451,56 +447,10 @@ impl Stack {
         //unimplemented!()
     }
 
-    pub(crate) async fn update_local(&self) {
-        let mut local = self.local().clone();
-        let device_endpoints = local.mut_connect_info().mut_endpoints();
-        device_endpoints.clear();
-        let bound_endpoints = self.net_manager().listener().endpoints();
-        for ep in bound_endpoints {
-            device_endpoints.push(ep);
-        }
-        let _ = sign_and_set_named_object_body(
-            self.keystore().signer(),
-            &mut local,
-            &SignatureSource::RefIndex(0),
-        )
-        .await;
-        self.device_cache().update_local(&local);
-    }
-
-    pub(crate) async fn reset_local(&self) {
-        info!("{} reset local", self);
-        let mut local = self.local().clone();
-        let device_endpoints = local.mut_connect_info().mut_endpoints();
-        device_endpoints.clear();
-        let bound_endpoints = self.net_manager().listener().endpoints();
-        for ep in bound_endpoints {
-            device_endpoints.push(ep);
-        }
-
-        let mut passive_pn_list = self.proxy_manager().passive_proxies();
-        std::mem::swap(local.mut_connect_info().mut_passive_pn_list(), &mut passive_pn_list);
-
-         
-        local
-            .body_mut()
-            .as_mut()
-            .unwrap()
-            .increase_update_time(bucky_time_now());
-        let _ = sign_and_set_named_object_body(
-            self.keystore().signer(),
-            &mut local,
-            &SignatureSource::RefIndex(0),
-        )
-        .await;
-        self.device_cache().update_local(&local);
-        self.tunnel_manager().reset();
-    }
-
     pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
         info!("{} reset_sn_list {:?}", self, sn_list);
         self.device_cache().reset_sn_list(&sn_list);
-        self.sn_client().reset(self.net_manager().listener(), sn_list);
+        self.sn_client().reset(self.net_manager().listener(), sn_list, self.sn_client().ping().default_local_device());
         Ok(())
     }
 
@@ -508,7 +458,7 @@ impl Stack {
         info!("{} reset {:?}", self, endpoints);
         let listener = self.net_manager().reset(endpoints.as_slice())?;
         
-        let mut local = self.local().clone();
+        let mut local = self.sn_client().ping().default_local_device();
         let device_endpoints = local.mut_connect_info().mut_endpoints();
         device_endpoints.clear();
         let bound_endpoints = listener.endpoints();
@@ -526,11 +476,10 @@ impl Stack {
             &SignatureSource::RefIndex(0),
         )
         .await;
-        self.device_cache().update_local(&local);
         self.tunnel_manager().reset();
 
         let sn_list = self.sn_client().ping().sn_list().clone();
-        self.sn_client().reset(listener.clone(), sn_list);
+        self.sn_client().reset(listener.clone(), sn_list, local);
 
         listener.wait_online().await
     }

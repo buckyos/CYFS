@@ -7,8 +7,6 @@ use crate::dht::*;
 use super::outer_device_cache::*;
 
 pub struct DeviceCache {
-    local_id: DeviceId,
-    local: RwLock<Device>,
     outer: Option<Box<dyn OuterDeviceCache>>,
     //FIXME 先简单干一个
     cache: RwLock<HashMap<DeviceId, Device>>,
@@ -17,25 +15,14 @@ pub struct DeviceCache {
 }
 
 impl DeviceCache {
-    pub fn new(local: Device, outer: Option<Box<dyn OuterDeviceCache>>) -> Self {
+    pub fn new(outer: Option<Box<dyn OuterDeviceCache>>) -> Self {
         Self {
-            local_id: local.desc().device_id(),
-            local: RwLock::new(local),
             cache: RwLock::new(HashMap::new()),
             outer,
             sn_list: RwLock::new(vec![]),
         }
     }
 
-    pub fn local(&self) -> Device {
-        let local = self.local.read().unwrap();
-        (&*local).clone()
-    }
-
-    pub fn update_local(&self, desc: &Device) {
-        let mut local = self.local.write().unwrap();
-        *local = desc.clone();
-    }
 
     pub fn add(&self, id: &DeviceId, device: &Device) {
         // FIXME 这里添加一个检测，确保添加的device id匹配
@@ -69,8 +56,6 @@ impl DeviceCache {
         let mem_cache = self.cache.read().unwrap().get(id).map(|d| d.clone());
         if mem_cache.is_some() {
             mem_cache
-        } else if self.local_id.eq(id) {
-            Some(self.local())
         } else if let Some(outer) = &self.outer {
             outer.get(id).await
         } else {

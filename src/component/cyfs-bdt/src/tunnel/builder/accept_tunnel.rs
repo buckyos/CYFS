@@ -63,7 +63,7 @@ impl AcceptTunnelBuilder {
         self.sync_tunnel_state();
         {
             let stack = Stack::from(&self.0.stack);
-            let local = stack.device_cache().local();
+            let local = stack.sn_client().ping().default_local_device();
             let syn_tunnel: &SynTunnel = caller_box.packages_no_exchange()[0].as_ref();           
             // first box 包含 ack tunnel 和 session data
             let tunnel = &self.0.tunnel;
