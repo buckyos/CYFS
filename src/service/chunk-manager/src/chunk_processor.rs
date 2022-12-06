@@ -8,6 +8,15 @@ use crate::chunk_delegate;
 use crate::chunk_context::ChunkContext;
 use std::io::Write;
 
+use std::sync::Arc;
+struct CachedData(Arc<Vec<u8>>);
+
+impl AsRef<[u8]> for CachedData {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 async fn get_chunk_data(trace:&str, chunk_manager: &ChunkManager, chunk_get_req:&cyfs_chunk::ChunkGetReq, _source_device_id:&DeviceId)->BuckyResult<Response>{
     // if &chunk_get_req.client_device_id!=source_device_id{
     //     error!("{} client peer id is not the data owner, will not resp raw data, chunk id:{}", trace, chunk_get_req.chunk_id);
@@ -15,7 +24,13 @@ async fn get_chunk_data(trace:&str, chunk_manager: &ChunkManager, chunk_get_req:
     // }
 
     info!("{} client peer id is the data owner, and request raw data, just return, chunk id:{}", trace, chunk_get_req.chunk_id());
-    let reader = chunk_manager.get(chunk_get_req.chunk_id()).await?;
+    // let reader = chunk_manager.get(chunk_get_req.chunk_id()).await?;
+
+    let data = chunk_manager.get_data(chunk_get_req.chunk_id()).await?;
+    let len = data.len();
+    let data = CachedData(data);
+    let reader = async_std::io::Cursor::new(data);
+
 
     /*
     let mut chunk_data = Vec::new();
@@ -31,13 +46,13 @@ async fn get_chunk_data(trace:&str, chunk_manager: &ChunkManager, chunk_get_req:
         chunk_manager.delete(chunk_get_req.chunk_id())?;
         return Err(BuckyError::from(BuckyErrorCode::NotMatch));
     }
-    */
+    */ 
 
     info!("{} get chunk data success, resp", trace);
     let mut resp = Response::new(StatusCode::Ok);
-    resp.set_body(http_types::Body::from_reader(reader, None));
+    resp.set_body(http_types::Body::from_reader(reader, Some(len)));
 
-    info!("{} OK", trace);
+    // info!("{} OK", trace);
     return Ok(resp);
 }
 
