@@ -1,5 +1,6 @@
 use std::env::args;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
 
 mod named_data_client;
@@ -10,7 +11,7 @@ mod actions;
 use clap::{App, SubCommand, Arg, ArgMatches};
 
 use crate::actions::{put, get, get_by_id, create, upload};
-use crate::named_data_client::NamedCacheClient;
+use crate::named_data_client::{NamedCacheClient, NamedCacheClientConfig};
 
 use log::*;
 use cyfs_base::{PrivateKey, Device, File, FileDecoder, StandardObject, RawConvertTo, BuckyResult, RawFrom, Area};
@@ -19,20 +20,20 @@ use cyfs_meta_lib::MetaMinerTarget;
 
 extern crate log;
 
-fn get_device_desc(matches: &ArgMatches, name: &str) -> (Option<Device>, Option<PrivateKey>) {
+fn get_device_desc(matches: &ArgMatches, name: &str) -> Option<(Device, PrivateKey)> {
     if let Some(path) = matches.value_of(name) {
         match cyfs_util::get_device_from_file(&Path::new(path).with_extension("desc"), &Path::new(path).with_extension("sec")) {
             Ok(ret) => {
                 debug!("sec: {}", ret.1.to_hex().unwrap());
-                (Some(ret.0), Some(ret.1))
+                Some(ret)
             },
             Err(e) => {
                 error!("read desc from {} fail, err {}", path, e);
-                (None, None)
+                None
             }
         }
     } else {
-        (None, None)
+        None
     }
 }
 
@@ -144,10 +145,16 @@ async fn main_run() {
             let url_file = matches.value_of("url_file").map(PathBuf::from);
 
             let mut client = NamedCacheClient::new();
-            let (device_desc, device_secret) = get_device_desc(&matches, "desc");
-            let meta_target = matches.value_of("meta_target").map(str::to_string);
+            let desc = get_device_desc(&matches, "desc");
+            let meta_target = matches.value_of("meta_target").map(|s|
+                MetaMinerTarget::from_str(&s).unwrap_or(MetaMinerTarget::default()));
             let (sn_list, area) = sn_list(matches).await;
-            client.init(device_desc, device_secret, meta_target, Some(sn_list), area).await.unwrap();
+            let mut config = NamedCacheClientConfig::default();
+            config.desc = desc;
+            config.meta_target = meta_target;
+            config.sn_list = Some(sn_list);
+            config.area = area;
+            client.init(config).await.unwrap();
 
             if let Some((owner_desc, secret)) = get_desc(&matches, "owner") {
                 info!("@put...");
@@ -170,10 +177,16 @@ async fn main_run() {
             let url = matches.value_of("url").unwrap().to_owned();
             let dest_path = PathBuf::from(matches.value_of("dest").unwrap());
             let mut client = NamedCacheClient::new();
-            let (device_desc, device_sec) = get_device_desc(matches, "desc");
-            let meta_target = matches.value_of("meta_target").map(str::to_string);
+            let desc = get_device_desc(matches, "desc");
+            let meta_target = matches.value_of("meta_target").map(|s|
+                MetaMinerTarget::from_str(&s).unwrap_or(MetaMinerTarget::default()));
             let (sn_list, area) = sn_list(matches).await;
-            client.init(device_desc, device_sec, meta_target, Some(sn_list), area).await.unwrap();
+            let mut config = NamedCacheClientConfig::default();
+            config.desc = desc;
+            config.meta_target = meta_target;
+            config.sn_list = Some(sn_list);
+            config.area = area;
+            client.init(config).await.unwrap();
             async_std::task::spawn(async move {
                 if get(&client, &url, &dest_path).await.is_err() {
                     std::process::exit(1);
@@ -187,10 +200,17 @@ async fn main_run() {
             let dest_path = PathBuf::from(matches.value_of("dest").unwrap_or(&fileid));
 
             let mut client = NamedCacheClient::new();
-            let (device_desc, device_sec) = get_device_desc(matches, "desc");
-            let meta_target = matches.value_of("meta_target").map(str::to_string);
+            let desc = get_device_desc(matches, "desc");
+            let meta_target = matches.value_of("meta_target").map(|s|
+                MetaMinerTarget::from_str(s).unwrap_or(MetaMinerTarget::default())
+            );
             let (sn_list, area) = sn_list(matches).await;
-            client.init(device_desc, device_sec, meta_target, Some(sn_list), area).await.unwrap();
+            let mut config = NamedCacheClientConfig::default();
+            config.desc = desc;
+            config.meta_target = meta_target;
+            config.sn_list = Some(sn_list);
+            config.area = area;
+            client.init(config).await.unwrap();
             async_std::task::spawn(async move {
                 if get_by_id(&client, &fileid, &dest_path, None).await.is_err() {
                     std::process::exit(1);
@@ -247,9 +267,12 @@ async fn main_run() {
         },
         ("extract", Some(matches)) => {
             let mut client = NamedCacheClient::new();
-            let meta_target = matches.value_of("meta_target").map(str::to_string);
+            let meta_target = matches.value_of("meta_target").map(|s|
+                MetaMinerTarget::from_str(s).unwrap_or(MetaMinerTarget::default()));
             let url = matches.value_of("url").unwrap().to_owned();
-            client.init(None, None, meta_target, None, None).await.unwrap();
+            let mut config = NamedCacheClientConfig::default();
+            config.meta_target = meta_target;
+            client.init(config).await.unwrap();
             async_std::task::spawn(async move {
                 match client.extract_cyfs_url(&url).await {
                     Ok((owner, id, inner)) => {

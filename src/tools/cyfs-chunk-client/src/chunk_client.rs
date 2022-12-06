@@ -41,8 +41,8 @@ impl ChunkClient {
         T: RawEncode
     {
         let mut resp = Self::request_non_block(ctx, func, t).await?;
-        // 在某些情况下，会出现udp传输一段时间后，不能再收到包的情况。在这里加一个3分钟的超时，如果超时了，返回给上层TimeOut错误，上层可以根据错误来考虑重试
-        let bytes = async_std::future::timeout(std::time::Duration::from_secs(60*3), async {
+        // 在某些情况下，会出现udp传输一段时间后，不能再收到包的情况。在这里加一个10分钟的超时，如果超时了，返回给上层TimeOut错误，上层可以根据错误来考虑重试
+        let bytes = async_std::future::timeout(std::time::Duration::from_secs(60*10), async {
             resp.body_bytes().await.map_err(|e|{
                 error!("receive bytes error, msg:{}", e.to_string());
                 BuckyError::from(e)

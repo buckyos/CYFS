@@ -1,6 +1,6 @@
 use super::manager::{Repo, RepoPackageInfo, RepoType};
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DirId};
-use cyfs_client::NamedCacheClient;
+use cyfs_client::{NamedCacheClient, NamedCacheClientConfig};
 
 use async_std::fs::File;
 use async_std::io::prelude::*;
@@ -9,6 +9,7 @@ use once_cell::sync::OnceCell;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub struct NamedDataRepo {
     client: OnceCell<Arc<NamedCacheClient>>,
@@ -30,7 +31,10 @@ impl NamedDataRepo {
         let mut client = NamedCacheClient::new();
 
         // service desc确保它有固定外网地址，连接不走sn。这里sn_list就可以传None
-        if let Err(e) = client.init(None, None, None, None, None).await {
+        let mut config = NamedCacheClientConfig::default();
+        config.retry_times = Some(3);
+        config.timeout = Some(Duration::from_secs(10*60));
+        if let Err(e) = client.init(config).await {
             let msg = format!("init named cache client for repo failed! err={}", e);
             error!("{}", msg);
 

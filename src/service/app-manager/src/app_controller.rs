@@ -3,7 +3,7 @@ use crate::dapp::DApp;
 use crate::docker_api::*;
 use crate::package::AppPackage;
 use cyfs_base::*;
-use cyfs_client::NamedCacheClient;
+use cyfs_client::{NamedCacheClient, NamedCacheClientConfig};
 use cyfs_core::{DecApp, DecAppId, DecAppObj, SubErrorCode};
 use cyfs_lib::*;
 use cyfs_util::*;
@@ -83,7 +83,10 @@ impl AppController {
         self.shared_stack = Some(shared_stack);
         self.owner = Some(owner);
         let mut named_cache_client = NamedCacheClient::new();
-        named_cache_client.init(None, None, None, Some(sn_list), area).await?;
+        let mut config = NamedCacheClientConfig::default();
+        config.sn_list = Some(sn_list);
+        config.area = area;
+        named_cache_client.init(config).await?;
         self.named_cache_client = Some(named_cache_client);
         Ok(())
     }
