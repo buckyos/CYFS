@@ -103,7 +103,31 @@ pub struct NamedCacheClient {
     init_ret: Mutex<bool>,
     object_cache: RwLock<HashMap<ObjectId, StandardObject>>,
     device_cache: OnceCell<BdtDeviceCache>,
-    stack: OnceCell<StackGuard>
+    stack: OnceCell<StackGuard>,
+    retry_times: u8,
+    timeout: Duration
+}
+
+pub struct NamedCacheClientConfig {
+    pub desc: Option<(Device, PrivateKey)>,
+    pub meta_target: Option<MetaMinerTarget>,
+    pub sn_list: Option<Vec<Device>>,
+    pub area: Option<Area>,
+    pub retry_times: Option<u8>,
+    pub timeout: Option<Duration>,
+}
+
+impl Default for NamedCacheClientConfig {
+    fn default() -> Self {
+        Self {
+            desc: None,
+            meta_target: None,
+            sn_list: None,
+            area: None,
+            retry_times: None,
+            timeout: None,
+        }
+    }
 }
 
 impl NamedCacheClient {
@@ -116,24 +140,26 @@ impl NamedCacheClient {
             init_ret: Mutex::new(false),
             object_cache: RwLock::new(HashMap::new()),
             device_cache: OnceCell::new(),
-            stack: OnceCell::new()
+            stack: OnceCell::new(),
+            retry_times: 3,
+            timeout: Duration::from_secs(5*60)
         }
     }
 
-    pub async fn init(&mut self, desc: Option<Device>, secret: Option<PrivateKey>, meta_target: Option<String>, sn_list: Option<Vec<Device>>, area: Option<Area>) -> BuckyResult<()> {
+    pub async fn init(&mut self, config: NamedCacheClientConfig) -> BuckyResult<()> {
         // 避免并行init
         let mut ret = self.init_ret.lock().await;
         if *ret {
             return Ok(());
         }
-        if desc.is_some() && secret.is_some() {
-            let _ = self.desc.set(desc.unwrap());
-            let _ = self.secret.set(secret.unwrap());
+        if let Some((desc, secret)) = config.desc {
+            let _ = self.desc.set(desc);
+            let _ = self.secret.set(secret);
         } else {
             info!("no input peerdesc, create random one.");
             let secret = PrivateKey::generate_rsa(1024)?;
             let public = secret.public();
-            let area = area.unwrap_or(Area::default());
+            let area = config.area.unwrap_or(Area::default());
             let mut uni = [0 as u8; 16];
             rand::thread_rng().fill_bytes(&mut uni);
             let uni_id = UniqueId::create(&uni);
@@ -144,12 +170,10 @@ impl NamedCacheClient {
 
         info!("current device_id: {}", self.desc.get().unwrap().desc().calculate_id());
 
-        let target = meta_target.map(|s|MetaMinerTarget::from_str(&s).unwrap_or(MetaMinerTarget::default()))
-            .unwrap_or(MetaMinerTarget::default());
+        let target = config.meta_target.unwrap_or(MetaMinerTarget::default());
         let client = Arc::new(MetaClient::new_target(target).with_timeout(std::time::Duration::from_secs(60 * 2)));
         let _ = self.meta_client.set(client.clone());
 
-        // desc.endpoints.clear();
         let endpoints = self.desc.get_mut().unwrap().body_mut().as_mut().unwrap().content_mut().mut_endpoints();
         if endpoints.len() == 0 {
             // 取随机端口号
@@ -168,10 +192,12 @@ impl NamedCacheClient {
         let _ = self.device_cache.set(device_cache.clone());
 
         let mut params = cyfs_bdt::StackOpenParams::new("cyfs-client");
-        if let Some(sn_list) = &sn_list {
-            info!("named data client use param`s sn list {:?}", sn_list);
+        if let Some(sn_list) = &config.sn_list {
+            info!("named data client use param`s sn list {:?}", sn_list.iter().map(|device|{
+                device.desc().calculate_id()
+            }).collect::<Vec<ObjectId>>());
         }
-        params.known_sn = sn_list;
+        params.known_sn = config.sn_list;
         params.outer_cache = Some(Box::new(device_cache));
 
         let desc = self.desc.get().unwrap().clone();
@@ -188,6 +214,13 @@ impl NamedCacheClient {
         info!("bdt stack created");
         let _ = self.stream_pool.set(pool);
         let _ = self.stack.set(stack);
+
+        if let Some(retry_times) = config.retry_times {
+            self.retry_times = retry_times;
+        }
+        if let Some(timeout) = config.timeout {
+            self.timeout = timeout;
+        }
 
         *ret = true;
         Ok(())
@@ -217,6 +250,9 @@ impl NamedCacheClient {
 
     pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
         if let Some(stack) = self.stack.get() {
+            info!("named data client reset sn list {:?}", sn_list.iter().map(|device|{
+                device.desc().calculate_id()
+            }).collect::<Vec<ObjectId>>());
             stack.reset_sn_list(sn_list).await?;
             Ok(())
         } else {
@@ -302,9 +338,7 @@ impl NamedCacheClient {
         if let Ok(chunk_resp) = ChunkClient::get_resp_from_source(
             ChunkSourceContext::source_http_local(&peer_id),
             &chunk_get_data_req,
-        )
-        .await
-        {
+        ).await {
             debug!("get chunk {} from local success", &chunk_id);
             async_copy(chunk_resp, writer).await?;
             return Ok(());
@@ -317,39 +351,61 @@ impl NamedCacheClient {
             &peer_id,
             &chunk_id,
             &price,
-            cyfs_chunk::ChunkGetReqType::DataWithMeta,
+            cyfs_chunk::ChunkGetReqType::Data,
         )?;
         // 由于某些场景中，会发生使用udp的bdt stream在传输一段时间后再也收不到数据的情形，这里加一个超时。如果到了超时时间还没有返回，就再建一条新连接重试一次GetChunk
         // 这里重试3次，3次还得不到chunk就返回错误
-        let mut chunk_content = Vec::new();
-        let mut chunk_ret = Err(BuckyError::new(BuckyErrorCode::NotInit, ""));
-        for _ in 0..2 {
+        let chunk_content = OnceCell::new();
+        let mut get_error = BuckyError::from(BuckyErrorCode::Ok);
+        for i in 0..self.retry_times {
             let bdt_stream = self.get_bdt_stream(&owner).await?;
             let ctx = ChunkSourceContext::source_http_bdt_remote(&peer_id, bdt_stream.clone());
             // get_from_source在udp被阻断的情况下可能会超时，这里超时后返回Timeout错误，再试一次
-            chunk_ret = ChunkClient::get_from_source(ctx, &chunk_get_data_with_meta_req).await;
 
-            if let Ok(resp) = &chunk_ret {
-                chunk_content = resp.raw().as_ref().unwrap().data().to_vec();
-                break;
-            } else {
-                warn!("get chunk {} failed by err {}, may retry", chunk_id, chunk_ret.as_ref().err().unwrap());
-                // 这里尝试看能不能让pool放弃这条连接
-                if let Err(e) = bdt_stream.shutdown(Shutdown::Both) {
-                    error!("bdt stream close error! {}", e);
+            match async_std::future::timeout(self.timeout, async {
+                ChunkClient::get_resp_from_source(ctx, &chunk_get_data_with_meta_req).await
+            }).await {
+                Ok(ret) => {
+                    match ret {
+                        Ok(mut resp) => {
+                            match resp.body_bytes().await {
+                                Ok(buf) => {
+                                    let _ = chunk_content.set(buf);
+                                    break;
+                                }
+                                Err(e) => {
+                                    error!("receive bytes error, {}", e);
+                                    get_error = BuckyError::from(e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("get chunk {} failed by err {}, may retry {}/{}", chunk_id, e, i+1, self.retry_times);
+                            get_error = e;
+                            // 这里尝试看能不能让pool放弃这条连接
+                            if let Err(e) = bdt_stream.shutdown(Shutdown::Both) {
+                                error!("bdt stream close error! {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("recv chunk {} timeout after {} secs. may retry {}/{}", chunk_id, self.timeout.as_secs(), i+1, self.retry_times);
+                    get_error = BuckyError::from(e);
                 }
             }
 
+
         }
 
-        if chunk_ret.is_err() {
+        if chunk_content.get().is_none() {
             // 表示3次都没有拿到chunk数据，这里报超时
-            error!("get chunk {} final err {}", chunk_id, chunk_ret.as_ref().err().unwrap());
-            return Err(chunk_ret.err().unwrap());
+            error!("get chunk {} final failed after retry 3 times", chunk_id);
+            return Err(get_error);
         }
 
         // 重新计算一次chunkid
-        let new_chunk_id = ChunkId::calculate_sync(&chunk_content).unwrap();
+        let new_chunk_id = ChunkId::calculate_sync(chunk_content.get().unwrap()).unwrap();
         if chunk_id != &new_chunk_id {
             error!("recalc chunkid failed! except {}, actual {}", &chunk_id, &new_chunk_id);
             return Err(BuckyError::new(BuckyErrorCode::Unmatch, "chunkid dismatch"));
@@ -359,7 +415,7 @@ impl NamedCacheClient {
 
         // 存入writer
         debug!("save chunk {} to writer", &chunk_id);
-        writer.write(chunk_content.as_ref()).await?;
+        writer.write(chunk_content.get().unwrap()).await?;
 
         // 存入本地ChunkManager
         if let Ok((desc, secret)) = cyfs_util::get_default_device_desc() {
@@ -368,7 +424,7 @@ impl NamedCacheClient {
                 &secret,
                 &desc.desc().device_id(),
                 &chunk_id,
-                chunk_content.to_owned(),
+                chunk_content.get().unwrap().to_owned(),
             )?;
 
             if let Err(e) = ChunkClient::set(
