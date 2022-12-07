@@ -82,11 +82,12 @@ impl AppController {
         *self.sn_hash.write().unwrap() = sn_hash;
         self.shared_stack = Some(shared_stack);
         self.owner = Some(owner);
-        let mut named_cache_client = NamedCacheClient::new();
+
         let mut config = NamedCacheClientConfig::default();
         config.sn_list = Some(sn_list);
         config.area = area;
-        named_cache_client.init(config).await?;
+        let mut named_cache_client = NamedCacheClient::new(config);
+        named_cache_client.init().await?;
         self.named_cache_client = Some(named_cache_client);
         Ok(())
     }
@@ -599,7 +600,7 @@ mod tests {
 
     async fn get_app_controller() -> AppController {
         let stack = get_stack().await;
-        let named_cache_client = NamedCacheClient::new();
+        let named_cache_client = NamedCacheClient::new(NamedCacheClientConfig::default());
         let device = stack.local_device();
         let owner = device
             .desc()

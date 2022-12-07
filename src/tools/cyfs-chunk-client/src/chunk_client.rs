@@ -11,7 +11,6 @@ pub struct ChunkClient {
 }
 
 impl ChunkClient {
-
     pub async fn request_non_block<T>(ctx: impl ChunkClientContext, func:&str, t: &T) -> BuckyResult<Response> 
         where 
         T: RawEncode
