@@ -163,6 +163,50 @@ impl BrowserSanboxHttpServer {
         false
     }
 
+    fn is_iframe(req: &http_types::Request) -> bool {
+        let ret = match req.header("sec-fetch-dest") {
+            Some(header) => {
+                match header.last().as_str() {
+                    "iframe" => {
+                        true
+                    }
+                    _ => {
+                        false
+                    }
+                }
+            }
+            None => {
+                false
+            }
+        };
+
+        if !ret {
+            return ret;
+        }
+
+        let ret = match req.header("sec-fetch-mode") {
+            Some(header) => {
+                match header.last().as_str() {
+                    "navigate" => {
+                        true
+                    }
+                    _ => {
+                        false
+                    }
+                }
+            }
+            None => {
+                false
+            }
+        };
+
+        if !ret {
+            return ret;
+        }
+
+        ret
+    }
+
     fn extract_source<'a>(req: &'a http_types::Request,) -> BuckyResult<Option<RequestSourceString<'a>>> {
         let user_agent = req.header(http_types::headers::USER_AGENT);
         debug!("req user agent: {:?}", user_agent);
@@ -197,6 +241,13 @@ impl BrowserSanboxHttpServer {
             // FIXME 为什么浏览器插件会发起这种不带Origin的请求
             // request from the cyfs browser extensions or none cyfs browser's html tag! now will ignore the source verify, but will disable the used of system-dec-id
             return Self::check_other_request(req);
+        } else {
+            // check if iframe
+            if Self::is_iframe(req) {
+                if let Some(root) = Self::extract_front_root(req) {
+                    return Ok(Some(RequestSourceString::Host(root)));
+                }
+            }
         }
 
         let origin_url = origin.unwrap().last().as_str();
