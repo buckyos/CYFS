@@ -80,11 +80,13 @@ impl ObjectHttpTcpListener {
             self.listen_url, &peer_addr,
         );
 
-        let begin = std::time::Instant::now();
+        let stream_begin = std::time::Instant::now();
+
         let opts = async_h1::ServerOptions::default();
         let ret = async_h1::accept_with_opts(
             stream,
             |mut req| async move {
+                let begin = std::time::Instant::now();
                 let seq = self.next_seq();
 
                 info!(
@@ -147,7 +149,7 @@ impl ObjectHttpTcpListener {
                 e,
                 self.listen_url,
                 peer_addr,
-                begin.elapsed().as_millis(),
+                stream_begin.elapsed().as_millis(),
             );
             // FIXME 一般是请求方直接断开导致的错误，是否需要判断并不再输出warn？
             //Err(BuckyError::from(e))
