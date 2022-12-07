@@ -57,11 +57,15 @@ mod test {
         // let s = "9cfBkPt8hb8rnaYJRZGsKc9ZS3ye3CixxCC13z9Ubswm";
         let s = "9tGpLNna8UVtPYCfV1LbRN2Bqa5G9vRBKhDhZiWjd7wA";
         let (id1, id11) = test_convert(s);
+        //assert_eq!(id11, "3afs9n7yl2qk43kusooijq9hmadmbil1162zeyi8o28aes3em5");
 
         let s = "9tGpLNna8P1hutR3y6i1gSGuosoLXLxa72HMrcEQnrgk";
         let (id2, id22) = test_convert(s);
 
         assert_ne!(id11, id22);
         assert_ne!(id1, id2);
+
+        let s = "95RvaS5eWQsLpCGgkY773EKomgfa73EcmGP9VHWnwig3";
+        test_convert(s);
     }
 }
