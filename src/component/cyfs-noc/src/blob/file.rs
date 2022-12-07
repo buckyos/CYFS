@@ -1,16 +1,24 @@
 use super::blob::*;
 use cyfs_base::*;
 use cyfs_lib::*;
+use super::old_base36::FileBlobStorageUpgrade;
 
 use std::path::{Path, PathBuf};
 
 pub struct FileBlobStorage {
     root: PathBuf,
+    #[cfg(target_os = "windows")]
+    upgrade: FileBlobStorageUpgrade,
 }
 
 impl FileBlobStorage {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            #[cfg(target_os = "windows")]
+            upgrade: FileBlobStorageUpgrade::new(root.clone()),
+
+            root,
+        }
     }
 
     async fn get_full_path(&self, object_id: &ObjectId, auto_create: bool) -> BuckyResult<PathBuf> {
@@ -114,7 +122,16 @@ impl BlobStorage for FileBlobStorage {
     async fn get_object(&self, object_id: &ObjectId) -> BuckyResult<Option<NONObjectInfo>> {
         let path = self.get_full_path(object_id, false).await?;
         if !path.exists() {
-            return Ok(None);
+            #[cfg(target_os = "windows")]
+            {
+                if !self.upgrade.try_update(&path, object_id) {
+                    return Ok(None);
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                return Ok(None);
+            }
         }
 
         let info = self.load_object(&path).await?;
