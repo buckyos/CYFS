@@ -44,23 +44,20 @@ impl WriteProviderImpl {
         let timeout = self.cc.rto();
         let nagle = self.queue.check_nagle(stream, now);
         let (lost, _break) = if self.queue.flight() > 0 {
-            if self.queue.check_timeout(now, self.cc.rto()) {
-                debug!("{} ledbat lost some package's ack", stream);
-                self.cc.on_loss(0);
-                (true, false)
-            } else if now > self.last_recv {
+            let lost = self.queue.check_timeout(now, self.cc.rto());
+            if lost >= self.queue.flight() {
                 let d = Duration::from_micros(now - self.last_recv);
                 if d > stream.config().package.break_overtime {
                     (true, true)
-                } else if d >= self.cc.rto() {
-                    debug!("{} ledbat no ack in rto", stream);
-                    self.cc.on_no_resp(0);
-                    (true, false)
                 } else {
-                    (false, false)
+                    debug!("{} cc no ack in rto", stream);
+                    self.cc.on_no_resp(lost as u64);
+                    (true, false)
                 }
             } else {
-                (false, false)
+                debug!("{} cc lost some package's ack", stream);
+                self.cc.on_loss(lost as u64);
+                (true, false)
             }
         } else {
             (false, false)
