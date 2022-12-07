@@ -5,6 +5,7 @@ use std::sync::{Arc, RwLock};
 use std::u64;
 use cyfs_base::*;
 use sysinfo::{DiskExt, RefreshKind, SystemExt};
+use crate::old_base36::ChunkStorageUpgrade;
 use crate::{Chunk, ChunkCache, ChunkMut, MMapChunk, MMapChunkMut, MemChunk, ChunkType};
 use num_traits::float::Float;
 use futures_lite::AsyncWriteExt;
@@ -496,6 +497,9 @@ pub(crate) trait TSingleDiskChunkCache {
 pub(crate) struct SingleDiskChunkCache {
     path: PathBuf,
     cache_id: HashValue,
+
+    #[cfg(target_os = "windows")]
+    upgrade: super::old_base36::ChunkStorageUpgrade,
 }
 
 impl SingleDiskChunkCache {
@@ -564,6 +568,9 @@ impl TSingleDiskChunkCache for SingleDiskChunkCache {
     fn new(path: PathBuf) -> Self {
         let cache_id = hash_data(path.to_string_lossy().to_string().as_bytes());
         Self {
+            #[cfg(target_os = "windows")]
+            upgrade: ChunkStorageUpgrade::new(path.clone()),
+
             path,
             cache_id,
         }
@@ -599,9 +606,20 @@ impl ChunkCache for SingleDiskChunkCache {
         log::info!("SingleDiskChunkCache get_chunk {}", chunk_id.to_string());
         let file_path = self.get_file_path(chunk_id, false);
         if !file_path.exists() {
-            let msg = format!("get chunk's file but not exist! chunk={}, file={}", chunk_id, file_path.display());
-            log::warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            #[cfg(target_os = "windows")]
+            {
+                if !self.upgrade.try_update(&file_path, chunk_id) {
+                    let msg = format!("get chunk's file but not exist! chunk={}, file={}", chunk_id, file_path.display());
+                    log::warn!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let msg = format!("get chunk's file but not exist! chunk={}, file={}", chunk_id, file_path.display());
+                log::warn!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            }
         }
 
         match chunk_type {
