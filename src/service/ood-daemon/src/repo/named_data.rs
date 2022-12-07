@@ -131,7 +131,7 @@ impl Repo for NamedDataRepo {
     }
 
     async fn fetch(&self, info: &RepoPackageInfo, local_file: &Path) -> BuckyResult<()> {
-        let mut retry_interval_secs = 10;
+        let mut retry_interval_secs = 60;
         let mut retry_count = 0;
         loop {
             let info = info.to_owned();
