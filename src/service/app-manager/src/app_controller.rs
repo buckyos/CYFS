@@ -86,6 +86,10 @@ impl AppController {
         let mut config = NamedCacheClientConfig::default();
         config.sn_list = Some(sn_list);
         config.area = area;
+        config.conn_strategy = cyfs_client::ConnStrategy::TcpFirst;
+        config.timeout = Duration::from_secs(10*60);
+        config.tcp_file_manager_port = 5312;
+        config.tcp_chunk_manager_port = 5310;
         let mut named_cache_client = NamedCacheClient::new(config);
         named_cache_client.init().await?;
         self.named_cache_client = Some(named_cache_client);

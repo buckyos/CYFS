@@ -78,15 +78,6 @@ async fn sn_list(matches: &ArgMatches<'_>) -> (Vec<Device>, Option<Area>) {
 }
 
 async fn main_run() {
-    cyfs_debug::CyfsLoggerBuilder::new_service("cyfs-client")
-        .level("info")
-        .console("info")
-        .enable_bdt(Some("warn"), Some("warn"))
-        .build()
-        .unwrap()
-        .start();
-
-    cyfs_debug::PanicBuilder::new("cyfs-tools", "cyfs-client").build().start();
     let default_target = MetaMinerTarget::default().to_string();
     let meta_arg = Arg::with_name("meta_target").short("m").long("meta_target").takes_value(true).default_value(&default_target).help("meta target");
 
@@ -142,6 +133,16 @@ async fn main_run() {
             .arg(meta_arg.clone())
         )
         .get_matches();
+
+    cyfs_debug::CyfsLoggerBuilder::new_service("cyfs-client")
+        .level("info")
+        .console("info")
+        .enable_bdt(Some("warn"), Some("warn"))
+        .build()
+        .unwrap()
+        .start();
+
+    cyfs_debug::PanicBuilder::new("cyfs-tools", "cyfs-client").build().start();
 
 
     match matches.subcommand() {
