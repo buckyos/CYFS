@@ -1,3 +1,4 @@
+use async_std::io::Cursor;
 use tide::{Request, Response, StatusCode};
 
 use cyfs_base::*;
@@ -7,13 +8,87 @@ use crate::chunk_delegate;
 // use crate::chunk_tx;
 use crate::chunk_context::ChunkContext;
 use std::io::Write;
-
 use std::sync::Arc;
+use std::pin::Pin;
+use async_std::io::{self, BufRead, IoSliceMut, Read as AsyncRead};
+use async_std::task::{Context, Poll};
+
 struct CachedData(Arc<Vec<u8>>);
 
 impl AsRef<[u8]> for CachedData {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+struct CachedDataWithTimeout {
+    id: ChunkId,
+    data: Cursor<CachedData>,
+    start: std::time::Instant,
+    timeout: std::time::Duration,
+}
+
+impl CachedDataWithTimeout {
+    pub fn new(id: ChunkId, data: Arc<Vec<u8>>, timeout: std::time::Duration) -> Self {
+        let data = CachedData(data);
+        let data = async_std::io::Cursor::new(data);
+        Self {
+            id,
+            data,
+            start: std::time::Instant::now(),
+            timeout,
+        }
+    }
+
+    fn check_timeout(&self) -> std::io::Result<()> {
+        if self.start.elapsed() > self.timeout {
+            let msg = format!(
+                "read data timeout! id={}",
+                self.id,
+            );
+            error!("{}", msg);
+            let err = std::io::Error::new(std::io::ErrorKind::TimedOut, msg);
+            return Err(err);
+        }
+
+        Ok(())
+    }
+}
+
+
+
+impl AsyncRead for CachedDataWithTimeout
+{
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        self.check_timeout()?;
+
+        Pin::new(&mut self.data).poll_read(cx, buf)
+    }
+
+    fn poll_read_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &mut [IoSliceMut<'_>],
+    ) -> Poll<io::Result<usize>> {
+        self.check_timeout()?;
+
+        Pin::new(&mut self.data).poll_read_vectored(cx, bufs)
+    }
+}
+
+impl BufRead for CachedDataWithTimeout {
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
+        self.check_timeout()?;
+
+        async_std::io::BufRead::poll_fill_buf(Pin::new(&mut self.get_mut().data), cx)
+    }
+
+    fn consume(mut self: Pin<&mut Self>, amt: usize) {
+        Pin::new(&mut self.data).consume(amt)
     }
 }
 
@@ -28,9 +103,8 @@ async fn get_chunk_data(trace:&str, chunk_manager: &ChunkManager, chunk_get_req:
 
     let data = chunk_manager.get_data(chunk_get_req.chunk_id()).await?;
     let len = data.len();
-    let data = CachedData(data);
-    let reader = async_std::io::Cursor::new(data);
 
+    let reader = CachedDataWithTimeout::new(chunk_get_req.chunk_id().clone(), data, std::time::Duration::from_secs(60 * 5));
 
     /*
     let mut chunk_data = Vec::new();
@@ -74,8 +148,13 @@ async fn get_chunk_data_with_meta(trace:&str, chunk_manager: &ChunkManager, chun
         chunk_data
     )?;
     let resp_str = chunk_get_resp.to_vec()?;
+    let len = resp_str.len();
+
     let mut resp = Response::new(StatusCode::Ok);
-    resp.set_body(resp_str);
+
+    let reader = CachedDataWithTimeout::new(chunk_get_req.chunk_id().clone(), Arc::new(resp_str), std::time::Duration::from_secs(60 * 5));
+
+    resp.set_body(http_types::Body::from_reader(reader, Some(len)));
 
     info!("{} OK", trace);
     return Ok(resp);

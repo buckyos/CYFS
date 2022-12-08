@@ -3,7 +3,7 @@ use crate::meta_helper;
 use async_std::io::{copy as async_copy};
 use async_std::io::Write as AsyncWrite;
 use async_std::prelude::*;
-use cyfs_chunk_client::{ChunkClient, ChunkSourceContext};
+use cyfs_chunk_client::{ChunkClient, ChunkClientContext, ChunkSourceContext};
 use http_types::{Method, Request, Response};
 use rand::{Rng, RngCore};
 use std::borrow::BorrowMut;
@@ -97,84 +97,92 @@ impl DeviceCache for BdtDeviceCache {
 pub struct NamedCacheClient {
     // 需要一个BDT栈，init时初始化
     stream_pool: OnceCell<StreamPool>,
-    desc: OnceCell<Device>,
-    secret: OnceCell<PrivateKey>,
-    meta_client: OnceCell<Arc<MetaClient>>,
+    //desc: Device,
+    //secret: PrivateKey,
+    meta_client: Arc<MetaClient>,
     init_ret: Mutex<bool>,
     object_cache: RwLock<HashMap<ObjectId, StandardObject>>,
-    device_cache: OnceCell<BdtDeviceCache>,
+    device_cache: BdtDeviceCache,
     stack: OnceCell<StackGuard>,
-    retry_times: u8,
-    timeout: Duration
+    config: NamedCacheClientConfig
+}
+
+#[derive(PartialEq)]
+pub enum ConnStrategy {
+    BdtOnly,
+    TcpFirst,
+    TcpOnly
 }
 
 pub struct NamedCacheClientConfig {
     pub desc: Option<(Device, PrivateKey)>,
-    pub meta_target: Option<MetaMinerTarget>,
+    pub meta_target: MetaMinerTarget,
     pub sn_list: Option<Vec<Device>>,
     pub area: Option<Area>,
-    pub retry_times: Option<u8>,
-    pub timeout: Option<Duration>,
+    pub retry_times: u8,
+    pub timeout: Duration,
+    pub conn_strategy: ConnStrategy,
+    pub tcp_chunk_manager_port: u16,
+    pub tcp_file_manager_port: u16,
 }
 
 impl Default for NamedCacheClientConfig {
     fn default() -> Self {
         Self {
             desc: None,
-            meta_target: None,
+            meta_target: MetaMinerTarget::default(),
             sn_list: None,
             area: None,
-            retry_times: None,
-            timeout: None,
+            retry_times: 3,
+            timeout: Duration::from_secs(3*60),
+            conn_strategy: ConnStrategy::BdtOnly,
+            tcp_chunk_manager_port: CHUNK_MANAGER_PORT,
+            tcp_file_manager_port: FILE_MANAGER_PORT
         }
     }
 }
 
 impl NamedCacheClient {
-    pub fn new() -> NamedCacheClient {
+    pub fn new(config: NamedCacheClientConfig) -> NamedCacheClient {
+        let client = Arc::new(MetaClient::new_target(config.meta_target.clone()).with_timeout(std::time::Duration::from_secs(60 * 2)));
+        let device_cache = BdtDeviceCache::new(client.clone());
         NamedCacheClient {
             stream_pool: OnceCell::new(),
-            desc: OnceCell::new(),
-            secret: OnceCell::new(),
-            meta_client: OnceCell::new(),
+            //desc,
+            //secret,
+            meta_client: client,
             init_ret: Mutex::new(false),
             object_cache: RwLock::new(HashMap::new()),
-            device_cache: OnceCell::new(),
+            device_cache,
             stack: OnceCell::new(),
-            retry_times: 3,
-            timeout: Duration::from_secs(5*60)
+            config
         }
     }
 
-    pub async fn init(&mut self, config: NamedCacheClientConfig) -> BuckyResult<()> {
+    pub async fn init(&mut self) -> BuckyResult<()> {
         // 避免并行init
         let mut ret = self.init_ret.lock().await;
         if *ret {
             return Ok(());
         }
-        if let Some((desc, secret)) = config.desc {
-            let _ = self.desc.set(desc);
-            let _ = self.secret.set(secret);
+
+        let (mut desc, secret) = if let Some((desc, secret)) = self.config.desc.clone() {
+            (desc, secret)
         } else {
             info!("no input peerdesc, create random one.");
             let secret = PrivateKey::generate_rsa(1024)?;
             let public = secret.public();
-            let area = config.area.unwrap_or(Area::default());
+            let area = self.config.area.clone().unwrap_or(Area::default());
             let mut uni = [0 as u8; 16];
             rand::thread_rng().fill_bytes(&mut uni);
             let uni_id = UniqueId::create(&uni);
             let desc = Device::new(None, uni_id, vec![], vec![], vec![], public, area, DeviceCategory::PC).build();
-            let _ = self.desc.set(desc);
-            let _ = self.secret.set(secret);
-        }
+            (desc, secret)
+        };
 
-        info!("current device_id: {}", self.desc.get().unwrap().desc().calculate_id());
+        info!("current device_id: {}", desc.desc().calculate_id());
 
-        let target = config.meta_target.unwrap_or(MetaMinerTarget::default());
-        let client = Arc::new(MetaClient::new_target(target).with_timeout(std::time::Duration::from_secs(60 * 2)));
-        let _ = self.meta_client.set(client.clone());
-
-        let endpoints = self.desc.get_mut().unwrap().body_mut().as_mut().unwrap().content_mut().mut_endpoints();
+        let endpoints = desc.body_mut().as_mut().unwrap().content_mut().mut_endpoints();
         if endpoints.len() == 0 {
             // 取随机端口号
             let port = rand::thread_rng().gen_range(30000, 50000) as u16;
@@ -186,22 +194,15 @@ impl NamedCacheClient {
             }
         }
 
-        //TODO:需要的时候可以选择和gateway用同一个bdt stack
-        let device_cache = BdtDeviceCache::new(client);
-
-        let _ = self.device_cache.set(device_cache.clone());
-
         let mut params = cyfs_bdt::StackOpenParams::new("cyfs-client");
-        if let Some(sn_list) = &config.sn_list {
+        if let Some(sn_list) = &self.config.sn_list {
             info!("named data client use param`s sn list {:?}", sn_list.iter().map(|device|{
                 device.desc().calculate_id()
             }).collect::<Vec<ObjectId>>());
         }
-        params.known_sn = config.sn_list;
-        params.outer_cache = Some(Box::new(device_cache));
+        params.known_sn = self.config.sn_list.clone();
+        params.outer_cache = Some(Box::new(self.device_cache.clone()));
 
-        let desc = self.desc.get().unwrap().clone();
-        let secret = self.secret.get().unwrap().clone();
         let stack = cyfs_bdt::Stack::open(desc, secret, params).await?;
 
         let pool = StreamPool::new(stack.deref().clone(), 80, StreamPoolConfig {
@@ -214,13 +215,6 @@ impl NamedCacheClient {
         info!("bdt stack created");
         let _ = self.stream_pool.set(pool);
         let _ = self.stack.set(stack);
-
-        if let Some(retry_times) = config.retry_times {
-            self.retry_times = retry_times;
-        }
-        if let Some(timeout) = config.timeout {
-            self.timeout = timeout;
-        }
 
         *ret = true;
         Ok(())
@@ -265,7 +259,7 @@ impl NamedCacheClient {
             Ok(id) => Ok(id),
             Err(_code) => {
                 // TODO: str不是id，可能是name. 尝试从mata chain查询
-                match self.meta_client.get().unwrap().get_name(id_str).await? {
+                match self.meta_client.get_name(id_str).await? {
                     None => Err(BuckyError::from(BuckyErrorCode::NotFound)),
                     Some((info, state)) => match state {
                         NameState::Normal | NameState::Lock => {
@@ -293,7 +287,7 @@ impl NamedCacheClient {
             req.url()
         );
         let conn = self.bdt_conn(remote).await?;
-        let resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, std::time::Duration::from_secs(60 * 5)).await?;
+        let resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
         if !resp.status().is_success() {
             Err(BuckyError::from(resp.status()))
         } else {
@@ -318,7 +312,8 @@ impl NamedCacheClient {
     where
         W: AsyncWrite + Unpin,
     {
-        let peer_id = self.desc.get().unwrap().desc().device_id();
+        // let peer_id = self.desc.get().unwrap().desc().device_id();
+        let peer_id = self.stack.get().unwrap().local_device_id();
         let price = 0i64; // 本机获取，直接返回
 
         debug!("will get chunk by id {}", &chunk_id);
@@ -327,16 +322,16 @@ impl NamedCacheClient {
         info!("try get chunk {} from local", &chunk_id);
 
         let chunk_get_data_req = cyfs_chunk::ChunkGetReq::sign(
-            self.secret.get().unwrap(),
+            self.stack.get().unwrap().keystore().private_key(),
             owner,
-            &peer_id,
+            peer_id,
             &chunk_id,
             &price,
             cyfs_chunk::ChunkGetReqType::Data,
         )?;
 
         if let Ok(chunk_resp) = ChunkClient::get_resp_from_source(
-            ChunkSourceContext::source_http_local(&peer_id),
+            ChunkSourceContext::source_http_local(peer_id),
             &chunk_get_data_req,
         ).await {
             debug!("get chunk {} from local success", &chunk_id);
@@ -346,9 +341,9 @@ impl NamedCacheClient {
 
         //2. 用HTTP@BDT到Owner取Chunk
         let chunk_get_data_with_meta_req = cyfs_chunk::ChunkGetReq::sign(
-            self.secret.get().unwrap(),
+            self.stack.get().unwrap().keystore().private_key(),
             owner,
-            &peer_id,
+            peer_id,
             &chunk_id,
             &price,
             cyfs_chunk::ChunkGetReqType::Data,
@@ -357,13 +352,38 @@ impl NamedCacheClient {
         // 这里重试3次，3次还得不到chunk就返回错误
         let chunk_content = OnceCell::new();
         let mut get_error = BuckyError::from(BuckyErrorCode::Ok);
-        for i in 0..self.retry_times {
-            let bdt_stream = self.get_bdt_stream(&owner).await?;
-            let ctx = ChunkSourceContext::source_http_bdt_remote(&peer_id, bdt_stream.clone());
+        let mut use_tcp = self.config.conn_strategy == ConnStrategy::TcpFirst || self.config.conn_strategy == ConnStrategy::TcpOnly;
+        for i in 0..self.config.retry_times {
+            let mut ctx = None;
+            if use_tcp {
+                if let StandardObject::Device(device) = self.get_desc(owner.object_id(), None).await? {
+                    for endpoint in device.body_expect("").content().endpoints() {
+                        if endpoint.is_static_wan() && endpoint.is_tcp() && endpoint.addr().is_ipv4() {
+                            info!("named data client use tcp conn to {}", &endpoint.addr().ip().to_string());
+                            ctx = Some(ChunkSourceContext::new_http(peer_id, &endpoint.addr().ip().to_string(), self.config.tcp_chunk_manager_port));
+                            break;
+                        }
+                    }
+                }
+            } else {
+                let bdt_stream = self.get_bdt_stream(&owner).await?;
+                ctx = Some(ChunkSourceContext::source_http_bdt_remote(peer_id, bdt_stream))
+            };
+
+            if ctx.is_none() {
+                if self.config.conn_strategy != ConnStrategy::TcpOnly {
+                    info!("named data client use tcp, but not found any static tcp ipv4 addr. roolback to bdt");
+                    let bdt_stream = self.get_bdt_stream(&owner).await?;
+                    ctx = Some(ChunkSourceContext::source_http_bdt_remote(peer_id, bdt_stream))
+                } else {
+                    info!("named data client use tcp pnly, but not found any static tcp ipv4 addr. return failed");
+                    return Err(BuckyError::new(BuckyErrorCode::NotSupport, format!("device {} not has static tcp ipv4 addr", owner)));
+                }
+            }
             // get_from_source在udp被阻断的情况下可能会超时，这里超时后返回Timeout错误，再试一次
 
-            match async_std::future::timeout(self.timeout, async {
-                ChunkClient::get_resp_from_source(ctx, &chunk_get_data_with_meta_req).await
+            match async_std::future::timeout(self.config.timeout, async {
+                ChunkClient::get_resp_from_source(ctx.clone().unwrap(), &chunk_get_data_with_meta_req).await
             }).await {
                 Ok(ret) => {
                     match ret {
@@ -380,17 +400,22 @@ impl NamedCacheClient {
                             }
                         }
                         Err(e) => {
-                            warn!("get chunk {} failed by err {}, may retry {}/{}", chunk_id, e, i+1, self.retry_times);
+                            warn!("get chunk {} failed by err {}, may retry {}/{}", chunk_id, e, i+1, self.config.retry_times);
                             get_error = e;
+                            // 如果是tcp失败，下次用bdt重试
+                            use_tcp = false;
                             // 这里尝试看能不能让pool放弃这条连接
-                            if let Err(e) = bdt_stream.shutdown(Shutdown::Both) {
-                                error!("bdt stream close error! {}", e);
+                            if let Some(stream) = ctx.unwrap().get_bdt_stream() {
+                                if let Err(e) = stream.shutdown(Shutdown::Both) {
+                                    error!("bdt stream close error! {}", e);
+                                }
                             }
+
                         }
                     }
                 }
                 Err(e) => {
-                    error!("recv chunk {} timeout after {} secs. may retry {}/{}", chunk_id, self.timeout.as_secs(), i+1, self.retry_times);
+                    error!("recv chunk {} timeout after {} secs. may retry {}/{}", chunk_id, self.config.timeout.as_secs(), i+1, self.config.retry_times);
                     get_error = BuckyError::from(e);
                 }
             }
@@ -428,7 +453,7 @@ impl NamedCacheClient {
             )?;
 
             if let Err(e) = ChunkClient::set(
-                ChunkSourceContext::source_http_local(&peer_id),
+                ChunkSourceContext::source_http_local(peer_id),
                 &chunk_set_req,
             ).await {
                 warn!("save chunk {} to local fail. err {}", &chunk_id, e)
@@ -473,7 +498,7 @@ impl NamedCacheClient {
 
         //2. 如果找不到，尝试用meta chain查找desc
         info!("try get desc {} from meta", fileid);
-        if let Ok(ret) = self.meta_client.get().unwrap().get_desc(fileid).await {
+        if let Ok(ret) = self.meta_client.get_desc(fileid).await {
             let obj = match ret {
                 SavedMetaObject::File(p) => {
                     info!("get file desc {} from meta success", fileid);
@@ -486,7 +511,7 @@ impl NamedCacheClient {
                 SavedMetaObject::Device(p) => {
                     info!("get device desc {} from meta success", fileid);
                     let device_id = p.desc().device_id();
-                    self.device_cache.get().unwrap().add(&device_id, p.clone()).await;
+                    self.device_cache.add(&device_id, p.clone()).await;
                     Ok(StandardObject::Device(p))
                 }
                 SavedMetaObject::Data(data) => {
@@ -773,7 +798,7 @@ impl NamedCacheClient {
             let any_dir_obj = AnyNamedObject::Standard(StandardObject::Dir(dir_desc));
             self.put_obj(&any_dir_obj).await?;
             if save_to_meta {
-                meta_helper::create_desc(self.meta_client.get().unwrap(), &owner_desc, owner_secret
+                meta_helper::create_desc(&self.meta_client, &owner_desc, owner_secret
                                          , any_dir_obj).await?;
             }
 
@@ -799,7 +824,7 @@ impl NamedCacheClient {
         match owner {
             StandardObject::Device(device) => {
                 let device_id = device.desc().device_id();
-                self.device_cache.get().unwrap().add(&device_id, device.clone()).await;
+                self.device_cache.add(&device_id, device.clone()).await;
                 Ok(device_id)
             },
             StandardObject::People(people) => {
@@ -851,6 +876,7 @@ impl NamedCacheClient {
                     reader.read_to_end(&mut data)?;
 
                     info!("put chunk {} len {} kB to {}", &chunkid, len / 1024, file_desc.desc().owner().unwrap());
+
                     let chunk_set_req = cyfs_chunk::ChunkSetReq::sign(
                         owner_secret,
                         &owner_device,
@@ -858,11 +884,35 @@ impl NamedCacheClient {
                         data
                     )?;
 
-                    let bdt_stream = self.get_bdt_stream(&owner_device).await?;
+                    let mut ctx = None;
+                    let use_tcp = self.config.conn_strategy == ConnStrategy::TcpFirst || self.config.conn_strategy == ConnStrategy::TcpOnly;
+                    if use_tcp {
+                        if let StandardObject::Device(device) = self.get_desc(owner_device.object_id(), None).await? {
+                            for endpoint in device.body_expect("").content().endpoints() {
+                                if endpoint.is_static_wan() && endpoint.is_tcp() && endpoint.addr().is_ipv4() {
+                                    info!("named data client use tcp conn to {}", &endpoint.addr().ip().to_string());
+                                    ctx = Some(ChunkSourceContext::new_http(&owner_device, &endpoint.addr().ip().to_string(), self.config.tcp_chunk_manager_port));
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        let bdt_stream = self.get_bdt_stream(&owner_device).await?;
+                        ctx = Some(ChunkSourceContext::source_http_bdt_remote(&owner_device, bdt_stream))
+                    };
 
-                    let ctx = ChunkSourceContext::source_http_bdt_remote(&owner_device, bdt_stream);
+                    if ctx.is_none() {
+                        if self.config.conn_strategy != ConnStrategy::TcpOnly {
+                            info!("named data client use tcp, but not found any static tcp ipv4 addr. roolback to bdt");
+                            let bdt_stream = self.get_bdt_stream(&owner_device).await?;
+                            ctx = Some(ChunkSourceContext::source_http_bdt_remote(&owner_device, bdt_stream))
+                        } else {
+                            info!("named data client use tcp pnly, but not found any static tcp ipv4 addr. return failed");
+                            return Err(BuckyError::new(BuckyErrorCode::NotSupport, format!("device {} not has static tcp ipv4 addr", &owner_device)));
+                        }
+                    }
 
-                    let chunk_set_resp = ChunkClient::set(ctx, &chunk_set_req).await?;
+                    let chunk_set_resp = ChunkClient::set(ctx.unwrap(), &chunk_set_req).await?;
 
                     let public_ley = owner_desc.public_key().unwrap();
                     if let PublicKeyRef::Single(public_key) = public_ley {
@@ -891,7 +941,7 @@ impl NamedCacheClient {
             let fileid = file_desc.desc().calculate_id();
             info!("put file {} desc to meta", fileid);
             if let Err(e) = meta_helper::create_file_desc_sync(
-                self.meta_client.get().unwrap(),
+                &self.meta_client,
                 owner_desc,
                 owner_secret,
                 &file_desc.clone()

@@ -93,6 +93,9 @@ impl GlobalStateAccessorService {
 
         let object_resp = match object_id.obj_type_code() {
             ObjectTypeCode::Chunk => NONGetObjectInputResponse::new(object_id, vec![], None),
+            _ if object_id.is_data() => {
+                NONGetObjectInputResponse::new(object_id, vec![], None)
+            }
             _ => {
                 let ret = if object_id.obj_type_code() == ObjectTypeCode::ObjectMap {
                     let obj = root_cache.get_object_map(&object_id).await?;

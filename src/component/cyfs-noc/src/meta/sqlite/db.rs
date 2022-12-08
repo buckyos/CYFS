@@ -536,8 +536,8 @@ impl SqliteMetaStorage {
             info!(
                 "noc meta update existsing success: obj={}, update_time={} -> {}",
                 req.object_id,
-                current_info.update_time,
                 current_info.object_update_time.unwrap_or(0),
+                req.object_update_time.unwrap_or(0),
             );
         } else {
             warn!(

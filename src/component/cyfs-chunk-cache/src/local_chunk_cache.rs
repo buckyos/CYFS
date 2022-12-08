@@ -496,6 +496,9 @@ pub(crate) trait TSingleDiskChunkCache {
 pub(crate) struct SingleDiskChunkCache {
     path: PathBuf,
     cache_id: HashValue,
+
+    #[cfg(target_os = "windows")]
+    upgrade: super::old_base36::ChunkStorageUpgrade,
 }
 
 impl SingleDiskChunkCache {
@@ -508,10 +511,21 @@ impl SingleDiskChunkCache {
         {
             let hash_str = file_id.to_base36();
             let (tmp, last) = hash_str.split_at(hash_str.len() - 3);
-            let (first, mid) = tmp.split_at(tmp.len() - 3);
+            let (mut first, mut mid) = tmp.split_at(tmp.len() - 3);
+   
+            /* Do not use the following reserved names as filenames: CON、PRN、AUX、NUL、COM1、COM2、COM3、COM4、COM5、COM6、COM7、COM8、COM9、LPT1、LPT2、LPT3、LPT4、LPT5、 LPT6、LPT7、LPT8、 LPT9 */
+            match mid {
+                "con" | "aux" | "nul" | "prn" => {
+                    (first, mid) = tmp.split_at(tmp.len() - 4);
+                }
+                _ => {},
+            }
+            
             let path = self.path.join(last).join(mid);
             if is_create && !path.exists() {
-                let _ = create_dir_all(path.as_path());
+                if let Err(e) = create_dir_all(path.as_path()) {
+                    log::error!("create dir failed! {}, {}", path.display(), e);
+                }
             }
             path.join(first)
         }
@@ -522,7 +536,9 @@ impl SingleDiskChunkCache {
             let (first, mid) = tmp.split_at(tmp.len() - 2);
             let path = self.path.join(last).join(mid);
             if is_create && !path.exists() {
-                let _ = create_dir_all(path.as_path());
+                if let Err(e) = create_dir_all(path.as_path()) {
+                    log::error!("create dir failed! {}, {}", path.display(), e);
+                }
             }
             path.join(first)
         }
@@ -564,6 +580,9 @@ impl TSingleDiskChunkCache for SingleDiskChunkCache {
     fn new(path: PathBuf) -> Self {
         let cache_id = hash_data(path.to_string_lossy().to_string().as_bytes());
         Self {
+            #[cfg(target_os = "windows")]
+            upgrade: super::old_base36::ChunkStorageUpgrade::new(path.clone()),
+
             path,
             cache_id,
         }
@@ -599,9 +618,20 @@ impl ChunkCache for SingleDiskChunkCache {
         log::info!("SingleDiskChunkCache get_chunk {}", chunk_id.to_string());
         let file_path = self.get_file_path(chunk_id, false);
         if !file_path.exists() {
-            let msg = format!("get chunk's file but not exist! chunk={}, file={}", chunk_id, file_path.display());
-            log::warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            #[cfg(target_os = "windows")]
+            {
+                if !self.upgrade.try_update(&file_path, chunk_id) {
+                    let msg = format!("get chunk's file but not exist! chunk={}, file={}", chunk_id, file_path.display());
+                    log::warn!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let msg = format!("get chunk's file but not exist! chunk={}, file={}", chunk_id, file_path.display());
+                log::warn!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            }
         }
 
         match chunk_type {
