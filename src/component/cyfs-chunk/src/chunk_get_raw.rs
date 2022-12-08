@@ -7,7 +7,7 @@ pub struct ChunkGetRaw {
     source_device_id: DeviceId,  
     client_device_id: DeviceId, 
     chunk_id: ChunkId, 
-    data: Arc<Vec<u8>>,
+    data: SizedOwnedData<SizeU32>,
     // sign: String,
 }
 
@@ -35,7 +35,7 @@ impl ChunkGetRaw {
             source_device_id: source_device_id.clone(),
             client_device_id: client_device_id.clone(),
             chunk_id: chunk_id.clone(),
-            data,
+            data: SizedOwnedData::from(data.as_ref()),
         })
     }
 
