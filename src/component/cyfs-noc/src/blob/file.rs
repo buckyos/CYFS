@@ -1,21 +1,20 @@
 use super::blob::*;
 use cyfs_base::*;
 use cyfs_lib::*;
-use super::old_base36::FileBlobStorageUpgrade;
 
 use std::path::{Path, PathBuf};
 
 pub struct FileBlobStorage {
     root: PathBuf,
     #[cfg(target_os = "windows")]
-    upgrade: FileBlobStorageUpgrade,
+    upgrade: super::old_base36::FileBlobStorageUpgrade,
 }
 
 impl FileBlobStorage {
     pub fn new(root: PathBuf) -> Self {
         Self {
             #[cfg(target_os = "windows")]
-            upgrade: FileBlobStorageUpgrade::new(root.clone()),
+            upgrade: super::old_base36::FileBlobStorageUpgrade::new(root.clone()),
 
             root,
         }
@@ -36,16 +35,14 @@ impl FileBlobStorage {
         }
 
         let (tmp, first) = hash_str.split_at(hash_str.len() - len);
-        let mut second = tmp.split_at(tmp.len() - len).1;
+        let second = tmp.split_at(tmp.len() - len).1;
 
+        /* Do not use the following reserved names as filenames: CON、PRN、AUX、NUL、COM1、COM2、COM3、COM4、COM5、COM6、COM7、COM8、COM9、LPT1、LPT2、LPT3、LPT4、LPT5、 LPT6、LPT7、LPT8、 LPT9 */
         #[cfg(target_os = "windows")]
-        {
-            /* Do not use the following reserved names as filenames: CON、PRN、AUX、NUL、COM1、COM2、COM3、COM4、COM5、COM6、COM7、COM8、COM9、LPT1、LPT2、LPT3、LPT4、LPT5、 LPT6、LPT7、LPT8、 LPT9 */
-            second = match second {
-                "con" | "aux" | "nul" | "prn" => tmp.split_at(tmp.len() - (len + 1)).1,
-                _ => second,
-            }
-        }
+        let second = match second {
+            "con" | "aux" | "nul" | "prn" => tmp.split_at(tmp.len() - (len + 1)).1,
+            _ => second,
+        };
 
         let path = self.root.join(format!("{}/{}", first, second));
         if auto_create && !path.exists() {

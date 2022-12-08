@@ -5,7 +5,6 @@ use std::sync::{Arc, RwLock};
 use std::u64;
 use cyfs_base::*;
 use sysinfo::{DiskExt, RefreshKind, SystemExt};
-use crate::old_base36::ChunkStorageUpgrade;
 use crate::{Chunk, ChunkCache, ChunkMut, MMapChunk, MMapChunkMut, MemChunk, ChunkType};
 use num_traits::float::Float;
 use futures_lite::AsyncWriteExt;
@@ -582,7 +581,7 @@ impl TSingleDiskChunkCache for SingleDiskChunkCache {
         let cache_id = hash_data(path.to_string_lossy().to_string().as_bytes());
         Self {
             #[cfg(target_os = "windows")]
-            upgrade: ChunkStorageUpgrade::new(path.clone()),
+            upgrade: super::old_base36::ChunkStorageUpgrade::new(path.clone()),
 
             path,
             cache_id,
