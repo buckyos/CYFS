@@ -1,5 +1,6 @@
 use crate::user::*;
 use cyfs_base::*;
+use cyfs_lib::BrowserSanboxMode;
 use cyfs_stack_loader::*;
 
 pub struct TestStack {
@@ -36,6 +37,7 @@ impl TestStack {
         param.shared_stack = true;
         param.shared_stack_stub = true;
         param.front_enable = true;
+        param.browser_mode = BrowserSanboxMode::None;
 
         let config = CyfsServiceLoaderConfig::new(param).unwrap();
         CyfsServiceLoader::direct_load(config).await.unwrap();
