@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 
 mod control;
 mod gateway;
@@ -10,7 +10,9 @@ extern crate log;
 
 use crate::gateway::Gateway;
 use cyfs_stack_loader::CyfsServiceLoader;
+use cyfs_lib::BrowserSanboxMode;
 
+use std::str::FromStr;
 use clap::{App, Arg};
 
 pub const SERVICE_NAME: &str = ::cyfs_base::GATEWAY_NAME;
@@ -56,6 +58,22 @@ async fn main_run() {
 
     // ::cyfs_base::init_log_with_isolate_bdt(SERVICE_NAME, Some("debug"), Some("trace"));
 
+    let browser_mode = match matches.value_of("browser-mode") {
+        Some(v) => {
+            Some(BrowserSanboxMode::from_str(v).map_err(|e| {
+                println!("invalid browser mode param! {}, {}", v, e);
+                std::process::exit(-1);
+            }).unwrap())
+        }
+        None => {
+            None
+        }
+    };
+
+    let stack_config = gateway::CyfsStackInsConfig {
+        browser_mode,
+    };
+
     // 初始化全局变量管理器
     {
         if let Err(_e) = CyfsServiceLoader::prepare_env().await {
@@ -63,7 +81,7 @@ async fn main_run() {
         }
     }
 
-    let gateway = Gateway::new();
+    let gateway = Gateway::new(stack_config);
 
     // gateway核心服务
     if let Err(e) = gateway.load_config().await {

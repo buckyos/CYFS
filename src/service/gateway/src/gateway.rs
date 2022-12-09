@@ -58,8 +58,15 @@ impl EventListenerSyncRoutine<ZoneRoleChangedParam, ()> for ZoneRoleChangedNotif
 }
 */
 
+#[derive(Debug, Clone)]
+pub(crate) struct CyfsStackInsConfig {
+    // the browser sanbox mode
+    pub browser_mode: Option<BrowserSanboxMode>,
+}
+
 
 pub(crate) struct Gateway {
+    stack_config: CyfsStackInsConfig,
     config_file: PathBuf,
 
     stream_server_manager: StreamServerManager,
@@ -68,7 +75,7 @@ pub(crate) struct Gateway {
 }
 
 impl Gateway {
-    pub fn new() -> Self {
+    pub fn new(stack_config: CyfsStackInsConfig) -> Self {
         let config_file = ::cyfs_util::get_cyfs_root_path()
             .join("etc")
             .join("gateway")
@@ -80,7 +87,9 @@ impl Gateway {
             HttpControlInterface::new(stream_server_manager.clone(), http_server_manager.clone());
 
         Self {
+            stack_config,
             config_file,
+
             stream_server_manager,
             http_server_manager,
             http_control_interface,
@@ -147,7 +156,12 @@ impl Gateway {
 
         // 优先加载non协议栈
         if let Some(v) = cfg_node.remove("stack") {
-            let config = CyfsServiceLoaderConfig::new_from_config(v)?;
+            let mut config = CyfsServiceLoaderConfig::new_from_config(v)?;
+
+            // modify the config with arg params
+            if let Some(mode) = &self.stack_config.browser_mode {
+                config.reset_browser_mode(mode)?;
+            }
 
             STACK_MANAGER.load(config.into()).await?;
         }
