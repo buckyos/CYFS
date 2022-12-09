@@ -3340,6 +3340,7 @@ dependencies = [
  "lazy_static",
  "log 0.4.17",
  "lru_time_cache",
+ "once_cell",
  "regex",
  "serde",
  "serde_json",

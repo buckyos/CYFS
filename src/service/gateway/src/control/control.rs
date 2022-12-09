@@ -1,15 +1,17 @@
-use crate::gateway::GATEWAY;
+use crate::server::http::HttpServerManager;
+use crate::server::stream::StreamServerManager;
 use cyfs_base::{BuckyError, BuckyErrorCode};
 
 use async_std::prelude::*;
-use lazy_static::lazy_static;
 use lru_time_cache::{Entry, LruCache};
-use serde_json::{Value};
-use std::sync::Mutex;
+use serde_json::Value;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-#[derive(Debug)]
+#[derive(Clone)]
 struct DynamicServerInfo {
+    owner: ControlServer,
+
     id: String,
     server_type: String,
     value: String,
@@ -24,25 +26,54 @@ impl Drop for DynamicServerInfo {
                 "dync server gc without removed: id={}, type={}",
                 self.id, self.server_type
             );
-            let _r = ControlServerInner::stop_server(self);
+            let _r = self.owner.stop_server(self);
         }
     }
 }
 
-pub(crate) struct ControlServerInner {
-    list: LruCache<String, DynamicServerInfo>,
+impl std::fmt::Display for DynamicServerInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "id={}, server_type={}, value={}",
+            self.id, self.server_type, self.value
+        )
+    }
+}
+#[derive(Clone)]
+pub(crate) struct ControlServer {
+    list: Arc<Mutex<LruCache<String, DynamicServerInfo>>>,
+    stream_server_manager: StreamServerManager,
+    http_server_manager: HttpServerManager,
 }
 
-impl ControlServerInner {
-    pub fn new() -> ControlServerInner {
-        ControlServerInner {
-            list: LruCache::with_expiry_duration(Duration::from_secs(60)),
+impl ControlServer {
+    pub fn new(
+        stream_server_manager: StreamServerManager,
+        http_server_manager: HttpServerManager,
+    ) -> Self {
+        Self {
+            stream_server_manager,
+            http_server_manager,
+            list: Arc::new(Mutex::new(LruCache::with_expiry_duration(
+                Duration::from_secs(60),
+            ))),
         }
     }
 
-    fn gc(&mut self) {
+    pub fn start_monitor(&self) {
+        let this = self.clone();
+        async_std::task::spawn(async move {
+            let mut interval = async_std::stream::interval(Duration::from_secs(15));
+            while let Some(_) = interval.next().await {
+                this.gc();
+            }
+        });
+    }
+
+    fn gc(&self) {
         // 调用任何一个notify类api
-        let (_, list) = self.list.notify_get("");
+        let (_, list) = self.list.lock().unwrap().notify_get("");
 
         for (_key, mut server) in list {
             info!(
@@ -53,15 +84,16 @@ impl ControlServerInner {
             assert!(server.remove_on_drop);
             server.remove_on_drop = false;
 
-            let _r = Self::stop_server(&server);
+            let _r = self.stop_server(&server);
         }
 
-        if self.list.len() > 0 {
-            debug!("dync server alive count={}", self.list.len());
+        let count = self.list.lock().unwrap().len();
+        if count > 0 {
+            debug!("dync server alive count={}", count);
         }
     }
 
-    fn parse_server(value: &str) -> Result<DynamicServerInfo, BuckyError> {
+    fn parse_server(&self, value: &str) -> Result<DynamicServerInfo, BuckyError> {
         let node: Value = ::serde_json::from_str(value).map_err(|e| {
             let msg = format!("load value as hjson error! value={}, err={}", value, e);
             error!("{}", msg);
@@ -123,6 +155,7 @@ impl ControlServerInner {
         }
 
         let server = DynamicServerInfo {
+            owner: self.clone(),
             id: id.to_owned(),
             server_type: server_type.unwrap().to_owned(),
             value: serde_json::to_string(&block).unwrap(),
@@ -132,7 +165,7 @@ impl ControlServerInner {
         Ok(server)
     }
 
-    fn parse_unregister_server(value: &str) -> Result<DynamicServerInfo, BuckyError> {
+    fn parse_unregister_server(&self, value: &str) -> Result<DynamicServerInfo, BuckyError> {
         let node: Value = ::serde_json::from_str(value).map_err(|e| {
             let msg = format!("load value as hjson error! value={}, err={}", value, e);
             error!("{}", msg);
@@ -171,6 +204,7 @@ impl ControlServerInner {
         }
 
         let server = DynamicServerInfo {
+            owner: self.clone(),
             id: id.unwrap().to_owned(),
             server_type: server_type.unwrap().to_owned(),
             value: "".to_owned(),
@@ -189,8 +223,8 @@ impl ControlServerInner {
         }
     }
     */
-    pub fn register_server(&mut self, value: &str) -> Result<(), BuckyError> {
-        let mut server = Self::parse_server(value)?;
+    pub fn register_server(&self, value: &str) -> Result<(), BuckyError> {
+        let mut server = self.parse_server(value)?;
 
         // 检查是否已经存在，存在的话比较是否发生改变
         let full_id = format!("{}_{}", server.server_type, server.id);
@@ -198,7 +232,7 @@ impl ControlServerInner {
         // entry调用会默认移除超时对象，所以这里先显式的调用一次gc
         self.gc();
 
-        let server = match self.list.entry(full_id) {
+        let mut server = match self.list.lock().unwrap().entry(full_id) {
             Entry::Occupied(oc) => {
                 // server会被立即drop，但由于同id的server还有效，所以不能触发remove
                 server.remove_on_drop = false;
@@ -218,12 +252,12 @@ impl ControlServerInner {
                     );
 
                     // 先停止现有服务
-                    let _r = Self::stop_server(&cur);
+                    let _r = self.stop_server(&cur);
 
                     cur.value = server.value.clone();
                 }
 
-                cur
+                cur.to_owned()
             }
             Entry::Vacant(vc) => {
                 info!(
@@ -231,11 +265,12 @@ impl ControlServerInner {
                     server.id, server.server_type, server.value,
                 );
 
-                vc.insert(server)
+                vc.insert(server).to_owned()
             }
         };
 
-        Self::add_server(server)?;
+        server.remove_on_drop = false;
+        self.add_server(&server)?;
 
         Ok(())
     }
@@ -246,15 +281,16 @@ impl ControlServerInner {
         "type": "http|stream",
     }
     */
-    pub fn unregister_server(&mut self, value: &str) -> Result<(), BuckyError> {
-        let server = Self::parse_unregister_server(value)?;
+    pub fn unregister_server(&self, value: &str) -> Result<(), BuckyError> {
+        let server = self.parse_unregister_server(value)?;
 
         let full_id = format!("{}_{}", server.server_type, server.id);
-        match self.list.remove(&full_id) {
+        let item = self.list.lock().unwrap().remove(&full_id);
+        match item {
             Some(mut v) => {
                 info!("server removed! id={}, type={}", v.id, v.server_type);
                 v.remove_on_drop = false;
-                Self::stop_server(&v)
+                self.stop_server(&v)
             }
             None => {
                 let msg = format!(
@@ -268,22 +304,22 @@ impl ControlServerInner {
         }
     }
 
-    fn add_server(
-        server: &DynamicServerInfo,
-    ) -> Result<(), BuckyError> {
+    fn add_server(&self, server: &DynamicServerInfo) -> Result<(), BuckyError> {
         match server.server_type.as_str() {
             "http" => {
                 let value: toml::Value = serde_json::from_str(&server.value).unwrap();
-                
-                GATEWAY.http_server_manager.load_server(value.as_table().unwrap())?;
 
-                GATEWAY.http_server_manager.start();
+                self.http_server_manager
+                    .load_server(value.as_table().unwrap())?;
+
+                self.http_server_manager.start();
             }
             "stream" => {
                 let value: toml::Value = serde_json::from_str(&server.value).unwrap();
-                GATEWAY.stream_server_manager.load_server(value.as_table().unwrap())?;
+                self.stream_server_manager
+                    .load_server(value.as_table().unwrap())?;
 
-                GATEWAY.stream_server_manager.start();
+                self.stream_server_manager.start();
             }
             value @ _ => {
                 let msg = format!(
@@ -299,13 +335,13 @@ impl ControlServerInner {
         Ok(())
     }
 
-    fn stop_server(server: &DynamicServerInfo) -> Result<(), BuckyError> {
+    fn stop_server(&self, server: &DynamicServerInfo) -> Result<(), BuckyError> {
         match server.server_type.as_str() {
             "http" => {
-                GATEWAY.http_server_manager.remove_server(&server.id)?;
+                self.http_server_manager.remove_server(&server.id)?;
             }
             "stream" => {
-                GATEWAY.stream_server_manager.remove_server(&server.id)?;
+                self.stream_server_manager.remove_server(&server.id)?;
             }
             value @ _ => {
                 let msg = format!(
@@ -319,37 +355,5 @@ impl ControlServerInner {
         }
 
         Ok(())
-    }
-}
-
-lazy_static! {
-    static ref CONTROL_SERVER: Mutex<ControlServerInner> = {
-        return Mutex::new(ControlServerInner::new());
-    };
-}
-
-pub(crate) struct ControlServer;
-
-impl ControlServer {
-    pub fn new() -> ControlServer {
-        ControlServer {}
-    }
-
-    pub fn register_server(value: &str) -> Result<(), BuckyError> {
-        CONTROL_SERVER.lock().unwrap().register_server(value)
-    }
-
-    pub fn unregister_server(value: &str) -> Result<(), BuckyError> {
-        CONTROL_SERVER.lock().unwrap().unregister_server(value)
-    }
-
-    pub fn start_monitor() {
-        async_std::task::spawn(async move {
-            let mut interval = async_std::stream::interval(Duration::from_secs(15));
-            while let Some(_) = interval.next().await {
-                let mut control_server = CONTROL_SERVER.lock().unwrap();
-                control_server.gc();
-            }
-        });
     }
 }

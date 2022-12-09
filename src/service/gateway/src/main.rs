@@ -8,8 +8,7 @@ mod upstream;
 #[macro_use]
 extern crate log;
 
-use crate::gateway::GATEWAY;
-// use acc_service::{Service as AccService, SERVICE_NAME as ACC_SERVICE_NAME};
+use crate::gateway::Gateway;
 use cyfs_stack_loader::CyfsServiceLoader;
 
 use clap::{App, Arg};
@@ -27,6 +26,12 @@ async fn main_run() {
                 .long("gateway-only")
                 .takes_value(false)
                 .help("Run gateway service without acc_service"),
+        )
+        .arg(
+            Arg::with_name("browser-mode")
+                .long("browser-mode")
+                .takes_value(true)
+                .help("The browser sanbox mode, default is strict"),
         );
 
     let app = cyfs_util::process::prepare_args(app);
@@ -58,15 +63,17 @@ async fn main_run() {
         }
     }
 
+    let gateway = Gateway::new();
+
     // gateway核心服务
-    if let Err(e) = GATEWAY.load_config().await {
+    if let Err(e) = gateway.load_config().await {
         error!("load config failed! err={}", e);
         std::process::exit(-1);
     }
 
-    GATEWAY.start();
+    gateway.start();
 
-    control::GatewayControlServer::run().await;
+    gateway.run().await;
 }
 
 fn main() {

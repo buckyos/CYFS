@@ -1,4 +1,4 @@
-use lazy_static::lazy_static;
+use base::CyfsServiceLoaderConfig;
 use std::path::{Path, PathBuf};
 
 use crate::control::HttpControlInterface;
@@ -57,10 +57,14 @@ impl EventListenerSyncRoutine<ZoneRoleChangedParam, ()> for ZoneRoleChangedNotif
     }
 }
 */
-pub struct Gateway {
+
+
+pub(crate) struct Gateway {
     config_file: PathBuf,
-    pub stream_server_manager: StreamServerManager,
-    pub http_server_manager: HttpServerManager,
+
+    stream_server_manager: StreamServerManager,
+    http_server_manager: HttpServerManager,
+    http_control_interface: HttpControlInterface,
 }
 
 impl Gateway {
@@ -70,10 +74,16 @@ impl Gateway {
             .join("gateway")
             .join("gateway.toml");
 
+        let stream_server_manager = StreamServerManager::new();
+        let http_server_manager = HttpServerManager::new();
+        let http_control_interface =
+            HttpControlInterface::new(stream_server_manager.clone(), http_server_manager.clone());
+
         Self {
             config_file,
-            stream_server_manager: StreamServerManager::new(),
-            http_server_manager: HttpServerManager::new(),
+            stream_server_manager,
+            http_server_manager,
+            http_control_interface,
         }
     }
 
@@ -137,7 +147,9 @@ impl Gateway {
 
         // 优先加载non协议栈
         if let Some(v) = cfg_node.remove("stack") {
-            STACK_MANAGER.load(v).await?;
+            let config = CyfsServiceLoaderConfig::new_from_config(v)?;
+
+            STACK_MANAGER.load(config.into()).await?;
         }
 
         // 遍历加载其余节点
@@ -198,10 +210,10 @@ impl Gateway {
 
         self.http_server_manager.start();
 
-        HttpControlInterface::init();
+        self.http_control_interface.init();
     }
-}
 
-lazy_static! {
-    pub static ref GATEWAY: Gateway = Gateway::new();
+    pub async fn run(&self) {
+        let _ = self.http_control_interface.run().await;
+    }
 }
