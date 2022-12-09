@@ -61,9 +61,16 @@ impl EventListenerSyncRoutine<ZoneRoleChangedParam, ()> for ZoneRoleChangedNotif
 #[derive(Debug, Clone)]
 pub(crate) struct CyfsStackInsConfig {
     // the browser sanbox mode
-    pub browser_mode: Option<BrowserSanboxMode>,
+    pub browser_mode: BrowserSanboxMode,
 }
 
+impl Default for CyfsStackInsConfig {
+    fn default() -> Self {
+        Self {
+            browser_mode: BrowserSanboxMode::Forbidden,
+        }
+    }
+}
 
 pub(crate) struct Gateway {
     stack_config: CyfsStackInsConfig,
@@ -159,9 +166,7 @@ impl Gateway {
             let mut config = CyfsServiceLoaderConfig::new_from_config(v)?;
 
             // modify the config with arg params
-            if let Some(mode) = &self.stack_config.browser_mode {
-                config.reset_browser_mode(mode)?;
-            }
+            config.reset_browser_mode(&self.stack_config.browser_mode)?;
 
             STACK_MANAGER.load(config.into()).await?;
         }

@@ -1,4 +1,4 @@
-//#![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 mod control;
 mod gateway;
@@ -70,9 +70,10 @@ async fn main_run() {
         }
     };
 
-    let stack_config = gateway::CyfsStackInsConfig {
-        browser_mode,
-    };
+    let mut stack_config = gateway::CyfsStackInsConfig::default();
+    if let Some(mode) = browser_mode {
+        stack_config.browser_mode = mode;
+    }
 
     // 初始化全局变量管理器
     {
