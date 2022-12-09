@@ -66,6 +66,7 @@ async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
 async fn sn_list(matches: &ArgMatches<'_>) -> (Vec<Device>, Option<Area>) {
     if matches.is_present("stack_sn") {
         let stack = SharedCyfsStack::open_runtime(None).await.unwrap();
+        stack.online().await.unwrap();
         let area = stack.local_device_id().object_id().info().into_area();
         info!("get area from runtime: {:?}", area);
         (get_sn_list(&stack).await.unwrap_or_else(|e| {
