@@ -23,13 +23,6 @@ async fn main_run() {
         .about("gateway service for cyfs system")
         .author("CYFS <dev@cyfs.com>")
         .arg(
-            Arg::with_name("gateway_only")
-                .short("g")
-                .long("gateway-only")
-                .takes_value(false)
-                .help("Run gateway service without acc_service"),
-        )
-        .arg(
             Arg::with_name("browser-mode")
                 .long("browser-mode")
                 .takes_value(true)
