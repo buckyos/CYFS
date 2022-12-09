@@ -316,9 +316,15 @@ message SyncResponseObjectMetaInfo {
     optional uint32 access_string = 5;
 }
 
+message GroupRPathDescContent {
+    bytes group_id = 1;
+    bytes dec_id = 2;
+    string r_path = 3;
+}
+
 message GroupProposalDescContent {
     // target
-    bytes r_path_hash = 1;
+    bytes r_path_id = 1;
 
     // for app
     string method = 2;
@@ -331,9 +337,30 @@ message GroupProposalDescContent {
     optional uint64 effective_ending = 7;
 }
 
+message GroupProposalBodyContent {
+    optional bytes payload = 1;
+
+    message Signature {
+        bytes signature = 1; // sign(hash(ProposalId, proponent_id, decide))
+        bytes proponent_id = 2;
+        string decide = 3;
+    }
+
+    repeated Signature decide_signatures = 2;
+}
+
+message GroupUpdateGroupDescContent {
+    repeated bytes dec_id = 1; // the proccesor decs
+    optional bytes payload = 2;
+}
+
+message GroupUpdateGroupBodyContent {
+    optional bytes payload = 1;
+}
+
 message GroupConsensusBlockDescContent {
     // target
-    bytes r_path_hash = 1;
+    bytes r_path_id = 1;
 
     // input
     bytes proposals_hash = 2;
@@ -341,27 +368,21 @@ message GroupConsensusBlockDescContent {
     // result
     bytes result_state_id = 3;
     bytes proposal_result_states_hash = 4;
-    uint64 version = 5;
+    bytes proposal_receiptes_hash = 5;
+    uint64 version_seq = 6;
 
     // time
-    bytes meta_block_id = 6;
-    uint64 timestamp = 7;
+    bytes meta_block_id = 7;
+    uint64 timestamp = 8;
 
     // prev
-    optional bytes prev_block_id = 8; // the first block is none
+    optional bytes prev_block_id = 9; // the first block is none
 }
 
-// move to dec-object
-message GroupConsensusBlockAckDescContent {
-    bytes block_id = 1;
-
-    enum AckStep {
-        Verify = 1;
-        Ack = 2;
-        AckAck = 3;
-    }
-
-    AckStep step = 2;
+message GroupConsensusBlockBodyContent {
+    repeated bytes proposals = 1;
+    repeated bytes proposal_result_states = 2;
+    repeated bytes proposal_receiptes = 3;
 }
 
 message GroupRPathSubStatus {
@@ -381,12 +402,12 @@ message GroupRPathStatusBodyContent {
 
 message GroupActionDescContent {
     // target
-    bytes r_path_hash = 1;
+    bytes r_path_id = 1;
 
     // for app
     string method = 2;
     optional bytes params = 3; // blob, app define, it canbe: blob/hash/ObjectId/any other
 
     optional uint64 value = 4;
-    optional bytes conclusion 5;
+    optional bytes conclusion = 5;
 }

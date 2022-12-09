@@ -1,0 +1,14 @@
+
+syntax = "proto3";
+
+message GroupConsensusBlockAckDescContent {
+    bytes block_id = 1;
+
+    enum AckStep {
+        Verify = 0;
+        Ack = 1;
+        AckAck = 2;
+    }
+
+    AckStep step = 2;
+}

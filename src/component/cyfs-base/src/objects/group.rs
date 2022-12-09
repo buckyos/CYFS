@@ -184,15 +184,11 @@ impl Group {
         unimplemented!()
     }
 
-    pub fn verify(&self, signature: &GroupJoinSignature) -> BuckyResult<bool> {
+    pub fn verify(&self, signature: &GroupJoinSignature, member_id: &ObjectId, public_key: &PublicKey) -> BuckyResult<bool> {
         unimplemented!()
     }
 
-    pub fn verify_all(&self) -> BuckyResult<bool> {
-        unimplemented!()
-    }
-
-    pub fn verify_member(&self, member_id: &ObjectId, is_admin: bool) -> BuckyResult<bool> {
+    pub fn verify_member(&self, member_id: &ObjectId, is_admin: bool, publick_key: &PublicKey) -> BuckyResult<bool> {
         unimplemented!()
     }
 
