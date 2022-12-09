@@ -162,7 +162,7 @@ impl Default for CyfsServiceLoaderParam {
 }
 pub struct CyfsServiceLoaderConfig {
     // 只支持单table(单个stack)
-    pub node: toml::Value,
+    node: toml::Value,
 }
 
 impl CyfsServiceLoaderConfig {
@@ -197,6 +197,10 @@ impl CyfsServiceLoaderConfig {
         Self::new_from_config(node)
     }
 
+    pub fn node(&self) -> &toml::Value {
+        &self.node
+    }
+    
     pub fn gen_bdt_endpoints(param: &BdtEndPointParams) -> String {
         let mut ret = BDT_ENDPOINTS
             .replace("${bdt_port}", &param.bdt_port.to_string())
@@ -302,6 +306,12 @@ impl CyfsServiceLoaderConfig {
     pub fn reset_bdt_device(&mut self, device_name: &str) -> BuckyResult<()> {
         let mut doc = self.begin_edit();
         doc["bdt"]["config"]["device"] = toml_edit::value(device_name);
+        self.end_edit(doc)
+    }
+
+    pub fn reset_browser_mode(&mut self, browser_mode: &BrowserSanboxMode) -> BuckyResult<()> {
+        let mut doc = self.begin_edit();
+        doc["front"]["browser_mode"] = toml_edit::value(browser_mode.as_str());
         self.end_edit(doc)
     }
 
@@ -424,6 +434,12 @@ impl CyfsServiceLoaderConfig {
         info!("stack config updated! {}", value);
 
         Ok(())
+    }
+}
+
+impl Into<toml::Value> for CyfsServiceLoaderConfig {
+    fn into(self) -> toml::Value {
+        self.node
     }
 }
 
