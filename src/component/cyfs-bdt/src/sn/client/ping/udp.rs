@@ -1,7 +1,8 @@
 use log::*;
 use std::{
     sync::{Arc, RwLock,}, 
-    time::{Duration}
+    time::{Duration}, 
+    collections::LinkedList
 };
 use async_std::{
     task,
@@ -17,432 +18,143 @@ use crate::{
     stack::{WeakStack, Stack} 
 };
 use super::{ 
-    manager::{PingClient, SnStatus},
+    manager::{PingSession, PingSessionResp},
 };
 
 #[derive(Clone)]
 pub struct Config {
-    pub ping_interval_init: Duration,
+    pub resend_interval: Duration,
+    pub resend_timeout: Duration,
+
     pub ping_interval: Duration,
-    pub offline: Duration,
 }
 
 
-enum SnStatusImpl {
-    Connecting {
-        waiter: StateWaiter, 
-        last_ping_time: Timestamp,
-    }, 
-    Online {
-        last_ping_time: Timestamp,
-    }, 
-        (Timestamp), 
-    Offline(Timestamp), 
-}
-
-
-#[derive(Debug, Clone)]
-enum ClientStatus {
-    Running {
-        last_ping_time: Timestamp,
-        last_update_seq: Option<TempSeq>,
-    },
-    Stopped
-}
-
-struct ClientState {
-    local_device: Device, 
-    sessions: Vec<UdpSession>,
-    client_status: ClientStatus, 
-    sn_status: SnStatus
-}
-
-struct ClientInner {
-    stack: WeakStack, 
+struct SessionImpl {
+    stack: WeakStack,
     config: Config, 
-    sn_id: DeviceId,
-    sn: Device, 
-    net_listener: NetListener, 
-    seq_genarator: TempSeqGenerator,
-    state: RwLock<ClientState>    
-}
-
-#[derive(Debug)]
-struct SendPingOptions {
-    seq: TempSeq, 
     with_device: bool, 
-    sessions: Vec<(Interface, Vec<Endpoint>)>
+    local: Interface, 
+    local_device: Device,
+    gen_seq: Arc<TempSeqGenerator>, 
+    sn_desc: DeviceDesc,
+    sn_endpoints: Vec<Endpoint>,  
+    state: RwLock<SessionState>
 }
-
-struct SendPingIter {
-    sessions: Vec<(Interface, Vec<Endpoint>)>, 
-    sub_pos: usize,
-    pos: usize,
-}
-
-impl Into<SendPingIter> for SendPingOptions {
-    fn into(self) -> SendPingIter {
-        SendPingIter {
-            sessions: self.sessions, 
-            sub_pos: 0,
-            pos: 0
-        }
-    }
-}
-
-
-impl Iterator for SendPingIter {
-    type Item = (Interface, Endpoint);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let sessions = self.sessions.get(self.pos);
-        if let Some((from, to_endpoints)) = sessions {
-            let ep = to_endpoints.get(self.sub_pos);
-            if let Some(ep) = ep {
-                self.sub_pos += 1;
-                Some(((*from).clone(), ep.clone()))
-            } else {
-                self.pos += 1;
-                self.sub_pos = 0;
-                self.next()
-            }
-        } else {
-            None
-        }
-    }
-}
-
 
 #[derive(Clone)]
-pub(super) struct UdpClient(Arc<ClientInner>);
+pub struct UdpPingSession(Arc<SessionImpl>);
 
-impl std::fmt::Display for UdpClient {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let stack = Stack::from(&self.0.stack);
-        write!(f, "UdpPingClient{{local:{}, sn:{}}}", stack.local_device_id(), self.sn())
-    }
+enum SessionState {
+    Init(StateWaiter), 
+    Requesting {
+        first_sent_time: Timestamp, 
+        last_sent_time: Timestamp, 
+        first_sent_seq: TempSeq, 
+        last_sent_seq: TempSeq, 
+        waiter: StateWaiter
+    }, 
+    Responsed {
+        first_resp_time: Timestamp, 
+        resp: PingSessionResp
+    }, 
+    Timeout, 
+    Canceled
 }
 
+pub struct UdpSesssionParams {
+    config: Config, 
+    local: Interface,
+    local_device: Device, 
+    with_device: bool, 
+    sn_desc: DeviceDesc,
+    sn_endpoints: Vec<Endpoint>,  
+}
 
-impl PingClient for UdpClient {
-    fn sn(&self) -> &DeviceId {
-        &self.0.sn_id
-    }
-
-    fn local_device(&self) -> Device {
-        self.0.state.read().unwrap().local_device.clone()
-    }
-
-    fn clone_as_ping_client(&self) -> Box<dyn PingClient> {
-        Box::new(self.clone())
-    }
-
-    fn status(&self) -> SnStatus {
-        self.0.state.read().unwrap().sn_status
-    }
-
-    fn start(&self) {
-        info!("{} starting", self);
-        let client = self.clone();
-        task::spawn(async move {
-            client.start_inner().await;
-        });
-    }
-
-    fn stop(&self) {
-        self.0.state.write().unwrap().client_status = ClientStatus::Stopped;
-        info!("{} stoped", self);
-    }
-
-    
-    fn on_udp_ping_resp(&self, resp: &SnPingResp, _from: &Endpoint, interface: Interface) -> BuckyResult<()> {
+impl UdpPingSession {
+    pub fn new(stack: WeakStack,  gen_seq: Arc<TempSeqGenerator>, params: UdpSesssionParams) -> Self {
+        let seq = gen_seq.generate();
         let now = bucky_time_now();
-        
-        let handled = {
-            let mut state = self.0.state.write().unwrap();
-            if let Some(session) = state.sessions.iter_mut().find(|s| s.local.is_same(&interface)) {
-                if session.last_resp_time < now {
-                    session.last_resp_time = now;
-                } 
-                let handled = match &mut state.client_status {
-                    ClientStatus::Running { last_update_seq, .. } => {
-                        if last_update_seq.and_then(|seq| if seq < resp.seq { Some(()) } else { None }).is_some() {
-                            *last_update_seq = None;    
-                        } 
-                        false
-                    }, 
-                    ClientStatus::Stopped => true
-                };
-                if !handled {
-                    match &mut state.sn_status {
-                        SnStatus::Connecting => {
-                            state.sn_status = SnStatus::Online(now);
-                        } 
-                        SnStatus::Online(last_resp) => {
-                            if *last_resp < now {
-                                *last_resp = now;
-                            }
-                        } 
-                        SnStatus::Offline => {
-                            state.sn_status = SnStatus::Online(now);
-                        }            
-                    }
-                }
-                false
-            } else {
-                true
-            }
-        };
-
-        if handled {
-            return Ok(());
-        }
-        
-        let update = {
-            if resp.result == BuckyErrorCode::NotFound.as_u8() {
-                Some(UpdateOuterResult::None)
-            } else if resp.end_point_array.len() > 0 {
-                let out_endpoint = resp.end_point_array.get(0).unwrap();
-                let result = self.0.net_listener.update_outer(&interface.local(), &out_endpoint);
-                if result > UpdateOuterResult::None {
-                   Some(result)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        };
-
-        if let Some(result) = update {
-            let client = self.clone();
-            task::spawn(async move {
-                client.on_outer_updated(result).await;
-            });
-        }
-       
-        Ok(())
-    }
-}
-
-
-
-impl UdpClient {
-    pub fn new(
-        stack: WeakStack, 
-        config: Config, 
-        sn: Device, 
-        net_listener: NetListener, 
-        local_device: Device
-    ) -> Self {
-        let sn_id = sn.desc().device_id();
-
-        let mut sessions = Vec::default();
-
-        for udp in net_listener.udp() {
-            if let Some(session) = UdpSession::new(udp.clone(), &sn) {
-                sessions.push(session);
-            }   
-        }
-
-        let seq_genarator = TempSeqGenerator::new();
-        let next_seq = seq_genarator.generate();
-        let client = Self(Arc::new(ClientInner {
+        let session = Self(Arc::new(SessionImpl {
             stack, 
-            config, 
-            sn_id,
-            sn, 
-            net_listener, 
-            seq_genarator, 
-            state: RwLock::new(ClientState {
-                local_device, 
-                sessions,  
-                sn_status: SnStatus::Connecting, 
-                client_status: ClientStatus::Running {
-                    last_ping_time: 0, 
-                    last_update_seq: Some(next_seq)
-                }
-            })
+            gen_seq, 
+            config: params.config, 
+            local: params.local, 
+            local_device: params.local_device, 
+            with_device: params.with_device, 
+            sn_id: params.sn_desc.device_id(), 
+            sn_desc: params.sn_desc, 
+            sn_endpoints: params.sn_endpoints, 
+            state: RwLock::new(SessionState::Init(StateWaiter::new()))
         }));
 
-
-        client
-    }
-
-    fn config(&self) -> &Config {
-        &self.0.config
-    }
-
-
-    async fn start_inner(&self) {
-        loop {
-            let now = bucky_time_now();
-            enum NextStep {
-                Break,
-                Wait(Duration),  
-                SendPing(SendPingOptions, Duration), 
-            }
-
-            let next_step = {
-                let mut state = self.0.state.write().unwrap();
-                let (ping_interval, sessions) = match &mut state.sn_status {
-                    SnStatus::Connecting => (self.config().ping_interval_init, UdpSession::sessions(state.sessions.iter(), UdpSessionFilter::All)), 
-                    SnStatus::Online(last_resp_time) => {
-                        if now > *last_resp_time && Duration::from_micros(now - *last_resp_time) > self.config().offline {
-                            state.sn_status = SnStatus::Offline;
-                        }
-                        (self.config().ping_interval, UdpSession::sessions(state.sessions.iter(), UdpSessionFilter::Active(self.config().offline)))
-                    },
-                    SnStatus::Offline => (self.config().ping_interval, UdpSession::sessions(state.sessions.iter(), UdpSessionFilter::All))
-                };
-                    
-                match &mut state.client_status {
-                    ClientStatus::Stopped => NextStep::Break, 
-                    ClientStatus::Running {last_ping_time, last_update_seq} => {
-                        if now > *last_ping_time && Duration::from_micros(now - *last_ping_time) > ping_interval {
-                            *last_ping_time = now;
-                            let seq = self.0.seq_genarator.generate();
-                            let with_device = if let Some(last_update_seq) = last_update_seq {
-                                seq > *last_update_seq
-                            } else {
-                                false
-                            };
-                            NextStep::SendPing(SendPingOptions {
-                                seq, 
-                                with_device, 
-                                sessions
-                            }, ping_interval / 2)
-                        } else {
-                            NextStep::Wait(ping_interval / 2)
-                        }
-                    },
-                }            
-            };
-
-            match next_step {
-                NextStep::Break => {
-                    break;
-                }, 
-                NextStep::Wait(interval) => {
-                    let _ = future::timeout(interval, future::pending::<()>()).await;
-                },
-                NextStep::SendPing(options, interval) => {
-                    let _ = self.send_ping_inner(options).await;
-                    let _ = future::timeout(interval, future::pending::<()>()).await;
-                }
-            }
-        }
-        
-    }
-
-    pub fn send_ping(&self) {
-        let options = {
-            let mut state = self.0.state.write().unwrap();
-        
-            match &mut state.client_status {
-                ClientStatus::Stopped => None, 
-                ClientStatus::Running {last_ping_time, last_update_seq} => {
-                    *last_ping_time = bucky_time_now();
-                    let seq = self.0.seq_genarator.generate();
-                    let with_device = if let Some(last_update_seq) = last_update_seq {
-                        seq > *last_update_seq
-                    } else {
-                        false
-                    };
-                    Some(SendPingOptions {
-                        seq, 
-                        with_device, 
-                        sessions: UdpSession::sessions(state.sessions.iter(), UdpSessionFilter::Latest)
-                    })
-                },
-            }
-        };
-       
-        if let Some(options) = options {
-            let client = self.clone();
+        {
+            let session = session.clone();
             task::spawn(async move {
-                let _ = client.send_ping_inner(options).await;
-            });
+                let _ = session.send_ping(seq).await;
+            })
         }
-    }
-
-    async fn on_outer_updated(&self, result: UpdateOuterResult) {
-        let stack = Stack::from(&self.0.stack);
-        let local_device = if result == UpdateOuterResult::Update 
-            || result == UpdateOuterResult::Reset {
-            let mut local = self.local_device().clone();
-            let device_endpoints = local.mut_connect_info().mut_endpoints();
-            device_endpoints.clear();
-            let bound_endpoints = self.0.net_listener.endpoints();
-            for ep in bound_endpoints {
-                device_endpoints.push(ep);
-            }
-            let _ = sign_and_set_named_object_body(
-                stack.keystore().signer(),
-                &mut local,
-                &SignatureSource::RefIndex(0),
-            ).await;
-            local
-        } else {
-            unreachable!();
-        };
-
-        let options = {
-            let mut state = self.0.state.write().unwrap();
-            state.local_device = local_device;
-            match &mut state.client_status {
-                ClientStatus::Stopped => None, 
-                ClientStatus::Running {last_ping_time, last_update_seq} => {
-                    *last_ping_time = bucky_time_now();
-                    let seq = self.0.seq_genarator.generate();
-                    *last_update_seq = Some(seq);
-                    Some(SendPingOptions {
-                        seq, 
-                        with_device: true, 
-                        sessions: UdpSession::sessions(state.sessions.iter(), UdpSessionFilter::Latest)
-                    })
-                },
-            }
-        };
-
-        if let Some(options) = options {
-            let _ = self.send_ping_inner(options).await;
-        }
+        
+        session
     }
 
 
-    async fn send_ping_inner(&self, options: SendPingOptions) -> BuckyResult<()> {
+    async fn send_ping(&self, seq: TempSeq) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
-        let local_device = self.local_device().clone();
-        let seq = options.seq; 
+        
         let ping_pkg = SnPing {
             protocol_version: 0, 
             stack_version: 0, 
             seq,
             from_peer_id: Some(stack.local_device_id().clone()),
             sn_peer_id: self.sn().clone(),
-            peer_info: if options.with_device { Some(local_device.clone()) } else { None }, 
+            peer_info: if self.0.with_device { Some(self.0.local_device.clone()) } else { None }, 
             send_time: bucky_time_now(),
             contract_id: None, 
             receipt: None
         };
 
-        let key_stub = stack.keystore().create_key(self.0.sn.desc(), true);
+        let key_stub = stack.keystore().create_key(&self.0.sn_desc, true);
 
         let mut pkg_box = PackageBox::encrypt_box(
             self.sn().clone(), 
             key_stub.key.clone());
 
         if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
-            let mut exchg = Exchange::from((&ping_pkg, local_device.clone(), key_encrypted, key_stub.key.mix_key));
+            let mut exchg = Exchange::from((&ping_pkg, self.0.local_device.clone(), key_encrypted, key_stub.key.mix_key));
             let _ = exchg.sign(stack.keystore().signer()).await;
             pkg_box.push(exchg);
         }
         pkg_box.push(ping_pkg);
+
+
+        struct SendPingIter {
+            interface: Interface, 
+            endpoints: LinkedList<Endpoint>
+        }
+
+        impl Iterator for SendPingIter {
+            type Item = (Interface, Endpoint);
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.endpoints.pop_front().map(|ep| (self.interface.clone(), ep))
+            }
+        }
+
+
         
-        info!("{} send sn ping, options={:?}", self, options);
+        info!("{} send sn ping, seq={:?}", self, seq);
+        let mut iter = SendPingIter {
+            interface: self.0.interface.clone(), 
+            endpoints: {
+                let mut endpoints = LinkedList::new();
+                for endpoint in &self.0.endpoints {
+                    endpoints.push_back(*endpoint);
+                }
+                endpoints
+            }
+        };
         let mut context = PackageBoxEncodeContext::default();
-        let iter: SendPingIter = options.into();
         let _ = Interface::send_box_mult(
             &mut context, 
             &pkg_box, 
@@ -455,51 +167,188 @@ impl UdpClient {
     }
 }
 
-
-struct UdpSession {
-    local: Interface,
-    endpoints: Vec<Endpoint>, 
-    last_resp_time: Timestamp    
-}
-
-enum UdpSessionFilter {
-    All, 
-    Active(Duration), 
-    Latest, 
-}
-
-impl UdpSession {
-    fn new(local: Interface, sn: &Device) -> Option<Self> {
-        let endpoints: Vec<Endpoint> = sn.connect_info().endpoints().iter()
-            .filter(|ep| ep.is_same_ip_version(&local.local()) && ep.is_udp()).map(|ep| ep.clone()).collect();
-        if endpoints.len() > 0 {
-            Some(Self {
-                local, 
-                endpoints, 
-                last_resp_time: 0
-            })
-        } else {
-            None
-        }
+#[async_trait::async_trait]
+impl PingSession for UdpPingSession {
+    fn sn(&self) -> &DeviceId {
+        &self.0.sn_desc.device_id()
     }
 
-    fn sessions<'a>(iter: impl Iterator<Item=&'a Self>, filter: UdpSessionFilter) -> Vec<(Interface, Vec<Endpoint>)> {
-        match filter {
-            UdpSessionFilter::All => iter.map(|session| (session.local.clone(), session.endpoints.clone())).collect(), 
-            UdpSessionFilter::Active(timeout) => {
-                let now = bucky_time_now();
-                iter.filter(|session|  !(now > session.last_resp_time && Duration::from_micros(now - session.last_resp_time) > timeout))
-                    .map(|session| (session.local.clone(), session.endpoints.clone())).collect()
+    fn local(&self) -> Endpoint {
+        self.0.local.local()
+    }
+
+    fn clone_as_ping_session(&self) -> Box<dyn PingSession> {
+        Box::new(self.clone())
+    }
+
+    fn on_time_escape(&self, now: Timestamp) {
+        enum NextStep {
+            None,
+            SendPing(TempSeq), 
+            Timeout(StateWaiter), 
+        }
+        let next = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                SessionState::Requesting {
+                    waiter,  
+                    first_sent_time, 
+                    last_sent_time, 
+                    first_sent_seq, 
+                    last_sent_seq  
+                } => {
+                    if now > *first_sent_time && Duration::from_micros(now - *first_sent_time) > self.0.config.resend_timeout {
+                        let waiter = waiter.transfer();
+                        *state = SessionState::Timeout;
+                        NextStep::Timeout(waiter)
+                    } else if now > *last_sent_time && Duration::from_micros(now - *last_sent_time) > self.0.config.resend_interval {
+                        let seq = self.0.gen_seq.generate();
+                        *last_sent_seq = seq;
+                        *last_sent_time = now;
+                        NextStep::SendPing(seq)
+                    } else {
+                        NextStep::None
+                    }
+                }, 
+                _ => NextStep::None
+            }
+        };
+
+        match next {
+            NextStep::SendPing(seq) => {
+                let session = self.clone();
+                task::spawn(async move {
+                    let _ = session.send_ping(seq).await;
+                });
             },
-            UdpSessionFilter::Latest => {
-                if let Some(session) = iter.max_by(|l, r| l.last_resp_time.cmp(&r.last_resp_time)) {
-                    vec![(session.local.clone(), session.endpoints.clone())]
-                } else {
-                    vec![]
-                }
+            NextStep::Timeout(waiter) => {
+                waiter.wake();
+            },
+            _ => {}
+        };
+        
+
+    }
+
+    async fn wait(&self) -> BuckyResult<PingSessionResp> {
+        enum NextStep {
+            Wait(AbortRegistration),
+            Return(BuckyResult<PingSessionResp>), 
+            Start(AbortRegistration, TempSeq)
+        }
+        let (waiter, result) = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                SessionState::Init(waiter) => {
+                    let now = bucky_time_now();
+                    let mut waiter = waiter.transfer();
+                    let seq = self.0.gen_seq.generate();
+                    let next = NextStep::Start(waiter.new_waiter(), seq);
+                  
+                    *state = RwLock::new(SessionState::Requesting {
+                        last_sent_time: now,
+                        first_sent_time: now,  
+                        first_sent_seq: seq, 
+                        last_sent_seq: seq, 
+                        waiter
+                    });
+
+                    next
+                }, 
+                SessionState::Requesting {waiter, ..} => NextStep::Wait(waiter.new_waiter()), 
+                SessionState::Canceled => NextStep::Return(Err(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"))), 
+                SessionState::Timeout => NextStep::Return(Err(BuckyError::new(BuckyErrorCode::Timeout, "sn server no response"))), 
+                SessionState::Responsed { resp, .. } => NextStep::Return(Ok(resp.clone()))
+            }
+        };
+
+        let state = || {
+            let state = self.0.state.read().unwrap();
+            match &*state {
+                SessionState::Init(..) => unreachable!(),
+                SessionState::Requesting {..} => unreachable!(),
+                SessionState::Canceled => Err(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled")), 
+                SessionState::Timeout => Err(BuckyError::new(BuckyErrorCode::Timeout, "sn server no response")), 
+                SessionState::Responsed { resp, .. } => Ok(resp.clone())
+            }
+        };
+       
+        match next {
+            NextStep::Wait(waiter) => StateWaiter::wait(waiter, state).await, 
+            NextStep::Return(result) => result, 
+            NextStep::Start(waiter, seq) => {
+                let session = self.clone();
+                task::spawn(async move {
+                    let _ = session.send_ping(seq).await;
+                });
+                StateWaiter::wait(waiter, state).await
             }
         }
     }
+
+    fn stop(&self) {
+        let waiter = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                SessionState::Init(waiter) => {
+                    let waiter = waiter.transfer();
+                    *state = SessionState::Canceled;
+                    Some(waiter)
+                }, 
+                SessionState::Requesting {waiter, ..} => {
+                    let waiter = waiter.transfer();
+                    *state = SessionState::Canceled;
+                    Some(waiter)
+                },
+                _ => None
+            }
+        };
+       
+        if let Some(waiter) = waiter {
+            waiter.wake();
+        }
+    }
+
+    fn on_udp_ping_resp(&self, resp: &SnPingResp, from: &Endpoint) -> BuckyResult<()> {
+        let now = bucky_time_now();
+        
+        let waiter = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                SessionState::Init => None, 
+                SessionState::Requesting {
+                    first_sent_seq, 
+                    last_sent_seq, 
+                    waiter, 
+                    ..
+                } => {
+                    if *first_sent_seq <= resp.seq && *last_sent_seq >= resp.seq {
+                        let resp = PingSessionResp {
+                            from: *from, 
+                            err: BuckyErrorCode::from(resp.result as u16), 
+                            endpoints: resp.end_point_array.clone()
+                        };
+                        let waiter = waiter.transfer();
+                        *state = SessionState::Responsed { 
+                            first_resp_time: now, 
+                            resp
+                        };
+                        Some(waiter)
+                    } else {
+                        None
+                    }
+                }, 
+                _ => None
+            }
+        };
+
+        if let Some(waiter) = waiter {
+            waiter.wake();
+        }
+        Ok(())
+    }
 }
+
+
 
 

@@ -1,7 +1,7 @@
 use std::{
     time::Duration, 
     future::Future,
-    sync::RwLock
+    sync::{Arc, RwLock}
 };
 
 use cyfs_base::*;
@@ -11,14 +11,9 @@ use crate::{
     stack::{Stack, WeakStack}
 };
 use super::{
-    ping::{self, PingManager}, 
+    ping::{self, PingClients}, 
     call::*
 };
-
-pub trait PingClientStateEvent: Send + Sync {
-    fn online(&self, sn: &Device);
-    fn offline(&self, sn: &Device);
-}
 
 pub trait PingClientCalledEvent<Context=()>: Send + Sync {
     fn on_called(&self, called: &SnCalled, context: Context) -> Result<(), BuckyError>;
@@ -34,7 +29,8 @@ pub struct Config {
 
 pub struct ClientManager {
     stack: WeakStack, 
-    ping: RwLock<PingManager>,
+    gen_seq: Arc<TempSeqGenerator>, 
+    ping: RwLock<PingClients>, 
     pub(super) call: CallManager,
 }
 
@@ -42,26 +38,34 @@ impl ClientManager {
     pub fn create(stack: WeakStack, net_listener: NetListener, local_device: Device) -> ClientManager {
         let strong_stack = Stack::from(&stack); 
         let config = &strong_stack.config().sn_client;
+        let gen_seq = Arc::new(TempSeqGenerator::new());
         ClientManager {
-            ping: RwLock::new(PingManager::new(stack.clone(), net_listener, vec![], local_device)),
+            ping: RwLock::new(PingClients::new(stack.clone(), gen_seq.clone(), net_listener, vec![], local_device)),
             call: CallManager::create(stack.clone(), config), 
+            gen_seq, 
             stack, 
         }
     }
 
-    pub fn ping(&self) -> PingManager {
+    pub fn ping(&self) -> PingClients {
         self.ping.read().unwrap().clone()
     }
 
-    pub fn reset(&self, net_listener: NetListener, sn_list: Vec<Device>, local_device: Device) -> PingManager {
+    pub fn reset(&self, sn_list: Vec<Device>) -> PingClients {
         let (to_start, to_close) = {
             let mut ping = self.ping.write().unwrap();
             let to_close = ping.clone();
-            let to_start = PingManager::new(self.stack.clone(), net_listener, sn_list, local_device);
+            let to_start = PingClients::new(
+                self.stack.clone(), 
+                self.gen_seq.clone(), 
+                to_close.net_listener().reset(None), 
+                sn_list, 
+                self.local_device.clone()
+            );
             *ping = to_start.clone();
             (to_start, to_close)
         };
-        to_close.close();
+        to_close.stop();
         to_start
     }
 

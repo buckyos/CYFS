@@ -75,7 +75,8 @@ thread_local! {
 
 struct InterfaceImpl {
     config: Config, 
-    socket: UdpSocket,
+    socket: UdpSocket, 
+    mapping_port: Option<u16>,
     local: RwLock<Endpoint>,
     outer: RwLock<Option<Endpoint>>,
 }
@@ -205,6 +206,11 @@ impl Interface {
             socket,
             outer: RwLock::new(out),
         })))
+    }
+
+
+    pub fn mapping_port(&self) -> Option<u16> {
+        self.0.mapping_port
     }
 
     pub fn reset(&self, local: &Endpoint) -> Self {

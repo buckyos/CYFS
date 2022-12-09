@@ -53,7 +53,7 @@ impl NetListener {
         local: DeviceId, 
         config: &Config, 
         endpoints: &[Endpoint], 
-        tcp_port_mapping: Option<Vec<(Endpoint, u16)>>
+        port_mapping: Option<Vec<(Endpoint, u16)>>
     ) -> BuckyResult<Self> {
         let ep_len = endpoints.len();
         if ep_len == 0 {
@@ -70,7 +70,7 @@ impl NetListener {
             ep_set: BTreeSet::new(), 
             state: RwLock::new(NetListenerState::Init(StateWaiter::new()))
         };
-        let mut port_mapping = tcp_port_mapping.unwrap_or(vec![]);
+        let mut port_mapping = port_mapping.unwrap_or(vec![]);
 
         let mut ep_index = 0;
 
