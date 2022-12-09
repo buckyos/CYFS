@@ -111,3 +111,34 @@ pub struct GlobalStateMetaClearLinkOutputRequest {
 pub struct GlobalStateMetaClearLinkOutputResponse {
     pub count: u32,
 }
+
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalStateMetaAddObjectMetaOutputRequest {
+    pub common: MetaOutputRequestCommon,
+
+    pub item: GlobalStateObjectMetaItem,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalStateMetaAddObjectMetaOutputResponse {
+    pub updated: bool,
+}
+
+pub type GlobalStateMetaRemoveObjectMetaOutputRequest = GlobalStateMetaAddObjectMetaOutputRequest;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalStateMetaRemoveObjectMetaOutputResponse {
+    pub item: Option<GlobalStateObjectMetaItem>,
+}
+
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalStateMetaClearObjectMetaOutputRequest {
+    pub common: MetaOutputRequestCommon,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalStateMetaClearObjectMetaOutputResponse {
+    pub count: u32,
+}

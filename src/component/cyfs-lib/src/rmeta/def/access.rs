@@ -107,6 +107,47 @@ impl PartialOrd for GlobalStatePathGroupAccess {
     }
 }
 
+impl Ord for GlobalStatePathGroupAccess {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl std::fmt::Display for GlobalStatePathGroupAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            Self::Default(p) => {
+                write!(f, "{}", AccessString::new(*p))
+            }
+            Self::Specified(s) => {
+                write!(
+                    f,
+                    "zone={:?}, zone_category={:?} dec={:?}, {}",
+                    s.zone,
+                    s.zone_category,
+                    s.dec.as_ref().map(|id| cyfs_core::dec_id_to_string(id)),
+                    AccessPermissions::format_u8(s.access),
+                )
+            }
+        }
+    }
+}
+
+impl GlobalStatePathGroupAccess {
+    pub fn check_valid(&self) -> bool {
+        match &self {
+            Self::Default(_) => {}
+            Self::Specified(v) => {
+                if v.is_empty() {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct GlobalStatePathAccessItem {
     // GlobalState path, must end with /
@@ -118,16 +159,7 @@ pub struct GlobalStatePathAccessItem {
 
 impl GlobalStatePathAccessItem {
     pub fn check_valid(&self) -> bool {
-        match &self.access {
-            GlobalStatePathGroupAccess::Default(_) => {}
-            GlobalStatePathGroupAccess::Specified(v) => {
-                if v.is_empty() {
-                    return false;
-                }
-            }
-        }
-
-        true
+        self.access.check_valid()
     }
 
     pub fn fix_path(path: impl Into<String> + AsRef<str>) -> String {
@@ -204,22 +236,7 @@ impl GlobalStatePathAccessItem {
 
 impl std::fmt::Display for GlobalStatePathAccessItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.access {
-            GlobalStatePathGroupAccess::Default(p) => {
-                write!(f, "({}, {})", self.path, AccessString::new(*p))
-            }
-            GlobalStatePathGroupAccess::Specified(s) => {
-                write!(
-                    f,
-                    "({}, zone={:?}, zone_category={:?} dec={:?}, {})",
-                    self.path,
-                    s.zone,
-                    s.zone_category,
-                    s.dec.as_ref().map(|id| cyfs_core::dec_id_to_string(id)),
-                    AccessPermissions::format_u8(s.access),
-                )
-            }
-        }
+        write!(f, "({}, {})", self.path, self.access)
     }
 }
 

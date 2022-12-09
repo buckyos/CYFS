@@ -20,8 +20,16 @@ pub struct NamedObjectMetaPutObjectRequest {
     pub owner_id: Option<ObjectId>,
 
     pub insert_time: u64,
+    pub object_type: u16,
+    pub object_create_time: Option<u64>,
     pub object_update_time: Option<u64>,
     pub object_expired_time: Option<u64>,
+    pub author: Option<ObjectId>,
+    pub dec_id: Option<ObjectId>,
+    pub prev: Option<ObjectId>,
+    pub body_prev_version: Option<HashValue>,
+    pub ref_objs: Option<Vec<ObjectLink>>,
+    pub nonce: Option<u128>,
 
     pub storage_category: NamedObjectStorageCategory,
     pub context: Option<String>,
@@ -169,6 +177,11 @@ pub trait NamedObjectMeta: Sync + Send {
     ) -> BuckyResult<Option<()>>;
 
     async fn stat(&self) -> BuckyResult<NamedObjectMetaStat>;
+
+    fn bind_object_meta_access_provider(
+        &self,
+        object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    );
 }
 
 pub type NamedObjectMetaRef = Arc<Box<dyn NamedObjectMeta>>;

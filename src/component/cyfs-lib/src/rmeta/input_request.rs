@@ -79,3 +79,23 @@ pub struct GlobalStateMetaClearLinkInputRequest {
 }
 
 pub type GlobalStateMetaClearLinkInputResponse = GlobalStateMetaClearLinkOutputResponse;
+
+// object meta 
+#[derive(Clone, Debug)]
+pub struct GlobalStateMetaAddObjectMetaInputRequest {
+    pub common: MetaInputRequestCommon,
+
+    pub item: GlobalStateObjectMetaItem,
+}
+
+pub type GlobalStateMetaAddObjectMetaInputResponse = GlobalStateMetaAddObjectMetaOutputResponse;
+
+pub type GlobalStateMetaRemoveObjectMetaInputRequest = GlobalStateMetaAddObjectMetaInputRequest;
+pub type GlobalStateMetaRemoveObjectMetaInputResponse = GlobalStateMetaRemoveObjectMetaOutputResponse;
+
+#[derive(Clone, Debug)]
+pub struct GlobalStateMetaClearObjectMetaInputRequest {
+    pub common: MetaInputRequestCommon,
+}
+
+pub type GlobalStateMetaClearObjectMetaInputResponse = GlobalStateMetaClearObjectMetaOutputResponse;

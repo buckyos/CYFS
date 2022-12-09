@@ -91,4 +91,31 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaAclInnerInputProcessor {
 
         self.next.clear_link(req).await
     }
+
+    async fn add_object_meta(
+        &self,
+        req: GlobalStateMetaAddObjectMetaInputRequest,
+    ) -> BuckyResult<GlobalStateMetaAddObjectMetaInputResponse> {
+        self.check_access("global_state.meta.add_object_meta", &req.common)?;
+
+        self.next.add_object_meta(req).await
+    }
+
+    async fn remove_object_meta(
+        &self,
+        req: GlobalStateMetaRemoveObjectMetaInputRequest,
+    ) -> BuckyResult<GlobalStateMetaRemoveObjectMetaInputResponse> {
+        self.check_access("global_state.meta.remove_object_meta", &req.common)?;
+
+        self.next.remove_object_meta(req).await
+    }
+
+    async fn clear_object_meta(
+        &self,
+        req: GlobalStateMetaClearObjectMetaInputRequest,
+    ) -> BuckyResult<GlobalStateMetaClearObjectMetaInputResponse> {
+        self.check_access("global_state.meta.clear_object_meta", &req.common)?;
+
+        self.next.clear_object_meta(req).await
+    }
 }

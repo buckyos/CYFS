@@ -35,6 +35,21 @@ pub trait GlobalStateMetaOutputProcessor: Sync + Send + 'static {
         &self,
         req: GlobalStateMetaClearLinkOutputRequest,
     ) -> BuckyResult<GlobalStateMetaClearLinkOutputResponse>;
+
+    async fn add_object_meta(
+        &self,
+        req: GlobalStateMetaAddObjectMetaOutputRequest,
+    ) -> BuckyResult<GlobalStateMetaAddObjectMetaOutputResponse>;
+
+    async fn remove_object_meta(
+        &self,
+        req: GlobalStateMetaRemoveObjectMetaOutputRequest,
+    ) -> BuckyResult<GlobalStateMetaRemoveObjectMetaOutputResponse>;
+
+    async fn clear_object_meta(
+        &self,
+        req: GlobalStateMetaClearObjectMetaOutputRequest,
+    ) -> BuckyResult<GlobalStateMetaClearObjectMetaOutputResponse>;
 }
 
 pub type GlobalStateMetaOutputProcessorRef = Arc<Box<dyn GlobalStateMetaOutputProcessor>>;

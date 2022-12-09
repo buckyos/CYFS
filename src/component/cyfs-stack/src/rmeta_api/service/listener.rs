@@ -14,6 +14,10 @@ enum GlobalStateMetaRequestType {
     AddLink,
     RemoveLink,
     ClearLink,
+
+    AddObjectMeta,
+    RemoveObjectMeta,
+    ClearObjectMeta,
 }
 
 pub(crate) struct GlobalStateMetaRequestHandlerEndpoint {
@@ -61,6 +65,16 @@ impl GlobalStateMetaRequestHandlerEndpoint {
             }
             GlobalStateMetaRequestType::ClearLink => {
                 self.handler.process_clear_link_request(req).await
+            }
+
+            GlobalStateMetaRequestType::AddObjectMeta => {
+                self.handler.process_add_object_meta_request(req).await
+            }
+            GlobalStateMetaRequestType::RemoveObjectMeta => {
+                self.handler.process_remove_object_meta_request(req).await
+            }
+            GlobalStateMetaRequestType::ClearObjectMeta => {
+                self.handler.process_clear_object_meta_request(req).await
             }
         }
     }
@@ -135,6 +149,38 @@ impl GlobalStateMetaRequestHandlerEndpoint {
                 zone_manager.clone(),
                 protocol.to_owned(),
                 GlobalStateMetaRequestType::ClearLink,
+                handler.clone(),
+            ));
+
+        let path = format!("/{}/meta/object-meta", root_seg);
+        // add_object_meta
+        server
+            .at(&path)
+            .put(GlobalStateMetaRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                GlobalStateMetaRequestType::AddObjectMeta,
+                handler.clone(),
+            ));
+
+        // remove_object_meta
+        server
+            .at(&path)
+            .delete(GlobalStateMetaRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                GlobalStateMetaRequestType::RemoveObjectMeta,
+                handler.clone(),
+            ));
+
+        // clear_object_meta
+        let path = format!("/{}/meta/object-metas", root_seg);
+        server
+            .at(&path)
+            .delete(GlobalStateMetaRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                GlobalStateMetaRequestType::ClearObjectMeta,
                 handler.clone(),
             ));
     }

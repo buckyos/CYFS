@@ -3,7 +3,7 @@ use super::output_request::*;
 pub type MetaRequestCommon = MetaOutputRequestCommon;
 
 pub type GlobalStateMetaAddAccessRequest = GlobalStateMetaAddAccessOutputRequest;
-pub type GlobalStateMetaAddAccessResponse =GlobalStateMetaAddAccessOutputResponse;
+pub type GlobalStateMetaAddAccessResponse = GlobalStateMetaAddAccessOutputResponse;
 
 pub type GlobalStateMetaRemoveAccessRequest = GlobalStateMetaRemoveAccessOutputRequest;
 pub type GlobalStateMetaRemoveAccessResponse = GlobalStateMetaRemoveAccessOutputResponse;
@@ -19,3 +19,12 @@ pub type GlobalStateMetaRemoveLinkResponse = GlobalStateMetaRemoveLinkOutputResp
 
 pub type GlobalStateMetaClearLinkRequest = GlobalStateMetaClearLinkOutputRequest;
 pub type GlobalStateMetaClearLinkResponse = GlobalStateMetaClearLinkOutputResponse;
+
+pub type GlobalStateMetaAddObjectMetaRequest = GlobalStateMetaAddObjectMetaOutputRequest;
+pub type GlobalStateMetaAddObjectMetaResponse = GlobalStateMetaAddObjectMetaOutputResponse;
+
+pub type GlobalStateMetaRemoveObjectMetaRequest = GlobalStateMetaRemoveObjectMetaOutputRequest;
+pub type GlobalStateMetaRemoveObjectMetaResponse = GlobalStateMetaRemoveObjectMetaOutputResponse;
+
+pub type GlobalStateMetaClearObjectMetaRequest = GlobalStateMetaClearObjectMetaOutputRequest;
+pub type GlobalStateMetaClearObjectMetaResponse = GlobalStateMetaClearObjectMetaOutputResponse;
