@@ -84,51 +84,69 @@ message GroupRoleACL {
     // target
     optional bytes target_dec_id = 2;
     optional string r_path = 3;
-
     string method = 4;
+
     double right_percent = 5;
     bool is_operator = 6;
     string permissions = 7; // ACL-String
 }
 
+message GroupJoinSignature {
+    bytes signature = 1; // Sign(member_id, group_id, timestamp, hash, is_admin)
+    bytes member_id = 2;
+    uint64 timestamp = 3;
+    bool is_admin = 4;
+    bytes hash = 5; // Hash(Encode(Group))
+}
+
+message CommonGroupBodyContent {
+    string name = 1;
+    optional bytes icon = 2;
+    string description = 3;
+
+    repeated GroupMember members = 4;
+
+    uint64 total_equity = 5;
+
+    // acl
+    repeated GroupMethodACL method_acls = 6;
+    repeated GroupRoleACL role_acls = 7;
+
+    repeated bytes ood_list = 8; // 1/0 for every member/admin
+
+    optional uint64 history_block_max = 9;
+    optional uint64 history_block_lifespan = 10;
+    optional uint64 consensus_interval = 11; // ms
+
+    repeated bytes revoked_conclusions = 12;
+
+    uint64 version = 13;
+
+    repeated GroupJoinSignature join_signatures = 14; // signature for every member/admin
+}
+
 // simple_group
 message SimpleGroupDescContent {
-    repeated GroupMember admins = 1;
-    uint32 conclusion_limit = 2; // the admins can make any conclusion with the signatures more than ${conclusion_limit}
+    bytes unique_id = 1;
+    bytes founder_id = 2;
+    repeated GroupMember admins = 3;
+    uint32 conclusion_limit = 4; // the admins can make any conclusion with the signatures more than ${conclusion_limit}
 }
 
 message SimpleGroupBodyContent {
-    repeated bytes members = 1;
-
-    uint64 total_equity = 3;
-
-    // acl
-    repeated GroupMethodACL methods = 5;
-    repeated GroupRoleACL roles = 6;
-
-    repeated bytes ood_list = 7;
-
-    optional uint64 history_block_max = 8;
-    optional uint64 history_block_lifespan = 9;
+    CommonGroupBodyContent common = 1;
 }
 
 // org
+message OrgDescContent {
+    bytes unique_id = 1;
+    bytes founder_id = 2;
+}
+
 message OrgBodyContent {
     repeated GroupMember admins = 1;
-    repeated GroupMember members = 2;
-
-    uint64 total_equity = 3;
-    
-    optional bytes token_contract = 4;
-
-    // acl
-    repeated GroupMethodACL methods = 5;
-    repeated GroupRoleACL roles = 6;
-
-    repeated bytes ood_list = 7;
-
-    optional uint64 history_block_max = 8;
-    optional uint64 history_block_lifespan = 9;
+    optional bytes token_contract = 2;
+    CommonGroupBodyContent common = 3;
 }
 
 message GroupPackedBodyContent {

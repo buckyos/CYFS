@@ -128,55 +128,56 @@ pub async fn create_desc(matches: &ArgMatches<'_>) {
             return;
         }
         ("sgroup", Some(matches)) => {
-            match matches.value_of("threshold").unwrap().parse::<u8>() {
-                Ok(threshold) => {
-                    let owners = if let Some(strs) = matches.values_of_lossy("owners") {
-                        let mut owners = vec![];
-                        for str in &strs {
-                            if let Ok((obj, _)) = AnyNamedObject::decode_from_file(&Path::new(str).with_extension("desc"), &mut vec![]) {
-                                if let Some(pk) = obj.public_key() {
-                                    match pk {
-                                        PublicKeyRef::Single(pk) => {owners.push(pk.clone())}
-                                        PublicKeyRef::MN((_, pks)) => {
-                                            owners.append(&mut pks.clone())
-                                        }
-                                    }
-                                } else {
-                                    warn!("desc {} not have pubkey, ignore", str);
-                                }
-                            } else {
-                                error!("decode desc file {} fail", str);
-                            }
-                        }
-                        owners
-                    } else {
-                        vec![]
-                    };
+            // TODO
+            // match matches.value_of("threshold").unwrap().parse::<u8>() {
+            //     Ok(threshold) => {
+            //         let owners = if let Some(strs) = matches.values_of_lossy("owners") {
+            //             let mut owners = vec![];
+            //             for str in &strs {
+            //                 if let Ok((obj, _)) = AnyNamedObject::decode_from_file(&Path::new(str).with_extension("desc"), &mut vec![]) {
+            //                     if let Some(pk) = obj.public_key() {
+            //                         match pk {
+            //                             PublicKeyRef::Single(pk) => {owners.push(pk.clone())}
+            //                             PublicKeyRef::MN((_, pks)) => {
+            //                                 owners.append(&mut pks.clone())
+            //                             }
+            //                         }
+            //                     } else {
+            //                         warn!("desc {} not have pubkey, ignore", str);
+            //                     }
+            //                 } else {
+            //                     error!("decode desc file {} fail", str);
+            //                 }
+            //             }
+            //             owners
+            //         } else {
+            //             vec![]
+            //         };
 
-                    if threshold as usize > owners.len() {
-                        error!("threshold must small owners count, detail info use --help");
-                        return;
-                    }
+            //         if threshold as usize > owners.len() {
+            //             error!("threshold must small owners count, detail info use --help");
+            //             return;
+            //         }
 
-                    let group_desc = desc::create_simple_group_desc(threshold
-                                                                    , owners
-                                                                    , get_objids_from_matches(matches, "members")
-                                                                    , get_deviceids_from_matches(matches, "ood_list"));
+            //         let group_desc = desc::create_simple_group_desc(threshold
+            //                                                         , owners
+            //                                                         , get_objids_from_matches(matches, "members")
+            //                                                         , get_deviceids_from_matches(matches, "ood_list"));
 
-                    let groupid = group_desc.desc().calculate_id();
-                    let desc_file = Path::new(matches.value_of("save_path").unwrap_or("")).join(&groupid.to_string()).with_extension("desc");
-                    if let Err(e) = group_desc.encode_to_file(&desc_file, true) {
-                        error!("write imple group desc file failed, err {}", e);
-                    } else {
-                        info!("write simple group desc file succ to {}", desc_file.display());
-                        write_id_file(matches, &groupid);
-                    };
-                },
-                Err(_e) => {
-                    error!("threshold must number, detail info use --help");
-                    return;
-                }
-            }
+            //         let groupid = group_desc.desc().calculate_id();
+            //         let desc_file = Path::new(matches.value_of("save_path").unwrap_or("")).join(&groupid.to_string()).with_extension("desc");
+            //         if let Err(e) = group_desc.encode_to_file(&desc_file, true) {
+            //             error!("write imple group desc file failed, err {}", e);
+            //         } else {
+            //             info!("write simple group desc file succ to {}", desc_file.display());
+            //             write_id_file(matches, &groupid);
+            //         };
+            //     },
+            //     Err(_e) => {
+            //         error!("threshold must number, detail info use --help");
+            //         return;
+            //     }
+            // }
         }
         ("people", Some(matches)) => {
             let owner_id = matches.value_of("owner").map(|str| {

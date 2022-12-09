@@ -709,7 +709,7 @@ impl FrontProtocolHandler {
                 match seg_object.obj_type_code() {
                     ObjectTypeCode::Device
                     | ObjectTypeCode::People
-                    | ObjectTypeCode::SimpleGroup => {
+                    | ObjectTypeCode::Group => {
                         // treat as two seg mode
                         target = Some(seg_object);
                         target_dec_id = Self::parse_dec_seg(url, &segs, 1)?;
