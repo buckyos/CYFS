@@ -24,3 +24,4 @@ async-trait = "0.1.53"
 lazy_static = "1.4"
 regex = "1.5"
 toml = { version = "0.5", features = ["preserve_order"] }
+toml_edit = "0.15"
