@@ -3,6 +3,7 @@ use crate::{ChunkId, HashValue, NamedObjectId, ObjectType};
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 use serde::ser::{Serialize, Serializer};
 use std::str::FromStr;
+use std::convert::TryFrom;
 
 // T with impl FromStr
 pub struct TStringVisitor<T>
@@ -47,6 +48,50 @@ where
         }
     }
 }
+
+// T with impl TryFrom
+pub struct TU8Visitor<T>
+where
+    T: TryFrom<u8>,
+{
+    dummy: std::marker::PhantomData<T>,
+}
+
+impl<T> TU8Visitor<T>
+where
+    T: TryFrom<u8>,
+{
+    pub fn new() -> Self {
+        Self {
+            dummy: std::marker::PhantomData,
+        }
+    }
+}
+impl<'de, T> Visitor<'de> for TU8Visitor<T>
+where
+    T: TryFrom<u8>,
+    <T as TryFrom<u8>>::Error: std::fmt::Display,
+{
+    type Value = T;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("encoded u8 value error")
+    }
+
+    fn visit_u8<E>(self, v: u8) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        match T::try_from(v) {
+            Ok(ret) => Ok(ret),
+            Err(e) => {
+                let msg = format!("invalid u8 value: {}, {}", v, e);
+                Err(E::custom(msg))
+            }
+        }
+    }
+}
+
 
 // NamedObjectId
 impl<T: ObjectType> Serialize for NamedObjectId<T> {
