@@ -1,7 +1,6 @@
 use log::*;
 use std::{
     sync::{Arc, RwLock,}, 
-    collections::{LinkedList},
 };
 use async_std::{
     task
@@ -69,8 +68,8 @@ impl PingClients {
         local_device: Device
     ) -> Self {
         let strong_stack = Stack::from(&stack);
-        let mut remain = sn_list.iter().map(|d| d.desc().device_id()).enumerate().collect();
-        remain.sort_by(|(_, l), (_, r)| r.object_id().distance(strong_stack.local_device_id()).cmp(&l.object_id().distance(strong_stack.local_device_id())));
+        let mut remain: Vec<(usize, DeviceId)> = sn_list.iter().map(|d| d.desc().device_id()).enumerate().collect();
+        remain.sort_by(|(_, l), (_, r)| r.object_id().distance(strong_stack.local_device_id().object_id()).cmp(&l.object_id().distance(strong_stack.local_device_id().object_id())));
    
         Self(Arc::new(ClientsImpl {
             stack, 
@@ -89,7 +88,25 @@ impl PingClients {
         &self.0.net_listener
     }
 
-    fn sync_ping_client(&self, client: PingClient, result: BuckyResult<SnStatus>) {
+    pub fn default_local(&self) -> Device {
+        if let Some(client) = self.default_client() {
+            client.local_device()
+        } else {
+            self.0.local_device.clone()
+        }
+        
+    }
+
+    pub fn default_client(&self) -> Option<PingClient> {
+        let state = self.0.state.read().unwrap();
+        match &state.state {
+            ClientsState::Connecting { client, .. } => Some(client.clone()), 
+            ClientsState::Active { client, .. } => Some(client.clone()), 
+            _ => None
+        }
+    }
+
+    fn sync_ping_client(&self, client: &PingClient, result: BuckyResult<SnStatus>) {
         unimplemented!()    
     } 
 
@@ -104,17 +121,17 @@ impl PingClients {
             let mut state = self.0.state.write().unwrap();
             match &mut state.state {
                 ClientsState::Init(waiter) => {
-                    let waiter = waiter.transfer();
+                    let mut waiter = waiter.transfer();
                     let stack = Stack::from(&self.0.stack);
-                    if let Some((index, sn_id)) = state.remain.pop() {
+                    if let Some((index, _)) = state.remain.pop() {
                         let client = PingClient::new(
                             self.0.stack.clone(), 
                             stack.config().sn_client.ping.clone() , 
                             self.0.gen_seq.clone(), 
-                            self.0.net_listener.reset(None), 
+                            self.0.net_listener.reset(None).unwrap(), 
                             self.0.sn_list[index].clone(), 
                             self.0.local_device.clone());
-                        let next = NextStep::Start(waiter.new_waiter(), client.clone();)
+                        let next = NextStep::Start(waiter.new_waiter(), client.clone());
                         state.state = ClientsState::Connecting { waiter, client };
                         next
                     } else {
@@ -138,9 +155,9 @@ impl PingClients {
         let state = || {
             let state = self.0.state.read().unwrap();
             match &state.state {
-                ClientsState::Active { .. } => NextStep::Return(Ok(SnStatus::Online)), 
-                ClientsState::Timeout => NextStep::Return(Ok(SnStatus::Offline)), 
-                ClientsState::Stopped => NextStep::Return(Err(BuckyError::new(BuckyErrorCode::Interrupted, "empty sn list"))), 
+                ClientsState::Active { .. } => Ok(SnStatus::Online), 
+                ClientsState::Timeout => Ok(SnStatus::Offline), 
+                ClientsState::Stopped => Err(BuckyError::new(BuckyErrorCode::Interrupted, "empty sn list")), 
                 _ => unreachable!()
             }
         };
@@ -155,7 +172,7 @@ impl PingClients {
             NextStep::Start(waiter, client) => {
                 let clients = self.clone();
                 task::spawn(async move {
-                    clients.sync_ping_client(client, client.wait_online().await);
+                    clients.sync_ping_client(&client, client.wait_online().await);
                 });
                 StateWaiter::wait(waiter, state).await
             }
@@ -187,8 +204,8 @@ impl PingClients {
                 StateWaiter::wait(waiter, || {
                     let state = self.0.state.read().unwrap();
                     match &state.state {
-                        ClientsState::Stopped => NextStep::Return(Err(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"))), 
-                        ClientsState::Timeout =>  NextStep::Return(Ok(())), 
+                        ClientsState::Stopped => Err(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled")), 
+                        ClientsState::Timeout =>  Ok(()), 
                         _ => unreachable!()
                     }
                 }).await
@@ -199,10 +216,10 @@ impl PingClients {
     pub fn stop(&self) {
         let (waiter, client) = {
             let mut state = self.0.state.write().unwrap();
-            match &mut *state {
+            match &mut state.state {
                 ClientsState::Init(waiter) => {
                     let waiter = waiter.transfer();
-                    *state = ClientsState::Stopped;
+                    state.state = ClientsState::Stopped;
                     (Some(waiter), None)
                 }, 
                 ClientsState::Connecting {
@@ -211,7 +228,7 @@ impl PingClients {
                 } => {
                     let waiter = waiter.transfer();
                     let client = client.clone();
-                    *state = ClientsState::Stopped;
+                    state.state = ClientsState::Stopped;
                     (Some(waiter), Some(client))
                 },
                 ClientsState::Active {
@@ -220,7 +237,7 @@ impl PingClients {
                 } => {
                     let waiter = waiter.transfer();
                     let client = client.clone();
-                    *state = ClientsState::Stopped;
+                    state.state = ClientsState::Stopped;
                     (Some(waiter), Some(client))
                 },
                 _ => (None, None)
@@ -271,7 +288,7 @@ impl PingClients {
                     client, 
                     ..
                 } => {
-                    if client.sn() == resp.sn_peer_id {
+                    if resp.sn_peer_id.eq(client.sn()) {
                         Some(client.clone())
                     } else {
                         None
@@ -281,7 +298,7 @@ impl PingClients {
                     client,
                     ..
                 } => {
-                    if client.sn() == resp.sn_peer_id {
+                    if resp.sn_peer_id.eq(client.sn()) {
                         Some(client.clone())
                     } else {
                         None
@@ -304,7 +321,7 @@ impl PingClients {
 
         if !called.to_peer_id.eq(stack.local_device_id()) {
             warn!("{} called, recv called to other: {}.", self, called.to_peer_id);
-            return Err(BuckyError::new(BuckyErrorCode::AddrNotAvailable, "called to other"));
+            return;
         }
         let client = {
             let state = self.0.state.read().unwrap();
@@ -313,7 +330,7 @@ impl PingClients {
                     client,
                     ..
                 } => {
-                    if client.sn() == called.sn_peer_id {
+                    if called.sn_peer_id.eq(client.sn()) {
                         Some(client.clone())
                     } else {
                         None

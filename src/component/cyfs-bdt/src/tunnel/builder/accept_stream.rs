@@ -293,7 +293,7 @@ impl AcceptStreamBuilder {
         info!("{} build with active pn {:?}", self, active_pn_list);
         {
             let stack = Stack::from(&self.0.stack);
-            let local = stack.sn_client().ping().default_local_device();
+            let local = stack.sn_client().ping().default_local();
             let stream = &self.0.stream;
             let net_listener = stack.net_manager().listener();
             let key = caller_box.key().clone();

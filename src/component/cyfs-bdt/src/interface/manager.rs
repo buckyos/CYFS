@@ -107,7 +107,20 @@ impl NetListener {
           
             let r = match ep.protocol() {
                 Protocol::Udp => {
-                    udp::Interface::bind(local, out, config.udp.clone()).map(|i| {
+                    let mapping_port = {
+                        let mut found_index = None;
+                        for (index, (src_ep, _)) in port_mapping.iter().enumerate() {
+                            if *src_ep == *ep {
+                                found_index = Some(index);
+                                break;
+                            }
+                        }
+                        found_index.map(|index| {
+                            let (_, dst_port) = port_mapping.remove(index);
+                            dst_port
+                        })
+                    };
+                    udp::Interface::bind(local, out, mapping_port, config.udp.clone()).map(|i| {
                         listener.udp.push(i);
                         ep
                     })

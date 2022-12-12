@@ -6,6 +6,7 @@ use std::{
 
 use cyfs_base::*;
 use crate::{
+    types::*, 
     interface::{NetListener, udp::{self, OnUdpPackageBox}}, 
     protocol::{*, v0::*}, 
     stack::{Stack, WeakStack}
@@ -58,9 +59,9 @@ impl ClientManager {
             let to_start = PingClients::new(
                 self.stack.clone(), 
                 self.gen_seq.clone(), 
-                to_close.net_listener().reset(None), 
+                to_close.net_listener().reset(None).unwrap(), 
                 sn_list, 
-                self.local_device.clone()
+                to_close.default_local()
             );
             *ping = to_start.clone();
             (to_start, to_close)

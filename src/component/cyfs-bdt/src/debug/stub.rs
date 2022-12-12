@@ -26,7 +26,7 @@ use crate::{
     SingleDownloadContext
 };
 use super::command::*;
-use super::super::sn::client::SnStatus;
+// use super::super::sn::client::SnStatus;
 
 struct DebugStubImpl {
     stack: WeakStack, 
@@ -141,37 +141,37 @@ impl DebugStub {
     }
 
     async fn sn_conn_status(&self, tunnel: TcpStream, command: DebugCommandSnConnStatus) -> Result<(), String> {
-        let mut tunnel = tunnel;
+        // let mut tunnel = tunnel;
 
-        let stack = Stack::from(&self.0.stack);
-        let timeout = {
-            if command.timeout_sec == 0 {
-                6
-            } else {
-                command.timeout_sec
-            }
-        };
+        // let stack = Stack::from(&self.0.stack);
+        // let timeout = {
+        //     if command.timeout_sec == 0 {
+        //         6
+        //     } else {
+        //         command.timeout_sec
+        //     }
+        // };
 
-        let sleep_ms = 200; 
-        let mut counter = timeout*(1000/sleep_ms);
-        loop {
-            let sn_status = stack.sn_client().ping().status();
+        // let sleep_ms = 200; 
+        // let mut counter = timeout*(1000/sleep_ms);
+        // loop {
+        //     let sn_status = stack.sn_client().ping().status();
 
-            if let SnStatus::Online(_) = sn_status {
-                let _ = tunnel.write_all("Ok: sn connected\r\n".as_ref()).await;
+        //     if let SnStatus::Online = sn_status {
+        //         let _ = tunnel.write_all("Ok: sn connected\r\n".as_ref()).await;
 
-                return Ok(())
-            }
+        //         return Ok(())
+        //     }
 
-            counter -= 1;
-            if counter == 0 {
-                break ;
-            }
+        //     counter -= 1;
+        //     if counter == 0 {
+        //         break ;
+        //     }
 
-            task::sleep(Duration::from_millis(sleep_ms)).await;
-        }
+        //     task::sleep(Duration::from_millis(sleep_ms)).await;
+        // }
 
-        let _ = tunnel.write_all("Err: sn connect timeout\r\n".as_ref()).await;
+        // let _ = tunnel.write_all("Err: sn connect timeout\r\n".as_ref()).await;
 
         Ok(())
     }

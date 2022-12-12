@@ -99,7 +99,7 @@ impl std::fmt::Debug for Interface {
 
 
 impl Interface {
-    pub fn bind(local: Endpoint, out: Option<Endpoint>, config: Config) -> Result<Self, BuckyError> {
+    pub fn bind(local: Endpoint, out: Option<Endpoint>, mapping_port: Option<u16>, config: Config) -> Result<Self, BuckyError> {
         fn bind_socket(bind_addr: &Endpoint, recv_buffer: usize) -> Result<UdpSocket, BuckyError> {
             let domain = if bind_addr.addr().is_ipv6() {
                 Domain::IPV6
@@ -202,6 +202,7 @@ impl Interface {
 
         Ok(Self(Arc::new(InterfaceImpl {
             config, 
+            mapping_port, 
             local: RwLock::new(local),
             socket,
             outer: RwLock::new(out),

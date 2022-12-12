@@ -636,7 +636,7 @@ impl Tunnel {
             stack_version: owner.stack_version(),  
             to_device_id: owner.remote().clone(),
             sequence: syn_seq.clone(),
-            from_device_desc: stack.sn_client().ping().default_local_device(), 
+            from_device_desc: stack.sn_client().ping().default_local(), 
             send_time: bucky_time_now()
         };
         let resp_box = interface.confirm_connect(&stack, vec![DynamicPackage::from(syn_tunnel)], owner.config().tcp.confirm_timeout).await?;
@@ -672,7 +672,7 @@ impl Tunnel {
             stack_version: owner.stack_version(),  
             to_device_id: owner.remote().clone(),
             sequence: owner.generate_sequence(),
-            from_device_desc: stack.sn_client().ping().default_local_device(), 
+            from_device_desc: stack.sn_client().ping().default_local(), 
             send_time: bucky_time_now()
         };
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
@@ -1248,7 +1248,7 @@ impl OnTcpInterface for Tunnel {
                     result: ret,
                     send_time: bucky_time_now(),
                     mtu: udp::MTU as u16,
-                    to_device_desc: owner.stack().sn_client().ping().default_local_device()
+                    to_device_desc: owner.stack().sn_client().ping().default_local()
                 };
                 let tunnel = self.clone();
                 task::spawn(async move {

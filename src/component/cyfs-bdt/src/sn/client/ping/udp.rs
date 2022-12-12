@@ -6,27 +6,24 @@ use std::{
 };
 use async_std::{
     task,
-    future
 };
-
+use futures::future::AbortRegistration;
 use cyfs_base::*;
 use crate::{
     types::*, 
     protocol::{*, v0::*}, 
-    interface::{NetListener, UpdateOuterResult, udp::{Interface, PackageBoxEncodeContext}}, 
+    interface::{udp::{Interface, PackageBoxEncodeContext}}, 
     history::keystore, 
     stack::{WeakStack, Stack} 
 };
 use super::{ 
-    manager::{PingSession, PingSessionResp},
+    client::{PingSession, PingSessionResp},
 };
 
 #[derive(Clone)]
 pub struct Config {
     pub resend_interval: Duration,
     pub resend_timeout: Duration,
-
-    pub ping_interval: Duration,
 }
 
 
@@ -37,6 +34,7 @@ struct SessionImpl {
     local: Interface, 
     local_device: Device,
     gen_seq: Arc<TempSeqGenerator>, 
+    sn_id: DeviceId, 
     sn_desc: DeviceDesc,
     sn_endpoints: Vec<Endpoint>,  
     state: RwLock<SessionState>
@@ -44,6 +42,13 @@ struct SessionImpl {
 
 #[derive(Clone)]
 pub struct UdpPingSession(Arc<SessionImpl>);
+
+impl std::fmt::Display for UdpPingSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // let stack = Stack::from(&self.0.stack);
+        write!(f, "UdpSession{{sn:{}, local:{}}}", self.sn(), self.0.local)
+    }
+}
 
 enum SessionState {
     Init(StateWaiter), 
@@ -63,18 +68,17 @@ enum SessionState {
 }
 
 pub struct UdpSesssionParams {
-    config: Config, 
-    local: Interface,
-    local_device: Device, 
-    with_device: bool, 
-    sn_desc: DeviceDesc,
-    sn_endpoints: Vec<Endpoint>,  
+    pub config: Config, 
+    pub local: Interface,
+    pub local_device: Device, 
+    pub with_device: bool, 
+    pub sn_desc: DeviceDesc,
+    pub sn_endpoints: Vec<Endpoint>,  
 }
 
 impl UdpPingSession {
     pub fn new(stack: WeakStack,  gen_seq: Arc<TempSeqGenerator>, params: UdpSesssionParams) -> Self {
         let seq = gen_seq.generate();
-        let now = bucky_time_now();
         let session = Self(Arc::new(SessionImpl {
             stack, 
             gen_seq, 
@@ -92,7 +96,7 @@ impl UdpPingSession {
             let session = session.clone();
             task::spawn(async move {
                 let _ = session.send_ping(seq).await;
-            })
+            });
         }
         
         session
@@ -141,14 +145,13 @@ impl UdpPingSession {
             }
         }
 
-
         
         info!("{} send sn ping, seq={:?}", self, seq);
-        let mut iter = SendPingIter {
-            interface: self.0.interface.clone(), 
+        let iter = SendPingIter {
+            interface: self.0.local.clone(), 
             endpoints: {
                 let mut endpoints = LinkedList::new();
-                for endpoint in &self.0.endpoints {
+                for endpoint in &self.0.sn_endpoints {
                     endpoints.push_back(*endpoint);
                 }
                 endpoints
@@ -170,7 +173,7 @@ impl UdpPingSession {
 #[async_trait::async_trait]
 impl PingSession for UdpPingSession {
     fn sn(&self) -> &DeviceId {
-        &self.0.sn_desc.device_id()
+        &self.0.sn_id
     }
 
     fn local(&self) -> Endpoint {
@@ -179,6 +182,21 @@ impl PingSession for UdpPingSession {
 
     fn clone_as_ping_session(&self) -> Box<dyn PingSession> {
         Box::new(self.clone())
+    }
+
+    fn reset(&self) -> Box<dyn PingSession> {
+        // Self(Arc::new(SessionImpl {
+        //     stack: self.0.stack.clone(),
+        //     config: self.0.config.clone(), 
+        //     with_device: false, 
+        //     local: self.0.local.clone(), 
+        //     local_device: self.0.local_device.clone(),
+        //     gen_seq: self.0.gen_seq.clone(), 
+        //     sn_desc: self.0.sn_desc.clone(),
+        //     sn_endpoints: Vec<Endpoint>,  
+        //     state: RwLock<SessionState>
+        // })
+        unimplemented!()
     }
 
     fn on_time_escape(&self, now: Timestamp) {
@@ -236,7 +254,7 @@ impl PingSession for UdpPingSession {
             Return(BuckyResult<PingSessionResp>), 
             Start(AbortRegistration, TempSeq)
         }
-        let (waiter, result) = {
+        let next = {
             let mut state = self.0.state.write().unwrap();
             match &mut *state {
                 SessionState::Init(waiter) => {
@@ -245,13 +263,13 @@ impl PingSession for UdpPingSession {
                     let seq = self.0.gen_seq.generate();
                     let next = NextStep::Start(waiter.new_waiter(), seq);
                   
-                    *state = RwLock::new(SessionState::Requesting {
+                    *state = SessionState::Requesting {
                         last_sent_time: now,
                         first_sent_time: now,  
                         first_sent_seq: seq, 
                         last_sent_seq: seq, 
                         waiter
-                    });
+                    };
 
                     next
                 }, 
@@ -315,7 +333,7 @@ impl PingSession for UdpPingSession {
         let waiter = {
             let mut state = self.0.state.write().unwrap();
             match &mut *state {
-                SessionState::Init => None, 
+                SessionState::Init(_) => None, 
                 SessionState::Requesting {
                     first_sent_seq, 
                     last_sent_seq, 

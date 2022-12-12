@@ -120,7 +120,7 @@ impl SynProxyTunnel {
             seq,
             to_peer_id: self.tunnel().remote().clone(),
             to_peer_timestamp: remote_timestamp, 
-            from_peer_info: stack.sn_client().ping().default_local_device(), 
+            from_peer_info: stack.sn_client().ping().default_local(), 
             mix_key: first_box.key().mix_key.clone(),
         };
 

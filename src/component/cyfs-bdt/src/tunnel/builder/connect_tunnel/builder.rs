@@ -65,7 +65,7 @@ impl ConnectTunnelBuilder {
 
     async fn build_inner(&self) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
-        let local = stack.sn_client().ping().default_local_device();
+        let local = stack.sn_client().ping().default_local();
         let build_params = &self.0.params;
 
         let first_box = Arc::new(self.first_box(&local).await);
@@ -331,7 +331,7 @@ impl PingClientCalledEvent for ConnectTunnelBuilder {
         let remote_timestamp = called.peer_info.get_obj_update_time();
         task::spawn(async move {
             let stack = Stack::from(&builder.0.stack);
-            let first_box = builder.first_box(&stack.sn_client().ping().default_local_device()).await;
+            let first_box = builder.first_box(&stack.sn_client().ping().default_local()).await;
             if let Some(proxy_builder) = {
                 let state = &mut *builder.0.state.write().unwrap();
                 match state {

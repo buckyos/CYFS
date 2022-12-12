@@ -2,20 +2,18 @@
 use log::*;
 use std::{
     sync::{Arc, RwLock,}, 
-    collections::{LinkedList}, 
     time::Duration, 
 };
-use futures::future::{AbortRegistration, join_all};
+use async_std::{
+    task
+};
+use futures::future::AbortRegistration;
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::{*, v0::*}, 
-    interface::{NetListener, udp::{Interface, PackageBoxEncodeContext}}, 
+    protocol::{v0::*}, 
+    interface::{NetListener, udp::{Interface}}, 
     stack::{WeakStack, Stack},
-    dht::*
-};
-use super::super::{
-    manager::PingClientCalledEvent
 };
 use super::{
     udp::{self, *}
@@ -36,9 +34,9 @@ pub enum SnStatus {
 
 #[derive(Clone)]
 pub struct PingSessionResp {
-    from: Endpoint, 
-    err: BuckyErrorCode, 
-    endpoints: Vec<Endpoint>
+    pub from: Endpoint, 
+    pub err: BuckyErrorCode, 
+    pub endpoints: Vec<Endpoint>
 }
 
 
@@ -114,6 +112,10 @@ impl PingClient {
         }))
     }
 
+    pub fn local_device(&self) -> Device {
+        self.0.local_device.clone()
+    }
+
 
     pub fn stop(&self) {
         let (waiter, sessions) = {
@@ -135,10 +137,10 @@ impl PingClient {
                 },
                 ClientState::Active {
                     waiter, 
-                    state
+                    state: active
                 } => {
                     let waiter = waiter.transfer();
-                    let sessions = match state {
+                    let sessions = match active {
                         ActiveState::FirstTry(session) => vec![session.clone_as_ping_session()], 
                         ActiveState::SecondTry(session) => vec![session.clone_as_ping_session()], 
                         _ => vec![]
@@ -185,6 +187,7 @@ impl PingClient {
                     ..
                 } => NextStep::Wait(waiter.new_waiter()), 
                 ClientState::Timeout =>  NextStep::Return(Ok(())), 
+                _ => NextStep::Return(Err(BuckyError::new(BuckyErrorCode::ErrorState, "not online"))), 
             }
         };
        
@@ -194,8 +197,8 @@ impl PingClient {
                 StateWaiter::wait(waiter, || {
                     let state = self.0.state.read().unwrap();
                     match &*state {
-                        ClientState::Stopped => NextStep::Return(Err(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"))), 
-                        ClientState::Timeout =>  NextStep::Return(Ok(())), 
+                        ClientState::Stopped => Err(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled")), 
+                        ClientState::Timeout =>  Ok(()), 
                         _ => unreachable!()
                     }
                 }).await
@@ -217,7 +220,7 @@ impl PingClient {
                     NextStep::Start(waiter)
                 }, 
                 ClientState::Connecting{ waiter, ..} => NextStep::Wait(waiter.new_waiter()), 
-                ClientState::Active(_) => NextStep::Return(Ok(SnStatus::Online)), 
+                ClientState::Active {..} => NextStep::Return(Ok(SnStatus::Online)), 
                 ClientState::Timeout =>  NextStep::Return(Ok(SnStatus::Offline)), 
                 ClientState::Stopped => NextStep::Return(Err(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"))), 
             }
@@ -226,7 +229,7 @@ impl PingClient {
         let state = || {
             let state = self.0.state.read().unwrap();
             match &*state {
-                ClientState::Active(_) => Ok(SnStatus::Online), 
+                ClientState::Active {..} => Ok(SnStatus::Online), 
                 ClientState::Timeout =>  Ok(SnStatus::Offline), 
                 ClientState::Stopped => Err(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled")), 
                 _ => unreachable!()
@@ -239,7 +242,7 @@ impl PingClient {
             NextStep::Start(waiter) => {
                 let mut sessions = vec![];
                 for local in self.0.net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv4()) {
-                    let sn_endpoints = self.0.sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.is_same_ip_version(local)).cloned().collect();
+                    let sn_endpoints: Vec<Endpoint> = self.0.sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.is_same_ip_version(&local.local())).cloned().collect();
                     if sn_endpoints.len() > 0 {
                         let params = UdpSesssionParams {
                             config: self.0.config.udp.clone(), 
@@ -249,7 +252,7 @@ impl PingClient {
                             sn_desc: self.0.sn.desc().clone(),
                             sn_endpoints,  
                         };
-                        sessions.push(UdpPingSession::new(self.0.stack.clone(), self.0.gen_seq.clone(), params));
+                        sessions.push(UdpPingSession::new(self.0.stack.clone(), self.0.gen_seq.clone(), params).clone_as_ping_session());
                     }
                 };
 
@@ -296,7 +299,7 @@ impl PingClient {
                         task::spawn(async move {
                             let result = session.wait().await;
                             client.sync_session_resp(session, result);
-                        })
+                        });
                     }
                 } 
 
@@ -315,7 +318,7 @@ impl PingClient {
                     ..
                 } => sessions.iter().map(|session| session.clone_as_ping_session()).collect(), 
                 ClientState::Active { 
-                    active, 
+                    state: active, 
                     .. 
                 } => {
                     match active {
@@ -323,10 +326,14 @@ impl PingClient {
                             if now > *next_time {
                                 let session = session.clone_as_ping_session();
                                 *active = ActiveState::FirstTry(session.clone_as_ping_session());
-                                let client = self.clone();
-                                task::spawn(async move {
-                                    self.sync_session_resp(session.clone_as_ping_session(), session.wait().await);
-                                });
+                                {
+                                
+                                    let client = self.clone();
+                                    let session = session.clone_as_ping_session();
+                                    task::spawn(async move {
+                                        client.sync_session_resp(session.clone_as_ping_session(), session.wait().await);
+                                    });
+                                }
                                 vec![session]
                             } else {
                                 vec![]
@@ -360,7 +367,7 @@ impl PingClient {
                     }
                 }).collect(), 
                 ClientState::Active { 
-                    active, 
+                    state: active, 
                     .. 
                 } => {
                     match active {
@@ -386,7 +393,7 @@ impl PingClient {
         };
 
         for session in sessions {
-            session.on_udp_ping_resp(resp, from);
+            let _ = session.on_udp_ping_resp(resp, from);
         }
     }
 

@@ -810,7 +810,7 @@ impl StreamContainerImpl {
             }
         }
         .map(|question| {
-            let local_device = Stack::from(&self.stack).sn_client().ping().default_local_device();
+            let local_device = Stack::from(&self.stack).sn_client().ping().default_local();
             TcpSynConnection {
                 sequence: self.sequence,
                 result: 0u8,
@@ -844,7 +844,7 @@ impl StreamContainerImpl {
                 sequence: self.sequence,
                 to_session_id: remote_id,
                 result: TCP_ACK_CONNECTION_RESULT_OK,
-                to_device_desc: Stack::from(&self.stack).sn_client().ping().default_local_device(),
+                to_device_desc: Stack::from(&self.stack).sn_client().ping().default_local(),
                 payload: TailedOwnedData::from(payload),
             }
         })

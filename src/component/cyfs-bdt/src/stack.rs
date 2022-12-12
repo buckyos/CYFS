@@ -13,7 +13,7 @@ use crate::{
     protocol::{*, v0::*},
     sn::{
         self,
-        client::{PingClientCalledEvent, PingClientStateEvent},
+        client::{PingClientCalledEvent},
     },
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
@@ -76,10 +76,10 @@ impl StackConfig {
             }, 
             sn_client: sn::client::Config {
                 ping: sn::client::ping::Config {
+                    interval: Duration::from_secs(25), 
                     udp: sn::client::ping::udp::Config {
-                        ping_interval_init: Duration::from_millis(500),
-                        ping_interval: Duration::from_millis(25000),
-                        offline: Duration::from_millis(300000),
+                        resend_interval: Duration::from_millis(500),
+                        resend_timeout: Duration::from_secs(5),
                     }
                 }, 
                 call_interval: Duration::from_millis(200),
@@ -450,7 +450,7 @@ impl Stack {
     pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
         info!("{} reset_sn_list {:?}", self, sn_list);
         self.device_cache().reset_sn_list(&sn_list);
-        self.sn_client().reset(self.net_manager().listener(), sn_list, self.sn_client().ping().default_local_device());
+        self.sn_client().reset(sn_list);
         Ok(())
     }
 
@@ -458,7 +458,7 @@ impl Stack {
         info!("{} reset {:?}", self, endpoints);
         let listener = self.net_manager().reset(endpoints.as_slice())?;
         
-        let mut local = self.sn_client().ping().default_local_device();
+        let mut local = self.sn_client().ping().default_local();
         let device_endpoints = local.mut_connect_info().mut_endpoints();
         device_endpoints.clear();
         let bound_endpoints = listener.endpoints();
@@ -479,9 +479,9 @@ impl Stack {
         self.tunnel_manager().reset();
 
         let sn_list = self.sn_client().ping().sn_list().clone();
-        self.sn_client().reset(listener.clone(), sn_list, local);
-
-        listener.wait_online().await
+        // self.sn_client().reset(listener.clone(), sn_list, local);
+        // listener.wait_online().await
+        Ok(())
     }
 }
 
@@ -556,18 +556,6 @@ impl OnTcpInterface for Stack {
     }
 }
 
-impl PingClientStateEvent for Stack {
-    fn online(&self, _sn: &Device) {
-        info!("{} sn online, please implement it if not.", self.local_device_id());
-        // unimplemented!()
-    }
-
-    fn offline(&self, sn: &Device) {
-        info!("{} sn offline, please implement it if not.", self.local_device_id());
-        // unimplemented!()
-        self.keystore().reset_peer(&sn.desc().device_id());
-    }
-}
 
 impl PingClientCalledEvent for Stack {
     fn on_called(&self, called: &SnCalled, _: ()) -> Result<(), BuckyError> {
