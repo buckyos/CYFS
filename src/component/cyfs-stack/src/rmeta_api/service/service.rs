@@ -5,6 +5,7 @@ use super::default::GlobalStateDefaultMetas;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::rmeta::*;
+use crate::rmeta_api::GlobalStatePathMetaSyncCollection;
 use crate::root_state_api::GlobalStateLocalService;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
@@ -77,6 +78,18 @@ impl GlobalStateMetaLocalService {
             GlobalStateCategory::RootState => self.root_state_meta.clone_processor(),
             GlobalStateCategory::LocalCache => self.local_cache_meta.clone_processor(),
         }
+    }
+
+    pub async fn get_dec_meta(
+        &self,
+        target_dec_id: &ObjectId,
+        category: GlobalStateCategory,
+    ) -> BuckyResult<Option<GlobalStatePathMetaSyncCollection>> {
+        let rmeta = self.get_meta_manager(category);
+
+        rmeta
+            .get_option_global_state_meta(target_dec_id, false)
+            .await
     }
 
     pub async fn check_access(
@@ -164,7 +177,8 @@ impl NamedObjectCacheObjectMetaAccessProvider for GlobalStateMetaLocalService {
         source: &RequestSourceInfo,
         permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>> {
-        self.check_object_access(target_dec_id, source, object_data, permissions).await
+        self.check_object_access(target_dec_id, source, object_data, permissions)
+            .await
     }
 }
 

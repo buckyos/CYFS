@@ -334,4 +334,21 @@ impl GlobalStatePathMetaSyncCollection {
 
         Ok(ret)
     }
+
+    pub fn query_path_config(&self, path: &str) -> Option<GlobalStatePathConfigItemValue> {
+        let ret = {
+            let meta = self.meta.coll().write().unwrap();
+            match meta.config.query(path) {
+                Some(item) => {
+                    Some(GlobalStatePathConfigItemValue {
+                        storage_state: item.storage_state,
+                        depth: item.depth,
+                    })
+                }
+                None => None,
+            }
+        };
+
+        ret
+    }
 }

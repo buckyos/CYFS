@@ -19,9 +19,9 @@ impl GlobalStatePathConfigList {
     }
 
     pub fn sort(&mut self) {
-        self.list
-            .sort_by(|left, right| 
-                GlobalStatePathHelper::compare_path(&right.path, &left.path).unwrap())
+        self.list.sort_by(|left, right| {
+            GlobalStatePathHelper::compare_path(&right.path, &left.path).unwrap()
+        })
     }
 
     // return true if any changed
@@ -74,5 +74,28 @@ impl GlobalStatePathConfigList {
         let count = self.list.len();
         self.list.clear();
         count
+    }
+
+    pub fn query(&self, path: &str) -> Option<&GlobalStatePathConfigItem> {
+        let path = GlobalStatePathHelper::fix_path(path);
+
+        // 路径越长，在列表中的位置越靠前
+        let mut current_len = usize::MAX;
+        for item in &self.list {
+
+            // FIXME check codes for debug
+            assert!(item.path.len() <= current_len);
+            current_len = item.path.len();
+
+            if path.len() > item.path.len() {
+                continue;
+            }
+
+            if path.starts_with(item.path.as_str()) {
+                return Some(&item);
+            }
+        }
+
+        None
     }
 }

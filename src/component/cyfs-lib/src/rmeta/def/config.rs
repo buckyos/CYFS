@@ -64,6 +64,11 @@ pub struct GlobalStatePathConfigItem {
 
 impl GlobalStatePathConfigItem {
     pub fn try_fix_path(&mut self) {
-        self.path = GlobalStatePathHelper::fix_path(&self.path);
+        self.path = GlobalStatePathHelper::fix_path(&self.path).to_string();
     }
+}
+
+pub struct GlobalStatePathConfigItemValue {
+    pub storage_state: Option<GlobalStatePathStorageState>,
+    pub depth: Option<u8>,
 }

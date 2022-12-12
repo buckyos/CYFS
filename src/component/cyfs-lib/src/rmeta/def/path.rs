@@ -1,25 +1,26 @@
 
 use std::cmp::Ordering;
+use std::borrow::Cow;
 
 pub struct GlobalStatePathHelper;
 
 impl GlobalStatePathHelper {
-    pub fn fix_path(path: impl Into<String> + AsRef<str>) -> String {
-        let path = path.as_ref().trim();
+    pub fn fix_path<'a>(path: &'a str) -> Cow<'a, str> {
+        let path = path.trim();
 
         let ret = match path.ends_with("/") {
             true => {
                 if path.starts_with('/') {
-                    path.into()
+                    Cow::Borrowed(path)
                 } else {
-                    format!("/{}", path.as_ref() as &str)
+                    Cow::Owned(format!("/{}", path))
                 }
             }
             false => {
                 if path.starts_with('/') {
-                    format!("{}/", path.as_ref() as &str)
+                    Cow::Owned(format!("{}/", path))
                 } else {
-                    format!("/{}/", path.as_ref() as &str)
+                    Cow::Owned(format!("/{}/", path))
                 }
             }
         };

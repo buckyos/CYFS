@@ -163,8 +163,8 @@ impl GlobalStatePathAccessItem {
         self.access.check_valid()
     }
 
-    pub fn new(path: impl Into<String> + AsRef<str>, access: u32) -> Self {
-        let path = GlobalStatePathHelper::fix_path(path);
+    pub fn new(path: &str, access: u32) -> Self {
+        let path = GlobalStatePathHelper::fix_path(path).to_string();
 
         Self {
             path,
@@ -173,7 +173,7 @@ impl GlobalStatePathAccessItem {
     }
 
     pub fn new_group(
-        path: impl Into<String> + AsRef<str>,
+        path: &str,
         zone: Option<ObjectId>,
         zone_category: Option<DeviceZoneCategory>,
         dec: Option<ObjectId>,
@@ -181,7 +181,7 @@ impl GlobalStatePathAccessItem {
     ) -> Self {
         assert!(zone.is_some() || dec.is_some());
 
-        let path = GlobalStatePathHelper::fix_path(path);
+        let path = GlobalStatePathHelper::fix_path(path).to_string();
 
         Self {
             path,
@@ -195,7 +195,7 @@ impl GlobalStatePathAccessItem {
     }
 
     pub fn try_fix_path(&mut self) {
-        self.path = GlobalStatePathHelper::fix_path(&self.path);
+        self.path = GlobalStatePathHelper::fix_path(&self.path).to_string();
     }
 }
 
