@@ -28,3 +28,12 @@ pub type GlobalStateMetaRemoveObjectMetaResponse = GlobalStateMetaRemoveObjectMe
 
 pub type GlobalStateMetaClearObjectMetaRequest = GlobalStateMetaClearObjectMetaOutputRequest;
 pub type GlobalStateMetaClearObjectMetaResponse = GlobalStateMetaClearObjectMetaOutputResponse;
+
+pub type GlobalStateMetaAddPathConfigRequest = GlobalStateMetaAddPathConfigOutputRequest;
+pub type GlobalStateMetaAddPathConfigResponse = GlobalStateMetaAddPathConfigOutputResponse;
+
+pub type GlobalStateMetaRemovePathConfigRequest = GlobalStateMetaRemovePathConfigOutputRequest;
+pub type GlobalStateMetaRemovePathConfigResponse = GlobalStateMetaRemovePathConfigOutputResponse;
+
+pub type GlobalStateMetaClearPathConfigRequest = GlobalStateMetaClearPathConfigOutputRequest;
+pub type GlobalStateMetaClearPathConfigResponse = GlobalStateMetaClearPathConfigOutputResponse;

@@ -148,6 +148,7 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaServiceRouter {
         processor.clear_link(req).await
     }
 
+    // object meta
     async fn add_object_meta(
         &self,
         req: GlobalStateMetaAddObjectMetaInputRequest,
@@ -170,5 +171,30 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaServiceRouter {
     ) -> BuckyResult<GlobalStateMetaClearObjectMetaInputResponse> {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.clear_object_meta(req).await
+    }
+
+    // path config
+    async fn add_path_config(
+        &self,
+        req: GlobalStateMetaAddPathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaAddPathConfigInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.add_path_config(req).await
+    }
+
+    async fn remove_path_config(
+        &self,
+        req: GlobalStateMetaRemovePathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaRemovePathConfigInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.remove_path_config(req).await
+    }
+
+    async fn clear_path_config(
+        &self,
+        req: GlobalStateMetaClearPathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaClearPathConfigInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.clear_path_config(req).await
     }
 }

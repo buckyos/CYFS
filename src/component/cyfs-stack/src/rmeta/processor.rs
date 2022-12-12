@@ -20,6 +20,7 @@ pub trait GlobalStateMetaInputProcessor: Sync + Send + 'static {
         req: GlobalStateMetaClearAccessInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearAccessInputResponse>;
 
+    // link
     async fn add_link(
         &self,
         req: GlobalStateMetaAddLinkInputRequest,
@@ -35,6 +36,7 @@ pub trait GlobalStateMetaInputProcessor: Sync + Send + 'static {
         req: GlobalStateMetaClearLinkInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearLinkInputResponse>;
 
+    // object meta
     async fn add_object_meta(
         &self,
         req: GlobalStateMetaAddObjectMetaInputRequest,
@@ -49,6 +51,22 @@ pub trait GlobalStateMetaInputProcessor: Sync + Send + 'static {
         &self,
         req: GlobalStateMetaClearObjectMetaInputRequest,
     ) -> BuckyResult<GlobalStateMetaClearObjectMetaInputResponse>;
+
+    // path config
+    async fn add_path_config(
+        &self,
+        req: GlobalStateMetaAddPathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaAddPathConfigInputResponse>;
+
+    async fn remove_path_config(
+        &self,
+        req: GlobalStateMetaRemovePathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaRemovePathConfigInputResponse>;
+
+    async fn clear_path_config(
+        &self,
+        req: GlobalStateMetaClearPathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaClearPathConfigInputResponse>;
 }
 
 pub type GlobalStateMetaInputProcessorRef = Arc<Box<dyn GlobalStateMetaInputProcessor>>;

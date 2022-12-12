@@ -142,3 +142,34 @@ pub struct GlobalStateMetaClearObjectMetaOutputRequest {
 pub struct GlobalStateMetaClearObjectMetaOutputResponse {
     pub count: u32,
 }
+
+// path config
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalStateMetaAddPathConfigOutputRequest {
+    pub common: MetaOutputRequestCommon,
+
+    pub item: GlobalStatePathConfigItem,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalStateMetaAddPathConfigOutputResponse {
+    pub updated: bool,
+}
+
+pub type GlobalStateMetaRemovePathConfigOutputRequest = GlobalStateMetaAddPathConfigOutputRequest;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalStateMetaRemovePathConfigOutputResponse {
+    pub item: Option<GlobalStatePathConfigItem>,
+}
+
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalStateMetaClearPathConfigOutputRequest {
+    pub common: MetaOutputRequestCommon,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalStateMetaClearPathConfigOutputResponse {
+    pub count: u32,
+}

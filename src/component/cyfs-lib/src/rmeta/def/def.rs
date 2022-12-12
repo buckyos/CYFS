@@ -16,6 +16,10 @@ pub enum MetaAction {
     GlobalStateAddObjectMeta,
     GlobalStateRemoveObjectMeta,
     GlobalStateClearObjectMeta,
+
+    GlobalStateAddPathConfig,
+    GlobalStateRemovePathConfig,
+    GlobalStateClearPathConfig,
 }
 
 impl ToString for MetaAction {
@@ -32,6 +36,10 @@ impl ToString for MetaAction {
             Self::GlobalStateAddObjectMeta => "global-state-add-object-meta",
             Self::GlobalStateRemoveObjectMeta => "global-state-remove-object-meta",
             Self::GlobalStateClearObjectMeta => "global-state-clear-object-meta",
+
+            Self::GlobalStateAddPathConfig => "global-state-add-path-config",
+            Self::GlobalStateRemovePathConfig => "global-state-remove-path-config",
+            Self::GlobalStateClearPathConfig => "global-state-clear-path-config",
         })
         .to_owned()
     }
@@ -54,6 +62,10 @@ impl FromStr for MetaAction {
             "global-state-remove-object-meta" => Self::GlobalStateRemoveObjectMeta,
             "global-state-clear-object-meta" => Self::GlobalStateClearObjectMeta,
 
+            "global-state-add-path-config" => Self::GlobalStateAddPathConfig,
+            "global-state-remove-path-config" => Self::GlobalStateRemovePathConfig,
+            "global-state-clear-path-config" => Self::GlobalStateClearPathConfig,
+            
             v @ _ => {
                 let msg = format!("unknown meta action: {}", v);
                 error!("{}", msg);

@@ -107,6 +107,7 @@ impl GlobalStateMetaOutputProcessor for GlobalStateMetaOutputTransformer {
         self.processor.clear_link(in_req).await
     }
 
+    // object meta
     async fn add_object_meta(
         &self,
         req: GlobalStateMetaAddObjectMetaOutputRequest,
@@ -142,6 +143,41 @@ impl GlobalStateMetaOutputProcessor for GlobalStateMetaOutputTransformer {
         self.processor.clear_object_meta(in_req).await
     }
 
+    // path config
+    async fn add_path_config(
+        &self,
+        req: GlobalStateMetaAddPathConfigOutputRequest,
+    ) -> BuckyResult<GlobalStateMetaAddPathConfigOutputResponse> {
+        let in_req = GlobalStateMetaAddPathConfigInputRequest {
+            common: self.convert_common(req.common),
+            item: req.item,
+        };
+
+        self.processor.add_path_config(in_req).await
+    }
+
+    async fn remove_path_config(
+        &self,
+        req: GlobalStateMetaRemovePathConfigOutputRequest,
+    ) -> BuckyResult<GlobalStateMetaRemovePathConfigOutputResponse> {
+        let in_req = GlobalStateMetaRemovePathConfigInputRequest {
+            common: self.convert_common(req.common),
+            item: req.item,
+        };
+
+        self.processor.remove_path_config(in_req).await
+    }
+
+    async fn clear_path_config(
+        &self,
+        req: GlobalStateMetaClearPathConfigOutputRequest,
+    ) -> BuckyResult<GlobalStateMetaClearPathConfigOutputResponse> {
+        let in_req = GlobalStateMetaClearPathConfigInputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.clear_path_config(in_req).await
+    }
 }
 
 ///////////////////////////////////////////////////
@@ -274,5 +310,41 @@ impl GlobalStateMetaInputProcessor for GlobalStateMetaInputTransformer {
         };
 
         self.processor.clear_object_meta(in_req).await
+    }
+
+    // path config
+    async fn add_path_config(
+        &self,
+        req: GlobalStateMetaAddPathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaAddPathConfigInputResponse> {
+        let in_req = GlobalStateMetaAddPathConfigOutputRequest {
+            common: self.convert_common(req.common),
+            item: req.item,
+        };
+
+        self.processor.add_path_config(in_req).await
+    }
+
+    async fn remove_path_config(
+        &self,
+        req: GlobalStateMetaRemovePathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaRemovePathConfigInputResponse> {
+        let in_req = GlobalStateMetaRemovePathConfigOutputRequest {
+            common: self.convert_common(req.common),
+            item: req.item,
+        };
+
+        self.processor.remove_path_config(in_req).await
+    }
+
+    async fn clear_path_config(
+        &self,
+        req: GlobalStateMetaClearPathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaClearPathConfigInputResponse> {
+        let in_req = GlobalStateMetaClearPathConfigOutputRequest {
+            common: self.convert_common(req.common),
+        };
+
+        self.processor.clear_path_config(in_req).await
     }
 }
