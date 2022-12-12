@@ -68,6 +68,7 @@ mod android {
             anonymous: false,
             random_id: false,
             proxy_port: PROXY_PORT,
+            browser_mode: None
         };
 
         async_std::task::block_on(async {
