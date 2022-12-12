@@ -266,11 +266,6 @@ impl GlobalStatePathMetaSyncCollection {
         Ok(ret)
     }
 
-    pub fn is_object_access_available(&self) -> bool {
-        let meta = self.meta.coll().read().unwrap();
-        !meta.object.is_empty()
-    }
-
     pub fn check_object_access(
         &self,
         target_dec_id: &ObjectId,
@@ -279,6 +274,64 @@ impl GlobalStatePathMetaSyncCollection {
         permissions: AccessPermissions,
     ) -> BuckyResult<Option<()>> {
         let meta = self.meta.coll().read().unwrap();
-        meta.object.check(target_dec_id, object_data, source, permissions)
+        meta.object
+            .check(target_dec_id, object_data, source, permissions)
+    }
+
+    // path config
+    pub async fn add_path_config(&self, item: GlobalStatePathConfigItem) -> BuckyResult<bool> {
+        {
+            let mut meta = self.meta.coll().write().unwrap();
+            let ret = meta.config.add(item);
+            if !ret {
+                return Ok(false);
+            }
+        }
+
+        self.meta.set_dirty(true);
+        self.meta.save().await?;
+
+        self.dump();
+
+        Ok(true)
+    }
+
+    pub async fn remove_path_config(
+        &self,
+        item: GlobalStatePathConfigItem,
+    ) -> BuckyResult<Option<GlobalStatePathConfigItem>> {
+        let ret = {
+            let mut meta = self.meta.coll().write().unwrap();
+            meta.config.remove(item)
+        };
+
+        if ret.is_none() {
+            return Ok(None);
+        }
+
+        self.meta.set_dirty(true);
+        self.meta.save().await?;
+
+        self.dump();
+
+        Ok(ret)
+    }
+
+    pub async fn clear_path_config(&self) -> BuckyResult<usize> {
+        let ret = {
+            let mut meta = self.meta.coll().write().unwrap();
+            meta.config.clear()
+        };
+
+        if ret == 0 {
+            return Ok(ret);
+        }
+
+        self.meta.set_dirty(true);
+        self.meta.save().await?;
+
+        self.dump();
+
+        Ok(ret)
     }
 }

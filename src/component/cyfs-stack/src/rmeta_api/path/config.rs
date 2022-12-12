@@ -1,26 +1,10 @@
+use cyfs_lib::*;
+
 use serde::{Deserialize, Serialize};
-
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GlobalStatePathStorageState {
-    Concrete = 0,
-    Virtual = 1,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GlobalStatePathConfig {
-    path: String,
-
-    // 要求存储状态，如为virtual则重建时会跳过。
-    storage_state: Option<u8>,
-
-    // 重建深度.0表示无引用深度，1表示会重建其引用的1层对象。不配置则根据对象的Selector确定初始重建深度。对大文件不自动重建，需要手动将depth设置为1.
-    depth: Option<u8>,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GlobalStatePathConfigList {
-    list: Vec<GlobalStatePathConfig>,
+    list: Vec<GlobalStatePathConfigItem>,
 }
 
 impl Default for GlobalStatePathConfigList {
@@ -31,12 +15,64 @@ impl Default for GlobalStatePathConfigList {
 
 impl GlobalStatePathConfigList {
     pub fn new() -> Self {
-        Self {
-            list: vec![],
+        Self { list: vec![] }
+    }
+
+    pub fn sort(&mut self) {
+        self.list
+            .sort_by(|left, right| 
+                GlobalStatePathHelper::compare_path(&right.path, &left.path).unwrap())
+    }
+
+    // return true if any changed
+    pub fn add(&mut self, mut item: GlobalStatePathConfigItem) -> bool {
+        item.try_fix_path();
+
+        if let Ok(i) = self
+            .list
+            .binary_search_by(|v| GlobalStatePathHelper::compare_path(&v.path, &item.path).unwrap())
+        {
+            if item == self.list[i] {
+                return false;
+            }
+
+            info!("rconfig replace item: {:?} -> {:?}", self.list[i], item);
+            self.list[i] = item;
+        } else {
+            info!("new rconfig item: {:?}", item);
+            self.list.push(item);
+            self.sort();
+        }
+
+        true
+    }
+
+    pub fn remove(
+        &mut self,
+        mut item: GlobalStatePathConfigItem,
+    ) -> Option<GlobalStatePathConfigItem> {
+        item.try_fix_path();
+
+        if let Ok(i) = self
+            .list
+            .binary_search_by(|v| GlobalStatePathHelper::compare_path(&v.path, &item.path).unwrap())
+        {
+            let item = self.list.remove(i);
+            info!("rconfig remove item: {:?}", item);
+            Some(item)
+        } else {
+            info!("rconfig remove item but not found: {:?}", item);
+            None
         }
     }
-    
-    pub fn sort(&mut self) {
-        self.list.sort_by(|left, right| right.path.cmp(&left.path))
+
+    pub fn clear(&mut self) -> usize {
+        if self.list.is_empty() {
+            return 0;
+        }
+
+        let count = self.list.len();
+        self.list.clear();
+        count
     }
 }
