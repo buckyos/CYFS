@@ -354,11 +354,6 @@ impl Stack {
         let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
         stack_impl.ndn = Some(ndn);
 
-        for sn in known_sn.iter() {
-            stack.device_cache().add(&sn.desc().device_id(), &sn);
-            stack.device_cache().add_sn(&sn);
-            // stack.sn_client().add_sn_ping(&sn, true, None);
-        }
         // get nearest sn in sn-list
         if let Some(sn) = stack.device_cache().nearest_sn_of(stack.local_device_id()) {
             let sn_device = stack.device_cache().get(&sn).await.unwrap();
