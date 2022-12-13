@@ -9,8 +9,7 @@ use async_std::{
 use cyfs_base::*;
 use crate::{
     types::*, 
-    interface::{udp::OnUdpRawData},
-    tunnel::TunnelContainer, 
+    tunnel::*, 
     datagram::{self, DatagramTunnelGuard},
     stack::{WeakStack, Stack}
 };
@@ -74,25 +73,23 @@ impl ChannelManager {
         self.0.channels.read().unwrap().entries.get(remote).cloned()
     }
 
-    pub fn create_channel(&self, remote: &DeviceId) -> Channel {
+    pub fn create_channel(&self, remote_const: &DeviceDesc) -> BuckyResult<Channel> {
+        let stack = Stack::from(&self.0.stack);
+        let remote = remote_const.device_id();
+        let tunnel = stack.tunnel_manager().create_container(remote_const)?;
         let mut channels = self.0.channels.write().unwrap();
 
-        channels.entries.get(remote).map(|c| c.clone()).map_or_else(|| {
+        Ok(channels.entries.get(&remote).map(|c| c.clone()).map_or_else(|| {
             info!("{} create channel on {}", self, remote);
-            let initial_download_speed = channels.download_history_speed.average() / (channels.entries.len() as u32 + 1);
-            let initial_upload_speed = channels.upload_history_speed.average() / (channels.entries.len() as u32 + 1);
 
             let channel = Channel::new(
                 self.0.stack.clone(), 
-                remote.clone(), 
-                self.0.command_tunnel.clone(), 
-                HistorySpeed::new(initial_download_speed, channels.download_history_speed.config().clone()), 
-                HistorySpeed::new(initial_upload_speed, channels.download_history_speed.config().clone()), 
-            );
-            channels.entries.insert(remote.clone(), channel.clone());
+                tunnel, 
+                self.0.command_tunnel.clone());
+            channels.entries.insert(remote, channel.clone());
 
             channel
-        }, |c| c)
+        }, |c| c))
     } 
 
     pub fn on_schedule(&self, when: Timestamp) {
@@ -153,12 +150,17 @@ impl ChannelManager {
     }
 
     async fn recv_command(&self) {
+        let stack = Stack::from(&self.0.stack);
         loop {
             match self.0.command_tunnel.recv_v().await {
                 Ok(datagrams) => {
                     for datagram in datagrams {
-                        let channel = self.channel_of(&datagram.source.remote)
-                            .or_else(| | Some(self.create_channel(&datagram.source.remote))).unwrap();
+                        let channel = if let Some(channel) = self.channel_of(&datagram.source.remote) {
+                            channel
+                        } else {
+                            let tunnel = stack.tunnel_manager().container_of(&datagram.source.remote).unwrap();
+                            self.create_channel(tunnel.remote_const()).unwrap()
+                        };
                         let _ = channel.on_datagram(datagram);
                     }
                 }, 
@@ -168,11 +170,10 @@ impl ChannelManager {
             }
         }
     }
-}
 
-impl OnUdpRawData<&TunnelContainer> for ChannelManager {
-    fn on_udp_raw_data(&self, data: &[u8], tunnel: &TunnelContainer) -> Result<(), BuckyError> {
-        let channel = self.channel_of(tunnel.remote()).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "channel not exists"))?;
-        channel.on_udp_raw_data(data, None)
+    pub fn on_raw_data(&self, data: &[u8], context: (&TunnelContainer, DynamicTunnel)) -> Result<(), BuckyError> {
+        let (container, tunnel) = context;
+        let channel = self.channel_of(container.remote()).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "channel not exists"))?;
+        channel.on_raw_data(data, tunnel)
     }
 }

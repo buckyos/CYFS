@@ -385,93 +385,6 @@ impl JsonCodec<RespInterest> for RespInterest {
 }
 
 
-#[derive(Clone, Debug)]
-pub enum PieceDesc {
-    Raptor(u32 /*raptor seq*/, u16 /*raptor k*/),
-    Range(u32 /*range index*/, u16 /*range size*/),
-}
-
-impl PieceDesc {
-    pub fn raw_raptor_bytes() -> usize {
-        u8::raw_bytes().unwrap() + u32::raw_bytes().unwrap() + u16::raw_bytes().unwrap()
-    }
-
-    pub fn raw_stream_bytes() -> usize {
-        u8::raw_bytes().unwrap() + u32::raw_bytes().unwrap() + u16::raw_bytes().unwrap()
-    }
-
-    pub fn raptor_index(&self, require_k: u16) -> Option<u32> {
-        match self {
-            Self::Raptor(index, k) => if *k == require_k {
-                Some(*index)
-            } else {
-                None
-            },
-            Self::Range(_, _) => None 
-        }
-    }
-
-    pub fn range_index(&self, require_range_size: u16) -> Option<u32> {
-        match self {
-            Self::Range(index, range_size) => if *range_size == require_range_size {
-                Some(*index)
-            } else {
-                None
-            },
-            Self::Raptor(_, _) => None 
-        }
-    }
-}
-
-impl RawFixedBytes for PieceDesc {
-    fn raw_bytes() -> Option<usize> {
-        Some(Self::raw_raptor_bytes())
-    }
-}
-
-impl RawEncode for PieceDesc {
-    fn raw_measure(&self, _purpose: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
-        Ok(Self::raw_bytes().unwrap())
-    }
-
-    fn raw_encode<'a>(
-        &self,
-        buf: &'a mut [u8],
-        purpose: &Option<RawEncodePurpose>,
-    ) -> BuckyResult<&'a mut [u8]> {
-        match self {
-            Self::Raptor(index, k) => {
-                let buf = 0u8.raw_encode(buf, purpose)?;
-                let buf = index.raw_encode(buf, purpose)?;
-                k.raw_encode(buf, purpose)
-            }, 
-            Self::Range(index, len) => {
-                let buf = 1u8.raw_encode(buf, purpose)?;
-                let buf = index.raw_encode(buf, purpose)?;
-                len.raw_encode(buf, purpose)
-            }
-        }
-    }
-}
-
-impl<'de> RawDecode<'de> for PieceDesc {
-    fn raw_decode(buf: &'de [u8]) -> BuckyResult<(Self, &'de [u8])> {
-        let (code, buf) = u8::raw_decode(buf)?;
-        match code {
-            0u8 => {
-                let (index, buf) = u32::raw_decode(buf)?;
-                let (k, buf) = u16::raw_decode(buf)?;
-                Ok((Self::Raptor(index, k), buf))
-            }, 
-            1u8 => {
-                let (index, buf) = u32::raw_decode(buf)?;
-                let (len, buf) = u16::raw_decode(buf)?;
-                Ok((Self::Range(index, len), buf))
-            }, 
-            _ => Err(BuckyError::new(BuckyErrorCode::InvalidData, "invalid piece desc type code"))
-        }
-    }
-}
 
 pub struct PieceData {
     pub est_seq: Option<TempSeq>,
@@ -627,12 +540,16 @@ impl PieceControl {
                     let buf_ptr = context.encode(buf_ptr, &self.chunk)?;
                     let buf_ptr = context.encode(buf_ptr, &self.command)?;
                     let index_from = MTU - buf_ptr.len(); 
-                    let buf_ptr = context.option_encode(buf_ptr, &Some(0), flags.next())?;
+                    let buf_ptr = context.option_encode(buf_ptr, &self.max_index, flags.next())?;
                     let _ = context.option_encode(buf_ptr, &Some(vec![0u8; 0]), flags.next())?;
                     let _ = context.finish(&mut buffer[enc_from..])?;
                     
                     for indices in lost_index.chunks(Self::max_index_payload()) {
-                        let buf_ptr = self.max_index.unwrap().raw_encode(&mut buffer[index_from..], &None)?;
+                        let buf_ptr = if let Some(max_index) = self.max_index {
+                            max_index.raw_encode(&mut buffer[index_from..], &None)?
+                        } else {
+                            &mut buffer[index_from..]
+                        };
                         let buf_ptr = indices.raw_encode(buf_ptr, &None)?;
 
                         let len = MTU - buf_ptr.len();

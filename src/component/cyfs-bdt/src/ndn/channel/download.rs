@@ -1,7 +1,6 @@
 use log::*;
 use std::{
-    time::Duration, 
-    sync::{RwLock}
+    sync::{RwLock}, 
 };
 use async_std::{
     sync::Arc, 
@@ -9,60 +8,56 @@ use async_std::{
 use futures::future::AbortRegistration;
 use cyfs_base::*;
 use crate::{
-    types::*, 
-    stack::{Stack, WeakStack} 
+    types::*
 };
 use super::super::{
     chunk::*, 
-    types::*
+    types::*, 
+    download::*
 };
 use super::{
     protocol::v0::*,
-    channel::Channel, 
+    channel::Channel,
+    tunnel::{
+        DynamicChannelTunnel, 
+        TunnelDownloadState
+    } 
 };
-
-struct InitState {
-    waiters: StateWaiter, 
-    history_speed: HistorySpeed
-}
 
 
 struct InterestingState {
-    waiters: StateWaiter, 
-    start_send_time: Timestamp, 
-    last_send_time: Timestamp, 
-    history_speed: HistorySpeed
+    waiters: StateWaiter,  
+    last_send_time: Option<Timestamp>, 
+    next_send_time: Option<Timestamp>,  
+    history_speed: HistorySpeed, 
+    cache: ChunkStreamCache,
 }
 
 struct DownloadingState {
     waiters: StateWaiter, 
-    last_pushed: Timestamp, 
-    loss_count: u32, 
+    tunnel_state: Box<dyn TunnelDownloadState>, 
     decoder: Box<dyn ChunkDecoder>, 
     speed_counter: SpeedCounter, 
-    history_speed: HistorySpeed
+    history_speed: HistorySpeed, 
 }
-
 
 
 struct FinishedState {
-    send_ctrl_time: Timestamp, 
-    chunk: Option<Arc<Vec<u8>>>
+    send_ctrl_time: Option<Timestamp>, 
 }
 
 struct CanceledState {
-    send_ctrl_time: Timestamp, 
+    send_ctrl_time: Option<Timestamp>, 
     err: BuckyError
 }
 
 pub enum DownloadSessionState {
     Downloading(u32), 
     Finished,
-    Canceled(BuckyErrorCode),
+    Canceled(BuckyError),
 }
 
 enum StateImpl {
-    Init(InitState), 
     Interesting(InterestingState), 
     Downloading(DownloadingState),
     Finished(FinishedState), 
@@ -72,24 +67,21 @@ enum StateImpl {
 impl StateImpl {
     fn to_session_state(&self) -> DownloadSessionState {
         match self {
-            Self::Init(_) => DownloadSessionState::Downloading(0), 
             Self::Interesting(_) => DownloadSessionState::Downloading(0), 
             Self::Downloading(_) => DownloadSessionState::Downloading(0), 
             Self::Finished(_) => DownloadSessionState::Finished, 
-            Self::Canceled(canceled) => DownloadSessionState::Canceled(canceled.err.code()),
+            Self::Canceled(canceled) => DownloadSessionState::Canceled(canceled.err.clone()),
         }
     }
 }
 
 
 struct SessionImpl {
-    stack: WeakStack, 
     chunk: ChunkId, 
-    session_id: TempSeq, 
     channel: Channel, 
+    session_id: TempSeq, 
+    source: DownloadSourceWithReferer<DeviceId>, 
     state: RwLock<StateImpl>, 
-    piece_type: ChunkEncodeDesc, 
-    referer: Option<String>,
 }
 
 #[derive(Clone)]
@@ -97,68 +89,81 @@ pub struct DownloadSession(Arc<SessionImpl>);
 
 impl std::fmt::Display for DownloadSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DownloadSession{{session_id:{:?}, chunk:{}, remote:{}}}", self.session_id(), self.chunk(), self.channel().remote())
+        write!(f, "DownloadSession{{session_id:{:?}, chunk:{}, remote:{}}}", self.session_id(), self.chunk(), self.channel().tunnel().remote())
     }
 }
 
 
 impl DownloadSession {
-    pub fn new(
-        stack: WeakStack, 
+    pub fn interest(
         chunk: ChunkId, 
         session_id: TempSeq, 
         channel: Channel, 
-        piece_type: ChunkEncodeDesc,
-	    referer: Option<String>, 
-    ) -> Self {
-        let strong_stack = Stack::from(&stack);
+        source: DownloadSourceWithReferer<DeviceId>, 
+        cache: ChunkStreamCache,
+    ) -> Self { 
         Self(Arc::new(SessionImpl {
-            stack, 
             chunk, 
-            session_id, 
-            piece_type, 
-	        referer, 
-            state: RwLock::new(StateImpl::Init(InitState {
+            session_id,  
+            source, 
+            state: RwLock::new(StateImpl::Interesting(InterestingState { 
+                history_speed: HistorySpeed::new(0, channel.config().history_speed.clone()), 
                 waiters: StateWaiter::new(), 
-                history_speed: HistorySpeed::new(
-                    channel.initial_download_session_speed(), 
-                    strong_stack.config().ndn.channel.history_speed.clone())
-            })),
+                last_send_time: None, 
+                next_send_time: None, 
+                cache
+            })), 
             channel, 
         }))
     }
 
+    pub fn source(&self) -> &DownloadSourceWithReferer<DeviceId> {
+        &self.0.source
+    }
+
+    pub fn start(&self) {
+        let send = {
+            let state = &mut *self.0.state.write().unwrap();
+            match state {
+                StateImpl::Interesting(interesting) => {
+                    if interesting.last_send_time.is_none() {
+                        let now = bucky_time_now();
+                        interesting.last_send_time = Some(now);
+                        interesting.next_send_time = Some(now + self.channel().config().resend_interval.as_micros() as u64);
+                        true
+                    } else {
+                        false
+                    }
+                }, 
+                _ => false
+            }
+        };
+        
+        if send {
+            let interest = Interest {
+                session_id: self.session_id().clone(), 
+                chunk: self.chunk().clone(), 
+                prefer_type: self.source().encode_desc.clone(), 
+                referer: Some(self.source().referer.clone()), 
+                from: None
+            };
+            info!("{} sent {:?}", self, interest);
+            self.channel().interest(interest);
+        }
+       
+    }
+
+
     pub fn canceled(
-        stack: WeakStack, 
-        chunk: ChunkId, 
-        session_id: TempSeq, 
-        channel: Channel, 
-        err: BuckyError
+        _chunk: ChunkId, 
+        _session_id: TempSeq, 
+        _channel: Channel
     ) -> Self {
-        Self(Arc::new(SessionImpl {
-            stack, 
-            chunk, 
-            session_id, 
-            channel, 
-            piece_type: ChunkEncodeDesc::Unknown, 
-            referer: None, 
-            state: RwLock::new(StateImpl::Canceled(CanceledState {
-                send_ctrl_time: 0, 
-                err
-            })),
-        }))
+        unimplemented!()
     }
 
     pub fn chunk(&self) -> &ChunkId {
         &self.0.chunk
-    }
-
-    pub fn piece_type(&self) -> &ChunkEncodeDesc {
-        &self.0.piece_type
-    }
-
-    pub fn referer(&self) -> Option<&String> {
-        self.0.referer.as_ref()
     }
 
     pub fn channel(&self) -> &Channel {
@@ -177,48 +182,6 @@ impl DownloadSession {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    pub fn start(&self) -> DownloadSessionState {
-        self.channel().clear_dead();
-
-        info!("{} try start", self);
-        let _continue = {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                StateImpl::Init(init) => {
-                    let now = bucky_time_now();
-                    let mut interesting = InterestingState {
-                        history_speed: init.history_speed.clone(), 
-                        waiters: StateWaiter::new(), 
-                        start_send_time: now, 
-                        last_send_time: now, 
-                    };
-                    std::mem::swap(&mut interesting.waiters, &mut init.waiters);
-                    *state = StateImpl::Interesting(interesting);
-                    true
-                }, 
-                _ => {
-                    let err = BuckyError::new(BuckyErrorCode::ErrorState, "not in init state");
-                    error!("{} try start failed for {}", self, err);
-                    false
-                }
-            }
-        };
-
-        if _continue {
-            let interest = Interest {
-                session_id: self.session_id().clone(), 
-                chunk: self.chunk().clone(), 
-                prefer_type: self.piece_type().clone(), 
-                referer: self.referer().cloned(), 
-                from: None
-            };
-            info!("{} sent {:?}", self, interest);
-            self.channel().interest(interest);
-        }
-
-        self.state()
-    }
-
     pub async fn wait_finish(&self) -> DownloadSessionState {
         enum NextStep {
             Wait(AbortRegistration), 
@@ -227,11 +190,10 @@ impl DownloadSession {
         let next_step = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
-                StateImpl::Init(init) => NextStep::Wait(init.waiters.new_waiter()), 
                 StateImpl::Interesting(interesting) => NextStep::Wait(interesting.waiters.new_waiter()), 
                 StateImpl::Downloading(downloading) => NextStep::Wait(downloading.waiters.new_waiter()),
                 StateImpl::Finished(_) => NextStep::Return(DownloadSessionState::Finished), 
-                StateImpl::Canceled(canceled) => NextStep::Return(DownloadSessionState::Canceled(canceled.err.code())),
+                StateImpl::Canceled(canceled) => NextStep::Return(DownloadSessionState::Canceled(canceled.err.clone())),
             }
         };
         match next_step {
@@ -239,26 +201,8 @@ impl DownloadSession {
             NextStep::Return(state) => state
         }
     }
-    
-    pub fn take_chunk_content(&self) -> Option<Arc<Vec<u8>>> {
-        let state = &mut *self.0.state.write().unwrap();
-        match state {
-            StateImpl::Finished(finished) => {
-                if finished.chunk.is_some() {
-                    let mut chunk = None;
-                    std::mem::swap(&mut chunk, &mut finished.chunk);
-                    info!("{} chunk content taken", self);
-                    chunk
-                } else {
-                    None
-                }
-            }, 
-            _ => None
-        }
-    }
 
-
-    pub(super) fn push_piece_data(&self, piece: &PieceData) {
+    pub(super) fn push_piece_data(&self, piece: &PieceData, tunnel: &DynamicChannelTunnel) {
         enum NextStep {
             EnterDownloading, 
             RespControl(PieceControlCommand), 
@@ -277,25 +221,20 @@ impl DownloadSession {
                 },
                 Finished(finished) => {
                     let now = bucky_time_now();
-                    if finished.send_ctrl_time < now 
-                        && Duration::from_micros(now - finished.send_ctrl_time) > self.channel().config().resend_interval {
-                        finished.send_ctrl_time = now;
-                        RespControl(PieceControlCommand::Finish)
-                    } else {
+                    if finished.send_ctrl_time.is_none() {
+                        finished.send_ctrl_time = Some(now + self.channel().config().resend_interval.as_micros() as u64)
+                    } {
                         Ignore
                     }
                 }, 
                 Canceled(canceled) => {
                     let now = bucky_time_now();
-                    if canceled.send_ctrl_time < now 
-                        && Duration::from_micros(now - canceled.send_ctrl_time) > self.channel().config().resend_interval {
-                        canceled.send_ctrl_time = now;
-                        RespControl(PieceControlCommand::Cancel)
-                    } else {
+                    if canceled.send_ctrl_time.is_none() {
+                        canceled.send_ctrl_time = Some(now + self.channel().config().resend_interval.as_micros() as u64)
+                    } {
                         Ignore
                     }
                 }, 
-                _ => unreachable!()
             }
         };
 
@@ -311,22 +250,20 @@ impl DownloadSession {
         };
 
         let push_to_decoder = |provider: Box<dyn ChunkDecoder>| {
-            let (pre_state, next_state) = provider.push_piece_data(piece); 
+            let result = provider.push_piece_data(piece).unwrap(); 
             if let Some(waiters) = {
                 let state = &mut *self.0.state.write().unwrap();
                 match state {
                     Downloading(downloading) => {
-                        if pre_state != next_state {
-                            downloading.last_pushed = bucky_time_now();
-                            downloading.loss_count = 0;
+                        if result.valid {
+                            downloading.tunnel_state.as_mut().on_piece_data();
                         }
-                        if next_state == ChunkDecoderState::Ready {
+                        if result.finished {
                             let mut waiters = StateWaiter::new();
                             std::mem::swap(&mut waiters, &mut downloading.waiters);
                             info!("{} finished", self);
                             *state = Finished(FinishedState {
-                                send_ctrl_time: bucky_time_now(), 
-                                chunk: Some(downloading.decoder.chunk_content().unwrap())
+                                send_ctrl_time: None, 
                             });
                             Some(waiters)
                         } else {
@@ -344,17 +281,16 @@ impl DownloadSession {
         match next_step {
             EnterDownloading => {
                 if let Some(decoder) = {
-                    let decoder = StreamDecoder::new(self.chunk(), self.piece_type());
                     let state = &mut *self.0.state.write().unwrap();
                     match state {
                         Interesting(interesting) => {
+                            let decoder = StreamDecoder::new(self.chunk(), &self.source().encode_desc, interesting.cache.clone());
                             let mut downloading = DownloadingState {
+                                tunnel_state: tunnel.as_ref().download_state(), 
                                 history_speed: interesting.history_speed.clone(), 
                                 speed_counter: SpeedCounter::new(piece.data.len()), 
                                 decoder: decoder.clone_as_decoder(), 
                                 waiters: StateWaiter::new(), 
-                                last_pushed: 0, 
-                                loss_count: 0
                             };
                             std::mem::swap(&mut downloading.waiters, &mut interesting.waiters);
                             *state = Downloading(downloading);
@@ -379,32 +315,70 @@ impl DownloadSession {
     }
 
     pub(super) fn on_resp_interest(&self, resp_interest: &RespInterest) -> BuckyResult<()> {
-        match &resp_interest.err {
-            BuckyErrorCode::Ok => unimplemented!(),
+        match resp_interest.err {
+            BuckyErrorCode::Ok => unimplemented!(), 
+            BuckyErrorCode::WouldBlock => {
+                use StateImpl::*;
+                let state = &mut *self.0.state.write().unwrap();
+                match state {
+                    Interesting(interesting) => {
+                        interesting.next_send_time = Some(bucky_time_now() + self.channel().config().block_interval.as_micros() as u64);  
+                    }, 
+                    Downloading(downloading) => {
+                        downloading.tunnel_state.on_resp_interest();
+                    }, 
+                    Finished(finished) => {
+                        let now = bucky_time_now();
+                        if finished.send_ctrl_time.is_none() {
+                            finished.send_ctrl_time = Some(now + self.channel().config().resend_interval.as_micros() as u64)
+                        } 
+                    }, 
+                    Canceled(canceled) => {
+                        let now = bucky_time_now();
+                        if canceled.send_ctrl_time.is_none() {
+                            canceled.send_ctrl_time = Some(now + self.channel().config().resend_interval.as_micros() as u64)
+                        } 
+                    }
+                }   
+            }, 
             _ => {
-                self.cancel_by_error(BuckyError::new(resp_interest.err, "remote resp interest error"));
+                error!("{} cancel by err {}", self, resp_interest.err);
+
+                let mut waiters = StateWaiter::new();
+                {
+                    let state = &mut *self.0.state.write().unwrap();
+                    match state {
+                        StateImpl::Interesting(interesting) => {
+                            std::mem::swap(&mut waiters, &mut interesting.waiters);
+                            *state = StateImpl::Canceled(CanceledState {
+                                send_ctrl_time: None, 
+                                err: BuckyError::new(BuckyErrorCode::Interrupted, "cancel by remote")
+                            });
+                        },
+                        StateImpl::Downloading(downloading) => {
+                            std::mem::swap(&mut waiters, &mut downloading.waiters);
+                            *state = StateImpl::Canceled(CanceledState {
+                                send_ctrl_time: None, 
+                                err: BuckyError::new(BuckyErrorCode::Interrupted, "cancel by remote")
+                            });
+                        },
+                        _ => {}
+                    };
+                }
+                
+                waiters.wake();
             }
         }
         Ok(())
     }
 
     fn resend_interest(&self) -> BuckyResult<()> {
-        {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                StateImpl::Interesting(interesting) => {
-                    interesting.last_send_time = bucky_time_now(); 
-                    Ok(())
-                }, 
-                _ => Err(BuckyError::new(BuckyErrorCode::ErrorState, "not in interesting state"))
-            }
-        }?;
         let interest = Interest {
             session_id: self.session_id().clone(), 
             chunk: self.chunk().clone(), 
-            prefer_type: self.piece_type().clone(), 
+            prefer_type: self.source().encode_desc.clone(), 
+            referer: Some(self.source().referer.clone()), 
             from: None,
-            referer: self.referer().cloned()
         };
         info!("{} sent {:?}", self, interest);
         self.channel().interest(interest);
@@ -416,40 +390,40 @@ impl DownloadSession {
         error!("{} cancel by err {}", self, err);
 
         let mut waiters = StateWaiter::new();
-        {
+        let send = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
-                StateImpl::Init(init) => {
-                    std::mem::swap(&mut waiters, &mut init.waiters);
-                    *state = StateImpl::Canceled(CanceledState {
-                        send_ctrl_time: 0, 
-                        err
-                    });
-                },
                 StateImpl::Interesting(interesting) => {
                     std::mem::swap(&mut waiters, &mut interesting.waiters);
                     *state = StateImpl::Canceled(CanceledState {
-                        send_ctrl_time: 0, 
+                        send_ctrl_time: None, 
                         err
                     });
+                    true
                 },
                 StateImpl::Downloading(downloading) => {
                     std::mem::swap(&mut waiters, &mut downloading.waiters);
                     *state = StateImpl::Canceled(CanceledState {
-                        send_ctrl_time: 0, 
+                        send_ctrl_time: None, 
                         err
                     });
+                    true
                 },
-	    	    StateImpl::Finished(_) => {
-                    *state = StateImpl::Canceled(CanceledState {
-                        send_ctrl_time: 0, 
-                        err
-                    });
-                },
-                _ => {}
-            };
-        }
+                _ => false
+            }
+        };
         waiters.wake();
+
+        if send {
+            self.channel().send_piece_control(PieceControl {
+                sequence: self.channel().gen_command_seq(), 
+                session_id: self.session_id().clone(), 
+                chunk: self.chunk().clone(), 
+                command: PieceControlCommand::Cancel, 
+                max_index: None, 
+                lost_index: None
+            });
+        }
     }
 
     pub(super) fn on_time_escape(&self, now: Timestamp) -> BuckyResult<()> {
@@ -457,44 +431,37 @@ impl DownloadSession {
             None, 
             SendInterest, 
             SendPieceControl(PieceControl), 
-            Cancel, 
         }
 
         let next_step = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
-                StateImpl::Init(_) => NextStep::None, 
                 StateImpl::Interesting(interesting) => {
-                    if now > interesting.start_send_time
-                        && Duration::from_micros(now - interesting.start_send_time) > self.channel().config().resend_timeout {
-                        NextStep::Cancel
-                    } else if now > interesting.last_send_time 
-                        && Duration::from_micros(now - interesting.last_send_time) > self.channel().config().resend_interval {
-                        NextStep::SendInterest
+                    if let Some(next_send_time) = interesting.next_send_time {
+                        if now > next_send_time {
+                            interesting.next_send_time = Some(now + 2 * (next_send_time - interesting.last_send_time.unwrap()));
+                            interesting.last_send_time = Some(now);
+                            NextStep::SendInterest
+                        } else {
+                            NextStep::None
+                        }
                     } else {
                         NextStep::None
                     }
+                   
                 }, 
                 StateImpl::Downloading(downloading) => {
-                    if now > downloading.last_pushed 
-                        && Duration::from_micros(now - downloading.last_pushed) > self.channel().config().resend_interval {
+                    if downloading.tunnel_state.as_mut().on_time_escape(now) {
                         if let Some((max_index, lost_index)) = downloading.decoder.require_index() {
-                            downloading.last_pushed = now;
-                            downloading.loss_count += 1;
-                            if self.channel().config().resend_interval * downloading.loss_count > self.channel().config().resend_timeout {
-                                error!("{} break", self);
-                                NextStep::Cancel
-                            } else {
-                                debug!("{} dectect loss piece max_index:{:?} lost_index:{:?}", self, max_index, lost_index);
-                                NextStep::SendPieceControl(PieceControl {
-                                    sequence: self.channel().gen_command_seq(), 
-                                    session_id: self.session_id().clone(), 
-                                    chunk: downloading.decoder.chunk().clone(), 
-                                    command: PieceControlCommand::Continue, 
-                                    max_index, 
-                                    lost_index
-                                })
-                            }
+                            debug!("{} dectect loss piece max_index:{:?} lost_index:{:?}", self, max_index, lost_index);
+                            NextStep::SendPieceControl(PieceControl {
+                                sequence: self.channel().gen_command_seq(), 
+                                session_id: self.session_id().clone(), 
+                                chunk: self.chunk().clone(), 
+                                command: PieceControlCommand::Continue, 
+                                max_index, 
+                                lost_index
+                            })
                         } else {
                             NextStep::None
                         }
@@ -502,17 +469,49 @@ impl DownloadSession {
                         NextStep::None
                     }
                 },
-                StateImpl::Finished(_) => NextStep::None, 
-                StateImpl::Canceled(_) => NextStep::None,
+                StateImpl::Finished(finished) => {
+                    if let Some(send_time) = finished.send_ctrl_time {
+                        if now > send_time {
+                            finished.send_ctrl_time = None;
+                            NextStep::SendPieceControl(PieceControl {
+                                sequence: self.channel().gen_command_seq(), 
+                                session_id: self.session_id().clone(), 
+                                chunk: self.chunk().clone(), 
+                                command: PieceControlCommand::Finish, 
+                                max_index: None, 
+                                lost_index: None
+                            }) 
+                        } else {
+                            NextStep::None
+                        }
+                    } else {
+                        NextStep::None
+                    }
+                }
+                StateImpl::Canceled(canceled) => {
+                    if let Some(send_time) = canceled.send_ctrl_time {
+                        if now > send_time {
+                            canceled.send_ctrl_time = None;
+                            NextStep::SendPieceControl(PieceControl {
+                                sequence: self.channel().gen_command_seq(), 
+                                session_id: self.session_id().clone(), 
+                                chunk: self.chunk().clone(), 
+                                command: PieceControlCommand::Cancel, 
+                                max_index: None, 
+                                lost_index: None
+                            }) 
+                        } else {
+                            NextStep::None
+                        }
+                    } else {
+                        NextStep::None
+                    }
+                }
             }
         };
         
         match next_step {
             NextStep::None => Ok(()), 
-            NextStep::Cancel => {
-                self.cancel_by_error(BuckyError::new(BuckyErrorCode::Timeout, "interest timeout"));
-                Err(BuckyError::new(BuckyErrorCode::Timeout, "interest timeout"))
-            }, 
             NextStep::SendInterest => {
                 let _ = self.resend_interest();
                 Ok(())
@@ -527,10 +526,6 @@ impl DownloadSession {
     pub fn calc_speed(&self, when: Timestamp) -> u32 {
         let state = &mut *self.0.state.write().unwrap();
         match state {
-            StateImpl::Init(init) => {
-                init.history_speed.update(Some(0), when);
-                0
-            },
             StateImpl::Interesting(interesting) => {
                 interesting.history_speed.update(Some(0), when);
                 0
@@ -555,7 +550,6 @@ impl DownloadSession {
     pub fn history_speed(&self) -> u32 {
         let state = &*self.0.state.read().unwrap();
         match state {
-            StateImpl::Init(init) => init.history_speed.average(),
             StateImpl::Interesting(interesting) => interesting.history_speed.average(),
             StateImpl::Downloading(downloading) => downloading.history_speed.average(),
             _ => 0

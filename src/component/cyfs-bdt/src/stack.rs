@@ -1,3 +1,18 @@
+use std::{
+    ops::Deref, 
+    time::Duration, 
+    path::PathBuf
+    // sync::{atomic::{AtomicU64, Ordering}}
+};
+use async_std::{
+    sync::{Arc, Weak}, 
+    task, 
+    future, 
+};
+use log::*;
+use cyfs_base::*;
+
+
 use crate::{
     types::*,
     cc::{self},
@@ -18,24 +33,10 @@ use crate::{
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
     pn::client::ProxyManager,
-    ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler}, 
+    ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler, RawCacheConfig }, 
     debug::{self, DebugStub}
 };
-use cyfs_util::{
-    cache::*
-};
-use async_std::{
-    sync::{Arc, Weak}, 
-    task, 
-    future, 
-};
-use cyfs_base::*;
-use log::*;
-use std::{
-    ops::Deref, 
-    time::Duration, 
-    // sync::{atomic::{AtomicU64, Ordering}}
-};
+
 
 struct StackLazyComponents {
     sn_client: sn::client::ClientManager,
@@ -142,10 +143,9 @@ impl StackConfig {
                 atomic_interval: Duration::from_millis(10), 
                 schedule_interval: Duration::from_secs(1), 
                 channel: ndn::channel::Config {
-                    precoding_timeout: Duration::from_secs(900),
                     resend_interval: Duration::from_millis(500), 
                     resend_timeout: Duration::from_secs(5), 
-                    wait_redirect_timeout: Duration::from_millis(500),
+                    block_interval: Duration::from_secs(2), 
                     msl: Duration::from_secs(60), 
                     udp: ndn::channel::tunnel::udp::Config {
                         no_resp_loss_count: 3, 
@@ -160,6 +160,12 @@ impl StackConfig {
                         attenuation: 0.5, 
                         expire: Duration::from_secs(20),  
                         atomic: Duration::from_secs(1)
+                    }
+                }, 
+                chunk: ndn::chunk::Config{
+                    raw_caches: RawCacheConfig {
+                        mem_capacity: 1024 * 1024 * 1024, 
+                        tmp_dir: PathBuf::new()
                     }
                 }
             }, 
@@ -190,9 +196,6 @@ pub struct StackOpenParams {
     pub passive_pn: Option<Vec<Device>>, 
 
     pub outer_cache: Option<Box<dyn OuterDeviceCache>>,
-
-    pub ndc: Option<Box<dyn NamedDataCache>>,
-    pub tracker: Option<Box<dyn TrackerCache>>, 
     pub chunk_store: Option<Box<dyn ChunkReader>>, 
 
     pub ndn_event: Option<Box<dyn NdnEventHandler>>,
@@ -208,8 +211,6 @@ impl StackOpenParams {
             active_pn: None, 
             passive_pn: None,
             outer_cache: None,
-            ndc: None, 
-            tracker: None, 
             chunk_store: None, 
             ndn_event: None,
         }
@@ -331,35 +332,33 @@ impl Stack {
             None
         };
 
-        {
-            let components = StackLazyComponents {
-                sn_client: sn::client::ClientManager::create(stack.to_weak()),
-                tunnel_manager: TunnelManager::new(stack.to_weak()),
-                stream_manager: StreamManager::new(stack.to_weak()),
-                datagram_manager, 
-                proxy_manager, 
-                debug_stub: debug_stub.clone()
-            };
-            
-            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-            stack_impl.lazy_components = Some(components);
-    
-            let mut ndc = None;
-            std::mem::swap(&mut ndc, &mut params.ndc);
-            let mut tracker = None;
-            std::mem::swap(&mut tracker, &mut params.tracker);
-            let mut ndn_event = None;
-            std::mem::swap(&mut ndn_event, &mut params.ndn_event);
-    
-            let mut chunk_store = None;
-            std::mem::swap(&mut chunk_store, &mut params.chunk_store);
-    
-            let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
-            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-            stack_impl.ndn = Some(ndn);
-        }   
-        
 
+        let components = StackLazyComponents {
+            sn_client: sn::client::ClientManager::create(stack.to_weak()),
+            tunnel_manager: TunnelManager::new(stack.to_weak()),
+            stream_manager: StreamManager::new(stack.to_weak()),
+            datagram_manager, 
+            proxy_manager, 
+            debug_stub: debug_stub.clone()
+        };
+        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+        stack_impl.lazy_components = Some(components);
+
+        let mut ndn_event = None;
+        std::mem::swap(&mut ndn_event, &mut params.ndn_event);
+
+        let mut chunk_store = None;
+        std::mem::swap(&mut chunk_store, &mut params.chunk_store);
+
+        let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
+        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+        stack_impl.ndn = Some(ndn);
+
+        for sn in known_sn.iter() {
+            stack.device_cache().add(&sn.desc().device_id(), &sn);
+            stack.device_cache().add_sn(&sn);
+            // stack.sn_client().add_sn_ping(&sn, true, None);
+        }
         // get nearest sn in sn-list
         if let Some(sn) = stack.device_cache().nearest_sn_of(stack.local_device_id()) {
             let sn_device = stack.device_cache().get(&sn).await.unwrap();

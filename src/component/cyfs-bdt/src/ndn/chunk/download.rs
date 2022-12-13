@@ -1,11 +1,9 @@
 use std::{
-    sync::{RwLock},
+    sync::{RwLock, Arc, Weak},
 };
-use async_std::{
-    sync::Arc, 
-    task
+use async_std::{ 
+    task, 
 };
-use futures::future::AbortRegistration;
 use cyfs_base::*;
 use crate::{
     types::*, 
@@ -17,148 +15,102 @@ use super::super::{
     download::*,
 };
 use super::{
-    //encode::ChunkDecoder, 
-    storage::{ChunkReader},
+    cache::*, 
 };
 
-#[derive(Clone)]
-pub struct CacheReader {
-    pub cache: Arc<Vec<u8>>
-}
-
-#[async_trait::async_trait]
-impl ChunkReader for CacheReader {
-    fn clone_as_reader(&self) -> Box<dyn ChunkReader> {
-        Box::new(self.clone())
-    }
-
-    async fn exists(&self, _chunk: &ChunkId) -> bool {
-        true
-    }
-
-    async fn get(&self, _chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>> {
-        Ok(self.cache.clone())
-    }
-}
-
-
-struct InitState {
-    waiters: StateWaiter, 
-}
-
-struct RunningState {
-    session: DownloadSession, 
-    waiters: StateWaiter, 
+struct DownloadingState {
+    session: Option<DownloadSession>
 }
 
 enum StateImpl {
-    Init(InitState), 
-    Running(RunningState), 
-    Canceled(BuckyErrorCode),
-    Finished(Arc<Box<dyn ChunkReader>>)  
+    Loading, 
+    Downloading(DownloadingState), 
+    Finished
 }
 
-impl StateImpl {
-    pub fn to_task_state(&self) -> DownloadTaskState {
-        match self {
-            Self::Init(_) => DownloadTaskState::Downloading(0, 0.0), 
-            Self::Running(_) => DownloadTaskState::Downloading(0, 0.0), 
-            Self::Canceled(err) => DownloadTaskState::Error(*err), 
-            Self::Finished(_) => DownloadTaskState::Finished
-        }
-    }
-}
-
-struct ChunkDowloaderImpl {
+struct ChunkDowloaderImpl { 
     stack: WeakStack, 
-    chunk: ChunkId, 
-    state: RwLock<StateImpl>, 
     context: MultiDownloadContext, 
+    cache: ChunkCache, 
+    state: RwLock<StateImpl>, 
 }
 
 #[derive(Clone)]
 pub struct ChunkDownloader(Arc<ChunkDowloaderImpl>);
 
-// 不同于Uploader，Downloader可以被多个任务复用；
+pub struct WeakChunkDownloader(Weak<ChunkDowloaderImpl>);
+
+impl WeakChunkDownloader {
+    pub fn to_strong(&self) -> Option<ChunkDownloader> {
+        Weak::upgrade(&self.0).map(|arc| ChunkDownloader(arc))
+    }
+}
+
+impl ChunkDownloader {
+    pub fn to_weak(&self) -> WeakChunkDownloader {
+        WeakChunkDownloader(Arc::downgrade(&self.0))
+    }
+}
+
+
 impl ChunkDownloader {
     pub fn new(
-        stack: WeakStack,
-        chunk: ChunkId,  
-    ) -> Self {
-        Self(Arc::new(ChunkDowloaderImpl {
-            stack, 
-            chunk, 
-            state: RwLock::new(StateImpl::Init(InitState {
-                waiters: StateWaiter::new()})), 
-            context: MultiDownloadContext::new() 
-        }))
-    }
-
-    pub fn ptr_eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-
-    // 直接返回finished
-    pub fn finished(
         stack: WeakStack, 
-        chunk: ChunkId, 
-        content: Arc<Box<dyn ChunkReader>>
+        cache: ChunkCache,
     ) -> Self {
-        Self(Arc::new(ChunkDowloaderImpl {
+        let downloader = Self(Arc::new(ChunkDowloaderImpl {
             stack, 
-            chunk, 
-            state: RwLock::new(StateImpl::Finished(content)), 
-            context: MultiDownloadContext::new() 
-        }))
+            cache, 
+            state: RwLock::new(StateImpl::Loading), 
+            context: MultiDownloadContext::new(), 
+        }));
+
+        {
+            let downloader = downloader.clone();
+            
+            task::spawn(async move {
+                let finished = downloader.cache().wait_loaded().await;
+                {   
+                    let state = &mut *downloader.0.state.write().unwrap();
+                    if let StateImpl::Loading = state {
+                        if finished {
+                            *state = StateImpl::Finished;
+                        } else {
+                            *state = StateImpl::Downloading(DownloadingState { 
+                                session: None 
+                            });
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                }
+               
+                if !finished {
+                    downloader.on_drain(0);
+                }
+                
+            });
+        }
+        
+        downloader
     }
 
     pub fn context(&self) -> &MultiDownloadContext {
         &self.0.context
     }
 
+    pub fn cache(&self) -> &ChunkCache {
+        &self.0.cache
+    }
+
     pub fn chunk(&self) -> &ChunkId {
-        &self.0.chunk
+        self.cache().chunk()
     }
-
-    pub async fn wait_finish(&self) -> DownloadTaskState {
-        enum NextStep {
-            Wait(AbortRegistration), 
-            Return(DownloadTaskState)
-        }
-        let next_step = {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                StateImpl::Init(init) => NextStep::Wait(init.waiters.new_waiter()), 
-                StateImpl::Running(running) => NextStep::Wait(running.waiters.new_waiter()), 
-                StateImpl::Finished(_) => NextStep::Return(DownloadTaskState::Finished), 
-                StateImpl::Canceled(err) => NextStep::Return(DownloadTaskState::Error(*err)),
-            }
-        };
-        match next_step {
-            NextStep::Wait(waiter) => {
-                StateWaiter::wait(waiter, | | self.state()).await
-            }, 
-            NextStep::Return(state) => state
-        }
-    }
-
-    pub fn reader(&self) -> Option<Arc<Box<dyn ChunkReader>>> {
-        let state = &*self.0.state.read().unwrap();
-        match state {
-            StateImpl::Finished(reader) => Some(reader.clone()), 
-            _ => None
-        }
-    } 
-
-    pub fn state(&self) -> DownloadTaskState {
-        self.0.state.read().unwrap().to_task_state()
-    }
-
 
     pub fn calc_speed(&self, when: Timestamp) -> u32 {
         if let Some(session) = {
             match &*self.0.state.read().unwrap() {
-                StateImpl::Running(running) => Some(running.session.clone()), 
+                StateImpl::Downloading(downloading) => downloading.session.clone(), 
                 _ => None
             }
         } {
@@ -171,7 +123,7 @@ impl ChunkDownloader {
     pub fn cur_speed(&self) -> u32 {
         if let Some(session) = {
             match &*self.0.state.read().unwrap() {
-                StateImpl::Running(running) => Some(running.session.clone()), 
+                StateImpl::Downloading(downloading) => downloading.session.clone(), 
                 _ => None
             }
         } {
@@ -184,7 +136,7 @@ impl ChunkDownloader {
     pub fn history_speed(&self) -> u32 {
         if let Some(session) = {
             match &*self.0.state.read().unwrap() {
-                StateImpl::Running(running) => Some(running.session.clone()), 
+                StateImpl::Downloading(downloading) => downloading.session.clone(), 
                 _ => None
             }
         } {
@@ -199,108 +151,96 @@ impl ChunkDownloader {
     }
 
     pub fn on_drain(&self, _: u32) -> u32 {
-        if let Some(cur_speed) = {
-            let state = &*self.0.state.read().unwrap();
-            match state {
-                StateImpl::Init(_) => None,
-                StateImpl::Running(running) => Some(running.session.cur_speed()),  
-                _ => Some(0)
+        let (session, start) = {
+            match &*self.0.state.read().unwrap() {
+                StateImpl::Downloading(downloading) => (downloading.session.clone(), true), 
+                _ => (None, false)
             }
-        } {
-            return cur_speed;
-        }
-       
-
-        let strong_stack = Stack::from(&self.0.stack);
-        let session = {
-            let mut sources = self.context().sources_of(|source| {
-                if source.object_id.is_none() || source.object_id.as_ref().unwrap() == self.chunk().as_object_id() {
-                    true
-                } else {
-                    false
-                }
-            }, 1);
-
-            if sources.len() > 0 {
-                let source = sources.pop_front().unwrap();
-                let channel = strong_stack.ndn().channel_manager().create_channel(&source.target);
-
-                let session = DownloadSession::new(
-                    self.0.stack.clone(), 
-                    self.chunk().clone(), 
-                    strong_stack.ndn().chunk_manager().gen_session_id(), 
-                    channel, 
-                    ChunkEncodeDesc::Stream(None, None, None), 
-                    source.referer, 
-                );
-
+        };
+        if let Some(session) = session {
+            if !self.context().source_exists(session.source()) {
+                session.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "user canceled"));
                 let state = &mut *self.0.state.write().unwrap();
                 match state {
-                    StateImpl::Init(init) => {
-                        
-                        let mut running = RunningState {
-                            session: session.clone(), 
-                            waiters: StateWaiter::new()
-                        };
-                        std::mem::swap(&mut running.waiters, &mut init.waiters);
-                        *state = StateImpl::Running(running);
-
-                        Some(session)
+                    StateImpl::Downloading(downloading) => {
+                        if let Some(exists) = downloading.session.clone() {
+                            if exists.ptr_eq(&session) {
+                                // info!("{} cancel session {}", self, session);
+                                downloading.session = None;
+                            }
+                        }
                     }, 
-                    _ => {
-                        None
-                    }
+                    _ => {}
                 }
             } else {
-                None
+                return session.cur_speed();
             }
-            
-        };
-
-        if let Some(session) = session { 
-            let downloader = self.clone();
-            task::spawn(async move {
-                let waiters = {
-                    let _ = session.channel().download(session.clone());
-                    match session.wait_finish().await {
-                        DownloadSessionState::Finished => {
-                            let mut waiters = StateWaiter::new();
-                            let cache = session.take_chunk_content().unwrap();
-                            let state = &mut *downloader.0.state.write().unwrap();
-                            match state {
-                                StateImpl::Running(running) => {
-                                    std::mem::swap(&mut waiters, &mut running.waiters);
-                                    *state = StateImpl::Finished(Arc::new(Box::new(CacheReader {
-                                        cache
-                                    })));
-                                },
-                                StateImpl::Finished(_) => {
-                                    
-                                },
-                                _ => unreachable!()
-                            }
-                            Some(waiters)
-                        }, 
-                        DownloadSessionState::Canceled(err) => {
-                            let mut waiters = StateWaiter::new();
-                            let state = &mut *downloader.0.state.write().unwrap();
-                            match state {
-                                StateImpl::Running(running) => {
-                                    std::mem::swap(&mut waiters, &mut running.waiters);
-                                    *state = StateImpl::Canceled(err);
-                                },
-                                _ => unreachable!()
-                            }
-                            Some(waiters)
-                        }, 
-                        _ => unreachable!()
-                    }
-                };
-                if let Some(waiters) = waiters {
-                    waiters.wake();
-                }
-            });
+        } 
+          
+        if !start {
+            return 0;
         }
-        0
+
+        let cache = &self.0.cache;
+        let stack = Stack::from(&self.0.stack);
+        let mut sources = self.context().sources_of(|_| true, 1);
+
+        if sources.len() > 0 { 
+            let source = sources.pop_front().unwrap();
+            let channel = stack.ndn().channel_manager().create_channel(&source.target).unwrap();
+            
+           
+            let mut source: DownloadSourceWithReferer<DeviceId> = source.into();
+            source.encode_desc = match &source.encode_desc {
+                ChunkEncodeDesc::Unknown => ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 
+                ChunkEncodeDesc::Stream(..) => source.encode_desc.fill_values(self.chunk()), 
+                _ => unimplemented!()
+            };
+
+            match channel.download( 
+                self.chunk().clone(), 
+                source, 
+                cache.stream().clone()
+            ) {
+                Ok(session) => {
+                    let (start, exists) = {
+                        let state = &mut *self.0.state.write().unwrap();
+                        match state {
+                            StateImpl::Downloading(downloading) => {
+                                if let Some(exists) = &downloading.session {
+                                    (false, Some(exists.clone()))
+                                } else {
+                                    downloading.session = Some(session.clone());
+                                    (true, None)
+                                }
+                            }, 
+                            _ => (false, None)
+                        }
+                    };
+                    if start {
+                        session.start();
+                        session.cur_speed()
+                    } else if let Some(session) = exists {
+                        session.cur_speed()
+                    } else {
+                        0
+                    }
+                }, 
+                Err(_) => {
+                    if let Some(session) = {
+                        match &*self.0.state.read().unwrap() {
+                            StateImpl::Downloading(downloading) => downloading.session.clone(), 
+                            _ => None
+                        }
+                    } {
+                        session.cur_speed()
+                    } else {
+                        0
+                    }
+                }
+            }
+        } else {
+            0
+        }
     }
 }

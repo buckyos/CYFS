@@ -22,6 +22,7 @@ struct StateImpl {
 
 struct TaskImpl {
     priority: UploadTaskPriority, 
+    history_speed: HistorySpeedConfig, 
     state: RwLock<StateImpl>
 }
 
@@ -32,6 +33,7 @@ impl UploadGroup {
     pub fn new(history_speed: HistorySpeedConfig, priority: Option<UploadTaskPriority>) -> Self {
         Self(Arc::new(TaskImpl {
             priority: priority.unwrap_or_default(), 
+            history_speed: history_speed.clone(), 
             state: RwLock::new(StateImpl { 
                 entries: Default::default(), 
                 running: Default::default(), 
@@ -40,8 +42,13 @@ impl UploadGroup {
             })
         }))
     }
+
+    pub fn history_config(&self) -> &HistorySpeedConfig {
+        &self.0.history_speed
+    }
 }
 
+#[async_trait::async_trait]
 impl UploadTask for UploadGroup {
     fn clone_as_task(&self) -> Box<dyn UploadTask> {
         Box::new(self.clone())
@@ -49,6 +56,10 @@ impl UploadTask for UploadGroup {
 
     fn state(&self) -> UploadTaskState {
         UploadTaskState::Uploading(0)
+    }
+
+    async fn wait_finish(&self) -> UploadTaskState {
+        unimplemented!()
     }
 
     fn control_state(&self) -> UploadTaskControlState {
@@ -69,7 +80,7 @@ impl UploadTask for UploadGroup {
     }
 
     fn sub_task(&self, path: &str) -> Option<Box<dyn UploadTask>> {
-        let mut names = path.split("::");
+        let mut names = path.split("/");
         let name = names.next().unwrap();
 
         let mut sub = self.0.state.read().unwrap().entries.get(name).map(|t| t.clone_as_task());
@@ -81,7 +92,7 @@ impl UploadTask for UploadGroup {
                 if sub.is_none() {
                     break;
                 }
-            }
+            } 
             
             sub
         }

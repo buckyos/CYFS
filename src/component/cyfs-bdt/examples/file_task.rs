@@ -1,27 +1,12 @@
-use async_std::{fs, future, io::prelude::*};
-use cyfs_base::*;
-use cyfs_bdt::{
-    download::*, 
-    SingleDownloadContext,  
-    Stack, 
-    StackOpenParams, 
-    DownloadTask, 
-    DownloadTaskState, 
-};
+use std::io::{Seek, SeekFrom};
+use async_std::{fs, io::prelude::*};
 use sha2::Digest;
-use std::time::Duration;
+use cyfs_base::*;
+use cyfs_util::cache::*;
+use cyfs_bdt::*;
+
 mod utils;
 
-async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {
-    loop {
-        match task.state() {
-            DownloadTaskState::Finished => {
-                break Ok(());
-            }
-            _ => {}
-        }
-    }
-}
 
 #[async_std::main]
 async fn main() {
@@ -51,24 +36,32 @@ async fn main() {
 
     let mut ln_params = StackOpenParams::new("bdt-example-file-task-downloader");
     ln_params.known_device = Some(vec![rn_dev.clone()]);
-
-    let rn_params = StackOpenParams::new("bdt-example-file-task-uploader");
-
     let ln_stack = Stack::open(ln_dev.clone(), ln_secret, ln_params)
         .await
         .unwrap();
 
+
+
+    let mut rn_params = StackOpenParams::new("bdt-example-file-task-uploader");
+    let rn_tracker = MemTracker::new();
+    let rn_store = TrackedChunkStore::new(NamedDataCache::clone(&rn_tracker), TrackerCache::clone(&rn_tracker));
+    rn_params.chunk_store = Some(rn_store.clone_as_reader());
     let rn_stack = Stack::open(rn_dev, rn_secret, rn_params).await.unwrap();
+
 
     let mut file_hash = sha2::Sha256::new();
     let mut file_len = 0u64;
     let mut chunkids = vec![];
     let mut chunks = vec![];
 
+    let mut range_hash = sha2::Sha256::new();
+    let range = 1000u64..1024u64;
+
     for _ in 0..2 {
-        let (chunk_len, chunk_data) = utils::random_mem(1024, 512);
+        let (chunk_len, chunk_data) = utils::random_mem(1024, 1024);
         let chunk_hash = hash_data(&chunk_data[..]);
         file_hash.input(&chunk_data[..]);
+        range_hash.input(&chunk_data[range.start as usize..range.end as usize]);
         file_len += chunk_len as u64;
         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
         chunkids.push(chunkid);
@@ -100,24 +93,29 @@ async fn main() {
         }
     }
 
-    let _ = track_file_in_path(&*rn_stack, file.clone(), up_path)
+    let _ = rn_store.track_file_in_path(file.clone(), up_path)
         .await
         .unwrap();
 
-    let down_dir = cyfs_util::get_named_data_root("bdt-example-file-task-downloader");
-    let down_path = down_dir.join(file.desc().file_id().to_string().as_str());
-    let task = download_file_to_path(
-        &*ln_stack,
+    
+    let (_, mut reader) = download_file(
+        &*ln_stack, 
         file, 
         None, 
-        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
-        down_path.as_path(),
-    )
-    .await
-    .unwrap();
+        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+    ).await.unwrap();
+    {
+        let mut hasher = sha2::Sha256::new(); 
+        let mut buffer = vec![0u8; (range.end - range.start) as usize];
+        reader.seek(SeekFrom::Start(range.start)).unwrap();
+        reader.read_exact(&mut buffer[..]).await.unwrap();
+        hasher.input(&buffer[..]);
 
-    let recv = future::timeout(Duration::from_secs(1), watch_task_finish(task))
-        .await
-        .unwrap();
-    let _ = recv.unwrap();
+        reader.seek(SeekFrom::Start(1024 * 1024 + range.start)).unwrap();
+        reader.read_exact(&mut buffer[..]).await.unwrap();
+        hasher.input(&buffer[..]);
+
+        assert_eq!(range_hash.result(), hasher.result());
+    }
+
 }

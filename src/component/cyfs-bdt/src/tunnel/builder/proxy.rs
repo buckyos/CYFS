@@ -28,7 +28,7 @@ enum State {
     Init, 
     SynProxy(SynProxyState), 
     SynTunnel, 
-    Canceled(BuckyErrorCode)
+    Canceled(BuckyError)
 }
 
 struct SynProxyTunnelImpl {
@@ -183,7 +183,7 @@ impl OnPackage<AckProxy, &DeviceId> for SynProxyTunnel {
                     } else if ack.proxy_endpoint.is_none() {
                         let err = ack.err.clone().unwrap_or(BuckyErrorCode::Failed);
                         debug!("{} SynProxy=>Canceled({})", self, err);
-                        *state = State::Canceled(err);
+                        *state = State::Canceled(BuckyError::new(err, "remote ack error code"));
                         Err(BuckyError::new(BuckyErrorCode::InvalidInput, "no proxy endpoint"))
                     } else {
                         let proxy_endpoint = ack.proxy_endpoint.as_ref().unwrap();
