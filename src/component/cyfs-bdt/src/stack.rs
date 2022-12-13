@@ -13,7 +13,7 @@ use crate::{
     protocol::{*, v0::*},
     sn::{
         self,
-        client::{PingClientCalledEvent},
+        client::{PingClientCalledEvent, PingClients},
     },
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
@@ -75,7 +75,7 @@ impl StackConfig {
                 }
             }, 
             sn_client: sn::client::Config {
-                ping: sn::client::ping::Config {
+                ping: sn::client::ping::PingConfig {
                     interval: Duration::from_secs(25), 
                     udp: sn::client::ping::udp::Config {
                         resend_interval: Duration::from_millis(500),
@@ -303,7 +303,7 @@ impl Stack {
         if params.known_sn.is_some() {
             std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
         }
-        stack.device_cache().reset_sn_list(&known_sn);
+        stack.device_cache().add_sn(&known_sn);
 
         let datagram_manager = DatagramManager::new(stack.to_weak());
 
@@ -368,6 +368,7 @@ impl Stack {
         let net_listener = stack.net_manager().listener();
         net_listener.start(stack.to_weak());
         
+        stack.sn_client().reset(known_sn);
         stack.ndn().start();
 
         if let Some(debug_stub) = debug_stub {
@@ -447,11 +448,10 @@ impl Stack {
         //unimplemented!()
     }
 
-    pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
+    pub fn reset_sn_list(&self, sn_list: Vec<Device>) -> PingClients {
         info!("{} reset_sn_list {:?}", self, sn_list);
-        self.device_cache().reset_sn_list(&sn_list);
-        self.sn_client().reset(sn_list);
-        Ok(())
+        self.device_cache().add_sn(&sn_list);
+        self.sn_client().reset(sn_list)
     }
 
     pub async fn reset_endpoints(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {

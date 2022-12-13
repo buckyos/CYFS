@@ -12,7 +12,7 @@ use cyfs_base::*;
 use crate::{
     types::*, 
     protocol::{v0::*}, 
-    interface::{NetListener, udp::{Interface}}, 
+    interface::{*, udp::{Interface}}, 
     stack::{WeakStack, Stack},
 };
 use super::{
@@ -20,14 +20,13 @@ use super::{
 };
 
 #[derive(Clone)]
-pub struct Config {
+pub struct PingConfig {
     pub interval: Duration, 
     pub udp: udp::Config
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum SnStatus {
-    Connecting, 
     Online, 
     Offline
 }
@@ -44,7 +43,7 @@ pub struct PingSessionResp {
 pub trait PingSession: Send + Sync {
     fn sn(&self) -> &DeviceId;
     fn local(&self) -> Endpoint;
-    fn reset(&self) -> Box<dyn PingSession>;
+    fn reset(&self,  local_device: Option<Device>, sn_endpoint: Option<Endpoint>) -> Box<dyn PingSession>;
     fn clone_as_ping_session(&self) -> Box<dyn PingSession>;
     fn on_time_escape(&self, now: Timestamp);
     async fn wait(&self) -> BuckyResult<PingSessionResp>;
@@ -57,6 +56,16 @@ enum ActiveState {
     FirstTry(Box<dyn PingSession>), 
     SecondTry(Box<dyn PingSession>), 
     Wait(Timestamp, Box<dyn PingSession>)
+}
+
+impl ActiveState {
+    fn cur_session(&self) -> Option<Box<dyn PingSession>> {
+        match self {
+            Self::FirstTry(session) => Some(session.clone_as_ping_session()), 
+            Self::SecondTry(session) => Some(session.clone_as_ping_session()),
+            _ => None 
+        } 
+    }
 }
 
 enum ClientState {
@@ -75,12 +84,12 @@ enum ClientState {
 
 struct ClientImpl {
     stack: WeakStack, 
-    config: Config, 
+    config: PingConfig, 
     sn_id: DeviceId, 
     sn: Device, 
     gen_seq: Arc<TempSeqGenerator>, 
     net_listener: NetListener, 
-    local_device: Device,  
+    local_device: RwLock<Device>,  
     state: RwLock<ClientState>
 }
 
@@ -90,7 +99,7 @@ pub struct PingClient(Arc<ClientImpl>);
 impl PingClient {
     pub(crate) fn new(
         stack: WeakStack, 
-        config: Config, 
+        config: PingConfig, 
         gen_seq: Arc<TempSeqGenerator>, 
         net_listener: NetListener, 
         sn: Device, 
@@ -107,15 +116,22 @@ impl PingClient {
             net_listener, 
             sn, 
             sn_id, 
-            local_device, 
+            local_device: RwLock::new(local_device), 
             state: RwLock::new(ClientState::Init(StateWaiter::new()))
         }))
     }
 
-    pub fn local_device(&self) -> Device {
-        self.0.local_device.clone()
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
     }
 
+    pub fn local_device(&self) -> Device {
+        self.0.local_device.read().unwrap().clone()
+    }
+
+    fn net_listener(&self) -> &NetListener {
+        &self.0.net_listener
+    }
 
     pub fn stop(&self) {
         let (waiter, sessions) = {
@@ -140,10 +156,10 @@ impl PingClient {
                     state: active
                 } => {
                     let waiter = waiter.transfer();
-                    let sessions = match active {
-                        ActiveState::FirstTry(session) => vec![session.clone_as_ping_session()], 
-                        ActiveState::SecondTry(session) => vec![session.clone_as_ping_session()], 
-                        _ => vec![]
+                    let sessions = if let Some(session) = active.cur_session() {
+                        vec![session]
+                    } else {
+                        vec![]
                     };
                     *state = ClientState::Stopped;
                     (Some(waiter), sessions)
@@ -168,8 +184,193 @@ impl PingClient {
     }
 
 
-    fn sync_session_resp(&self, session: Box<dyn PingSession>, result: BuckyResult<PingSessionResp>) {
-        unimplemented!()
+    async fn update_local(&self, local: Endpoint, outer: Endpoint) {
+        let update = self.net_listener().update_outer(&local, &outer);
+        if update > UpdateOuterResult::None {
+            let mut local = self.local_device();
+            let device_sn_list = local.mut_connect_info().mut_sn_list();
+            device_sn_list.clear();
+            device_sn_list.push(self.sn().clone());
+
+            let device_endpoints = local.mut_connect_info().mut_endpoints();
+            device_endpoints.clear();
+            let bound_endpoints = self.net_listener().endpoints();
+            for ep in bound_endpoints {
+                device_endpoints.push(ep);
+            }
+
+            let stack = Stack::from(&self.0.stack);
+            let _ = sign_and_set_named_object_body(
+                stack.keystore().signer(),
+                &mut local,
+                &SignatureSource::RefIndex(0),
+            ).await;
+
+            let updated = {
+                let mut store = self.0.local_device.write().unwrap();
+                if store.body().as_ref().unwrap().update_time() < local.body().as_ref().unwrap().update_time() {
+                    *store = local;
+                    true
+                } else {
+                    false
+                }
+            };
+
+            if updated {
+                self.ping_once();
+            }
+        }
+    }
+
+    fn ping_once(&self) {
+        let mut state = self.0.state.write().unwrap();
+        match &mut *state {
+            ClientState::Active { 
+                state: active, 
+                .. 
+            } => {
+                match active {
+                    ActiveState::Wait(_, session) => {
+                        let session = session.reset(Some(self.local_device()), None);
+                        *active = ActiveState::FirstTry(session.clone_as_ping_session());
+                        {
+                        
+                            let client = self.clone();
+                            let session = session.clone_as_ping_session();
+                            task::spawn(async move {
+                                client.sync_session_resp(session.as_ref(), session.wait().await);
+                            });
+                        }
+                    }, 
+                    _ => {}
+                }
+            },
+            _ => {}
+        }
+    }
+
+    fn sync_session_resp(&self, session: &dyn PingSession, result: BuckyResult<PingSessionResp>) {
+        struct NextStep {
+            waiter: Option<StateWaiter>, 
+            update: Option<(Endpoint, Endpoint)>, 
+            to_start: Option<Box<dyn PingSession>>, 
+            ping_once: bool
+        }
+
+        impl NextStep {
+            fn none() -> Self {
+                Self {
+                    waiter: None, 
+                    update: None, 
+                    to_start: None, 
+                    ping_once: false
+                }
+            }
+        }
+
+        let next = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                ClientState::Connecting {
+                    waiter, 
+                    sessions 
+                } => {
+                    if let Some(index) = sessions.iter().enumerate().find_map(|(index, exists)| if exists.local() == session.local() { Some(index) } else { None }) {
+                        match result {
+                            Ok(resp) => {
+                                let mut next = NextStep::none();
+                                next.waiter = Some(waiter.transfer());
+
+                                if resp.endpoints.len() > 0 {
+                                    next.update = Some((session.local(), resp.endpoints[0]));
+                                }
+
+                                *state = ClientState::Active {
+                                    waiter: StateWaiter::new(), 
+                                    state: ActiveState::Wait(bucky_time_now() + self.0.config.interval.as_micros() as u64, session.reset(None, Some(resp.from)))
+                                };
+                                
+                                next
+                            }, 
+                            Err(_err) => {
+                                sessions.remove(index);
+                                let mut next = NextStep::none();
+                                if sessions.len() == 0 {
+                                    next.waiter = Some(waiter.transfer());
+                                    *state = ClientState::Timeout;
+                                }
+
+                                next
+                            }
+                        }
+                    } else {
+                        NextStep::none()
+                    }
+                }, 
+                ClientState::Active { 
+                    waiter, 
+                    state: active 
+                } => {
+                    if active.cur_session().and_then(|exists| if exists.local() == session.local() { Some(()) } else { None }).is_some() {
+                        match result {
+                            Ok(resp) => {
+                                *active = ActiveState::Wait(bucky_time_now() + self.0.config.interval.as_micros() as u64, session.reset(None, None));
+                                
+                                let mut next = NextStep::none();
+                                if resp.endpoints.len() > 0 {
+                                    next.update = Some((session.local(), resp.endpoints[0]));
+                                } else if resp.err == BuckyErrorCode::NotFound {
+                                    next.ping_once = true;
+                                }
+                                next
+                            },
+                            Err(_err) => {
+                                match active {
+                                    ActiveState::FirstTry(session) => {
+                                        let stack = Stack::from(&self.0.stack);
+                                        stack.keystore().reset_peer(&self.sn());
+                                        let session = session.reset(None, None);
+                                        *active = ActiveState::SecondTry(session);
+                                        NextStep::none()
+                                    }, 
+                                    ActiveState::SecondTry(_) => {
+                                        let mut next = NextStep::none();
+                                        next.waiter = Some(waiter.transfer());
+                                        *state = ClientState::Timeout;
+                                        next
+                                    },
+                                    _ => NextStep::none()
+                                }
+                            }
+                        }
+                    } else {
+                        NextStep::none()
+                    }
+                }, 
+                _ => NextStep::none()
+            }
+        };
+
+        if let Some(waiter) = next.waiter {
+            waiter.wake();
+        }
+
+        if let Some(session) = next.to_start {
+            let client = self.clone();
+            task::spawn(async move {
+                client.sync_session_resp(session.as_ref(), session.wait().await);
+            });
+        }
+
+        if let Some((local, outer)) = next.update {
+            let client = self.clone();
+            task::spawn(async move {
+                client.update_local(local, outer).await;
+            });
+        } else if next.ping_once {
+            self.ping_once();
+        }
+
     }
 
     pub async fn wait_offline(&self) -> BuckyResult<()> {
@@ -247,7 +448,7 @@ impl PingClient {
                         let params = UdpSesssionParams {
                             config: self.0.config.udp.clone(), 
                             local: local.clone(),
-                            local_device: self.0.local_device.clone(), 
+                            local_device: self.local_device(), 
                             with_device: true, 
                             sn_desc: self.0.sn.desc().clone(),
                             sn_endpoints,  
@@ -297,8 +498,7 @@ impl PingClient {
                     for session in sessions.into_iter() {
                         let client = self.clone();
                         task::spawn(async move {
-                            let result = session.wait().await;
-                            client.sync_session_resp(session, result);
+                            client.sync_session_resp(session.as_ref(), session.wait().await);
                         });
                     }
                 } 
@@ -331,7 +531,7 @@ impl PingClient {
                                     let client = self.clone();
                                     let session = session.clone_as_ping_session();
                                     task::spawn(async move {
-                                        client.sync_session_resp(session.clone_as_ping_session(), session.wait().await);
+                                        client.sync_session_resp(session.as_ref(), session.wait().await);
                                     });
                                 }
                                 vec![session]
@@ -370,22 +570,10 @@ impl PingClient {
                     state: active, 
                     .. 
                 } => {
-                    match active {
-                        ActiveState::FirstTry(session) => {
-                            if session.local() == interface.local() {
-                                vec![session.clone_as_ping_session()]
-                            } else {
-                                vec![]
-                            }
-                        }, 
-                        ActiveState::SecondTry(session) => {
-                            if session.local() == interface.local() {
-                                vec![session.clone_as_ping_session()]
-                            } else {
-                                vec![]
-                            }
-                        }, 
-                        _ => vec![]
+                    if let Some(session) = active.cur_session().and_then(|session| if session.local() == interface.local() { Some(session) } else { None }) {
+                        vec![session]
+                    } else {
+                        vec![]
                     }
                 }, 
                 _ => vec![]

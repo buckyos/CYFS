@@ -12,7 +12,7 @@ use crate::{
     stack::{Stack, WeakStack}
 };
 use super::{
-    ping::{self, PingClients}, 
+    ping::{PingConfig, PingClients}, 
     call::*
 };
 
@@ -23,7 +23,7 @@ pub trait PingClientCalledEvent<Context=()>: Send + Sync {
 
 #[derive(Clone)]
 pub struct Config {
-    pub ping: ping::Config, 
+    pub ping: PingConfig, 
     pub call_interval: Duration,
     pub call_timeout: Duration,
 }

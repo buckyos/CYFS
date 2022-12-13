@@ -184,19 +184,19 @@ impl PingSession for UdpPingSession {
         Box::new(self.clone())
     }
 
-    fn reset(&self) -> Box<dyn PingSession> {
-        // Self(Arc::new(SessionImpl {
-        //     stack: self.0.stack.clone(),
-        //     config: self.0.config.clone(), 
-        //     with_device: false, 
-        //     local: self.0.local.clone(), 
-        //     local_device: self.0.local_device.clone(),
-        //     gen_seq: self.0.gen_seq.clone(), 
-        //     sn_desc: self.0.sn_desc.clone(),
-        //     sn_endpoints: Vec<Endpoint>,  
-        //     state: RwLock<SessionState>
-        // })
-        unimplemented!()
+    fn reset(&self, local_device: Option<Device>, sn_endpoint: Option<Endpoint>) -> Box<dyn PingSession> {
+        Self(Arc::new(SessionImpl {
+            stack: self.0.stack.clone(),
+            config: self.0.config.clone(), 
+            with_device: local_device.is_some(), 
+            local: self.0.local.clone(), 
+            local_device: local_device.unwrap_or(self.0.local_device.clone()),
+            gen_seq: self.0.gen_seq.clone(),
+            sn_id: self.0.sn_id.clone(),  
+            sn_desc: self.0.sn_desc.clone(),
+            sn_endpoints: sn_endpoint.map(|ep| vec![ep]).unwrap_or(self.0.sn_endpoints.clone()),  
+            state: RwLock::new(SessionState::Init(StateWaiter::new()))
+        })).clone_as_ping_session()
     }
 
     fn on_time_escape(&self, now: Timestamp) {
@@ -211,9 +211,9 @@ impl PingSession for UdpPingSession {
                 SessionState::Requesting {
                     waiter,  
                     first_sent_time, 
-                    last_sent_time, 
-                    first_sent_seq, 
-                    last_sent_seq  
+                    last_sent_time,  
+                    last_sent_seq, 
+                    ..  
                 } => {
                     if now > *first_sent_time && Duration::from_micros(now - *first_sent_time) > self.0.config.resend_timeout {
                         let waiter = waiter.transfer();

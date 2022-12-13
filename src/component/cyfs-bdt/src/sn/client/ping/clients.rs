@@ -31,7 +31,7 @@ enum ClientsState {
         waiter: StateWaiter, 
         client: PingClient
     }, 
-    Timeout, 
+    Offline, 
     Stopped,
 }
 
@@ -107,7 +107,129 @@ impl PingClients {
     }
 
     fn sync_ping_client(&self, client: &PingClient, result: BuckyResult<SnStatus>) {
-        unimplemented!()    
+        if result.is_err() {
+            return ;
+        }
+        struct NextStep {
+            waiter: Option<StateWaiter>, 
+            to_start: Option<PingClient>, 
+            to_wait: Option<PingClient>
+        }
+
+        impl NextStep {
+            fn none() -> Self {
+                Self {
+                    waiter: None, 
+                    to_start: None, 
+                    to_wait: None
+                }
+            }
+        }
+        let status = result.unwrap();
+        let next = {
+            let mut state = self.0.state.write().unwrap();
+
+            let next_index = state.remain.last().map(|(index, _)| *index);
+            
+            let next = match &mut state.state {
+                ClientsState::Connecting {
+                    waiter, 
+                    client: connecting
+                } => {
+                    let mut next = NextStep::none();
+                    if client.ptr_eq(connecting) {
+                        match status {
+                            SnStatus::Online => {
+                                next.waiter = Some(waiter.transfer());
+                                state.state = ClientsState::Active {
+                                    waiter: StateWaiter::new(), 
+                                    client: client.clone()
+                                };
+                                next.to_wait = Some(client.clone());       
+                            },
+                            SnStatus::Offline => {
+                                if let Some(index) = next_index {
+                                    let stack = Stack::from(&self.0.stack);
+                                    let client = PingClient::new(
+                                        self.0.stack.clone(), 
+                                        stack.config().sn_client.ping.clone() , 
+                                        self.0.gen_seq.clone(), 
+                                        self.0.net_listener.reset(None).unwrap(), 
+                                        self.0.sn_list[index].clone(), 
+                                        self.0.local_device.clone());
+                                    next.to_start = Some(client.clone());
+                                    *connecting = client;
+                                } else {
+                                    next.waiter = Some(waiter.transfer());
+                                    state.state = ClientsState::Offline;
+                                }
+                            }
+                        }
+                    }
+                    next
+                }, 
+                ClientsState::Active {
+                    waiter, 
+                    client: active
+                } => {
+                    let mut next = NextStep::none();
+                    if client.ptr_eq(active) {
+                        match status {
+                            SnStatus::Online => {
+                                next.waiter = Some(waiter.transfer());
+                                state.state = ClientsState::Active {
+                                    waiter: StateWaiter::new(), 
+                                    client: client.clone()
+                                };
+                                next.to_wait = Some(client.clone());       
+                            },
+                            SnStatus::Offline => {
+                                if let Some(index) = next_index {
+                                    let stack = Stack::from(&self.0.stack);
+                                    let client = PingClient::new(
+                                        self.0.stack.clone(), 
+                                        stack.config().sn_client.ping.clone() , 
+                                        self.0.gen_seq.clone(), 
+                                        self.0.net_listener.reset(None).unwrap(), 
+                                        self.0.sn_list[index].clone(), 
+                                        self.0.local_device.clone());
+                                    next.to_start = Some(client.clone());
+                                    *active = client;
+                                } else {
+                                    next.waiter = Some(waiter.transfer());
+                                    state.state = ClientsState::Offline;
+                                }
+                            }
+                        }
+                    }
+                    next
+                }, 
+                _ => NextStep::none(),
+            };
+            if next.to_wait.is_some() || next.to_start.is_some() {
+                let _ = state.remain.pop();
+            }
+
+            next
+        };
+        
+        if let Some(waiter) = next.waiter {
+            waiter.wake();
+        }
+
+        if let Some(client) = next.to_start {
+            let clients = self.clone();
+            task::spawn(async move {
+                clients.sync_ping_client(&client, client.wait_online().await);
+            });
+        }
+
+        if let Some(client) = next.to_wait {
+            let clients = self.clone();
+            task::spawn(async move {
+                clients.sync_ping_client(&client, client.wait_offline().await.map(|_| SnStatus::Offline));
+            });
+        }
     } 
 
     pub async fn wait_online(&self) -> BuckyResult<SnStatus> {
@@ -146,7 +268,7 @@ impl PingClients {
                     ..
                 } => NextStep::Wait(waiter.new_waiter()), 
                 ClientsState::Active { .. } => NextStep::Return(Ok(SnStatus::Online)), 
-                ClientsState::Timeout => NextStep::Return(Ok(SnStatus::Offline)), 
+                ClientsState::Offline => NextStep::Return(Ok(SnStatus::Offline)), 
                 ClientsState::Stopped => NextStep::Return(Err(BuckyError::new(BuckyErrorCode::Interrupted, "empty sn list")))
             } 
         };
@@ -156,7 +278,7 @@ impl PingClients {
             let state = self.0.state.read().unwrap();
             match &state.state {
                 ClientsState::Active { .. } => Ok(SnStatus::Online), 
-                ClientsState::Timeout => Ok(SnStatus::Offline), 
+                ClientsState::Offline => Ok(SnStatus::Offline), 
                 ClientsState::Stopped => Err(BuckyError::new(BuckyErrorCode::Interrupted, "empty sn list")), 
                 _ => unreachable!()
             }
@@ -193,7 +315,7 @@ impl PingClients {
                     waiter, 
                     ..
                 } => NextStep::Wait(waiter.new_waiter()), 
-                ClientsState::Timeout =>  NextStep::Return(Ok(())), 
+                ClientsState::Offline =>  NextStep::Return(Ok(())), 
                 _ => NextStep::Return(Err(BuckyError::new(BuckyErrorCode::ErrorState, "not online")))
             }
         };
@@ -205,7 +327,7 @@ impl PingClients {
                     let state = self.0.state.read().unwrap();
                     match &state.state {
                         ClientsState::Stopped => Err(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled")), 
-                        ClientsState::Timeout =>  Ok(()), 
+                        ClientsState::Offline =>  Ok(()), 
                         _ => unreachable!()
                     }
                 }).await
@@ -340,7 +462,7 @@ impl PingClients {
             }
         };
 
-        if let Some(client) = client {
+        if client.is_some() {
             let resp = SnCalledResp {
                 seq: called.seq,
                 result: 0,

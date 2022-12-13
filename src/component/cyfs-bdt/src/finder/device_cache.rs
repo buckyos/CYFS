@@ -1,6 +1,6 @@
 use std::{
     sync::{RwLock}, 
-    collections::hash_map::HashMap
+    collections::{BTreeSet, hash_map::HashMap}
 };
 use cyfs_base::*;
 use crate::dht::*;
@@ -11,7 +11,7 @@ pub struct DeviceCache {
     //FIXME 先简单干一个
     cache: RwLock<HashMap<DeviceId, Device>>,
     // sn
-    sn_list: RwLock<Vec<DeviceId>>,
+    sn_list: RwLock<BTreeSet<DeviceId>>,
 }
 
 impl DeviceCache {
@@ -19,7 +19,7 @@ impl DeviceCache {
         Self {
             cache: RwLock::new(HashMap::new()),
             outer,
-            sn_list: RwLock::new(vec![]),
+            sn_list: RwLock::new(BTreeSet::new()),
         }
     }
 
@@ -65,12 +65,13 @@ impl DeviceCache {
 }
 
 impl DeviceCache {
-    pub fn reset_sn_list(&self, sn_list: &Vec<Device>) {
-        let id_list: Vec<DeviceId> = sn_list.iter().map(|d| d.desc().device_id()).collect();
-        for (id, device) in id_list.iter().zip(sn_list.iter()) {
-            self.add(id, device);
+    pub fn add_sn(&self, sn_list: &Vec<Device>) {
+        for sn in sn_list {
+            let id = sn.desc().device_id();
+            self.add(&id, sn);
+            self.sn_list.write().unwrap().insert(id);
         }
-        *self.sn_list.write().unwrap() = id_list;
+       
     }
 
     pub fn nearest_sn_of(&self, remote: &DeviceId) -> Option<DeviceId> {
@@ -78,6 +79,6 @@ impl DeviceCache {
     }
 
     pub fn sn_list(&self) -> Vec<DeviceId> {
-        self.sn_list.read().unwrap().clone()
+        self.sn_list.read().unwrap().iter().cloned().collect()
     }
 }

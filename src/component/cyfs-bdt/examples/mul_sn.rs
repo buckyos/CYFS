@@ -90,8 +90,8 @@ async fn main() {
         rn_dev, 
         rn_secret, 
         rn_params).await.unwrap();
-
-    rn_stack.net_manager().listener().wait_online().await.unwrap();
+    
+    assert_eq!(SnStatus::Online, rn_stack.sn_client().ping().wait_online().await.unwrap());
 
     let (sample_size, sample) = utils::random_mem(1024, 512);
     let (signal_sender, signal_recver) = channel::bounded::<BuckyResult<Vec<u8>>>(1);

@@ -5,7 +5,6 @@ use async_std::{
 };
 use cyfs_base::*;
 use crate::{
-    types::*, 
     stack::WeakStack
 };
 use super::{udp, tcp};
@@ -17,11 +16,6 @@ pub struct Config {
 }
 
 
-pub enum NetListenerState {
-    Init(StateWaiter), 
-    Online,
-    Closed
-}
 
 struct NetListenerImpl {
     local: DeviceId, 
@@ -29,7 +23,6 @@ struct NetListenerImpl {
     tcp: Vec<tcp::Listener>, 
     ip_set: BTreeSet<IpAddr>, 
     ep_set: BTreeSet<Endpoint>, 
-    state: RwLock<NetListenerState>
 }
 
 impl std::fmt::Display for NetListener {
@@ -68,7 +61,6 @@ impl NetListener {
             tcp: vec![], 
             ip_set: BTreeSet::new(), 
             ep_set: BTreeSet::new(), 
-            state: RwLock::new(NetListenerState::Init(StateWaiter::new()))
         };
         let mut port_mapping = port_mapping.unwrap_or(vec![]);
 
@@ -178,29 +170,6 @@ impl NetListener {
         }
        
 
-        let waiter = {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                NetListenerState::Init(waiter) => {
-                    let mut to_wake = StateWaiter::new();
-                    std::mem::swap(&mut to_wake, waiter);
-                    *state = NetListenerState::Closed;
-                    Ok(Some(to_wake))   
-                }, 
-                NetListenerState::Online => {
-                    *state = NetListenerState::Closed;
-                    Ok(None)
-                }, 
-                NetListenerState::Closed => {
-                    Err(BuckyError::new(BuckyErrorCode::ErrorState, "net listener's closed"))
-                }
-            }
-        }?;
-
-        if let Some(waiter) = waiter {
-            waiter.wake();
-        }
-
         fn local_of(former: Endpoint, endpoints: &Option<&[Endpoint]>) -> Endpoint {
             if let Some(endpoints) = endpoints {
                 for ep in *endpoints {
@@ -238,7 +207,6 @@ impl NetListener {
             tcp, 
             ip_set, 
             ep_set, 
-            state: RwLock::new(NetListenerState::Init(StateWaiter::new()))
         })))
 
 
@@ -251,58 +219,8 @@ impl NetListener {
         for l in &self.0.tcp {
             l.start(stack.clone());
         }
-
-        self.check_state();
     }
 
-    fn check_state(&self) {
-        let udps = self.udp();
-        let online = if udps.len() == 0 {
-            true
-        } else {
-            let mut v4_online = None;
-            let mut v6_online = None;
-            for u in self.udp() {
-                if u.local().addr().is_ipv4() {
-                    if u.local().is_static_wan() || 
-                        u.outer().is_some() {
-                        v4_online = Some(true);
-                    } else if v4_online.is_none() {
-                        v4_online = Some(false);
-                    }
-                } else {
-                    if u.local().is_static_wan() || 
-                        u.outer().is_some() {
-                        v6_online = Some(true);
-                    } else if v6_online.is_none() {
-                        v6_online = Some(false)
-                    }
-                }
-            }
-            //FIXME: ipv6 的ping返回比较慢，先改成任何一个返回就触发
-            v4_online.unwrap_or(false) || v6_online.unwrap_or(false)
-        };
-        
-        let to_wake = if online {
-            let state = &mut *self.0.state.write().unwrap(); 
-            match state {
-                NetListenerState::Init(waiter) => {
-                    info!("{} online", self);
-                    let to_wake = waiter.transfer();
-                    *state = NetListenerState::Online;
-                    Some(to_wake)
-                }, 
-                NetListenerState::Closed => None, 
-                NetListenerState::Online => None, 
-            }
-        } else {
-            None
-        };
-
-        if let Some(to_wake) = to_wake {
-            to_wake.wake();
-        }
-    }
 
     pub fn close(&self) {
         for _i in self.udp() {
@@ -344,7 +262,6 @@ impl NetListener {
                         }
                     }
                 }
-                self.check_state();
             }
         }
         reseult
