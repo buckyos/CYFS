@@ -47,7 +47,7 @@ impl TargetDataManager {
         &self,
         file_obj: &File,
         ranges: Option<Vec<Range<u64>>>,
-        referer: &BdtDataRefererInfo,
+        referer: Option<&BdtDataRefererInfo>,
     ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
         let file_id = file_obj.desc().calculate_id();
 
@@ -64,6 +64,11 @@ impl TargetDataManager {
             return Ok((zero_bytes_reader(), 0));
         }
 
+        let referer = match referer {
+            Some(referer) => referer.encode_string(),
+            None => "".to_owned(),
+        };
+
         info!(
             "will get file data from target: target={:?}, file={}, file_len={}, len={}, ranges={:?}, referer={}",
             self.target, file_id, file_obj.len(), total_size, ranges, referer
@@ -71,7 +76,7 @@ impl TargetDataManager {
 
         let context = SingleDownloadContext::id_streams(
             &self.bdt_stack,
-            referer.encode_string(),
+            referer,
             &self.target,
         )
         .await?;
@@ -101,7 +106,7 @@ impl TargetDataManager {
         &self,
         chunk_id: &ChunkId,
         ranges: Option<Vec<Range<u64>>>,
-        referer: &BdtDataRefererInfo,
+        referer: Option<&BdtDataRefererInfo>,
     ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
         let total_size = match ranges {
             Some(ref ranges) => RangeHelper::sum(ranges) as usize,
@@ -116,6 +121,11 @@ impl TargetDataManager {
             return Ok((zero_bytes_reader(), 0));
         }
 
+        let referer = match referer {
+            Some(referer) => referer.encode_string(),
+            None => "".to_owned(),
+        };
+
         info!(
             "will get chunk data from target: target={:?}, chunk={}, len={}, ranges={:?}, referer={}",
             self.target, chunk_id, total_size, ranges, referer
@@ -123,7 +133,7 @@ impl TargetDataManager {
 
         let context = SingleDownloadContext::id_streams(
             &self.bdt_stack,
-            referer.encode_string(),
+            referer,
             &self.target,
         )
         .await?;

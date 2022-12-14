@@ -46,6 +46,12 @@ impl fmt::Display for BdtDataRefererInfo {
     }
 }
 
+impl fmt::Debug for BdtDataRefererInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+
 impl JsonCodec<BdtDataRefererInfo> for BdtDataRefererInfo {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();

@@ -143,11 +143,7 @@ impl CyfsStackImpl {
         let trans_store = create_trans_store(isolate).await?;
         let chunk_manager = Arc::new(ChunkManager::new());
 
-        let named_data_components = NamedDataComponents {
-            chunk_manager,
-            ndc,
-            tracker,
-        };
+        let named_data_components = NamedDataComponents::new(chunk_manager, ndc, tracker);
 
         // init sn config manager
         let root_state_processor = GlobalStateOutputTransformer::new(
@@ -269,6 +265,8 @@ impl CyfsStackImpl {
             &sn_config_manager,
         )
         .await?;
+
+        named_data_components.bind_bdt_stack(bdt_stack.clone());
 
         // enable the zone search ablity for obj_searcher
         obj_searcher.init_zone_searcher(zone_manager.clone(), noc.clone(), bdt_stack.clone());

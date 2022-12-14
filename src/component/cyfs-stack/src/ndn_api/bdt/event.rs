@@ -31,7 +31,7 @@ impl BdtNDNEventHandler {
         handlers: RouterHandlersManager,
         named_data_components: &NamedDataComponents,
     ) -> Self {
-        let data_manager = LocalDataManager::new(named_data_components.to_owned());
+        let data_manager = LocalDataManager::new(named_data_components);
 
         Self {
             acl: BdtNDNDataAclProcessor::new(

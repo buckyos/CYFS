@@ -29,14 +29,14 @@ impl NDCLevelInputProcessor {
         non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
         let ret = Self {
-            data_manager: LocalDataManager::new(named_data_components.to_owned()),
+            data_manager: LocalDataManager::new(named_data_components),
             object_loader: NDNObjectLoader::new(non_processor.clone()),
         };
 
         let raw_processor = Arc::new(Box::new(ret) as Box<dyn NDNInputProcessor>);
 
         // add default ndn acl and chunk verifier
-        let data_manager = LocalDataManager::new(named_data_components.to_owned());
+        let data_manager = LocalDataManager::new(named_data_components);
         let acl_processor = NDNAclInputProcessor::new(acl, data_manager, raw_processor);
         acl_processor.bind_non_processor(non_processor);
 
