@@ -2,6 +2,7 @@ use super::super::meta::MetaInputProcessor;
 use super::super::noc::*;
 use super::super::non::*;
 use super::super::router::*;
+use crate::NamedDataComponents;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::{MetaCacheRef, ObjectFailHandler};
 use crate::ndn_api::*;
@@ -11,7 +12,6 @@ use crate::zone::ZoneManagerRef;
 use crate::{acl::*, non::*};
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 
 use std::sync::Arc;
@@ -29,8 +29,7 @@ impl NONService {
     pub(crate) fn new(
         noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         forward_manager: ForwardProcessorManager,
         acl: AclManagerRef,
         zone_manager: ZoneManagerRef,
@@ -39,25 +38,20 @@ impl NONService {
         router_handlers: RouterHandlersManager,
         meta_cache: MetaCacheRef,
         fail_handler: ObjectFailHandler,
-        chunk_manager: ChunkManagerRef,
     ) -> (NONService, NDNService) {
         // raw service with inner_path service support
         let raw_noc_processor = NOCLevelInputProcessor::new_with_inner_path_service(
             noc.clone(),
-            ndc.clone(),
-            tracker.clone(),
+            named_data_components,
             router_handlers.clone(),
             zone_manager.clone(),
-            chunk_manager.clone(),
         );
 
         // meta处理器，从mete和noc处理get_object请求
         let meta_processor = MetaInputProcessor::new_with_inner_path_service(
             None,
             meta_cache,
-            ndc.clone(),
-            tracker.clone(),
-            chunk_manager.clone(),
+            named_data_components,
             noc.clone(),
         );
 
@@ -101,13 +95,11 @@ impl NONService {
         let ndn_service = NDNService::new(
             acl,
             bdt_stack,
-            ndc,
-            tracker.clone(),
+            named_data_components,
             ood_resovler,
             zone_manager,
             router_handlers.clone(),
             router,
-            chunk_manager.clone(),
             forward_manager,
             fail_handler,
         );

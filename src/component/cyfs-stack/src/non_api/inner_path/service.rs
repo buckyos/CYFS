@@ -1,9 +1,9 @@
 use super::dir_loader::*;
 use super::objectmap_loader::*;
+use crate::NamedDataComponents;
 use crate::ndn_api::LocalDataManager;
 use crate::non::*;
 use cyfs_base::*;
-use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 
 use std::sync::Arc;
@@ -19,12 +19,10 @@ pub(crate) struct NONInnerPathServiceProcessor {
 impl NONInnerPathServiceProcessor {
     pub fn new(
         non_processor: NONInputProcessorRef,
-        chunk_manager: ChunkManagerRef,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         noc: NamedObjectCacheRef,
     ) -> NONInputProcessorRef {
-        let data_manager = LocalDataManager::new(chunk_manager, ndc, tracker);
+        let data_manager = LocalDataManager::new(named_data_components.to_owned());
         let dir_loader = NONDirLoader::new(non_processor.clone(), data_manager);
 
         // TODO objectmap loader should use non instead noc?

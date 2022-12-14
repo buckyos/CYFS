@@ -2,6 +2,7 @@ use super::super::handler::*;
 use super::super::ndc::*;
 use super::super::ndn::*;
 use super::super::forward::*;
+use crate::NamedDataComponents;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -13,7 +14,6 @@ use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
-use cyfs_util::cache::NamedDataCache;
 
 use cyfs_chunk_cache::ChunkManagerRef;
 use std::sync::Arc;
@@ -45,13 +45,11 @@ impl NDNRouter {
     fn new(
         acl: AclManagerRef,
         bdt_stack: StackGuard,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         non_router: NONInputProcessorRef,
         ood_resolver: OodResolver,
         zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
-        chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
@@ -60,12 +58,12 @@ impl NDNRouter {
 
         // local的ndn也使用router加载file
         let ndc_processor =
-            NDCLevelInputProcessor::new(acl.clone(), chunk_manager.clone(), ndc, tracker, non_router);
+            NDCLevelInputProcessor::new(acl.clone(), named_data_components, non_router);
 
         let ret = Self {
             acl,
             bdt_stack,
-            chunk_manager,
+            chunk_manager: named_data_components.chunk_manager.clone(),
             object_loader,
             ndc_processor,
             ood_resolver,
@@ -81,13 +79,11 @@ impl NDNRouter {
     pub(crate) fn new_acl(
         acl: AclManagerRef,
         bdt_stack: StackGuard,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         non_router: NONInputProcessorRef,
         ood_resolver: OodResolver,
         zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
-        chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
@@ -95,13 +91,11 @@ impl NDNRouter {
         let processor = Self::new(
             acl.clone(),
             bdt_stack,
-            ndc,
-            tracker,
+            named_data_components,
             non_router,
             ood_resolver,
             zone_manager,
             router_handlers,
-            chunk_manager,
             forward,
             fail_handler,
         );

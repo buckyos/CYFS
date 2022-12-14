@@ -1,16 +1,14 @@
 use super::super::acl::NDNAclLocalInputProcessor;
 use super::super::data::{zero_bytes_reader, LocalDataManager};
 use super::object_loader::NDNObjectLoader;
-use crate::ndn::*;
-use crate::ndn_api::NDNForwardObjectData;
-use crate::ndn_api::acl::NDNAclInputProcessor;
-use crate::non::*;
-use cyfs_base::*;
-use cyfs_lib::*;
-use cyfs_util::cache::NamedDataCache;
-use cyfs_chunk_cache::ChunkManager;
-use cyfs_chunk_lib::{ChunkMeta, MemRefChunk};
 use crate::acl::AclManagerRef;
+use crate::ndn_api::acl::NDNAclInputProcessor;
+use crate::ndn_api::NDNForwardObjectData;
+use crate::non::*;
+use crate::{ndn::*, NamedDataComponents};
+use cyfs_base::*;
+use cyfs_chunk_lib::{ChunkMeta, MemRefChunk};
+use cyfs_lib::*;
 
 use futures::AsyncReadExt;
 use std::convert::TryFrom;
@@ -25,23 +23,20 @@ pub(crate) struct NDCLevelInputProcessor {
 impl NDCLevelInputProcessor {
     pub fn new(
         acl: AclManagerRef,
-        chunk_manager: Arc<ChunkManager>,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
 
         // router non processor, but only get_object from current stack
         non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
- 
         let ret = Self {
-            data_manager: LocalDataManager::new(chunk_manager.clone(), ndc.clone(), tracker.clone()),
+            data_manager: LocalDataManager::new(named_data_components.to_owned()),
             object_loader: NDNObjectLoader::new(non_processor.clone()),
         };
 
         let raw_processor = Arc::new(Box::new(ret) as Box<dyn NDNInputProcessor>);
 
-        // add default ndn acl and chunk verifier 
-        let data_manager = LocalDataManager::new(chunk_manager, ndc, tracker);
+        // add default ndn acl and chunk verifier
+        let data_manager = LocalDataManager::new(named_data_components.to_owned());
         let acl_processor = NDNAclInputProcessor::new(acl, data_manager, raw_processor);
         acl_processor.bind_non_processor(non_processor);
 
@@ -51,13 +46,10 @@ impl NDCLevelInputProcessor {
     // 创建一个带本地权限的processor
     pub fn new_local(
         acl: AclManagerRef,
-        chunk_manager: Arc<ChunkManager>,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
-
-        let processor = Self::new(acl, chunk_manager, ndc, tracker, non_processor);
+        let processor = Self::new(acl, &named_data_components, non_processor);
 
         // with current device's acl
         let local_processor = NDNAclLocalInputProcessor::new(processor.clone());
@@ -144,7 +136,6 @@ impl NDCLevelInputProcessor {
 
     // 从本地noc查找file对象
     async fn get_file(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
-
         let udata = if let Some(udata) = &req.common.user_data {
             NDNForwardObjectData::from_any(udata)
         } else {

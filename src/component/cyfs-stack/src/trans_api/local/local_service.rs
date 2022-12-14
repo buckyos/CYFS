@@ -1,3 +1,4 @@
+use crate::NamedDataComponents;
 use crate::resolver::OodResolver;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
@@ -7,7 +8,6 @@ use crate::trans::{TransInputProcessor, TransInputProcessorRef};
 use crate::trans_api::local::FileRecorder;
 use crate::trans_api::{DownloadTaskManager, PublishManager, TransStore};
 use cyfs_base::File;
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_core::{TransContext, TransContextObject};
 use cyfs_task_manager::{TaskId, TaskManager, TaskStatus};
 use std::convert::TryFrom;
@@ -40,9 +40,7 @@ pub(crate) struct LocalTransService {
     bdt_stack: StackGuard,
 
     ood_resolver: OodResolver,
-    chunk_manager: Arc<ChunkManager>,
-    tracker: Box<dyn TrackerCache>,
-    ndc: Box<dyn NamedDataCache>,
+    named_data_components: NamedDataComponents,
 }
 
 impl Clone for LocalTransService {
@@ -53,9 +51,7 @@ impl Clone for LocalTransService {
             noc: self.noc.clone(),
             bdt_stack: self.bdt_stack.clone(),
             ood_resolver: self.ood_resolver.clone(),
-            chunk_manager: self.chunk_manager.clone(),
-            tracker: self.tracker.clone(),
-            ndc: self.ndc.clone(),
+            named_data_components: self.named_data_components.clone(),
         }
     }
 }
@@ -64,23 +60,21 @@ impl LocalTransService {
     pub fn new(
         noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         ood_resolver: OodResolver,
-        chunk_manager: Arc<ChunkManager>,
         task_manager: Arc<TaskManager>,
         trans_store: Arc<TransStore>,
     ) -> Self {
         let tasks = DownloadTaskManager::new(
             bdt_stack.clone(),
-            chunk_manager.clone(),
+            named_data_components,
             task_manager.clone(),
             trans_store,
         );
         let publish_manager = PublishManager::new(
             task_manager.clone(),
-            ndc.clone(),
-            tracker.clone(),
+            named_data_components.ndc.clone(),
+            named_data_components.tracker.clone(),
             noc.clone(),
             bdt_stack.local_device_id().clone(),
         );
@@ -91,9 +85,7 @@ impl LocalTransService {
             noc,
             bdt_stack,
             ood_resolver,
-            chunk_manager,
-            tracker,
-            ndc,
+            named_data_components: named_data_components.to_owned(),
         }
     }
 
@@ -160,8 +152,8 @@ impl LocalTransService {
 
             if file.is_some() {
                 let file_recorder = FileRecorder::new(
-                    self.ndc.clone(),
-                    self.tracker.clone(),
+                    self.named_data_components.ndc.clone(),
+                    self.named_data_components.tracker.clone(),
                     self.noc.clone(),
                     req.common.source.dec.clone(),
                 );

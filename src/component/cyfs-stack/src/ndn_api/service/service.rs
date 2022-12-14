@@ -1,6 +1,7 @@
 use super::super::ndc::*;
 use super::super::ndn::*;
 use super::super::router::*;
+use crate::NamedDataComponents;
 use crate::acl::AclManagerRef;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -11,7 +12,6 @@ use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 
 use std::sync::Arc;
@@ -21,15 +21,13 @@ pub struct NDNService {
     ndc: NDNInputProcessorRef,
     ndn: NDNInputProcessorRef,
     router: NDNInputProcessorRef,
-    chunk_manager: ChunkManagerRef,
 }
 
 impl NDNService {
     pub(crate) fn new(
         acl: AclManagerRef,
         bdt_stack: StackGuard,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
 
         ood_resolver: OodResolver,
         zone_manager: ZoneManagerRef,
@@ -37,27 +35,22 @@ impl NDNService {
 
         // 带acl的non router
         non_router: NONInputProcessorRef,
-        chunk_manager: ChunkManagerRef,
 
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> Self {
         let ndc_processor = NDCLevelInputProcessor::new_local(
             acl.clone(),
-            chunk_manager.clone(),
-            ndc.clone(),
-            tracker.clone(),
+            named_data_components,
             non_router.clone(),
         );
 
         let ndn_processor = NDNLevelInputProcessor::new_zone(
             acl.clone(),
             bdt_stack.clone(),
-            ndc.clone(),
-            tracker.clone(),
+            named_data_components,
             non_router.clone(),
             router_handlers.clone(),
-            chunk_manager.clone(),
             forward.clone(),
             fail_handler.clone(),
         );
@@ -65,13 +58,11 @@ impl NDNService {
         let router = NDNRouter::new_acl(
             acl,
             bdt_stack,
-            ndc,
-            tracker,
+            named_data_components,
             non_router,
             ood_resolver,
             zone_manager,
             router_handlers,
-            chunk_manager.clone(),
             forward,
             fail_handler,
         );
@@ -80,7 +71,6 @@ impl NDNService {
             ndc: ndc_processor,
             ndn: ndn_processor,
             router,
-            chunk_manager,
         }
     }
 

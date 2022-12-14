@@ -1,9 +1,9 @@
 use super::assoc::AssociationObjects;
 use super::cache::SyncObjectsStateCache;
+use crate::NamedDataComponents;
 use crate::ndn_api::ChunkStoreReader;
 use cyfs_base::*;
 use cyfs_bdt::{ChunkReader, StackGuard};
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 
 use async_std::io::prelude::*;
@@ -298,13 +298,9 @@ impl DirListSync {
     pub(super) fn new(
         state_cache: SyncObjectsStateCache,
         bdt_stack: StackGuard,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: &NamedDataComponents,
     ) -> Self {
-        let chunk_reader = ChunkStoreReader::new(
-            chunk_manager.clone(),
-            bdt_stack.ndn().chunk_manager().ndc().clone(),
-            bdt_stack.ndn().chunk_manager().tracker().clone(),
-        );
+        let chunk_reader = named_data_components.new_chunk_store_reader();
 
         Self {
             chunk_reader: Arc::new(chunk_reader),

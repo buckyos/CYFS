@@ -2,10 +2,10 @@ use super::super::client::SyncClientRequestor;
 use super::super::protocol::SyncChunksRequest;
 use super::cache::SyncObjectsStateCache;
 use super::dir_sync::DirListSync;
-use crate::ndn_api::{ChunkListReaderAdapter, ChunkManagerWriter, ChunkWriter};
+use crate::NamedDataComponents;
+use crate::ndn_api::{ChunkListReaderAdapter};
 use cyfs_base::*;
 use cyfs_bdt::*;
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 
 use cyfs_debug::Mutex;
@@ -186,7 +186,7 @@ impl ChunksCollector {
 
 pub(super) struct DataSync {
     bdt_stack: StackGuard,
-    chunk_manager: Arc<ChunkManager>,
+    named_data_components: NamedDataComponents,
     ood_device_id: DeviceId,
     requestor: Arc<SyncClientRequestor>,
     state_cache: SyncObjectsStateCache,
@@ -195,7 +195,7 @@ pub(super) struct DataSync {
 impl DataSync {
     pub fn new(
         bdt_stack: StackGuard,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: NamedDataComponents,
         requestor: Arc<SyncClientRequestor>,
         state_cache: SyncObjectsStateCache,
     ) -> Self {
@@ -203,7 +203,7 @@ impl DataSync {
 
         Self {
             bdt_stack,
-            chunk_manager,
+            named_data_components,
             ood_device_id,
             requestor,
             state_cache,
@@ -214,12 +214,12 @@ impl DataSync {
         DirListSync::new(
             self.state_cache.clone(),
             self.bdt_stack.clone(),
-            self.chunk_manager.clone(),
+            &self.named_data_components,
         )
     }
 
     async fn filter_exists_chunks(&self, chunk_list: Vec<ChunkId>) -> BuckyResult<Vec<ChunkId>> {
-        let ndc = self.bdt_stack.ndn().chunk_manager().ndc();
+        let ndc = &self.named_data_components.ndc;
         let mut sync_list = vec![];
 
         for chunks in chunk_list.chunks(16) {
@@ -363,14 +363,10 @@ impl DataSync {
         let context = SingleDownloadContext::id_streams(
             &self.bdt_stack,
             "".to_owned(),
-            &[self.ood_device_id],
+            &[self.ood_device_id.clone()],
         ).await?;
 
-        let writer = Box::new(ChunkManagerWriter::new(
-            self.chunk_manager.clone(),
-            self.bdt_stack.ndn().chunk_manager().ndc().clone(),
-            self.bdt_stack.ndn().chunk_manager().tracker().clone(),
-        )) as Box<dyn ChunkWriter>;
+        let writer = self.named_data_components.new_chunk_writer();
 
         let (id, reader) =
             cyfs_bdt::download_chunk(&self.bdt_stack, chunk_id.to_owned(), None, context)
@@ -418,14 +414,10 @@ impl DataSync {
         let context = SingleDownloadContext::id_streams(
             &self.bdt_stack,
             "".to_owned(),
-            &[self.ood_device_id],
+            &[self.ood_device_id.clone()],
         ).await?;
 
-        let writer = Box::new(ChunkManagerWriter::new(
-            self.chunk_manager.clone(),
-            self.bdt_stack.ndn().chunk_manager().ndc().clone(),
-            self.bdt_stack.ndn().chunk_manager().tracker().clone(),
-        ));
+        let writer = self.named_data_components.new_chunk_writer();
 
         let (id, reader) = cyfs_bdt::download_file(&self.bdt_stack, file.clone(), None, context)
             .await

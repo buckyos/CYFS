@@ -1,12 +1,12 @@
 use super::super::download_task_manager::DownloadTaskState;
 use super::verify_file_task::*;
+use crate::NamedDataComponents;
 use crate::ndn_api::{
-    ChunkListReaderAdapter, ChunkManagerWriter, ChunkWriter, ChunkWriterRef, LocalFileWriter,
+    ChunkListReaderAdapter, ChunkWriter, LocalFileWriter,
 };
 use crate::trans_api::{DownloadTaskTracker, TransStore};
 use cyfs_base::*;
 use cyfs_bdt::{self, SingleDownloadContext, StackGuard};
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_task_manager::*;
 
 use cyfs_debug::Mutex;
@@ -20,7 +20,7 @@ struct DownloadFileTaskStatus {
 }
 pub struct DownloadFileTask {
     task_store: Option<Arc<dyn TaskStore>>,
-    chunk_manager: Arc<ChunkManager>,
+    named_data_components: NamedDataComponents,
     task_id: TaskId,
     bdt_stack: StackGuard,
     device_list: Vec<DeviceId>,
@@ -36,7 +36,7 @@ pub struct DownloadFileTask {
 
 impl DownloadFileTask {
     fn new(
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: NamedDataComponents,
         bdt_stack: StackGuard,
         device_list: Vec<DeviceId>,
         referer: String,
@@ -56,7 +56,7 @@ impl DownloadFileTask {
 
         Self {
             task_store: None,
-            chunk_manager,
+            named_data_components,
             task_id,
             bdt_stack,
             device_list,
@@ -139,17 +139,13 @@ impl Task for DownloadFileTask {
                     LocalFileWriter::new(
                         PathBuf::from(self.save_path.as_ref().unwrap().clone()),
                         self.file.clone(),
-                        self.bdt_stack.ndn().chunk_manager().ndc().clone(),
-                        self.bdt_stack.ndn().chunk_manager().tracker().clone(),
+                        self.named_data_components.ndc.clone(),
+                        self.named_data_components.tracker.clone(),
                     )
                     .await?,
                 )
             } else {
-                Box::new(ChunkManagerWriter::new(
-                    self.chunk_manager.clone(),
-                    self.bdt_stack.ndn().chunk_manager().ndc().clone(),
-                    self.bdt_stack.ndn().chunk_manager().tracker().clone(),
-                ))
+                self.named_data_components.new_chunk_writer()
             };
 
         // 创建bdt层的传输任务
@@ -362,7 +358,7 @@ impl Task for DownloadFileTask {
                         }
                     } else {
                         let task = RunnableTask::new(VerifyFileRunnable::new(
-                            self.chunk_manager.clone(),
+                            self.named_data_components.chunk_manager.clone(),
                             self.task_id.clone(),
                             self.file.clone(),
                             self.save_path.clone(),
@@ -522,7 +518,7 @@ impl DownloadFileParam {
 }
 
 pub(crate) struct DownloadFileTaskFactory {
-    chunk_manager: Arc<ChunkManager>,
+    named_data_components: NamedDataComponents,
     stack: StackGuard,
     trans_store: Arc<TransStore>,
 }
@@ -530,12 +526,12 @@ pub(crate) struct DownloadFileTaskFactory {
 impl DownloadFileTaskFactory {
     pub fn new(
         stack: StackGuard,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: NamedDataComponents,
         trans_store: Arc<TransStore>,
     ) -> Self {
         Self {
             stack,
-            chunk_manager,
+            named_data_components,
             trans_store,
         }
     }
@@ -550,7 +546,7 @@ impl TaskFactory for DownloadFileTaskFactory {
     async fn create(&self, params: &[u8]) -> BuckyResult<Box<dyn Task>> {
         let params = DownloadFileParam::clone_from_slice(params)?;
         let task = DownloadFileTask::new(
-            self.chunk_manager.clone(),
+            self.named_data_components.clone(),
             self.stack.clone(),
             params.device_list().clone(),
             params.referer().to_string(),
@@ -585,7 +581,7 @@ impl TaskFactory for DownloadFileTaskFactory {
             }
         };
         let task = DownloadFileTask::new(
-            self.chunk_manager.clone(),
+            self.named_data_components.clone(),
             self.stack.clone(),
             params.device_list().clone(),
             params.referer().to_string(),

@@ -1,6 +1,6 @@
 use super::task::*;
+use crate::NamedDataComponents;
 use crate::trans_api::{DownloadTaskTracker, TransStore};
-use cyfs_chunk_cache::{ChunkManager};
 use cyfs_base::*;
 use cyfs_lib::TransTaskInfo;
 use cyfs_bdt::{
@@ -51,7 +51,6 @@ impl ProtobufTransform<&DownloadTaskState> for super::trans_proto::DownloadTaskS
 
 #[derive(Clone)]
 pub(crate) struct DownloadTaskManager {
-    chunk_manager: Arc<ChunkManager>,
     stack: StackGuard,
     task_manager: Arc<TaskManager>,
     trans_store: Arc<TransStore>,
@@ -60,27 +59,26 @@ pub(crate) struct DownloadTaskManager {
 impl DownloadTaskManager {
     pub fn new(
         stack: StackGuard,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: &NamedDataComponents,
         task_manager: Arc<TaskManager>,
         trans_store: Arc<TransStore>,
     ) -> Self {
         task_manager
             .register_task_factory(DownloadChunkTaskFactory::new(
                 stack.clone(),
-                chunk_manager.clone(),
+                named_data_components.clone(),
                 trans_store.clone(),
             ))
             .unwrap();
         task_manager
             .register_task_factory(DownloadFileTaskFactory::new(
                 stack.clone(),
-                chunk_manager.clone(),
+                named_data_components.clone(),
                 trans_store.clone(),
             ))
             .unwrap();
 
         Self {
-            chunk_manager,
             stack,
             task_manager,
             trans_store,

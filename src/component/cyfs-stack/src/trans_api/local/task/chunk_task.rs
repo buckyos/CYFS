@@ -1,11 +1,11 @@
 use super::super::download_task_manager::DownloadTaskState;
+use crate::NamedDataComponents;
 use crate::ndn_api::{
     ChunkListReaderAdapter, ChunkManagerWriter, ChunkWriter, ChunkWriterRef, LocalChunkWriter,
 };
 use crate::trans_api::TransStore;
 use cyfs_base::*;
 use cyfs_bdt::{self, SingleDownloadContext, StackGuard};
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_task_manager::*;
 
 use cyfs_debug::Mutex;
@@ -380,19 +380,19 @@ impl DownloadChunkParam {
 
 pub struct DownloadChunkTaskFactory {
     stack: StackGuard,
-    chunk_manager: Arc<ChunkManager>,
+    named_data_components: NamedDataComponents,
     trans_store: Arc<TransStore>,
 }
 
 impl DownloadChunkTaskFactory {
     pub fn new(
         stack: StackGuard,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: NamedDataComponents,
         trans_store: Arc<TransStore>,
     ) -> Self {
         Self {
             stack,
-            chunk_manager,
+            named_data_components,
             trans_store,
         }
     }
@@ -410,8 +410,8 @@ impl TaskFactory for DownloadChunkTaskFactory {
             if param.save_path().is_some() && !param.save_path().as_ref().unwrap().is_empty() {
                 let chunk_writer: Box<dyn ChunkWriter> = Box::new(LocalChunkWriter::new(
                     PathBuf::from(param.save_path().as_ref().unwrap().clone()),
-                    self.stack.ndn().chunk_manager().ndc().clone(),
-                    self.stack.ndn().chunk_manager().tracker().clone(),
+                    self.named_data_components.ndc.clone(),
+                    self.named_data_components.tracker.clone(),
                 ));
                 (
                     chunk_writer,
@@ -419,9 +419,9 @@ impl TaskFactory for DownloadChunkTaskFactory {
                 )
             } else {
                 let chunk_writer: Box<dyn ChunkWriter> = Box::new(ChunkManagerWriter::new(
-                    self.chunk_manager.clone(),
-                    self.stack.ndn().chunk_manager().ndc().clone(),
-                    self.stack.ndn().chunk_manager().tracker().clone(),
+                    self.named_data_components.chunk_manager.clone(),
+                    self.named_data_components.ndc.clone(),
+                    self.named_data_components.tracker.clone(),
                 ));
                 (chunk_writer, Vec::new())
             };
@@ -449,8 +449,8 @@ impl TaskFactory for DownloadChunkTaskFactory {
             if param.save_path().is_some() && !param.save_path().as_ref().unwrap().is_empty() {
                 let chunk_writer: Box<dyn ChunkWriter> = Box::new(LocalChunkWriter::new(
                     PathBuf::from(param.save_path().as_ref().unwrap().clone()),
-                    self.stack.ndn().chunk_manager().ndc().clone(),
-                    self.stack.ndn().chunk_manager().tracker().clone(),
+                    self.named_data_components.ndc.clone(),
+                    self.named_data_components.tracker.clone(),
                 ));
                 (
                     chunk_writer,
@@ -458,9 +458,9 @@ impl TaskFactory for DownloadChunkTaskFactory {
                 )
             } else {
                 let chunk_writer: Box<dyn ChunkWriter> = Box::new(ChunkManagerWriter::new(
-                    self.chunk_manager.clone(),
-                    self.stack.ndn().chunk_manager().ndc().clone(),
-                    self.stack.ndn().chunk_manager().tracker().clone(),
+                    self.named_data_components.chunk_manager.clone(),
+                    self.named_data_components.ndc.clone(),
+                    self.named_data_components.tracker.clone(),
                 ));
                 (chunk_writer, Vec::new())
             };

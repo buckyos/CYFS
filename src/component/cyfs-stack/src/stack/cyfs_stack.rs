@@ -1,4 +1,5 @@
 // use super::dsg::{DSGService, DSGServiceOptions};
+use super::def::*;
 use super::params::*;
 use super::uni_stack::*;
 use crate::acl::{AclManager, AclManagerRef};
@@ -16,7 +17,7 @@ use crate::interface::{
 use crate::meta::*;
 use crate::name::NameResolver;
 use crate::ndn::NDNOutputTransformer;
-use crate::ndn_api::{BdtNDNEventHandler, ChunkStoreReader, NDNService};
+use crate::ndn_api::{BdtNDNEventHandler, NDNService};
 use crate::non::NONOutputTransformer;
 use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
@@ -33,15 +34,14 @@ use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use cyfs_base::*;
-use cyfs_bdt::{ChunkReader, DeviceCache, Stack, StackGuard, StackOpenParams};
-use cyfs_chunk_cache::{ChunkManager, ChunkManagerRef};
+use cyfs_bdt::{DeviceCache, Stack, StackGuard, StackOpenParams};
+use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
-
 
 #[derive(Clone)]
 pub(crate) struct ObjectServices {
@@ -68,8 +68,7 @@ pub struct CyfsStackImpl {
 
     noc: NamedObjectCacheRef,
 
-    ndc: Box<dyn NamedDataCache>,
-    tracker: Box<dyn TrackerCache>,
+    named_data_components: NamedDataComponents,
 
     services: ObjectServices,
 
@@ -143,6 +142,12 @@ impl CyfsStackImpl {
         let task_manager = Self::init_task_manager(isolate).await?;
         let trans_store = create_trans_store(isolate).await?;
         let chunk_manager = Arc::new(ChunkManager::new());
+
+        let named_data_components = NamedDataComponents {
+            chunk_manager,
+            ndc,
+            tracker,
+        };
 
         // init sn config manager
         let root_state_processor = GlobalStateOutputTransformer::new(
@@ -259,10 +264,8 @@ impl CyfsStackImpl {
             bdt_param,
             device_manager.clone_cache(),
             isolate,
-            ndc.clone(),
-            tracker.clone(),
+            &named_data_components,
             router_handlers.clone(),
-            chunk_manager.clone(),
             &sn_config_manager,
         )
         .await?;
@@ -297,7 +300,7 @@ impl CyfsStackImpl {
 
         let util_service = UtilService::new(
             noc.clone(),
-            ndc.clone(),
+            named_data_components.ndc.clone(),
             bdt_stack.clone(),
             forward_manager.clone(),
             zone_manager.clone(),
@@ -310,8 +313,7 @@ impl CyfsStackImpl {
         let (non_service, ndn_service) = NONService::new(
             noc.clone(),
             bdt_stack.clone(),
-            ndc.clone(),
-            tracker.clone(),
+            &named_data_components,
             forward_manager.clone(),
             acl_manager.clone(),
             zone_manager.clone(),
@@ -319,7 +321,6 @@ impl CyfsStackImpl {
             router_handlers.clone(),
             raw_meta_cache.clone(),
             fail_handler.clone(),
-            chunk_manager.clone(),
         );
 
         bdt_event.bind_non_processor(non_service.rmeta_noc_processor().clone());
@@ -327,10 +328,8 @@ impl CyfsStackImpl {
         let trans_service = TransService::new(
             noc.clone(),
             bdt_stack.clone(),
-            ndc.clone(),
-            tracker.clone(),
+            &named_data_components,
             ood_resoler.clone(),
-            chunk_manager.clone(),
             task_manager.clone(),
             acl_manager.clone(),
             forward_manager.clone(),
@@ -416,8 +415,7 @@ impl CyfsStackImpl {
 
             noc,
 
-            ndc,
-            tracker,
+            named_data_components,
 
             services,
 
@@ -460,12 +458,13 @@ impl CyfsStackImpl {
         // 首先初始化acl
         stack.acl_manager.init().await?;
 
-        Self::init_chunk_manager(&chunk_manager, isolate).await?;
+        stack.init_chunk_manager(isolate).await?;
 
         if param.config.sync_service {
             // 避免调用栈过深，使用task异步初始化
 
             let system_router_handlers = system_router_handlers.clone();
+            let named_data_components = stack.named_data_components.clone();
             let (ret, s) = async_std::task::spawn(async move {
                 let ret = stack
                     .zone_role_manager
@@ -475,7 +474,7 @@ impl CyfsStackImpl {
                         &stack.device_manager.clone_cache(),
                         &system_router_handlers,
                         &stack.services.util_service,
-                        chunk_manager,
+                        named_data_components,
                     )
                     .await;
 
@@ -698,26 +697,14 @@ impl CyfsStackImpl {
         params: BdtStackParams,
         device_cache: Box<dyn DeviceCache>,
         isolate: &str,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         router_handlers: RouterHandlersManager,
-        chunk_manager: ChunkManagerRef,
         sn_config_manager: &SNConfigManager,
     ) -> BuckyResult<(StackGuard, BdtNDNEventHandler)> {
-        let chunk_store = Box::new(ChunkStoreReader::new(
-            chunk_manager.clone(),
-            ndc.clone(),
-            tracker.clone(),
-        )) as Box<dyn ChunkReader>;
+        let chunk_store = named_data_components.new_chunk_reader();
 
-        let event = BdtNDNEventHandler::new(
-            zone_manager,
-            acl,
-            router_handlers,
-            chunk_manager,
-            ndc.clone(),
-            tracker.clone(),
-        );
+        let event =
+            BdtNDNEventHandler::new(zone_manager, acl, router_handlers, named_data_components);
 
         let mut bdt_params = StackOpenParams::new(isolate);
 
@@ -748,8 +735,6 @@ impl CyfsStackImpl {
         if !params.known_passive_pn.is_empty() {
             bdt_params.passive_pn = Some(params.known_passive_pn);
         }
-        bdt_params.ndc = Some(ndc);
-        bdt_params.tracker = Some(tracker);
         bdt_params.outer_cache = Some(device_cache);
         bdt_params.chunk_store = Some(chunk_store);
 
@@ -816,7 +801,6 @@ impl CyfsStackImpl {
         let task = async_std::task::spawn(async move {
             // 初始化known_objects
             for object in known_objects.list.into_iter() {
-
                 let req = NamedObjectCachePutObjectRequest {
                     source: RequestSourceInfo::new_local_system(),
                     object,
@@ -832,7 +816,7 @@ impl CyfsStackImpl {
         if known_objects.mode == CyfsStackKnownObjectsInitMode::Sync {
             task.await;
         }
-        
+
         Ok(noc)
     }
 
@@ -892,8 +876,8 @@ impl CyfsStackImpl {
         }
     }
 
-    async fn init_chunk_manager(chunk_manager: &ChunkManagerRef, isolate: &str) -> BuckyResult<()> {
-        match chunk_manager.init(isolate).await {
+    async fn init_chunk_manager(&self, isolate: &str) -> BuckyResult<()> {
+        match self.named_data_components.chunk_manager.init(isolate).await {
             Ok(()) => {
                 log::info!("init chunk manager success!");
                 Ok(())

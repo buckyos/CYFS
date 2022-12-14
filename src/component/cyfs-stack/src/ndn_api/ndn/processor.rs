@@ -4,6 +4,7 @@ use super::super::handler::*;
 use super::super::ndc::NDCLevelInputProcessor;
 use super::super::ndc::NDNObjectLoader;
 use super::NDNOutputFailHandleProcessor;
+use crate::NamedDataComponents;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -14,7 +15,6 @@ use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
-use cyfs_util::cache::NamedDataCache;
 
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -47,19 +47,15 @@ impl NDNLevelInputProcessor {
     fn new(
         acl: AclManagerRef,
         bdt_stack: StackGuard,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         non_processor: NONInputProcessorRef,
         router_handlers: RouterHandlersManager,
-        chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
         let ndc_processor = NDCLevelInputProcessor::new(
             acl.clone(),
-            chunk_manager.clone(),
-            ndc,
-            tracker,
+            named_data_components,
             non_processor.clone(),
         );
 
@@ -69,7 +65,7 @@ impl NDNLevelInputProcessor {
         let ret = Self {
             acl,
             bdt_stack,
-            chunk_manager,
+            chunk_manager: named_data_components.chunk_manager.clone(),
             target_object_loader,
             ndc_processor,
             router_handlers,
@@ -83,11 +79,9 @@ impl NDNLevelInputProcessor {
     pub(crate) fn new_zone(
         acl: AclManagerRef,
         bdt_stack: StackGuard,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         non_processor: NONInputProcessorRef,
         router_handlers: RouterHandlersManager,
-        chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
@@ -95,11 +89,9 @@ impl NDNLevelInputProcessor {
         let processor = Self::new(
             acl,
             bdt_stack,
-            ndc,
-            tracker,
+            named_data_components,
             non_processor,
             router_handlers,
-            chunk_manager,
             forward,
             fail_handler,
         );

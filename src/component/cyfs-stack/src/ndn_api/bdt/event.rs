@@ -6,13 +6,13 @@ use crate::{
     non_api::NONHandlerCaller,
     router_handler::{RouterHandlers, RouterHandlersManager},
     zone::*,
+    NamedDataComponents,
 };
 use cyfs_base::*;
 use cyfs_bdt::{
     ndn::channel::{protocol::v0::*, Channel, DownloadSession},
     DefaultNdnEventHandler, NdnEventHandler, Stack,
 };
-use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 use cyfs_util::acl::*;
 
@@ -29,11 +29,9 @@ impl BdtNDNEventHandler {
         zone_manager: ZoneManagerRef,
         acl: AclManagerRef,
         handlers: RouterHandlersManager,
-        chunk_manager: ChunkManagerRef,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
     ) -> Self {
-        let data_manager = LocalDataManager::new(chunk_manager, ndc, tracker);
+        let data_manager = LocalDataManager::new(named_data_components.to_owned());
 
         Self {
             acl: BdtNDNDataAclProcessor::new(
@@ -174,7 +172,7 @@ impl NdnEventHandler for BdtNDNEventHandler {
                     self.call_default_with_acl(stack, interest, from).await
                 }
                 InterestHandlerResponse::Upload(groups) => {
-                    match download::start_upload_task(stack, interest, from, groups).await {
+                    match cyfs_bdt::start_upload_task(stack, interest, from, groups).await {
                         Ok(_) => {},
                         Err(err) => {
                             from.resp_interest(RespInterest {

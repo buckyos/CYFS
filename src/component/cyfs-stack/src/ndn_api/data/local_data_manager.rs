@@ -1,8 +1,9 @@
+use crate::NamedDataComponents;
 use super::reader::ChunkStoreReader;
 use super::stream_writer::FileChunkListStreamWriter;
 use cyfs_base::*;
 use cyfs_bdt::ChunkReader;
-use cyfs_chunk_cache::{ChunkManagerRef, ChunkType};
+use cyfs_chunk_cache::{ChunkType};
 use cyfs_chunk_lib::{Chunk, ChunkReadWithRanges};
 use cyfs_lib::*;
 use cyfs_util::AsyncReadWithSeekAdapter;
@@ -12,24 +13,18 @@ use std::convert::TryFrom;
 use std::ops::Range;
 
 pub(crate) struct LocalDataManager {
-    chunk_manager: ChunkManagerRef,
-    ndc: Box<dyn NamedDataCache>,
-    tracker: Box<dyn TrackerCache>,
+    named_data_components: NamedDataComponents,
 
     reader: ChunkStoreReader,
 }
 
 impl LocalDataManager {
     pub(crate) fn new(
-        chunk_manager: ChunkManagerRef,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: NamedDataComponents,
     ) -> Self {
-        let reader = ChunkStoreReader::new(chunk_manager.clone(), ndc.clone(), tracker.clone());
+        let reader = named_data_components.new_chunk_store_reader();
         Self {
-            chunk_manager,
-            ndc,
-            tracker,
+            named_data_components,
 
             reader,
         }
@@ -103,9 +98,9 @@ impl LocalDataManager {
     ) -> BuckyResult<()> {
         assert!(chunk_id.len() == chunk.get_len());
 
-        self.chunk_manager.put_chunk(chunk_id, chunk).await?;
+        self.named_data_components.chunk_manager.put_chunk(chunk_id, chunk).await?;
 
-        self.ndc
+        self.named_data_components.ndc
             .insert_chunk(&InsertChunkRequest {
                 chunk_id: chunk_id.clone(),
                 state: ChunkState::Ready,
@@ -121,7 +116,7 @@ impl LocalDataManager {
             pos: TrackerPostion::ChunkManager,
             flags: 0,
         };
-        if let Err(e) = self.tracker.add_position(&request).await {
+        if let Err(e) = self.named_data_components.tracker.add_position(&request).await {
             if e.code() != BuckyErrorCode::AlreadyExists {
                 error!("add to tracker failed for {}", e);
                 return Err(e);
@@ -168,7 +163,7 @@ impl LocalDataManager {
         }
 
         if !req.add_list.is_empty() {
-            self.ndc.update_chunk_ref_objects(&req).await?;
+            self.named_data_components.ndc.update_chunk_ref_objects(&req).await?;
         }
 
         info!(
@@ -226,7 +221,7 @@ impl LocalDataManager {
         chunk_id: &ChunkId,
     ) -> BuckyResult<Option<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)>> {
         let ret = self
-            .chunk_manager
+            .named_data_components.chunk_manager
             .get_chunk_meta(chunk_id, ChunkType::MMapChunk)
             .await;
 
@@ -252,7 +247,7 @@ impl LocalDataManager {
     }
 
     pub async fn exist_chunk(&self, chunk_id: &ChunkId) -> bool {
-        let exist = self.chunk_manager.exist(chunk_id).await;
+        let exist = self.named_data_components.chunk_manager.exist(chunk_id).await;
 
         exist
     }
@@ -418,7 +413,7 @@ impl LocalDataManager {
                     flags: req.common.flags,
                 };
 
-                match self.ndc.get_file_by_file_id(&req).await? {
+                match self.named_data_components.ndc.get_file_by_file_id(&req).await? {
                     Some(item) => vec![item],
                     None => vec![],
                 }
@@ -429,7 +424,7 @@ impl LocalDataManager {
                     flags: req.common.flags,
                 };
 
-                match self.ndc.get_file_by_hash(&req).await? {
+                match self.named_data_components.ndc.get_file_by_hash(&req).await? {
                     Some(item) => vec![item],
                     None => vec![],
                 }
@@ -441,7 +436,7 @@ impl LocalDataManager {
                     flags: req.common.flags,
                 };
 
-                self.ndc.get_files_by_quick_hash(&req).await?
+                self.named_data_components.ndc.get_files_by_quick_hash(&req).await?
             }
             NDNQueryFileParam::Chunk(chunk_id) => {
                 let req = GetFileByChunkRequest {
@@ -449,7 +444,7 @@ impl LocalDataManager {
                     flags: req.common.flags,
                 };
 
-                self.ndc.get_files_by_chunk(&req).await?
+                self.named_data_components.ndc.get_files_by_chunk(&req).await?
             }
         };
 
