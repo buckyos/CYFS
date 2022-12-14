@@ -16,7 +16,7 @@ use crate::{
 use super::super::{
     types::*, 
     chunk::*,
-    channel::protocol::v0::*
+    channel::{DownloadSession, protocol::v0::*}
 };
 
 
@@ -28,6 +28,7 @@ pub trait DownloadContext: Send + Sync {
     fn referer(&self) -> &str;
     fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool;
     fn sources_of(&self, filter: Box<dyn Fn(&DownloadSource) -> bool>, limit: usize) -> LinkedList<DownloadSource>;
+    fn on_new_session(&self, _session: &DownloadSession) {}
 }
 
 #[derive(Clone)]
@@ -41,7 +42,7 @@ pub struct DownloadSourceWithReferer<T: Send + Sync> {
     pub target: T, 
     pub encode_desc: ChunkEncodeDesc, 
     pub referer: String, 
-    context_id: IncreaseId 
+    pub context_id: IncreaseId 
 }
 
 impl Into<DownloadSourceWithReferer<DeviceId>> for DownloadSourceWithReferer<DeviceDesc> {
@@ -82,6 +83,9 @@ impl MultiDownloadContext {
         id
     }
 
+    pub fn context_of(&self, context_id: &IncreaseId) -> Option<Box<dyn DownloadContext>> {
+        self.0.read().unwrap().contexts.iter().find_map(|(id, context)| if id.eq(context_id) { Some(context.clone_as_context())} else { None })
+    }
 
     pub fn remove_context(&self, remove_id: &IncreaseId) {
         let mut state = self.0.write().unwrap();

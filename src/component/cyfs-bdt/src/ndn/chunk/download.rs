@@ -189,7 +189,7 @@ impl ChunkDownloader {
             let source = sources.pop_front().unwrap();
             let channel = stack.ndn().channel_manager().create_channel(&source.target).unwrap();
             
-           
+            let context_id = source.context_id;
             let mut source: DownloadSourceWithReferer<DeviceId> = source.into();
             source.encode_desc = match &source.encode_desc {
                 ChunkEncodeDesc::Unknown => ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 
@@ -218,6 +218,7 @@ impl ChunkDownloader {
                         }
                     };
                     if start {
+                        let _ = self.context().context_of(&context_id).map(|context| context.on_new_session(&session));
                         session.start();
                         session.cur_speed()
                     } else if let Some(session) = exists {

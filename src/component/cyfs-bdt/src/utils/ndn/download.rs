@@ -83,7 +83,6 @@ impl DownloadContext for SingleDownloadContext {
         self.0.referer.as_str()
     }
 
-    
     fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool {
         let sources = self.0.sources.read().unwrap();
         sources.iter().find(|s| s.target.device_id().eq(target) && s.encode_desc.support_desc(encode_desc)).is_some()

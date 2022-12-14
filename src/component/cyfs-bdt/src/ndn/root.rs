@@ -67,11 +67,16 @@ impl DownloadRoot {
         let (parent, parent_path, rel_path) = self.makesure_path(path)?;
         let rel_path = rel_path.unwrap_or(self.next_index());
         let _ = parent.add_task(Some(rel_path.clone()), task.clone_as_task())?;
-        Ok([parent_path, rel_path].join("/"))
+        Ok([parent_path, rel_path].join(""))
     }
 
     pub fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {
-        self.sub.sub_task(path)
+        let abs_path = if path.starts_with("/") {
+            &path[1..]
+        } else {
+            path
+        };
+        self.sub.sub_task(abs_path)
     }
 }
 
@@ -133,7 +138,7 @@ impl UploadRoot {
             if let Ok(abs_path) = self.makesure_path(path).and_then(|(parent, parent_path, rel_path)| {
                 let rel_path = rel_path.unwrap_or(self.next_index());
                 parent.add_task(Some(rel_path.clone()), task.clone_as_task())
-                    .map(|_| [parent_path, rel_path].join("/"))
+                    .map(|_| [parent_path, rel_path].join(""))
             }) {
                 results.push(abs_path);
             }
@@ -147,6 +152,11 @@ impl UploadRoot {
     }
 
     pub fn sub_task(&self, path: &str) -> Option<Box<dyn UploadTask>> {
+        let abs_path = if path.starts_with("/") {
+            &path[1..]
+        } else {
+            path
+        };
         self.sub.sub_task(path)
     }
 }

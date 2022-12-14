@@ -352,14 +352,14 @@ impl DownloadSession {
                             std::mem::swap(&mut waiters, &mut interesting.waiters);
                             *state = StateImpl::Canceled(CanceledState {
                                 send_ctrl_time: None, 
-                                err: BuckyError::new(BuckyErrorCode::Interrupted, "cancel by remote")
+                                err: BuckyError::new(resp_interest.err, "cancel by remote")
                             });
                         },
                         StateImpl::Downloading(downloading) => {
                             std::mem::swap(&mut waiters, &mut downloading.waiters);
                             *state = StateImpl::Canceled(CanceledState {
                                 send_ctrl_time: None, 
-                                err: BuckyError::new(BuckyErrorCode::Interrupted, "cancel by remote")
+                                err: BuckyError::new(resp_interest.err, "cancel by remote")
                             });
                         },
                         _ => {}
