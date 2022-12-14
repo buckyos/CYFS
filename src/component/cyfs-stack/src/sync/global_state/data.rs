@@ -213,7 +213,6 @@ impl DataSync {
     pub fn create_dir_sync(&self) -> DirListSync {
         DirListSync::new(
             self.state_cache.clone(),
-            self.bdt_stack.clone(),
             &self.named_data_components,
         )
     }

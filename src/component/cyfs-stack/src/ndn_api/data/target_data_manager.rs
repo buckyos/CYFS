@@ -81,7 +81,7 @@ impl TargetDataManager {
         )
         .await?;
 
-        let (id, reader) =
+        let (_id, reader) =
             cyfs_bdt::download_file(&self.bdt_stack, file_obj.to_owned(), None, context)
                 .await
                 .map_err(|e| {

@@ -1,5 +1,5 @@
 use super::acl::BdtNDNDataAclProcessor;
-use crate::ndn_api::LocalDataManager;
+
 use crate::{
     acl::*,
     non::NONInputProcessorRef,
@@ -31,14 +31,12 @@ impl BdtNDNEventHandler {
         handlers: RouterHandlersManager,
         named_data_components: &NamedDataComponents,
     ) -> Self {
-        let data_manager = LocalDataManager::new(named_data_components);
-
         Self {
             acl: BdtNDNDataAclProcessor::new(
                 zone_manager,
                 acl,
                 handlers.clone(),
-                data_manager,
+                named_data_components.new_chunk_store_reader(),
             ),
             handlers,
             default: DefaultNdnEventHandler::new(),

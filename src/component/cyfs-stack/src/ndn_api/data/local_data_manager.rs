@@ -150,7 +150,7 @@ impl LocalDataManager {
         &self,
         chunk_id: &ChunkId,
         ranges: Option<Vec<Range<u64>>>,
-    ) -> BuckyResult<Option<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)>> {
+    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
         self.target_data_manager()
             .get_chunk(chunk_id, ranges, None)
             .await
@@ -159,23 +159,13 @@ impl LocalDataManager {
     pub async fn get_chunk_meta(
         &self,
         chunk_id: &ChunkId,
-    ) -> BuckyResult<Option<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)>> {
-        let ret = self
+    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
+        let data = self
             .named_data_components
             .chunk_manager
             .get_chunk_meta(chunk_id, ChunkType::MMapChunk)
-            .await;
+            .await?;
 
-        if let Err(e) = ret {
-            if e.code() == BuckyErrorCode::NotFound {
-                info!("local get chunk but not found: chunk={}, {}", chunk_id, e);
-                return Ok(None);
-            }
-            error!("local get chunk error! chunk={}, {}", chunk_id, e);
-            return Err(e);
-        }
-
-        let data = ret.unwrap();
         debug!(
             "local get chunk success! chunk={}, len={}",
             chunk_id,
@@ -184,7 +174,7 @@ impl LocalDataManager {
 
         let buf = data.to_vec()?;
         let len = buf.len() as u64;
-        Ok(Some((Box::new(Cursor::new(buf)), len)))
+        Ok((Box::new(Cursor::new(buf)), len))
     }
 
     pub async fn exist_chunk(&self, chunk_id: &ChunkId) -> bool {

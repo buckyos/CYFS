@@ -36,8 +36,11 @@ impl NDCLevelInputProcessor {
         let raw_processor = Arc::new(Box::new(ret) as Box<dyn NDNInputProcessor>);
 
         // add default ndn acl and chunk verifier
-        let data_manager = LocalDataManager::new(named_data_components);
-        let acl_processor = NDNAclInputProcessor::new(acl, data_manager, raw_processor);
+        let acl_processor = NDNAclInputProcessor::new(
+            acl,
+            named_data_components.new_chunk_store_reader(),
+            raw_processor,
+        );
         acl_processor.bind_non_processor(non_processor);
 
         Arc::new(Box::new(acl_processor))
@@ -215,33 +218,24 @@ impl NDCLevelInputProcessor {
             // no range param specified, will get the whole chunk
         }
 
-        let ret = if need_process {
+        let (data, length) = if need_process {
             match req.data_type {
                 NDNDataType::Mem => self.data_manager.get_chunk(&chunk_id, ranges).await?,
                 NDNDataType::SharedMem => self.data_manager.get_chunk_meta(&chunk_id).await?,
             }
         } else {
-            Some((zero_bytes_reader(), 0))
+            (zero_bytes_reader(), 0)
         };
 
-        if let Some((data, length)) = ret {
-            let resp = NDNGetDataInputResponse {
-                object_id: req.object_id,
-                owner_id: None,
-                attr: None,
-                range: resp_range,
-                length,
-                data,
-            };
-            Ok(resp)
-        } else {
-            let msg = format!(
-                "ndn get_chunk from local but not found! id={}",
-                req.object_id
-            );
-            error!("{}", msg);
-            Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
-        }
+        let resp = NDNGetDataInputResponse {
+            object_id: req.object_id,
+            owner_id: None,
+            attr: None,
+            range: resp_range,
+            length,
+            data,
+        };
+        Ok(resp)
     }
 
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {

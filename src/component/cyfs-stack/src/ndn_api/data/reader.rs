@@ -176,6 +176,14 @@ impl ChunkStoreReader {
         }
     }
 
+    pub async fn get_chunk(
+        &self,
+        chunk: &ChunkId,
+    ) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
+        let (reader, _) = self.read_impl(chunk).await?;
+        Ok(reader)
+    }
+    
     /*
     async fn read_to_buf(chunk: &ChunkId, path: &Path, offset: u64) -> BuckyResult<Vec<u8>> {
         let mut reader = Self::read_chunk(chunk, path, offset).await?;

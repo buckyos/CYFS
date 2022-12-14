@@ -30,7 +30,7 @@ impl ChunkListReaderAdapter {
         Self {
             writer,
             reader: Box::new(reader),
-            chunk_list: file.body().unwrap().content().chunk_list().clone(),
+            chunk_list: file.body().as_ref().unwrap().content().chunk_list().clone(),
         }
     }
 
@@ -46,7 +46,7 @@ impl ChunkListReaderAdapter {
         }
     }
 
-    pub async fn async_run(self) {
+    pub fn async_run(self) {
         async_std::task::spawn(async move {
             let _ = self.run().await;
         });
@@ -54,7 +54,7 @@ impl ChunkListReaderAdapter {
 
     pub async fn run(mut self) -> BuckyResult<()> {
         let chunk_list = self.chunk_list.inner_chunk_list().unwrap();
-        let mut buffer: Vec<u8> = vec![1024 * 1024 * 4];
+        let mut buffer: Vec<u8> = vec![0; 1024 * 1024 * 4];
 
         for chunk_id in chunk_list {
             let len = chunk_id.len();

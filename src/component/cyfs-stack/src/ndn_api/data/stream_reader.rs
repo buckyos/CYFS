@@ -26,7 +26,7 @@ impl ChunkListTaskTangesReader {
 
 impl Read for ChunkListTaskTangesReader {
     fn poll_read(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<Result<usize>> {
@@ -35,7 +35,7 @@ impl Read for ChunkListTaskTangesReader {
                 break Poll::Ready(Ok(0));
             }
 
-            let mut range = &self.ranges[self.range_index];
+            let mut range = self.ranges[self.range_index].clone();
             if range.is_empty() {
                 self.range_index += 1;
                 continue;
@@ -50,15 +50,17 @@ impl Read for ChunkListTaskTangesReader {
             }
 
             let range_len = range.end - range.start;
-            let len = std::cmp::min(range_len, buf.len() as u64);
-            let buf = &mut buf[..len as usize];
+            let except_len = std::cmp::min(range_len, buf.len() as u64);
+            let sub_buf = &mut buf[..except_len as usize];
 
-            match Pin::new(&mut self.reader).poll_read(cx, buf) {
+            match Pin::new(&mut self.reader).poll_read(cx, sub_buf) {
                 Poll::Ready(ret) => {
                     match ret {
                         Ok(size) => {
-                            assert!(size as u64 <= len);
+                            assert!(size as u64 <= except_len);
                             range.start += size as u64;
+                            let range_index = self.range_index;
+                            self.ranges[range_index] = range;
                             break Poll::Ready(Ok(size));
                         }
                         Err(e) => {

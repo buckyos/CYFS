@@ -1,5 +1,5 @@
+use crate::ndn_api::ChunkStoreReader;
 use crate::ndn_api::DirLoader;
-use crate::ndn_api::LocalDataManager;
 use crate::non::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -20,10 +20,10 @@ pub(crate) struct NONDirLoader {
 }
 
 impl NONDirLoader {
-    pub fn new(non: NONInputProcessorRef, data_manager: LocalDataManager) -> Self {
+    pub fn new(non: NONInputProcessorRef, chunk_reader: ChunkStoreReader) -> Self {
         Self {
             non,
-            dir_loader: DirLoader::new(data_manager),
+            dir_loader: DirLoader::new(chunk_reader),
         }
     }
 

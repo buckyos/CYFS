@@ -1,8 +1,7 @@
 use super::dir_loader::*;
 use super::objectmap_loader::*;
-use crate::NamedDataComponents;
-use crate::ndn_api::LocalDataManager;
 use crate::non::*;
+use crate::NamedDataComponents;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -22,8 +21,10 @@ impl NONInnerPathServiceProcessor {
         named_data_components: &NamedDataComponents,
         noc: NamedObjectCacheRef,
     ) -> NONInputProcessorRef {
-        let data_manager = LocalDataManager::new(named_data_components);
-        let dir_loader = NONDirLoader::new(non_processor.clone(), data_manager);
+        let dir_loader = NONDirLoader::new(
+            non_processor.clone(),
+            named_data_components.new_chunk_store_reader(),
+        );
 
         // TODO objectmap loader should use non instead noc?
         let objectmap_loader = NONObjectMapLoader::new(noc);
