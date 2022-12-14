@@ -59,7 +59,7 @@ impl BdtNDNEventHandler {
             .acl
             .get_data(BdtGetDataInputRequest {
                 object_id: interest.chunk.object_id(),
-                source: from.remote().clone(),
+                source: from.tunnel().remote().clone(),
                 referer: interest.referer.clone(),
             })
             .await
@@ -102,7 +102,7 @@ impl BdtNDNEventHandler {
                 prefer_type: interest.prefer_type.clone(),
                 from: interest.from.clone(),
                 referer,
-                from_channel: from.remote().clone(),
+                from_channel: from.tunnel().remote().clone(),
             },
             response: None,
         };
@@ -190,9 +190,10 @@ impl NdnEventHandler for BdtNDNEventHandler {
                 InterestHandlerResponse::Transmit(to) => {
                     let mut interest = interest.clone();
                     if interest.from.is_none() {
-                        interest.from = Some(from.remote().clone());
+                        interest.from = Some(from.tunnel().remote().clone());
                     }
-                    let trans_channel = stack.ndn().channel_manager().create_channel(&to);
+                    let to_dev = stack.device_cache().get(&to).await.ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, format!("device not cached: {}", to)))?;
+                    let trans_channel = stack.ndn().channel_manager().create_channel(&to_dev.desc())?;
                     trans_channel.interest(interest);
                     Ok(())
                 }

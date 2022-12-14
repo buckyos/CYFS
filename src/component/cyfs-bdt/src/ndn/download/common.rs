@@ -213,7 +213,7 @@ pub struct DownloadTaskReader {
 
 #[async_trait::async_trait]
 pub trait DownloadTaskSplitRead: std::io::Seek {
-    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkId, Range<usize>)>>;
+    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkCache, Range<usize>)>>;
 }
 
 impl std::fmt::Display for DownloadTaskReader {
@@ -238,7 +238,7 @@ impl DownloadTaskReader {
 
 #[async_trait::async_trait]
 impl DownloadTaskSplitRead for DownloadTaskReader {
-    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkId, Range<usize>)>> {
+    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkCache, Range<usize>)>> {
         if let DownloadTaskState::Error(err) = self.task.state() {
             trace!("{} split_read: {} offset: {} error: {}", self, buffer.len(), self.offset, err);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, "")));
@@ -273,7 +273,7 @@ impl DownloadTaskSplitRead for DownloadTaskReader {
             }
         };
 
-        result.map(|read| Some((self.cache.chunk().clone(), range.start..range.start + read)))
+        result.map(|read| Some((self.cache.clone(), range.start..range.start + read)))
     }
 }
 

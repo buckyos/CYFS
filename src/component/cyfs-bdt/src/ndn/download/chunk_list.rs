@@ -323,7 +323,7 @@ impl std::io::Seek for ChunkListTaskReader {
 
 #[async_trait::async_trait]
 impl DownloadTaskSplitRead for ChunkListTaskReader {
-    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkId, Range<usize>)>> {
+    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkCache, Range<usize>)>> {
         let ranges = self.task.chunk_list().range_of(self.offset..self.offset + buffer.len() as u64);
         if ranges.is_empty() {
             return Ok(None);
@@ -344,7 +344,7 @@ impl DownloadTaskSplitRead for ChunkListTaskReader {
                         let result = reader.read(&mut buffer[0..(range.end - range.start) as usize]).await;
                         result.map(|len| {
                             self.offset += len as u64;
-                            Some((cache.chunk().clone(), range.start as usize..range.start as usize + len))
+                            Some((cache.clone(), range.start as usize..range.start as usize + len))
                         })
                     },
                     Err(err) => {

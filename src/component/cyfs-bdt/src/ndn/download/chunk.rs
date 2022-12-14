@@ -247,7 +247,7 @@ impl Drop for ChunkTaskReader {
 
 #[async_trait::async_trait]
 impl DownloadTaskSplitRead for ChunkTaskReader {
-    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkId, Range<usize>)>> {
+    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkCache, Range<usize>)>> {
         self.0.split_read(buffer).await
     }
 }
