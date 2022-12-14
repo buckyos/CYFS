@@ -185,7 +185,7 @@ impl LocalDataManager {
         chunk_id: &ChunkId,
         ranges: Option<Vec<Range<u64>>>,
     ) -> BuckyResult<Option<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)>> {
-        let ret = self.reader.read(chunk_id).await;
+        let ret = self.reader.get(chunk_id).await;
 
         if let Err(e) = ret {
             if e.code() == BuckyErrorCode::NotFound {
@@ -283,7 +283,7 @@ impl LocalDataManager {
                 continue;
             }
 
-            let reader = self.reader.read(chunk_id).await.map_err(|e| {
+            let reader = self.reader.get(chunk_id).await.map_err(|e| {
                 if e.code() == BuckyErrorCode::NotFound {
                     warn!(
                         "local get chunk but not found! chunk={}, len={}",
@@ -370,7 +370,7 @@ impl LocalDataManager {
             }
             assert!(!ranges.is_empty());
 
-            let reader = self.reader.read(&chunk_id).await.map_err(|e| {
+            let reader = self.reader.get(&chunk_id).await.map_err(|e| {
                 if e.code() == BuckyErrorCode::NotFound {
                     warn!(
                         "local get chunk but not found! chunk={}, len={}",

@@ -1,20 +1,17 @@
 use super::super::download_task_manager::DownloadTaskState;
-use crate::ndn_api::{ChunkManagerWriter, LocalChunkWriter};
-use crate::trans_api::TransStore;
-use cyfs_chunk_cache::ChunkManager;
-use cyfs_base::*;
-use cyfs_bdt::{
-    self,
-    SingleDownloadContext,
-    ChunkWriter,
-    StackGuard,
+use crate::ndn_api::{
+    ChunkListReaderAdapter, ChunkManagerWriter, ChunkWriter, ChunkWriterRef, LocalChunkWriter,
 };
+use crate::trans_api::TransStore;
+use cyfs_base::*;
+use cyfs_bdt::{self, SingleDownloadContext, StackGuard};
+use cyfs_chunk_cache::ChunkManager;
 use cyfs_task_manager::*;
 
+use cyfs_debug::Mutex;
 use sha2::Digest;
 use std::path::PathBuf;
 use std::sync::Arc;
-use cyfs_debug::Mutex;
 
 pub struct DownloadChunkTask {
     task_id: TaskId,
@@ -23,8 +20,8 @@ pub struct DownloadChunkTask {
     device_list: Vec<DeviceId>,
     referer: String,
     context_id: Option<ObjectId>,
-    session: async_std::sync::Mutex<Option<Box<dyn cyfs_bdt::DownloadTask>>>,
-    writer: Box<dyn ChunkWriter>,
+    session: async_std::sync::Mutex<Option<String>>,
+    writer: ChunkWriterRef,
     task_store: Option<Arc<dyn TaskStore>>,
     task_status: Mutex<TaskStatus>,
 }
@@ -52,7 +49,7 @@ impl DownloadChunkTask {
             referer,
             context_id,
             session: async_std::sync::Mutex::new(None),
-            writer,
+            writer: Arc::new(writer),
             task_store: None,
             task_status: Mutex::new(TaskStatus::Stopped),
         }
@@ -94,33 +91,29 @@ impl Task for DownloadChunkTask {
             }
         }
 
-        let context = SingleDownloadContext::streams(
-            if self.referer.len() > 0 {
-                Some(self.referer.to_owned())
-            } else {
-                None
-            },
-            vec![self.device_list[0].clone()]);
+        let context = SingleDownloadContext::id_streams(
+            &self.bdt_stack,
+            self.referer.clone(),
+            &self.device_list,
+        )
+        .await?;
 
         // 创建bdt层的传输任务
-        *session = Some(
-            cyfs_bdt::download::download_chunk(
-                &self.bdt_stack,
-                self.chunk_id.clone(),
-                None,
-                Some(context),
-                vec![self.writer.clone_as_writer()],
-            )
-            .await
-            .map_err(|e| {
-                error!(
-                    "start bdt chunk trans session error! task_id={}, {}",
-                    self.task_id.to_string(),
+        let (id, reader) =
+            cyfs_bdt::download_chunk(&self.bdt_stack, self.chunk_id.clone(), None, context)
+                .await
+                .map_err(|e| {
+                    error!(
+                        "start bdt chunk trans session error! task_id={}, {}",
+                        self.task_id.to_string(),
+                        e
+                    );
                     e
-                );
-                e
-            })?,
-        );
+                })?;
+
+        *session = Some(id);
+
+        ChunkListReaderAdapter::new_chunk(self.writer.clone(), reader, &self.chunk_id).async_run();
 
         info!(
             "create bdt chunk trans session success: task={}, device={:?}",
@@ -138,10 +131,35 @@ impl Task for DownloadChunkTask {
     }
 
     async fn pause_task(&self) -> BuckyResult<()> {
-        let session = self.session.lock().await;
-        if session.is_some() {
-            session.as_ref().unwrap().pause()?;
+        let task_group = self.session.lock().await.clone();
+        if let Some(id) = task_group {
+            let task = self
+                .bdt_stack
+                .ndn()
+                .root_task()
+                .download()
+                .sub_task(&id)
+                .ok_or_else(|| {
+                    let msg = format!("get task but ot found! task={}, group={}", self.task_id, id);
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::NotFound, msg)
+                })?;
+
+            task.pause().map_err(|e| {
+                error!(
+                    "pause task failed! task={}, group={}, {}",
+                    self.task_id, id, e
+                );
+                e
+            })?;
+        } else {
+            let msg = format!(
+                "pause task but task group not exists! task={}",
+                self.task_id
+            );
+            error!("{}", msg);
         }
+
         *self.task_status.lock().unwrap() = TaskStatus::Paused;
         self.task_store
             .as_ref()
@@ -152,16 +170,31 @@ impl Task for DownloadChunkTask {
     }
 
     async fn stop_task(&self) -> BuckyResult<()> {
-        let session = {
-            let mut session = self.session.lock().await;
-            if session.is_none() {
-                return Ok(());
-            } else {
-                session.take().unwrap()
-            }
-        };
+        let task_group = self.session.lock().await.take();
+        if let Some(id) = task_group {
+            let task = self
+                .bdt_stack
+                .ndn()
+                .root_task()
+                .download()
+                .sub_task(&id)
+                .ok_or_else(|| {
+                    let msg = format!("get task but ot found! task={}, group={}", self.task_id, id);
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::NotFound, msg)
+                })?;
 
-        session.cancel()?;
+            task.cancel().map_err(|e| {
+                error!(
+                    "stop task failed! task={}, group={}, {}",
+                    self.task_id, id, e
+                );
+                e
+            })?;
+        } else {
+            let msg = format!("stop task but task group not exists! task={}", self.task_id);
+            error!("{}", msg);
+        }
 
         *self.task_status.lock().unwrap() = TaskStatus::Stopped;
         self.task_store
@@ -173,9 +206,21 @@ impl Task for DownloadChunkTask {
     }
 
     async fn get_task_detail_status(&self) -> BuckyResult<Vec<u8>> {
-        let session = self.session.lock().await;
-        let task_state = if session.is_some() {
-            let state = session.as_ref().unwrap().state();
+        let task_group = self.session.lock().await.clone();
+        let task_state = if let Some(id) = task_group {
+            let task = self
+                .bdt_stack
+                .ndn()
+                .root_task()
+                .download()
+                .sub_task(&id)
+                .ok_or_else(|| {
+                    let msg = format!("get task but ot found! task={}, group={}", self.task_id, id);
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::NotFound, msg)
+                })?;
+
+            let state = task.state();
             match state {
                 cyfs_bdt::DownloadTaskState::Downloading(speed, progress) => DownloadTaskState {
                     task_status: TaskStatus::Running,
@@ -194,7 +239,7 @@ impl Task for DownloadChunkTask {
                     sum_size: self.chunk_id.len() as u64,
                 },
                 cyfs_bdt::DownloadTaskState::Error(err) => {
-                    if err == BuckyErrorCode::Interrupted {
+                    if err.code() == BuckyErrorCode::Interrupted {
                         DownloadTaskState {
                             task_status: TaskStatus::Stopped,
                             err_code: None,
@@ -212,7 +257,7 @@ impl Task for DownloadChunkTask {
                             .await?;
                         DownloadTaskState {
                             task_status: TaskStatus::Failed,
-                            err_code: Some(err),
+                            err_code: Some(err.code()),
                             speed: 0,
                             upload_speed: 0,
                             downloaded_progress: 0,
@@ -268,7 +313,9 @@ pub struct DownloadChunkParam {
 }
 
 impl ProtobufTransform<super::super::trans_proto::DownloadChunkParam> for DownloadChunkParam {
-    fn transform(value: crate::trans_api::local::trans_proto::DownloadChunkParam) -> BuckyResult<Self> {
+    fn transform(
+        value: crate::trans_api::local::trans_proto::DownloadChunkParam,
+    ) -> BuckyResult<Self> {
         let mut device_list = Vec::new();
         for item in value.device_list.iter() {
             device_list.push(DeviceId::clone_from_slice(item.as_slice())?);
@@ -278,7 +325,13 @@ impl ProtobufTransform<super::super::trans_proto::DownloadChunkParam> for Downlo
             device_list,
             referer: value.referer,
             save_path: value.save_path,
-            context_id: if value.context_id.is_some() {Some(ObjectId::clone_from_slice(value.context_id.as_ref().unwrap().as_slice()))} else {None}
+            context_id: if value.context_id.is_some() {
+                Some(ObjectId::clone_from_slice(
+                    value.context_id.as_ref().unwrap().as_slice(),
+                ))
+            } else {
+                None
+            },
         })
     }
 }
@@ -294,7 +347,11 @@ impl ProtobufTransform<&DownloadChunkParam> for super::super::trans_proto::Downl
             device_list,
             referer: value.referer.clone(),
             save_path: value.save_path.clone(),
-            context_id: if value.context_id.is_some() {Some(value.context_id.as_ref().unwrap().to_vec()?)} else {None}
+            context_id: if value.context_id.is_some() {
+                Some(value.context_id.as_ref().unwrap().to_vec()?)
+            } else {
+                None
+            },
         })
     }
 }

@@ -9,7 +9,6 @@ use crate::{
 };
 use cyfs_base::*;
 use cyfs_bdt::{
-    download,
     ndn::channel::{protocol::v0::*, Channel, DownloadSession},
     DefaultNdnEventHandler, NdnEventHandler, Stack,
 };

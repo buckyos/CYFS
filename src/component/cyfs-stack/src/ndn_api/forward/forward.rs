@@ -43,7 +43,7 @@ impl NDNForwardDataOutputProcessor {
     // put_data目前只支持local
     async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
         let msg = format!(
-            "ndn put_data to target not support! chunk={}, target={}",
+            "ndn put_data to target not support! chunk={}, target={:?}",
             req.object_id,
             self.data_manager.target(),
         );
@@ -156,7 +156,7 @@ impl NDNForwardDataOutputProcessor {
                 .await
                 .map_err(|e| {
                     error!(
-                        "ndn get_chunk from target failed! chunk={}, target={}, {}",
+                        "ndn get_chunk from target failed! chunk={}, target={:?}, {}",
                         chunk_id,
                         self.data_manager.target(),
                         e
@@ -190,7 +190,7 @@ impl NDNForwardDataOutputProcessor {
                 // 如果是dir，那么必须指定目标文件的inner_path
                 if req.inner_path.is_none() {
                     let msg = format!(
-                        "ndn get_chunk from {:?} but inner_path is empty! id={}, target={}",
+                        "ndn get_chunk from {:?} but inner_path is empty! id={}, target={:?}",
                         req.object_id.obj_type_code(),
                         req.object_id,
                         self.data_manager.target(),
@@ -203,7 +203,7 @@ impl NDNForwardDataOutputProcessor {
             }
             code @ _ => {
                 let msg = format!(
-                    "ndn get_chunk only support chunk/file/dir object type! id={}, target={}, type={:?}",
+                    "ndn get_chunk only support chunk/file/dir object type! id={}, target={:?}, type={:?}",
                     req.object_id, self.data_manager.target(), code,
                 );
                 error!("{}", msg);

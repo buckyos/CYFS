@@ -2,16 +2,15 @@ use super::super::client::SyncClientRequestor;
 use super::super::protocol::SyncChunksRequest;
 use super::cache::SyncObjectsStateCache;
 use super::dir_sync::DirListSync;
-use crate::ndn_api::ChunkManagerWriter;
+use crate::ndn_api::{ChunkListReaderAdapter, ChunkManagerWriter, ChunkWriter};
 use cyfs_base::*;
 use cyfs_bdt::*;
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 
-use futures::future::{AbortHandle, AbortRegistration, Abortable};
+use cyfs_debug::Mutex;
 use std::collections::HashSet;
 use std::sync::Arc;
-use cyfs_debug::Mutex;
 
 struct AssociationChunks {
     list: HashSet<ChunkId>,
@@ -182,100 +181,6 @@ impl ChunksCollector {
 
     pub fn append_object(&self, object_id: &ObjectId, object: &AnyNamedObject) {
         self.chunks.lock().unwrap().append(object_id, object);
-    }
-}
-
-// 等待错误发生，或者完成第一个chunk后返回
-struct WaitWriterImpl {
-    task_id: String,
-    waker: Option<AbortHandle>,
-    abort_registration: Option<AbortRegistration>,
-    error: Option<BuckyError>,
-}
-
-#[derive(Clone)]
-pub struct WaitWriter(Arc<Mutex<WaitWriterImpl>>);
-
-impl WaitWriter {
-    pub fn new(task_id: String) -> Self {
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let imp = WaitWriterImpl {
-            task_id,
-            waker: Some(abort_handle),
-            abort_registration: Some(abort_registration),
-            error: None,
-        };
-
-        Self(Arc::new(Mutex::new(imp)))
-    }
-
-    pub async fn wait_and_return(&self) -> BuckyResult<()> {
-        let abort_registration = self.0.lock().unwrap().abort_registration.take().unwrap();
-
-        // 等待唤醒
-        let future = Abortable::new(async_std::future::pending::<()>(), abort_registration);
-        future.await.unwrap_err();
-
-        if let Some(e) = self.0.lock().unwrap().error.take() {
-            Err(e)
-        } else {
-            Ok(())
-        }
-    }
-
-    fn try_wakeup(&self, err: Option<BuckyErrorCode>) {
-        let waker = {
-            let mut item = self.0.lock().unwrap();
-            item.error = err.map(|code| BuckyError::from(code));
-            item.waker.take()
-        };
-
-        if let Some(waker) = waker {
-            debug!(
-                "sync chunks wakeup writer will wake! {}, err={:?}",
-                self.0.lock().unwrap().task_id,
-                err
-            );
-            waker.abort();
-        }
-    }
-
-    pub fn into_writer(self) -> Box<dyn ChunkWriter> {
-        Box::new(self) as Box<dyn ChunkWriter>
-    }
-}
-
-#[async_trait::async_trait]
-impl ChunkWriter for WaitWriter {
-    fn clone_as_writer(&self) -> Box<dyn ChunkWriter> {
-        Box::new(self.clone()) as Box<dyn ChunkWriter>
-    }
-
-    async fn write(&self, _chunk_id: &ChunkId, _content: Arc<Vec<u8>>) -> BuckyResult<()> {
-        Ok(())
-    }
-
-    async fn finish(&self) -> BuckyResult<()> {
-        self.try_wakeup(None);
-        Ok(())
-    }
-
-    async fn err(&self, err: BuckyErrorCode) -> BuckyResult<()> {
-        self.try_wakeup(Some(err));
-        Ok(())
-    }
-}
-
-impl std::fmt::Display for WaitWriter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let this = self.0.lock().unwrap();
-        write!(f, "task: {}, ", this.task_id)?;
-        if let Some(e) = &this.error {
-            write!(f, ", err: {}, ", e)?;
-        }
-        write!(f, ", waked: {}, ", this.waker.is_none())?;
-
-        Ok(())
     }
 }
 
@@ -455,39 +360,41 @@ impl DataSync {
 
         let task_id = format!("sync_chunk_{}", chunk_id);
 
-        let context = SingleDownloadContext::streams(None, vec![self.ood_device_id.clone()]);
+        let context = SingleDownloadContext::id_streams(
+            &self.bdt_stack,
+            "".to_owned(),
+            &[self.ood_device_id],
+        ).await?;
+
         let writer = Box::new(ChunkManagerWriter::new(
             self.chunk_manager.clone(),
             self.bdt_stack.ndn().chunk_manager().ndc().clone(),
             self.bdt_stack.ndn().chunk_manager().tracker().clone(),
-        ));
+        )) as Box<dyn ChunkWriter>;
 
-        // used for waiting task finish or error
-        let waiter = WaitWriter::new(task_id.clone());
+        let (id, reader) =
+            cyfs_bdt::download_chunk(&self.bdt_stack, chunk_id.to_owned(), None, context)
+                .await
+                .map_err(|e| {
+                    error!(
+                        "start bdt chunk sync session error! task_id={}, {}",
+                        task_id, e
+                    );
+                    e
+                })?;
 
-        let _controller = cyfs_bdt::download::download_chunk(
-            &self.bdt_stack,
-            chunk_id.to_owned(),
-            None, 
-            Some(context),
-            vec![writer, Box::new(waiter.clone())],
-        )
-        .await
-        .map_err(|e| {
-            error!(
-                "start bdt chunk sync session error! task_id={}, {}",
-                task_id, e
-            );
-            e
-        })?;
+        let adapter = ChunkListReaderAdapter::new_chunk(Arc::new(writer), reader, &chunk_id);
 
-        match waiter.wait_and_return().await {
+        match adapter.run().await {
             Ok(()) => {
-                info!("sync single chunk success! chunk={}", chunk_id);
+                info!("sync single chunk success! chunk={}, task={}", chunk_id, id);
                 Ok(())
             }
             Err(e) => {
-                warn!("sync single chunk failed! chunk={}, {}", chunk_id, e);
+                warn!(
+                    "sync single chunk failed! chunk={}, task={}, {}",
+                    chunk_id, id, e
+                );
                 Err(e)
             }
         }
@@ -508,39 +415,36 @@ impl DataSync {
 
         let task_id = format!("sync_chunks_{}", file_id);
 
-        let context = SingleDownloadContext::streams(None, vec![self.ood_device_id.clone()]);
+        let context = SingleDownloadContext::id_streams(
+            &self.bdt_stack,
+            "".to_owned(),
+            &[self.ood_device_id],
+        ).await?;
+
         let writer = Box::new(ChunkManagerWriter::new(
             self.chunk_manager.clone(),
             self.bdt_stack.ndn().chunk_manager().ndc().clone(),
             self.bdt_stack.ndn().chunk_manager().tracker().clone(),
         ));
 
-        // used for waiting task finish or error
-        let waiter = WaitWriter::new(task_id.clone());
+        let (id, reader) = cyfs_bdt::download_file(&self.bdt_stack, file.clone(), None, context)
+            .await
+            .map_err(|e| {
+                error!(
+                    "start bdt chunks sync session error! task_id={}, {}",
+                    task_id, e
+                );
+                e
+            })?;
 
-        let _controller = cyfs_bdt::download::download_file(
-            &self.bdt_stack,
-            file,
-            None, 
-            Some(context),
-            vec![writer, Box::new(waiter.clone())],
-        )
-        .await
-        .map_err(|e| {
-            error!(
-                "start bdt chunks sync session error! task_id={}, {}",
-                task_id, e
-            );
-            e
-        })?;
-
-        match waiter.wait_and_return().await {
+        let adapter = ChunkListReaderAdapter::new_file(Arc::new(writer), reader, &file);
+        match adapter.run().await {
             Ok(()) => {
-                info!("sync chunks success! file={}", file_id);
+                info!("sync chunks success! file={}, task={}", file_id, id);
                 Ok(())
             }
             Err(e) => {
-                error!("sync chunks failed! file={}, {}", file_id, e);
+                error!("sync chunks failed! file={}, task={}, {}", file_id, id, e);
                 Err(e)
             }
         }

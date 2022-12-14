@@ -52,7 +52,7 @@ impl SingleDownloadContext {
         }))
     }
 
-    pub async fn id_streams(stack: &Stack, referer: String, remotes: Vec<DeviceId>) -> BuckyResult<Self> {
+    pub async fn id_streams(stack: &Stack, referer: String, remotes: &[DeviceId]) -> BuckyResult<Self> {
         let mut sources = LinkedList::new();
         for remote in remotes {
             let device = stack.device_cache().get(&remote).await

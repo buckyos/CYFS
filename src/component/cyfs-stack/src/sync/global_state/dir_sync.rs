@@ -100,7 +100,7 @@ impl DirSync {
                         return Ok(DirSyncState::Complete);
                     }
 
-                    let ret = self.chunk_reader.read(id).await;
+                    let ret = self.chunk_reader.get(id).await;
                     match ret {
                         Ok(mut reader) => {
                             let mut buf = vec![];
@@ -194,7 +194,7 @@ impl DirSync {
         }
 
         // load from reader
-        let ret = self.chunk_reader.read(chunk_id).await;
+        let ret = self.chunk_reader.get(chunk_id).await;
         match ret {
             Ok(mut reader) => {
                 let mut buf = vec![];

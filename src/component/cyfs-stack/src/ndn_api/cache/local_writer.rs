@@ -1,6 +1,6 @@
 use super::state::*;
 use cyfs_base::*;
-use cyfs_bdt::ChunkWriter;
+use super::chunk_writer::ChunkWriter;
 use cyfs_chunk_cache::{LocalFile, MemRefChunk};
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 
@@ -14,21 +14,8 @@ pub struct LocalFileWriter {
     local_file: Arc<async_std::sync::Mutex<LocalFile>>,
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
-    err: Arc<Mutex<BuckyErrorCode>>,
+    err: Arc<Mutex<Option<BuckyError>>>,
     state: Arc<LocalFileStateUpdater>,
-}
-
-impl Clone for LocalFileWriter {
-    fn clone(&self) -> Self {
-        Self {
-            file_path: self.file_path.clone(),
-            local_file: self.local_file.clone(),
-            ndc: self.ndc.clone(),
-            tracker: self.tracker.clone(),
-            err: self.err.clone(),
-            state: self.state.clone(),
-        }
-    }
 }
 
 impl LocalFileWriter {
@@ -45,12 +32,13 @@ impl LocalFileWriter {
             )),
             ndc,
             tracker,
-            err: Arc::new(Mutex::new(BuckyErrorCode::Ok)),
+            err: Arc::new(Mutex::new(None)),
             state: Arc::new(LocalFileStateUpdater::new(file, path)),
         })
     }
 }
 
+/*
 impl std::fmt::Display for LocalFileWriter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -60,16 +48,13 @@ impl std::fmt::Display for LocalFileWriter {
         )
     }
 }
+*/
 
 #[async_trait::async_trait]
 impl ChunkWriter for LocalFileWriter {
-    fn clone_as_writer(&self) -> Box<dyn ChunkWriter> {
-        Box::new(self.clone())
-    }
-
-    async fn write(&self, chunk_id: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
+    async fn write(&self, chunk_id: &ChunkId, content: &[u8]) -> BuckyResult<()> {
         let ref_chunk = MemRefChunk::from(unsafe {
-            std::mem::transmute::<_, &'static [u8]>(content.as_slice())
+            std::mem::transmute::<_, &'static [u8]>(content)
         });
 
         {
@@ -91,8 +76,10 @@ impl ChunkWriter for LocalFileWriter {
         Ok(())
     }
 
-    async fn err(&self, e: BuckyErrorCode) -> BuckyResult<()> {
-        *self.err.lock().unwrap() = e;
+    async fn err(&self, e: &BuckyError) -> BuckyResult<()> {
+        error!("local file write failed! file={}, {}", self.file_path.display(), e);
+
+        *self.err.lock().unwrap() = Some(e.to_owned());
         Ok(())
     }
 }
@@ -101,20 +88,8 @@ pub struct LocalChunkWriter {
     local_path: PathBuf,
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
-    err: Arc<Mutex<BuckyErrorCode>>,
+    err: Arc<Mutex<Option<BuckyError>>>,
     state: Arc<LocalChunkStateUpdater>,
-}
-
-impl Clone for LocalChunkWriter {
-    fn clone(&self) -> Self {
-        Self {
-            local_path: self.local_path.clone(),
-            ndc: self.ndc.clone(),
-            tracker: self.tracker.clone(),
-            err: self.err.clone(),
-            state: self.state.clone(),
-        }
-    }
 }
 
 impl LocalChunkWriter {
@@ -127,7 +102,7 @@ impl LocalChunkWriter {
             local_path: local_path.clone(),
             ndc,
             tracker,
-            err: Arc::new(Mutex::new(BuckyErrorCode::Ok)),
+            err: Arc::new(Mutex::new(None)),
             state: Arc::new(LocalChunkStateUpdater::new(local_path)),
         }
     }
@@ -145,11 +120,7 @@ impl std::fmt::Display for LocalChunkWriter {
 
 #[async_trait::async_trait]
 impl ChunkWriter for LocalChunkWriter {
-    fn clone_as_writer(&self) -> Box<dyn ChunkWriter> {
-        Box::new(self.clone())
-    }
-
-    async fn write(&self, chunk_id: &ChunkId, content: Arc<Vec<u8>>) -> BuckyResult<()> {
+    async fn write(&self, chunk_id: &ChunkId, content: &[u8]) -> BuckyResult<()> {
         let mut file = async_std::fs::OpenOptions::new()
             .write(true)
             .read(true)
@@ -167,7 +138,7 @@ impl ChunkWriter for LocalChunkWriter {
                 log::error!("{}", msg.as_str());
                 BuckyError::new(BuckyErrorCode::Failed, msg)
             })?;
-        file.write(content.as_slice()).await.map_err(|e| {
+        file.write_all(content).await.map_err(|e| {
             let msg = format!(
                 "[{}:{}] write {} failed.err {}",
                 file!(),
@@ -203,8 +174,10 @@ impl ChunkWriter for LocalChunkWriter {
         Ok(())
     }
 
-    async fn err(&self, e: BuckyErrorCode) -> BuckyResult<()> {
-        *self.err.lock().unwrap() = e;
+    async fn err(&self, e: &BuckyError) -> BuckyResult<()> {
+        error!("local chunk file write failed! file={}, {}", self.local_path.display(), e);
+
+        *self.err.lock().unwrap() = Some(e.to_owned());
         Ok(())
     }
 }

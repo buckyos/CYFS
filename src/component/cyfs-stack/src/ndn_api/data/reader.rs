@@ -251,41 +251,11 @@ impl ChunkReader for ChunkStoreReader {
         }
     }
 
-    async fn read(
+    async fn get(
         &self,
         chunk: &ChunkId,
     ) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         let (reader, _) = self.read_impl(chunk).await?;
         Ok(reader)
-    }
-
-    async fn get(&self, chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>> {
-        let (mut reader, pos) = self.read_impl(chunk).await?;
-
-        let mut content = Vec::with_capacity(chunk.len());
-        let read = reader.read_to_end(&mut content).await?;
-
-        if read != chunk.len() {
-            let msg = format!(
-                "read {} bytes from chunk reader {} but chunk len is {}",
-                read,
-                chunk,
-                chunk.len()
-            );
-            error!("{}", msg);
-
-            let _ = self
-                .tracker
-                .remove_position(&RemoveTrackerPositionRequest {
-                    id: chunk.to_string(),
-                    direction: Some(TrackerDirection::Store),
-                    pos: Some(pos),
-                })
-                .await;
-
-            return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
-        }
-
-        Ok(Arc::new(content))
     }
 }
