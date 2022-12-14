@@ -9,7 +9,7 @@ edition = "2021"
 cyfs-base= {path="../../component/cyfs-base"}
 async-std = { version = "1.11", features = ["attributes"] }
 async-trait = "0.1.53"
-sqlx = { version = "0.6", features = [ "runtime-async-std-rustls", "sqlite", "macros" ] }
+sqlx = { version = "0.5", features = [ "runtime-async-std-rustls", "sqlite", "macros" ] }
 log = "0.4"
 simple_logger = "3.0"
 clap = "2.34.0"

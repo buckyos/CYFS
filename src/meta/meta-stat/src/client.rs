@@ -9,10 +9,11 @@ use crate::def::*;
 use crate::storage::{Storage, MetaStat};
 use plotters::prelude::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
+#[repr(u8)]
 pub enum MetaDescObject {
-    Device,
-    People,
+    Device = 0,
+    People = 1,
 }
 
 pub struct Client {
