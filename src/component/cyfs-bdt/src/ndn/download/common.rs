@@ -2,6 +2,7 @@ use std::{
     collections::{LinkedList}, 
     sync::{Arc, RwLock}, 
     io::SeekFrom, 
+    ops::Range
 };
 use async_std::{
     pin::Pin, 
@@ -210,6 +211,11 @@ pub struct DownloadTaskReader {
     task: Box<dyn DownloadTask>
 }
 
+#[async_trait::async_trait]
+pub trait DownloadTaskSplitRead: std::io::Seek {
+    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkId, Range<usize>)>>;
+}
+
 impl std::fmt::Display for DownloadTaskReader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "DownloadTaskReader{{chunk:{}}}", self.cache.chunk())
@@ -227,6 +233,47 @@ impl DownloadTaskReader {
 
     pub fn task(&self) -> &dyn DownloadTask {
         self.task.as_ref()
+    }
+}
+
+#[async_trait::async_trait]
+impl DownloadTaskSplitRead for DownloadTaskReader {
+    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkId, Range<usize>)>> {
+        if let DownloadTaskState::Error(err) = self.task.state() {
+            trace!("{} split_read: {} offset: {} error: {}", self, buffer.len(), self.offset, err);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, "")));
+        } 
+        let range = self.cache.wait_exists(self.offset..self.offset + buffer.len(), || self.task.wait_user_canceled()).await
+            .map_err(|err| {
+                trace!("{} split_read: {} offset: {} error: {}", self, buffer.len(), self.offset, err);
+                std::io::Error::new(std::io::ErrorKind::Other, err)
+            })?;
+        trace!("{} split_read: {} offset: {} exists {:?}", self, buffer.len(), self.offset, range);
+        let (desc, mut offset) = PieceDesc::from_stream_offset(PieceData::max_payload(), range.start as u32);
+        let (mut index, len) = desc.unwrap_as_stream();
+        let mut read = 0;
+        let result = loop {
+            match self.cache.stream().sync_try_read(
+                &PieceDesc::Range(index, len), 
+                offset as usize, 
+                &mut buffer[read..]) {
+                Ok(this_read) => {
+                    read += this_read;
+                    if this_read == 0 
+                        || read >= buffer.len() {
+                            self.offset += read;
+                        break Ok(read);
+                    }
+                    index += 1;
+                    offset = 0;
+                },
+                Err(err) => {
+                    break Err(std::io::Error::new(std::io::ErrorKind::Other, err))
+                }
+            }
+        };
+
+        result.map(|read| Some((self.cache.chunk().clone(), range.start..range.start + read)))
     }
 }
 

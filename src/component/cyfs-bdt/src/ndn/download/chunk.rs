@@ -1,6 +1,7 @@
 use std::{
     sync::RwLock, 
     io::SeekFrom, 
+    ops::Range
 };
 use async_std::{
     sync::Arc, 
@@ -241,6 +242,13 @@ pub struct ChunkTaskReader(DownloadTaskReader);
 impl Drop for ChunkTaskReader {
     fn drop(&mut self) {
         let _ = self.0.task().cancel();
+    }
+}
+
+#[async_trait::async_trait]
+impl DownloadTaskSplitRead for ChunkTaskReader {
+    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkId, Range<usize>)>> {
+        self.0.split_read(buffer).await
     }
 }
 

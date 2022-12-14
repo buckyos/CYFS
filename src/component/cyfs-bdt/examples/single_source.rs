@@ -1,20 +1,11 @@
-
-use std::{
-    time::Duration,
-    path::PathBuf,
-    collections::BTreeMap
-};
 use async_std::{
     future, 
-    io::{prelude::*, Cursor}, 
     task,
-    fs::File
 };
 use cyfs_base::*;
 use cyfs_bdt::{
     *, 
     ndn::{
-        chunk::*, 
         channel::{*, protocol::v0::*}
     }, 
 };
@@ -80,7 +71,7 @@ async fn main() {
         impl NdnEventHandler for RespNotFound {
             async fn on_newly_interest(
                 &self, 
-                stack: &Stack, 
+                _stack: &Stack, 
                 interest: &Interest, 
                 from: &Channel
             ) -> BuckyResult<()> {
@@ -127,7 +118,7 @@ async fn main() {
         let session = context.wait_session(future::pending::<BuckyError>()).await.unwrap();
         if let DownloadSessionState::Canceled(err) = session.wait_finish().await {
             assert_eq!(err.code(), BuckyErrorCode::NotFound);
-            down_stack.ndn().root_task().download().sub_task(path.as_str()).unwrap().cancel();
+            let _ = down_stack.ndn().root_task().download().sub_task(path.as_str()).unwrap().cancel();
         } else {
             unreachable!()
         }

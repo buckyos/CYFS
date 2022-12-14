@@ -1,11 +1,12 @@
 use std::{
     sync::{RwLock},
     io::SeekFrom, 
+    ops::Range
 };
 use async_std::{
     sync::Arc, 
     pin::Pin, 
-    task::{Context, Poll},
+    task::{Context, Poll}, 
 };
 
 use cyfs_base::*;
@@ -318,6 +319,52 @@ impl std::io::Seek for ChunkListTaskReader {
        
     }
 }
+
+
+#[async_trait::async_trait]
+impl DownloadTaskSplitRead for ChunkListTaskReader {
+    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkId, Range<usize>)>> {
+        let ranges = self.task.chunk_list().range_of(self.offset..self.offset + buffer.len() as u64);
+        if ranges.is_empty() {
+            return Ok(None);
+        }
+        if let DownloadTaskState::Error(err) = self.task.state() {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, "")));
+        } 
+
+        let (index, range) = ranges[0].clone();
+
+        let result = match self.task.create_cache(index) {
+            Ok(cache) => {
+                let mut reader = DownloadTaskReader::new(cache.clone(), self.task.clone_as_task());
+                use std::{io::{Seek}};
+                match reader.seek(SeekFrom::Start(range.start)) {
+                    Ok(_) => {
+                        use async_std::io::ReadExt;
+                        let result = reader.read(&mut buffer[0..(range.end - range.start) as usize]).await;
+                        result.map(|len| {
+                            self.offset += len as u64;
+                            Some((cache.chunk().clone(), range.start as usize..range.start as usize + len))
+                        })
+                    },
+                    Err(err) => {
+                        return Err(err);
+                    }
+                }
+            }
+            Err(err) => {
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, err));
+            }
+        };
+        
+        for (index, _) in ranges.into_iter().skip(1) {
+            let _ = self.task.create_cache(index);
+        }
+
+        result
+    }
+}
+
 
 impl async_std::io::Read for ChunkListTaskReader {
     fn poll_read(

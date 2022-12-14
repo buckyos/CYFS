@@ -103,7 +103,7 @@ impl DownloadContext for SingleSourceContext {
         self.source().target.device_id().eq(target) && self.source().encode_desc.support_desc(encode_desc)
     }
 
-    fn sources_of(&self, filter: Box<dyn Fn(&DownloadSource) -> bool>, limit: usize) -> LinkedList<DownloadSource> {
+    fn sources_of(&self, filter: Box<dyn Fn(&DownloadSource) -> bool>, _limit: usize) -> LinkedList<DownloadSource> {
         let mut result = LinkedList::new();
         if (*filter)(self.source()) {
             result.push_back(DownloadSource {

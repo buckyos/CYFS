@@ -157,7 +157,7 @@ impl UploadRoot {
         } else {
             path
         };
-        self.sub.sub_task(path)
+        self.sub.sub_task(abs_path)
     }
 }
 
