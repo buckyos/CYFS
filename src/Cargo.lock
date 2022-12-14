@@ -1663,6 +1663,7 @@ dependencies = [
  "serde_json",
  "sha2 0.8.2",
  "simple_logger 2.3.0",
+ "sqlx 0.5.13",
  "url 2.3.0",
  "zip",
 ]
@@ -6779,6 +6780,7 @@ dependencies = [
  "bitflags",
  "byteorder",
  "bytes 1.2.1",
+ "chrono",
  "crc 2.1.0",
  "crossbeam-queue",
  "digest 0.10.5",

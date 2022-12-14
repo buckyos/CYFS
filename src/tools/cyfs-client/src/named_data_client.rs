@@ -281,18 +281,39 @@ impl NamedCacheClient {
     }
 
     async fn http_on_bdt(&self, remote: &DeviceId, req: Request) -> BuckyResult<Response> {
-        debug!(
+        let mut use_tcp = self.config.conn_strategy == ConnStrategy::TcpFirst || self.config.conn_strategy == ConnStrategy::TcpOnly;
+        let mut resp = None;
+        if use_tcp {
+            if let StandardObject::Device(device) = self.get_desc(remote.object_id(), None).await? {
+                for endpoint in device.body_expect("").content().endpoints() {
+                    if endpoint.is_static_wan() && endpoint.is_tcp() && endpoint.addr().is_ipv4() {
+                        info!("named data client use tcp conn to {}:{}", &endpoint.addr().ip().to_string(), self.config.tcp_file_manager_port);
+                        let conn = async_std::net::TcpStream::connect(format!("{}:{}", &endpoint.addr().ip().to_string(), self.config.tcp_file_manager_port)).await?;
+                        resp = Some(cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if resp.is_none() {
+            debug!(
             "http on bdt, remote {}, url {}",
             remote,
             req.url()
         );
-        let conn = self.bdt_conn(remote).await?;
-        let resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
+            let conn = self.bdt_conn(remote).await?;
+            resp = Some(cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?);
+        }
+
+        let resp = resp.unwrap();
+
         if !resp.status().is_success() {
             Err(BuckyError::from(resp.status()))
         } else {
             Ok(resp)
         }
+
     }
 
     async fn get_bdt_stream(&self, remote: &DeviceId) -> BuckyResult<PooledStream> {

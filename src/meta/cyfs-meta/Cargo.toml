@@ -39,6 +39,6 @@ primitive-types = { version = "0.9", default-features = false, features = [
     "rlp",
 ] }
 base58 = "0.2.0"
-sqlx = { version = "0.5.11", features = ["runtime-async-std-rustls", "sqlite", "any"] }
+sqlx = { version = "0.5.11", features = ["runtime-async-std-rustls", "sqlite", "any", "chrono"] }
 
 async-std = { version = "1.11", features = ["unstable"]}

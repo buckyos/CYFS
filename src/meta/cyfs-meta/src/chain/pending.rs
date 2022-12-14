@@ -52,7 +52,7 @@ impl PendingTransactions {
             let nonce = self.nonce_map.get(id).unwrap();
             Ok(*nonce)
         } else {
-            let (_, tip_storage, _) = self.chain_storage.get_tip_info().await?;
+            let (_, tip_storage) = self.chain_storage.get_tip_info().await?;
             let state = tip_storage.create_state(true).await;
             state.get_nonce(id).await
         }

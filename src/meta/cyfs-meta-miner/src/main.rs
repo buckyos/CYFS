@@ -24,7 +24,7 @@ async fn main() {
     let chain_port = matches.value_of("port").unwrap_or(::cyfs_base::CYFS_META_MINER_PORT.to_string().as_str()).parse::<u16>().unwrap_or(::cyfs_base::CYFS_META_MINER_PORT);
     let trace = matches.value_of("trace").unwrap_or("true").parse::<bool>().unwrap_or(true);
     
-    let miner: Arc<dyn Miner> = ChainCreator::start_miner_instance(Path::new(chain_path), new_sql_storage, trace, new_archive_storage).unwrap();
+    let miner: Arc<dyn Miner> = ChainCreator::start_miner_instance(Path::new(chain_path), new_sql_storage).unwrap();
     let server = MetaHttpServer::new(miner, chain_port);
     server.run().await.unwrap();
 }
