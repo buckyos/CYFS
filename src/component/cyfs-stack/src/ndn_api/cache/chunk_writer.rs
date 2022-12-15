@@ -1,6 +1,7 @@
 
 use cyfs_base::*;
 use cyfs_bdt::{ChunkListTaskReader, ChunkTaskReader};
+use cyfs_chunk_lib::Chunk;
 
 use async_std::io::ReadExt;
 use std::sync::Arc;
@@ -8,7 +9,7 @@ use std::sync::Arc;
 #[async_trait::async_trait]
 pub trait ChunkWriter: Send + Sync {
     // 写入一组chunk到文件
-    async fn write(&self, chunk: &ChunkId, content: &[u8]) -> BuckyResult<()>;
+    async fn write(&self, chunk: &ChunkId, chunk: Box<dyn Chunk>) -> BuckyResult<()>;
     async fn finish(&self) -> BuckyResult<()>;
     async fn err(&self, e: &BuckyError) -> BuckyResult<()>;
 }
@@ -72,7 +73,11 @@ impl ChunkListReaderAdapter {
                 return Err(err);
             }
 
-            self.writer.write(chunk_id, &buf).await?;
+            let ref_chunk = cyfs_chunk_lib::MemRefChunk::from(unsafe {
+                std::mem::transmute::<_, &'static [u8]>(buf)
+            });
+            let content = Box::new(ref_chunk) as Box<dyn Chunk>;
+            self.writer.write(chunk_id, content).await?;
         }
 
         self.writer.finish().await?;

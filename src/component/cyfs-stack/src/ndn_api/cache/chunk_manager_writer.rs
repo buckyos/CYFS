@@ -1,12 +1,11 @@
 use super::state::*;
-use cyfs_base::*;
 use crate::ndn_api::ChunkWriter;
-use cyfs_chunk_cache::{Chunk, ChunkManagerRef, MemRefChunk};
+use cyfs_base::*;
+use cyfs_chunk_cache::{Chunk, ChunkManagerRef};
 use cyfs_debug::Mutex;
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 
 use std::sync::Arc;
-
 
 pub struct ChunkManagerWriter {
     err: Arc<Mutex<Option<BuckyError>>>,
@@ -43,17 +42,10 @@ impl ChunkManagerWriter {
     }
 }
 
-
 #[async_trait::async_trait]
 impl ChunkWriter for ChunkManagerWriter {
-    async fn write(&self, chunk_id: &ChunkId, content: &[u8]) -> BuckyResult<()> {
-        let ref_chunk = MemRefChunk::from(unsafe {
-            std::mem::transmute::<_, &'static [u8]>(content)
-        });
-        let content = Box::new(ref_chunk) as Box<dyn Chunk>;
-        self.chunk_manager
-            .put_chunk(chunk_id, content.as_ref())
-            .await?;
+    async fn write(&self, chunk_id: &ChunkId, chunk: Box<dyn Chunk>) -> BuckyResult<()> {
+        self.chunk_manager.put_chunk(chunk_id, chunk.as_ref()).await?;
 
         ChunkManagerStateUpdater::update_chunk_state(&self.ndc, chunk_id).await?;
         ChunkManagerStateUpdater::update_chunk_tracker(&self.tracker, chunk_id).await?;

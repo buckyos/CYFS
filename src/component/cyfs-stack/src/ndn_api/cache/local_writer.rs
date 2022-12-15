@@ -1,8 +1,9 @@
 use super::state::*;
 use cyfs_base::*;
 use super::chunk_writer::ChunkWriter;
-use cyfs_chunk_cache::{LocalFile, MemRefChunk};
+use cyfs_chunk_cache::{LocalFile};
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
+use cyfs_chunk_lib::{Chunk, ChunkRead};
 
 use futures::AsyncWriteExt;
 use std::path::PathBuf;
@@ -40,14 +41,10 @@ impl LocalFileWriter {
 
 #[async_trait::async_trait]
 impl ChunkWriter for LocalFileWriter {
-    async fn write(&self, chunk_id: &ChunkId, content: &[u8]) -> BuckyResult<()> {
-        let ref_chunk = MemRefChunk::from(unsafe {
-            std::mem::transmute::<_, &'static [u8]>(content)
-        });
-
+    async fn write(&self, chunk_id: &ChunkId, chunk: Box<dyn Chunk>) -> BuckyResult<()> {
         {
             let mut local_file = self.local_file.lock().await;
-            local_file.put_chunk(chunk_id, &ref_chunk).await?;
+            local_file.put_chunk(chunk_id, chunk.as_ref()).await?;
         }
 
         self.state.update_chunk_state(&self.ndc, chunk_id).await?;
@@ -108,7 +105,9 @@ impl std::fmt::Display for LocalChunkWriter {
 
 #[async_trait::async_trait]
 impl ChunkWriter for LocalChunkWriter {
-    async fn write(&self, chunk_id: &ChunkId, content: &[u8]) -> BuckyResult<()> {
+    async fn write(&self, chunk_id: &ChunkId, chunk: Box<dyn Chunk>) -> BuckyResult<()> {
+        let reader = ChunkRead::new(chunk);
+
         let mut file = async_std::fs::OpenOptions::new()
             .write(true)
             .read(true)
@@ -126,7 +125,8 @@ impl ChunkWriter for LocalChunkWriter {
                 log::error!("{}", msg.as_str());
                 BuckyError::new(BuckyErrorCode::Failed, msg)
             })?;
-        file.write_all(content).await.map_err(|e| {
+
+        async_std::io::copy(reader, file.clone()).await.map_err(|e| {
             let msg = format!(
                 "[{}:{}] write {} failed.err {}",
                 file!(),
