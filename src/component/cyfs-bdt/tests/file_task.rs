@@ -211,11 +211,11 @@ async fn split_read_file() {
     let mut buffer = vec![0u8; 1024 * 1024];
     for i in 0..2 {
         let chunk_len = 1024 * 1024;
-        let (read_id, read_range) = reader.split_read(&mut buffer).await.unwrap().unwrap();
+        let (cache, read_range) = reader.split_read(&mut buffer).await.unwrap().unwrap();
         let chunk_hash = hash_data(&buffer[..]);
         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
-        assert_eq!(read_id, chunkid);
-        assert_eq!(&read_id, &chunks[i]);
+        assert_eq!(cache.chunk(), &chunkid);
+        assert_eq!(cache.chunk(), &chunks[i]);
         assert_eq!(read_range.start, 0);
         assert_eq!(read_range.end, chunk_len);
     }
