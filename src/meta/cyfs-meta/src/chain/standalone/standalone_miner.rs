@@ -59,6 +59,7 @@ impl StandaloneMiner {
 
     pub async fn load(coinbase: ObjectId, interval: u32, bfc_spv_node: String, dir: &Path, new_storage: fn (path: &Path) -> StorageRef, stat_config: Option<StatConfig>) -> BuckyResult<Self> {
         let stat = stat_config.map(|config|{
+            info!("standalone miner enable stat module.");
             let stat = Stat::new(config);
             stat.start();
             stat

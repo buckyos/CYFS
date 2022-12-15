@@ -11,7 +11,7 @@ description = "Rust cyfs-meta package"
 
 [dependencies]
 async-trait = "0.1.53"
-cyfs-base = { path = "../../component/cyfs-base"}
+cyfs-base = { path = "../../component/cyfs-base", features = ["sqlx-error"]}
 cyfs-base-meta = { path = "../../component/cyfs-base-meta"}
 cyfs-core = { path = "../../component/cyfs-core"}
 cyfs-util = { path = "../../component/cyfs-util"}

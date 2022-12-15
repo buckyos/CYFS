@@ -1,57 +1,41 @@
-use cyfs_base::*;
-use crate::{def::*, EmailConfig};
 use lettre::{smtp::authentication::Credentials, SmtpClient, Transport};
 use lettre_email::Email;
+use serde::Deserialize;
+use cyfs_base::BuckyResult;
 
-extern crate lettre;
-extern crate lettre_email;
-extern crate mime;
-
-pub struct Lettre {
-    email_receiver: String,
-    mine_email: String,
+#[derive(Deserialize)]
+pub struct EmailConfig {
+    receiver: String,
+    sender: String,
     smtp_server: String,
     password: String,
 }
 
-impl Lettre {
-    pub fn new(config: &EmailConfig) -> Self {
-        Self {
-            email_receiver: config.email_receiver.to_owned(),
-            mine_email: config.mine_email.to_owned(),
-            smtp_server: config.smtp_server.to_owned(),
-            password: config.password.to_owned(),
-        }
-    }
-    
-    pub async fn report(&self, info: &StatInfo) -> BuckyResult<()> {
+pub struct MailReporter {
+    receiver: String,
+    sender: String,
+    smtp_server: String,
+    password: String,
+}
+
+impl MailReporter {
+    pub async fn report(config: EmailConfig, output: String) -> BuckyResult<()> {
+        let output = output.replace("\n", "<br>");
         // 发送邮件
-        let mut email = Email::builder()
-        .to(self.email_receiver.as_ref())
-        .from(self.mine_email.as_ref())
-        .subject("Meta Chain Stat")
-        .html("<h1>Stat Metrics</h1>")
-        .html(info.context.to_owned());
-
-        for v in info.attachment.iter() {
-            email = email.attachment_from_file(&std::path::Path::new(v.as_str()), None, &mime::IMAGE_PNG).unwrap();
-        }
-
-        let builder = email.build().unwrap();
-
-        let creds = Credentials::new(
-            self.mine_email.to_string(),
-            self.password.to_string(),
-        );
+        let builder = Email::builder()
+        .to(config.receiver)
+        .from(config.sender.clone())
+        .subject(format!("{} Meta Chain Stat {}", cyfs_base::get_channel().to_string(), chrono::Local::today().format("%F")))
+        .html(output).build().unwrap();
 
         // Open connection to Gmail
-        let mut mailer = SmtpClient::new_simple(self.smtp_server.as_ref())
+        let result = SmtpClient::new_simple(&config.smtp_server)
         .unwrap()
-        .credentials(creds)
-        .transport();
+        .credentials(Credentials::new(
+            config.sender,
+            config.password,
+        )).transport().send(builder.into());
 
-        // Send the email
-        let result = mailer.send(builder.into());
 
         if result.is_ok() {
             info!("Email sent");
@@ -59,16 +43,6 @@ impl Lettre {
             error!("Could not send email: {:?}", result);
         }
 
-        //info!("{:?}", result);
-        mailer.close();
-
         Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl StatReporter for  Lettre {
-    async fn report_stat(&self, info: &StatInfo) -> BuckyResult<()> {
-        self.report(info).await
     }
 }

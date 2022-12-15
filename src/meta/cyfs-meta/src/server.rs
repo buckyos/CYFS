@@ -145,6 +145,7 @@ impl MetaHttpServer {
             let miner = tmp_miner.clone();
             async move {
                 let request: ViewRequest = ViewRequest::clone_from_hex(req.body_string().await?.as_str(), &mut Vec::new())?;
+                let name = request.method.method_name();
                 let stat = miner.as_chain().get_stat();
                 let result = miner.as_chain().get_chain_storage().view(request, stat.clone()).await.or_else(|e| {
                     if let BuckyErrorCode::MetaError(code) = e.code() {
@@ -155,7 +156,7 @@ impl MetaHttpServer {
                 });
                 // API 调用记录日志
                 if let Some(stat) = stat {
-                    stat.api_call("view", *result.as_ref().err().unwrap_or(&0))
+                    stat.api_call(&format!("view:{}", name), *result.as_ref().err().unwrap_or(&0))
                 }
 
                 let body_str = result.to_hex().unwrap();
@@ -281,6 +282,23 @@ impl MetaHttpServer {
                 let mut resp = Response::new(tide::http::StatusCode::Ok);
                 resp.set_content_type("application/json");
                 resp.set_body(body_str);
+                Ok(resp)
+            }
+        });
+
+        let tmp_miner = miner.clone();
+        app.at("/stat").get(move |_req: Request<()>| {
+            let miner = tmp_miner.clone();
+            async move {
+                let resp = if let Some(stat) = miner.as_chain().get_stat() {
+                    let stat = stat.get_memory_stat();
+                    let mut resp = Response::new(StatusCode::Ok);
+                    resp.set_content_type("application/json");
+                    resp.set_body(serde_json::to_value(stat)?);
+                    resp
+                } else {
+                    Response::new(StatusCode::NotFound)
+                };
                 Ok(resp)
             }
         });

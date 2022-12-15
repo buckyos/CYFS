@@ -4305,6 +4305,7 @@ dependencies = [
  "clap",
  "comfy-table",
  "cyfs-base",
+ "cyfs-meta",
  "lettre",
  "lettre_email",
  "log 0.4.17",
@@ -4318,7 +4319,6 @@ dependencies = [
  "sqlx",
  "surf",
  "timer",
- "toml",
 ]
 
 [[package]]

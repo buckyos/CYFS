@@ -7,12 +7,19 @@ use cyfs_base::*;
 use async_trait::async_trait;
 use crate::stat::sqlite_storage::{SqliteConfig, SqliteStorage};
 use chrono::{DateTime, Utc};
-use log::{error, warn};
-use serde::{Deserialize, Serialize};
+use log::{error, info, warn};
+use serde::{Deserialize, Serialize, Serializer};
+use serde::ser::SerializeStruct;
+use crate::{StateRef, StateWeakRef};
 
 #[derive(Serialize, Deserialize)]
 pub struct StatConfig {
     pub memory_stat: bool,
+    pub storage: Option<StorageConfig>
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct StorageConfig {
     pub sqlite: Option<SqliteConfig>
 }
 
@@ -24,6 +31,19 @@ pub struct MemoryStat {
     pub active_device: HashSet<ObjectId>,
     pub api_fail: HashMap<String, u32>,
     pub api_success: HashMap<String, u32>,
+}
+
+impl Serialize for MemoryStat {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let mut stat = serializer.serialize_struct("MemoryStat", 6)?;
+        stat.serialize_field("new_people", &self.new_people)?;
+        stat.serialize_field("new_device", &self.new_device)?;
+        stat.serialize_field("active_people", &self.active_people.len())?;
+        stat.serialize_field("active_device", &self.active_device.len())?;
+        stat.serialize_field("api_fail", &self.api_fail)?;
+        stat.serialize_field("api_success", &self.api_success)?;
+        stat.end()
+    }
 }
 
 #[derive(Default, Clone)]
@@ -99,15 +119,25 @@ pub struct Stat(Arc<StatInner>);
 api调用结果：主要看错误的情况。这个也可以按天记
 */
 
+pub fn create_storage(config: Option<StorageConfig>, read_only: bool) -> Box<dyn Storage + Send + Sync> {
+    if let Some(config) = config {
+        if let Some(config) = config.sqlite {
+            info!("stat module use sqlite storage");
+            Box::new(SqliteStorage::new(config, read_only))
+        } else {
+            info!("stat module use fake storage");
+            Box::new(FakeStorage {})
+        }
+    } else {
+        info!("stat module no storage");
+        Box::new(FakeStorage {})
+    }
+}
+
 impl Stat {
     pub fn new(config: StatConfig) -> Self {
-        let storage: Box<dyn Storage + Send + Sync> = if let Some(option) = config.sqlite {
-            Box::new(SqliteStorage::new(option))
-        } else {
-            Box::new(FakeStorage {})
-        };
         let inner = StatInner {
-            storage,
+            storage: create_storage(config.storage, false),
             enable_memory_stat: config.memory_stat,
             memory_stat: Mutex::new(MemoryStat::default()),
             stat_cache: Mutex::new(StatCache::default()),
@@ -152,7 +182,25 @@ impl Stat {
         self.0.stat_cache.lock().unwrap().query_desc.push((id.clone(), exist, Utc::now()));
     }
 
+    pub fn get_memory_stat(&self) -> MemoryStat {
+        self.0.memory_stat.lock().unwrap().clone()
+    }
 
+    pub async fn desc_stat(&self, stat: StateRef) -> BuckyResult<()> {
+        if !self.0.storage.is_stat_desc().await? {
+            info!("chain stat not scan descs.");
+            let weak_ref = StateRef::downgrade(&stat);
+            self.0.storage.stat_desc(weak_ref).await.map_err(|e| {
+                error!("chain stat scan descs err {}", e);
+                e
+            })?;
+            info!("chain stat scan descs complete.");
+        } else {
+            info!("chain stat already scan descs.")
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -160,6 +208,12 @@ pub trait Storage: Send + Sync {
     async fn init(&self) -> BuckyResult<()>;
 
     async fn save(&self, cache: StatCache) -> BuckyResult<()>;
+
+    async fn get_stat(&self, from: DateTime<Utc>) -> BuckyResult<MemoryStat>;
+
+    async fn is_stat_desc(&self) -> BuckyResult<bool>;
+    async fn stat_desc(&self, state: StateWeakRef) -> BuckyResult<()>;
+    async fn get_desc_total(&self, obj_type: Option<ObjectTypeCode>) -> BuckyResult<u64>;
 }
 
 struct FakeStorage {}
@@ -172,5 +226,21 @@ impl Storage for FakeStorage {
 
     async fn save(&self, _: StatCache) -> BuckyResult<()> {
         Ok(())
+    }
+
+    async fn get_stat(&self, _: DateTime<Utc>) -> BuckyResult<MemoryStat> {
+        Ok(MemoryStat::default())
+    }
+
+    async fn is_stat_desc(&self) -> BuckyResult<bool> {
+        Ok(true)
+    }
+
+    async fn stat_desc(&self, _: StateWeakRef) -> BuckyResult<()> {
+        Ok(())
+    }
+
+    async fn get_desc_total(&self, _: Option<ObjectTypeCode>) -> BuckyResult<u64> {
+        Ok(0)
     }
 }

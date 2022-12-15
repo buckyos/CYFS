@@ -606,6 +606,7 @@ pub enum BuckyOriginError {
     HttpStatusCodeError(http_types::StatusCode),
     #[cfg(not(target_arch = "wasm32"))]
     SqliteError(rusqlite::Error),
+    #[cfg(feature = "sqlx-error")]
     SqlxError(sqlx::Error),
     HexError(hex::FromHexError),
     RsaError(rsa::errors::Error),
@@ -687,6 +688,7 @@ impl RawEncode for BuckyOriginError {
             BuckyOriginError::ErrorMsg(msg) => {
                 Ok(USize(2).raw_measure(purpose)? + msg.raw_measure(purpose)?)
             }
+            #[cfg(feature = "sqlx-error")]
             BuckyOriginError::SqlxError(e) => {
                 let msg = format!("{:?}", e);
                 Ok(USize(2).raw_measure(purpose)? + msg.raw_measure(purpose)?)
@@ -799,6 +801,7 @@ impl RawEncode for BuckyOriginError {
                 let buf = msg.raw_encode(buf, purpose)?;
                 Ok(buf)
             }
+            #[cfg(feature = "sqlx-error")]
             BuckyOriginError::SqlxError(e) => {
                 let msg = format!("{:?}", e);
                 let buf = USize(2).raw_encode(buf, purpose)?;
@@ -1049,7 +1052,7 @@ impl From<rusqlite::Error> for BuckyError {
         }
     }
 }
-
+#[cfg(feature = "sqlx-error")]
 impl From<sqlx::Error> for BuckyError {
     fn from(err: sqlx::Error) -> Self {
         Self {

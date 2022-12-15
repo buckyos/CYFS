@@ -55,6 +55,9 @@ impl Chain {
 
     pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, stat: Option<Stat>) -> BuckyResult<Self> {
         let chain_storage = ChainStorage::load(dir, new_storage).await?;
+        if let Some(stat) = &stat {
+            let _ = stat.desc_stat(chain_storage.state_storage().create_state(true).await).await;
+        }
         let ret = chain_storage.get_tip_info().await;
         if ret.is_ok() {
             let (_tip_header, _) = ret.unwrap();

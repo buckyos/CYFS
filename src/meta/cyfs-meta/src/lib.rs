@@ -20,7 +20,7 @@ mod creator;
 mod name_auction;
 mod events;
 mod rent;
-mod stat;
+pub mod stat;
 #[macro_use]
 mod helper;
 mod mint;
