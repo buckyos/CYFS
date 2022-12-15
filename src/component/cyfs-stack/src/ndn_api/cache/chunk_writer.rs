@@ -73,6 +73,7 @@ impl ChunkListReaderAdapter {
                 return Err(err);
             }
 
+            // TODO use stream instead buffer to opt for the memory usage
             let ref_chunk = cyfs_chunk_lib::MemRefChunk::from(unsafe {
                 std::mem::transmute::<_, &'static [u8]>(buf)
             });

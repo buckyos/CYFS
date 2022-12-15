@@ -74,12 +74,8 @@ impl TargetDataManager {
             self.target, file_id, file_obj.len(), total_size, ranges, referer
         );
 
-        let context = SingleDownloadContext::id_streams(
-            &self.bdt_stack,
-            referer,
-            &self.target,
-        )
-        .await?;
+        let context =
+            SingleDownloadContext::id_streams(&self.bdt_stack, referer, &self.target).await?;
 
         let (_id, reader) =
             cyfs_bdt::download_file(&self.bdt_stack, file_obj.to_owned(), None, context)
@@ -92,7 +88,7 @@ impl TargetDataManager {
         let resp = if let Some(ranges) = ranges {
             assert!(ranges.len() > 0);
 
-            let reader = ChunkListTaskTangesReader::new(file_id.to_string(), ranges, reader);
+            let reader = ChunkListTaskRangesReader::new(file_id.to_string(), ranges, reader);
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         } else {
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
@@ -131,12 +127,8 @@ impl TargetDataManager {
             self.target, chunk_id, total_size, ranges, referer
         );
 
-        let context = SingleDownloadContext::id_streams(
-            &self.bdt_stack,
-            referer,
-            &self.target,
-        )
-        .await?;
+        let context =
+            SingleDownloadContext::id_streams(&self.bdt_stack, referer, &self.target).await?;
 
         let (_id, reader) =
             cyfs_bdt::download_chunk(&self.bdt_stack, chunk_id.clone(), None, context)

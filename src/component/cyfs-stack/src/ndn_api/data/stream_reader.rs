@@ -1,4 +1,4 @@
-use cyfs_bdt::{ChunkListTaskReader};
+use cyfs_bdt::ChunkListTaskReader;
 
 use async_std::io::{Read, Result};
 use std::io::{Seek, SeekFrom};
@@ -6,14 +6,14 @@ use std::ops::Range;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-pub struct ChunkListTaskTangesReader {
+pub struct ChunkListTaskRangesReader {
     task_id: String,
     ranges: Vec<Range<u64>>,
     range_index: usize,
     reader: ChunkListTaskReader,
 }
 
-impl ChunkListTaskTangesReader {
+impl ChunkListTaskRangesReader {
     pub fn new(task_id: String, ranges: Vec<Range<u64>>, reader: ChunkListTaskReader) -> Self {
         Self {
             task_id,
@@ -24,7 +24,7 @@ impl ChunkListTaskTangesReader {
     }
 }
 
-impl Read for ChunkListTaskTangesReader {
+impl Read for ChunkListTaskRangesReader {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -43,7 +43,10 @@ impl Read for ChunkListTaskTangesReader {
 
             let pos = self.reader.seek(SeekFrom::Start(range.start))?;
             if pos != range.start {
-                let msg = format!("seek reader but out of range! task={}, except={}, got={}", self.task_id, range.start, pos);
+                let msg = format!(
+                    "seek reader but out of range! task={}, except={}, got={}",
+                    self.task_id, range.start, pos
+                );
                 error!("{}", msg);
                 let e = std::io::Error::new(std::io::ErrorKind::InvalidInput, msg);
                 break Poll::Ready(Err(e));
@@ -54,20 +57,18 @@ impl Read for ChunkListTaskTangesReader {
             let sub_buf = &mut buf[..except_len as usize];
 
             match Pin::new(&mut self.reader).poll_read(cx, sub_buf) {
-                Poll::Ready(ret) => {
-                    match ret {
-                        Ok(size) => {
-                            assert!(size as u64 <= except_len);
-                            range.start += size as u64;
-                            let range_index = self.range_index;
-                            self.ranges[range_index] = range;
-                            break Poll::Ready(Ok(size));
-                        }
-                        Err(e) => {
-                            break Poll::Ready(Err(e));
-                        }
+                Poll::Ready(ret) => match ret {
+                    Ok(size) => {
+                        assert!(size as u64 <= except_len);
+                        range.start += size as u64;
+                        let range_index = self.range_index;
+                        self.ranges[range_index] = range;
+                        break Poll::Ready(Ok(size));
                     }
-                }
+                    Err(e) => {
+                        break Poll::Ready(Err(e));
+                    }
+                },
                 Poll::Pending => {
                     break Poll::Pending;
                 }
