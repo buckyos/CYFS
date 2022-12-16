@@ -1,4 +1,4 @@
-use crate::{ChunkId, HashValue, NamedObjectId, ObjectType};
+use crate::{ChunkId, HashValue, NamedObjectId, ObjectType, JsonCodec, BuckyError};
 
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 use serde::ser::{Serialize, Serializer};
@@ -151,11 +151,66 @@ impl<'de> Deserialize<'de> for HashValue {
 }
 
 
+#[macro_export]
+macro_rules! serde_with_json_codec {
+    ($content:ty) => {
+        impl serde::ser::Serialize for $content {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::ser::Serializer,
+            {
+                self.encode_value().serialize(serializer)
+            }
+        }
+        
+        impl<'de> serde::de::Deserialize<'de> for $content {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::de::Deserializer<'de>,
+            {
+                let value = serde_json::Value::deserialize(deserializer)?;
+                match <$content>::decode_value(&value) {
+                    Ok(ret) => Ok(ret),
+                    Err(e) => {
+                        let msg = format!("invalid json value: {}", e);
+                        Err(serde::de::Error::custom(msg))
+                    }
+                }
+            }
+        }
+    };
+}
+
+serde_with_json_codec!(BuckyError);
+
+
 #[cfg(test)]
 mod test {
     use crate::*;
     use serde::*;
     use std::str::FromStr;
+
+    #[derive(Serialize, Deserialize)]
+    struct TestError {
+        pub s: String,
+        pub err: BuckyError,
+    }
+
+    #[test]
+    fn test_bucky_error_codec() {
+        let err = BuckyError::new(BuckyErrorCode::AlreadyExists, "test error");
+        let es = TestError {
+            s: "test".to_owned(),
+            err: err.clone(),
+        };
+        let s = serde_json::to_string(&es).unwrap();
+        println!("{}", s);
+
+        // err.encode_value().serde
+        let s = err.encode_string();
+        let s2 = serde_json::to_string(&err).unwrap();
+        assert_eq!(s, s2);
+    }
 
     #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
     struct OODStatus {
