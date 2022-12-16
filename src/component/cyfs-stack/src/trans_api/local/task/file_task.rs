@@ -258,8 +258,8 @@ impl Task for DownloadFileTask {
     }
 
     async fn get_task_detail_status(&self) -> BuckyResult<Vec<u8>> {
-        let task_group = self.session.lock().await.clone();
-        let task_state = if let Some(id) = task_group {
+        let group = self.session.lock().await.clone();
+        let task_state = if let Some(id) = &group {
             let task = self
                 .bdt_stack
                 .ndn()
@@ -289,6 +289,7 @@ impl Task for DownloadFileTask {
                         upload_speed: 0,
                         downloaded_progress: progress as u64,
                         sum_size: self.file.desc().content().len() as u64,
+                        group,
                     }
                 }
                 cyfs_bdt::DownloadTaskState::Paused => {
@@ -303,6 +304,7 @@ impl Task for DownloadFileTask {
                         upload_speed: 0,
                         downloaded_progress: 100,
                         sum_size: self.file.desc().content().len() as u64,
+                        group,
                     }
                 }
                 cyfs_bdt::DownloadTaskState::Finished => {
@@ -319,6 +321,7 @@ impl Task for DownloadFileTask {
                                 upload_speed: 0,
                                 downloaded_progress: 100,
                                 sum_size: self.file.desc().content().len() as u64,
+                                group,
                             }
                         } else if TaskStatus::Finished == verify_task_status {
                             let ret = bool::clone_from_slice(
@@ -334,6 +337,7 @@ impl Task for DownloadFileTask {
                                     upload_speed: 0,
                                     downloaded_progress: 100,
                                     sum_size: self.file.desc().content().len() as u64,
+                                    group,
                                 }
                             } else {
                                 self.task_status.lock().unwrap().status = TaskStatus::Failed;
@@ -345,6 +349,7 @@ impl Task for DownloadFileTask {
                                     upload_speed: 0,
                                     downloaded_progress: 100,
                                     sum_size: self.file.desc().content().len() as u64,
+                                    group,
                                 }
                             }
                         } else {
@@ -357,6 +362,7 @@ impl Task for DownloadFileTask {
                                 upload_speed: 0,
                                 downloaded_progress: 100,
                                 sum_size: self.file.desc().content().len() as u64,
+                                group,
                             }
                         }
                     } else {
@@ -377,6 +383,7 @@ impl Task for DownloadFileTask {
                             upload_speed: 0,
                             downloaded_progress: 100,
                             sum_size: self.file.desc().content().len() as u64,
+                            group,
                         }
                     }
                 }
@@ -393,6 +400,7 @@ impl Task for DownloadFileTask {
                             upload_speed: 0,
                             downloaded_progress: 100,
                             sum_size: self.file.desc().content().len() as u64,
+                            group,
                         }
                     } else {
                         self.task_status.lock().unwrap().status = TaskStatus::Failed;
@@ -404,6 +412,7 @@ impl Task for DownloadFileTask {
                             upload_speed: 0,
                             downloaded_progress: 0,
                             sum_size: self.file.desc().content().len() as u64,
+                            group,
                         }
                     }
                 }
@@ -417,6 +426,7 @@ impl Task for DownloadFileTask {
                 upload_speed: 0,
                 downloaded_progress: 0,
                 sum_size: self.file.desc().content().len() as u64,
+                group: None,
             }
         };
         Ok(task_state.to_vec()?)

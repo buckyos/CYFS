@@ -7,6 +7,7 @@ message DownloadTaskState {
     uint64 upload_speed = 4;
     uint64 download_progress = 5;
     uint64 sum_size = 6;
+    optional string group = 7;
 }
 
 message DownloadFileParam {

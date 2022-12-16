@@ -22,6 +22,7 @@ pub struct DownloadTaskState {
     pub upload_speed: u64,
     pub downloaded_progress: u64,
     pub sum_size: u64,
+    pub group: Option<String>,
 }
 
 impl ProtobufTransform<super::trans_proto::DownloadTaskState> for DownloadTaskState {
@@ -32,7 +33,8 @@ impl ProtobufTransform<super::trans_proto::DownloadTaskState> for DownloadTaskSt
             speed: value.speed,
             upload_speed: value.upload_speed,
             downloaded_progress: value.download_progress,
-            sum_size: value.sum_size
+            sum_size: value.sum_size,
+            group: value.group,
         })
     }
 }
@@ -45,7 +47,8 @@ impl ProtobufTransform<&DownloadTaskState> for super::trans_proto::DownloadTaskS
             speed: value.speed,
             upload_speed: value.upload_speed,
             download_progress: value.downloaded_progress,
-            sum_size: value.sum_size
+            sum_size: value.sum_size,
+            group: value.group.clone(),
         })
     }
 }

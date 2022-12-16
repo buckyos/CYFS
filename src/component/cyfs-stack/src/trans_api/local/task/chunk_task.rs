@@ -209,8 +209,8 @@ impl Task for DownloadChunkTask {
     }
 
     async fn get_task_detail_status(&self) -> BuckyResult<Vec<u8>> {
-        let task_group = self.session.lock().await.clone();
-        let task_state = if let Some(id) = task_group {
+        let group = self.session.lock().await.clone();
+        let task_state = if let Some(id) = &group {
             let task = self
                 .bdt_stack
                 .ndn()
@@ -232,6 +232,7 @@ impl Task for DownloadChunkTask {
                     upload_speed: 0,
                     downloaded_progress: progress as u64,
                     sum_size: self.chunk_id.len() as u64,
+                    group,
                 },
                 cyfs_bdt::DownloadTaskState::Paused => DownloadTaskState {
                     task_status: TaskStatus::Paused,
@@ -240,6 +241,7 @@ impl Task for DownloadChunkTask {
                     upload_speed: 0,
                     downloaded_progress: 0,
                     sum_size: self.chunk_id.len() as u64,
+                    group,
                 },
                 cyfs_bdt::DownloadTaskState::Error(err) => {
                     if err.code() == BuckyErrorCode::Interrupted {
@@ -250,6 +252,7 @@ impl Task for DownloadChunkTask {
                             upload_speed: 0,
                             downloaded_progress: 0,
                             sum_size: self.chunk_id.len() as u64,
+                            group,
                         }
                     } else {
                         *self.task_status.lock().unwrap() = TaskStatus::Failed;
@@ -265,6 +268,7 @@ impl Task for DownloadChunkTask {
                             upload_speed: 0,
                             downloaded_progress: 0,
                             sum_size: 0,
+                            group,
                         }
                     }
                 }
@@ -282,6 +286,7 @@ impl Task for DownloadChunkTask {
                         upload_speed: 0,
                         downloaded_progress: 100,
                         sum_size: self.chunk_id.len() as u64,
+                        group,
                     }
                 }
             }
@@ -299,6 +304,7 @@ impl Task for DownloadChunkTask {
                 upload_speed: 0,
                 downloaded_progress: 0,
                 sum_size: self.chunk_id.len() as u64,
+                group: None,
             }
         };
         Ok(task_state.to_vec()?)
