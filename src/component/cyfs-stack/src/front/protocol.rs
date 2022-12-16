@@ -51,12 +51,19 @@ pub(crate) fn parse_front_host_with_dec_id(
     };
 
     let s = &host[2..];
-    match ObjectId::from_str(s) {
-        Ok(dec_id) => Ok(Some((ft, dec_id))),
-        Err(e) => {
-            let msg = format!("invalid front host's dec_id! host={}, {}", host, e);
-            warn!("{}", msg);
-            Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
+    match s {
+        "system" => {
+            Ok(Some((ft, cyfs_core::get_system_dec_app().to_owned())))
+        }
+        _ => {
+            match ObjectId::from_str(s) {
+                Ok(dec_id) => Ok(Some((ft, dec_id))),
+                Err(e) => {
+                    let msg = format!("invalid front host's dec_id! host={}, {}", host, e);
+                    warn!("{}", msg);
+                    Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
+                }
+            }
         }
     }
 }
