@@ -287,9 +287,7 @@ impl NamedCacheClient {
             req.url()
         );
         let conn = self.bdt_conn(remote).await?;
-        resp = Some(cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?);
-
-        let resp = resp.unwrap();
+        let resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
 
         if !resp.status().is_success() {
             Err(BuckyError::from(resp.status()))
