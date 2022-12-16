@@ -55,7 +55,7 @@ pub struct StackConfig {
     pub statistic_interval: Duration, 
     pub keystore: keystore::Config,
     pub interface: interface::Config, 
-    pub sn_client: sn::Config,
+    pub sn_client: sn::client::Config,
     pub tunnel: tunnel::Config,
     pub stream: stream::Config,
     pub datagram: datagram::Config,

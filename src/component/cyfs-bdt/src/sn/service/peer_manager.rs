@@ -7,7 +7,6 @@ use cyfs_debug::Mutex;
 use cyfs_base::*;
 use crate::{
     types::*, 
-    sn::Config,
 };
 use super::{
     net_listener::UdpSender, statistic::{PeerStatus, StatisticManager, }
@@ -175,7 +174,6 @@ impl Peers {
 pub struct PeerManager {
     peers: Mutex<Peers>, 
     last_knock_time: AtomicU64,
-    timeout: Duration,
     config: Config,
     statistic_manager: &'static StatisticManager,
 }
@@ -187,14 +185,13 @@ enum FindPeerReason {
 
 
 impl PeerManager {
-    pub fn new(timeout: Duration) -> PeerManager {
+    pub fn new() -> PeerManager {
         PeerManager {
             peers: Mutex::new(Peers {
                 active_peers: Default::default(),
                 knock_peers: Default::default(),
             }),
             last_knock_time: AtomicU64::new(bucky_time_now()),
-            timeout,
             config: Default::default(),
             statistic_manager: StatisticManager::get_instance(),
         }

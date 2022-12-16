@@ -16,7 +16,6 @@ use crate::{
     history::keystore::{self, Keystore},
     protocol::{*, v0::*},
     types::*,
-    sn::Config,
 };
 
 use super::{
