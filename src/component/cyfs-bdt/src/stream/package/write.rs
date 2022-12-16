@@ -224,6 +224,7 @@ impl WriteProvider {
                     provider.queue.close(stream);
                     provider.close_waiter = waker.map(|w| w.clone());
                     provider.check_wnd(stream, bucky_time_now(), provider.cc.rto(), &mut packages, false);
+                    *state = WriteProviderState::Closed;
                     Poll::Pending
                 }, 
                 WriteProviderState::Closed => Poll::Ready(Ok(()))
@@ -243,7 +244,10 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Writ
             match state {
                 WriteProviderState::Open(provider) => {
                     let now = bucky_time_now();
-                    if session_data.is_flags_contain(SESSIONDATA_FLAG_ACK_PACKAGEID) {
+                    if session_data.is_flags_contain(SESSIONDATA_FLAG_RESET) {
+                        *state = WriteProviderState::Closed;
+                        return Ok(OnPackageResult::Handled)
+                    } else if session_data.is_flags_contain(SESSIONDATA_FLAG_ACK_PACKAGEID) {
                         let ack_est_package = session_data;
                         let package_id = ack_est_package.id_part.as_ref().unwrap().package_id;
                         trace!("{} recv estimate ack package {}", stream, package_id);
@@ -311,7 +315,11 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Writ
                         (Ok(OnPackageResult::Continue), Some(waiters))
                     }
                 }, 
-                WriteProviderState::Closed => (Ok(OnPackageResult::Continue), None)
+                WriteProviderState::Closed => {
+                    debug!("closed stream get data");
+
+                    (Ok(OnPackageResult::Break), None)
+                }
             }
         };
         
