@@ -477,7 +477,7 @@ async fn download_file_impl(
             unreachable!();
         }
 
-        let state = ret.unwrap();
+        let state = ret.unwrap().state;
         match state {
             TransTaskState::Downloading(v) => {
                 info!("trans task downloading! file_id={}, {:?}", file_id, v);
@@ -740,7 +740,7 @@ async fn download_chunk(chunk_id: ChunkId, chunk: Vec<u8>, device_id: DeviceId) 
             unreachable!();
         }
 
-        let state = ret.unwrap();
+        let state = ret.unwrap().state;
         match state {
             TransTaskState::Downloading(v) => {
                 info!("trans task downloading! file_id={}, {:?}", chunk_id, v);

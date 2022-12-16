@@ -55,7 +55,7 @@ impl TransInputProcessor for TransAclInnerInputProcessor {
     async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         self.check_local_zone_permit("trans get task state", &req.common.source)?;
         self.next.get_task_state(req).await
     }

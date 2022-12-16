@@ -409,12 +409,12 @@ impl LocalTransService {
     pub async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         let task_id = TaskId::from_str(req.task_id.as_str())?;
 
         let task_state = self.download_tasks.get_task_state(&task_id).await?;
 
-        let task_state = match task_state.task_status {
+        let state = match task_state.task_status {
             TaskStatus::Stopped => TransTaskState::Paused,
             TaskStatus::Paused => TransTaskState::Paused,
             TaskStatus::Running => {
@@ -436,7 +436,12 @@ impl LocalTransService {
             TaskStatus::Failed => TransTaskState::Err(task_state.err_code.unwrap()),
         };
 
-        Ok(task_state)
+        let resp = TransGetTaskStateInputResponse {
+            state,
+            group: task_state.group,
+        };
+
+        Ok(resp)
     }
 
     pub async fn query_tasks(
@@ -532,7 +537,7 @@ impl TransInputProcessor for LocalTransService {
     async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         Self::get_task_state(self, req).await
     }
 

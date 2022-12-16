@@ -192,7 +192,7 @@ impl TransRequestHandler {
     async fn on_get_task_state<State>(
         &self,
         mut req: NONInputHttpRequest<State>,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         let common = Self::decode_common_headers(&req)?;
         // 提取body里面的object对象，如果有的话
         let body = req.request.body_json().await.map_err(|e| {

@@ -91,7 +91,7 @@ impl TransServiceRouter {
     pub async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.get_task_state(req).await
     }
@@ -138,7 +138,7 @@ impl TransInputProcessor for TransServiceRouter {
     async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         Self::get_task_state(self, req).await
     }
 

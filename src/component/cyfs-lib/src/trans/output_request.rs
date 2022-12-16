@@ -158,6 +158,12 @@ pub struct TransGetTaskStateOutputRequest {
     pub task_id: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TransGetTaskStateOutputResponse {
+    pub state: TransTaskState,
+    pub group: Option<String>,
+}
+
 #[derive(Debug)]
 pub struct TransQueryTasksOutputRequest {
     pub common: NDNOutputRequestCommon,

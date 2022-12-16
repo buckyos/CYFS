@@ -19,7 +19,7 @@ pub trait TransOutputProcessor: Send + Sync {
     async fn get_task_state(
         &self,
         req: &TransGetTaskStateOutputRequest,
-    ) -> BuckyResult<TransTaskState>;
+    ) -> BuckyResult<TransGetTaskStateOutputResponse>;
     async fn publish_file(
         &self,
         req: &TransPublishFileOutputRequest,

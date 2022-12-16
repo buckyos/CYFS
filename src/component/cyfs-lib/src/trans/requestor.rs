@@ -251,7 +251,7 @@ impl TransRequestor {
     pub async fn get_task_state(
         &self,
         req: &TransGetTaskStateOutputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateOutputResponse> {
         info!("will get trans task state: {:?}", req);
 
         let url = self.service_url.join("task/state").unwrap();
@@ -415,7 +415,7 @@ impl TransOutputProcessor for TransRequestor {
     async fn get_task_state(
         &self,
         req: &TransGetTaskStateOutputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateOutputResponse> {
         Self::get_task_state(self, req).await
     }
 

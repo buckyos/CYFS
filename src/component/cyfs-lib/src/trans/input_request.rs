@@ -1,12 +1,11 @@
+use super::output_request::*;
 use crate::{NDNInputRequestCommon, TransTaskControlAction, TransTaskInfo, TransTaskStatus};
-use cyfs_base::{DeviceId, ObjectId, BuckyResult};
+use cyfs_base::{BuckyResult, DeviceId, ObjectId};
 use cyfs_core::TransContext;
-use std::path::PathBuf;
 use cyfs_util::cache::FileDirRef;
-use serde::{
-    Deserialize,
-    Serialize,
-};
+
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 pub struct TransGetContextInputRequest {
     pub common: NDNInputRequestCommon,
@@ -28,7 +27,7 @@ pub struct TransCreateTaskInputRequest {
 
     pub group: Option<String>,
     pub context_id: Option<ObjectId>,
-    
+
     pub auto_start: bool,
 }
 
@@ -53,6 +52,8 @@ pub struct TransGetTaskStateInputRequest {
     pub common: NDNInputRequestCommon,
     pub task_id: String,
 }
+
+pub type TransGetTaskStateInputResponse = TransGetTaskStateOutputResponse;
 
 #[derive(Debug)]
 pub struct TransPublishFileInputRequest {

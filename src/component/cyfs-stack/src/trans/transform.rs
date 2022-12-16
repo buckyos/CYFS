@@ -105,7 +105,7 @@ impl TransInputProcessor for TransInputTransformer {
     async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         let out_req = TransGetTaskStateOutputRequest {
             common: Self::convert_common(req.common),
             task_id: req.task_id.clone(),
@@ -206,7 +206,7 @@ impl TransOutputProcessor for TransOutputTransformer {
     async fn get_task_state(
         &self,
         req: &TransGetTaskStateOutputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateOutputResponse> {
         let in_req = TransGetTaskStateInputRequest {
             common: self.convert_common(&req.common),
             task_id: req.task_id.clone(),
