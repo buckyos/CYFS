@@ -8,7 +8,7 @@ use futures::future::AbortRegistration;
 use cyfs_base::*;
 use crate::{
     types::*,
-    interface::{udp::{Interface, PackageBoxEncodeContext}, tcp}, 
+    interface::{udp::{Interface, PackageBoxEncodeContext}}, 
     protocol::{*, v0::*}, 
     history::keystore, 
     stack::{WeakStack, Stack}
@@ -193,7 +193,7 @@ impl CallSessions {
                     pending.push_back(session);
                     waiter.pop()
                 },  
-                SessionsState::Canceled(err) => None, 
+                SessionsState::Canceled(_) => None, 
                 _ => unreachable!()
             }
         };
@@ -230,9 +230,9 @@ impl CallSessions {
                     next
                 }, 
                 SessionsState::Running {
-                    waiter, 
-                    finished, 
+                    waiter,  
                     pending, 
+                    ..
                 } => {
                     assert_eq!(waiter.len(), 0);
                     if pending.len() > 0 {
@@ -249,10 +249,10 @@ impl CallSessions {
         let state = || {
             let mut state = self.0.state.write().unwrap();
             match &mut *state {
-                SessionsState::Running {
-                    waiter, 
+                SessionsState::Running { 
                     pending, 
-                    finished
+                    finished, 
+                    ..
                 } => {
                     let ret = Ok(pending.pop_front());
                     if pending.len() == 0 && finished.len() == self.0.sessions.len() {
@@ -380,7 +380,7 @@ impl CallSession {
     }
 
 
-    fn sync_tunnel(&self, tunnel: &UdpCall, result: BuckyResult<Device>, active: Option<EndpointPair>) {
+    fn sync_tunnel(&self, _tunnel: &UdpCall, result: BuckyResult<Device>, active: Option<EndpointPair>) {
         let ret = {
             let mut state = self.0.state.write().unwrap();
 
@@ -438,7 +438,7 @@ impl CallSession {
                     state.start_at = bucky_time_now();
                     NextStep::Start(state.waiter.new_waiter(), state.tunnels.clone())
                 }, 
-                SessionState::Responsed { active, result } => NextStep::Return(Some(active.clone())), 
+                SessionState::Responsed { active, .. } => NextStep::Return(Some(active.clone())), 
                 SessionState::Canceled(_) => NextStep::Return(None), 
                 _ => NextStep::Wait(state.waiter.new_waiter())
             }
@@ -447,7 +447,7 @@ impl CallSession {
         let state = || {
             let state = self.0.state.read().unwrap();
             match &state.state {
-                SessionState::Responsed { active, result } => Some(active.clone()), 
+                SessionState::Responsed { active, .. } => Some(active.clone()), 
                 SessionState::Canceled(_) => None, 
                 _ => unreachable!()
             }

@@ -5,9 +5,13 @@ use std::{
     sync::RwLock, 
     collections::{BTreeMap, LinkedList}
 };
-use async_std::{sync::{Arc}, task};
+use async_std::{
+    sync::{Arc}, 
+    task, 
+    future
+};
 use async_trait::{async_trait};
-use futures::future::{Abortable, AbortHandle};
+use futures::future::{Abortable, AbortHandle, Aborted};
 use cyfs_base::*;
 use crate::{
     types::*, 
@@ -103,25 +107,30 @@ impl ConnectStreamBuilder {
         }
 
         let first_box = Arc::new(first_box.unwrap());
-
-        let actions = if let Some(remote) = build_params.remote_desc.as_ref() {
+        let remote_id = build_params.remote_const.device_id();
+        let cached_remote = stack.device_cache().get_inner(&remote_id);
+        let known_remote = cached_remote.as_ref().or_else(|| build_params.remote_desc.as_ref());
+        
+        let actions = if let Some(remote) = known_remote {
             self.explore_endpoint_pair(remote, first_box.clone(), |ep| ep.is_static_wan())
         } else {
             vec![] 
         };
         
         if actions.len() == 0 {
-            let remote_sn = build_params.nearest_sn(&stack).await?.desc().device_id();
-
-            let (cancel, reg) = AbortHandle::new_pair();
-
-            let builder = self.clone();
-            task::spawn(async move {
-                let _ = builder.wait_establish().await;
-                cancel.abort();
-            });
-
-            let _ = Abortable::new(self.call_sn(vec![remote_sn], first_box), reg).await; 
+            let nearest_sn = build_params.nearest_sn(&stack);
+            if let Some(sn) = nearest_sn {
+                let timeout_ret = future::timeout(stack.config().stream.stream.retry_sn_timeout, self.call_sn(vec![sn.clone()], first_box.clone())).await;
+                let retry_sn_list = match timeout_ret {
+                    Ok(finish_ret) => finish_ret.is_err(),
+                    Err(_) => true
+                };
+                if retry_sn_list {
+                    if let Some(sn_list) = build_params.retry_sn_list(&stack, &sn) {
+                        let _ = self.call_sn(sn_list, first_box).await;
+                    }
+                }
+            }
         } 
 
         Ok(())
@@ -168,7 +177,19 @@ impl ConnectStreamBuilder {
         Some(first_box)
     }
 
-    async fn call_sn(&self, sn_list: Vec<DeviceId>, first_box: Arc<PackageBox>) -> BuckyResult<()> {
+    async fn call_sn(&self, sn_list: Vec<DeviceId>, first_box: Arc<PackageBox>) -> Result<BuckyResult<()>, Aborted> {
+        let (cancel, reg) = AbortHandle::new_pair();
+
+        let builder = self.clone();
+        task::spawn(async move {
+            let _ = builder.wait_establish().await;
+            cancel.abort();
+        });
+
+        Abortable::new(self.call_sn_inner(sn_list, first_box), reg).await
+    }
+
+    async fn call_sn_inner(&self, sn_list: Vec<DeviceId>, first_box: Arc<PackageBox>) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
         let stream = &self.0.stream;
         let tunnel = stream.as_ref().tunnel();
@@ -189,6 +210,7 @@ impl ConnectStreamBuilder {
                 buf
             }).await?;
         
+        let mut success = false;
         loop {
             if let Some(session) = call_session.next().await.ok().and_then(|opt| opt) {
                 if let Ok(remote) = session.result().unwrap() {
@@ -220,7 +242,7 @@ impl ConnectStreamBuilder {
                             let _ = proxy_buidler.syn_proxy(ProxyType::Passive(proxy)).await;
                         }
                     }
-
+                    success = true;
                     let _ = self.explore_endpoint_pair(&remote, first_box.clone(), |_| true);
                 }
             } else {
@@ -228,7 +250,11 @@ impl ConnectStreamBuilder {
             }
         }
         
-        Ok(())
+        if success {
+            Ok(())
+        } else {
+            Err(BuckyError::new(BuckyErrorCode::Failed, "all failed"))
+        }
     }
 
     fn explore_endpoint_pair<F: Fn(&Endpoint) -> bool>(&self, remote: &Device, first_box: Arc<PackageBox>, filter: F) -> Vec<DynConnectStreamAction> {

@@ -17,7 +17,7 @@ use crate::{
 };
 use super::{
     ping::{PingConfig, PingClients}, 
-    call::{CallConfig, CallManager, CallSessions}
+    call::{CallConfig, CallManager}
 };
 
 pub trait PingClientCalledEvent<Context=()>: Send + Sync {

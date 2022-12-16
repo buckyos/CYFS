@@ -129,7 +129,7 @@ async fn main() {
     {
         let param = BuildTunnelParams {
             remote_const: rn_stack.local_const().clone(),
-            remote_sn: vec![sn1.desc().device_id()],
+            remote_sn: Some(vec![sn1.desc().device_id()]),
             remote_desc: None,
         };
         let mut stream = ln_stack
@@ -157,7 +157,7 @@ async fn main() {
         
         let param = BuildTunnelParams {
             remote_const: rn_stack.local_const().clone(),
-            remote_sn: vec![sn2.desc().device_id()],
+            remote_sn: Some(vec![sn2.desc().device_id()]),
             remote_desc: None,
         };
         let mut stream = ln_stack

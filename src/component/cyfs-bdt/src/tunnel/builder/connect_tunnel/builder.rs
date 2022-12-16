@@ -2,9 +2,12 @@ use log::*;
 use std::{
     sync::RwLock
 };
-use async_std::{sync::{Arc}, task};
+use async_std::{
+    sync::{Arc}, 
+    task,
+    future
+};
 use async_trait::{async_trait};
-use futures::future::{Abortable, AbortHandle};
 use cyfs_base::*;
 use crate::{
     types::*, 
@@ -71,24 +74,30 @@ impl ConnectTunnelBuilder {
 
         let first_box = Arc::new(self.first_box(&local).await);
 
-        let actions = if let Some(remote) = build_params.remote_desc.as_ref() {
+        let remote_id = build_params.remote_const.device_id();
+        let cached_remote = stack.device_cache().get_inner(&remote_id);
+        let known_remote = cached_remote.as_ref().or_else(|| build_params.remote_desc.as_ref());
+
+        let actions = if let Some(remote) = known_remote {
             self.explore_endpoint_pair(remote, first_box.clone(), |ep| ep.is_static_wan())
         } else {
             vec![]
         };
    
         if actions.len() == 0 {
-            let remote_sn = build_params.nearest_sn(&stack).await?.desc().device_id();
-
-            let (cancel, reg) = AbortHandle::new_pair();
-
-            let builder = self.clone();
-            task::spawn(async move {
-                let _ = builder.wait_establish().await;
-                cancel.abort();
-            });
-
-            let _ = Abortable::new(self.call_sn(vec![remote_sn], first_box), reg).await; 
+            let nearest_sn = build_params.nearest_sn(&stack);
+            if let Some(sn) = nearest_sn {
+                let timeout_ret = future::timeout(stack.config().stream.stream.retry_sn_timeout, self.call_sn(vec![sn.clone()], first_box.clone())).await;
+                let retry_sn_list = match timeout_ret {
+                    Ok(finish_ret) => finish_ret.is_err(),
+                    Err(_) => true
+                };
+                if retry_sn_list {
+                    if let Some(sn_list) = build_params.retry_sn_list(&stack, &sn) {
+                        let _ = self.call_sn(sn_list, first_box).await;
+                    }
+                }
+            }
         } 
 
         Ok(())

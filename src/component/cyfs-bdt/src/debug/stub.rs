@@ -295,7 +295,7 @@ impl DebugStub {
             question.to_vec(), 
             BuildTunnelParams {
                 remote_const: command.remote.desc().clone(), 
-                remote_sn: vec![], 
+                remote_sn: None, 
                 remote_desc: Some(command.remote.clone())
         }).await.map_err(|err| format!("Err: {}\r\n", err.msg().to_string()))?;
 

@@ -23,7 +23,6 @@ impl DeviceCache {
         }
     }
 
-
     pub fn add(&self, id: &DeviceId, device: &Device) {
         // FIXME 这里添加一个检测，确保添加的device id匹配
         let real_device_id = device.desc().device_id();
@@ -65,6 +64,10 @@ impl DeviceCache {
     pub fn get_inner(&self, id: &DeviceId) -> Option<Device> {
         self.cache.read().unwrap().get(id).cloned()
     }
+
+    pub fn remove_inner(&self, id: &DeviceId) {
+        self.cache.write().unwrap().remove(id);
+    }
 }
 
 impl DeviceCache {
@@ -76,9 +79,8 @@ impl DeviceCache {
         }
        
     }
-
-    pub fn nearest_sn_of(&self, remote: &DeviceId) -> Option<DeviceId> {
-        self.sn_list.read().unwrap().iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).cloned()
+    pub fn nearest_sn_of(remote: &DeviceId, sn_list: &[DeviceId]) -> Option<DeviceId> {
+        sn_list.iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).cloned()
     }
 
     pub fn sn_list(&self) -> Vec<DeviceId> {

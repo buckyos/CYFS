@@ -330,6 +330,7 @@ struct StreamEstablishState {
 
 #[derive(Clone)]
 pub struct Config {
+    pub retry_sn_timeout: Duration, 
     pub connect_timeout: Duration,
     pub nagle: Duration,
     pub recv_timeout: Duration,

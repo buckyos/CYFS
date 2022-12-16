@@ -96,6 +96,7 @@ impl StackConfig {
             },     
             tunnel: tunnel::Config {
                 retain_timeout: Duration::from_secs(60),
+                retry_sn_timeout: Duration::from_secs(2), 
                 connect_timeout: Duration::from_secs(5),
                 tcp: tunnel::tcp::Config {
                     connect_timeout: Duration::from_secs(5), 
@@ -123,6 +124,7 @@ impl StackConfig {
                     recv_timeout: Duration::from_millis(200),
                     drain: 0.5,
                     send_buffer: 1024 * 256, // 这个值不能小于下边的max_record
+                    retry_sn_timeout: Duration::from_secs(2), 
                     connect_timeout: Duration::from_secs(5),
                     tcp: stream::tcp::Config {
                         min_record: 1024,

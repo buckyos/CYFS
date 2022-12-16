@@ -125,7 +125,7 @@ async fn main() {
 
     let param = BuildTunnelParams {
         remote_const: rn_stack.local_const().clone(),
-        remote_sn: vec![],
+        remote_sn: None,
         remote_desc: None,
     };
     let mut stream = ln_stack

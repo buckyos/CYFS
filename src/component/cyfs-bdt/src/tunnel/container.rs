@@ -28,8 +28,8 @@ use crate::{
     },
     sn::client::PingClientCalledEvent, 
     stream::{StreamContainer, RemoteSequence}, 
+    finder::DeviceCache, 
     stack::{Stack, WeakStack}, 
-    dht::KadId, 
     MTU
 };
 use super::{
@@ -42,28 +42,32 @@ use super::{
 #[derive(Clone)]
 pub struct BuildTunnelParams {
     pub remote_const: DeviceDesc, 
-    pub remote_sn: Vec<DeviceId>, 
+    pub remote_sn: Option<Vec<DeviceId>>, 
     pub remote_desc: Option<Device>,
 }
 
 
 impl BuildTunnelParams {
-    pub(crate) async fn nearest_sn(&self, stack: &Stack) -> BuckyResult<Device> {
+    pub(crate) fn nearest_sn(&self, stack: &Stack) -> Option<DeviceId> {
         let remote = self.remote_const.device_id();
-        let sn_id = self.remote_desc.as_ref().and_then(|device| {
-            device.connect_info().sn_list().get(0).cloned()
-        }).or_else(|| self.remote_sn.iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).cloned())
-        .or_else(|| stack.device_cache().nearest_sn_of(&remote))
-        .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidParam, "neither remote device nor sn in build params"))?;
+        let cached_remote = stack.device_cache().get_inner(&remote);
+        let known_remote = cached_remote.as_ref().or_else(|| self.remote_desc.as_ref());
 
-        stack.device_cache().get(&sn_id).await
-            .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"))
+        known_remote.and_then(|device| DeviceCache::nearest_sn_of(&remote, device.connect_info().sn_list()))
+            .or_else(|| self.remote_sn.as_ref().and_then(|sn_list| DeviceCache::nearest_sn_of(&remote, sn_list)))
+            .or_else(|| DeviceCache::nearest_sn_of(&remote, stack.device_cache().sn_list().as_slice()))
+    }
+
+    pub(crate) fn retry_sn_list(&self, stack: &Stack, nearest: &DeviceId) -> Option<Vec<DeviceId>> {
+        self.remote_sn.clone().or_else(|| Some(stack.device_cache().sn_list()))
+            .map(|sn_list| sn_list.into_iter().filter(|sn| sn != nearest).collect())
     }
 }
 
 #[derive(Clone)]
 pub struct Config {
     pub retain_timeout: Duration,  
+    pub retry_sn_timeout: Duration, 
     pub connect_timeout: Duration, 
     pub tcp: tcp::Config, 
     pub udp: udp::Config
@@ -349,6 +353,7 @@ impl TunnelContainer {
         } else if let Some(builder) = builder {
             //FIXME: 加入到connecting的 send 缓存里面去  
             self.stack().keystore().reset_peer(self.remote());
+            self.stack().device_cache().remove_inner(self.remote());
             self.sync_connecting();          
             task::spawn(async move {
                 builder.build().await;
@@ -584,6 +589,7 @@ impl TunnelContainer {
             }
         } else if let Some(builder) = new_builder {
             self.stack().keystore().reset_peer(self.remote());
+            self.stack().device_cache().remove_inner(self.remote());
             self.sync_connecting();
             Ok(StreamConnectorSelector::Builder(builder))
         } else {
