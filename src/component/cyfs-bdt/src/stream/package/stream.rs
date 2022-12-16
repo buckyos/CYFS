@@ -125,6 +125,10 @@ impl PackageStream {
 
 #[async_trait]
 impl StreamProvider for PackageStream {
+    fn remote_id(&self) -> IncreaseId {
+        self.0.remote_id
+    }
+
     fn local_ep(&self) -> &Endpoint {
         self.0.tunnel.local()
     }
@@ -168,6 +172,7 @@ impl StreamProvider for PackageStream {
             }, 
             Shutdown::Both => {
                 let _ = self.write_provider().close(self, None);
+                let _ = self.read_provider().close(self);
             }
         }
         Ok(())
@@ -219,9 +224,29 @@ impl OnPackage<SessionData> for PackageStream {
             Ok(OnPackageResult::Handled)
         } else {
             trace!("{} on session data {}", self, session_data);
-            match self.write_provider().on_package(session_data, (self, &mut packages))? {
-                OnPackageResult::Continue => self.read_provider().on_package(session_data, (self, &mut packages)), 
-                OnPackageResult::Handled => Ok(OnPackageResult::Handled), 
+            let write_result = self.write_provider().on_package(session_data, (self, &mut packages))?;
+            match write_result {
+                OnPackageResult::Continue | OnPackageResult::Break => {
+                    let read_result = self.read_provider().on_package(session_data, (self, &mut packages));
+                    if read_result.is_err() {
+                        read_result
+                    } else {
+                        let read_result = read_result.unwrap();
+                        if write_result == OnPackageResult::Break && 
+                            read_result == OnPackageResult::Break && 
+                            !session_data.is_flags_contain(SESSIONDATA_FLAG_RESET) {
+                            let mut package = SessionData::new();
+                            package.flags_add(SESSIONDATA_FLAG_RESET);
+                            package.send_time = bucky_time_now();
+                            packages.push(DynamicPackage::from(package));
+                        }
+
+                        Ok(OnPackageResult::Handled)
+                    }
+                }, 
+                OnPackageResult::Handled => {
+                    Ok(OnPackageResult::Handled)
+                }, 
                 _ => unreachable!()
             }
         }?;
