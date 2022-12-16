@@ -1,11 +1,9 @@
-mod email;
-
 use std::path::Path;
 use clap::{App, Arg};
 
 use cyfs_base::{BuckyResult, ObjectTypeCode};
 use serde::{Deserialize};
-use crate::email::{EmailConfig, MailReporter};
+use misc_util::mail::{EmailConfig, send_mail};
 
 #[macro_use]
 extern crate log;
@@ -66,7 +64,8 @@ async fn main() -> BuckyResult<()> {
             if matches.is_present("report") {
                 println!("reporting...");
                 if let Some(config) = config.email {
-                    let _ = MailReporter::report(config, output).await.map_err(|e| {
+                    let subject = format!("{} Meta Chain Stat {}", cyfs_base::get_channel().to_string(), chrono::Local::today().format("%F"));
+                    let _ = send_mail(config, subject, output.replace("\n", "<br>")).await.map_err(|e| {
                         error!("send mail err {}", e);
                         e
                     });
