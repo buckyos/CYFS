@@ -1,7 +1,10 @@
-use lettre::{smtp::authentication::Credentials, SmtpClient, Transport};
-use lettre_email::Email;
+use std::str::FromStr;
+use lettre::{Message, SmtpTransport, Transport};
+use lettre::message::Mailbox;
+use lettre::transport::smtp::authentication::Credentials;
 use serde::Deserialize;
-use cyfs_base::BuckyResult;
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
+use log::*;
 
 #[derive(Deserialize)]
 pub struct EmailConfig {
@@ -11,38 +14,25 @@ pub struct EmailConfig {
     password: String,
 }
 
-pub struct MailReporter {
-    receiver: String,
-    sender: String,
-    smtp_server: String,
-    password: String,
-}
+pub async fn send_mail(config: EmailConfig, subject: String, output_html: String) -> BuckyResult<()> {
+    // 发送邮件
+    let mail = Message::builder()
+        .to(Mailbox::from_str(&config.receiver).unwrap())
+        .from(Mailbox::from_str(&config.sender).unwrap())
+        .subject(subject)
+        .body(output_html)
+        .unwrap();
 
-impl MailReporter {
-    pub async fn report(config: EmailConfig, output: String) -> BuckyResult<()> {
-        let output = output.replace("\n", "<br>");
-        // 发送邮件
-        let builder = Email::builder()
-        .to(config.receiver)
-        .from(config.sender.clone())
-        .subject(format!("{} Meta Chain Stat {}", cyfs_base::get_channel().to_string(), chrono::Local::today().format("%F")))
-        .html(output).build().unwrap();
-
-        // Open connection to Gmail
-        let result = SmtpClient::new_simple(&config.smtp_server)
+    // Open connection to Gmail
+    if let Err(e) = SmtpTransport::relay(&config.smtp_server)
         .unwrap()
         .credentials(Credentials::new(
             config.sender,
             config.password,
-        )).transport().send(builder.into());
-
-
-        if result.is_ok() {
-            info!("Email sent");
-        } else {
-            error!("Could not send email: {:?}", result);
-        }
-
-        Ok(())
+        )).build().send(&mail) {
+        error!("Could not send email: {:?}", e);
+        return Err(BuckyError::new(BuckyErrorCode::Failed, e.to_string()));
     }
+
+    Ok(())
 }
