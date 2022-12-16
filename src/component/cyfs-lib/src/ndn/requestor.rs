@@ -25,15 +25,16 @@ impl NDNRequestorHelper {
 
         let range = RequestorHelper::decode_optional_json_header(resp, cyfs_base::CYFS_DATA_RANGE)?;
 
+        let group = RequestorHelper::decode_optional_header_with_utf8_decoding(resp, cyfs_base::CYFS_TASK_GROUP)?;
+
         let length: u64 =
             RequestorHelper::decode_header(resp, http_types::headers::CONTENT_LENGTH)?;
         let ret = NDNGetDataOutputResponse {
             object_id,
             owner_id,
             attr,
-
             range,
-
+            group,
             length,
             data,
         };
@@ -313,6 +314,7 @@ impl NDNRequestor {
         let owner_id = RequestorHelper::decode_optional_header(resp, cyfs_base::CYFS_OWNER_ID)?;
 
         let range = RequestorHelper::decode_optional_json_header(resp, cyfs_base::CYFS_DATA_RANGE)?;
+        let group = RequestorHelper::decode_optional_header_with_utf8_decoding(resp, cyfs_base::CYFS_TASK_GROUP)?;
 
         let length: u64 =
             RequestorHelper::decode_header(resp, http_types::headers::CONTENT_LENGTH)?;
@@ -320,11 +322,9 @@ impl NDNRequestor {
         let ret = NDNGetDataOutputResponse {
             object_id,
             owner_id,
-
             attr,
-
             range,
-
+            group,
             length,
             data,
         };

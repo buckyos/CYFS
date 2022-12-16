@@ -45,7 +45,7 @@ impl LocalDataManager {
         file_obj: &File,
         group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
+    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64, Option<String>)> {
         self.target_data_manager()
             .get_file(source, file_obj, group, ranges, None)
             .await
@@ -154,7 +154,7 @@ impl LocalDataManager {
         chunk_id: &ChunkId,
         group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
+    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64, Option<String>)> {
         self.target_data_manager()
             .get_chunk(source, chunk_id, group, ranges, None)
             .await

@@ -83,7 +83,7 @@ impl NDNForwardDataOutputProcessor {
             // no range param specified, will get the whole file
         }
 
-        let (data, length) = if need_process {
+        let (data, length, group) = if need_process {
             let meta = BdtDataRefererInfo {
                 // FIXME: set target field from o link
                 target: None, 
@@ -97,7 +97,7 @@ impl NDNForwardDataOutputProcessor {
 
             self.data_manager.get_file(&req.common.source,&file, req.group.as_deref(), ranges, Some(&meta)).await?
         } else {
-            (zero_bytes_reader(), 0)
+            (zero_bytes_reader(), 0, None)
         };
 
         let resp = NDNGetDataInputResponse {
@@ -105,6 +105,7 @@ impl NDNForwardDataOutputProcessor {
             owner_id: file.desc().owner().to_owned(),
             attr: None,
             range: resp_range,
+            group,
             length,
             data,
         };
@@ -139,7 +140,7 @@ impl NDNForwardDataOutputProcessor {
             // no range param specified, will get the whole chunk
         }
 
-        let (data, length) = if need_process {
+        let (data, length, group) = if need_process {
             let meta = BdtDataRefererInfo {
                 // FIXME: set target field from o link
                 target: None, 
@@ -164,7 +165,7 @@ impl NDNForwardDataOutputProcessor {
                     e
                 })?
         } else {
-            (zero_bytes_reader(), 0)
+            (zero_bytes_reader(), 0, None)
         };
 
         let resp = NDNGetDataInputResponse {
@@ -172,6 +173,7 @@ impl NDNForwardDataOutputProcessor {
             owner_id: None,
             attr: None,
             range: resp_range,
+            group,
             length,
             data,
         };

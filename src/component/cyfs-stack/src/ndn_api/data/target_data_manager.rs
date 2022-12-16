@@ -52,7 +52,7 @@ impl TargetDataManager {
         group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
         referer: Option<&BdtDataRefererInfo>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
+    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64, Option<String>)> {
         let file_id = file_obj.desc().calculate_id();
 
         let total_size = match ranges {
@@ -65,7 +65,7 @@ impl TargetDataManager {
                 "zero length get_file request will return directly! file={}, file_len={}, ranges={:?},",
                 file_id, file_obj.len(), ranges,
             );
-            return Ok((zero_bytes_reader(), 0));
+            return Ok((zero_bytes_reader(), 0, None));
         }
 
         let referer = match referer {
@@ -83,7 +83,7 @@ impl TargetDataManager {
 
         let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
         
-        let (_id, reader) =
+        let (id, reader) =
             cyfs_bdt::download_file(&self.bdt_stack, file_obj.to_owned(), group, context)
                 .await
                 .map_err(|e| {
@@ -100,7 +100,7 @@ impl TargetDataManager {
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         };
 
-        Ok((resp, total_size))
+        Ok((resp, total_size, Some(id)))
     }
 
     // 获取单个chunk
@@ -111,7 +111,7 @@ impl TargetDataManager {
         group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
         referer: Option<&BdtDataRefererInfo>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
+    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64, Option<String>)> {
         let total_size = match ranges {
             Some(ref ranges) => RangeHelper::sum(ranges) as usize,
             None => chunk_id.len(),
@@ -122,7 +122,7 @@ impl TargetDataManager {
                 "zero length get_chunk request will return directly! file={}",
                 chunk_id
             );
-            return Ok((zero_bytes_reader(), 0));
+            return Ok((zero_bytes_reader(), 0, None));
         }
 
         let referer = match referer {
@@ -140,7 +140,7 @@ impl TargetDataManager {
 
         let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
 
-        let (_id, reader) =
+        let (id, reader) =
             cyfs_bdt::download_chunk(&self.bdt_stack, chunk_id.clone(), group, context)
                 .await
                 .map_err(|e| {
@@ -148,6 +148,6 @@ impl TargetDataManager {
                     e
                 })?;
 
-        Ok((Box::new(reader), total_size as u64))
+        Ok((Box::new(reader), total_size as u64, Some(id)))
     }
 }

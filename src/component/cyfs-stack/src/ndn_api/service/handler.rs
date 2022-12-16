@@ -284,6 +284,12 @@ impl NDNRequestHandler {
             http_resp.insert_header(cyfs_base::CYFS_ATTRIBUTES, attr.flags().to_string());
         }
 
+        RequestorHelper::encode_opt_header_with_encoding(
+            &mut http_resp,
+            cyfs_base::CYFS_TASK_GROUP,
+            resp.group.as_deref(),
+        );
+
         if http_resp.status().is_success() {
             let reader = BufReader::new(resp.data);
             let body = tide::Body::from_reader(reader, Some(resp.length as usize));

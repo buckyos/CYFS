@@ -227,6 +227,9 @@ pub struct NDNGetDataInputResponse {
     // resp ranges
     pub range: Option<NDNDataResponseRange>,
 
+    // task group
+    pub group: Option<String>,
+
     pub length: u64,
     pub data: Box<dyn Read + Unpin + Send + Sync + 'static>,
 }
@@ -247,6 +250,10 @@ impl fmt::Display for NDNGetDataInputResponse {
             write!(f, ", range: {:?}", range)?;
         }
 
+        if let Some(group) = &self.group {
+            write!(f, ", group: {:?}", group)?;
+        }
+        
         write!(f, ", length: {}", self.length)
     }
 }

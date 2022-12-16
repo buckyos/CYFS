@@ -173,10 +173,10 @@ impl NDCLevelInputProcessor {
             // no range param specified, will get the whole file
         }
 
-        let (data, length) = if need_process {
+        let (data, length, group) = if need_process {
             self.data_manager.get_file(&req.common.source, &udata.file, req.group.as_deref(), ranges).await?
         } else {
-            (zero_bytes_reader(), 0)
+            (zero_bytes_reader(), 0, None)
         };
 
         let resp = NDNGetDataInputResponse {
@@ -185,6 +185,7 @@ impl NDCLevelInputProcessor {
             attr: None,
             length,
             range: resp_range,
+            group,
             data,
         };
 
@@ -218,13 +219,16 @@ impl NDCLevelInputProcessor {
             // no range param specified, will get the whole chunk
         }
 
-        let (data, length) = if need_process {
+        let (data, length, group) = if need_process {
             match req.data_type {
                 NDNDataType::Mem => self.data_manager.get_chunk(&req.common.source, &chunk_id, req.group.as_deref(), ranges).await?,
-                NDNDataType::SharedMem => self.data_manager.get_chunk_meta(&chunk_id).await?,
+                NDNDataType::SharedMem => {
+                    let (reader, len) = self.data_manager.get_chunk_meta(&chunk_id).await?;
+                    (reader, len, None)
+                }
             }
         } else {
-            (zero_bytes_reader(), 0)
+            (zero_bytes_reader(), 0, None)
         };
 
         let resp = NDNGetDataInputResponse {
@@ -232,6 +236,7 @@ impl NDCLevelInputProcessor {
             owner_id: None,
             attr: None,
             range: resp_range,
+            group,
             length,
             data,
         };
