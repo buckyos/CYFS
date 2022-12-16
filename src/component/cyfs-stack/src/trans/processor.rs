@@ -24,5 +24,15 @@ pub trait TransInputProcessor: Send + Sync {
         &self,
         req: TransPublishFileInputRequest,
     ) -> BuckyResult<TransPublishFileInputResponse>;
+
+    // task group
+    async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateInputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateInputResponse>;
+    async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupInputRequest,
+    ) -> BuckyResult<TransControlTaskGroupInputResponse>;
 }
 pub type TransInputProcessorRef = Arc<Box<dyn TransInputProcessor>>;

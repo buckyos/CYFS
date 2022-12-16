@@ -93,3 +93,25 @@ pub struct TransCreateTaskInputResponse {
 pub struct TransQueryTasksInputResponse {
     pub task_list: Vec<TransTaskInfo>,
 }
+
+// get task group state
+#[derive(Debug)]
+pub struct TransGetTaskGroupStateInputRequest {
+    pub common: NDNInputRequestCommon,
+
+    pub group: String,
+    pub speed_when: Option<u64>,
+}
+
+pub type TransGetTaskGroupStateInputResponse = TransGetTaskGroupStateOutputResponse;
+
+// control task group
+#[derive(Debug)]
+pub struct TransControlTaskGroupInputRequest {
+    pub common: NDNInputRequestCommon,
+
+    pub group: String,
+    pub action: TransTaskGroupControlAction,
+}
+
+pub type TransControlTaskGroupInputResponse = TransControlTaskGroupOutputResponse;

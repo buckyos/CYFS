@@ -19,7 +19,10 @@ use super::super::{
     chunk::*,
     channel::{DownloadSession, protocol::v0::*}
 };
-
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 pub trait DownloadContext: Send + Sync {
     fn is_mergable(&self) -> bool {
@@ -149,7 +152,7 @@ impl Default for DownloadTaskPriority {
 
 
 // 对scheduler的接口
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum DownloadTaskState {
     Downloading(u32/*速度*/, f32/*进度*/),
     Paused,
@@ -157,7 +160,7 @@ pub enum DownloadTaskState {
     Finished
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DownloadTaskControlState {
     Normal, 
     Paused, 

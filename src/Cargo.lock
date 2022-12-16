@@ -1720,6 +1720,7 @@ dependencies = [
  "rand 0.7.3",
  "ringbuf",
  "rusqlite",
+ "serde",
  "serde_json",
  "sha2 0.8.2",
  "socket2",

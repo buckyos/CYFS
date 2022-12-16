@@ -429,6 +429,7 @@ async fn download_file_impl(
         object_id: file_id.object_id().to_owned(),
         local_path: local_path.to_owned(),
         device_list: vec![device_id],
+        group: None,
         context_id: None,
         auto_start: false,
     };

@@ -62,6 +62,7 @@ impl fmt::Display for NDNOutputRequestCommon {
     }
 }
 
+serde_with_json_codec!(NDNOutputRequestCommon);
 // put requests
 // 目前支持ChunkId
 pub struct NDNPutDataOutputRequest {

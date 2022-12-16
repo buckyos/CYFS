@@ -102,6 +102,20 @@ impl TransServiceRouter {
     ) -> BuckyResult<TransPublishFileInputResponse> {
         self.processor.publish_file(req).await
     }
+
+    async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateInputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
+        self.processor.get_task_group_state(req).await
+    }
+
+    async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupInputRequest,
+    ) -> BuckyResult<TransControlTaskGroupInputResponse> {
+        self.processor.control_task_group(req).await
+    }
 }
 
 #[async_trait::async_trait]
@@ -147,5 +161,19 @@ impl TransInputProcessor for TransServiceRouter {
         req: TransPublishFileInputRequest,
     ) -> BuckyResult<TransPublishFileInputResponse> {
         Self::add_file(self, req).await
+    }
+
+    async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateInputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
+        Self::get_task_group_state(self, req).await
+    }
+
+    async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupInputRequest,
+    ) -> BuckyResult<TransControlTaskGroupInputResponse> {
+        Self::control_task_group(self, req).await
     }
 }

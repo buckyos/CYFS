@@ -24,5 +24,16 @@ pub trait TransOutputProcessor: Send + Sync {
         &self,
         req: &TransPublishFileOutputRequest,
     ) -> BuckyResult<TransPublishFileOutputResponse>;
+
+    // task group
+    async fn get_task_group_state(
+        &self,
+        req: &TransGetTaskGroupStateOutputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateOutputResponse>;
+    async fn control_task_group(
+        &self,
+        req: &TransControlTaskGroupOutputRequest,
+    ) -> BuckyResult<TransControlTaskGroupOutputResponse>;
 }
+
 pub type TransOutputProcessorRef = Arc<dyn TransOutputProcessor>;
