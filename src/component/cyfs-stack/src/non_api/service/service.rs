@@ -3,7 +3,7 @@ use super::super::noc::*;
 use super::super::non::*;
 use super::super::router::*;
 use crate::forward::ForwardProcessorManager;
-use crate::meta::{MetaCache, ObjectFailHandler};
+use crate::meta::{MetaCacheRef, ObjectFailHandler};
 use crate::ndn_api::*;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
@@ -20,6 +20,7 @@ use std::sync::Arc;
 pub struct NONService {
     raw_noc_processor: NONInputProcessorRef,
     noc: NONInputProcessorRef,
+    rmeta_noc_processor: NONInputProcessorRef,
     non: NONInputProcessorRef,
     router: NONInputProcessorRef,
 }
@@ -36,7 +37,7 @@ impl NONService {
         ood_resovler: OodResolver,
 
         router_handlers: RouterHandlersManager,
-        meta_cache: Box<dyn MetaCache>,
+        meta_cache: MetaCacheRef,
         fail_handler: ObjectFailHandler,
         chunk_manager: ChunkManagerRef,
     ) -> (NONService, NDNService) {
@@ -62,7 +63,11 @@ impl NONService {
 
         // noc processor with local device acl + rmeta acl + validate
         let local_noc_processor =
-            NOCLevelInputProcessor::new_local(acl.clone(), raw_noc_processor.clone());
+            NOCLevelInputProcessor::new_local_rmeta_acl(acl.clone(), raw_noc_processor.clone());
+
+        // noc processor only with rmeta acl + validate
+        let rmeta_noc_processor =
+            NOCLevelInputProcessor::new_rmeta_acl(acl.clone(), raw_noc_processor.clone());
 
         // non processor with zone acl + rmeta acl + validate
         let non_processor = NONLevelInputProcessor::new_zone(
@@ -87,6 +92,7 @@ impl NONService {
         let non_service = Self {
             raw_noc_processor: raw_noc_processor.clone(),
             noc: local_noc_processor,
+            rmeta_noc_processor,
             non: non_processor.clone(),
             router: router.clone(),
         };
@@ -111,6 +117,10 @@ impl NONService {
 
     pub(crate) fn raw_noc_processor(&self) -> &NONInputProcessorRef {
         &self.raw_noc_processor
+    }
+
+    pub(crate) fn rmeta_noc_processor(&self) -> &NONInputProcessorRef {
+        &self.rmeta_noc_processor
     }
 
     pub(crate) fn router_processor(&self) -> &NONInputProcessorRef {

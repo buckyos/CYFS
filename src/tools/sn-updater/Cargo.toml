@@ -1,0 +1,16 @@
+[package]
+name = "sn-updater"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cyfs-base = {path="../../component/cyfs-base"}
+cyfs-util = {path="../../component/cyfs-util"}
+cyfs-meta-lib = {path="../../component/cyfs-meta-lib"}
+cyfs-base-meta = {path="../../component/cyfs-base-meta"}
+clap = "2"
+simple_logger = "4"
+log = "0.4.17"
+async-std = "1.12"

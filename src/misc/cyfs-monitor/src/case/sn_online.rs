@@ -47,9 +47,11 @@ impl MonitorRunner for SNOnlineMonitor {
 
             //TODO:需要的时候可以选择和gateway用同一个bdt stack
             let mut init_sn_peers = vec![];
-            let sn = cyfs_util::get_default_sn_desc();
-            device.body_mut().as_mut().unwrap().content_mut().mut_sn_list().push(sn.desc().device_id());
-            init_sn_peers.push(sn);
+            let list = cyfs_util::get_sn_desc().to_owned();
+            for (id, sn) in list {
+                device.body_mut().as_mut().unwrap().content_mut().mut_sn_list().push(id);
+                init_sn_peers.push(sn);
+            }
 
             let init_known_peers = cyfs_util::get_default_known_peers();
             let mut params = cyfs_bdt::StackOpenParams::new("cyfs-monitor");

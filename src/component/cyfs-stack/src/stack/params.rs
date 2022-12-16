@@ -1,4 +1,5 @@
 use cyfs_base::*;
+use cyfs_lib::*;
 use cyfs_meta_lib::MetaMinerTarget;
 
 use async_std::net::SocketAddr;
@@ -29,11 +30,16 @@ impl Default for CyfsStackConfigParams {
 pub struct CyfsStackFrontParams {
     // if enable the front module
     pub enable: bool,
+
+    pub browser_mode: BrowserSanboxMode,
 }
 
 impl Default for CyfsStackFrontParams {
     fn default() -> Self {
-        Self { enable: true }
+        Self {
+            enable: true,
+            browser_mode: BrowserSanboxMode::default(),
+        }
     }
 }
 
@@ -144,6 +150,7 @@ impl CyfsStackParams {
     }
 }
 
+#[derive(Clone)]
 pub struct BdtStackParams {
     pub device: Device,
     pub tcp_port_mapping: Vec<(Endpoint, u16)>,
@@ -152,4 +159,15 @@ pub struct BdtStackParams {
     pub known_device: Vec<Device>,
     pub known_passive_pn: Vec<Device>,
     pub udp_sn_only: Option<bool>,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub enum CyfsStackKnownObjectsInitMode {
+    Sync,
+    Async,
+}
+
+pub struct CyfsStackKnownObjects {
+    pub list: Vec<NONObjectInfo>,
+    pub mode: CyfsStackKnownObjectsInitMode,
 }

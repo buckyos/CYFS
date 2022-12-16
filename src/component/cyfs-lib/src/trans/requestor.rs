@@ -57,13 +57,7 @@ impl TransRequestor {
         }
 
         if !com_req.referer_object.is_empty() {
-            let headers: Vec<String> = com_req
-                .referer_object
-                .iter()
-                .map(|v| v.to_string())
-                .collect();
-
-            RequestorHelper::insert_headers(http_req, cyfs_base::CYFS_REFERER_OBJECT, &headers);
+            RequestorHelper::insert_headers_with_encoding(http_req, cyfs_base::CYFS_REFERER_OBJECT, &com_req.referer_object);
         }
 
         http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());

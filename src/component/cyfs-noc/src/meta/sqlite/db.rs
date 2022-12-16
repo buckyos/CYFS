@@ -361,7 +361,7 @@ impl SqliteMetaStorage {
             BuckyError::new(code, msg)
         })?;
 
-        debug!(
+        info!(
             "insert new to noc success: obj={}, access={}",
             req.object_id,
             AccessString::new(req.access_string)
@@ -476,6 +476,8 @@ impl SqliteMetaStorage {
                             object_update_time: req.object_update_time,
                             object_expired_time: req.object_expired_time,
                         };
+
+                        info!("noc meta update object success! obj={}, update_time: {} -> {}", req.object_id, current_update_time, new_update_time);
 
                         break Ok(resp);
                     }

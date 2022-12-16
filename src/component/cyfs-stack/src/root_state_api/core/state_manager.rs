@@ -1,4 +1,3 @@
-use super::cache::*;
 use super::root::*;
 use super::root_index::RootInfo;
 use crate::config::StackGlobalConfig;

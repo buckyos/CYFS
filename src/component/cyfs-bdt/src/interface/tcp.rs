@@ -76,12 +76,12 @@ impl Listener {
         self.0.mapping_port
     }
 
-    pub fn bind(local: &Endpoint, mapping_port: Option<u16>) -> Result<Self, BuckyError> {
+    pub fn bind(local: Endpoint, out: Option<Endpoint>, mapping_port: Option<u16>) -> Result<Self, BuckyError> {
         let socket = {
             if local.addr().is_ipv6() {
                 #[cfg(windows)]
                 {
-                    let mut default_local = Endpoint::default_tcp(local);
+                    let mut default_local = Endpoint::default_tcp(&local);
                     default_local.mut_addr().set_port(local.addr().port());
                     TcpListener::bind(&default_local).map_err(|err| BuckyError::from(err))
                 }
@@ -125,7 +125,7 @@ impl Listener {
                     }
                 }
             } else if local.is_sys_default() {
-                let mut default_local = Endpoint::default_tcp(local);
+                let mut default_local = Endpoint::default_tcp(&local);
                 default_local.mut_addr().set_port(local.addr().port());
                 TcpListener::bind(&default_local).map_err(|err| BuckyError::from(err))
             } else {
@@ -135,7 +135,7 @@ impl Listener {
 
         Ok(Self(Arc::new(ListenerImpl {
             local: RwLock::new(local.clone()),
-            outer: RwLock::new(None),
+            outer: RwLock::new(out),
             socket,
             mapping_port,
         })))
@@ -184,9 +184,10 @@ impl Listener {
 
     pub fn reset(&self, local: &Endpoint) -> Self {
         info!("{} reset with {}", self, local);
-        *self.0.local.write().unwrap() = local.clone();
-        *self.0.outer.write().unwrap() = None;
-        self.clone()
+        let new = self.clone();
+        *new.0.local.write().unwrap() = local.clone();
+        *new.0.outer.write().unwrap() = None;
+        new
     }
 
     pub fn close(&self) {

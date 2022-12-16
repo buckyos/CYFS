@@ -5,10 +5,12 @@ use cyfs_util::*;
 use sha2::Digest;
 use std::sync::Arc;
 
-#[derive(RawEncode, RawDecode)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[cyfs_protobuf_type(super::util_proto::BuildFileParams)]
 pub struct BuildFileParams {
     pub local_path: String,
     pub owner: ObjectId,
+    pub dec_id: ObjectId,
     pub chunk_size: u32,
 }
 
@@ -34,6 +36,7 @@ impl TaskFactory for BuildFileTaskFactory {
         Ok(Box::new(RunnableTask::new(BuildFileTask::new(
             params.local_path,
             params.owner,
+            params.dec_id,
             params.chunk_size,
             self.noc.clone(),
             self.ndc.clone(),
@@ -56,6 +59,7 @@ impl TaskFactory for BuildFileTaskFactory {
         Ok(Box::new(RunnableTask::new(BuildFileTask::restore(
             params.local_path,
             params.owner,
+            params.dec_id,
             params.chunk_size,
             task_state,
             self.noc.clone(),
@@ -183,6 +187,7 @@ pub struct BuildFileTask {
     task_state: FileObjectBuilderStateWrapper<TaskState>,
     local_path: String,
     owner: ObjectId,
+    dec_id: ObjectId,
     chunk_size: u32,
     noc: NamedObjectCacheRef,
     ndc: Box<dyn NamedDataCache>,
@@ -192,13 +197,15 @@ impl BuildFileTask {
     pub(crate) fn new(
         local_path: String,
         owner: ObjectId,
+        dec_id: ObjectId,
         chunk_size: u32,
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
     ) -> Self {
         let mut sha2 = sha2::Sha256::new();
         sha2.input(local_path.as_bytes());
-        sha2.input(owner.to_string().as_bytes());
+        sha2.input(owner.as_slice());
+        sha2.input(dec_id.as_slice());
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_FILE_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
@@ -211,6 +218,7 @@ impl BuildFileTask {
             )),
             local_path,
             owner,
+            dec_id,
             chunk_size,
             noc,
             ndc,
@@ -220,6 +228,7 @@ impl BuildFileTask {
     pub(crate) fn restore(
         local_path: String,
         owner: ObjectId,
+        dec_id: ObjectId,
         chunk_size: u32,
         task_state: FileTaskState,
         noc: NamedObjectCacheRef,
@@ -227,7 +236,8 @@ impl BuildFileTask {
     ) -> Self {
         let mut sha2 = sha2::Sha256::new();
         sha2.input(local_path.as_bytes());
-        sha2.input(owner.to_string().as_bytes());
+        sha2.input(owner.as_slice());
+        sha2.input(dec_id.as_slice());
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_FILE_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
@@ -237,6 +247,7 @@ impl BuildFileTask {
             task_state: FileObjectBuilderStateWrapper::new(TaskState::new(task_state, task_id)),
             local_path,
             owner,
+            dec_id,
             chunk_size,
             noc,
             ndc,
@@ -306,7 +317,7 @@ impl Runnable for BuildFileTask {
                 .noc
                 .get_object(&NamedObjectCacheGetObjectRequest {
                     last_access_rpath: None,
-                    source: RequestSourceInfo::new_local_system(),
+                    source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
                     object_id: query_ret.unwrap().file_id.object_id().clone(),
                 })
                 .await?;
@@ -331,7 +342,7 @@ impl Runnable for BuildFileTask {
         let object = NONObjectInfo::new_from_object_raw(object_raw)?;
 
         let req = NamedObjectCachePutObjectRequest {
-            source: RequestSourceInfo::new_local_system(),
+            source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
             object,
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
@@ -415,21 +426,27 @@ mod build_file_task_test {
         ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
             todo!();
         }
-    
+
         async fn exists_object(
             &self,
             req: &NamedObjectCacheExistsObjectRequest,
         ) -> BuckyResult<NamedObjectCacheExistsObjectResponse> {
             todo!();
         }
-    
+
         async fn update_object_meta(
             &self,
             req: &NamedObjectCacheUpdateObjectMetaRequest,
         ) -> BuckyResult<()> {
             todo!();
         }
-    
+
+        async fn check_object_access(&self,
+            req: &NamedObjectCacheCheckObjectAccessRequest
+        ) -> BuckyResult<Option<()>> {
+            todo!();
+        }
+
         async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
             todo!();
         }

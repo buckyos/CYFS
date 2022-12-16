@@ -1022,8 +1022,8 @@ impl GlobalStateAccessorRequestHandler {
         let inner_path = req.request.param("inner_path").unwrap_or("/");
         let inner_path = RequestorHelper::decode_utf8("inner_path", inner_path)?;
 
-        let inner_path = if inner_path.starts_with("/") {
-            inner_path
+        let inner_path: String = if inner_path.starts_with("/") {
+            inner_path.to_string()
         } else {
             format!("/{}", inner_path)
         };

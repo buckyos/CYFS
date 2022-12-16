@@ -1,5 +1,5 @@
 use cyfs_base::{BuckyError, BuckyResult};
-use sqlx::{Transaction, Connection, Executor, Database, IntoArguments, FromRow};
+use sqlx::{Transaction, Connection, Executor, Database, IntoArguments, FromRow, Sqlite};
 use async_trait::async_trait;
 use sqlx::query::{Query, QueryAs};
 use crate::*;
@@ -173,6 +173,39 @@ impl DBConnection<sqlx::Sqlite> for sqlx::SqliteConnection {
 #[async_trait]
 #[cfg(any(not(db_type), db_type = "sqlite"))]
 impl<'a> DBExecutor<sqlx::Sqlite> for sqlx::SqliteConnection {
+    async fn execute_sql<'e, E: 'e + sqlx::Execute<'e, sqlx::Sqlite>>(&mut self, query: E) -> BuckyResult<<sqlx::Sqlite as Database>::QueryResult> {
+        self.execute(query).await.map_err(map_sql_err)
+    }
+
+    async fn query_one<'e, E: 'e + sqlx::Execute<'e, sqlx::Sqlite>>(&mut self, query: E) -> BuckyResult<<sqlx::Sqlite as Database>::Row> {
+        self.fetch_one(query).await.map_err(map_sql_err)
+    }
+
+    async fn query_all<'e, E: 'e + sqlx::Execute<'e, sqlx::Sqlite>>(&mut self, query: E) -> BuckyResult<Vec<<sqlx::Sqlite as Database>::Row>> {
+        self.fetch_all(query).await.map_err(map_sql_err)
+    }
+
+    async fn has_column(&mut self, table_name: &str, column_name: &str) -> BuckyResult<bool> {
+        let sql = r#"select * from sqlite_master where name=?1 and sql like ?2"#;
+        let ret = self.fetch_one(sqlx::query(sql)
+            .bind(table_name).bind(format!("%{}%", column_name))).await;
+        if let Err(_) = &ret {
+            Ok(false)
+        } else {
+            Ok(true)
+        }
+    }
+
+    async fn add_column(&mut self, table_name: &str, column: &str) -> BuckyResult<()> {
+        let sql = format!(r#"alter table {} add column {}"#, table_name, column);
+        self.execute_sql(sqlx::query(sql.as_str())).await?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+#[cfg(any(not(db_type), db_type = "sqlite"))]
+impl<'a> DBExecutor<sqlx::Sqlite> for sqlx::pool::PoolConnection<Sqlite> {
     async fn execute_sql<'e, E: 'e + sqlx::Execute<'e, sqlx::Sqlite>>(&mut self, query: E) -> BuckyResult<<sqlx::Sqlite as Database>::QueryResult> {
         self.execute(query).await.map_err(map_sql_err)
     }

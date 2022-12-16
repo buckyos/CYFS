@@ -1,40 +1,26 @@
 use std::{
     sync::{RwLock}, 
-    collections::hash_map::HashMap
+    collections::{BTreeSet, hash_map::HashMap}
 };
 use cyfs_base::*;
+use crate::dht::*;
 use super::outer_device_cache::*;
-use crate::dht::DeviceBucketes;
 
 pub struct DeviceCache {
-    local_id: DeviceId,
-    local: RwLock<Device>,
     outer: Option<Box<dyn OuterDeviceCache>>,
     //FIXME 先简单干一个
     cache: RwLock<HashMap<DeviceId, Device>>,
     // sn
-    sn_area_cache: RwLock<DeviceBucketes>,
+    sn_list: RwLock<BTreeSet<DeviceId>>,
 }
 
 impl DeviceCache {
-    pub fn new(local: Device, outer: Option<Box<dyn OuterDeviceCache>>) -> Self {
+    pub fn new(outer: Option<Box<dyn OuterDeviceCache>>) -> Self {
         Self {
-            local_id: local.desc().device_id(),
-            local: RwLock::new(local),
             cache: RwLock::new(HashMap::new()),
             outer,
-            sn_area_cache: RwLock::new(DeviceBucketes::new()),
+            sn_list: RwLock::new(BTreeSet::new()),
         }
-    }
-
-    pub fn local(&self) -> Device {
-        let local = self.local.read().unwrap();
-        (&*local).clone()
-    }
-
-    pub fn update_local(&self, desc: &Device) {
-        let mut local = self.local.write().unwrap();
-        *local = desc.clone();
     }
 
     pub fn add(&self, id: &DeviceId, device: &Device) {
@@ -53,7 +39,6 @@ impl DeviceCache {
             cache.insert(id.clone(), device.clone());
         }
 
-        // 临时方案：这里需要添加到上层noc
         if let Some(outer) = &self.outer {
             let outer = outer.clone_cache();
             let id = id.to_owned();
@@ -66,40 +51,39 @@ impl DeviceCache {
     }
 
     pub async fn get(&self, id: &DeviceId) -> Option<Device> {
-        let mem_cache = self.cache.read().unwrap().get(id).map(|d| d.clone());
+        let mem_cache = self.get_inner(id);
         if mem_cache.is_some() {
             mem_cache
-        } else if self.local_id.eq(id) {
-            Some(self.local())
         } else if let Some(outer) = &self.outer {
             outer.get(id).await
         } else {
             None
         }
     }
+
+    pub fn get_inner(&self, id: &DeviceId) -> Option<Device> {
+        self.cache.read().unwrap().get(id).cloned()
+    }
+
+    pub fn remove_inner(&self, id: &DeviceId) {
+        self.cache.write().unwrap().remove(id);
+    }
 }
 
 impl DeviceCache {
-    pub fn reset_sn_list(&self, sn_list: &Vec<Device>) {
-        let mut bucketes = DeviceBucketes::new();
-
-        sn_list.iter()
-            .for_each(| device | {
-                let _ = bucketes.set(&device.desc().object_id(), device);
-            });
-
-        let caches = &mut *self.sn_area_cache.write().unwrap();
-        std::mem::swap(&mut bucketes, caches);
+    pub fn add_sn(&self, sn_list: &Vec<Device>) {
+        for sn in sn_list {
+            let id = sn.desc().device_id();
+            self.add(&id, sn);
+            self.sn_list.write().unwrap().insert(id);
+        }
+       
+    }
+    pub fn nearest_sn_of(remote: &DeviceId, sn_list: &[DeviceId]) -> Option<DeviceId> {
+        sn_list.iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).cloned()
     }
 
-    pub fn add_sn(&self, sn: &Device) {
-        let _ = self.sn_area_cache.write().unwrap()
-            .set(&sn.desc().object_id(), sn);
-    }
-
-    pub fn get_nearest_of(&self, id:& DeviceId) -> Option<Device> {
-        self.sn_area_cache.read().unwrap()
-            .get_nearest_of(id.object_id())
-            .cloned()
+    pub fn sn_list(&self) -> Vec<DeviceId> {
+        self.sn_list.read().unwrap().iter().cloned().collect()
     }
 }

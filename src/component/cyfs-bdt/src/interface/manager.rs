@@ -5,7 +5,6 @@ use async_std::{
 };
 use cyfs_base::*;
 use crate::{
-    types::*, 
     stack::WeakStack
 };
 use super::{udp, tcp};
@@ -17,11 +16,6 @@ pub struct Config {
 }
 
 
-pub enum NetListenerState {
-    Init(StateWaiter), 
-    Online,
-    Closed
-}
 
 struct NetListenerImpl {
     local: DeviceId, 
@@ -29,7 +23,6 @@ struct NetListenerImpl {
     tcp: Vec<tcp::Listener>, 
     ip_set: BTreeSet<IpAddr>, 
     ep_set: BTreeSet<Endpoint>, 
-    state: RwLock<NetListenerState>
 }
 
 impl std::fmt::Display for NetListener {
@@ -53,20 +46,73 @@ impl NetListener {
         local: DeviceId, 
         config: &Config, 
         endpoints: &[Endpoint], 
-        tcp_port_mapping: Option<Vec<(Endpoint, u16)>>) -> Result<Self, BuckyError> {
+        port_mapping: Option<Vec<(Endpoint, u16)>>
+    ) -> BuckyResult<Self> {
+        let ep_len = endpoints.len();
+        if ep_len == 0 {
+            let err = BuckyError::new(BuckyErrorCode::InvalidParam, "no endpoint");
+            warn!("NetListener{{local:{}}} bind failed for {}", local, err);
+            return Err(err);
+        }
+
         let mut listener = NetListenerImpl {
             local: local.clone(), 
             udp: vec![], 
             tcp: vec![], 
             ip_set: BTreeSet::new(), 
             ep_set: BTreeSet::new(), 
-            state: RwLock::new(NetListenerState::Init(StateWaiter::new()))
         };
-        let mut port_mapping = tcp_port_mapping.unwrap_or(vec![]);
-        for ep in endpoints {
+        let mut port_mapping = port_mapping.unwrap_or(vec![]);
+
+        let mut ep_index = 0;
+
+        while ep_index < ep_len {
+            let ep = &endpoints[ep_index];
+            let ep_pair = if ep.is_mapped_wan() {
+                let local_index = ep_index + 1;
+                let ep_pair = if local_index == ep_len {
+                    Err(BuckyError::new(BuckyErrorCode::InvalidParam, format!("mapped wan endpoint {} has no local endpoint", ep)))
+                } else {
+                    let local_ep = &endpoints[local_index];
+                    if !(local_ep.is_same_ip_version(ep) 
+                        && local_ep.protocol() == ep.protocol()
+                        && !local_ep.is_static_wan()) {
+                        Err(BuckyError::new(BuckyErrorCode::InvalidParam, format!("mapped wan endpoint {} has invalid local endpoint {}", ep, local_ep)))
+                    } else {
+                        Ok((*local_ep, Some(*ep)))
+                    }
+                };
+                ep_index = local_index;
+                ep_pair
+            } else {
+                Ok((*ep, None))
+            };
+            ep_index += 1;
+
+            if ep_pair.is_err() {
+                let err = ep_pair.unwrap_err();
+                warn!("NetListener{{local:{}}} bind on {:?} failed for {:?}", local, ep, err);
+                continue;
+            }
+
+            let (local, out) = ep_pair.unwrap();
+          
             let r = match ep.protocol() {
                 Protocol::Udp => {
-                    udp::Interface::bind(ep, config.udp.clone()).map(|i| {
+                    let mapping_port = {
+                        let mut found_index = None;
+                        for (index, (src_ep, _)) in port_mapping.iter().enumerate() {
+                            if *src_ep == *ep {
+                                found_index = Some(index);
+                                break;
+                            }
+                        }
+                        found_index.map(|index| {
+                            let (_, dst_port) = port_mapping.remove(index);
+                            dst_port
+                        })
+                    };
+                    udp::Interface::bind(local, out, mapping_port, config.udp.clone()).map(|i| {
                         listener.udp.push(i);
                         ep
                     })
@@ -85,7 +131,7 @@ impl NetListener {
                             dst_port
                         })
                     };
-                    tcp::Listener::bind(ep, mapping_port).map(|l| {
+                    tcp::Listener::bind(local, out, mapping_port).map(|l| {
                         listener.tcp.push(l);
                         ep
                     })
@@ -108,64 +154,48 @@ impl NetListener {
         Ok(Self(Arc::new(listener)))
     }
 
-    pub fn reset(&self, endpoints: &[Endpoint]) -> BuckyResult<Self> {
-        let mut all_default = true;
-        for ep in endpoints {
-            if !ep.is_sys_default() {
-                all_default = false;
-                break;
-            }
-        }
-        //TODO: 支持显式绑定本地ip的 reset
-        if !all_default {
-            return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "reset should be endpoint with default flag"));
-        }
-
-        let waiter = {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                NetListenerState::Init(waiter) => {
-                    let mut to_wake = StateWaiter::new();
-                    std::mem::swap(&mut to_wake, waiter);
-                    *state = NetListenerState::Closed;
-                    Ok(Some(to_wake))   
-                }, 
-                NetListenerState::Online => {
-                    *state = NetListenerState::Closed;
-                    Ok(None)
-                }, 
-                NetListenerState::Closed => {
-                    Err(BuckyError::new(BuckyErrorCode::ErrorState, "net listener's closed"))
-                }
-            }
-        }?;
-
-        if let Some(waiter) = waiter {
-            waiter.wake();
-        }
-
-        fn local_of(former: Endpoint, endpoints: &[Endpoint]) -> Endpoint {
+    pub fn reset(&self, endpoints: Option<&[Endpoint]>) -> BuckyResult<Self> {
+        if let Some(endpoints) = endpoints {
+            let mut all_default = true;
             for ep in endpoints {
-                if former.is_same_ip_version(ep) 
-                    && former.protocol() == ep.protocol() 
-                    && former.addr().port() == ep.addr().port() {
-                    return *ep;
+                if !ep.is_sys_default() {
+                    all_default = false;
+                    break;
                 }
             }
-            Endpoint::default_of(&former)
+            //TODO: 支持显式绑定本地ip的 reset
+            if !all_default {
+                return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "reset should be endpoint with default flag"));
+            }
+        }
+       
+
+        fn local_of(former: Endpoint, endpoints: &Option<&[Endpoint]>) -> Endpoint {
+            if let Some(endpoints) = endpoints {
+                for ep in *endpoints {
+                    if former.is_same_ip_version(ep) 
+                        && former.protocol() == ep.protocol() 
+                        && former.addr().port() == ep.addr().port() {
+                        return *ep;
+                    }
+                }
+                Endpoint::default_of(&former)
+            } else {
+                former
+            }
         }
 
         let mut ip_set = BTreeSet::new(); 
         let mut ep_set = BTreeSet::new(); 
         let udp = Vec::from_iter(self.0.udp.iter().map(|udp| {
-            let new_ep = local_of(udp.local(), endpoints);
+            let new_ep = local_of(udp.local(), &endpoints);
             ep_set.insert(new_ep);
             ip_set.insert(new_ep.addr().ip());
             udp.reset(&new_ep)
         }));
 
         let tcp = Vec::from_iter(self.0.tcp.iter().map(|tcp| {
-            let new_ep = local_of(tcp.local(), endpoints);
+            let new_ep = local_of(tcp.local(), &endpoints);
             ep_set.insert(new_ep);
             ip_set.insert(new_ep.addr().ip());
             tcp.reset(&new_ep)
@@ -177,7 +207,6 @@ impl NetListener {
             tcp, 
             ip_set, 
             ep_set, 
-            state: RwLock::new(NetListenerState::Init(StateWaiter::new()))
         })))
 
 
@@ -190,86 +219,8 @@ impl NetListener {
         for l in &self.0.tcp {
             l.start(stack.clone());
         }
-
-        self.check_state();
     }
 
-    pub async fn wait_online(&self) -> BuckyResult<()> {
-        let (waiter, ret) = {
-            match &mut *self.0.state.write().unwrap() {
-                NetListenerState::Init(waiter) => {
-                    (Some(waiter.new_waiter()), Ok(()))
-                }, 
-                NetListenerState::Online => {
-                    (None, Ok(()))
-                }, 
-                NetListenerState::Closed => {
-                    (None, Err(BuckyError::new(BuckyErrorCode::ErrorState, "net listener closed")))
-                }
-            }
-        };
-
-        if let Some(waiter) = waiter {
-            StateWaiter::wait(waiter, || {
-                match &*self.0.state.read().unwrap() {
-                    NetListenerState::Init(_) => unreachable!(), 
-                    NetListenerState::Online => Ok(()), 
-                    NetListenerState::Closed => Err(BuckyError::new(BuckyErrorCode::ErrorState, "net listener closed"))
-                }
-            }).await
-        } else {
-            ret
-        }
-    }
-
-    fn check_state(&self) {
-        let udps = self.udp();
-        let online = if udps.len() == 0 {
-            true
-        } else {
-            let mut v4_online = None;
-            let mut v6_online = None;
-            for u in self.udp() {
-                if u.local().addr().is_ipv4() {
-                    if u.local().is_static_wan() || 
-                        u.outer().is_some() {
-                        v4_online = Some(true);
-                    } else if v4_online.is_none() {
-                        v4_online = Some(false);
-                    }
-                } else {
-                    if u.local().is_static_wan() || 
-                        u.outer().is_some() {
-                        v6_online = Some(true);
-                    } else if v6_online.is_none() {
-                        v6_online = Some(false)
-                    }
-                }
-            }
-            //FIXME: ipv6 的ping返回比较慢，先改成任何一个返回就触发
-            v4_online.unwrap_or(false) || v6_online.unwrap_or(false)
-        };
-        
-        let to_wake = if online {
-            let state = &mut *self.0.state.write().unwrap(); 
-            match state {
-                NetListenerState::Init(waiter) => {
-                    info!("{} online", self);
-                    let to_wake = waiter.transfer();
-                    *state = NetListenerState::Online;
-                    Some(to_wake)
-                }, 
-                NetListenerState::Closed => None, 
-                NetListenerState::Online => None, 
-            }
-        } else {
-            None
-        };
-
-        if let Some(to_wake) = to_wake {
-            to_wake.wake();
-        }
-    }
 
     pub fn close(&self) {
         for _i in self.udp() {
@@ -311,7 +262,6 @@ impl NetListener {
                         }
                     }
                 }
-                self.check_state();
             }
         }
         reseult
@@ -384,7 +334,7 @@ impl NetManager {
     }
 
     pub fn reset(&self, endpoints: &[Endpoint]) -> BuckyResult<NetListener> {
-        self.listener().reset(endpoints).map(|listener| {
+        self.listener().reset(Some(endpoints)).map(|listener| {
             *self.listener.write().unwrap() = listener.clone();
             listener
         })

@@ -24,7 +24,7 @@ use crate::{
     utils::*
 };
 use super::command::*;
-use super::super::sn::client::SnStatus;
+// use super::super::sn::client::SnStatus;
 
 struct DebugStubImpl {
     stack: WeakStack, 
@@ -139,63 +139,37 @@ impl DebugStub {
     }
 
     async fn sn_conn_status(&self, tunnel: TcpStream, command: DebugCommandSnConnStatus) -> Result<(), String> {
-        let mut tunnel = tunnel;
+        // let mut tunnel = tunnel;
 
-        let stack = Stack::from(&self.0.stack);
-        let dev_id_option = {
-            if command.sn.is_none() {
-                let sn_list = stack.sn_client().sn_list();
-                let sn = sn_list.get(0);
-                match sn {
-                    Some(sn) => {
-                        let sn = sn.clone();
-                        Some(sn)
-                    },
-                    _ => None,
-                }
-            } else {
-                command.sn
-            }
-        };
-        if dev_id_option.is_none() {
-            let _ = tunnel.write_all("Err: sn is none\r\n".as_ref()).await;
-            return Ok(())
-        }
+        // let stack = Stack::from(&self.0.stack);
+        // let timeout = {
+        //     if command.timeout_sec == 0 {
+        //         6
+        //     } else {
+        //         command.timeout_sec
+        //     }
+        // };
 
-        let sn_dev_id = dev_id_option.unwrap();
-        let timeout = {
-            if command.timeout_sec == 0 {
-                6
-            } else {
-                command.timeout_sec
-            }
-        };
+        // let sleep_ms = 200; 
+        // let mut counter = timeout*(1000/sleep_ms);
+        // loop {
+        //     let sn_status = stack.sn_client().ping().status();
 
-        let sleep_ms = 200; 
-        let mut counter = timeout*(1000/sleep_ms);
-        loop {
-            let sn_status = stack.sn_client().status_of(&sn_dev_id);
+        //     if let SnStatus::Online = sn_status {
+        //         let _ = tunnel.write_all("Ok: sn connected\r\n".as_ref()).await;
 
-            match sn_status {
-                Some(st) => {
-                    if st == SnStatus::Online {
-                        let _ = tunnel.write_all("Ok: sn connected\r\n".as_ref()).await;
+        //         return Ok(())
+        //     }
 
-                        return Ok(())
-                    }
-                },
-                _ => {}
-            }
+        //     counter -= 1;
+        //     if counter == 0 {
+        //         break ;
+        //     }
 
-            counter -= 1;
-            if counter == 0 {
-                break ;
-            }
+        //     task::sleep(Duration::from_millis(sleep_ms)).await;
+        // }
 
-            task::sleep(Duration::from_millis(sleep_ms)).await;
-        }
-
-        let _ = tunnel.write_all("Err: sn connect timeout\r\n".as_ref()).await;
+        // let _ = tunnel.write_all("Err: sn connect timeout\r\n".as_ref()).await;
 
         Ok(())
     }
@@ -319,7 +293,7 @@ impl DebugStub {
             question.to_vec(), 
             BuildTunnelParams {
                 remote_const: command.remote.desc().clone(), 
-                remote_sn: vec![], 
+                remote_sn: None, 
                 remote_desc: Some(command.remote.clone())
         }).await.map_err(|err| format!("Err: {}\r\n", err.msg().to_string()))?;
 

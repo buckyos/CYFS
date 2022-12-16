@@ -6,6 +6,7 @@ use rand::Rng;
 use std::fmt;
 use std::{
     hash::{Hash, Hasher},
+    collections::LinkedList,
     sync::{
         atomic::{AtomicU32, Ordering},
         Arc,
@@ -322,12 +323,12 @@ impl EndpointPair {
 }
 
 pub struct StateWaiter {
-    wakers: Vec<AbortHandle>,
+    wakers: LinkedList<AbortHandle>,
 }
 
 impl StateWaiter {
     pub fn new() -> Self {
-        Self { wakers: vec![] }
+        Self { wakers: Default::default() }
     }
 
     pub fn transfer(&mut self) -> Self {
@@ -342,7 +343,7 @@ impl StateWaiter {
 
     pub fn new_waiter(&mut self) -> AbortRegistration {
         let (waker, waiter) = AbortHandle::new_pair();
-        self.wakers.push(waker);
+        self.wakers.push_back(waker);
         waiter
     }
 
@@ -365,6 +366,10 @@ impl StateWaiter {
         for waker in self.wakers {
             waker.abort();
         }
+    }
+
+    pub fn pop(&mut self) -> Option<AbortHandle> {
+        self.wakers.pop_front()   
     }
 
     pub fn len(&self) -> usize {

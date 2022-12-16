@@ -237,7 +237,7 @@ impl NONRequestHandler {
             RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
 
         let inner_path =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_INNER_PATH)?;
+            RequestorHelper::decode_optional_header_with_utf8_decoding(&req.request, cyfs_base::CYFS_INNER_PATH)?;
 
         let get_req = NONGetObjectInputRequest {
             common,
@@ -362,7 +362,7 @@ impl NONRequestHandler {
         let common = Self::decode_common_headers(&req)?;
         let object_id = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OBJECT_ID)?;
         let inner_path =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_INNER_PATH)?;
+            RequestorHelper::decode_optional_header_with_utf8_decoding(&req.request, cyfs_base::CYFS_INNER_PATH)?;
 
         let delete_req = NONDeleteObjectInputRequest {
             common,

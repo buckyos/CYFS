@@ -1,10 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-
 
 pub const CFYS_ROOT_NAME: &str = "cyfs";
 
-fn default_cyfs_root_path() -> PathBuf {
+pub fn default_cyfs_root_path() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
         PathBuf::from(&format!("C:\\{}", CFYS_ROOT_NAME))
@@ -39,8 +37,33 @@ fn default_cyfs_root_path() -> PathBuf {
     }
 }
 
-lazy_static::lazy_static! {
-    pub static ref CYFS_ROOT: Mutex<PathBuf> = {
+static CYFS_ROOT: once_cell::sync::OnceCell<PathBuf> = once_cell::sync::OnceCell::new();
+
+// 初始化时候调用一次
+pub fn bind_cyfs_root_path(root_path: impl Into<PathBuf>) {
+    let root_path: PathBuf = root_path.into();
+
+    match CYFS_ROOT.set(root_path.clone()) {
+        Ok(_) => {
+            info!("change cyfs root path to: {}", root_path.display());
+            if !root_path.is_dir() {
+                if let Err(e) = std::fs::create_dir_all(&root_path) {
+                    error!(
+                        "create cyfs root dir failed! dir={}, err={}",
+                        root_path.display(),
+                        e
+                    );
+                }
+            }
+        }
+        Err(_) => {
+            unreachable!("change cyfs root after been inited! {}", root_path.display());
+        }
+    }
+}
+
+pub fn get_cyfs_root_path_ref() -> &'static Path {
+    CYFS_ROOT.get_or_init(|| {
         let path = default_cyfs_root_path();
         if !path.is_dir() {
             if let Err(e) = std::fs::create_dir_all(&path) {
@@ -51,22 +74,12 @@ lazy_static::lazy_static! {
                 );
             }
         }
-
-        info!("cyfs root: {}", path.display());
-        Mutex::new(PathBuf::from(path))
-    };
-}
-
-// 初始化时候调用一次
-pub fn bind_cyfs_root_path(root_path: impl Into<PathBuf>) {
-    let root_path: PathBuf = root_path.into();
-    info!("change cyfs root path to: {}", root_path.display());
-
-    *CYFS_ROOT.lock().unwrap() = root_path;
+        path
+    })
 }
 
 pub fn get_cyfs_root_path() -> PathBuf {
-    CYFS_ROOT.lock().unwrap().clone()
+    get_cyfs_root_path_ref().to_owned()
 }
 
 pub fn get_temp_path() -> PathBuf {

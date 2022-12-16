@@ -1,4 +1,3 @@
-use crate::root_state_api::ObjectMapNOCCacheAdapter;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -13,7 +12,9 @@ pub(crate) struct NONObjectMapLoader {
 impl NONObjectMapLoader {
     pub fn new(noc: NamedObjectCacheRef) -> Self {
         let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(noc.clone());
-        let root_cache = ObjectMapRootMemoryCache::new_ref(noc_cache, 60 * 5, 1024);
+
+        // loader's dec already been system dec, will check access for the root object which will been required!
+        let root_cache = ObjectMapRootMemoryCache::new_ref(None, noc_cache, 60 * 5, 1024);
         let op_env_cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         Self {

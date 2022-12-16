@@ -9,7 +9,7 @@ use std::sync::Arc;
 const FAIL_CHECK_INTERVAL: u64 = 1000 * 1000 * 60 * 60;
 
 struct DeviceFailHandlerImpl {
-    meta_cache: Box<dyn MetaCache>,
+    meta_cache: MetaCacheRef,
     device_manager: Box<dyn DeviceCache>,
 
     // FIXME limit max cache count
@@ -17,7 +17,7 @@ struct DeviceFailHandlerImpl {
 }
 
 impl DeviceFailHandlerImpl {
-    pub fn new(meta_cache: Box<dyn MetaCache>, device_manager: Box<dyn DeviceCache>) -> Self {
+    pub fn new(meta_cache: MetaCacheRef, device_manager: Box<dyn DeviceCache>) -> Self {
         Self {
             meta_cache,
             device_manager,
@@ -106,7 +106,7 @@ impl DeviceFailHandlerImpl {
 pub struct ObjectFailHandler(Arc<DeviceFailHandlerImpl>);
 
 impl ObjectFailHandler {
-    pub fn new(meta_cache: Box<dyn MetaCache>, device_manager: Box<dyn DeviceCache>) -> Self {
+    pub fn new(meta_cache: MetaCacheRef, device_manager: Box<dyn DeviceCache>) -> Self {
         Self(Arc::new(DeviceFailHandlerImpl::new(
             meta_cache,
             device_manager,

@@ -31,6 +31,9 @@ impl LogCache {
     pub fn add(&mut self, record: CyfsLogRecord) {
         let index = self.next_index + 1;
         self.next_index += 1;
+        if self.next_index == u64::MAX {
+            self.next_index = 0;
+        }
         let item = ReportLogItem { index, record };
         self.pending.push_back(item);
 

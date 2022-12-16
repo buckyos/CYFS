@@ -3,7 +3,7 @@ use crate::acl::AclManagerRef;
 use crate::config::StackGlobalConfig;
 use crate::events::RouterEventsManager;
 use crate::interface::{SyncListenerManager, SyncListenerManagerParams};
-use crate::meta::RawMetaCache;
+use crate::meta::MetaCacheRef;
 use crate::root_state_api::GlobalStateLocalService;
 use crate::sync::*;
 use crate::util_api::UtilService;
@@ -56,7 +56,7 @@ pub struct ZoneRoleManager {
     device_id: DeviceId,
     zone_manager: ZoneManagerRef,
     noc: NamedObjectCacheRef,
-    raw_meta_cache: RawMetaCache,
+    raw_meta_cache: MetaCacheRef,
     acl_manager: AclManagerRef,
 
     config: StackGlobalConfig,
@@ -75,7 +75,7 @@ impl ZoneRoleManager {
         device_id: DeviceId,
         zone_manager: ZoneManagerRef,
         noc: NamedObjectCacheRef,
-        raw_meta_cache: RawMetaCache,
+        raw_meta_cache: MetaCacheRef,
         acl_manager: AclManagerRef,
         event_manager: RouterEventsManager,
         config: StackGlobalConfig,

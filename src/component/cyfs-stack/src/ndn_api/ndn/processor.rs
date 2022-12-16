@@ -1,8 +1,8 @@
 use super::super::acl::*;
+use super::super::forward::*;
 use super::super::handler::*;
 use super::super::ndc::NDCLevelInputProcessor;
 use super::super::ndc::NDNObjectLoader;
-use super::super::forward::*;
 use super::NDNOutputFailHandleProcessor;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
@@ -105,7 +105,7 @@ impl NDNLevelInputProcessor {
         );
 
         // 带同zone input acl的处理器
-        let acl_processor = NDNAclInnerInputProcessor::new(processor);
+        let acl_processor = NDNAclZoneInputProcessor::new(processor);
 
         acl_processor
     }
@@ -123,11 +123,8 @@ impl NDNLevelInputProcessor {
 
         // 增加前置的object加载器
         // 通过合适的non processor加载目标object
-        let processor = NDNForwardObjectProcessor::new(
-            target,
-            self.target_object_loader.clone(),
-            processor,
-        );
+        let processor =
+            NDNForwardObjectProcessor::new(target, self.target_object_loader.clone(), processor);
 
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(
@@ -160,7 +157,6 @@ impl NDNLevelInputProcessor {
 
         // 转换为input processor
         let input_processor = NDNInputTransformer::new(processor);
-
 
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(

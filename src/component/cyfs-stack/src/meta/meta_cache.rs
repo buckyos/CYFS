@@ -19,3 +19,5 @@ pub trait MetaCache: Sync + Send {
 
     fn clone_meta(&self) -> Box<dyn MetaCache>;
 }
+
+pub type MetaCacheRef = Arc<Box<dyn MetaCache>>;

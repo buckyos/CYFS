@@ -165,6 +165,7 @@ impl BuckyErrorStatusCodeTrans {
             | BuckyErrorCode::InvalidInput
             | BuckyErrorCode::InvalidParam
             | BuckyErrorCode::InvalidData => StatusCode::BadRequest,
+            BuckyErrorCode::AlreadyExists => StatusCode::Conflict,
 
             BuckyErrorCode::NotFound | BuckyErrorCode::InnerPathNotFound => StatusCode::NotFound,
             BuckyErrorCode::PermissionDenied => StatusCode::Forbidden,
@@ -291,6 +292,25 @@ impl RequestorHelper {
         http_req.insert_header(name, &header_list[..]);
     }
 
+    pub fn insert_headers_with_encoding<T>(http_req: &mut Request, name: &str, list: &Vec<T>)
+    where
+        T: ToString,
+    {
+        let header_list: Vec<HeaderValue> = list
+            .iter()
+            .map(|item| {
+                let item = item.to_string();
+                let ret = percent_encoding::utf8_percent_encode(
+                    &item,
+                    percent_encoding::NON_ALPHANUMERIC,
+                );
+                HeaderValue::from_bytes(ret.to_string().into_bytes()).unwrap()
+            })
+            .collect();
+
+        http_req.insert_header(name, &header_list[..]);
+    }
+
     pub fn trans_status_code(code: StatusCode) -> BuckyErrorCode {
         if code.is_success() {
             return BuckyErrorCode::Ok;
@@ -350,7 +370,7 @@ impl RequestorHelper {
         Ok(ret)
     }
 
-    pub fn decode_utf8(name: &str, value: &str) -> BuckyResult<String> {
+    pub fn decode_utf8<'a>(name: &'a str, value: &'a str) -> BuckyResult<Cow<'a, str>> {
         let decoded_value = percent_encoding::percent_decode_str(&value);
         let value = decoded_value.decode_utf8().map_err(|e| {
             let msg = format!("invalid header format: {} = {} {}", name, value, e);
@@ -358,21 +378,30 @@ impl RequestorHelper {
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;
 
-        Ok(value.to_string())
+        Ok(value)
     }
 
-    pub fn decode_optional_header_with_utf8_decoding<R>(
+    pub fn decode_optional_header_with_utf8_decoding<T, R>(
         req: &R,
         name: impl Into<HeaderName>,
-    ) -> BuckyResult<Option<String>>
+    ) -> BuckyResult<Option<T>>
     where
         R: HeaderOp,
+        T: FromStr,
+        <T as FromStr>::Err: std::fmt::Display,
     {
         let mut ret = None;
         let name: HeaderName = name.into();
         if let Some(header) = req.header(&name) {
-            let value = header.last().as_str();
-            ret = Some(Self::decode_utf8(name.as_str(), value)?);
+            let value = Self::decode_utf8(name.as_str(), header.last().as_str())?;
+            let value = T::from_str(&value).map_err(|e| {
+                let msg = format!("invalid header format: {} = {} {}", name, value, e);
+                error!("{}", msg);
+
+                BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+            })?;
+
+            ret = Some(value);
         }
 
         Ok(ret)
@@ -396,12 +425,14 @@ impl RequestorHelper {
         }
     }
 
-    pub fn decode_header_with_utf8_decoding<R>(
+    pub fn decode_header_with_utf8_decoding<T, R>(
         req: &R,
         name: impl Into<HeaderName>,
-    ) -> BuckyResult<String>
+    ) -> BuckyResult<T>
     where
         R: HeaderOp,
+        T: FromStr,
+        <T as FromStr>::Err: std::fmt::Display,
     {
         let name: HeaderName = name.into();
         match Self::decode_optional_header_with_utf8_decoding(req, &name)? {
@@ -452,6 +483,57 @@ impl RequestorHelper {
     {
         let name: HeaderName = name.into();
         match Self::decode_optional_headers(req, &name)? {
+            Some(v) => Ok(v),
+            None => {
+                let msg = format!("header not found: {}", name);
+                error!("{}", msg);
+
+                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
+            }
+        }
+    }
+
+    pub fn decode_optional_headers_with_utf8_decoding<T, R>(
+        req: &R,
+        name: impl Into<HeaderName>,
+    ) -> BuckyResult<Option<Vec<T>>>
+    where
+        R: HeaderOp,
+        T: FromStr,
+        <T as FromStr>::Err: std::fmt::Display,
+    {
+        let name: HeaderName = name.into();
+        if let Some(headers) = req.header(&name) {
+            let mut rets = Vec::new();
+            for header in headers {
+                let value = Self::decode_utf8(name.as_str(), header.as_str())?;
+                let value = T::from_str(&value).map_err(|e| {
+                    let msg = format!("invalid header format: {} = {}, {}", name, value, e);
+                    error!("{}", msg);
+
+                    BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+                })?;
+
+                rets.push(value);
+            }
+
+            Ok(Some(rets))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn decode_headers_with_utf8_decoding<T, R>(
+        req: &R,
+        name: impl Into<HeaderName>,
+    ) -> BuckyResult<Vec<T>>
+    where
+        R: HeaderOp,
+        T: FromStr,
+        <T as FromStr>::Err: std::fmt::Display,
+    {
+        let name: HeaderName = name.into();
+        match Self::decode_optional_headers_with_utf8_decoding(req, &name)? {
             Some(v) => Ok(v),
             None => {
                 let msg = format!("header not found: {}", name);
@@ -609,7 +691,7 @@ impl RequestorHelper {
     pub async fn decode_serde_json_body<R, T>(resp: &mut R) -> BuckyResult<T>
     where
         R: BodyOp,
-        T: for <'de> Deserialize<'de>,
+        T: for<'de> Deserialize<'de>,
     {
         let body = resp.body_string().await.map_err(|e| {
             let msg = format!("read body string error: {}", e);
@@ -635,6 +717,22 @@ impl RequestorHelper {
     {
         let value = T::from_str(v.as_ref()).map_err(|e| {
             let msg = format!("invalid url param: {} = {}, {}", k, v, e);
+            error!("{}", msg);
+
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+
+        Ok(value)
+    }
+
+    pub fn decode_url_param_with_utf8_decoding<T>(k: Cow<str>, v: Cow<str>) -> BuckyResult<T>
+    where
+        T: FromStr,
+        <T as FromStr>::Err: std::fmt::Display,
+    {
+        let value = Self::decode_utf8(&k, &v)?;
+        let value = T::from_str(&value).map_err(|e| {
+            let msg = format!("invalid url param: {} = {}, {}", k, value, e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
@@ -675,7 +773,7 @@ impl RequestorHelper {
         if let Some(value) = value {
             let v: String =
                 percent_encoding::utf8_percent_encode(value, percent_encoding::NON_ALPHANUMERIC)
-                    .collect();
+                    .to_string();
             req.insert_header(name, v);
         }
     }
@@ -692,9 +790,8 @@ impl RequestorHelper {
     where
         R: HeaderOp,
     {
-        let v: String =
-            percent_encoding::utf8_percent_encode(value, percent_encoding::NON_ALPHANUMERIC)
-                .collect();
+        let v = percent_encoding::utf8_percent_encode(value, percent_encoding::NON_ALPHANUMERIC)
+            .to_string();
         req.insert_header(name, v);
     }
 
@@ -707,7 +804,7 @@ impl RequestorHelper {
         let unix_time = cyfs_base::bucky_time_to_unix_time(bucky_time);
         let secs = unix_time / (1000 * 1000);
         let nsecs = if secs > 0 {
-            (unix_time % secs) * 1000 
+            (unix_time % secs) * 1000
         } else {
             0
         };
@@ -767,6 +864,35 @@ impl RequestorHelper {
                 Ok(Some(v))
             }
             _ => Ok(None),
+        }
+    }
+
+    // try extract dec_id from header and url query pairs(only valid for GET method)
+    pub fn dec_id_from_request(req: &http_types::Request) -> BuckyResult<Option<ObjectId>> {
+        // first extract dec_id from headers
+        match Self::decode_optional_header(req, cyfs_base::CYFS_DEC_ID)? {
+            Some(dec_id) => Ok(Some(dec_id)),
+            None => {
+                if req.method() == http_types::Method::Get {
+                    // try extract dec_id from query pairs
+                    let dec_id = match Self::value_from_querys("dec_id", req.url()) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            let msg = format!(
+                                "invalid request url dec_id query param! {}, {}",
+                                req.url(),
+                                e
+                            );
+                            error!("{}", msg);
+                            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                        }
+                    };
+
+                    Ok(dec_id)
+                } else {
+                    Ok(None)
+                }
+            }
         }
     }
 }

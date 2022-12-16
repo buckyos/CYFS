@@ -25,7 +25,13 @@ impl WebSocketSessionManagerInner {
     fn new(handler: Box<dyn WebSocketRequestHandler>) -> Self {
         // sid随机化
         let mut rng = ::rand::thread_rng();
-        let sid = rng.gen::<u32>();
+        let sid = loop {
+            let ret = rng.gen::<u32>();
+            if ret != u32::MAX {
+                break ret;
+            }
+        };
+        
         info!("ws sid start at {}", sid);
 
         Self {

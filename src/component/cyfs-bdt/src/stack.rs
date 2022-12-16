@@ -1,6 +1,7 @@
+use log::*;
 use std::{
     ops::Deref, 
-    time::Duration, 
+    time::Duration,
     path::PathBuf
     // sync::{atomic::{AtomicU64, Ordering}}
 };
@@ -9,9 +10,10 @@ use async_std::{
     task, 
     future, 
 };
-use log::*;
 use cyfs_base::*;
-
+use cyfs_util::{
+    cache::*
+};
 
 use crate::{
     types::*,
@@ -28,7 +30,7 @@ use crate::{
     protocol::{*, v0::*},
     sn::{
         self,
-        client::{PingClientCalledEvent, PingClientStateEvent},
+        client::{PingClientCalledEvent, PingClients},
     },
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
@@ -36,6 +38,7 @@ use crate::{
     ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler, RawCacheConfig }, 
     debug::{self, DebugStub}
 };
+
 
 
 struct StackLazyComponents {
@@ -74,16 +77,27 @@ impl StackConfig {
                     sim_loss_rate: 0, 
                     recv_buffer: 52428800
                 }
-            }, 
-            sn_client: sn::Config {
-                ping_interval_init: Duration::from_millis(500),
-                ping_interval: Duration::from_millis(25000),
-                offline: Duration::from_millis(300000),
-                call_interval: Duration::from_millis(200),
-                call_timeout: Duration::from_millis(3000),
+            },
+            sn_client: sn::client::Config {
+                atomic_interval: Duration::from_millis(100),
+                ping: sn::client::ping::PingConfig {
+                    interval: Duration::from_secs(25), 
+                    udp: sn::client::ping::udp::Config {
+                        resend_interval: Duration::from_millis(500),
+                        resend_timeout: Duration::from_secs(5),
+                    }
+                }, 
+                call: sn::client::call::CallConfig {
+                    timeout: Duration::from_secs(5), 
+                    first_try_timeout: Duration::from_secs(2), 
+                    udp: sn::client::call::udp::Config {
+                        resend_interval: Duration::from_millis(500),
+                    }
+                }
             },
             tunnel: tunnel::Config {
                 retain_timeout: Duration::from_secs(60),
+                retry_sn_timeout: Duration::from_secs(2), 
                 connect_timeout: Duration::from_secs(5),
                 tcp: tunnel::tcp::Config {
                     connect_timeout: Duration::from_secs(5), 
@@ -111,6 +125,7 @@ impl StackConfig {
                     recv_timeout: Duration::from_millis(200),
                     drain: 0.5,
                     send_buffer: 1024 * 256, // 这个值不能小于下边的max_record
+                    retry_sn_timeout: Duration::from_secs(2), 
                     connect_timeout: Duration::from_secs(5),
                     tcp: stream::tcp::Config {
                         min_record: 1024,
@@ -188,7 +203,6 @@ pub struct StackImpl {
 
 pub struct StackOpenParams {
     pub config: StackConfig, 
-
     pub tcp_port_mapping: Option<Vec<(Endpoint, u16)>>, 
     pub known_sn: Option<Vec<Device>>,
     pub known_device: Option<Vec<Device>>, 
@@ -239,24 +253,12 @@ impl Stack {
                 &params.config.interface, 
                 &local_device.connect_info().endpoints(), 
                 tcp_port_mapping)?;
-        
-        /* only for debug
-        let device = local_device.to_vec().unwrap();
-        let pk = local_device.desc().public_key().to_vec().unwrap();
-        let sk = local_secret.to_vec().unwrap();
-        info!("device={}, pk={}, sk={}", hex::encode(device), hex::encode(pk), hex::encode(sk));
-        info!("device={}", local_device.format_json().to_string());
-        */
+        let net_listener = net_manager.listener();
 
         let signer = RsaCPUObjectSigner::new(
             local_device.desc().public_key().clone(),
             local_secret.clone(),
         );
-
-        let mut known_sn = vec![];
-        if params.known_sn.is_some() {
-            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
-        }
 
         let mut passive_pn = vec![];
         if params.passive_pn.is_some() {
@@ -270,12 +272,6 @@ impl Stack {
             let bound_endpoints = net_manager.listener().endpoints();
             for ep in bound_endpoints {
                 device_endpoints.push(ep);
-            }
-
-
-            let sn_list = device.mut_connect_info().mut_sn_list();
-            for sn in known_sn.iter().map(|d| d.desc().device_id()) {
-                sn_list.push(sn);
             }
             
             let passive_pn_list = device.mut_connect_info().mut_passive_pn_list();
@@ -309,11 +305,18 @@ impl Stack {
             local_const: local_device.desc().clone(),
             id_generator: IncreaseIdGenerator::new(),
             keystore: key_store,
-            device_cache: DeviceCache::new(init_local_device, outer_cache),
+            device_cache: DeviceCache::new(outer_cache),
             net_manager,
             lazy_components: None, 
             ndn: None
         }));
+
+        let mut known_sn = vec![];
+        if params.known_sn.is_some() {
+            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
+        }
+        stack.device_cache().add_sn(&known_sn);
+
         let datagram_manager = DatagramManager::new(stack.to_weak());
 
         let proxy_manager = ProxyManager::new(stack.to_weak());
@@ -336,39 +339,31 @@ impl Stack {
             None
         };
 
-        let components = StackLazyComponents {
-            sn_client: sn::client::ClientManager::create(stack.to_weak()),
-            tunnel_manager: TunnelManager::new(stack.to_weak()),
-            stream_manager: StreamManager::new(stack.to_weak()),
-            datagram_manager, 
-            proxy_manager, 
-            debug_stub: debug_stub.clone()
-        };
-        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-        stack_impl.lazy_components = Some(components);
+        {
+            let components = StackLazyComponents {
+                sn_client: sn::client::ClientManager::create(stack.to_weak(), net_listener, init_local_device.clone()),
+                tunnel_manager: TunnelManager::new(stack.to_weak()),
+                stream_manager: StreamManager::new(stack.to_weak()),
+                datagram_manager, 
+                proxy_manager, 
+                debug_stub: debug_stub.clone()
+            };
+            
+            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+            stack_impl.lazy_components = Some(components);
+    
+            let mut ndn_event = None;
+	        std::mem::swap(&mut ndn_event, &mut params.ndn_event);
 
-        let mut ndn_event = None;
-        std::mem::swap(&mut ndn_event, &mut params.ndn_event);
+	        let mut chunk_store = None;
+	        std::mem::swap(&mut chunk_store, &mut params.chunk_store);
 
-        let mut chunk_store = None;
-        std::mem::swap(&mut chunk_store, &mut params.chunk_store);
+	        let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
+	        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+	        stack_impl.ndn = Some(ndn);
 
-        let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
-        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-        stack_impl.ndn = Some(ndn);
+        }   
 
-        for sn in known_sn.iter() {
-            stack.device_cache().add(&sn.desc().device_id(), &sn);
-            stack.device_cache().add_sn(&sn);
-            // stack.sn_client().add_sn_ping(&sn, true, None);
-        }
-        // get nearest sn in sn-list
-        if let Some(sn) = stack.device_cache().get_nearest_of(stack.local_device_id()) {
-            stack.sn_client().add_sn_ping(&sn, true, None);
-        } else {
-            // don't find nearest sn
-            warn!("failed found SN-device sn-list: {}", known_sn.len());
-        }
 
         let mut known_device = vec![];
         if params.known_device.is_some() {
@@ -382,7 +377,8 @@ impl Stack {
 
         let net_listener = stack.net_manager().listener();
         net_listener.start(stack.to_weak());
-        stack.sn_client().start_ping();
+        
+        stack.sn_client().reset(known_sn);
         stack.ndn().start();
 
         if let Some(debug_stub) = debug_stub {
@@ -450,10 +446,6 @@ impl Stack {
         &self.0.local_const
     }
 
-    pub fn local(&self) -> Device {
-        self.0.device_cache.local()
-    }
-
     pub fn sn_client(&self) -> &sn::client::ClientManager {
         &self.0.lazy_components.as_ref().unwrap().sn_client
     }
@@ -463,81 +455,21 @@ impl Stack {
     }
 
     pub fn close(&self) {
-        let _ = self.sn_client().stop_ping();
         //unimplemented!()
     }
 
-    pub(crate) async fn update_local(&self) {
-        let mut local = self.local().clone();
-        let device_endpoints = local.mut_connect_info().mut_endpoints();
-        device_endpoints.clear();
-        let bound_endpoints = self.net_manager().listener().endpoints();
-        for ep in bound_endpoints {
-            device_endpoints.push(ep);
-        }
-        let _ = sign_and_set_named_object_body(
-            self.keystore().signer(),
-            &mut local,
-            &SignatureSource::RefIndex(0),
-        )
-        .await;
-        self.device_cache().update_local(&local);
-    }
-
-    pub(crate) async fn reset_local(&self) {
-        info!("{} reset local", self);
-        let mut local = self.local().clone();
-        let device_endpoints = local.mut_connect_info().mut_endpoints();
-        device_endpoints.clear();
-        let bound_endpoints = self.net_manager().listener().endpoints();
-        for ep in bound_endpoints {
-            device_endpoints.push(ep);
-        }
-
-        let mut passive_pn_list = self.proxy_manager().passive_proxies();
-        std::mem::swap(local.mut_connect_info().mut_passive_pn_list(), &mut passive_pn_list);
-
-         
-        local
-            .body_mut()
-            .as_mut()
-            .unwrap()
-            .increase_update_time(bucky_time_now());
-        let _ = sign_and_set_named_object_body(
-            self.keystore().signer(),
-            &mut local,
-            &SignatureSource::RefIndex(0),
-        )
-        .await;
-        self.device_cache().update_local(&local);
-        self.tunnel_manager().reset();
-    }
-
-    pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
+    pub fn reset_sn_list(&self, sn_list: Vec<Device>) -> PingClients {
         info!("{} reset_sn_list {:?}", self, sn_list);
-        self.device_cache().reset_sn_list(&sn_list);
-
-        // need get nearest sn
-        if let Some(sn) = self.device_cache().get_nearest_of(self.local_device_id()) {
-            let sn_id = sn.desc().device_id();
-            if self.sn_client().sn_list().contains(&sn_id) {
-                info!("{} has been exists in sn clients.", sn_id);
-            } else {
-                let _ = self.sn_client().stop_ping();
-                self.sn_client().add_sn_ping(&sn, true, None);
-            }
-        } else {
-            // don't find nearest sn
-            unreachable!("failed found SN-device sn-list: {}", sn_list.len());
-        }
-
-        Ok(())
+        self.device_cache().add_sn(&sn_list);
+        self.sn_client().reset(sn_list)
     }
 
-    pub async fn reset(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {
+
+    pub async fn reset_endpoints(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {
         info!("{} reset {:?}", self, endpoints);
         let listener = self.net_manager().reset(endpoints.as_slice())?;
-        let mut local = self.local().clone();
+        
+        let mut local = self.sn_client().ping().default_local();
         let device_endpoints = local.mut_connect_info().mut_endpoints();
         device_endpoints.clear();
         let bound_endpoints = listener.endpoints();
@@ -555,11 +487,12 @@ impl Stack {
             &SignatureSource::RefIndex(0),
         )
         .await;
-        self.device_cache().update_local(&local);
         self.tunnel_manager().reset();
-        self.sn_client().reset();
 
-        listener.wait_online().await
+        let sn_list = self.sn_client().ping().sn_list().clone();
+        // self.sn_client().reset(listener.clone(), sn_list, local);
+        // listener.wait_online().await
+        Ok(())
     }
 }
 
@@ -634,18 +567,6 @@ impl OnTcpInterface for Stack {
     }
 }
 
-impl PingClientStateEvent for Stack {
-    fn online(&self, _sn: &Device) {
-        info!("{} sn online, please implement it if not.", self.local_device_id());
-        // unimplemented!()
-    }
-
-    fn offline(&self, sn: &Device) {
-        info!("{} sn offline, please implement it if not.", self.local_device_id());
-        // unimplemented!()
-        self.keystore().reset_peer(&sn.desc().device_id());
-    }
-}
 
 impl PingClientCalledEvent for Stack {
     fn on_called(&self, called: &SnCalled, _: ()) -> Result<(), BuckyError> {

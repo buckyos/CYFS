@@ -226,7 +226,7 @@ impl DatagramTunnel {
                     if let Some(remote_device) = stack.device_cache().get(&remote).await {
                         let build_params = BuildTunnelParams {
                             remote_const: remote_device.desc().clone(),
-                            remote_sn: stack.sn_client().sn_list(),
+                            remote_sn: None,
                             remote_desc: Some(remote_device),
                         };
                         let _ = tunnel.build_send(DynamicPackage::from(datagram), build_params, plaintext);
@@ -262,7 +262,7 @@ impl DatagramTunnel {
                         .unwrap();
                     let build_params = BuildTunnelParams {
                         remote_const: remote_device.desc().clone(),
-                        remote_sn: stack.sn_client().sn_list(),
+                        remote_sn: None,
                         remote_desc: Some(remote_device),
                     };
                     let _ = tunnel.build_send(DynamicPackage::from(datagram), build_params, plaintext);

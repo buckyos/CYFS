@@ -119,6 +119,10 @@ impl NameCache {
         entry
     }
 
+    pub fn try_get(&mut self, name: &str) -> Option<&mut NameCacheItem> {
+        self.all.get_mut(name)
+    }
+    
     pub fn load() {}
 
     fn save() {}

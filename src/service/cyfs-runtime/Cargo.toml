@@ -30,12 +30,12 @@ bytes = "1.1"
 dirs = "4.0"
 tide = "0.16"
 http-types = "2.12"
-mime-sniffer = "0.1.2"
 toml = "0.5"
 once_cell = "1.12"
 rand = "0.7"
 formdata = "0.13"
 hyper = "0.10"
+mime-sniffer = { version = "0.1", git = "https://github.com/buckyos/rust-mime-sniffer", rev = "99c00bba5091810514741bfe0f05d8c9ca244796" }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.19"

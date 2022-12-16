@@ -79,6 +79,9 @@ where
     pub fn on(&mut self, listener: Box<dyn EventListenerSyncRoutine<P, R>>) -> u32 {
         let cookie = self.next_cookie;
         self.next_cookie += 1;
+        if self.next_cookie == u32::MAX {
+            self.next_cookie = 1;
+        }
 
         self.listeners.push((cookie, listener));
 

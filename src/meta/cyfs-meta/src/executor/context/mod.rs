@@ -11,4 +11,4 @@ pub use fee_counter::FeeCounter;
 pub use single_account::SingleAccount;
 pub use union_account::*;
 pub use account::{Account, AccountMethods};
-pub use object::id_from_desc;
+pub use object::{id_from_desc, MetaDescObject};

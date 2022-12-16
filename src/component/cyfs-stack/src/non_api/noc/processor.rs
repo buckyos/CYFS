@@ -62,8 +62,8 @@ impl NOCLevelInputProcessor {
         post_processor
     }
 
-    // processor with local device acl + rmeta acl + valdiate
-    pub(crate) fn new_local(
+    // processor with rmeta acl + valdiate
+    pub(crate) fn new_rmeta_acl(
         acl: AclManagerRef,
         raw_processor: NONInputProcessorRef,
     ) -> NONInputProcessorRef {
@@ -75,6 +75,17 @@ impl NOCLevelInputProcessor {
 
         // should process with rmeta
         let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl, validate_noc_processor);
+
+        rmeta_processor
+    }
+
+    // processor with local device acl + rmeta acl + valdiate
+    pub(crate) fn new_local_rmeta_acl(
+        acl: AclManagerRef,
+        raw_processor: NONInputProcessorRef,
+    ) -> NONInputProcessorRef {
+        // should process with rmeta
+        let rmeta_processor = Self::new_rmeta_acl(acl, raw_processor);
 
         // only allowed on current device
         let acl_processor = NONLocalAclInputProcessor::new(rmeta_processor);

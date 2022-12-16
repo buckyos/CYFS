@@ -9,13 +9,13 @@ use std::sync::Arc;
 
 pub(crate) struct MetaInputProcessor {
     next: Option<NONInputProcessorRef>,
-    meta_cache: Box<dyn MetaCache>,
+    meta_cache: MetaCacheRef,
 }
 
 impl MetaInputProcessor {
     fn new(
         next: Option<NONInputProcessorRef>,
-        meta_cache: Box<dyn MetaCache>,
+        meta_cache: MetaCacheRef,
     ) -> NONInputProcessorRef {
         let ret = Self { next, meta_cache };
         Arc::new(Box::new(ret))
@@ -24,7 +24,7 @@ impl MetaInputProcessor {
     // Integrate noc with inner_path+meta service
     pub(crate) fn new_with_inner_path_service(
         noc_processor: Option<NONInputProcessorRef>,
-        meta_cache: Box<dyn MetaCache>,
+        meta_cache: MetaCacheRef,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         chunk_manager: Arc<ChunkManager>,

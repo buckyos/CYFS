@@ -6,7 +6,7 @@
 
 ****CYFS：Next Generation Protocl Family to Build Web3****    
 + CYFS是CYberFileSystem的缩写
-+ 官方主页: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index_en.html](cyfs://cyfs/index_en.html)  
++ 官方主页: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index](cyfs://cyfs/index)  
 + Discord 讨论组：[https://discord.gg/dXDxjXTEjT](https://discord.gg/dXDxjXTEjT)   
 + CYFS白皮书(Coming soon)   
 + Language: [English](./README.md)

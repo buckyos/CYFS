@@ -312,6 +312,10 @@ pub struct DeviceStaticInfo {
 
     // 当前协议栈的cyfs根目录
     pub cyfs_root: String,
+
+    // current sn list config
+    pub sn_list: Vec<DeviceId>,
+    pub known_sn_list: Vec<DeviceId>,
 }
 
 #[derive(Debug, Clone)]

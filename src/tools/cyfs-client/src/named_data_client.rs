@@ -102,7 +102,8 @@ pub struct NamedCacheClient {
     meta_client: OnceCell<Arc<MetaClient>>,
     init_ret: Mutex<bool>,
     object_cache: RwLock<HashMap<ObjectId, StandardObject>>,
-    device_cache: OnceCell<BdtDeviceCache>
+    device_cache: OnceCell<BdtDeviceCache>,
+    stack: OnceCell<StackGuard>
 }
 
 impl NamedCacheClient {
@@ -114,11 +115,12 @@ impl NamedCacheClient {
             meta_client: OnceCell::new(),
             init_ret: Mutex::new(false),
             object_cache: RwLock::new(HashMap::new()),
-            device_cache: OnceCell::new()
+            device_cache: OnceCell::new(),
+            stack: OnceCell::new()
         }
     }
 
-    pub async fn init(&mut self, desc: Option<Device>, secret: Option<PrivateKey>, meta_target: Option<String>) -> BuckyResult<()> {
+    pub async fn init(&mut self, desc: Option<Device>, secret: Option<PrivateKey>, meta_target: Option<String>, sn_list: Option<Vec<Device>>) -> BuckyResult<()> {
         // 避免并行init
         let mut ret = self.init_ret.lock().await;
         if *ret {
@@ -166,28 +168,20 @@ impl NamedCacheClient {
         }
 
         //TODO:需要的时候可以选择和gateway用同一个bdt stack
-        let mut init_sn_peers = vec![];
-        let sn = cyfs_util::get_default_sn_desc();
-        self.desc.get_mut().unwrap().body_mut().as_mut().unwrap().content_mut().mut_sn_list().push(sn.desc().device_id());
-        init_sn_peers.push(sn);
-
         let device_cache = BdtDeviceCache::new(client);
 
         let _ = self.device_cache.set(device_cache.clone());
 
         let mut params = cyfs_bdt::StackOpenParams::new("cyfs-client");
-        params.known_sn = Some(init_sn_peers);
+        if let Some(sn_list) = &sn_list {
+            info!("named data client use param`s sn list {:?}", sn_list);
+        }
+        params.known_sn = sn_list;
         params.outer_cache = Some(Box::new(device_cache));
 
         let desc = self.desc.get().unwrap().clone();
         let secret = self.secret.get().unwrap().clone();
-        let stack = async_std::task::spawn(async move {
-            cyfs_bdt::Stack::open(desc,
-            secret, params).await
-        }).await?;
-
-        // 创建协议栈后等待stack在SN上线
-        self.wait_sn_online(&stack).await;
+        let stack = cyfs_bdt::Stack::open(desc, secret, params).await?;
 
         let pool = StreamPool::new(stack.deref().clone(), 80, StreamPoolConfig {
             capacity: 10,
@@ -198,35 +192,10 @@ impl NamedCacheClient {
 
         info!("bdt stack created");
         let _ = self.stream_pool.set(pool);
+        let _ = self.stack.set(stack);
 
         *ret = true;
         Ok(())
-    }
-
-    async fn wait_sn_online(&self, bdt_stack: &StackGuard) {
-         // 等待sn上线
-         info!(
-            "now will wait for sn online {}......",
-            bdt_stack.local_device_id()
-        );
-        let begin = Instant::now();
-        let net_listener = bdt_stack.net_manager().listener().clone();
-        let ret = net_listener.wait_online().await;
-        let during = Instant::now() - begin;
-        if let Err(e) = ret {
-            error!(
-                "bdt stack wait sn online failed! {}, during={}s, {}",
-                bdt_stack.local_device_id(),
-                during.as_secs(),
-                e
-            );
-        } else {
-            info!(
-                "bdt stack sn online success! {}, during={}s",
-                bdt_stack.local_device_id(),
-                during.as_secs()
-            );
-        }
     }
 
     // 只支持cyfs链接
@@ -248,6 +217,15 @@ impl NamedCacheClient {
             _ => {
                 Err(BuckyError::from(BuckyErrorCode::NotSupport))
             }
+        }
+    }
+
+    pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
+        if let Some(stack) = self.stack.get() {
+            stack.reset_sn_list(sn_list).await?;
+            Ok(())
+        } else {
+            Err(BuckyError::from(BuckyErrorCode::NotInit))
         }
     }
 
@@ -430,7 +408,7 @@ impl NamedCacheClient {
         fileid: &ObjectId,
         owner: Option<&ObjectId>,
     ) -> BuckyResult<StandardObject> {
-        info!("get file desc for id {}", fileid);
+        info!("get desc for id {}", fileid);
         //1. 尝试从内存cache里取
         if let Some(obj) = self.object_cache.read().unwrap().get(fileid) {
             return Ok(obj.clone());
@@ -443,7 +421,7 @@ impl NamedCacheClient {
         */
 
         //2. 如果找不到，尝试用meta chain查找desc
-        info!("try get file desc {} from meta", fileid);
+        info!("try get desc {} from meta", fileid);
         if let Ok(ret) = self.meta_client.get().unwrap().get_desc(fileid).await {
             let obj = match ret {
                 SavedMetaObject::File(p) => {
@@ -775,7 +753,7 @@ impl NamedCacheClient {
             },
             StandardObject::People(people) => {
                 let people_id = people.desc().calculate_id();
-                let mut device_id = if let SavedMetaObject::People(people) = self.meta_client.get().unwrap().get_desc(&people_id).await? {
+                let mut device_id = if let StandardObject::People(people) = self.get_desc(&people_id, None).await? {
                     let ood_list = people.body_expect("").content().ood_list();
                     if ood_list.len() > 0 {
                         Ok(ood_list[0].clone())

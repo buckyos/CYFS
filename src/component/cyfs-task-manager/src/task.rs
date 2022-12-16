@@ -15,12 +15,12 @@ pub const PUBLISH_TASK_CATEGORY: TaskCategory = TaskCategory(1);
 pub const DOWNLOAD_TASK_CATEGORY: TaskCategory = TaskCategory(2);
 pub const BUILD_FILE_TASK_CATEGORY: TaskCategory = TaskCategory(3);
 
-pub const PUBLISH_LOCAL_FILE_TASK: TaskType = TaskType(1);
-pub const PUBLISH_LOCAL_DIR_TASK: TaskType = TaskType(2);
-pub const DOWNLOAD_CHUNK_TASK: TaskType = TaskType(11);
-pub const DOWNLOAD_FILE_TASK: TaskType = TaskType(12);
-pub const BUILD_FILE_TASK: TaskType = TaskType(20);
-pub const BUILD_DIR_TASK: TaskType = TaskType(21);
+pub const PUBLISH_LOCAL_FILE_TASK: TaskType = TaskType(101);
+pub const PUBLISH_LOCAL_DIR_TASK: TaskType = TaskType(102);
+pub const DOWNLOAD_CHUNK_TASK: TaskType = TaskType(111);
+pub const DOWNLOAD_FILE_TASK: TaskType = TaskType(112);
+pub const BUILD_FILE_TASK: TaskType = TaskType(121);
+pub const BUILD_DIR_TASK: TaskType = TaskType(122);
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, RawEncode, RawDecode)]
 pub enum TaskStatus {
@@ -440,7 +440,7 @@ mod test_task {
             todo!()
         }
 
-        async fn set_task_store(&mut self, task_store: Arc<dyn TaskStore>) {
+        async fn set_task_store(&mut self, _task_store: Arc<dyn TaskStore>) {
             todo!()
         }
 

@@ -2,7 +2,11 @@ use log::*;
 use std::{
     sync::RwLock
 };
-use async_std::{sync::{Arc}, task};
+use async_std::{
+    sync::{Arc}, 
+    task,
+    future
+};
 use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
@@ -62,75 +66,72 @@ impl ConnectTunnelBuilder {
             }))
         }))
     }
-    pub async fn build(&self) {
-        self.sync_tunnel_state();
+
+    async fn build_inner(&self) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
-        let local = stack.local().clone();
+        let local = stack.sn_client().ping().default_local();
         let build_params = &self.0.params;
 
         let first_box = Arc::new(self.first_box(&local).await);
 
-        let actions = if let Some(remote) = build_params.remote_desc.as_ref() {
+        let remote_id = build_params.remote_const.device_id();
+        let cached_remote = stack.device_cache().get_inner(&remote_id);
+        let known_remote = cached_remote.as_ref().or_else(|| build_params.remote_desc.as_ref());
+
+        let actions = if let Some(remote) = known_remote {
             self.explore_endpoint_pair(remote, first_box.clone(), |ep| ep.is_static_wan())
         } else {
             vec![]
         };
    
         if actions.len() == 0 {
-            match {
-                if let Some(sn) = if build_params.remote_sn.len() == 0 {
-                    stack.device_cache().get_nearest_of(&build_params.remote_const.device_id())
-                } else {
-                    stack.device_cache().get(&build_params.remote_sn[0]).await
-                } {
-                    match self.call_sn(sn, first_box).await {
-                        Ok(actions) => {
-                            if actions.len() == 0 {
-                                Err(BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"))
-                            } else {
-                                Ok(actions)
-                            }
-                        },
-                        Err(err) => {
-                            let msg = format!("call sn err:{}", err.msg());
-                            Err(BuckyError::new(err.code(), msg.as_str()))
-                        }
-                    }
-                } else {
-                    Err(BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"))
-                }
-            } {
-                Ok(_actions) => {
-                    // do nothing
-                }, 
-                Err(err) => {
-                    error!("{} build failed for {}", self, err);
-                    let waiter = {
-                        let state = &mut *self.0.state.write().unwrap();
-                        match state {
-                            ConnectTunnelBuilderState::Connecting(connecting) => {
-                                info!("{} connecting=>dead", self);
-                                let mut ret_waiter = StateWaiter::new();
-                                connecting.waiter.transfer_into(&mut ret_waiter);
-                                *state = ConnectTunnelBuilderState::Closed;
-                                Some(ret_waiter)
-                            }, 
-                            ConnectTunnelBuilderState::Closed => {
-                                //存在closed之后tunnel dead的情况，忽略
-                                None
-                            }, 
-                            ConnectTunnelBuilderState::Establish => {
-                                //存在establish之后tunnel dead的情况，忽略
-                                None
-                            }
-                        }
-                    };
-                    if let Some(waiter) = waiter {
-                        waiter.wake();
+            let nearest_sn = build_params.nearest_sn(&stack);
+            if let Some(sn) = nearest_sn {
+                let timeout_ret = future::timeout(stack.config().stream.stream.retry_sn_timeout, self.call_sn(vec![sn.clone()], first_box.clone())).await;
+                let retry_sn_list = match timeout_ret {
+                    Ok(finish_ret) => finish_ret.is_err(),
+                    Err(_) => true
+                };
+                if retry_sn_list {
+                    if let Some(sn_list) = build_params.retry_sn_list(&stack, &sn) {
+                        let _ = self.call_sn(sn_list, first_box).await;
                     }
                 }
             }
-        }
+        } 
+
+        Ok(())
+    }
+
+    pub async fn build(&self) {
+        self.sync_tunnel_state();
+        let _ = self.build_inner().await.
+            map_err(|err| {
+                error!("{} build failed for {}", self, err);
+                let waiter = {
+                    let state = &mut *self.0.state.write().unwrap();
+                    match state {
+                        ConnectTunnelBuilderState::Connecting(connecting) => {
+                            info!("{} connecting=>dead", self);
+                            let mut ret_waiter = StateWaiter::new();
+                            connecting.waiter.transfer_into(&mut ret_waiter);
+                            *state = ConnectTunnelBuilderState::Closed;
+                            Some(ret_waiter)
+                        }, 
+                        ConnectTunnelBuilderState::Closed => {
+                            //存在closed之后tunnel dead的情况，忽略
+                            None
+                        }, 
+                        ConnectTunnelBuilderState::Establish => {
+                            //存在establish之后tunnel dead的情况，忽略
+                            None
+                        }
+                    }
+                };
+                if let Some(waiter) = waiter {
+                    waiter.wake();
+                }
+            });
     }
 
     fn sync_tunnel_state(&self) {
@@ -184,17 +185,13 @@ impl ConnectTunnelBuilder {
         });
     }
 
-    async fn call_sn(&self, sn: Device, first_box: Arc<PackageBox>) -> Result<Vec<DynBuildTunnelAction>, BuckyError> {
+    async fn call_sn(&self, sn_list: Vec<DeviceId>, first_box: Arc<PackageBox>) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
         let tunnel = &self.0.tunnel;
-
-        let remote = stack.sn_client().call(
-            &vec![],  
+        let call_session = stack.sn_client().call().call(
+            None,
             tunnel.remote(),
-            &sn, 
-            true, 
-            true,
-            false,
+            &sn_list, 
             |sn_call| {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 //FIXME 先不调用raw_measure_with_context
@@ -204,39 +201,50 @@ impl ConnectTunnelBuilder {
                 //buf[0..b.len()].as_ref()
                 let len = MTU_LARGE - b.len();
                 buf.truncate(len);
+                info!("{} encode first box to sn call, len: {}, package_box {:?}", self, len, first_box);
                 buf
             }).await?;
-
-        if let Some(proxy_buidler) = {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                ConnectTunnelBuilderState::Connecting(connecting) => {
-                    if connecting.proxy.is_none() {
-                        let proxy = ProxyBuilder::new(
-                            tunnel.clone(), 
-                            remote.get_obj_update_time(),  
-                            first_box.clone());
-                        debug!("{} create proxy builder", self);
-                        connecting.proxy = Some(proxy);
+        
+        loop {
+            if let Some(session) = call_session.next().await.ok().and_then(|opt| opt) {
+                if let Ok(remote) = session.result().unwrap() {
+                    if let Some(proxy_buidler) = {
+                        let state = &mut *self.0.state.write().unwrap();
+                        match state {
+                             ConnectTunnelBuilderState::Connecting(connecting) => {
+                                if connecting.proxy.is_none() {
+                                    let proxy = ProxyBuilder::new(
+                                        tunnel.clone(), 
+                                        remote.get_obj_update_time(),  
+                                        first_box.clone());
+                                    debug!("{} create proxy builder", self);
+                                    connecting.proxy = Some(proxy);
+                                }
+                                connecting.proxy.clone()
+                            }, 
+                            _ => {
+                                debug!("{} ignore proxy builder for not in connecting state", self);
+                                None
+                            }
+                        }
+                    } {
+                        //FIXME: 使用正确的proxy策略
+                        for proxy in stack.proxy_manager().active_proxies() {
+                            let _ = proxy_buidler.syn_proxy(ProxyType::Active(proxy)).await;
+                        }
+                        for proxy in remote.connect_info().passive_pn_list().iter().cloned() {
+                            let _ = proxy_buidler.syn_proxy(ProxyType::Passive(proxy)).await;
+                        }
                     }
-                    connecting.proxy.clone()
-                }, 
-                _ => {
-                    debug!("{} ignore proxy builder for not in connecting1 state", self);
-                    None
+
+                    let _ = self.explore_endpoint_pair(&remote, first_box.clone(), |_| true);
                 }
-            }
-        } {
-            //FIXME: 使用正确的proxy策略
-            for proxy in stack.proxy_manager().active_proxies() {
-                let _ = proxy_buidler.syn_proxy(ProxyType::Active(proxy)).await;
-            }
-            for proxy in remote.connect_info().passive_pn_list().iter().cloned() {
-                let _ = proxy_buidler.syn_proxy(ProxyType::Passive(proxy)).await;
+            } else {
+                break;
             }
         }
-
-        Ok(self.explore_endpoint_pair(&remote, first_box, |_| true))
+        
+        Ok(())
     }
 
     fn explore_endpoint_pair<F: Fn(&Endpoint) -> bool>(&self, remote: &Device, first_box: Arc<PackageBox>, filter: F) -> Vec<DynBuildTunnelAction> {
@@ -344,7 +352,7 @@ impl PingClientCalledEvent for ConnectTunnelBuilder {
         let remote_timestamp = called.peer_info.get_obj_update_time();
         task::spawn(async move {
             let stack = Stack::from(&builder.0.stack);
-            let first_box = builder.first_box(&stack.device_cache().local()).await;
+            let first_box = builder.first_box(&stack.sn_client().ping().default_local()).await;
             if let Some(proxy_builder) = {
                 let state = &mut *builder.0.state.write().unwrap();
                 match state {

@@ -174,7 +174,9 @@ impl CyfsStackConfigLoader {
                 "enable" => {
                     self.params.cyfs_stack_params.front.enable = TomlHelper::decode_from_boolean(v)?;
                 }
-
+                "browser_mode" => {
+                    self.params.cyfs_stack_params.front.browser_mode = TomlHelper::decode_from_string(v)?;
+                }
                 _ => {
                     warn!("unknown non stack.front field: {}", k.as_str());
                 }

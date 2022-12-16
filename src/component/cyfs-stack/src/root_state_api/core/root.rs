@@ -75,7 +75,6 @@ impl GlobalStateRoot {
         let mut root = root_index.get_root_state().root_state;
         if root.is_none() {
             
-
             // 初始化全局root对象
             let object_map = ObjectMap::new(
                 ObjectMapSimpleContentType::Map, 
@@ -88,7 +87,7 @@ impl GlobalStateRoot {
             info!("first init global state root! category={}, owner={:?}, root={}", category, owner, root_id);
 
             // 需要立刻保存到noc
-            noc_cache.put_object_map(root_id, object_map).await?;
+            noc_cache.put_object_map(None, root_id, object_map).await?;
 
             root_index.update_root_state(root_id, None).await?;
             root = Some(root_id);
@@ -222,7 +221,7 @@ impl GlobalStateRoot {
                 info!("first create dec root! category={}, dec={}, root={}", self.category, dec_id, root_id);
 
                  // 需要立刻保存到noc
-                self.noc_cache.put_object_map(root_id, object_map).await?;
+                self.noc_cache.put_object_map(Some(dec_id.to_owned()), root_id, object_map).await?;
 
                 // 更新root状态并保存
                 env.insert_with_key("/", &key, &root_id).await?;

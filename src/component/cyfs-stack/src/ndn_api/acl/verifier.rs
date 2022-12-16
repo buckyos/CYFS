@@ -2,24 +2,23 @@ use super::super::common::DirLoader;
 use crate::ndn_api::LocalDataManager;
 use cyfs_base::*;
 
-
-pub(crate) struct NDNChunkVerifier {
+pub(crate) struct NDNRefererVerifier {
     dir: DirVerifier,
 }
 
-impl NDNChunkVerifier {
+impl NDNRefererVerifier {
     pub fn new(data_manager: LocalDataManager) -> Self {
         Self {
             dir: DirVerifier::new(data_manager),
         }
     }
 
-    pub async fn verify_chunk(
+    pub async fn verify_referer(
         &self,
         obj_id: &ObjectId,
         obj: &AnyNamedObject,
         target_chunk_id: &ChunkId,
-    ) -> BuckyResult<bool> {
+    ) -> BuckyResult<()> {
         match obj.obj_type_code() {
             ObjectTypeCode::File => {
                 let file = obj.as_file();
@@ -43,14 +42,14 @@ impl NDNChunkVerifier {
     }
 }
 
-pub(crate) struct FileVerifier;
+struct FileVerifier;
 
 impl FileVerifier {
     pub async fn verify(
         file_id: &ObjectId,
         file: &File,
         target_chunk_id: &ChunkId,
-    ) -> BuckyResult<bool> {
+    ) -> BuckyResult<()> {
         let ret = match file.body() {
             Some(body) => match body.content().inner_chunk_list() {
                 Some(list) => list.contains(&target_chunk_id),
@@ -64,17 +63,18 @@ impl FileVerifier {
                 "target chunk is exists in file's chunk list! dir={}, target_chunk={}",
                 file_id, target_chunk_id
             );
-            Ok(true)
+            Ok(())
         } else {
-            warn!(
+            let msg = format!(
                 "target chunk is not found in file's chunk list! dir={}, target_chunk={}",
                 file_id, target_chunk_id
             );
-            Ok(false)
+            warn!("{}", msg);
+            Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
         }
     }
 }
-pub(crate) struct DirVerifier {
+struct DirVerifier {
     dir_loader: DirLoader,
 }
 
@@ -90,12 +90,12 @@ impl DirVerifier {
         dir_id: &ObjectId,
         dir: &Dir,
         target_chunk_id: &ChunkId,
-    ) -> BuckyResult<bool> {
+    ) -> BuckyResult<()> {
         let obj_list = self.dir_loader.load_desc_obj_list(dir_id, dir).await?;
 
         if let Some(parent_chunk) = &obj_list.parent_chunk {
             if parent_chunk == target_chunk_id {
-                return Ok(true);
+                return Ok(());
             }
         }
 
@@ -110,13 +110,14 @@ impl DirVerifier {
                 "target chunk is exists in dir's obj list! dir={}, target_chunk={}",
                 dir_id, target_chunk_id
             );
-            Ok(true)
+            Ok(())
         } else {
-            warn!(
+            let msg = format!(
                 "target chunk is not found in dir's obj list! dir={}, target_chunk={}",
                 dir_id, target_chunk_id
             );
-            Ok(false)
+            warn!("{}", msg);
+            Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
         }
     }
 }

@@ -5,7 +5,6 @@
 id="default"
 
 [stack.noc]
-type = "mongo"
 
 [[stack.bdt.endpoint]]
 optional = true

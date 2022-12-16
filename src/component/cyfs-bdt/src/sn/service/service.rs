@@ -79,7 +79,7 @@ impl SnService {
             local_device_id: local_device.desc().device_id(),
             local_device: local_device.clone(),
             stopped: AtomicBool::new(false),
-            peer_mgr: PeerManager::new(Duration::from_secs(300), Config::default()),
+            peer_mgr: PeerManager::new(),
             call_stub: CallStub::new(),
             thread_pool: thread_pool.clone(),
             contract,
@@ -101,13 +101,10 @@ impl SnService {
         let mut endpoints_v4 = vec![];
         let mut endpoints_v6 = vec![];
         for endpoint in self.0.local_device.connect_info().endpoints() {
-            let mut addr = endpoint.addr().clone();
-            if addr.is_ipv4() {
-                addr.set_ip("0.0.0.0".parse().unwrap());
-                endpoints_v4.push(Endpoint::from((endpoint.protocol(), addr)));
+            if endpoint.addr().is_ipv4() {
+                endpoints_v4.push(endpoint.clone());
             } else {
-                addr.set_ip("::".parse().unwrap());
-                endpoints_v6.push(Endpoint::from((endpoint.protocol(), addr)));
+                endpoints_v6.push(endpoint.clone());
             };
         }
 
@@ -204,7 +201,13 @@ impl SnService {
 
     fn clean_timeout_resource(&self) {
         let now = bucky_time_now();
-        self.peer_manager().try_knock_timeout(now);
+
+        if let Some(drops) = self.peer_manager().try_knock_timeout(now) {
+            for device in &drops {
+                self.key_store().reset_peer(device)
+            }
+        }
+
         self.resend_queue().try_resend(now);
         self.0.call_stub.recycle(now);
         // {
@@ -505,6 +508,7 @@ impl SnService {
         //     call_result = BuckyErrorCode::NotFound;
         // };
 
+
         let call_requestor = self.peer_manager().find_peer(&call_req.from_peer_id);
 
         if let Some(call_requestor) = call_requestor.as_ref() {
@@ -600,11 +604,13 @@ impl SnService {
 
         match &call_resp.result {
             0 => { /* wait confirm */ },
+
             _ => {
                 if let Some(call_requestor) = call_requestor.as_ref() {
                     call_requestor.peer_status.record(call_req.to_peer_id.clone(), call_req.seq, BuckyErrorCode::from(call_resp.result as u16));
                 }
             }
+
         }
 
         self.send_resp(

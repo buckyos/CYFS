@@ -1071,7 +1071,7 @@ mod test_path {
 
     async fn test_path() {
         let noc = ObjectMapMemoryNOCCache::new();
-        let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
+        let root_cache = ObjectMapRootMemoryCache::new_default_ref(None, noc);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         // 创建一个空的objectmap作为root

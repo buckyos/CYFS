@@ -56,7 +56,7 @@ impl BdtNDNDataAclProcessor {
     fn process_resp<T>(resp: BuckyResult<T>) -> BuckyResult<()> {
         match resp {
             Err(e) => {
-                debug!("bdt processor acl response: {}", e);
+                debug!("bdt process acl response: {}", e);
                 match e.code() {
                     BuckyErrorCode::NotImplement => Ok(()),
                     _ => Err(e),
@@ -136,8 +136,14 @@ impl BdtNDNDataAclProcessor {
 
         if let Some(referer) = referer {
             // bdt回调都是chunk粒度的，所以我们需要在referer里面保存请求对应的file或者dir+inner_path
-            ndn_req.object_id = referer.object_id;
-            ndn_req.inner_path = referer.inner_path;
+
+            if referer.flags & CYFS_REQUEST_FLAG_CHUNK_LEVEL_ACL != 0 {
+                // direct use the chunk_req_path to check acl, ignore file
+            } else {
+                ndn_req.object_id = referer.object_id;
+                ndn_req.inner_path = referer.inner_path;
+            }
+            
             ndn_req.common.req_path = referer.req_path;
             ndn_req.common.flags = referer.flags;
             if referer.referer_object.len() > 0 {
