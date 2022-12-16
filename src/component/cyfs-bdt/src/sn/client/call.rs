@@ -1,591 +1,816 @@
 use std::{
-    sync::{Arc, atomic, atomic::{AtomicU64, AtomicU32}, RwLock}, 
-    collections::HashMap, 
-    time::{Instant, Duration}, 
-    future::Future, 
-    pin::Pin, 
-    task::Waker
+    sync::{Arc, Weak, RwLock}, 
+    collections::{BTreeMap, LinkedList}, 
+    time::{Duration}, 
 };
 use async_std::task;
-use futures::task::{Context, Poll};
+use futures::future::AbortRegistration;
 use cyfs_base::*;
 use crate::{
-    types::{TempSeqGenerator, TempSeq},
+    types::*,
     interface::{udp::{Interface, PackageBoxEncodeContext}, tcp}, 
     protocol::{*, v0::*}, 
     history::keystore, 
     stack::{WeakStack, Stack}
 };
-use super::{
-    Config,
-};
-
-pub struct CallManager {
-    stack: WeakStack,
-    seq_genarator: TempSeqGenerator,
-    timeout: Duration,
-    call_interval: Duration,
-    call_sessions: Arc<RwLock<HashMap<TempSeq, Arc<CallSession>>>>,
-    on_stop: Arc<dyn Fn(TempSeq) + Send + Sync>,
-}
-
-impl CallManager {
-    pub fn create(stack: WeakStack, config: &Config) -> CallManager {
-        let call_sesssions = Arc::new(RwLock::new(Default::default()));
-        CallManager {
-            stack,
-            seq_genarator: TempSeqGenerator::new(),
-            timeout: config.call_timeout,
-            call_interval: config.call_interval,
-            call_sessions: call_sesssions.clone(),
-            on_stop: Arc::new(move |seq: TempSeq| {call_sesssions.write().unwrap().remove(&seq);})
-        }
-    }
-
-    pub fn call(&self,
-                  reverse_endpoints: &[Endpoint],
-                  remote_peerid: &DeviceId,
-                  sn: &Device,
-                  is_always_call: bool,
-                  is_encrypto: bool,
-                  with_local: bool,
-                  payload_generater: impl Fn(&SnCall) -> Vec<u8>
-    ) -> impl Future<Output = Result<Device, BuckyError>> {
-        let seq = self.seq_genarator.generate();
-        let call_result = Arc::new(RwLock::new(CallResult { found_peer: None, waker: None }));
-
-        let session = Arc::new(CallSession::create(self,
-                                                   reverse_endpoints,
-                                                   remote_peerid,
-                                                   &sn,
-                                                   is_always_call,
-                                                   is_encrypto,
-                                                   with_local,
-                                                   payload_generater,
-                                                   seq,
-                                                   call_result.clone()));
-
-        {
-            let mut sessions = self.call_sessions.write().unwrap();
-            sessions.insert(seq, session.clone());
-        }
-
-        let call_interval = self.call_interval;
-        let timeout = self.timeout;
-        let on_stop = self.on_stop.clone();
-
-        session.start(call_interval, timeout, on_stop);
-
-        CallFuture {
-            call_result
-        }
-    }
-
-    pub fn on_call_resp(&self, resp: &SnCallResp, from: &Endpoint) -> Result<(), BuckyError> {
-        let session = {
-            let sessions = self.call_sessions.read().unwrap();
-            match sessions.get(&resp.seq) {
-                Some(s) => Some((*s).clone()),
-                None => None
-            }
-        };
-
-        match session {
-            Some(s) => s.on_call_resp(resp, from),
-            None => {
-                log::warn!("call-resp, seq: {:?}, maybe has complete", resp.seq);
-                Err(BuckyError::new(BuckyErrorCode::NotFound, "not found the call"))
-            }
-        }
-    }
-}
-
-struct CallResult {
-    found_peer: Option<Result<Device, BuckyError>>,
-    waker: Option<Waker>,
-}
-
-struct CallFuture {
-    call_result: Arc<RwLock<CallResult>>
-}
-
-impl Future for CallFuture {
-    type Output = Result<Device, BuckyError>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut result = self.call_result.write().unwrap();
-        match result.found_peer.as_mut() {
-            Some(r) => {
-                let mut ret = Err(BuckyError::new(BuckyErrorCode::Timeout, "has finish"));
-                std::mem::swap(r, &mut ret);
-                Poll::Ready(ret)
-            },
-            None => {
-                result.waker = Some(cx.waker().clone());
-                Poll::Pending
-            }
-        }
-    }
-}
-
-struct CallSession {
-    start_time: Instant,
-    seq: TempSeq,
-    clients: Arc<HashMap<DeviceId, CallClient>>,
-    resp_client_count: AtomicU32,
-    call_result: Arc<RwLock<CallResult>>
-}
-
-impl CallSession {
-    fn create(mgr: &CallManager,
-              reverse_endpoints: &[Endpoint],
-              remote_peerid: &DeviceId,
-              sn: &Device,
-              is_always_call: bool,
-              is_encrypto: bool,
-              with_local: bool,
-              payload_generater: impl Fn(&SnCall) -> Vec<u8>,
-              seq: TempSeq,
-              call_result: Arc<RwLock<CallResult>>
-    ) -> CallSession {
-        let sn_peerid = sn.desc().device_id();
-
-        let stack = Stack::from(&mgr.stack);
-        let mut call_pkg = {
-            let local_peer = stack.sn_client().ping().default_local();
-            CallSession::init_call_pkg(
-                &stack.local_device_id(), 
-                local_peer, 
-                reverse_endpoints, 
-                stack.proxy_manager().active_proxies(),  
-                sn_peerid.clone(), 
-                remote_peerid, 
-                is_always_call, 
-                seq)
-        };
-        call_pkg.payload = SizedOwnedData::from(payload_generater(&call_pkg));
 
 
-        if !with_local {
-            call_pkg.peer_info = None;
-        }
+pub mod udp {
+    use std::time::Duration;
 
-        log::debug!("call begin, to: {}, seq: {}, with payload(len={}).", remote_peerid, seq.value(), call_pkg.payload.len());
-
-        let client = CallClient::create(mgr, &sn_peerid, sn, is_encrypto, call_pkg);
-
-        let mut clients: HashMap<DeviceId, CallClient> = Default::default();
-        clients.insert(sn_peerid, client);
-
-        CallSession {
-            seq,
-            start_time: Instant::now(),
-            clients: Arc::new(clients),
-            resp_client_count: AtomicU32::new(0),
-            call_result
-        }
-    }
-
-    fn init_call_pkg(local_peerid: &DeviceId,
-                     local_peer: Device,
-                     reverse_endpoints: &[Endpoint], 
-                     active_pn_list: Vec<DeviceId>, 
-                     sn_peerid: DeviceId,
-                     remote_peerid: &DeviceId,
-                     is_always_call: bool,
-                     seq: TempSeq) -> SnCall {
-        SnCall {
-            protocol_version: 0, 
-            stack_version: 0, 
-            seq: seq,
-            to_peer_id: remote_peerid.clone(),
-            from_peer_id: local_peerid.clone(),
-            sn_peer_id: sn_peerid,
-            reverse_endpoint_array: if reverse_endpoints.len() == 0 { None } else { Some(Vec::from(reverse_endpoints.clone())) },
-            active_pn_list: if active_pn_list.len() > 0 {
-                Some(active_pn_list)
-            } else {
-                None
-            }, 
-            peer_info: Some(local_peer),
-            payload: SizedOwnedData::from(vec![]),
-            send_time: 0,
-            is_always_call
-        }
-    }
-
-    fn start(&self, resend_interval: Duration, timeout: Duration, on_stop: Arc<dyn Fn(TempSeq) + Send + Sync>) {
-        let clients = self.clients.clone();
-        let call_result = self.call_result.clone();
-        let start_time = self.start_time.clone();
-        let seq = self.seq;
-        // <TODO>先启用从历史记录里查到的数据
-        // <TODO>等一会儿，再启动其他未启动地址
-
-        task::spawn(async move {
-            let mut is_tcp_try = false;
-            
-            loop {
-                // UDP重发
-                let mut send_count = 0;
-                for client in clients.values() {
-                    send_count += client.send_udp_pkg().await;
-                }
-
-                // UDP没有发包的情况下，尽快启用TCP测试一次
-                if send_count > 0 || is_tcp_try {
-                    task::sleep(resend_interval).await;
-                }
-
-                let waker = {
-                    {
-                        let result = call_result.read().unwrap();
-                        if let Some(_) = result.found_peer {
-                            break;
-                        }
-                    }
-
-                    if start_time.elapsed() >= timeout {
-                        let id = clients.values().next().unwrap().session_id();
-                        log::warn!("call-finish, to: {}, seq: {}, find peer timeout, no sn responce.", id.0.to_string(), id.1.value());
-                        let mut result = call_result.write().unwrap();
-                        result.found_peer = Some(Err(BuckyError::new(BuckyErrorCode::Timeout, "no sn responce")));
-                        Some(result.waker.clone())
-                    } else {
-                        None
-                    }
-                };
-
-                if let Some(w) = waker {
-                    if let Some(w) = w {
-                        w.wake();
-                    }
-                    on_stop(seq);
-                    break;
-                }
-
-                if !is_tcp_try {
-                    is_tcp_try = true;
-                    for client in clients.values() {
-                        client.try_send_tcp_pkg(timeout).await;
-                    }
-                }
-            }
-        });
-    }
-
-    fn on_call_error(&self, err: BuckyError) {
-        let waker = {
-            let call_result = &mut *self.call_result.write().unwrap();
-
-            match call_result.found_peer {
-                Some(_) => {}
-                None => {
-                    call_result.found_peer = Some(Err(err));
-                }
-            }
-
-            call_result.waker.clone()
-        };
-
-        if let Some(waker) = waker {
-            waker.wake();
-        }
-    }
-
-    fn on_call_resp(&self, resp: &SnCallResp, from: &Endpoint) -> Result<(), BuckyError> {
-        let client = self.clients.get(&resp.sn_peer_id);
-        if let Some(c) = client {
-            let done_waker = {
-                let has_found = self.call_result.read().unwrap().found_peer.is_some();
-                let id = self.session_id();
-                if has_found {
-                    // 已经查到了，直接忽略
-                    log::info!("call-resp, to: {}, seq: {}, sn: {} has finished before.", id.0.to_string(), id.1.value(), resp.sn_peer_id.to_string());
-                    return Ok(());
-                } else {
-                    let mut call_result = self.call_result.write().unwrap();
-                    match resp.to_peer_info.as_ref() {
-                        Some(desc) => {
-                            log::info!("call-resp, to: {}, seq: {}, sn: {}, eps: {} found target device.",
-                             id.0.to_string(),
-                              id.1.value(),
-                               resp.sn_peer_id.to_string(),
-                                desc.connect_info().endpoints().iter().map(|ep| ep.to_string()).collect::<Vec<String>>().concat());
-                            call_result.found_peer = Some(Ok(desc.clone()));
-                            Some(call_result.waker.clone())
-                        }
-                        None => {
-                            log::info!("call-resp, to: {}, seq: {}, sn: {} not found target device.", id.0.to_string(), id.1.value(), resp.sn_peer_id.to_string());
-                            let mut not_found = || -> Option<Option<Waker>> {
-                                let now = self.start_time.elapsed().as_millis() as u64;
-                                let mut last_resp_time = 0;
-                                c.on_call_resp(resp, from, now, &mut last_resp_time);
-
-                                // 没找到目标节点，且所有sn都已经返回，wake，返回查找失败
-                                if last_resp_time == 0 {
-                                    let last_count = self.resp_client_count.fetch_add(1, atomic::Ordering::SeqCst) as usize;
-                                    if last_count == self.clients.len() - 1 {
-                                        log::info!("call-resp, to: {}, seq: {}, sn: {} all sn responced, but no target device found.", id.0.to_string(), id.1.value(), resp.sn_peer_id.to_string());
-                                        call_result.found_peer = Some(Err(BuckyError::new(BuckyErrorCode::NotFound, "not found the peer")));
-                                        return Some(call_result.waker.clone());
-                                    }
-                                }
-                                None
-                            };
-                            not_found()
-                        }
-                    }
-                }
-            };
-
-            // 找到目标节点/所有SN已经响应，wake返回
-            if let Some(w) = done_waker {
-                if let Some(w) = w {
-                    w.wake();
-                }
-
-                // <TODO>持久化
-
-                self.stop();
-            }
-
-            Ok(())
-        } else {
-            unreachable!()
-        }
-    }
-
-    fn stop(&self) {}
-
-    fn session_id(&self) -> (&DeviceId, TempSeq) {
-        let any_client = self.clients.values().next().unwrap();
-        any_client.session_id()
-    }
-}
-
-enum SendPackage {
-    Exchange(Exchange),
-    Call(SnCall)
-}
-
-struct CallClientInner {
-    stack: WeakStack,
-    sn_peerid: DeviceId,
-    sn: Device,
-    aes_key: keystore::FoundKey, 
-    pkgs: Vec<SendPackage>,
-    last_resp_time: AtomicU64,
-}
-
-impl CallClientInner {
-    fn init_pkgs(&mut self, mut call_pkg: SnCall) {
-        call_pkg.sn_peer_id = self.sn_peerid.clone();
-
-        if let keystore::EncryptedKey::Unconfirmed(encrypted) = &self.aes_key.encrypted {
-            let stack = Stack::from(&self.stack);
-            let local_device = match call_pkg.peer_info.as_ref() {
-                Some(from) => from.clone(),
-                None => stack.sn_client().ping().default_local()
-            };
-            let exchg = Exchange::from((&call_pkg, local_device, encrypted.clone(), self.aes_key.key.mix_key.clone()));
-            self.pkgs.push(SendPackage::Exchange(exchg));
-        }
-
-        
-        self.pkgs.push(SendPackage::Call(call_pkg));
+    #[derive(Clone)]
+    pub struct Config {
+        pub resend_interval: Duration
     }
 }
 
 #[derive(Clone)]
-struct CallClient {
-    inner: Arc<CallClientInner>
+pub struct CallConfig {
+    pub timeout: Duration, 
+    pub first_try_timeout: Duration, 
+    pub udp: udp::Config, 
 }
 
-impl CallClient {
-    fn create(mgr: &CallManager, sn_peerid: &DeviceId, sn: &Device, _is_encrypto: bool, call_pkg: SnCall) -> CallClient {
-        let mut inner = CallClientInner {
-            stack: mgr.stack.clone(),
-            sn_peerid: sn_peerid.clone(),
-            sn: sn.clone(),
-            aes_key: Stack::from(&mgr.stack).keystore().create_key(sn.desc(), false),
-            pkgs: vec![],
-            last_resp_time: AtomicU64::new(0)
-        };
-        inner.init_pkgs(call_pkg);
 
-        let client = CallClient {
-            inner: Arc::new(inner)
-        };
+struct ManagerImpl {
+    stack: WeakStack,
+    seq_genarator: TempSeqGenerator,
+    sessions: RwLock<BTreeMap<TempSeq, WeakSessions>>,
+}
 
-        client
+#[derive(Clone)]
+pub struct CallManager(Arc<ManagerImpl>);
+
+impl CallManager {
+    pub fn create(stack: WeakStack) -> Self {
+        Self(Arc::new(ManagerImpl {
+            stack,
+            seq_genarator: TempSeqGenerator::new(),
+            sessions: RwLock::new(BTreeMap::new()),
+        }))
     }
 
-    fn on_call_resp(&self, _resp: &SnCallResp, _from: &Endpoint, now: u64, last_resp_time: &mut u64) {
-        *last_resp_time = self.inner.last_resp_time.swap(now, atomic::Ordering::Release);
-    }
+    pub async fn call(
+        &self, 
+        reverse_endpoints: Option<&[Endpoint]>, 
+        remote: &DeviceId, 
+        sn_list: &Vec<DeviceId>, 
+        payload_generater: impl Fn(&SnCall) -> Vec<u8>
+    ) -> BuckyResult<CallSessions> {
+        let seq = self.0.seq_genarator.generate();
+    
+        let stack = Stack::from(&self.0.stack);
+        let active_pn_list = stack.proxy_manager().active_proxies();
+        let local_device = stack.sn_client().ping().default_local();
 
-    async fn prepare_pkgs_to_send(&self) -> BuckyResult<PackageBox> {
-        // <TODO>暂时不支持明文
-        let mut pkg_box = PackageBox::encrypt_box(self.inner.sn_peerid.clone(), self.inner.aes_key.key.clone());
-        let now_abs = bucky_time_now();
-        for pkg in self.inner.pkgs.as_slice() {
-            match pkg {
-                SendPackage::Exchange(exchg) => {
-                    let mut exchg = (*exchg).clone();
-                    exchg.send_time = now_abs;
-                    exchg.sign(Stack::from(&self.inner.stack).keystore().signer()).await?;
-                    pkg_box.push(exchg);
-                },
-                SendPackage::Call(call) => {
-                    let mut call = (*call).clone();
-                    call.send_time = now_abs;
-                    pkg_box.push(call);
-                }
-            }
-        }
-
-        Ok(pkg_box)
-    }
-
-    async fn send_udp_pkg(&self) -> usize {
-        // 已经有返回
-        if self.inner.last_resp_time.load(atomic::Ordering::Acquire) > 0 {
-            return 0;
-        }
-
-        let stack = Stack::from(&self.inner.stack);
-        if stack.net_manager().listener().udp().len() == 0 {
-            return 0;
-        }
-
-        if let Ok(pkg_box) = self.prepare_pkgs_to_send().await {
-            let mut context = PackageBoxEncodeContext::default();
-
-            struct SendIter<'a> {
-                from: &'a Vec<Interface>,
-                to: Vec<&'a Endpoint>,
-                sub_pos: usize,
-                pos: usize,
-            }
-
-            impl <'a> Iterator for SendIter<'a> {
-                type Item = (Interface, Endpoint);
-
-                fn next(&mut self) -> Option<Self::Item> {
-                    let from = self.from.get(self.pos);
-                    if let Some(from) = from {
-                        let ep = self.to.get(self.sub_pos);
-                        if let Some(ep) = ep {
-                            self.sub_pos += 1;
-                            Some(((*from).clone(), (*ep).clone()))
-                        } else {
-                            self.pos += 1;
-                            self.sub_pos = 0;
-                            self.next()
-                        }
-                    } else {
-                        None
-                    }
-                }
-            }
-
-            let stack = Stack::from(&self.inner.stack);
-            let listener = stack.net_manager().listener();
-            let send_iter = SendIter {
-                from: listener.udp(),
-                to: self.inner.sn.connect_info().endpoints().iter().filter(|ep| ep.is_udp()).collect(),
-                sub_pos: 0,
-                pos: 0
+        let mut sessions = vec![];
+        for sn_id in sn_list {
+            let sn = stack.device_cache().get_inner(sn_id).ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, "sn device not cached"))?;
+            let mut call = SnCall {
+                protocol_version: 0, 
+                stack_version: 0, 
+                seq: seq,
+                to_peer_id: remote.clone(),
+                from_peer_id: stack.local_device_id().clone(),
+                sn_peer_id: sn_id.clone(),
+                reverse_endpoint_array: reverse_endpoints.map(|ep_list| Vec::from(ep_list)),
+                active_pn_list: if active_pn_list.len() > 0 {
+                    Some(active_pn_list.clone())
+                } else {
+                    None
+                }, 
+                peer_info: Some(local_device.clone()),
+                payload: SizedOwnedData::from(vec![]),
+                send_time: 0,
+                is_always_call: false
             };
+            call.payload = SizedOwnedData::from(payload_generater(&call));
+            let session = CallSession::new(self.0.stack.clone(), call, stack.config().sn_client.call.clone()).await;
 
-            let r = Interface::send_box_mult(&mut context, &pkg_box, send_iter, |from, to, result| {
-                let id = self.session_id();
-                log::debug!("call to: {}, seq: {}, from {} to {}, result: {:?}", id.0.to_string(), id.1.value(), from.local(), to, result);
-                true
-            });
+            let net_listener = stack.net_manager().listener();
+            let locals = net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv4()).cloned().collect();
+            let remotes = sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.addr().is_ipv4()).cloned().collect();
+            let tunnel = UdpCall::new(session.to_weak(), locals, remotes);
+            session.add_tunnel(tunnel);
 
-            match r {
-                Ok(send_count) => send_count,
-                Err(e) => {
-                    let id = self.session_id();
-                    log::debug!("call to: {}, seq: {}, failed, err: {:?}", id.0.to_string(), id.1.value(), e);
-                    0
+            sessions.push(session);
+        }   
+        
+        let sessions = CallSessions::new(seq, remote.clone(), sessions);
+        self.0.sessions.write().unwrap().insert(seq, sessions.to_weak());
+
+        Ok(sessions)
+    }
+
+    pub(crate) fn on_time_escape(&self, now: Timestamp) {
+        let mut alive = LinkedList::new();
+
+        {
+            let mut dead = LinkedList::new();
+            let mut sessions = self.0.sessions.write().unwrap();
+            for (seq, weak) in &*sessions {
+                if let Some(session) = weak.to_strong() {
+                    alive.push_back(session);
+                } else {
+                    dead.push_back(seq.clone())
                 }
             }
-        } else {
-            0
+
+            for seq in dead {
+                sessions.remove(&seq);
+            }
+        }
+        
+        for session in alive {
+            session.on_time_escape(now);
         }
     }
 
-    async fn try_send_tcp_pkg(&self, time_limit: Duration) {
-        let inner = self.inner.clone();
-        let pkg_box = match self.prepare_pkgs_to_send().await {
-            Ok(pkg_box) => pkg_box,
-            Err(e) => {
-                log::error!("call prepare pkg for tcp failed, e: {}", e);
-                return;
+
+    pub(crate) fn on_udp_call_resp(&self, resp: &SnCallResp, local: &Interface, from: &Endpoint) {
+        let session = self.0.sessions.read().unwrap().get(&resp.seq).cloned().and_then(|weak| weak.to_strong());
+        if let Some(session) = session {
+            session.on_udp_call_resp(resp, local, from);
+        }
+    }
+}
+
+
+#[derive(Clone)]
+pub struct CallSessions(Arc<SessionsImpl>);
+
+#[derive(Clone)]
+struct WeakSessions(Weak<SessionsImpl>);
+
+impl WeakSessions {
+    fn to_strong(&self) -> Option<CallSessions> {
+        self.0.upgrade().map(|ptr| CallSessions(ptr))
+    }
+}
+
+enum SessionsState {
+    Init(StateWaiter), 
+    Running {
+        waiter: StateWaiter, 
+        pending: LinkedList<CallSession>, 
+        finished: LinkedList<CallSession>, 
+    },
+    Finished, 
+    Canceled(BuckyError)
+}
+
+struct SessionsImpl {
+    seq: TempSeq, 
+    remote: DeviceId, 
+    sessions: Vec<CallSession>, 
+    state: RwLock<SessionsState>
+}
+
+impl CallSessions {
+    fn to_weak(&self) -> WeakSessions {
+        WeakSessions(Arc::downgrade(&self.0))
+    }
+
+    fn new(seq: TempSeq, remote: DeviceId, sessions: Vec<CallSession>) -> Self {
+        Self(Arc::new(SessionsImpl {
+            seq, 
+            remote, 
+            sessions, 
+            state: RwLock::new(SessionsState::Init(StateWaiter::new()))
+        }))
+    }
+
+    fn sync_session(&self, session: CallSession) {
+        let waiter = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                SessionsState::Running {
+                    waiter, 
+                    finished, 
+                    pending,
+                } => {
+                    finished.push_back(session.clone());
+                    pending.push_back(session);
+                    waiter.pop()
+                },  
+                SessionsState::Canceled(err) => None, 
+                _ => unreachable!()
+            }
+        };
+
+        if let Some(waiter) = waiter {
+            waiter.abort();
+        }
+    }
+
+    fn on_udp_call_resp(&self, resp: &SnCallResp, local: &Interface, from: &Endpoint) {
+        if let Some(session) = self.0.sessions.iter().find(|session| resp.sn_peer_id.eq(session.sn())) {
+            session.on_udp_call_resp(resp, local, from);
+        }
+    }
+
+    pub async fn next(&self) -> BuckyResult<Option<CallSession>> {
+        enum NextStep {
+            Start(AbortRegistration), 
+            Return(BuckyResult<Option<CallSession>>), 
+            Wait(AbortRegistration)
+        }
+
+        let next = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                SessionsState::Init(waiter) => {
+                    assert_eq!(waiter.len(), 0);
+                    let next = NextStep::Start(waiter.new_waiter());
+                    *state = SessionsState::Running {
+                        waiter: waiter.transfer(), 
+                        pending: LinkedList::new(), 
+                        finished: LinkedList::new()
+                    };
+                    next
+                }, 
+                SessionsState::Running {
+                    waiter, 
+                    finished, 
+                    pending, 
+                } => {
+                    assert_eq!(waiter.len(), 0);
+                    if pending.len() > 0 {
+                        NextStep::Return(Ok(pending.pop_front()))
+                    } else {
+                        NextStep::Wait(waiter.new_waiter())
+                    }   
+                },  
+                SessionsState::Finished => NextStep::Return(Ok(None)), 
+                SessionsState::Canceled(err) => NextStep::Return(Err(err.clone()))
+            }
+        };
+
+        let state = || {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                SessionsState::Running {
+                    waiter, 
+                    pending, 
+                    finished
+                } => {
+                    let ret = Ok(pending.pop_front());
+                    if pending.len() == 0 && finished.len() == self.0.sessions.len() {
+                        *state = SessionsState::Finished;
+                    }
+                    ret
+                },  
+                SessionsState::Finished => Ok(None), 
+                SessionsState::Canceled(err) => Err(err.clone()),
+                _ => unreachable!()
             }
         };
         
-        task::spawn(async move {
-            let remote_eps = inner.sn.connect_info().endpoints();
-            let mut connect_futures = vec![];
-            for ep in remote_eps {
-                if ep.is_tcp() {
-                    connect_futures.push(
-                        Box::pin(tcp::Interface::connect(
-                            ep.clone(), 
-                            inner.sn_peerid.clone(), 
-                            inner.sn.desc().clone(), 
-                            pkg_box.key().clone(), 
-                            time_limit))
-                    );
+        match next {
+            NextStep::Start(waiter) => {
+                for session in &self.0.sessions {
+                    let sessions = self.clone();
+                    let session = session.clone();
+                    task::spawn(async move {
+                        let _ = session.wait().await;
+                        sessions.sync_session(session);
+                    });
                 }
-            }
-
-            let mut connect_futures_container = Some(connect_futures);
-            let connect_result = loop {
-                let connect_futures = connect_futures_container.take().unwrap();
-                if connect_futures.is_empty() {
-                    break Err(BuckyError::new(BuckyErrorCode::Failed, "all failed"));
-                }
-
-                let (result, _, remain) = futures::future::select_all(connect_futures).await;
-                match result {
-                    Ok(tcp) => break Ok(tcp),
-                    Err(_) => connect_futures_container = Some(remain)
-                }
-            };
-
-            if let Ok(tcp_interface) = connect_result {
-                let stack = Stack::from(&inner.stack);
-                match tcp_interface.confirm_connect(&stack, pkg_box.into(), time_limit).await {
-                    Ok(resp) => {
-                        let resp: Vec<DynamicPackage> = resp.into();
-                        for pkg in resp {
-                            if let PackageCmdCode::SnCallResp = pkg.cmd_code() {
-                                if let Some(resp) = pkg.as_any().downcast_ref::<SnCallResp>() {
-                                    let _ = stack.sn_client().call.on_call_resp(resp, tcp_interface.remote_endpoint());
-                                }
-                                break;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log::debug!("tcp call resp failed, err: {:?}", e);
-                    }
-                }
-            }
-        });
+                StateWaiter::wait(waiter, state).await
+            }, 
+            NextStep::Wait(waiter) => {
+                StateWaiter::wait(waiter, state).await
+            },
+            NextStep::Return(result) => result
+        }
     }
 
-    fn session_id(&self) -> (&DeviceId, TempSeq) {
-        for pkg in self.inner.pkgs.as_slice() {
-            if let SendPackage::Call(call) = pkg {
-                return (&call.to_peer_id, call.seq);
+    fn on_time_escape(&self, now: Timestamp) {
+        for session in &self.0.sessions {
+            session.on_time_escape(now);
+        }
+    }
+}
+
+enum SessionState {
+    Init, 
+    FirstTry, 
+    SecondTry, 
+    Responsed {
+        active: EndpointPair, 
+        result: BuckyResult<Device>
+    }, 
+    Canceled(BuckyError)
+}
+
+struct SessionStateImpl {
+    packages: Arc<PackageBox>, 
+    tunnels: Vec<UdpCall>, 
+    waiter: StateWaiter, 
+    start_at: Timestamp, 
+    state: SessionState
+}
+
+struct SessionImpl {
+    stack: WeakStack, 
+    sn: DeviceId, 
+    config: CallConfig, 
+    state: RwLock<SessionStateImpl>
+}
+
+
+#[derive(Clone)]
+pub struct CallSession(Arc<SessionImpl>);
+
+struct WeakSession(Weak<SessionImpl>);
+
+impl WeakSession {
+    fn to_strong(&self) -> Option<CallSession> {
+        self.0.upgrade().map(|ptr| CallSession(ptr))
+    }
+}
+
+impl CallSession {
+    fn to_weak(&self) -> WeakSession {
+        WeakSession(Arc::downgrade(&self.0))
+    }
+
+    async fn new(stack: WeakStack, call: SnCall, config: CallConfig) -> Self {
+        let strong_stack = Stack::from(&stack);
+        let sn = call.sn_peer_id.clone();
+        let key_stub = strong_stack.keystore().create_key(strong_stack.device_cache().get_inner(&sn).unwrap().desc(), true);
+        let mut packages = PackageBox::encrypt_box(sn.clone(), key_stub.key.clone());
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = &key_stub.encrypted {
+            let mut exchange = Exchange::from((&call, strong_stack.sn_client().ping().default_local(), encrypted.clone(), key_stub.key.mix_key.clone()));
+            let _ = exchange.sign(strong_stack.keystore().signer()).await.unwrap();
+            packages.push(exchange);
+        }
+        packages.push(call);
+
+        Self(Arc::new(SessionImpl {
+            stack, 
+            sn, 
+            config, 
+            state: RwLock::new(SessionStateImpl {
+                packages: Arc::new(packages), 
+                tunnels: vec![], 
+                waiter: StateWaiter::new(),
+                start_at: 0,  
+                state: SessionState::Init, 
+            })
+        }))
+    }
+
+    fn sn(&self) -> &DeviceId {
+        &self.0.sn
+    }
+
+    fn on_udp_call_resp(&self, resp: &SnCallResp, local: &Interface, from: &Endpoint) {
+        let tunnels = {
+            let state = self.0.state.read().unwrap();
+            match &state.state {
+                SessionState::FirstTry | SessionState::SecondTry => state.tunnels.clone(), 
+                _ => vec![]
+            }
+        };
+
+        for tunnel in tunnels {
+            tunnel.on_udp_call_resp(resp, local, from);
+        }
+    }
+
+
+    fn sync_tunnel(&self, tunnel: &UdpCall, result: BuckyResult<Device>, active: Option<EndpointPair>) {
+        let ret = {
+            let mut state = self.0.state.write().unwrap();
+
+            let waiter = match &state.state {
+                SessionState::FirstTry | SessionState::SecondTry => {
+                    if let Some(active) = active {
+                        state.state = SessionState::Responsed { active, result };
+                        Some(state.waiter.transfer())
+                    } else {
+                        None
+                    }
+                }, 
+                _ => None
+            };
+
+            if let Some(waiter) = waiter {
+                let mut tunnels = vec![];
+                std::mem::swap(&mut tunnels, &mut state.tunnels);
+                Some((waiter, tunnels))
+            } else {
+                None
+            }
+        };
+       
+        if let Some((waiter, tunnels)) = ret {
+            waiter.wake();
+
+            for tunnel in tunnels {
+                tunnel.cancel();
             }
         }
-        unreachable!()
+    }
+
+    fn config(&self) -> &CallConfig {
+        &self.0.config
+    }
+
+    async fn wait(&self) -> Option<EndpointPair> {
+        enum NextStep {
+            Start(AbortRegistration, Vec<UdpCall>), 
+            Wait(AbortRegistration),
+            Return(Option<EndpointPair>)
+        }
+
+        let next = {
+            let mut state = self.0.state.write().unwrap();
+
+            match &state.state {
+                SessionState::Init => {
+                    if state.packages.has_exchange() {
+                        state.state = SessionState::SecondTry;
+                    } else {
+                        state.state = SessionState::FirstTry;
+                    }
+                    state.start_at = bucky_time_now();
+                    NextStep::Start(state.waiter.new_waiter(), state.tunnels.clone())
+                }, 
+                SessionState::Responsed { active, result } => NextStep::Return(Some(active.clone())), 
+                SessionState::Canceled(_) => NextStep::Return(None), 
+                _ => NextStep::Wait(state.waiter.new_waiter())
+            }
+        };
+
+        let state = || {
+            let state = self.0.state.read().unwrap();
+            match &state.state {
+                SessionState::Responsed { active, result } => Some(active.clone()), 
+                SessionState::Canceled(_) => None, 
+                _ => unreachable!()
+            }
+        };
+        
+        match next {
+            NextStep::Start(waiter, tunnels) => {
+                for tunnel in tunnels {
+                    let session = self.clone();
+                    task::spawn(async move {
+                        let (result, active) = tunnel.wait().await;
+                        session.sync_tunnel(&tunnel, result, active);
+                    });
+                }
+                StateWaiter::wait(waiter, state).await
+            }, 
+            NextStep::Wait(waiter) => StateWaiter::wait(waiter, state).await,
+            NextStep::Return(active) => active
+        }
+    }
+
+    fn add_tunnel(&self, tunnel: UdpCall) {
+        let mut state = self.0.state.write().unwrap();
+        match &state.state {
+            SessionState::Init => {
+                state.tunnels.push(tunnel);
+            },
+            _ => unreachable!()
+        }
+    }
+
+    fn packages(&self) -> Arc<PackageBox> {
+        self.0.state.read().unwrap().packages.clone()
+    }
+
+
+    async fn reset(&self, call: SnCall) {
+        let stack = Stack::from(&self.0.stack);
+        stack.keystore().reset_peer(self.sn());
+
+        let key_stub = stack.keystore().create_key(stack.device_cache().get_inner(self.sn()).unwrap().desc(), true);
+        let mut packages = PackageBox::encrypt_box(self.sn().clone(), key_stub.key.clone());
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = &key_stub.encrypted {
+            let mut exchange = Exchange::from((&call, stack.sn_client().ping().default_local(), encrypted.clone(), key_stub.key.mix_key.clone()));
+            let _ = exchange.sign(stack.keystore().signer()).await.unwrap();
+            packages.push(exchange);
+        }
+        packages.push(call);
+
+        let tunnels = {
+            let mut state = self.0.state.write().unwrap();
+            state.packages = Arc::new(packages);
+            if let SessionState::SecondTry = &state.state {
+                Some(state.tunnels.clone())
+            } else {
+                None
+            }
+        };
+       
+        if let Some(tunnels) = tunnels {
+            for tunnel in tunnels {
+                tunnel.reset();
+            }
+        }
+    }
+
+    fn on_time_escape(&self, now: Timestamp) {
+        struct NextStep {
+            waiter: Option<StateWaiter>, 
+            reset: Option<SnCall>, 
+            callback: Option<Vec<UdpCall>>, 
+        }
+
+        impl NextStep {
+            fn none() -> Self {
+                Self {
+                    waiter: None, 
+                    reset: None, 
+                    callback: None
+                }
+            }
+        }
+
+        let mut state = self.0.state.write().unwrap();
+        let mut next = NextStep::none();
+        match &state.state {
+            SessionState::FirstTry => {
+                if now > state.start_at && Duration::from_micros(now - state.start_at) > self.config().first_try_timeout {
+                    let call: &SnCall = state.packages.packages_no_exchange()[0].as_ref();
+                    next.reset = Some(call.clone());
+                    state.state = SessionState::SecondTry;
+                } else {
+                    next.callback = Some(state.tunnels.clone());
+                }
+            }, 
+            SessionState::SecondTry => {
+                if now > state.start_at && Duration::from_micros(now - state.start_at) > self.config().timeout {
+                    state.state = SessionState::Canceled(BuckyError::new(BuckyErrorCode::Timeout, "session timeout"));
+                    next.waiter = Some(state.waiter.transfer());
+                } else {
+                    next.callback = Some(state.tunnels.clone());
+                }
+            }, 
+            _ => {}
+        }
+
+        if let Some(waiter) = next.waiter {
+            waiter.wake();
+        }
+
+        if let Some(tunnels) = next.callback {
+            for tunnel in tunnels {
+                tunnel.on_time_escape(now);
+            }
+        }
+
+        if let Some(call) = next.reset {
+            let session = self.clone();
+            task::spawn(async move {
+                session.reset(call).await;
+            });
+        }
+    }
+
+    pub fn result(&self) -> Option<BuckyResult<Device>> {
+        let state = self.0.state.read().unwrap();
+        match &state.state {
+            SessionState::Responsed { result, .. } => Some(result.clone()), 
+            SessionState::Canceled(err) => Some(Err(err.clone())), 
+            _ => None
+        }
+    }
+}
+
+
+enum UdpState {
+    Init(StateWaiter), 
+    Running {
+        waiter: StateWaiter, 
+        first_send_time: Timestamp,  
+        last_send_time: Timestamp
+    }, 
+    Responsed {
+        active: EndpointPair, 
+        result: BuckyResult<Device>
+    }, 
+    Canceled(BuckyError)
+}
+
+struct UdpImpl {
+    owner: WeakSession, 
+    locals: Vec<Interface>, 
+    remotes: Vec<Endpoint>, 
+    state: RwLock<UdpState>
+}
+
+#[derive(Clone)]
+struct UdpCall(Arc<UdpImpl>);
+
+impl UdpCall {
+    fn new(owner: WeakSession, locals: Vec<Interface>, remotes: Vec<Endpoint>) -> Self {
+        Self(Arc::new(UdpImpl {
+            owner, 
+            locals, 
+            remotes, 
+            state: RwLock::new(UdpState::Init(StateWaiter::new()))
+        }))
+    } 
+
+    fn send_call(&self) {
+        struct SendIter {
+            tunnel: UdpCall, 
+            local_index: usize, 
+            remote_index: usize
+        }
+
+        impl SendIter {
+            fn new(tunnel: UdpCall) -> Self {
+                Self {
+                    tunnel, 
+                    local_index: 0, 
+                    remote_index: 0
+                }
+            }
+        }
+
+        impl Iterator for SendIter {
+            type Item = (Interface, Endpoint);
+
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.local_index == self.tunnel.0.locals.len() {
+                    return None;
+                }
+                if self.remote_index == self.tunnel.0.remotes.len() {
+                    self.local_index += 1;
+                    if self.local_index == self.tunnel.0.locals.len() {
+                        return None;
+                    } 
+                }
+                let ret = (self.tunnel.0.locals[self.local_index].clone(), self.tunnel.0.remotes[self.remote_index].clone());
+                self.remote_index += 1;
+                Some(ret)
+            }
+        }
+
+        if let Some(session) = self.0.owner.to_strong() {
+            let mut context = PackageBoxEncodeContext::default();
+            let _ = Interface::send_box_mult(&mut context, session.packages().as_ref(), SendIter::new(self.clone()), |_, _, _| true);
+        }
+    }
+
+
+    async fn wait(&self) -> (BuckyResult<Device>, Option<EndpointPair>) {
+        enum NextStep {
+            Start(AbortRegistration), 
+            Wait(AbortRegistration),
+            Return((BuckyResult<Device>, Option<EndpointPair>))
+        }
+
+        let next = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                UdpState::Init(waiter) => {
+                    let next = NextStep::Start(waiter.new_waiter());
+                    let now = bucky_time_now();
+                    *state = UdpState::Running {
+                        waiter: waiter.transfer(), 
+                        first_send_time: now, 
+                        last_send_time: now
+                    };
+                    next
+                }, 
+                UdpState::Running {
+                    waiter, 
+                    ..
+                } => NextStep::Wait(waiter.new_waiter()), 
+                UdpState::Responsed { 
+                    active, 
+                    result 
+                } => NextStep::Return((result.clone(), Some(active.clone()))), 
+                UdpState::Canceled(err) => NextStep::Return((Err(err.clone()), None))
+            }
+        };
+
+        let state = || {
+            let state = self.0.state.read().unwrap();
+            match &*state {
+                UdpState::Responsed { 
+                    active, 
+                    result 
+                } => (result.clone(), Some(active.clone())), 
+                UdpState::Canceled(err) => (Err(err.clone()), None),
+                _ => unreachable!()
+            }
+        };
+
+        match next {
+            NextStep::Start(waiter) => {
+                self.send_call();
+                StateWaiter::wait(waiter, state).await
+            }, 
+            NextStep::Wait(waiter) => StateWaiter::wait(waiter, state).await,
+            NextStep::Return(ret) => ret
+        }
+    }
+
+    fn on_time_escape(&self, now: Timestamp) {
+        enum NextStep {
+            None, 
+            Send, 
+            Wake(StateWaiter)
+        }
+
+        let next = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                UdpState::Running { 
+                    first_send_time, 
+                    last_send_time, 
+                    waiter
+                } => {
+                    if let Some(session) = self.0.owner.to_strong() {
+                        if now > *first_send_time && Duration::from_micros(now - *first_send_time) > session.config().timeout {
+                            let next = NextStep::Wake(waiter.transfer());
+                            *state = UdpState::Canceled(BuckyError::new(BuckyErrorCode::Timeout, "udp call timeout"));
+                            next
+                        } else if now > *last_send_time && Duration::from_micros(now - *last_send_time) > session.config().udp.resend_interval {
+                            *last_send_time = now;
+                            NextStep::Send
+                        } else {
+                            NextStep::None
+                        }
+                    } else {
+                        let next = NextStep::Wake(waiter.transfer());
+                        *state = UdpState::Canceled(BuckyError::new(BuckyErrorCode::ErrorState, "udp call canceled"));
+                        next
+                    }
+                }, 
+                _ => NextStep::None
+            }
+        };
+
+        match next {
+            NextStep::Send => {
+                self.send_call();
+            }, 
+            NextStep::Wake(waiter) => {
+                waiter.wake();
+            },
+            NextStep::None => {}
+        }
+    }
+
+    fn reset(&self) {
+
+    }
+
+    fn cancel(&self) {
+        let waiter = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                UdpState::Running {
+                    waiter, 
+                    ..
+                } => {
+                    let waiter = waiter.transfer();
+                    *state = UdpState::Canceled(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"));
+                    Some(waiter)
+                }, 
+                _ => None
+            }
+        };
+        
+        if let Some(waiter) = waiter {
+            waiter.wake();
+        }
+    }
+
+    fn on_udp_call_resp(&self, resp: &SnCallResp, local: &Interface, from: &Endpoint) {
+        let waiter = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut *state {
+                UdpState::Running {
+                    waiter, 
+                    ..
+                } => {
+                    let waiter = waiter.transfer();
+                    *state = UdpState::Responsed { 
+                        active: EndpointPair::from((local.local(), *from)), 
+                        result: if let Some(device) = resp.to_peer_info.clone() {
+                            Ok(device)
+                        } else {
+                            Err(BuckyError::new(BuckyErrorCode::from(resp.result as u16), "sn response error"))
+                        }
+                    };
+                    Some(waiter)
+                }, 
+                _ => None
+            }
+        };
+        
+        if let Some(waiter) = waiter {
+            waiter.wake();
+        }
     }
 }

@@ -40,7 +40,6 @@ impl DeviceCache {
             cache.insert(id.clone(), device.clone());
         }
 
-        // 临时方案：这里需要添加到上层noc
         if let Some(outer) = &self.outer {
             let outer = outer.clone_cache();
             let id = id.to_owned();
@@ -53,7 +52,7 @@ impl DeviceCache {
     }
 
     pub async fn get(&self, id: &DeviceId) -> Option<Device> {
-        let mem_cache = self.cache.read().unwrap().get(id).map(|d| d.clone());
+        let mem_cache = self.get_inner(id);
         if mem_cache.is_some() {
             mem_cache
         } else if let Some(outer) = &self.outer {
@@ -61,6 +60,10 @@ impl DeviceCache {
         } else {
             None
         }
+    }
+
+    pub fn get_inner(&self, id: &DeviceId) -> Option<Device> {
+        self.cache.read().unwrap().get(id).cloned()
     }
 }
 

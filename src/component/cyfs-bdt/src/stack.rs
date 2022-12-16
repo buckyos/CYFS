@@ -1,3 +1,18 @@
+use log::*;
+use std::{
+    ops::Deref, 
+    time::Duration, 
+    // sync::{atomic::{AtomicU64, Ordering}}
+};
+use async_std::{
+    sync::{Arc, Weak}, 
+    task, 
+    future, 
+};
+use cyfs_base::*;
+use cyfs_util::{
+    cache::*
+};
 use crate::{
     types::*,
     cc::{self},
@@ -21,21 +36,9 @@ use crate::{
     ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler}, 
     debug::{self, DebugStub}
 };
-use cyfs_util::{
-    cache::*
-};
-use async_std::{
-    sync::{Arc, Weak}, 
-    task, 
-    future, 
-};
-use cyfs_base::*;
-use log::*;
-use std::{
-    ops::Deref, 
-    time::Duration, 
-    // sync::{atomic::{AtomicU64, Ordering}}
-};
+
+
+
 
 struct StackLazyComponents {
     sn_client: sn::client::ClientManager,
@@ -75,6 +78,7 @@ impl StackConfig {
                 }
             }, 
             sn_client: sn::client::Config {
+                atomic_interval: Duration::from_millis(100),
                 ping: sn::client::ping::PingConfig {
                     interval: Duration::from_secs(25), 
                     udp: sn::client::ping::udp::Config {
@@ -82,8 +86,13 @@ impl StackConfig {
                         resend_timeout: Duration::from_secs(5),
                     }
                 }, 
-                call_interval: Duration::from_millis(200),
-                call_timeout: Duration::from_millis(3000),
+                call: sn::client::call::CallConfig {
+                    timeout: Duration::from_secs(5), 
+                    first_try_timeout: Duration::from_secs(2), 
+                    udp: sn::client::call::udp::Config {
+                        resend_interval: Duration::from_millis(500),
+                    }
+                }
             },     
             tunnel: tunnel::Config {
                 retain_timeout: Duration::from_secs(60),

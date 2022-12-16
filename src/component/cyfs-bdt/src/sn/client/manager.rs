@@ -1,7 +1,11 @@
 use std::{
     time::Duration, 
-    future::Future,
-    sync::{Arc, RwLock}
+    sync::{Arc, RwLock}, 
+};
+
+use async_std::{
+    task, 
+    future
 };
 
 use cyfs_base::*;
@@ -13,7 +17,7 @@ use crate::{
 };
 use super::{
     ping::{PingConfig, PingClients}, 
-    call::*
+    call::{CallConfig, CallManager, CallSessions}
 };
 
 pub trait PingClientCalledEvent<Context=()>: Send + Sync {
@@ -23,42 +27,59 @@ pub trait PingClientCalledEvent<Context=()>: Send + Sync {
 
 #[derive(Clone)]
 pub struct Config {
+    pub atomic_interval: Duration, 
     pub ping: PingConfig, 
-    pub call_interval: Duration,
-    pub call_timeout: Duration,
+    pub call: CallConfig,
 }
 
-pub struct ClientManager {
+struct ManagerImpl {
     stack: WeakStack, 
     gen_seq: Arc<TempSeqGenerator>, 
     ping: RwLock<PingClients>, 
-    pub(super) call: CallManager,
+    call: CallManager,
 }
 
+#[derive(Clone)]
+pub struct ClientManager(Arc<ManagerImpl>);
+
 impl ClientManager {
-    pub fn create(stack: WeakStack, net_listener: NetListener, local_device: Device) -> ClientManager {
+    pub fn create(stack: WeakStack, net_listener: NetListener, local_device: Device) -> Self {
         let strong_stack = Stack::from(&stack); 
         let config = &strong_stack.config().sn_client;
+        let atomic_interval = config.atomic_interval;
         let gen_seq = Arc::new(TempSeqGenerator::new());
-        ClientManager {
+        let manager = Self(Arc::new(ManagerImpl {
             ping: RwLock::new(PingClients::new(stack.clone(), gen_seq.clone(), net_listener, vec![], local_device)),
-            call: CallManager::create(stack.clone(), config), 
+            call: CallManager::create(stack.clone()), 
             gen_seq, 
             stack, 
+        }));
+
+        {
+            let manager = manager.clone();
+            task::spawn(async move {
+                loop {
+                    let now = bucky_time_now();
+                    manager.ping().on_time_escape(now);
+                    manager.call().on_time_escape(now);
+                    let _ = future::timeout(atomic_interval, future::pending::<()>()).await;
+                }
+            });
         }
+        manager
     }
 
     pub fn ping(&self) -> PingClients {
-        self.ping.read().unwrap().clone()
+        self.0.ping.read().unwrap().clone()
     }
 
     pub fn reset(&self, sn_list: Vec<Device>) -> PingClients {
         let (to_start, to_close) = {
-            let mut ping = self.ping.write().unwrap();
+            let mut ping = self.0.ping.write().unwrap();
             let to_close = ping.clone();
             let to_start = PingClients::new(
-                self.stack.clone(), 
-                self.gen_seq.clone(), 
+                self.0.stack.clone(), 
+                self.0.gen_seq.clone(), 
                 to_close.net_listener().reset(None).unwrap(), 
                 sn_list, 
                 to_close.default_local()
@@ -70,18 +91,9 @@ impl ClientManager {
         to_start
     }
 
-    pub fn call(&self,
-                reverse_endpoints: &[Endpoint], 
-                remote_peerid: &DeviceId,
-                sn: &Device,
-                is_always_call: bool,
-                is_encrypto: bool,
-                with_local: bool,
-                payload_generater: impl Fn(&SnCall) -> Vec<u8>
-    ) -> impl Future<Output = Result<Device, BuckyError>> {
-        self.call.call(reverse_endpoints, remote_peerid, sn, is_always_call, is_encrypto, with_local, payload_generater)
+    pub fn call(&self) -> &CallManager {
+        &self.0.call
     }
-
 }
 
 impl OnUdpPackageBox for ClientManager {
@@ -110,7 +122,7 @@ impl OnUdpPackageBox for ClientManager {
                     match pkg.as_any().downcast_ref::<SnCallResp>() {
                         None => return Err(BuckyError::new(BuckyErrorCode::InvalidData, "should be SnCallResp")),
                         Some(call_resp) => {
-                            let _ = self.call.on_call_resp(call_resp, &from);
+                            let _ = self.call().on_udp_call_resp(call_resp, from_interface, &from);
                         }
                     }
                 },
