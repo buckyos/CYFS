@@ -303,7 +303,7 @@ impl FrontProtocolHandler {
         url: &http_types::Url,
     ) -> BuckyResult<Vec<NDNDataRefererObject>> {
         // try extract referer from query pairs
-        match RequestorHelper::value_from_querys("referer", url) {
+        match RequestorHelper::value_from_querys_with_utf8_decoding("referer", url) {
             Ok(Some(v)) => Ok(vec![v]),
             Ok(None) => Ok(vec![]),
             Err(e) => {
@@ -316,7 +316,7 @@ impl FrontProtocolHandler {
 
     fn group_from_request(url: &http_types::Url) -> BuckyResult<Option<String>> {
         // try extract group from query pairs
-        match RequestorHelper::value_from_querys("group", url) {
+        match RequestorHelper::value_from_querys_with_utf8_decoding("group", url) {
             Ok(Some(v)) => Ok(Some(v)),
             Ok(None) => Ok(None),
             Err(e) => {
@@ -813,7 +813,7 @@ impl FrontProtocolHandler {
                     page_size = Some(v);
                 }
                 "group" => {
-                    group = Some(RequestorHelper::decode_utf8(k.as_ref(), v.as_ref())?.to_string());
+                    group = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
                 }
                 _ => {
                     warn!("unknown global state access url query: {}={}", k, v);
