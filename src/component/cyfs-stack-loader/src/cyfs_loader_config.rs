@@ -185,7 +185,7 @@ impl CyfsServiceLoaderConfig {
     pub fn new_from_config(node: toml::Value) -> BuckyResult<Self> {
         Self::check_config_node(&node)?;
 
-        info!("will use config: {:?}", toml::to_string(&node));
+        info!("will use config: \n{}", toml::to_string_pretty(&node).unwrap_or("".to_owned()));
 
         Ok(Self { node })
     }
