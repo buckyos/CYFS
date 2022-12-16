@@ -14,6 +14,7 @@ pub struct FrontORequest {
 
     // for ndn requests
     pub referer_objects: Vec<NDNDataRefererObject>,
+    pub group: Option<String>,
 
     pub mode: FrontRequestGetMode,
     pub format: FrontRequestObjectFormat,
@@ -44,6 +45,8 @@ pub struct FrontRRequest {
     pub page_index: Option<u32>,
     pub page_size: Option<u32>,
 
+    pub group: Option<String>,
+
     pub mode: FrontRequestGetMode,
     pub flags: u32,
 }
@@ -70,6 +73,8 @@ pub struct FrontNDNRequest {
 
     pub referer_objects: Vec<NDNDataRefererObject>,
 
+    pub group: Option<String>,
+
     pub flags: u32,
 }
 
@@ -83,6 +88,7 @@ impl FrontNDNRequest {
             object: NONObjectInfo::new(req.object_id, vec![], None),
             range: req.range,
             referer_objects: req.referer_objects,
+            group: req.group,
             flags: req.flags,
         }
     }
@@ -111,6 +117,7 @@ impl FrontNDNRequest {
             object,
             range: req.range,
             referer_objects,
+            group: req.group,
             flags: req.flags,
         }
     }
@@ -127,6 +134,7 @@ impl FrontNDNRequest {
             object,
             range: req.range,
             referer_objects: vec![],
+            group: req.group,
             flags: req.flags,
         }
     }
@@ -189,6 +197,7 @@ pub struct FrontARequest {
     pub origin_url: http_types::Url,
 
     pub referer_objects: Vec<NDNDataRefererObject>,
+    pub group: Option<String>,
 
     pub flags: u32,
 }

@@ -60,6 +60,7 @@ impl NDNInputTransformer {
             object_id: req.object_id,
             range: req.range,
             inner_path: req.inner_path,
+            group: req.group,
         };
 
         let out_resp = self.processor.get_data(out_req).await?;
@@ -107,6 +108,7 @@ impl NDNInputTransformer {
             object_id: req.object_id,
             range: req.range,
             inner_path: req.inner_path,
+            group: req.group,
         };
 
         let out_resp = self.processor.get_shared_data(out_req).await?;
@@ -257,6 +259,7 @@ impl NDNOutputTransformer {
             data_type: NDNDataType::Mem,
             range: req.range,
             inner_path: req.inner_path,
+            group: req.group,
         };
 
         let in_resp = self.processor.get_data(in_req).await?;
@@ -306,6 +309,7 @@ impl NDNOutputTransformer {
             data_type: NDNDataType::SharedMem,
             range: req.range,
             inner_path: req.inner_path,
+            group: req.group,
         };
 
         let in_resp = self.processor.get_data(in_req).await?;

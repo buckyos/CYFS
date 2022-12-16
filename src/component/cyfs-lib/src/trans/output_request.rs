@@ -128,7 +128,10 @@ pub struct TransCreateTaskOutputRequest {
     // 保存到的本地目录or文件
     pub local_path: PathBuf,
     pub device_list: Vec<DeviceId>,
+    
+    pub group: Option<String>,
     pub context_id: Option<ObjectId>,
+
     // 任务创建完成之后自动启动任务
     pub auto_start: bool,
 }

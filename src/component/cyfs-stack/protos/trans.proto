@@ -15,6 +15,7 @@ message DownloadFileParam {
     string referer = 3;
     optional string save_path = 4;
     optional bytes context_id = 5;
+    optional string group = 6;
 }
 
 message DownloadFileTaskState {
@@ -27,6 +28,7 @@ message DownloadChunkParam {
     string referer = 3;
     optional string save_path = 4;
     optional bytes context_id = 5;
+    optional string group = 6;
 }
 
 message PublishLocalFile {

@@ -317,6 +317,7 @@ impl LocalTransService {
                     .create_file_task(
                         req.common.source.zone.device.unwrap(),
                         req.common.source.dec,
+                        req.group,
                         req.context_id,
                         file_obj.clone(),
                         Some(local_path.to_string()),
@@ -339,6 +340,7 @@ impl LocalTransService {
                 .create_chunk_task(
                     req.common.source.zone.device.unwrap(),
                     req.common.source.dec,
+                    req.group,
                     req.context_id,
                     ChunkId::try_from(&req.object_id)?,
                     Some(local_path.to_string()),

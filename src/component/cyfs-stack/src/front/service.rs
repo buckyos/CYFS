@@ -154,6 +154,7 @@ impl FrontService {
             data_type: NDNDataType::Mem,
             range: req.range,
             inner_path: None,
+            group: req.group.clone(),
         };
 
         self.ndn.get_data(ndn_req).await
@@ -198,6 +199,7 @@ impl FrontService {
             data_type: NDNDataType::Mem,
             range: req.range,
             inner_path: None,
+            group: req.group.clone(),
         };
 
         self.ndn.get_data(req).await
@@ -473,6 +475,7 @@ impl FrontService {
                             format: req.format,
 
                             referer_objects: req.referer_objects,
+                            group: req.group,
 
                             flags: req.flags,
                         };
@@ -512,6 +515,7 @@ impl FrontService {
                             format: req.format,
 
                             referer_objects: req.referer_objects,
+                            group: req.group,
                             
                             flags: req.flags,
                         };

@@ -102,29 +102,21 @@ impl JsonCodec<TransCreateTaskOutputRequest> for TransCreateTaskOutputRequest {
 
         JsonCodecHelper::encode_str_array_field(&mut obj, "device_list", &self.device_list);
 
-        if self.context_id.is_some() {
-            JsonCodecHelper::encode_string_field(
-                &mut obj,
-                "context_id",
-                self.context_id.as_ref().unwrap(),
-            );
-        }
+        JsonCodecHelper::encode_option_string_field(&mut obj, "group", self.group.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_id", self.context_id.as_ref());
+
         JsonCodecHelper::encode_bool_field(&mut obj, "auto_start", self.auto_start);
         obj
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let context_id = match obj.get("context_id") {
-            Some(context_id) => Some(JsonCodecHelper::decode_from_string(context_id)?),
-            None => None,
-        };
-
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             object_id: JsonCodecHelper::decode_string_field(obj, "object_id")?,
             local_path: JsonCodecHelper::decode_string_field(obj, "local_path")?,
             device_list: JsonCodecHelper::decode_str_array_field(obj, "device_list")?,
-            context_id,
+            group: JsonCodecHelper::decode_option_string_field(obj, "group")?,
+            context_id: JsonCodecHelper::decode_option_string_field(obj, "context_id")?,
             auto_start: JsonCodecHelper::decode_bool_field(obj, "auto_start")?,
         })
     }
@@ -152,29 +144,21 @@ impl JsonCodec<TransCreateTaskInputRequest> for TransCreateTaskInputRequest {
 
         JsonCodecHelper::encode_str_array_field(&mut obj, "device_list", &self.device_list);
 
-        if self.context_id.is_some() {
-            JsonCodecHelper::encode_string_field(
-                &mut obj,
-                "context_id",
-                self.context_id.as_ref().unwrap(),
-            );
-        }
+        JsonCodecHelper::encode_option_string_field(&mut obj, "group", self.group.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_id", self.context_id.as_ref());
+
         JsonCodecHelper::encode_bool_field(&mut obj, "auto_start", self.auto_start);
         obj
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let context_id = match obj.get("context_id") {
-            Some(context_id) => Some(JsonCodecHelper::decode_from_string(context_id)?),
-            None => None,
-        };
-
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             object_id: JsonCodecHelper::decode_string_field(obj, "object_id")?,
             local_path: JsonCodecHelper::decode_string_field(obj, "local_path")?,
             device_list: JsonCodecHelper::decode_str_array_field(obj, "device_list")?,
-            context_id,
+            group: JsonCodecHelper::decode_option_string_field(obj, "group")?,
+            context_id: JsonCodecHelper::decode_option_string_field(obj, "context_id")?,
             auto_start: JsonCodecHelper::decode_bool_field(obj, "auto_start")?,
         })
     }

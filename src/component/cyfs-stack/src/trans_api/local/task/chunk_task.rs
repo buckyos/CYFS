@@ -19,6 +19,7 @@ pub struct DownloadChunkTask {
     bdt_stack: StackGuard,
     device_list: Vec<DeviceId>,
     referer: String,
+    group: Option<String>,
     context_id: Option<ObjectId>,
     session: async_std::sync::Mutex<Option<String>>,
     writer: ChunkWriterRef,
@@ -32,6 +33,7 @@ impl DownloadChunkTask {
         bdt_stack: StackGuard,
         device_list: Vec<DeviceId>,
         referer: String,
+        group: Option<String>,
         context_id: Option<ObjectId>,
         task_label_data: Vec<u8>,
         writer: Box<dyn ChunkWriter>,
@@ -47,6 +49,7 @@ impl DownloadChunkTask {
             bdt_stack,
             device_list,
             referer,
+            group,
             context_id,
             session: async_std::sync::Mutex::new(None),
             writer: Arc::new(writer),
@@ -100,7 +103,7 @@ impl Task for DownloadChunkTask {
 
         // 创建bdt层的传输任务
         let (id, reader) =
-            cyfs_bdt::download_chunk(&self.bdt_stack, self.chunk_id.clone(), None, context)
+            cyfs_bdt::download_chunk(&self.bdt_stack, self.chunk_id.clone(), self.group.clone(), context)
                 .await
                 .map_err(|e| {
                     error!(
@@ -309,6 +312,7 @@ pub struct DownloadChunkParam {
     pub device_list: Vec<DeviceId>,
     pub referer: String,
     pub save_path: Option<String>,
+    pub group: Option<String>,
     pub context_id: Option<ObjectId>,
 }
 
@@ -332,6 +336,7 @@ impl ProtobufTransform<super::super::trans_proto::DownloadChunkParam> for Downlo
             } else {
                 None
             },
+            group: value.group,
         })
     }
 }
@@ -352,6 +357,7 @@ impl ProtobufTransform<&DownloadChunkParam> for super::super::trans_proto::Downl
             } else {
                 None
             },
+            group: value.group.clone(),
         })
     }
 }
@@ -375,6 +381,10 @@ impl DownloadChunkParam {
 
     pub fn context_id(&self) -> &Option<ObjectId> {
         &self.context_id
+    }
+
+    pub fn group(&self) -> &Option<String> {
+        &self.group
     }
 }
 
@@ -427,11 +437,12 @@ impl TaskFactory for DownloadChunkTaskFactory {
             };
 
         let task = DownloadChunkTask::new(
-            param.chunk_id().clone(),
+            param.chunk_id,
             self.stack.clone(),
-            param.device_list().clone(),
-            param.referer().to_string(),
-            param.context_id().clone(),
+            param.device_list,
+            param.referer,
+            param.group,
+            param.context_id,
             label_data,
             writer,
         );
@@ -466,11 +477,12 @@ impl TaskFactory for DownloadChunkTaskFactory {
             };
 
         let task = DownloadChunkTask::new(
-            param.chunk_id().clone(),
+            param.chunk_id,
             self.stack.clone(),
-            param.device_list().clone(),
-            param.referer().to_string(),
-            param.context_id().clone(),
+            param.device_list,
+            param.referer,
+            param.group,
+            param.context_id,
             label_data,
             writer,
         );

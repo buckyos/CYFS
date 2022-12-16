@@ -184,6 +184,8 @@ pub struct NDNGetDataInputRequest {
 
     // 对dir/objectmap有效
     pub inner_path: Option<String>,
+
+    pub group: Option<String>,
 }
 
 impl fmt::Display for NDNGetDataInputRequest {
@@ -196,7 +198,13 @@ impl fmt::Display for NDNGetDataInputRequest {
             write!(f, ", range: {}", range.to_display_string())?;
         }
 
-        write!(f, ", inner_path: {:?}", self.inner_path)
+        write!(f, ", inner_path: {:?}", self.inner_path)?;
+
+        if let Some(group) = &self.group {
+            write!(f, ", group: {}", group)?;
+        }
+
+        Ok(())
     }
 }
 

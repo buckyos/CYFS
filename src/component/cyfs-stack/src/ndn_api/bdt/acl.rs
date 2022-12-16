@@ -132,6 +132,7 @@ impl BdtNDNDataAclProcessor {
             range: None,
 
             inner_path: None,
+            group: None,
         };
 
         if let Some(referer) = referer {

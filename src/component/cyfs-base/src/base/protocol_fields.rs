@@ -17,6 +17,8 @@ pub const CYFS_FILTER_DEC_ID: &str = "cyfs-filter-dec-id";
 pub const CYFS_REQ_PATH: &str = "cyfs-req-path";
 pub const CYFS_INNER_PATH: &str = "cyfs-inner-path";
 
+pub const CYFS_TASK_GROUP: &str = "cyfs-task-group";
+
 pub const CYFS_OWNER_ID: &str = "cyfs-owner-id";
 
 pub const CYFS_AUTHOR_ID: &str = "cyfs-author-id";

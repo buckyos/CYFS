@@ -25,7 +25,10 @@ pub struct TransCreateTaskInputRequest {
     // 保存到的本地目录or文件
     pub local_path: PathBuf,
     pub device_list: Vec<DeviceId>,
+
+    pub group: Option<String>,
     pub context_id: Option<ObjectId>,
+    
     pub auto_start: bool,
 }
 

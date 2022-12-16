@@ -256,6 +256,12 @@ impl NDNRequestor {
             req.inner_path.as_deref(),
         );
 
+        RequestorHelper::encode_opt_header_with_encoding(
+            &mut http_req,
+            cyfs_base::CYFS_TASK_GROUP,
+            req.group.as_deref(),
+        );
+
         if let Some(ref range) = req.range {
             http_req.insert_header("Range", range.encode_string());
         }

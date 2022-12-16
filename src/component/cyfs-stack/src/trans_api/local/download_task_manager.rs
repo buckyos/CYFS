@@ -1,5 +1,6 @@
 use super::task::*;
 use crate::NamedDataComponents;
+use crate::ndn::TaskGroupHelper;
 use crate::trans_api::{DownloadTaskTracker, TransStore};
 use cyfs_base::*;
 use cyfs_lib::TransTaskInfo;
@@ -99,6 +100,7 @@ impl DownloadTaskManager {
         &self,
         source: DeviceId,
         dec_id: ObjectId,
+        group: Option<String>,
         context_id: Option<ObjectId>,
         file: File,
         local_path: Option<String>,
@@ -120,11 +122,14 @@ impl DownloadTaskManager {
                 file_id.to_string()
             );
         }
+
+        let group = TaskGroupHelper::new_opt_with_dec(&dec_id, group.as_deref());
         let params = DownloadFileParam {
             file,
             device_list,
             referer,
             save_path: local_path.clone(),
+            group,
             context_id: context_id.clone(),
         };
 
@@ -149,6 +154,7 @@ impl DownloadTaskManager {
         &self,
         source: DeviceId,
         dec_id: ObjectId,
+        group: Option<String>,
         context_id: Option<ObjectId>,
         chunk_id: ChunkId,
         local_path: Option<String>,
@@ -169,11 +175,14 @@ impl DownloadTaskManager {
                 chunk_id.to_string()
             );
         }
+
+        let group = TaskGroupHelper::new_opt_with_dec(&dec_id, group.as_deref());
         let params = DownloadChunkParam {
             chunk_id,
             device_list,
             referer,
             save_path: local_path,
+            group,
             context_id: context_id.clone(),
         };
         let task_id = self

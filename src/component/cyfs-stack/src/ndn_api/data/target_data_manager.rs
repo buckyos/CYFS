@@ -1,3 +1,5 @@
+use crate::ndn::TaskGroupHelper;
+
 use super::stream_reader::*;
 use cyfs_base::*;
 use cyfs_bdt::{SingleDownloadContext, StackGuard};
@@ -45,7 +47,9 @@ impl TargetDataManager {
 
     pub async fn get_file(
         &self,
+        source: &RequestSourceInfo,
         file_obj: &File,
+        group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
         referer: Option<&BdtDataRefererInfo>,
     ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
@@ -77,8 +81,10 @@ impl TargetDataManager {
         let context =
             SingleDownloadContext::id_streams(&self.bdt_stack, referer, &self.target).await?;
 
+        let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
+        
         let (_id, reader) =
-            cyfs_bdt::download_file(&self.bdt_stack, file_obj.to_owned(), None, context)
+            cyfs_bdt::download_file(&self.bdt_stack, file_obj.to_owned(), group, context)
                 .await
                 .map_err(|e| {
                     error!("download file error! file={}, {}", file_id, e);
@@ -100,7 +106,9 @@ impl TargetDataManager {
     // 获取单个chunk
     pub async fn get_chunk(
         &self,
+        source: &RequestSourceInfo,
         chunk_id: &ChunkId,
+        group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
         referer: Option<&BdtDataRefererInfo>,
     ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
@@ -130,8 +138,10 @@ impl TargetDataManager {
         let context =
             SingleDownloadContext::id_streams(&self.bdt_stack, referer, &self.target).await?;
 
+        let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
+
         let (_id, reader) =
-            cyfs_bdt::download_chunk(&self.bdt_stack, chunk_id.clone(), None, context)
+            cyfs_bdt::download_chunk(&self.bdt_stack, chunk_id.clone(), group, context)
                 .await
                 .map_err(|e| {
                     error!("download chunk error! chunk={}, {}", chunk_id, e);

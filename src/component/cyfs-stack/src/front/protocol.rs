@@ -314,6 +314,19 @@ impl FrontProtocolHandler {
         }
     }
 
+    fn group_from_request(url: &http_types::Url) -> BuckyResult<Option<String>> {
+        // try extract group from query pairs
+        match RequestorHelper::value_from_querys("group", url) {
+            Ok(Some(v)) => Ok(Some(v)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                let msg = format!("invalid request url group query param! {}, {}", url, e);
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+            }
+        }
+    }
+
     fn is_cyfs_browser(req: &http_types::Request) -> bool {
         let ret: BuckyResult<Option<String>> =
             RequestorHelper::decode_optional_header(req, http_types::headers::USER_AGENT);
@@ -512,6 +525,7 @@ impl FrontProtocolHandler {
         let range = Self::range_from_request(req.request.as_ref())?;
 
         let referer_objects = Self::referer_objects_from_request(&url)?;
+        let group = Self::group_from_request(&url)?;
 
         /*
         /object_id
@@ -553,6 +567,7 @@ impl FrontProtocolHandler {
                     format,
 
                     referer_objects,
+                    group,
 
                     flags,
                 }
@@ -584,6 +599,7 @@ impl FrontProtocolHandler {
                     format,
 
                     referer_objects,
+                    group,
 
                     flags,
                 }
@@ -757,6 +773,7 @@ impl FrontProtocolHandler {
         let mut action = GlobalStateAccessorAction::GetObjectByPath;
         let mut mode = FrontRequestGetMode::Default;
         let mut flags = 0;
+        let mut group = None;
 
         let pairs = req.request.url().query_pairs();
         for (k, v) in pairs {
@@ -795,6 +812,9 @@ impl FrontProtocolHandler {
                     })?;
                     page_size = Some(v);
                 }
+                "group" => {
+                    group = Some(RequestorHelper::decode_utf8(k.as_ref(), v.as_ref())?.to_string());
+                }
                 _ => {
                     warn!("unknown global state access url query: {}={}", k, v);
                 }
@@ -816,6 +836,7 @@ impl FrontProtocolHandler {
             page_size,
 
             mode,
+            group,
 
             flags,
         };
@@ -885,6 +906,7 @@ impl FrontProtocolHandler {
         let mode = Self::mode_from_request(url)?;
         let flags = Self::flags_from_request(url)?;
         let referer_objects = Self::referer_objects_from_request(url)?;
+        let group = Self::group_from_request(url)?;
 
         // TODO now target always be current zone's ood
         let target = self
@@ -906,6 +928,7 @@ impl FrontProtocolHandler {
 
             origin_url: url.to_owned(),
             referer_objects,
+            group,
 
             flags,
         };

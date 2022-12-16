@@ -27,6 +27,7 @@ pub struct DownloadFileTask {
     referer: String,
     file: File,
     save_path: Option<String>,
+    group: Option<String>,
     context_id: Option<ObjectId>,
     session: async_std::sync::Mutex<Option<String>>,
     verify_task: async_std::sync::Mutex<Option<RunnableTask<VerifyFileRunnable>>>,
@@ -42,6 +43,7 @@ impl DownloadFileTask {
         referer: String,
         file: File,
         save_path: Option<String>,
+        group: Option<String>,
         context_id: Option<ObjectId>,
         trans_store: Arc<TransStore>,
         task_status: DownloadFileTaskStatus,
@@ -63,6 +65,7 @@ impl DownloadFileTask {
             referer,
             file,
             save_path,
+            group,
             context_id,
             session: async_std::sync::Mutex::new(None),
             verify_task: async_std::sync::Mutex::new(None),
@@ -150,7 +153,7 @@ impl Task for DownloadFileTask {
 
         // 创建bdt层的传输任务
         let (id, reader) =
-            cyfs_bdt::download_file(&self.bdt_stack, self.file.clone(), None, context)
+            cyfs_bdt::download_file(&self.bdt_stack, self.file.clone(), self.group.clone(), context)
                 .await
                 .map_err(|e| {
                     error!(
@@ -427,6 +430,7 @@ pub struct DownloadFileParam {
     pub device_list: Vec<DeviceId>,
     pub referer: String,
     pub save_path: Option<String>,
+    pub group: Option<String>,
     pub context_id: Option<ObjectId>,
 }
 
@@ -450,6 +454,7 @@ impl ProtobufTransform<super::super::trans_proto::DownloadFileParam> for Downloa
             } else {
                 None
             },
+            group: value.group,
         })
     }
 }
@@ -470,6 +475,7 @@ impl ProtobufTransform<&DownloadFileParam> for super::super::trans_proto::Downlo
             } else {
                 None
             },
+            group: value.group.clone(),
         })
     }
 }
@@ -512,6 +518,10 @@ impl DownloadFileParam {
         &self.save_path
     }
 
+    pub fn group(&self) -> &Option<String> {
+        &self.group
+    }
+
     pub fn context_id(&self) -> &Option<ObjectId> {
         &self.context_id
     }
@@ -548,11 +558,12 @@ impl TaskFactory for DownloadFileTaskFactory {
         let task = DownloadFileTask::new(
             self.named_data_components.clone(),
             self.stack.clone(),
-            params.device_list().clone(),
-            params.referer().to_string(),
-            params.file().clone(),
-            params.save_path().clone(),
-            params.context_id().clone(),
+            params.device_list,
+            params.referer,
+            params.file,
+            params.save_path,
+            params.group,
+            params.context_id,
             self.trans_store.clone(),
             DownloadFileTaskStatus {
                 status: TaskStatus::Stopped,
@@ -583,11 +594,12 @@ impl TaskFactory for DownloadFileTaskFactory {
         let task = DownloadFileTask::new(
             self.named_data_components.clone(),
             self.stack.clone(),
-            params.device_list().clone(),
-            params.referer().to_string(),
-            params.file().clone(),
-            params.save_path().clone(),
-            params.context_id().clone(),
+            params.device_list,
+            params.referer,
+            params.file,
+            params.save_path,
+            params.group,
+            params.context_id,
             self.trans_store.clone(),
             data,
         );

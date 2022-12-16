@@ -65,6 +65,7 @@ impl TransInputProcessor for TransInputTransformer {
             object_id: req.object_id,
             local_path: req.local_path,
             device_list: req.device_list,
+            group: req.group,
             context_id: req.context_id,
             auto_start: req.auto_start,
         };
@@ -244,6 +245,7 @@ impl TransOutputProcessor for TransOutputTransformer {
             object_id: req.object_id.clone(),
             local_path: req.local_path.clone(),
             device_list: req.device_list.clone(),
+            group: req.group.clone(),
             context_id: req.context_id.clone(),
             auto_start: req.auto_start,
         };

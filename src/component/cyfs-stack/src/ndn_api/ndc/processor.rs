@@ -174,7 +174,7 @@ impl NDCLevelInputProcessor {
         }
 
         let (data, length) = if need_process {
-            self.data_manager.get_file(&udata.file, ranges).await?
+            self.data_manager.get_file(&req.common.source, &udata.file, req.group.as_deref(), ranges).await?
         } else {
             (zero_bytes_reader(), 0)
         };
@@ -220,7 +220,7 @@ impl NDCLevelInputProcessor {
 
         let (data, length) = if need_process {
             match req.data_type {
-                NDNDataType::Mem => self.data_manager.get_chunk(&chunk_id, ranges).await?,
+                NDNDataType::Mem => self.data_manager.get_chunk(&req.common.source, &chunk_id, req.group.as_deref(), ranges).await?,
                 NDNDataType::SharedMem => self.data_manager.get_chunk_meta(&chunk_id).await?,
             }
         } else {

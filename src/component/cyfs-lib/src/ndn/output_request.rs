@@ -226,6 +226,9 @@ pub struct NDNGetDataOutputRequest {
 
     // 对dir_id有效
     pub inner_path: Option<String>,
+
+    // trans data task group
+    pub group: Option<String>,
 }
 
 impl NDNGetDataOutputRequest {
@@ -235,6 +238,7 @@ impl NDNGetDataOutputRequest {
             object_id,
             range: None,
             inner_path,
+            group: None,
         }
     }
 
@@ -274,7 +278,13 @@ impl fmt::Display for NDNGetDataOutputRequest {
             write!(f, ", range: {}", range.to_display_string())?;
         }
 
-        write!(f, ", inner_path: {:?}", self.inner_path)
+        write!(f, ", inner_path: {:?}", self.inner_path)?;
+
+        if let Some(group) = &self.group {
+            write!(f, ", group: {}", group)?;
+        }
+
+        Ok(())
     }
 }
 

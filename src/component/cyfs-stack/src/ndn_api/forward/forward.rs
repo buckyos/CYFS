@@ -95,7 +95,7 @@ impl NDNForwardDataOutputProcessor {
                 flags: req.common.flags,
             };
 
-            self.data_manager.get_file(&file, ranges, Some(&meta)).await?
+            self.data_manager.get_file(&req.common.source,&file, req.group.as_deref(), ranges, Some(&meta)).await?
         } else {
             (zero_bytes_reader(), 0)
         };
@@ -152,7 +152,7 @@ impl NDNForwardDataOutputProcessor {
             };
 
             self.data_manager
-                .get_chunk(&chunk_id, ranges, Some(&meta))
+                .get_chunk(&req.common.source, &chunk_id, req.group.as_deref(), ranges, Some(&meta))
                 .await
                 .map_err(|e| {
                     error!(
