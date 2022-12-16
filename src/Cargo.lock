@@ -6237,9 +6237,6 @@ dependencies = [
  "cyfs-debug",
  "cyfs-util",
  "log 0.4.17",
- "misc-util",
- "serde",
- "serde_json",
 ]
 
 [[package]]
