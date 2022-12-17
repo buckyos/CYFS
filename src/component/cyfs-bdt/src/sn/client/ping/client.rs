@@ -31,7 +31,7 @@ pub enum SnStatus {
     Offline
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PingSessionResp {
     pub from: Endpoint, 
     pub err: BuckyErrorCode, 
@@ -40,7 +40,7 @@ pub struct PingSessionResp {
 
 
 #[async_trait::async_trait]
-pub trait PingSession: Send + Sync {
+pub trait PingSession: Send + Sync + std::fmt::Display {
     fn sn(&self) -> &DeviceId;
     fn local(&self) -> Endpoint;
     fn reset(&self,  local_device: Option<Device>, sn_endpoint: Option<Endpoint>) -> Box<dyn PingSession>;
@@ -95,6 +95,13 @@ struct ClientImpl {
 
 #[derive(Clone)]
 pub struct PingClient(Arc<ClientImpl>);
+
+impl std::fmt::Display for PingClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let stack = Stack::from(&self.0.stack);
+        write!(f, "PingClients{{local:{}, sn:{}}}", stack.local_device_id(), self.sn())
+    }
+}
 
 impl PingClient {
     pub(crate) fn new(
@@ -185,6 +192,7 @@ impl PingClient {
 
 
     async fn update_local(&self, local: Endpoint, outer: Endpoint) {
+        info!("{} update local {} => {}", self, local, outer);
         let update = self.net_listener().update_outer(&local, &outer);
         if update > UpdateOuterResult::None {
             let mut local = self.local_device();
@@ -223,6 +231,7 @@ impl PingClient {
     }
 
     fn ping_once(&self) {
+        info!("{} ping once", self);
         let mut state = self.0.state.write().unwrap();
         match &mut *state {
             ClientState::Active { 
@@ -250,6 +259,7 @@ impl PingClient {
     }
 
     fn sync_session_resp(&self, session: &dyn PingSession, result: BuckyResult<PingSessionResp>) {
+        info!("{} wait session {} finished {:?}", self, session, result);
         struct NextStep {
             waiter: Option<StateWaiter>, 
             update: Option<(Endpoint, Endpoint)>, 
@@ -285,6 +295,7 @@ impl PingClient {
                                     next.update = Some((session.local(), resp.endpoints[0]));
                                 }
 
+                                info!("{} online", self);
                                 *state = ClientState::Active {
                                     waiter: StateWaiter::new(), 
                                     state: ActiveState::Wait(bucky_time_now() + self.0.config.interval.as_micros() as u64, session.reset(None, Some(resp.from)))
@@ -296,6 +307,7 @@ impl PingClient {
                                 sessions.remove(index);
                                 let mut next = NextStep::none();
                                 if sessions.len() == 0 {
+                                    error!("{} timeout", self);
                                     next.waiter = Some(waiter.transfer());
                                     *state = ClientState::Timeout;
                                 }
@@ -330,12 +342,14 @@ impl PingClient {
                                         let stack = Stack::from(&self.0.stack);
                                         stack.keystore().reset_peer(&self.sn());
                                         let session = session.reset(None, None);
+                                        info!("{} start second try", self);
                                         *active = ActiveState::SecondTry(session);
                                         NextStep::none()
                                     }, 
                                     ActiveState::SecondTry(_) => {
                                         let mut next = NextStep::none();
                                         next.waiter = Some(waiter.transfer());
+                                        error!("{} timeout", self);
                                         *state = ClientState::Timeout;
                                         next
                                     },
@@ -408,6 +422,7 @@ impl PingClient {
     }
 
     pub async fn wait_online(&self) -> BuckyResult<SnStatus> {
+        info!("{} waiting online", self);
         enum NextStep {
             Wait(AbortRegistration),
             Start(AbortRegistration), 
@@ -441,6 +456,7 @@ impl PingClient {
             NextStep::Return(result) => result, 
             NextStep::Wait(waiter) => StateWaiter::wait(waiter, state).await, 
             NextStep::Start(waiter) => {
+                info!("{} started", self);
                 let mut sessions = vec![];
                 for local in self.0.net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv4()) {
                     let sn_endpoints: Vec<Endpoint> = self.0.sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.is_same_ip_version(&local.local())).cloned().collect();
@@ -453,7 +469,9 @@ impl PingClient {
                             sn_desc: self.0.sn.desc().clone(),
                             sn_endpoints,  
                         };
-                        sessions.push(UdpPingSession::new(self.0.stack.clone(), self.0.gen_seq.clone(), params).clone_as_ping_session());
+                        let session = UdpPingSession::new(self.0.stack.clone(), self.0.gen_seq.clone(), params).clone_as_ping_session();
+                        info!("{} add session {}", self, session);
+                        sessions.push(session);
                     }
                 };
 

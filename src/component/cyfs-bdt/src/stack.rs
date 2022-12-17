@@ -459,7 +459,8 @@ impl Stack {
     }
 
     pub fn reset_sn_list(&self, sn_list: Vec<Device>) -> PingClients {
-        info!("{} reset_sn_list {:?}", self, sn_list);
+        let sn_id_list: Vec<DeviceId> = sn_list.iter().map(|sn| sn.desc().device_id()).collect();
+        info!("{} reset_sn_list {:?}", self, sn_id_list);
         self.device_cache().add_sn(&sn_list);
         self.sn_client().reset(sn_list)
     }

@@ -107,6 +107,7 @@ impl PingClients {
     }
 
     fn sync_ping_client(&self, client: &PingClient, result: BuckyResult<SnStatus>) {
+        info!("{} client {} finished {:?}", self, client, result);
         if result.is_err() {
             return ;
         }
@@ -141,6 +142,7 @@ impl PingClients {
                         match status {
                             SnStatus::Online => {
                                 next.waiter = Some(waiter.transfer());
+                                info!("{} online with client {}", self, client);
                                 state.state = ClientsState::Active {
                                     waiter: StateWaiter::new(), 
                                     client: client.clone()
@@ -161,6 +163,7 @@ impl PingClients {
                                     *connecting = client;
                                 } else {
                                     next.waiter = Some(waiter.transfer());
+                                    error!("{} offline", self);
                                     state.state = ClientsState::Offline;
                                 }
                             }
@@ -177,6 +180,7 @@ impl PingClients {
                         match status {
                             SnStatus::Online => {
                                 next.waiter = Some(waiter.transfer());
+                                info!("{} online with client {}", self, client);
                                 state.state = ClientsState::Active {
                                     waiter: StateWaiter::new(), 
                                     client: client.clone()
@@ -220,6 +224,7 @@ impl PingClients {
         if let Some(client) = next.to_start {
             let clients = self.clone();
             task::spawn(async move {
+                info!("{} start next client {}", clients, client);
                 clients.sync_ping_client(&client, client.wait_online().await);
             });
         }
@@ -233,6 +238,7 @@ impl PingClients {
     } 
 
     pub async fn wait_online(&self) -> BuckyResult<SnStatus> {
+        log::info!("{} wait online", self);
         enum NextStep {
             Wait(AbortRegistration), 
             Start(AbortRegistration, PingClient), 
@@ -302,6 +308,7 @@ impl PingClients {
     }
 
     pub async fn wait_offline(&self) -> BuckyResult<()> {
+        info!("{} wait offline", self);
         enum NextStep {
             Wait(AbortRegistration),
             Return(BuckyResult<()>)
@@ -336,6 +343,7 @@ impl PingClients {
     }
 
     pub fn stop(&self) {
+        info!("{} stop", self);
         let (waiter, client) = {
             let mut state = self.0.state.write().unwrap();
             match &mut state.state {

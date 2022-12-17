@@ -216,6 +216,7 @@ impl PingSession for UdpPingSession {
                     ..  
                 } => {
                     if now > *first_sent_time && Duration::from_micros(now - *first_sent_time) > self.0.config.resend_timeout {
+                        error!("{} timeout", self);
                         let waiter = waiter.transfer();
                         *state = SessionState::Timeout;
                         NextStep::Timeout(waiter)
@@ -305,6 +306,7 @@ impl PingSession for UdpPingSession {
     }
 
     fn stop(&self) {
+        error!("{} stop", self);
         let waiter = {
             let mut state = self.0.state.write().unwrap();
             match &mut *state {
@@ -347,6 +349,7 @@ impl PingSession for UdpPingSession {
                             endpoints: resp.end_point_array.clone()
                         };
                         let waiter = waiter.transfer();
+                        info!("{} got response", self);
                         *state = SessionState::Responsed { 
                             first_resp_time: now, 
                             resp
