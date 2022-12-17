@@ -86,7 +86,7 @@ impl TransRequestHandlerEndpoint {
             .post(Self::new(zone_manager.clone(), protocol.to_owned(), TransRequestType::PublishFile, handler.clone()));
 
         server
-            .at("/trans/query")
+            .at("/trans/tasks")
             .post(Self::new(zone_manager.clone(), protocol.to_owned(), TransRequestType::QueryTasks, handler.clone()));
 
 
