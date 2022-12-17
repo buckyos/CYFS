@@ -73,7 +73,7 @@ impl TransRequestor {
 
     pub async fn get_context(
         &self,
-        req: &TransGetContextOutputRequest,
+        req: TransGetContextOutputRequest,
     ) -> BuckyResult<TransContext> {
         info!("will get context {}", req.context_name.as_str());
 
@@ -107,7 +107,7 @@ impl TransRequestor {
         }
     }
 
-    pub async fn put_context(&self, req: &TransPutContextOutputRequest) -> BuckyResult<()> {
+    pub async fn put_context(&self, req: TransPutContextOutputRequest) -> BuckyResult<()> {
         info!("will put context {}", req.context.get_context_name());
 
         let url = self.service_url.join("put_context").unwrap();
@@ -139,7 +139,7 @@ impl TransRequestor {
 
     pub async fn create_task(
         &self,
-        req: &TransCreateTaskOutputRequest,
+        req: TransCreateTaskOutputRequest,
     ) -> BuckyResult<TransCreateTaskOutputResponse> {
         info!("will create trans task: {:?}", req);
 
@@ -191,7 +191,7 @@ impl TransRequestor {
         }
     }
 
-    pub async fn control_task(&self, req: &TransControlTaskOutputRequest) -> BuckyResult<()> {
+    pub async fn control_task(&self, req: TransControlTaskOutputRequest) -> BuckyResult<()> {
         info!("will control trans task: {:?}", req);
 
         let url = self.service_url.join("task").unwrap();
@@ -220,10 +220,10 @@ impl TransRequestor {
         }
     }
 
-    pub async fn start_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+    pub async fn start_task(&self, req: TransTaskOutputRequest) -> BuckyResult<()> {
         Self::control_task(
             self,
-            &TransControlTaskOutputRequest {
+            TransControlTaskOutputRequest {
                 common: req.common.clone(),
                 task_id: req.task_id.clone(),
                 action: TransTaskControlAction::Start,
@@ -232,10 +232,10 @@ impl TransRequestor {
         .await
     }
 
-    pub async fn stop_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+    pub async fn stop_task(&self, req: TransTaskOutputRequest) -> BuckyResult<()> {
         Self::control_task(
             self,
-            &TransControlTaskOutputRequest {
+            TransControlTaskOutputRequest {
                 common: req.common.clone(),
                 task_id: req.task_id.clone(),
                 action: TransTaskControlAction::Stop,
@@ -244,10 +244,10 @@ impl TransRequestor {
         .await
     }
 
-    pub async fn delete_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+    pub async fn delete_task(&self, req: TransTaskOutputRequest) -> BuckyResult<()> {
         Self::control_task(
             self,
-            &TransControlTaskOutputRequest {
+            TransControlTaskOutputRequest {
                 common: req.common.clone(),
                 task_id: req.task_id.clone(),
                 action: TransTaskControlAction::Delete,
@@ -258,7 +258,7 @@ impl TransRequestor {
 
     pub async fn get_task_state(
         &self,
-        req: &TransGetTaskStateOutputRequest,
+        req: TransGetTaskStateOutputRequest,
     ) -> BuckyResult<TransGetTaskStateOutputResponse> {
         info!("will get trans task state: {:?}", req);
 
@@ -303,11 +303,11 @@ impl TransRequestor {
 
     pub async fn query_tasks(
         &self,
-        req: &TransQueryTasksOutputRequest,
+        req: TransQueryTasksOutputRequest,
     ) -> BuckyResult<TransQueryTasksOutputResponse> {
         info!("will query tasks: {:?}", req);
 
-        let url = self.service_url.join("tasks").unwrap();
+        let url = self.service_url.join("query").unwrap();
         let mut http_req = Request::new(Method::Post, url);
 
         self.encode_common_headers(&req.common, &mut http_req);
@@ -341,7 +341,7 @@ impl TransRequestor {
 
     pub async fn publish_file(
         &self,
-        req: &TransPublishFileOutputRequest,
+        req: TransPublishFileOutputRequest,
     ) -> BuckyResult<TransPublishFileOutputResponse> {
         info!("will publish file: {:?}", req);
 
@@ -397,7 +397,7 @@ impl TransRequestor {
 
     pub async fn get_task_group_state(
         &self,
-        req: &TransGetTaskGroupStateOutputRequest,
+        req: TransGetTaskGroupStateOutputRequest,
     ) -> BuckyResult<TransGetTaskGroupStateOutputResponse> {
         info!("will get trans task group state: {:?}", req);
 
@@ -437,7 +437,7 @@ impl TransRequestor {
 
     pub async fn control_task_group(
         &self,
-        req: &TransControlTaskGroupOutputRequest,
+        req: TransControlTaskGroupOutputRequest,
     ) -> BuckyResult<TransControlTaskGroupOutputResponse> {
         info!("will control trans task group: {:?}", req);
 
@@ -474,56 +474,56 @@ impl TransRequestor {
 
 #[async_trait::async_trait]
 impl TransOutputProcessor for TransRequestor {
-    async fn get_context(&self, req: &TransGetContextOutputRequest) -> BuckyResult<TransContext> {
+    async fn get_context(&self, req: TransGetContextOutputRequest) -> BuckyResult<TransContext> {
         Self::get_context(self, req).await
     }
 
-    async fn put_context(&self, req: &TransPutContextOutputRequest) -> BuckyResult<()> {
+    async fn put_context(&self, req: TransPutContextOutputRequest) -> BuckyResult<()> {
         Self::put_context(self, req).await
     }
 
     async fn create_task(
         &self,
-        req: &TransCreateTaskOutputRequest,
+        req: TransCreateTaskOutputRequest,
     ) -> BuckyResult<TransCreateTaskOutputResponse> {
         Self::create_task(self, req).await
     }
 
     async fn query_tasks(
         &self,
-        req: &TransQueryTasksOutputRequest,
+        req: TransQueryTasksOutputRequest,
     ) -> BuckyResult<TransQueryTasksOutputResponse> {
         Self::query_tasks(self, req).await
     }
 
     async fn get_task_state(
         &self,
-        req: &TransGetTaskStateOutputRequest,
+        req: TransGetTaskStateOutputRequest,
     ) -> BuckyResult<TransGetTaskStateOutputResponse> {
         Self::get_task_state(self, req).await
     }
 
     async fn publish_file(
         &self,
-        req: &TransPublishFileOutputRequest,
+        req: TransPublishFileOutputRequest,
     ) -> BuckyResult<TransPublishFileOutputResponse> {
         Self::publish_file(self, req).await
     }
 
     async fn control_task(&self, req: TransControlTaskOutputRequest) -> BuckyResult<()> {
-        Self::control_task(self, &req).await
+        Self::control_task(self, req).await
     }
 
     async fn get_task_group_state(
         &self,
-        req: &TransGetTaskGroupStateOutputRequest,
+        req: TransGetTaskGroupStateOutputRequest,
     ) -> BuckyResult<TransGetTaskGroupStateOutputResponse> {
         Self::get_task_group_state(self, req).await
     }
 
     async fn control_task_group(
         &self,
-        req: &TransControlTaskGroupOutputRequest,
+        req: TransControlTaskGroupOutputRequest,
     ) -> BuckyResult<TransControlTaskGroupOutputResponse> {
         Self::control_task_group(self, req).await
     }
