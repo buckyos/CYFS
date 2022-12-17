@@ -1,3 +1,4 @@
+use crate::ndn::TaskGroupHelper;
 use crate::resolver::OodResolver;
 use crate::NamedDataComponents;
 use cyfs_base::*;
@@ -472,14 +473,16 @@ impl LocalTransService {
         &self,
         req: TransGetTaskGroupStateInputRequest,
     ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
+        let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
+
         let task = self
             .bdt_stack
             .ndn()
             .root_task()
             .download()
-            .sub_task(&req.group)
+            .sub_task(&group)
             .ok_or_else(|| {
-                let msg = format!("get task group but ot found! group={}", req.group);
+                let msg = format!("get task group but ot found! group={}", group);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::NotFound, msg)
             })?;
@@ -503,14 +506,17 @@ impl LocalTransService {
         &self,
         req: TransControlTaskGroupInputRequest,
     ) -> BuckyResult<TransControlTaskGroupInputResponse> {
+
+        let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
+
         let task = self
             .bdt_stack
             .ndn()
             .root_task()
             .download()
-            .sub_task(&req.group)
+            .sub_task(&group)
             .ok_or_else(|| {
-                let msg = format!("get task group but ot found! group={}", req.group);
+                let msg = format!("get task group but ot found! group={}", group);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::NotFound, msg)
             })?;
