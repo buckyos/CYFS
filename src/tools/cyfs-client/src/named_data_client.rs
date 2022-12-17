@@ -4,7 +4,7 @@ use async_std::io::{copy as async_copy};
 use async_std::io::Write as AsyncWrite;
 use async_std::prelude::*;
 use cyfs_chunk_client::{ChunkClient, ChunkClientContext, ChunkSourceContext};
-use http_types::{Method, Request, Response};
+use http_types::{Method, Request};
 use rand::{Rng, RngCore};
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
@@ -23,7 +23,6 @@ use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
 use cyfs_base::*;
 use cyfs_base_meta::*;
 use std::str::FromStr;
-use std::convert::TryFrom;
 use std::net::Shutdown;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
@@ -227,13 +226,13 @@ impl NamedCacheClient {
         match id.obj_type_code() {
             ObjectTypeCode::File => {
                 let mut dest_file = async_std::fs::File::create(dest).await?;
-                let _desc = self.get_file_by_id_obj(&id, owner.as_ref(), &mut dest_file).await?;
+                let _desc = self.get_file_by_id_obj(&id, owner, &mut dest_file).await?;
                 dest_file.flush().await?;
                 Ok(())
             },
             ObjectTypeCode::Dir => {
                 let inner = if inner.len()>0{Some(inner.as_str())}else{None};
-                let _desc = self.get_dir_by_obj(&id, owner.as_ref(), inner, dest).await?;
+                let _desc = self.get_dir_by_obj(&id, owner, inner, dest).await?;
                 Ok(())
             },
             _ => {
@@ -275,34 +274,9 @@ impl NamedCacheClient {
         }
     }
 
-    async fn bdt_conn(&self, remote: &DeviceId) -> BuckyResult<PooledStream> {
+    async fn get_bdt_stream(&self, remote: &DeviceId) -> BuckyResult<PooledStream> {
         debug!("get bdt connection to {}:80", remote);
         self.stream_pool.get().unwrap().connect(remote).await
-    }
-
-    async fn http_on_bdt(&self, remote: &DeviceId, req: Request) -> BuckyResult<Response> {
-        debug!(
-            "http on bdt, remote {}, url {}",
-            remote,
-            req.url()
-        );
-        let conn = self.bdt_conn(remote).await?;
-        let resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
-
-        if !resp.status().is_success() {
-            Err(BuckyError::from(resp.status()))
-        } else {
-            Ok(resp)
-        }
-
-    }
-
-    async fn get_bdt_stream(&self, remote: &DeviceId) -> BuckyResult<PooledStream> {
-        debug!(
-            "http on bdt, remote {}, vport 80",
-            remote.to_string()
-        );
-        self.bdt_conn(remote).await
     }
 
     async fn get_chunk<W: ?Sized>(
@@ -481,10 +455,42 @@ impl NamedCacheClient {
         Ok(())
     }
 
+    #[async_recursion::async_recursion]
+    async fn get_desc_from_file_manager(&self, id: &ObjectId, owner: &ObjectId) -> BuckyResult<StandardObject> {
+        let owner_ood = self.get_device_from_owner_id(owner).await?;
+        let use_tcp = self.config.conn_strategy == ConnStrategy::TcpFirst || self.config.conn_strategy == ConnStrategy::TcpOnly;
+        if use_tcp {
+            if let StandardObject::Device(device) = self.get_desc(owner_ood.object_id(), None).await? {
+                for endpoint in device.body_expect("").content().endpoints() {
+                    if endpoint.is_static_wan() && endpoint.is_tcp() && endpoint.addr().is_ipv4() {
+                        let addr = format!("{}:{}", &endpoint.addr().ip().to_string(), self.config.tcp_file_manager_port);
+                        let req = Request::new(Method::Get, format!("http://{}/get_file?fileid={}", &addr, id).as_str());
+                        info!("named data client use tcp conn to {}", &addr);
+                        let conn = async_std::net::TcpStream::connect(&addr).await?;
+                        let mut resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
+                        let buf = resp.body_bytes().await?;
+                        let obj = StandardObject::clone_from_slice(&buf)?;
+                        self.object_cache.write().unwrap().insert(id.clone(), obj.clone());
+                        return Ok(obj);
+                    }
+                }
+            }
+        }
+
+        let req = Request::new(Method::Get, format!("http://www.cyfs.com/file_manager/get_file?fileid={}", id).as_str());
+        let conn = self.get_bdt_stream(&owner_ood).await?;
+        let mut resp = cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
+        let buf = resp.body_bytes().await?;
+        let obj = StandardObject::clone_from_slice(&buf)?;
+        self.object_cache.write().unwrap().insert(id.clone(), obj.clone());
+        return Ok(obj);
+    }
+
+    #[async_recursion::async_recursion]
     async fn get_desc(
         &self,
         fileid: &ObjectId,
-        owner: Option<&ObjectId>,
+        owner: Option<ObjectId>,
     ) -> BuckyResult<StandardObject> {
         info!("get desc for id {}", fileid);
         //1. 尝试从内存cache里取
@@ -532,28 +538,10 @@ impl NamedCacheClient {
         }
 
         //3. 如果再找不到，当有owner传入的情况下，用HTTP@BDT到owner去找
-        if let Some(owner) = owner {
+        if let Some(owner) = &owner {
             info!("try get desc from owner {}", owner);
-            if owner.obj_type_code() == ObjectTypeCode::Device {
-                // 先自己创建BDT协议栈去连owner
-                // 再用http去查询FileDesc
-                let url = Url::parse(
-                    format!(
-                        "http://www.cyfs.com/file_manager/get_file?fileid={}",
-                        fileid.to_string()
-                    ).as_str(),
-                ).unwrap();
-                let req = Request::new(Method::Get, url);
-                let mut resp = self.http_on_bdt(&DeviceId::try_from(owner).unwrap(), req).await?;
-                // 查回来之后要记得set到FileNamager
-                //FileManager::set_desc(fileid, &desc);
-                //resp是async的，要转换成同步Read
-                let mut buf = Vec::new();
-                resp.read_to_end(&mut buf).await?;
-                let obj = StandardObject::clone_from_slice(&buf)?;
-                self.object_cache.write().unwrap().insert(fileid.clone(), obj.clone());
-                return Ok(obj);
-            }
+            let desc = self.get_desc_from_file_manager(fileid, owner).await?;
+            return Ok(desc);
         }
 
         warn!("cannot get file desc {}", fileid);
@@ -567,10 +555,10 @@ impl NamedCacheClient {
             owner = self.get_id_from_str(str).await.map_or(None, |id|Some(id));
         }
 
-        self.get_dir_by_obj(&id, owner.as_ref(), inner_path, dest_path).await
+        self.get_dir_by_obj(&id, owner, inner_path, dest_path).await
     }
 
-    pub async fn get_dir_by_obj(&self, id: &ObjectId, owner: Option<&ObjectId>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<Dir> {
+    pub async fn get_dir_by_obj(&self, id: &ObjectId, owner: Option<ObjectId>, inner_path: Option<&str>, dest_path: &Path) -> BuckyResult<Dir> {
         info!("get dir by id {}, inner path {}", id, inner_path.unwrap_or("none"));
 
         let desc = self.get_desc(&id, owner).await?;
@@ -663,7 +651,7 @@ impl NamedCacheClient {
         if let Some(str) = owner_str {
             owner = self.get_id_from_str(str).await.map_or(None, |id|Some(id));
         }
-        let desc = self.get_desc(id.object_id(), owner.as_ref()).await?;
+        let desc = self.get_desc(id.object_id(), owner).await?;
         if let StandardObject::Dir(dir) = desc {
             match dir.desc().content().obj_list() {
                 NDNObjectInfo::ObjList(list) => {
@@ -708,7 +696,7 @@ impl NamedCacheClient {
             owner = self.get_id_from_str(str).await.map_or(None, |id|Some(id));
         }
 
-        self.get_file_by_id_obj(&id, owner.as_ref(), writer).await
+        self.get_file_by_id_obj(&id, owner, writer).await
     }
 
     // owner可能是peerid或者groupid
@@ -716,7 +704,7 @@ impl NamedCacheClient {
     pub async fn get_file_by_id_obj<W: ?Sized>(
         &self,
         id: &ObjectId,
-        owner: Option<&ObjectId>,
+        owner: Option<ObjectId>,
         writer: &mut W,
     ) -> BuckyResult<File>
     where
@@ -959,21 +947,41 @@ impl NamedCacheClient {
     // 把对象put到它的owner上去
     pub async fn put_obj(&self, object: &AnyNamedObject) -> BuckyResult<()> {
         let fileid = object.calculate_id();
-        info!("put file desc {} to {}", &fileid, object.owner().as_ref().unwrap());
-        let url = Url::parse(
-            format!("http://www.cyfs.com/file_manager/set_file?fileid={}",object.calculate_id()).as_str(),
-        ).unwrap();
-        let mut req = Request::new(Method::Post, url);
-        let buf = object.to_vec()?;
-        req.set_body(buf);
         let owner_id = object.owner().as_ref().unwrap();
         let owner_device = self.get_device_from_owner_id(owner_id).await?;
-        self.http_on_bdt(&owner_device, req).await?;
+        let buf = object.to_vec()?;
+        info!("put file desc {} to {}", &fileid, owner_id);
+
+        let use_tcp = self.config.conn_strategy == ConnStrategy::TcpFirst || self.config.conn_strategy == ConnStrategy::TcpOnly;
+        if use_tcp {
+            if let StandardObject::Device(device) = self.get_desc(owner_device.object_id(), Some(owner_id.clone())).await? {
+                for endpoint in device.body_expect("").content().endpoints() {
+                    if endpoint.is_static_wan() && endpoint.is_tcp() && endpoint.addr().is_ipv4() {
+                        let addr = format!("{}:{}", &endpoint.addr().ip().to_string(), self.config.tcp_file_manager_port);
+                        let mut req = Request::new(Method::Post, format!("http://{}/set_file?fileid={}", &addr, &fileid).as_str());
+                        req.set_body(buf);
+                        info!("named data client use tcp conn to {}", &addr);
+                        let conn = async_std::net::TcpStream::connect(&addr).await?;
+                        cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
+                        info!(
+                            "put desc {} to {} success",
+                            &fileid, &owner_id
+                        );
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        let req = Request::new(Method::Post, format!("http://www.cyfs.com/file_manager/set_file?fileid={}", &fileid).as_str());
+        let conn = self.get_bdt_stream(&owner_device).await?;
+        cyfs_util::async_h1_helper::connect_timeout(conn, req, Duration::from_secs(60 * 5)).await?;
         info!(
             "put desc {} to {} success",
-            &fileid, &object.owner().as_ref().unwrap()
+            &fileid, &owner_id
         );
-        Ok(())
+
+        return Ok(());
     }
 
     // 从一个cyfs链接解出(owner, file/dirid, inner_path)三个部分
