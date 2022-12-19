@@ -566,7 +566,6 @@ impl TransInputProcessor for LocalTransService {
     async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext> {
         let noc_req = NamedObjectCacheGetObjectRequest {
             object_id: TransContext::gen_context_id(
-                req.common.source.dec.clone(),
                 req.context_name,
             ),
             source: req.common.source,

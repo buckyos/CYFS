@@ -4,6 +4,7 @@ use std::{
     collections::LinkedList, 
 };
 use serde_json::{Map, Value};
+use serde::Serialize;
 use cyfs_base::*;
 use crate::{
     types::*
@@ -120,7 +121,7 @@ const PIECE_SESSION_FLAGS_RAPTOR_K: u16 = 1<<2;
 const PIECE_SESSION_FLAGS_RAPTOR_SEQ: u16 = 1<<3; 
 const PIECE_SESSION_FLAGS_RAPTOR_STEP: u16 = 1<<4;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub enum ChunkEncodeDesc {
     Unknown,
     Stream(Option<u32>, Option<u32>, Option<i32>), 

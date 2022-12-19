@@ -108,7 +108,7 @@ impl TransRequestor {
     }
 
     pub async fn put_context(&self, req: TransPutContextOutputRequest) -> BuckyResult<()> {
-        info!("will put context {}", req.context.get_context_name());
+        info!("will put context {}", req.context.context_path());
 
         let url = self.service_url.join("put_context").unwrap();
         let mut http_req = Request::new(Method::Post, url);
@@ -123,8 +123,8 @@ impl TransRequestor {
             code @ _ => {
                 let msg = resp.body_string().await.unwrap_or("".to_owned());
                 let msg = format!(
-                    "update context failed: context_name={}, status={}, msg={}",
-                    req.context.get_context_name(),
+                    "update context failed: context={}, status={}, msg={}",
+                    req.context.context_path(),
                     code,
                     msg
                 );
