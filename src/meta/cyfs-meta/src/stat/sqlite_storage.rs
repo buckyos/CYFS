@@ -113,6 +113,13 @@ impl Storage for SqliteStorage {
     async fn save(&self, cache: StatCache) -> BuckyResult<()> {
         for (id, time) in &cache.add_desc_stat {
             sqlx::query(INSERT_CREATE_DESC).bind(id.to_string()).bind(id.obj_type_code() as u8).bind(time).execute(&self.pool).await?;
+            let (area, type_code) = object_id_to_info(&id);
+            let _ = sqlx::query(INSERT_DESC).bind(id.to_string())
+                .bind(type_code)
+                .bind(area.country)
+                .bind(area.carrier)
+                .bind(area.city)
+                .execute(&self.pool).await;
         }
 
         for (name, ret, time) in &cache.api_call {
