@@ -1,18 +1,26 @@
-use cyfs_bdt::*;
+use super::manager::ContextManager;
 use cyfs_base::*;
+use cyfs_bdt::*;
 use cyfs_core::TransContextObject;
-use super::manager::ContextManagerRef;
 
 use std::collections::LinkedList;
 use std::sync::Arc;
 
-pub struct TransContextHolderInner {
+struct TransContextHolderInner {
     id: ObjectId,
     referer: String,
-    manager: ContextManagerRef,
+    manager: ContextManager,
 }
 
 impl TransContextHolderInner {
+    pub fn new(manager: ContextManager, id: ObjectId, referer: impl Into<String>) -> Self {
+        Self {
+            manager,
+            id,
+            referer: referer.into(),
+        }
+    }
+
     async fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool {
         let ret = self.manager.get_context(&self.id).await;
         if ret.is_none() {
@@ -21,7 +29,7 @@ impl TransContextHolderInner {
 
         let context = ret.unwrap();
         let ret = context.object.device_list().iter().find(|item| {
-            if item.target.eq(target) && item.chunk_codec_type.support_desc(encode_desc)  {
+            if item.target.eq(target) && item.chunk_codec_type.support_desc(encode_desc) {
                 true
             } else {
                 false
@@ -59,7 +67,13 @@ impl TransContextHolderInner {
 }
 
 #[derive(Clone)]
-pub struct TransContextHolder(Arc<TransContextHolderInner>);
+pub(super) struct TransContextHolder(Arc<TransContextHolderInner>);
+
+impl TransContextHolder {
+    pub fn new(manager: ContextManager, id: ObjectId, referer: impl Into<String>) -> Self {
+        Self(Arc::new(TransContextHolderInner::new(manager, id, referer)))
+    }
+}
 
 impl DownloadContext for TransContextHolder {
     fn clone_as_context(&self) -> Box<dyn DownloadContext> {

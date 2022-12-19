@@ -1,7 +1,8 @@
+use super::context::TransContextHolder;
 use cyfs_base::*;
+use cyfs_bdt::*;
 use cyfs_core::*;
 use cyfs_lib::*;
-use cyfs_bdt::*;
 
 use lru_time_cache::LruCache;
 use std::sync::{Arc, Mutex};
@@ -11,17 +12,23 @@ pub(crate) struct ContextItem {
     pub source_list: Vec<DownloadSource>,
 }
 
+#[derive(Clone)]
 pub(crate) struct ContextManager {
     noc: NamedObjectCacheRef,
-    device_manager: Box<dyn DeviceCache>,
+    device_manager: Arc<Box<dyn DeviceCache>>,
     list: Arc<Mutex<LruCache<ObjectId, Arc<ContextItem>>>>,
 }
 
+enum TransContextId<'a> {
+    Object(ObjectId),
+    Path(&'a str),
+}
+
 impl ContextManager {
-    pub fn new(noc: NamedObjectCacheRef, device_manager: Box<dyn DeviceCache>,) -> Self {
+    pub fn new(noc: NamedObjectCacheRef, device_manager: Box<dyn DeviceCache>) -> Self {
         Self {
             noc,
-            device_manager,
+            device_manager: Arc::new(device_manager),
             list: Arc::new(Mutex::new(LruCache::with_expiry_duration_and_capacity(
                 std::time::Duration::from_secs(60 * 10),
                 128,
@@ -29,12 +36,50 @@ impl ContextManager {
         }
     }
 
+    fn try_decode_context_id_from_string(s: &str) -> TransContextId {
+        if OBJECT_ID_BASE36_RANGE.contains(&s.len()) {
+            match ObjectId::from_base36(s) {
+                Ok(ret) => TransContextId::Object(ret),
+                Err(_) => TransContextId::Path(s),
+            }
+        } else if OBJECT_ID_BASE58_RANGE.contains(&s.len()) {
+            match ObjectId::from_base36(s) {
+                Ok(ret) => TransContextId::Object(ret),
+                Err(_) => TransContextId::Path(s),
+            }
+        } else {
+            TransContextId::Path(s)
+        }
+    }
+
+    pub fn gen_download_context_from_trans_context(
+        &self,
+        source: &RequestSourceInfo,
+        referer: impl Into<String>,
+        trans_context_id: &str,
+    ) -> impl DownloadContext {
+        let context_object_id = match Self::try_decode_context_id_from_string(trans_context_id) {
+            TransContextId::Object(id) => id,
+            TransContextId::Path(path) => {
+                let path = path.trim_start_matches('/');
+                TransContext::gen_context_id(path)
+            }
+        };
+
+        let holder = TransContextHolder::new(self.clone(), context_object_id, referer);
+        holder
+    }
+
     async fn new_item(&self, object: TransContext) -> ContextItem {
         let mut source_list = Vec::with_capacity(object.device_list().len());
         for item in object.device_list() {
             let ret = self.device_manager.get(&item.target).await;
             if ret.is_none() {
-                warn!("load trans context target but not found! context={}, target={}", object.context_path(), item.target);
+                warn!(
+                    "load trans context target but not found! context={}, target={}",
+                    object.context_path(),
+                    item.target
+                );
                 continue;
             }
 
@@ -154,7 +199,7 @@ impl ContextManager {
         };
 
         match ret.0 {
-            Some(v) => {
+            Some(_v) => {
                 info!("replace old trans context! id={}", id);
             }
             None => {}
