@@ -9,6 +9,7 @@ mod ndn;
 mod router;
 mod service;
 mod common;
+mod context;
 
 pub(crate) use bdt::*;
 pub(crate) use cache::*;
