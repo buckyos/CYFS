@@ -330,6 +330,7 @@ impl NamedCacheClient {
         let mut get_error = BuckyError::from(BuckyErrorCode::Ok);
         let mut use_tcp = self.config.conn_strategy == ConnStrategy::TcpFirst || self.config.conn_strategy == ConnStrategy::TcpOnly;
         for i in 0..self.config.retry_times {
+            info!("try get chunk {}, retry {}/{}", chunk_id, i, self.config.retry_times);
             let mut ctx = None;
             if use_tcp {
                 if let StandardObject::Device(device) = self.get_desc(owner.object_id(), None).await? {
@@ -356,15 +357,15 @@ impl NamedCacheClient {
                     return Err(BuckyError::new(BuckyErrorCode::NotSupport, format!("device {} not has static tcp ipv4 addr", owner)));
                 }
             }
-            // get_from_source在udp被阻断的情况下可能会超时，这里超时后返回Timeout错误，再试一次
 
-            match async_std::future::timeout(self.config.timeout, async {
-                ChunkClient::get_resp_from_source(ctx.clone().unwrap(), &chunk_get_data_with_meta_req).await
-            }).await {
-                Ok(ret) => {
-                    match ret {
-                        Ok(mut resp) => {
-                            match resp.body_bytes().await {
+            match ChunkClient::get_resp_from_source(ctx.clone().unwrap(), &chunk_get_data_with_meta_req).await {
+                Ok(mut resp) => {
+                    // 这里超时后返回Timeout错误，再试一次
+                    match async_std::future::timeout(self.config.timeout, async {
+                        resp.body_bytes().await
+                    }).await {
+                        Ok(buf) => {
+                            match buf {
                                 Ok(buf) => {
                                     let _ = chunk_content.set(buf);
                                     break;
@@ -376,32 +377,33 @@ impl NamedCacheClient {
                             }
                         }
                         Err(e) => {
-                            warn!("get chunk {} failed by err {}, may retry {}/{}", chunk_id, e, i+1, self.config.retry_times);
-                            get_error = e;
-                            // 如果是tcp失败，下次用bdt重试
-                            use_tcp = false;
-                            // 这里尝试看能不能让pool放弃这条连接
-                            if let Some(stream) = ctx.unwrap().get_bdt_stream() {
-                                if let Err(e) = stream.shutdown(Shutdown::Both) {
-                                    error!("bdt stream close error! {}", e);
-                                }
-                            }
-
+                            error!("recv chunk {} timeout after {} secs.", chunk_id, self.config.timeout.as_secs());
+                            get_error = BuckyError::from(e);
                         }
                     }
                 }
                 Err(e) => {
-                    error!("recv chunk {} timeout after {} secs. may retry {}/{}", chunk_id, self.config.timeout.as_secs(), i+1, self.config.retry_times);
-                    get_error = BuckyError::from(e);
+                    error!("get chunk {} response err {}", chunk_id, e);
                 }
             }
 
+            // 走到这里说明失败了
+            // 这里尝试看能不能让pool放弃这条连接
+            if let Some(stream) = ctx.unwrap().get_bdt_stream() {
+                if let Err(e) = stream.shutdown(Shutdown::Both) {
+                    error!("bdt stream close error! {}", e);
+                }
+            }
 
+            // 如果是tcp失败，且失败次数超过重试次数的一半，下次用bdt重试
+            if self.config.conn_straegy == ConnStrategy::TcpFirst && i+1 > (self.config.retry_times as f32 / 2f32).ceil() as u8 {
+                use_tcp = false;
+            }
         }
 
         if chunk_content.get().is_none() {
             // 表示3次都没有拿到chunk数据，这里报超时
-            error!("get chunk {} final failed after retry 3 times", chunk_id);
+            error!("get chunk {} final failed after retry {} times", chunk_id, self.config.retry_times);
             return Err(get_error);
         }
 
