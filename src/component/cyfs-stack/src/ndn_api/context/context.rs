@@ -1,28 +1,72 @@
-use super::manager::ContextManager;
+use super::manager::*;
 use cyfs_base::*;
 use cyfs_bdt::*;
 use cyfs_core::TransContextObject;
 
+use async_std::sync::Mutex as AsyncMutex;
 use std::collections::LinkedList;
 use std::sync::Arc;
 
+const CYFS_CONTEXT_OBJECT_EXPIRED_DATE: u64 = 1000 * 1000 * 5;
+
+#[derive(Debug)]
+pub(crate) enum TransContextRef {
+    Object(ObjectId),
+    Path((String, ObjectId)),
+}
+
+struct CachedContext {
+    context: Option<Arc<ContextItem>>,
+    last_updated: u64,
+}
+
 struct TransContextHolderInner {
-    id: ObjectId,
+    ref_id: TransContextRef,
+    cache: AsyncMutex<CachedContext>,
     referer: String,
     manager: ContextManager,
 }
 
 impl TransContextHolderInner {
-    pub fn new(manager: ContextManager, id: ObjectId, referer: impl Into<String>) -> Self {
+    pub fn new(
+        manager: ContextManager,
+        ref_id: TransContextRef,
+        referer: impl Into<String>,
+    ) -> Self {
         Self {
             manager,
-            id,
+            ref_id,
+            cache: AsyncMutex::new(CachedContext {
+                context: None,
+                last_updated: 0,
+            }),
             referer: referer.into(),
         }
     }
 
+    async fn get_context(&self) -> Option<Arc<ContextItem>> {
+        let mut cache = self.cache.lock().await;
+        if let Some(context) = &cache.context {
+            if bucky_time_now() - cache.last_updated < CYFS_CONTEXT_OBJECT_EXPIRED_DATE {
+                return Some(context.clone());
+            }
+        }
+
+        let context = match &self.ref_id {
+            TransContextRef::Object(id) => self.manager.get_context(id).await,
+            TransContextRef::Path((path, dec_id)) => {
+                self.manager.search_context(dec_id, path).await
+            }
+        };
+
+        cache.context = context.clone();
+        cache.last_updated = bucky_time_now();
+
+        context
+    }
+
     async fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool {
-        let ret = self.manager.get_context(&self.id).await;
+        let ret = self.get_context().await;
         if ret.is_none() {
             return false;
         }
@@ -45,7 +89,7 @@ impl TransContextHolderInner {
         limit: usize,
     ) -> LinkedList<DownloadSource> {
         let mut result = LinkedList::new();
-        let ret = self.manager.get_context(&self.id).await;
+        let ret = self.get_context().await;
         if ret.is_none() {
             return result;
         }
@@ -70,8 +114,21 @@ impl TransContextHolderInner {
 pub(super) struct TransContextHolder(Arc<TransContextHolderInner>);
 
 impl TransContextHolder {
-    pub fn new(manager: ContextManager, id: ObjectId, referer: impl Into<String>) -> Self {
-        Self(Arc::new(TransContextHolderInner::new(manager, id, referer)))
+    pub fn new(manager: ContextManager, ref_id: TransContextRef, referer: impl Into<String>) -> Self {
+        Self(Arc::new(TransContextHolderInner::new(manager, ref_id, referer)))
+    }
+
+    pub async fn init(&self) -> BuckyResult<()> {
+        match self.0.get_context().await {
+            Some(_) => {
+                Ok(())
+            }
+            None => {
+                let msg = format!("trans context not found! context={:?}", self.0.ref_id);
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
+            }
+        }
     }
 }
 

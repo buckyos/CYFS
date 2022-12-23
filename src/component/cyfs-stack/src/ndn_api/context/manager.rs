@@ -1,4 +1,4 @@
-use super::context::TransContextHolder;
+use super::context::*;
 use cyfs_base::*;
 use cyfs_bdt::*;
 use cyfs_core::*;
@@ -19,10 +19,6 @@ pub(crate) struct ContextManager {
     list: Arc<Mutex<LruCache<ObjectId, Arc<ContextItem>>>>,
 }
 
-enum TransContextId<'a> {
-    Object(ObjectId),
-    Path(&'a str),
-}
 
 impl ContextManager {
     pub fn new(noc: NamedObjectCacheRef, device_manager: Box<dyn DeviceCache>) -> Self {
@@ -36,38 +32,34 @@ impl ContextManager {
         }
     }
 
-    fn try_decode_context_id_from_string(s: &str) -> TransContextId {
+    fn decode_context_id_from_string(source: &RequestSourceInfo, s: &str) -> TransContextRef {
         if OBJECT_ID_BASE36_RANGE.contains(&s.len()) {
             match ObjectId::from_base36(s) {
-                Ok(ret) => TransContextId::Object(ret),
-                Err(_) => TransContextId::Path(s),
+                Ok(ret) => TransContextRef::Object(ret),
+                Err(_) => TransContextRef::Path((s.to_owned(), source.dec.clone())),
             }
         } else if OBJECT_ID_BASE58_RANGE.contains(&s.len()) {
             match ObjectId::from_base36(s) {
-                Ok(ret) => TransContextId::Object(ret),
-                Err(_) => TransContextId::Path(s),
+                Ok(ret) => TransContextRef::Object(ret),
+                Err(_) => TransContextRef::Path((s.to_owned(), source.dec.clone())),
             }
         } else {
-            TransContextId::Path(s)
+            TransContextRef::Path((s.to_owned(), source.dec.clone()))
         }
     }
 
-    pub fn gen_download_context_from_trans_context(
+    pub async fn gen_download_context_from_trans_context(
         &self,
         source: &RequestSourceInfo,
         referer: impl Into<String>,
         trans_context_id: &str,
-    ) -> impl DownloadContext {
-        let context_object_id = match Self::try_decode_context_id_from_string(trans_context_id) {
-            TransContextId::Object(id) => id,
-            TransContextId::Path(path) => {
-                let path = path.trim_start_matches('/');
-                TransContext::gen_context_id(path)
-            }
-        };
+    ) -> BuckyResult<impl DownloadContext> {
+        let ref_id = Self::decode_context_id_from_string(source, trans_context_id);
 
-        let holder = TransContextHolder::new(self.clone(), context_object_id, referer);
-        holder
+        let holder = TransContextHolder::new(self.clone(), ref_id, referer);
+        holder.init().await?;
+
+        Ok(holder)
     }
 
     async fn new_item(&self, object: TransContext) -> ContextItem {
@@ -94,6 +86,34 @@ impl ContextManager {
         ContextItem {
             object,
             source_list,
+        }
+    }
+
+    /* path likes /a/b/c */
+    pub async fn search_context(&self, dec_id: &ObjectId, path: &str) -> Option<Arc<ContextItem>> {
+        assert!(TransContextPath::verify(path));
+
+        let mut current_path = path;
+        loop {
+            let id = TransContext::gen_context_id(dec_id.to_owned(), current_path);
+            if let Some(item) = self.get_context(&id).await {
+                info!(
+                    "search trans context by path! path={}, matched={}, context={}",
+                    path, current_path, id
+                );
+                break Some(item);
+            }
+
+            if current_path == "/" {
+                error!("search trans context by path but not found! path={}", path);
+                break None;
+            }
+
+            let ret = path.rsplit_once('/').unwrap();
+            current_path = match ret.0 {
+                "" => "/",
+                _ => ret.0,
+            };
         }
     }
 
@@ -133,7 +153,7 @@ impl ContextManager {
                 let object = TransContext::clone_from_slice(resp.object.object_raw.as_slice())
                     .map_err(|e| {
                         let msg = format!(
-                            "get trans context from noc but invalid object! id={}, {}",
+                            "load trans context from noc but invalid object! id={}, {}",
                             id, e
                         );
                         error!("{}", msg);
@@ -143,11 +163,17 @@ impl ContextManager {
                 Ok(Some(object))
             }
             Ok(None) => {
-                warn!("get trans context object from noc but not found: id={}", id);
+                warn!(
+                    "load trans context object from noc but not found: id={}",
+                    id
+                );
                 Ok(None)
             }
             Err(e) => {
-                warn!("get trans context object from noc failed! id={}, {}", id, e);
+                warn!(
+                    "load trans context object from noc failed! id={}, {}",
+                    id, e
+                );
                 Err(e)
             }
         }
