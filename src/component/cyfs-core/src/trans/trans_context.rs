@@ -32,7 +32,7 @@ impl DescContent for TransContextDescContent {
 #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
 pub struct TransContextDevice {
     pub target: DeviceId,
-    pub chunk_codec_type: ChunkEncodeDesc,
+    pub chunk_codec_desc: ChunkCodecDesc,
 }
 
 #[derive(Clone, Serialize)]
@@ -62,13 +62,13 @@ impl TryFrom<protos::TransContextDevice> for TransContextDevice {
             None
         };
 
-        let chunk_codec_type = match value.chunk_codec_type {
-            protos::TransContextDevice_ChunkCodecType::Unknown => ChunkEncodeDesc::Unknown,
+        let chunk_codec_desc = match value.chunk_codec_desc {
+            protos::TransContextDevice_ChunkCodecDesc::Unknown => ChunkCodecDesc::Unknown,
             _ => {
                 let info = info.ok_or_else(|| {
                     let msg = format!(
                         "chunk_codec_info field missing! type={:?}",
-                        value.chunk_codec_type
+                        value.chunk_codec_desc
                     );
                     error!("{}", msg);
                     BuckyError::new(BuckyErrorCode::InvalidData, msg)
@@ -90,12 +90,12 @@ impl TryFrom<protos::TransContextDevice> for TransContextDevice {
                     None
                 };
 
-                match value.chunk_codec_type {
-                    protos::TransContextDevice_ChunkCodecType::Stream => {
-                        ChunkEncodeDesc::Stream(start, end, step)
+                match value.chunk_codec_desc {
+                    protos::TransContextDevice_ChunkCodecDesc::Stream => {
+                        ChunkCodecDesc::Stream(start, end, step)
                     }
-                    protos::TransContextDevice_ChunkCodecType::Raptor => {
-                        ChunkEncodeDesc::Raptor(start, end, step)
+                    protos::TransContextDevice_ChunkCodecDesc::Raptor => {
+                        ChunkCodecDesc::Raptor(start, end, step)
                     }
                     _ => unreachable!(),
                 }
@@ -104,7 +104,7 @@ impl TryFrom<protos::TransContextDevice> for TransContextDevice {
 
         Ok(Self {
             target,
-            chunk_codec_type,
+            chunk_codec_desc,
         })
     }
 }
@@ -116,18 +116,18 @@ impl TryFrom<&TransContextDevice> for protos::TransContextDevice {
         let mut ret = protos::TransContextDevice::new();
         ret.set_target(value.target.to_vec().unwrap());
 
-        match value.chunk_codec_type {
-            ChunkEncodeDesc::Unknown => {
-                ret.set_chunk_codec_type(protos::TransContextDevice_ChunkCodecType::Unknown);
+        match value.chunk_codec_desc {
+            ChunkCodecDesc::Unknown => {
+                ret.set_chunk_codec_desc(protos::TransContextDevice_ChunkCodecDesc::Unknown);
             }
             _ => {
-                let (start, end, step) = match value.chunk_codec_type {
-                    ChunkEncodeDesc::Stream(start, end, step) => {
-                        ret.set_chunk_codec_type(protos::TransContextDevice_ChunkCodecType::Stream);
+                let (start, end, step) = match value.chunk_codec_desc {
+                    ChunkCodecDesc::Stream(start, end, step) => {
+                        ret.set_chunk_codec_desc(protos::TransContextDevice_ChunkCodecDesc::Stream);
                         (start, end, step)
                     }
-                    ChunkEncodeDesc::Raptor(start, end, step) => {
-                        ret.set_chunk_codec_type(protos::TransContextDevice_ChunkCodecType::Raptor);
+                    ChunkCodecDesc::Raptor(start, end, step) => {
+                        ret.set_chunk_codec_desc(protos::TransContextDevice_ChunkCodecDesc::Raptor);
                         (start, end, step)
                     }
                     _ => unreachable!(),
@@ -293,13 +293,13 @@ mod test {
 
         let device = TransContextDevice {
             target: DeviceId::from_str("5bnZHzXvMmqiiua3iodiaYqWR24QbZE5o8r35bH8y9Yh").unwrap(),
-            chunk_codec_type: ChunkEncodeDesc::Stream(Some(1), Some(100), Some(1)),
+            chunk_codec_desc: ChunkCodecDesc::Stream(Some(1), Some(100), Some(1)),
         };
         context.device_list_mut().push(device);
 
         let device = TransContextDevice {
             target: DeviceId::from_str("5bnZHzXvMmqiiua3iodiaYqWR24QbZE5o8r35bH8y9Yh").unwrap(),
-            chunk_codec_type: ChunkEncodeDesc::Raptor(Some(100), Some(1000), None),
+            chunk_codec_desc: ChunkCodecDesc::Raptor(Some(100), Some(1000), None),
         };
         context.device_list_mut().push(device);
         context.body_mut().as_mut().unwrap().increase_update_time(bucky_time_now());

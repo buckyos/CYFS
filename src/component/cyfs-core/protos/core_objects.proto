@@ -303,12 +303,12 @@ message TransContextDeviceChunkCodecInfo {
 
 message TransContextDevice {
     bytes target = 1;
-    enum ChunkCodecType {
+    enum ChunkCodecDesc {
         Unknown = 0;
         Stream = 1;
         Raptor = 2;
     }
-    ChunkCodecType chunk_codec_type  = 2;
+    ChunkCodecDesc chunk_codec_desc  = 2;
     optional TransContextDeviceChunkCodecInfo chunk_codec_info = 3;
 }
 message TransContextBodyContent {

@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) struct ContextItem {
     pub object: TransContext,
-    pub source_list: Vec<DownloadSource>,
+    pub source_list: Vec<DownloadSource<DeviceDesc>>,
 }
 
 #[derive(Clone)]
@@ -48,7 +48,7 @@ impl ContextManager {
         }
     }
 
-    pub async fn gen_download_context_from_trans_context(
+    pub async fn create_download_context_from_trans_context(
         &self,
         source: &RequestSourceInfo,
         referer: impl Into<String>,
@@ -78,7 +78,7 @@ impl ContextManager {
             let device = ret.unwrap();
             let source = DownloadSource {
                 target: device.into_desc(),
-                encode_desc: item.chunk_codec_type.clone(),
+                codec_desc: item.chunk_codec_desc.clone(),
             };
             source_list.push(source);
         }

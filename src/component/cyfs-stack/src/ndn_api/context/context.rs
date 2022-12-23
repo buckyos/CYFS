@@ -65,7 +65,7 @@ impl TransContextHolderInner {
         context
     }
 
-    async fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool {
+    async fn source_exists(&self, target: &DeviceId, codec_desc: &ChunkCodecDesc) -> bool {
         let ret = self.get_context().await;
         if ret.is_none() {
             return false;
@@ -73,7 +73,7 @@ impl TransContextHolderInner {
 
         let context = ret.unwrap();
         let ret = context.object.device_list().iter().find(|item| {
-            if item.target.eq(target) && item.chunk_codec_type.support_desc(encode_desc) {
+            if item.target.eq(target) && item.chunk_codec_desc.support_desc(codec_desc) {
                 true
             } else {
                 false
@@ -85,9 +85,9 @@ impl TransContextHolderInner {
 
     async fn sources_of(
         &self,
-        filter: Box<dyn Fn(&DownloadSource) -> bool>,
+        filter: &DownloadSourceFilter,
         limit: usize,
-    ) -> LinkedList<DownloadSource> {
+    ) -> LinkedList<DownloadSource<DeviceDesc>> {
         let mut result = LinkedList::new();
         let ret = self.get_context().await;
         if ret.is_none() {
@@ -97,7 +97,7 @@ impl TransContextHolderInner {
         let context = ret.unwrap();
         let mut count = 0;
         for source in &context.source_list {
-            if (*filter)(source) {
+            if filter.check(source) {
                 result.push_back(source.clone());
                 count += 1;
                 if count >= limit {
@@ -114,15 +114,19 @@ impl TransContextHolderInner {
 pub(super) struct TransContextHolder(Arc<TransContextHolderInner>);
 
 impl TransContextHolder {
-    pub fn new(manager: ContextManager, ref_id: TransContextRef, referer: impl Into<String>) -> Self {
-        Self(Arc::new(TransContextHolderInner::new(manager, ref_id, referer)))
+    pub fn new(
+        manager: ContextManager,
+        ref_id: TransContextRef,
+        referer: impl Into<String>,
+    ) -> Self {
+        Self(Arc::new(TransContextHolderInner::new(
+            manager, ref_id, referer,
+        )))
     }
 
     pub async fn init(&self) -> BuckyResult<()> {
         match self.0.get_context().await {
-            Some(_) => {
-                Ok(())
-            }
+            Some(_) => Ok(()),
             None => {
                 let msg = format!("trans context not found! context={:?}", self.0.ref_id);
                 error!("{}", msg);
@@ -132,6 +136,7 @@ impl TransContextHolder {
     }
 }
 
+#[async_trait::async_trait]
 impl DownloadContext for TransContextHolder {
     fn clone_as_context(&self) -> Box<dyn DownloadContext> {
         Box::new(self.clone())
@@ -141,15 +146,17 @@ impl DownloadContext for TransContextHolder {
         &self.0.referer
     }
 
-    fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool {
-        todo!();
+    async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool {
+        self.0
+            .source_exists(&source.target, &source.codec_desc)
+            .await
     }
 
-    fn sources_of(
+    async fn sources_of(
         &self,
         filter: &DownloadSourceFilter,
         limit: usize,
-    ) -> LinkedList<DownloadSource> {
-        todo!();
+    ) -> LinkedList<DownloadSource<DeviceDesc>> {
+        self.0.sources_of(filter, limit).await
     }
 }
