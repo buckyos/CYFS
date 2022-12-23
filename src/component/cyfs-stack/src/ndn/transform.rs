@@ -60,6 +60,7 @@ impl NDNInputTransformer {
             object_id: req.object_id,
             range: req.range,
             inner_path: req.inner_path,
+            context: req.context,
             group: req.group,
         };
 
@@ -109,6 +110,7 @@ impl NDNInputTransformer {
             object_id: req.object_id,
             range: req.range,
             inner_path: req.inner_path,
+            context: req.context,
             group: req.group,
         };
 
@@ -261,6 +263,7 @@ impl NDNOutputTransformer {
             data_type: NDNDataType::Mem,
             range: req.range,
             inner_path: req.inner_path,
+            context: req.context,
             group: req.group,
         };
 
@@ -312,6 +315,7 @@ impl NDNOutputTransformer {
             data_type: NDNDataType::SharedMem,
             range: req.range,
             inner_path: req.inner_path,
+            context: req.context,
             group: req.group,
         };
 

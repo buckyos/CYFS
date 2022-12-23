@@ -185,6 +185,10 @@ pub struct NDNGetDataInputRequest {
     // 对dir/objectmap有效
     pub inner_path: Option<String>,
 
+    // get data from context instead of common.target
+    pub context: Option<String>,
+
+    // get data task's group
     pub group: Option<String>,
 }
 
@@ -199,6 +203,10 @@ impl fmt::Display for NDNGetDataInputRequest {
         }
 
         write!(f, ", inner_path: {:?}", self.inner_path)?;
+
+        if let Some(context) = &self.context {
+            write!(f, ", context: {}", context)?;
+        }
 
         if let Some(group) = &self.group {
             write!(f, ", group: {}", group)?;

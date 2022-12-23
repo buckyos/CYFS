@@ -16,6 +16,7 @@ struct NDNGetDataUrlParams {
     object_id: ObjectId,
     inner_path: Option<String>,
     action: Option<NDNAction>,
+    context: Option<String>,
     group: Option<String>,
 }
 
@@ -59,6 +60,7 @@ impl NDNRequestHandler {
         let mut action = None;
         let mut req_path = None;
         let mut object_id = None;
+        let mut context = None;
         let mut group = None;
 
         for (k, v) in req.request.url().query_pairs() {
@@ -90,6 +92,9 @@ impl NDNRequestHandler {
                 }
                 cyfs_base::CYFS_REQ_PATH => {
                     req_path = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
+                }
+                cyfs_base::CYFS_CONTEXT => {
+                    context = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
                 }
                 cyfs_base::CYFS_TASK_GROUP => {
                     group = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
@@ -135,6 +140,7 @@ impl NDNRequestHandler {
             action,
             object_id: object_id.unwrap(),
             inner_path,
+            context,
             group,
         };
 
@@ -344,6 +350,10 @@ impl NDNRequestHandler {
             &req.request,
             cyfs_base::CYFS_INNER_PATH,
         )?;
+        let context = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            &req.request,
+            cyfs_base::CYFS_CONTEXT,
+        )?;
         let group = RequestorHelper::decode_optional_header_with_utf8_decoding(
             &req.request,
             cyfs_base::CYFS_TASK_GROUP,
@@ -362,6 +372,7 @@ impl NDNRequestHandler {
                 range,
                 inner_path,
 
+                context,
                 group,
             }
         } else {
@@ -373,6 +384,7 @@ impl NDNRequestHandler {
                 range,
                 inner_path,
 
+                context,
                 group,
             }
         };
@@ -496,6 +508,7 @@ impl NDNRequestHandler {
             data_type: NDNDataType::Mem,
             range,
             inner_path: get_data_params.inner_path,
+            context: get_data_params.context,
             group: get_data_params.group,
         };
 

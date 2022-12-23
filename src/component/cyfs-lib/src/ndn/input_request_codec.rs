@@ -52,6 +52,12 @@ impl JsonCodec<NDNGetDataInputRequest> for NDNGetDataInputRequest {
 
         JsonCodecHelper::encode_option_string_field(
             &mut obj,
+            "context",
+            self.context.as_ref(),
+        );
+
+        JsonCodecHelper::encode_option_string_field(
+            &mut obj,
             "group",
             self.group.as_ref(),
         );
@@ -69,6 +75,7 @@ impl JsonCodec<NDNGetDataInputRequest> for NDNGetDataInputRequest {
             data_type: JsonCodecHelper::decode_string_field(obj, "data_type")?,
             range,
             inner_path: JsonCodecHelper::decode_option_string_field(obj, "inner_path")?,
+            context: JsonCodecHelper::decode_option_string_field(obj, "context")?,
             group: JsonCodecHelper::decode_option_string_field(obj, "group")?,
         })
     }
