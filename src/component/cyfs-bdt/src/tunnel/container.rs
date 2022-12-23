@@ -407,7 +407,7 @@ impl TunnelContainer {
         proxy: ProxyType) -> Result<T, BuckyError> {
         trace!("{} try create tunnel on {}", self, ep_pair);
         let stack = self.stack();
-        if stack.net_manager().listener().ep_set().get(ep_pair.remote()).is_some() {
+        if stack.net_manager().listener().endpoints().get(ep_pair.remote()).is_some() {
             trace!("{} ignore creat tunnel on {} for remote is self", self, ep_pair);
             return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "remote is self"));
         }

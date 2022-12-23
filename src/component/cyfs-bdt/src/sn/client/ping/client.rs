@@ -85,6 +85,7 @@ enum ClientState {
 struct ClientImpl {
     stack: WeakStack, 
     config: PingConfig, 
+    sn_index: usize,  
     sn_id: DeviceId, 
     sn: Device, 
     gen_seq: Arc<TempSeqGenerator>, 
@@ -109,6 +110,7 @@ impl PingClient {
         config: PingConfig, 
         gen_seq: Arc<TempSeqGenerator>, 
         net_listener: NetListener, 
+        sn_index: usize, 
         sn: Device, 
         local_device: Device, 
     ) -> Self {
@@ -123,6 +125,25 @@ impl PingClient {
             net_listener, 
             sn, 
             sn_id, 
+            sn_index, 
+            local_device: RwLock::new(local_device), 
+            state: RwLock::new(ClientState::Init(StateWaiter::new()))
+        }))
+    }
+
+    pub(crate) fn reset(
+        &self, 
+        net_listener: NetListener, 
+        local_device: Device, 
+    ) -> Self {
+        Self(Arc::new(ClientImpl {
+            stack: self.0.stack.clone(), 
+            config: self.0.config.clone(), 
+            sn_id: self.0.sn_id.clone(),
+            sn_index: self.0.sn_index, 
+            sn: self.0.sn.clone(), 
+            gen_seq: self.0.gen_seq.clone(), 
+            net_listener, 
             local_device: RwLock::new(local_device), 
             state: RwLock::new(ClientState::Init(StateWaiter::new()))
         }))
@@ -188,6 +209,10 @@ impl PingClient {
 
     pub fn sn(&self) -> &DeviceId {
         &self.0.sn_id
+    }
+
+    pub fn index(&self) -> usize {
+        self.0.sn_index
     }
 
 

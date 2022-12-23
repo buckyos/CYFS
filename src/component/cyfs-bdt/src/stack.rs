@@ -379,7 +379,7 @@ impl Stack {
         let net_listener = stack.net_manager().listener();
         net_listener.start(stack.to_weak());
         
-        stack.sn_client().reset(known_sn);
+        stack.sn_client().reset_sn_list(known_sn);
         stack.ndn().start();
 
         if let Some(debug_stub) = debug_stub {
@@ -463,12 +463,12 @@ impl Stack {
         let sn_id_list: Vec<DeviceId> = sn_list.iter().map(|sn| sn.desc().device_id()).collect();
         info!("{} reset_sn_list {:?}", self, sn_id_list);
         self.device_cache().add_sn(&sn_list);
-        self.sn_client().reset(sn_list)
+        self.sn_client().reset_sn_list(sn_list)
     }
 
-    pub async fn reset_endpoints(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {
+    pub async fn reset_endpoints(&self, endpoints: &Vec<Endpoint>) -> PingClients {
         info!("{} reset {:?}", self, endpoints);
-        let listener = self.net_manager().reset(endpoints.as_slice())?;
+        let listener = self.net_manager().reset(endpoints.as_slice());
         
         let mut local = self.sn_client().ping().default_local();
         let device_endpoints = local.mut_connect_info().mut_endpoints();
@@ -490,10 +490,7 @@ impl Stack {
         .await;
         self.tunnel_manager().reset();
 
-        let sn_list = self.sn_client().ping().sn_list().clone();
-        // self.sn_client().reset(listener.clone(), sn_list, local);
-        // listener.wait_online().await
-        Ok(())
+        self.sn_client().reset_endpoints(listener.clone(), local)
     }
 }
 
