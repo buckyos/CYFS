@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::codec::protos::core_objects as protos;
 use cyfs_base::*;
 use cyfs_bdt::*;
@@ -8,6 +10,7 @@ use serde::Serialize;
 #[derive(ProtobufEncode, ProtobufDecode, ProtobufTransform, Clone, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::TransContextDescContent)]
 pub struct TransContextDescContent {
+    pub dec_id: ObjectId,
     pub context_path: String,
 }
 
@@ -181,19 +184,53 @@ pub type TransContextType = NamedObjType<TransContextDescContent, TransContextBo
 pub type TransContextBuilder = NamedObjectBuilder<TransContextDescContent, TransContextBodyContent>;
 pub type TransContext = NamedObjectBase<TransContextType>;
 
+
+pub struct TransContextPath;
+
+
+impl TransContextPath {
+
+    pub fn verify(path: &str) -> bool {
+        if path == "/" {
+            return true;
+        }
+
+        path.starts_with('/') && !path.ends_with('/')
+    }
+
+    /*
+    a/b -> /a/b
+    /a/b/ -> /a/b
+    / -> /
+    */
+    pub fn fix_path(path: &str) -> Cow<str> {
+        if path == "/" {
+            return Cow::Borrowed(path);
+        }
+
+        let path_ret = path.trim_end_matches('/');
+        if path_ret.starts_with('/') {
+            Cow::Borrowed(path)
+        } else {
+            let path = format!("/{}", path);
+            Cow::Owned(path)
+        }
+    }
+}
+
 pub trait TransContextObject {
-    fn new(context_path: impl Into<String>) -> Self;
-    fn gen_context_id(context_path: impl Into<String>) -> ObjectId;
+    fn new(dec_id: ObjectId, context_path: &str) -> Self;
+    fn gen_context_id(dec_id: ObjectId, context_path: &str) -> ObjectId;
     fn context_path(&self) -> &str;
     fn device_list(&self) -> &Vec<TransContextDevice>;
     fn device_list_mut(&mut self) -> &mut Vec<TransContextDevice>;
 }
 
 impl TransContextObject for TransContext {
-    fn new(context_path: impl Into<String>) -> Self {
-        let context_path = context_path.into();
+    fn new(dec_id: ObjectId, context_path: &str) -> Self {
+        let context_path = TransContextPath::fix_path(context_path).to_string();
 
-        let desc = TransContextDescContent { context_path };
+        let desc = TransContextDescContent { dec_id, context_path };
         let body = TransContextBodyContent {
             device_list: vec![],
         };
@@ -203,10 +240,10 @@ impl TransContextObject for TransContext {
             .build()
     }
 
-    fn gen_context_id(context_path: impl Into<String>) -> ObjectId {
-        let context_path = context_path.into();
+    fn gen_context_id(dec_id: ObjectId, context_path: &str) -> ObjectId {
+        let context_path = TransContextPath::fix_path(context_path).to_string();
 
-        let desc = TransContextDescContent { context_path };
+        let desc = TransContextDescContent { dec_id, context_path };
         NamedObjectDescBuilder::new(TransContextDescContent::obj_type(), desc)
             .option_create_time(None)
             .build()
@@ -237,8 +274,22 @@ mod test {
     use std::str::FromStr;
 
     #[test]
+    fn test_path() {
+        let path = "/a";
+        let ret = path.rsplit_once("/").unwrap();
+        assert_eq!(ret.0, "");
+        assert_eq!(ret.1, "a");
+
+        let path = "/a/b";
+        let ret = path.rsplit_once("/").unwrap();
+        assert_eq!(ret.0, "/a");
+        assert_eq!(ret.1, "b");
+    }
+
+    #[test]
     fn test() {
-        let mut context = TransContext::new("/a/b/c");
+        let id  = ObjectId::from_str("5r4MYfFdfQ5dvAvD2WZ8wd7iKPFpWLSiAnMuTui912xL").unwrap();
+        let mut context = TransContext::new(id, "/a/b/c");
 
         let device = TransContextDevice {
             target: DeviceId::from_str("5bnZHzXvMmqiiua3iodiaYqWR24QbZE5o8r35bH8y9Yh").unwrap(),

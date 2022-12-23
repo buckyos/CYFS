@@ -291,7 +291,8 @@ message MsgDescContent {
 }
 
 message TransContextDescContent {
-    string context_path = 1;
+    bytes dec_id = 1;
+    string context_path = 2;
 }
 
 message TransContextDeviceChunkCodecInfo {
