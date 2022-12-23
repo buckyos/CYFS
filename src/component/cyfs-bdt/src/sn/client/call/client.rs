@@ -8,21 +8,13 @@ use futures::future::AbortRegistration;
 use cyfs_base::*;
 use crate::{
     types::*,
-    interface::{udp::{Interface, PackageBoxEncodeContext}}, 
+    interface::{udp::{Interface}}, 
     protocol::{*, v0::*}, 
     history::keystore, 
     stack::{WeakStack, Stack}
 };
+use super::udp::{self, *};
 
-
-pub mod udp {
-    use std::time::Duration;
-
-    #[derive(Clone)]
-    pub struct Config {
-        pub resend_interval: Duration
-    }
-}
 
 #[derive(Clone)]
 pub struct CallConfig {
@@ -292,6 +284,16 @@ impl CallSessions {
     }
 }
 
+#[async_trait::async_trait]
+pub(super) trait CallTunnel {
+    fn clone_as_call_tunnel(&self) -> Box<dyn CallTunnel>;
+    async fn wait(&self) -> (BuckyResult<Device>, Option<EndpointPair>);
+    fn on_time_escape(&self, now: Timestamp);
+    fn reset(&self) -> Option<Box<dyn CallTunnel>>;
+    fn cancel(&self);
+    fn on_udp_call_resp(&self, resp: &SnCallResp, local: &Interface, from: &Endpoint);
+}
+
 enum SessionState {
     Init, 
     FirstTry, 
@@ -322,16 +324,17 @@ struct SessionImpl {
 #[derive(Clone)]
 pub struct CallSession(Arc<SessionImpl>);
 
-struct WeakSession(Weak<SessionImpl>);
+#[derive(Clone)]
+pub(super) struct WeakSession(Weak<SessionImpl>);
 
 impl WeakSession {
-    fn to_strong(&self) -> Option<CallSession> {
+    pub fn to_strong(&self) -> Option<CallSession> {
         self.0.upgrade().map(|ptr| CallSession(ptr))
     }
 }
 
 impl CallSession {
-    fn to_weak(&self) -> WeakSession {
+    pub(super) fn to_weak(&self) -> WeakSession {
         WeakSession(Arc::downgrade(&self.0))
     }
 
@@ -363,6 +366,10 @@ impl CallSession {
 
     fn sn(&self) -> &DeviceId {
         &self.0.sn
+    }
+
+    pub(super) fn stack(&self) -> Stack {
+        Stack::from(&self.0.stack)
     }
 
     fn on_udp_call_resp(&self, resp: &SnCallResp, local: &Interface, from: &Endpoint) {
@@ -414,7 +421,7 @@ impl CallSession {
         }
     }
 
-    fn config(&self) -> &CallConfig {
+    pub fn config(&self) -> &CallConfig {
         &self.0.config
     }
 
@@ -479,7 +486,7 @@ impl CallSession {
         }
     }
 
-    fn packages(&self) -> Arc<PackageBox> {
+    pub fn packages(&self) -> Arc<PackageBox> {
         self.0.state.read().unwrap().packages.clone()
     }
 
@@ -583,234 +590,3 @@ impl CallSession {
 }
 
 
-enum UdpState {
-    Init(StateWaiter), 
-    Running {
-        waiter: StateWaiter, 
-        first_send_time: Timestamp,  
-        last_send_time: Timestamp
-    }, 
-    Responsed {
-        active: EndpointPair, 
-        result: BuckyResult<Device>
-    }, 
-    Canceled(BuckyError)
-}
-
-struct UdpImpl {
-    owner: WeakSession, 
-    locals: Vec<Interface>, 
-    remotes: Vec<Endpoint>, 
-    state: RwLock<UdpState>
-}
-
-#[derive(Clone)]
-struct UdpCall(Arc<UdpImpl>);
-
-impl UdpCall {
-    fn new(owner: WeakSession, locals: Vec<Interface>, remotes: Vec<Endpoint>) -> Self {
-        Self(Arc::new(UdpImpl {
-            owner, 
-            locals, 
-            remotes, 
-            state: RwLock::new(UdpState::Init(StateWaiter::new()))
-        }))
-    } 
-
-    fn send_call(&self) {
-        struct SendIter {
-            tunnel: UdpCall, 
-            local_index: usize, 
-            remote_index: usize
-        }
-
-        impl SendIter {
-            fn new(tunnel: UdpCall) -> Self {
-                Self {
-                    tunnel, 
-                    local_index: 0, 
-                    remote_index: 0
-                }
-            }
-        }
-
-        impl Iterator for SendIter {
-            type Item = (Interface, Endpoint);
-
-            fn next(&mut self) -> Option<Self::Item> {
-                if self.local_index == self.tunnel.0.locals.len() {
-                    return None;
-                }
-                if self.remote_index == self.tunnel.0.remotes.len() {
-                    self.local_index += 1;
-                    if self.local_index == self.tunnel.0.locals.len() {
-                        return None;
-                    } 
-                }
-                let ret = (self.tunnel.0.locals[self.local_index].clone(), self.tunnel.0.remotes[self.remote_index].clone());
-                self.remote_index += 1;
-                Some(ret)
-            }
-        }
-
-        if let Some(session) = self.0.owner.to_strong() {
-            let mut context = PackageBoxEncodeContext::default();
-            let _ = Interface::send_box_mult(&mut context, session.packages().as_ref(), SendIter::new(self.clone()), |_, _, _| true);
-        }
-    }
-
-
-    async fn wait(&self) -> (BuckyResult<Device>, Option<EndpointPair>) {
-        enum NextStep {
-            Start(AbortRegistration), 
-            Wait(AbortRegistration),
-            Return((BuckyResult<Device>, Option<EndpointPair>))
-        }
-
-        let next = {
-            let mut state = self.0.state.write().unwrap();
-            match &mut *state {
-                UdpState::Init(waiter) => {
-                    let next = NextStep::Start(waiter.new_waiter());
-                    let now = bucky_time_now();
-                    *state = UdpState::Running {
-                        waiter: waiter.transfer(), 
-                        first_send_time: now, 
-                        last_send_time: now
-                    };
-                    next
-                }, 
-                UdpState::Running {
-                    waiter, 
-                    ..
-                } => NextStep::Wait(waiter.new_waiter()), 
-                UdpState::Responsed { 
-                    active, 
-                    result 
-                } => NextStep::Return((result.clone(), Some(active.clone()))), 
-                UdpState::Canceled(err) => NextStep::Return((Err(err.clone()), None))
-            }
-        };
-
-        let state = || {
-            let state = self.0.state.read().unwrap();
-            match &*state {
-                UdpState::Responsed { 
-                    active, 
-                    result 
-                } => (result.clone(), Some(active.clone())), 
-                UdpState::Canceled(err) => (Err(err.clone()), None),
-                _ => unreachable!()
-            }
-        };
-
-        match next {
-            NextStep::Start(waiter) => {
-                self.send_call();
-                StateWaiter::wait(waiter, state).await
-            }, 
-            NextStep::Wait(waiter) => StateWaiter::wait(waiter, state).await,
-            NextStep::Return(ret) => ret
-        }
-    }
-
-    fn on_time_escape(&self, now: Timestamp) {
-        enum NextStep {
-            None, 
-            Send, 
-            Wake(StateWaiter)
-        }
-
-        let next = {
-            let mut state = self.0.state.write().unwrap();
-            match &mut *state {
-                UdpState::Running { 
-                    first_send_time, 
-                    last_send_time, 
-                    waiter
-                } => {
-                    if let Some(session) = self.0.owner.to_strong() {
-                        if now > *first_send_time && Duration::from_micros(now - *first_send_time) > session.config().timeout {
-                            let next = NextStep::Wake(waiter.transfer());
-                            *state = UdpState::Canceled(BuckyError::new(BuckyErrorCode::Timeout, "udp call timeout"));
-                            next
-                        } else if now > *last_send_time && Duration::from_micros(now - *last_send_time) > session.config().udp.resend_interval {
-                            *last_send_time = now;
-                            NextStep::Send
-                        } else {
-                            NextStep::None
-                        }
-                    } else {
-                        let next = NextStep::Wake(waiter.transfer());
-                        *state = UdpState::Canceled(BuckyError::new(BuckyErrorCode::ErrorState, "udp call canceled"));
-                        next
-                    }
-                }, 
-                _ => NextStep::None
-            }
-        };
-
-        match next {
-            NextStep::Send => {
-                self.send_call();
-            }, 
-            NextStep::Wake(waiter) => {
-                waiter.wake();
-            },
-            NextStep::None => {}
-        }
-    }
-
-    fn reset(&self) {
-
-    }
-
-    fn cancel(&self) {
-        let waiter = {
-            let mut state = self.0.state.write().unwrap();
-            match &mut *state {
-                UdpState::Running {
-                    waiter, 
-                    ..
-                } => {
-                    let waiter = waiter.transfer();
-                    *state = UdpState::Canceled(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"));
-                    Some(waiter)
-                }, 
-                _ => None
-            }
-        };
-        
-        if let Some(waiter) = waiter {
-            waiter.wake();
-        }
-    }
-
-    fn on_udp_call_resp(&self, resp: &SnCallResp, local: &Interface, from: &Endpoint) {
-        let waiter = {
-            let mut state = self.0.state.write().unwrap();
-            match &mut *state {
-                UdpState::Running {
-                    waiter, 
-                    ..
-                } => {
-                    let waiter = waiter.transfer();
-                    *state = UdpState::Responsed { 
-                        active: EndpointPair::from((local.local(), *from)), 
-                        result: if let Some(device) = resp.to_peer_info.clone() {
-                            Ok(device)
-                        } else {
-                            Err(BuckyError::new(BuckyErrorCode::from(resp.result as u16), "sn response error"))
-                        }
-                    };
-                    Some(waiter)
-                }, 
-                _ => None
-            }
-        };
-        
-        if let Some(waiter) = waiter {
-            waiter.wake();
-        }
-    }
-}
