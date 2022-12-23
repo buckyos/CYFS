@@ -140,7 +140,7 @@ impl ChunkCache {
         &self.0.stream_cache
     }
 
-    pub fn create_encoder(&self, desc: &ChunkEncodeDesc) -> Box<dyn ChunkEncoder> {
+    pub fn create_encoder(&self, desc: &ChunkCodecDesc) -> Box<dyn ChunkEncoder> {
         self.stream().create_encoder(desc).clone_as_encoder()
     }
 

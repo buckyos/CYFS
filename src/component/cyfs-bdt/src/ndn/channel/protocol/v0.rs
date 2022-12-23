@@ -177,7 +177,7 @@ impl FlagsCounter {
 pub struct Interest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,
-    pub prefer_type: ChunkEncodeDesc, 
+    pub prefer_type: ChunkCodecDesc, 
     pub referer: Option<String>,
     pub from: Option<DeviceId>, 
     // pub link_url: Option<String>,
@@ -269,7 +269,7 @@ fn encode_protocol_ineterest() {
     let src = Interest {
         session_id: TempSeq::from(123), 
         chunk: ChunkId::default(),
-        prefer_type: ChunkEncodeDesc::Stream(None, None, None), 
+        prefer_type: ChunkCodecDesc::Stream(None, None, None), 
         from: None,
         referer: Some("referer".to_owned()),
     };

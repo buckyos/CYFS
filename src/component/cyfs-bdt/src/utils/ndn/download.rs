@@ -11,7 +11,7 @@ use crate::{
 
 struct SingleContextImpl {
     referer: String, 
-    sources: RwLock<LinkedList<DownloadSource>>, 
+    sources: RwLock<LinkedList<DownloadSource<DeviceDesc>>>, 
 }
 
 #[derive(Clone)]
@@ -43,7 +43,7 @@ impl SingleDownloadContext {
         for remote in remotes {
             sources.push_back(DownloadSource {
                 target: remote, 
-                encode_desc: ChunkEncodeDesc::Stream(None, None, None), 
+                codec_desc: ChunkCodecDesc::Stream(None, None, None), 
             });
         } 
         Self(Arc::new(SingleContextImpl {
@@ -59,7 +59,7 @@ impl SingleDownloadContext {
                 .ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, "device desc not found"))?;
             sources.push_back(DownloadSource {
                 target: device.desc().clone(), 
-                encode_desc: ChunkEncodeDesc::Stream(None, None, None), 
+                codec_desc: ChunkCodecDesc::Stream(None, None, None), 
             });
         } 
         Ok(Self(Arc::new(SingleContextImpl {
@@ -68,12 +68,12 @@ impl SingleDownloadContext {
         })))
     }
 
-    pub fn add_source(&self, source: DownloadSource) {
+    pub fn add_source(&self, source: DownloadSource<DeviceDesc>) {
         self.0.sources.write().unwrap().push_back(source);
     }
 }
 
-
+#[async_trait::async_trait]
 impl DownloadContext for SingleDownloadContext {
     fn clone_as_context(&self) -> Box<dyn DownloadContext> {
         Box::new(self.clone())
@@ -83,20 +83,20 @@ impl DownloadContext for SingleDownloadContext {
         self.0.referer.as_str()
     }
 
-    fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool {
+    async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool {
         let sources = self.0.sources.read().unwrap();
-        sources.iter().find(|s| s.target.device_id().eq(target) && s.encode_desc.support_desc(encode_desc)).is_some()
+        sources.iter().find(|s| s.target.device_id().eq(&source.target) && s.codec_desc.support_desc(&source.codec_desc)).is_some()
     }
 
-    fn sources_of(&self, filter: Box<dyn Fn(&DownloadSource) -> bool>, limit: usize) -> LinkedList<DownloadSource> {
+    async fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSource<DeviceDesc>> {
         let mut result = LinkedList::new();
         let mut count = 0;
         let sources = self.0.sources.read().unwrap();
         for source in sources.iter() {
-            if (*filter)(source) {
+            if filter.check(source) {
                 result.push_back(DownloadSource {
                     target: source.target.clone(), 
-                    encode_desc: source.encode_desc.clone(), 
+                    codec_desc: source.codec_desc.clone(), 
                 });
                 count += 1;
                 if count >= limit {

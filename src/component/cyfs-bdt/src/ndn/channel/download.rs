@@ -143,7 +143,7 @@ impl DownloadSession {
             let interest = Interest {
                 session_id: self.session_id().clone(), 
                 chunk: self.chunk().clone(), 
-                prefer_type: self.source().encode_desc.clone(), 
+                prefer_type: self.source().codec_desc.clone(), 
                 referer: Some(self.source().referer.clone()), 
                 from: None
             };
@@ -284,7 +284,7 @@ impl DownloadSession {
                     let state = &mut *self.0.state.write().unwrap();
                     match state {
                         Interesting(interesting) => {
-                            let decoder = StreamDecoder::new(self.chunk(), &self.source().encode_desc, interesting.cache.clone());
+                            let decoder = StreamDecoder::new(self.chunk(), &self.source().codec_desc, interesting.cache.clone());
                             let mut downloading = DownloadingState {
                                 tunnel_state: tunnel.as_ref().download_state(), 
                                 history_speed: interesting.history_speed.clone(), 
@@ -376,7 +376,7 @@ impl DownloadSession {
         let interest = Interest {
             session_id: self.session_id().clone(), 
             chunk: self.chunk().clone(), 
-            prefer_type: self.source().encode_desc.clone(), 
+            prefer_type: self.source().codec_desc.clone(), 
             referer: Some(self.source().referer.clone()), 
             from: None,
         };

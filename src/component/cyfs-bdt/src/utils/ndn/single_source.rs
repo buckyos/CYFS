@@ -17,7 +17,7 @@ enum WaitSession {
 
 struct ContextImpl {
     referer: String, 
-    source: DownloadSource, 
+    source: DownloadSource<DeviceDesc>, 
     session: RwLock<WaitSession>
 }
 
@@ -29,7 +29,7 @@ impl SingleSourceContext {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    pub fn source(&self) -> &DownloadSource {
+    pub fn source(&self) -> &DownloadSource<DeviceDesc> {
         &self.0.source
     }
 
@@ -38,7 +38,7 @@ impl SingleSourceContext {
             referer, 
             source: DownloadSource {
                 target: remote, 
-                encode_desc: ChunkEncodeDesc::Stream(None, None, None), 
+                codec_desc: ChunkCodecDesc::Stream(None, None, None), 
             }, 
             session: RwLock::new(WaitSession::None(StateWaiter::new()))
         }))
@@ -51,7 +51,7 @@ impl SingleSourceContext {
             referer, 
             source: DownloadSource {
                 target: device.desc().clone(), 
-                encode_desc: ChunkEncodeDesc::Stream(None, None, None), 
+                codec_desc: ChunkCodecDesc::Stream(None, None, None), 
             },
             session: RwLock::new(WaitSession::None(StateWaiter::new()))
         })))
@@ -85,7 +85,7 @@ impl SingleSourceContext {
     }
 }
 
-
+#[async_trait::async_trait]
 impl DownloadContext for SingleSourceContext {
     fn clone_as_context(&self) -> Box<dyn DownloadContext> {
         Box::new(self.clone())
@@ -99,16 +99,16 @@ impl DownloadContext for SingleSourceContext {
         self.0.referer.as_str()
     }
 
-    fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool {
-        self.source().target.device_id().eq(target) && self.source().encode_desc.support_desc(encode_desc)
+    async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool {
+        self.source().target.device_id().eq(&source.target) && self.source().codec_desc.support_desc(&source.codec_desc)
     }
 
-    fn sources_of(&self, filter: Box<dyn Fn(&DownloadSource) -> bool>, _limit: usize) -> LinkedList<DownloadSource> {
+    async fn sources_of(&self, filter: &DownloadSourceFilter, _limit: usize) -> LinkedList<DownloadSource<DeviceDesc>> {
         let mut result = LinkedList::new();
-        if (*filter)(self.source()) {
+        if filter.check(self.source()) {
             result.push_back(DownloadSource {
                 target: self.source().target.clone(), 
-                encode_desc: self.source().encode_desc.clone(), 
+                codec_desc: self.source().codec_desc.clone(), 
             });
         } 
         result

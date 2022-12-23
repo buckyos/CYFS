@@ -90,7 +90,7 @@ impl DownloadContext for TransContextHolder {
 
     fn sources_of(
         &self,
-        filter: Box<dyn Fn(&DownloadSource) -> bool>,
+        filter: &DownloadSourceFilter,
         limit: usize,
     ) -> LinkedList<DownloadSource> {
         todo!();

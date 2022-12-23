@@ -183,7 +183,7 @@ impl ChunkDownloader {
 
         let cache = &self.0.cache;
         let stack = Stack::from(&self.0.stack);
-        let mut sources = self.context().sources_of(|_| true, 1);
+        let mut sources = self.context().sources_of(&DownloadSourceFilter::default(), 1);
 
         if sources.len() > 0 { 
             let source = sources.pop_front().unwrap();
@@ -191,9 +191,9 @@ impl ChunkDownloader {
             
             let context_id = source.context_id;
             let mut source: DownloadSourceWithReferer<DeviceId> = source.into();
-            source.encode_desc = match &source.encode_desc {
-                ChunkEncodeDesc::Unknown => ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 
-                ChunkEncodeDesc::Stream(..) => source.encode_desc.fill_values(self.chunk()), 
+            source.codec_desc = match &source.codec_desc {
+                ChunkCodecDesc::Unknown => ChunkCodecDesc::Stream(None, None, None).fill_values(self.chunk()), 
+                ChunkCodecDesc::Stream(..) => source.codec_desc.fill_values(self.chunk()), 
                 _ => unimplemented!()
             };
 

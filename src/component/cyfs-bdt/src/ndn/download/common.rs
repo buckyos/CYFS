@@ -24,27 +24,65 @@ use serde::{
     Serialize,
 };
 
+#[derive(Clone, Debug)]
+pub struct DownloadSourceFilter {
+    pub exclude_target: Option<Vec<DeviceId>>, 
+    pub include_codec: Option<Vec<ChunkCodecDesc>>, 
+} 
+
+impl Default for DownloadSourceFilter {
+    fn default() -> Self {
+        Self {
+            exclude_target: None, 
+            include_codec: Some(vec![ChunkCodecDesc::Unknown])
+        }
+    } 
+}
+
+impl DownloadSourceFilter {
+    pub fn check(&self, source: &DownloadSource<DeviceDesc>) -> bool {
+        if let Some(exclude) = self.exclude_target.as_ref() {
+            for target in exclude {
+                if source.target.device_id().eq(target) {
+                    return false;
+                }
+            }
+        }
+
+        if let Some(include) = self.include_codec.as_ref() {
+            for codec in include {
+                if source.codec_desc.support_desc(codec) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+}
+
+#[async_trait::async_trait]
 pub trait DownloadContext: Send + Sync {
     fn is_mergable(&self) -> bool {
         true
     }
     fn clone_as_context(&self) -> Box<dyn DownloadContext>;
     fn referer(&self) -> &str;
-    fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool;
-    fn sources_of(&self, filter: Box<dyn Fn(&DownloadSource) -> bool>, limit: usize) -> LinkedList<DownloadSource>;
+    async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool;
+    async fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSource<DeviceDesc>>;
     fn on_new_session(&self, _session: &DownloadSession) {}
 }
 
 #[derive(Clone)]
-pub struct DownloadSource {
-    pub target: DeviceDesc, 
-    pub encode_desc: ChunkEncodeDesc, 
+pub struct DownloadSource<T: Clone + Send + Sync> {
+    pub target: T, 
+    pub codec_desc: ChunkCodecDesc, 
 }
 
 
 pub struct DownloadSourceWithReferer<T: Send + Sync> {
     pub target: T, 
-    pub encode_desc: ChunkEncodeDesc, 
+    pub codec_desc: ChunkCodecDesc, 
     pub referer: String, 
     pub context_id: IncreaseId 
 }
@@ -53,7 +91,7 @@ impl Into<DownloadSourceWithReferer<DeviceId>> for DownloadSourceWithReferer<Dev
     fn into(self) -> DownloadSourceWithReferer<DeviceId> {
         DownloadSourceWithReferer {
             target: self.target.device_id(), 
-            encode_desc: self.encode_desc, 
+            codec_desc: self.codec_desc, 
             referer: self.referer, 
             context_id: self.context_id 
         }
@@ -102,17 +140,17 @@ impl MultiDownloadContext {
         }
     }
 
-    pub fn sources_of(&self, filter: impl Fn(&DownloadSource) -> bool + Copy + 'static, limit: usize) -> LinkedList<DownloadSourceWithReferer<DeviceDesc>> {
+    pub fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSourceWithReferer<DeviceDesc>> {
         let mut result = LinkedList::new();
         let mut limit = limit;
         let state = self.0.read().unwrap();
         for (id, context) in state.contexts.iter() {
-            let part = context.sources_of(Box::new(filter), limit);
+            let part = task::block_on(context.sources_of(&filter, limit));
             limit -= part.len();
             for source in part {
                 result.push_back(DownloadSourceWithReferer {
                     target: source.target, 
-                    encode_desc: source.encode_desc, 
+                    codec_desc: source.codec_desc, 
                     referer: context.referer().to_owned(), 
                     context_id: *id  
                 });
@@ -128,7 +166,10 @@ impl MultiDownloadContext {
         let state = self.0.read().unwrap();
         state.contexts.iter().find(|(id, context)|{
             if source.context_id.eq(id) {
-                context.source_exists(&source.target, &source.encode_desc)
+                task::block_on(context.source_exists(&DownloadSource {
+                    target: source.target.clone(), 
+                    codec_desc: source.codec_desc.clone()
+                }))
             } else {
                 false
             }

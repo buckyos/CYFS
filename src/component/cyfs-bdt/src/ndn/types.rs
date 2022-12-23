@@ -122,13 +122,13 @@ const PIECE_SESSION_FLAGS_RAPTOR_SEQ: u16 = 1<<3;
 const PIECE_SESSION_FLAGS_RAPTOR_STEP: u16 = 1<<4;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
-pub enum ChunkEncodeDesc {
+pub enum ChunkCodecDesc {
     Unknown,
     Stream(Option<u32>, Option<u32>, Option<i32>), 
     Raptor(Option<u32>, Option<u32>, Option<i32>)
 } 
 
-impl ChunkEncodeDesc {
+impl ChunkCodecDesc {
     pub fn reverse_stream(start: Option<u32>, end: Option<u32>) -> Self {
         Self::Stream(start, end, Some(-(PieceData::max_payload() as i32)))
     }
@@ -195,7 +195,7 @@ impl ChunkEncodeDesc {
     }
 }
 
-impl RawEncode for ChunkEncodeDesc {
+impl RawEncode for ChunkCodecDesc {
     fn raw_measure(&self, _: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
         match self {
             Self::Unknown => Ok(u16::raw_bytes().unwrap()), 
@@ -276,7 +276,7 @@ impl RawEncode for ChunkEncodeDesc {
 }
 
 
-impl<'de> RawDecode<'de> for ChunkEncodeDesc {
+impl<'de> RawDecode<'de> for ChunkCodecDesc {
     fn raw_decode(buf: &'de [u8]) -> BuckyResult<(Self, &'de [u8])> {
         let (flags, buf) = u16::raw_decode(buf)?;
         if flags == PIECE_SESSION_FLAGS_UNKNOWN {
@@ -328,7 +328,7 @@ impl<'de> RawDecode<'de> for ChunkEncodeDesc {
 }
 
 
-impl JsonCodec<ChunkEncodeDesc> for ChunkEncodeDesc {
+impl JsonCodec<ChunkCodecDesc> for ChunkCodecDesc {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         match self {
