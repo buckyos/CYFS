@@ -19,7 +19,6 @@ pub(crate) struct ContextManager {
     list: Arc<Mutex<LruCache<ObjectId, Arc<ContextItem>>>>,
 }
 
-
 impl ContextManager {
     pub fn new(noc: NamedObjectCacheRef, device_manager: Box<dyn DeviceCache>) -> Self {
         Self {
@@ -53,10 +52,33 @@ impl ContextManager {
         source: &RequestSourceInfo,
         referer: impl Into<String>,
         trans_context_id: &str,
-    ) -> BuckyResult<impl DownloadContext> {
+    ) -> BuckyResult<TransContextHolder> {
         let ref_id = Self::decode_context_id_from_string(source, trans_context_id);
 
-        let holder = TransContextHolder::new(self.clone(), ref_id, referer);
+        let holder = TransContextHolder::new_context(self.clone(), ref_id, referer);
+        holder.init().await?;
+
+        Ok(holder)
+    }
+
+    pub async fn create_download_context_from_target(
+        &self,
+        referer: impl Into<String>,
+        target: DeviceId,
+    ) -> BuckyResult<TransContextHolder> {
+        let ret = self.device_manager.get(&target).await;
+        if ret.is_none() {
+            let msg = format!(
+                "load trans context with target but not found! target={}",
+                target
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+        }
+
+        let device = ret.unwrap();
+        let holder =
+            TransContextHolder::new_target(self.clone(), target, device.into_desc(), referer);
         holder.init().await?;
 
         Ok(holder)
