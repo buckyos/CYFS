@@ -38,7 +38,7 @@ enum TransContentValue {
 struct TransContextHolderInner {
     value: TransContentValue,
     referer: String,
-    manager: ContextManager,
+    manager: Option<ContextManager>,
 }
 
 impl TransContextHolderInner {
@@ -56,14 +56,13 @@ impl TransContextHolderInner {
         };
 
         Self {
-            manager,
+            manager: Some(manager),
             value: TransContentValue::Context(value),
             referer: referer.into(),
         }
     }
 
     pub fn new_target(
-        manager: ContextManager,
         target: DeviceId,
         target_desc: DeviceDesc,
         referer: impl Into<String>,
@@ -76,9 +75,20 @@ impl TransContextHolderInner {
         let value = TargetValue { target, source };
 
         Self {
-            manager,
+            manager: None,
             value: TransContentValue::Target(value),
             referer: referer.into(),
+        }
+    }
+
+    pub fn debug_string(&self) -> String {
+        match &self.value {
+            TransContentValue::Target(v) => {
+                format!("target={}", v.target)
+            }
+            TransContentValue::Context(v) => {
+                format!("context={:?}", v.ref_id)
+            }
         }
     }
 
@@ -104,10 +114,11 @@ impl TransContextHolderInner {
             }
         }
 
+        let manager = self.manager.as_ref().unwrap();
         let context = match &self.context_value().ref_id {
-            TransContextRef::Object(id) => self.manager.get_context(id).await,
+            TransContextRef::Object(id) => manager.get_context(id).await,
             TransContextRef::Path((path, dec_id)) => {
-                self.manager.search_context(dec_id, path).await
+                manager.search_context(dec_id, path).await
             }
         };
 
@@ -264,13 +275,11 @@ impl TransContextHolder {
     }
 
     pub fn new_target(
-        manager: ContextManager,
         target: DeviceId,
         target_desc: DeviceDesc,
         referer: impl Into<String>,
     ) -> Self {
         Self(Arc::new(TransContextHolderInner::new_target(
-            manager,
             target,
             target_desc,
             referer,
@@ -283,6 +292,10 @@ impl TransContextHolder {
 
     pub async fn non_target(&self) -> Option<DeviceId> {
         self.0.non_target().await
+    }
+
+    pub fn debug_string(&self) -> String {
+        self.0.debug_string()
     }
 }
 

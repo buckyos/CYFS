@@ -6,6 +6,7 @@ use crate::acl::AclManagerRef;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::ndn::*;
+use crate::ndn_api::context::ContextManager;
 use crate::non::*;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
@@ -38,6 +39,8 @@ impl NDNService {
 
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
+
+        context_manager: ContextManager,
     ) -> Self {
         let ndc_processor = NDCLevelInputProcessor::new_local(
             acl.clone(),
@@ -53,6 +56,7 @@ impl NDNService {
             router_handlers.clone(),
             forward.clone(),
             fail_handler.clone(),
+            context_manager.clone(),
         );
 
         let router = NDNRouter::new_acl(
@@ -65,6 +69,7 @@ impl NDNService {
             router_handlers,
             forward,
             fail_handler,
+            context_manager,
         );
 
         Self {

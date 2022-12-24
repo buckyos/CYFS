@@ -87,3 +87,19 @@ impl JsonCodec<BdtDataRefererInfo> for BdtDataRefererInfo {
         })
     }
 }
+
+
+impl From<&NDNGetDataInputRequest> for  BdtDataRefererInfo{
+    fn from(req: &NDNGetDataInputRequest) -> Self {
+        BdtDataRefererInfo {
+            // FIXME: set target field from o link
+            target: None, 
+            object_id: req.object_id.clone(),
+            inner_path: req.inner_path.clone(),
+            dec_id: req.common.source.get_opt_dec().cloned(),
+            req_path: req.common.req_path.clone(),
+            referer_object: req.common.referer_object.clone(),
+            flags: req.common.flags,
+        }
+    }
+}

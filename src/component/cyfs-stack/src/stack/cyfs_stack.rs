@@ -17,7 +17,7 @@ use crate::interface::{
 use crate::meta::*;
 use crate::name::NameResolver;
 use crate::ndn::NDNOutputTransformer;
-use crate::ndn_api::{BdtNDNEventHandler, NDNService};
+use crate::ndn_api::{BdtNDNEventHandler, NDNService, ContextManager};
 use crate::non::NONOutputTransformer;
 use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
@@ -98,6 +98,9 @@ pub struct CyfsStackImpl {
 
     // global_state_meta
     global_state_meta: GlobalStateMetaService,
+
+    // context
+    context_manager: ContextManager,
 }
 
 impl CyfsStackImpl {
@@ -181,6 +184,8 @@ impl CyfsStackImpl {
             obj_searcher.clone().into_ref(),
             bdt_param.device.clone(),
         );
+
+        let context_manager = ContextManager::new(noc.clone(), device_manager.clone_cache());
 
         let fail_handler =
             ObjectFailHandler::new(raw_meta_cache.clone(), device_manager.clone_cache());
@@ -319,6 +324,7 @@ impl CyfsStackImpl {
             router_handlers.clone(),
             raw_meta_cache.clone(),
             fail_handler.clone(),
+            context_manager.clone(),
         );
 
         bdt_event.bind_non_processor(non_service.rmeta_noc_processor().clone());
@@ -430,6 +436,8 @@ impl CyfsStackImpl {
             fail_handler,
 
             acl_manager,
+
+            context_manager,
         };
 
         // init an system-dec router-handler processor for later use

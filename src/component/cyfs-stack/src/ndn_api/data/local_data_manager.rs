@@ -1,4 +1,5 @@
 use super::TargetDataManager;
+use crate::ndn_api::context::ContextManager;
 use crate::NamedDataComponents;
 use cyfs_base::*;
 use cyfs_chunk_cache::ChunkType;
@@ -31,10 +32,19 @@ impl LocalDataManager {
                 .bdt_stack()
                 .local_device_id()
                 .to_owned();
+            let target_desc = self
+                .named_data_components
+                .bdt_stack()
+                .local_const()
+                .to_owned();
+
+            let context =
+                ContextManager::create_download_context_from_target_sync("", target, target_desc);
+
             TargetDataManager::new(
                 self.named_data_components.bdt_stack().clone(),
                 self.named_data_components.chunk_manager.clone(),
-                target,
+                context,
             )
         })
     }
@@ -45,9 +55,13 @@ impl LocalDataManager {
         file_obj: &File,
         group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64, Option<String>)> {
+    ) -> BuckyResult<(
+        Box<dyn Read + Unpin + Send + Sync + 'static>,
+        u64,
+        Option<String>,
+    )> {
         self.target_data_manager()
-            .get_file(source, file_obj, group, ranges, None)
+            .get_file(source, file_obj, group, ranges)
             .await
     }
 
@@ -154,9 +168,13 @@ impl LocalDataManager {
         chunk_id: &ChunkId,
         group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64, Option<String>)> {
+    ) -> BuckyResult<(
+        Box<dyn Read + Unpin + Send + Sync + 'static>,
+        u64,
+        Option<String>,
+    )> {
         self.target_data_manager()
-            .get_chunk(source, chunk_id, group, ranges, None)
+            .get_chunk(source, chunk_id, group, ranges)
             .await
     }
 

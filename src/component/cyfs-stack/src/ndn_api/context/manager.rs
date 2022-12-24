@@ -78,10 +78,20 @@ impl ContextManager {
 
         let device = ret.unwrap();
         let holder =
-            TransContextHolder::new_target(self.clone(), target, device.into_desc(), referer);
-        holder.init().await?;
+            TransContextHolder::new_target(target, device.into_desc(), referer);
 
         Ok(holder)
+    }
+
+    pub fn create_download_context_from_target_sync(
+        referer: impl Into<String>,
+        target: DeviceId,
+        target_desc: DeviceDesc,
+    ) -> TransContextHolder {
+        let holder =
+            TransContextHolder::new_target(target, target_desc, referer);
+
+        holder
     }
 
     async fn new_item(&self, object: TransContext) -> ContextItem {
@@ -255,4 +265,3 @@ impl ContextManager {
     }
 }
 
-pub(crate) type ContextManagerRef = Arc<ContextManager>;

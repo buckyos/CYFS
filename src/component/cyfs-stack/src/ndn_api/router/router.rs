@@ -14,9 +14,11 @@ use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
+use super::super::context::*;
 
 use cyfs_chunk_cache::ChunkManagerRef;
 use std::sync::Arc;
+
 
 pub(crate) struct NDNRouter {
     acl: AclManagerRef,
@@ -39,6 +41,8 @@ pub(crate) struct NDNRouter {
     // 用以实现转发请求
     forward: ForwardProcessorManager,
     fail_handler: ObjectFailHandler,
+
+    context_manager: ContextManager,
 }
 
 impl NDNRouter {
@@ -52,6 +56,7 @@ impl NDNRouter {
         router_handlers: RouterHandlersManager,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
+        context_manager: ContextManager,
     ) -> NDNInputProcessorRef {
         // 使用router加载目标file
         let object_loader = NDNObjectLoader::new(non_router.clone());
@@ -71,6 +76,7 @@ impl NDNRouter {
             router_handlers,
             forward,
             fail_handler,
+            context_manager,
         };
 
         Arc::new(Box::new(ret))
@@ -86,6 +92,7 @@ impl NDNRouter {
         router_handlers: RouterHandlersManager,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
+        context_manager: ContextManager,
     ) -> NDNInputProcessorRef {
         // 不带input acl的处理器
         let processor = Self::new(
@@ -98,25 +105,32 @@ impl NDNRouter {
             router_handlers,
             forward,
             fail_handler,
+            context_manager,
         );
 
         processor
     }
 
-    async fn get_data_forward(&self, target: DeviceId) -> BuckyResult<NDNInputProcessorRef> {
+    async fn get_data_forward(&self, context: TransContextHolder) -> BuckyResult<NDNInputProcessorRef> {
         // ensure target device in local, used for bdt stack
-        self.forward.get(&target).await?;
+        // self.forward.get(&target).await?;
+
+        let non_target = context.non_target().await.ok_or_else(|| {
+            let msg = format!("ndn get_file but non target not exists! {}", context.debug_string());
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::NotFound, msg)
+        })?;
 
         // 获取到目标的processor
         let processor = NDNForwardDataOutputProcessor::new(
             self.bdt_stack.clone(),
             self.chunk_manager.clone(),
-            target.clone(),
+            context,
         );
 
         // 使用non router加载file
         let processor =
-            NDNForwardObjectProcessor::new(target,self.object_loader.clone(), processor);
+            NDNForwardObjectProcessor::new(non_target,self.object_loader.clone(), processor);
 
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(
@@ -152,24 +166,27 @@ impl NDNRouter {
     // resolve final device from common.target param
     async fn get_data_processor(
         &self,
-        target: Option<&ObjectId>,
+        req: &NDNGetDataInputRequest,
     ) -> BuckyResult<NDNInputProcessorRef> {
-        if let Some(device_id) = self.resolve_target(target).await? {
-            let processor = self.get_data_forward(device_id).await?;
-            Ok(processor)
-        } else {
-            Ok(self.ndc_processor.clone())
+
+        match &req.context {
+            Some(context) => {
+                let referer = BdtDataRefererInfo::from(req).to_string();
+                let context = self.context_manager.create_download_context_from_trans_context(&req.common.source, referer, context.as_str()).await?;
+                let processor = self.get_data_forward(context).await?;
+                Ok(processor)
+            }
+            None => {
+                if let Some(device_id) = self.resolve_target(req.common.target.as_ref()).await? {
+                    let referer = BdtDataRefererInfo::from(req).to_string();
+                    let context =self.context_manager.create_download_context_from_target(referer, device_id).await?;
+                    let processor = self.get_data_forward(context).await?;
+                    Ok(processor)
+                } else {
+                    Ok(self.ndc_processor.clone())
+                }
+            }
         }
-    }
-
-    async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
-        debug!(
-            "will put data to ndn: id={}, {}, target={:?}",
-            req.object_id, req.common.source, req.common.target,
-        );
-
-        let processor = self.get_data_processor(req.common.target.as_ref()).await?;
-        processor.put_data(req).await
     }
 
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
@@ -178,9 +195,29 @@ impl NDNRouter {
             req.object_id, req.common.source, req.common.target
         );
 
-        let processor = self.get_data_processor(req.common.target.as_ref()).await?;
+        let processor = self.get_data_processor(&req).await?;
         processor.get_data(req).await
     }
+
+    async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
+        debug!(
+            "will put data to ndn: id={}, {}, target={:?}",
+            req.object_id, req.common.source, req.common.target,
+        );
+
+        if let Some(device_id) = self.resolve_target(req.common.target.as_ref()).await? {
+            let msg = format!(
+                "ndn put_data to target not support! chunk={}, target={}",
+                req.object_id,
+                device_id,
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg));
+        }
+
+        self.ndc_processor.put_data(req).await
+    }
+
 
     // for NONE data processor， just forward the request as non does
     async fn get_forward(&self, target: DeviceId) -> BuckyResult<NDNInputProcessorRef> {

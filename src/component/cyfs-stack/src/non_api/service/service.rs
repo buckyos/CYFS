@@ -38,6 +38,7 @@ impl NONService {
         router_handlers: RouterHandlersManager,
         meta_cache: MetaCacheRef,
         fail_handler: ObjectFailHandler,
+        context_manager: ContextManager,
     ) -> (NONService, NDNService) {
         // raw service with inner_path service support
         let raw_noc_processor = NOCLevelInputProcessor::new_with_inner_path_service(
@@ -102,6 +103,7 @@ impl NONService {
             router,
             forward_manager,
             fail_handler,
+            context_manager,
         );
 
         (non_service, ndn_service)

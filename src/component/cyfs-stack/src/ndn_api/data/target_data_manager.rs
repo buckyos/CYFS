@@ -1,8 +1,8 @@
-use crate::ndn::TaskGroupHelper;
-
+use super::super::context::TransContextHolder;
 use super::stream_reader::*;
+use crate::ndn::TaskGroupHelper;
 use cyfs_base::*;
-use cyfs_bdt::{SingleDownloadContext, StackGuard};
+use cyfs_bdt::StackGuard;
 use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 
@@ -13,24 +13,24 @@ use std::ops::Range;
 pub(crate) struct TargetDataManager {
     bdt_stack: StackGuard,
     chunk_manager: ChunkManagerRef,
-    target: Vec<DeviceId>,
+    context: TransContextHolder,
 }
 
 impl TargetDataManager {
     pub(crate) fn new(
         bdt_stack: StackGuard,
         chunk_manager: ChunkManagerRef,
-        target: DeviceId,
+        context: TransContextHolder,
     ) -> Self {
         Self {
             bdt_stack,
             chunk_manager,
-            target: vec![target],
+            context,
         }
     }
 
-    pub fn target(&self) -> &[DeviceId] {
-        &self.target
+    pub fn context(&self) -> String {
+        self.context.debug_string()
     }
 
     /*
@@ -51,8 +51,11 @@ impl TargetDataManager {
         file_obj: &File,
         group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
-        referer: Option<&BdtDataRefererInfo>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64, Option<String>)> {
+    ) -> BuckyResult<(
+        Box<dyn Read + Unpin + Send + Sync + 'static>,
+        u64,
+        Option<String>,
+    )> {
         let file_id = file_obj.desc().calculate_id();
 
         let total_size = match ranges {
@@ -68,28 +71,28 @@ impl TargetDataManager {
             return Ok((zero_bytes_reader(), 0, None));
         }
 
-        let referer = match referer {
-            Some(referer) => referer.encode_string(),
-            None => "".to_owned(),
-        };
-
         info!(
-            "will get file data from target: target={:?}, file={}, file_len={}, len={}, ranges={:?}, referer={}",
-            self.target, file_id, file_obj.len(), total_size, ranges, referer
+            "will get file data from target: {:?}, file={}, file_len={}, len={}, ranges={:?}",
+            self.context.debug_string(),
+            file_id,
+            file_obj.len(),
+            total_size,
+            ranges
         );
 
-        let context =
-            SingleDownloadContext::id_streams(&self.bdt_stack, referer, &self.target).await?;
-
         let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
-        
-        let (id, reader) =
-            cyfs_bdt::download_file(&self.bdt_stack, file_obj.to_owned(), group, context)
-                .await
-                .map_err(|e| {
-                    error!("download file error! file={}, {}", file_id, e);
-                    e
-                })?;
+
+        let (id, reader) = cyfs_bdt::download_file(
+            &self.bdt_stack,
+            file_obj.to_owned(),
+            group,
+            self.context.clone(),
+        )
+        .await
+        .map_err(|e| {
+            error!("download file error! file={}, {}", file_id, e);
+            e
+        })?;
 
         let resp = if let Some(ranges) = ranges {
             assert!(ranges.len() > 0);
@@ -110,8 +113,11 @@ impl TargetDataManager {
         chunk_id: &ChunkId,
         group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
-        referer: Option<&BdtDataRefererInfo>,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64, Option<String>)> {
+    ) -> BuckyResult<(
+        Box<dyn Read + Unpin + Send + Sync + 'static>,
+        u64,
+        Option<String>,
+    )> {
         let total_size = match ranges {
             Some(ref ranges) => RangeHelper::sum(ranges) as usize,
             None => chunk_id.len(),
@@ -125,28 +131,27 @@ impl TargetDataManager {
             return Ok((zero_bytes_reader(), 0, None));
         }
 
-        let referer = match referer {
-            Some(referer) => referer.encode_string(),
-            None => "".to_owned(),
-        };
-
         info!(
-            "will get chunk data from target: target={:?}, chunk={}, len={}, ranges={:?}, referer={}",
-            self.target, chunk_id, total_size, ranges, referer
+            "will get chunk data from target: {}, chunk={}, len={}, ranges={:?}",
+            self.context.debug_string(),
+            chunk_id,
+            total_size,
+            ranges
         );
-
-        let context =
-            SingleDownloadContext::id_streams(&self.bdt_stack, referer, &self.target).await?;
 
         let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
 
-        let (id, reader) =
-            cyfs_bdt::download_chunk(&self.bdt_stack, chunk_id.clone(), group, context)
-                .await
-                .map_err(|e| {
-                    error!("download chunk error! chunk={}, {}", chunk_id, e);
-                    e
-                })?;
+        let (id, reader) = cyfs_bdt::download_chunk(
+            &self.bdt_stack,
+            chunk_id.clone(),
+            group,
+            self.context.clone(),
+        )
+        .await
+        .map_err(|e| {
+            error!("download chunk error! chunk={}, {}", chunk_id, e);
+            e
+        })?;
 
         Ok((Box::new(reader), total_size as u64, Some(id)))
     }
