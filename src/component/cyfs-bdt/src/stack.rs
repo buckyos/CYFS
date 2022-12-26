@@ -333,26 +333,29 @@ impl Stack {
         };
 
 
-        let components = StackLazyComponents {
-            sn_client: sn::client::ClientManager::create(stack.to_weak()),
-            tunnel_manager: TunnelManager::new(stack.to_weak()),
-            stream_manager: StreamManager::new(stack.to_weak()),
-            datagram_manager, 
-            proxy_manager, 
-            debug_stub: debug_stub.clone()
-        };
-        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-        stack_impl.lazy_components = Some(components);
-
-        let mut ndn_event = None;
-        std::mem::swap(&mut ndn_event, &mut params.ndn_event);
-
-        let mut chunk_store = None;
-        std::mem::swap(&mut chunk_store, &mut params.chunk_store);
-
-        let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
-        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-        stack_impl.ndn = Some(ndn);
+        {
+            let components = StackLazyComponents {
+                sn_client: sn::client::ClientManager::create(stack.to_weak()),
+                tunnel_manager: TunnelManager::new(stack.to_weak()),
+                stream_manager: StreamManager::new(stack.to_weak()),
+                datagram_manager, 
+                proxy_manager, 
+                debug_stub: debug_stub.clone()
+            };
+            
+            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+            stack_impl.lazy_components = Some(components);
+    
+          
+    
+            let mut chunk_store = None;
+            std::mem::swap(&mut chunk_store, &mut params.chunk_store);
+    
+            let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
+            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+            stack_impl.ndn = Some(ndn);
+        }   
+        
 
         // get nearest sn in sn-list
         if let Some(sn) = stack.device_cache().nearest_sn_of(stack.local_device_id()) {
