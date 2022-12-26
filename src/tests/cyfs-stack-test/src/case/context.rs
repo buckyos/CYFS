@@ -88,7 +88,7 @@ async fn test_ndn_get_by_context(dec_id: &ObjectId, target: DeviceId, file_id: F
         unreachable!();
     }
 
-    // local get
+    // local get by path
     let mut get_req = NDNGetDataOutputRequest::new_context(
         "/root/test",
         file_id.object_id().to_owned(),
@@ -96,9 +96,18 @@ async fn test_ndn_get_by_context(dec_id: &ObjectId, target: DeviceId, file_id: F
     );
     get_req.common.dec_id = Some(dec_id.to_owned());
 
-    let mut resp = stack.ndn_service().get_data(get_req).await.unwrap();
+    let mut resp = stack.ndn_service().get_data(get_req.clone()).await.unwrap();
     let mut buf = vec![];
     resp.data.read_to_end(&mut buf).await.unwrap();
+
+    // local get by context id
+    get_req.context = Some(context_id.to_string());
+
+    let mut resp = stack.ndn_service().get_data(get_req).await.unwrap();
+    let mut buf2 = vec![];
+    resp.data.read_to_end(&mut buf2).await.unwrap();
+
+    assert_eq!(buf, buf2);
 
     info!("test ndn get by context complete!");
 }
