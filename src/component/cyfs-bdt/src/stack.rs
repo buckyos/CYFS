@@ -346,12 +346,13 @@ impl Stack {
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
             stack_impl.lazy_components = Some(components);
     
-          
-    
             let mut chunk_store = None;
             std::mem::swap(&mut chunk_store, &mut params.chunk_store);
+
+            let mut ndn_event = None;
+            std::mem::swap(&mut ndn_event, &mut params.ndn_event);
     
-            let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
+            let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
             stack_impl.ndn = Some(ndn);
         }   
