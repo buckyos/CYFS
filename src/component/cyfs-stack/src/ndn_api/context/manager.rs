@@ -8,6 +8,7 @@ use lru_time_cache::LruCache;
 use std::sync::{Arc, Mutex};
 
 pub(crate) struct ContextItem {
+    pub object_id: ObjectId,
     pub object: TransContext,
     pub source_list: Vec<DownloadSource<DeviceDesc>>,
 }
@@ -94,13 +95,14 @@ impl ContextManager {
         holder
     }
 
-    async fn new_item(&self, object: TransContext) -> ContextItem {
+    async fn new_item(&self, object_id: ObjectId, object: TransContext) -> ContextItem {
         let mut source_list = Vec::with_capacity(object.device_list().len());
         for item in object.device_list() {
             let ret = self.device_manager.get(&item.target).await;
             if ret.is_none() {
                 warn!(
-                    "load trans context target but not found! context={}, target={}",
+                    "load trans context target but not found! id={}, context_path={}, target={}",
+                    object_id,
                     object.context_path(),
                     item.target
                 );
@@ -116,6 +118,7 @@ impl ContextManager {
         }
 
         ContextItem {
+            object_id,
             object,
             source_list,
         }
@@ -129,7 +132,7 @@ impl ContextManager {
         loop {
             let id = TransContext::gen_context_id(dec_id.to_owned(), current_path);
             if let Some(item) = self.get_context(&id).await {
-                info!(
+                debug!(
                     "search trans context by path! path={}, matched={}, context={}",
                     path, current_path, id
                 );
@@ -164,9 +167,9 @@ impl ContextManager {
 
         // then load from noc
         if let Ok(Some(object)) = self.load_context_from_noc(id).await {
-            let item = self.new_item(object).await;
+            let item = self.new_item(id.to_owned(), object).await;
             let item = Arc::new(item);
-            self.update_context(&id, item.clone());
+            self.update_context(item.clone());
             Some(item)
         } else {
             None
@@ -200,7 +203,7 @@ impl ContextManager {
                 Ok(Some(object))
             }
             Ok(None) => {
-                warn!(
+                debug!(
                     "load trans context object from noc but not found: id={}",
                     id
                 );
@@ -248,22 +251,22 @@ impl ContextManager {
             e
         })?;
 
-        let item = self.new_item(trans_context).await;
+        let item = self.new_item(id, trans_context).await;
         let item = Arc::new(item);
-        self.update_context(&id, item);
+        self.update_context(item);
 
         Ok(())
     }
 
-    fn update_context(&self, id: &ObjectId, trans_context: Arc<ContextItem>) {
+    fn update_context(&self, trans_context: Arc<ContextItem>) {
         let ret = {
             let mut cache = self.list.lock().unwrap();
-            cache.notify_insert(id.clone(), trans_context)
+            cache.notify_insert(trans_context.object_id.clone(), trans_context)
         };
 
         match ret.0 {
-            Some(_v) => {
-                info!("replace old trans context! id={}", id);
+            Some(v) => {
+                info!("replace old trans context! id={}", v.object_id);
             }
             None => {}
         }

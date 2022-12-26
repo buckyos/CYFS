@@ -7,7 +7,7 @@ use async_std::sync::Mutex as AsyncMutex;
 use std::collections::LinkedList;
 use std::sync::Arc;
 
-const CYFS_CONTEXT_OBJECT_EXPIRED_DATE: u64 = 1000 * 1000 * 5;
+const CYFS_CONTEXT_OBJECT_EXPIRED_DATE: u64 = 1000 * 1000 * 10;
 
 #[derive(Debug)]
 pub(crate) enum TransContextRef {
@@ -117,10 +117,47 @@ impl TransContextHolderInner {
         let manager = self.manager.as_ref().unwrap();
         let context = match &self.context_value().ref_id {
             TransContextRef::Object(id) => manager.get_context(id).await,
-            TransContextRef::Path((path, dec_id)) => {
-                manager.search_context(dec_id, path).await
-            }
+            TransContextRef::Path((path, dec_id)) => manager.search_context(dec_id, path).await,
         };
+
+        // output some debug infos
+        if let Some(old) = &cache.context {
+            if let Some(new) = &context {
+                if old.object_id != new.object_id {
+                    warn!(
+                        "context changed! context={}, {} -> {}, devices={:?}",
+                        self.debug_string(),
+                        old.object_id,
+                        new.object_id,
+                        new.object.device_list(),
+                    );
+                } else {
+                    if old.object.device_list() != new.object.device_list() {
+                        warn!(
+                            "context device list changed! context={}, devices: {:?} -> {:?}",
+                            self.debug_string(),
+                            old.object.device_list(),
+                            new.object.device_list(),
+                        );
+                    }
+                }
+            } else {
+                warn!(
+                    "context changed to none! context={}, {} -> None",
+                    self.debug_string(),
+                    old.object_id
+                );
+            }
+        } else {
+            if let Some(new) = &context {
+                warn!(
+                    "context changed! context={}, None -> {}, devices={:?}",
+                    self.debug_string(),
+                    new.object_id,
+                    new.object.device_list()
+                );
+            }
+        }
 
         cache.context = context.clone();
         cache.last_updated = bucky_time_now();

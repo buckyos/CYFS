@@ -73,8 +73,8 @@ pub trait DownloadContext: Send + Sync {
     fn on_new_session(&self, _session: &DownloadSession) {}
 }
 
-#[derive(Clone)]
-pub struct DownloadSource<T: Clone + Send + Sync> {
+#[derive(Clone, Debug)]
+pub struct DownloadSource<T: std::fmt::Debug + Clone + Send + Sync> {
     pub target: T, 
     pub codec_desc: ChunkCodecDesc, 
 }
