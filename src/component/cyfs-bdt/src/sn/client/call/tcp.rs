@@ -17,7 +17,7 @@ use super::client::{WeakSession, CallTunnel};
 enum TcpState {
     Init(StateWaiter), 
     Running { 
-        proc_stub: Abortable, 
+        proc_stub: AbortHandle, 
         waiter: StateWaiter, 
     }, 
     Responsed {
@@ -37,7 +37,7 @@ struct TcpImpl {
 pub(super) struct TcpCall(Arc<TcpImpl>);
 
 impl TcpCall {
-    fn new(owner: WeakSession, timeout: Duration, remote: Endpoint) -> Self {
+    pub fn new(owner: WeakSession, timeout: Duration, remote: Endpoint) -> Self {
         Self(Arc::new(TcpImpl {
             owner, 
             timeout, 
@@ -66,7 +66,7 @@ impl TcpCall {
             return Err(BuckyError::new(BuckyErrorCode::Timeout, ""))
         }
         let sn_call: &SnCall = packages.packages_no_exchange()[0].as_ref();
-        let resp_box = interface.confirm_connect(&stack, vec![DynamicPackage::new(sn_call.clone())], self.0.timeout - escaped).await?;
+        let resp_box = interface.confirm_connect(&stack, vec![DynamicPackage::from(sn_call.clone())], self.0.timeout - escaped).await?;
         if resp_box.packages_no_exchange().len() > 0 {
             let resp_pkg = &resp_box.packages_no_exchange()[0];
             if resp_pkg.cmd_code() == PackageCmdCode::SnCallResp {
@@ -113,6 +113,10 @@ impl TcpCall {
 
 #[async_trait::async_trait]
 impl CallTunnel for TcpCall {
+    fn clone_as_call_tunnel(&self) -> Box<dyn CallTunnel> {
+        Box::new(self.clone())
+    }
+
     async fn wait(&self) -> (BuckyResult<Device>, Option<EndpointPair>) {
         enum NextStep {
             Start {
@@ -132,7 +136,6 @@ impl CallTunnel for TcpCall {
                         waiter: waiter.new_waiter(), 
                         abort: reg
                     };
-                    let now = bucky_time_now(); 
                     *state = TcpState::Running {
                         waiter: waiter.transfer(), 
                         proc_stub
@@ -145,7 +148,7 @@ impl CallTunnel for TcpCall {
                 } => NextStep::Wait(waiter.new_waiter()), 
                 TcpState::Responsed { 
                     result 
-                } => NextStep::Return((result.clone(), Some(self.0.remote.clone()))), 
+                } => NextStep::Return((result.clone(), Some(EndpointPair::from((Endpoint::default_tcp(&self.0.remote), self.0.remote.clone()))))), 
                 TcpState::Canceled(err) => NextStep::Return((Err(err.clone()), None))
             }
         };
@@ -155,7 +158,7 @@ impl CallTunnel for TcpCall {
             match &*state {
                 TcpState::Responsed { 
                     result 
-                } => (result.clone(), Some(self.0.remote.clone())), 
+                } => (result.clone(), Some(EndpointPair::from((Endpoint::default_tcp(&self.0.remote), self.0.remote.clone())))), 
                 TcpState::Canceled(err) => (Err(err.clone()), None),
                 _ => unreachable!()
             }
@@ -177,17 +180,13 @@ impl CallTunnel for TcpCall {
         }
     }
 
-    fn on_time_escape(&self, now: Timestamp) {
-        // do nothing
-    }
-
-    fn reset(&self, timeout: Duration) -> Option<Self> {
-        Some(Self(Arc::new(TcpImpl {
+    fn reset(&self, timeout: Duration) -> Option<Box<dyn CallTunnel>> {
+        Some(Box::new(Self(Arc::new(TcpImpl {
             owner: self.0.owner.clone(), 
             timeout, 
             remote: self.0.remote.clone(), 
             state: RwLock::new(TcpState::Init(StateWaiter::new()))
-        })))
+        }))))
     }
 
     fn cancel(&self) {
@@ -201,21 +200,17 @@ impl CallTunnel for TcpCall {
                 } => {
                     let waiter = waiter.transfer();
                     let abort = proc_stub.clone();
-                    *state = UdpState::Canceled(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"));
+                    *state = TcpState::Canceled(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"));
                     Some((waiter, abort))
                 }, 
                 _ => None
             }
         };
         
-        if let Some((waiter, stub)) = waiter {
+        if let Some((waiter, stub)) = stub {
             waiter.wake();
             stub.abort();
         }
-    }
-
-    fn on_udp_call_resp(&self, _resp: &SnCallResp, _local: &Interface, _from: &Endpoint) {
-        // do nothing
     }
 }
 

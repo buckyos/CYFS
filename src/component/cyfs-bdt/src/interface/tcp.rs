@@ -678,7 +678,7 @@ impl Interface {
         mut packages: Vec<DynamicPackage>,
         timeout: Duration,
     ) -> Result<PackageBox, BuckyError> {
-        debug!("{} confirm_connect", self);
+        debug!("{} confirm_connect timeout {:?}", self, timeout);
         let key_stub = stack
             .keystore()
             .get_key_by_mix_hash(&self.key().mix_hash(), false, false)
@@ -704,6 +704,10 @@ impl Interface {
                     PackageCmdCode::TcpAckConnection => {
                         let tcp_ack: &v0::TcpAckConnection = pkg.as_ref();
                         Ok(Exchange::from((tcp_ack, self.0.remote_device_id.clone(), encrypted, key_stub.key.mix_key)))
+                    }
+                    PackageCmdCode::SnCall => {
+                        let sn_call: &SnCall = pkg.as_ref();
+                        Ok(Exchange::from((sn_call, encrypted, key_stub.key.mix_key)))
                     }
                     _ => Err(BuckyError::new(
                         BuckyErrorCode::InvalidInput,

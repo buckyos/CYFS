@@ -98,7 +98,7 @@ impl CallTunnel for UdpCall {
     fn clone_as_call_tunnel(&self) -> Box<dyn CallTunnel> {
         Box::new(self.clone())
     }
-    
+
     async fn wait(&self) -> (BuckyResult<Device>, Option<EndpointPair>) {
         enum NextStep {
             Start(AbortRegistration), 
@@ -198,10 +198,6 @@ impl CallTunnel for UdpCall {
             },
             NextStep::None => {}
         }
-    }
-
-    fn reset(&self) -> Option<Box<dyn CallTunnel>> {
-        None
     }
 
     fn cancel(&self) {

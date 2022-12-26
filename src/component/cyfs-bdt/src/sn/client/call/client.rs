@@ -13,7 +13,10 @@ use crate::{
     history::keystore, 
     stack::{WeakStack, Stack}
 };
-use super::udp::{self, *};
+use super::{
+    udp::{self, *}, 
+    tcp::{*}
+};
 
 
 #[derive(Clone)]
@@ -80,10 +83,19 @@ impl CallManager {
             let session = CallSession::new(self.0.stack.clone(), call, stack.config().sn_client.call.clone()).await;
 
             let net_listener = stack.net_manager().listener();
-            let locals = net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv4()).cloned().collect();
-            let remotes = sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.addr().is_ipv4()).cloned().collect();
-            let tunnel = UdpCall::new(session.to_weak(), locals, remotes);
-            session.add_tunnel(tunnel);
+            {
+                let locals = net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv4()).cloned().collect();
+                let remotes = sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.addr().is_ipv4()).cloned().collect();
+                let tunnel = UdpCall::new(session.to_weak(), locals, remotes);
+                session.add_tunnel(tunnel.clone_as_call_tunnel());
+            }
+          
+            if net_listener.tcp().iter().find(|l| l.local().addr().is_ipv4()).is_some() {
+                for remote in  sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_tcp() && endpoint.addr().is_ipv4()) {
+                    let tunnel = TcpCall::new(session.to_weak(), stack.config().sn_client.call.timeout, remote.clone());
+                    session.add_tunnel(tunnel.clone_as_call_tunnel());
+                }
+            }
 
             sessions.push(session);
         }   
@@ -285,13 +297,19 @@ impl CallSessions {
 }
 
 #[async_trait::async_trait]
-pub(super) trait CallTunnel {
+pub(super) trait CallTunnel: Send + Sync {
     fn clone_as_call_tunnel(&self) -> Box<dyn CallTunnel>;
     async fn wait(&self) -> (BuckyResult<Device>, Option<EndpointPair>);
-    fn on_time_escape(&self, now: Timestamp);
-    fn reset(&self) -> Option<Box<dyn CallTunnel>>;
     fn cancel(&self);
-    fn on_udp_call_resp(&self, resp: &SnCallResp, local: &Interface, from: &Endpoint);
+    fn on_time_escape(&self, _now: Timestamp) {
+
+    }
+    fn reset(&self, _timeout: Duration) -> Option<Box<dyn CallTunnel>> {
+        None
+    }
+    fn on_udp_call_resp(&self, _resp: &SnCallResp, _local: &Interface, _from: &Endpoint) {
+
+    }
 }
 
 enum SessionState {
@@ -307,7 +325,7 @@ enum SessionState {
 
 struct SessionStateImpl {
     packages: Arc<PackageBox>, 
-    tunnels: Vec<UdpCall>, 
+    tunnels: Vec<Box<dyn CallTunnel>>, 
     waiter: StateWaiter, 
     start_at: Timestamp, 
     state: SessionState
@@ -344,7 +362,7 @@ impl CallSession {
         let key_stub = strong_stack.keystore().create_key(strong_stack.device_cache().get_inner(&sn).unwrap().desc(), true);
         let mut packages = PackageBox::encrypt_box(sn.clone(), key_stub.key.clone());
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = &key_stub.encrypted {
-            let mut exchange = Exchange::from((&call, strong_stack.sn_client().ping().default_local(), encrypted.clone(), key_stub.key.mix_key.clone()));
+            let mut exchange = Exchange::from((&call, encrypted.clone(), key_stub.key.mix_key.clone()));
             let _ = exchange.sign(strong_stack.keystore().signer()).await.unwrap();
             packages.push(exchange);
         }
@@ -376,7 +394,7 @@ impl CallSession {
         let tunnels = {
             let state = self.0.state.read().unwrap();
             match &state.state {
-                SessionState::FirstTry | SessionState::SecondTry => state.tunnels.clone(), 
+                SessionState::FirstTry | SessionState::SecondTry => state.tunnels.iter().map(|t| t.clone_as_call_tunnel()).collect(), 
                 _ => vec![]
             }
         };
@@ -387,7 +405,7 @@ impl CallSession {
     }
 
 
-    fn sync_tunnel(&self, _tunnel: &UdpCall, result: BuckyResult<Device>, active: Option<EndpointPair>) {
+    fn sync_tunnel(&self, _tunnel: &dyn CallTunnel, result: BuckyResult<Device>, active: Option<EndpointPair>) {
         let ret = {
             let mut state = self.0.state.write().unwrap();
 
@@ -427,7 +445,7 @@ impl CallSession {
 
     async fn wait(&self) -> Option<EndpointPair> {
         enum NextStep {
-            Start(AbortRegistration, Vec<UdpCall>), 
+            Start(AbortRegistration, Vec<Box<dyn CallTunnel>>), 
             Wait(AbortRegistration),
             Return(Option<EndpointPair>)
         }
@@ -443,7 +461,7 @@ impl CallSession {
                         state.state = SessionState::FirstTry;
                     }
                     state.start_at = bucky_time_now();
-                    NextStep::Start(state.waiter.new_waiter(), state.tunnels.clone())
+                    NextStep::Start(state.waiter.new_waiter(), state.tunnels.iter().map(|t| t.clone_as_call_tunnel()).collect())
                 }, 
                 SessionState::Responsed { active, .. } => NextStep::Return(Some(active.clone())), 
                 SessionState::Canceled(_) => NextStep::Return(None), 
@@ -466,7 +484,7 @@ impl CallSession {
                     let session = self.clone();
                     task::spawn(async move {
                         let (result, active) = tunnel.wait().await;
-                        session.sync_tunnel(&tunnel, result, active);
+                        session.sync_tunnel(tunnel.as_ref(), result, active);
                     });
                 }
                 StateWaiter::wait(waiter, state).await
@@ -476,7 +494,7 @@ impl CallSession {
         }
     }
 
-    fn add_tunnel(&self, tunnel: UdpCall) {
+    fn add_tunnel(&self, tunnel: Box<dyn CallTunnel>) {
         let mut state = self.0.state.write().unwrap();
         match &state.state {
             SessionState::Init => {
@@ -498,7 +516,7 @@ impl CallSession {
         let key_stub = stack.keystore().create_key(stack.device_cache().get_inner(self.sn()).unwrap().desc(), true);
         let mut packages = PackageBox::encrypt_box(self.sn().clone(), key_stub.key.clone());
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = &key_stub.encrypted {
-            let mut exchange = Exchange::from((&call, stack.sn_client().ping().default_local(), encrypted.clone(), key_stub.key.mix_key.clone()));
+            let mut exchange = Exchange::from((&call, encrypted.clone(), key_stub.key.mix_key.clone()));
             let _ = exchange.sign(stack.keystore().signer()).await.unwrap();
             packages.push(exchange);
         }
@@ -507,8 +525,21 @@ impl CallSession {
         let tunnels = {
             let mut state = self.0.state.write().unwrap();
             state.packages = Arc::new(packages);
-            if let SessionState::SecondTry = &state.state {
-                Some(state.tunnels.clone())
+            let escaped = Duration::from_micros(bucky_time_now() - state.start_at);
+            if escaped < self.config().timeout {
+                let remain = self.config().timeout - escaped;
+                let mut resets = vec![];
+                for tunnel in &state.tunnels {
+                    if let Some(reset) = tunnel.reset(remain) {
+                        resets.push(reset);
+                    }
+                }
+                
+                for tunnel in &resets {
+                    state.tunnels.push(tunnel.clone_as_call_tunnel());
+                }
+               
+                Some(resets)
             } else {
                 None
             }
@@ -516,7 +547,11 @@ impl CallSession {
        
         if let Some(tunnels) = tunnels {
             for tunnel in tunnels {
-                tunnel.reset();
+                let session = self.clone();
+                task::spawn(async move {
+                    let (result, active) = tunnel.wait().await;
+                    session.sync_tunnel(tunnel.as_ref(), result, active);
+                });
             }
         }
     }
@@ -525,7 +560,7 @@ impl CallSession {
         struct NextStep {
             waiter: Option<StateWaiter>, 
             reset: Option<SnCall>, 
-            callback: Option<Vec<UdpCall>>, 
+            callback: Option<Vec<Box<dyn CallTunnel>>>, 
         }
 
         impl NextStep {
@@ -547,7 +582,7 @@ impl CallSession {
                     next.reset = Some(call.clone());
                     state.state = SessionState::SecondTry;
                 } else {
-                    next.callback = Some(state.tunnels.clone());
+                    next.callback = Some(state.tunnels.iter().map(|t| t.clone_as_call_tunnel()).collect());
                 }
             }, 
             SessionState::SecondTry => {
@@ -555,7 +590,7 @@ impl CallSession {
                     state.state = SessionState::Canceled(BuckyError::new(BuckyErrorCode::Timeout, "session timeout"));
                     next.waiter = Some(state.waiter.transfer());
                 } else {
-                    next.callback = Some(state.tunnels.clone());
+                    next.callback = Some(state.tunnels.iter().map(|t| t.clone_as_call_tunnel()).collect());
                 }
             }, 
             _ => {}
