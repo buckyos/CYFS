@@ -5,4 +5,4 @@ mod def;
 
 pub use cyfs_stack::*;
 pub use params::*;
-pub use def::*;
+pub(crate) use def::*;

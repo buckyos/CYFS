@@ -31,29 +31,29 @@ impl ContextManager {
         }
     }
 
-    fn decode_context_id_from_string(source: &RequestSourceInfo, s: &str) -> TransContextRef {
+    fn decode_context_id_from_string(source_dec: &ObjectId, s: &str) -> TransContextRef {
         if OBJECT_ID_BASE36_RANGE.contains(&s.len()) {
             match ObjectId::from_base36(s) {
                 Ok(ret) => TransContextRef::Object(ret),
-                Err(_) => TransContextRef::Path((s.to_owned(), source.dec.clone())),
+                Err(_) => TransContextRef::Path((s.to_owned(), source_dec.to_owned())),
             }
         } else if OBJECT_ID_BASE58_RANGE.contains(&s.len()) {
             match ObjectId::from_base36(s) {
                 Ok(ret) => TransContextRef::Object(ret),
-                Err(_) => TransContextRef::Path((s.to_owned(), source.dec.clone())),
+                Err(_) => TransContextRef::Path((s.to_owned(), source_dec.to_owned())),
             }
         } else {
-            TransContextRef::Path((s.to_owned(), source.dec.clone()))
+            TransContextRef::Path((s.to_owned(), source_dec.to_owned()))
         }
     }
 
     pub async fn create_download_context_from_trans_context(
         &self,
-        source: &RequestSourceInfo,
+        source_dec: &ObjectId,
         referer: impl Into<String>,
-        trans_context_id: &str,
+        trans_context: &str,
     ) -> BuckyResult<TransContextHolder> {
-        let ref_id = Self::decode_context_id_from_string(source, trans_context_id);
+        let ref_id = Self::decode_context_id_from_string(source_dec, trans_context);
 
         let holder = TransContextHolder::new_context(self.clone(), ref_id, referer);
         holder.init().await?;

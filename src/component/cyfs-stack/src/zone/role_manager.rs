@@ -452,7 +452,7 @@ impl ZoneRoleManager {
         }
     }
 
-    pub async fn init(
+    pub(crate) async fn init(
         &self,
         root_state: &GlobalStateLocalService,
         bdt_stack: &StackGuard,

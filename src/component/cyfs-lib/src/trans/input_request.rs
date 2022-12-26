@@ -26,7 +26,7 @@ pub struct TransCreateTaskInputRequest {
     pub device_list: Vec<DeviceId>,
 
     pub group: Option<String>,
-    pub context_id: Option<ObjectId>,
+    pub context: Option<String>,
 
     pub auto_start: bool,
 }

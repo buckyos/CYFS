@@ -146,8 +146,6 @@ impl CyfsStackImpl {
         let trans_store = create_trans_store(isolate).await?;
         let chunk_manager = Arc::new(ChunkManager::new());
 
-        let named_data_components = NamedDataComponents::new(chunk_manager, ndc, tracker);
-
         // init sn config manager
         let root_state_processor = GlobalStateOutputTransformer::new(
             local_root_state.clone_global_state_processor(),
@@ -187,6 +185,8 @@ impl CyfsStackImpl {
 
         let context_manager = ContextManager::new(noc.clone(), device_manager.clone_cache());
 
+        let named_data_components = NamedDataComponents::new(chunk_manager, ndc, tracker, context_manager.clone());
+        
         let fail_handler =
             ObjectFailHandler::new(raw_meta_cache.clone(), device_manager.clone_cache());
 

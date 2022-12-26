@@ -1,17 +1,15 @@
 use super::task::*;
-use crate::NamedDataComponents;
 use crate::ndn::TaskGroupHelper;
 use crate::trans_api::{DownloadTaskTracker, TransStore};
+use crate::NamedDataComponents;
 use cyfs_base::*;
+use cyfs_bdt::StackGuard;
 use cyfs_lib::TransTaskInfo;
-use cyfs_bdt::{
-    StackGuard,
-};
 use cyfs_task_manager::*;
 
 use sha2::Digest;
 use std::path::PathBuf;
-use std::sync::{Arc};
+use std::sync::Arc;
 
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
 #[cyfs_protobuf_type(super::trans_proto::DownloadTaskState)]
@@ -26,7 +24,9 @@ pub struct DownloadTaskState {
 }
 
 impl ProtobufTransform<super::trans_proto::DownloadTaskState> for DownloadTaskState {
-    fn transform(value: crate::trans_api::local::trans_proto::DownloadTaskState) -> BuckyResult<Self> {
+    fn transform(
+        value: crate::trans_api::local::trans_proto::DownloadTaskState,
+    ) -> BuckyResult<Self> {
         Ok(Self {
             task_status: TaskStatus::try_from(value.task_status)?,
             err_code: value.err_code.map(|v| BuckyErrorCode::from(v)),
@@ -104,7 +104,7 @@ impl DownloadTaskManager {
         source: DeviceId,
         dec_id: ObjectId,
         group: Option<String>,
-        context_id: Option<ObjectId>,
+        context: Option<String>,
         file: File,
         local_path: Option<String>,
         device_list: Vec<DeviceId>,
@@ -128,12 +128,13 @@ impl DownloadTaskManager {
 
         let group = TaskGroupHelper::new_opt_with_dec(&dec_id, group.as_deref());
         let params = DownloadFileParam {
+            dec_id: dec_id.clone(),
             file,
             device_list,
             referer,
             save_path: local_path.clone(),
             group,
-            context_id: context_id.clone(),
+            context,
         };
 
         let task_id = self
@@ -143,13 +144,8 @@ impl DownloadTaskManager {
         assert_eq!(task_id, Self::gen_task_id(&file_id, local_path));
 
         let mut conn = self.trans_store.create_connection().await?;
-        conn.add_task_info(
-            &task_id,
-            &context_id,
-            TaskStatus::Stopped,
-            vec![(source, dec_id)],
-        )
-        .await?;
+        conn.add_task_info(&task_id, &None, TaskStatus::Stopped, vec![(source, dec_id)])
+            .await?;
         Ok(task_id)
     }
 
@@ -158,7 +154,7 @@ impl DownloadTaskManager {
         source: DeviceId,
         dec_id: ObjectId,
         group: Option<String>,
-        context_id: Option<ObjectId>,
+        context: Option<String>,
         chunk_id: ChunkId,
         local_path: Option<String>,
         device_list: Vec<DeviceId>,
@@ -181,12 +177,13 @@ impl DownloadTaskManager {
 
         let group = TaskGroupHelper::new_opt_with_dec(&dec_id, group.as_deref());
         let params = DownloadChunkParam {
+            dec_id: dec_id.clone(),
             chunk_id,
             device_list,
             referer,
             save_path: local_path,
             group,
-            context_id: context_id.clone(),
+            context,
         };
         let task_id = self
             .task_manager
@@ -194,13 +191,8 @@ impl DownloadTaskManager {
             .await?;
 
         let mut conn = self.trans_store.create_connection().await?;
-        conn.add_task_info(
-            &task_id,
-            &context_id,
-            TaskStatus::Stopped,
-            vec![(source, dec_id)],
-        )
-        .await?;
+        conn.add_task_info(&task_id, &None, TaskStatus::Stopped, vec![(source, dec_id)])
+            .await?;
 
         Ok(task_id)
     }
@@ -258,31 +250,31 @@ impl DownloadTaskManager {
         for (task_id, task_type, _, param, _) in list {
             if task_type == DOWNLOAD_CHUNK_TASK {
                 let param = DownloadChunkParam::clone_from_slice(param.as_slice())?;
-                let local_path = if param.save_path().is_some() {
-                    param.save_path().as_ref().unwrap().clone()
+                let local_path = if param.save_path.is_some() {
+                    param.save_path.as_ref().unwrap().clone()
                 } else {
                     "".to_string()
                 };
                 task_info_list.push(TransTaskInfo {
                     task_id: task_id.to_string(),
-                    context_id: param.context_id().clone(),
-                    object_id: param.chunk_id().object_id(),
+                    context: param.context,
+                    object_id: param.chunk_id.object_id(),
                     local_path: PathBuf::from(local_path),
-                    device_list: param.device_list().clone(),
+                    device_list: param.device_list,
                 });
             } else if task_type == DOWNLOAD_FILE_TASK {
                 let param = DownloadFileParam::clone_from_slice(param.as_slice())?;
-                let local_path = if param.save_path().is_some() {
-                    param.save_path().as_ref().unwrap().clone()
+                let local_path = if param.save_path.is_some() {
+                    param.save_path.as_ref().unwrap().clone()
                 } else {
                     "".to_string()
                 };
                 task_info_list.push(TransTaskInfo {
                     task_id: task_id.to_string(),
-                    context_id: param.context_id().clone(),
-                    object_id: param.file().desc().calculate_id(),
+                    context: param.context,
+                    object_id: param.file.desc().calculate_id(),
                     local_path: PathBuf::from(local_path),
-                    device_list: param.device_list().clone(),
+                    device_list: param.device_list,
                 });
             } else {
                 unreachable!()

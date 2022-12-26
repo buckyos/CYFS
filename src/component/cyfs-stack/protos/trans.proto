@@ -11,12 +11,14 @@ message DownloadTaskState {
 }
 
 message DownloadFileParam {
-    bytes file = 1;
-    repeated bytes device_list = 2;
-    string referer = 3;
-    optional string save_path = 4;
-    optional bytes context_id = 5;
-    optional string group = 6;
+    bytes dec_id = 1;
+
+    bytes file = 2;
+    repeated bytes device_list = 3;
+    string referer = 4;
+    optional string save_path = 5;
+    optional string context = 6;
+    optional string group = 7;
 }
 
 message DownloadFileTaskState {
@@ -24,12 +26,14 @@ message DownloadFileTaskState {
 }
 
 message DownloadChunkParam {
-    bytes chunk_id = 1;
-    repeated bytes device_list = 2;
-    string referer = 3;
-    optional string save_path = 4;
-    optional bytes context_id = 5;
-    optional string group = 6;
+    bytes dec_id = 1;
+
+    bytes chunk_id = 2;
+    repeated bytes device_list = 3;
+    string referer = 4;
+    optional string save_path = 5;
+    optional string context = 6;
+    optional string group = 7;
 }
 
 message PublishLocalFile {

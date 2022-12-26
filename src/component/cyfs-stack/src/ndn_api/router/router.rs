@@ -172,7 +172,7 @@ impl NDNRouter {
         match &req.context {
             Some(context) => {
                 let referer = BdtDataRefererInfo::from(req).to_string();
-                let context = self.context_manager.create_download_context_from_trans_context(&req.common.source, referer, context.as_str()).await?;
+                let context = self.context_manager.create_download_context_from_trans_context(&req.common.source.dec, referer, context.as_str()).await?;
                 let processor = self.get_data_forward(context).await?;
                 Ok(processor)
             }

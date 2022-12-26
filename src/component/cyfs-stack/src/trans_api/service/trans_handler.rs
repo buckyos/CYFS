@@ -161,7 +161,7 @@ impl TransRequestHandler {
             local_path: JsonCodecHelper::decode_string_field(&body, "local_path")?,
             device_list: JsonCodecHelper::decode_str_array_field(&body, "device_list")?,
             group: JsonCodecHelper::decode_option_string_field(&body, "group")?,
-            context_id: JsonCodecHelper::decode_option_string_field(&body, "context_id")?,
+            context: JsonCodecHelper::decode_option_string_field(&body, "context")?,
             auto_start: JsonCodecHelper::decode_bool_field(&body, "auto_start")?
         };
 

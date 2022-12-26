@@ -34,7 +34,7 @@ pub enum TransTaskStatus {
 
 pub struct TransTaskInfo {
     pub task_id: String,
-    pub context_id: Option<ObjectId>,
+    pub context: Option<String>,
     pub object_id: ObjectId,
     pub local_path: PathBuf,
     pub device_list: Vec<DeviceId>,
@@ -128,7 +128,7 @@ pub struct TransCreateTaskOutputRequest {
     pub device_list: Vec<DeviceId>,
 
     pub group: Option<String>,
-    pub context_id: Option<ObjectId>,
+    pub context: Option<String>,
 
     // 任务创建完成之后自动启动任务
     pub auto_start: bool,

@@ -1,4 +1,4 @@
-use crate::ndn_api::{ChunkManagerWriter, ChunkStoreReader, ChunkWriter};
+use crate::ndn_api::{ChunkManagerWriter, ChunkStoreReader, ChunkWriter, ContextManager};
 use cyfs_bdt::{ChunkReader, StackGuard};
 use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_util::*;
@@ -6,11 +6,12 @@ use cyfs_util::*;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
-pub struct NamedDataComponents {
+pub(crate) struct NamedDataComponents {
     pub bdt_stack: Arc<OnceCell<StackGuard>>,
     pub chunk_manager: ChunkManagerRef,
     pub ndc: Box<dyn NamedDataCache>,
     pub tracker: Box<dyn TrackerCache>,
+    pub context_manager: ContextManager,
 }
 
 impl Clone for NamedDataComponents {
@@ -20,6 +21,7 @@ impl Clone for NamedDataComponents {
             chunk_manager: self.chunk_manager.clone(),
             ndc: self.ndc.clone(),
             tracker: self.tracker.clone(),
+            context_manager: self.context_manager.clone(),
         }
     }
 }
@@ -29,12 +31,14 @@ impl NamedDataComponents {
         chunk_manager: ChunkManagerRef,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
+        context_manager: ContextManager,
     ) -> Self {
         Self {
             bdt_stack: Arc::new(OnceCell::new()),
             chunk_manager,
             ndc,
             tracker,
+            context_manager,
         }
     }
 

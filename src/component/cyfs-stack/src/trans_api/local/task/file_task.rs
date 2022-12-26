@@ -1,12 +1,10 @@
 use super::super::download_task_manager::DownloadTaskState;
 use super::verify_file_task::*;
-use crate::NamedDataComponents;
-use crate::ndn_api::{
-    ChunkListReaderAdapter, ChunkWriter, LocalFileWriter,
-};
+use crate::ndn_api::{ChunkListReaderAdapter, ChunkWriter, LocalFileWriter};
 use crate::trans_api::{DownloadTaskTracker, TransStore};
+use crate::NamedDataComponents;
 use cyfs_base::*;
-use cyfs_bdt::{self, SingleDownloadContext, StackGuard};
+use cyfs_bdt::{self, StackGuard};
 use cyfs_task_manager::*;
 
 use cyfs_debug::Mutex;
@@ -23,12 +21,13 @@ pub struct DownloadFileTask {
     named_data_components: NamedDataComponents,
     task_id: TaskId,
     bdt_stack: StackGuard,
+    dec_id: ObjectId,
     device_list: Vec<DeviceId>,
     referer: String,
     file: File,
     save_path: Option<String>,
     group: Option<String>,
-    context_id: Option<ObjectId>,
+    context: Option<String>,
     session: async_std::sync::Mutex<Option<String>>,
     verify_task: async_std::sync::Mutex<Option<RunnableTask<VerifyFileRunnable>>>,
     task_status: Mutex<DownloadFileTaskStatus>,
@@ -39,12 +38,13 @@ impl DownloadFileTask {
     fn new(
         named_data_components: NamedDataComponents,
         bdt_stack: StackGuard,
+        dec_id: ObjectId,
         device_list: Vec<DeviceId>,
         referer: String,
         file: File,
         save_path: Option<String>,
         group: Option<String>,
-        context_id: Option<ObjectId>,
+        context: Option<String>,
         trans_store: Arc<TransStore>,
         task_status: DownloadFileTaskStatus,
     ) -> Self {
@@ -61,12 +61,13 @@ impl DownloadFileTask {
             named_data_components,
             task_id,
             bdt_stack,
+            dec_id,
             device_list,
             referer,
             file,
             save_path,
             group,
-            context_id,
+            context,
             session: async_std::sync::Mutex::new(None),
             verify_task: async_std::sync::Mutex::new(None),
             task_status: Mutex::new(task_status),
@@ -129,12 +130,26 @@ impl Task for DownloadFileTask {
             }
         }
 
-        let context = SingleDownloadContext::id_streams(
-            &self.bdt_stack,
-            self.referer.clone(),
-            &self.device_list,
-        )
-        .await?;
+        let context = match &self.context {
+            Some(context) => {
+                self.named_data_components
+                    .context_manager
+                    .create_download_context_from_trans_context(&self.dec_id, self.referer.clone(), context)
+                    .await?
+            }
+            None => {
+                if self.device_list.is_empty() {
+                    let msg = format!("invalid file task's device list! task={}", self.task_id);
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+
+                self.named_data_components
+                    .context_manager
+                    .create_download_context_from_target(self.referer.clone(), self.device_list[0].clone())
+                    .await?
+            }
+        };
 
         let writer: Box<dyn ChunkWriter> =
             if self.save_path.is_some() && !self.save_path.as_ref().unwrap().is_empty() {
@@ -152,16 +167,20 @@ impl Task for DownloadFileTask {
             };
 
         // 创建bdt层的传输任务
-        let (id, reader) =
-            cyfs_bdt::download_file(&self.bdt_stack, self.file.clone(), self.group.clone(), context)
-                .await
-                .map_err(|e| {
-                    error!(
-                        "start bdt file trans session error! task_id={}, {}",
-                        self.task_id, e
-                    );
-                    e
-                })?;
+        let (id, reader) = cyfs_bdt::download_file(
+            &self.bdt_stack,
+            self.file.clone(),
+            self.group.clone(),
+            context,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                "start bdt file trans session error! task_id={}, {}",
+                self.task_id, e
+            );
+            e
+        })?;
 
         *session = Some(id);
 
@@ -436,12 +455,13 @@ impl Task for DownloadFileTask {
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
 #[cyfs_protobuf_type(super::super::trans_proto::DownloadFileParam)]
 pub struct DownloadFileParam {
+    pub dec_id: ObjectId,
     pub file: File,
     pub device_list: Vec<DeviceId>,
     pub referer: String,
     pub save_path: Option<String>,
     pub group: Option<String>,
-    pub context_id: Option<ObjectId>,
+    pub context: Option<String>,
 }
 
 impl ProtobufTransform<super::super::trans_proto::DownloadFileParam> for DownloadFileParam {
@@ -453,17 +473,12 @@ impl ProtobufTransform<super::super::trans_proto::DownloadFileParam> for Downloa
             device_list.push(DeviceId::clone_from_slice(item.as_slice())?);
         }
         Ok(Self {
+            dec_id: ObjectId::clone_from_slice(&value.dec_id),
             file: File::clone_from_slice(value.file.as_slice())?,
             device_list,
             referer: value.referer,
             save_path: value.save_path,
-            context_id: if value.context_id.is_some() {
-                Some(ObjectId::clone_from_slice(
-                    value.context_id.as_ref().unwrap().as_slice(),
-                ))
-            } else {
-                None
-            },
+            context: value.context,
             group: value.group,
         })
     }
@@ -476,15 +491,12 @@ impl ProtobufTransform<&DownloadFileParam> for super::super::trans_proto::Downlo
             device_list.push(item.to_vec()?);
         }
         Ok(Self {
+            dec_id: value.dec_id.to_vec()?,
             file: value.file.to_vec()?,
             device_list,
             referer: value.referer.clone(),
             save_path: value.save_path.clone(),
-            context_id: if value.context_id.is_some() {
-                Some(value.context_id.as_ref().unwrap().to_vec()?)
-            } else {
-                None
-            },
+            context: value.context.clone(),
             group: value.group.clone(),
         })
     }
@@ -509,31 +521,6 @@ impl DownloadFileTaskState {
         if download_progress > self.download_progress {
             self.download_progress = download_progress;
         }
-    }
-}
-impl DownloadFileParam {
-    pub fn file(&self) -> &File {
-        &self.file
-    }
-
-    pub fn device_list(&self) -> &Vec<DeviceId> {
-        &self.device_list
-    }
-
-    pub fn referer(&self) -> &str {
-        self.referer.as_str()
-    }
-
-    pub fn save_path(&self) -> &Option<String> {
-        &self.save_path
-    }
-
-    pub fn group(&self) -> &Option<String> {
-        &self.group
-    }
-
-    pub fn context_id(&self) -> &Option<ObjectId> {
-        &self.context_id
     }
 }
 
@@ -568,12 +555,13 @@ impl TaskFactory for DownloadFileTaskFactory {
         let task = DownloadFileTask::new(
             self.named_data_components.clone(),
             self.stack.clone(),
+            params.dec_id,
             params.device_list,
             params.referer,
             params.file,
             params.save_path,
             params.group,
-            params.context_id,
+            params.context,
             self.trans_store.clone(),
             DownloadFileTaskStatus {
                 status: TaskStatus::Stopped,
@@ -604,12 +592,13 @@ impl TaskFactory for DownloadFileTaskFactory {
         let task = DownloadFileTask::new(
             self.named_data_components.clone(),
             self.stack.clone(),
+            params.dec_id,
             params.device_list,
             params.referer,
             params.file,
             params.save_path,
             params.group,
-            params.context_id,
+            params.context,
             self.trans_store.clone(),
             data,
         );
