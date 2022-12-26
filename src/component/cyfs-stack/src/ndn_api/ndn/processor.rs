@@ -215,14 +215,14 @@ impl NDNLevelInputProcessor {
     ) -> BuckyResult<NDNInputProcessorRef> {
         match &req.context {
             Some(context) => {
-                let referer = BdtDataRefererInfo::from(req).to_string();
+                let referer = BdtDataRefererInfo::from(req).encode_string();
                 let context = self.context_manager.create_download_context_from_trans_context(&req.common.source.dec, referer, context.as_str()).await?;
                 let processor = self.get_data_forward(context).await?;
                 Ok(processor)
             }
             None => {
                 if let Some(device_id) = self.get_target(req.common.target.as_ref())? {
-                    let referer = BdtDataRefererInfo::from(req).to_string();
+                    let referer = BdtDataRefererInfo::from(req).encode_string();
                     let context =self.context_manager.create_download_context_from_target(referer, device_id).await?;
                     let processor = self.get_data_forward(context).await?;
                     Ok(processor)
