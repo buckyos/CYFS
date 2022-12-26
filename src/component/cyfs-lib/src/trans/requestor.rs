@@ -6,7 +6,7 @@ use crate::{
     NDNOutputRequestCommon, SharedObjectStackDecID, TransOutputProcessor, TransOutputProcessorRef,
 };
 use cyfs_core::TransContextObject;
-use http_types::{Method, Request, StatusCode, Url};
+use http_types::{Method, Request, Url};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -94,16 +94,13 @@ impl TransRequestor {
                 Ok(TransGetContextOutputResponse { context })
             }
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "get context failed: id={:?}, path={:?}, status={}, msg={}",
-                    req.context_id, req.context_path, code, msg
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "get context failed: id={:?}, path={:?}, status={}, {}",
+                    req.context_id, req.context_path, code, e
                 );
-                error!("{}", msg);
 
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
@@ -123,18 +120,14 @@ impl TransRequestor {
         match resp.status() {
             code if code.is_success() => Ok(()),
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "update context failed: context={}, status={}, msg={}",
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "update context failed: context={}, status={}, {}",
                     req.context.context_path(),
                     code,
-                    msg
+                    e
                 );
-                error!("{}", msg);
-
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
@@ -155,7 +148,7 @@ impl TransRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         match resp.status() {
-            StatusCode::Ok => {
+            code if code.is_success() => {
                 let body = resp.body_string().await.map_err(|e| {
                     let msg = format!(
                         "trans create task failed, read body string error! req={:?} {}",
@@ -179,16 +172,12 @@ impl TransRequestor {
                 Ok(resp)
             }
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "create task failed: obj={}, status={}, msg={}",
-                    req.object_id, code, msg
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "create task failed: obj={}, status={}, {}",
+                    req.object_id, code, e
                 );
-                error!("{}", msg);
-
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
@@ -206,18 +195,14 @@ impl TransRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         match resp.status() {
-            StatusCode::Ok => Ok(()),
+            code if code.is_success() => Ok(()),
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "stop trans task failed: task={}, status={}, msg={}",
-                    req.task_id, code, msg
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "stop trans task failed: task={}, status={}, {}",
+                    req.task_id, code, e
                 );
-                error!("{}", msg);
-
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
@@ -274,7 +259,7 @@ impl TransRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         match resp.status() {
-            StatusCode::Ok => {
+            code if code.is_success() => {
                 let content = resp.body_json().await.map_err(|e| {
                     let msg = format!("parse TransTaskState resp body error! err={}", e);
                     error!("{}", msg);
@@ -289,16 +274,12 @@ impl TransRequestor {
                 Ok(content)
             }
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "get trans task state failed: task={}, status={}, msg={}",
-                    req.task_id, code, msg
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "get trans task state failed: task={}, status={}, {}",
+                    req.task_id, code, e,
                 );
-                error!("{}", msg);
-
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
@@ -319,7 +300,7 @@ impl TransRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         match resp.status() {
-            StatusCode::Ok => {
+            code if code.is_success() => {
                 let content = resp.body_string().await.map_err(|e| {
                     let msg = format!("get query task resp body error! err={}", e);
                     error!("{}", msg);
@@ -330,13 +311,10 @@ impl TransRequestor {
                 Ok(resp)
             }
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!("query tasks failed: status={}, msg={}", code, msg);
-                error!("{}", msg);
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!("query tasks failed: status={}, msg={}", code, e);
 
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
@@ -357,7 +335,7 @@ impl TransRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         match resp.status() {
-            StatusCode::Ok => {
+            code if code.is_success() => {
                 let body = resp.body_string().await.map_err(|e| {
                     let msg = format!(
                         "trans publish file failed, read body string error! req={:?} {}",
@@ -381,18 +359,15 @@ impl TransRequestor {
                 Ok(resp)
             }
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "trans publish file failed: file={}, status={}, msg={}",
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "trans publish file failed: file={}, status={}, {}",
                     req.local_path.display(),
                     code,
-                    msg
+                    e
                 );
-                error!("{}", msg);
 
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
