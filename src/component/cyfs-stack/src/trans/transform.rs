@@ -1,7 +1,7 @@
 use crate::trans::{TransInputProcessor, TransInputProcessorRef};
 use cyfs_base::*;
-use cyfs_core::TransContext;
 use cyfs_lib::*;
+
 use std::sync::Arc;
 
 pub(crate) struct TransInputTransformer {
@@ -27,10 +27,11 @@ impl TransInputTransformer {
 
 #[async_trait::async_trait]
 impl TransInputProcessor for TransInputTransformer {
-    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext> {
+    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransGetContextInputResponse> {
         let out_req = TransGetContextOutputRequest {
             common: Self::convert_common(req.common),
-            context_name: req.context_name,
+            context_id: req.context_id,
+            context_path: req.context_path,
         };
         let out_resp = self.processor.get_context(out_req).await?;
         Ok(out_resp)
@@ -183,10 +184,11 @@ impl TransOutputTransformer {
 
 #[async_trait::async_trait]
 impl TransOutputProcessor for TransOutputTransformer {
-    async fn get_context(&self, req: TransGetContextOutputRequest) -> BuckyResult<TransContext> {
+    async fn get_context(&self, req: TransGetContextOutputRequest) -> BuckyResult<TransGetContextOutputResponse> {
         let in_req = TransGetContextInputRequest {
             common: self.convert_common(req.common),
-            context_name: req.context_name,
+            context_id: req.context_id,
+            context_path: req.context_path,
         };
 
         let in_resp = self.processor.get_context(in_req).await?;

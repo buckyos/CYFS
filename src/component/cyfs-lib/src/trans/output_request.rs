@@ -111,7 +111,16 @@ impl FromStr for TransTaskControlAction {
 
 pub struct TransGetContextOutputRequest {
     pub common: NDNOutputRequestCommon,
-    pub context_name: String,
+
+    // get TransContext object by object id
+    pub context_id: Option<ObjectId>,
+
+    // or get TransContext object by context_path excatly
+    pub context_path: Option<String>,
+}
+
+pub struct TransGetContextOutputResponse {
+    pub context: TransContext,
 }
 
 pub struct TransPutContextOutputRequest {

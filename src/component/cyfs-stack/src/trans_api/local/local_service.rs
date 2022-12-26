@@ -9,7 +9,6 @@ use crate::trans::{TransInputProcessor, TransInputProcessorRef};
 use crate::trans_api::local::FileRecorder;
 use crate::trans_api::{DownloadTaskManager, PublishManager, TransStore};
 use cyfs_base::File;
-use cyfs_core::{TransContext, TransContextObject};
 use cyfs_task_manager::{TaskId, TaskManager, TaskStatus};
 use std::convert::TryFrom;
 use std::path::PathBuf;
@@ -506,7 +505,6 @@ impl LocalTransService {
         &self,
         req: TransControlTaskGroupInputRequest,
     ) -> BuckyResult<TransControlTaskGroupInputResponse> {
-
         let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
 
         let task = self
@@ -563,27 +561,40 @@ impl LocalTransService {
 
 #[async_trait::async_trait]
 impl TransInputProcessor for LocalTransService {
-    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext> {
-        let noc_req = NamedObjectCacheGetObjectRequest {
-            object_id: TransContext::gen_context_id(
-                req.common.source.dec,
-                &req.context_name,
-            ),
-            source: req.common.source,
-            last_access_rpath: None,
+    async fn get_context(
+        &self,
+        req: TransGetContextInputRequest,
+    ) -> BuckyResult<TransGetContextInputResponse> {
+        let ret = if let Some(id) = &req.context_id {
+            self.named_data_components
+                .context_manager
+                .get_context(id)
+                .await
+        } else if let Some(context_path) = &req.context_path {
+            self.named_data_components
+                .context_manager
+                .get_context_by_path(&req.common.source.dec, context_path.as_str())
+                .await
+        } else {
+            let msg = format!(
+                "context_id and context_path must specify one of them for get_context request!"
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
         };
 
-        match self.noc.get_object(&noc_req).await {
-            Ok(Some(resp)) => Ok(TransContext::clone_from_slice(
-                resp.object.object_raw.as_slice(),
-            )?),
-            Ok(None) => {
-                let msg = format!("noc get object but not found: {}", noc_req.object_id);
-                debug!("{}", msg);
-                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
-            }
-            Err(e) => Err(e),
+        if ret.is_none() {
+            let msg = format!(
+                "get context but not found: id={:?}, path={:?}",
+                req.context_id, req.context_path
+            );
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
+
+        Ok(TransGetContextInputResponse {
+            context: ret.unwrap().object.clone(),
+        })
     }
 
     async fn put_context(&self, req: TransUpdateContextInputRequest) -> BuckyResult<()> {

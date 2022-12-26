@@ -1,11 +1,10 @@
 use crate::*;
 use cyfs_base::BuckyResult;
-use cyfs_core::TransContext;
 use std::sync::Arc;
 
 #[async_trait::async_trait]
 pub trait TransOutputProcessor: Send + Sync {
-    async fn get_context(&self, req: TransGetContextOutputRequest) -> BuckyResult<TransContext>;
+    async fn get_context(&self, req: TransGetContextOutputRequest) -> BuckyResult<TransGetContextOutputResponse>;
     async fn put_context(&self, req: TransPutContextOutputRequest) -> BuckyResult<()>;
     async fn create_task(
         &self,

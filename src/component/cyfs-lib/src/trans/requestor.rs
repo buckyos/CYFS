@@ -5,7 +5,6 @@ use cyfs_base::*;
 use crate::{
     NDNOutputRequestCommon, SharedObjectStackDecID, TransOutputProcessor, TransOutputProcessorRef,
 };
-use cyfs_core::TransContext;
 use cyfs_core::TransContextObject;
 use http_types::{Method, Request, StatusCode, Url};
 use std::sync::Arc;
@@ -74,8 +73,11 @@ impl TransRequestor {
     pub async fn get_context(
         &self,
         req: TransGetContextOutputRequest,
-    ) -> BuckyResult<TransContext> {
-        info!("will get context {}", req.context_name.as_str());
+    ) -> BuckyResult<TransGetContextOutputResponse> {
+        info!(
+            "will get context id={:?}, path={:?}",
+            req.context_id, req.context_path
+        );
 
         let url = self.service_url.join("get_context").unwrap();
         let mut http_req = Request::new(Method::Post, url);
@@ -86,17 +88,16 @@ impl TransRequestor {
 
         let mut resp = self.requestor.request(http_req).await?;
         match resp.status() {
-            StatusCode::Ok => {
-                let body = resp.body_string().await.unwrap_or("".to_owned());
-                TransContext::clone_from_hex(body.as_str(), &mut Vec::new())
+            code if code.is_success() => {
+                let context = RequestorHelper::decode_raw_object_body(&mut resp).await?;
+
+                Ok(TransGetContextOutputResponse { context })
             }
             code @ _ => {
                 let msg = resp.body_string().await.unwrap_or("".to_owned());
                 let msg = format!(
-                    "get context failed: context_name={}, status={}, msg={}",
-                    req.context_name.as_str(),
-                    code,
-                    msg
+                    "get context failed: id={:?}, path={:?}, status={}, msg={}",
+                    req.context_id, req.context_path, code, msg
                 );
                 error!("{}", msg);
 
@@ -114,12 +115,13 @@ impl TransRequestor {
         let mut http_req = Request::new(Method::Post, url);
 
         self.encode_common_headers(&req.common, &mut http_req);
-        let body = req.encode_string();
+
+        let body = req.context.to_vec()?;
         http_req.set_body(body);
 
         let mut resp = self.requestor.request(http_req).await?;
         match resp.status() {
-            StatusCode::Ok => Ok(()),
+            code if code.is_success() => Ok(()),
             code @ _ => {
                 let msg = resp.body_string().await.unwrap_or("".to_owned());
                 let msg = format!(
@@ -474,7 +476,10 @@ impl TransRequestor {
 
 #[async_trait::async_trait]
 impl TransOutputProcessor for TransRequestor {
-    async fn get_context(&self, req: TransGetContextOutputRequest) -> BuckyResult<TransContext> {
+    async fn get_context(
+        &self,
+        req: TransGetContextOutputRequest,
+    ) -> BuckyResult<TransGetContextOutputResponse> {
         Self::get_context(self, req).await
     }
 

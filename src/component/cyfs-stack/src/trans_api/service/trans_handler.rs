@@ -1,5 +1,4 @@
 use cyfs_base::*;
-use cyfs_core::TransContext;
 use cyfs_lib::*;
 use crate::ndn_api::NDNInputHttpRequest;
 use crate::non::NONInputHttpRequest;
@@ -105,7 +104,7 @@ impl TransRequestHandler {
         match self.on_get_context(req).await {
             Ok(resp) => {
                 let mut http_resp: tide::Response = RequestorHelper::new_ok_response();
-                let body = resp.to_hex().unwrap();
+                let body = resp.context.to_vec().unwrap();
                 http_resp.set_body(body);
                 http_resp
             }
@@ -235,7 +234,7 @@ impl TransRequestHandler {
         self.processor.publish_file(req).await
     }
 
-    async fn on_get_context<State>(&self, mut req: NONInputHttpRequest<State>) -> BuckyResult<TransContext> {
+    async fn on_get_context<State>(&self, mut req: NONInputHttpRequest<State>) -> BuckyResult<TransGetContextInputResponse> {
         let common = Self::decode_common_headers(&req)?;
 
         let body = req.request.body_json().await.map_err(|e| {
@@ -247,25 +246,17 @@ impl TransRequestHandler {
 
         let req = TransGetContextInputRequest {
             common,
-            context_name: JsonCodecHelper::decode_string_field(&body, "context_name")?
+            context_id: JsonCodecHelper::decode_option_string_field(&body, "context_id")?,
+            context_path: JsonCodecHelper::decode_option_string_field(&body, "context_path")?
         };
         self.processor.get_context(req).await
     }
 
-    async fn on_update_context<State>(&self, mut req: NONInputHttpRequest<State>) -> BuckyResult<()> {
+    async fn on_update_context<State>(&self, req: NONInputHttpRequest<State>) -> BuckyResult<()> {
         let common = Self::decode_common_headers(&req)?;
 
-        let body = req.request.body_json().await.map_err(|e| {
-            let msg = format!("trans get context failed, read body bytes error! {}", e);
-            error!("{}", msg);
-
-            BuckyError::new(BuckyErrorCode::InvalidParam, msg)
-        })?;
-
-        let context = TransContext::clone_from_hex(
-            JsonCodecHelper::decode_string_field::<String>(&body, "context")?.as_str(),
-            &mut Vec::new(),
-        )?;
+        let mut req: http_types::Request = req.request.into();
+        let context = RequestorHelper::decode_raw_object_body(&mut req).await?;
 
         let req = TransUpdateContextInputRequest {
             common,

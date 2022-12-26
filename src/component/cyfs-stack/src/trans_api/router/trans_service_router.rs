@@ -1,7 +1,7 @@
 use crate::meta::ObjectFailHandler;
 use cyfs_base::*;
-use cyfs_core::TransContext;
 use cyfs_lib::*;
+
 use std::sync::Arc;
 
 use crate::forward::ForwardProcessorManager;
@@ -120,7 +120,7 @@ impl TransServiceRouter {
 
 #[async_trait::async_trait]
 impl TransInputProcessor for TransServiceRouter {
-    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext> {
+    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransGetContextInputResponse> {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.get_context(req).await
     }

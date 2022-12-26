@@ -10,7 +10,8 @@ impl JsonCodec<TransGetContextOutputRequest> for TransGetContextOutputRequest {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
-        JsonCodecHelper::encode_string_field(&mut obj, "context_name", &self.context_name);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_id", self.context_id.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_path", self.context_path.as_ref());
 
         obj
     }
@@ -18,7 +19,8 @@ impl JsonCodec<TransGetContextOutputRequest> for TransGetContextOutputRequest {
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
-            context_name: JsonCodecHelper::decode_string_field(obj, "context_name")?,
+            context_id: JsonCodecHelper::decode_option_string_field(obj, "context_id")?,
+            context_path: JsonCodecHelper::decode_option_string_field(obj, "context_path")?,
         })
     }
 }
@@ -27,7 +29,8 @@ impl JsonCodec<TransGetContextInputRequest> for TransGetContextInputRequest {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
-        JsonCodecHelper::encode_string_field(&mut obj, "context_name", &self.context_name);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_id", self.context_id.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_path", self.context_path.as_ref());
 
         obj
     }
@@ -35,7 +38,8 @@ impl JsonCodec<TransGetContextInputRequest> for TransGetContextInputRequest {
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
-            context_name: JsonCodecHelper::decode_string_field(obj, "context_name")?,
+            context_id: JsonCodecHelper::decode_option_string_field(obj, "context_id")?,
+            context_path: JsonCodecHelper::decode_option_string_field(obj, "context_path")?,
         })
     }
 }

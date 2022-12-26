@@ -1,6 +1,5 @@
 use crate::trans::{TransInputProcessor, TransInputProcessorRef};
 use cyfs_base::*;
-use cyfs_core::TransContext;
 use cyfs_lib::*;
 
 use std::sync::Arc;
@@ -37,7 +36,7 @@ impl TransAclInnerInputProcessor {
 
 #[async_trait::async_trait]
 impl TransInputProcessor for TransAclInnerInputProcessor {
-    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext> {
+    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransGetContextInputResponse> {
         self.check_local_zone_permit("trans.get_context", &req.common.source)?;
         self.next.get_context(req).await
     }

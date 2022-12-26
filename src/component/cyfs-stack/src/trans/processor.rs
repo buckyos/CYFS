@@ -1,11 +1,10 @@
 use cyfs_base::BuckyResult;
-use cyfs_core::TransContext;
 use cyfs_lib::*;
 use std::sync::Arc;
 
 #[async_trait::async_trait]
 pub trait TransInputProcessor: Send + Sync {
-    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext>;
+    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransGetContextInputResponse>;
     async fn put_context(&self, req: TransUpdateContextInputRequest) -> BuckyResult<()>;
     async fn create_task(
         &self,

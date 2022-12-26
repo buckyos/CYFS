@@ -9,9 +9,12 @@ use std::path::PathBuf;
 
 pub struct TransGetContextInputRequest {
     pub common: NDNInputRequestCommon,
-    pub context_name: String,
+    pub context_id: Option<ObjectId>,
+    pub context_path: Option<String>,
 }
 
+pub type TransGetContextInputResponse = TransGetContextOutputResponse;
+ 
 pub struct TransUpdateContextInputRequest {
     pub common: NDNInputRequestCommon,
     pub context: TransContext,

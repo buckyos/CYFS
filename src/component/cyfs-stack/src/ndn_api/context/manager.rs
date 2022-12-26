@@ -173,6 +173,11 @@ impl ContextManager {
         }
     }
 
+    pub async fn get_context_by_path(&self, dec_id: &ObjectId, context_path: &str) -> Option<Arc<ContextItem>> {
+        let object_id = TransContext::gen_context_id(dec_id.to_owned(), context_path);
+        self.get_context(&object_id).await
+    }
+
     async fn load_context_from_noc(&self, id: &ObjectId) -> BuckyResult<Option<TransContext>> {
         let noc_req = NamedObjectCacheGetObjectRequest {
             object_id: id.to_owned(),
