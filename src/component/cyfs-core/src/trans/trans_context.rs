@@ -35,6 +35,22 @@ pub struct TransContextDevice {
     pub chunk_codec_desc: ChunkCodecDesc,
 }
 
+impl TransContextDevice {
+    pub fn default_stream(target: DeviceId) -> Self {
+        Self {
+            target,
+            chunk_codec_desc: ChunkCodecDesc::Stream(None, None, None),
+        }
+    }
+
+    pub fn default_raptor(target: DeviceId) -> Self {
+        Self {
+            target,
+            chunk_codec_desc: ChunkCodecDesc::Raptor(None, None, None),
+        }
+    }
+}
+
 #[derive(Clone, Serialize)]
 pub struct TransContextBodyContent {
     pub device_list: Vec<TransContextDevice>,

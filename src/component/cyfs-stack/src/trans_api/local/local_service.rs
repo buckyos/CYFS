@@ -460,7 +460,6 @@ impl LocalTransService {
             .get_tasks(
                 req.common.source.zone.device.as_ref().unwrap(),
                 &req.common.source.dec,
-                &req.context_id,
                 task_status,
                 req.range,
             )

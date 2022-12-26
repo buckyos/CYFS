@@ -82,7 +82,6 @@ impl TransInputProcessor for TransInputTransformer {
     ) -> BuckyResult<TransQueryTasksInputResponse> {
         let out_req = TransQueryTasksOutputRequest {
             common: Self::convert_common(req.common),
-            context_id: req.context_id,
             task_status: req.task_status,
             range: req.range,
         };
@@ -264,7 +263,6 @@ impl TransOutputProcessor for TransOutputTransformer {
     ) -> BuckyResult<TransQueryTasksOutputResponse> {
         let in_req = TransQueryTasksInputRequest {
             common: self.convert_common(req.common),
-            context_id: req.context_id,
             task_status: req.task_status,
             range: req.range,
         };

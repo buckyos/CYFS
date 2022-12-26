@@ -180,7 +180,6 @@ pub struct TransGetTaskStateOutputResponse {
 #[derive(Debug)]
 pub struct TransQueryTasksOutputRequest {
     pub common: NDNOutputRequestCommon,
-    pub context_id: Option<ObjectId>,
     pub task_status: Option<TransTaskStatus>,
     pub range: Option<(u64, u32)>,
 }

@@ -232,13 +232,12 @@ impl DownloadTaskManager {
         &self,
         source: &DeviceId,
         dec_id: &ObjectId,
-        context_id: &Option<ObjectId>,
         task_status: Option<TaskStatus>,
         range: Option<(u64, u32)>,
     ) -> BuckyResult<Vec<TransTaskInfo>> {
         let mut conn = self.trans_store.create_connection().await?;
         let task_id_list = conn
-            .get_tasks(source, dec_id, context_id, task_status, range)
+            .get_tasks(source, dec_id, &None, task_status, range)
             .await?;
 
         let list = self

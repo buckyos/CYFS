@@ -288,7 +288,6 @@ impl TransRequestHandler {
 
         let req = TransQueryTasksInputRequest {
             common,
-            context_id: JsonCodecHelper::decode_option_string_field(&body, "context_id")?,
             task_status: JsonCodecHelper::decode_option_string_field(&body, "task_status")?,
             range
         };

@@ -418,7 +418,6 @@ impl JsonCodec<TransQueryTasksOutputRequest> for TransQueryTasksOutputRequest {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
-        JsonCodecHelper::encode_option_string_field(&mut obj, "context_id", self.context_id.as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "task_status", self.task_status.as_ref());
 
         if self.range.is_some() {
@@ -437,11 +436,6 @@ impl JsonCodec<TransQueryTasksOutputRequest> for TransQueryTasksOutputRequest {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<TransQueryTasksOutputRequest> {
-        let context_id = match obj.get("context_id") {
-            Some(context_id) => Some(JsonCodecHelper::decode_from_string(context_id)?),
-            None => None,
-        };
-
         let task_status = match obj.get("task_status") {
             Some(task_status) => Some(JsonCodecHelper::decode_from_string(task_status)?),
             None => None,
@@ -465,7 +459,6 @@ impl JsonCodec<TransQueryTasksOutputRequest> for TransQueryTasksOutputRequest {
 
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
-            context_id,
             task_status,
             range,
         })
@@ -476,13 +469,7 @@ impl JsonCodec<TransQueryTasksInputRequest> for TransQueryTasksInputRequest {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
-        if self.context_id.is_some() {
-            JsonCodecHelper::encode_string_field(
-                &mut obj,
-                "context_id",
-                self.context_id.as_ref().unwrap(),
-            );
-        }
+
         if self.task_status.is_some() {
             JsonCodecHelper::encode_string_field(
                 &mut obj,
@@ -506,11 +493,6 @@ impl JsonCodec<TransQueryTasksInputRequest> for TransQueryTasksInputRequest {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let context_id = match obj.get("context_id") {
-            Some(context_id) => Some(JsonCodecHelper::decode_from_string(context_id)?),
-            None => None,
-        };
-
         let task_status = match obj.get("task_status") {
             Some(task_status) => Some(JsonCodecHelper::decode_from_string(task_status)?),
             None => None,
@@ -534,7 +516,6 @@ impl JsonCodec<TransQueryTasksInputRequest> for TransQueryTasksInputRequest {
 
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
-            context_id,
             task_status,
             range,
         })

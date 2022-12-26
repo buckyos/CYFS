@@ -14,7 +14,7 @@ pub struct TransGetContextInputRequest {
 }
 
 pub type TransGetContextInputResponse = TransGetContextOutputResponse;
- 
+
 pub struct TransUpdateContextInputRequest {
     pub common: NDNInputRequestCommon,
     pub context: TransContext,
@@ -78,7 +78,6 @@ pub struct TransPublishFileInputRequest {
 #[derive(Debug)]
 pub struct TransQueryTasksInputRequest {
     pub common: NDNInputRequestCommon,
-    pub context_id: Option<ObjectId>,
     pub task_status: Option<TransTaskStatus>,
     pub range: Option<(u64, u32)>,
 }

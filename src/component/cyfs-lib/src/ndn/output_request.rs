@@ -274,12 +274,12 @@ impl NDNGetDataOutputRequest {
     }
 
     pub fn new_context(
-        context: Option<String>,
+        context: impl Into<String>,
         object_id: ObjectId,
         inner_path: Option<String>,
     ) -> Self {
         let mut ret = Self::new(NDNAPILevel::Router, object_id, inner_path);
-        ret.context = context;
+        ret.context = Some(context.into());
 
         ret
     }
