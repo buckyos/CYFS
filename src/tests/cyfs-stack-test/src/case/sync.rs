@@ -140,7 +140,7 @@ async fn add_file(stack: &SharedCyfsStack) -> FileId {
         dirs: None,
     };
 
-    let ret = stack.trans().publish_file(&req).await;
+    let ret = stack.trans().publish_file(req).await;
     if ret.is_err() {
         error!("sync add_file error! {}", ret.unwrap_err());
         unreachable!();
