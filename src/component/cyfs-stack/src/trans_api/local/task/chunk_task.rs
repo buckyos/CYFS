@@ -356,7 +356,7 @@ impl ProtobufTransform<super::super::trans_proto::DownloadChunkParam> for Downlo
             device_list.push(DeviceId::clone_from_slice(item.as_slice())?);
         }
         Ok(Self {
-            dec_id: ObjectId::clone_from_slice(&value.dec_id),
+            dec_id: ObjectId::clone_from_slice(&value.dec_id)?,
             chunk_id: ChunkId::from(value.chunk_id),
             device_list,
             referer: value.referer,

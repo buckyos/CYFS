@@ -473,7 +473,7 @@ impl ProtobufTransform<super::super::trans_proto::DownloadFileParam> for Downloa
             device_list.push(DeviceId::clone_from_slice(item.as_slice())?);
         }
         Ok(Self {
-            dec_id: ObjectId::clone_from_slice(&value.dec_id),
+            dec_id: ObjectId::clone_from_slice(&value.dec_id)?,
             file: File::clone_from_slice(value.file.as_slice())?,
             device_list,
             referer: value.referer,
