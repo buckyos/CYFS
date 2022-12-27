@@ -12,7 +12,7 @@ impl TaskGroupHelper {
     pub fn new_opt_with_dec(dec_id: &ObjectId, group: Option<&str>) -> Option<String> {
         match group {
             Some(v) => Some(Self::new_with_dec(dec_id, v)),
-            None => None,
+            None => Some(format!("{}/", dec_id)),
         }
     }
 
