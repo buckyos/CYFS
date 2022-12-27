@@ -26,9 +26,8 @@ use crate::{
             OnTcpInterface
         }
     },
-    sn::client::PingClientCalledEvent, 
+    sn::client::{SnCache, PingClientCalledEvent}, 
     stream::{StreamContainer, RemoteSequence}, 
-    finder::DeviceCache, 
     stack::{Stack, WeakStack}, 
     MTU
 };
@@ -53,13 +52,13 @@ impl BuildTunnelParams {
         let cached_remote = stack.device_cache().get_inner(&remote);
         let known_remote = cached_remote.as_ref().or_else(|| self.remote_desc.as_ref());
 
-        known_remote.and_then(|device| DeviceCache::nearest_sn_of(&remote, device.connect_info().sn_list()))
-            .or_else(|| self.remote_sn.as_ref().and_then(|sn_list| DeviceCache::nearest_sn_of(&remote, sn_list)))
-            .or_else(|| DeviceCache::nearest_sn_of(&remote, stack.device_cache().sn_list().as_slice()))
+        known_remote.and_then(|device| SnCache::nearest_sn_of(&remote, device.connect_info().sn_list()))
+            .or_else(|| self.remote_sn.as_ref().and_then(|sn_list| SnCache::nearest_sn_of(&remote, sn_list)))
+            .or_else(|| SnCache::nearest_sn_of(&remote, stack.sn_client().cache().known_list().as_slice()))
     }
 
     pub(crate) fn retry_sn_list(&self, stack: &Stack, nearest: &DeviceId) -> Option<Vec<DeviceId>> {
-        self.remote_sn.clone().or_else(|| Some(stack.device_cache().sn_list()))
+        self.remote_sn.clone().or_else(|| Some(stack.sn_client().cache().known_list()))
             .map(|sn_list| sn_list.into_iter().filter(|sn| sn != nearest).collect())
     }
 }

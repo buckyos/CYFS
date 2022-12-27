@@ -16,6 +16,7 @@ use crate::{
     stack::{Stack, WeakStack}
 };
 use super::{
+    cache::*, 
     ping::{PingConfig, PingClients}, 
     call::{CallConfig, CallManager}
 };
@@ -35,6 +36,7 @@ pub struct Config {
 struct ManagerImpl {
     stack: WeakStack, 
     gen_seq: Arc<TempSeqGenerator>, 
+    cache: SnCache, 
     ping: RwLock<PingClients>, 
     call: CallManager,
 }
@@ -49,6 +51,7 @@ impl ClientManager {
         let atomic_interval = config.atomic_interval;
         let gen_seq = Arc::new(TempSeqGenerator::new());
         let manager = Self(Arc::new(ManagerImpl {
+            cache: SnCache::new(), 
             ping: RwLock::new(PingClients::new(stack.clone(), gen_seq.clone(), net_listener, vec![], local_device)),
             call: CallManager::create(stack.clone()), 
             gen_seq, 
@@ -67,6 +70,10 @@ impl ClientManager {
             });
         }
         manager
+    }
+
+    pub fn cache(&self) -> &SnCache {
+        &self.0.cache
     }
 
     pub fn ping(&self) -> PingClients {
