@@ -396,7 +396,7 @@ impl NamedCacheClient {
             }
 
             // 如果是tcp失败，且失败次数超过重试次数的一半，下次用bdt重试
-            if self.config.conn_straegy == ConnStrategy::TcpFirst && i+1 > (self.config.retry_times as f32 / 2f32).ceil() as u8 {
+            if self.config.conn_strategy == ConnStrategy::TcpFirst && i+1 > (self.config.retry_times as f32 / 2f32).ceil() as u8 {
                 use_tcp = false;
             }
         }
