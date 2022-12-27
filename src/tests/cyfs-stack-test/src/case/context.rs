@@ -56,11 +56,13 @@ async fn publish_file(dec_id: &ObjectId) -> (DeviceId, FileId) {
 async fn test_ndn_get_by_context(dec_id: &ObjectId, target: DeviceId, file_id: FileId) {
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
 
-    let id1 = TransContext::gen_context_id(dec_id.to_owned(), "/root");
-    let id2 = TransContext::gen_context_id(dec_id.to_owned(), "/root/");
+    let id1 = TransContext::gen_context_id(Some(dec_id.to_owned()), "/root");
+    let id2 = TransContext::gen_context_id(Some(dec_id.to_owned()), "/root/");
+    let id3 = TransContext::gen_context_id(None, "/root/");
+    assert_ne!(id2, id3);
 
     // create context
-    let mut root_context = TransContext::new(dec_id.to_owned(), "/root");
+    let mut root_context = TransContext::new(Some(dec_id.to_owned()), "/root");
     root_context.device_list_mut().push(TransContextDevice::default_stream(target.clone()));
     let context_id = root_context.desc().object_id();
     assert_eq!(context_id, id1);
@@ -75,6 +77,7 @@ async fn test_ndn_get_by_context(dec_id: &ObjectId, target: DeviceId, file_id: F
             flags: 0,
         },
         context: root_context,
+        access: None,
     };
     stack.trans().put_context(req).await.unwrap();
 

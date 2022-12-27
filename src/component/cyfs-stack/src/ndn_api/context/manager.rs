@@ -124,13 +124,13 @@ impl ContextManager {
         }
     }
 
-    /* path likes /a/b/c */
-    pub async fn search_context(&self, dec_id: &ObjectId, path: &str) -> Option<Arc<ContextItem>> {
+    /* path likes /a/b/c $/a/b/c */  
+    pub async fn search_context(&self, dec_id: Option<&ObjectId>, path: &str) -> Option<Arc<ContextItem>> {
         assert!(TransContextPath::verify(path));
 
         let mut current_path = path;
         loop {
-            let id = TransContext::gen_context_id(dec_id.to_owned(), current_path);
+            let id = TransContext::gen_context_id(dec_id.clone().cloned(), current_path);
             if let Some(item) = self.get_context(&id).await {
                 debug!(
                     "search trans context by path! path={}, matched={}, context={}",
@@ -176,8 +176,8 @@ impl ContextManager {
         }
     }
 
-    pub async fn get_context_by_path(&self, dec_id: &ObjectId, context_path: &str) -> Option<Arc<ContextItem>> {
-        let object_id = TransContext::gen_context_id(dec_id.to_owned(), context_path);
+    pub async fn get_context_by_path(&self, dec_id: Option<ObjectId>, context_path: &str) -> Option<Arc<ContextItem>> {
+        let object_id = TransContext::gen_context_id(dec_id, context_path);
         self.get_context(&object_id).await
     }
 

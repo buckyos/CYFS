@@ -117,7 +117,13 @@ impl TransContextHolderInner {
         let manager = self.manager.as_ref().unwrap();
         let context = match &self.context_value().ref_id {
             TransContextRef::Object(id) => manager.get_context(id).await,
-            TransContextRef::Path((path, dec_id)) => manager.search_context(dec_id, path).await,
+            TransContextRef::Path((path, dec_id)) => {
+                if path.starts_with('$') {
+                    manager.search_context(None, path).await
+                } else {
+                    manager.search_context(Some(dec_id), path).await
+                }
+            }
         };
 
         // output some debug infos

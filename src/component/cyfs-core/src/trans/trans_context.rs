@@ -10,7 +10,6 @@ use serde::Serialize;
 #[derive(ProtobufEncode, ProtobufDecode, ProtobufTransform, Clone, Serialize)]
 #[cyfs_protobuf_type(crate::codec::protos::TransContextDescContent)]
 pub struct TransContextDescContent {
-    pub dec_id: ObjectId,
     pub context_path: String,
 }
 
@@ -215,6 +214,7 @@ impl TransContextPath {
     }
 
     /*
+    if context_path starts with $, then will treat as global context(without dec specified!)
     a/b -> /a/b
     /a/b/ -> /a/b
     / -> /
@@ -224,7 +224,7 @@ impl TransContextPath {
             return Cow::Borrowed(path);
         }
 
-        let path = path.trim_end_matches('/');
+        let path = path.trim_start_matches('$').trim_end_matches('/');
         if path.starts_with('/') {
             Cow::Borrowed(path)
         } else {
@@ -235,33 +235,36 @@ impl TransContextPath {
 }
 
 pub trait TransContextObject {
-    fn new(dec_id: ObjectId, context_path: &str) -> Self;
-    fn gen_context_id(dec_id: ObjectId, context_path: &str) -> ObjectId;
+    fn new(dec_id: Option<ObjectId>, context_path: &str) -> Self;
+    fn gen_context_id(dec_id: Option<ObjectId>, context_path: &str) -> ObjectId;
+
     fn context_path(&self) -> &str;
     fn device_list(&self) -> &Vec<TransContextDevice>;
     fn device_list_mut(&mut self) -> &mut Vec<TransContextDevice>;
 }
 
 impl TransContextObject for TransContext {
-    fn new(dec_id: ObjectId, context_path: &str) -> Self {
+    fn new(dec_id: Option<ObjectId>, context_path: &str) -> Self {
         let context_path = TransContextPath::fix_path(context_path).to_string();
 
-        let desc = TransContextDescContent { dec_id, context_path };
+        let desc = TransContextDescContent { context_path };
         let body = TransContextBodyContent {
             device_list: vec![],
         };
 
         TransContextBuilder::new(desc, body)
             .no_create_time()
+            .option_dec_id(dec_id)
             .build()
     }
 
-    fn gen_context_id(dec_id: ObjectId, context_path: &str) -> ObjectId {
+    fn gen_context_id(dec_id: Option<ObjectId>, context_path: &str) -> ObjectId {
         let context_path = TransContextPath::fix_path(context_path).to_string();
 
-        let desc = TransContextDescContent { dec_id, context_path };
+        let desc = TransContextDescContent { context_path };
         NamedObjectDescBuilder::new(TransContextDescContent::obj_type(), desc)
             .option_create_time(None)
+            .option_dec_id(dec_id)
             .build()
             .calculate_id()
     }

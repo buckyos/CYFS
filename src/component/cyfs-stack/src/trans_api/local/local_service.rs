@@ -570,10 +570,17 @@ impl TransInputProcessor for LocalTransService {
                 .get_context(id)
                 .await
         } else if let Some(context_path) = &req.context_path {
-            self.named_data_components
-                .context_manager
-                .get_context_by_path(&req.common.source.dec, context_path.as_str())
-                .await
+            if context_path.starts_with('$') {
+                self.named_data_components
+                    .context_manager
+                    .get_context_by_path(None, context_path.as_str())
+                    .await
+            } else {
+                self.named_data_components
+                    .context_manager
+                    .get_context_by_path(Some(req.common.source.dec.clone()), context_path.as_str())
+                    .await
+            }
         } else {
             let msg = format!(
                 "context_id and context_path must specify one of them for get_context request!"
