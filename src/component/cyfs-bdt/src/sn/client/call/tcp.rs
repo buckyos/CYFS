@@ -36,6 +36,14 @@ struct TcpImpl {
 #[derive(Clone)]
 pub(super) struct TcpCall(Arc<TcpImpl>);
 
+impl std::fmt::Display for TcpCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let session = self.0.owner.to_strong();
+        write!(f, "TcpCall{{owner:{:?}, remote:{}}}", session, self.0.remote)
+    }
+}
+
+
 impl TcpCall {
     pub fn new(owner: WeakSession, timeout: Duration, remote: Endpoint) -> Self {
         Self(Arc::new(TcpImpl {

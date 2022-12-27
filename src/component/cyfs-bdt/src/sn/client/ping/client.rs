@@ -45,10 +45,14 @@ pub trait PingSession: Send + Sync + std::fmt::Display {
     fn local(&self) -> Endpoint;
     fn reset(&self,  local_device: Option<Device>, sn_endpoint: Option<Endpoint>) -> Box<dyn PingSession>;
     fn clone_as_ping_session(&self) -> Box<dyn PingSession>;
-    fn on_time_escape(&self, now: Timestamp);
     async fn wait(&self) -> BuckyResult<PingSessionResp>;
     fn stop(&self);
-    fn on_udp_ping_resp(&self, resp: &SnPingResp, from: &Endpoint) -> BuckyResult<()>;
+    fn on_time_escape(&self, _now: Timestamp) {
+
+    }
+    fn on_udp_ping_resp(&self, _resp: &SnPingResp, _from: &Endpoint) -> BuckyResult<()> {
+        Ok(())
+    }
 }
 
 

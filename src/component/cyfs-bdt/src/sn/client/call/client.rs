@@ -36,6 +36,13 @@ struct ManagerImpl {
 #[derive(Clone)]
 pub struct CallManager(Arc<ManagerImpl>);
 
+impl std::fmt::Display for CallManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let stack = Stack::from(&self.0.stack);
+        write!(f, "CallManager{{local:{}}}", stack.local_device_id())
+    }
+}
+
 impl CallManager {
     pub fn create(stack: WeakStack) -> Self {
         Self(Arc::new(ManagerImpl {
@@ -85,6 +92,7 @@ impl CallManager {
 
             let mut cached = false;
             if let Some(active) = stack.sn_client().cache().get_active(sn_id) {
+                info!("{} call with cached active endpoints, sn={}, active={}", self, sn_id, active);
                 if sn.connect_info().endpoints().iter().find(|ep| active.remote().eq(ep)).is_some() {
                     if active.is_udp() {
                         if let Some(local) = net_listener.udp_of(active.local()) {
@@ -93,7 +101,7 @@ impl CallManager {
                             cached = true;
                         }
                     } else {
-                        if let Some(local) = net_listener.tcp_of(active.local()) {
+                        if net_listener.tcp_of(active.local()).is_some() {
                             let tunnel = TcpCall::new(session.to_weak(), stack.config().sn_client.call.timeout, active.remote().clone());
                             session.add_tunnel(tunnel.clone_as_call_tunnel());
                             cached = true;
@@ -103,6 +111,7 @@ impl CallManager {
             }
             
             if !cached {
+                info!("{} remove cached active, sn={}", self, sn_id);
                 stack.sn_client().cache().remove_active(sn_id);
                 {
                     let locals = net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv4()).cloned().collect();
@@ -319,7 +328,7 @@ impl CallSessions {
 }
 
 #[async_trait::async_trait]
-pub(super) trait CallTunnel: Send + Sync {
+pub(super) trait CallTunnel: Send + Sync + std::fmt::Display {
     fn clone_as_call_tunnel(&self) -> Box<dyn CallTunnel>;
     async fn wait(&self) -> (BuckyResult<Device>, Option<EndpointPair>);
     fn cancel(&self);
@@ -373,6 +382,22 @@ impl WeakSession {
     }
 }
 
+
+impl std::fmt::Display for CallSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let stack = Stack::from(&self.0.stack);
+        write!(f, "CallSession{{local:{}, sn:{}}}", stack.local_device_id(), self.sn())
+    }
+}
+
+impl std::fmt::Debug for CallSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let stack = Stack::from(&self.0.stack);
+        write!(f, "CallSession{{local:{}, sn:{}}}", stack.local_device_id(), self.sn())
+    }
+}
+
+
 impl CallSession {
     pub(super) fn to_weak(&self) -> WeakSession {
         WeakSession(Arc::downgrade(&self.0))
@@ -404,7 +429,7 @@ impl CallSession {
         }))
     }
 
-    fn sn(&self) -> &DeviceId {
+    pub fn sn(&self) -> &DeviceId {
         &self.0.sn
     }
 
@@ -537,6 +562,7 @@ impl CallSession {
     }
 
     fn add_tunnel(&self, tunnel: Box<dyn CallTunnel>) {
+        info!("{} add tunnel, tunnel={}", self, tunnel);
         let mut state = self.0.state.write().unwrap();
         match &state.state {
             SessionState::Init => {

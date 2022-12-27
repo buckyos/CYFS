@@ -40,6 +40,13 @@ struct UdpImpl {
 #[derive(Clone)]
 pub(super) struct UdpCall(Arc<UdpImpl>);
 
+impl std::fmt::Display for UdpCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let session = self.0.owner.to_strong();
+        write!(f, "UdpCall{{owner:{:?}, locals:{:?}, remotes:{:?}}}", session, self.0.locals, self.0.remotes)
+    }
+}
+
 impl UdpCall {
     pub fn new(owner: WeakSession, locals: Vec<Interface>, remotes: Vec<Endpoint>) -> Self {
         Self(Arc::new(UdpImpl {
