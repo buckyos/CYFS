@@ -118,7 +118,7 @@ impl ProcessDeadHelper {
 
         let now = bucky_time_now();
         let last_active = self.task_system_last_active.load(Ordering::SeqCst);
-        if now - last_active >= exit_timeout {
+        if now >= last_active && now - last_active >= exit_timeout {
             error!(
                 "task system dead timeout, now will exit process! last_active={}, exit_timeout={}s",
                 last_active,
@@ -165,6 +165,8 @@ impl ProcessDeadHelper {
 
 #[cfg(test)]
 mod tests {
+    use cyfs_base::bucky_time_to_system_time;
+
     use super::ProcessDeadHelper;
     use std::sync::RwLock;
 
@@ -196,6 +198,17 @@ mod tests {
             r.write().unwrap().set(1);
             println!("v={}", 1);
         };
+    }
+
+    #[test]
+    fn test_time() {
+        let t = 13316567010962630;
+        let s = bucky_time_to_system_time(t);
+        println!("{:#?}", s);
+
+        let datetime: chrono::DateTime<chrono::Local> = s.into();
+        let time_str = datetime.format("%Y-%m-%d %H:%M:%S%.3f %:z");
+        println!("{}", time_str);
     }
 
     #[test]
