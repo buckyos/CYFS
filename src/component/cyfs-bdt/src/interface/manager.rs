@@ -312,6 +312,15 @@ impl NetListener {
         &self.0.udp
     }
 
+    pub fn tcp_of(&self, ep: &Endpoint) -> Option<&tcp::Listener> {
+        for i in &self.0.tcp {
+            if i.local() == *ep {
+                return Some(i);
+            }
+        }
+        None
+    }
+
     pub fn tcp(&self) -> &Vec<tcp::Listener> {  
         &self.0.tcp
     }

@@ -43,4 +43,8 @@ impl SnCache {
     pub fn get_active(&self, sn: &DeviceId) -> Option<EndpointPair> {
         self.active_endpoints.read().unwrap().get(sn).cloned()
     }
+
+    pub fn remove_active(&self, sn: &DeviceId) {
+        self.active_endpoints.write().unwrap().remove(sn);
+    }
 }

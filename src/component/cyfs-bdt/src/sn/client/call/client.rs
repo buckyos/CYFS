@@ -81,19 +81,41 @@ impl CallManager {
             };
             call.payload = SizedOwnedData::from(payload_generater(&call));
             let session = CallSession::new(self.0.stack.clone(), call, stack.config().sn_client.call.clone()).await;
-
             let net_listener = stack.net_manager().listener();
-            {
-                let locals = net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv4()).cloned().collect();
-                let remotes = sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.addr().is_ipv4()).cloned().collect();
-                let tunnel = UdpCall::new(session.to_weak(), locals, remotes);
-                session.add_tunnel(tunnel.clone_as_call_tunnel());
+
+            let mut cached = false;
+            if let Some(active) = stack.sn_client().cache().get_active(sn_id) {
+                if sn.connect_info().endpoints().iter().find(|ep| active.remote().eq(ep)).is_some() {
+                    if active.is_udp() {
+                        if let Some(local) = net_listener.udp_of(active.local()) {
+                            let tunnel = UdpCall::new(session.to_weak(), vec![local.clone()], vec![active.remote().clone()]);
+                            session.add_tunnel(tunnel.clone_as_call_tunnel());
+                            cached = true;
+                        }
+                    } else {
+                        if let Some(local) = net_listener.tcp_of(active.local()) {
+                            let tunnel = TcpCall::new(session.to_weak(), stack.config().sn_client.call.timeout, active.remote().clone());
+                            session.add_tunnel(tunnel.clone_as_call_tunnel());
+                            cached = true;
+                        }
+                    }
+                }
             }
-          
-            if net_listener.tcp().iter().find(|l| l.local().addr().is_ipv4()).is_some() {
-                for remote in  sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_tcp() && endpoint.addr().is_ipv4()) {
-                    let tunnel = TcpCall::new(session.to_weak(), stack.config().sn_client.call.timeout, remote.clone());
+            
+            if !cached {
+                stack.sn_client().cache().remove_active(sn_id);
+                {
+                    let locals = net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv4()).cloned().collect();
+                    let remotes = sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.addr().is_ipv4()).cloned().collect();
+                    let tunnel = UdpCall::new(session.to_weak(), locals, remotes);
                     session.add_tunnel(tunnel.clone_as_call_tunnel());
+                }
+            
+                if net_listener.tcp().iter().find(|l| l.local().addr().is_ipv4()).is_some() {
+                    for remote in  sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_tcp() && endpoint.addr().is_ipv4()) {
+                        let tunnel = TcpCall::new(session.to_weak(), stack.config().sn_client.call.timeout, remote.clone());
+                        session.add_tunnel(tunnel.clone_as_call_tunnel());
+                    }
                 }
             }
 
@@ -406,36 +428,56 @@ impl CallSession {
 
 
     fn sync_tunnel(&self, _tunnel: &dyn CallTunnel, result: BuckyResult<Device>, active: Option<EndpointPair>) {
-        let ret = {
+        struct NextStep {
+            waiter: Option<StateWaiter>, 
+            to_cancel: Vec<Box<dyn CallTunnel>>, 
+            update_cache: Option<EndpointPair>
+        }
+
+        impl NextStep {
+            fn none() -> Self {
+                Self {
+                    waiter: None,
+                    to_cancel: vec![], 
+                    update_cache: None
+                }
+            }
+        }
+
+
+        let next = {
+            let mut next = NextStep::none();
             let mut state = self.0.state.write().unwrap();
 
-            let waiter = match &state.state {
+            match &state.state {
                 SessionState::FirstTry | SessionState::SecondTry => {
                     if let Some(active) = active {
+                        next.update_cache = Some(active.clone());
                         state.state = SessionState::Responsed { active, result };
-                        Some(state.waiter.transfer())
-                    } else {
-                        None
+                        next.waiter = Some(state.waiter.transfer());
                     }
                 }, 
-                _ => None
+                _ => {}
             };
 
-            if let Some(waiter) = waiter {
-                let mut tunnels = vec![];
-                std::mem::swap(&mut tunnels, &mut state.tunnels);
-                Some((waiter, tunnels))
-            } else {
-                None
+            if next.waiter.is_some() {
+                std::mem::swap(&mut next.to_cancel, &mut state.tunnels);
             }
-        };
-       
-        if let Some((waiter, tunnels)) = ret {
-            waiter.wake();
 
-            for tunnel in tunnels {
-                tunnel.cancel();
-            }
+            next
+        };
+
+        if let Some(endpoint) = next.update_cache {
+            let stack = Stack::from(&self.0.stack);
+            stack.sn_client().cache().add_active(self.sn(), endpoint);
+        }
+       
+        if let Some(waiter) = next.waiter {
+            waiter.wake();
+        }
+
+        for tunnel in next.to_cancel {
+            tunnel.cancel();
         }
     }
 

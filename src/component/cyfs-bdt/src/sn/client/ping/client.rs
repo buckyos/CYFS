@@ -289,7 +289,8 @@ impl PingClient {
             waiter: Option<StateWaiter>, 
             update: Option<(Endpoint, Endpoint)>, 
             to_start: Option<Box<dyn PingSession>>, 
-            ping_once: bool
+            ping_once: bool, 
+            update_cache: Option<Option<Endpoint>>
         }
 
         impl NextStep {
@@ -298,7 +299,8 @@ impl PingClient {
                     waiter: None, 
                     update: None, 
                     to_start: None, 
-                    ping_once: false
+                    ping_once: false, 
+                    update_cache: None
                 }
             }
         }
@@ -321,6 +323,7 @@ impl PingClient {
                                 }
 
                                 info!("{} online", self);
+                                next.update_cache = Some(Some(resp.from));
                                 *state = ClientState::Active {
                                     waiter: StateWaiter::new(), 
                                     state: ActiveState::Wait(bucky_time_now() + self.0.config.interval.as_micros() as u64, session.reset(None, Some(resp.from)))
@@ -376,6 +379,7 @@ impl PingClient {
                                         next.waiter = Some(waiter.transfer());
                                         error!("{} timeout", self);
                                         *state = ClientState::Timeout;
+                                        next.update_cache = Some(None);
                                         next
                                     },
                                     _ => NextStep::none()
@@ -389,6 +393,15 @@ impl PingClient {
                 _ => NextStep::none()
             }
         };
+
+        if let Some(update) = next.update_cache {
+            let stack = Stack::from(&self.0.stack);
+            if let Some(remote) = update {
+                stack.sn_client().cache().add_active(session.sn(), EndpointPair::from((session.local().clone(), remote)));
+            } else {
+                stack.sn_client().cache().remove_active(session.sn());
+            }
+        }
 
         if let Some(waiter) = next.waiter {
             waiter.wake();
