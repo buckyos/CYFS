@@ -16,6 +16,7 @@ use crate::{
     stack::{Stack, WeakStack}
 };
 use super::{
+    cache::*, 
     ping::{PingConfig, PingClients}, 
     call::{CallConfig, CallManager}
 };
@@ -35,6 +36,7 @@ pub struct Config {
 struct ManagerImpl {
     stack: WeakStack, 
     gen_seq: Arc<TempSeqGenerator>, 
+    cache: SnCache, 
     ping: RwLock<PingClients>, 
     call: CallManager,
 }
@@ -49,6 +51,7 @@ impl ClientManager {
         let atomic_interval = config.atomic_interval;
         let gen_seq = Arc::new(TempSeqGenerator::new());
         let manager = Self(Arc::new(ManagerImpl {
+            cache: SnCache::new(), 
             ping: RwLock::new(PingClients::new(stack.clone(), gen_seq.clone(), net_listener, vec![], local_device)),
             call: CallManager::create(stack.clone()), 
             gen_seq, 
@@ -69,21 +72,37 @@ impl ClientManager {
         manager
     }
 
+    pub fn cache(&self) -> &SnCache {
+        &self.0.cache
+    }
+
     pub fn ping(&self) -> PingClients {
         self.0.ping.read().unwrap().clone()
     }
 
-    pub fn reset(&self, sn_list: Vec<Device>) -> PingClients {
+    pub fn reset_sn_list(&self, sn_list: Vec<Device>) -> PingClients {
         let (to_start, to_close) = {
             let mut ping = self.0.ping.write().unwrap();
             let to_close = ping.clone();
             let to_start = PingClients::new(
                 self.0.stack.clone(), 
                 self.0.gen_seq.clone(), 
-                to_close.net_listener().reset(None).unwrap(), 
+                to_close.net_listener().reset(None), 
                 sn_list, 
                 to_close.default_local()
             );
+            *ping = to_start.clone();
+            (to_start, to_close)
+        };
+        to_close.stop();
+        to_start
+    }
+
+    pub fn reset_endpoints(&self, net_listener: NetListener, local_device: Device) -> PingClients {
+        let (to_start, to_close) = {
+            let mut ping = self.0.ping.write().unwrap();
+            let to_close = ping.clone();
+            let to_start = to_close.reset(net_listener, local_device);
             *ping = to_start.clone();
             (to_start, to_close)
         };

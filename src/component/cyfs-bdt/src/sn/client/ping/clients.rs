@@ -60,7 +60,51 @@ impl std::fmt::Display for PingClients {
 }
 
 impl PingClients {
-    pub fn new(
+    pub(crate) fn reset(
+        &self, 
+        net_listener: NetListener, 
+        local_device: Device
+    ) -> Self {
+        info!("{} reset", self);
+
+        let remain = {
+            let state = self.0.state.read().unwrap();
+
+            let client = match &state.state {
+                ClientsState::Connecting {
+                    client, 
+                    ..
+                } => Some(client.clone()),
+                ClientsState::Active {
+                    client,
+                    ..
+                } => Some(client.clone()),
+                _ => None
+            };
+
+            let mut remain = state.remain.clone();
+            
+            if let Some(client) = client {
+                remain.push((client.index(), client.sn().clone()));
+            } 
+            
+            remain
+        };
+
+        Self(Arc::new(ClientsImpl {
+            stack: self.0.stack.clone(), 
+            gen_seq: self.0.gen_seq.clone(), 
+            net_listener, 
+            local_device, 
+            sn_list: self.0.sn_list.clone(),  
+            state: RwLock::new(StateImpl {
+                remain, 
+                state: ClientsState::Init(StateWaiter::new())
+            })
+        }))
+    }
+
+    pub(crate) fn new(
         stack: WeakStack, 
         gen_seq: Arc<TempSeqGenerator>, 
         net_listener: NetListener, 
@@ -156,7 +200,8 @@ impl PingClients {
                                         self.0.stack.clone(), 
                                         stack.config().sn_client.ping.clone() , 
                                         self.0.gen_seq.clone(), 
-                                        self.0.net_listener.reset(None).unwrap(), 
+                                        self.0.net_listener.reset(None), 
+                                        index, 
                                         self.0.sn_list[index].clone(), 
                                         self.0.local_device.clone());
                                     next.to_start = Some(client.clone());
@@ -194,7 +239,8 @@ impl PingClients {
                                         self.0.stack.clone(), 
                                         stack.config().sn_client.ping.clone() , 
                                         self.0.gen_seq.clone(), 
-                                        self.0.net_listener.reset(None).unwrap(), 
+                                        self.0.net_listener.reset(None), 
+                                        index, 
                                         self.0.sn_list[index].clone(), 
                                         self.0.local_device.clone());
                                     next.to_start = Some(client.clone());
@@ -256,7 +302,8 @@ impl PingClients {
                             self.0.stack.clone(), 
                             stack.config().sn_client.ping.clone() , 
                             self.0.gen_seq.clone(), 
-                            self.0.net_listener.reset(None).unwrap(), 
+                            self.0.net_listener.reset(None), 
+                            index, 
                             self.0.sn_list[index].clone(), 
                             self.0.local_device.clone());
                         let next = NextStep::Start(waiter.new_waiter(), client.clone());

@@ -311,12 +311,6 @@ impl Stack {
             ndn: None
         }));
 
-        let mut known_sn = vec![];
-        if params.known_sn.is_some() {
-            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
-        }
-        stack.device_cache().add_sn(&known_sn);
-
         let datagram_manager = DatagramManager::new(stack.to_weak());
 
         let proxy_manager = ProxyManager::new(stack.to_weak());
@@ -378,7 +372,12 @@ impl Stack {
         let net_listener = stack.net_manager().listener();
         net_listener.start(stack.to_weak());
         
-        stack.sn_client().reset(known_sn);
+        let mut known_sn = vec![];
+        if params.known_sn.is_some() {
+            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
+        }
+        stack.reset_sn_list(known_sn);
+        
         stack.ndn().start();
 
         if let Some(debug_stub) = debug_stub {
@@ -461,14 +460,19 @@ impl Stack {
     pub fn reset_sn_list(&self, sn_list: Vec<Device>) -> PingClients {
         let sn_id_list: Vec<DeviceId> = sn_list.iter().map(|sn| sn.desc().device_id()).collect();
         info!("{} reset_sn_list {:?}", self, sn_id_list);
-        self.device_cache().add_sn(&sn_list);
-        self.sn_client().reset(sn_list)
+
+        
+        for (id, sn) in sn_id_list.iter().zip(sn_list.iter()) {
+            self.device_cache().add(id, sn);
+        }
+        self.sn_client().cache().add_known_sn(&sn_id_list);
+
+        self.sn_client().reset_sn_list(sn_list)
     }
 
-
-    pub async fn reset_endpoints(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {
+    pub async fn reset_endpoints(&self, endpoints: &Vec<Endpoint>) -> PingClients {
         info!("{} reset {:?}", self, endpoints);
-        let listener = self.net_manager().reset(endpoints.as_slice())?;
+        let listener = self.net_manager().reset(endpoints.as_slice());
         
         let mut local = self.sn_client().ping().default_local();
         let device_endpoints = local.mut_connect_info().mut_endpoints();
@@ -490,10 +494,7 @@ impl Stack {
         .await;
         self.tunnel_manager().reset();
 
-        let sn_list = self.sn_client().ping().sn_list().clone();
-        // self.sn_client().reset(listener.clone(), sn_list, local);
-        // listener.wait_online().await
-        Ok(())
+        self.sn_client().reset_endpoints(listener.clone(), local)
     }
 }
 

@@ -45,10 +45,14 @@ pub trait PingSession: Send + Sync + std::fmt::Display {
     fn local(&self) -> Endpoint;
     fn reset(&self,  local_device: Option<Device>, sn_endpoint: Option<Endpoint>) -> Box<dyn PingSession>;
     fn clone_as_ping_session(&self) -> Box<dyn PingSession>;
-    fn on_time_escape(&self, now: Timestamp);
     async fn wait(&self) -> BuckyResult<PingSessionResp>;
     fn stop(&self);
-    fn on_udp_ping_resp(&self, resp: &SnPingResp, from: &Endpoint) -> BuckyResult<()>;
+    fn on_time_escape(&self, _now: Timestamp) {
+
+    }
+    fn on_udp_ping_resp(&self, _resp: &SnPingResp, _from: &Endpoint) -> BuckyResult<()> {
+        Ok(())
+    }
 }
 
 
@@ -85,6 +89,7 @@ enum ClientState {
 struct ClientImpl {
     stack: WeakStack, 
     config: PingConfig, 
+    sn_index: usize,  
     sn_id: DeviceId, 
     sn: Device, 
     gen_seq: Arc<TempSeqGenerator>, 
@@ -109,6 +114,7 @@ impl PingClient {
         config: PingConfig, 
         gen_seq: Arc<TempSeqGenerator>, 
         net_listener: NetListener, 
+        sn_index: usize, 
         sn: Device, 
         local_device: Device, 
     ) -> Self {
@@ -123,6 +129,25 @@ impl PingClient {
             net_listener, 
             sn, 
             sn_id, 
+            sn_index, 
+            local_device: RwLock::new(local_device), 
+            state: RwLock::new(ClientState::Init(StateWaiter::new()))
+        }))
+    }
+
+    pub(crate) fn reset(
+        &self, 
+        net_listener: NetListener, 
+        local_device: Device, 
+    ) -> Self {
+        Self(Arc::new(ClientImpl {
+            stack: self.0.stack.clone(), 
+            config: self.0.config.clone(), 
+            sn_id: self.0.sn_id.clone(),
+            sn_index: self.0.sn_index, 
+            sn: self.0.sn.clone(), 
+            gen_seq: self.0.gen_seq.clone(), 
+            net_listener, 
             local_device: RwLock::new(local_device), 
             state: RwLock::new(ClientState::Init(StateWaiter::new()))
         }))
@@ -188,6 +213,10 @@ impl PingClient {
 
     pub fn sn(&self) -> &DeviceId {
         &self.0.sn_id
+    }
+
+    pub fn index(&self) -> usize {
+        self.0.sn_index
     }
 
 
@@ -264,7 +293,8 @@ impl PingClient {
             waiter: Option<StateWaiter>, 
             update: Option<(Endpoint, Endpoint)>, 
             to_start: Option<Box<dyn PingSession>>, 
-            ping_once: bool
+            ping_once: bool, 
+            update_cache: Option<Option<Endpoint>>
         }
 
         impl NextStep {
@@ -273,7 +303,8 @@ impl PingClient {
                     waiter: None, 
                     update: None, 
                     to_start: None, 
-                    ping_once: false
+                    ping_once: false, 
+                    update_cache: None
                 }
             }
         }
@@ -296,6 +327,9 @@ impl PingClient {
                                 }
 
                                 info!("{} online", self);
+
+                                next.update_cache = Some(Some(resp.from));
+
                                 *state = ClientState::Active {
                                     waiter: StateWaiter::new(), 
                                     state: ActiveState::Wait(bucky_time_now() + self.0.config.interval.as_micros() as u64, session.reset(None, Some(resp.from)))
@@ -351,6 +385,7 @@ impl PingClient {
                                         next.waiter = Some(waiter.transfer());
                                         error!("{} timeout", self);
                                         *state = ClientState::Timeout;
+                                        next.update_cache = Some(None);
                                         next
                                     },
                                     _ => NextStep::none()
@@ -364,6 +399,15 @@ impl PingClient {
                 _ => NextStep::none()
             }
         };
+
+        if let Some(update) = next.update_cache {
+            let stack = Stack::from(&self.0.stack);
+            if let Some(remote) = update {
+                stack.sn_client().cache().add_active(session.sn(), EndpointPair::from((session.local().clone(), remote)));
+            } else {
+                stack.sn_client().cache().remove_active(session.sn());
+            }
+        }
 
         if let Some(waiter) = next.waiter {
             waiter.wake();
