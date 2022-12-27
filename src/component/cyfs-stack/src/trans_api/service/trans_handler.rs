@@ -258,9 +258,13 @@ impl TransRequestHandler {
         let mut req: http_types::Request = req.request.into();
         let context = RequestorHelper::decode_raw_object_body(&mut req).await?;
 
+        let access: Option<u32>= RequestorHelper::decode_optional_header(&req, cyfs_base::CYFS_ACCESS)?;
+        let access = access.map(|v| AccessString::new(v));
+
         let req = TransUpdateContextInputRequest {
             common,
-            context
+            context,
+            access,
         };
         self.processor.put_context(req).await
     }

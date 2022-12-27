@@ -49,6 +49,10 @@ impl JsonCodec<TransPutContextOutputRequest> for TransPutContextOutputRequest {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
         JsonCodecHelper::encode_string_field(&mut obj, "context", &self.context.to_hex().unwrap());
+        if let Some(access) = &self.access {
+            JsonCodecHelper::encode_number_field(&mut obj, "access", access.value());
+        }
+
         obj
     }
 
@@ -57,9 +61,13 @@ impl JsonCodec<TransPutContextOutputRequest> for TransPutContextOutputRequest {
             JsonCodecHelper::decode_string_field::<String>(obj, "context")?.as_str(),
             &mut Vec::new(),
         )?;
+        let access: Option<u32> = JsonCodecHelper::decode_option_int_field(obj, "access")?;
+        let access = access.map(|v| AccessString::new(v));
+
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             context,
+            access,
         })
     }
 }
@@ -69,6 +77,10 @@ impl JsonCodec<TransUpdateContextInputRequest> for TransUpdateContextInputReques
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
         JsonCodecHelper::encode_string_field(&mut obj, "context", &self.context.to_hex().unwrap());
+        if let Some(access) = &self.access {
+            JsonCodecHelper::encode_number_field(&mut obj, "access", access.value());
+        }
+        
         obj
     }
 
@@ -77,9 +89,12 @@ impl JsonCodec<TransUpdateContextInputRequest> for TransUpdateContextInputReques
             JsonCodecHelper::decode_string_field::<String>(obj, "context")?.as_str(),
             &mut Vec::new(),
         )?;
+        let access: Option<u32> = JsonCodecHelper::decode_option_int_field(obj, "access")?;
+        let access = access.map(|v| AccessString::new(v));
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             context,
+            access,
         })
     }
 }

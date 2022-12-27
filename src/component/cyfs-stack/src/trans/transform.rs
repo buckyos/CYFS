@@ -41,6 +41,7 @@ impl TransInputProcessor for TransInputTransformer {
         let out_req = TransPutContextOutputRequest {
             common: Self::convert_common(req.common),
             context: req.context,
+            access: req.access,
         };
         let out_resp = self.processor.put_context(out_req).await?;
         Ok(out_resp)
@@ -198,6 +199,7 @@ impl TransOutputProcessor for TransOutputTransformer {
         let in_req = TransUpdateContextInputRequest {
             common: self.convert_common(req.common),
             context: req.context,
+            access: req.access,
         };
 
         let in_resp = self.processor.put_context(in_req).await?;

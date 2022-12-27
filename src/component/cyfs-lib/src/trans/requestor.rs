@@ -113,6 +113,10 @@ impl TransRequestor {
 
         self.encode_common_headers(&req.common, &mut http_req);
 
+        if let Some(access) = &req.access {
+            http_req.insert_header(cyfs_base::CYFS_ACCESS, access.value().to_string());
+        }
+        
         let body = req.context.to_vec()?;
         http_req.set_body(body);
 

@@ -125,7 +125,9 @@ pub struct TransGetContextOutputResponse {
 
 pub struct TransPutContextOutputRequest {
     pub common: NDNOutputRequestCommon,
+    
     pub context: TransContext,
+    pub access: Option<AccessString>,
 }
 
 #[derive(Debug)]

@@ -1,6 +1,6 @@
 use super::output_request::*;
 use crate::{NDNInputRequestCommon, TransTaskControlAction, TransTaskInfo, TransTaskStatus};
-use cyfs_base::{BuckyResult, DeviceId, ObjectId};
+use cyfs_base::{BuckyResult, DeviceId, ObjectId, AccessString};
 use cyfs_core::TransContext;
 use cyfs_util::cache::FileDirRef;
 
@@ -17,7 +17,9 @@ pub type TransGetContextInputResponse = TransGetContextOutputResponse;
 
 pub struct TransUpdateContextInputRequest {
     pub common: NDNInputRequestCommon,
+
     pub context: TransContext,
+    pub access: Option<AccessString>,
 }
 
 #[derive(Debug)]

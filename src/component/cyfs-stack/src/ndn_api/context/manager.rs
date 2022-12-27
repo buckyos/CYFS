@@ -222,20 +222,12 @@ impl ContextManager {
     pub async fn put_context(
         &self,
         source: RequestSourceInfo,
-        object: NONObjectInfo,
+        trans_context: TransContext,
+        access: Option<AccessString>,
     ) -> BuckyResult<()> {
-        let trans_context = TransContext::clone_from_slice(&object.object_raw).map_err(|e| {
-            let msg = format!(
-                "invalid trans context object! id={}, {}",
-                object.object_id, e
-            );
-            error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::InvalidData, msg)
-        })?;
-
-        // please make sure the id is matched before call this method!!
-        // let id = trans_context.desc().calculate_id();
-        let id = object.object_id.clone();
+        let context_id = trans_context.desc().object_id();
+        let object_raw = trans_context.to_vec()?;
+        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
 
         let req = NamedObjectCachePutObjectRequest {
             source,
@@ -243,15 +235,15 @@ impl ContextManager {
             storage_category: NamedObjectStorageCategory::Cache,
             context: None,
             last_access_rpath: None,
-            access_string: None,
+            access_string: access.map(|v| v.value()),
         };
 
         self.noc.put_object(&req).await.map_err(|e| {
-            error!("save trans context to noc failed! id={}, {}", id, e);
+            error!("save trans context to noc failed! id={}, {}", context_id, e);
             e
         })?;
 
-        let item = self.new_item(id, trans_context).await;
+        let item = self.new_item(context_id, trans_context).await;
         let item = Arc::new(item);
         self.update_context(item);
 

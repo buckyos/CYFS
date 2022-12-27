@@ -597,20 +597,10 @@ impl TransInputProcessor for LocalTransService {
     }
 
     async fn put_context(&self, req: TransUpdateContextInputRequest) -> BuckyResult<()> {
-        let object_raw = req.context.to_vec()?;
-        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
-
-        let req = NamedObjectCachePutObjectRequest {
-            source: req.common.source,
-            object,
-            storage_category: NamedObjectStorageCategory::Storage,
-            context: None,
-            last_access_rpath: None,
-            access_string: None,
-        };
-
-        self.noc.put_object(&req).await?;
-        Ok(())
+        self.named_data_components
+            .context_manager
+            .put_context(req.common.source, req.context, req.access)
+            .await
     }
 
     async fn control_task(&self, req: TransControlTaskInputRequest) -> BuckyResult<()> {
