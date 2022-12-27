@@ -56,10 +56,15 @@ async fn publish_file(dec_id: &ObjectId) -> (DeviceId, FileId) {
 async fn test_ndn_get_by_context(dec_id: &ObjectId, target: DeviceId, file_id: FileId) {
     let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
 
+    let id1 = TransContext::gen_context_id(dec_id.to_owned(), "/root");
+    let id2 = TransContext::gen_context_id(dec_id.to_owned(), "/root/");
+
     // create context
     let mut root_context = TransContext::new(dec_id.to_owned(), "/root");
     root_context.device_list_mut().push(TransContextDevice::default_stream(target.clone()));
     let context_id = root_context.desc().object_id();
+    assert_eq!(context_id, id1);
+    assert_eq!(context_id, id2);
     let req = TransPutContextOutputRequest {
         common: NDNOutputRequestCommon {
             req_path: None,
@@ -73,6 +78,36 @@ async fn test_ndn_get_by_context(dec_id: &ObjectId, target: DeviceId, file_id: F
     };
     stack.trans().put_context(req).await.unwrap();
 
+    // get context
+    let req = TransGetContextOutputRequest {
+        common: NDNOutputRequestCommon {
+            req_path: None,
+            dec_id: Some(dec_id.to_owned()),
+            level: NDNAPILevel::Router,
+            target: None,
+            referer_object: vec![],
+            flags: 0,
+        },
+        context_path: Some("/root/".to_owned()),
+        context_id: None,
+    };
+    let resp = stack.trans().get_context(req).await.unwrap();
+    assert_eq!(resp.context.desc().object_id(), context_id);
+
+    let req = TransGetContextOutputRequest {
+        common: NDNOutputRequestCommon {
+            req_path: None,
+            dec_id: Some(dec_id.to_owned()),
+            level: NDNAPILevel::Router,
+            target: None,
+            referer_object: vec![],
+            flags: 0,
+        },
+        context_path: None,
+        context_id: Some(context_id.clone()),
+    };
+    let resp = stack.trans().get_context(req).await.unwrap();
+    assert_eq!(resp.context.desc().object_id(), context_id);
 
     // with error context
     let mut get_req = NDNGetDataOutputRequest::new_context(

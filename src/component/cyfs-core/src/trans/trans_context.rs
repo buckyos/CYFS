@@ -224,8 +224,8 @@ impl TransContextPath {
             return Cow::Borrowed(path);
         }
 
-        let path_ret = path.trim_end_matches('/');
-        if path_ret.starts_with('/') {
+        let path = path.trim_end_matches('/');
+        if path.starts_with('/') {
             Cow::Borrowed(path)
         } else {
             let path = format!("/{}", path);
