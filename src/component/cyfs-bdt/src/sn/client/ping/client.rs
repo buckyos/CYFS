@@ -31,6 +31,36 @@ pub enum SnStatus {
     Offline
 }
 
+
+impl std::fmt::Display for SnStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let v = match self {
+            Self::Online => "online",
+            Self::Offline => "offline",
+        };
+
+        write!(f, "{}", v)
+    }
+}
+
+
+impl std::str::FromStr for SnStatus {
+    type Err = BuckyError;
+
+    fn from_str(s: &str) -> BuckyResult<Self> {
+        match s {
+            "online" => Ok(Self::Online),
+            "offline" => Ok(Self::Offline),
+            _ => {
+                let msg = format!("unknown SnStatus value: {}", s);
+                log::error!("{}", msg);
+
+                Err(BuckyError::new(BuckyErrorCode::InvalidData, msg))
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PingSessionResp {
     pub from: Endpoint, 

@@ -140,7 +140,7 @@ impl DebugStub {
         Ok(())
     }
 
-    async fn sn_conn_status(&self, tunnel: TcpStream, command: DebugCommandSnConnStatus) -> Result<(), String> {
+    async fn sn_conn_status(&self, _tunnel: TcpStream, _command: DebugCommandSnConnStatus) -> Result<(), String> {
         // let mut tunnel = tunnel;
 
         // let stack = Stack::from(&self.0.stack);
