@@ -321,61 +321,16 @@ impl std::io::Seek for ChunkListTaskReader {
 }
 
 
-#[async_trait::async_trait]
 impl DownloadTaskSplitRead for ChunkListTaskReader {
-    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkCache, Range<usize>)>> {
-        let ranges = self.task.chunk_list().range_of(self.offset..self.offset + buffer.len() as u64);
-        if ranges.is_empty() {
-            return Ok(None);
-        }
-        if let DownloadTaskState::Error(err) = self.task.state() {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, "")));
-        } 
-
-        let (index, range) = ranges[0].clone();
-
-        let result = match self.task.create_cache(index) {
-            Ok(cache) => {
-                let mut reader = DownloadTaskReader::new(cache.clone(), self.task.clone_as_task());
-                use std::{io::{Seek}};
-                match reader.seek(SeekFrom::Start(range.start)) {
-                    Ok(_) => {
-                        use async_std::io::ReadExt;
-                        let result = reader.read(&mut buffer[0..(range.end - range.start) as usize]).await;
-                        result.map(|len| {
-                            self.offset += len as u64;
-                            Some((cache.clone(), range.start as usize..range.start as usize + len))
-                        })
-                    },
-                    Err(err) => {
-                        return Err(err);
-                    }
-                }
-            }
-            Err(err) => {
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, err));
-            }
-        };
-        
-        for (index, _) in ranges.into_iter().skip(1) {
-            let _ = self.task.create_cache(index);
-        }
-
-        result
-    }
-}
-
-
-impl async_std::io::Read for ChunkListTaskReader {
-    fn poll_read(
+    fn poll_split_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buffer: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
+    ) -> Poll<std::io::Result<Option<(ChunkCache, Range<usize>)>>> {
         let pined = self.get_mut();
         let ranges = pined.task.chunk_list().range_of(pined.offset..pined.offset + buffer.len() as u64);
         if ranges.is_empty() {
-            return Poll::Ready(Ok(0));
+            return Poll::Ready(Ok(None));
         }
         if let DownloadTaskState::Error(err) = pined.task.state() {
             return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
@@ -388,10 +343,10 @@ impl async_std::io::Read for ChunkListTaskReader {
                 use std::{io::{Seek}};
                 match reader.seek(SeekFrom::Start(range.start)) {
                     Ok(_) => {
-                        let result = async_std::io::Read::poll_read(Pin::new(&mut reader), cx, &mut buffer[0..(range.end - range.start) as usize]);
+                        let result = DownloadTaskSplitRead::poll_split_read(Pin::new(&mut reader), cx, &mut buffer[0..(range.end - range.start) as usize]);
                         if let Poll::Ready(result) = &result {
-                            if let Ok(len) = result {
-                                pined.offset += *len as u64;
+                            if let Some((_, r)) = result.as_ref().ok().and_then(|r| r.as_ref()) {
+                                pined.offset += (r.end - r.start) as u64;
                             }
                         }
                         result
@@ -411,6 +366,21 @@ impl async_std::io::Read for ChunkListTaskReader {
         }
 
         result
+    }
+}
+
+
+impl async_std::io::Read for ChunkListTaskReader {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut [u8],
+    ) -> Poll<std::io::Result<usize>> {
+        self.poll_split_read(cx, buffer).map(|result| result.map(|r| if let Some((_, r)) = r {
+            r.end - r.start
+        } else {
+            0
+        }))
     }
 }
 

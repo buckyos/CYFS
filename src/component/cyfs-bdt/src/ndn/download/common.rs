@@ -255,9 +255,13 @@ pub struct DownloadTaskReader {
     task: Box<dyn DownloadTask>
 }
 
-#[async_trait::async_trait]
+
 pub trait DownloadTaskSplitRead: std::io::Seek {
-    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkCache, Range<usize>)>>;
+    fn poll_split_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut [u8],
+    ) -> Poll<std::io::Result<Option<(ChunkCache, Range<usize>)>>>;
 }
 
 impl std::fmt::Display for DownloadTaskReader {
@@ -280,44 +284,55 @@ impl DownloadTaskReader {
     }
 }
 
-#[async_trait::async_trait]
 impl DownloadTaskSplitRead for DownloadTaskReader {
-    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkCache, Range<usize>)>> {
-        if let DownloadTaskState::Error(err) = self.task.state() {
-            trace!("{} split_read: {} offset: {} error: {}", self, buffer.len(), self.offset, err);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, "")));
+    fn poll_split_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut [u8],
+    ) -> Poll<std::io::Result<Option<(ChunkCache, Range<usize>)>>> {
+        let pined = self.get_mut();
+        trace!("{} split_read: {} offset: {}", pined, buffer.len(), pined.offset);
+        if let DownloadTaskState::Error(err) = pined.task.state() {
+            trace!("{} split_read: {} offset: {} error: {}", pined, buffer.len(), pined.offset, err);
+            return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
         } 
-        let range = self.cache.wait_exists(self.offset..self.offset + buffer.len(), || self.task.wait_user_canceled()).await
-            .map_err(|err| {
-                trace!("{} split_read: {} offset: {} error: {}", self, buffer.len(), self.offset, err);
-                std::io::Error::new(std::io::ErrorKind::Other, err)
-            })?;
-        trace!("{} split_read: {} offset: {} exists {:?}", self, buffer.len(), self.offset, range);
-        let (desc, mut offset) = PieceDesc::from_stream_offset(PieceData::max_payload(), range.start as u32);
-        let (mut index, len) = desc.unwrap_as_stream();
-        let mut read = 0;
-        let result = loop {
-            match self.cache.stream().sync_try_read(
-                &PieceDesc::Range(index, len), 
-                offset as usize, 
-                &mut buffer[read..]) {
-                Ok(this_read) => {
-                    read += this_read;
-                    if this_read == 0 
-                        || read >= buffer.len() {
-                            self.offset += read;
-                        break Ok(read);
+        if let Some(range) = pined.cache.exists(pined.offset..pined.offset + buffer.len()) {
+            trace!("{} split_read: {} offset: {} exists {:?}", pined, buffer.len(), pined.offset, range);
+            let (desc, mut offset) = PieceDesc::from_stream_offset(PieceData::max_payload(), range.start as u32);
+            let (mut index, len) = desc.unwrap_as_stream();
+            let mut read = 0;
+            let result = loop {
+                match pined.cache.stream().sync_try_read(
+                    &PieceDesc::Range(index, len), 
+                    offset as usize, 
+                    &mut buffer[read..]) {
+                    Ok(this_read) => {
+                        read += this_read;
+                        if this_read == 0 
+                            || read >= buffer.len() {
+                            pined.offset += read;
+                            break Ok(read);
+                        }
+                        index += 1;
+                        offset = 0;
+                    },
+                    Err(err) => {
+                        break Err(std::io::Error::new(std::io::ErrorKind::Other, err))
                     }
-                    index += 1;
-                    offset = 0;
-                },
-                Err(err) => {
-                    break Err(std::io::Error::new(std::io::ErrorKind::Other, err))
                 }
-            }
-        };
-
-        result.map(|read| Some((self.cache.clone(), range.start..range.start + read)))
+            };
+            Poll::Ready(result.map(|read| Some((pined.cache.clone(), range.start..range.start + read))))
+        } else {
+            let waker = cx.waker().clone();
+            let cache = pined.cache.clone();
+            let task = pined.task.clone_as_task();
+            let range = pined.offset..pined.offset + buffer.len();
+            task::spawn(async move {
+                let _ = cache.wait_exists(range, || task.wait_user_canceled()).await;
+                waker.wake();
+            });
+            Poll::Pending
+        }
     }
 }
 
@@ -352,48 +367,10 @@ impl async_std::io::Read for DownloadTaskReader {
         cx: &mut Context<'_>,
         buffer: &mut [u8],
     ) -> Poll<std::io::Result<usize>> {
-        let pined = self.get_mut();
-        trace!("{} poll_read: {} offset: {}", pined, buffer.len(), pined.offset);
-        if let DownloadTaskState::Error(err) = pined.task.state() {
-            trace!("{} poll_read: {} offset: {} error: {}", pined, buffer.len(), pined.offset, err);
-            return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
-        } 
-        if let Some(range) = pined.cache.exists(pined.offset..pined.offset + buffer.len()) {
-            trace!("{} poll_read: {} offset: {} exists {:?}", pined, buffer.len(), pined.offset, range);
-            let (desc, mut offset) = PieceDesc::from_stream_offset(PieceData::max_payload(), range.start as u32);
-            let (mut index, len) = desc.unwrap_as_stream();
-            let mut read = 0;
-            let result = loop {
-                match pined.cache.stream().sync_try_read(
-                    &PieceDesc::Range(index, len), 
-                    offset as usize, 
-                    &mut buffer[read..]) {
-                    Ok(this_read) => {
-                        read += this_read;
-                        if this_read == 0 
-                            || read >= buffer.len() {
-                            pined.offset += read;
-                            break Ok(read);
-                        }
-                        index += 1;
-                        offset = 0;
-                    },
-                    Err(err) => {
-                        break Err(std::io::Error::new(std::io::ErrorKind::Other, err))
-                    }
-                }
-            };
-            Poll::Ready(result)
+        self.poll_split_read(cx, buffer).map(|result| result.map(|r| if let Some((_, r)) = r {
+            r.end - r.start
         } else {
-            let waker = cx.waker().clone();
-            let cache = pined.cache.clone();
-            let task = pined.task.clone_as_task();
-            let range = pined.offset..pined.offset + buffer.len();
-            task::spawn(async move {
-                let _ = cache.wait_exists(range, || task.wait_user_canceled()).await;
-                waker.wake();
-            });
-            Poll::Pending
-        }
+            0
+        }))
     }
 }

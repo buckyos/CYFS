@@ -245,10 +245,13 @@ impl Drop for ChunkTaskReader {
     }
 }
 
-#[async_trait::async_trait]
 impl DownloadTaskSplitRead for ChunkTaskReader {
-    async fn split_read(&mut self, buffer: &mut [u8]) -> std::io::Result<Option<(ChunkCache, Range<usize>)>> {
-        self.0.split_read(buffer).await
+    fn poll_split_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut [u8],
+    ) -> Poll<std::io::Result<Option<(ChunkCache, Range<usize>)>>> {
+        DownloadTaskSplitRead::poll_split_read(Pin::new(&mut self.get_mut().0), cx, buffer)
     }
 }
 
