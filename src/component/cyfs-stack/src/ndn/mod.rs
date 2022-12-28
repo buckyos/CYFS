@@ -64,5 +64,10 @@ mod exp_tests {
         let group6 = TaskGroupHelper::check_and_fix(dec_id, group5.clone());
         println!("{}", group6);
         assert_ne!(group5, group6);
+
+        let group = format!("{}/", dec_id);
+        let groupr = TaskGroupHelper::check_and_fix(dec_id, "/".to_owned());
+        println!("{}", groupr);
+        assert_eq!(group, groupr);
     }
 }
