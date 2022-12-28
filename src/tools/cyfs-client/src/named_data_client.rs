@@ -246,7 +246,7 @@ impl NamedCacheClient {
             info!("named data client reset sn list {:?}", sn_list.iter().map(|device|{
                 device.desc().calculate_id()
             }).collect::<Vec<ObjectId>>());
-            stack.reset_sn_list(sn_list).await?;
+            stack.reset_sn_list(sn_list).wait_online().await?;
             Ok(())
         } else {
             Err(BuckyError::from(BuckyErrorCode::NotInit))
