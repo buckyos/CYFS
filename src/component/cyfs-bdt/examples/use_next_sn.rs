@@ -12,15 +12,18 @@ use cyfs_bdt::{
 use std::{net::Shutdown, time::Duration};
 mod utils;
 
-async fn recv_large_stream(stack: StackGuard) -> BuckyResult<Vec<u8>> {
+
+async fn recv_large_stream(stack: StackGuard, sender: channel::Sender<Vec<u8>>) {
     let acceptor = stack.stream_manager().listen(0).unwrap();
     let mut incoming = acceptor.incoming();
-    let mut pre_stream = incoming.next().await.unwrap()?;
-    pre_stream.stream.confirm(vec![].as_ref()).await?;
-    let mut buffer = vec![];
-    let _ = pre_stream.stream.read_to_end(&mut buffer).await?;
-    let _ = pre_stream.stream.shutdown(Shutdown::Both);
-    Ok(buffer)
+    loop {
+        let mut pre_stream = incoming.next().await.unwrap().unwrap();
+        pre_stream.stream.confirm(vec![].as_ref()).await.unwrap();
+        let mut buffer = vec![];
+        let _ = pre_stream.stream.read_to_end(&mut buffer).await.unwrap();
+        let _ = pre_stream.stream.shutdown(Shutdown::Both);
+        sender.send(buffer).await.unwrap();
+    }  
 }
 
 struct TestServer {
@@ -60,10 +63,29 @@ async fn main() {
         .build()
         .start();
 
-    let (sn, sn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4udp127.0.0.1:10000"]).unwrap();
+    let (sn1, sn1_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4udp127.0.0.1:10020"]).unwrap();
+
+    let (sn2, sn2_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4udp127.0.0.1:10021"]).unwrap();
+
+
+    let (ln_dev, ln_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10022"]).unwrap();
+    let (rn_dev, rn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10023"]).unwrap();
+
+    let (sn_dev, sn_secret) = {
+        let rn_id = rn_dev.desc().object_id();
+        let sn1_id = sn1.desc().object_id();
+        let sn2_id = sn1.desc().object_id();
+
+        if rn_id.distance_of(&sn1_id) > rn_id.distance_of(&sn2_id) {
+            (sn1.clone(), sn1_secret)
+        } else {
+            (sn2.clone(), sn2_secret)
+        }
+    };
+
 
     let service = SnService::new(
-        sn.clone(),
+        sn_dev,
         sn_secret,
         Box::new(TestServer {}),
     );
@@ -71,13 +93,11 @@ async fn main() {
     task::spawn(async move {
         let _ = service.start().await;
     });
-   
 
-    let (ln_dev, ln_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10001"]).unwrap();
-    let (rn_dev, rn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10002"]).unwrap();
-    
+
     let mut ln_params = StackOpenParams::new("");
-    ln_params.known_device = Some(vec![rn_dev.clone(), sn.clone()]);
+    ln_params.known_device = Some(vec![rn_dev.clone()]);
+    ln_params.known_sn = Some(vec![sn1.clone(), sn2.clone()]);
     let ln_stack = Stack::open(
         ln_dev.clone(), 
         ln_secret, 
@@ -85,26 +105,27 @@ async fn main() {
 
 
     let mut rn_params = StackOpenParams::new("");
-    rn_params.known_sn = Some(vec![sn.clone()]);
+    rn_params.config.sn_client.ping.udp.resend_timeout = Duration::from_secs(1);
+    rn_params.known_sn = Some(vec![sn1.clone(), sn2.clone()]);
     let rn_stack = Stack::open(
         rn_dev, 
         rn_secret, 
         rn_params).await.unwrap();
-    
+
     assert_eq!(SnStatus::Online, rn_stack.sn_client().ping().wait_online().await.unwrap());
 
     let (sample_size, sample) = utils::random_mem(1024, 512);
-    let (signal_sender, signal_recver) = channel::bounded::<BuckyResult<Vec<u8>>>(1);
+    let (signal_sender, signal_recver) = channel::bounded::<Vec<u8>>(1);
     {
         let rn_stack = rn_stack.clone();
         task::spawn(async move {
-            signal_sender.send(recv_large_stream(rn_stack).await).await.unwrap();
+            recv_large_stream(rn_stack, signal_sender).await;
         });
     }
 
     let param = BuildTunnelParams {
         remote_const: rn_stack.local_const().clone(),
-        remote_sn: Some(vec![sn.desc().device_id()]),
+        remote_sn: None,
         remote_desc: None,
     };
     let mut stream = ln_stack
@@ -115,8 +136,7 @@ async fn main() {
 
     let _ = stream.shutdown(Shutdown::Both);
 
-    let recv = future::timeout(Duration::from_secs(5), signal_recver.recv()).await.unwrap().unwrap();
-    let recv_sample = recv.unwrap();
+    let recv_sample = future::timeout(Duration::from_secs(5), signal_recver.recv()).await.unwrap().unwrap();
 
     assert_eq!(recv_sample.len(), sample_size);
     let sample_hash = hash_data(sample.as_ref());
@@ -125,3 +145,8 @@ async fn main() {
     assert_eq!(sample_hash, recv_hash);
 
 }
+
+
+// #[async_std::main]
+// async fn main() {
+// }

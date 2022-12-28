@@ -9,6 +9,7 @@ use cyfs_stack_loader::*;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
+
 pub static USER1_DATA: OnceCell<TestUserData> = OnceCell::new();
 pub static USER2_DATA: OnceCell<TestUserData> = OnceCell::new();
 
@@ -170,6 +171,7 @@ impl TestLoader {
 
     fn init_user_objects(user: &TestUser) {
         let mut list = Vec::new();
+
 
         let obj = NONObjectInfo {
             object_id: user.people.desc().calculate_id(),

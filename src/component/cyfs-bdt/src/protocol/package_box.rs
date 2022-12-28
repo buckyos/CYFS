@@ -112,11 +112,23 @@ impl PackageBox {
         self.packages.as_ref()
     }
 
+    pub fn mut_packages(&mut self) -> &mut [DynamicPackage] {
+        self.packages.as_mut()
+    }
+
     pub fn packages_no_exchange(&self) -> &[DynamicPackage] {
         if self.has_exchange() {
             &self.packages()[1..]
         } else {
             self.packages()
+        }
+    }
+
+    pub fn mut_packages_no_exchage(&mut self) -> &mut [DynamicPackage] {
+        if self.has_exchange() {
+            &mut self.mut_packages()[1..]
+        } else {
+            self.mut_packages()
         }
     }
 }

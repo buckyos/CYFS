@@ -60,7 +60,7 @@ async fn main() {
         .build()
         .start();
 
-    let (sn, sn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4udp127.0.0.1:10000"]).unwrap();
+    let (sn, sn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4udp127.0.0.1:10000", "W4tcp127.0.0.1:10000"]).unwrap();
 
     let service = SnService::new(
         sn.clone(),
@@ -73,8 +73,8 @@ async fn main() {
     });
    
 
-    let (ln_dev, ln_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10001"]).unwrap();
-    let (rn_dev, rn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10002"]).unwrap();
+    let (ln_dev, ln_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4tcp127.0.0.1:10001"]).unwrap();
+    let (rn_dev, rn_secret) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["L4udp127.0.0.1:10001", "L4tcp127.0.0.1:10002"]).unwrap();
     
     let mut ln_params = StackOpenParams::new("");
     ln_params.known_device = Some(vec![rn_dev.clone(), sn.clone()]);

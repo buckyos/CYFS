@@ -1069,17 +1069,17 @@ impl Package for SnCall {
 
 
 
-impl From<(&SnCall, Device, Vec<u8>, AesKey)> for Exchange {
-    fn from(context: (&SnCall, Device, Vec<u8>, AesKey)) -> Self {
-        let (sn_call, local_device, key_encrypted, mix_key) = context;
-    
+impl From<(&SnCall, Vec<u8>, AesKey)> for Exchange {
+    fn from(context: (&SnCall, Vec<u8>, AesKey)) -> Self {
+        let (sn_call, key_encrypted, mix_key) = context;
+
         Self {
             sequence: sn_call.seq.clone(),  
             to_device_id: sn_call.sn_peer_id.clone(), 
             send_time: sn_call.send_time,  
             key_encrypted, 
             sign: Signature::default(),
-            from_device_desc: local_device,
+            from_device_desc: sn_call.peer_info.clone().unwrap(),
             mix_key
         }
     }

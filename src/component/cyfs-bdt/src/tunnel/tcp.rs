@@ -636,7 +636,7 @@ impl Tunnel {
             stack_version: owner.stack_version(),  
             to_device_id: owner.remote().clone(),
             sequence: syn_seq.clone(),
-            from_device_desc: stack.local().clone(),
+            from_device_desc: stack.sn_client().ping().default_local(), 
             send_time: bucky_time_now()
         };
         let resp_box = interface.confirm_connect(&stack, vec![DynamicPackage::from(syn_tunnel)], owner.config().tcp.confirm_timeout).await?;
@@ -661,9 +661,8 @@ impl Tunnel {
 
     async fn reverse_connect_inner(&self, owner: TunnelContainer, reg: AbortRegistration) -> Result<(), BuckyError> {
         let stack = owner.stack();
-        let remote = stack.device_cache().get(owner.remote()).await.ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "device not cached"))?;
+        let remote = stack.device_cache().get_inner(owner.remote()).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "device not cached"))?;
         let sn_id = remote.connect_info().sn_list().get(0).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "device no sn"))?;
-        let sn = stack.device_cache().get(sn_id).await.ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "sn not cached"))?;
 
         let key_stub = stack.keystore().create_key(owner.remote_const(), true);
         let mut syn_box = PackageBox::encrypt_box(owner.remote().clone(), key_stub.key.clone());
@@ -672,7 +671,7 @@ impl Tunnel {
             stack_version: owner.stack_version(),  
             to_device_id: owner.remote().clone(),
             sequence: owner.generate_sequence(),
-            from_device_desc: stack.local().clone(),
+            from_device_desc: stack.sn_client().ping().default_local(), 
             send_time: bucky_time_now()
         };
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
@@ -697,22 +696,19 @@ impl Tunnel {
             }
         }
 
-        let _ = stack.sn_client().call(
-            &endpoints, 
-            owner.remote(), 
-            &sn, 
-            true, 
-            true,
-            true,
+        let call_session = stack.sn_client().call().call(
+            Some(&endpoints), 
+            owner.remote(),
+            &vec![sn_id.clone()],
             |sn_call| {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 let mut buf = vec![0u8; interface::udp::MTU_LARGE];
                 let enc_len = syn_box.raw_tail_encode_with_context(&mut buf, &mut context, &None).unwrap().len();
                 buf.truncate(enc_len);
                 buf
-            }).await;
+            }).await?;
                 
-        let waiter = Abortable::new(future::pending::<()>(), reg);
+        let waiter = Abortable::new(call_session.next(), reg);
         let _ = future::timeout(owner.config().connect_timeout, waiter).await?;
         Ok(())
     }
@@ -1248,7 +1244,7 @@ impl OnTcpInterface for Tunnel {
                     result: ret,
                     send_time: bucky_time_now(),
                     mtu: udp::MTU as u16,
-                    to_device_desc: owner.stack().local().clone(),
+                    to_device_desc: owner.stack().sn_client().ping().default_local()
                 };
                 let tunnel = self.clone();
                 task::spawn(async move {
