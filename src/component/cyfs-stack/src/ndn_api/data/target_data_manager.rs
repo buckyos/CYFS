@@ -33,18 +33,6 @@ impl TargetDataManager {
         self.context.debug_string()
     }
 
-    /*
-    fn new_chunk_manager_writer(&self) -> Box<dyn ChunkWriter> {
-        let writer = ChunkManagerWriter::new(
-            self.chunk_manager.clone(),
-            self.bdt_stack.ndn().chunk_manager().ndc().clone(),
-            self.bdt_stack.ndn().chunk_manager().tracker().clone(),
-        );
-
-        Box::new(writer)
-    }
-    */
-
     pub async fn get_file(
         &self,
         source: &RequestSourceInfo,
@@ -97,7 +85,7 @@ impl TargetDataManager {
         let resp = if let Some(ranges) = ranges {
             assert!(ranges.len() > 0);
 
-            let reader = ChunkListTaskRangesReader::new(file_id.to_string(), ranges, reader);
+            let reader = ChunkListTaskRangesReader::new(file_id.to_string(), ranges, Box::new(reader));
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         } else {
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
@@ -153,6 +141,15 @@ impl TargetDataManager {
             e
         })?;
 
-        Ok((Box::new(reader), total_size as u64, Some(id)))
+        let resp = if let Some(ranges) = ranges {
+            assert!(ranges.len() > 0);
+
+            let reader = ChunkListTaskRangesReader::new(chunk_id.to_string(), ranges, Box::new(reader));
+            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+        } else {
+            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+        };
+
+        Ok((resp, total_size as u64, Some(id)))
     }
 }

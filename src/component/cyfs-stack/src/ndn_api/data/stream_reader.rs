@@ -1,20 +1,22 @@
-use cyfs_bdt::ChunkListTaskReader;
-
 use async_std::io::{Read, Result};
 use std::io::{Seek, SeekFrom};
 use std::ops::Range;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-pub struct ChunkListTaskRangesReader {
+pub(super) trait ChunkReader: Read + Seek {}
+
+impl<T: Read + Seek> ChunkReader for T {}
+
+pub(super) struct ChunkListTaskRangesReader {
     task_id: String,
     ranges: Vec<Range<u64>>,
     range_index: usize,
-    reader: ChunkListTaskReader,
+    reader: Box<dyn ChunkReader + Unpin + Send + Sync + 'static>,
 }
 
 impl ChunkListTaskRangesReader {
-    pub fn new(task_id: String, ranges: Vec<Range<u64>>, reader: ChunkListTaskReader) -> Self {
+    pub fn new(task_id: String, ranges: Vec<Range<u64>>, reader: Box<dyn ChunkReader + Unpin + Send + Sync + 'static>,) -> Self {
         Self {
             task_id,
             ranges,
