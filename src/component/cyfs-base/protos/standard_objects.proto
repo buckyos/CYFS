@@ -92,9 +92,8 @@ message GroupRoleACL {
 }
 
 message GroupJoinSignature {
-    bytes signature = 1; // Sign(member_id, group_id, timestamp, hash, is_admin)
+    bytes signature = 1; // Sign(member_id, group_id, hash, is_admin)
     bytes member_id = 2;
-    uint64 timestamp = 3;
     bool is_admin = 4;
     bytes hash = 5; // Hash(Encode(Group))
 }
@@ -122,6 +121,7 @@ message CommonGroupBodyContent {
 
     uint64 version = 13;
 
+    // TODO: 这个Group的签名准备放到Group信息变更的提案里
     repeated GroupJoinSignature join_signatures = 14; // signature for every member/admin
 }
 
@@ -147,10 +147,6 @@ message OrgBodyContent {
     repeated GroupMember admins = 1;
     optional bytes token_contract = 2;
     CommonGroupBodyContent common = 3;
-}
-
-message GroupPackedBodyContent {
-    bytes packed_body_id = 1;
 }
 
 // tx

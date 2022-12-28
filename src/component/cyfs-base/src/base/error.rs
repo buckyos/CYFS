@@ -385,7 +385,7 @@ impl Into<BuckyErrorCode> for BuckySystemErrorCode {
             Self::OutofSessionLimit => BuckyErrorCode::OutofSessionLimit,
 
             Self::Redirect => BuckyErrorCode::Redirect,
-            
+
             Self::MongoDBError => BuckyErrorCode::MongoDBError,
             Self::SqliteError => BuckyErrorCode::SqliteError,
             Self::UrlError => BuckyErrorCode::UrlError,

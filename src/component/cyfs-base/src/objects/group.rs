@@ -29,7 +29,7 @@ impl DescContent for GroupDescContent {
 
 impl BodyContent for GroupBodyContent {
     fn format(&self) -> u8 {
-        OBJECT_CONTENT_CODEC_FORMAT_PROTOBUF
+        OBJECT_CONTENT_CODEC_FORMAT_RAW
     }
 }
 
@@ -60,6 +60,10 @@ impl GroupBodyContent {
 
     pub fn ood_list_mut(&mut self) -> &mut Vec<DeviceId> {
         &mut self.common_mut().ood_list
+    }
+
+    pub fn version(&self) -> u64 {
+        self.common().version
     }
 
     fn common(&self) -> &CommonGroupBodyContent {
@@ -176,6 +180,22 @@ impl Group {
         self.common_mut().ood_list = oods;
     }
 
+    pub fn version(&self) -> u64 {
+        self.common().version
+    }
+
+    pub fn set_version(&mut self, version: u64) {
+        self.common_mut().version = version;
+    }
+
+    pub fn consensus_interval(&self) -> u64 {
+        self.common().consensus_interval
+    }
+
+    pub fn set_consensus_interval(&mut self, interval: u64) {
+        self.common_mut().consensus_interval = interval;
+    }
+
     pub fn join_member(
         &self,
         member_id: &ObjectId,
@@ -184,11 +204,29 @@ impl Group {
         unimplemented!()
     }
 
-    pub fn verify(&self, signature: &GroupJoinSignature, member_id: &ObjectId, public_key: &PublicKey) -> BuckyResult<bool> {
+    pub fn verify(
+        &self,
+        signature: &GroupJoinSignature,
+        member_id: &ObjectId,
+        public_key: &PublicKey,
+    ) -> BuckyResult<bool> {
         unimplemented!()
     }
 
-    pub fn verify_member(&self, member_id: &ObjectId, is_admin: bool, publick_key: &PublicKey) -> BuckyResult<bool> {
+    pub fn verify_member(
+        &self,
+        member_id: &ObjectId,
+        is_admin: bool,
+        public_key: &PublicKey,
+    ) -> BuckyResult<bool> {
+        unimplemented!()
+    }
+
+    pub fn verify_members(
+        &self,
+        members: &[(ObjectId, PublicKey)],
+        is_admin: bool,
+    ) -> BuckyResult<bool> {
         unimplemented!()
     }
 
@@ -246,6 +284,19 @@ impl Group {
             GroupBodyContent::Org(body) => body,
             _ => panic!("group type not match, expect: org"),
         }
+    }
+
+    pub fn group_hash(&self) -> ObjectId {
+        let mut without_sign = self.clone();
+        without_sign.common_mut().join_signatures = vec![];
+
+        let mut hash = HashValue::default();
+        let remain = without_sign
+            .raw_encode(hash.as_mut_slice(), &Some(RawEncodePurpose::Hash))
+            .unwrap();
+        assert_eq!(remain.len(), 0);
+
+        ObjectId::from_slice_value(&hash.as_slice()[..31])
     }
 
     fn common(&self) -> &CommonGroupBodyContent {
@@ -423,7 +474,6 @@ impl TryFrom<&GroupRoleACL> for protos::GroupRoleACL {
 pub struct GroupJoinSignature {
     signature: Signature,
     member_id: ObjectId,
-    timestamp: u64,
     is_admin: bool,
     hash: HashValue,
 }
@@ -435,7 +485,6 @@ impl TryFrom<protos::GroupJoinSignature> for GroupJoinSignature {
         let ret = Self {
             signature: ProtobufCodecHelper::decode_buf(value.signature)?,
             member_id: ProtobufCodecHelper::decode_buf(value.member_id)?,
-            timestamp: value.timestamp,
             is_admin: value.is_admin,
             hash: ProtobufCodecHelper::decode_buf(value.hash)?,
         };
@@ -452,7 +501,6 @@ impl TryFrom<&GroupJoinSignature> for protos::GroupJoinSignature {
 
         ret.signature = value.signature.to_vec()?;
         ret.member_id = value.member_id.to_vec()?;
-        ret.timestamp = value.timestamp;
         ret.is_admin = value.is_admin;
         ret.hash = value.hash.to_vec()?;
 

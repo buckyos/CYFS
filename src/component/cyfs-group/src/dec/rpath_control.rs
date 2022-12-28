@@ -1,0 +1,33 @@
+use std::sync::Arc;
+
+use async_std::sync::Mutex;
+use cyfs_base::{BuckyResult, Group, NamedObject, ObjectDesc, ObjectId};
+use cyfs_chunk_lib::ChunkMeta;
+use cyfs_core::{GroupProposal, GroupRPath, GroupRPathStatus};
+use cyfs_lib::NONObjectInfo;
+
+struct RPathControlRaw {
+    network: crate::network::Sender,
+}
+
+impl RPathControlRaw {
+    pub fn rpath(&self) -> &GroupRPath {
+        unimplemented!()
+    }
+
+    pub fn select_branch(&self, block_id: ObjectId, source: ObjectId) -> BuckyResult<()> {
+        unimplemented!()
+    }
+
+    async fn on_post_proposal(&self, proposal: GroupProposal) -> BuckyResult<()> {
+        unimplemented!()
+    }
+
+    async fn on_get_field(&self, sub_path: &str) -> BuckyResult<GroupRPathStatus> {
+        unimplemented!()
+    }
+}
+
+pub struct RPathControl {
+    raw: Arc<RPathControlRaw>,
+}

@@ -1,0 +1,63 @@
+```
+/--groups // for manager；通过决议以后构造/更新的Group对象放在这里，更新步骤
+|   |   // 1.得到一个创建/更新一个Group的决议（旧成员一定量的投票+所有新成员签名）
+|   |   //      形成决议的方式可以是合约，也可以是超送用`DEC框架`实现的DEC
+|   |   // 2.跟friend管理一样，用决议设定到系统更新Group信息
+|   |   // 3.更新Group下所有r-path的本地Group版本，并达成共识；这里主要要同步ood-list
+|   |--list-->Set<GroupId>
+|   |--option-->GroupOption
+|
+|--.dec-state // for dec；各Group的dec状态放这里
+|   |--${group-id} // ${groupid}/.group/update 留着做group的版本同步
+|       |--${dec-id} | .group // 一个dec管理的${r-path}状态
+|       |   |   // 每个${r-path}管理范围内是串行的
+|           |   // 不同${r-path}范围内的操作是并行的
+|           |   // 且不同${r-path}之间是并列的，不能嵌套
+|           |--${r-path}-->ObjectId // APP控制的实体状态，通常是个map-id
+|           |                      // 最终在APP看到的${r-path}结构是这级物理结构的相对路径
+|           |                      // 其他内部逻辑隐藏掉
+|           |
+|
+|--.link // 区块链结构，记录状态变更链条
+|   |--${group-id}
+|       |--${dec-id} | .group // .group表示group本身的演变共识
+|           |--${r-path}
+|               |--group-chunk-->Chunk(Group)
+|               |--users
+|               |   |--${user-id}
+|               |       |--xxx
+|               |--last-vote-round-->u64 // 最后一次投票的轮次
+|               |
+|               |--range-->(${first_height}, ${header_seq}) // 保留的历史block序列号区间
+|               |--str(${height})
+|               |   |--block-->GroupConsensusBlock
+|               |   |--proposals-->Set<Proposal>
+|               |
+|               |--prepares // Prepare状态的block
+|               |   |--${block.id}
+|               |       |--block
+|               |       |--result-state-->ObjectId(result-state)
+|               |--pre-commits // pre-commit状态的block
+|               |   |--${block.id}
+|               |       |--block
+|               |       |--result-state-->ObjectId(result-state)
+|               |
+|               |--finish-proposals
+|               |   |--flip-time-->Timestamp // 取block时间戳
+|               |   |--recycle-->Set<ObjectId>
+|               |   |--adding-->Set<ObjectId>
+```
+
+```
+// .group结构
+/--${group-id}
+    |--ObjectId(.group)
+        |--.update
+            |--voting
+            |   |--${proposal-id}
+            |       |--proposal-->GroupUpdateProposal
+            |       |--decides-->Set<decide-proposal>
+            |--latest-version-->GroupUpdateProposal // Chunk(Encode(group))
+            |--str(version-seq)-->GroupUpdateProposal // Chunk(Encode(group))
+            |--str(group-hash)-->GroupUpdateProposal
+```

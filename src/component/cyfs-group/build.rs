@@ -1,12 +1,13 @@
-extern crate protoc_rust;
 extern crate chrono;
+extern crate protoc_rust;
 
 use std::io::Write;
 
-static MOD_PROTOS_RS:&str = r#"
+static MOD_PROTOS_RS: &str = r#"
 pub(crate) mod group_bft_protocol;
+mod group_bft_protocol_with_macro;
 
-pub(crate) use group_bft_protocol::*;
+pub use group_bft_protocol_with_macro::*;
 "#;
 
 #[allow(dead_code)]
@@ -23,8 +24,16 @@ fn gen_protos() {
 
     gen.run().expect("protoc error!");
 
-    std::fs::File::create(out_dir + "/mod.rs").expect("write protos mod error")
-        .write_all(MOD_PROTOS_RS.as_ref()).expect("write protos mod error");
+    let mut config = prost_build::Config::new();
+    config.default_package_filename("group_bft_protocol_with_macro");
+    config
+        .compile_protos(&["protos/group_bft_protocol.proto"], &["protos"])
+        .unwrap();
+
+    std::fs::File::create(out_dir + "/mod.rs")
+        .expect("write protos mod error")
+        .write_all(MOD_PROTOS_RS.as_ref())
+        .expect("write protos mod error");
 }
 
 fn main() {
