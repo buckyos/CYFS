@@ -1,4 +1,4 @@
-mod base_requestor;
+
 mod config;
 mod exp_filter;
 mod front;
@@ -11,7 +11,6 @@ mod source;
 mod tcp_listener;
 mod zone;
 
-pub use base_requestor::*;
 pub use config::*;
 pub use exp_filter::*;
 pub use front::*;

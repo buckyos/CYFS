@@ -1,6 +1,7 @@
 use http_types::{Method, Request, Url};
 
 use cyfs_base::BuckyError;
+use cyfs_stack_loader::VAR_MANAGER;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum HttpLocationPathMode {
@@ -244,7 +245,7 @@ impl HttpLocationManager {
                 }
                 "proxy_pass" => {
                     let proxy_pass = v.as_str().unwrap_or("");
-                    let proxy_pass = ::base::VAR_MANAGER.translate_addr_str(proxy_pass)?;
+                    let proxy_pass = VAR_MANAGER.translate_addr_str(proxy_pass)?;
 
                     location.load_proxy_pass(&proxy_pass)?;
                 }

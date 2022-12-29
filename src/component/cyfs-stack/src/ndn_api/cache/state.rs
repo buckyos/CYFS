@@ -1,13 +1,16 @@
 use cyfs_base::*;
 use cyfs_util::cache::*;
 
-use std::{path::PathBuf, collections::HashMap};
-
+use std::{collections::HashMap, path::PathBuf};
 
 pub struct FileStateUpdater;
 
 impl FileStateUpdater {
-    pub async fn add_file_to_ndc(ndc: &Box<dyn NamedDataCache>, file: &File, dirs: Option<Vec<FileDirRef>>) -> BuckyResult<()> {
+    pub async fn add_file_to_ndc(
+        ndc: &Box<dyn NamedDataCache>,
+        file: &File,
+        dirs: Option<Vec<FileDirRef>>,
+    ) -> BuckyResult<()> {
         let file_id = file.desc().file_id();
         let file_req = InsertFileRequest {
             file_id: file_id.clone(),
@@ -18,38 +21,36 @@ impl FileStateUpdater {
         };
 
         ndc.insert_file(&file_req).await.map_err(|e| {
-            error!(
-                "record file to ndc error! file={}, {}",
-                file_id,
-                e
-            );
+            error!("record file to ndc error! file={}, {}", file_id, e);
             e
         })?;
 
-        info!(
-            "record file to ndc success! file={}",
-            file_id,
-        );
+        info!("record file to ndc success! file={}", file_id,);
 
         Ok(())
     }
 }
 
-pub struct ChunkStateUpdater;
+struct ChunkStateUpdater;
 
 impl ChunkStateUpdater {
     pub async fn update_chunk_state(
         ndc: &Box<dyn NamedDataCache>,
         chunk_id: &ChunkId,
     ) -> BuckyResult<()> {
-        let req = UpdateChunkStateRequest {
+        let req = InsertChunkRequest {
             chunk_id: chunk_id.clone(),
-            current_state: None,
             state: ChunkState::Ready,
+            ref_objects: None,
+            trans_sessions: None,
+            flags: 0,
         };
 
-        ndc.update_chunk_state(&req).await.map_err(|e| {
-            error!("update chunk state error! chyunk={}, {}", chunk_id, e);
+        ndc.insert_chunk(&req).await.map_err(|e| {
+            error!(
+                "insert and update chunk state error! chunk={}, {}",
+                chunk_id, e
+            );
             e
         })?;
 
@@ -67,7 +68,10 @@ impl ChunkManagerStateUpdater {
         ChunkStateUpdater::update_chunk_state(ndc, chunk_id).await
     }
 
-    pub async fn update_chunk_tracker(tracker: &Box<dyn TrackerCache>, chunk_id: &ChunkId) -> BuckyResult<()> {
+    pub async fn update_chunk_tracker(
+        tracker: &Box<dyn TrackerCache>,
+        chunk_id: &ChunkId,
+    ) -> BuckyResult<()> {
         let request = AddTrackerPositonRequest {
             id: chunk_id.to_string(),
             direction: TrackerDirection::Store,
@@ -76,7 +80,7 @@ impl ChunkManagerStateUpdater {
         };
         if let Err(e) = tracker.add_position(&request).await {
             if e.code() != BuckyErrorCode::AlreadyExists {
-                error!("add to tracker failed for {}", e);
+                error!("add chunk to tracker failed! chunk={}, {}", chunk_id, e);
                 return Err(e);
             }
         };
@@ -116,7 +120,11 @@ impl LocalFileStateUpdater {
             }
         }
 
-        Self { file, local_path, chunk_map }
+        Self {
+            file,
+            local_path,
+            chunk_map,
+        }
     }
 
     pub async fn update_chunk_state(
@@ -127,7 +135,11 @@ impl LocalFileStateUpdater {
         ChunkStateUpdater::update_chunk_state(ndc, chunk_id).await
     }
 
-    pub async fn update_chunk_tracker(&self, tracker: &Box<dyn TrackerCache>, chunk_id: &ChunkId) -> BuckyResult<()> {
+    pub async fn update_chunk_tracker(
+        &self,
+        tracker: &Box<dyn TrackerCache>,
+        chunk_id: &ChunkId,
+    ) -> BuckyResult<()> {
         let chunk_range_list = self.get_chunk_range_list(chunk_id)?;
 
         let id = chunk_id.to_string();
@@ -168,16 +180,13 @@ impl LocalFileStateUpdater {
     }
 }
 
-
 pub struct LocalChunkStateUpdater {
     local_path: PathBuf,
 }
 
 impl LocalChunkStateUpdater {
-    pub fn new( local_path: PathBuf,) -> Self {
-        Self {
-            local_path,
-        }
+    pub fn new(local_path: PathBuf) -> Self {
+        Self { local_path }
     }
 
     pub async fn update_chunk_state(
@@ -188,7 +197,11 @@ impl LocalChunkStateUpdater {
         ChunkStateUpdater::update_chunk_state(ndc, chunk_id).await
     }
 
-    pub async fn update_chunk_tracker(&self, tracker: &Box<dyn TrackerCache>, chunk_id: &ChunkId) -> BuckyResult<()> {
+    pub async fn update_chunk_tracker(
+        &self,
+        tracker: &Box<dyn TrackerCache>,
+        chunk_id: &ChunkId,
+    ) -> BuckyResult<()> {
         let request = AddTrackerPositonRequest {
             id: chunk_id.to_string(),
             direction: TrackerDirection::Store,

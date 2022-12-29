@@ -180,18 +180,14 @@ impl WebSocketRequestHandler for RouterWSEventRequestEvent {
         let session = session.clone();
         let owner = self.owner.clone();
 
-        task::spawn(async move {
-            RouterWSEventManagerImpl::on_session_begin(owner, session).await;
-        });
+        RouterWSEventManagerImpl::on_session_begin(owner, session).await;
     }
 
     async fn on_session_end(&self, session: &Arc<WebSocketSession>) {
         let session = session.clone();
         let owner = self.owner.clone();
 
-        task::spawn(async move {
-            RouterWSEventManagerImpl::on_session_end(owner, session).await;
-        });
+        RouterWSEventManagerImpl::on_session_end(owner, session).await;
     }
 
     fn clone_handler(&self) -> Box<dyn WebSocketRequestHandler> {
@@ -207,6 +203,12 @@ struct RouterWSEventManagerImpl {
     session: Option<Arc<WebSocketSession>>,
 }
 
+impl Drop for RouterWSEventManagerImpl {
+    fn drop(&mut self) {
+        warn!("router event manager dropped! sid={:?}", self.sid());
+    }
+}
+
 impl RouterWSEventManagerImpl {
     pub fn new() -> Self {
         Self {
@@ -214,6 +216,10 @@ impl RouterWSEventManagerImpl {
             unregister_events: HashMap::new(),
             session: None,
         }
+    }
+
+    pub fn sid(&self) -> Option<u32> {
+        self.session.as_ref().map(|session| session.sid())
     }
 
     pub fn get_event(&self, id: &RouterEventId) -> Option<Arc<RouterEventItem>> {
@@ -323,7 +329,10 @@ impl RouterWSEventManagerImpl {
     ) -> BuckyResult<Option<String>> {
         let event = RouterWSEventEmitParam::decode_string(&content)?;
 
-        info!("on event: category={}, id={}, param={}", event.category, event.id, event.param);
+        info!(
+            "on event: category={}, id={}, param={}",
+            event.category, event.id, event.param
+        );
 
         let id = RouterEventId {
             category: event.category,
@@ -360,9 +369,12 @@ impl RouterWSEventManagerImpl {
             assert!(manager.session.is_none());
             manager.session = Some(session.clone());
         }
-        Self::unregister_all(&manager, &session).await;
 
-        Self::register_all(&manager, &session).await;
+        async_std::task::spawn(async move {
+            Self::unregister_all(&manager, &session).await;
+
+            Self::register_all(&manager, &session).await;
+        });
     }
 
     async fn register_all(
@@ -451,6 +463,17 @@ impl RouterWSEventManager {
 
     pub fn start(&self) {
         self.client.start();
+    }
+
+    pub async fn stop(&self) {
+        let sid = self.manager.lock().unwrap().sid();
+        info!("will stop event manager! sid={:?}", sid);
+
+        self.client.stop().await;
+
+        info!("stop event manager complete! sid={:?}", sid);
+
+        // assert!(self.manager.lock().unwrap().session.is_none());
     }
 
     pub fn add_event<REQ, RESP>(

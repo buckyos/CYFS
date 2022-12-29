@@ -198,7 +198,9 @@ impl UtilInputTransformer {
             common: Self::convert_common(req.common),
             local_path: req.local_path,
             owner: req.owner,
-            chunk_size: req.chunk_size,
+            chunk_size: req.chunk_size, 
+            chunk_method: req.chunk_method, 
+            access: req.access,
         };
 
         let out_resp = self.processor.build_file_object(out_req).await?;
@@ -465,7 +467,9 @@ impl UtilOutputProcessor for UtilOutputTransformer {
             common: self.convert_common(req.common),
             local_path: req.local_path,
             owner: req.owner,
-            chunk_size: req.chunk_size,
+            chunk_size: req.chunk_size, 
+            chunk_method: req.chunk_method, 
+            access: req.access,
         };
 
         let resp = self.processor.build_file_object(in_req).await?;

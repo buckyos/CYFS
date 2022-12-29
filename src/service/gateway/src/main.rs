@@ -8,10 +8,11 @@ mod upstream;
 #[macro_use]
 extern crate log;
 
-use crate::gateway::GATEWAY;
-// use acc_service::{Service as AccService, SERVICE_NAME as ACC_SERVICE_NAME};
+use crate::gateway::Gateway;
 use cyfs_stack_loader::CyfsServiceLoader;
+use cyfs_lib::BrowserSanboxMode;
 
+use std::str::FromStr;
 use clap::{App, Arg};
 
 pub const SERVICE_NAME: &str = ::cyfs_base::GATEWAY_NAME;
@@ -22,11 +23,10 @@ async fn main_run() {
         .about("gateway service for cyfs system")
         .author("CYFS <dev@cyfs.com>")
         .arg(
-            Arg::with_name("gateway_only")
-                .short("g")
-                .long("gateway-only")
-                .takes_value(false)
-                .help("Run gateway service without acc_service"),
+            Arg::with_name("browser-mode")
+                .long("browser-mode")
+                .takes_value(true)
+                .help("The browser sanbox mode, default is strict"),
         );
 
     let app = cyfs_util::process::prepare_args(app);
@@ -51,6 +51,23 @@ async fn main_run() {
 
     // ::cyfs_base::init_log_with_isolate_bdt(SERVICE_NAME, Some("debug"), Some("trace"));
 
+    let browser_mode = match matches.value_of("browser-mode") {
+        Some(v) => {
+            Some(BrowserSanboxMode::from_str(v).map_err(|e| {
+                println!("invalid browser mode param! {}, {}", v, e);
+                std::process::exit(-1);
+            }).unwrap())
+        }
+        None => {
+            None
+        }
+    };
+
+    let mut stack_config = gateway::CyfsStackInsConfig::default();
+    if let Some(mode) = browser_mode {
+        stack_config.browser_mode = mode;
+    }
+
     // 初始化全局变量管理器
     {
         if let Err(_e) = CyfsServiceLoader::prepare_env().await {
@@ -58,15 +75,17 @@ async fn main_run() {
         }
     }
 
+    let gateway = Gateway::new(stack_config);
+
     // gateway核心服务
-    if let Err(e) = GATEWAY.load_config().await {
+    if let Err(e) = gateway.load_config().await {
         error!("load config failed! err={}", e);
         std::process::exit(-1);
     }
 
-    GATEWAY.start();
+    gateway.start();
 
-    control::GatewayControlServer::run().await;
+    gateway.run().await;
 }
 
 fn main() {

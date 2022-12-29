@@ -1,6 +1,6 @@
 use super::manager::{Repo, RepoPackageInfo, RepoType};
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DirId};
-use cyfs_client::NamedCacheClient;
+use cyfs_client::{NamedCacheClient, NamedCacheClientConfig};
 
 use async_std::fs::File;
 use async_std::io::prelude::*;
@@ -9,6 +9,7 @@ use once_cell::sync::OnceCell;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub struct NamedDataRepo {
     client: OnceCell<Arc<NamedCacheClient>>,
@@ -27,10 +28,17 @@ impl NamedDataRepo {
     }
 
     pub async fn init(&mut self) -> BuckyResult<()> {
-        let mut client = NamedCacheClient::new();
+
 
         // service desc确保它有固定外网地址，连接不走sn。这里sn_list就可以传None
-        if let Err(e) = client.init(None, None, None, None).await {
+        let mut config = NamedCacheClientConfig::default();
+        config.retry_times = 3;
+        config.timeout = Duration::from_secs(10*60);
+        config.tcp_file_manager_port = 5312;
+        config.tcp_chunk_manager_port = 5310;
+        config.conn_strategy = cyfs_client::ConnStrategy::TcpFirst;
+        let mut client = NamedCacheClient::new(config);
+        if let Err(e) = client.init().await {
             let msg = format!("init named cache client for repo failed! err={}", e);
             error!("{}", msg);
 
@@ -123,7 +131,7 @@ impl Repo for NamedDataRepo {
     }
 
     async fn fetch(&self, info: &RepoPackageInfo, local_file: &Path) -> BuckyResult<()> {
-        let mut retry_interval_secs = 10;
+        let mut retry_interval_secs = 60;
         let mut retry_count = 0;
         loop {
             let info = info.to_owned();

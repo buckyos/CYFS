@@ -845,6 +845,14 @@ impl ExpTokenEvalValue {
         }
     }
 
+    pub fn from_opt_u64(v: Option<u64>) -> Self
+    {
+        match v {
+            Some(v) => Self::U64(v),
+            None => Self::None,
+        }
+    }
+
     pub fn is_none(&self) -> bool {
         match *self {
             Self::None => true,
@@ -1164,9 +1172,24 @@ impl PartialEq for ExpEvaluator {
 }
 impl Eq for ExpEvaluator {}
 
+use std::cmp::Ordering;
+impl PartialOrd for ExpEvaluator {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.exp().partial_cmp(other.exp())
+    }
+}
+
+impl Ord for ExpEvaluator {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+
 impl ExpEvaluator {
-    pub fn new(exp: &str, reserved_token_list: &ExpReservedTokenList) -> BuckyResult<Self> {
-        let lex_list = ExpParser::parse_lex(exp)?;
+    pub fn new(exp: impl Into<String>, reserved_token_list: &ExpReservedTokenList) -> BuckyResult<Self> {
+        let exp = exp.into();
+        let lex_list = ExpParser::parse_lex(&exp)?;
         // 不支持空表达式
         if lex_list.is_empty() {
             let msg = format!("empty exp filter not supported! exp={}", exp);
@@ -1176,18 +1199,31 @@ impl ExpEvaluator {
 
         debug!("exp to rpn lex list: exp={}, list={:?}", exp, lex_list);
 
-        let rpn = Self::convert(exp, lex_list, reserved_token_list)?;
+        let rpn = Self::convert(&exp, lex_list, reserved_token_list)?;
 
         Ok(Self {
-            exp: exp.to_owned(),
+            exp,
             rpn,
         })
+    }
+
+    pub fn new_uninit(exp: impl Into<String>) -> Self {
+        let exp = exp.into();
+        
+        Self {
+            exp,
+            rpn: vec![],
+        }
     }
 
     pub fn exp(&self) -> &str {
         &self.exp
     }
 
+    pub fn into_exp(self) -> String {
+        self.exp
+    }
+    
     fn convert(
         exp: &str,
         lex_list: Vec<ExpLexItem>,
@@ -1504,6 +1540,7 @@ impl ExpEvaluator {
         value
     }
 }
+
 
 #[cfg(test)]
 mod exp_tests {

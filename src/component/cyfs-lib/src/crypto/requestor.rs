@@ -2,7 +2,7 @@ use super::output_request::*;
 use super::processor::*;
 use super::request::*;
 use crate::non::NONObjectInfo;
-use crate::{base::*, SharedObjectStackDecID};
+use crate::*;
 use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};
@@ -16,16 +16,6 @@ pub struct CryptoRequestor {
 }
 
 impl CryptoRequestor {
-    pub fn new_default_tcp(dec_id: Option<SharedObjectStackDecID>) -> Self {
-        let service_addr = format!("127.0.0.1:{}", cyfs_base::NON_STACK_HTTP_PORT);
-        Self::new_tcp(dec_id, &service_addr)
-    }
-
-    pub fn new_tcp(dec_id: Option<SharedObjectStackDecID>, service_addr: &str) -> Self {
-        let tcp_requestor = TcpHttpRequestor::new(service_addr);
-        Self::new(dec_id, Arc::new(Box::new(tcp_requestor)))
-    }
-
     pub fn new(dec_id: Option<SharedObjectStackDecID>, requestor: HttpRequestorRef) -> Self {
         let addr = requestor.remote_addr();
 

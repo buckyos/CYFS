@@ -397,7 +397,7 @@ impl ObjectMapSingleOpEnv {
             root.clone()
         };
 
-        self.cache.put_object_map(&new_id, root)?;
+        self.cache.put_object_map(&new_id, root, None)?;
 
         if let Err(e) = self.cache.gc(true, &new_id).await {
             error!("single env's cache gc error! root={}, {}", new_id, e);

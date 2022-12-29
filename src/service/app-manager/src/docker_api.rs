@@ -206,7 +206,7 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
         std::fs::create_dir_all(app_data_dir.clone())?;
     }
 
-    Ok(Some(vec![
+    let mut mounts = vec![
         Mount {
             target: Some("/cyfs/log/app".to_string()),
             source: Some(log_dir.as_path().display().to_string()),
@@ -229,14 +229,6 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
             ..Default::default()
         },
         Mount {
-            // container's dns  conf bind host config
-            target: Some("/etc/resolv.conf".to_string()),
-            source: Some("/etc/resolv.conf".to_string()),
-            typ: Some(bollard::models::MountTypeEnum::BIND),
-            read_only: Some(true),
-            ..Default::default()
-        },
-        Mount {
             // bind /etc/localtime 让容器内和宿主机的时区保持一致
             target: Some("/etc/localtime".to_string()),
             source: Some("/etc/localtime".to_string()),
@@ -244,7 +236,49 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
             read_only: Some(true),
             ..Default::default()
         },
-    ]))
+    ];
+
+    // dns
+    // if host machine's resolv.conf contain the '127.0.0.53', it means host use systemd resolv service, which container can not use.
+    // In this time , we should not mont the /etc/resolv to container
+    // docker has some handler, can see this source:
+    // https://github.com/docker/docker-ce/blob/44a430f4c43e61c95d4e9e9fd6a0573fa113a119/components/engine/libnetwork/resolvconf/resolvconf.go#L52
+    // https://superuser.com/questions/1702091/how-should-systemd-resolved-and-docker-interact
+    let resolv = "/etc/resolv.conf";
+    let resolv_content = std::fs::read_to_string(resolv).map_err(|err| {
+        BuckyError::new(
+            BuckyErrorCode::Failed,
+            format!("failed to read the resolv file: {}", err),
+        )
+    })?;
+    let is_host_systemd_resolved = resolv_content.contains("127.0.0.53");
+    if !is_host_systemd_resolved {
+        info!("resolv.conf file did not contain 127.0.0.53 use this file directly");
+        mounts.push(Mount {
+            // container's dns  conf bind host config
+            target: Some("/etc/resolv.conf".to_string()),
+            source: Some("/etc/resolv.conf".to_string()),
+            typ: Some(bollard::models::MountTypeEnum::BIND),
+            read_only: Some(true),
+            ..Default::default()
+        })
+    } else {
+        info!("resolv.conf file contain 127.0.0.53, use systemd resolv.conf instead");
+        let systemd_resolve = "/run/systemd/resolve/resolv.conf";
+        let systemd_resolve_exist = std::path::Path::new(systemd_resolve).is_file();
+        if systemd_resolve_exist {
+            mounts.push(Mount {
+                // container's dns  conf bind host config
+                target: Some("/etc/resolv.conf".to_string()),
+                source: Some(systemd_resolve.to_string()),
+                typ: Some(bollard::models::MountTypeEnum::BIND),
+                read_only: Some(true),
+                ..Default::default()
+            })
+        }
+    }
+
+    Ok(Some(mounts))
 }
 
 pub struct DockerApi {

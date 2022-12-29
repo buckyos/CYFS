@@ -1,18 +1,40 @@
 use super::request::*;
 use super::session::*;
 use super::session_manager::*;
-use cyfs_base::{BuckyError, BuckyResult};
+use cyfs_base::*;
 
 use async_std::net::TcpStream;
+use cyfs_debug::Mutex;
+use futures::future::{AbortHandle, Abortable, Aborted};
 use http_types::Url;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use futures::future::{AbortHandle, Abortable};
-use cyfs_debug::Mutex;
 
 // connect的重试间隔
 const WS_CONNECT_RETRY_MIN_INTERVAL_SECS: u64 = 2;
 const WS_CONNECT_RETRY_MAX_INTERVAL_SECS: u64 = 60;
+
+struct WebSocketClientHandles {
+    // 用以唤醒重试等待
+    waker: Option<AbortHandle>,
+
+    // 取消运行
+    running_task: Option<async_std::task::JoinHandle<()>>,
+}
+
+impl Default for WebSocketClientHandles {
+    fn default() -> Self {
+        Self {
+            waker: None,
+            running_task: None,
+        }
+    }
+}
+
+struct WebSocketClientSessionState {
+    session: Option<Arc<WebSocketSession>>,
+    stopped: bool,
+}
 
 #[derive(Clone)]
 pub struct WebSocketClient {
@@ -22,7 +44,9 @@ pub struct WebSocketClient {
     session_manager: WebSocketSessionManager,
 
     // 用以唤醒重试等待
-    waker: Arc<Mutex<Option<AbortHandle>>>,
+    handles: Arc<Mutex<WebSocketClientHandles>>,
+
+    session: Arc<Mutex<WebSocketClientSessionState>>,
 }
 
 impl WebSocketClient {
@@ -39,7 +63,11 @@ impl WebSocketClient {
             service_url,
             service_addr,
             session_manager: WebSocketSessionManager::new(handler),
-            waker: Arc::new(Mutex::new(None)),
+            handles: Arc::new(Mutex::new(WebSocketClientHandles::default())),
+            session: Arc::new(Mutex::new(WebSocketClientSessionState {
+                session: None,
+                stopped: false,
+            })),
         }
     }
 
@@ -54,16 +82,18 @@ impl WebSocketClient {
 
     pub fn start(&self) {
         let this = self.clone();
-        async_std::task::spawn(async move {
-            this.run().await;
-        });
+        let task = async_std::task::spawn(this.run());
+
+        let mut handles = self.handles.lock().unwrap();
+        assert!(handles.running_task.is_none());
+        handles.running_task = Some(task);
     }
 
-    pub async fn run(self) {
+    async fn run(self) {
         let mut retry_interval = WS_CONNECT_RETRY_MIN_INTERVAL_SECS;
 
         loop {
-            info!("will ws connect to {}", self.service_url);
+            info!("ws will connect to {}", self.service_url);
 
             match self.run_once().await {
                 Ok(_) => {
@@ -71,15 +101,18 @@ impl WebSocketClient {
                     retry_interval = WS_CONNECT_RETRY_MIN_INTERVAL_SECS;
                 }
                 Err(e) => {
+                    if e.code() == BuckyErrorCode::Aborted {
+                        break;
+                    }
                     error!("ws session complete with error: {}", e);
                 }
             };
 
             let (abort_handle, abort_registration) = AbortHandle::new_pair();
-            *self.waker.lock().unwrap() = Some(abort_handle);
+            self.handles.lock().unwrap().waker = Some(abort_handle);
             let future = Abortable::new(
-                async_std::task::sleep(std::time::Duration::from_secs(retry_interval)), 
-                abort_registration
+                async_std::task::sleep(std::time::Duration::from_secs(retry_interval)),
+                abort_registration,
             );
 
             match future.await {
@@ -89,16 +122,18 @@ impl WebSocketClient {
                         retry_interval = WS_CONNECT_RETRY_MAX_INTERVAL_SECS;
                     }
                 }
-                Err(futures::future::Aborted { .. }) => {
+                Err(Aborted { .. }) => {
                     retry_interval = WS_CONNECT_RETRY_MIN_INTERVAL_SECS;
                 }
             };
         }
+
+        info!("ws client stopped! url={}", self.service_url);
     }
 
     // 立即发起一次重试
     pub fn retry(&self) {
-        if let Some(waker) = self.waker.lock().unwrap().take() {
+        if let Some(waker) = self.handles.lock().unwrap().waker.take() {
             waker.abort();
         }
     }
@@ -116,8 +151,57 @@ impl WebSocketClient {
             tcp_stream.peer_addr().unwrap(),
         );
 
-        self.session_manager
-            .run_client_session(&self.service_url, conn_info, tcp_stream)
-            .await
+        let session = self
+            .session_manager
+            .new_session(&self.service_url, conn_info)?;
+
+        let stopped = {
+            let mut state = self.session.lock().unwrap();
+            assert!(state.session.is_none());
+            if !state.stopped {
+                state.session = Some(session.clone());
+            } else {
+                warn!(
+                    "ws client run session but already stopped! sid={}",
+                    session.sid()
+                );
+            }
+
+            state.stopped
+        };
+
+        let ret = if !stopped {
+            let ret = self
+                .session_manager
+                .run_client_session(&self.service_url, session, tcp_stream)
+                .await;
+
+            self.session.lock().unwrap().session.take();
+
+            ret
+        } else {
+            Err(BuckyError::from(BuckyErrorCode::Aborted))
+        };
+
+        ret
+    }
+
+    pub async fn stop(&self) {
+        let session = {
+            let mut state = self.session.lock().unwrap();
+            state.stopped = true;
+            state.session.take()
+        };
+
+        if let Some(session) = session {
+            session.stop();
+        }
+
+        let task = self.handles.lock().unwrap().running_task.take();
+        if let Some(task) = task {
+            task.await;
+        }
+
+        self.session_manager.stop();
     }
 }

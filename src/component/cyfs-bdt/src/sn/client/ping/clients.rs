@@ -150,6 +150,15 @@ impl PingClients {
         }
     }
 
+    pub fn status(&self) -> Option<SnStatus> {
+        let state = self.0.state.read().unwrap();
+        match &state.state {
+            ClientsState::Active { .. } => Some(SnStatus::Online), 
+            ClientsState::Offline => Some(SnStatus::Offline), 
+            _ => None
+        }
+    }
+
     fn sync_ping_client(&self, client: &PingClient, result: BuckyResult<SnStatus>) {
         info!("{} client {} finished {:?}", self, client, result);
         if result.is_err() {

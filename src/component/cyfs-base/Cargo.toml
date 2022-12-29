@@ -1,7 +1,7 @@
 
 [package]
 name = 'cyfs-base'
-version = '0.6.7'
+version = '0.6.8'
 authors = ['liuzhicong <liuzhicong@buckyos.com>']
 edition = '2021'
 license = 'BSD-2-Clause'
@@ -12,6 +12,10 @@ rust-version = '1.63'
 protoc-rust = '2'
 chrono = '0.4'
 protoc-bin-vendored = '3'
+
+[features]
+default = []
+sqlx-error = ['dep:sqlx']
 
 [dependencies]
 cyfs-base-derive = { path = '../cyfs-base-derive', version = '0.5' }
@@ -46,6 +50,7 @@ simple_logger = '2.1'
 intbits = '0.2'
 itertools = '0.10'
 base-x = '0.2.0'
+sqlx = { version = '0.5', default-features = false, optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zip = '0.6'

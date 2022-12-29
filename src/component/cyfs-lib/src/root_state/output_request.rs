@@ -877,6 +877,15 @@ impl fmt::Display for RootStateAccessorGetObjectByPathOutputRequest {
     }
 }
 
+impl RootStateAccessorGetObjectByPathOutputRequest {
+    pub fn new(inner_path: impl Into<String>) -> Self {
+        Self {
+            common: RootStateOutputRequestCommon::new(),
+            inner_path: inner_path.into(),
+        }
+    }
+}
+
 pub struct RootStateAccessorGetObjectByPathOutputResponse {
     pub object: NONGetObjectOutputResponse,
     pub root: ObjectId,
@@ -899,6 +908,26 @@ pub struct RootStateAccessorListOutputRequest {
     // read elements by page
     pub page_index: Option<u32>,
     pub page_size: Option<u32>,
+}
+
+impl RootStateAccessorListOutputRequest {
+    pub fn new(inner_path: impl Into<String>) -> Self {
+        Self {
+            common: RootStateOutputRequestCommon::new(),
+            inner_path: inner_path.into(),
+            page_index: None,
+            page_size: None,
+        }
+    }
+
+    pub fn new_with_page(inner_path: impl Into<String>, page_index: u32, page_size: u32) -> Self {
+        Self {
+            common: RootStateOutputRequestCommon::new(),
+            inner_path: inner_path.into(),
+            page_index: Some(page_index),
+            page_size: Some(page_size),
+        }
+    }
 }
 
 impl fmt::Display for RootStateAccessorListOutputRequest {

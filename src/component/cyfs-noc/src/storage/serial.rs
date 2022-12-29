@@ -2,10 +2,10 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 use async_std::sync::Mutex as AsyncMutex;
+use cyfs_debug::Mutex;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
-use cyfs_debug::Mutex;
 
 struct SerializeExecutorLock {
     lock: AsyncMutex<u32>,
@@ -173,8 +173,9 @@ impl NamedObjectCache for NamedObjectCacheSerializer {
         ret
     }
 
-    async fn check_object_access(&self, 
-        req: &NamedObjectCacheCheckObjectAccessRequest
+    async fn check_object_access(
+        &self,
+        req: &NamedObjectCacheCheckObjectAccessRequest,
     ) -> BuckyResult<Option<()>> {
         let lock = self.acquire_lock(&req.object_id);
         let ret = {
@@ -189,5 +190,13 @@ impl NamedObjectCache for NamedObjectCacheSerializer {
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         self.next.stat().await
+    }
+
+    fn bind_object_meta_access_provider(
+        &self,
+        object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    ) {
+        self.next
+            .bind_object_meta_access_provider(object_meta_access_provider)
     }
 }

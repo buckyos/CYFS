@@ -1,16 +1,16 @@
-use super::super::data::LocalDataManager;
+use super::super::data::ChunkStoreReader;
 use cyfs_base::*;
 
 use async_std::io::ReadExt;
 use std::borrow::Cow;
 
 pub(crate) struct DirLoader {
-    data_manager: LocalDataManager,
+    chunk_reader: ChunkStoreReader,
 }
 
 impl DirLoader {
-    pub fn new(data_manager: LocalDataManager) -> Self {
-        Self { data_manager }
+    pub fn new(chunk_reader: ChunkStoreReader) -> Self {
+        Self { chunk_reader }
     }
 
     pub async fn load_desc_obj_list<'a>(
@@ -108,9 +108,9 @@ impl DirLoader {
         dir_id: &ObjectId,
         chunk_id: &ChunkId,
     ) -> BuckyResult<T> {
-        let ret = self
-            .data_manager
-            .get_chunk(chunk_id, None)
+        let mut reader = self
+            .chunk_reader
+            .get_chunk(chunk_id)
             .await
             .map_err(|e| {
                 error!(
@@ -120,16 +120,6 @@ impl DirLoader {
                 e
             })?;
 
-        if ret.is_none() {
-            let msg = format!(
-                "load dir related chunk but not found! dir={}, chunk={}",
-                dir_id, chunk_id
-            );
-            error!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
-        }
-
-        let (mut reader, len) = ret.unwrap();
         let mut buf = vec![];
         let read_len = reader.read_to_end(&mut buf).await.map_err(|e| {
             let msg = format!(
@@ -140,10 +130,10 @@ impl DirLoader {
             BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
 
-        if read_len as u64 != len {
+        if read_len != chunk_id.len() {
             let msg = format!(
                 "load dir related chunk to buf but len unmatch! dir={}, chunk={}, read={}, len={}",
-                dir_id, chunk_id, read_len, len,
+                dir_id, chunk_id, read_len, chunk_id.len(),
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));

@@ -206,8 +206,9 @@ async function run() {
                     fs.rmSync(`dist/services/${service.name}/${target}`, {recursive: true, force: true});
                 }
             }
-    
-            child_process.execSync(`cyfs-client ${action} services/${service.name} -f fid -o ${file_repo_path}`, { cwd: 'dist', stdio: 'inherit' })
+
+            child_process.execSync(`cyfs-client ${action} services/${service.name} -f fid -o ${file_repo_path} --tcp`, { cwd: 'dist', stdio: 'inherit' })
+
             let fid = fs.readFileSync('dist/fid', {encoding: 'utf-8'})
             device_config.push({ "id": service.id, "ver": `${version}`, "status": 1 })
     

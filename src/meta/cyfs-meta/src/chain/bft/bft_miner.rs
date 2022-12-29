@@ -20,6 +20,7 @@ use std::time::Duration;
 use crate::mint::btc_mint::BTCMint;
 use crate::mint::subchain_mint::SubChainMint;
 use crate::executor::context::Config;
+use crate::stat::{Stat, StatConfig};
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub enum BFTMinerStatus {
@@ -151,11 +152,15 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                       bfc_spv_node: String,
                       dir: &Path, 
                       new_storage: fn(path: &Path) -> StorageRef,
-                      trace: bool,
-                      archive_storage: fn(path: &Path, trace: bool) -> ArchiveStorageRef,
+                      stat_config: Option<StatConfig>,
                       network: NETWORK,
                       miner_key: PrivateKey) -> BuckyResult<Self> {
-        let chain = Chain::load(dir, new_storage, trace, archive_storage).await?;
+        let stat = stat_config.map(|config|{
+            let stat = Stat::new(config);
+            stat.start();
+            stat
+        });
+        let chain = Chain::load(dir, new_storage, stat).await?;
         let (sender, receiver) = mpsc::channel();
         Ok(BFTMiner {
             chain_type,
@@ -226,12 +231,12 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
         };
         let desc_signs_opt = block.signs().desc_signs();
         if desc_signs_opt.is_none() {
-            log::error!("desc signs is none");
+            error!("desc signs is none");
             return Ok(false);
         }
         let desc_signs = desc_signs_opt.unwrap();
         if desc_signs.len() == 0 {
-            log::error!("desc signs len is 0");
+            error!("desc signs len is 0");
             return Ok(false);
         }
 
@@ -241,7 +246,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
     }
 
     async fn on_recv_prepare_request(&self, request: BFTPrepareRequest, mut block: Block) -> BuckyResult<()> {
-        log::info!("on_recv_prepare_request cur {} height {} view {} speaker {} hash {}",
+        info!("on_recv_prepare_request cur {} height {} view {} speaker {} hash {}",
                    self.self_index().await?,
                    block.desc().number(),
                    request.view,
@@ -253,12 +258,12 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 if !(status_info.status == BFTMinerStatus::WaitingAgree
                     && status_info.speaker.unwrap() == self.self_index().await?
                     && bucky_time_now() - status_info.status_change_time > self.base.interval() as u64 * 1000000) {
-                    log::info!("status {} expect WaitingProposal", status_info.status.to_string());
+                    info!("status {} expect WaitingProposal", status_info.status.to_string());
                     return Ok(());
                 }
             }
 
-            let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+            let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
             if tip_desc.number() < block.desc().number() - 1 {
                 let node = {
                     let miners = self.get_miners().await?;
@@ -271,7 +276,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 };
                 let ret = self.sync_chain(node.clone()).await;
                 if ret.is_ok() {
-                    let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+                    let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
                     status_info.height = tip_desc.number() + 1;
                     if status_info.height == block.desc().number() {
                         status_info.view = request.view;
@@ -281,10 +286,10 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                         status_info.change_view_list.clear();
                         status_info.prepare_response_list.clear();
                         status_info.block = None;
-                        log::info!("cur {} change status from {} to WaitingProposal", self.self_index().await?, status_info.status.to_string());
+                        info!("cur {} change status from {} to WaitingProposal", self.self_index().await?, status_info.status.to_string());
                         status_info.change_status(BFTMinerStatus::WaitingProposal);
                     } else {
-                        log::info!("cur {} change status from {} to None", self.self_index().await?, status_info.status.to_string());
+                        info!("cur {} change status from {} to None", self.self_index().await?, status_info.status.to_string());
                         status_info.clear();
                         self.stop_timer();
                         self.sender.lock().unwrap().send(BFTMinerMsg::StartMineBlock).unwrap();
@@ -292,9 +297,9 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                     }
                 } else {
                     if node.is_some() {
-                        log::info!("cur {} sync chain from {} failed.err {:?}", self.self_index().await?, node.unwrap(), ret.err().unwrap());
+                        info!("cur {} sync chain from {} failed.err {:?}", self.self_index().await?, node.unwrap(), ret.err().unwrap());
                     } else {
-                        log::info!("cur {} sync chain failed.err {:?}", self.self_index().await?, ret.err().unwrap());
+                        info!("cur {} sync chain failed.err {:?}", self.self_index().await?, ret.err().unwrap());
                     }
                 }
             }
@@ -302,7 +307,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
             if block.desc().number() != status_info.height
                 || request.view != status_info.view
                 || block.desc().coinbase() != &status_info.speaker_desc.as_ref().unwrap().calculate_id() {
-                log::info!("height {} view {} owner {} expect height {} view {} owner {}",
+                info!("height {} view {} owner {} expect height {} view {} owner {}",
                            block.desc().number(),
                            request.view,
                            block.desc().coinbase(),
@@ -316,9 +321,9 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
 
 
         if self.verify_prepare_block_sign(&block).await? {
-            let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+            let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
             if &tip_desc.hash() != block.desc().pre_block_hash() || tip_desc.number() + 1 != block.desc().number() {
-                log::error!("pre block hash check err.local {} height {} recv {} height {}",
+                error!("pre block hash check err.local {} height {} recv {} height {}",
                             tip_desc.hash().to_string(),
                             tip_desc.number(),
                             block.desc().pre_block_hash().to_string(),
@@ -329,28 +334,26 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
             let _ = storage.recovery(tip_desc.number()).await;
             // state_ref.being_transaction().await?;
 
-            let archive_storage = self.base.as_chain().get_chain_storage().archive_storage();
-
-            log::info!("thread {:?} cur {} verify block {} {} ",
+            info!("thread {:?} cur {} verify block {} {} ",
                        std::thread::current().id(),
                        self.self_index().await?,
                        block.desc().number(),
                        block.desc().calculate_id().to_string());
             let ret = BlockExecutor::execute_and_verify_block(&block,
                                                               &storage,
-                                                              &archive_storage,
                                                               Some(self.base.as_chain().get_chain_storage()),
                                                               self.base.bfc_spv_node(),
                                                               Some(self.miner_key.clone()),
-                                                              self.base.coinbase().clone()).await?;
+                                                              self.base.coinbase().clone(),
+                                                              self.base.as_chain().get_stat()).await?;
             if !ret {
                 // state_ref.rollback().await?;
-                log::error!("block {} verify failed", block.desc().number());
+                error!("block {} verify failed", block.desc().number());
                 return Err(meta_err!(ERROR_BLOCK_VERIFY_FAILED));
             }
             // state_ref.commit().await?;
         } else {
-            log::error!("block {} signature verify failed", block.desc().number());
+            error!("block {} signature verify failed", block.desc().number());
             return Err(meta_err!(ERROR_SIGNATURE_ERROR));
         }
 
@@ -365,13 +368,13 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
         };
 
         let proto = self.new_proto_obj(BFTProtoDescContent::PrepareResponse(req), Vec::new()).await?;
-        log::info!("broadcast PrepareResponse begin");
+        info!("broadcast PrepareResponse begin");
         self.network.broadcast(proto.to_vec()?).await?;
-        log::info!("broadcast PrepareResponse end");
+        info!("broadcast PrepareResponse end");
 
         let prepare_response_list = {
             let mut status_info = self.status_info.lock().unwrap();
-            log::info!("cur {} change status from {} to WaitingAgree", self.self_index().await?, status_info.status.to_string());
+            info!("cur {} change status from {} to WaitingAgree", self.self_index().await?, status_info.status.to_string());
             status_info.change_status(BFTMinerStatus::WaitingAgree);
             status_info.block = Some(block);
 
@@ -388,7 +391,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
     }
 
     async fn on_recv_prepare_response(&self, response: BFTPrepareResponse) -> BuckyResult<()> {
-        log::info!("on_recv_prepare_response:cur {} height {} view {} member {}",
+        info!("on_recv_prepare_response:cur {} height {} view {} member {}",
                    self.self_index().await?,
                    response.height,
                    response.view,
@@ -397,7 +400,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
             let mut status_info = self.status_info.lock().unwrap();
             if status_info.height != response.height
                 || status_info.view != response.view {
-                log::error!("height {} view {} expect height {} view {}", status_info.height, status_info.view, response.height, response.view);
+                error!("height {} view {} expect height {} view {}", status_info.height, status_info.view, response.height, response.view);
                 return Ok(());
             }
 
@@ -409,12 +412,12 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 }
             }
             if find {
-                log::info!("height {} view {} member {} has exist", response.height, response.view, response.member);
+                info!("height {} view {} member {} has exist", response.height, response.view, response.member);
                 return Ok(());
             }
 
             if status_info.status != BFTMinerStatus::WaitingAgree && status_info.status != BFTMinerStatus::ChangeViewSent {
-                log::info!("status {} expect WaitingAgree or ChangeViewSent", status_info.status.to_string());
+                info!("status {} expect WaitingAgree or ChangeViewSent", status_info.status.to_string());
                 status_info.prepare_response_list.push(response);
                 return Ok(());
             }
@@ -431,7 +434,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
             let verifier = RsaCPUObjectVerifier::new(device_desc.public_key().clone());
             let verify = verify_object_desc_sign(&verifier, status_info.block.as_ref().unwrap(), &response.sign).await?;
             if !verify {
-                log::info!("verify sign failed");
+                info!("verify sign failed");
                 return Ok(());
             }
 
@@ -456,7 +459,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 self.base.as_chain().add_mined_block(&block).await?;
                 let _ = self.base.as_chain().backup(block.desc().number()).await;
 
-                log::info!("cur {} mined block {} change status from {} to None", self.self_index().await?, block.desc().number(), status_info.status.to_string());
+                info!("cur {} mined block {} change status from {} to None", self.self_index().await?, block.desc().number(), status_info.status.to_string());
                 status_info.clear();
                 self.stop_timer();
                 self.sender.lock().unwrap().send(BFTMinerMsg::StartMineBlock).unwrap();
@@ -496,7 +499,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                         status_info.prepare_response_list.clear();
                         status_info.block = None;
                         status_info.height = height;
-                        log::info!("cur {} change status from {} to ChangeViewSuccess", self.self_index().await?, status_info.status.to_string());
+                        info!("cur {} change status from {} to ChangeViewSuccess", self.self_index().await?, status_info.status.to_string());
                         status_info.change_status(BFTMinerStatus::ChangeViewSuccess);
                         status_info.view = dest_view;
                         self.stop_timer();
@@ -517,7 +520,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
     async fn on_recv_change_view(&self, change_view: BFTChangeView) -> BuckyResult<()> {
         {
             let self_index = self.self_index().await?;
-            log::info!("on_recv_change_view cur {} height {} view {} dest_view {} member {}",
+            info!("on_recv_change_view cur {} height {} view {} dest_view {} member {}",
                      self_index,
                      change_view.height,
                      change_view.view,
@@ -538,7 +541,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 };
                 let ret = self.sync_chain(node.clone()).await;
                 if ret.is_ok() {
-                    let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+                    let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
                     status_info.height = tip_desc.number() + 1;
                     status_info.view = change_view.view;
 
@@ -549,21 +552,21 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                     status_info.prepare_response_list.clear();
                     status_info.block = None;
 
-                    log::info!("cur {} change status from {} to WaitingProposal", self.self_index().await?, status_info.status.to_string());
+                    info!("cur {} change status from {} to WaitingProposal", self.self_index().await?, status_info.status.to_string());
                     status_info.change_status(BFTMinerStatus::WaitingProposal);
                     self.stop_timer();
                     self.reset_timer(TimerAction::ChangeView(change_view.view), 0);
                 } else {
                     if node.is_some() {
-                        log::info!("cur {} sync chain from {} failed.err {:?}", self.self_index().await?, node.unwrap(), ret.err().unwrap());
+                        info!("cur {} sync chain from {} failed.err {:?}", self.self_index().await?, node.unwrap(), ret.err().unwrap());
                     } else {
-                        log::info!("cur {} sync chain failed.err {:?}", self.self_index().await?, ret.err().unwrap());
+                        info!("cur {} sync chain failed.err {:?}", self.self_index().await?, ret.err().unwrap());
                     }
                 }
             }
 
             if status_info.height != change_view.height {
-                log::info!("change height {} is not equal expect {}.ignore", change_view.height, status_info.height);
+                info!("change height {} is not equal expect {}.ignore", change_view.height, status_info.height);
                 return Ok(());
             }
 
@@ -578,7 +581,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
             }
 
             if find {
-                log::error!("request has exist. height {} view {} dest_view {} member {}",
+                error!("request has exist. height {} view {} dest_view {} member {}",
                             change_view.height,
                 change_view.view,
                 change_view.dest_view,
@@ -593,7 +596,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
     }
 
     async fn on_recv_get_height(&self) -> BuckyResult<Vec<u8>> {
-        let (block_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+        let (block_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
         let height = block_desc.number();
         let resp_obj = self.new_proto_obj(BFTProtoDescContent::GetHeightResp(height), Vec::new()).await?;
         resp_obj.to_vec()
@@ -613,7 +616,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 status_info.status
             };
 
-            log::info!("cur {} status from {} to Init", self.self_index().await?, status.to_string());
+            info!("cur {} status from {} to Init", self.self_index().await?, status.to_string());
             let mut status_info = self.status_info.lock().unwrap();
             status_info.change_status(BFTMinerStatus::Init);
             self.sender.lock().unwrap().send(BFTMinerMsg::StartMineBlock).unwrap();
@@ -707,7 +710,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
             *miners = miner_group.members().clone();
             Ok(miners)
         } else {
-            log::error!("miners type error");
+            error!("miners type error");
             Err(meta_err!(ERROR_EXCEPTION))
         }
     }
@@ -734,12 +737,12 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
         if block.desc().number() == 0 {
             let desc_signs_opt = block.signs().desc_signs();
             if desc_signs_opt.is_none() {
-                log::error!("desc signs is none");
+                error!("desc signs is none");
                 return Ok(false);
             }
             let desc_signs = desc_signs_opt.unwrap();
             if desc_signs.len() == 0 {
-                log::error!("desc signs len is 0");
+                error!("desc signs len is 0");
                 return Ok(false);
             }
 
@@ -749,19 +752,19 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 let verifier = RsaCPUObjectVerifier::new(public_key.clone());
                 verify_object_desc_sign(&verifier, block, &signature).await
             } else {
-                log::error!("desc signs verify failed");
+                error!("desc signs verify failed");
                 Ok(false)
             }
         } else {
             let miners = self.get_miners().await?;
             let desc_signs_opt = block.signs().desc_signs();
             if desc_signs_opt.is_none() {
-                log::error!("desc signs is none");
+                error!("desc signs is none");
                 return Ok(false);
             }
             let desc_signs = desc_signs_opt.unwrap();
             if desc_signs.len() < (0.7 * miners.len() as f32).ceil() as usize || desc_signs.len() > miners.len() {
-                log::error!("desc signs is valid");
+                error!("desc signs is valid");
                 return Ok(false);
             }
 
@@ -771,11 +774,11 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                     let public_key = device.public_key();
                     let verifier = RsaCPUObjectVerifier::new(public_key.clone());
                     if !verify_object_desc_sign(&verifier, block, &sign).await? {
-                        log::error!("desc signs verify failed");
+                        error!("desc signs verify failed");
                         return Ok(false);
                     }
                 } else {
-                    log::error!("desc signs verify failed");
+                    error!("desc signs verify failed");
                     return Ok(false);
                 }
             }
@@ -792,7 +795,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                     data = ret.unwrap();
                     break;
                 } else {
-                    log::error!("err {}", ret.err().unwrap());
+                    error!("err {}", ret.err().unwrap());
                     async_std::task::sleep(Duration::new(5, 0)).await;
                 }
             }
@@ -807,7 +810,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
         let proto = BFTProto::clone_from_slice(resp.as_slice())?;
         let ret = self.verify_proto_obj(&proto, false).await?;
         if !ret {
-            log::error!("get_chain_height obj sign verify failed");
+            error!("get_chain_height obj sign verify failed");
             return Err(meta_err!(ERROR_SIGNATURE_ERROR));
         }
 
@@ -815,7 +818,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
         if let BFTProtoDescContent::GetHeightResp(height) = desc_content {
             Ok(*height)
         } else {
-            log::error!("get_chain_height obj type error");
+            error!("get_chain_height obj type error");
             Err(meta_err!(ERROR_INVALID))
         }
     }
@@ -826,7 +829,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
         let block = Block::clone_from_slice(resp.as_slice())?;
         let ret = self.verify_block_sign(&block).await?;
         if !ret {
-            log::error!("get_block obj sign verify failed");
+            error!("get_block obj sign verify failed");
             return Err(meta_err!(ERROR_SIGNATURE_ERROR));
         }
         Ok(block)
@@ -848,7 +851,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                     BFTProtoDescContent::PrepareRequest(req) => {
                         let body_ret = request.body();
                         if body_ret.is_none() {
-                            log::error!("recv PrepareRequest none body");
+                            error!("recv PrepareRequest none body");
                             let resp = self.new_proto_obj(BFTProtoDescContent::Error(BFTError {
                                 code: ERROR_BLOCK_DECODE_FAILED as u32
                             }), Vec::new()).await?;
@@ -857,7 +860,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
 
                         let block_ret = Block::clone_from_slice(body_ret.as_ref().unwrap().content().data.as_slice());
                         if block_ret.is_err() {
-                            log::error!("recv PrepareRequest parse block failed");
+                            error!("recv PrepareRequest parse block failed");
                             let resp = self.new_proto_obj(BFTProtoDescContent::Error(BFTError {
                                 code: ERROR_BLOCK_DECODE_FAILED as u32
                             }), Vec::new()).await?;
@@ -866,7 +869,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
 
                         let block = block_ret.unwrap();
                         if req.block_id != block.desc().calculate_id() {
-                            log::error!("recv PrepareRequest header block id not equal body block id");
+                            error!("recv PrepareRequest header block id not equal body block id");
                             let resp = self.new_proto_obj(BFTProtoDescContent::Error(BFTError {
                                 code: ERROR_BLOCK_VERIFY_FAILED as u32
                             }), Vec::new()).await?;
@@ -890,7 +893,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                     BFTProtoDescContent::Tx(tx_id) => {
                         let body_ret = request.body();
                         if body_ret.is_none() {
-                            log::error!("recv Tx none body");
+                            error!("recv Tx none body");
                             let resp = self.new_proto_obj(BFTProtoDescContent::Error(BFTError {
                                 code: ERROR_BLOCK_DECODE_FAILED as u32
                             }), Vec::new()).await?;
@@ -898,7 +901,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                         }
                         let tx_ret = MetaTx::clone_from_slice(body_ret.as_ref().unwrap().content().data.as_slice());
                         if tx_ret.is_err() {
-                            log::error!("recv Tx parse block failed");
+                            error!("recv Tx parse block failed");
                             let resp = self.new_proto_obj(BFTProtoDescContent::Error(BFTError {
                                 code: ERROR_TX_DECODE_FAILED as u32
                             }), Vec::new()).await?;
@@ -906,7 +909,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                         }
                         let tx = tx_ret.unwrap();
                         if tx_id != &tx.desc().calculate_id() {
-                            log::error!("recv tx id not equal body tx id");
+                            error!("recv tx id not equal body tx id");
                             let resp = self.new_proto_obj(BFTProtoDescContent::Error(BFTError {
                                 code: ERROR_BLOCK_VERIFY_FAILED as u32
                             }), Vec::new()).await?;
@@ -937,7 +940,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
 
     async fn sync_chain(&self, from: Option<String>) -> BuckyResult<()> {
         if from.is_none() && !self.network.has_connected().await? {
-            log::info!("cur {} network is not connected.", self.self_index().await?);
+            info!("cur {} network is not connected.", self.self_index().await?);
             return Ok(());
         }
         loop {
@@ -946,26 +949,26 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 if ret.is_ok() {
                     ret.unwrap()
                 } else {
-                    log::error!("get chain height err:{:?}", ret.err());
+                    error!("get chain height err:{:?}", ret.err());
                     return Ok(());
                 }
             };
             let ret = self.base.as_chain().get_chain_storage().get_tip_info().await;
-            let (number, storage, archive_storage) = if let Err(e) = &ret {
+            let (number, storage) = if let Err(e) = &ret {
                 let code = get_meta_err_code(e)?;
                 if code == ERROR_NOT_FOUND {
-                    (-1 as i64, self.base.as_chain().get_chain_storage().state_storage(), self.base.as_chain().get_chain_storage().archive_storage())
+                    (-1 as i64, self.base.as_chain().get_chain_storage().state_storage())
                 } else {
-                    log::error!("get tip info err. code = {}", code);
+                    error!("get tip info err. code = {}", code);
                     return Err(meta_err!(code));
                 }
             } else {
-                let (block_desc, storage, archive_storage) = ret.as_ref().unwrap();
-                (block_desc.number(), storage, archive_storage)
+                let (block_desc, storage) = ret.as_ref().unwrap();
+                (block_desc.number(), storage)
             };
 
             if height <= number {
-                log::info!("cur {} height to {} dest height {}", self.self_index().await?, number, height);
+                info!("cur {} height to {} dest height {}", self.self_index().await?, number, height);
                 break;
             } else {
                 let mut i = number + 1;
@@ -974,7 +977,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                     if self.verify_block_sign(&block).await? {
                         if i > 0 {
                             let _ = storage.recovery(i - 1).await;
-                            log::info!("thread {:?} cur {} verify block {} {}",
+                            info!("thread {:?} cur {} verify block {} {}",
                                        std::thread::current().id(),
                                        self.self_index().await?,
                                        block.desc().number(),
@@ -983,7 +986,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                         }
 
                         if i > 1 {
-                            let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+                            let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
                             if &tip_desc.hash() != block.desc().pre_block_hash() {
                                 self.base.as_chain().recovery(i - 2).await?;
                                 i = i - 1;
@@ -992,14 +995,14 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                         }
                         let ret = BlockExecutor::execute_and_verify_block(&block,
                                                                           &storage,
-                                                                          &archive_storage,
                                                                           Some(self.base.as_chain().get_chain_storage()),
                                                                           self.base.bfc_spv_node(),
                                                                           Some(self.miner_key.clone()),
-                                                                          self.base.coinbase().clone()).await?;
+                                                                          self.base.coinbase().clone(),
+                                                                          self.base.as_chain().get_stat()).await?;
                         if !ret {
                             // state_ref.rollback().await?;
-                            log::error!("block {} verify failed", i);
+                            error!("block {} verify failed", i);
                             return Err(meta_err!(ERROR_BLOCK_VERIFY_FAILED));
                         }
                         // state_ref.commit().await?;
@@ -1012,11 +1015,11 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                         self.base.as_chain().add_mined_block(&block).await?;
                         let _ = self.base.as_chain().backup(i).await;
                         if i > 0 {
-                            log::info!("cur {} mined block {}",
+                            info!("cur {} mined block {}",
                                        self.self_index().await?, block.desc().number());
                         }
                     } else {
-                        log::error!("block {} signature verify failed", i);
+                        error!("block {} signature verify failed", i);
                         return Err(meta_err!(ERROR_SIGNATURE_ERROR));
                     }
                     i += 1;
@@ -1028,7 +1031,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
 
     async fn start_mine_block(&self) -> BuckyResult<()> {
         assert_eq!(std::thread::current().id(), self.mining_thread.lock().unwrap().as_ref().unwrap().thread().id());
-        let (block, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+        let (block, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
         let view = {
             let status_info = self.status_info.lock().unwrap();
             if status_info.status != BFTMinerStatus::Init && status_info.status != BFTMinerStatus::ChangeViewSuccess {
@@ -1045,7 +1048,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
         if self.base.coinbase() == &(device_desc.calculate_id()) {
             {
                 let mut status_info = self.status_info.lock().unwrap();
-                log::info!("cur {} change status from {} to WaitingCreate", self.self_index().await?, status_info.status.to_string());
+                info!("cur {} change status from {} to WaitingCreate", self.self_index().await?, status_info.status.to_string());
                 status_info.change_status(BFTMinerStatus::WaitingCreate);
                 status_info.speaker = Some(speaker as u8);
                 status_info.speaker_desc = Some(device_desc);
@@ -1055,7 +1058,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
         } else {
             let view = {
                 let mut status_info = self.status_info.lock().unwrap();
-                log::info!("cur {} change status from {} to WaitingProposal", self.self_index().await?, status_info.status.to_string());
+                info!("cur {} change status from {} to WaitingProposal", self.self_index().await?, status_info.status.to_string());
                 status_info.change_status(BFTMinerStatus::WaitingProposal);
                 status_info.speaker = Some(speaker as u8);
                 status_info.speaker_desc = Some(device_desc);
@@ -1126,10 +1129,10 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 }
 
                 let state_storage = self.base.as_chain().get_chain_storage().state_storage();
-                let (tip_desc, _, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
+                let (tip_desc, _) = self.base.as_chain().get_chain_storage().get_tip_info().await?;
                 let _ = state_storage.recovery(tip_desc.number()).await;
 
-                log::info!("cur {} start mine block", self.self_index().await?);
+                info!("cur {} start mine block", self.self_index().await?);
                 let mut block = self.base.create_block(transactions).await?;
                 block.sign(self.miner_key.clone(), &SignatureSource::RefIndex(self.self_index().await?)).await?;
 
@@ -1145,12 +1148,12 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                 };
 
                 let proto = self.new_proto_obj(BFTProtoDescContent::PrepareRequest(req), block.to_vec()?).await?;
-                log::info!("broadcast PrepareRequest begin");
+                info!("broadcast PrepareRequest begin");
                 self.network.broadcast(proto.to_vec()?).await?;
-                log::info!("broadcast PrepareRequest end");
+                info!("broadcast PrepareRequest end");
                 {
                     let mut status_info = self.status_info.lock().unwrap();
-                    log::info!("cur {} change status from {} to WaitingAgree", self.self_index().await?, status_info.status.to_string());
+                    info!("cur {} change status from {} to WaitingAgree", self.self_index().await?, status_info.status.to_string());
                     status_info.change_status(BFTMinerStatus::WaitingAgree);
                     status_info.block = Some(block);
                 }
@@ -1172,18 +1175,18 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                     };
                     status_info.view = last_view;
 
-                    log::info!("cur {} ChangeView height {} view {} dest view {}", self.self_index().await?, status_info.height, status_info.view, req.dest_view);
+                    info!("cur {} ChangeView height {} view {} dest view {}", self.self_index().await?, status_info.height, status_info.view, req.dest_view);
                     req
                 };
                 let dest_view = req.dest_view;
 
                 let proto = self.new_proto_obj(BFTProtoDescContent::ChangeView(req), Vec::new()).await?;
-                log::info!("broadcast ChangeView begin");
+                info!("broadcast ChangeView begin");
                 self.network.broadcast(proto.to_vec()?).await?;
-                log::info!("broadcast ChangeView end");
+                info!("broadcast ChangeView end");
                 {
                     let mut status_info = self.status_info.lock().unwrap();
-                    log::info!("cur {} status from {} to ChangeViewSent", self.self_index().await?, status_info.status.to_string());
+                    info!("cur {} status from {} to ChangeViewSent", self.self_index().await?, status_info.status.to_string());
                     status_info.change_status(BFTMinerStatus::ChangeViewSent);
                 }
                 self.reset_timer(TimerAction::ChangeView(dest_view), 2_u32.pow(dest_view as u32 + 1)*self.base.interval());
@@ -1212,12 +1215,12 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
                     self.on_recv_change_view(req).await
                 }
                 _ => {
-                    log::error!("unreached here");
+                    error!("unreached here");
                     Ok(())
                 }
             };
             if ret.is_err() {
-                log::error!("on miner msg err: {:?}", ret.err().unwrap());
+                error!("on miner msg err: {:?}", ret.err().unwrap());
             }
         });
     }
@@ -1258,7 +1261,7 @@ impl<NETWORK: 'static + ChainNetwork> BFTMiner<NETWORK> {
             for (_, node) in &node_list {
                 let ret_data = self.network.request(data.clone(), Some(node.clone())).await;
                 if ret_data.is_err() {
-                    log::info!("err {}", ret_data.err().unwrap());
+                    info!("err {}", ret_data.err().unwrap());
                     continue
                 }
                 let ret_data = ret_data.unwrap();
@@ -1291,9 +1294,9 @@ impl<NETWORK: ChainNetwork> Miner for BFTMiner<NETWORK> {
     async fn push_tx(&self, tx: MetaTx) -> BuckyResult<()> {
         let proto = self.new_proto_obj(BFTProtoDescContent::Tx(tx.desc().calculate_id()), tx.to_vec()?).await?;
         self.base.push_tx(tx).await?;
-        log::info!("broadcast tx begin");
+        info!("broadcast tx begin");
         let ret = self.network.broadcast(proto.to_vec()?).await;
-        log::info!("broadcast tx end");
+        info!("broadcast tx end");
         ret
     }
 
@@ -1333,7 +1336,7 @@ impl<NETWORK: ChainNetwork> MinerRuner for BFTMiner<NETWORK> {
             for msg in receiver.unwrap().iter() {
                 match msg {
                     BFTMinerMsg::Exit => {
-                        log::info!("mine proc exit");
+                        info!("mine proc exit");
                         break;
                     }
                     _ => {
@@ -1353,12 +1356,12 @@ impl<NETWORK: ChainNetwork> MinerRuner for BFTMiner<NETWORK> {
                     let status_info = self_miner.status_info.lock().unwrap();
                     status_info.status
                 };
-                log::info!("cur {} status from {} to Init", self_miner.self_index().await?, status.to_string());
+                info!("cur {} status from {} to Init", self_miner.self_index().await?, status.to_string());
                 let mut status_info = self_miner.status_info.lock().unwrap();
                 status_info.change_status(BFTMinerStatus::Init);
                 self_miner.sender.lock().unwrap().send(BFTMinerMsg::StartMineBlock).unwrap();
             } else {
-                log::error!("check network error");
+                error!("check network error");
             }
             Ok(())
         });
@@ -1374,7 +1377,7 @@ impl<NETWORK: ChainNetwork> Drop for BFTMiner<NETWORK> {
         if thread.is_some() {
             thread.take().unwrap().join().unwrap();
         }
-        log::info!("BFTMiner drop {}", self.miner_key.public().to_hex().unwrap())
+        info!("BFTMiner drop {}", self.miner_key.public().to_hex().unwrap())
     }
 }
 //
@@ -1684,7 +1687,7 @@ pub mod bft_miner_test {
         block_body.add_transaction(tx).unwrap();
 
         // state.being_transaction().await?;
-        let ret = BlockExecutor::execute_block(&header, &mut block_body, &state, new_archive_storage(Path::new(""), false).create_archive(false).await, &meta_config, None, "".to_string(), None, ObjectId::default()).await;
+        let ret = BlockExecutor::execute_block(&header, &mut block_body, &state, &meta_config, None, "".to_string(), None, ObjectId::default(), None).await;
         if ret.is_ok() {
             // state.commit().await?;
         } else {
@@ -1827,7 +1830,7 @@ pub mod bft_miner_test {
 
         let id = caller.id();
         // state.being_transaction().await?;
-        let ret = BlockExecutor::execute_block(&header, &mut block_body, &state, new_archive_storage(Path::new(""), false).create_archive(false).await, &meta_config, None, "".to_owned(), None, ObjectId::default()).await;
+        let ret = BlockExecutor::execute_block(&header, &mut block_body, &state, &meta_config, None, "".to_owned(), None, ObjectId::default(), None).await;
         if ret.is_ok() {
             // state.commit().await?;
         } else {
@@ -1960,7 +1963,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 0);
 
                 let status_info = miner.get_mine_status_info();
@@ -1976,7 +1979,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 1);
 
                 let status_info = miner.get_mine_status_info();
@@ -1992,7 +1995,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 2);
 
                 let status_info = miner.get_mine_status_info();
@@ -2008,7 +2011,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 3);
 
                 let status_info = miner.get_mine_status_info();
@@ -2024,7 +2027,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 4);
 
                 let status_info = miner.get_mine_status_info();
@@ -2040,7 +2043,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 5);
 
                 let status_info = miner.get_mine_status_info();
@@ -2056,7 +2059,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 6);
 
                 let status_info = miner.get_mine_status_info();
@@ -2093,7 +2096,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 0);
 
                 let status_info = miner.get_mine_status_info();
@@ -2105,7 +2108,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 0);
 
                 let status_info = miner.get_mine_status_info();
@@ -2121,7 +2124,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 1);
 
                 let status_info = miner.get_mine_status_info();
@@ -2142,7 +2145,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 0);
 
                 let status_info = miner.get_mine_status_info();
@@ -2158,7 +2161,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 1);
 
                 let status_info = miner.get_mine_status_info();
@@ -2174,7 +2177,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 2);
 
                 let status_info = miner.get_mine_status_info();
@@ -2190,7 +2193,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 3);
 
                 let status_info = miner.get_mine_status_info();
@@ -2206,7 +2209,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 4);
 
                 let status_info = miner.get_mine_status_info();
@@ -2222,7 +2225,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 5);
 
                 let status_info = miner.get_mine_status_info();
@@ -2238,7 +2241,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 6);
 
                 let status_info = miner.get_mine_status_info();
@@ -2260,7 +2263,7 @@ pub mod bft_miner_test {
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
 
-                let (block_desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (block_desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 assert_eq!(block_desc.number(), 0);
 
                 let status_info = miner.get_mine_status_info();
@@ -2396,7 +2399,7 @@ pub mod bft_miner_test {
 
             for i in 0..miner_list.len() {
                 let miner = &miner_list[i];
-                let (desc, _, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
+                let (desc, _) = miner.as_chain().get_chain_storage().get_tip_info().await.unwrap();
                 println!("{} height {}", i, desc.number());
             }
         });
