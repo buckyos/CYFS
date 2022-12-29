@@ -5,8 +5,10 @@ use crate::{DeviceInfo, LOCAL_DEVICE_MANAGER};
 use crate::{KNOWN_OBJECTS_MANAGER, VAR_MANAGER};
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_lib::SharedCyfsStack;
 use cyfs_stack::{BdtStackParams, CyfsStack, CyfsStackKnownObjects};
+
+// Temporarily disable all ipv6 addresses!
+const IS_DISABLE_IPV6: bool = true;
 
 pub(crate) struct StackInfo {
     pub stack_params: CyfsStackLoaderParams,
@@ -16,8 +18,6 @@ pub(crate) struct StackInfo {
 
     bdt_stack: Option<StackGuard>,
     cyfs_stack: Option<CyfsStack>,
-
-    shared_cyfs_stack: Option<SharedCyfsStack>,
 }
 
 impl StackInfo {
@@ -30,8 +30,6 @@ impl StackInfo {
             bdt_params: BdtParams::default(),
 
             cyfs_stack: None,
-
-            shared_cyfs_stack: None,
         }
     }
 
@@ -58,49 +56,6 @@ impl StackInfo {
 
     pub fn cyfs_stack(&self) -> Option<&CyfsStack> {
         self.cyfs_stack.as_ref()
-    }
-
-    pub fn shared_cyfs_stack(&self) -> Option<&SharedCyfsStack> {
-        self.shared_cyfs_stack.as_ref()
-    }
-
-    async fn init_shared_cyfs_stack(&mut self) -> BuckyResult<()> {
-        assert!(self.shared_cyfs_stack.is_none());
-        assert!(self.cyfs_stack.is_some());
-
-        let interface = self.cyfs_stack.as_ref().unwrap().interface();
-        if interface.is_none() {
-            let msg = format!(
-                "shared stack not enabled! should use config: shared_stack=true, id={}",
-                self.id()
-            );
-            error!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
-        }
-
-        // non-object的本地http地址
-        // FIXME 以后可以选择是否开启本地http地址
-        // FIXME 以后同进程直接使用native的ObjectStack
-        let shared_cyfs_stack = self
-            .cyfs_stack
-            .as_ref()
-            .unwrap()
-            .open_shared_object_stack(None)
-            .await
-            .map_err(|e| {
-                error!(
-                    "shared object stack init failed! id={}. err={}",
-                    self.id(),
-                    e
-                );
-                e
-            })?;
-
-        self.shared_cyfs_stack = Some(shared_cyfs_stack);
-
-        info!("init shared object stack success! id={}", self.id());
-
-        Ok(())
     }
 
     pub fn load(mut self, node: &toml::value::Table) -> BuckyResult<Self> {
@@ -150,10 +105,6 @@ impl StackInfo {
 
         assert!(self.cyfs_stack.is_none());
         self.cyfs_stack = Some(cyfs_stack);
-
-        if self.stack_params.shared_stack_stub {
-            self.init_shared_cyfs_stack().await?;
-        }
 
         Ok(())
     }
@@ -229,11 +180,23 @@ impl StackInfo {
         let device_id = device_info.device.desc().calculate_id().to_string();
         RandomPortGenerator::prepare_endpoints(&device_id, &mut self.bdt_params.endpoint)?;
 
+        let mut endpoints = self.bdt_params.endpoint.clone();
+        if IS_DISABLE_IPV6 {
+            endpoints.retain(|ep| {
+                if ep.addr().is_ipv6() {
+                    warn!("ipv6 addr will been disabled! ep={}", ep);
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+
         device_info
             .device
             .mut_connect_info()
             .mut_endpoints()
-            .append(&mut self.bdt_params.endpoint.clone());
+            .append(&mut endpoints);
 
         self.device_info = Some(device_info);
 

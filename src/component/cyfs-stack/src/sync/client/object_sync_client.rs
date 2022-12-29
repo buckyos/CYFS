@@ -2,10 +2,10 @@ use super::super::global_state::*;
 use super::super::protocol::*;
 use super::device_state::*;
 use super::requestor::SyncClientRequestor;
+use crate::NamedDataComponents;
 use crate::root_state_api::{GlobalStateLocalService, RootInfo};
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_debug::Mutex;
 use cyfs_lib::*;
 
@@ -34,7 +34,7 @@ pub(super) struct ObjectSyncClient {
     state_cache: SyncObjectsStateCache,
 
     bdt_stack: StackGuard,
-    chunk_manager: Arc<ChunkManager>,
+    named_data_components: NamedDataComponents,
 }
 
 impl ObjectSyncClient {
@@ -45,7 +45,7 @@ impl ObjectSyncClient {
         requestor: Arc<SyncClientRequestor>,
         noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: NamedDataComponents,
     ) -> Self {
         let state_sync_helper = GlobalStateSyncHelper::new(root_state, device_id, noc);
 
@@ -58,7 +58,7 @@ impl ObjectSyncClient {
             requestor,
             state_cache,
             bdt_stack,
-            chunk_manager,
+            named_data_components,
 
             during: AtomicBool::new(false),
             enable: AtomicBool::new(false),
@@ -223,7 +223,7 @@ impl ObjectSyncClient {
             self.state_sync_helper.clone(),
             self.state_cache.clone(),
             self.bdt_stack.clone(),
-            self.chunk_manager.clone(),
+            self.named_data_components.clone(),
         );
         let (had_saved_error, result) = client.sync(req).await?;
 

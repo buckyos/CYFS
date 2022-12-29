@@ -1,4 +1,4 @@
-use crate::{prelude::*, GlobalStateAccessMode};
+use crate::{prelude::*, GlobalStateAccessMode, TransPublishChunkMethod};
 use crate::zone::ZoneRole;
 use cyfs_base::*;
 use cyfs_core::ZoneId;
@@ -516,7 +516,9 @@ pub struct UtilBuildFileOutputRequest {
     pub common: UtilOutputRequestCommon,
     pub local_path: PathBuf,
     pub owner: ObjectId,
-    pub chunk_size: u32,
+    pub chunk_size: u32, 
+    pub chunk_method: TransPublishChunkMethod, 
+    pub access: Option<AccessString>,
 }
 
 pub struct UtilBuildFileOutputResponse {

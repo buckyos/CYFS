@@ -79,3 +79,44 @@ pub struct GlobalStateMetaClearLinkInputRequest {
 }
 
 pub type GlobalStateMetaClearLinkInputResponse = GlobalStateMetaClearLinkOutputResponse;
+
+// object meta 
+#[derive(Clone, Debug)]
+pub struct GlobalStateMetaAddObjectMetaInputRequest {
+    pub common: MetaInputRequestCommon,
+
+    pub item: GlobalStateObjectMetaItem,
+}
+
+pub type GlobalStateMetaAddObjectMetaInputResponse = GlobalStateMetaAddObjectMetaOutputResponse;
+
+pub type GlobalStateMetaRemoveObjectMetaInputRequest = GlobalStateMetaAddObjectMetaInputRequest;
+pub type GlobalStateMetaRemoveObjectMetaInputResponse = GlobalStateMetaRemoveObjectMetaOutputResponse;
+
+#[derive(Clone, Debug)]
+pub struct GlobalStateMetaClearObjectMetaInputRequest {
+    pub common: MetaInputRequestCommon,
+}
+
+pub type GlobalStateMetaClearObjectMetaInputResponse = GlobalStateMetaClearObjectMetaOutputResponse;
+
+
+// path config
+#[derive(Clone, Debug)]
+pub struct GlobalStateMetaAddPathConfigInputRequest {
+    pub common: MetaInputRequestCommon,
+
+    pub item: GlobalStatePathConfigItem,
+}
+
+pub type GlobalStateMetaAddPathConfigInputResponse = GlobalStateMetaAddPathConfigOutputResponse;
+
+pub type GlobalStateMetaRemovePathConfigInputRequest = GlobalStateMetaAddPathConfigInputRequest;
+pub type GlobalStateMetaRemovePathConfigInputResponse = GlobalStateMetaRemovePathConfigOutputResponse;
+
+#[derive(Clone, Debug)]
+pub struct GlobalStateMetaClearPathConfigInputRequest {
+    pub common: MetaInputRequestCommon,
+}
+
+pub type GlobalStateMetaClearPathConfigInputResponse = GlobalStateMetaClearPathConfigOutputResponse;

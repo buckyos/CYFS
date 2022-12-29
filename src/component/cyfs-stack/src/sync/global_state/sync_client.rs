@@ -1,3 +1,5 @@
+use crate::NamedDataComponents;
+
 use super::super::client::*;
 use super::super::protocol::*;
 use super::cache::SyncObjectsStateCache;
@@ -6,7 +8,6 @@ use super::object_map_sync::*;
 use super::sync_helper::*;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_chunk_cache::ChunkManager;
 
 use std::sync::Arc;
 
@@ -23,7 +24,7 @@ pub(crate) struct GlobalStateSyncClient {
     state: GlobalStateSyncHelper,
     state_cache: SyncObjectsStateCache,
     bdt_stack: StackGuard,
-    chunk_manager: Arc<ChunkManager>,
+    named_data_components: NamedDataComponents,
 }
 
 impl GlobalStateSyncClient {
@@ -32,14 +33,14 @@ impl GlobalStateSyncClient {
         state: GlobalStateSyncHelper,
         state_cache: SyncObjectsStateCache,
         bdt_stack: StackGuard,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: NamedDataComponents,
     ) -> Self {
         Self {
             requestor,
             state,
             state_cache,
             bdt_stack,
-            chunk_manager,
+            named_data_components,
         }
     }
 
@@ -97,7 +98,7 @@ impl GlobalStateSyncClient {
 
         let data_sync = DataSync::new(
             self.bdt_stack.clone(),
-            self.chunk_manager.clone(),
+            self.named_data_components.clone(),
             self.requestor.clone(),
             self.state_cache.clone(),
         );

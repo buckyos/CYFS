@@ -3,13 +3,13 @@ use super::device_state::*;
 use super::object_sync_client::*;
 use super::ping_client::SyncPingClient;
 use super::requestor::SyncClientRequestor;
+use crate::NamedDataComponents;
 use crate::acl::AclManagerRef;
 use crate::root_state_api::GlobalStateLocalService;
 use crate::zone::ZoneRoleManager;
 use crate::zone::*;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DeviceId};
 use cyfs_bdt::{DeviceCache, StackGuard};
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 
 use once_cell::sync::OnceCell;
@@ -95,7 +95,7 @@ impl DeviceSyncClient {
         device_manager: Box<dyn DeviceCache>,
         raw_noc: NamedObjectCacheRef,
         acl_manager: AclManagerRef,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: NamedDataComponents,
     ) -> BuckyResult<Self> {
         let zone_info = zone_manager.get_current_info().await?;
         let device_id = zone_info.device_id.clone();
@@ -125,7 +125,7 @@ impl DeviceSyncClient {
             requestor.clone(),
             raw_noc,
             bdt_stack.clone(),
-            chunk_manager,
+            named_data_components,
         );
         let sync_client = Arc::new(sync_client);
 

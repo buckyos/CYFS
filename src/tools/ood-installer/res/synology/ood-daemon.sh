@@ -14,7 +14,7 @@ PID_FILE=/var/run/ood-daemon.pid
 
 case "$1" in 
 start)
-   /cyfs/services/ood-daemon/current/bin/ood-daemon --start >/dev/null 2>&1 &
+   /cyfs/services/ood-daemon/current/bin/ood-daemon --start --startup-mode >/dev/null 2>&1 &
    pid="$!"
    exit_code="$?"
    echo $pid>$PID_FILE

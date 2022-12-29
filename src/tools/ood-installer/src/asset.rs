@@ -82,6 +82,11 @@ impl OODAsset {
             e
         })?;
 
+        self.extract_app_manager().map_err(|e| {
+            error!("extract app-manager config file err {}", e);
+            e
+        })?;
+
         //if let Err(e) = self.extract_acc_service() {
         //    return Err(e);
         //}
@@ -150,6 +155,15 @@ impl OODAsset {
         self.extract_from_asset(&root, "gateway.toml")
     }
 
+    fn extract_app_manager(&self) -> BuckyResult<()> {
+        let root = ::cyfs_util::get_cyfs_root_path()
+            .join("etc")
+            .join("app-manager")
+            .join("app-manager.toml");
+
+        self.extract_from_asset(&root, "app-manager.toml")
+    }
+
     fn extract_app_repo(&self) -> BuckyResult<()> {
         let root = ::cyfs_util::get_cyfs_root_path()
             .join("etc")
@@ -196,7 +210,7 @@ impl OODAsset {
             );
             error!("{}", msg);
 
-            return Err(BuckyError::from(msg));
+            return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
         }
 
         info!("extract file success! file={}", dest_path.display());

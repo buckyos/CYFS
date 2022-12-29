@@ -1,16 +1,17 @@
 use super::{StreamServer, TcpStreamServer, UdpStreamServer};
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 
+#[derive(Clone)]
 pub struct StreamServerManager {
-    server_list: Mutex<Vec<(String, Box<dyn StreamServer>)>>,
+    server_list: Arc<Mutex<Vec<(String, Box<dyn StreamServer>)>>>,
 }
 
 impl StreamServerManager {
     pub fn new() -> StreamServerManager {
         StreamServerManager {
-            server_list: Mutex::new(Vec::new()),
+            server_list: Arc::new(Mutex::new(Vec::new())),
         }
     }
 

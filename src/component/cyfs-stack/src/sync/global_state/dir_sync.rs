@@ -1,9 +1,9 @@
 use super::assoc::AssociationObjects;
 use super::cache::SyncObjectsStateCache;
 use crate::ndn_api::ChunkStoreReader;
+use crate::NamedDataComponents;
 use cyfs_base::*;
-use cyfs_bdt::{ChunkReader, StackGuard};
-use cyfs_chunk_cache::ChunkManager;
+use cyfs_bdt::ChunkReader;
 use cyfs_lib::*;
 
 use async_std::io::prelude::*;
@@ -66,9 +66,7 @@ impl DirSync {
                 DirSyncState::BodyChunkComplete | DirSyncState::DescChunkPending => {
                     self.sync_desc_chunk(assoc_objects).await?
                 }
-                DirSyncState::DescChunkComplete => {
-                    self.sync_desc_obj_list(assoc_objects).await?
-                }
+                DirSyncState::DescChunkComplete => self.sync_desc_obj_list(assoc_objects).await?,
                 DirSyncState::Complete => {
                     break;
                 }
@@ -76,7 +74,7 @@ impl DirSync {
 
             assert!(new_state != self.state);
             self.state = new_state;
-            
+
             if self.state == DirSyncState::BodyChunkPending
                 || self.state == DirSyncState::DescChunkPending
             {
@@ -100,7 +98,7 @@ impl DirSync {
                         return Ok(DirSyncState::Complete);
                     }
 
-                    let ret = self.chunk_reader.read(id).await;
+                    let ret = self.chunk_reader.get(id).await;
                     match ret {
                         Ok(mut reader) => {
                             let mut buf = vec![];
@@ -157,7 +155,10 @@ impl DirSync {
                     }
                     None => match self.state {
                         DirSyncState::BodyChunkComplete => {
-                            debug!("dir desc chunk not exists, now will sync: dir={}, chunk={}", self.dir_id, chunk_id);
+                            debug!(
+                                "dir desc chunk not exists, now will sync: dir={}, chunk={}",
+                                self.dir_id, chunk_id
+                            );
                             assoc_objects.append_item(chunk_id.as_object_id());
                             Ok(DirSyncState::DescChunkPending)
                         }
@@ -194,7 +195,7 @@ impl DirSync {
         }
 
         // load from reader
-        let ret = self.chunk_reader.read(chunk_id).await;
+        let ret = self.chunk_reader.get(chunk_id).await;
         match ret {
             Ok(mut reader) => {
                 let mut buf = vec![];
@@ -215,7 +216,10 @@ impl DirSync {
         }
     }
 
-    async fn sync_desc_obj_list(&mut self, assoc_objects: &mut AssociationObjects) -> BuckyResult<DirSyncState> {
+    async fn sync_desc_obj_list(
+        &mut self,
+        assoc_objects: &mut AssociationObjects,
+    ) -> BuckyResult<DirSyncState> {
         assert!(self.state == DirSyncState::DescChunkComplete);
 
         let obj_list = match self.dir.desc().content().obj_list() {
@@ -267,7 +271,10 @@ impl DirSync {
             return;
         }
 
-        debug!("dir assoc object not exists in body and local, now will sync: dir={}, object={}", self.dir_id, id);
+        debug!(
+            "dir assoc object not exists in body and local, now will sync: dir={}, object={}",
+            self.dir_id, id
+        );
         assoc_objects.append_item(id);
     }
 
@@ -297,14 +304,9 @@ pub(super) struct DirListSync {
 impl DirListSync {
     pub(super) fn new(
         state_cache: SyncObjectsStateCache,
-        bdt_stack: StackGuard,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: &NamedDataComponents,
     ) -> Self {
-        let chunk_reader = ChunkStoreReader::new(
-            chunk_manager.clone(),
-            bdt_stack.ndn().chunk_manager().ndc().clone(),
-            bdt_stack.ndn().chunk_manager().tracker().clone(),
-        );
+        let chunk_reader = named_data_components.new_chunk_store_reader();
 
         Self {
             chunk_reader: Arc::new(chunk_reader),

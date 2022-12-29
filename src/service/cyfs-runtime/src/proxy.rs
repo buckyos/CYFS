@@ -11,9 +11,11 @@ use http_types::StatusCode;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::Arc;
 use tide::listener::Listener;
 use tide::security::{CorsMiddleware, Origin};
+use tide::Response;
 
 struct NonHttpServerInner {
     http_server: HttpServerHandlerRef,
@@ -268,6 +270,55 @@ impl CyfsProxy {
 
         let file_cache = FileCacheRecevier::new();
         server.at("/file-cache").post(file_cache);
+
+        server.at("/file-upload-tool").get(|_| {
+            info!("request open file upload");
+            let upload_prog_name;
+
+            if cfg!(target_os = "windows") {
+                upload_prog_name = "cyfs-file-uploader.exe";
+            } else if cfg!(target_os = "macos") {
+                upload_prog_name = "cyfs-file-uploader.app";
+            } else {
+                upload_prog_name = "cyfs-file-uploader";
+            }
+
+            async move {
+                let upload_tool_path = std::env::current_exe()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .join(upload_prog_name);
+                if !upload_tool_path.exists() {
+                    info!("file upload tool not found. {}", upload_tool_path.display());
+                    return Ok(Response::new(StatusCode::NotFound));
+                }
+
+                let mut cmd;
+                if cfg!(target_os = "windows") {
+                    cmd = async_std::process::Command::new(&upload_tool_path);
+                } else if cfg!(target_os = "macos") {
+                    cmd = async_std::process::Command::new("open");
+                    cmd.args(&[&upload_tool_path.to_string_lossy().to_string()]);
+                } else {
+                    return Ok(Response::new(StatusCode::NotImplemented));
+                }
+
+                cmd.stdout(Stdio::null()).stderr(Stdio::null());
+                let status = if let Err(e) = cmd.spawn() {
+                    warn!(
+                        "spawn file uploader {} err {}",
+                        upload_tool_path.display(),
+                        e
+                    );
+                    StatusCode::InternalServerError
+                } else {
+                    StatusCode::Ok
+                };
+
+                Ok(Response::new(status))
+            }
+        });
 
         server.at("/*").get(NonForward::new(self.clone()));
 

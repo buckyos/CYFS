@@ -157,7 +157,7 @@ impl BdtConfigLoader {
             let msg = format!("no valid endpoint found!");
             error!("{}", msg);
 
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
         }
 
         Ok(ret)
@@ -213,11 +213,12 @@ impl BdtConfigLoader {
                 );
                 return Ok(Vec::new());
             } else {
-                error!(
+                let msg = format!(
                     "translate endpoint host error: endpoint={:?}",
                     endpoint_node
                 );
-                return Err(BuckyError::from(BuckyErrorCode::NotFound));
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
             }
         }
 
@@ -230,7 +231,7 @@ impl BdtConfigLoader {
             let msg = format!("invalid bdt endpoint fields! node={:?}", endpoint_node);
             error!("{}", msg);
 
-            return Err(BuckyError::from(msg));
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
         }
 
         let mut have_ipv6 = false;
@@ -238,7 +239,6 @@ impl BdtConfigLoader {
         for mut item in addr_list {
             // ipv6不绑定具体地址，这里先设置一个标志位
             if item.is_ipv6() {
-                // warn!("will ignore ipv6 addr on android/ios: {}", item);
                 have_ipv6 = true;
                 continue;
             }
@@ -248,7 +248,7 @@ impl BdtConfigLoader {
             let mut endpoint = Endpoint::from((protocol.unwrap(), item));
             // 如果设置了system_default标志，将endpoint的system_default设置为true，这个选项在移动平台使用
             if system_default {
-                endpoint.set_system_default(true);
+                endpoint.set_area(EndpointArea::Default);
             }
             endpoints.push(endpoint);
         }
@@ -259,7 +259,7 @@ impl BdtConfigLoader {
             let mut endpoint = Endpoint::from((protocol.unwrap(), addr));
             // 如果设置了system_default标志，将endpoint的system_default设置为true，这个选项在移动平台使用
             if system_default {
-                endpoint.set_system_default(true);
+                endpoint.set_area(EndpointArea::Default);
             }
             endpoints.push(endpoint);
         }

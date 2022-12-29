@@ -1,9 +1,7 @@
-use crate::cyfs_loader_config::CyfsServiceLoaderConfig;
 use crate::stack_info::StackInfo;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DeviceId};
 use cyfs_bdt::StackGuard;
 use cyfs_debug::Mutex;
-use cyfs_lib::SharedCyfsStack;
 use cyfs_stack::CyfsStack;
 
 use lazy_static::lazy_static;
@@ -21,9 +19,45 @@ impl StackManagerImpl {
     }
 
     fn load(cfg_node: toml::Value) -> BuckyResult<Vec<StackInfo>> {
-        let list = CyfsServiceLoaderConfig::root_to_list(cfg_node)?;
+        let list = Self::root_to_list(cfg_node)?;
 
         Self::load_list(list)
+    }
+
+    // convert single node mode to vec mode
+    // 支持一级的table和两级的数组两种模式
+    fn root_to_list(cfg_node: toml::Value) -> BuckyResult<Vec<toml::value::Table>> {
+        match cfg_node {
+            toml::Value::Table(cfg) => Ok(vec![cfg]),
+            toml::Value::Array(list) => {
+                let mut result = vec![];
+                for cfg_node in list {
+                    match cfg_node {
+                        toml::Value::Table(cfg) => {
+                            result.push(cfg);
+                        }
+                        _ => {
+                            let msg = format!(
+                                "stack config list item invalid format! config={:?}",
+                                cfg_node
+                            );
+                            error!("{}", msg);
+                            return Err(BuckyError::from((BuckyErrorCode::InvalidFormat, msg)));
+                        }
+                    }
+                }
+
+                Ok(result)
+            }
+            _ => {
+                let msg = format!(
+                    "stack config root node invalid format! config={:?}",
+                    cfg_node
+                );
+                error!("{}", msg);
+                Err(BuckyError::from((BuckyErrorCode::InvalidFormat, msg)))
+            }
+        }
     }
 
     fn load_list(stack_node_list: Vec<toml::value::Table>) -> BuckyResult<Vec<StackInfo>> {
@@ -207,20 +241,6 @@ impl StackManager {
         .map(|info| info.cyfs_stack().unwrap().to_owned())
     }
 
-    pub fn get_shared_cyfs_stack(&self, id: Option<&str>) -> Option<SharedCyfsStack> {
-        let inner = self.0.lock().unwrap();
-        match id {
-            Some(id) => inner.get_stack(id),
-            None => inner.get_default_stack(),
-        }
-        .map(|info| match info.shared_cyfs_stack() {
-            Some(stack) => stack.to_owned(),
-            None => {
-                panic!("shared_stack_stub not enabled for id={:?}", id);
-            }
-        })
-    }
-
     pub fn get_device_id(&self, id: Option<&str>) -> Option<DeviceId> {
         let inner = self.0.lock().unwrap();
         match id {
@@ -241,10 +261,6 @@ impl StackManager {
 
     pub fn get_default_cyfs_stack(&self) -> Option<CyfsStack> {
         self.get_cyfs_stack(None)
-    }
-
-    pub fn get_default_shared_cyfs_stack(&self) -> Option<SharedCyfsStack> {
-        self.get_shared_cyfs_stack(None)
     }
 
     pub fn get_default_device_id(&self) -> Option<DeviceId> {

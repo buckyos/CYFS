@@ -13,7 +13,7 @@ pub async fn start_upload_task(
 ) -> BuckyResult<Box<dyn UploadTask>> {
     let desc = interest.prefer_type.fill_values(&interest.chunk);
     let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
-    let encoder = cache.cache().create_encoder(&desc);
+    let encoder = cache.create_encoder(&desc);
    
     
     let session = to.upload(
@@ -22,9 +22,9 @@ pub async fn start_upload_task(
         desc.clone(), 
         encoder)?;
     
-    let _ = stack.ndn().root_task().upload().create_sub_task(owners, &session)?;
+    let _ = stack.ndn().root_task().upload().add_task(owners, &session)?;
   
-    Ok(session.clone_as_task())
+    Ok(session.clone_as_upload_task())
 }
 
 pub async fn start_upload_task_from_cache<T: RawCache + 'static>(
@@ -47,9 +47,9 @@ pub async fn start_upload_task_from_cache<T: RawCache + 'static>(
         desc.clone(), 
         encoder)?;
     
-    let _ = stack.ndn().root_task().upload().create_sub_task(owners, &session)?;
+    let _ = stack.ndn().root_task().upload().add_task(owners, &session)?;
   
-    Ok(session.clone_as_task())
+    Ok(session.clone_as_upload_task())
 }
 
 

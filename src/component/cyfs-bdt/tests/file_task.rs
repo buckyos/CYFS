@@ -4,6 +4,7 @@ use std::{
 };
 use async_std::{
     io::ReadExt, 
+    // pin::Pin, 
 };
 use sha2::Digest;
 use cyfs_base::*;
@@ -41,7 +42,7 @@ async fn one_small_file() {
         &*ln_stack, 
         file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     async_std::io::copy(reader, async_std::io::sink()).await.unwrap();
     
@@ -81,7 +82,7 @@ async fn same_chunk_file() {
     let (_, reader) = download_file(
         &*ln_stack, file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     async_std::io::copy(reader, async_std::io::sink()).await.unwrap();
   
@@ -109,7 +110,7 @@ async fn empty_file() {
     let (_, reader) = download_file(
         &*ln_stack, file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     async_std::io::copy(reader, async_std::io::sink()).await.unwrap();
    
@@ -153,7 +154,7 @@ async fn one_small_file_with_ranges() {
         &*ln_stack, 
         file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     
     
@@ -172,3 +173,52 @@ async fn one_small_file_with_ranges() {
     }
     
 }
+
+
+// #[async_std::test]
+// async fn split_read_file() {
+//     let ((ln_stack, _), (rn_stack, rn_store)) = utils::local_stack_pair(
+//         &["W4udp127.0.0.1:10008"], 
+//         &["W4udp127.0.0.1:10009"]
+//     ).await.unwrap();
+    
+//     let mut file_hash  = sha2::Sha256::new();
+//     let mut file_len = 0u64;
+//     let mut chunks = vec![];
+//     for _ in 0..2 {
+//         let (chunk_len, chunk_data) = utils::random_mem(1024, 1024);
+//         let chunk_hash = hash_data(&chunk_data[..]);
+//         file_hash.input(&chunk_data[..]);
+//         file_len += chunk_len as u64;
+//         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
+//         let _ = rn_store.add(chunkid.clone(), Arc::new(chunk_data)).await.unwrap();
+//         chunks.push(chunkid);
+//     }
+
+//     let file = File::new(
+//         ObjectId::default(),
+//         file_len,
+//         file_hash.result().into(),
+//         ChunkList::ChunkInList(chunks.clone())
+//     ).no_create_time().build();
+
+//     let (_, mut reader) = download_file(
+//         &*ln_stack, 
+//         file, 
+//         None, 
+//         SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+//     ).await.unwrap();
+
+//     let mut buffer = vec![0u8; 1024 * 1024];
+//     for i in 0..2 {
+//         let chunk_len = 1024 * 1024;
+//         let (cache, read_range) = async_std::future::poll_fn(DownloadTaskSplitRead::poll_split_read(Pin::new(&mut reader), &mut buffer)).await.unwrap().unwrap();
+//         let chunk_hash = hash_data(&buffer[..]);
+//         let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
+//         assert_eq!(cache.chunk(), &chunkid);
+//         assert_eq!(cache.chunk(), &chunks[i]);
+//         assert_eq!(read_range.start, 0);
+//         assert_eq!(read_range.end, chunk_len);
+//     }
+
+// }

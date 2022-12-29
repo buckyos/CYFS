@@ -5,7 +5,7 @@ use http_types::{Response, StatusCode};
 use std::sync::{Arc, Mutex};
 
 use super::http_listener_base::HttpListenerBase;
-use base::{ListenerUtil, STACK_MANAGER};
+use cyfs_stack_loader::{ListenerUtil, STACK_MANAGER};
 use cyfs_base::BuckyError;
 use cyfs_bdt::StreamGuard as BdtStream;
 
@@ -257,14 +257,15 @@ impl HttpBdtListener {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct HttpBdtListenerManager {
-    server_list: Mutex<Vec<Arc<HttpBdtListener>>>,
+    server_list: Arc<Mutex<Vec<Arc<HttpBdtListener>>>>,
 }
 
 impl HttpBdtListenerManager {
     pub fn new() -> HttpBdtListenerManager {
         HttpBdtListenerManager {
-            server_list: Mutex::new(Vec::new()),
+            server_list: Arc::new(Mutex::new(Vec::new())),
         }
     }
 

@@ -175,21 +175,25 @@ impl AcceptTunnelBuilder {
         let connect_info = remote.connect_info();
         for udp_interface in net_listener.udp() {
             for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_udp() && ep.is_same_ip_version(&udp_interface.local()) && (ep.addr().is_ipv6() || (ep.addr().is_ipv4() && filter(ep)))) {
-                if let Ok(udp_tunnel) = tunnel.create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
-                    let action = SynUdpTunnel::new(
-                        udp_tunnel, 
-                        first_box.clone(), 
-                        tunnel.config().udp.holepunch_interval); 
-                    actions.push(Box::new(action) as DynBuildTunnelAction);
+                if let Ok((udp_tunnel, newly_created)) = tunnel.create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
+                    if newly_created {
+                        let action = SynUdpTunnel::new(
+                            udp_tunnel, 
+                            first_box.clone(), 
+                            tunnel.config().udp.holepunch_interval); 
+                        actions.push(Box::new(action) as DynBuildTunnelAction);
+                    }
                 }      
             }
         }
 
         // for local_ip in net_listener.ip_set() {
             for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_tcp() && (ep.addr().is_ipv6() || (ep.addr().is_ipv4() && filter(ep)))) {
-                if let Ok(tunnel) = tunnel.create_tunnel(EndpointPair::from((Endpoint::default_tcp(remote_ep), *remote_ep)), ProxyType::None) {
-                    let action = ConnectTcpTunnel::new(tunnel);
-                    actions.push(Box::new(action) as DynBuildTunnelAction);
+                if let Ok((tunnel, newly_created)) = tunnel.create_tunnel(EndpointPair::from((Endpoint::default_tcp(remote_ep), *remote_ep)), ProxyType::None) {
+                    if newly_created {
+                        let action = ConnectTcpTunnel::new(tunnel);
+                        actions.push(Box::new(action) as DynBuildTunnelAction);
+                    }
                 }    
             }  
         // }

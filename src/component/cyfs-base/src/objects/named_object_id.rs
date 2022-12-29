@@ -67,7 +67,7 @@ impl<T: ObjectType> Default for NamedObjectId<T> {
         let mut id = ObjectId::default();
         let hash_value = id.as_mut_slice();
 
-        if !T::is_stand_object() {
+        if !T::is_standard_object() {
             // 用户类型
             //4个可用flag
             let type_code = if T::is_dec_app_object() {
@@ -87,7 +87,7 @@ impl<T: ObjectType> Default for NamedObjectId<T> {
             hash_value[0] = 0b_01000000 | type_code << 4 >> 2;
         };
 
-        let id = ObjectId::clone_from_slice(&hash_value);
+        let id = ObjectId::clone_from_slice(&hash_value).unwrap();
 
         Self(id, None)
     }

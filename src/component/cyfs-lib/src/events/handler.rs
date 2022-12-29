@@ -6,7 +6,9 @@ use cyfs_base::*;
 use cyfs_util::*;
 
 use async_trait::async_trait;
+use http_types::Url;
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[async_trait]
@@ -41,23 +43,18 @@ pub struct RouterEventManager {
     dec_id: Option<SharedObjectStackDecID>,
 
     inner: RouterWSEventManager,
+    started: Arc<AtomicBool>,
 }
 
 impl RouterEventManager {
-    pub async fn new(dec_id: Option<SharedObjectStackDecID>, _service_url: &str, event_type: CyfsStackEventType) -> BuckyResult<Self> {
-        let inner = match event_type {
-            CyfsStackEventType::Http => {
-                unimplemented!();
-            }
-            CyfsStackEventType::WebSocket(ws_url) => {
-                let ret = RouterWSEventManager::new(ws_url);
-                ret.start();
+    pub fn new(dec_id: Option<SharedObjectStackDecID>, ws_url: Url) -> Self {
+        let inner = RouterWSEventManager::new(ws_url);
 
-                ret
-            }
-        };
-
-        Ok(Self { dec_id, inner })
+        Self {
+            dec_id,
+            inner,
+            started: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     pub fn clone_processor(&self) -> RouterEventManagerProcessorRef {
@@ -66,6 +63,19 @@ impl RouterEventManager {
 
     fn get_dec_id(&self) -> Option<ObjectId> {
         self.dec_id.as_ref().map(|v| v.get().cloned()).flatten()
+    }
+
+    fn try_start(&self) {
+        match self
+            .started
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        {
+            Ok(_) => {
+                info!("will start event manager!");
+                self.inner.start()
+            }
+            Err(_) => {}
+        }
     }
 
     pub fn add_event<REQ, RESP>(
@@ -81,11 +91,30 @@ impl RouterEventManager {
         RESP: Send + Sync + 'static + JsonCodec<RESP> + fmt::Display,
         RouterEventRequest<REQ>: RouterEventCategoryInfo,
     {
+        info!(
+            "will add event: category={}, id={}, index={}",
+            extract_router_event_category::<RouterEventRequest<REQ>>(),
+            id,
+            index
+        );
+
+        self.try_start();
+
         self.inner.add_event(id, self.get_dec_id(), index, routine)
     }
 
     pub async fn remove_event(&self, category: RouterEventCategory, id: &str) -> BuckyResult<bool> {
-        self.inner.remove_event(category, id, self.get_dec_id()).await
+        info!("will remove event: category={}, id={}", category, id,);
+
+        self.try_start();
+
+        self.inner
+            .remove_event(category, id, self.get_dec_id())
+            .await
+    }
+
+    pub async fn stop(&self) {
+        self.inner.stop().await
     }
 }
 
@@ -120,7 +149,9 @@ impl RouterEventManagerProcessor for RouterEventManager {
         self
     }
 
-    fn zone_role_changed_event(&self) -> &dyn RouterEventProcessor<ZoneRoleChangedEventRequest, ZoneRoleChangedEventResponse> {
+    fn zone_role_changed_event(
+        &self,
+    ) -> &dyn RouterEventProcessor<ZoneRoleChangedEventRequest, ZoneRoleChangedEventResponse> {
         self
     }
 }

@@ -2,7 +2,6 @@ use crate::*;
 
 use std::marker::PhantomData;
 
-
 /// 子Desc类型系统
 /// ===
 /// * SubDescType: Sized + Sync + Send
@@ -11,6 +10,9 @@ use std::marker::PhantomData;
 /// * AuthorObj: SubDescType+Clone
 /// * PublicKeyObj: SubDescType+Clone
 pub trait SubDescType: Sized + Sync + Send + Default {
+    fn is_support() -> bool {
+        true
+    }
     fn is_none(&self) -> bool;
     fn is_some(&self) -> bool {
         !self.is_none()
@@ -71,6 +73,10 @@ impl Default for SubDescNone {
 }
 
 impl SubDescType for SubDescNone {
+    fn is_support() -> bool {
+        false
+    }
+
     fn is_none(&self) -> bool {
         true
     }
@@ -463,15 +469,15 @@ pub trait DescContent {
     }
 
     fn is_standard_object() -> bool {
-        Self::obj_type() <= 16u16
+        object_type_helper::is_standard_object(Self::obj_type())
     }
 
     fn is_core_object() -> bool {
-        Self::obj_type() >= OBJECT_TYPE_CORE_START && Self::obj_type() <= OBJECT_TYPE_CORE_END
+        object_type_helper::is_core_object(Self::obj_type())
     }
 
     fn is_decapp_object() -> bool {
-        Self::obj_type() >= OBJECT_TYPE_DECAPP_START && Self::obj_type() <= OBJECT_TYPE_DECAPP_END
+        object_type_helper::is_dec_app_object(Self::obj_type())
     }
 
     fn debug_info() -> String {
@@ -670,8 +676,7 @@ where
     }
 }
 
-impl PublicKeyObjectDesc for SubDescNone
-{
+impl PublicKeyObjectDesc for SubDescNone {
     fn public_key_ref(&self) -> Option<PublicKeyRef> {
         None
     }
@@ -1362,6 +1367,12 @@ where
         // OwnderObjectDesc/AreaObjectDesc/AuthorObjectDesc/PublicKeyObjectDesc
         //
         let (owner, buf) = if ctx.has_owner() {
+            if !T::OwnerType::is_support() {
+                let msg = format!("owner field not support for object type={}", obj_type);
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+            }
+
             T::OwnerType::inner_raw_decode(buf).map_err(|e|{
                 error!("NamedObjectDesc<T>::raw_decode_with_context/owner error:{}, obj_type:{}, obj_type_code:{:?}", e, T::obj_type(), T::obj_type_code()); 
                 e
@@ -1371,6 +1382,12 @@ where
         };
 
         let (area, buf) = if ctx.has_area() {
+            if !T::AreaType::is_support() {
+                let msg = format!("area field not support for object type={}", obj_type);
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+            }
+
             T::AreaType::inner_raw_decode(buf).map_err(|e|{
                 error!("NamedObjectDesc<T>::raw_decode_with_context/area error:{}, obj_type:{}, obj_type_code:{:?}", e, T::obj_type(), T::obj_type_code()); 
                 e
@@ -1380,6 +1397,12 @@ where
         };
 
         let (author, buf) = if ctx.has_author() {
+            if !T::AuthorType::is_support() {
+                let msg = format!("author field not support for object type={}", obj_type);
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+            }
+
             T::AuthorType::inner_raw_decode(buf).map_err(|e|{
                 error!("NamedObjectDesc<T>::raw_decode_with_context/author error:{}, obj_type:{}, obj_type_code:{:?}", e, T::obj_type(), T::obj_type_code()); 
                 e
@@ -1389,6 +1412,12 @@ where
         };
 
         let (public_key, buf) = if ctx.has_public_key() {
+            if !T::PublicKeyType::is_support() {
+                let msg = format!("public key field not support for object type={}", obj_type);
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+            }
+
             let (_key_type, buf) = u8::raw_decode(buf).map_err(|e|{
                 error!("NamedObjectDesc<T>::raw_decode/_key_type error:{}, obj_type:{}, obj_type_code:{:?}", e, T::obj_type(), T::obj_type_code()); 
                 e
@@ -1874,7 +1903,11 @@ where
         //println!("object type:{}, expected:{}", ctx.obj_type(), O::obj_type());
         if O::obj_type() != OBJECT_TYPE_ANY {
             if ctx.obj_type() != O::obj_type() {
-                let msg = format!("obj_type_code not match! required={:?}, got={:?}", O::obj_type(), ctx.obj_type());
+                let msg = format!(
+                    "obj_type_code not match! required={:?}, got={:?}",
+                    O::obj_type(),
+                    ctx.obj_type()
+                );
                 error!("{}", msg);
                 return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
             }

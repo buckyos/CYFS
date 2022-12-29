@@ -136,6 +136,8 @@ impl TaskStore for SQLiteTaskStore {
 impl TaskManagerStore for SQLiteTaskStore
 {
     async fn add_task(&self, task_id: &TaskId, category: TaskCategory, task_type: TaskType, task_status: TaskStatus, dec_list: Vec<DecInfo>, task_params: Vec<u8>) -> BuckyResult<()> {
+        info!("will add task: id={}, category={}, type={}, status={:?}, dec={:?}", task_id, category, task_type, task_status, dec_list);
+
         let mut conn = self.pool.get_conn().await?;
         conn.begin_transaction().await?;
 
@@ -294,6 +296,8 @@ impl TaskManagerStore for SQLiteTaskStore
     }
 
     async fn add_dec_info(&self, task_id: &TaskId, category: TaskCategory, task_status: TaskStatus, dec_info: &DecInfo) -> BuckyResult<()> {
+        info!("will add dec info! task={}, category={}, status={:?}, dec_info={:?}", task_id, category, task_status, dec_info);
+
         let sql = r#"insert into dec_tasks (source, dec_id, task_category, task_status, task_id, dec_info) values (?1, ?2, ?3, ?4, ?5, ?6)"#;
         let mut conn = self.pool.get_conn().await?;
         conn.execute_sql(sql_query(sql)
@@ -307,6 +311,8 @@ impl TaskManagerStore for SQLiteTaskStore
     }
 
     async fn delete_dec_info(&self, task_id: &TaskId, dec_id: &ObjectId, source: &DeviceId) -> BuckyResult<()> {
+        info!("will delete dec info! task={}, dec={}, source={}", task_id, dec_id, source);
+
         let sql = r#"delete from dec_tasks where task_id = ?1 and dec_id = ?2 and source = ?3"#;
         let mut conn = self.pool.get_conn().await?;
         conn.execute_sql(sql_query(sql)
@@ -317,6 +323,8 @@ impl TaskManagerStore for SQLiteTaskStore
     }
 
     async fn delete_task(&self, task_id: &TaskId) -> BuckyResult<()> {
+        info!("will delete task! id={}", task_id);
+
         let mut conn = self.pool.get_conn().await?;
         conn.begin_transaction().await?;
 

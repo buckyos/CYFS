@@ -1,7 +1,8 @@
 use crate::upstream::TcpUpStreamForBdt;
-use base::STACK_MANAGER;
 use cyfs_base::BuckyError;
 use cyfs_bdt::StreamGuard as BdtStream;
+use cyfs_stack_loader::ListenerUtil;
+use cyfs_stack_loader::STACK_MANAGER;
 
 use async_std::stream::StreamExt;
 use async_std::task;
@@ -101,7 +102,9 @@ impl StreamBdtListener {
             }
 
             bdt_stack = stack_item.unwrap();
-            let local_addr = STACK_MANAGER.get_bdt_stack_local_addr(Some(&stack_name)).unwrap();
+            let local_addr = STACK_MANAGER
+                .get_bdt_stack_local_addr(Some(&stack_name))
+                .unwrap();
             bdt_addr = format!("http://{}", local_addr);
         }
 
@@ -222,11 +225,8 @@ impl StreamBdtListenerManager {
         vport: 80,
     }
     */
-    pub fn load(
-        &mut self,
-        server_node: &toml::value::Table,
-    ) -> Result<(), BuckyError> {
-        let (stack, vport) = match ::base::ListenerUtil::load_bdt_listener(server_node) {
+    pub fn load(&mut self, server_node: &toml::value::Table) -> Result<(), BuckyError> {
+        let (stack, vport) = match ListenerUtil::load_bdt_listener(server_node) {
             Ok(v) => v,
             Err(e) => {
                 return Err(e);

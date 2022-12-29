@@ -190,8 +190,8 @@ impl StreamPoolConnector {
             let stack = &self.0.stack;
             if let Some(remote_device) = stack.device_cache().get(&self.0.remote).await {
                 let build_params = BuildTunnelParams {
-                    remote_const: remote_device.desc().clone(), 
-                    remote_sn: None, 
+                    remote_const: remote_device.desc().clone(),
+                    remote_sn: None,
                     remote_desc: Some(remote_device)
                 };
                 let stream = stack.stream_manager().connect(
@@ -238,7 +238,7 @@ impl StreamPoolConnector {
             let mut remain = LinkedList::new();
             let mut remove = LinkedList::new();
             let mut streams = self.0.stream_list.lock().unwrap();
-            for (stream, last_used) in streams.pop_back() {
+            while let Some((stream, last_used)) = streams.pop_back() {
                 match stream.state() {
                     StreamState::Establish(remote) => {
                         if remote <= remote_timestamp {
@@ -286,7 +286,7 @@ impl StreamPoolConnector {
             let mut remain = LinkedList::new();
             let mut remove = LinkedList::new();
             let mut streams = self.0.stream_list.lock().unwrap();
-            for (stream, last_used) in streams.pop_front() {
+            while let Some((stream, last_used)) = streams.pop_front() {
                 match stream.state() {
                     StreamState::Establish(_) => {
                         if now > last_used && Duration::from_micros(now - last_used) > self.0.timeout {
