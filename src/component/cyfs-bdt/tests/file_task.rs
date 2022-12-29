@@ -4,7 +4,7 @@ use std::{
 };
 use async_std::{
     io::ReadExt, 
-    pin::Pin, 
+    // pin::Pin, 
 };
 use sha2::Digest;
 use cyfs_base::*;

@@ -145,7 +145,8 @@ impl DownloadSession {
                 chunk: self.chunk().clone(), 
                 prefer_type: self.source().codec_desc.clone(), 
                 referer: Some(self.source().referer.clone()), 
-                from: None
+                from: None, 
+                group_path: None
             };
             info!("{} sent {:?}", self, interest);
             self.channel().interest(interest);
@@ -378,7 +379,8 @@ impl DownloadSession {
             chunk: self.chunk().clone(), 
             prefer_type: self.source().codec_desc.clone(), 
             referer: Some(self.source().referer.clone()), 
-            from: None,
+            from: None, 
+            group_path: None
         };
         info!("{} sent {:?}", self, interest);
         self.channel().interest(interest);
