@@ -143,9 +143,10 @@ impl DownloadSession {
             let interest = Interest {
                 session_id: self.session_id().clone(), 
                 chunk: self.chunk().clone(), 
-                prefer_type: self.source().encode_desc.clone(), 
+                prefer_type: self.source().codec_desc.clone(), 
                 referer: Some(self.source().referer.clone()), 
-                from: None
+                from: None, 
+                group_path: None
             };
             info!("{} sent {:?}", self, interest);
             self.channel().interest(interest);
@@ -284,7 +285,7 @@ impl DownloadSession {
                     let state = &mut *self.0.state.write().unwrap();
                     match state {
                         Interesting(interesting) => {
-                            let decoder = StreamDecoder::new(self.chunk(), &self.source().encode_desc, interesting.cache.clone());
+                            let decoder = StreamDecoder::new(self.chunk(), &self.source().codec_desc, interesting.cache.clone());
                             let mut downloading = DownloadingState {
                                 tunnel_state: tunnel.as_ref().download_state(), 
                                 history_speed: interesting.history_speed.clone(), 
@@ -352,14 +353,14 @@ impl DownloadSession {
                             std::mem::swap(&mut waiters, &mut interesting.waiters);
                             *state = StateImpl::Canceled(CanceledState {
                                 send_ctrl_time: None, 
-                                err: BuckyError::new(BuckyErrorCode::Interrupted, "cancel by remote")
+                                err: BuckyError::new(resp_interest.err, "cancel by remote")
                             });
                         },
                         StateImpl::Downloading(downloading) => {
                             std::mem::swap(&mut waiters, &mut downloading.waiters);
                             *state = StateImpl::Canceled(CanceledState {
                                 send_ctrl_time: None, 
-                                err: BuckyError::new(BuckyErrorCode::Interrupted, "cancel by remote")
+                                err: BuckyError::new(resp_interest.err, "cancel by remote")
                             });
                         },
                         _ => {}
@@ -376,9 +377,10 @@ impl DownloadSession {
         let interest = Interest {
             session_id: self.session_id().clone(), 
             chunk: self.chunk().clone(), 
-            prefer_type: self.source().encode_desc.clone(), 
+            prefer_type: self.source().codec_desc.clone(), 
             referer: Some(self.source().referer.clone()), 
-            from: None,
+            from: None, 
+            group_path: None
         };
         info!("{} sent {:?}", self, interest);
         self.channel().interest(interest);

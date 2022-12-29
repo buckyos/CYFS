@@ -443,7 +443,7 @@ impl TransBench {
                 unreachable!();
             }
 
-            let state = ret.unwrap();
+            let state = ret.unwrap().state;
             match state {
                 TransTaskState::Downloading(v) => {
                     info!("trans task downloading! file_id={}, {:?}", file_id, v);
@@ -663,7 +663,7 @@ impl TransBench {
                 unreachable!();
             }
     
-            let state = ret.unwrap();
+            let state = ret.unwrap().state;
             match state {
                 TransTaskState::Downloading(v) => {
                     info!("trans task downloading! file_id={}, {:?}", chunk_id, v);

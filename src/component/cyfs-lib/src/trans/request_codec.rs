@@ -10,7 +10,8 @@ impl JsonCodec<TransGetContextOutputRequest> for TransGetContextOutputRequest {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
-        JsonCodecHelper::encode_string_field(&mut obj, "context_name", &self.context_name);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_id", self.context_id.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_path", self.context_path.as_ref());
 
         obj
     }
@@ -18,7 +19,8 @@ impl JsonCodec<TransGetContextOutputRequest> for TransGetContextOutputRequest {
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
-            context_name: JsonCodecHelper::decode_string_field(obj, "context_name")?,
+            context_id: JsonCodecHelper::decode_option_string_field(obj, "context_id")?,
+            context_path: JsonCodecHelper::decode_option_string_field(obj, "context_path")?,
         })
     }
 }
@@ -27,7 +29,8 @@ impl JsonCodec<TransGetContextInputRequest> for TransGetContextInputRequest {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
-        JsonCodecHelper::encode_string_field(&mut obj, "context_name", &self.context_name);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_id", self.context_id.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context_path", self.context_path.as_ref());
 
         obj
     }
@@ -35,7 +38,8 @@ impl JsonCodec<TransGetContextInputRequest> for TransGetContextInputRequest {
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
-            context_name: JsonCodecHelper::decode_string_field(obj, "context_name")?,
+            context_id: JsonCodecHelper::decode_option_string_field(obj, "context_id")?,
+            context_path: JsonCodecHelper::decode_option_string_field(obj, "context_path")?,
         })
     }
 }
@@ -45,6 +49,10 @@ impl JsonCodec<TransPutContextOutputRequest> for TransPutContextOutputRequest {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
         JsonCodecHelper::encode_string_field(&mut obj, "context", &self.context.to_hex().unwrap());
+        if let Some(access) = &self.access {
+            JsonCodecHelper::encode_number_field(&mut obj, "access", access.value());
+        }
+
         obj
     }
 
@@ -53,9 +61,13 @@ impl JsonCodec<TransPutContextOutputRequest> for TransPutContextOutputRequest {
             JsonCodecHelper::decode_string_field::<String>(obj, "context")?.as_str(),
             &mut Vec::new(),
         )?;
+        let access: Option<u32> = JsonCodecHelper::decode_option_int_field(obj, "access")?;
+        let access = access.map(|v| AccessString::new(v));
+
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             context,
+            access,
         })
     }
 }
@@ -65,6 +77,10 @@ impl JsonCodec<TransUpdateContextInputRequest> for TransUpdateContextInputReques
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
         JsonCodecHelper::encode_string_field(&mut obj, "context", &self.context.to_hex().unwrap());
+        if let Some(access) = &self.access {
+            JsonCodecHelper::encode_number_field(&mut obj, "access", access.value());
+        }
+        
         obj
     }
 
@@ -73,9 +89,12 @@ impl JsonCodec<TransUpdateContextInputRequest> for TransUpdateContextInputReques
             JsonCodecHelper::decode_string_field::<String>(obj, "context")?.as_str(),
             &mut Vec::new(),
         )?;
+        let access: Option<u32> = JsonCodecHelper::decode_option_int_field(obj, "access")?;
+        let access = access.map(|v| AccessString::new(v));
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             context,
+            access,
         })
     }
 }
@@ -102,29 +121,21 @@ impl JsonCodec<TransCreateTaskOutputRequest> for TransCreateTaskOutputRequest {
 
         JsonCodecHelper::encode_str_array_field(&mut obj, "device_list", &self.device_list);
 
-        if self.context_id.is_some() {
-            JsonCodecHelper::encode_string_field(
-                &mut obj,
-                "context_id",
-                self.context_id.as_ref().unwrap(),
-            );
-        }
+        JsonCodecHelper::encode_option_string_field(&mut obj, "group", self.group.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context", self.context.as_ref());
+
         JsonCodecHelper::encode_bool_field(&mut obj, "auto_start", self.auto_start);
         obj
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let context_id = match obj.get("context_id") {
-            Some(context_id) => Some(JsonCodecHelper::decode_from_string(context_id)?),
-            None => None,
-        };
-
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             object_id: JsonCodecHelper::decode_string_field(obj, "object_id")?,
             local_path: JsonCodecHelper::decode_string_field(obj, "local_path")?,
             device_list: JsonCodecHelper::decode_str_array_field(obj, "device_list")?,
-            context_id,
+            group: JsonCodecHelper::decode_option_string_field(obj, "group")?,
+            context: JsonCodecHelper::decode_option_string_field(obj, "context")?,
             auto_start: JsonCodecHelper::decode_bool_field(obj, "auto_start")?,
         })
     }
@@ -152,29 +163,21 @@ impl JsonCodec<TransCreateTaskInputRequest> for TransCreateTaskInputRequest {
 
         JsonCodecHelper::encode_str_array_field(&mut obj, "device_list", &self.device_list);
 
-        if self.context_id.is_some() {
-            JsonCodecHelper::encode_string_field(
-                &mut obj,
-                "context_id",
-                self.context_id.as_ref().unwrap(),
-            );
-        }
+        JsonCodecHelper::encode_option_string_field(&mut obj, "group", self.group.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "context", self.context.as_ref());
+
         JsonCodecHelper::encode_bool_field(&mut obj, "auto_start", self.auto_start);
         obj
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let context_id = match obj.get("context_id") {
-            Some(context_id) => Some(JsonCodecHelper::decode_from_string(context_id)?),
-            None => None,
-        };
-
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             object_id: JsonCodecHelper::decode_string_field(obj, "object_id")?,
             local_path: JsonCodecHelper::decode_string_field(obj, "local_path")?,
             device_list: JsonCodecHelper::decode_str_array_field(obj, "device_list")?,
-            context_id,
+            group: JsonCodecHelper::decode_option_string_field(obj, "group")?,
+            context: JsonCodecHelper::decode_option_string_field(obj, "context")?,
             auto_start: JsonCodecHelper::decode_bool_field(obj, "auto_start")?,
         })
     }
@@ -372,11 +375,11 @@ impl JsonCodec<TransTaskInfo> for TransTaskInfo {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         JsonCodecHelper::encode_string_field(&mut obj, "task_id", &self.task_id);
-        if self.context_id.is_some() {
+        if self.context.is_some() {
             JsonCodecHelper::encode_string_field(
                 &mut obj,
-                "context_id",
-                self.context_id.as_ref().unwrap(),
+                "context",
+                self.context.as_ref().unwrap(),
             );
         }
         JsonCodecHelper::encode_string_field(&mut obj, "object_id", &self.object_id);
@@ -390,13 +393,9 @@ impl JsonCodec<TransTaskInfo> for TransTaskInfo {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<TransTaskInfo> {
-        let context_id = match obj.get("context_id") {
-            Some(context_id) => Some(JsonCodecHelper::decode_from_string(context_id)?),
-            None => None,
-        };
         Ok(Self {
             task_id: JsonCodecHelper::decode_string_field(obj, "task_id")?,
-            context_id,
+            context: JsonCodecHelper::decode_option_string_field(obj, "context")?,
             object_id: JsonCodecHelper::decode_string_field(obj, "object_id")?,
             local_path: JsonCodecHelper::decode_string_field(obj, "local_path")?,
             device_list: JsonCodecHelper::decode_str_array_field(obj, "device_list")?,
@@ -434,7 +433,6 @@ impl JsonCodec<TransQueryTasksOutputRequest> for TransQueryTasksOutputRequest {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
-        JsonCodecHelper::encode_option_string_field(&mut obj, "context_id", self.context_id.as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "task_status", self.task_status.as_ref());
 
         if self.range.is_some() {
@@ -453,11 +451,6 @@ impl JsonCodec<TransQueryTasksOutputRequest> for TransQueryTasksOutputRequest {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<TransQueryTasksOutputRequest> {
-        let context_id = match obj.get("context_id") {
-            Some(context_id) => Some(JsonCodecHelper::decode_from_string(context_id)?),
-            None => None,
-        };
-
         let task_status = match obj.get("task_status") {
             Some(task_status) => Some(JsonCodecHelper::decode_from_string(task_status)?),
             None => None,
@@ -481,7 +474,6 @@ impl JsonCodec<TransQueryTasksOutputRequest> for TransQueryTasksOutputRequest {
 
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
-            context_id,
             task_status,
             range,
         })
@@ -492,13 +484,7 @@ impl JsonCodec<TransQueryTasksInputRequest> for TransQueryTasksInputRequest {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
-        if self.context_id.is_some() {
-            JsonCodecHelper::encode_string_field(
-                &mut obj,
-                "context_id",
-                self.context_id.as_ref().unwrap(),
-            );
-        }
+
         if self.task_status.is_some() {
             JsonCodecHelper::encode_string_field(
                 &mut obj,
@@ -522,11 +508,6 @@ impl JsonCodec<TransQueryTasksInputRequest> for TransQueryTasksInputRequest {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let context_id = match obj.get("context_id") {
-            Some(context_id) => Some(JsonCodecHelper::decode_from_string(context_id)?),
-            None => None,
-        };
-
         let task_status = match obj.get("task_status") {
             Some(task_status) => Some(JsonCodecHelper::decode_from_string(task_status)?),
             None => None,
@@ -550,7 +531,6 @@ impl JsonCodec<TransQueryTasksInputRequest> for TransQueryTasksInputRequest {
 
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
-            context_id,
             task_status,
             range,
         })

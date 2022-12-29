@@ -14,9 +14,8 @@ use super::{
 struct RootTaskImpl {
     max_download_speed: u32, 
     download: DownloadRoot, 
-    upload: UploadGroup
+    upload: UploadRoot
 }
-
 
 pub struct DownloadRoot {
     id_gen: IncreaseIdGenerator, 
@@ -68,11 +67,97 @@ impl DownloadRoot {
         let (parent, parent_path, rel_path) = self.makesure_path(path)?;
         let rel_path = rel_path.unwrap_or(self.next_index());
         let _ = parent.add_task(Some(rel_path.clone()), task.clone_as_task())?;
-        Ok([parent_path, rel_path].join("/"))
+        Ok([parent_path, rel_path].join(""))
     }
 
     pub fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {
-        self.sub.sub_task(path)
+        let abs_path = if path.starts_with("/") {
+            &path[1..]
+        } else {
+            path
+        };
+        self.sub.sub_task(abs_path)
+    }
+}
+
+
+pub struct UploadRoot {
+    id_gen: IncreaseIdGenerator, 
+    sub: UploadGroup
+}
+
+impl UploadRoot {
+    fn next_index(&self) -> String {
+        self.id_gen.generate().to_string()
+    }
+
+    pub fn makesure_path(
+        &self, 
+        path: String
+    ) -> BuckyResult<(Box<dyn UploadTask>, String, Option<String>)> {
+        if path.len() == 0 {
+            return Ok((self.sub.clone_as_task(), "/".to_owned(), None));
+        } 
+
+        let mut parts: Vec<&str> = path.split("/").collect();
+        if parts.len() == 0 {
+            return Err(BuckyError::new(BuckyErrorCode::InvalidInput, "invalid group path"))
+        } 
+        
+        let last_part = if parts[parts.len() - 1].len() == 0 {
+            None 
+        } else {
+            Some(parts[parts.len() - 1].to_owned())
+        };
+
+        parts.remove(parts.len() - 1);
+
+        let parent_path = (parts.join("/") + "/").to_owned();
+        let mut parent = self.sub.clone_as_task();
+        for part in parts {
+            if let Some(sub) = parent.sub_task(part) {
+                parent = sub;
+            } else {
+                let sub = UploadGroup::new(self.sub.history_config().clone(), None);
+                parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
+                parent = sub.clone_as_task();
+            }
+        }
+        Ok((parent, parent_path, last_part))
+    }
+
+
+    pub fn add_task(&self, pathes: Vec<String>, task: &dyn UploadTask) -> BuckyResult<Vec<String>> {
+        let mut pathes = pathes;
+        if pathes.len() == 0 {
+            pathes.push("".to_owned())
+        }
+
+        let mut results = vec![];
+        for path in pathes {
+            if let Ok(abs_path) = self.makesure_path(path).and_then(|(parent, parent_path, rel_path)| {
+                let rel_path = rel_path.unwrap_or(self.next_index());
+                parent.add_task(Some(rel_path.clone()), task.clone_as_task())
+                    .map(|_| [parent_path, rel_path].join(""))
+            }) {
+                results.push(abs_path);
+            }
+        }
+        
+        if results.len() > 0 {
+            Ok(results)
+        } else {
+            Err(BuckyError::new(BuckyErrorCode::Failed, ""))
+        }
+    }
+
+    pub fn sub_task(&self, path: &str) -> Option<Box<dyn UploadTask>> {
+        let abs_path = if path.starts_with("/") {
+            &path[1..]
+        } else {
+            path
+        };
+        self.sub.sub_task(abs_path)
     }
 }
 
@@ -87,11 +172,14 @@ impl RootTask {
                 sub: DownloadGroup::new(history_speed.clone(), None), 
                 id_gen: IncreaseIdGenerator::new()
             }, 
-            upload: UploadGroup::new(history_speed, None)
+            upload: UploadRoot {
+                sub: UploadGroup::new(history_speed.clone(), None), 
+                id_gen: IncreaseIdGenerator::new()
+            }
         }))
     }
 
-    pub fn upload(&self) -> &UploadGroup {
+    pub fn upload(&self) -> &UploadRoot {
         &self.0.upload
     }
 
@@ -102,7 +190,7 @@ impl RootTask {
     pub fn on_schedule(&self, now: Timestamp) {
         self.download().sub.calc_speed(now);
         self.download().sub.on_drain(self.0.max_download_speed);
-        self.upload().calc_speed(now);
+        self.upload().sub.calc_speed(now);
     }
 }
 

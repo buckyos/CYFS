@@ -120,7 +120,7 @@ impl ChunkEncoder for WrapEncoder {
         self.origin.chunk()
     }
 
-    fn desc(&self) -> &ChunkEncodeDesc {
+    fn desc(&self) -> &ChunkCodecDesc {
         self.origin.desc()
     }
 

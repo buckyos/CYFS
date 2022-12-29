@@ -13,6 +13,7 @@ pub enum ChunkNodeType{
     Cache,
 }
 
+#[derive(Clone)]
 pub struct ChunkSourceContext{
     pub bdt_stream: Option<PooledStream>,
     pub peer_id: DeviceId, 
@@ -70,6 +71,14 @@ impl ChunkClientContext for ChunkCacheContext {
 
 
 impl ChunkSourceContext {
+    pub fn new_http(peer_id: &DeviceId, endpoint: &str, port: u16) -> Self {
+        Self {
+            bdt_stream: None,
+            peer_id: peer_id.clone(),
+            end_point: format!("http:{}:{}", endpoint, port),
+            vport: port,
+        }
+    }
     pub fn source_http_local(peer_id:&DeviceId)->Self{
 
         let (end_point,vport) = Self::get_source_endpoint(&peer_id.to_string(), DeviceTarget::Local);

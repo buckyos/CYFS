@@ -2,7 +2,6 @@ use crate::*;
 
 use std::marker::PhantomData;
 
-
 /// 子Desc类型系统
 /// ===
 /// * SubDescType: Sized + Sync + Send
@@ -463,15 +462,15 @@ pub trait DescContent {
     }
 
     fn is_standard_object() -> bool {
-        Self::obj_type() <= 16u16
+        object_type_helper::is_standard_object(Self::obj_type())
     }
 
     fn is_core_object() -> bool {
-        Self::obj_type() >= OBJECT_TYPE_CORE_START && Self::obj_type() <= OBJECT_TYPE_CORE_END
+        object_type_helper::is_core_object(Self::obj_type())
     }
 
     fn is_decapp_object() -> bool {
-        Self::obj_type() >= OBJECT_TYPE_DECAPP_START && Self::obj_type() <= OBJECT_TYPE_DECAPP_END
+        object_type_helper::is_dec_app_object(Self::obj_type())
     }
 
     fn debug_info() -> String {
@@ -670,8 +669,7 @@ where
     }
 }
 
-impl PublicKeyObjectDesc for SubDescNone
-{
+impl PublicKeyObjectDesc for SubDescNone {
     fn public_key_ref(&self) -> Option<PublicKeyRef> {
         None
     }
@@ -1874,7 +1872,11 @@ where
         //println!("object type:{}, expected:{}", ctx.obj_type(), O::obj_type());
         if O::obj_type() != OBJECT_TYPE_ANY {
             if ctx.obj_type() != O::obj_type() {
-                let msg = format!("obj_type_code not match! required={:?}, got={:?}", O::obj_type(), ctx.obj_type());
+                let msg = format!(
+                    "obj_type_code not match! required={:?}, got={:?}",
+                    O::obj_type(),
+                    ctx.obj_type()
+                );
                 error!("{}", msg);
                 return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
             }

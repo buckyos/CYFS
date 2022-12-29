@@ -2,17 +2,22 @@ use crate::meta::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
+use async_std::sync::Mutex as AsyncMutex;
+use cyfs_debug::Mutex;
 use lru_time_cache::LruCache;
 use std::collections::HashSet;
-use cyfs_debug::Mutex;
+use std::sync::Arc;
 
 type NamedObjectCacheItem = NamedObjectCacheObjectRawData;
+type NamedObjectCacheItemRef = Arc<NamedObjectCacheItem>;
 
 pub struct NamedObjectCacheMemoryCache {
     meta: NamedObjectMetaRef,
     next: NamedObjectCacheRef,
-    cache: Mutex<LruCache<ObjectId, NamedObjectCacheItem>>,
+    cache: AsyncMutex<LruCache<ObjectId, NamedObjectCacheItemRef>>,
     missing_cache: Mutex<HashSet<ObjectId>>,
+
+    access: NamedObjecAccessHelper,
 }
 
 impl NamedObjectCacheMemoryCache {
@@ -30,8 +35,9 @@ impl NamedObjectCacheMemoryCache {
         Self {
             meta,
             next,
-            cache: Mutex::new(cache),
+            cache: AsyncMutex::new(cache),
             missing_cache: Mutex::new(HashSet::new()),
+            access: NamedObjecAccessHelper::new(),
         }
     }
 
@@ -40,87 +46,48 @@ impl NamedObjectCacheMemoryCache {
         cache.contains(&req.object_id)
     }
 
-    fn check_access(
-        object_id: &ObjectId,
-        access_string: u32,
-        source: &RequestSourceInfo,
-        create_dec_id: &ObjectId,
-        permissions: impl Into<AccessPermissions>,
-    ) -> BuckyResult<()> {
-        let permissions: AccessPermissions = permissions.into();
-        debug!(
-            "noc cache will check access: object={}, access={}, source={}, create_dec={}, require={}",
-            object_id,
-            AccessString::new(access_string),
-            source,
-            create_dec_id,
-            permissions.as_str(),
-        );
-
-        // system dec in current zone is always allowed
-        if source.is_current_zone() {
-            if source.is_system_dec() {
-                return Ok(());
-            }
-        }
-
-        // Check permission first
-        let mask = source.mask(create_dec_id, permissions);
-
-        if access_string & mask != mask {
-            let msg = format!(
-                "noc cache object access been rejected! obj={}, access={}, require access={}",
-                object_id,
-                AccessString::new(access_string),
-                AccessString::new(mask)
-            );
-            warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
-        }
-
-        Ok(())
-    }
-
-    pub fn get(
+    pub async fn get(
         &self,
         req: &NamedObjectCacheGetObjectRequest,
     ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
-        let mut cache = self.cache.lock().unwrap();
-        let ret = cache.get_mut(&req.object_id);
-        if ret.is_none() {
-            return Ok(None);
-        }
-
-        let item = ret.unwrap();
+        let item = {
+            let mut cache = self.cache.lock().await;
+            let ret = cache.get_mut(&req.object_id);
+            if ret.is_none() {
+                return Ok(None);
+            }
+            ret.unwrap().clone()
+        };
 
         // first check the access permissions
-        if !req.source.is_verified(&item.meta.create_dec_id) {
-            Self::check_access(
+        self.access
+            .check_access_with_meta_data(
                 &req.object_id,
-                item.meta.access_string,
                 &req.source,
+                &item.meta,
                 &item.meta.create_dec_id,
                 RequestOpType::Read,
-            )?;
-        }
+            )
+            .await?;
 
         if item.meta.last_access_rpath != req.last_access_rpath {
-            item.meta.last_access_rpath = req.last_access_rpath.to_owned();
+            todo!();
+            // item.meta.last_access_rpath = req.last_access_rpath.to_owned();
         }
 
-        Ok(Some(item.to_owned()))
+        Ok(Some((*item).to_owned()))
     }
 
-    pub fn cache(
+    pub async fn cache(
         &self,
         req: &NamedObjectCacheGetObjectRequest,
         data: &Option<NamedObjectCacheObjectRawData>,
     ) {
         match data {
             Some(data) => {
-                let item = data.to_owned();
+                let item = Arc::new(data.to_owned());
 
-                let mut cache = self.cache.lock().unwrap();
+                let mut cache = self.cache.lock().await;
                 let ret = cache.insert(req.object_id.to_owned(), item);
                 assert!(ret.is_none());
             }
@@ -132,25 +99,30 @@ impl NamedObjectCacheMemoryCache {
         }
     }
 
-    async fn check_object_access(&self, req: &NamedObjectCacheCheckObjectAccessRequest) -> BuckyResult<Option<()>> {
-        let mut cache = self.cache.lock().unwrap();
-        let ret = cache.get_mut(&req.object_id);
-        if ret.is_none() {
-            return Ok(None);
-        }
+    async fn check_object_access(
+        &self,
+        req: &NamedObjectCacheCheckObjectAccessRequest,
+    ) -> BuckyResult<Option<()>> {
+        let item = {
+            let mut cache = self.cache.lock().await;
+            let ret = cache.get_mut(&req.object_id);
+            if ret.is_none() {
+                return Ok(None);
+            }
 
-        let item = ret.unwrap();
+            ret.unwrap().clone()
+        };
 
         // check the access permissions
-        if !req.source.is_verified(&item.meta.create_dec_id) {
-            Self::check_access(
+        self.access
+            .check_access_with_meta_data(
                 &req.object_id,
-                item.meta.access_string,
                 &req.source,
+                &item.meta,
                 &item.meta.create_dec_id,
                 req.required_access,
-            )?;
-        }
+            )
+            .await?;
 
         Ok(Some(()))
     }
@@ -165,7 +137,7 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
         let ret = self.next.put_object(req).await;
 
         {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = self.cache.lock().await;
             cache.remove(&req.object.object_id);
         }
 
@@ -181,7 +153,7 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
         &self,
         req: &NamedObjectCacheGetObjectRequest,
     ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
-        let cache_item = self.get(req)?;
+        let cache_item = self.get(req).await?;
         if cache_item.is_some() {
             // Update the last access info
             let update_req = NamedObjectMetaUpdateLastAccessRequest {
@@ -206,7 +178,7 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
 
         let ret = self.next.get_object_raw(req).await?;
 
-        self.cache(req, &ret);
+        self.cache(req, &ret).await;
 
         Ok(ret)
     }
@@ -216,7 +188,7 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
         req: &NamedObjectCacheDeleteObjectRequest,
     ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = self.cache.lock().await;
             cache.remove(&req.object_id);
         }
 
@@ -237,7 +209,7 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
         self.next.update_object_meta(req).await?;
 
         {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = self.cache.lock().await;
             cache.remove(&req.object_id);
         }
 
@@ -249,7 +221,10 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
         Ok(())
     }
 
-    async fn check_object_access(&self, req: &NamedObjectCacheCheckObjectAccessRequest) -> BuckyResult<Option<()>> {
+    async fn check_object_access(
+        &self,
+        req: &NamedObjectCacheCheckObjectAccessRequest,
+    ) -> BuckyResult<Option<()>> {
         let ret = Self::check_object_access(&self, req).await?;
         if ret.is_some() {
             return Ok(ret);
@@ -260,5 +235,15 @@ impl NamedObjectCache for NamedObjectCacheMemoryCache {
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         self.next.stat().await
+    }
+
+    fn bind_object_meta_access_provider(
+        &self,
+        object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    ) {
+        self.access
+            .bind_object_meta_access_provider(object_meta_access_provider.clone());
+        self.next
+            .bind_object_meta_access_provider(object_meta_access_provider);
     }
 }

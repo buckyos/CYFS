@@ -1,11 +1,12 @@
 use std::{
     sync::{RwLock},
     io::SeekFrom, 
+    ops::Range
 };
 use async_std::{
     sync::Arc, 
     pin::Pin, 
-    task::{Context, Poll},
+    task::{Context, Poll}, 
 };
 
 use cyfs_base::*;
@@ -21,8 +22,13 @@ use super::{
     common::*, 
 };
 
+struct DownloadingChunk {
+    context_id: IncreaseId, 
+    downloader: ChunkDownloader, 
+}
+
 struct DownloadingState { 
-    cur_cache: (IncreaseId, DownloadingChunkCache), 
+    cur_chunk: DownloadingChunk, 
     history_speed: HistorySpeed,
     drain_score: i64
 }
@@ -95,24 +101,31 @@ impl ChunkListTask {
     fn create_cache(&self, index: usize) -> BuckyResult<ChunkCache> {
         let stack = Stack::from(&self.0.stack);
         let chunk = &self.chunk_list().chunks()[index];
-        let cache = stack.ndn().chunk_manager().create_cache(chunk);
 
+        let downloader = stack.ndn().chunk_manager().create_downloader(chunk, self.context().is_mergable());
+        let cache = downloader.cache().clone();
         let cancel = {
             let mut state = self.0.state.write().unwrap();
             match &mut state.task_state {
                 TaskStateImpl::Pending => {
-                    let id = cache.downloader().context().add_context(self.context());
+                    let context_id = downloader.context().add_context(self.context());
                     state.task_state = TaskStateImpl::Downloading(DownloadingState { 
-                        cur_cache: (id, cache.clone()), 
+                        cur_chunk: DownloadingChunk {
+                            context_id, 
+                            downloader, 
+                        }, 
                         history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
                         drain_score: 0 
                     });
                     Ok(None)
                 }, 
                 TaskStateImpl::Downloading(downloading) => {
-                    let id = cache.downloader().context().add_context(self.context());
-                    let cancel = Some(downloading.cur_cache.clone());
-                    downloading.cur_cache = (id, cache.clone());
+                    let context_id = downloader.context().add_context(self.context());
+                    let cancel = Some((downloading.cur_chunk.context_id, downloading.cur_chunk.downloader.clone()));
+                    downloading.cur_chunk = DownloadingChunk {
+                        context_id, 
+                        downloader, 
+                    };
                     Ok(cancel)
                 },
                 TaskStateImpl::Finished => Ok(None), 
@@ -120,11 +133,11 @@ impl ChunkListTask {
             }
         }?;
 
-        if let Some((id, cache)) = cancel {
-            cache.downloader().context().remove_context(&id);
+        if let Some((id, downloader)) = cancel {
+            downloader.context().remove_context(&id);
         }
 
-        Ok(cache.cache().clone())
+        Ok(cache)
     }
 }
 
@@ -155,7 +168,7 @@ impl DownloadTask for ChunkListTask {
         let mut state = self.0.state.write().unwrap();
         match &mut state.task_state {
             TaskStateImpl::Downloading(downloading) => {
-                let cur_speed = downloading.cur_cache.1.downloader().calc_speed(when);
+                let cur_speed = downloading.cur_chunk.downloader.calc_speed(when);
                 downloading.history_speed.update(Some(cur_speed), when);
                 cur_speed
             }
@@ -188,14 +201,14 @@ impl DownloadTask for ChunkListTask {
     }
 
     fn on_drain(&self, expect_speed: u32) -> u32 {
-        if let Some(cache) = {
+        if let Some(downloader) = {
             let state = self.0.state.read().unwrap();
             match &state.task_state {
-                TaskStateImpl::Downloading(downloading) => Some(downloading.cur_cache.1.clone()), 
+                TaskStateImpl::Downloading(downloading) => Some(downloading.cur_chunk.downloader.clone()), 
                 _ => None
             }
         } {
-            cache.downloader().on_drain(expect_speed)
+            downloader.on_drain(expect_speed)
         } else {
             0
         }
@@ -217,7 +230,7 @@ impl DownloadTask for ChunkListTask {
 
             let cancel = match &state.task_state {
                 TaskStateImpl::Downloading(downloading) => {
-                    let cancel = Some(downloading.cur_cache.clone());
+                    let cancel = Some((downloading.cur_chunk.context_id, downloading.cur_chunk.downloader.clone()));
                     state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
                     cancel
                 }, 
@@ -231,8 +244,8 @@ impl DownloadTask for ChunkListTask {
             waiters.wake();
         }
 
-        if let Some((id, cache)) = cancel {
-            cache.downloader().context().remove_context(&id);
+        if let Some((id, downloader)) = cancel {
+            downloader.context().remove_context(&id);
         }
         
         Ok(DownloadTaskControlState::Canceled)
@@ -307,16 +320,17 @@ impl std::io::Seek for ChunkListTaskReader {
     }
 }
 
-impl async_std::io::Read for ChunkListTaskReader {
-    fn poll_read(
+
+impl DownloadTaskSplitRead for ChunkListTaskReader {
+    fn poll_split_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buffer: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
+    ) -> Poll<std::io::Result<Option<(ChunkCache, Range<usize>)>>> {
         let pined = self.get_mut();
         let ranges = pined.task.chunk_list().range_of(pined.offset..pined.offset + buffer.len() as u64);
         if ranges.is_empty() {
-            return Poll::Ready(Ok(0));
+            return Poll::Ready(Ok(None));
         }
         if let DownloadTaskState::Error(err) = pined.task.state() {
             return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
@@ -329,10 +343,10 @@ impl async_std::io::Read for ChunkListTaskReader {
                 use std::{io::{Seek}};
                 match reader.seek(SeekFrom::Start(range.start)) {
                     Ok(_) => {
-                        let result = async_std::io::Read::poll_read(Pin::new(&mut reader), cx, &mut buffer[0..(range.end - range.start) as usize]);
+                        let result = DownloadTaskSplitRead::poll_split_read(Pin::new(&mut reader), cx, &mut buffer[0..(range.end - range.start) as usize]);
                         if let Poll::Ready(result) = &result {
-                            if let Ok(len) = result {
-                                pined.offset += *len as u64;
+                            if let Some((_, r)) = result.as_ref().ok().and_then(|r| r.as_ref()) {
+                                pined.offset += (r.end - r.start) as u64;
                             }
                         }
                         result
@@ -352,6 +366,21 @@ impl async_std::io::Read for ChunkListTaskReader {
         }
 
         result
+    }
+}
+
+
+impl async_std::io::Read for ChunkListTaskReader {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut [u8],
+    ) -> Poll<std::io::Result<usize>> {
+        self.poll_split_read(cx, buffer).map(|result| result.map(|r| if let Some((_, r)) = r {
+            r.end - r.start
+        } else {
+            0
+        }))
     }
 }
 

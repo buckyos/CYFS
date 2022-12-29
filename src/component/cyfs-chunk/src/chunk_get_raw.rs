@@ -1,5 +1,7 @@
 use cyfs_base::*;
 
+use std::sync::Arc;
+
 #[derive(RawEncode, RawDecode)]
 pub struct ChunkGetRaw {
     source_device_id: DeviceId,  
@@ -27,13 +29,13 @@ impl ChunkGetRaw {
         &self.data.as_slice()
     }
 
-    pub fn sign(_source_signer: &PrivateKey, source_device_id:&DeviceId,  client_device_id:&DeviceId, chunk_id:&ChunkId, data:Vec<u8>)->BuckyResult<ChunkGetRaw>{
+    pub fn sign(_source_signer: &PrivateKey, source_device_id:&DeviceId,  client_device_id:&DeviceId, chunk_id:&ChunkId, data: Arc<Vec<u8>>)->BuckyResult<ChunkGetRaw>{
         // TODO
         Ok(ChunkGetRaw{
             source_device_id: source_device_id.clone(),
             client_device_id: client_device_id.clone(),
             chunk_id: chunk_id.clone(),
-            data: SizedOwnedData::from(data)
+            data: SizedOwnedData::from(data.as_ref()),
         })
     }
 

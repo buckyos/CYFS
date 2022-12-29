@@ -1,21 +1,25 @@
+use super::output_request::*;
 use crate::{NDNInputRequestCommon, TransTaskControlAction, TransTaskInfo, TransTaskStatus};
-use cyfs_base::{DeviceId, ObjectId, BuckyResult};
+use cyfs_base::{BuckyResult, DeviceId, ObjectId, AccessString};
 use cyfs_core::TransContext;
-use std::path::PathBuf;
 use cyfs_util::cache::FileDirRef;
-use serde::{
-    Deserialize,
-    Serialize,
-};
+
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 pub struct TransGetContextInputRequest {
     pub common: NDNInputRequestCommon,
-    pub context_name: String,
+    pub context_id: Option<ObjectId>,
+    pub context_path: Option<String>,
 }
+
+pub type TransGetContextInputResponse = TransGetContextOutputResponse;
 
 pub struct TransUpdateContextInputRequest {
     pub common: NDNInputRequestCommon,
+
     pub context: TransContext,
+    pub access: Option<AccessString>,
 }
 
 #[derive(Debug)]
@@ -25,7 +29,10 @@ pub struct TransCreateTaskInputRequest {
     // 保存到的本地目录or文件
     pub local_path: PathBuf,
     pub device_list: Vec<DeviceId>,
-    pub context_id: Option<ObjectId>,
+
+    pub group: Option<String>,
+    pub context: Option<String>,
+
     pub auto_start: bool,
 }
 
@@ -51,6 +58,8 @@ pub struct TransGetTaskStateInputRequest {
     pub task_id: String,
 }
 
+pub type TransGetTaskStateInputResponse = TransGetTaskStateOutputResponse;
+
 #[derive(Debug)]
 pub struct TransPublishFileInputRequest {
     // 用以处理acl
@@ -71,7 +80,6 @@ pub struct TransPublishFileInputRequest {
 #[derive(Debug)]
 pub struct TransQueryTasksInputRequest {
     pub common: NDNInputRequestCommon,
-    pub context_id: Option<ObjectId>,
     pub task_status: Option<TransTaskStatus>,
     pub range: Option<(u64, u32)>,
 }
@@ -89,3 +97,25 @@ pub struct TransCreateTaskInputResponse {
 pub struct TransQueryTasksInputResponse {
     pub task_list: Vec<TransTaskInfo>,
 }
+
+// get task group state
+#[derive(Debug)]
+pub struct TransGetTaskGroupStateInputRequest {
+    pub common: NDNInputRequestCommon,
+
+    pub group: String,
+    pub speed_when: Option<u64>,
+}
+
+pub type TransGetTaskGroupStateInputResponse = TransGetTaskGroupStateOutputResponse;
+
+// control task group
+#[derive(Debug)]
+pub struct TransControlTaskGroupInputRequest {
+    pub common: NDNInputRequestCommon,
+
+    pub group: String,
+    pub action: TransTaskGroupControlAction,
+}
+
+pub type TransControlTaskGroupInputResponse = TransControlTaskGroupOutputResponse;

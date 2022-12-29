@@ -25,6 +25,8 @@ mod storage;
 mod meta;
 mod call;
 mod mime;
+mod object_meta_access;
+mod context;
 
 pub async fn test_restart() {
     let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
@@ -40,11 +42,15 @@ pub async fn test() {
 
     // crypto::test().await;
 
-    //root_state::test().await;
+    // root_state::test().await;
+    context::test().await;
+    return;
+    
     mime::test().await;
     ndn::test().await;
-    //non::test().await;
-    //call::test().await;
+    non::test().await;
+    call::test().await;
+    object_meta_access::test().await;
     return;
 
     meta::test().await;

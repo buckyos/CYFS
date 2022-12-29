@@ -45,6 +45,11 @@ pub struct BuildTunnelParams {
     pub remote_desc: Option<Device>,
 }
 
+impl fmt::Display for BuildTunnelParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "BuildTunnelParams{{remote_sn: {:?}, remote_desc:{}}}", self.remote_sn, self.remote_desc.is_some())
+    }
+}
 
 impl BuildTunnelParams {
     pub(crate) fn nearest_sn(&self, stack: &Stack) -> Option<DeviceId> {

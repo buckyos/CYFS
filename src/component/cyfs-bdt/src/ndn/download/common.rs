@@ -2,6 +2,7 @@ use std::{
     collections::{LinkedList}, 
     sync::{Arc, RwLock}, 
     io::SeekFrom, 
+    ops::Range
 };
 use async_std::{
     pin::Pin, 
@@ -16,36 +17,81 @@ use crate::{
 use super::super::{
     types::*, 
     chunk::*,
-    channel::protocol::v0::*
+    channel::{DownloadSession, protocol::v0::*}
+};
+use serde::{
+    Deserialize,
+    Serialize,
 };
 
+#[derive(Clone, Debug)]
+pub struct DownloadSourceFilter {
+    pub exclude_target: Option<Vec<DeviceId>>, 
+    pub include_codec: Option<Vec<ChunkCodecDesc>>, 
+} 
 
-pub trait DownloadContext: Send + Sync {
-    fn clone_as_context(&self) -> Box<dyn DownloadContext>;
-    fn referer(&self) -> &str;
-    fn source_exists(&self, target: &DeviceId, encode_desc: &ChunkEncodeDesc) -> bool;
-    fn sources_of(&self, filter: Box<dyn Fn(&DownloadSource) -> bool>, limit: usize) -> LinkedList<DownloadSource>;
+impl Default for DownloadSourceFilter {
+    fn default() -> Self {
+        Self {
+            exclude_target: None, 
+            include_codec: Some(vec![ChunkCodecDesc::Unknown])
+        }
+    } 
 }
 
-#[derive(Clone)]
-pub struct DownloadSource {
-    pub target: DeviceDesc, 
-    pub encode_desc: ChunkEncodeDesc, 
+impl DownloadSourceFilter {
+    pub fn check(&self, source: &DownloadSource<DeviceDesc>) -> bool {
+        if let Some(exclude) = self.exclude_target.as_ref() {
+            for target in exclude {
+                if source.target.device_id().eq(target) {
+                    return false;
+                }
+            }
+        }
+
+        if let Some(include) = self.include_codec.as_ref() {
+            for codec in include {
+                if source.codec_desc.support_desc(codec) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+}
+
+#[async_trait::async_trait]
+pub trait DownloadContext: Send + Sync {
+    fn is_mergable(&self) -> bool {
+        true
+    }
+    fn clone_as_context(&self) -> Box<dyn DownloadContext>;
+    fn referer(&self) -> &str;
+    async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool;
+    async fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSource<DeviceDesc>>;
+    fn on_new_session(&self, _session: &DownloadSession) {}
+}
+
+#[derive(Clone, Debug)]
+pub struct DownloadSource<T: std::fmt::Debug + Clone + Send + Sync> {
+    pub target: T, 
+    pub codec_desc: ChunkCodecDesc, 
 }
 
 
 pub struct DownloadSourceWithReferer<T: Send + Sync> {
     pub target: T, 
-    pub encode_desc: ChunkEncodeDesc, 
+    pub codec_desc: ChunkCodecDesc, 
     pub referer: String, 
-    context_id: IncreaseId 
+    pub context_id: IncreaseId 
 }
 
 impl Into<DownloadSourceWithReferer<DeviceId>> for DownloadSourceWithReferer<DeviceDesc> {
     fn into(self) -> DownloadSourceWithReferer<DeviceId> {
         DownloadSourceWithReferer {
             target: self.target.device_id(), 
-            encode_desc: self.encode_desc, 
+            codec_desc: self.codec_desc, 
             referer: self.referer, 
             context_id: self.context_id 
         }
@@ -68,6 +114,10 @@ impl MultiDownloadContext {
         })))
     }
 
+    pub fn count(&self) -> usize {
+        self.0.read().unwrap().contexts.len()
+    }
+
     pub fn add_context(&self, context: &dyn DownloadContext) -> IncreaseId {
         let mut state = self.0.write().unwrap();
         let id = state.gen_id.generate();
@@ -75,6 +125,9 @@ impl MultiDownloadContext {
         id
     }
 
+    pub fn context_of(&self, context_id: &IncreaseId) -> Option<Box<dyn DownloadContext>> {
+        self.0.read().unwrap().contexts.iter().find_map(|(id, context)| if id.eq(context_id) { Some(context.clone_as_context())} else { None })
+    }
 
     pub fn remove_context(&self, remove_id: &IncreaseId) {
         let mut state = self.0.write().unwrap();
@@ -87,17 +140,17 @@ impl MultiDownloadContext {
         }
     }
 
-    pub fn sources_of(&self, filter: impl Fn(&DownloadSource) -> bool + Copy + 'static, limit: usize) -> LinkedList<DownloadSourceWithReferer<DeviceDesc>> {
+    pub fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSourceWithReferer<DeviceDesc>> {
         let mut result = LinkedList::new();
         let mut limit = limit;
         let state = self.0.read().unwrap();
         for (id, context) in state.contexts.iter() {
-            let part = context.sources_of(Box::new(filter), limit);
+            let part = task::block_on(context.sources_of(&filter, limit));
             limit -= part.len();
             for source in part {
                 result.push_back(DownloadSourceWithReferer {
                     target: source.target, 
-                    encode_desc: source.encode_desc, 
+                    codec_desc: source.codec_desc, 
                     referer: context.referer().to_owned(), 
                     context_id: *id  
                 });
@@ -113,7 +166,10 @@ impl MultiDownloadContext {
         let state = self.0.read().unwrap();
         state.contexts.iter().find(|(id, context)|{
             if source.context_id.eq(id) {
-                context.source_exists(&source.target, &source.encode_desc)
+                task::block_on(context.source_exists(&DownloadSource {
+                    target: source.target.clone(), 
+                    codec_desc: source.codec_desc.clone()
+                }))
             } else {
                 false
             }
@@ -137,7 +193,7 @@ impl Default for DownloadTaskPriority {
 
 
 // 对scheduler的接口
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum DownloadTaskState {
     Downloading(u32/*速度*/, f32/*进度*/),
     Paused,
@@ -145,7 +201,7 @@ pub enum DownloadTaskState {
     Finished
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DownloadTaskControlState {
     Normal, 
     Paused, 
@@ -199,6 +255,15 @@ pub struct DownloadTaskReader {
     task: Box<dyn DownloadTask>
 }
 
+
+pub trait DownloadTaskSplitRead: std::io::Seek {
+    fn poll_split_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut [u8],
+    ) -> Poll<std::io::Result<Option<(ChunkCache, Range<usize>)>>>;
+}
+
 impl std::fmt::Display for DownloadTaskReader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "DownloadTaskReader{{chunk:{}}}", self.cache.chunk())
@@ -216,6 +281,58 @@ impl DownloadTaskReader {
 
     pub fn task(&self) -> &dyn DownloadTask {
         self.task.as_ref()
+    }
+}
+
+impl DownloadTaskSplitRead for DownloadTaskReader {
+    fn poll_split_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut [u8],
+    ) -> Poll<std::io::Result<Option<(ChunkCache, Range<usize>)>>> {
+        let pined = self.get_mut();
+        trace!("{} split_read: {} offset: {}", pined, buffer.len(), pined.offset);
+        if let DownloadTaskState::Error(err) = pined.task.state() {
+            trace!("{} split_read: {} offset: {} error: {}", pined, buffer.len(), pined.offset, err);
+            return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
+        } 
+        if let Some(range) = pined.cache.exists(pined.offset..pined.offset + buffer.len()) {
+            trace!("{} split_read: {} offset: {} exists {:?}", pined, buffer.len(), pined.offset, range);
+            let (desc, mut offset) = PieceDesc::from_stream_offset(PieceData::max_payload(), range.start as u32);
+            let (mut index, len) = desc.unwrap_as_stream();
+            let mut read = 0;
+            let result = loop {
+                match pined.cache.stream().sync_try_read(
+                    &PieceDesc::Range(index, len), 
+                    offset as usize, 
+                    &mut buffer[read..]) {
+                    Ok(this_read) => {
+                        read += this_read;
+                        if this_read == 0 
+                            || read >= buffer.len() {
+                            pined.offset += read;
+                            break Ok(read);
+                        }
+                        index += 1;
+                        offset = 0;
+                    },
+                    Err(err) => {
+                        break Err(std::io::Error::new(std::io::ErrorKind::Other, err))
+                    }
+                }
+            };
+            Poll::Ready(result.map(|read| Some((pined.cache.clone(), range.start..range.start + read))))
+        } else {
+            let waker = cx.waker().clone();
+            let cache = pined.cache.clone();
+            let task = pined.task.clone_as_task();
+            let range = pined.offset..pined.offset + buffer.len();
+            task::spawn(async move {
+                let _ = cache.wait_exists(range, || task.wait_user_canceled()).await;
+                waker.wake();
+            });
+            Poll::Pending
+        }
     }
 }
 
@@ -250,48 +367,10 @@ impl async_std::io::Read for DownloadTaskReader {
         cx: &mut Context<'_>,
         buffer: &mut [u8],
     ) -> Poll<std::io::Result<usize>> {
-        let pined = self.get_mut();
-        trace!("{} poll_read: {} offset: {}", pined, buffer.len(), pined.offset);
-        if let DownloadTaskState::Error(err) = pined.task.state() {
-            trace!("{} poll_read: {} offset: {} error: {}", pined, buffer.len(), pined.offset, err);
-            return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
-        } 
-        if let Some(range) = pined.cache.exists(pined.offset..pined.offset + buffer.len()) {
-            trace!("{} poll_read: {} offset: {} exists {:?}", pined, buffer.len(), pined.offset, range);
-            let (desc, mut offset) = PieceDesc::from_stream_offset(PieceData::max_payload(), range.start as u32);
-            let (mut index, len) = desc.unwrap_as_stream();
-            let mut read = 0;
-            let result = loop {
-                match pined.cache.stream().sync_try_read(
-                    &PieceDesc::Range(index, len), 
-                    offset as usize, 
-                    &mut buffer[read..]) {
-                    Ok(this_read) => {
-                        read += this_read;
-                        if this_read == 0 
-                            || read >= buffer.len() {
-                            pined.offset += read;
-                            break Ok(read);
-                        }
-                        index += 1;
-                        offset = 0;
-                    },
-                    Err(err) => {
-                        break Err(std::io::Error::new(std::io::ErrorKind::Other, err))
-                    }
-                }
-            };
-            Poll::Ready(result)
+        self.poll_split_read(cx, buffer).map(|result| result.map(|r| if let Some((_, r)) = r {
+            r.end - r.start
         } else {
-            let waker = cx.waker().clone();
-            let cache = pined.cache.clone();
-            let task = pined.task.clone_as_task();
-            let range = pined.offset..pined.offset + buffer.len();
-            task::spawn(async move {
-                let _ = cache.wait_exists(range, || task.wait_user_canceled()).await;
-                waker.wake();
-            });
-            Poll::Pending
-        }
+            0
+        }))
     }
 }

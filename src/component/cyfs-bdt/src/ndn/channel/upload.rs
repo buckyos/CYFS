@@ -41,7 +41,7 @@ enum TaskStateImpl {
 struct SessionImpl {
     chunk: ChunkId, 
     session_id: TempSeq, 
-    piece_type: ChunkEncodeDesc, 
+    piece_type: ChunkCodecDesc, 
     channel: Channel, 
     state: RwLock<StateImpl>, 
 }
@@ -59,7 +59,7 @@ impl UploadSession {
     pub fn new(
         chunk: ChunkId, 
         session_id: TempSeq, 
-        piece_type: ChunkEncodeDesc, 
+        piece_type: ChunkCodecDesc, 
         encoder: Box<dyn ChunkEncoder>, 
         channel: Channel
     ) -> Self {
@@ -84,7 +84,7 @@ impl UploadSession {
         &self.0.chunk
     }
 
-    pub fn piece_type(&self) -> &ChunkEncodeDesc {
+    pub fn piece_type(&self) -> &ChunkCodecDesc {
         &self.0.piece_type
     }
 

@@ -366,6 +366,10 @@ impl RequestSourceInfo {
     }
 
     pub fn check_target_dec_permission(&self, op_target_dec: &Option<ObjectId>) -> bool {
+        self.check_target_dec_permission2(op_target_dec.as_ref())
+    }
+
+    pub fn check_target_dec_permission2(&self, op_target_dec: Option<&ObjectId>) -> bool {
         if self.is_system_dec() {
             true
         } else {

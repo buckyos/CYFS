@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use once_cell::sync::OnceCell;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId, RawFrom};
-use cyfs_client::NamedCacheClient;
+use cyfs_client::{NamedCacheClient, NamedCacheClientConfig};
 use cyfs_core::{AppList, APPLIST_SERVICE_CATEGORY, AppListObj, AppStatusObj, DecAppId, DecApp, DecAppObj};
 use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
 use crate::def::MonitorRunner;
@@ -45,10 +45,16 @@ impl MonitorRunner for CyfsRepoMonitor {
 
             // 3. 通过cyfs-client下载这个版本
             if self.cyfs_client.get().is_none() {
-                let mut client = NamedCacheClient::new();
+
                 let device = cyfs_base::Device::clone_from_hex(DEVICE_DESC, &mut vec![])?;
                 let secret = cyfs_base::PrivateKey::clone_from_hex(DEVICE_SEC, &mut vec![])?;
-                client.init(Some(device), Some(secret), None, None).await?;
+                let mut config = NamedCacheClientConfig::default();
+                config.desc = Some((device, secret));
+                config.tcp_file_manager_port = 5312;
+                config.tcp_chunk_manager_port = 5310;
+                config.conn_strategy = cyfs_client::ConnStrategy::TcpOnly;
+                let mut client = NamedCacheClient::new(config);
+                client.init().await?;
                 self.cyfs_client.set(client);
             }
 

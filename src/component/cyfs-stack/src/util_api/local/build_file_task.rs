@@ -450,6 +450,10 @@ mod build_file_task_test {
         async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
             todo!();
         }
+
+        fn bind_object_meta_access_provider(&self, _object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef) {
+
+        }
     }
 
     struct MemoryNDC {}
@@ -583,6 +587,7 @@ mod build_file_task_test {
                 .register_task_factory(BuildFileTaskFactory::new(noc, ndc))
                 .unwrap();
 
+            let dec_id = cyfs_core::get_system_dec_app();
             let tmp_path = std::env::temp_dir().join("test_build_file");
             gen_random_file(tmp_path.as_path()).await;
             let local_path = tmp_path.to_string_lossy().to_string();
@@ -590,6 +595,7 @@ mod build_file_task_test {
                 local_path: local_path.clone(),
                 owner: Default::default(),
                 chunk_size: 4 * 1024 * 1024,
+                dec_id: dec_id.to_owned(),
             };
             let task = task_manager
                 .create_task(
@@ -628,6 +634,7 @@ mod build_file_task_test {
                 local_path,
                 owner: Default::default(),
                 chunk_size: 4 * 1024 * 1024,
+                dec_id: dec_id.to_owned(),
             };
             let task = task_manager
                 .create_task(

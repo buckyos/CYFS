@@ -1,7 +1,9 @@
-use super::super::cache::ChunkManagerWriter;
-use super::stream_writer::*;
+use super::super::context::TransContextHolder;
+use super::cache::ChunkListCacheReader;
+use super::stream_reader::*;
+use crate::ndn::TaskGroupHelper;
 use cyfs_base::*;
-use cyfs_bdt::{SingleDownloadContext, ChunkWriter, ChunkWriterExt, StackGuard};
+use cyfs_bdt::StackGuard;
 use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 
@@ -12,42 +14,37 @@ use std::ops::Range;
 pub(crate) struct TargetDataManager {
     bdt_stack: StackGuard,
     chunk_manager: ChunkManagerRef,
-    target: DeviceId,
+    context: TransContextHolder,
 }
 
 impl TargetDataManager {
     pub(crate) fn new(
         bdt_stack: StackGuard,
         chunk_manager: ChunkManagerRef,
-        target: DeviceId,
+        context: TransContextHolder,
     ) -> Self {
         Self {
             bdt_stack,
             chunk_manager,
-            target,
+            context,
         }
     }
 
-    pub fn target(&self) -> &DeviceId {
-        &self.target
-    }
-
-    fn new_chunk_manager_writer(&self) -> Box<dyn ChunkWriter> {
-        let writer = ChunkManagerWriter::new(
-            self.chunk_manager.clone(),
-            self.bdt_stack.ndn().chunk_manager().ndc().clone(),
-            self.bdt_stack.ndn().chunk_manager().tracker().clone(),
-        );
-
-        Box::new(writer)
+    pub fn context(&self) -> String {
+        self.context.debug_string()
     }
 
     pub async fn get_file(
         &self,
+        source: &RequestSourceInfo,
         file_obj: &File,
+        group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
-        referer: &BdtDataRefererInfo,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
+    ) -> BuckyResult<(
+        Box<dyn Read + Unpin + Send + Sync + 'static>,
+        u64,
+        Option<String>,
+    )> {
         let file_id = file_obj.desc().calculate_id();
 
         let total_size = match ranges {
@@ -60,63 +57,63 @@ impl TargetDataManager {
                 "zero length get_file request will return directly! file={}, file_len={}, ranges={:?},",
                 file_id, file_obj.len(), ranges,
             );
-            return Ok((zero_bytes_reader(), 0));
+            return Ok((zero_bytes_reader(), 0, None));
         }
 
         info!(
-            "will get file data from target: target={}, file={}, file_len={}, len={}, ranges={:?}, referer={}",
-            self.target, file_id, file_obj.len(), total_size, ranges, referer
+            "will get file data from target: {:?}, file={}, file_len={}, len={}, ranges={:?}",
+            self.context.debug_string(),
+            file_id,
+            file_obj.len(),
+            total_size,
+            ranges
         );
 
-        let context = SingleDownloadContext::streams(Some(referer.encode_string()), vec![self.target.clone()]);
+        let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
+
+        let (id, reader) = cyfs_bdt::download_file(
+            &self.bdt_stack,
+            file_obj.to_owned(),
+            group,
+            self.context.clone(),
+        )
+        .await
+        .map_err(|e| {
+            error!("download file error! file={}, {}", file_id, e);
+            e
+        })?;
+
+        let reader = ChunkListCacheReader::new(
+            self.chunk_manager.clone(),
+            file_id.to_string(),
+            Box::new(reader),
+        );
 
         let resp = if let Some(ranges) = ranges {
             assert!(ranges.len() > 0);
 
-            let (writers, waker, resp) = self
-                .create_file_ext_writers(&file_id, total_size as usize)
-                .await;
-
-            let controller = cyfs_bdt::download::download_file_with_ranges(
-                &self.bdt_stack,
-                file_obj.to_owned(),
-                Some(ranges), 
-                None, 
-                Some(context),
-                writers,
-            )
-            .await?;
-
-            let reader = FileChunkListStreamReader::new(resp, controller);
-            waker.wait_and_return(Box::new(reader)).await?
+            let reader =
+                ChunkListTaskRangesReader::new(file_id.to_string(), ranges, Box::new(reader));
+            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         } else {
-            let (writers, waker, resp) = self
-                .create_file_writers(&file_id, total_size as usize)
-                .await;
-
-            let controller = cyfs_bdt::download::download_file(
-                &self.bdt_stack,
-                file_obj.to_owned(), 
-                None, 
-                Some(context),
-                writers,
-            )
-            .await?;
-
-            let reader = FileChunkListStreamReader::new(resp, controller);
-            waker.wait_and_return(Box::new(reader)).await?
+            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         };
 
-        Ok((resp, total_size))
+        Ok((resp, total_size, Some(id)))
     }
 
     // 获取单个chunk
     pub async fn get_chunk(
         &self,
+        source: &RequestSourceInfo,
         chunk_id: &ChunkId,
+        group: Option<&str>,
         ranges: Option<Vec<Range<u64>>>,
-        referer: &BdtDataRefererInfo,
-    ) -> BuckyResult<(Box<dyn Read + Unpin + Send + Sync + 'static>, u64)> {
+    ) -> BuckyResult<(
+        Box<dyn Read + Unpin + Send + Sync + 'static>,
+        u64,
+        Option<String>,
+    )> {
         let total_size = match ranges {
             Some(ref ranges) => RangeHelper::sum(ranges) as usize,
             None => chunk_id.len(),
@@ -127,159 +124,47 @@ impl TargetDataManager {
                 "zero length get_chunk request will return directly! file={}",
                 chunk_id
             );
-            return Ok((zero_bytes_reader(), 0));
+            return Ok((zero_bytes_reader(), 0, None));
         }
 
         info!(
-            "will get chunk data from target: target={}, chunk={}, len={}, ranges={:?}, referer={}",
-            self.target, chunk_id, total_size, ranges, referer
+            "will get chunk data from target: {}, chunk={}, len={}, ranges={:?}",
+            self.context.debug_string(),
+            chunk_id,
+            total_size,
+            ranges
         );
 
-        let context = SingleDownloadContext::streams(Some(referer.encode_string()), vec![self.target.clone()]);
-      
+        let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
 
-        let (writers, waker, resp) = self
-            .create_chunk_writers(&chunk_id, ranges, total_size)
-            .await;
-
-        let controller = cyfs_bdt::download::download_chunk(
+        let (id, reader) = cyfs_bdt::download_chunk(
             &self.bdt_stack,
-            chunk_id.to_owned(), 
-            None, 
-            Some(context),
-            writers,
+            chunk_id.clone(),
+            group,
+            self.context.clone(),
         )
-        .await?;
-
-        let reader = FileChunkListStreamReader::new(resp, controller);
-        let resp = waker.wait_and_return(Box::new(reader)).await?;
-        Ok((resp, total_size as u64))
-    }
-
-    async fn create_file_writers(
-        &self,
-        file_id: &ObjectId,
-        total_size: usize,
-    ) -> (
-        Vec<Box<dyn ChunkWriter>>,
-        FirstWakeupStreamWriter,
-        FileChunkListStreamWriter,
-    ) {
-        let writer = FileChunkListStreamWriter::new(file_id, total_size);
-
-        let mut writer_list = vec![writer.clone().into_writer()];
-
-        // 本地缓存
-        writer_list.push(self.new_chunk_manager_writer());
-
-        // 增加返回短路器
-        let waker = FirstWakeupStreamWriter::new(writer.task_id());
-        writer_list.push(waker.clone().into_writer());
-
-        (writer_list, waker, writer)
-    }
-
-    async fn create_file_ext_writers(
-        &self,
-        file_id: &ObjectId,
-        total_size: usize,
-    ) -> (
-        Vec<Box<dyn ChunkWriterExt>>,
-        FirstWakeupStreamWriter,
-        FileChunkListStreamWriter,
-    ) {
-        let writer = FileChunkListStreamWriter::new(file_id, total_size);
-
-        let mut writer_list = vec![writer.clone().into_writer_ext()];
-
-        // 本地缓存
-        {
-            let writer = self.new_chunk_manager_writer();
-            writer_list.push(ChunkWriterExtAdapter::new(writer).into_writer_ext());
-        }
-
-        // 增加返回短路器
-        let waker = FirstWakeupStreamWriter::new(writer.task_id());
-        writer_list.push(waker.clone().into_writer_ext());
-
-        (writer_list, waker, writer)
-    }
-
-    async fn create_chunk_writers(
-        &self,
-        chunk_id: &ChunkId,
-        ranges: Option<Vec<Range<u64>>>,
-        total_size: usize,
-    ) -> (
-        Vec<Box<dyn ChunkWriter>>,
-        FirstWakeupStreamWriter,
-        FileChunkListStreamWriter,
-    ) {
-        let writer = FileChunkListStreamWriter::new(&chunk_id.object_id(), total_size);
-        let ret_writer = match ranges {
-            Some(ranges) => {
-                ChunkWriterAdapter::new(writer.clone().into_writer_ext(), ranges).into_writer()
-            }
-            None => writer.clone().into_writer(),
-        };
-
-        let mut writer_list = vec![ret_writer];
-
-        // 本地缓存
-        writer_list.push(self.new_chunk_manager_writer());
-
-        // 增加返回短路器
-        let waker = FirstWakeupStreamWriter::new(writer.task_id());
-        writer_list.push(waker.clone().into_writer());
-
-        (writer_list, waker, writer)
-    }
-
-    /*
-    async fn create_chunk_writers_ext(
-        &self,
-        chunk_id: &ChunkId,
-        total_size: usize,
-    ) -> (
-        Vec<Box<dyn ChunkWriterExt>>,
-        FirstWakeupStreamWriter,
-        Box<dyn Read + Unpin + Send + Sync + 'static>,
-    ) {
-        let writer = FileChunkListStreamWriter::new(chunk_id.object_id(), total_size);
-
-        let mut writer_list = vec![writer.clone().into_writer_ext()];
-
-        // 本地缓存
-        if let Ok(Some(writer)) = self.data_cache.gen_chunk_writer(chunk_id).await {
-            writer_list.push(ChunkWriterExtAdapter::new(writer).into_writer_ext());
-        }
-
-        // 增加返回短路器
-        let waker = FirstWakeupStreamWriter::new(chunk_id.object_id());
-        writer_list.push(waker.clone().into_writer_ext());
-
-        (writer_list, waker, Box::new(writer))
-    }
-    */
-
-    /*
-    pub async fn get_chunk_buffer(
-        &self,
-        chunk_id: &ChunkId,
-        referer: &BdtDataRefererInfo,
-    ) -> BuckyResult<Vec<u8>> {
-        let mut reader = self.get_chunk(chunk_id, referer).await?;
-
-        use async_std::io::ReadExt;
-
-        let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).await.map_err(|e| {
-            let msg = format!("read chunk data failed! chunk={} {}", chunk_id, e);
-            error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::IoError, msg)
+        .await
+        .map_err(|e| {
+            error!("download chunk error! chunk={}, {}", chunk_id, e);
+            e
         })?;
 
-        Ok(buf)
+        let reader = ChunkListCacheReader::new(
+            self.chunk_manager.clone(),
+            chunk_id.to_string(),
+            Box::new(reader),
+        );
+
+        let resp = if let Some(ranges) = ranges {
+            assert!(ranges.len() > 0);
+
+            let reader =
+                ChunkListTaskRangesReader::new(chunk_id.to_string(), ranges, Box::new(reader));
+            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+        } else {
+            Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
+        };
+
+        Ok((resp, total_size as u64, Some(id)))
     }
-    */
 }

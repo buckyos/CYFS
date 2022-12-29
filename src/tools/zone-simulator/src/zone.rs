@@ -1,14 +1,33 @@
 use crate::user::*;
 use cyfs_base::*;
+use cyfs_lib::BrowserSanboxMode;
 use cyfs_stack_loader::*;
+
+#[derive(Debug, Clone)]
+pub struct CyfsStackInsConfig {
+    // the browser sanbox mode
+    pub browser_mode: BrowserSanboxMode,
+}
+
+impl Default for CyfsStackInsConfig {
+    fn default() -> Self {
+        Self {
+            browser_mode: BrowserSanboxMode::None,
+        }
+    }
+}
 
 pub struct TestStack {
     device_info: DeviceInfo,
+    stack_config: CyfsStackInsConfig,
 }
 
 impl TestStack {
-    pub fn new(device_info: DeviceInfo) -> Self {
-        Self { device_info }
+    pub fn new(device_info: DeviceInfo, stack_config: CyfsStackInsConfig) -> Self {
+        Self {
+            device_info,
+            stack_config,
+        }
     }
 
     pub async fn init(&self, ws: bool, bdt_port: u16, service_port: u16) {
@@ -36,6 +55,7 @@ impl TestStack {
         param.shared_stack = true;
         param.shared_stack_stub = true;
         param.front_enable = true;
+        param.browser_mode = self.stack_config.browser_mode;
 
         let config = CyfsServiceLoaderConfig::new(param).unwrap();
         CyfsServiceLoader::direct_load(config).await.unwrap();
@@ -71,14 +91,15 @@ impl TestZone {
         }
     }
 
-    pub async fn init(&self) {
+    pub async fn init(&self, stack_config: &CyfsStackInsConfig) {
         let device_info = self.user.ood.clone();
         let bdt_port = self.bdt_port;
         let ws = self.ws;
         let service_port = self.service_port;
         let name = self.user.name().to_owned();
+        let config = stack_config.to_owned();
         let handle1 = async_std::task::spawn(async move {
-            let stack = TestStack::new(device_info);
+            let stack = TestStack::new(device_info, config);
             stack.init(ws, bdt_port, service_port).await;
             info!("init stack complete: user={}, stack=ood", name);
         });
@@ -87,8 +108,9 @@ impl TestZone {
         let bdt_port = self.bdt_port + 1;
         let service_port = self.service_port + 2;
         let name = self.user.name().to_owned();
+        let config = stack_config.to_owned();
         let handle2 = async_std::task::spawn(async move {
-            let stack = TestStack::new(device_info);
+            let stack = TestStack::new(device_info, config);
             stack.init(ws, bdt_port, service_port).await;
             info!("init stack complete: user={}, stack=device1", name);
         });
@@ -97,8 +119,9 @@ impl TestZone {
         let bdt_port = self.bdt_port + 2;
         let service_port = self.service_port + 4;
         let name = self.user.name().to_owned();
+        let config = stack_config.to_owned();
         let handle3 = async_std::task::spawn(async move {
-            let stack = TestStack::new(device_info);
+            let stack = TestStack::new(device_info, config);
             stack.init(ws, bdt_port, service_port).await;
             info!("init stack complete: user={}, stack=device2", name);
         });
@@ -107,8 +130,9 @@ impl TestZone {
             let bdt_port = self.bdt_port + 3;
             let service_port = self.service_port + 6;
             let name = self.user.name().to_owned();
+            let config = stack_config.to_owned();
             async_std::task::spawn(async move {
-                let stack = TestStack::new(device_info);
+                let stack = TestStack::new(device_info, config);
                 stack.init(ws, bdt_port, service_port).await;
                 info!("init stack complete: user={}, stack=standby_ood", name);
             })

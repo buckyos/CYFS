@@ -60,6 +60,8 @@ impl NDNInputTransformer {
             object_id: req.object_id,
             range: req.range,
             inner_path: req.inner_path,
+            context: req.context,
+            group: req.group,
         };
 
         let out_resp = self.processor.get_data(out_req).await?;
@@ -68,8 +70,9 @@ impl NDNInputTransformer {
             object_id: out_resp.object_id,
             owner_id: out_resp.owner_id,
             attr: out_resp.attr,
-            length: out_resp.length,
             range: out_resp.range,
+            group: out_resp.group,
+            length: out_resp.length,
             data: out_resp.data,
         };
 
@@ -107,6 +110,8 @@ impl NDNInputTransformer {
             object_id: req.object_id,
             range: req.range,
             inner_path: req.inner_path,
+            context: req.context,
+            group: req.group,
         };
 
         let out_resp = self.processor.get_shared_data(out_req).await?;
@@ -115,8 +120,9 @@ impl NDNInputTransformer {
             object_id: out_resp.object_id,
             owner_id: out_resp.owner_id,
             attr: out_resp.attr,
-            length: out_resp.length,
             range: out_resp.range,
+            group: out_resp.group,
+            length: out_resp.length,
             data: out_resp.data,
         };
 
@@ -257,6 +263,8 @@ impl NDNOutputTransformer {
             data_type: NDNDataType::Mem,
             range: req.range,
             inner_path: req.inner_path,
+            context: req.context,
+            group: req.group,
         };
 
         let in_resp = self.processor.get_data(in_req).await?;
@@ -266,6 +274,7 @@ impl NDNOutputTransformer {
             owner_id: in_resp.owner_id,
             attr: in_resp.attr,
             range: in_resp.range,
+            group: in_resp.group,
             length: in_resp.length,
             data: in_resp.data,
         };
@@ -306,6 +315,8 @@ impl NDNOutputTransformer {
             data_type: NDNDataType::SharedMem,
             range: req.range,
             inner_path: req.inner_path,
+            context: req.context,
+            group: req.group,
         };
 
         let in_resp = self.processor.get_data(in_req).await?;
@@ -315,6 +326,7 @@ impl NDNOutputTransformer {
             owner_id: in_resp.owner_id,
             attr: in_resp.attr,
             range: in_resp.range,
+            group: in_resp.group,
             length: in_resp.length,
             data: in_resp.data,
         };

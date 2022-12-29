@@ -53,7 +53,7 @@ async fn add_dir(_dec_id: &ObjectId) -> (DirId, FileId) {
         dirs: None,
     };
 
-    let ret = stack.trans().publish_file(&req).await;
+    let ret = stack.trans().publish_file(req).await;
     if ret.is_err() {
         error!("trans add_dir error! {}", ret.unwrap_err());
         unreachable!();

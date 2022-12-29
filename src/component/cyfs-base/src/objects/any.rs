@@ -197,6 +197,23 @@ impl AnyNamedObject {
         )
     }
 
+    pub fn body_prev_version(&self) -> &Option<HashValue> {
+        match_any_obj!(
+            self,
+            o,
+            {
+                if let Some(body) = o.body() {
+                    let hash_value = body.prev_version();
+                    hash_value
+                } else {
+                    &None
+                }
+            },
+            _chunk_id,
+            { &None }
+        )
+    }
+
     pub fn ref_objs(&self) -> Option<&Vec<ObjectLink>> {
         match_any_obj!(self, o, { o.desc().ref_objs().as_ref() }, chunk_id, {
             error!("chunk has no ref_objs: {}", chunk_id);
@@ -229,32 +246,26 @@ impl AnyNamedObject {
     // reset the object's body with the same obj_type object
     pub fn set_body_expect(&mut self, other: &Self) {
         assert_eq!(self.obj_type(), other.obj_type());
-        
+
         match self {
-            Self::Standard(o) => {
-                match other {
-                    Self::Standard(other) => {
-                        o.set_body_expect(other);
-                    }
-                    _ => unreachable!(),
+            Self::Standard(o) => match other {
+                Self::Standard(other) => {
+                    o.set_body_expect(other);
                 }
-            }
-            Self::Core(o) => {
-                match other {
-                    Self::Core(other) => {
-                        *o.body_mut() = other.body().to_owned();
-                    }
-                    _ => unreachable!(),
+                _ => unreachable!(),
+            },
+            Self::Core(o) => match other {
+                Self::Core(other) => {
+                    *o.body_mut() = other.body().to_owned();
                 }
-            }
-            Self::DECApp(o) => {
-                match other {
-                    Self::DECApp(other) => {
-                        *o.body_mut() = other.body().to_owned();
-                    }
-                    _ => unreachable!(),
+                _ => unreachable!(),
+            },
+            Self::DECApp(o) => match other {
+                Self::DECApp(other) => {
+                    *o.body_mut() = other.body().to_owned();
                 }
-            }
+                _ => unreachable!(),
+            },
         }
     }
 
@@ -325,8 +336,11 @@ impl AnyNamedObject {
 
         std::cmp::max(update_time, latest_sign_time)
     }
-}
 
+    pub fn nonce(&self) -> &Option<u128> {
+        match_any_obj!(self, o, { o.nonce() }, _chunk_id, { &None })
+    }
+}
 
 impl RawEncode for AnyNamedObject {
     fn raw_measure(&self, purpose: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
@@ -616,35 +630,29 @@ mod tests {
     }
 }
 
-
-
 macro_rules! any_for_standard_target {
     ($as_name:ident, $into_name:ident, $target:ident) => {
         impl AnyNamedObject {
             pub fn $as_name(&self) -> &$target {
                 match self {
-                    AnyNamedObject::Standard(s) => {
-                        match s {
-                            StandardObject::$target(f) => f,
-                            _ => unreachable!(),
-                        }
-                    }
+                    AnyNamedObject::Standard(s) => match s {
+                        StandardObject::$target(f) => f,
+                        _ => unreachable!(),
+                    },
                     _ => unreachable!(),
                 }
             }
             pub fn $into_name(self) -> $target {
                 match self {
-                    AnyNamedObject::Standard(s) => {
-                        match s {
-                            StandardObject::$target(f) => f,
-                            _ => unreachable!(),
-                        }
-                    }
+                    AnyNamedObject::Standard(s) => match s {
+                        StandardObject::$target(f) => f,
+                        _ => unreachable!(),
+                    },
                     _ => unreachable!(),
                 }
             }
         }
-    }
+    };
 }
 
 any_for_standard_target!(as_file, into_file, File);

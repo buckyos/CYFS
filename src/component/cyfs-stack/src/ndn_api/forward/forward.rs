@@ -1,9 +1,10 @@
 use super::super::data::*;
 use crate::ndn::*;
+use crate::ndn_api::context::TransContextHolder;
 use cyfs_base::*;
+use cyfs_bdt::StackGuard;
 use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
-use cyfs_bdt::StackGuard;
 
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -32,9 +33,9 @@ impl NDNForwardDataOutputProcessor {
     pub fn new(
         bdt_stack: StackGuard,
         chunk_manager: ChunkManagerRef,
-        target: DeviceId,
+        context: TransContextHolder,
     ) -> NDNInputProcessorRef {
-        let data_manager = TargetDataManager::new(bdt_stack, chunk_manager, target);
+        let data_manager = TargetDataManager::new(bdt_stack, chunk_manager, context);
         let ret = Self { data_manager };
 
         Arc::new(Box::new(ret))
@@ -43,9 +44,9 @@ impl NDNForwardDataOutputProcessor {
     // put_data目前只支持local
     async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
         let msg = format!(
-            "ndn put_data to target not support! chunk={}, target={}",
+            "ndn put_data to target not support! chunk={}, {}",
             req.object_id,
-            self.data_manager.target(),
+            self.data_manager.context(),
         );
         error!("{}", msg);
         Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
@@ -83,21 +84,12 @@ impl NDNForwardDataOutputProcessor {
             // no range param specified, will get the whole file
         }
 
-        let (data, length) = if need_process {
-            let meta = BdtDataRefererInfo {
-                // FIXME: set target field from o link
-                target: None, 
-                object_id: req.object_id.clone(),
-                inner_path: req.inner_path.clone(),
-                dec_id: req.common.source.get_opt_dec().cloned(),
-                req_path: req.common.req_path,
-                referer_object: req.common.referer_object,
-                flags: req.common.flags,
-            };
-
-            self.data_manager.get_file(&file, ranges, &meta).await?
+        let (data, length, group) = if need_process {
+            self.data_manager
+                .get_file(&req.common.source, &file, req.group.as_deref(), ranges)
+                .await?
         } else {
-            (zero_bytes_reader(), 0)
+            (zero_bytes_reader(), 0, None)
         };
 
         let resp = NDNGetDataInputResponse {
@@ -105,6 +97,7 @@ impl NDNForwardDataOutputProcessor {
             owner_id: file.desc().owner().to_owned(),
             attr: None,
             range: resp_range,
+            group,
             length,
             data,
         };
@@ -135,36 +128,25 @@ impl NDNForwardDataOutputProcessor {
                     // parse range param but empty, will get the whole chunk
                 }
             }
-        } else{
+        } else {
             // no range param specified, will get the whole chunk
         }
 
-        let (data, length) = if need_process {
-            let meta = BdtDataRefererInfo {
-                // FIXME: set target field from o link
-                target: None, 
-                object_id: req.object_id.clone(),
-                inner_path: None, // 直接获取chunk不存在inner_path
-                dec_id: req.common.source.get_opt_dec().cloned(),
-                req_path: req.common.req_path,
-                referer_object: req.common.referer_object,
-                flags: req.common.flags,
-            };
-
+        let (data, length, group) = if need_process {
             self.data_manager
-                .get_chunk(&chunk_id, ranges, &meta)
+                .get_chunk(&req.common.source, &chunk_id, req.group.as_deref(), ranges)
                 .await
                 .map_err(|e| {
                     error!(
-                        "ndn get_chunk from target failed! chunk={}, target={}, {}",
+                        "ndn get_chunk from target failed! chunk={}, {}, {}",
                         chunk_id,
-                        self.data_manager.target(),
+                        self.data_manager.context(),
                         e
                     );
                     e
                 })?
         } else {
-            (zero_bytes_reader(), 0)
+            (zero_bytes_reader(), 0, None)
         };
 
         let resp = NDNGetDataInputResponse {
@@ -172,6 +154,7 @@ impl NDNForwardDataOutputProcessor {
             owner_id: None,
             attr: None,
             range: resp_range,
+            group,
             length,
             data,
         };
@@ -190,10 +173,10 @@ impl NDNForwardDataOutputProcessor {
                 // 如果是dir，那么必须指定目标文件的inner_path
                 if req.inner_path.is_none() {
                     let msg = format!(
-                        "ndn get_chunk from {:?} but inner_path is empty! id={}, target={}",
+                        "ndn get_chunk from {:?} but inner_path is empty! id={}, {}",
                         req.object_id.obj_type_code(),
                         req.object_id,
-                        self.data_manager.target(),
+                        self.data_manager.context(),
                     );
                     error!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
@@ -202,9 +185,10 @@ impl NDNForwardDataOutputProcessor {
                 self.get_file(req).await
             }
             code @ _ => {
-                let msg = format!(
-                    "ndn get_chunk only support chunk/file/dir object type! id={}, target={}, type={:?}",
-                    req.object_id, self.data_manager.target(), code,
+                let msg =
+                    format!(
+                    "ndn get_chunk only support chunk/file/dir object type! id={}, {}, type={:?}",
+                    req.object_id, self.data_manager.context(), code,
                 );
                 error!("{}", msg);
                 Err(BuckyError::new(BuckyErrorCode::UnSupport, msg))

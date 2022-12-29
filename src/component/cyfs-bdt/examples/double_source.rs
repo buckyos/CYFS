@@ -78,7 +78,7 @@ async fn main() {
         let context = SingleDownloadContext::new("".to_owned());
         context.add_source(DownloadSource {
             target: rn_stack.local_const().clone(), 
-            encode_desc: ChunkEncodeDesc::reverse_stream(None, None), 
+            codec_desc: ChunkCodecDesc::reverse_stream(None, None), 
         });
 
         let (_, reader) = download_chunk(

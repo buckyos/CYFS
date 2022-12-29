@@ -1,8 +1,7 @@
 use std::{
-    sync::{RwLock},
+    sync::{RwLock, Arc, Weak},
 };
-use async_std::{
-    sync::Arc, 
+use async_std::{ 
     task, 
 };
 use cyfs_base::*;
@@ -17,11 +16,9 @@ use super::super::{
 };
 use super::{
     cache::*, 
-    storage::{ChunkReader}, 
 };
 
 struct DownloadingState {
-    cache: ChunkCache, 
     session: Option<DownloadSession>
 }
 
@@ -31,28 +28,39 @@ enum StateImpl {
     Finished
 }
 
-
-
 struct ChunkDowloaderImpl { 
     stack: WeakStack, 
-    chunk: ChunkId, 
     context: MultiDownloadContext, 
+    cache: ChunkCache, 
     state: RwLock<StateImpl>, 
 }
 
 #[derive(Clone)]
 pub struct ChunkDownloader(Arc<ChunkDowloaderImpl>);
 
-// 不同于Uploader，Downloader可以被多个任务复用；
+pub struct WeakChunkDownloader(Weak<ChunkDowloaderImpl>);
+
+impl WeakChunkDownloader {
+    pub fn to_strong(&self) -> Option<ChunkDownloader> {
+        Weak::upgrade(&self.0).map(|arc| ChunkDownloader(arc))
+    }
+}
+
+impl ChunkDownloader {
+    pub fn to_weak(&self) -> WeakChunkDownloader {
+        WeakChunkDownloader(Arc::downgrade(&self.0))
+    }
+}
+
+
 impl ChunkDownloader {
     pub fn new(
         stack: WeakStack, 
-        chunk: ChunkId, 
-        chunk_cache: ChunkCache,  
+        cache: ChunkCache,
     ) -> Self {
         let downloader = Self(Arc::new(ChunkDowloaderImpl {
-            stack: stack.clone(), 
-            chunk, 
+            stack, 
+            cache, 
             state: RwLock::new(StateImpl::Loading), 
             context: MultiDownloadContext::new(), 
         }));
@@ -61,61 +69,42 @@ impl ChunkDownloader {
             let downloader = downloader.clone();
             
             task::spawn(async move {
-                let stack = Stack::from(&downloader.0.stack);
-                
-                match downloader.load(
-                    stack.ndn().chunk_manager().store().clone_as_reader(), 
-                    stack.ndn().chunk_manager().raw_caches()).await {
-                    Ok(cache) => {
-                        let _ = chunk_cache.stream().load(true, cache).unwrap();
-                        let state = &mut *downloader.0.state.write().unwrap();
-                        match &state {
-                            StateImpl::Loading => {
-                                *state = StateImpl::Finished;
-                            },
-                            _ => unreachable!()
+                let finished = downloader.cache().wait_loaded().await;
+                {   
+                    let state = &mut *downloader.0.state.write().unwrap();
+                    if let StateImpl::Loading = state {
+                        if finished {
+                            *state = StateImpl::Finished;
+                        } else {
+                            *state = StateImpl::Downloading(DownloadingState { 
+                                session: None 
+                            });
                         }
-                    },
-                    Err(_err) => {
-                        let state = &mut *downloader.0.state.write().unwrap();
-                        match &state {
-                            StateImpl::Loading => {
-                                *state = StateImpl::Downloading(DownloadingState { 
-                                    cache: chunk_cache, 
-                                    session: None 
-                                });
-                            },
-                            _ => unreachable!()
-                        }
+                    } else {
+                        unreachable!()
                     }
                 }
+               
+                if !finished {
+                    downloader.on_drain(0);
+                }
+                
             });
         }
         
         downloader
     }
 
-    async fn load(&self, storage: Box<dyn ChunkReader>, raw_cache: &RawCacheManager) -> BuckyResult<Box<dyn RawCache>> {
-        let reader = storage.get(self.chunk()).await?;
-
-        let cache = raw_cache.alloc(self.chunk().len()).await;
-        let writer = cache.async_writer().await?;
-
-        let written = async_std::io::copy(reader, writer).await? as usize;
-        
-        if written != self.chunk().len() {
-            Err(BuckyError::new(BuckyErrorCode::InvalidInput, ""))
-        } else {
-            Ok(cache)
-        }
-    }
-
     pub fn context(&self) -> &MultiDownloadContext {
         &self.0.context
     }
 
+    pub fn cache(&self) -> &ChunkCache {
+        &self.0.cache
+    }
+
     pub fn chunk(&self) -> &ChunkId {
-        &self.0.chunk
+        self.cache().chunk()
     }
 
     pub fn calc_speed(&self, when: Timestamp) -> u32 {
@@ -162,10 +151,10 @@ impl ChunkDownloader {
     }
 
     pub fn on_drain(&self, _: u32) -> u32 {
-        let (session, cache) = {
+        let (session, start) = {
             match &*self.0.state.read().unwrap() {
-                StateImpl::Downloading(downloading) => (downloading.session.clone(), Some(downloading.cache.clone())), 
-                _ => (None, None)
+                StateImpl::Downloading(downloading) => (downloading.session.clone(), true), 
+                _ => (None, false)
             }
         };
         if let Some(session) = session {
@@ -188,28 +177,23 @@ impl ChunkDownloader {
             }
         } 
           
-        if cache.is_none() {
+        if !start {
             return 0;
         }
 
-        let cache = cache.unwrap();
+        let cache = &self.0.cache;
         let stack = Stack::from(&self.0.stack);
-        let mut sources = self.context().sources_of(|_| true, 1);
+        let mut sources = self.context().sources_of(&DownloadSourceFilter::default(), 1);
 
-        if sources.len() > 0 {
-            if !cache.stream().loaded() {
-                let raw_cache = stack.ndn().chunk_manager().raw_caches().alloc_mem(self.chunk().len());
-                let _ = cache.stream().load(false, raw_cache);
-            }
-           
+        if sources.len() > 0 { 
             let source = sources.pop_front().unwrap();
             let channel = stack.ndn().channel_manager().create_channel(&source.target).unwrap();
             
-           
+            let context_id = source.context_id;
             let mut source: DownloadSourceWithReferer<DeviceId> = source.into();
-            source.encode_desc = match &source.encode_desc {
-                ChunkEncodeDesc::Unknown => ChunkEncodeDesc::Stream(None, None, None).fill_values(self.chunk()), 
-                ChunkEncodeDesc::Stream(..) => source.encode_desc.fill_values(self.chunk()), 
+            source.codec_desc = match &source.codec_desc {
+                ChunkCodecDesc::Unknown => ChunkCodecDesc::Stream(None, None, None).fill_values(self.chunk()), 
+                ChunkCodecDesc::Stream(..) => source.codec_desc.fill_values(self.chunk()), 
                 _ => unimplemented!()
             };
 
@@ -234,6 +218,7 @@ impl ChunkDownloader {
                         }
                     };
                     if start {
+                        let _ = self.context().context_of(&context_id).map(|context| context.on_new_session(&session));
                         session.start();
                         session.cur_speed()
                     } else if let Some(session) = exists {

@@ -40,9 +40,23 @@ pub enum ProcessAction {
 pub enum ProcessStatusCode {
     NotExists = 0,
     Running = 1,
-    RunningOther = -1,
+    RunningOther = 2,
 }
 
+impl ProcessStatusCode {
+    pub fn is_running_other(exit_code: i32) -> bool {
+        if exit_code == Self::RunningOther as i32 {
+            true
+        } else {
+            // compatible with old return values, which is -1 on windows and 255 on nix
+            if exit_code == -1 || exit_code == 255 {
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
 pub fn prepare_args<'a, 'b>(args: App<'a, 'b>) -> App<'a, 'b> {
     args.arg(
         Arg::with_name("start")

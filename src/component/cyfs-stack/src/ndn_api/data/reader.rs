@@ -5,10 +5,10 @@ use cyfs_util::cache::{
     GetChunkRequest, GetTrackerPositionRequest, NamedDataCache, RemoveTrackerPositionRequest,
     TrackerCache, TrackerDirection, TrackerPostion,
 };
-use cyfs_util::{ChunkReaderWithHash, ReaderWithLimit, AsyncReadWithSeek};
+use cyfs_util::{AsyncReadWithSeek, ChunkReaderWithHash, ReaderWithLimit};
 
 use async_std::fs::OpenOptions;
-use futures::{AsyncReadExt, AsyncSeekExt};
+use futures::AsyncSeekExt;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::sync::Arc;
@@ -77,10 +77,14 @@ impl ChunkStoreReader {
 
         // async_std::Take not support seek, so use ReaderWithLimit instead
         // let limit_reader = Box::new(file.take(chunk.len() as u64));
-        let limit_reader = Box::new(ReaderWithLimit::new(chunk.len() as u64, Box::new(file)).await?);
+        let limit_reader =
+            Box::new(ReaderWithLimit::new(chunk.len() as u64, Box::new(file)).await?);
 
-        let hash_reader =
-            ChunkReaderWithHash::new(path.to_string_lossy().to_string(), chunk.to_owned(), limit_reader);
+        let hash_reader = ChunkReaderWithHash::new(
+            path.to_string_lossy().to_string(),
+            chunk.to_owned(),
+            limit_reader,
+        );
 
         Ok(Box::new(hash_reader))
     }
@@ -88,7 +92,10 @@ impl ChunkStoreReader {
     async fn read_impl(
         &self,
         chunk: &ChunkId,
-    ) -> BuckyResult<(Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>, TrackerPostion)> {
+    ) -> BuckyResult<(
+        Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>,
+        TrackerPostion,
+    )> {
         let request = GetTrackerPositionRequest {
             id: chunk.to_string(),
             direction: Some(TrackerDirection::Store),
@@ -97,10 +104,7 @@ impl ChunkStoreReader {
         if ret.len() == 0 {
             let msg = format!("chunk not exists: {}", chunk);
             warn!("{}", msg);
-            Err(BuckyError::new(
-                BuckyErrorCode::NotFound,
-                msg,
-            ))
+            Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
         } else {
             for c in ret {
                 let mut read_indeed = true;
@@ -108,11 +112,13 @@ impl ChunkStoreReader {
                     //FIXME
                     TrackerPostion::File(path) => {
                         info!("will read chunk from file: chunk={}, file={}", chunk, path);
-                        Self::read_chunk(chunk, Path::new(path), 0).await 
+                        Self::read_chunk(chunk, Path::new(path), 0).await
                     }
                     TrackerPostion::FileRange(fr) => {
-                        info!("will read chunk from file range: chunk={}, file={}, range={}:{}", 
-                            chunk, fr.path, fr.range_begin, fr.range_end);
+                        info!(
+                            "will read chunk from file range: chunk={}, file={}, range={}:{}",
+                            chunk, fr.path, fr.range_begin, fr.range_end
+                        );
                         Self::read_chunk(chunk, Path::new(fr.path.as_str()), fr.range_begin).await
                     }
                     TrackerPostion::ChunkManager => {
@@ -132,10 +138,7 @@ impl ChunkStoreReader {
                             chunk, value,
                         );
                         error!("{}", msg);
-                        Err(BuckyError::new(
-                            BuckyErrorCode::InvalidFormat,
-                            msg,
-                        ))
+                        Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
                     }
                 };
 
@@ -173,6 +176,14 @@ impl ChunkStoreReader {
         }
     }
 
+    pub async fn get_chunk(
+        &self,
+        chunk: &ChunkId,
+    ) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
+        let (reader, _) = self.read_impl(chunk).await?;
+        Ok(reader)
+    }
+    
     /*
     async fn read_to_buf(chunk: &ChunkId, path: &Path, offset: u64) -> BuckyResult<Vec<u8>> {
         let mut reader = Self::read_chunk(chunk, path, offset).await?;
@@ -251,41 +262,11 @@ impl ChunkReader for ChunkStoreReader {
         }
     }
 
-    async fn read(
+    async fn get(
         &self,
         chunk: &ChunkId,
     ) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
         let (reader, _) = self.read_impl(chunk).await?;
         Ok(reader)
-    }
-
-    async fn get(&self, chunk: &ChunkId) -> BuckyResult<Arc<Vec<u8>>> {
-        let (mut reader, pos) = self.read_impl(chunk).await?;
-
-        let mut content = Vec::with_capacity(chunk.len());
-        let read = reader.read_to_end(&mut content).await?;
-
-        if read != chunk.len() {
-            let msg = format!(
-                "read {} bytes from chunk reader {} but chunk len is {}",
-                read,
-                chunk,
-                chunk.len()
-            );
-            error!("{}", msg);
-
-            let _ = self
-                .tracker
-                .remove_position(&RemoveTrackerPositionRequest {
-                    id: chunk.to_string(),
-                    direction: Some(TrackerDirection::Store),
-                    pos: Some(pos),
-                })
-                .await;
-
-            return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
-        }
-
-        Ok(Arc::new(content))
     }
 }

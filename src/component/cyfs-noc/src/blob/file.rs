@@ -6,11 +6,18 @@ use std::path::{Path, PathBuf};
 
 pub struct FileBlobStorage {
     root: PathBuf,
+    #[cfg(target_os = "windows")]
+    upgrade: super::old_base36::FileBlobStorageUpgrade,
 }
 
 impl FileBlobStorage {
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            #[cfg(target_os = "windows")]
+            upgrade: super::old_base36::FileBlobStorageUpgrade::new(root.clone()),
+
+            root,
+        }
     }
 
     async fn get_full_path(&self, object_id: &ObjectId, auto_create: bool) -> BuckyResult<PathBuf> {
@@ -28,7 +35,14 @@ impl FileBlobStorage {
         }
 
         let (tmp, first) = hash_str.split_at(hash_str.len() - len);
-        let (_, second) = tmp.split_at(tmp.len() - len);
+        let second = tmp.split_at(tmp.len() - len).1;
+
+        /* Do not use the following reserved names as filenames: CON、PRN、AUX、NUL、COM1、COM2、COM3、COM4、COM5、COM6、COM7、COM8、COM9、LPT1、LPT2、LPT3、LPT4、LPT5、 LPT6、LPT7、LPT8、 LPT9 */
+        #[cfg(target_os = "windows")]
+        let second = match second {
+            "con" | "aux" | "nul" | "prn" => tmp.split_at(tmp.len() - (len + 1)).1,
+            _ => second,
+        };
 
         let path = self.root.join(format!("{}/{}", first, second));
         if auto_create && !path.exists() {
@@ -79,10 +93,7 @@ impl FileBlobStorage {
     async fn write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> std::io::Result<()> {
         let path = path.as_ref().to_owned();
         let contents = contents.as_ref().to_owned();
-        async_std::task::spawn_blocking(move || {
-            Self::write_sync(&path, contents)
-        })
-        .await
+        async_std::task::spawn_blocking(move || Self::write_sync(&path, contents)).await
     }
 }
 
@@ -91,19 +102,16 @@ impl BlobStorage for FileBlobStorage {
     async fn put_object(&self, data: NONObjectInfo) -> BuckyResult<()> {
         let path = self.get_full_path(&data.object_id, true).await?;
 
-        Self::write(&path, &data.object_raw)
-            .await
-            .map_err(|e| {
-                let msg = format!(
-                    "save object blob to file error! path={}, {}",
-                    path.display(),
-                    e
-                );
-                error!("{}", msg);
-                BuckyError::new(BuckyErrorCode::IoError, msg)
-            })?;
+        Self::write(&path, &data.object_raw).await.map_err(|e| {
+            let msg = format!(
+                "save object blob to file error! path={}, {}",
+                path.display(),
+                e
+            );
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
 
-        
         info!(
             "save object blob to file success! object={}",
             data.object_id
@@ -114,7 +122,16 @@ impl BlobStorage for FileBlobStorage {
     async fn get_object(&self, object_id: &ObjectId) -> BuckyResult<Option<NONObjectInfo>> {
         let path = self.get_full_path(object_id, false).await?;
         if !path.exists() {
-            return Ok(None);
+            #[cfg(target_os = "windows")]
+            {
+                if !self.upgrade.try_update(&path, object_id) {
+                    return Ok(None);
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                return Ok(None);
+            }
         }
 
         let info = self.load_object(&path).await?;

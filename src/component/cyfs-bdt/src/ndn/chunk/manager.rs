@@ -1,6 +1,6 @@
 use std::{
-    collections::{BTreeMap}, 
-    sync::{RwLock},
+    collections::{BTreeMap, LinkedList}, 
+    sync::{RwLock, Mutex},
 };
 use async_std::{
     io::Cursor
@@ -22,19 +22,40 @@ pub struct Config {
     pub raw_caches: RawCacheConfig
 }
 
-#[derive(Clone)]
-pub struct DownloadingChunkCache {
-    cache: ChunkCache, 
-    downloader: ChunkDownloader
+struct ChunkDownloaders {
+    mergable: Option<WeakChunkDownloader>, 
+    unmergable: LinkedList<WeakChunkDownloader>
 }
 
-impl DownloadingChunkCache {
-    pub fn cache(&self) -> &ChunkCache{
-        &self.cache
+impl ChunkDownloaders {
+    fn create_downloader(&mut self, stack: &WeakStack, cache: ChunkCache, mergable: bool) -> ChunkDownloader {
+        if mergable {
+            if let Some(weak) = self.mergable.as_ref() {
+                if let Some(downloader) = weak.to_strong() {
+                    return downloader;
+                } 
+            }
+            let downloader = ChunkDownloader::new(stack.clone(), cache);
+            self.mergable = Some(downloader.to_weak());
+            downloader
+        } else {
+            let downloader = ChunkDownloader::new(stack.clone(), cache);
+            self.unmergable.push_back(downloader.to_weak());
+            downloader
+        }
     }
+}
 
-    pub fn downloader(&self) -> &ChunkDownloader {
-        &self.downloader
+struct Downloaders {
+    chunk_entries: BTreeMap<ChunkId, ChunkDownloaders>
+}
+
+impl Downloaders {
+    fn create_downloader(&mut self, stack: &WeakStack, cache: ChunkCache, mergable: bool) -> ChunkDownloader {
+        self.chunk_entries.entry(cache.chunk().clone()).or_insert(ChunkDownloaders {
+            mergable: None, 
+            unmergable: Default::default()
+        }).create_downloader(stack, cache, mergable)
     }
 }
 
@@ -43,7 +64,8 @@ pub struct ChunkManager {
     stack: WeakStack, 
     store: Box<dyn ChunkReader>, 
     raw_caches: RawCacheManager, 
-    chunk_caches: RwLock<BTreeMap<ChunkId, DownloadingChunkCache>>, 
+    caches: Mutex<BTreeMap<ChunkId, WeakChunkCache>>, 
+    downloaders: RwLock<Downloaders>
 }
 
 impl std::fmt::Display for ChunkManager {
@@ -96,7 +118,8 @@ impl ChunkManager {
             stack: weak_stack, 
             store: Box::new(EmptyChunkWrapper::new(store)), 
             raw_caches: RawCacheManager::new(stack.config().ndn.chunk.raw_caches.clone()), 
-            chunk_caches: RwLock::new(Default::default())
+            caches: Mutex::new(Default::default()), 
+            downloaders: RwLock::new(Downloaders { chunk_entries: Default::default() })
         }
     }
 
@@ -108,24 +131,23 @@ impl ChunkManager {
         &self.raw_caches
     }
 
-    pub fn create_cache(&self, chunk: &ChunkId) -> DownloadingChunkCache {
-        let mut caches = self.chunk_caches.write().unwrap();
-        if let Some(cache) = caches.get(chunk).cloned() {
-            cache
-        } else {
-            let cache = ChunkCache::new(chunk.clone());
-            let downloader = ChunkDownloader::new(self.stack.clone(), chunk.clone(), cache.clone());
-            let downlading_cache = DownloadingChunkCache {
-                cache, 
-                downloader
-            };
-            caches.insert(chunk.clone(), downlading_cache.clone());
-            downlading_cache
-        }
+    pub fn create_cache(&self, chunk: &ChunkId) -> ChunkCache {
+        let mut caches = self.caches.lock().unwrap();
+        if let Some(weak) = caches.get(chunk) {
+            if let Some(cache) = weak.to_strong().clone() {
+                return cache;
+            }
+            caches.remove(chunk);
+        } 
+        let cache = ChunkCache::new(self.stack.clone(), chunk.clone());
+        caches.insert(chunk.clone(), cache.to_weak());
+        cache
     }
 
-    pub fn cache_of(&self, chunk: &ChunkId) -> Option<DownloadingChunkCache> {
-        self.chunk_caches.read().unwrap().get(chunk).cloned()
+    pub fn create_downloader(&self, chunk: &ChunkId, mergable: bool) -> ChunkDownloader {
+        let cache = self.create_cache(chunk);
+        let mut downloaders = self.downloaders.write().unwrap();
+        downloaders.create_downloader(&self.stack, cache, mergable)
     }
 
 }

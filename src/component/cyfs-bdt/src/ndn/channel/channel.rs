@@ -260,7 +260,7 @@ impl Channel {
         &self,  
         chunk: ChunkId, 
         session_id: TempSeq, 
-        piece_type: ChunkEncodeDesc, 
+        piece_type: ChunkCodecDesc, 
         encoder: Box<dyn ChunkEncoder>
     ) -> BuckyResult<UploadSession> {
         let tunnel = self.default_tunnel()?;

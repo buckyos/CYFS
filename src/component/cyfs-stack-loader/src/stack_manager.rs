@@ -1,4 +1,3 @@
-use crate::cyfs_loader_config::CyfsServiceLoaderConfig;
 use crate::stack_info::StackInfo;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DeviceId};
 use cyfs_bdt::StackGuard;
@@ -21,9 +20,45 @@ impl StackManagerImpl {
     }
 
     fn load(cfg_node: toml::Value) -> BuckyResult<Vec<StackInfo>> {
-        let list = CyfsServiceLoaderConfig::root_to_list(cfg_node)?;
+        let list = Self::root_to_list(cfg_node)?;
 
         Self::load_list(list)
+    }
+
+    // convert single node mode to vec mode
+    // 支持一级的table和两级的数组两种模式
+    fn root_to_list(cfg_node: toml::Value) -> BuckyResult<Vec<toml::value::Table>> {
+        match cfg_node {
+            toml::Value::Table(cfg) => Ok(vec![cfg]),
+            toml::Value::Array(list) => {
+                let mut result = vec![];
+                for cfg_node in list {
+                    match cfg_node {
+                        toml::Value::Table(cfg) => {
+                            result.push(cfg);
+                        }
+                        _ => {
+                            let msg = format!(
+                                "stack config list item invalid format! config={:?}",
+                                cfg_node
+                            );
+                            error!("{}", msg);
+                            return Err(BuckyError::from((BuckyErrorCode::InvalidFormat, msg)));
+                        }
+                    }
+                }
+
+                Ok(result)
+            }
+            _ => {
+                let msg = format!(
+                    "stack config root node invalid format! config={:?}",
+                    cfg_node
+                );
+                error!("{}", msg);
+                Err(BuckyError::from((BuckyErrorCode::InvalidFormat, msg)))
+            }
+        }
     }
 
     fn load_list(stack_node_list: Vec<toml::value::Table>) -> BuckyResult<Vec<StackInfo>> {

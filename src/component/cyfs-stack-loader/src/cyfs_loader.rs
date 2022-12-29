@@ -15,15 +15,16 @@ impl CyfsServiceLoader {
     }
 
     pub async fn load(config: CyfsServiceLoaderConfig) -> BuckyResult<()> {
+        let node = config.into();
         info!(
             "non-service config: {}",
-            toml::to_string(&config.node).unwrap()
+            toml::to_string(&node).unwrap()
         );
 
         Self::prepare_env().await?;
 
         // 加载协议栈
-        if let Err(e) = STACK_MANAGER.load(config.node).await {
+        if let Err(e) = STACK_MANAGER.load(node).await {
             error!("load stack from config failed: {}", e);
             return Err(e);
         }
@@ -33,13 +34,15 @@ impl CyfsServiceLoader {
 
     // 直接加载，不初始化env，外部需要保证已经调用了prepare_env
     pub async fn direct_load(config: CyfsServiceLoaderConfig) -> BuckyResult<()> {
+        let node = config.into();
+
         info!(
             "non-service config: {}",
-            toml::to_string(&config.node).unwrap()
+            toml::to_string(&node).unwrap()
         );
 
         // 加载协议栈
-        if let Err(e) = STACK_MANAGER.load(config.node).await {
+        if let Err(e) = STACK_MANAGER.load(node).await {
             error!("load stack from config failed: {}", e);
             return Err(e);
         }

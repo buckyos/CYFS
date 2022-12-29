@@ -25,15 +25,19 @@ impl NDNRequestorHelper {
 
         let range = RequestorHelper::decode_optional_json_header(resp, cyfs_base::CYFS_DATA_RANGE)?;
 
+        let group = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            resp,
+            cyfs_base::CYFS_TASK_GROUP,
+        )?;
+
         let length: u64 =
             RequestorHelper::decode_header(resp, http_types::headers::CONTENT_LENGTH)?;
         let ret = NDNGetDataOutputResponse {
             object_id,
             owner_id,
             attr,
-
             range,
-
+            group,
             length,
             data,
         };
@@ -110,7 +114,11 @@ impl NDNRequestor {
         );
 
         if !com_req.referer_object.is_empty() {
-            RequestorHelper::insert_headers_with_encoding(http_req, cyfs_base::CYFS_REFERER_OBJECT, &com_req.referer_object);
+            RequestorHelper::insert_headers_with_encoding(
+                http_req,
+                cyfs_base::CYFS_REFERER_OBJECT,
+                &com_req.referer_object,
+            );
         }
 
         http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());
@@ -256,6 +264,18 @@ impl NDNRequestor {
             req.inner_path.as_deref(),
         );
 
+        RequestorHelper::encode_opt_header_with_encoding(
+            &mut http_req,
+            cyfs_base::CYFS_CONTEXT,
+            req.context.as_deref(),
+        );
+
+        RequestorHelper::encode_opt_header_with_encoding(
+            &mut http_req,
+            cyfs_base::CYFS_TASK_GROUP,
+            req.group.as_deref(),
+        );
+
         if let Some(ref range) = req.range {
             http_req.insert_header("Range", range.encode_string());
         }
@@ -307,6 +327,10 @@ impl NDNRequestor {
         let owner_id = RequestorHelper::decode_optional_header(resp, cyfs_base::CYFS_OWNER_ID)?;
 
         let range = RequestorHelper::decode_optional_json_header(resp, cyfs_base::CYFS_DATA_RANGE)?;
+        let group = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            resp,
+            cyfs_base::CYFS_TASK_GROUP,
+        )?;
 
         let length: u64 =
             RequestorHelper::decode_header(resp, http_types::headers::CONTENT_LENGTH)?;
@@ -314,11 +338,9 @@ impl NDNRequestor {
         let ret = NDNGetDataOutputResponse {
             object_id,
             owner_id,
-
             attr,
-
             range,
-
+            group,
             length,
             data,
         };
