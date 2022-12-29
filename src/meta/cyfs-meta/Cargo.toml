@@ -11,7 +11,7 @@ description = "Rust cyfs-meta package"
 
 [dependencies]
 async-trait = "0.1.53"
-cyfs-base = { path = "../../component/cyfs-base"}
+cyfs-base = { path = "../../component/cyfs-base", features = ["sqlx-error"]}
 cyfs-base-meta = { path = "../../component/cyfs-base-meta"}
 cyfs-core = { path = "../../component/cyfs-core"}
 cyfs-util = { path = "../../component/cyfs-util"}
@@ -39,6 +39,6 @@ primitive-types = { version = "0.9", default-features = false, features = [
     "rlp",
 ] }
 base58 = "0.2.0"
-sqlx = { version = "0.5.11", features = ["runtime-async-std-rustls", "sqlite", "any"] }
+sqlx = { version = "0.5.11", features = ["runtime-async-std-rustls", "sqlite", "chrono"] }
 
 async-std = { version = "1.11", features = ["unstable"]}

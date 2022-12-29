@@ -34,8 +34,9 @@ use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use cyfs_base::*;
-use cyfs_bdt::{DeviceCache, Stack, StackGuard, StackOpenParams};
-use cyfs_chunk_cache::ChunkManager;
+
+use cyfs_bdt::{DeviceCache, Stack, StackGuard, StackOpenParams, SnStatus};
+use cyfs_chunk_cache::{ChunkManager};
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
@@ -762,23 +763,34 @@ impl CyfsStackImpl {
             bdt_stack.local_device_id()
         );
         let begin = std::time::Instant::now();
-        let net_listener = bdt_stack.net_manager().listener().clone();
-        let ret = net_listener.wait_online().await;
-        if let Err(e) = ret {
-            error!(
-                "bdt stack wait sn online failed! {}, during={}ms, {}",
-                bdt_stack.local_device_id(),
-                begin.elapsed().as_millis(),
-                e
-            );
-        } else {
-            info!(
-                "bdt stack sn online success! {}, during={}ms",
-                bdt_stack.local_device_id(),
-                begin.elapsed().as_millis(),
-            );
+        match bdt_stack.sn_client().ping().wait_online().await {
+            Err(e) => {
+                error!(
+                    "bdt stack wait sn online failed! {}, during={}ms, {}",
+                    bdt_stack.local_device_id(),
+                    begin.elapsed().as_millis(),
+                    e
+                );
+            },
+            Ok(status) => {
+                match status {
+                    SnStatus::Online => {
+                        info!(
+                            "bdt stack sn online success! {}, during={}ms",
+                            bdt_stack.local_device_id(),
+                            begin.elapsed().as_millis(),
+                        );
+                    },
+                    SnStatus::Offline => {
+                        error!(
+                            "bdt stack wait sn online failed! {}, during={}ms, offline",
+                            bdt_stack.local_device_id(),
+                            begin.elapsed().as_millis(),
+                        );
+                    }
+                }
+            }
         }
-
         Ok((bdt_stack, event))
     }
 
@@ -901,9 +913,17 @@ impl CyfsStackImpl {
     pub async fn reset_network(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {
         info!("will reset bdt stack endpoints: {:?}", endpoints);
 
-        if let Err(e) = self.bdt_stack.reset(&endpoints).await {
-            error!("reset bdt stack error: {}", e);
-            return Err(e);
+        match self.bdt_stack.reset_endpoints(&endpoints).await.wait_online().await {
+            Err(err) => {
+                error!("reset bdt stack error: {}", err);
+                return Err(err);
+            }, 
+            Ok(status) => {
+                if status == SnStatus::Offline {
+                    error!("reset bdt stack error: offline");
+                    return Err(BuckyError::new(BuckyErrorCode::Failed, "offline"));
+                }
+            }
         }
 
         if let Some(client) = &self.zone_role_manager.sync_client() {
@@ -1068,7 +1088,7 @@ impl CyfsStack {
     }
 
     pub fn local_device(&self) -> Device {
-        self.stack.bdt_stack.local()
+        self.stack.bdt_stack.sn_client().ping().default_local()
     }
 
     pub fn acl_manager(&self) -> &AclManager {
