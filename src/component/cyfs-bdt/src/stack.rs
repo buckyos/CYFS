@@ -11,9 +11,6 @@ use async_std::{
     future, 
 };
 use cyfs_base::*;
-use cyfs_util::{
-    cache::*
-};
 
 use crate::{
     types::*,
