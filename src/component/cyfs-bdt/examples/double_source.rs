@@ -75,10 +75,10 @@ async fn main() {
         let path = dir.join(chunkid.to_string().as_str());
         local_chunk_writer(&chunkid, path).write(Cursor::new(chunk_data)).await.unwrap();
 
-        let context = SingleDownloadContext::new("".to_owned());
+        let context = SampleDownloadContext::new("".to_owned());
         context.add_source(DownloadSource {
             target: rn_stack.local_const().clone(), 
-            encode_desc: ChunkEncodeDesc::reverse_stream(None, None), 
+            codec_desc: ChunkCodecDesc::reverse_stream(None, None), 
         });
 
         let (_, reader) = download_chunk(

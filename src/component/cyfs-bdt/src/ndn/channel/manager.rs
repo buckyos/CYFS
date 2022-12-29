@@ -1,6 +1,6 @@
 use std::{
     sync::RwLock, 
-    collections::BTreeMap, 
+    collections::{LinkedList, BTreeMap}, 
 };
 use async_std::{
     sync::Arc, 
@@ -17,16 +17,50 @@ use super::super::{
     types::*
 };
 use super::{
-    channel::Channel,
+    channel::{Channel},
 };
+
+struct ChannelGuard {
+    reserving: Option<Timestamp>, 
+    channel: Channel
+}
+
+impl ChannelGuard {
+    fn create(&mut self) -> Channel {
+        if self.reserving.is_some() {
+            self.reserving = None;
+        }
+        self.channel.clone()
+    }
+
+    fn get(&self) -> Channel {
+        self.channel.clone()
+    }
+
+    fn check(&mut self, when: Timestamp) -> bool {
+        if let Some(expire_at) = self.reserving {
+            if when > expire_at {
+                false
+            } else {
+                true
+            }
+        } else {
+            if self.channel.ref_count() == 1 {
+                self.reserving = Some(when + self.channel.config().reserve_timeout.as_micros() as u64);
+            }
+            true
+        }
+    }
+}
 
 struct Channels {
     download_history_speed: HistorySpeed, 
     download_cur_speed: u32, 
     upload_history_speed: HistorySpeed, 
     upload_cur_speed: u32, 
-    entries: BTreeMap<DeviceId, Channel>, 
+    entries: BTreeMap<DeviceId, ChannelGuard>, 
 }
+
 
 struct ManagerImpl {
     stack: WeakStack, 
@@ -70,7 +104,7 @@ impl ChannelManager {
     }
 
     pub fn channel_of(&self, remote: &DeviceId) -> Option<Channel> {
-        self.0.channels.read().unwrap().entries.get(remote).cloned()
+        self.0.channels.read().unwrap().entries.get(remote).map(|guard| guard.get())
     }
 
     pub fn create_channel(&self, remote_const: &DeviceDesc) -> BuckyResult<Channel> {
@@ -79,14 +113,15 @@ impl ChannelManager {
         let tunnel = stack.tunnel_manager().create_container(remote_const)?;
         let mut channels = self.0.channels.write().unwrap();
 
-        Ok(channels.entries.get(&remote).map(|c| c.clone()).map_or_else(|| {
+        Ok(channels.entries.get_mut(&remote).map(|guard| guard.create())
+        .map_or_else(|| {
             info!("{} create channel on {}", self, remote);
 
             let channel = Channel::new(
                 self.0.stack.clone(), 
                 tunnel, 
                 self.0.command_tunnel.clone());
-            channels.entries.insert(remote, channel.clone());
+            channels.entries.insert(remote, ChannelGuard { reserving: None, channel: channel.clone() });
 
             channel
         }, |c| c))
@@ -94,19 +129,26 @@ impl ChannelManager {
 
     pub fn on_schedule(&self, when: Timestamp) {
         let mut channels = self.0.channels.write().unwrap();
-
         let mut download_cur_speed = 0;
         let mut download_session_count = 0;
         let mut upload_cur_speed = 0;
         let mut upload_session_count = 0;
 
-        for channel in channels.entries.values() {
-            let (d, u) = channel.calc_speed(when);
+        let mut remove = LinkedList::new();
+        for (remote, guard) in &mut channels.entries {
+            let (d, u) = guard.channel.calc_speed(when);
             download_cur_speed += d;
             upload_cur_speed += u;
 
-            download_session_count += channel.download_session_count();
-            upload_session_count += channel.upload_session_count();
+            download_session_count += guard.channel.download_session_count();
+            upload_session_count += guard.channel.upload_session_count();
+
+            if !guard.check(when) {
+                remove.push_back(remote.clone());
+            }
+        }
+        for remote in remove {
+            channels.entries.remove(&remote);
         }
 
         channels.download_cur_speed = download_cur_speed;
@@ -143,7 +185,7 @@ impl ChannelManager {
     }
 
     pub(crate) fn on_time_escape(&self, now: Timestamp) {
-        let channels: Vec<Channel> = self.0.channels.read().unwrap().entries.values().cloned().collect();
+        let channels: Vec<Channel> = self.0.channels.read().unwrap().entries.values().map(|guard| guard.get()).collect();
         for channel in channels {
             channel.on_time_escape(now);
         }

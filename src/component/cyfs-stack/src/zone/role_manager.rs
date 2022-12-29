@@ -5,11 +5,10 @@ use crate::events::RouterEventsManager;
 use crate::interface::{SyncListenerManager, SyncListenerManagerParams};
 use crate::meta::MetaCacheRef;
 use crate::root_state_api::GlobalStateLocalService;
-use crate::sync::*;
+use crate::{sync::*, NamedDataComponents};
 use crate::util_api::UtilService;
 use cyfs_base::*;
 use cyfs_bdt::{DeviceCache, StackGuard};
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_core::*;
 use cyfs_lib::*;
 use cyfs_util::*;
@@ -453,23 +452,23 @@ impl ZoneRoleManager {
         }
     }
 
-    pub async fn init(
+    pub(crate) async fn init(
         &self,
         root_state: &GlobalStateLocalService,
         bdt_stack: &StackGuard,
         device_manager: &Box<dyn DeviceCache>,
         router_handlers: &RouterHandlerManagerProcessorRef,
         util_service: &Arc<UtilService>,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: NamedDataComponents,
     ) -> BuckyResult<()> {
         let current_zone_info = self.zone_manager.get_current_info().await?;
         match current_zone_info.zone_role {
             ZoneRole::ActiveOOD => {
-                self.start_sync_server(root_state, bdt_stack, device_manager)
+                self.start_sync_server(root_state, bdt_stack, device_manager, named_data_components)
                     .await?;
             }
             ZoneRole::StandbyOOD => {
-                self.start_sync_server(root_state, bdt_stack, device_manager)
+                self.start_sync_server(root_state, bdt_stack, device_manager, named_data_components.clone())
                     .await?;
 
                 self.start_sync_client(
@@ -477,14 +476,14 @@ impl ZoneRoleManager {
                     bdt_stack,
                     device_manager,
                     util_service,
-                    chunk_manager,
+                    named_data_components,
                     true,
                     true,
                 )
                 .await?;
             }
             ZoneRole::ReservedOOD => {
-                self.start_sync_server(root_state, bdt_stack, device_manager)
+                self.start_sync_server(root_state, bdt_stack, device_manager, named_data_components.clone())
                     .await?;
 
                 self.start_sync_client(
@@ -492,7 +491,7 @@ impl ZoneRoleManager {
                     bdt_stack,
                     device_manager,
                     util_service,
-                    chunk_manager,
+                    named_data_components,
                     true,
                     false,
                 )
@@ -504,7 +503,7 @@ impl ZoneRoleManager {
                     bdt_stack,
                     device_manager,
                     util_service,
-                    chunk_manager,
+                    named_data_components,
                     true,
                     false,
                 )
@@ -558,6 +557,7 @@ impl ZoneRoleManager {
         root_state: &GlobalStateLocalService,
         bdt_stack: &StackGuard,
         device_manager: &Box<dyn DeviceCache>,
+        named_data_components: NamedDataComponents,
     ) -> BuckyResult<()> {
         let current_zone_info = self.zone_manager.get_current_info().await?;
 
@@ -575,6 +575,7 @@ impl ZoneRoleManager {
             self.zone_manager.clone(),
             root_state.clone(),
             self.noc.clone(),
+            named_data_components,
             bdt_stack.clone(),
             cyfs_base::NON_STACK_SYNC_BDT_VPORT,
             device_manager.clone_cache(),
@@ -595,7 +596,7 @@ impl ZoneRoleManager {
         bdt_stack: &StackGuard,
         device_manager: &Box<dyn DeviceCache>,
         util_service: &Arc<UtilService>,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: NamedDataComponents,
         enable_ping: bool,
         enable_sync: bool,
     ) -> BuckyResult<()> {
@@ -619,7 +620,7 @@ impl ZoneRoleManager {
             device_manager.clone_cache(),
             self.noc.clone(),
             self.acl_manager.clone(),
-            chunk_manager,
+            named_data_components,
         )
         .await?;
 

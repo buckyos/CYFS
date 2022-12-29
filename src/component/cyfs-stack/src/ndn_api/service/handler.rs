@@ -16,6 +16,8 @@ struct NDNGetDataUrlParams {
     object_id: ObjectId,
     inner_path: Option<String>,
     action: Option<NDNAction>,
+    context: Option<String>,
+    group: Option<String>,
 }
 
 #[derive(Clone)]
@@ -58,6 +60,8 @@ impl NDNRequestHandler {
         let mut action = None;
         let mut req_path = None;
         let mut object_id = None;
+        let mut context = None;
+        let mut group = None;
 
         for (k, v) in req.request.url().query_pairs() {
             match k.as_ref() {
@@ -88,6 +92,12 @@ impl NDNRequestHandler {
                 }
                 cyfs_base::CYFS_REQ_PATH => {
                     req_path = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
+                }
+                cyfs_base::CYFS_CONTEXT => {
+                    context = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
+                }
+                cyfs_base::CYFS_TASK_GROUP => {
+                    group = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
                 }
                 _ => {
                     warn!("unknown ndn url param: {}={}", k, v);
@@ -130,6 +140,8 @@ impl NDNRequestHandler {
             action,
             object_id: object_id.unwrap(),
             inner_path,
+            context,
+            group,
         };
 
         Ok(ret)
@@ -278,6 +290,12 @@ impl NDNRequestHandler {
             http_resp.insert_header(cyfs_base::CYFS_ATTRIBUTES, attr.flags().to_string());
         }
 
+        RequestorHelper::encode_opt_header_with_encoding(
+            &mut http_resp,
+            cyfs_base::CYFS_TASK_GROUP,
+            resp.group.as_deref(),
+        );
+
         if http_resp.status().is_success() {
             let reader = BufReader::new(resp.data);
             let body = tide::Body::from_reader(reader, Some(resp.length as usize));
@@ -332,6 +350,14 @@ impl NDNRequestHandler {
             &req.request,
             cyfs_base::CYFS_INNER_PATH,
         )?;
+        let context = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            &req.request,
+            cyfs_base::CYFS_CONTEXT,
+        )?;
+        let group = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            &req.request,
+            cyfs_base::CYFS_TASK_GROUP,
+        )?;
 
         // check if range header applied
         let range = RequestorHelper::decode_optional_header(&req.request, "Range")?
@@ -345,6 +371,9 @@ impl NDNRequestHandler {
                 data_type: NDNDataType::Mem,
                 range,
                 inner_path,
+
+                context,
+                group,
             }
         } else {
             NDNGetDataInputRequest {
@@ -354,6 +383,9 @@ impl NDNRequestHandler {
                 data_type: NDNDataType::SharedMem,
                 range,
                 inner_path,
+
+                context,
+                group,
             }
         };
 
@@ -476,6 +508,8 @@ impl NDNRequestHandler {
             data_type: NDNDataType::Mem,
             range,
             inner_path: get_data_params.inner_path,
+            context: get_data_params.context,
+            group: get_data_params.group,
         };
 
         info!("recv get_data as download request: {}", get_req);

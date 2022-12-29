@@ -1,10 +1,10 @@
 use cyfs_base_meta::*;
 use cyfs_base::*;
-use crate::archive_storage::ArchiveStorageRef;
 use crate::state_storage::StorageRef;
 use crate::chain::chain_storage::ChainStorageRef;
 use std::path::{Path, PathBuf};
 use crate::chain::{ChainStorage};
+use crate::stat::Stat;
 
 pub fn to_meta_data(tx: &MetaTx, receipt: &Receipt) -> BuckyResult<TxMetaData> {
     let mut trans_list = Vec::<(String, u8, String)>::new();
@@ -41,29 +41,38 @@ pub fn to_meta_data(tx: &MetaTx, receipt: &Receipt) -> BuckyResult<TxMetaData> {
 
 pub struct Chain {
     storage: ChainStorageRef,
+    stat: Option<Stat>
 }
 
 impl Chain {
-    pub async fn new(dir: PathBuf, block: Option<Block>, storage: StorageRef, archive_storage: ArchiveStorageRef) -> BuckyResult<Self> {
-        let chain_storage = ChainStorage::reset(dir, block, storage, archive_storage).await?;
+    pub async fn new(dir: PathBuf, block: Option<Block>, storage: StorageRef, stat: Option<Stat>) -> BuckyResult<Self> {
+        let chain_storage = ChainStorage::reset(dir, block, storage).await?;
         Ok(Self {
-            storage: chain_storage
+            storage: chain_storage,
+            stat
         })
     }
 
-    pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, trace: bool, archive_storage: fn (path: &Path, trace: bool) -> ArchiveStorageRef) -> BuckyResult<Self> {
-        let chain_storage = ChainStorage::load(dir, new_storage, trace, archive_storage).await?;
+    pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, stat: Option<Stat>) -> BuckyResult<Self> {
+        let chain_storage = ChainStorage::load(dir, new_storage).await?;
+        if let Some(stat) = &stat {
+            let _ = stat.desc_stat(chain_storage.state_storage().create_state(true).await).await;
+        }
         let ret = chain_storage.get_tip_info().await;
         if ret.is_ok() {
-            let (_tip_header, _, _) = ret.unwrap();
+            let (_tip_header, _) = ret.unwrap();
         }
         Ok(Self {
-            storage: chain_storage
+            storage: chain_storage,
+            stat
         })
     }
 
     pub fn get_chain_storage(&self) -> &ChainStorageRef {
         &self.storage
+    }
+    pub fn get_stat(&self) -> Option<Stat> {
+        self.stat.clone()
     }
     pub async fn add_mined_block(&self, block: &Block) -> BuckyResult<()> {
         self.storage.add_mined_block(block).await

@@ -255,14 +255,15 @@ impl HttpTcpListener {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct HttpTcpListenerManager {
-    server_list: Mutex<Vec<Arc<Mutex<HttpTcpListener>>>>,
+    server_list: Arc<Mutex<Vec<Arc<Mutex<HttpTcpListener>>>>>,
 }
 
 impl HttpTcpListenerManager {
     pub fn new() -> HttpTcpListenerManager {
         HttpTcpListenerManager {
-            server_list: Mutex::new(Vec::new()),
+            server_list: Arc::new(Mutex::new(Vec::new())),
         }
     }
 

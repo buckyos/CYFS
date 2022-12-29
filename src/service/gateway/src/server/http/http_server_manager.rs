@@ -4,7 +4,7 @@ use super::http_tcp_listener::HttpTcpListenerManager;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 
 use std::collections::hash_map::{Entry, HashMap};
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 
 pub(super) struct HttpServer {
     id: String,
@@ -17,11 +17,12 @@ impl HttpServer {
     }
 }
 
+#[derive(Clone)]
 pub struct HttpServerManager {
     bdt_listener_manager: HttpBdtListenerManager,
     tcp_listener_manager: HttpTcpListenerManager,
 
-    named_server_list: Mutex<HashMap<String, HttpServer>>,
+    named_server_list: Arc<Mutex<HashMap<String, HttpServer>>>,
 }
 
 impl HttpServerManager {
@@ -29,7 +30,7 @@ impl HttpServerManager {
         HttpServerManager {
             bdt_listener_manager: HttpBdtListenerManager::new(),
             tcp_listener_manager: HttpTcpListenerManager::new(),
-            named_server_list: Mutex::new(HashMap::new()),
+            named_server_list: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

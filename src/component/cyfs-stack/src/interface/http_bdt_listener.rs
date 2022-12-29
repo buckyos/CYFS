@@ -155,13 +155,15 @@ impl ObjectHttpBdtListener {
             return Err(e);
         }
 
-        let begin = std::time::Instant::now();
+        let stream_begin = std::time::Instant::now();
         let device_id = remote_addr.0.to_string();
         let device_id_str = device_id.as_str();
         let remote_addr_ref = &remote_addr;
     
         let opts = async_h1::ServerOptions::default();
         let ret = async_h1::accept_with_opts(stream, |mut req| async move {
+            let begin = std::time::Instant::now();
+
             info!(
                 "recv bdt http request: source={}, seq={:?}, method={}, url={}, len={:?}",
                 device_id_str,
@@ -217,7 +219,7 @@ impl ObjectHttpBdtListener {
         if let Err(e) = ret {
             error!(
                 "bdt http accept error, err={}, addr={}, remote={:?}, seq={:?}, during={}",
-                e, self.0.listen, remote_addr, seq, begin.elapsed().as_millis(),
+                e, self.0.listen, remote_addr, seq, stream_begin.elapsed().as_millis(),
             );
             return Err(BuckyError::from(e));
         }

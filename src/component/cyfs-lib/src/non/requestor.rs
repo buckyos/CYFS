@@ -41,7 +41,12 @@ impl NONRequestorHelper {
         let object_id: ObjectId = RequestorHelper::decode_header(req, cyfs_base::CYFS_OBJECT_ID)?;
 
         let mut info = Self::decode_object_info_from_body(object_id, req).await?;
-        info.decode_and_verify()?;
+        if !info.is_empty() {
+            info.decode_and_verify()?;
+        } else {
+            // for chunks and data object_id 
+        }
+        
         Ok(info)
     }
 

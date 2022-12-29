@@ -2,7 +2,7 @@ use crate::config::*;
 use crate::meta::*;
 use crate::name::*;
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
+use cyfs_bdt::{StackGuard, SnStatus};
 use cyfs_lib::*;
 use cyfs_util::SNDirParser;
 
@@ -327,11 +327,21 @@ impl SNConfigManager {
         if let Some(bdt_stack) = self.bdt_stack.get() {
             let sn_list = list.into_iter().map(|v| v.1).collect();
 
-            if let Err(e) = bdt_stack.reset_sn_list(sn_list).await {
-                error!("reset bdt sn list error! {}", e);
-            } else {
-                info!("reset bdt sn list success!");
-            }
+            match bdt_stack.reset_sn_list(sn_list).wait_online().await {
+                Err(err) => {
+                    error!("reset bdt sn list error! {}", err);
+                },
+                Ok(status) => {
+                    match status {
+                        SnStatus::Online => {
+                            info!("reset bdt sn list success!");
+                        }, 
+                        SnStatus::Offline => {
+                            error!("reset bdt sn list error! offline");
+                        }
+                    }
+                }  
+            } 
         }
     }
 

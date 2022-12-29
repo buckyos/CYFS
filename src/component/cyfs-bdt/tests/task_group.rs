@@ -37,7 +37,7 @@ async fn one_task_group() {
             .await
             .unwrap();
 
-    let context = SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]);
+    let context = SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]);
     {
         let (chunk_len, chunk_data) = utils::random_mem(1024, 1024);
         let chunk_hash = hash_data(&chunk_data[..]);

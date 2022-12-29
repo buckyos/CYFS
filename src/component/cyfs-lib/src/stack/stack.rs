@@ -551,6 +551,18 @@ impl SharedCyfsStack {
         )
     }
 
+    pub fn root_state_accessor_stub(
+        &self,
+        target: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
+    ) -> GlobalStateAccessorStub {
+        GlobalStateAccessorStub::new(
+            self.services.root_state_accessor.clone_processor(),
+            target,
+            target_dec_id,
+        )
+    }
+
     // root_state meta
     pub fn root_state_meta(&self) -> &GlobalStateMetaRequestor {
         &self.services.root_state_meta
@@ -581,6 +593,19 @@ impl SharedCyfsStack {
         )
     }
 
+    pub fn local_cache_accessor_stub(
+        &self,
+        target: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
+    ) -> GlobalStateAccessorStub {
+        GlobalStateAccessorStub::new(
+            self.services.local_cache_accessor.clone_processor(),
+            target,
+            target_dec_id,
+        )
+    }
+
+    // local_cache meta
     pub fn local_cache_meta(&self) -> &GlobalStateMetaRequestor {
         &self.services.local_cache_meta
     }

@@ -91,7 +91,7 @@ fn decode_param(param: &ParamType, data: &[u8], offset: usize) -> Result<DecodeR
 	match *param {
 		ParamType::Address => {
 			let slice = peek_32_bytes(data, offset)?;
-			let address = ObjectId::clone_from_slice(&slice);
+			let address = ObjectId::clone_from_slice(&slice).unwrap();
 			let result = DecodeResult { token: Token::Address(address), new_offset: offset + 32 };
 			Ok(result)
 		}
