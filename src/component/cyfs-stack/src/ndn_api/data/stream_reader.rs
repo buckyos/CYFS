@@ -16,7 +16,11 @@ pub(super) struct ChunkListTaskRangesReader {
 }
 
 impl ChunkListTaskRangesReader {
-    pub fn new(task_id: String, ranges: Vec<Range<u64>>, reader: Box<dyn ChunkReader + Unpin + Send + Sync + 'static>,) -> Self {
+    pub fn new(
+        task_id: String,
+        ranges: Vec<Range<u64>>,
+        reader: Box<dyn ChunkReader + Unpin + Send + Sync + 'static>,
+    ) -> Self {
         Self {
             task_id,
             ranges,

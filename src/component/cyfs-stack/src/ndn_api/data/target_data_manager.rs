@@ -1,4 +1,5 @@
 use super::super::context::TransContextHolder;
+use super::cache::ChunkListCacheReader;
 use super::stream_reader::*;
 use crate::ndn::TaskGroupHelper;
 use cyfs_base::*;
@@ -82,10 +83,17 @@ impl TargetDataManager {
             e
         })?;
 
+        let reader = ChunkListCacheReader::new(
+            self.chunk_manager.clone(),
+            file_id.to_string(),
+            Box::new(reader),
+        );
+
         let resp = if let Some(ranges) = ranges {
             assert!(ranges.len() > 0);
 
-            let reader = ChunkListTaskRangesReader::new(file_id.to_string(), ranges, Box::new(reader));
+            let reader =
+                ChunkListTaskRangesReader::new(file_id.to_string(), ranges, Box::new(reader));
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         } else {
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
@@ -141,10 +149,17 @@ impl TargetDataManager {
             e
         })?;
 
+        let reader = ChunkListCacheReader::new(
+            self.chunk_manager.clone(),
+            chunk_id.to_string(),
+            Box::new(reader),
+        );
+
         let resp = if let Some(ranges) = ranges {
             assert!(ranges.len() > 0);
 
-            let reader = ChunkListTaskRangesReader::new(chunk_id.to_string(), ranges, Box::new(reader));
+            let reader =
+                ChunkListTaskRangesReader::new(chunk_id.to_string(), ranges, Box::new(reader));
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         } else {
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
