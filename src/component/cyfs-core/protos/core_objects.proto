@@ -364,14 +364,13 @@ message GroupPropsalDecideParam {
 message HotstuffBlockQc {
     bytes block_id = 1;
     uint64 round = 2;
-    uint64 dummy_round = 3;
 
     message VoteSignature {
         bytes voter = 1;
         bytes signature = 2;
     }
 
-    repeated VoteSignature votes = 4;
+    repeated VoteSignature votes = 3;
 }
 
 message HotstuffTimeout {
@@ -415,7 +414,7 @@ message GroupConsensusBlockBodyContent {
 
     repeated Proposal proposals = 1;
 
-    optional HotstuffBlockQc qc = 2;
+    HotstuffBlockQc qc = 2;
     optional HotstuffTimeout tc = 3;
 }
 

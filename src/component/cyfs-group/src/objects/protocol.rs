@@ -3,8 +3,9 @@ pub mod protos {
 }
 
 use cyfs_base::*;
-use cyfs_core::{GroupRPath, HotstuffBlockQC};
+use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, HotstuffBlockQC};
 use serde::Serialize;
+use sha2::Digest;
 
 #[derive(Clone, RawEncode, RawDecode)]
 pub(crate) enum HotstuffMessage {
@@ -33,9 +34,43 @@ pub(crate) enum ProtocolAddress {
 pub(crate) struct HotstuffBlockQCVote {
     pub block_id: ObjectId,
     pub round: u64,
-    pub dummy_round: u64,
     pub voter: ObjectId,
     pub signature: Signature,
+}
+
+impl HotstuffBlockQCVote {
+    pub async fn new(
+        block: &GroupConsensusBlock,
+        local_id: ObjectId,
+        signer: &RsaCPUObjectSigner,
+    ) -> BuckyResult<Self> {
+        let block_id = block.named_object().desc().object_id();
+        let round = block.round();
+        let signature = signer
+            .sign(
+                Self::hash_content(&block_id, round).as_slice(),
+                &SignatureSource::RefIndex(0),
+            )
+            .await?;
+
+        Ok(Self {
+            block_id,
+            round,
+            voter: local_id,
+            signature,
+        })
+    }
+
+    fn hash(&self) -> HashValue {
+        Self::hash_content(&self.block_id, self.round)
+    }
+
+    fn hash_content(block_id: &ObjectId, round: u64) -> HashValue {
+        let mut sha256 = sha2::Sha256::new();
+        sha256.input(block_id.as_slice());
+        sha256.input(round.to_le_bytes());
+        sha256.result().into()
+    }
 }
 
 impl ProtobufTransform<crate::protos::HotstuffBlockQcVote> for HotstuffBlockQCVote {
@@ -45,7 +80,6 @@ impl ProtobufTransform<crate::protos::HotstuffBlockQcVote> for HotstuffBlockQCVo
             signature: Signature::raw_decode(value.signature.as_slice())?.0,
             block_id: ObjectId::raw_decode(value.block_id.as_slice())?.0,
             round: value.round,
-            dummy_round: value.dummy_round,
         })
     }
 }
@@ -55,7 +89,6 @@ impl ProtobufTransform<&HotstuffBlockQCVote> for crate::protos::HotstuffBlockQcV
         let ret = crate::protos::HotstuffBlockQcVote {
             block_id: value.block_id.to_vec()?,
             round: value.round,
-            dummy_round: value.dummy_round,
             voter: value.voter.to_vec()?,
             signature: value.signature.to_vec()?,
         };

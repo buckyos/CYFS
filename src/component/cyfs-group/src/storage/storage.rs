@@ -100,22 +100,27 @@ impl Storage {
     pub async fn push_block(
         &mut self,
         block: GroupConsensusBlock,
-        proposals: &[&GroupProposal],
-    ) -> BuckyResult<()> {
+    ) -> BuckyResult<Option<(&GroupConsensusBlock, Vec<GroupConsensusBlock>)>> {
         /**
          * 1. 把block存入prepares
          * 2. 把block.qc.block从prepares存入pre-commits
          * 3. 把block.qc.block.qc.block从pre-commits存入链上
-         * 4. 把淘汰block清理掉
+         * 4. 把其他分叉block清理掉
+         * 5. 追加去重proposal
+         * 6. 如果header有变更，返回新的header和被清理的分叉blocks
          */
         unimplemented!()
     }
 
-    pub async fn last_vote_round(&self) -> u64 {
+    pub fn last_vote_round(&self) -> u64 {
         unimplemented!()
     }
 
     pub async fn set_last_vote_round(&mut self, round: u64) -> BuckyResult<()> {
+        if round <= self.last_vote_round {
+            return Ok(());
+        }
+
         unimplemented!()
     }
 
