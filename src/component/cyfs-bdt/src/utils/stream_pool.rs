@@ -238,7 +238,7 @@ impl StreamPoolConnector {
             let mut remain = LinkedList::new();
             let mut remove = LinkedList::new();
             let mut streams = self.0.stream_list.lock().unwrap();
-            for (stream, last_used) in streams.pop_back() {
+            while let Some((stream, last_used)) = streams.pop_back() {
                 match stream.state() {
                     StreamState::Establish(remote) => {
                         if remote <= remote_timestamp {
@@ -286,7 +286,7 @@ impl StreamPoolConnector {
             let mut remain = LinkedList::new();
             let mut remove = LinkedList::new();
             let mut streams = self.0.stream_list.lock().unwrap();
-            for (stream, last_used) in streams.pop_front() {
+            while let Some((stream, last_used)) = streams.pop_front() {
                 match stream.state() {
                     StreamState::Establish(_) => {
                         if now > last_used && Duration::from_micros(now - last_used) > self.0.timeout {
