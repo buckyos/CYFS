@@ -9,14 +9,19 @@ mod zone;
 extern crate log;
 
 use cyfs_debug::*;
+use cyfs_lib::BrowserSanboxMode;
 use loader::*;
+use zone::CyfsStackInsConfig;
 
+use std::str::FromStr;
 use clap::{App, Arg};
-
 
 async fn main_run() {
     let default_root = cyfs_util::default_cyfs_root_path();
-    let cyfs_root_help = format!("Specify cyfs root dir, default is {}", default_root.display());
+    let cyfs_root_help = format!(
+        "Specify cyfs root dir, default is {}",
+        default_root.display()
+    );
 
     let app = App::new("zone-simulator")
         .version(cyfs_base::get_version())
@@ -35,11 +40,18 @@ async fn main_run() {
                 .long("random")
                 .takes_value(false)
                 .help("Generate random random mnemonic"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("cyfs_root")
                 .long("cyfs-root")
                 .takes_value(true)
                 .help(&cyfs_root_help),
+        )
+        .arg(
+            Arg::with_name("browser-mode")
+                .long("browser-mode")
+                .takes_value(true)
+                .help("The browser sanbox mode, default is none"),
         );
 
     let matches = app.get_matches();
@@ -72,14 +84,32 @@ async fn main_run() {
     // 首先加载助记词
     profile::TEST_PROFILE.load();
 
-    let (user1, user2) = TestLoader::load_users(profile::TEST_PROFILE.get_mnemonic(), true, dump).await;
+    let (user1, user2) =
+        TestLoader::load_users(profile::TEST_PROFILE.get_mnemonic(), true, dump).await;
     profile::TEST_PROFILE.save_desc();
 
     if dump {
         std::process::exit(0);
     }
 
-    TestLoader::load_stack(user1, user2).await;
+    let browser_mode = match matches.value_of("browser-mode") {
+        Some(v) => Some(
+            BrowserSanboxMode::from_str(v)
+                .map_err(|e| {
+                    println!("invalid browser mode param! {}, {}", v, e);
+                    std::process::exit(-1);
+                })
+                .unwrap(),
+        ),
+        None => None,
+    };
+
+    let mut stack_config = CyfsStackInsConfig::default();
+    if let Some(mode) = browser_mode {
+        stack_config.browser_mode = mode;
+    }
+
+    TestLoader::load_stack(&stack_config, user1, user2).await;
 
     async_std::future::pending::<u8>().await;
 }

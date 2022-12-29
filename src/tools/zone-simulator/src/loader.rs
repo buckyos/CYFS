@@ -103,12 +103,12 @@ impl TestLoader {
         stack
     }
 
-    pub async fn load_default() {
+    pub async fn load_default(stack_config: &CyfsStackInsConfig) {
         let (user1, user2) = TestLoader::load_users(TEST_PROFILE.get_mnemonic(), true, false).await;
 
         TEST_PROFILE.save_desc();
 
-        TestLoader::load_stack(user1, user2).await;
+        TestLoader::load_stack(stack_config, user1, user2).await;
     }
 
     pub async fn load_users(mnemonic: &str, as_default: bool, dump: bool) -> (TestUser, TestUser) {
@@ -131,29 +131,37 @@ impl TestLoader {
 
         if dump {
             let etc_dir = cyfs_util::get_service_config_dir("zone-simulator");
-            info!("dump user1 people & device .desc and .sec to {}", etc_dir.join("user1").display());
+            info!(
+                "dump user1 people & device .desc and .sec to {}",
+                etc_dir.join("user1").display()
+            );
             user1.dump(&etc_dir.join("user1"));
-            info!("dump user1 people & device .desc and .sec to {}", etc_dir.join("user2").display());
+            info!(
+                "dump user1 people & device .desc and .sec to {}",
+                etc_dir.join("user2").display()
+            );
             user2.dump(&etc_dir.join("user2"));
         }
 
         (user1, user2)
     }
 
-    pub async fn load_stack(user1: TestUser, user2: TestUser) {
+    pub async fn load_stack(stack_config: &CyfsStackInsConfig, user1: TestUser, user2: TestUser) {
         use rand::Rng;
 
         let port: u16 = rand::thread_rng().gen_range(30000, 50000);
 
         // 初始化协议栈
+        let config = stack_config.to_owned();
         let t1 = async_std::task::spawn(async move {
             let zone = TestZone::new(true, port, 21000, user1);
-            zone.init().await;
+            zone.init(&config).await;
         });
 
+        let config = stack_config.to_owned();
         let t2 = async_std::task::spawn(async move {
             let zone = TestZone::new(true, port + 10, 21010, user2);
-            zone.init().await;
+            zone.init(&config).await;
         });
 
         ::futures::join!(t1, t2);
@@ -164,7 +172,6 @@ impl TestLoader {
     fn init_user_objects(user: &TestUser) {
         let mut list = Vec::new();
 
-        
         let obj = NONObjectInfo {
             object_id: user.people.desc().calculate_id(),
             object_raw: user.people.to_vec().unwrap(),

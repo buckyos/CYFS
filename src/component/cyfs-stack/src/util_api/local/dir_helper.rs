@@ -1,21 +1,24 @@
-use cyfs_lib::*;
 use cyfs_base::*;
+use cyfs_lib::*;
 
 use std::collections::HashMap;
 
 pub(crate) struct DirHelper;
 
 impl DirHelper {
-    async fn get_value(noc: &NamedObjectCacheRef, source: &RequestSourceInfo, object_id: ObjectId) -> BuckyResult<Option<Vec<u8>>> {
-        let resp = 
-            noc
+    async fn get_value(
+        noc: &NamedObjectCacheRef,
+        source: &RequestSourceInfo,
+        object_id: ObjectId,
+    ) -> BuckyResult<Option<Vec<u8>>> {
+        let resp = noc
             .get_object(&NamedObjectCacheGetObjectRequest {
                 source: source.to_owned(),
                 object_id,
                 last_access_rpath: None,
             })
             .await?;
-            
+
         if resp.is_none() {
             Ok(None)
         } else {
@@ -23,7 +26,13 @@ impl DirHelper {
         }
     }
 
-    async fn put_value(noc: &NamedObjectCacheRef, source: &RequestSourceInfo, object_id: ObjectId, object_raw: Vec<u8>) -> BuckyResult<()> {
+    async fn put_value(
+        noc: &NamedObjectCacheRef,
+        source: &RequestSourceInfo,
+        object_id: ObjectId,
+        object_raw: Vec<u8>,
+        access: AccessString,
+    ) -> BuckyResult<()> {
         let object = NONObjectInfo::new_from_object_raw(object_raw)?;
 
         let req = NamedObjectCachePutObjectRequest {
@@ -32,7 +41,7 @@ impl DirHelper {
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
             last_access_rpath: None,
-            access_string: None,
+            access_string: Some(access.value()),
         };
 
         noc.put_object(&req).await.map_err(|e| {
@@ -42,24 +51,31 @@ impl DirHelper {
         Ok(())
     }
 
-
-    pub async fn build_zip_dir_from_object_map(source: &RequestSourceInfo, noc: &NamedObjectCacheRef, map_cache: ObjectMapOpEnvCacheRef, object_map_id: &ObjectId) -> BuckyResult<ObjectId> {
-        let root_map = map_cache.get_object_map(object_map_id).await?;
-        if root_map.is_none() {
+    pub async fn build_zip_dir_from_object_map(
+        source: &RequestSourceInfo,
+        noc: &NamedObjectCacheRef,
+        map_cache: ObjectMapOpEnvCacheRef,
+        object_map_id: &ObjectId,
+    ) -> BuckyResult<ObjectId> {
+        let ret = map_cache.get_object_map_ex(object_map_id).await?;
+        if ret.is_none() {
             let msg = format!("object map {} is not exist", object_map_id.to_string());
             log::error!("{}", msg.as_str());
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        let owner = root_map.as_ref().unwrap().lock().await.desc().owner().clone();
+        let item = ret.unwrap();
+        let owner = item.object.lock().await.desc().owner().clone();
 
         let mut bodys = HashMap::new();
         let mut entrys = HashMap::new();
 
         let mut it = ObjectMapPathIterator::new(
-            root_map.unwrap(),
+            item.object,
             map_cache,
-            ObjectMapPathIteratorOption::new(true, false)).await;
+            ObjectMapPathIteratorOption::new(true, false),
+        )
+        .await;
         while !it.is_end() {
             let list = it.next(10).await?;
             for item in list.list.into_iter() {
@@ -77,12 +93,13 @@ impl DirHelper {
                             #[cfg(target_os = "windows")]
                             let inner_file_path = inner_file_path.replace("\\", "/");
                             // 内部路径不能以/开头
-                            let inner_file_path = inner_file_path.trim_start_matches('/').to_owned();
+                            let inner_file_path =
+                                inner_file_path.trim_start_matches('/').to_owned();
 
-                            entrys.insert(inner_file_path,
-                                          InnerNodeInfo::new(
-                                              Attributes::new(0),
-                                              InnerNode::ObjId(object_id)));
+                            entrys.insert(
+                                inner_file_path,
+                                InnerNodeInfo::new(Attributes::new(0), InnerNode::ObjId(object_id)),
+                            );
                         }
                     } else {
                         let msg = format!("object {} is not file", object_id.to_string());
@@ -106,9 +123,8 @@ impl DirHelper {
                 }),
                 bodys,
             )
-                .create_time(0)
-                .build()
-
+            .create_time(0)
+            .build()
         } else {
             Dir::new(
                 Attributes::new(0),
@@ -118,14 +134,19 @@ impl DirHelper {
                 }),
                 bodys,
             )
-                .create_time(0)
-                .owner(owner.unwrap())
-                .build()
+            .create_time(0)
+            .owner(owner.unwrap())
+            .build()
         };
 
         let dir_id = dir.desc().calculate_id();
 
-        Self::put_value(noc, source, dir_id.clone(), dir.to_vec()?).await?;
+        info!(
+            "build dir from object map: object map={}, dir={}, access={}",
+            object_map_id, dir_id, item.access
+        );
+
+        Self::put_value(noc, source, dir_id.clone(), dir.to_vec()?, item.access).await?;
 
         Ok(dir_id)
     }

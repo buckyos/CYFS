@@ -3,7 +3,7 @@ use crate::dapp::DApp;
 use crate::docker_api::*;
 use crate::package::AppPackage;
 use cyfs_base::*;
-use cyfs_client::NamedCacheClient;
+use cyfs_client::{NamedCacheClient, NamedCacheClientConfig};
 use cyfs_core::{DecApp, DecAppId, DecAppObj, SubErrorCode};
 use cyfs_lib::*;
 use cyfs_util::*;
@@ -71,16 +71,27 @@ impl AppController {
         owner: ObjectId,
     ) -> BuckyResult<()> {
         let sn_list = get_sn_list(&shared_stack).await.unwrap_or_else(|e| {
-            error!("get sn list from runtime err {}, use built-in sn list", e);
+            error!("get sn list from stack err {}, use built-in sn list", e);
             get_builtin_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect()
         });
+
+        let area = shared_stack.local_device_id().object_id().info().into_area();
+        info!("get area from stack: {:?}", area);
 
         let sn_hash = hash_data(&sn_list.to_vec().unwrap());
         *self.sn_hash.write().unwrap() = sn_hash;
         self.shared_stack = Some(shared_stack);
         self.owner = Some(owner);
-        let mut named_cache_client = NamedCacheClient::new();
-        named_cache_client.init(None, None, None, Some(sn_list)).await?;
+
+        let mut config = NamedCacheClientConfig::default();
+        config.sn_list = Some(sn_list);
+        config.area = area;
+        config.conn_strategy = cyfs_client::ConnStrategy::TcpFirst;
+        config.timeout = Duration::from_secs(10*60);
+        config.tcp_file_manager_port = 5312;
+        config.tcp_chunk_manager_port = 5310;
+        let mut named_cache_client = NamedCacheClient::new(config);
+        named_cache_client.init().await?;
         self.named_cache_client = Some(named_cache_client);
         Ok(())
     }
@@ -593,7 +604,7 @@ mod tests {
 
     async fn get_app_controller() -> AppController {
         let stack = get_stack().await;
-        let named_cache_client = NamedCacheClient::new();
+        let named_cache_client = NamedCacheClient::new(NamedCacheClientConfig::default());
         let device = stack.local_device();
         let owner = device
             .desc()

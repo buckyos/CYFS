@@ -203,7 +203,7 @@ async fn reset_sn_list() {
 
         assert_eq!(sample_hash, recv_hash);
     }
-    
+
     assert_eq!(SnStatus::Online, rn_stack.reset_sn_list(vec![sn2.clone()]).wait_online().await.unwrap());
     let _ = future::timeout(Duration::from_secs(1), future::pending::<()>()).await;
 
@@ -232,6 +232,7 @@ async fn reset_sn_list() {
     }
 
 }
+
 
 
 
@@ -390,4 +391,5 @@ async fn call_with_tcp() {
     assert_eq!(sample_hash, recv_hash);
 
 }
+
 

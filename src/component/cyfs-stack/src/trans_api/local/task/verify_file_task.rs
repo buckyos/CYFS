@@ -1,21 +1,22 @@
+use cyfs_base::*;
 use cyfs_chunk_cache::{CachedFile, ChunkManager, ChunkType};
 use cyfs_chunk_lib::ChunkRead;
-use cyfs_base::*;
 use cyfs_task_manager::*;
 
 use async_std::io::prelude::SeekExt;
 use async_std::io::{Read, ReadExt};
+use cyfs_debug::Mutex;
 use sha2::Digest;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
-use cyfs_debug::Mutex;
 
 pub struct VerifyFileRunnable {
     chunk_manager: Arc<ChunkManager>,
     task_id: TaskId,
-    file: File,
+    file: Option<File>,
+    chunk_id: Option<ChunkId>,
     save_path: Option<String>,
     verify_result: Mutex<bool>,
 }
@@ -24,13 +25,17 @@ impl VerifyFileRunnable {
     pub fn new(
         chunk_manager: Arc<ChunkManager>,
         task_id: TaskId,
-        file: File,
+        file: Option<File>,
+        chunk_id: Option<ChunkId>,
         save_path: Option<String>,
     ) -> Self {
+        assert!(file.is_some() || chunk_id.is_some());
+
         Self {
             chunk_manager,
             task_id,
             file,
+            chunk_id,
             save_path,
             verify_result: Mutex::new(false),
         }
@@ -170,23 +175,49 @@ impl VerifyFileRunnable {
     }
 
     async fn verify(&self) -> BuckyResult<()> {
+        if let Some(file) = &self.file {
+            self.verify_file(file).await
+        } else if let Some(chunk_id) = &self.chunk_id {
+            self.verify_chunk_id(chunk_id).await
+        } else {
+            unreachable!();
+        }
+    }
+
+    async fn verify_chunk_id(&self, chunk_id: &ChunkId) -> BuckyResult<()> {
         info!(
-            "will verify file: task={}, save_path={:?}",
-            self.task_id, self.save_path
+            "will verify chunk: task={}, chunk={}, save_path={:?}",
+            self.task_id, chunk_id, self.save_path
         );
 
-        match self.file.body() {
+        let chunk_list = vec![chunk_id.to_owned()];
+        if self.save_path.is_some() && !self.save_path.as_ref().unwrap().is_empty() {
+            let path = PathBuf::from_str(self.save_path.as_ref().unwrap()).unwrap();
+            self.verify_chunk_list_from_file(&chunk_list, &path).await
+        } else {
+            self.verify_chunk_list_from_chunk_manager(&chunk_list).await
+        }
+    }
+
+    async fn verify_file(&self, file: &File) -> BuckyResult<()> {
+        info!(
+            "will verify file: task={}, file={}, save_path={:?}",
+            self.task_id,
+            file.desc().calculate_id(),
+            self.save_path
+        );
+
+        match file.body() {
             Some(body) => match body.content().chunk_list() {
-                ChunkList::ChunkInBundle(_) => self.verify_bundle().await,
-                _ => self.verify_file().await,
+                ChunkList::ChunkInBundle(_) => self.verify_bundle(file).await,
+                _ => self.verify_list(file).await,
             },
             None => Ok(()),
         }
     }
 
-    async fn verify_bundle(&self) -> BuckyResult<()> {
-        let chunk_list = match self
-            .file
+    async fn verify_bundle(&self, file: &File) -> BuckyResult<()> {
+        let chunk_list = match file
             .body_expect("invalid file object body")
             .content()
             .chunk_list()
@@ -204,7 +235,7 @@ impl VerifyFileRunnable {
     }
 
     // 校验一下task本地文件是否匹配
-    async fn verify_file(&self) -> BuckyResult<()> {
+    async fn verify_list(&self, file: &File) -> BuckyResult<()> {
         let result = loop {
             if self.save_path.is_some() && !self.save_path.as_ref().unwrap().is_empty() {
                 let path = PathBuf::from_str(self.save_path.as_ref().unwrap()).unwrap();
@@ -229,7 +260,7 @@ impl VerifyFileRunnable {
                     break false;
                 }
 
-                let len = self.file.desc().content().len();
+                let len = file.desc().content().len();
                 let (real_hash, real_len) = ret.unwrap();
                 if real_len != len {
                     error!(
@@ -242,12 +273,12 @@ impl VerifyFileRunnable {
                     break false;
                 }
 
-                if real_hash != *self.file.desc().content().hash() {
+                if real_hash != *file.desc().content().hash() {
                     error!(
                         "file hash not match! task_id={}, local_path={}, expect={}, got={}",
                         self.task_id.to_string(),
                         self.save_path.as_ref().unwrap(),
-                        self.file.desc().content().hash().to_string(),
+                        file.desc().content().hash().to_string(),
                         real_hash
                     );
                     break false;
@@ -262,8 +293,8 @@ impl VerifyFileRunnable {
                 );
                 break true;
             } else {
-                let mut file =
-                    CachedFile::open(self.file.clone(), self.chunk_manager.clone()).await?;
+                let mut cache_file =
+                    CachedFile::open(file.clone(), self.chunk_manager.clone()).await?;
                 let mut sha256 = sha2::Sha256::new();
                 let mut buf = Vec::with_capacity(1024 * 64);
                 unsafe {
@@ -271,7 +302,7 @@ impl VerifyFileRunnable {
                 }
                 let mut file_len = 0;
                 loop {
-                    match file.read(&mut buf).await {
+                    match cache_file.read(&mut buf).await {
                         Ok(size) => {
                             if size == 0 {
                                 break;
@@ -286,12 +317,12 @@ impl VerifyFileRunnable {
                 }
 
                 let real_hash: HashValue = sha256.result().into();
-                if real_hash != *self.file.desc().content().hash() {
+                if real_hash != *file.desc().content().hash() {
                     error!(
                         "file hash not match! task_id={}, local_path={}, expect={}, got={}",
                         self.task_id.to_string(),
                         self.save_path.as_ref().unwrap(),
-                        self.file.desc().content().hash().to_string(),
+                        file.desc().content().hash().to_string(),
                         real_hash
                     );
                     break false;

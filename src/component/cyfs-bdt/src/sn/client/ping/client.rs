@@ -31,6 +31,36 @@ pub enum SnStatus {
     Offline
 }
 
+
+impl std::fmt::Display for SnStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let v = match self {
+            Self::Online => "online",
+            Self::Offline => "offline",
+        };
+
+        write!(f, "{}", v)
+    }
+}
+
+
+impl std::str::FromStr for SnStatus {
+    type Err = BuckyError;
+
+    fn from_str(s: &str) -> BuckyResult<Self> {
+        match s {
+            "online" => Ok(Self::Online),
+            "offline" => Ok(Self::Offline),
+            _ => {
+                let msg = format!("unknown SnStatus value: {}", s);
+                log::error!("{}", msg);
+
+                Err(BuckyError::new(BuckyErrorCode::InvalidData, msg))
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PingSessionResp {
     pub from: Endpoint, 
@@ -63,7 +93,14 @@ enum ActiveState {
 }
 
 impl ActiveState {
-    fn cur_session(&self) -> Option<Box<dyn PingSession>> {
+    fn cur_session(&self) -> Box<dyn PingSession> {
+        match self {
+            Self::FirstTry(session) => session.clone_as_ping_session(), 
+            Self::SecondTry(session) => session.clone_as_ping_session(),
+            Self::Wait(_, session) => session.clone_as_ping_session()
+        } 
+    }
+    fn trying_session(&self) -> Option<Box<dyn PingSession>> {
         match self {
             Self::FirstTry(session) => Some(session.clone_as_ping_session()), 
             Self::SecondTry(session) => Some(session.clone_as_ping_session()),
@@ -188,7 +225,7 @@ impl PingClient {
                     state: active
                 } => {
                     let waiter = waiter.transfer();
-                    let sessions = if let Some(session) = active.cur_session() {
+                    let sessions = if let Some(session) = active.trying_session() {
                         vec![session]
                     } else {
                         vec![]
@@ -357,18 +394,29 @@ impl PingClient {
                     waiter, 
                     state: active 
                 } => {
-                    if active.cur_session().and_then(|exists| if exists.local() == session.local() { Some(()) } else { None }).is_some() {
+                    let mut next = NextStep::none();
+                    if !active.cur_session().local().is_same_ip_addr(&session.local()) {
+                        if let Ok(resp) = result {
+                            if resp.endpoints.len() > 0 {
+                                next.update = Some((session.local(), resp.endpoints[0]));
+                            }
+
+                            if let ActiveState::Wait(_, exists) = active {
+                                if  session.local().addr().is_ipv4() && exists.local().addr().is_ipv6() {
+                                    *active = ActiveState::Wait(bucky_time_now() + self.0.config.interval.as_micros() as u64, session.reset(None, None));
+                                }
+                            }
+                        }
+                    } else if active.trying_session().and_then(|exists| if exists.local() == session.local() { Some(()) } else { None }).is_some() {
                         match result {
                             Ok(resp) => {
                                 *active = ActiveState::Wait(bucky_time_now() + self.0.config.interval.as_micros() as u64, session.reset(None, None));
                                 
-                                let mut next = NextStep::none();
                                 if resp.endpoints.len() > 0 {
                                     next.update = Some((session.local(), resp.endpoints[0]));
                                 } else if resp.err == BuckyErrorCode::NotFound {
                                     next.ping_once = true;
                                 }
-                                next
                             },
                             Err(_err) => {
                                 match active {
@@ -378,23 +426,19 @@ impl PingClient {
                                         let session = session.reset(None, None);
                                         info!("{} start second try", self);
                                         *active = ActiveState::SecondTry(session);
-                                        NextStep::none()
                                     }, 
                                     ActiveState::SecondTry(_) => {
-                                        let mut next = NextStep::none();
                                         next.waiter = Some(waiter.transfer());
                                         error!("{} timeout", self);
                                         *state = ClientState::Timeout;
                                         next.update_cache = Some(None);
-                                        next
                                     },
-                                    _ => NextStep::none()
+                                    _ => {}
                                 }
                             }
                         }
-                    } else {
-                        NextStep::none()
                     }
+                    next
                 }, 
                 _ => NextStep::none()
             }
@@ -502,7 +546,7 @@ impl PingClient {
             NextStep::Start(waiter) => {
                 info!("{} started", self);
                 let mut sessions = vec![];
-                for local in self.0.net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv4()) {
+                for local in self.0.net_listener.udp()/*.iter().filter(|interface| interface.local().addr().is_ipv4()) */ {
                     let sn_endpoints: Vec<Endpoint> = self.0.sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.is_same_ip_version(&local.local())).cloned().collect();
                     if sn_endpoints.len() > 0 {
                         let params = UdpSesssionParams {
@@ -632,7 +676,7 @@ impl PingClient {
                     state: active, 
                     .. 
                 } => {
-                    if let Some(session) = active.cur_session().and_then(|session| if session.local() == interface.local() { Some(session) } else { None }) {
+                    if let Some(session) = active.trying_session().and_then(|session| if session.local() == interface.local() { Some(session) } else { None }) {
                         vec![session]
                     } else {
                         vec![]

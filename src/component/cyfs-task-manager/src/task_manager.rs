@@ -20,13 +20,13 @@ impl TaskInfo {
     }
 }
 
-#[derive(Clone, RawEncode, RawDecode)]
+#[derive(Debug, Clone, RawEncode, RawDecode)]
 pub struct DecInfoV1 {
     dec_id: ObjectId,
     source: DeviceId,
 }
 
-#[derive(Clone, RawEncode, RawDecode)]
+#[derive(Debug, Clone, RawEncode, RawDecode)]
 pub enum DecInfo {
     V1(DecInfoV1)
 }
@@ -296,7 +296,7 @@ impl TaskManager {
     }
 
     pub async fn get_task_detail_status(&self, task_id: &TaskId) -> BuckyResult<Vec<u8>> {
-        log::info!("get_task_detail_status {}", task_id.to_string());
+        log::debug!("will get_task_detail_status {}", task_id);
         let task = {
             let task_map = self.task_map.lock().await;
             match task_map.get(task_id) {
@@ -325,8 +325,8 @@ impl TaskManager {
                         task.get_task_detail_status().await
                     }
                     None => {
-                        let msg = format!("not find task id {}", task_id.to_string());
-                        log::error!("{}", msg.as_str());
+                        let msg = format!("task not found! task={}", task_id);
+                        log::error!("{}", msg);
                         Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
                     }
                 }
@@ -335,7 +335,7 @@ impl TaskManager {
     }
 
     pub async fn pause_task(&self, task_id: &TaskId) -> BuckyResult<()> {
-        log::info!("pause_task {}", task_id.to_string());
+        log::info!("will pause_task {}", task_id);
         let _locker = Locker::get_locker(format!("task_manager_{}", task_id.to_string())).await;
         let task = {
             let task_map = self.task_map.lock().await;
@@ -350,8 +350,8 @@ impl TaskManager {
     }
 
     pub async fn stop_task(&self, task_id: &TaskId) -> BuckyResult<()> {
-        log::info!("stop_task {}", task_id.to_string());
-        let _locker = Locker::get_locker(format!("task_manager_{}", task_id.to_string())).await;
+        log::info!("will stop_task {}", task_id);
+        let _locker = Locker::get_locker(format!("task_manager_{}", task_id)).await;
         let task = {
             let mut task_map = self.task_map.lock().await;
             task_map.remove(task_id)
@@ -361,6 +361,7 @@ impl TaskManager {
                 task.task.stop_task().await
             },
             None => {
+                warn!("stop task but not found! task={}", task_id);
                 Ok(())
             }
         }

@@ -138,7 +138,7 @@ impl DebugStub {
         Ok(())
     }
 
-    async fn sn_conn_status(&self, tunnel: TcpStream, command: DebugCommandSnConnStatus) -> Result<(), String> {
+    async fn sn_conn_status(&self, _tunnel: TcpStream, _command: DebugCommandSnConnStatus) -> Result<(), String> {
         // let mut tunnel = tunnel;
 
         // let stack = Stack::from(&self.0.stack);
@@ -346,7 +346,7 @@ impl DebugStub {
 
         let _ = tunnel.write_all("start downloading chunk..\r\n".as_ref()).await;
         let stack = Stack::from(&self.0.stack);
-        let context = SingleDownloadContext::id_streams(&stack, "".to_owned(), remotes).await
+        let context = SampleDownloadContext::id_streams(&stack, "".to_owned(), &remotes).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
         let (_, reader) = download_chunk(&stack,
             chunk_id.clone(),
@@ -385,7 +385,7 @@ impl DebugStub {
         let _ = tunnel.write_all("start downloading file..\r\n".as_ref()).await;
 
         let stack = Stack::from(&self.0.stack);
-        let context = SingleDownloadContext::id_streams(&stack, "".to_owned(), remotes).await
+        let context = SampleDownloadContext::id_streams(&stack, "".to_owned(), &remotes).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
         let (_, reader) = download_file(
             &stack, 
@@ -530,11 +530,11 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTask>, timeout: u32) -
 
     loop {
         match task.state() {
-            DownloadTaskState::Finished => {
+            NdnTaskState::Finished => {
                 break Ok(());
             },
-            DownloadTaskState::Downloading(speed, _) => {
-                if speed > 0 {
+            NdnTaskState::Running => {
+                if task.cur_speed() > 0 {
                     i = 0;
 
                     if _timeout == 1800 { //todo
@@ -544,7 +544,7 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTask>, timeout: u32) -
                     i += 1;
                 }
             },
-            DownloadTaskState::Error(e) => {
+            NdnTaskState::Error(e) => {
                 break Err(format!("download err, code: {:?}\r\n", e));
             },
             _ => {

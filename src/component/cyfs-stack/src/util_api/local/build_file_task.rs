@@ -12,6 +12,7 @@ pub struct BuildFileParams {
     pub owner: ObjectId,
     pub dec_id: ObjectId,
     pub chunk_size: u32,
+    pub access: Option<u32>,
 }
 
 pub struct BuildFileTaskFactory {
@@ -38,6 +39,7 @@ impl TaskFactory for BuildFileTaskFactory {
             params.owner,
             params.dec_id,
             params.chunk_size,
+            params.access,
             self.noc.clone(),
             self.ndc.clone(),
         ))))
@@ -61,6 +63,7 @@ impl TaskFactory for BuildFileTaskFactory {
             params.owner,
             params.dec_id,
             params.chunk_size,
+            params.access,
             task_state,
             self.noc.clone(),
             self.ndc.clone(),
@@ -189,6 +192,7 @@ pub struct BuildFileTask {
     owner: ObjectId,
     dec_id: ObjectId,
     chunk_size: u32,
+    access: Option<u32>,
     noc: NamedObjectCacheRef,
     ndc: Box<dyn NamedDataCache>,
 }
@@ -199,6 +203,7 @@ impl BuildFileTask {
         owner: ObjectId,
         dec_id: ObjectId,
         chunk_size: u32,
+        access: Option<u32>,
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
     ) -> Self {
@@ -209,6 +214,7 @@ impl BuildFileTask {
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_FILE_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
+
         Self {
             task_id: task_id.clone(),
             task_store: None,
@@ -220,6 +226,7 @@ impl BuildFileTask {
             owner,
             dec_id,
             chunk_size,
+            access,
             noc,
             ndc,
         }
@@ -230,6 +237,7 @@ impl BuildFileTask {
         owner: ObjectId,
         dec_id: ObjectId,
         chunk_size: u32,
+        access: Option<u32>,
         task_state: FileTaskState,
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
@@ -241,6 +249,7 @@ impl BuildFileTask {
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_FILE_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
+
         Self {
             task_id: task_id.clone(),
             task_store: None,
@@ -249,6 +258,7 @@ impl BuildFileTask {
             owner,
             dec_id,
             chunk_size,
+            access,
             noc,
             ndc,
         }
@@ -450,6 +460,10 @@ mod build_file_task_test {
         async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
             todo!();
         }
+
+        fn bind_object_meta_access_provider(&self, _object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef) {
+
+        }
     }
 
     struct MemoryNDC {}
@@ -583,6 +597,7 @@ mod build_file_task_test {
                 .register_task_factory(BuildFileTaskFactory::new(noc, ndc))
                 .unwrap();
 
+            let dec_id = cyfs_core::get_system_dec_app();
             let tmp_path = std::env::temp_dir().join("test_build_file");
             gen_random_file(tmp_path.as_path()).await;
             let local_path = tmp_path.to_string_lossy().to_string();
@@ -590,6 +605,7 @@ mod build_file_task_test {
                 local_path: local_path.clone(),
                 owner: Default::default(),
                 chunk_size: 4 * 1024 * 1024,
+                dec_id: dec_id.to_owned(),
             };
             let task = task_manager
                 .create_task(
@@ -628,6 +644,7 @@ mod build_file_task_test {
                 local_path,
                 owner: Default::default(),
                 chunk_size: 4 * 1024 * 1024,
+                dec_id: dec_id.to_owned(),
             };
             let task = task_manager
                 .create_task(

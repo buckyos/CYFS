@@ -1,14 +1,14 @@
+use crate::ndn::TaskGroupHelper;
 use crate::resolver::OodResolver;
+use crate::NamedDataComponents;
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
+use cyfs_bdt::{StackGuard, self};
 use cyfs_lib::*;
 
 use crate::trans::{TransInputProcessor, TransInputProcessorRef};
 use crate::trans_api::local::FileRecorder;
 use crate::trans_api::{DownloadTaskManager, PublishManager, TransStore};
 use cyfs_base::File;
-use cyfs_chunk_cache::ChunkManager;
-use cyfs_core::{TransContext, TransContextObject};
 use cyfs_task_manager::{TaskId, TaskManager, TaskStatus};
 use std::convert::TryFrom;
 use std::path::PathBuf;
@@ -40,9 +40,7 @@ pub(crate) struct LocalTransService {
     bdt_stack: StackGuard,
 
     ood_resolver: OodResolver,
-    chunk_manager: Arc<ChunkManager>,
-    tracker: Box<dyn TrackerCache>,
-    ndc: Box<dyn NamedDataCache>,
+    named_data_components: NamedDataComponents,
 }
 
 impl Clone for LocalTransService {
@@ -53,9 +51,7 @@ impl Clone for LocalTransService {
             noc: self.noc.clone(),
             bdt_stack: self.bdt_stack.clone(),
             ood_resolver: self.ood_resolver.clone(),
-            chunk_manager: self.chunk_manager.clone(),
-            tracker: self.tracker.clone(),
-            ndc: self.ndc.clone(),
+            named_data_components: self.named_data_components.clone(),
         }
     }
 }
@@ -64,23 +60,21 @@ impl LocalTransService {
     pub fn new(
         noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
+        named_data_components: &NamedDataComponents,
         ood_resolver: OodResolver,
-        chunk_manager: Arc<ChunkManager>,
         task_manager: Arc<TaskManager>,
         trans_store: Arc<TransStore>,
     ) -> Self {
         let tasks = DownloadTaskManager::new(
             bdt_stack.clone(),
-            chunk_manager.clone(),
+            named_data_components,
             task_manager.clone(),
             trans_store,
         );
         let publish_manager = PublishManager::new(
             task_manager.clone(),
-            ndc.clone(),
-            tracker.clone(),
+            named_data_components.ndc.clone(),
+            named_data_components.tracker.clone(),
             noc.clone(),
             bdt_stack.local_device_id().clone(),
         );
@@ -91,9 +85,7 @@ impl LocalTransService {
             noc,
             bdt_stack,
             ood_resolver,
-            chunk_manager,
-            tracker,
-            ndc,
+            named_data_components: named_data_components.to_owned(),
         }
     }
 
@@ -160,8 +152,8 @@ impl LocalTransService {
 
             if file.is_some() {
                 let file_recorder = FileRecorder::new(
-                    self.ndc.clone(),
-                    self.tracker.clone(),
+                    self.named_data_components.ndc.clone(),
+                    self.named_data_components.tracker.clone(),
                     self.noc.clone(),
                     req.common.source.dec.clone(),
                 );
@@ -228,6 +220,7 @@ impl LocalTransService {
                 req.owner.clone(),
                 file,
                 req.chunk_size,
+                req.access,
             )
             .await?;
 
@@ -254,6 +247,7 @@ impl LocalTransService {
                 req.owner.clone(),
                 req.file_id,
                 req.chunk_size,
+                req.access,
             )
             .await?;
 
@@ -308,7 +302,7 @@ impl LocalTransService {
 
         let referer = BdtDataRefererInfo {
             // FIXME: set target field from o link
-            target: None, 
+            target: None,
             object_id: req.object_id,
             inner_path: None, // trans-task都是file为粒度
             dec_id: Some(req.common.source.dec.clone()),
@@ -318,14 +312,17 @@ impl LocalTransService {
         };
 
         let task_id = if req.object_id.obj_type_code() == ObjectTypeCode::File {
-            let object = self.get_object_from_noc(&req.common.source, &req.object_id).await?;
+            let object = self
+                .get_object_from_noc(&req.common.source, &req.object_id)
+                .await?;
             if let AnyNamedObject::Standard(StandardObject::File(file_obj)) = object.as_ref() {
                 let task_id = self
                     .download_tasks
                     .create_file_task(
                         req.common.source.zone.device.unwrap(),
                         req.common.source.dec,
-                        req.context_id,
+                        req.group,
+                        req.context,
                         file_obj.clone(),
                         Some(local_path.to_string()),
                         req.device_list,
@@ -347,7 +344,8 @@ impl LocalTransService {
                 .create_chunk_task(
                     req.common.source.zone.device.unwrap(),
                     req.common.source.dec,
-                    req.context_id,
+                    req.group,
+                    req.context,
                     ChunkId::try_from(&req.object_id)?,
                     Some(local_path.to_string()),
                     req.device_list,
@@ -415,12 +413,12 @@ impl LocalTransService {
     pub async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         let task_id = TaskId::from_str(req.task_id.as_str())?;
 
         let task_state = self.download_tasks.get_task_state(&task_id).await?;
 
-        let task_state = match task_state.task_status {
+        let state = match task_state.task_status {
             TaskStatus::Stopped => TransTaskState::Paused,
             TaskStatus::Paused => TransTaskState::Paused,
             TaskStatus::Running => {
@@ -442,7 +440,12 @@ impl LocalTransService {
             TaskStatus::Failed => TransTaskState::Err(task_state.err_code.unwrap()),
         };
 
-        Ok(task_state)
+        let resp = TransGetTaskStateInputResponse {
+            state,
+            group: task_state.group,
+        };
+
+        Ok(resp)
     }
 
     pub async fn query_tasks(
@@ -459,7 +462,6 @@ impl LocalTransService {
             .get_tasks(
                 req.common.source.zone.device.as_ref().unwrap(),
                 &req.common.source.dec,
-                &req.context_id,
                 task_status,
                 req.range,
             )
@@ -467,7 +469,70 @@ impl LocalTransService {
         Ok(TransQueryTasksInputResponse { task_list })
     }
 
-    async fn get_object_from_noc(&self, source: &RequestSourceInfo, object_id: &ObjectId) -> BuckyResult<Arc<AnyNamedObject>> {
+    async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateInputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
+        let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
+
+        // use cyfs_bdt::{DownloadTask, UploadTask, NdnTask};
+        let task = match req.group_type {
+            TransTaskGroupType::Download => self.bdt_stack.ndn().root_task().download().sub_task(&group).map(|task| task.clone_as_task()), 
+            TransTaskGroupType::Upload => self.bdt_stack.ndn().root_task().upload().sub_task(&group).map(|task| task.clone_as_task()), 
+        }.ok_or_else(|| {
+            let msg = format!("get task group but ot found! group={}", group);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::NotFound, msg)
+        })?;
+
+        let mut resp = TransGetTaskGroupStateInputResponse {
+            state: task.state(),
+            control_state: task.control_state(),
+            speed: None,
+            cur_speed: task.cur_speed(),
+            history_speed: task.history_speed(),
+        };
+
+        if let Some(tm) = req.speed_when {
+            resp.speed = Some(task.cur_speed());
+        }
+
+        Ok(resp)
+    }
+
+    async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupInputRequest,
+    ) -> BuckyResult<TransControlTaskGroupInputResponse> {
+        let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
+
+        // use cyfs_bdt::{DownloadTask, UploadTask, NdnTask};
+        let task = match req.group_type {
+            TransTaskGroupType::Download => self.bdt_stack.ndn().root_task().download().sub_task(&group).map(|task| task.clone_as_task()),
+            TransTaskGroupType::Upload => self.bdt_stack.ndn().root_task().upload().sub_task(&group).map(|task| task.clone_as_task()), 
+        }.ok_or_else(|| {
+            let msg = format!("get task group but ot found! group={}", group);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::NotFound, msg)
+        })?;
+
+        let control_state = match req.action {
+            TransTaskGroupControlAction::Pause => task.pause(),
+            TransTaskGroupControlAction::Resume => task.resume(),
+            TransTaskGroupControlAction::Cancel => task.cancel(),
+            TransTaskGroupControlAction::Close => task.close().map(|_| task.control_state())
+        }?;
+
+        let resp = TransControlTaskGroupInputResponse { control_state };
+
+        Ok(resp)
+    }
+
+    async fn get_object_from_noc(
+        &self,
+        source: &RequestSourceInfo,
+        object_id: &ObjectId,
+    ) -> BuckyResult<Arc<AnyNamedObject>> {
         // 如果没指定flags，那么使用默认值
         // let flags = req.flags.unwrap_or(0);
         let noc_req = NamedObjectCacheGetObjectRequest {
@@ -494,41 +559,54 @@ impl LocalTransService {
 
 #[async_trait::async_trait]
 impl TransInputProcessor for LocalTransService {
-    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext> {
-        let noc_req = NamedObjectCacheGetObjectRequest {
-            object_id: TransContext::gen_context_id(req.common.source.dec.clone(), req.context_name),
-            source: req.common.source,
-            last_access_rpath: None,
+    async fn get_context(
+        &self,
+        req: TransGetContextInputRequest,
+    ) -> BuckyResult<TransGetContextInputResponse> {
+        let ret = if let Some(id) = &req.context_id {
+            self.named_data_components
+                .context_manager
+                .get_context(id)
+                .await
+        } else if let Some(context_path) = &req.context_path {
+            if context_path.starts_with('$') {
+                self.named_data_components
+                    .context_manager
+                    .get_context_by_path(None, context_path.as_str())
+                    .await
+            } else {
+                self.named_data_components
+                    .context_manager
+                    .get_context_by_path(Some(req.common.source.dec.clone()), context_path.as_str())
+                    .await
+            }
+        } else {
+            let msg = format!(
+                "context_id and context_path must specify one of them for get_context request!"
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
         };
 
-        match self.noc.get_object(&noc_req).await {
-            Ok(Some(resp)) => Ok(TransContext::clone_from_slice(
-                resp.object.object_raw.as_slice(),
-            )?),
-            Ok(None) => {
-                let msg = format!("noc get object but not found: {}", noc_req.object_id);
-                debug!("{}", msg);
-                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
-            }
-            Err(e) => Err(e),
+        if ret.is_none() {
+            let msg = format!(
+                "get context but not found: id={:?}, path={:?}",
+                req.context_id, req.context_path
+            );
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
+
+        Ok(TransGetContextInputResponse {
+            context: ret.unwrap().object.clone(),
+        })
     }
 
     async fn put_context(&self, req: TransUpdateContextInputRequest) -> BuckyResult<()> {
-        let object_raw = req.context.to_vec()?;
-        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
-
-        let req = NamedObjectCachePutObjectRequest {
-            source: req.common.source,
-            object,
-            storage_category: NamedObjectStorageCategory::Storage,
-            context: None,
-            last_access_rpath: None,
-            access_string: None,
-        };
-
-        self.noc.put_object(&req).await?;
-        Ok(())
+        self.named_data_components
+            .context_manager
+            .put_context(req.common.source, req.context, req.access)
+            .await
     }
 
     async fn control_task(&self, req: TransControlTaskInputRequest) -> BuckyResult<()> {
@@ -538,7 +616,7 @@ impl TransInputProcessor for LocalTransService {
     async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         Self::get_task_state(self, req).await
     }
 
@@ -561,5 +639,19 @@ impl TransInputProcessor for LocalTransService {
         req: TransQueryTasksInputRequest,
     ) -> BuckyResult<TransQueryTasksInputResponse> {
         Self::query_tasks(self, req).await
+    }
+
+    async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateInputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
+        Self::get_task_group_state(self, req).await
+    }
+
+    async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupInputRequest,
+    ) -> BuckyResult<TransControlTaskGroupInputResponse> {
+        Self::control_task_group(self, req).await
     }
 }

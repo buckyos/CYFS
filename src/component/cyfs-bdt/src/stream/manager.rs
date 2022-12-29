@@ -88,7 +88,7 @@ impl StreamManager {
             ));
         }
 
-        info!("{} connect stream to {}:{}", self, build_params.remote_const.device_id(), port);
+        info!("{} connect stream to {}:{} with params {}", self, build_params.remote_const.device_id(), port, build_params);
         let manager_impl = &self.0;
         let stack = Stack::from(&manager_impl.stack);
         let local_id = stack.id_generator().generate();

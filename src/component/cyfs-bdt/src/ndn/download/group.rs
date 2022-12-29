@@ -18,7 +18,6 @@ struct DownloadingState {
     running: Vec<Box<dyn DownloadTask>>, 
     closed: bool, 
     history_speed: HistorySpeed, 
-    drain_score: i64, 
 }
 
 enum TaskStateImpl {
@@ -38,7 +37,6 @@ struct StateImpl {
 }
 
 struct TaskImpl {
-    priority: DownloadTaskPriority, 
     history_speed: HistorySpeedConfig, 
     state: RwLock<StateImpl>
 }
@@ -47,22 +45,17 @@ struct TaskImpl {
 pub struct DownloadGroup(Arc<TaskImpl>);
 
 impl DownloadGroup {
-    pub fn new(
-        history_speed: HistorySpeedConfig, 
-        priority: Option<DownloadTaskPriority>, 
-    ) -> Self {
+    pub fn new(history_speed: HistorySpeedConfig) -> Self {
         Self(Arc::new(TaskImpl {
-            priority: priority.unwrap_or_default(), 
             history_speed: history_speed.clone(), 
             state: RwLock::new(StateImpl {
                 task_state: TaskStateImpl::Downloading(DownloadingState {
                     entries: Default::default(), 
                     running: Default::default(), 
                     history_speed: HistorySpeed::new(0, history_speed), 
-                    drain_score: 0, 
                     closed: false, 
                 }),
-                control_state: ControlStateImpl::Normal(StateWaiter::new())
+                control_state: ControlStateImpl::Normal(StateWaiter::new()), 
             })
         }))
     }
@@ -72,77 +65,25 @@ impl DownloadGroup {
     }
 }
 
-#[async_trait::async_trait]
-impl DownloadTask for DownloadGroup {
-    fn clone_as_task(&self) -> Box<dyn DownloadTask> {
+
+impl NdnTask for DownloadGroup {
+    fn clone_as_task(&self) -> Box<dyn NdnTask> {
         Box::new(self.clone())
     }
 
-    fn state(&self) -> DownloadTaskState {
+    fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.history_speed.latest(), 0.0), 
-            TaskStateImpl::Finished => DownloadTaskState::Finished, 
-            TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone())
+            TaskStateImpl::Downloading(_) => NdnTaskState::Running, 
+            TaskStateImpl::Finished => NdnTaskState::Finished, 
+            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone())
         }
         
     }
 
-    fn control_state(&self) -> DownloadTaskControlState {
+    fn control_state(&self) -> NdnTaskControlState {
         match &self.0.state.read().unwrap().control_state {
-            ControlStateImpl::Normal(_) => DownloadTaskControlState::Normal, 
-            ControlStateImpl::Canceled => DownloadTaskControlState::Canceled
-        }
-    }
-
-    fn priority_score(&self) -> u8 {
-        self.0.priority as u8
-    }
-
-    fn add_task(&self, path: Option<String>, sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
-        let mut state = self.0.state.write().unwrap();
-        match &mut state.task_state {
-            TaskStateImpl::Downloading(downloading) => {
-                if !downloading.closed {
-                    downloading.running.push(sub.clone_as_task());
-                    if let Some(path) = path {
-                        if let Some(exists) = downloading.entries.insert(path, sub) {
-                            let _ = exists.cancel();
-                        }
-                    }
-                    Ok(())
-                } else {
-                    Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
-                }
-            },
-            _ => Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
-        }
-    }
-
-    fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {
-        if path.len() == 0 {
-            Some(self.clone_as_task())
-        } else {
-            let mut names = path.split("/");
-            let name = names.next().unwrap();
-    
-            let state = self.0.state.read().unwrap(); 
-            match &state.task_state {
-                TaskStateImpl::Downloading(downloading) => {
-                    let mut sub = downloading.entries.get(name).map(|t| t.clone_as_task());
-                    if sub.is_none() {
-                        sub 
-                    } else {
-                        for name in names {
-                            sub = sub.and_then(|t| t.sub_task(name));
-                            if sub.is_none() {
-                                break;
-                            }
-                        }
-                        sub
-                    }
-                },
-                _ => None
-            }
+            ControlStateImpl::Normal(_) => NdnTaskControlState::Normal, 
+            ControlStateImpl::Canceled => NdnTaskControlState::Canceled
         }
     }
 
@@ -158,33 +99,6 @@ impl DownloadTask for DownloadGroup {
             _ => {}
         }
         Ok(())
-    }
-
-    fn calc_speed(&self, when: Timestamp) -> u32 {
-        let mut state = self.0.state.write().unwrap();
-        let mut running = vec![];
-        let mut cur_speed = 0;
-        match &mut state.task_state {
-            TaskStateImpl::Downloading(downloading) => {
-                for sub in &downloading.running {
-                    match sub.state() {
-                        DownloadTaskState::Finished | DownloadTaskState::Error(_) => continue, 
-                        _ => {
-                            cur_speed += sub.calc_speed(when);
-                            running.push(sub.clone_as_task());
-                        }
-                    }  
-                }
-                downloading.history_speed.update(Some(cur_speed), when);
-                if running.len() == 0 && downloading.closed {
-                    state.task_state = TaskStateImpl::Finished;
-                } else {
-                    downloading.running = running;
-                }
-                cur_speed
-            },
-            _ => 0
-        }
     }
 
     fn cur_speed(&self) -> u32 {
@@ -203,46 +117,7 @@ impl DownloadTask for DownloadGroup {
         }
     }
 
-    fn drain_score(&self) -> i64 {
-        let state = self.0.state.read().unwrap();
-        match &state.task_state {
-            TaskStateImpl::Downloading(downloading) => downloading.drain_score,
-            _ => 0
-        }
-    }
-
-    fn on_drain(&self, expect_speed: u32) -> u32 {
-        let running: Vec<Box<dyn DownloadTask>> = {
-            let state = self.0.state.read().unwrap();
-            match &state.task_state {
-                TaskStateImpl::Downloading(downloading) => downloading.running.iter().map(|t| t.clone_as_task()).collect(),
-                _ => vec![]
-            }
-        };
-
-
-        let mut new_expect = 0;
-        let total: f64 = running.iter().map(|t| t.drain_score() as f64).sum();
-        let score_cent = expect_speed as f64 / total;
-        for task in running {
-            new_expect += task.on_drain((task.priority_score() as f64 * score_cent) as u32);
-        }
-
-        {
-            let mut state = self.0.state.write().unwrap();
-            match &mut state.task_state {
-                TaskStateImpl::Downloading(downloading) => {
-                    downloading.drain_score += new_expect as i64 - expect_speed as i64;
-                    downloading.running.sort_by(|l, r| r.drain_score().cmp(&l.drain_score()));
-                    new_expect
-                },
-                _ => 0
-            }
-        }
-    }
-
-
-    fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
+     fn cancel_by_error(&self, err: BuckyError) -> BuckyResult<DownloadTaskControlState> {
         let (tasks, waiters) = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
@@ -257,7 +132,7 @@ impl DownloadTask for DownloadGroup {
             let tasks = match &mut state.task_state {
                 TaskStateImpl::Downloading(downloading) => {
                     let tasks: Vec<Box<dyn DownloadTask>> = downloading.running.iter().map(|t| t.clone_as_task()).collect();
-                    state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
+                    state.task_state = TaskStateImpl::Error(err.clone());
                     tasks
                 },
                 _ => vec![]
@@ -271,12 +146,114 @@ impl DownloadTask for DownloadGroup {
         }
 
         for task in tasks {
-            let _ = task.cancel();
+            let _ = task.cancel_by_error(err.clone());
         }
         
         Ok(DownloadTaskControlState::Canceled)
     }
 
+}
+
+
+#[async_trait::async_trait]
+impl DownloadTask for DownloadGroup {
+    fn clone_as_download_task(&self) -> Box<dyn DownloadTask> {
+        Box::new(self.clone())
+    }
+
+    fn add_task(&self, path: Option<String>, sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
+        let mut state = self.0.state.write().unwrap();
+        match &mut state.task_state {
+            TaskStateImpl::Downloading(downloading) => {
+                if !downloading.closed {
+                    downloading.running.push(sub.clone_as_download_task());
+                    if let Some(path) = path {
+                        if let Some(exists) = downloading.entries.insert(path, sub) {
+                            let _ = exists.cancel();
+                        }
+                    }
+                    Ok(())
+                } else {
+                    Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
+                }
+            },
+            _ => Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
+        }
+    }
+
+    fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {
+        if path.len() == 0 {
+            Some(self.clone_as_download_task())
+        } else {
+            let mut names = path.split("/");
+            let name = names.next().unwrap();
+    
+            let state = self.0.state.read().unwrap(); 
+            match &state.task_state {
+                TaskStateImpl::Downloading(downloading) => {
+                    let mut sub = downloading.entries.get(name).map(|t| t.clone_as_download_task());
+                    if sub.is_none() {
+                        sub 
+                    } else {
+                        for name in names {
+                            sub = sub.and_then(|t| t.sub_task(name));
+                            if sub.is_none() {
+                                break;
+                            }
+                        }
+                        sub
+                    }
+                },
+                _ => None
+            }
+        }
+    }
+
+    fn calc_speed(&self, when: Timestamp) -> u32 {
+        let mut state = self.0.state.write().unwrap();
+        let mut running = vec![];
+        let mut cur_speed = 0;
+        match &mut state.task_state {
+            TaskStateImpl::Downloading(downloading) => {
+                for sub in &downloading.running {
+                    match sub.state() {
+                        NdnTaskState::Finished | NdnTaskState::Error(_) => continue, 
+                        _ => {
+                            cur_speed += sub.calc_speed(when);
+                            running.push(sub.clone_as_download_task());
+                        }
+                    }  
+                }
+                downloading.history_speed.update(Some(cur_speed), when);
+                if running.len() == 0 && downloading.closed {
+                    state.task_state = TaskStateImpl::Finished;
+                } else {
+                    downloading.running = running;
+                }
+                cur_speed
+            },
+            _ => 0
+        }
+    }
+
+
+    fn cur_speed(&self) -> u32 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(downloading) => downloading.history_speed.latest(),
+            _ => 0
+        }
+    }
+
+    fn history_speed(&self) -> u32 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(downloading) => downloading.history_speed.average(),
+            _ => 0
+        }
+    }
+
+   
     async fn wait_user_canceled(&self) -> BuckyError {
         let waiter = {
             let mut state = self.0.state.write().unwrap();

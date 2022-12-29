@@ -1,13 +1,13 @@
 use cyfs_base::*;
-use cyfs_stack_loader::{DeviceInfo, LOCAL_DEVICE_MANAGER, CyfsServiceLoader};
-use zone_simulator::{TestLoader, TestStack};
+use cyfs_stack_loader::{CyfsServiceLoader, DeviceInfo, LOCAL_DEVICE_MANAGER};
+use zone_simulator::{CyfsStackInsConfig, TestLoader, TestStack};
 
 use crate::profile::*;
 
 pub struct Loader {}
 
 impl Loader {
-    pub async fn load() -> BuckyResult<()> {
+    pub async fn load(stack_config: CyfsStackInsConfig) -> BuckyResult<()> {
         // 首先加载配置
         let profile = Profile::load()?;
 
@@ -26,14 +26,14 @@ impl Loader {
             } else {
                 let msg = format!("zone fileds not found in config.toml!");
                 error!("{}", msg);
-                return  Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
-            }           
+                return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            }
         };
 
         let device_id = device_info.device.desc().device_id();
         info!("current stack device_id={}", device_id);
 
-        let stack = TestStack::new(device_info);
+        let stack = TestStack::new(device_info, stack_config);
         stack
             .init(
                 profile.data.ws,

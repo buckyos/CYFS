@@ -1,10 +1,8 @@
-use std::io::{Seek, SeekFrom};
-use async_std::{fs, io::prelude::*};
+use std::{time::Duration};
 use sha2::Digest;
 use cyfs_base::*;
 use cyfs_util::cache::*;
 use cyfs_bdt::*;
-
 mod utils;
 
 
@@ -52,21 +50,34 @@ async fn main() {
     let mut file_hash = sha2::Sha256::new();
     let mut file_len = 0u64;
     let mut chunkids = vec![];
-    let mut chunks = vec![];
 
-    let mut range_hash = sha2::Sha256::new();
-    let range = 1000u64..1024u64;
+    let up_dir = cyfs_util::get_named_data_root("bdt-example-file-task-uploader");
+    let up_path = up_dir.join(bucky_time_now().to_string());
 
-    for _ in 0..2 {
-        let (chunk_len, chunk_data) = utils::random_mem(1024, 1024);
-        let chunk_hash = hash_data(&chunk_data[..]);
-        file_hash.input(&chunk_data[..]);
-        range_hash.input(&chunk_data[range.start as usize..range.end as usize]);
-        file_len += chunk_len as u64;
-        let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
-        chunkids.push(chunkid);
-        chunks.push(chunk_data);
-    }
+
+    {
+        let mut up_file = async_std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(up_path.as_path())
+            .await
+            .unwrap();
+
+        for _ in 0..1024 {
+            let (chunk_len, chunk_data) = utils::random_mem(1024, 1024);
+            let chunk_hash = hash_data(&chunk_data[..]);
+            file_hash.input(&chunk_data[..]);
+            
+            file_len += chunk_len as u64;
+            let chunkid = ChunkId::new(&chunk_hash, chunk_len as u32);
+            chunkids.push(chunkid);
+
+            use async_std::io::prelude::*;
+            let _ = up_file.write(chunk_data.as_slice()).await.unwrap();
+        }
+
+    }   
+    
 
     let file = File::new(
         ObjectId::default(),
@@ -77,45 +88,28 @@ async fn main() {
     .no_create_time()
     .build();
 
-    let up_dir = cyfs_util::get_named_data_root("bdt-example-file-task-uploader");
-    let up_path = up_dir.join(file.desc().file_id().to_string().as_str());
-
-    {
-        let mut up_file = fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(up_path.as_path())
-            .await
-            .unwrap();
-
-        for chunk in chunks {
-            let _ = up_file.write(chunk.as_slice()).await.unwrap();
-        }
-    }
 
     let _ = rn_store.track_file_in_path(file.clone(), up_path)
         .await
         .unwrap();
 
-    
-    let (_, mut reader) = download_file(
+
+    let (path, reader) = download_file(
         &*ln_stack, 
         file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
-    {
-        let mut hasher = sha2::Sha256::new(); 
-        let mut buffer = vec![0u8; (range.end - range.start) as usize];
-        reader.seek(SeekFrom::Start(range.start)).unwrap();
-        reader.read_exact(&mut buffer[..]).await.unwrap();
-        hasher.input(&buffer[..]);
+    let task = ln_stack.ndn().root_task().download().sub_task(path.as_str()).unwrap();
 
-        reader.seek(SeekFrom::Start(1024 * 1024 + range.start)).unwrap();
-        reader.read_exact(&mut buffer[..]).await.unwrap();
-        hasher.input(&buffer[..]);
+    async_std::task::spawn(async_std::io::copy(reader, async_std::io::sink()));
 
-        assert_eq!(range_hash.result(), hasher.result());
+    loop {
+        log::info!("task speed {} progress {}", task.cur_speed(), task.downloaded() as f32 / file_len as f32);
+        let _ = async_std::task::sleep(Duration::from_secs(1)).await;
+        if let NdnTaskState::Finished = task.state() {
+            break;
+        }
     }
-
+    
 }

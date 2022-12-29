@@ -1,5 +1,5 @@
 use super::super::common::DirLoader;
-use crate::ndn_api::LocalDataManager;
+use crate::ndn_api::ChunkStoreReader;
 use cyfs_base::*;
 
 pub(crate) struct NDNRefererVerifier {
@@ -7,9 +7,9 @@ pub(crate) struct NDNRefererVerifier {
 }
 
 impl NDNRefererVerifier {
-    pub fn new(data_manager: LocalDataManager) -> Self {
+    pub fn new(chunk_reader: ChunkStoreReader) -> Self {
         Self {
-            dir: DirVerifier::new(data_manager),
+            dir: DirVerifier::new(chunk_reader),
         }
     }
 
@@ -79,9 +79,9 @@ struct DirVerifier {
 }
 
 impl DirVerifier {
-    pub fn new(data_manager: LocalDataManager) -> Self {
+    pub fn new(chunk_reader: ChunkStoreReader) -> Self {
         Self {
-            dir_loader: DirLoader::new(data_manager),
+            dir_loader: DirLoader::new(chunk_reader),
         }
     }
 

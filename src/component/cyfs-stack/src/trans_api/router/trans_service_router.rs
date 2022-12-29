@@ -1,7 +1,7 @@
 use crate::meta::ObjectFailHandler;
 use cyfs_base::*;
-use cyfs_core::TransContext;
 use cyfs_lib::*;
+
 use std::sync::Arc;
 
 use crate::forward::ForwardProcessorManager;
@@ -91,7 +91,7 @@ impl TransServiceRouter {
     pub async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.get_task_state(req).await
     }
@@ -102,11 +102,25 @@ impl TransServiceRouter {
     ) -> BuckyResult<TransPublishFileInputResponse> {
         self.processor.publish_file(req).await
     }
+
+    async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateInputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
+        self.processor.get_task_group_state(req).await
+    }
+
+    async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupInputRequest,
+    ) -> BuckyResult<TransControlTaskGroupInputResponse> {
+        self.processor.control_task_group(req).await
+    }
 }
 
 #[async_trait::async_trait]
 impl TransInputProcessor for TransServiceRouter {
-    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext> {
+    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransGetContextInputResponse> {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.get_context(req).await
     }
@@ -138,7 +152,7 @@ impl TransInputProcessor for TransServiceRouter {
     async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         Self::get_task_state(self, req).await
     }
 
@@ -147,5 +161,19 @@ impl TransInputProcessor for TransServiceRouter {
         req: TransPublishFileInputRequest,
     ) -> BuckyResult<TransPublishFileInputResponse> {
         Self::add_file(self, req).await
+    }
+
+    async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateInputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
+        Self::get_task_group_state(self, req).await
+    }
+
+    async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupInputRequest,
+    ) -> BuckyResult<TransControlTaskGroupInputResponse> {
+        Self::control_task_group(self, req).await
     }
 }

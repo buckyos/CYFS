@@ -3,9 +3,11 @@ mod requestor;
 mod request_codec;
 mod processor;
 mod input_request;
+mod request;
 
 pub use output_request::*;
 pub use requestor::*;
 pub use request_codec::*;
 pub use processor::*;
 pub use input_request::*;
+pub use request::*;

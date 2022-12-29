@@ -146,8 +146,12 @@ impl<'de> RawDecode<'de> for ObjectTypeCode {
 pub mod object_type_helper {
     use super::*;
 
-    pub fn is_stand_object(object_type: u16) -> bool {
+    pub fn is_standard_object(object_type: u16) -> bool {
         object_type >= OBJECT_TYPE_STANDARD_START && object_type <= OBJECT_TYPE_STANDARD_END
+    }
+
+    pub fn is_custom_object(object_type: u16) -> bool {
+        object_type >= OBJECT_TYPE_CORE_START
     }
 
     pub fn is_core_object(object_type: u16) -> bool {
@@ -169,7 +173,7 @@ pub trait ObjectType: Clone {
     // DecApp对象：obj_type >= 2^15 && obj_type < 2^16
     fn obj_type() -> u16;
 
-    fn is_stand_object() -> bool {
+    fn is_standard_object() -> bool {
         let c = Self::obj_type_code();
         c != ObjectTypeCode::Custom
     }

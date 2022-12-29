@@ -238,7 +238,7 @@ impl DeviceConfigMetaRepo {
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;
 
-        info!(
+        debug!(
             "load service list object success! id={:?}, list={:?}",
             self.service_list_id,
             list.app_list()
@@ -408,7 +408,7 @@ impl DeviceConfigRepo for DeviceConfigMetaRepo {
 
         let device_config_str = self.device_config.lock().unwrap().to_string();
 
-        info!(
+        debug!(
             "load device_config from meta: device_id={}, config={}",
             self.device_id.as_ref().unwrap(),
             device_config_str

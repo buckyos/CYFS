@@ -102,6 +102,27 @@ pub enum ViewMethodEnum {
     ViewNFTLargestBuyValue(ObjectId),
 }
 
+impl ViewMethodEnum {
+    pub fn method_name(&self) -> &'static str {
+        match self {
+            ViewMethodEnum::ViewBalance(_) => {"balance"}
+            ViewMethodEnum::ViewName(_) => {"name"}
+            ViewMethodEnum::ViewDesc(_) => {"desc"}
+            ViewMethodEnum::ViewRaw(_) => {"raw"}
+            ViewMethodEnum::ViewStatus => {"status"}
+            ViewMethodEnum::ViewBlock => {"block"}
+            ViewMethodEnum::ViewTx(_) => {"tx"}
+            ViewMethodEnum::ViewContract(_) => {"contract"}
+            ViewMethodEnum::ViewBenifi(_) => {"benefi"}
+            ViewMethodEnum::ViewLog(_) => {"log"}
+            ViewMethodEnum::ViewNFT(_) => {"nft"}
+            ViewMethodEnum::ViewNFTApplyBuyList(_) => {"nftapply"}
+            ViewMethodEnum::ViewNFTBidList(_) => {"nftbid"}
+            ViewMethodEnum::ViewNFTLargestBuyValue(_) => {"nftlargest"}
+        }
+    }
+}
+
 #[derive(RawEncode, RawDecode)]
 pub struct ViewRequest {
     pub block: ViewBlockEnum,

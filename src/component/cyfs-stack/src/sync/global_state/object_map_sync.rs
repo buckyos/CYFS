@@ -8,9 +8,9 @@ use super::walker::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
+use cyfs_debug::Mutex;
 use futures::future::{AbortHandle, Abortable};
 use std::sync::Arc;
-use cyfs_debug::Mutex;
 
 // sync的重试间隔
 const SYNC_RETRY_MIN_INTERVAL_SECS: u64 = 10;
@@ -311,7 +311,10 @@ impl ObjectMapSync {
             let type_code = object.object_id.obj_type_code();
             match type_code {
                 ObjectTypeCode::ObjectMap => {
-                    if let Err(_e) = self.put_object_map(object) {
+                    if let Err(_e) = self.put_object_map(
+                        object,
+                        item.meta.access_string.map(|v| AccessString::new(v)),
+                    ) {
                         *had_err = true;
                     }
                 }
@@ -340,7 +343,11 @@ impl ObjectMapSync {
         }
     }
 
-    fn put_object_map(&self, object: NONObjectInfo) -> BuckyResult<()> {
+    fn put_object_map(
+        &self,
+        object: NONObjectInfo,
+        access: Option<AccessString>,
+    ) -> BuckyResult<()> {
         let obj = object.object.unwrap();
         let obj = Arc::try_unwrap(obj).unwrap();
         let object_map = match obj {
@@ -361,7 +368,8 @@ impl ObjectMapSync {
             return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
         }
 
-        self.cache.put_object_map(&object.object_id, object_map)?;
+        self.cache
+            .put_object_map(&object.object_id, object_map, access)?;
 
         Ok(())
     }
