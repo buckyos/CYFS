@@ -57,9 +57,14 @@ impl ChunkListCacheReader {
         self.last_cache_chunk = Some(chunk_id.to_owned());
 
         let cache = cache.clone();
-        let cache_wrapper = ChunkCacheWrapper::new(cache.clone());
         let chunk_manager = self.chunk_manager.clone();
         async_std::task::spawn(async move {
+            let ret = chunk_manager.exist(cache.chunk()).await;
+            if ret {
+                debug!("cache chunk to chunk manager but already exists! chunk={}", cache.chunk());
+            }
+
+            let cache_wrapper = ChunkCacheWrapper::new(cache.clone());
             match chunk_manager.put_chunk(cache.chunk(), Box::new(cache_wrapper)).await {
                 Ok(()) => {
                     info!("cache chunk to chunk manager success! chunk={}", cache.chunk());
