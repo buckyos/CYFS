@@ -1,3 +1,5 @@
+use cyfs_base::*;
+
 use async_std::io::{Read, Result};
 use std::io::{Seek, SeekFrom};
 use std::ops::Range;
@@ -54,8 +56,8 @@ impl Read for ChunkListTaskRangesReader {
                     self.task_id, range.start, pos
                 );
                 error!("{}", msg);
-                let e = std::io::Error::new(std::io::ErrorKind::InvalidInput, msg);
-                break Poll::Ready(Err(e));
+                let e = BuckyError::new(BuckyErrorCode::IoError, msg);
+                break Poll::Ready(Err(e.into()));
             }
 
             let range_len = range.end - range.start;

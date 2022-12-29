@@ -76,8 +76,8 @@ impl async_std::io::Seek for ReaderWithLimit {
                 // println!("pos ret={}", pos);
                 if pos < self.range.start {
                     let msg = format!("seek beyond the begin: {} < {}", pos, self.range.start);
-                    let err = std::io::Error::new(std::io::ErrorKind::InvalidInput, msg);
-                    return Poll::Ready(Err(err));
+                    let err = BuckyError::new(BuckyErrorCode::InvalidInput, msg);
+                    return Poll::Ready(Err(err.into()));
                 } else if pos > self.range.end {
                     pos = self.range.end;
                 }
@@ -140,8 +140,8 @@ impl async_std::io::Read for ChunkReaderWithHash {
                                 self.path, self.chunk_id, actual_id
                             );
                             error!("{}", msg);
-                            let err = std::io::Error::new(std::io::ErrorKind::InvalidData, msg);
-                            Poll::Ready(Err(err))
+                            let err = BuckyError::new(BuckyErrorCode::InvalidData, msg);
+                            Poll::Ready(Err(err.into()))
                         }
                     }
                 }

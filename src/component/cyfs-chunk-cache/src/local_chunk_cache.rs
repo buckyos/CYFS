@@ -694,7 +694,8 @@ impl ChunkCache for SingleDiskChunkCache {
         let len = async_std::io::copy(reader, file.clone()).await.map_err(|e| {
             let msg = format!("write chunk to file failed! chunk={}, len={}, file={}, {}", chunk_id, chunk_id.len(), file_path.display(), e);
             log::error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::IoError, msg)
+            let e: BuckyError = e.into();
+            e.with_msg(msg)
         })?;
 
         if len != chunk_id.len() as u64 {

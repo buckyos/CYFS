@@ -99,10 +99,7 @@ impl async_std::io::Read for ChunkRead {
                     *future = None;
                     match ret {
                         Ok(ret) => Poll::Ready(Ok(ret)),
-                        Err(e) => Poll::Ready(Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            format!("{}", e),
-                        ))),
+                        Err(e) => Poll::Ready(Err(e.into())),
                     }
                 }
                 Poll::Pending => Poll::Pending,
@@ -128,10 +125,7 @@ impl async_std::io::Seek for ChunkRead {
                     *future = None;
                     match ret {
                         Ok(ret) => Poll::Ready(Ok(ret)),
-                        Err(e) => Poll::Ready(Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            format!("{}", e),
-                        ))),
+                        Err(e) => Poll::Ready(Err(e.into())),
                     }
                 }
                 Poll::Pending => Poll::Pending,
@@ -185,10 +179,8 @@ impl Read for ChunkReadWithRanges {
                                 let msg = format!("poll seek with range but ret pos not match! range={:?}, pos={}", range, pos);
                                 log::error!("{}", msg);
 
-                                break Poll::Ready(Err(std::io::Error::new(
-                                    std::io::ErrorKind::Other,
-                                    msg,
-                                )));
+                                let e = BuckyError::new(BuckyErrorCode::IoError, msg);
+                                break Poll::Ready(Err(e.into()));
                             }
                         }
                         Err(e) => {
@@ -305,10 +297,7 @@ impl async_std::io::Write for ChunkWrite {
                     *flush_future = None;
                     match ret {
                         Ok(ret) => Poll::Ready(Ok(ret)),
-                        Err(e) => Poll::Ready(Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            format!("{}", e),
-                        ))),
+                        Err(e) => Poll::Ready(Err(e.into())),
                     }
                 }
                 Poll::Pending => Poll::Pending,
