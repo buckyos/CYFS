@@ -1,10 +1,9 @@
 use super::request::*;
 use super::session::*;
-use cyfs_base::BuckyResult;
+use cyfs_base::*;
 use cyfs_debug::Mutex;
 
 use async_std::io::{Read, Write};
-
 use http_types::Url;
 use rand::Rng;
 use std::collections::HashMap;
@@ -15,10 +14,16 @@ use std::sync::Arc;
 struct WebSocketSessionManagerInner {
     list: HashMap<u32, Arc<WebSocketSession>>,
     next_sid: u32,
-    handler: Box<dyn WebSocketRequestHandler>,
+    handler: Option<Box<dyn WebSocketRequestHandler>>,
 
     // 带状态的select
     next_select_index: usize,
+}
+
+impl Drop for WebSocketSessionManagerInner {
+    fn drop(&mut self) {
+        warn!("ws session manager dropped! next_sid={}", self.next_sid);
+    }
 }
 
 impl WebSocketSessionManagerInner {
@@ -31,13 +36,13 @@ impl WebSocketSessionManagerInner {
                 break ret;
             }
         };
-        
-        info!("ws sid start at {}", sid);
+
+        info!("ws manager sid start at {}", sid);
 
         Self {
             list: HashMap::new(),
             next_sid: sid,
-            handler,
+            handler: Some(handler),
             next_select_index: 0,
         }
     }
@@ -80,21 +85,36 @@ impl WebSocketSessionManagerInner {
         &mut self,
         source: String,
         conn_info: (SocketAddr, SocketAddr),
-    ) -> Arc<WebSocketSession> {
+    ) -> BuckyResult<Arc<WebSocketSession>> {
         let sid = self.next_sid;
         self.next_sid += 1;
         if self.next_sid == u32::MAX {
             self.next_sid = 0;
         }
 
-        let session = WebSocketSession::new(sid, source, conn_info, self.handler.clone_handler());
+        let handler = self.handler.as_ref().map(|item| item.clone_handler());
+        if handler.is_none() {
+            let msg = format!(
+                "new ws session but request handler is empty! source={}",
+                source
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
+        }
+
+        let session = WebSocketSession::new(
+            sid,
+            source,
+            conn_info,
+            handler.unwrap(),
+        );
 
         let session = Arc::new(session);
         if let Some(_) = self.list.insert(sid, session.clone()) {
             unreachable!();
         }
 
-        session
+        Ok(session)
     }
 
     pub fn remove_session(&mut self, sid: u32) -> Option<Arc<WebSocketSession>> {
@@ -120,21 +140,34 @@ impl WebSocketSessionManager {
         self.0.lock().unwrap().select_session()
     }
 
-    pub async fn run_client_session<S>(
+    pub fn stop(&self) {
+        let mut inner = self.0.lock().unwrap();
+        assert!(inner.handler.is_some());
+        inner.handler = None;
+    }
+
+    pub fn new_session(
         &self,
         service_url: &Url,
         conn_info: (SocketAddr, SocketAddr),
+    ) -> BuckyResult<Arc<WebSocketSession>> {
+        self.0
+            .lock()
+            .unwrap()
+            .new_session(service_url.to_string(), conn_info)
+    }
+
+    pub async fn run_client_session<S>(
+        &self,
+        service_url: &Url,
+        session: Arc<WebSocketSession>,
         stream: S,
     ) -> BuckyResult<()>
     where
         S: Read + Write + Unpin + Send + 'static,
     {
         let inner = self.0.clone();
-        let session = inner
-            .lock()
-            .unwrap()
-            .new_session(service_url.to_string(), conn_info);
-        let service_url = service_url.to_owned();
+
         let ret = WebSocketSession::run_client(session.clone(), &service_url, stream).await;
 
         let current = inner.lock().unwrap().remove_session(session.sid());
@@ -154,7 +187,11 @@ impl WebSocketSessionManager {
         S: Read + Write + Unpin + Send + 'static,
     {
         let inner = self.0.clone();
-        let session = inner.lock().unwrap().new_session(source, conn_info);
+        let session = inner
+            .lock()
+            .unwrap()
+            .new_session(source, conn_info)
+            .unwrap();
         async_std::task::spawn(async move {
             let _ = WebSocketSession::run_server(session.clone(), stream).await;
 

@@ -153,11 +153,13 @@ impl DeviceConfigManager {
         }
 
         info!(
-            "device_config changed from {:?} to {}",
+            "device config changed from {:?} to {}",
             self.device_config_hash.lock().unwrap(),
             hash_value
         );
 
+        info!("device config: {}", device_config_str);
+        
         // 保存到本地配置文件
         Self::save_config_file(device_config_str.as_bytes()).await?;
 

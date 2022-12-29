@@ -79,6 +79,10 @@ impl AssociationObjects {
                 self.chunks_collector.append_chunk(id.as_chunk_id());
             }
             _ => {
+                if id.is_data() {
+                    return;
+                }
+                
                 if self.list.get(id).is_none() {
                     self.list.insert(id.to_owned());
                 }

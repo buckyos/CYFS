@@ -1458,15 +1458,14 @@ impl OnPackage<TcpAckConnection, tcp::AcceptInterface> for StreamContainer {
                                 interface,
                                 e
                             );
-                            let tunnel: BuckyResult<tunnel::tcp::Tunnel> =
-                                stream.as_ref().tunnel().create_tunnel(
+                            let tunnel = stream.as_ref().tunnel().create_tunnel::<tunnel::tcp::Tunnel>(
                                     EndpointPair::from((
                                         *interface.local(),
                                         Endpoint::default_tcp(interface.local()),
                                     )),
                                     ProxyType::None,
                                 );
-                            if let Ok(tunnel) = tunnel {
+                            if let Ok((tunnel, _)) = tunnel {
                                 tunnel.mark_dead(tunnel.state());
                             }
                         }

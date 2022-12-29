@@ -26,6 +26,7 @@ use super::{
 
 struct StateImpl {
     raw_cache: OnceCell<Box<dyn RawCache>>, 
+    pushed_len: usize, 
     indices: IncomeIndexQueue, 
     waiters: BTreeMap::<u32, StateWaiter>
 }
@@ -52,6 +53,7 @@ impl ChunkStreamCache {
         Self(Arc::new(CacheImpl {
             chunk: chunk.clone(),
             state: RwLock::new(StateImpl {
+                pushed_len: 0,
                 raw_cache: OnceCell::new(), 
                 indices: IncomeIndexQueue::new(end), 
                 waiters: BTreeMap::new()
@@ -59,7 +61,7 @@ impl ChunkStreamCache {
         }))
     }
 
-    pub fn create_encoder(&self, desc: &ChunkEncodeDesc) -> Box<dyn ChunkEncoder> {
+    pub fn create_encoder(&self, desc: &ChunkCodecDesc) -> Box<dyn ChunkEncoder> {
         SyncStreamEncoder::new(self.clone(), desc).clone_as_encoder()
     }
 
@@ -102,7 +104,7 @@ impl ChunkStreamCache {
         &self.0.chunk
     }
 
-    fn require_index(&self, desc: &ChunkEncodeDesc) -> Option<(Option<u32>, Option<Vec<Range<u32>>>)> {
+    fn require_index(&self, desc: &ChunkCodecDesc) -> Option<(Option<u32>, Option<Vec<Range<u32>>>)> {
         let (start, end, step) = desc.unwrap_as_stream();
         self.0.state.read().unwrap().indices.require(start, end, step)
     }
@@ -135,6 +137,9 @@ impl ChunkStreamCache {
             let (result, waiter) = {
                 let mut state = self.0.state.write().unwrap();
                 let result = state.indices.push(index..index + 1);
+                if result.pushed() {
+                    state.pushed_len += len;
+                }
                 (result, state.waiters.remove(&index))
             };
             if let Some(waiter) = waiter {
@@ -151,6 +156,10 @@ impl ChunkStreamCache {
 
     pub fn exists(&self, index: u32) -> BuckyResult<bool> {
         self.0.state.read().unwrap().indices.exists(index)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.state.read().unwrap().pushed_len
     }
 
     pub async fn wait_exists<T: futures::Future<Output=BuckyError>>(&self, index: u32, abort: T) -> BuckyResult<()> {
@@ -314,7 +323,7 @@ impl ChunkStreamCache {
 
 struct DecoderImpl {
     chunk: ChunkId, 
-    desc: ChunkEncodeDesc,  
+    desc: ChunkCodecDesc,  
     cache: ChunkStreamCache, 
 }
 
@@ -331,7 +340,7 @@ impl std::fmt::Display for StreamDecoder {
 impl StreamDecoder {
     pub fn new(
         chunk: &ChunkId, 
-        desc: &ChunkEncodeDesc, 
+        desc: &ChunkCodecDesc, 
         cache: ChunkStreamCache
     ) -> Self {
         Self(Arc::new(DecoderImpl {
@@ -351,7 +360,7 @@ impl ChunkDecoder for StreamDecoder {
         &self.0.chunk
     }
 
-    fn desc(&self) -> &ChunkEncodeDesc {
+    fn desc(&self) -> &ChunkCodecDesc {
         &self.0.desc
     }
 
@@ -403,7 +412,7 @@ struct AsyncEncoderStateImpl {
 }
 
 struct AsyncEncoderImpl {
-    desc: ChunkEncodeDesc, 
+    desc: ChunkCodecDesc, 
     cache: ChunkStreamCache,  
     state: RwLock<AsyncEncoderStateImpl>
 }
@@ -421,7 +430,7 @@ impl std::fmt::Display for AsyncStreamEncoder {
 impl AsyncStreamEncoder {
     pub fn new(
         cache: ChunkStreamCache, 
-        desc: &ChunkEncodeDesc
+        desc: &ChunkCodecDesc
     ) -> Self {
         let (start, end, step) = desc.unwrap_as_stream();
         Self(Arc::new(AsyncEncoderImpl {
@@ -462,7 +471,7 @@ impl ChunkEncoder for AsyncStreamEncoder {
         self.cache().chunk()
     }
 
-    fn desc(&self) -> &ChunkEncodeDesc {
+    fn desc(&self) -> &ChunkCodecDesc {
         &self.0.desc
     }
 
@@ -606,7 +615,7 @@ struct SyncEncoderStateImpl {
 }
 
 struct SyncEncoderImpl {
-    desc: ChunkEncodeDesc, 
+    desc: ChunkCodecDesc, 
     cache: ChunkStreamCache,  
     state: Mutex<SyncEncoderStateImpl>
 }
@@ -624,7 +633,7 @@ impl std::fmt::Display for SyncStreamEncoder {
 impl SyncStreamEncoder {
     pub fn new(
         cache: ChunkStreamCache, 
-        desc: &ChunkEncodeDesc
+        desc: &ChunkCodecDesc
     ) -> Self {
         let (start, end, step) = desc.unwrap_as_stream();
         Self(Arc::new(SyncEncoderImpl {
@@ -651,7 +660,7 @@ impl ChunkEncoder for SyncStreamEncoder {
         self.cache().chunk()
     }
 
-    fn desc(&self) -> &ChunkEncodeDesc {
+    fn desc(&self) -> &ChunkCodecDesc {
         &self.0.desc
     }
 

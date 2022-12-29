@@ -11,9 +11,6 @@ use async_std::{
     future, 
 };
 use cyfs_base::*;
-use cyfs_util::{
-    cache::*
-};
 
 use crate::{
     types::*,
@@ -158,6 +155,7 @@ impl StackConfig {
                 atomic_interval: Duration::from_millis(10), 
                 schedule_interval: Duration::from_secs(1), 
                 channel: ndn::channel::Config {
+                    reserve_timeout: Duration::from_secs(60), 
                     resend_interval: Duration::from_millis(500), 
                     resend_timeout: Duration::from_secs(5), 
                     block_interval: Duration::from_secs(2), 
@@ -345,19 +343,19 @@ impl Stack {
             
             let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
             stack_impl.lazy_components = Some(components);
-    
+
+            let mut chunk_store = None;
+            std::mem::swap(&mut chunk_store, &mut params.chunk_store);
+
             let mut ndn_event = None;
-	        std::mem::swap(&mut ndn_event, &mut params.ndn_event);
+            std::mem::swap(&mut ndn_event, &mut params.ndn_event);
+    
+            let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
+            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+            stack_impl.ndn = Some(ndn);
 
-	        let mut chunk_store = None;
-	        std::mem::swap(&mut chunk_store, &mut params.chunk_store);
-
-	        let ndn = NdnStack::open(stack.to_weak(), chunk_store, ndn_event);
-	        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-	        stack_impl.ndn = Some(ndn);
-
-        }   
-
+        }
+        
 
         let mut known_device = vec![];
         if params.known_device.is_some() {
@@ -460,7 +458,6 @@ impl Stack {
     pub fn reset_sn_list(&self, sn_list: Vec<Device>) -> PingClients {
         let sn_id_list: Vec<DeviceId> = sn_list.iter().map(|sn| sn.desc().device_id()).collect();
         info!("{} reset_sn_list {:?}", self, sn_id_list);
-
         
         for (id, sn) in sn_id_list.iter().zip(sn_list.iter()) {
             self.device_cache().add(id, sn);

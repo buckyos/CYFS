@@ -177,13 +177,13 @@ impl FlagsCounter {
 pub struct Interest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,
-    pub prefer_type: ChunkEncodeDesc, 
+    pub prefer_type: ChunkCodecDesc, 
     pub referer: Option<String>,
     pub from: Option<DeviceId>, 
+    pub group_path: Option<String>
     // pub link_url: Option<String>,
     // flow_id:Option<u32>,
     // priority: Option<u8>,
-    // from_device_obj : Option<DeviceObject>,
     // token : Option<String>,//必要的验证token
     // sign : Option<Vec<u8>>,
 }
@@ -209,7 +209,8 @@ impl RawEncodeWithContext<DatagramOptions> for Interest {
         let buf = context.encode(buf, &self.chunk)?;
         let buf = context.encode(buf, &self.prefer_type)?;
         let buf = context.option_encode(buf, &self.referer, flags.next())?;
-        let _ = context.option_encode(buf, &self.from, flags.next())?;
+        let buf = context.option_encode(buf, &self.from, flags.next())?;
+        let _ = context.option_encode(buf, &self.group_path, flags.next())?;
         context.finish(enc_buf)
     }
 }
@@ -227,13 +228,15 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for Interest {
         let (prefer_type, buf) = context.decode(buf)?;
         let (referer, buf) = context.option_decode(buf, flags.next())?;
         let (from, buf) = context.option_decode(buf, flags.next())?;
+        let (group_path, buf) = context.option_decode(buf, flags.next())?;
         Ok((
             Self {
                 session_id, 
                 chunk, 
                 prefer_type, 
                 referer,
-                from,
+                from, 
+                group_path
             },
             buf,
         ))
@@ -248,6 +251,7 @@ impl JsonCodec<Interest> for Interest {
         JsonCodecHelper::encode_field(&mut obj, "prefer_type", &self.prefer_type);
         JsonCodecHelper::encode_option_string_field(&mut obj, "referer", self.referer.as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "from", self.from.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "group_path", self.group_path.as_ref());
         obj
     }
 
@@ -259,6 +263,7 @@ impl JsonCodec<Interest> for Interest {
             prefer_type: JsonCodecHelper::decode_field(obj, "prefer_type")?, 
             referer: JsonCodecHelper::decode_option_string_field(obj, "referer")?, 
             from: JsonCodecHelper::decode_option_string_field(obj, "from")?, 
+            group_path: JsonCodecHelper::decode_option_string_field(obj, "group_path")?, 
         })
     }
 }
@@ -269,9 +274,10 @@ fn encode_protocol_ineterest() {
     let src = Interest {
         session_id: TempSeq::from(123), 
         chunk: ChunkId::default(),
-        prefer_type: ChunkEncodeDesc::Stream(None, None, None), 
-        from: None,
-        referer: Some("referer".to_owned()),
+        prefer_type: ChunkCodecDesc::Stream(None, None, None), 
+        referer: Some("referer".to_owned()), 
+        from: None, 
+        group_path: None
     };
 
     let mut buf = [0u8; 1500]; 

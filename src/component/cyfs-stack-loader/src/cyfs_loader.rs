@@ -3,7 +3,6 @@ use crate::{
     VAR_MANAGER,
 };
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, Endpoint};
-use cyfs_lib::SharedCyfsStack;
 use cyfs_stack::CyfsStack;
 use cyfs_util::TomlHelper;
 
@@ -15,15 +14,13 @@ impl CyfsServiceLoader {
     }
 
     pub async fn load(config: CyfsServiceLoaderConfig) -> BuckyResult<()> {
-        info!(
-            "non-service config: {}",
-            toml::to_string(&config.node).unwrap()
-        );
+        let node = config.into();
+        info!("non-service config: {}", toml::to_string(&node).unwrap());
 
         Self::prepare_env().await?;
 
         // 加载协议栈
-        if let Err(e) = STACK_MANAGER.load(config.node).await {
+        if let Err(e) = STACK_MANAGER.load(node).await {
             error!("load stack from config failed: {}", e);
             return Err(e);
         }
@@ -33,13 +30,12 @@ impl CyfsServiceLoader {
 
     // 直接加载，不初始化env，外部需要保证已经调用了prepare_env
     pub async fn direct_load(config: CyfsServiceLoaderConfig) -> BuckyResult<()> {
-        info!(
-            "non-service config: {}",
-            toml::to_string(&config.node).unwrap()
-        );
+        let node = config.into();
+
+        info!("non-service config: {}", toml::to_string(&node).unwrap());
 
         // 加载协议栈
-        if let Err(e) = STACK_MANAGER.load(config.node).await {
+        if let Err(e) = STACK_MANAGER.load(node).await {
             error!("load stack from config failed: {}", e);
             return Err(e);
         }
@@ -116,17 +112,7 @@ impl CyfsServiceLoader {
         STACK_MANAGER.get_cyfs_stack(id).unwrap()
     }
 
-    // 必须配置了shared_stack_stub=true
-    pub fn shared_cyfs_stack(id: Option<&str>) -> SharedCyfsStack {
-        STACK_MANAGER.get_shared_cyfs_stack(id).unwrap()
-    }
-
-    pub fn default_object_stack() -> CyfsStack {
+    pub fn default_cyfs_stack() -> CyfsStack {
         STACK_MANAGER.get_default_cyfs_stack().unwrap()
-    }
-
-    // 必须配置了shared_stack_stub=true
-    pub fn default_shared_object_stack() -> SharedCyfsStack {
-        STACK_MANAGER.get_default_shared_cyfs_stack().unwrap()
     }
 }

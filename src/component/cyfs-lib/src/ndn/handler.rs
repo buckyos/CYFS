@@ -1,8 +1,9 @@
+use std::path::PathBuf;
 use serde_json::{Map, Value};
 use cyfs_base::*;
 use cyfs_bdt::{
     TempSeq, 
-    ChunkEncodeDesc,
+    ChunkCodecDesc,
 };
 use super::{
     bdt_request::BdtDataRefererInfo
@@ -11,10 +12,11 @@ use super::{
 pub struct InterestHandlerRequest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,
-    pub prefer_type: ChunkEncodeDesc, 
+    pub prefer_type: ChunkCodecDesc, 
     pub from: Option<DeviceId>,
     pub referer: Option<BdtDataRefererInfo>, 
-    pub from_channel: DeviceId 
+    pub from_channel: DeviceId, 
+    pub group_path: Option<String>
 }
 
 
@@ -27,6 +29,7 @@ impl JsonCodec<InterestHandlerRequest> for InterestHandlerRequest {
         JsonCodecHelper::encode_option_string_field(&mut obj, "from", self.from.as_ref());
         JsonCodecHelper::encode_option_field(&mut obj, "referer", self.referer.as_ref());
         JsonCodecHelper::encode_string_field(&mut obj, "from_channel", &self.from_channel);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "group_path", self.group_path.as_ref());
         obj
     }
 
@@ -39,6 +42,7 @@ impl JsonCodec<InterestHandlerRequest> for InterestHandlerRequest {
             from: JsonCodecHelper::decode_option_string_field(obj, "from")?, 
             referer: JsonCodecHelper::decode_option_field(obj, "referer")?, 
             from_channel: JsonCodecHelper::decode_string_field(obj, "from_channel")?, 
+            group_path: JsonCodecHelper::decode_option_string_field(obj, "group_path")?, 
         })
     }
 }
@@ -55,8 +59,11 @@ impl std::fmt::Display for InterestHandlerRequest {
         if let Some(referer) = &self.referer {
             write!(f, ", referer: {}", referer)?;
         }
-        
+        if let Some(group_path) = &self.group_path {
+            write!(f, ", group_path: {}", group_path)?;
+        }
         write!(f, ", from_channel: {:?}", self.from_channel)
+       
     }
 }
 
@@ -102,10 +109,22 @@ impl JsonCodec<RespInterestFields> for RespInterestFields {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum InterestUploadSource {
+    ChunkStore, 
+    File {
+        path: PathBuf, 
+        offset: u64
+    }
+}
+
 #[derive(Clone)]
 pub enum InterestHandlerResponse {
     Default, 
-    Upload(Vec<String>), 
+    Upload {
+        source: InterestUploadSource, 
+        groups: Vec<String>
+    }, 
     Transmit(DeviceId), 
     Resp(RespInterestFields), 
     Handled
@@ -115,7 +134,7 @@ impl InterestHandlerResponse {
     pub fn type_str(&self) -> &str {
         match self {
             Self::Default => "Default", 
-            Self::Upload(_) => "Upload",
+            Self::Upload {..} => "Upload",
             Self::Transmit(_) => "Transmit",  
             Self::Resp(_) => "Resp", 
             Self::Handled => "Handled"
@@ -144,9 +163,17 @@ impl JsonCodec<InterestHandlerResponse> for InterestHandlerResponse {
         let mut obj = Map::new();
         match self {
             Self::Default => JsonCodecHelper::encode_string_field(&mut obj, "type", "Default"), 
-            Self::Upload(groups) => {
+            Self::Upload { source, groups }=> {
                 JsonCodecHelper::encode_string_field(&mut obj, "type", "Upload");
                 JsonCodecHelper::encode_str_array_field(&mut obj, "upload_groups", groups);
+                match source {
+                    InterestUploadSource::ChunkStore => {}, 
+                    InterestUploadSource::File { path, offset } => {
+                        JsonCodecHelper::encode_option_string_field(&mut obj, "upload_from_path", path.to_str());
+                        JsonCodecHelper::encode_option_number_field(&mut obj, "upload_from_offset", Some(*offset));
+                    }
+                }
+                
             }, 
             Self::Transmit(to) => {
                 JsonCodecHelper::encode_string_field(&mut obj, "type", "Transmit");
@@ -167,7 +194,13 @@ impl JsonCodec<InterestHandlerResponse> for InterestHandlerResponse {
             "Default" => Ok(Self::Default), 
             "Upload" => {
                 let groups = JsonCodecHelper::decode_str_array_field(obj, "upload_groups")?;
-                Ok(Self::Upload(groups))
+                let source = if let Some(path) = JsonCodecHelper::decode_option_string_field(obj, "upload_from_path")? {
+                    let offset = JsonCodecHelper::decode_option_int_field(obj, "upload_from_offset")?.unwrap_or_default();
+                    InterestUploadSource::File { path, offset }
+                } else {
+                    InterestUploadSource::ChunkStore
+                };
+                Ok(Self::Upload { source, groups })
             }, 
             "Transmit" => Ok(Self::Transmit(JsonCodecHelper::decode_option_string_field(obj, "transmit_to")?
                 .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidInput, "no transmit_to field"))?)), 
@@ -184,7 +217,7 @@ impl std::fmt::Display for InterestHandlerResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::Default => write!(f, "Default")?, 
-            Self::Upload(groups) => write!(f, "Upload({:?})", groups)?, 
+            Self::Upload { source, groups } => write!(f, "Upload{{groups:{:?},source:{:?}}}", groups, source)?, 
             Self::Transmit(to) => write!(f, "Transmit({})", to)?, 
             Self::Resp(resp) => write!(f, "Resp({})", resp)?, 
             Self::Handled => write!(f, "Handled")?

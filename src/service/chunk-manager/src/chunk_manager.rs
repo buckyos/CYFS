@@ -1,10 +1,13 @@
 use async_std::io::{BufRead};
 use async_std::prelude::*;
 use log::*;
+use lru_time_cache::LruCache;
 
 use cyfs_base::*;
 use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
 use cyfs_base_meta::*;
+use std::sync::{Mutex, Arc};
+
 // use chunk_client::{ChunkClient, ChunkCacheContext};
 
 use crate::chunk_store::ChunkStore;
@@ -14,7 +17,8 @@ pub struct ChunkManager {
     chunk_store: ChunkStore,
     meta_client: MetaClient,
     ctx: ChunkContext,
-    device_id: DeviceId
+    device_id: DeviceId,
+    memory_cache: Mutex<LruCache<ChunkId, Arc<Vec<u8>>>>,
 }
 
 impl ChunkManager {
@@ -23,7 +27,9 @@ impl ChunkManager {
             chunk_store: ChunkStore::new(&ctx.chunk_dir),
             meta_client: MetaClient::new_target(MetaMinerTarget::default()).with_timeout(std::time::Duration::from_secs(60 * 2)),
             ctx: ctx.clone(),
-            device_id: ctx.get_device_id()
+            device_id: ctx.get_device_id(),
+            memory_cache: Mutex::new(LruCache::with_expiry_duration_and_capacity(
+                std::time::Duration::from_secs(60 * 10), 100)),
         }
     }
 
@@ -45,6 +51,35 @@ impl ChunkManager {
         })?;
 
         Ok(reader)
+    }
+
+    pub async fn get_data(&self, chunk_id: &ChunkId) -> BuckyResult<Arc<Vec<u8>>> {
+        let data = 
+        {
+            let mut cache = self.memory_cache.lock().unwrap();
+            cache.get(chunk_id).cloned()
+        };
+
+        if data.is_some() {
+            return Ok(data.unwrap());
+        }
+
+        let mut reader = self.chunk_store.get(chunk_id).await.map_err(|e|{
+            BuckyError::from(e)
+        })?;
+
+        let mut chunk_data = Vec::new();
+        let _ = reader.read_to_end(&mut chunk_data).await.map_err(|e|{
+            BuckyError::from(e)
+        })?;
+
+        let data = Arc::new(chunk_data);
+        {
+            let mut cache = self.memory_cache.lock().unwrap();
+            cache.insert(chunk_id.to_owned(), data.clone());
+        }
+
+        Ok(data)
     }
 
     pub fn delete(&self, chunk_id: &ChunkId) -> BuckyResult<()> {

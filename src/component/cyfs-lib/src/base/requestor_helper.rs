@@ -867,6 +867,26 @@ impl RequestorHelper {
         }
     }
 
+    pub fn value_from_querys_with_utf8_decoding<T>(name: &str, url: &http_types::Url) -> BuckyResult<Option<T>>
+    where
+        T: FromStr,
+        <T as FromStr>::Err: std::fmt::Display,
+    {
+        match url.query_pairs().find(|(x, _)| x == name) {
+            Some((k, v)) => {
+                let v = Self::decode_utf8(&k, &v)?;
+                let v = T::from_str(v.as_ref()).map_err(|e| {
+                    let msg = format!("invalid query in url: {}={}, {}", name, v, e);
+                    error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::InvalidParam, msg)
+                })?;
+
+                Ok(Some(v))
+            }
+            _ => Ok(None),
+        }
+    }
+
     // try extract dec_id from header and url query pairs(only valid for GET method)
     pub fn dec_id_from_request(req: &http_types::Request) -> BuckyResult<Option<ObjectId>> {
         // first extract dec_id from headers

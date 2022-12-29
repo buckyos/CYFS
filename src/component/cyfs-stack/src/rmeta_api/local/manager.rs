@@ -238,6 +238,113 @@ impl GlobalStateMetaInputProcessor for GlobalStatePathMetaManager {
         let resp = GlobalStateMetaClearLinkInputResponse { count };
         Ok(resp)
     }
+
+    async fn add_object_meta(
+        &self,
+        req: GlobalStateMetaAddObjectMetaInputRequest,
+    ) -> BuckyResult<GlobalStateMetaAddObjectMetaInputResponse> {
+        let meta = self
+            .get_global_state_meta(Self::get_dec_id(&req.common), true)
+            .await?;
+        let updated = meta.add_object_meta(req.item).await?;
+
+        let resp = GlobalStateMetaAddObjectMetaInputResponse { updated };
+        Ok(resp)
+    }
+
+    async fn remove_object_meta(
+        &self,
+        req: GlobalStateMetaRemoveObjectMetaInputRequest,
+    ) -> BuckyResult<GlobalStateMetaRemoveObjectMetaInputResponse> {
+        let ret = self
+            .get_option_global_state_meta(Self::get_dec_id(&req.common), false)
+            .await?;
+        if ret.is_none() {
+            let resp = GlobalStateMetaRemoveObjectMetaInputResponse { item: None };
+
+            return Ok(resp);
+        }
+
+        let meta = ret.unwrap();
+        let item = meta.remove_object_meta(req.item).await?;
+
+        let resp = GlobalStateMetaRemoveObjectMetaInputResponse { item };
+
+        Ok(resp)
+    }
+
+    async fn clear_object_meta(
+        &self,
+        req: GlobalStateMetaClearObjectMetaInputRequest,
+    ) -> BuckyResult<GlobalStateMetaClearObjectMetaInputResponse> {
+        let ret = self
+            .get_option_global_state_meta(Self::get_dec_id(&req.common), false)
+            .await?;
+        if ret.is_none() {
+            let resp = GlobalStateMetaClearObjectMetaInputResponse { count: 0 };
+            return Ok(resp);
+        }
+
+        let meta = ret.unwrap();
+        let count = meta.clear_object_meta().await? as u32;
+
+        let resp = GlobalStateMetaClearObjectMetaInputResponse { count };
+        Ok(resp)
+    }
+
+    // path config
+    async fn add_path_config(
+        &self,
+        req: GlobalStateMetaAddPathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaAddPathConfigInputResponse> {
+        let meta = self
+            .get_global_state_meta(Self::get_dec_id(&req.common), true)
+            .await?;
+        let updated = meta.add_path_config(req.item).await?;
+
+        let resp = GlobalStateMetaAddPathConfigInputResponse { updated };
+        Ok(resp)
+    }
+
+    async fn remove_path_config(
+        &self,
+        req: GlobalStateMetaRemovePathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaRemovePathConfigInputResponse> {
+        let ret = self
+            .get_option_global_state_meta(Self::get_dec_id(&req.common), false)
+            .await?;
+        if ret.is_none() {
+            let resp = GlobalStateMetaRemovePathConfigInputResponse { item: None };
+
+            return Ok(resp);
+        }
+
+        let meta = ret.unwrap();
+        let item = meta.remove_path_config(req.item).await?;
+
+        let resp = GlobalStateMetaRemovePathConfigInputResponse { item };
+
+        Ok(resp)
+    }
+
+    async fn clear_path_config(
+        &self,
+        req: GlobalStateMetaClearPathConfigInputRequest,
+    ) -> BuckyResult<GlobalStateMetaClearPathConfigInputResponse> {
+        let ret = self
+            .get_option_global_state_meta(Self::get_dec_id(&req.common), false)
+            .await?;
+        if ret.is_none() {
+            let resp = GlobalStateMetaClearPathConfigInputResponse { count: 0 };
+            return Ok(resp);
+        }
+
+        let meta = ret.unwrap();
+        let count = meta.clear_path_config().await? as u32;
+
+        let resp = GlobalStateMetaClearPathConfigInputResponse { count };
+        Ok(resp)
+    }
 }
 
 pub type GlobalStatePathMetaManagerRef = Arc<GlobalStatePathMetaManager>;

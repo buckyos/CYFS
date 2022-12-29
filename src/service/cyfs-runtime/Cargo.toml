@@ -9,7 +9,6 @@ description = "Rust cyfs-runtime package"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-base = { path = "../base" }
 cyfs-util = { path = "../../component/cyfs-util" }
 cyfs-bdt = { path = "../../component/cyfs-bdt" }
 cyfs-base = { path = "../../component/cyfs-base" }

@@ -9,7 +9,6 @@ description = "Rust gateway package"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-base = { path = "../base" }
 cyfs-util = { path = "../../component/cyfs-util" }
 cyfs-bdt = { path = "../../component/cyfs-bdt" }
 cyfs-base = { path = "../../component/cyfs-base" }
@@ -35,6 +34,7 @@ tide = "0.16"
 url = "2.2"
 bytes = "1.1"
 toml = "0.5"
+once_cell = "1.12"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["mswsock", "winsock2"] }

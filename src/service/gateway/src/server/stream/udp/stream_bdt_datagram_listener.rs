@@ -1,6 +1,7 @@
 use crate::upstream::{UdpUpStreamManager, UpstreamDatagramSender};
-use base::STACK_MANAGER;
+use cyfs_stack_loader::STACK_MANAGER;
 use cyfs_base::BuckyError;
+use cyfs_stack_loader::ListenerUtil;
 
 use async_std::task;
 use futures::future::{AbortHandle};
@@ -230,7 +231,7 @@ impl DatagramBdtListenerManager {
         &mut self,
         server_node: &toml::value::Table,
     ) -> Result<(), BuckyError> {
-        let (stack, vport) = match ::base::ListenerUtil::load_bdt_listener(server_node) {
+        let (stack, vport) = match ListenerUtil::load_bdt_listener(server_node) {
             Ok(v) => v,
             Err(e) => {
                 return Err(e);

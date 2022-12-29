@@ -225,41 +225,41 @@ impl LocalFile {
         async_std::task::spawn_blocking(move || {
             let file_handle = if !local_path.exists() {
                 let file_handle = std::fs::OpenOptions::new().create(true).read(true).write(true).open(local_path.as_path()).map_err(|e| {
-                    let msg = format!("open file {} failed.err {}", local_path.to_string_lossy().to_string(), e);
-                    log::error!("{}", msg.as_str());
-                    BuckyError::new(BuckyErrorCode::Failed, msg)
+                    let msg = format!("open file {} failed.err {}", local_path.display(), e);
+                    log::error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::IoError, msg)
                 })?;
                 file_handle.set_len(file.desc().content().len()).map_err(|e| {
-                    let msg = format!("[{}:{}] set file {}  len {} failed.err {}", file!(), line!(), local_path.to_string_lossy().to_string(), file.desc().content().len(), e);
-                    log::error!("{}", msg.as_str());
-                    BuckyError::new(BuckyErrorCode::Failed, msg)
+                    let msg = format!("[{}:{}] set file {}  len {} failed.err {}", file!(), line!(), local_path.display(), file.desc().content().len(), e);
+                    log::error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::IoError, msg)
                 })?;
                 file_handle
             } else {
                 let file_handle = std::fs::OpenOptions::new().read(true).write(true).open(local_path.as_path()).map_err(|e| {
-                    let msg = format!("open file {} failed.err {}", local_path.to_string_lossy().to_string(), e);
-                    log::error!("{}", msg.as_str());
-                    BuckyError::new(BuckyErrorCode::Failed, msg)
+                    let msg = format!("open file {} failed.err {}", local_path.display(), e);
+                    log::error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::IoError, msg)
                 })?;
                 let meta = std::fs::metadata(local_path.as_path()).map_err(|e| {
-                    let msg = format!("read file meta {} failed.err {}", local_path.to_string_lossy().to_string(), e);
-                    log::error!("{}", msg.as_str());
-                    BuckyError::new(BuckyErrorCode::Failed, msg)
+                    let msg = format!("read file meta {} failed.err {}", local_path.display(), e);
+                    log::error!("{}", msg);
+                    BuckyError::new(BuckyErrorCode::IoError, msg)
                 })?;
                 if meta.len() != file.desc().content().len() {
                     file_handle.set_len(file.desc().content().len()).map_err(|e| {
-                        let msg = format!("[{}:{}] set file {}  len {} failed.err {}", file!(), line!(), local_path.to_string_lossy().to_string(), file.desc().content().len(), e);
-                        log::error!("{}", msg.as_str());
-                        BuckyError::new(BuckyErrorCode::Failed, msg)
+                        let msg = format!("set file {}  len {} failed.err {}", local_path.display(), file.desc().content().len(), e);
+                        log::error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::IoError, msg)
                     })?;
                 }
                 file_handle
             };
 
             let mmap = unsafe {MmapMut::map_mut(&file_handle).map_err(|e| {
-                let msg = format!("[{}:{}] create file {} map failed.err {}", file!(), line!(), local_path.to_string_lossy().to_string(), e);
-                log::error!("{}", msg.as_str());
-                BuckyError::new(BuckyErrorCode::Failed, msg)
+                let msg = format!("create file {} map failed.err {}", local_path.display(), e);
+                log::error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::IoError, msg)
             })?};
 
 
@@ -290,7 +290,9 @@ impl LocalFile {
                 Ok(LocalFileChunk::new(range_list[0].0, range_list[0].1, &self.mmap))
             },
             None => {
-                Err(BuckyError::new(BuckyErrorCode::NotFound, format!("chunk {} not found in {}", chunk_id.to_string(), self.local_path.to_string_lossy().to_string())))
+                let msg = format!("chunk {} not found in {}", chunk_id, self.local_path.display());
+                log::error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
             }
         }
     }
@@ -301,7 +303,9 @@ impl LocalFile {
                 Ok(range_list)
             },
             None => {
-                Err(BuckyError::new(BuckyErrorCode::NotFound, format!("chunk {} not found in {}", chunk_id.to_string(), self.local_path.to_string_lossy().to_string())))
+                let msg = format!("chunk {} not found in {}", chunk_id, self.local_path.display());
+                log::error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
             }
         }
     }
@@ -312,7 +316,9 @@ impl LocalFile {
                 Ok(LocalFileChunkMut::new(range_list[0].0, range_list[0].1, &mut self.mmap))
             },
             None => {
-                Err(BuckyError::new(BuckyErrorCode::NotFound, format!("chunk {} not found in {}", chunk_id.to_string(), self.local_path.to_string_lossy().to_string())))
+                let msg = format!("chunk {} not found in {}", chunk_id.to_string(), self.local_path.display());
+                log::error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
             }
         }
     }
@@ -330,7 +336,9 @@ impl LocalFile {
                 Ok(())
             },
             None => {
-                Err(BuckyError::new(BuckyErrorCode::NotFound, format!("chunk {} not found in {}", chunk_id.to_string(), this.local_path.to_string_lossy().to_string())))
+                let msg = format!("chunk {} not found in {}", chunk_id, this.local_path.display());
+                log::error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
             }
         }
     }
@@ -340,7 +348,7 @@ impl LocalFile {
         this.mmap.flush().map_err(|e| {
             let msg = format!("flush err {}", e);
             log::error!("{}", msg.as_str());
-            BuckyError::new(BuckyErrorCode::Failed, msg)
+            BuckyError::new(BuckyErrorCode::IoError, msg)
         })
     }
 
@@ -359,9 +367,9 @@ impl LocalFile {
 impl Drop for LocalFile {
     fn drop(&mut self) {
         let _ = self.mmap.flush().map_err(|e| {
-            let msg = format!("flush err {}", e);
-            log::error!("{}", msg.as_str());
-            BuckyError::new(BuckyErrorCode::Failed, msg)
+            let msg = format!("flush local file failed! file={}, {}", self.local_path.display(), e);
+            log::error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
         });
     }
 }

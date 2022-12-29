@@ -291,13 +291,27 @@ message MsgDescContent {
 }
 
 message TransContextDescContent {
-    bytes dec_id = 1;
-    string context_name = 2;
+    string context_path = 1;
 }
 
+message TransContextDeviceChunkCodecInfo {
+    optional uint32 start = 1;
+    optional uint32 end = 2;
+    optional int32 step = 3;
+}
+
+message TransContextDevice {
+    bytes target = 1;
+    enum ChunkCodecDesc {
+        Unknown = 0;
+        Stream = 1;
+        Raptor = 2;
+    }
+    ChunkCodecDesc chunk_codec_desc  = 2;
+    optional TransContextDeviceChunkCodecInfo chunk_codec_info = 3;
+}
 message TransContextBodyContent {
-    optional bytes ref_id = 1;
-    repeated bytes device_list = 2;
+    repeated TransContextDevice device_list = 1;
 }
 
 message NFTFileDesc {

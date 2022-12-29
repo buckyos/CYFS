@@ -207,7 +207,7 @@ fn main() {
     println!("cargo:rustc-env=NIGHTLY_SN_RAW={}", nightly_sns.to_hex().unwrap());
 
     //let mut beta_sn_raw = vec![];
-    let beta_sns = SNDirGenerator::gen_from_dir(&Some(owner), Path::new("peers/nightly-sn")).unwrap();
+    let beta_sns = SNDirGenerator::gen_from_dir(&Some(owner), Path::new("peers/beta-sn")).unwrap();
     //std::fs::File::open("peers/beta-sn.desc").unwrap().read_to_end(&mut beta_sn_raw).unwrap();
     println!("cargo:rustc-env=BETA_SN_RAW={}", beta_sns.to_hex().unwrap());
 }

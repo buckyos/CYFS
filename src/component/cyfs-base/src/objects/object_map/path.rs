@@ -113,6 +113,7 @@ impl ObjectMapPath {
                     part,
                     ObjectMapSimpleContentType::Map,
                     ObjectMapCreateStrategy::NotCreate,
+                    None,
                 )
                 .await
                 .map_err(|e| {
@@ -199,7 +200,7 @@ impl ObjectMapPath {
                 .last_mut()
                 .unwrap()
                 .obj_map
-                .get_or_create_child_object_map(&self.obj_map_cache, part, content_type, create_strategy)
+                .get_or_create_child_object_map(&self.obj_map_cache, part, content_type, create_strategy, None)
                 .await
                 .map_err(|e| {
                     let msg = format!(
@@ -289,7 +290,7 @@ impl ObjectMapPath {
             let current_id = obj_map.cached_object_id().unwrap();
             assert_ne!(current_id, prev_id);
 
-            self.obj_map_cache.put_object_map(&current_id, obj_map)?;
+            self.obj_map_cache.put_object_map(&current_id, obj_map, None)?;
 
             if index + 1 == count {
                 self.update_root(current_id, &prev_id)?;
@@ -472,6 +473,7 @@ impl ObjectMapPath {
                 &op_data.param.key,
                 op_data.param.content_type,
                 ObjectMapCreateStrategy::CreateNew,
+                None,
             )
             .await?;
 

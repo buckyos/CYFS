@@ -369,8 +369,8 @@ impl AcceptReverseTcpStream {
                         }, 
                         Err(e) => {
                             warn!("{} confirm {} with tcp ack ack connection failed for {}", stream.as_ref(), interface, e);
-                            let tunnel: BuckyResult<tunnel::tcp::Tunnel> = stream.as_ref().tunnel().create_tunnel(EndpointPair::from((*interface.local(), Endpoint::default_tcp(interface.local()))), ProxyType::None);
-                            if let Ok(tunnel) = tunnel {
+                            let tunnel = stream.as_ref().tunnel().create_tunnel::<tunnel::tcp::Tunnel>(EndpointPair::from((*interface.local(), Endpoint::default_tcp(interface.local()))), ProxyType::None);
+                            if let Ok((tunnel, _)) = tunnel {
                                 tunnel.mark_dead(tunnel.state());
                             }
                         }

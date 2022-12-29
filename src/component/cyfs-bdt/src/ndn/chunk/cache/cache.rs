@@ -1,24 +1,57 @@
+use log::*;
 use std::{
-    sync::{Arc}, 
+    sync::{Arc, Weak, Mutex}, 
     ops::Range, 
 };
+use async_std::{
+    task
+};
 use cyfs_base::*;
+use crate::{
+    types::*,
+    stack::{Stack, WeakStack}
+};
 use super::super::super::{
     types::*, 
-    channel::protocol::v0::PieceData
+    channel::protocol::v0::PieceData,
+};
+use super::super::{
+    storage::*
 };
 use super::{
     encode::*, 
     stream::*, 
+    raw_cache::*
 };
 
+enum CacheState {
+    Loading(StateWaiter),
+    Loaded(bool)
+}
+
 struct CacheImpl {
-    chunk: ChunkId, 
+    chunk: ChunkId,  
+    state: Mutex<CacheState>, 
     stream_cache: ChunkStreamCache, 
 }
 
 #[derive(Clone)]
 pub struct ChunkCache(Arc<CacheImpl>);
+
+
+pub struct WeakChunkCache(Weak<CacheImpl>);
+
+impl WeakChunkCache {
+    pub fn to_strong(&self) -> Option<ChunkCache> {
+        Weak::upgrade(&self.0).map(|arc| ChunkCache(arc))
+    }
+}
+
+impl ChunkCache {
+    pub fn to_weak(&self) -> WeakChunkCache {
+        WeakChunkCache(Arc::downgrade(&self.0))
+    }
+}
 
 
 impl std::fmt::Display for ChunkCache {
@@ -28,12 +61,76 @@ impl std::fmt::Display for ChunkCache {
 }
 
 impl ChunkCache {
-    pub fn new(chunk: ChunkId) -> Self {
-        let stream_cache = ChunkStreamCache::new(&chunk);
-        Self(Arc::new(CacheImpl {
+    pub fn new(stack: WeakStack, chunk: ChunkId) -> Self {
+        let cache = Self(Arc::new(CacheImpl {
+            stream_cache: ChunkStreamCache::new(&chunk), 
             chunk, 
-            stream_cache, 
-        }))
+            state: Mutex::new(CacheState::Loading(StateWaiter::new()))
+        }));
+
+        {
+            let stack = Stack::from(&stack);
+            let cache = cache.clone();
+
+            task::spawn(async move {
+                let raw_cache = stack.ndn().chunk_manager().raw_caches().alloc(cache.chunk().len()).await;
+                let finished = cache.load(raw_cache.as_ref(), stack.ndn().chunk_manager().store()).await.is_ok();
+                let _ = cache.stream().load(finished, raw_cache);
+                let waiters = {
+                    let state = &mut *cache.0.state.lock().unwrap();
+                    match state {
+                        CacheState::Loading(waiters) => {
+                            let waiters = waiters.transfer(); 
+                            *state = CacheState::Loaded(finished);
+                            waiters
+                        },
+                        _ => unreachable!()
+                    }
+                };
+                waiters.wake();
+            });
+        }
+        
+        cache
+    }
+
+
+    async fn load(&self, cache: &dyn RawCache, storage: &dyn ChunkReader) -> BuckyResult<()> {
+        let reader = storage.get(self.chunk()).await?;
+
+        let writer = cache.async_writer().await?;
+
+        let written = async_std::io::copy(reader, writer).await? as usize;
+        
+        if written != self.chunk().len() {
+            Err(BuckyError::new(BuckyErrorCode::InvalidInput, ""))
+        } else {
+            Ok(())
+        }
+    } 
+
+    pub async fn wait_loaded(&self) -> bool {
+        let (waiter, finished) = {
+            let state = &mut *self.0.state.lock().unwrap();
+            match state {
+                CacheState::Loading(waiters) => (Some(waiters.new_waiter()), None), 
+                CacheState::Loaded(finished) => (None, Some(*finished))
+            }
+        };
+
+        if let Some(waiter) = waiter {
+            StateWaiter::wait(waiter, || {
+                let state = &*self.0.state.lock().unwrap();
+                if let CacheState::Loaded(finished) = state {
+                    *finished
+                } else {
+                    unreachable!()
+                }
+            }).await
+        } else {
+            finished.unwrap()
+        }
+        
     }
 
     pub fn chunk(&self) -> &ChunkId {
@@ -44,7 +141,7 @@ impl ChunkCache {
         &self.0.stream_cache
     }
 
-    pub fn create_encoder(&self, desc: &ChunkEncodeDesc) -> Box<dyn ChunkEncoder> {
+    pub fn create_encoder(&self, desc: &ChunkCodecDesc) -> Box<dyn ChunkEncoder> {
         self.stream().create_encoder(desc).clone_as_encoder()
     }
 
