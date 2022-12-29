@@ -150,9 +150,20 @@ impl NamedObjectLocalStorage {
     ) -> NamedObjectMetaPutObjectRequest {
         let obj = request.object.object.as_ref().unwrap();
 
+        let object_create_time = match obj.create_time() {
+            0 => None,
+            v @ _ => Some(v)
+        };
+
         let object_update_time = obj.update_time();
         let object_expired_time = obj.expired_time();
         let owner_id = obj.owner().to_owned();
+        let dec_id = obj.dec_id().to_owned();
+        let author = obj.author().to_owned();
+        let prev = obj.prev().to_owned();
+        let body_prev_version = obj.body_prev_version().to_owned();
+        let ref_objs = obj.ref_objs().cloned();
+        let nonce = obj.nonce().to_owned();
 
         // If the request does not specify an access string then try to use the default
         let access_string = match request.access_string {
@@ -165,9 +176,17 @@ impl NamedObjectLocalStorage {
             object_id: request.object.object_id.clone(),
             owner_id,
 
+            object_type: obj.obj_type(),
             insert_time: bucky_time_now(),
+            object_create_time,
             object_update_time,
             object_expired_time,
+            dec_id,
+            author,
+            prev,
+            body_prev_version,
+            ref_objs,
+            nonce,
 
             storage_category: request.storage_category,
             context: request.context.clone(),
@@ -525,5 +544,12 @@ impl NamedObjectCache for NamedObjectLocalStorage {
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
         Self::stat(&self).await
+    }
+
+    fn bind_object_meta_access_provider(
+        &self,
+        object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    ) {
+        self.meta.bind_object_meta_access_provider(object_meta_access_provider)
     }
 }

@@ -3,6 +3,7 @@ mod local_chunk_cache;
 mod cached_file;
 mod local_file;
 mod chunk_manager;
+mod old_base36;
 
 pub use chunk_cache::*;
 pub use cyfs_chunk_lib::*;

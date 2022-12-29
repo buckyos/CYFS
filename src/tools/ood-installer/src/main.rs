@@ -116,7 +116,7 @@ async fn main_run() {
             Arg::with_name("no_start")
                 .long("no-start")
                 .takes_value(false)
-                .help("Don't start ood-daemon service, default is yes"),
+                .help("Don't start ood-daemon service, default is no"),
         )
         .arg(Arg::with_name("overwrite")
             .long("overwrite")
@@ -170,6 +170,9 @@ async fn main_run() {
                 .takes_value(false)
                 .help(&format!("Specify OOD bind service just use ipv6 address")),
         )
+        .arg(Arg::with_name("only_start")
+            .long("start-ood")
+            .help("only start ood-daemon service"))
         .get_matches();
 
     cyfs_util::process::check_cmd_and_exec_with_args("ood-installer", &matches);
@@ -218,6 +221,28 @@ async fn main_run() {
 
     if bind {
         run_bind(&matches).await;
+    }
+
+    if matches.is_present("only_start") {
+        // 初始化system_config+device_config，初始化ood-daemon需要依赖此操作
+        // 只启动本地的ood-daemon的情况，不需要fetch新的版本
+        {
+            if let Err(e) = DaemonEnv::prepare(false).await {
+                error!("init daemon env error! {}", e);
+                std::process::exit(-1);
+            }
+        }
+
+        let mut ood_daemon_init = OodDaemonInit::new();
+        if let Err(_e) = ood_daemon_init.init().await {
+            std::process::exit(-1);
+        }
+
+        if let Err(_e) = ood_daemon_init.start() {
+            std::process::exit(-1);
+        }
+
+        std::process::exit(0);
     }
 
     let mut force = matches.is_present("force");
@@ -272,8 +297,7 @@ async fn main_run() {
     }
     // 初始化system_config+device_config，sync-repo和初始化ood-daemon需要依赖此操作
     {
-        let env = DaemonEnv::new(&target);
-        if let Err(e) = env.prepare().await {
+        if let Err(e) = DaemonEnv::prepare(true).await {
             error!("init daemon env error! {}", e);
             std::process::exit(-1);
         }

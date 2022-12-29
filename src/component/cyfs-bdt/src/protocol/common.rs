@@ -1068,10 +1068,11 @@ impl Package for SnCall {
 
 
 
+
 impl From<(&SnCall, Vec<u8>, AesKey)> for Exchange {
     fn from(context: (&SnCall, Vec<u8>, AesKey)) -> Self {
         let (sn_call, key_encrypted, mix_key) = context;
-    
+
         Self {
             sequence: sn_call.seq.clone(),  
             to_device_id: sn_call.sn_peer_id.clone(), 

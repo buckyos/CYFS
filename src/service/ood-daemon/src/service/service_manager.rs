@@ -211,6 +211,8 @@ impl ServiceManager {
 
     // 同步服务列表
     async fn sync_service_list(&self, service_config_list: Vec<ServiceConfig>) -> BuckyResult<()> {
+        let _lock = self.sync_lock.lock().await;
+
         // 查找被移除的service
         let mut remove_list = Vec::new();
         for (_, current_service_info) in self.service_list.lock().unwrap().iter() {
@@ -486,11 +488,11 @@ impl ServiceManager {
         }
 
         if !futures.is_empty() {
-            join_all(futures).await;
+            let _ret = join_all(futures).await;
         }
     }
 
-    async fn sync_service_package(service_info: ServiceItem) {
+    async fn sync_service_package(service_info: ServiceItem) -> BuckyResult<()> {
         let service = service_info.service.as_ref().unwrap();
         match service.sync_package().await {
             Ok(changed) => {
@@ -498,8 +500,12 @@ impl ServiceManager {
                     // 更新成功包，需要同步状态
                     Self::sync_service_target_state(&service_info);
                 }
+
+                Ok(())
             }
-            Err(_e) => {}
+            Err(e) => {
+                Err(e)
+            }
         }
     }
 

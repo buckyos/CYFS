@@ -3,6 +3,7 @@ use super::output_request::*;
 use super::processor::*;
 use crate::base::*;
 use crate::stack::SharedObjectStackDecID;
+use crate::requestor::*;
 use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};
@@ -41,7 +42,12 @@ impl NONRequestorHelper {
         let object_id: ObjectId = RequestorHelper::decode_header(req, cyfs_base::CYFS_OBJECT_ID)?;
 
         let mut info = Self::decode_object_info_from_body(object_id, req).await?;
-        info.decode_and_verify()?;
+        if !info.is_empty() {
+            info.decode_and_verify()?;
+        } else {
+            // for chunks and data object_id 
+        }
+        
         Ok(info)
     }
 
@@ -123,16 +129,6 @@ pub struct NONRequestor {
 }
 
 impl NONRequestor {
-    pub fn new_default_tcp(dec_id: Option<SharedObjectStackDecID>) -> Self {
-        let service_addr = format!("127.0.0.1:{}", cyfs_base::NON_STACK_HTTP_PORT);
-        Self::new_tcp(dec_id, &service_addr)
-    }
-
-    pub fn new_tcp(dec_id: Option<SharedObjectStackDecID>, service_addr: &str) -> Self {
-        let tcp_requestor = TcpHttpRequestor::new(service_addr);
-        Self::new(dec_id, Arc::new(Box::new(tcp_requestor)))
-    }
-
     pub fn new(dec_id: Option<SharedObjectStackDecID>, requestor: HttpRequestorRef) -> Self {
         let addr = requestor.remote_addr();
 

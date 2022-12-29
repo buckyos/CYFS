@@ -1,5 +1,5 @@
+use crate::ndn_api::ChunkStoreReader;
 use crate::ndn_api::DirLoader;
-use crate::ndn_api::LocalDataManager;
 use crate::non::*;
 use cyfs_base::*;
 use cyfs_lib::*;
@@ -20,10 +20,10 @@ pub(crate) struct NONDirLoader {
 }
 
 impl NONDirLoader {
-    pub fn new(non: NONInputProcessorRef, data_manager: LocalDataManager) -> Self {
+    pub fn new(non: NONInputProcessorRef, chunk_reader: ChunkStoreReader) -> Self {
         Self {
             non,
-            dir_loader: DirLoader::new(data_manager),
+            dir_loader: DirLoader::new(chunk_reader),
         }
     }
 
@@ -155,7 +155,7 @@ impl NONDirLoader {
                     // 创建一个单chunk的file对象
                     let builder = File::new_no_owner(
                         chunk_id.len() as u64,
-                        HashValue::from(chunk_id.hash()),
+                        HashValue::try_from(chunk_id.hash()).unwrap(),
                         ChunkList::ChunkInList(vec![chunk_id.to_owned()]),
                     );
                     let builder = builder.no_create_time();

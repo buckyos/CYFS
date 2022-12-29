@@ -3,6 +3,7 @@ use super::super::protocol::*;
 use super::ping_server::*;
 use super::requestor::*;
 use super::zone_state::*;
+use crate::NamedDataComponents;
 use crate::root_state_api::*;
 use crate::zone::*;
 use cyfs_base::*;
@@ -22,7 +23,7 @@ pub(crate) struct ZoneSyncServer {
 
     requestor: Arc<SyncServerRequestorManager>,
 
-    ndc: Box<dyn NamedDataCache>,
+    named_data_components: NamedDataComponents,
 }
 
 impl ZoneSyncServer {
@@ -33,6 +34,7 @@ impl ZoneSyncServer {
         zone_manager: ZoneManagerRef,
         root_state: GlobalStateLocalService,
         noc: NamedObjectCacheRef,
+        named_data_components: NamedDataComponents,
         bdt_stack: StackGuard,
         ood_sync_vport: u16,
         device_manager: Box<dyn DeviceCache>,
@@ -42,8 +44,6 @@ impl ZoneSyncServer {
         let zone_state = Arc::new(zone_state);
 
         let ping_server = SyncPingServer::new(zone_state.clone(), role_manager);
-
-        let ndc = bdt_stack.ndn().chunk_manager().ndc().clone();
 
         let requestor = SyncServerRequestorManager::new(bdt_stack, device_manager, ood_sync_vport);
         let requestor = Arc::new(requestor);
@@ -58,7 +58,7 @@ impl ZoneSyncServer {
             state_sync_server,
 
             requestor,
-            ndc,
+            named_data_components,
         }
     }
 
@@ -216,7 +216,7 @@ impl ZoneSyncServer {
             states: get_req.states,
         };
 
-        let result = self.ndc.exists_chunks(&req).await?;
+        let result = self.named_data_components.ndc.exists_chunks(&req).await?;
         Ok(SyncChunksResponse { result })
     }
 }

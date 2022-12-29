@@ -1,5 +1,5 @@
 use cyfs_base::BuckyResult;
-use cyfs_lib::{SharedCyfsStack, BrowserSanboxMode};
+use cyfs_lib::{BrowserSanboxMode, SharedCyfsStack};
 use cyfs_stack_loader::{
     BdtEndPointParams, CyfsServiceLoader, CyfsServiceLoaderConfig, CyfsServiceLoaderParam,
     CyfsStack,
@@ -136,8 +136,13 @@ impl NonStub {
         assert!(self.cyfs_stack.is_none());
         assert!(self.local_object_stack.is_none());
 
-        self.local_object_stack = Some(CyfsServiceLoader::default_object_stack());
-        let stack = CyfsServiceLoader::default_shared_object_stack();
+        self.local_object_stack = Some(CyfsServiceLoader::default_cyfs_stack());
+        let stack = self
+            .local_object_stack
+            .as_ref()
+            .unwrap()
+            .open_shared_object_stack(None, None)
+            .await?;
         stack.online().await?;
         self.cyfs_stack = Some(stack);
 

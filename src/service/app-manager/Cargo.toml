@@ -46,3 +46,4 @@ app-manager-lib = { path = "../app-manager-lib" }
 toml = "0.5"
 clap = '2.34.0'
 wait-timeout = '0.2.0'
+once_cell = "1.17.0"

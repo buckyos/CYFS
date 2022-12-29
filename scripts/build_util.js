@@ -2,7 +2,7 @@ const fs = require('fs')
 const child_process = require('child_process');
 
 const env = process.env;
-const ndk_home = "C:\\Users\\vip\\AppData\\Local\\Android\\Sdk\\ndk\\21.0.6113669"
+const ndk_home = env.ANDROID_NDK_HOME || "C:\\Users\\vip\\AppData\\Local\\Android\\Sdk\\ndk\\21.0.6113669"
 env["AR_aarch64-linux-android"] = `${ndk_home}\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android-ar.exe`
 env["CC_aarch64-linux-android"] = `${ndk_home}\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android21-clang.cmd`
 env["CARGO_HTTP_MULTIPLEXING"] = "false"

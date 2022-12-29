@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
 
 mod named_data_client;
@@ -9,29 +10,29 @@ mod actions;
 use clap::{App, SubCommand, Arg, ArgMatches};
 
 use crate::actions::{put, get, get_by_id, create, upload};
-use crate::named_data_client::NamedCacheClient;
+use crate::named_data_client::{ConnStrategy, NamedCacheClient, NamedCacheClientConfig};
 
 use log::*;
-use cyfs_base::{PrivateKey, Device, File, FileDecoder, StandardObject, RawConvertTo, BuckyResult, RawFrom};
+use cyfs_base::{PrivateKey, Device, File, FileDecoder, StandardObject, RawConvertTo, BuckyResult, RawFrom, Area};
 use cyfs_lib::{NONGetObjectOutputRequest, SharedCyfsStack, UtilGetDeviceStaticInfoOutputRequest};
 use cyfs_meta_lib::MetaMinerTarget;
 
 extern crate log;
 
-fn get_device_desc(matches: &ArgMatches, name: &str) -> (Option<Device>, Option<PrivateKey>) {
+fn get_device_desc(matches: &ArgMatches, name: &str) -> Option<(Device, PrivateKey)> {
     if let Some(path) = matches.value_of(name) {
         match cyfs_util::get_device_from_file(&Path::new(path).with_extension("desc"), &Path::new(path).with_extension("sec")) {
             Ok(ret) => {
                 debug!("sec: {}", ret.1.to_hex().unwrap());
-                (Some(ret.0), Some(ret.1))
+                Some(ret)
             },
             Err(e) => {
                 error!("read desc from {} fail, err {}", path, e);
-                (None, None)
+                None
             }
         }
     } else {
-        (None, None)
+        None
     }
 }
 
@@ -51,7 +52,6 @@ fn get_desc(matches: &ArgMatches, name: &str) -> Option<(StandardObject, Private
 
 async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
     stack.wait_online(Some(Duration::from_secs(5))).await?;
-
     let info = stack.util().get_device_static_info(UtilGetDeviceStaticInfoOutputRequest::new()).await?;
     info!("get sn list from runtime: {:?}", info.info.known_sn_list);
     let mut devices = vec![];
@@ -63,28 +63,22 @@ async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
     Ok(devices)
 }
 
-async fn sn_list(matches: &ArgMatches<'_>) -> Vec<Device> {
+async fn sn_list(matches: &ArgMatches<'_>) -> (Vec<Device>, Option<Area>) {
     if matches.is_present("stack_sn") {
         let stack = SharedCyfsStack::open_runtime(None).await.unwrap();
-        get_sn_list(&stack).await.unwrap_or_else(|e| {
+        stack.online().await.unwrap();
+        let area = stack.local_device_id().object_id().info().into_area();
+        info!("get area from runtime: {:?}", area);
+        (get_sn_list(&stack).await.unwrap_or_else(|e| {
             error!("get sn list from runtime err {}, use built-in sn list", e);
             cyfs_util::get_builtin_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect()
-        })
+        }), area)
     } else {
-        cyfs_util::get_builtin_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect()
+        (cyfs_util::get_builtin_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect(), None)
     }
 }
 
 async fn main_run() {
-    cyfs_debug::CyfsLoggerBuilder::new_service("cyfs-client")
-        .level("info")
-        .console("info")
-        .enable_bdt(Some("warn"), Some("warn"))
-        .build()
-        .unwrap()
-        .start();
-
-    cyfs_debug::PanicBuilder::new("cyfs-tools", "cyfs-client").build().start();
     let default_target = MetaMinerTarget::default().to_string();
     let meta_arg = Arg::with_name("meta_target").short("m").long("meta_target").takes_value(true).default_value(&default_target).help("meta target");
 
@@ -98,6 +92,9 @@ async fn main_run() {
         .arg(Arg::with_name("desc").short("d").long("desc").takes_value(true).help("bdt init desc, use on own risk"))
         .arg(Arg::with_name("output").long("output").takes_value(true).help("chunk save path"))
         .arg(Arg::with_name("stack_sn").long("use-stack-sn").hidden(true).help("use local runtime`s newest sn list"))
+        .arg(Arg::with_name("use_tcp").long("tcp").help("use tcp first mode"))
+        .arg(Arg::with_name("chunk_port").long("chunk-port").default_value("5310").help("chunk manager tcp port"))
+        .arg(Arg::with_name("file_port").long("file-port").default_value("5312").help("file manager tcp port"))
         .arg(meta_arg.clone());
 
     let matches = App::new("cyfs-client").version(cyfs_base::get_version())
@@ -108,6 +105,9 @@ async fn main_run() {
             .arg(Arg::with_name("dest").help("dest file path").index(2))
             .arg(Arg::with_name("desc").short("d").long("desc").takes_value(true).help("bdt init desc, use on own risk"))
             .arg(Arg::with_name("stack_sn").long("use-stack-sn").hidden(true).help("use local runtime`s newest sn list"))
+            .arg(Arg::with_name("use_tcp").long("tcp").help("use tcp first mode"))
+            .arg(Arg::with_name("chunk_port").long("chunk-port").default_value("5310").help("chunk manager tcp port"))
+            .arg(Arg::with_name("file_port").long("file-port").default_value("5312").help("file manager tcp port"))
             .arg(meta_arg.clone())
         )
         .subcommand(put_command.clone().name("create").about("create filedesc, only for test"))
@@ -117,6 +117,9 @@ async fn main_run() {
             .arg(Arg::with_name("dest").help("dest file path").index(2))
             .arg(Arg::with_name("desc").short("d").long("desc").takes_value(true).help("bdt init desc, use on own risk"))
             .arg(Arg::with_name("stack_sn").long("use-stack-sn").hidden(true).help("use local runtime`s newest sn list"))
+            .arg(Arg::with_name("use_tcp").long("tcp").help("use tcp first mode"))
+            .arg(Arg::with_name("chunk_port").long("chunk-port").default_value("5310").help("chunk manager tcp port"))
+            .arg(Arg::with_name("file_port").long("file-port").default_value("5312").help("file manager tcp port"))
             .arg(meta_arg.clone())
         )
         .subcommand(SubCommand::with_name("upload")
@@ -132,6 +135,16 @@ async fn main_run() {
         )
         .get_matches();
 
+    cyfs_debug::CyfsLoggerBuilder::new_service("cyfs-client")
+        .level("info")
+        .console("info")
+        .enable_bdt(Some("info"), Some("warn"))
+        .build()
+        .unwrap()
+        .start();
+
+    cyfs_debug::PanicBuilder::new("cyfs-tools", "cyfs-client").build().start();
+
 
     match matches.subcommand() {
         ("put", Some(matches)) => {
@@ -141,11 +154,23 @@ async fn main_run() {
             let file_id = matches.value_of("file_id").map(PathBuf::from);
             let url_file = matches.value_of("url_file").map(PathBuf::from);
 
-            let mut client = NamedCacheClient::new();
-            let (device_desc, device_secret) = get_device_desc(&matches, "desc");
-            let meta_target = matches.value_of("meta_target").map(str::to_string);
-            let sn_list = sn_list(matches).await;
-            client.init(device_desc, device_secret, meta_target, Some(sn_list)).await.unwrap();
+
+            let desc = get_device_desc(&matches, "desc");
+            let meta_target = matches.value_of("meta_target").map(|s|
+                MetaMinerTarget::from_str(&s).unwrap_or(MetaMinerTarget::default())).unwrap_or(MetaMinerTarget::default());
+            let (sn_list, area) = sn_list(matches).await;
+            let mut config = NamedCacheClientConfig::default();
+            config.desc = desc;
+            config.meta_target = meta_target;
+            config.sn_list = Some(sn_list);
+            config.area = area;
+            if matches.is_present("use_tcp") {
+                config.conn_strategy = ConnStrategy::TcpFirst;
+                config.tcp_chunk_manager_port = matches.value_of("chunk_port").unwrap().parse().unwrap();
+                config.tcp_file_manager_port = matches.value_of("file_port").unwrap().parse().unwrap();
+            }
+            let mut client = NamedCacheClient::new(config);
+            client.init().await.unwrap();
 
             if let Some((owner_desc, secret)) = get_desc(&matches, "owner") {
                 info!("@put...");
@@ -167,11 +192,23 @@ async fn main_run() {
         ("get", Some(matches)) => {
             let url = matches.value_of("url").unwrap().to_owned();
             let dest_path = PathBuf::from(matches.value_of("dest").unwrap());
-            let mut client = NamedCacheClient::new();
-            let (device_desc, device_sec) = get_device_desc(matches, "desc");
-            let meta_target = matches.value_of("meta_target").map(str::to_string);
-            let sn_list = sn_list(matches).await;
-            client.init(device_desc, device_sec, meta_target, Some(sn_list)).await.unwrap();
+
+            let desc = get_device_desc(matches, "desc");
+            let meta_target = matches.value_of("meta_target").map(|s|
+                MetaMinerTarget::from_str(&s).unwrap_or(MetaMinerTarget::default())).unwrap_or(MetaMinerTarget::default());
+            let (sn_list, area) = sn_list(matches).await;
+            let mut config = NamedCacheClientConfig::default();
+            config.desc = desc;
+            config.meta_target = meta_target;
+            config.sn_list = Some(sn_list);
+            config.area = area;
+            if matches.is_present("use_tcp") {
+                config.conn_strategy = ConnStrategy::TcpFirst;
+                config.tcp_chunk_manager_port = matches.value_of("chunk_port").unwrap().parse().unwrap();
+                config.tcp_file_manager_port = matches.value_of("file_port").unwrap().parse().unwrap();
+            }
+            let mut client = NamedCacheClient::new(config);
+            client.init().await.unwrap();
             async_std::task::spawn(async move {
                 if get(&client, &url, &dest_path).await.is_err() {
                     std::process::exit(1);
@@ -184,11 +221,23 @@ async fn main_run() {
             let fileid = matches.value_of("fileid").unwrap().to_owned();
             let dest_path = PathBuf::from(matches.value_of("dest").unwrap_or(&fileid));
 
-            let mut client = NamedCacheClient::new();
-            let (device_desc, device_sec) = get_device_desc(matches, "desc");
-            let meta_target = matches.value_of("meta_target").map(str::to_string);
-            let sn_list = sn_list(matches).await;
-            client.init(device_desc, device_sec, meta_target, Some(sn_list)).await.unwrap();
+            let desc = get_device_desc(matches, "desc");
+            let meta_target = matches.value_of("meta_target").map(|s|
+                MetaMinerTarget::from_str(s).unwrap_or(MetaMinerTarget::default())
+            ).unwrap_or(MetaMinerTarget::default());
+            let (sn_list, area) = sn_list(matches).await;
+            let mut config = NamedCacheClientConfig::default();
+            config.desc = desc;
+            config.meta_target = meta_target;
+            config.sn_list = Some(sn_list);
+            config.area = area;
+            if matches.is_present("use_tcp") {
+                config.conn_strategy = ConnStrategy::TcpFirst;
+                config.tcp_chunk_manager_port = matches.value_of("chunk_port").unwrap().parse().unwrap();
+                config.tcp_file_manager_port = matches.value_of("file_port").unwrap().parse().unwrap();
+            }
+            let mut client = NamedCacheClient::new(config);
+            client.init().await.unwrap();
             async_std::task::spawn(async move {
                 if get_by_id(&client, &fileid, &dest_path, None).await.is_err() {
                     std::process::exit(1);
@@ -244,10 +293,13 @@ async fn main_run() {
             }
         },
         ("extract", Some(matches)) => {
-            let mut client = NamedCacheClient::new();
-            let meta_target = matches.value_of("meta_target").map(str::to_string);
+            let meta_target = matches.value_of("meta_target").map(|s|
+                MetaMinerTarget::from_str(s).unwrap_or(MetaMinerTarget::default())).unwrap_or(MetaMinerTarget::default());
             let url = matches.value_of("url").unwrap().to_owned();
-            client.init(None, None, meta_target, None).await.unwrap();
+            let mut config = NamedCacheClientConfig::default();
+            config.meta_target = meta_target;
+            let mut client = NamedCacheClient::new(config);
+            client.init().await.unwrap();
             async_std::task::spawn(async move {
                 match client.extract_cyfs_url(&url).await {
                     Ok((owner, id, inner)) => {
@@ -261,7 +313,6 @@ async fn main_run() {
                     }
                 }
             }).await;
-
         },
         v @ _ => {
             error!("unknown command: {}", v.0);

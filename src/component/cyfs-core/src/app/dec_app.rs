@@ -47,7 +47,7 @@ impl ProtobufTransform<protos::DecAppContent> for DecAppContent {
     fn transform(value: protos::DecAppContent) -> BuckyResult<Self> {
         let mut source = HashMap::new();
         for item in value.source {
-            source.insert(item.key, ObjectId::clone_from_slice(item.value.as_slice()));
+            source.insert(item.key, ObjectId::clone_from_slice(item.value.as_slice())?);
         }
 
         let mut source_desc = HashMap::new();

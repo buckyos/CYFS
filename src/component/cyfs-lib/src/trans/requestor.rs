@@ -1,13 +1,10 @@
 use super::output_request::*;
 use crate::base::*;
+use crate::*;
 use cyfs_base::*;
-
-use crate::{
-    NDNOutputRequestCommon, SharedObjectStackDecID, TransOutputProcessor, TransOutputProcessorRef,
-};
-use cyfs_core::TransContext;
 use cyfs_core::TransContextObject;
-use http_types::{Method, Request, StatusCode, Url};
+
+use http_types::{Method, Request, Url};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -18,11 +15,6 @@ pub struct TransRequestor {
 }
 
 impl TransRequestor {
-    pub fn new_tcp(dec_id: Option<SharedObjectStackDecID>, service_addr: &str) -> Self {
-        let tcp_requestor = TcpHttpRequestor::new(service_addr);
-        Self::new(dec_id, Arc::new(Box::new(tcp_requestor)))
-    }
-
     pub fn new(dec_id: Option<SharedObjectStackDecID>, requestor: HttpRequestorRef) -> Self {
         let addr = requestor.remote_addr();
 
@@ -49,7 +41,11 @@ impl TransRequestor {
             }
         }
 
-        RequestorHelper::encode_opt_header_with_encoding(http_req, cyfs_base::CYFS_REQ_PATH, com_req.req_path.as_deref());
+        RequestorHelper::encode_opt_header_with_encoding(
+            http_req,
+            cyfs_base::CYFS_REQ_PATH,
+            com_req.req_path.as_deref(),
+        );
         http_req.insert_header(CYFS_API_LEVEL, com_req.level.to_string());
 
         if let Some(target) = &com_req.target {
@@ -57,7 +53,11 @@ impl TransRequestor {
         }
 
         if !com_req.referer_object.is_empty() {
-            RequestorHelper::insert_headers_with_encoding(http_req, cyfs_base::CYFS_REFERER_OBJECT, &com_req.referer_object);
+            RequestorHelper::insert_headers_with_encoding(
+                http_req,
+                cyfs_base::CYFS_REFERER_OBJECT,
+                &com_req.referer_object,
+            );
         }
 
         http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());

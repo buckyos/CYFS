@@ -21,6 +21,11 @@ pub fn bucky_time_to_unix_time(time: u64) -> u64 {
     time - _TIME_TTO_MICROSECONDS_OFFSET
 }
 
+// in micro seconds of unix epoch
+pub fn unix_time_to_bucky_time(time: u64) -> u64 {
+    time + _TIME_TTO_MICROSECONDS_OFFSET
+}
+
 pub fn bucky_time_now() -> u64 {
     system_time_to_bucky_time(&SystemTime::now())
 }

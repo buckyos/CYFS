@@ -29,10 +29,10 @@ impl ServiceMonitor {
         }
     }
 
-    pub fn start_monitor(service_name: &str) {
+    pub fn start_monitor(service_name: &str) -> BuckyResult<()> {
         // Self::launch_monitor();
 
-        Self::run_monitor_checker(service_name);
+        Self::run_monitor_checker(service_name)
     }
 
     fn try_get_cmd_from_config() -> Option<String> {
@@ -75,11 +75,16 @@ impl ServiceMonitor {
         cyfs_util::process::launch_as_daemon(&cmd_line)
     }
 
-    fn run_monitor_checker(service_name: &str) {
+    fn run_monitor_checker(service_name: &str) -> BuckyResult<()> {
         let name = Self::monitor_name(service_name);
 
+        let mutex = cyfs_util::process::ProcessMutex::new(&name);
+        if mutex.acquire().is_some() {
+            warn!("monitor process not exists! will restart...");
+            Self::launch_monitor()?;
+        }
+
         task::spawn(async move {
-            let mutex = cyfs_util::process::ProcessMutex::new(&name);
             loop {
                 task::sleep(Duration::from_secs(5)).await;
 
@@ -89,6 +94,8 @@ impl ServiceMonitor {
                 }
             }
         });
+
+        Ok(())
     }
 
     fn monitor_name(service_name: &str) -> String {

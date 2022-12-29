@@ -1,27 +1,20 @@
 use cyfs_base::{BuckyError, BuckyResult};
 use ood_daemon::{ServiceMode, DEVICE_CONFIG_MANAGER, SERVICE_MANAGER, init_system_config};
-use super::asset::InstallTarget;
 
 
 use std::path::PathBuf;
 
-pub struct DaemonEnv {
-    target: InstallTarget,
-}
+pub struct DaemonEnv;
 
 impl DaemonEnv {
-    pub fn new(target: &InstallTarget) -> Self {
-        Self {
-            target: target.to_owned(),
-        }
-    }
-
-    pub async fn prepare(&self) -> BuckyResult<()> {
+    pub async fn prepare(fetch: bool) -> BuckyResult<()> {
         init_system_config().await?;
 
         DEVICE_CONFIG_MANAGER.init().await?;
 
-        DEVICE_CONFIG_MANAGER.fetch_config().await?;
+        if fetch {
+            DEVICE_CONFIG_MANAGER.fetch_config().await?;
+        }
 
         Ok(())
     }

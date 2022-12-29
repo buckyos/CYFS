@@ -1,5 +1,6 @@
 use crate::*;
 
+use base58::{FromBase58, ToBase58};
 use generic_array::typenum::{marker_traits::Unsigned, U32};
 use generic_array::GenericArray;
 use std::fmt;
@@ -102,9 +103,39 @@ impl From<&[u8; 32]> for HashValue {
     }
 }
 
-impl From<&[u8]> for HashValue {
-    fn from(hash: &[u8]) -> Self {
-        Self(GenericArray::clone_from_slice(hash))
+impl TryFrom<&[u8]> for HashValue {
+    type Error = BuckyError;
+    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+        if v.len() != 32 {
+            let msg = format!(
+                "HashValue expected bytes of length {} but it was {}",
+                32,
+                v.len()
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let ar: [u8; 32] = v.try_into().unwrap();
+        Ok(Self(GenericArray::from(ar)))
+    }
+}
+
+impl TryFrom<Vec<u8>> for HashValue {
+    type Error = BuckyError;
+    fn try_from(v: Vec<u8>) -> Result<Self, Self::Error> {
+        if v.len() != 32 {
+            let msg = format!(
+                "HashValue expected bytes of length {} but it was {}",
+                32,
+                v.len()
+            );
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let ar: [u8; 32] = v.try_into().unwrap();
+        Ok(Self(GenericArray::from(ar)))
     }
 }
 
@@ -125,14 +156,40 @@ impl HashValue {
         hex::encode(self.0.as_slice())
     }
 
-    pub fn clone_from_slice(hash: &[u8]) -> BuckyResult<Self> {
-        if hash.len() != HASH_VALUE_LEN {
-            let msg = format!("invalid hash buf len: {}", hash.len());
+    pub fn from_hex_string(s: &str) -> BuckyResult<Self> {
+        let ret = hex::decode(s).map_err(|e| {
+            let msg = format!("invalid hash value hex string: {}, {}", s, e);
             error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+
+        Self::clone_from_slice(&ret)
+    }
+
+    pub fn to_base58(&self) -> String {
+        self.0.to_base58()
+    }
+
+    pub fn from_base58(s: &str) -> BuckyResult<Self> {
+        let buf = s.from_base58().map_err(|e| {
+            let msg = format!("convert base58 str to hashvalue failed, str={}, {:?}", s, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+
+        if buf.len() != 32 {
+            let msg = format!(
+                "convert base58 str to hashvalue failed, len unmatch: str={}",
+                s
+            );
             return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
         }
 
-        Ok(HashValue::from(hash))
+        Ok(Self::try_from(buf).unwrap())
+    }
+
+    pub fn clone_from_slice(hash: &[u8]) -> BuckyResult<Self> {
+        Self::try_from(hash)
     }
 }
 
@@ -145,13 +202,11 @@ impl std::fmt::Display for HashValue {
 impl FromStr for HashValue {
     type Err = BuckyError;
     fn from_str(s: &str) -> BuckyResult<Self> {
-        let ret = hex::decode(s).map_err(|e| {
-            let msg = format!("invalid hash hex string: {}, {}", s, e);
-            error!("{}", msg);
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        })?;
-
-        Self::clone_from_slice(&ret)
+        if s.len() == 64 {
+            Self::from_hex_string(s)
+        } else {
+            Self::from_base58(s)
+        }
     }
 }
 
@@ -180,7 +235,10 @@ impl ProtobufTransform<Vec<u8>> for HashValue {
         if value.len() != HASH_VALUE_LEN {
             return Err(BuckyError::new(
                 BuckyErrorCode::InvalidParam,
-                format!("try convert from vec<u8> to named object id failed, invalid len {}", value.len())
+                format!(
+                    "try convert from vec<u8> to named object id failed, invalid len {}",
+                    value.len()
+                ),
             ));
         }
         let mut id = Self::default();
@@ -189,5 +247,26 @@ impl ProtobufTransform<Vec<u8>> for HashValue {
         }
 
         Ok(id)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use crate::*;
+
+    #[test]
+    fn test() {
+        let hash = hash_data("xxxx".as_bytes());
+        let hex_id = hash.to_hex_string();
+        let base58_id = hash.to_base58();
+
+        println!("{}, {}", hex_id, base58_id);
+
+        let ret = HashValue::from_str(&hex_id).unwrap();
+        let ret2 = HashValue::from_str(&base58_id).unwrap();
+
+        assert_eq!(ret, ret2);
     }
 }

@@ -82,7 +82,7 @@ async fn main() {
             &*ln_stack, 
             chunkid.clone(), 
             None, 
-            SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+            SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
         ).await.unwrap();
         ln_store.write_chunk(&chunkid, reader).await.unwrap();
         

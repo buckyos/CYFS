@@ -1,22 +1,33 @@
-#![recursion_limit="256"]
+#![recursion_limit = "256"]
 
-mod profile;
 mod loader;
+mod profile;
 
 #[macro_use]
 extern crate log;
 
-use cyfs_debug::*;
 use clap::App;
+use cyfs_debug::*;
+use zone_simulator::CyfsStackInsConfig;
+use cyfs_lib::BrowserSanboxMode;
+
+use std::str::FromStr;
+use clap::Arg;
 
 #[async_std::main]
 async fn main() {
     let app = App::new("zone-stack")
         .version(cyfs_base::get_version())
         .about("zone-stack tools for cyfs system")
-        .author("CYFS <dev@cyfs.com>");
+        .author("CYFS <dev@cyfs.com>")
+        .arg(
+            Arg::with_name("browser-mode")
+                .long("browser-mode")
+                .takes_value(true)
+                .help("The browser sanbox mode, default is none"),
+        );
 
-    let _matches = app.get_matches();
+    let matches = app.get_matches();
 
     // 切换目录到当前exe的相对目录
     let root = std::env::current_exe().unwrap();
@@ -37,12 +48,29 @@ async fn main() {
         .build()
         .start();
 
+    let browser_mode = match matches.value_of("browser-mode") {
+        Some(v) => Some(
+            BrowserSanboxMode::from_str(v)
+                .map_err(|e| {
+                    println!("invalid browser mode param! {}, {}", v, e);
+                    std::process::exit(-1);
+                })
+                .unwrap(),
+        ),
+        None => None,
+    };
+
+    let mut stack_config = CyfsStackInsConfig::default();
+    if let Some(mode) = browser_mode {
+        stack_config.browser_mode = mode;
+    }
+
     async_std::task::block_on(async move {
-        if let Err(e) = loader::Loader::load().await {
+        if let Err(e) = loader::Loader::load(stack_config).await {
             error!("{}", e);
             std::process::exit(-1);
         }
     });
-    
+
     async_std::task::sleep(std::time::Duration::from_millis(u64::MAX)).await;
 }
