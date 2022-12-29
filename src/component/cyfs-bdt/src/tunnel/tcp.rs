@@ -650,8 +650,8 @@ impl Tunnel {
 
         let call_session = stack.sn_client().call().call(
             Some(&endpoints), 
-            owner.remote(), 
-            &vec![sn_id.clone()], 
+            owner.remote(),
+            &vec![sn_id.clone()],
             |sn_call| {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 let mut buf = vec![0u8; interface::udp::MTU_LARGE];

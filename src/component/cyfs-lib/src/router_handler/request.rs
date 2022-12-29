@@ -57,8 +57,8 @@ where
 
         if let Some(resp) = &self.response {
             match resp {
-                Ok(v) => write!(f, "response: {}", v)?,
-                Err(e) => write!(f, "response error: {}", e)?,
+                Ok(v) => write!(f, ", response: {}", v)?,
+                Err(e) => write!(f, ", response error: {}", e)?,
             }
         }
 

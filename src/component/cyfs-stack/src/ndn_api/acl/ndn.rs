@@ -2,7 +2,7 @@ use super::verifier::NDNRefererVerifier;
 use crate::acl::*;
 use crate::ndn::*;
 use crate::ndn_api::ndc::NDNObjectLoader;
-use crate::ndn_api::LocalDataManager;
+use crate::ndn_api::ChunkStoreReader;
 use crate::ndn_api::NDNForwardObjectData;
 use crate::non::NONInputProcessorRef;
 use crate::non_api::NONGlobalStateValidator;
@@ -26,10 +26,10 @@ pub(crate) struct NDNAclInputProcessor {
 impl NDNAclInputProcessor {
     pub fn new(
         acl: AclManagerRef,
-        data_manager: LocalDataManager,
+        chunk_reader: ChunkStoreReader,
         next: NDNInputProcessorRef,
     ) -> Self {
-        let verifier = NDNRefererVerifier::new(data_manager);
+        let verifier = NDNRefererVerifier::new(chunk_reader);
         Self {
             validator: NONGlobalStateValidator::new(acl.global_state_validator().to_owned()),
             verifier,

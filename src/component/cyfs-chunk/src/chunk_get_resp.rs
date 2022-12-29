@@ -2,6 +2,9 @@ use cyfs_base::*;
 use crate::chunk_get_raw::*;
 use crate::chunk_redirect_req::*;
 
+use std::sync::Arc;
+
+
 pub enum ChunkGetRespStatus{
     Ok = 200,
     Redirect = 302,
@@ -49,7 +52,7 @@ impl ChunkGetResp {
         ChunkGetRespStatus::from(&self.status)
     }
 
-    pub fn new_raw(source_signer: &PrivateKey, source_device_id:&DeviceId,  client_device_id:&DeviceId, chunk_id:&ChunkId, data:Vec<u8>)->BuckyResult<ChunkGetResp>{
+    pub fn new_raw(source_signer: &PrivateKey, source_device_id:&DeviceId,  client_device_id:&DeviceId, chunk_id:&ChunkId, data: Arc<Vec<u8>>)->BuckyResult<ChunkGetResp>{
 
         let chunk_get_raw = ChunkGetRaw::sign(source_signer, source_device_id, client_device_id, chunk_id, data)?;
 

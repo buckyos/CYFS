@@ -1,10 +1,10 @@
 use super::super::inner_path::NONInnerPathServiceProcessor;
+use crate::NamedDataComponents;
 use crate::meta::*;
 use crate::non::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use cyfs_chunk_cache::ChunkManager;
 use std::sync::Arc;
 
 pub(crate) struct MetaInputProcessor {
@@ -25,18 +25,14 @@ impl MetaInputProcessor {
     pub(crate) fn new_with_inner_path_service(
         noc_processor: Option<NONInputProcessorRef>,
         meta_cache: MetaCacheRef,
-        ndc: Box<dyn NamedDataCache>,
-        tracker: Box<dyn TrackerCache>,
-        chunk_manager: Arc<ChunkManager>,
+        named_data_components: &NamedDataComponents,
         noc: NamedObjectCacheRef,
     ) -> NONInputProcessorRef {
         let noc_with_meta_processor = Self::new(noc_processor, meta_cache);
 
         let inner_path_processor = NONInnerPathServiceProcessor::new(
             noc_with_meta_processor,
-            chunk_manager,
-            ndc,
-            tracker,
+            named_data_components,
             noc,
         );
 

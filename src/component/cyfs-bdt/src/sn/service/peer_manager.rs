@@ -221,7 +221,9 @@ impl PeerManager {
                 log::debug!("ping without device-info.");
             }
 
+
             let recount_req = match (send_time - cached_peer.last_send_time) / self.config.client_ping_interval.as_micros() as u64 {
+
                 0 => {
                     let recode = if cached_peer.last_ping_seq >= seq {
                         false
@@ -297,6 +299,7 @@ impl PeerManager {
             std::mem::swap(&mut knock_peers, &mut peers.active_peers);
             std::mem::swap(&mut knock_peers, &mut peers.knock_peers);
             self.last_knock_time.store(now, Ordering::SeqCst);
+
             Some(knock_peers.into_keys().collect())
         } else {
             None
@@ -305,6 +308,7 @@ impl PeerManager {
         self.statistic_manager.on_time_escape(now);
 
         drop_maps
+
     }
 
     pub fn find_peer(&self, id: &DeviceId) -> Option<FoundPeer> {

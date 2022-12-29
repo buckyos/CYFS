@@ -11,8 +11,10 @@ use http_types::StatusCode;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::Arc;
 use tide::listener::Listener;
+use tide::Response;
 use tide::security::{CorsMiddleware, Origin};
 
 struct NonHttpServerInner {
@@ -268,6 +270,30 @@ impl CyfsProxy {
 
         let file_cache = FileCacheRecevier::new();
         server.at("/file-cache").post(file_cache);
+
+        server.at("/file-upload-tool").get(|_| {
+            #[cfg(target_os = "windows")]
+            const UPLOADER_PROG_NAME: &str = "cyfs-file-uploader.exe";
+
+            #[cfg(not(target_os = "windows"))]
+            const UPLOADER_PROG_NAME: &str = "cyfs-file-uploader";
+            async move {
+                let upload_tool_path = std::env::current_exe().unwrap().parent().unwrap().join(UPLOADER_PROG_NAME);
+                if !upload_tool_path.exists() {
+                    return Ok(Response::new(StatusCode::NotFound));
+                }
+                let mut cmd = async_std::process::Command::new(&upload_tool_path);
+                cmd.stdout(Stdio::null()).stderr(Stdio::null());
+                let status = if let Err(e) = cmd.spawn() {
+                    warn!("spawn file uploader {} err {}", upload_tool_path.display(), e);
+                    StatusCode::InternalServerError
+                } else {
+                    StatusCode::Ok
+                };
+
+                Ok(Response::new(status))
+            }
+        });
 
         server.at("/*").get(NonForward::new(self.clone()));
 

@@ -1,37 +1,17 @@
-mod client;
-mod def;
-mod storage;
-mod notify;
-mod reporter;
-mod email;
-mod sqlite_storage;
-
+use std::path::Path;
 use clap::{App, Arg};
 
-use cyfs_base::BuckyResult;
-use std::sync::Arc;
+use cyfs_base::{BuckyResult, ObjectTypeCode};
 use serde::{Deserialize};
-use crate::storage::create_storage;
-use crate::client::Client;
+use misc_util::mail::{EmailConfig, send_mail};
 
 #[macro_use]
 extern crate log;
 
-
 #[derive(Deserialize)]
 pub struct Config {
-    db_path: String,
-    deadline: u64,
-    dingtalk_url: Option<String>,
+    storage: cyfs_meta::stat::StorageConfig,
     email: Option<EmailConfig>,
-}
-
-#[derive(Deserialize)]
-pub struct EmailConfig {
-    email_receiver: String,
-    mine_email: String,
-    smtp_server: String,
-    password: String,
 }
 
 #[async_std::main]
@@ -39,34 +19,59 @@ async fn main() -> BuckyResult<()> {
     simple_logger::init_with_level(log::Level::Info).unwrap();
     
     let matches = App::new("meta stat").version(cyfs_base::get_version())
-        .arg(Arg::with_name("db_path").short("d").long("db_path").value_name("PATH").help("meta archive sqlite db path.\ndefault is current archive_db db path.").takes_value(true))
-        .arg(Arg::with_name("last").short("l").long("last").value_name("LAST").help("query last month stat\ndefault is last month.").takes_value(true))
-        .arg(Arg::with_name("dingtalk").short("t").long("dingtalk").value_name("DINGTALK").help("dingding talk url").takes_value(true))
-        .get_matches(); 
+        .arg(Arg::with_name("config").long("config").short("c").takes_value(true).default_value("config.toml").help("meta stat config file path"))
+        .arg(Arg::with_name("report").long("report").help("report stat"))
+        .arg(Arg::with_name("period").long("period").takes_value(true).default_value("24").help("stat period, hours"))
+        .get_matches();
 
-    // 切换目录到当前exe的相对目录
-    let root = std::env::current_exe().unwrap();
-    let config_path = root.parent().unwrap().join("config.toml");
+    let config_path = Path::new(matches.value_of("config").unwrap());
     if !config_path.exists() {
-        error!("cannot find config file. {}", config_path.display());
+        error!("config path {} not exists!", config_path.display());
         std::process::exit(1);
     }
 
-    let db_path = matches.value_of("db_path").unwrap_or("./");
-    let deadline = matches.value_of("last").unwrap_or("1").parse::<u16>().unwrap_or(1);
-    let dingtalk = matches.value_of("dingtalk").unwrap_or("https://oapi.dingtalk.com/robot/send?access_token=28788f9229a09bfe8b33e678d4447a2d2d80a334a594e1c942329cab8581f422");
-    debug!("db_path: {}, dl: {}, dingtalk: {}", db_path, deadline, dingtalk);
-
-    match toml::from_str::<Config>(std::fs::read_to_string(config_path).unwrap().as_str()) {
+    let period = matches.value_of("period").unwrap().parse::<u16>().unwrap();
+    match serde_json::from_slice::<Config>(&std::fs::read(config_path).unwrap()) {
         Ok(config) => {
             // 归档按日, 周, 月 统计 sqlite直接对archive_db 数据库表操作
-            let storage = Arc::new(create_storage(config.db_path.as_str()).await.map_err(|e|{
-                error!("create storage err {}", e);
-                e
-            })?);
-        
-            let client = Client::new(&config, storage);
-            client.run().await;
+            let now = chrono::Local::now();
+            let from = now - chrono::Duration::hours(period as i64);
+
+            let storage = cyfs_meta::stat::create_storage(Some(config.storage), true);
+            let stat = storage.get_stat(from.with_timezone(&chrono::Utc)).await?;
+            let total_people = storage.get_desc_total(Some(ObjectTypeCode::People)).await?;
+            let total_device = storage.get_desc_total(Some(ObjectTypeCode::Device)).await?;
+            let mut output = String::new();
+            output += &format!("Meta Stat from {} to {}\n", from.format("%F %T"), now.format("%F %T"));
+            output += &format!("-----------------------------------\n");
+            output += &format!("total People: {}\n", total_people);
+            output += &format!("total Device: {}\n", total_device);
+            output += &format!("new People: {}\n", stat.new_people);
+            output += &format!("new Device: {}\n", stat.new_device);
+            output += &format!("active People: {}\n", stat.active_people.len());
+            output += &format!("active Device: {}\n", stat.active_device.len());
+            output += &format!("api call failed:\n");
+            for (name, num) in &stat.api_fail {
+                output += &format!("\t{}, \t{} times\n", name, num);
+            }
+            output += &format!("api call success:\n");
+            for (name, num) in &stat.api_success {
+                output += &format!("\t{}, \t{} times\n", name, num);
+            }
+
+            println!("{}", &output);
+
+            if matches.is_present("report") {
+                println!("reporting...");
+                if let Some(config) = config.email {
+                    let subject = format!("{} Meta Chain Stat {}", cyfs_base::get_channel().to_string(), chrono::Local::today().format("%F"));
+                    let _ = send_mail(config, subject, output.replace("\n", "<br>")).await.map_err(|e| {
+                        error!("send mail err {}", e);
+                        e
+                    });
+                }
+
+            }
         }
         Err(e) => {
             error!("parse config file err {}", e);

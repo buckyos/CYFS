@@ -344,18 +344,16 @@ impl ReadProvider {
         ret
     }
 
-    pub fn close(&self, stream: &PackageStream) {
-        let result = {
-            let state = &mut *cyfs_debug::lock!(self.0).unwrap();
-            match state {
-                ReadProviderState::Open(provider) => {
-                    *state = ReadProviderState::Closed(
-                        provider.queue.stream_end(), 
-                        Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream broken")));
-                }, 
-                _ => {}
-            }   
-        };
+    pub fn close(&self, _stream: &PackageStream) {
+        let state = &mut *cyfs_debug::lock!(self.0).unwrap();
+        match state {
+            ReadProviderState::Open(provider) => {
+                *state = ReadProviderState::Closed(
+                    provider.queue.stream_end(), 
+                    Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "stream broken")));
+            }, 
+            _ => {}
+        }   
     }
 }
 

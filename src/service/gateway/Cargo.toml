@@ -35,6 +35,7 @@ tide = "0.16"
 url = "2.2"
 bytes = "1.1"
 toml = "0.5"
+once_cell = "1.12"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["mswsock", "winsock2"] }

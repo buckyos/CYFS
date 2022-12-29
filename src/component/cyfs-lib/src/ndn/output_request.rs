@@ -1,7 +1,7 @@
 use super::def::*;
 use super::input_request::*;
-use cyfs_base::*;
 use crate::base::{NDNDataRequestRange, NDNDataResponseRange};
+use cyfs_base::*;
 
 use async_std::io::Read;
 use std::fmt;
@@ -62,6 +62,7 @@ impl fmt::Display for NDNOutputRequestCommon {
     }
 }
 
+serde_with_json_codec!(NDNOutputRequestCommon);
 // put requests
 // 目前支持ChunkId
 pub struct NDNPutDataOutputRequest {
@@ -78,7 +79,7 @@ impl fmt::Display for NDNPutDataOutputRequest {
         write!(f, "common: {}", self.common)?;
         write!(f, ", object_id: {}", self.object_id)?;
 
-        write!(f, ", length: {:?}", self.length)
+        write!(f, ", length: {}", self.length)
     }
 }
 
@@ -226,6 +227,12 @@ pub struct NDNGetDataOutputRequest {
 
     // 对dir_id有效
     pub inner_path: Option<String>,
+
+    // get data from context instead of common.target
+    pub context: Option<String>,
+
+    // trans data task's group
+    pub group: Option<String>,
 }
 
 impl NDNGetDataOutputRequest {
@@ -235,6 +242,8 @@ impl NDNGetDataOutputRequest {
             object_id,
             range: None,
             inner_path,
+            context: None,
+            group: None,
         }
     }
 
@@ -263,6 +272,17 @@ impl NDNGetDataOutputRequest {
 
         ret
     }
+
+    pub fn new_context(
+        context: impl Into<String>,
+        object_id: ObjectId,
+        inner_path: Option<String>,
+    ) -> Self {
+        let mut ret = Self::new(NDNAPILevel::Router, object_id, inner_path);
+        ret.context = Some(context.into());
+
+        ret
+    }
 }
 
 impl fmt::Display for NDNGetDataOutputRequest {
@@ -274,7 +294,17 @@ impl fmt::Display for NDNGetDataOutputRequest {
             write!(f, ", range: {}", range.to_display_string())?;
         }
 
-        write!(f, ", inner_path: {:?}", self.inner_path)
+        write!(f, ", inner_path: {:?}", self.inner_path)?;
+
+        if let Some(context) = &self.context {
+            write!(f, ", context: {}", context)?;
+        }
+
+        if let Some(group) = &self.group {
+            write!(f, ", group: {}", group)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -291,6 +321,9 @@ pub struct NDNGetDataOutputResponse {
     // resp ranges
     pub range: Option<NDNDataResponseRange>,
 
+    // task group
+    pub group: Option<String>,
+
     // content
     pub length: u64,
     pub data: Box<dyn Read + Unpin + Send + Sync + 'static>,
@@ -303,13 +336,17 @@ impl fmt::Display for NDNGetDataOutputResponse {
         if let Some(owner) = &self.owner_id {
             write!(f, ", owner: {}", owner)?;
         }
-        
+
         if let Some(attr) = &self.attr {
             write!(f, ", attr: {:?}", attr)?;
         }
 
         if let Some(range) = &self.range {
             write!(f, ", range: {:?}", range)?;
+        }
+
+        if let Some(group) = &self.group {
+            write!(f, ", group: {:?}", group)?;
         }
 
         write!(f, ", length: {}", self.length)
@@ -381,7 +418,6 @@ impl fmt::Display for NDNDeleteDataOutputResponse {
     }
 }
 
-
 #[derive(Clone)]
 pub struct NDNQueryFileOutputRequest {
     pub common: NDNOutputRequestCommon,
@@ -401,20 +437,14 @@ impl NDNQueryFileOutputRequest {
         Self::new(NDNAPILevel::NDC, param)
     }
 
-    pub fn new_ndn(
-        target: Option<DeviceId>,
-        param: NDNQueryFileParam,
-    ) -> Self {
+    pub fn new_ndn(target: Option<DeviceId>, param: NDNQueryFileParam) -> Self {
         let mut ret = Self::new(NDNAPILevel::NDN, param);
         ret.common.target = target.map(|v| v.into());
 
         ret
     }
 
-    pub fn new_router(
-        target: Option<ObjectId>,
-        param: NDNQueryFileParam,
-    ) -> Self {
+    pub fn new_router(target: Option<ObjectId>, param: NDNQueryFileParam) -> Self {
         let mut ret = Self::new(NDNAPILevel::Router, param);
         ret.common.target = target;
 

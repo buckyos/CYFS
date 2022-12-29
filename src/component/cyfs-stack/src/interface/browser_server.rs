@@ -27,6 +27,7 @@ enum RequestSource {
 enum RequestSourceString<'a> {
     Origin(&'a str),
     Host(&'a str),
+    Extension,
     Other,
 }
 
@@ -163,6 +164,61 @@ impl BrowserSanboxHttpServer {
         false
     }
 
+    fn is_iframe(req: &http_types::Request) -> bool {
+        let ret = match req.header("sec-fetch-dest") {
+            Some(header) => {
+                match header.last().as_str() {
+                    "iframe" => {
+                        true
+                    }
+                    _ => {
+                        false
+                    }
+                }
+            }
+            None => {
+                false
+            }
+        };
+
+        if !ret {
+            return ret;
+        }
+
+        let ret = match req.header("sec-fetch-mode") {
+            Some(header) => {
+                match header.last().as_str() {
+                    "navigate" => {
+                        true
+                    }
+                    _ => {
+                        false
+                    }
+                }
+            }
+            None => {
+                false
+            }
+        };
+
+        if !ret {
+            return ret;
+        }
+
+        ret
+    }
+
+    fn is_cyfs_browser_extension(req: &http_types::Request) -> bool {
+        match req.header("cyfs-browser-extension") {
+            Some(_header) => {
+                true
+            }
+            None => {
+                false
+            }
+        }
+    }
+
     fn extract_source<'a>(req: &'a http_types::Request,) -> BuckyResult<Option<RequestSourceString<'a>>> {
         let user_agent = req.header(http_types::headers::USER_AGENT);
         debug!("req user agent: {:?}", user_agent);
@@ -181,6 +237,11 @@ impl BrowserSanboxHttpServer {
             return Ok(None);
         }
 
+        // check if cyfs browser extension
+        if Self::is_cyfs_browser_extension(req) {
+            return Ok(Some(RequestSourceString::Extension));
+        }
+        
         if origin.is_none() {
             // pass through the requests from none browser env(eg. nodejs/sdk)
             let user_agent_str = user_agent.as_ref().unwrap().last().as_str();
@@ -197,6 +258,13 @@ impl BrowserSanboxHttpServer {
             // FIXME 为什么浏览器插件会发起这种不带Origin的请求
             // request from the cyfs browser extensions or none cyfs browser's html tag! now will ignore the source verify, but will disable the used of system-dec-id
             return Self::check_other_request(req);
+        } else {
+            // check if iframe
+            if Self::is_iframe(req) {
+                if let Some(root) = Self::extract_front_root(req) {
+                    return Ok(Some(RequestSourceString::Host(root)));
+                }
+            }
         }
 
         let origin_url = origin.unwrap().last().as_str();
@@ -255,6 +323,10 @@ impl BrowserSanboxHttpServer {
                 allow_system_dec = true;
                 Self::parse_host(host)?
             }
+            RequestSourceString::Extension => {
+                allow_system_dec = false;
+                RequestSource::Extension
+            }
             RequestSourceString::Other => {
                 allow_system_dec = false;
                 RequestSource::Other
@@ -292,8 +364,8 @@ impl BrowserSanboxHttpServer {
                             let msg = format!("browser request dec_id and origin dec_id not matched! req={}, origin={:?}, source dec={}, origin dec={}", 
                                 req.url(), 
                                 origin, 
-                                source_dec_id, 
-                                dec_id
+                                cyfs_core::dec_id_to_string(&source_dec_id), 
+                                cyfs_core::dec_id_to_string(&dec_id),
                             );
 
                             warn!("{}", msg);
@@ -393,7 +465,19 @@ impl DisableBrowserRequestHttpServer {
             return Ok(());
         }
 
-        let msg = format!("browser request not allowed on current interface! req={}, origin={:?}", req.url(), origin);
+        if origin.is_none() {
+            // pass through the requests from none browser env(eg. nodejs/sdk)
+            let user_agent_str = user_agent.as_ref().unwrap().last().as_str();
+            if !BrowserSanboxHttpServer::is_browser(user_agent_str) {
+                return Ok(());
+            }
+        }
+
+        let msg = format!("browser request not allowed on current interface! req={}, user_agent={:?}, origin={:?}", 
+            req.url(), 
+            user_agent, 
+            origin
+        );
         warn!("{}", msg);
         Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
     }

@@ -440,28 +440,28 @@ impl Service {
             },
             Err(err) => {
                 error!(
-                    "exec stop cmd error! name={}, err={}, cmd={}",
+                    "exec check cmd error! name={}, err={}, cmd={}",
                     self.name, err, v
                 );
             }
         }
 
         if exit_code != ProcessStatusCode::NotExists as i32 {
-            debug!(
-                "check service in running: exit code={}, service={}, fid={}",
-                exit_code,
-                self.name(),
-                self.fid
-            );
-            self.change_state(ServiceState::RUN);
-
-            if exit_code == ProcessStatusCode::RunningOther as i32 {
+            if ProcessStatusCode::is_running_other(exit_code) {
                 warn!(
                     "service running but fid not match! now will kill process, service={}, fid={}",
                     self.name, self.fid
                 );
                 self.stop(false);
+                self.change_state(ServiceState::STOP);
             } else {
+                debug!(
+                    "check service in running: exit code={}, service={}, fid={}",
+                    exit_code,
+                    self.name(),
+                    self.fid
+                );
+                self.change_state(ServiceState::RUN);
             }
         } else {
             self.change_state(ServiceState::STOP);
@@ -558,10 +558,28 @@ impl Service {
         self.sync_state(ServiceState::STOP);
 
         // 加载新的包文件
-        self.info.lock().unwrap().load_package_file(&file)
+        let ret = self.info.lock().unwrap().load_package_file(&file)?;
+
+        self.sync_state(ServiceState::STOP);
+
+        Ok(ret)
     }
 
     pub fn check_package(&self) -> bool {
         self.info.lock().unwrap().check_package()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::process::Command;
+
+    #[test]
+    fn test_exit_code() {
+        // let mut output = Command::new("H:/work/CYFS_PUBLIC/src/target/debug/ood-daemon.exe");
+        let mut output = Command::new("/mnt/h/work/CYFS_PUBLIC/src/target/debug/ood-daemon");
+        let mut p = output.spawn().unwrap();
+        let status = p.wait().unwrap();
+        assert_eq!(status.code().unwrap(), -1);
     }
 }

@@ -3,6 +3,10 @@ use std::{
     time::Duration, 
     collections::LinkedList, 
 };
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::{Map, Value};
 use cyfs_base::*;
 use crate::{
@@ -120,14 +124,14 @@ const PIECE_SESSION_FLAGS_RAPTOR_K: u16 = 1<<2;
 const PIECE_SESSION_FLAGS_RAPTOR_SEQ: u16 = 1<<3; 
 const PIECE_SESSION_FLAGS_RAPTOR_STEP: u16 = 1<<4;
 
-#[derive(Debug, Clone)]
-pub enum ChunkEncodeDesc {
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+pub enum ChunkCodecDesc {
     Unknown,
     Stream(Option<u32>, Option<u32>, Option<i32>), 
     Raptor(Option<u32>, Option<u32>, Option<i32>)
 } 
 
-impl ChunkEncodeDesc {
+impl ChunkCodecDesc {
     pub fn reverse_stream(start: Option<u32>, end: Option<u32>) -> Self {
         Self::Stream(start, end, Some(-(PieceData::max_payload() as i32)))
     }
@@ -194,7 +198,7 @@ impl ChunkEncodeDesc {
     }
 }
 
-impl RawEncode for ChunkEncodeDesc {
+impl RawEncode for ChunkCodecDesc {
     fn raw_measure(&self, _: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
         match self {
             Self::Unknown => Ok(u16::raw_bytes().unwrap()), 
@@ -275,7 +279,7 @@ impl RawEncode for ChunkEncodeDesc {
 }
 
 
-impl<'de> RawDecode<'de> for ChunkEncodeDesc {
+impl<'de> RawDecode<'de> for ChunkCodecDesc {
     fn raw_decode(buf: &'de [u8]) -> BuckyResult<(Self, &'de [u8])> {
         let (flags, buf) = u16::raw_decode(buf)?;
         if flags == PIECE_SESSION_FLAGS_UNKNOWN {
@@ -327,7 +331,7 @@ impl<'de> RawDecode<'de> for ChunkEncodeDesc {
 }
 
 
-impl JsonCodec<ChunkEncodeDesc> for ChunkEncodeDesc {
+impl JsonCodec<ChunkCodecDesc> for ChunkCodecDesc {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
         match self {
@@ -461,8 +465,9 @@ impl SpeedCounter {
     pub fn update(&mut self, when: Timestamp) -> u32 {
         if when > self.last_update {
             let last_recv = self.last_recv;
-            self.last_recv = 0;
             self.cur_speed = ((last_recv * 1000 * 1000) as f64 / (when - self.last_update) as f64) as u32;
+            self.last_recv = 0;
+            self.last_update = when;
             self.cur_speed
         } else {
             self.cur_speed
@@ -470,6 +475,89 @@ impl SpeedCounter {
     }
 
     pub fn cur(&self) -> u32 {
+        self.cur_speed
+    }
+}
+
+
+
+
+// 对scheduler的接口
+#[derive(Debug, Serialize, Deserialize)]
+pub enum NdnTaskState {
+    Running,
+    Paused,
+    Error(BuckyError/*被cancel的原因*/), 
+    Finished
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum NdnTaskControlState {
+    Normal, 
+    Paused, 
+    Canceled, 
+}
+
+pub trait NdnTask: Send + Sync {
+    fn clone_as_task(&self) -> Box<dyn NdnTask>;
+    fn state(&self) -> NdnTaskState;
+    fn control_state(&self) -> NdnTaskControlState;
+
+    fn resume(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
+        self.cancel_by_error(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"))
+    }
+    fn cancel_by_error(&self, _err: BuckyError) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    fn pause(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    
+    fn close(&self) -> BuckyResult<()> {
+        Ok(())
+    }
+
+    fn cur_speed(&self) -> u32;
+    fn history_speed(&self) -> u32;
+}
+
+
+pub struct ProgressCounter {
+    last_recv: u64, 
+    last_update: Timestamp, 
+    cur_speed: u32
+}
+
+
+impl ProgressCounter {
+    pub fn new(init_recv: u64) -> Self {
+        Self {
+            last_recv: init_recv,  
+            last_update: bucky_time_now(), 
+            cur_speed: 0
+        }
+    }
+
+    pub fn update(&mut self, cur_recv: u64, when: Timestamp) -> u32 {
+        if cur_recv < self.last_recv {
+            return 0;
+        }
+
+        if when > self.last_update {
+            let last_recv = cur_recv - self.last_recv;
+            self.cur_speed = ((last_recv * 1000 * 1000) as f64 / (when - self.last_update) as f64) as u32;
+            self.last_recv = cur_recv;
+            self.last_update = when;
+            self.cur_speed
+        } else {
+            self.cur_speed
+        }
+    }
+
+    pub fn cur_speed(&self) -> u32 {
         self.cur_speed
     }
 }

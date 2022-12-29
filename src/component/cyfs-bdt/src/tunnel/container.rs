@@ -45,10 +45,16 @@ pub struct BuildTunnelParams {
     pub remote_desc: Option<Device>,
 }
 
+impl fmt::Display for BuildTunnelParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "BuildTunnelParams{{remote_sn: {:?}, remote_desc:{}}}", self.remote_sn, self.remote_desc.is_some())
+    }
+}
 
 impl BuildTunnelParams {
     pub(crate) fn nearest_sn(&self, stack: &Stack) -> Option<DeviceId> {
         let remote = self.remote_const.device_id();
+
         let cached_remote = stack.device_cache().get_inner(&remote);
         let known_remote = cached_remote.as_ref().or_else(|| self.remote_desc.as_ref());
 
@@ -60,6 +66,7 @@ impl BuildTunnelParams {
     pub(crate) fn retry_sn_list(&self, stack: &Stack, nearest: &DeviceId) -> Option<Vec<DeviceId>> {
         self.remote_sn.clone().or_else(|| Some(stack.sn_client().cache().known_list()))
             .map(|sn_list| sn_list.into_iter().filter(|sn| sn != nearest).collect())
+
     }
 }
 

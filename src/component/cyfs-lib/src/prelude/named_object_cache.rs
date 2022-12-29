@@ -100,6 +100,7 @@ pub struct NamedObjectCacheGetObjectRequest {
 #[derive(Clone, Debug)]
 pub struct NamedObjectMetaData {
     pub object_id: ObjectId,
+    pub object_type: u16,
 
     pub owner_id: Option<ObjectId>,
     pub create_dec_id: ObjectId,
@@ -108,9 +109,14 @@ pub struct NamedObjectMetaData {
     pub insert_time: u64,
     pub update_time: u64,
 
-    // object's update_time and expired_time
+    // object's create_time, update_time and expired_time
+    pub object_create_time: Option<u64>,
     pub object_update_time: Option<u64>,
     pub object_expired_time: Option<u64>,
+
+    // object related fields
+    pub author: Option<ObjectId>,
+    pub dec_id: Option<ObjectId>,
 
     pub storage_category: NamedObjectStorageCategory,
     pub context: Option<String>,
@@ -236,6 +242,58 @@ pub trait NamedObjectCache: Sync + Send {
     ) -> BuckyResult<Option<()>>;
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat>;
+
+    fn bind_object_meta_access_provider(&self, object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef);
 }
 
 pub type NamedObjectCacheRef = Arc<Box<dyn NamedObjectCache>>;
+
+
+impl ObjectSelectorDataProvider for NamedObjectMetaData {
+    fn object_id(&self) -> &ObjectId {
+        &self.object_id
+    }
+    fn obj_type(&self) -> u16 {
+        self.object_type
+    }
+
+    fn object_dec_id(&self) -> &Option<ObjectId> {
+        &self.dec_id
+    }
+    fn object_author(&self) -> &Option<ObjectId> {
+        &self.author
+    }
+    fn object_owner(&self) -> &Option<ObjectId> {
+        &self.owner_id
+    }
+
+    fn object_create_time(&self) -> Option<u64> {
+        self.object_create_time
+    }
+    fn object_update_time(&self) -> Option<u64> {
+        self.object_update_time
+    }
+    fn object_expired_time(&self) -> Option<u64> {
+        self.object_expired_time
+    }
+
+    fn update_time(&self) -> &u64 {
+        &self.update_time
+    }
+    fn insert_time(&self) -> &u64 {
+        &self.insert_time
+    }
+}
+
+#[async_trait::async_trait]
+pub trait NamedObjectCacheObjectMetaAccessProvider: Sync + Send {
+    async fn check_access(
+        &self,
+        target_dec_id: &ObjectId,
+        object_data: &dyn ObjectSelectorDataProvider,
+        source: &RequestSourceInfo,
+        permissions: AccessPermissions,
+    ) -> BuckyResult<Option<()>>;
+}
+
+pub type NamedObjectCacheObjectMetaAccessProviderRef = Arc<Box<dyn NamedObjectCacheObjectMetaAccessProvider>>;

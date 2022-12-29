@@ -143,7 +143,7 @@ async fn main() {
         &*down_stack,
         chunkid.clone(), 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![src_stack.local_const().clone()]),
+        SampleDownloadContext::desc_streams("".to_owned(), vec![src_stack.local_const().clone()]),
     )
     .await.unwrap();
     down_store.write_chunk(&chunkid, reader).await.unwrap();

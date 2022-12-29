@@ -15,6 +15,7 @@ use crate::http_get_request;
 use crate::mint::subchain_mint::SubChainMint;
 use crate::*;
 use std::sync::Mutex;
+use crate::stat::StatConfig;
 
 pub struct ChainCreator {
     reserved: (std::marker::PhantomData<StorageRef>, std::marker::PhantomData<dyn State>)
@@ -29,6 +30,7 @@ pub struct MinerConfig {
     pub bft_port: Option<u16>,
     pub bft_node_list: Option<Vec<String>>,
     pub miner_key_path: Option<String>,
+    pub stat: Option<StatConfig>,
 }
 
 lazy_static::lazy_static! {
@@ -36,7 +38,7 @@ lazy_static::lazy_static! {
 }
 
 impl ChainCreator {
-    pub fn create_chain(config_path: &Path, output_path: &Path, new_storage: fn (path: &Path) -> StorageRef, trace: bool, new_archive_storage: fn (path: &Path, trace: bool) -> ArchiveStorageRef) -> BuckyResult<MinerRef> {
+    pub fn create_chain(config_path: &Path, output_path: &Path, new_storage: fn (path: &Path) -> StorageRef) -> BuckyResult<MinerRef> {
         async_std::task::block_on(async move {
             let config_file = File::open(config_path).map_err(|err| {
                 error!("open file {} failed, err {}", config_path.display(), err);
@@ -50,7 +52,6 @@ impl ChainCreator {
             let root_path = config_path.parent().unwrap();
 
             let storage = new_storage(output_path.join("state_db").as_path());
-            let archive_storage = new_archive_storage(output_path.join("archive_db").as_path(), trace);
             let header = BlockDesc::new(BlockDescContent::new(config.coinbase, None)).build();
             let mut block_body = BlockBody::new();
             {
@@ -61,9 +62,7 @@ impl ChainCreator {
 	            state.create_cycle_event_table(meta_config.get_rent_cycle()).await?;
 	            let state_hash = storage.state_hash().await?;
 
-	            log::info!("create state_hash:{}", state_hash.to_string());
-
-                let archive = archive_storage.create_archive(false).await;
+	            info!("create state_hash:{}", state_hash.to_string());
 
 	            if config.chain_type.is_none() || config.chain_type.as_ref().unwrap() == "standalone" {
                     let btc_mint = BTCMint::new(&state, &meta_config, config.bfc_spv_node.as_str());
@@ -212,12 +211,11 @@ impl ChainCreator {
                 let ret = BlockExecutor::execute_block(&header,
                                                        &mut block_body,
                                                        &state,
-                                                       &archive,
                                                        &meta_config,
                                                        None,
                                                        config.bfc_spv_node.clone(),
                                                        None,
-                                                       ObjectId::default()).await;
+                                                       ObjectId::default(), None).await;
                 if ret.is_ok() {
 	                // state.commit().await?;
 	            } else {
@@ -226,12 +224,12 @@ impl ChainCreator {
 	            }
 			}
             let state_hash = storage.state_hash().await?;
-            log::info!("create state_hash2:{}", state_hash.to_string());
+            info!("create state_hash2:{}", state_hash.to_string());
 
             let mut block = Block::new(config.coinbase, None, state_hash, block_body)?.build();
 
             let ret: BuckyResult<MinerRef> = if config.chain_type.is_none() || config.chain_type.as_ref().unwrap() == "standalone" {
-                let chain = Chain::new(output_path.to_path_buf(), Some(block), storage, archive_storage).await?;
+                let chain = Chain::new(output_path.to_path_buf(), Some(block), storage, None).await?;
                 let miner = StandaloneMiner::new(
                     config.coinbase.clone(),
                     config.interval,
@@ -253,7 +251,7 @@ impl ChainCreator {
                     miner_key_path.as_path(), &mut Vec::new())?;
                 let public_key = miner_key.public();
                 block.sign(miner_key.clone(), &SignatureSource::Key(PublicKeyValue::Single(public_key))).await?;
-                let chain = Chain::new(output_path.to_path_buf(), Some(block), storage, archive_storage).await?;
+                let chain = Chain::new(output_path.to_path_buf(), Some(block), storage, None).await?;
                 let miner = BFTMiner::new(
                     "bft".to_owned(),
                     config.coinbase.clone(),
@@ -270,14 +268,14 @@ impl ChainCreator {
         })
     }
 
-    pub fn start_miner_instance(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, trace: bool, new_archive_storage: fn (path: &Path, trace: bool) -> ArchiveStorageRef) -> BuckyResult<Arc<dyn Miner>> {
+    pub fn start_miner_instance(dir: &Path, new_storage: fn (path: &Path) -> StorageRef) -> BuckyResult<Arc<dyn Miner>> {
         async_std::task::block_on(async move {
             let config_file = File::open(dir.join("config.json")).map_err(|err| {
                 error!("open config.json at {} failed, err {}", dir.display(), err);
-                crate::meta_err!(ERROR_NOT_FOUND)})?;
+                meta_err!(ERROR_NOT_FOUND)})?;
             let config: MinerConfig = serde_json::from_reader(config_file).map_err(|err| {
                 error!("invalid config.json, err {}", err);
-                crate::meta_err!(ERROR_PARAM_ERROR)})?;
+                meta_err!(ERROR_PARAM_ERROR)})?;
             let ret: BuckyResult<Arc<dyn Miner>> = if config.chain_type.is_none() || config.chain_type.as_ref().unwrap() == "standalone" {
                 let miner = StandaloneMiner::load(
                     config.coinbase.clone(), 
@@ -285,8 +283,7 @@ impl ChainCreator {
                     config.bfc_spv_node.clone(),
                     dir,
                     new_storage,
-                    trace,
-                    new_archive_storage).await?;
+                    config.stat).await?;
                 let miner_ref = Arc::new(miner);
                 let mut miner_lock = MINER.lock().unwrap();
                 *miner_lock = Some(miner_ref.clone());
@@ -318,8 +315,7 @@ impl ChainCreator {
                                            config.bfc_spv_node.clone(),
                                            dir,
                                            new_storage,
-                                           trace,
-                                           new_archive_storage,
+                                           config.stat,
                                            network,
                                            miner_key).await?;
                 let miner_ref = Arc::new(miner);

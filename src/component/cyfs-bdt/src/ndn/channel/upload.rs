@@ -21,6 +21,7 @@ use super::{
 };
 
 struct UploadingState {
+    channel: Channel, 
     waiters: StateWaiter, 
     speed_counter: SpeedCounter,  
     history_speed: HistorySpeed, 
@@ -29,7 +30,7 @@ struct UploadingState {
 
 struct StateImpl {
     task_state: TaskStateImpl, 
-    control_state: UploadTaskControlState, 
+    control_state: NdnTaskControlState, 
 }
 
 enum TaskStateImpl {
@@ -39,10 +40,10 @@ enum TaskStateImpl {
 }
 
 struct SessionImpl {
+    remote: DeviceId, 
     chunk: ChunkId, 
     session_id: TempSeq, 
-    piece_type: ChunkEncodeDesc, 
-    channel: Channel, 
+    piece_type: ChunkCodecDesc, 
     state: RwLock<StateImpl>, 
 }
 
@@ -51,7 +52,7 @@ pub struct UploadSession(Arc<SessionImpl>);
 
 impl std::fmt::Display for UploadSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "UploadSession{{session_id:{:?}, chunk:{}, remote:{}}}", self.session_id(), self.chunk(), self.channel().tunnel().remote())
+        write!(f, "UploadSession{{session_id:{:?}, chunk:{}, remote:{}}}", self.session_id(), self.chunk(), self.remote())
     }
 }
 
@@ -59,11 +60,12 @@ impl UploadSession {
     pub fn new(
         chunk: ChunkId, 
         session_id: TempSeq, 
-        piece_type: ChunkEncodeDesc, 
+        piece_type: ChunkCodecDesc, 
         encoder: Box<dyn ChunkEncoder>, 
         channel: Channel
     ) -> Self {
         Self(Arc::new(SessionImpl {
+            remote: channel.tunnel().remote().clone(), 
             chunk, 
             session_id, 
             piece_type, 
@@ -72,24 +74,24 @@ impl UploadSession {
                     waiters: StateWaiter::new(), 
                     history_speed: HistorySpeed::new(0, channel.config().history_speed.clone()), 
                     speed_counter: SpeedCounter::new(0), 
-                    encoder
-                }), 
-                control_state: UploadTaskControlState::Normal
+                    encoder, 
+                    channel
+                }),
+                control_state: NdnTaskControlState::Normal
             }), 
-            channel, 
         }))
+    }
+
+    pub fn remote(&self) -> &DeviceId {
+        &self.0.remote
     }
 
     pub fn chunk(&self) -> &ChunkId {
         &self.0.chunk
     }
 
-    pub fn piece_type(&self) -> &ChunkEncodeDesc {
+    pub fn piece_type(&self) -> &ChunkCodecDesc {
         &self.0.piece_type
-    }
-
-    pub fn channel(&self) -> &Channel {
-        &self.0.channel
     }
 
     pub fn session_id(&self) -> &TempSeq {
@@ -135,7 +137,7 @@ impl UploadSession {
     }
 
     pub(super) fn cancel_by_error(&self, err: BuckyError) {
-        let waiters = {
+        let send = {
             let mut state = self.0.state.write().unwrap();
             match &mut state.task_state {
                 TaskStateImpl::Error(_) => None, 
@@ -143,14 +145,15 @@ impl UploadSession {
                 TaskStateImpl::Uploading(uploading) => {
                     let mut waiters = StateWaiter::new();
                     uploading.waiters.transfer_into(&mut waiters);
+                    let channel = uploading.channel.clone();
                     info!("{} canceled by err:{}", self, err);
                     state.task_state = TaskStateImpl::Error(err.clone());
-                    Some(waiters)
+                    Some((waiters, channel))
                 }
             }
         };
 
-        if let Some(waiters) = waiters {
+        if let Some((waiters, channel)) = send {
             let resp_interest = RespInterest {
                 session_id: self.session_id().clone(), 
                 chunk: self.chunk().clone(), 
@@ -159,14 +162,14 @@ impl UploadSession {
                 redirect_referer: None,
                 to: None,
             };
-            self.channel().resp_interest(resp_interest);
+            channel.resp_interest(resp_interest);
 
             waiters.wake();
         }
     }
 
     // 把第一个包加到重发队列里去
-    pub fn on_interest(&self, _interest: &Interest) -> BuckyResult<()> {
+    pub fn on_interest(&self, channel: &Channel, _interest: &Interest) -> BuckyResult<()> {
         enum NextStep {
             ResetEncoder(Box<dyn ChunkEncoder>), 
             RespInterest(BuckyErrorCode), 
@@ -199,7 +202,7 @@ impl UploadSession {
                         redirect_referer: None,
                         to: None,
                     };
-                    self.channel().resp_interest(resp_interest);
+                    channel.resp_interest(resp_interest);
                 }
                 Ok(())
             }, 
@@ -212,14 +215,14 @@ impl UploadSession {
                     redirect_referer: None,
                     to: None,
                 };
-                self.channel().resp_interest(resp_interest);
+                channel.resp_interest(resp_interest);
                 Ok(())
             }, 
             NextStep::None => Ok(())
         }
     }
 
-    pub(super) fn on_piece_control(&self, ctrl: &PieceControl) -> BuckyResult<()> {
+    pub(super) fn on_piece_control(&self, channel: &Channel, ctrl: &PieceControl) -> BuckyResult<()> {
         enum NextStep {
             MergeIndex(Box<dyn ChunkEncoder>, u32, Vec<Range<u32>>), 
             RespInterest(BuckyErrorCode), 
@@ -287,9 +290,8 @@ impl UploadSession {
                         redirect_referer: None,
                         to: None,
                     };
-                    self.channel().resp_interest(resp_interest);
+                    channel.resp_interest(resp_interest);
                 }
-                Ok(())
             }, 
             NextStep::RespInterest(err) => {
                 let resp_interest = RespInterest {
@@ -300,35 +302,18 @@ impl UploadSession {
                     redirect_referer: None,
                     to: None,
                 };
-                self.channel().resp_interest(resp_interest);
-                Ok(())
+                channel.resp_interest(resp_interest);
             }, 
             NextStep::Notify(waiters) => {
                 waiters.wake();
-                Ok(())
             }, 
             NextStep::None => {
-                Ok(())
             }
         }
-    }
-}
-
-#[async_trait::async_trait]
-impl UploadTask for UploadSession {
-    fn clone_as_task(&self) -> Box<dyn UploadTask> {
-        Box::new(self.clone())
+        Ok(())
     }
 
-    fn state(&self) -> UploadTaskState {
-        match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Uploading(_) => UploadTaskState::Uploading(0), 
-            TaskStateImpl::Finished => UploadTaskState::Finished, 
-            TaskStateImpl::Error(err) => UploadTaskState::Error(err.clone()),
-        }
-    }
-
-    async fn wait_finish(&self) -> UploadTaskState {
+    pub async fn wait_finish(&self) -> NdnTaskState {
         let waiter = match &mut self.0.state.write().unwrap().task_state {
             TaskStateImpl::Uploading(uploading) => Some(uploading.waiters.new_waiter()), 
             _ => None, 
@@ -340,20 +325,23 @@ impl UploadTask for UploadSession {
             self.state()
         }
     }
+}
 
-    fn control_state(&self) -> UploadTaskControlState {
-        self.0.state.read().unwrap().control_state.clone()
+impl NdnTask for UploadSession {
+    fn clone_as_task(&self) -> Box<dyn NdnTask> {
+        Box::new(self.clone())
+    }
+    
+    fn state(&self) -> NdnTaskState {
+        match &self.0.state.read().unwrap().task_state {
+            TaskStateImpl::Uploading(_) => NdnTaskState::Running, 
+            TaskStateImpl::Finished => NdnTaskState::Finished, 
+            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()),
+        }
     }
 
-    fn calc_speed(&self, when: Timestamp) -> u32 {
-        match &mut self.0.state.write().unwrap().task_state {
-            TaskStateImpl::Uploading(uploading) => {
-                let cur_speed = uploading.speed_counter.update(when);
-                uploading.history_speed.update(Some(cur_speed), when);
-                cur_speed
-            }, 
-            _ => 0
-        }
+    fn control_state(&self) -> NdnTaskControlState {
+        self.0.state.read().unwrap().control_state.clone()
     }
 
     fn cur_speed(&self) -> u32 {
@@ -369,6 +357,24 @@ impl UploadTask for UploadSession {
         match &self.0.state.read().unwrap().task_state {
             TaskStateImpl::Uploading(uploading) => {
                 uploading.history_speed.average()
+            }, 
+            _ => 0
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl UploadTask for UploadSession {
+    fn clone_as_upload_task(&self) -> Box<dyn UploadTask> {
+        Box::new(self.clone())
+    }
+
+    fn calc_speed(&self, when: Timestamp) -> u32 {
+        match &mut self.0.state.write().unwrap().task_state {
+            TaskStateImpl::Uploading(uploading) => {
+                let cur_speed = uploading.speed_counter.update(when);
+                uploading.history_speed.update(Some(cur_speed), when);
+                cur_speed
             }, 
             _ => 0
         }

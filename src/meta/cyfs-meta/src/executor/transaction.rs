@@ -3,11 +3,9 @@ use super::context;
 use crate::executor::context::{ConfigRef, ConfigWeakRef};
 use crate::BlockDesc;
 use crate::events::event_manager::{EventManagerWeakRef, EventManagerRef};
-use crate::archive_storage::{ArchiveRef, ArchiveWeakRef};
 
 pub struct ExecuteContext {
     ref_state: StateWeakRef,
-    ref_archive: ArchiveWeakRef,
     block: BlockDesc,
     caller: context::Account,
     config: ConfigWeakRef,
@@ -16,10 +14,9 @@ pub struct ExecuteContext {
 }
 
 impl ExecuteContext {
-    pub fn new(ref_state: &StateRef, ref_archive: &ArchiveRef, block: &BlockDesc, caller: context::Account, config: &ConfigRef, event_manager: &EventManagerRef, is_verify_block: bool) -> ExecuteContext {
+    pub fn new(ref_state: &StateRef, block: &BlockDesc, caller: context::Account, config: &ConfigRef, event_manager: &EventManagerRef, is_verify_block: bool) -> ExecuteContext {
         ExecuteContext {
             ref_state: StateRef::downgrade(ref_state),
-            ref_archive: ArchiveRef::downgrade(ref_archive),
             block: block.clone(),
             caller,
             config: ConfigRef::downgrade(config),
@@ -37,10 +34,6 @@ impl ExecuteContext {
 
     pub fn ref_state(&self) -> &StateWeakRef {
         &self.ref_state
-    }
-
-    pub fn ref_archive(&self) -> &ArchiveWeakRef {
-        &self.ref_archive
     }
 
     pub fn config(&self) -> &ConfigWeakRef {

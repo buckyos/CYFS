@@ -87,22 +87,9 @@ impl TxExecutor {
             }
         }
 
-        let mut obj_type = context::MetaDescObject::Unkown;
-        if let SavedMetaObject::People(_) = &desc {
-            obj_type = context::MetaDescObject::People;
-        } else if let SavedMetaObject::Device(_) = &desc {
-            obj_type = context::MetaDescObject::Device;
-        }
-        if obj_type != context::MetaDescObject::Unkown {
-            let height = context.block().number();
-            // statistics people/device‘s number, active  放置末尾
-            if let Err(e) = context
-            .ref_archive()
-            .to_rc()?
-            .create_or_update_desc_stat(&objid, obj_type as u8, height as u64)
-            .await {
-                warn!("archive storage update obj desc stat failed: {}", e);
-            }
+        // 统计create desc
+        if let Some(stat) = &self.stat {
+            stat.add_desc(&objid);
         }
 
         self.rent_manager
@@ -197,24 +184,6 @@ impl TxExecutor {
             .to_rc()?
             .update_desc_extra(&rent_state)
             .await?;
-
-        let mut obj_type = context::MetaDescObject::Unkown;
-        if let SavedMetaObject::People(_) = &desc {
-            obj_type = context::MetaDescObject::People;
-        } else if let SavedMetaObject::Device(_) = &desc {
-            obj_type = context::MetaDescObject::Device;
-        }
-        if obj_type != context::MetaDescObject::Unkown {
-            let height = context.block().number();
-            // statistics people/device‘s number, active  放置末尾
-            if let Err(e) = context
-            .ref_archive()
-            .to_rc()?
-            .create_or_update_desc_stat(&objid, obj_type as u8, height as u64)
-            .await {
-                warn!("archive storage update obj desc stat failed: {}", e);
-            }
-        }
         /*
         let obj_id = ObjectId::new();//TODO:从Desc中计算得到
         let mut db_t = meta_db.start_transaction().unwrap();
