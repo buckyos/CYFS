@@ -45,7 +45,7 @@ impl ChunkManagerWriter {
 #[async_trait::async_trait]
 impl ChunkWriter for ChunkManagerWriter {
     async fn write(&self, chunk_id: &ChunkId, chunk: Box<dyn Chunk>) -> BuckyResult<()> {
-        self.chunk_manager.put_chunk(chunk_id, chunk.as_ref()).await?;
+        self.chunk_manager.put_chunk(chunk_id, chunk).await?;
 
         ChunkManagerStateUpdater::update_chunk_state(&self.ndc, chunk_id).await?;
         ChunkManagerStateUpdater::update_chunk_tracker(&self.tracker, chunk_id).await?;

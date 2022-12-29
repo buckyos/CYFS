@@ -10,7 +10,7 @@ use num_traits::float::Float;
 use futures_lite::AsyncWriteExt;
 use num_traits::abs;
 use scan_dir::ScanDir;
-use cyfs_chunk_lib::ChunkMeta;
+use cyfs_chunk_lib::{ChunkMeta, ChunkRead};
 use cyfs_debug::Mutex;
 
 #[derive(Clone, RawEncode, RawDecode)]
@@ -372,7 +372,7 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
             if max_cache.is_some() {
                 let tmp_cache = max_cache.unwrap();
                 if let Ok(chunk) = tmp_cache.get_chunk(chunk_id, ChunkType::MMapChunk).await {
-                    cache.put_chunk(chunk_id, chunk.as_ref()).await?;
+                    cache.put_chunk(chunk_id, chunk).await?;
                     tmp_cache.delete_chunk(chunk_id).await?;
                     return Ok(())
                 }
@@ -447,7 +447,7 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> ChunkCach
         }
     }
 
-    async fn put_chunk(&self, chunk_id: &ChunkId, chunk: &dyn Chunk) -> BuckyResult<()> {
+    async fn put_chunk(&self, chunk_id: &ChunkId, chunk: Box<dyn Chunk>) -> BuckyResult<()> {
         let cache = self.alloc_disk_cache(chunk_id)?;
         cache.put_chunk(chunk_id, chunk).await
     }
@@ -673,7 +673,7 @@ impl ChunkCache for SingleDiskChunkCache {
         Ok(())
     }
 
-    async fn put_chunk(&self, chunk_id: &ChunkId, chunk: &dyn Chunk) -> BuckyResult<()> {
+    async fn put_chunk(&self, chunk_id: &ChunkId, mut chunk: Box<dyn Chunk>) -> BuckyResult<()> {
         assert_eq!(chunk_id.len(), chunk.get_len());
         let file_path = self.get_file_path(chunk_id, true);
         log::info!("put chunk {}", file_path.to_string_lossy().to_string());
@@ -689,11 +689,20 @@ impl ChunkCache for SingleDiskChunkCache {
             BuckyError::new(BuckyErrorCode::Failed, msg)
         })?;
 
-        file.write_all(&chunk[..chunk.get_len()]).await.map_err(|e| {
-            let msg = format!("[{}:{}] write {} failed.err {}", file!(), line!(), file_path.to_string_lossy().to_string(), e);
-            log::error!("{}", msg.as_str());
-            BuckyError::new(BuckyErrorCode::Failed, msg)
+        chunk.as_mut().seek(std::io::SeekFrom::Start(0)).await?;
+        let reader = ChunkRead::new(chunk);
+        let len = async_std::io::copy(reader, file.clone()).await.map_err(|e| {
+            let msg = format!("write chunk to file failed! chunk={}, len={}, file={}, {}", chunk_id, chunk_id.len(), file_path.display(), e);
+            log::error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
+
+        if len != chunk_id.len() as u64 {
+            let msg = format!("write chunk to file but got unmatch len! chunk={}, len={}, read={}, file={}", chunk_id, chunk_id.len(), len, file_path.display());
+            log::error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
+        }
+
         file.flush().await.map_err(|e| {
             let msg = format!("[{}:{}] flush {} failed.err {}", file!(), line!(), file_path.to_string_lossy().to_string(), e);
             log::error!("{}", msg.as_str());
@@ -844,8 +853,25 @@ mod test_local_chunk_cache {
             todo!()
         }
 
-        async fn put_chunk(&self, chunk_id: &ChunkId, chunk: &dyn Chunk) -> BuckyResult<()> {
-            self.chunk_map.lock().unwrap().insert(chunk_id.clone(), Box::new(ChunkMock{buf: Vec::from(chunk.deref())}));
+        async fn put_chunk(&self, chunk_id: &ChunkId, mut chunk: Box<dyn Chunk>) -> BuckyResult<()> {
+            chunk.as_mut().seek(std::io::SeekFrom::Start(0)).await?;
+
+            let reader = ChunkRead::new(chunk);
+            let mut buf = Vec::with_capacity(chunk_id.len());
+
+            let len = reader.read_to_end(&mut buf).await.map_err(|e| {
+                let msg = format!("read chunk to buffer failed! chunk={}, len={}, {}", chunk_id, chunk_id.len(), e);
+                log::error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::IoError, msg)
+            })?;
+
+            if len != chunk_id.len() {
+                let msg = format!("read chunk to buffer but got unmatch len! chunk={}, len={}, read={}", chunk_id, chunk_id.len(), len);
+                log::error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::IoError, msg));
+            }
+
+            self.chunk_map.lock().unwrap().insert(chunk_id.clone(), Box::new(ChunkMock{buf}));
             Ok(())
         }
 

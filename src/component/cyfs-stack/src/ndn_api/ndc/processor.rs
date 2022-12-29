@@ -7,7 +7,8 @@ use crate::ndn_api::NDNForwardObjectData;
 use crate::non::*;
 use crate::{ndn::*, NamedDataComponents};
 use cyfs_base::*;
-use cyfs_chunk_lib::{ChunkMeta, MemRefChunk};
+use cyfs_chunk_cache::MemChunk;
+use cyfs_chunk_lib::ChunkMeta;
 use cyfs_lib::*;
 
 use futures::AsyncReadExt;
@@ -100,7 +101,7 @@ impl NDCLevelInputProcessor {
                 self.data_manager
                     .put_chunk(
                         &chunk_id,
-                        &MemRefChunk::from(chunk_raw.as_slice()),
+                        Box::new(MemChunk::from(chunk_raw)),
                         req.common.referer_object,
                     )
                     .await?;
@@ -110,7 +111,7 @@ impl NDCLevelInputProcessor {
                     .to_chunk()
                     .await?;
                 self.data_manager
-                    .put_chunk(&chunk_id, chunk.as_ref(), req.common.referer_object)
+                    .put_chunk(&chunk_id, chunk, req.common.referer_object)
                     .await?;
             }
         }

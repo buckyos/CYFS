@@ -68,7 +68,7 @@ impl LocalDataManager {
     pub async fn put_chunk(
         &self,
         chunk_id: &ChunkId,
-        chunk: &dyn Chunk,
+        chunk: Box<dyn Chunk>,
         referer_object: Vec<NDNDataRefererObject>,
     ) -> BuckyResult<()> {
         assert!(chunk_id.len() == chunk.get_len());
