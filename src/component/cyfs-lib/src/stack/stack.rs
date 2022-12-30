@@ -87,7 +87,6 @@ pub struct SharedCyfsStack {
 
 #[derive(Debug, Clone)]
 pub enum CyfsStackEventType {
-    Http,
     WebSocket(Url),
 }
 
@@ -160,16 +159,7 @@ impl SharedCyfsStackParam {
     }
 
     pub fn default_with_http_event(dec_id: Option<ObjectId>) -> Self {
-        let (service_url, ws_url) =
-            Self::gen_url(cyfs_base::NON_STACK_HTTP_PORT, cyfs_base::NON_STACK_WS_PORT);
-
-        Self {
-            dec_id,
-            service_url,
-            ws_url,
-            event_type: CyfsStackEventType::Http,
-            requestor_config: CyfsStackRequestorConfig::default(),
-        }
+        Self::default(dec_id)
     }
 
     // 默认切换到websocket模式
@@ -378,7 +368,6 @@ impl SharedCyfsStack {
         // 初始化对应的事件处理器，二选一
         let router_handlers = RouterHandlerManager::new(
             Some(dec_id.clone()),
-            &param.service_url.to_string(),
             param.event_type.clone(),
         )
         .await?;
