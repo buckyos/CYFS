@@ -453,6 +453,10 @@ impl RouterWSEventManager {
         self.client.start();
     }
 
+    pub async fn stop(&self) {
+        self.client.stop().await
+    }
+
     pub fn add_event<REQ, RESP>(
         &self,
         id: &str,

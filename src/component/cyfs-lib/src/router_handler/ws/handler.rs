@@ -496,6 +496,10 @@ impl RouterWSHandlerManager {
         self.client.start();
     }
 
+    pub async fn stop(&self) {
+        self.client.stop().await;
+    }
+
     pub fn add_handler<REQ, RESP>(
         &self,
         chain: RouterHandlerChain,
