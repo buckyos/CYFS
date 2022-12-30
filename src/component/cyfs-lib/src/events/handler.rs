@@ -8,6 +8,7 @@ use cyfs_util::*;
 use async_trait::async_trait;
 use std::fmt;
 use std::sync::Arc;
+use http_types::Url;
 
 #[async_trait]
 pub(crate) trait RouterEventAnyRoutine: Send + Sync {
@@ -44,15 +45,9 @@ pub struct RouterEventManager {
 }
 
 impl RouterEventManager {
-    pub async fn new(dec_id: Option<SharedObjectStackDecID>, _service_url: &str, event_type: CyfsStackEventType) -> BuckyResult<Self> {
-        let inner = match event_type {
-            CyfsStackEventType::WebSocket(ws_url) => {
-                let ret = RouterWSEventManager::new(ws_url);
-                ret.start();
-
-                ret
-            }
-        };
+    pub async fn new(dec_id: Option<SharedObjectStackDecID>, ws_url: Url) -> BuckyResult<Self> {
+        let inner = RouterWSEventManager::new(ws_url);
+        inner.start();
 
         Ok(Self { dec_id, inner })
     }
