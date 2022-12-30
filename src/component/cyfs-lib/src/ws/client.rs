@@ -4,15 +4,34 @@ use super::session_manager::*;
 use cyfs_base::{BuckyError, BuckyResult};
 
 use async_std::net::TcpStream;
+use cyfs_debug::Mutex;
+use futures::future::{AbortHandle, Abortable, Aborted};
 use http_types::Url;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use futures::future::{AbortHandle, Abortable};
-use cyfs_debug::Mutex;
 
 // connect的重试间隔
 const WS_CONNECT_RETRY_MIN_INTERVAL_SECS: u64 = 2;
 const WS_CONNECT_RETRY_MAX_INTERVAL_SECS: u64 = 60;
+
+struct WebSocketClientHandles {
+    // 用以唤醒重试等待
+    waker: Option<AbortHandle>,
+
+    // 取消运行
+    canceler: Option<AbortHandle>,
+    running_task: Option<async_std::task::JoinHandle<()>>,
+}
+
+impl Default for WebSocketClientHandles {
+    fn default() -> Self {
+        Self {
+            waker: None,
+            canceler: None,
+            running_task: None,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct WebSocketClient {
@@ -21,8 +40,7 @@ pub struct WebSocketClient {
 
     session_manager: WebSocketSessionManager,
 
-    // 用以唤醒重试等待
-    waker: Arc<Mutex<Option<AbortHandle>>>,
+    handles: Arc<Mutex<WebSocketClientHandles>>,
 }
 
 impl WebSocketClient {
@@ -39,7 +57,7 @@ impl WebSocketClient {
             service_url,
             service_addr,
             session_manager: WebSocketSessionManager::new(handler),
-            waker: Arc::new(Mutex::new(None)),
+            handles: Arc::new(Mutex::new(WebSocketClientHandles::default())),
         }
     }
 
@@ -54,9 +72,29 @@ impl WebSocketClient {
 
     pub fn start(&self) {
         let this = self.clone();
-        async_std::task::spawn(async move {
+        let (release_task, handle) = futures::future::abortable(async move {
             this.run().await;
         });
+
+        let this = self.clone();
+        let task = async_std::task::spawn(async move {
+            match release_task.await {
+                Ok(_) => {
+                    info!("ws client completed: {}", this.service_url);
+                }
+                Err(Aborted) => {
+                    info!("ws client cancelled: {}", this.service_url);
+                }
+            }
+        });
+
+        {
+            let mut handles = self.handles.lock().unwrap();
+            assert!(handles.canceler.is_none());
+            assert!(handles.running_task.is_none());
+            handles.canceler = Some(handle);
+            handles.running_task = Some(task);
+        }
     }
 
     pub async fn run(self) {
@@ -76,10 +114,10 @@ impl WebSocketClient {
             };
 
             let (abort_handle, abort_registration) = AbortHandle::new_pair();
-            *self.waker.lock().unwrap() = Some(abort_handle);
+            self.handles.lock().unwrap().waker = Some(abort_handle);
             let future = Abortable::new(
-                async_std::task::sleep(std::time::Duration::from_secs(retry_interval)), 
-                abort_registration
+                async_std::task::sleep(std::time::Duration::from_secs(retry_interval)),
+                abort_registration,
             );
 
             match future.await {
@@ -98,7 +136,7 @@ impl WebSocketClient {
 
     // 立即发起一次重试
     pub fn retry(&self) {
-        if let Some(waker) = self.waker.lock().unwrap().take() {
+        if let Some(waker) = self.handles.lock().unwrap().waker.take() {
             waker.abort();
         }
     }
@@ -119,5 +157,21 @@ impl WebSocketClient {
         self.session_manager
             .run_client_session(&self.service_url, conn_info, tcp_stream)
             .await
+    }
+
+    pub async fn stop(&self) {
+        let (canceler, task) = {
+            let mut handles = self.handles.lock().unwrap();
+            (handles.canceler.take(), handles.running_task.take())
+        };
+
+        if let Some(canceler) = canceler {
+            info!("will stop ws client: {}", self.service_url);
+            canceler.abort();
+
+            if let Some(task) = task {
+                task.await;
+            }
+        }
     }
 }
