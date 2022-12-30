@@ -83,6 +83,8 @@ pub struct SharedCyfsStack {
 
     // uni_stack
     uni_stack: Arc<OnceCell<UniCyfsStackRef>>,
+
+    requestor_holder: RequestorHolder,
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +256,49 @@ impl SharedCyfsStackParam {
     }
 }
 
+#[derive(Clone)]
+struct RequestorHolder {
+    http: Option<HttpRequestorRef>,
+    ws: Option<HttpRequestorRef>,
+}
+
+impl RequestorHolder {
+    fn new() -> Self {
+        Self {
+            http: None,
+            ws: None,
+        }
+    }
+
+    fn select_requestor(
+        &mut self,
+        param: &SharedCyfsStackParam,
+        requestor_type: &CyfsStackRequestorType,
+    ) -> HttpRequestorRef {
+        match *requestor_type {
+            CyfsStackRequestorType::Http => {
+                self.http
+                    .get_or_insert_with(|| {
+                        // 基于标准http的requestor
+                        let addr = format!(
+                            "{}:{}",
+                            param.service_url.host_str().unwrap(),
+                            param.service_url.port().unwrap()
+                        );
+                        Arc::new(Box::new(TcpHttpRequestor::new(&addr)))
+                    })
+                    .clone()
+            }
+            CyfsStackRequestorType::WebSocket => {
+                self.ws.get_or_insert_with(|| {
+                    // 基于websocket协议的requestor
+                    Arc::new(Box::new(WSHttpRequestor::new(param.ws_url.clone())))
+                }).clone()
+            }
+        }
+    }
+}
+
 impl SharedCyfsStack {
     pub async fn open_default(dec_id: Option<ObjectId>) -> BuckyResult<Self> {
         Self::open(SharedCyfsStackParam::default(dec_id)).await
@@ -267,30 +312,14 @@ impl SharedCyfsStack {
         Self::open(SharedCyfsStackParam::default_runtime(dec_id)).await
     }
 
-    pub async fn open_with_port(dec_id: Option<ObjectId>, http_port: u16, ws_port: u16) -> BuckyResult<Self> {
+    pub async fn open_with_port(
+        dec_id: Option<ObjectId>,
+        http_port: u16,
+        ws_port: u16,
+    ) -> BuckyResult<Self> {
         Self::open(SharedCyfsStackParam::gen(dec_id, http_port, ws_port)).await
     }
 
-    fn select_requestor(
-        param: &SharedCyfsStackParam,
-        requestor_type: &CyfsStackRequestorType,
-    ) -> HttpRequestorRef {
-        match *requestor_type {
-            CyfsStackRequestorType::Http => {
-                // 基于标准http的requestor
-                let addr = format!(
-                    "{}:{}",
-                    param.service_url.host_str().unwrap(),
-                    param.service_url.port().unwrap()
-                );
-                Arc::new(Box::new(TcpHttpRequestor::new(&addr)))
-            }
-            CyfsStackRequestorType::WebSocket => {
-                // 基于websocket协议的requestor
-                Arc::new(Box::new(WSHttpRequestor::new(param.ws_url.clone())))
-            }
-        }
-    }
 
     pub async fn open(param: SharedCyfsStackParam) -> BuckyResult<Self> {
         info!("will init shared object stack: {:?}", param);
@@ -300,32 +329,34 @@ impl SharedCyfsStack {
             dec_id.set(id.clone()).unwrap();
         }
 
+        let mut requestor_holder = RequestorHolder::new();
+
         // trans service
-        let requestor = Self::select_requestor(&param, &param.requestor_config.trans_service);
+        let requestor = requestor_holder.select_requestor(&param, &param.requestor_config.trans_service);
         let trans_service = TransRequestor::new(Some(dec_id.clone()), requestor);
 
         // util
-        let requestor = Self::select_requestor(&param, &param.requestor_config.util_service);
+        let requestor = requestor_holder.select_requestor(&param, &param.requestor_config.util_service);
         let util_service = UtilRequestor::new(Some(dec_id.clone()), requestor);
 
         // crypto
-        let requestor = Self::select_requestor(&param, &param.requestor_config.crypto_service);
+        let requestor = requestor_holder.select_requestor(&param, &param.requestor_config.crypto_service);
         let crypto_service = CryptoRequestor::new(Some(dec_id.clone()), requestor);
 
         // non
-        let requestor = Self::select_requestor(&param, &param.requestor_config.non_service);
+        let requestor = requestor_holder.select_requestor(&param, &param.requestor_config.non_service);
         let non_service = NONRequestor::new(Some(dec_id.clone()), requestor);
 
         // ndn
-        let requestor = Self::select_requestor(&param, &param.requestor_config.ndn_service);
+        let requestor = requestor_holder.select_requestor(&param, &param.requestor_config.ndn_service);
         let ndn_service = NDNRequestor::new(Some(dec_id.clone()), requestor);
 
         // sync
-        let requestor = Self::select_requestor(&param, &CyfsStackRequestorType::Http);
+        let requestor = requestor_holder.select_requestor(&param, &CyfsStackRequestorType::Http);
         let sync_service = SyncRequestor::new(requestor);
 
         // root_state
-        let requestor = Self::select_requestor(&param, &param.requestor_config.root_state);
+        let requestor = requestor_holder.select_requestor(&param, &param.requestor_config.root_state);
         let root_state =
             GlobalStateRequestor::new_root_state(Some(dec_id.clone()), requestor.clone());
 
@@ -336,7 +367,7 @@ impl SharedCyfsStack {
             GlobalStateMetaRequestor::new_root_state(Some(dec_id.clone()), requestor.clone());
 
         // local_cache
-        let requestor = Self::select_requestor(&param, &param.requestor_config.local_cache);
+        let requestor = requestor_holder.select_requestor(&param, &param.requestor_config.local_cache);
         let local_cache =
             GlobalStateRequestor::new_local_cache(Some(dec_id.clone()), requestor.clone());
 
@@ -366,11 +397,8 @@ impl SharedCyfsStack {
         });
 
         // 初始化对应的事件处理器，二选一
-        let router_handlers = RouterHandlerManager::new(
-            Some(dec_id.clone()),
-            param.event_type.clone(),
-        )
-        .await?;
+        let router_handlers =
+            RouterHandlerManager::new(Some(dec_id.clone()), param.event_type.clone()).await?;
 
         let router_events = RouterEventManager::new(
             Some(dec_id.clone()),
@@ -408,6 +436,8 @@ impl SharedCyfsStack {
 
             device_info: Arc::new(RwLock::new(None)),
             uni_stack: Arc::new(OnceCell::new()),
+
+            requestor_holder,
         };
 
         Ok(ret)
