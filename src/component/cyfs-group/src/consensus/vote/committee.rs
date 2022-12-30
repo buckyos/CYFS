@@ -3,8 +3,9 @@ use std::collections::HashSet;
 use cyfs_base::{BuckyResult, Group, ObjectId};
 use cyfs_core::GroupConsensusBlock;
 
-use crate::HotstuffBlockQCVote;
+use crate::{HotstuffBlockQCVote, HotstuffTimeoutVote};
 
+#[derive(Clone)]
 pub struct Committee {}
 
 impl Committee {
@@ -34,6 +35,15 @@ impl Committee {
     }
 
     pub async fn verify_vote(&self, vote: &HotstuffBlockQCVote) -> BuckyResult<()> {
+        unimplemented!()
+    }
+
+    pub async fn verify_timeout(
+        &self,
+        vote: &HotstuffTimeoutVote,
+        block: &GroupConsensusBlock,
+    ) -> BuckyResult<()> {
+        // 用block验vote.high_qc
         unimplemented!()
     }
 }

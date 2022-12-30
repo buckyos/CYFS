@@ -16,86 +16,166 @@ pub struct VoteMgr {
     blocks: HashMap<ObjectId, GroupConsensusBlock>,
     votes: HashMap<u64, HashMap<ObjectId, Box<QCMaker>>>, // <round, <block-id, QC>>
     timeouts: HashMap<u64, Box<TCMaker>>,                 // <round, TC>
+    waiting_timeouts: HashMap<ObjectId, HashMap<u64, HashMap<ObjectId, HotstuffTimeoutVote>>>, // <block-id, <round, <voter-id, TC>>>
 }
 
 pub enum VoteThresholded {
     QC(HotstuffBlockQC),
-    TC(HotstuffTimeout),
+    TC(HotstuffTimeout, GroupConsensusBlock),
     None,
 }
 
+// TODO: 丢弃太大的round，避免恶意节点恶意用太大的round攻击内存
+
 impl VoteMgr {
-    pub fn new(committee: Committee) -> Self {
+    pub fn new(committee: Committee, round: u64) -> Self {
         Self {
             committee,
             votes: HashMap::new(),
             timeouts: HashMap::new(),
-            round: 0,
+            round,
             blocks: HashMap::new(),
+            waiting_timeouts: HashMap::new(),
         }
     }
 
-    pub async fn add_voting_block(
-        &mut self,
-        block: &GroupConsensusBlock,
-    ) -> BuckyResult<VoteThresholded> {
+    pub async fn add_voting_block(&mut self, block: &GroupConsensusBlock) -> VoteThresholded {
         if block.round() < self.round {
-            return Ok(None);
+            return VoteThresholded::None;
         }
 
         let block_id = block.named_object().desc().object_id();
         self.blocks.insert(block_id, block.clone());
 
-        if let Some(votes) = self.votes.get(&block.round()) {
-            if let Some(qc_maker) = votes.get(&block_id) {
-                if let Some(qc) = qc_maker.on_block(block, &self.committee).await? {
-                    return Ok(VoteThresholded::QC(qc));
+        if let Some(qc_makers) = self.votes.get_mut(&block.round()) {
+            if let Some(qc_maker) = qc_makers.get_mut(&block_id) {
+                if let Some(qc) = qc_maker
+                    .on_block(block, &self.committee)
+                    .await
+                    .unwrap_or(None)
+                {
+                    return VoteThresholded::QC(qc);
                 }
             }
         }
 
-        // TODO timeout要取high_qc的最大值block
-        if let Some(votes) = self.timeouts.get(&block.round()) {
-            if let Some(qc_maker) = votes.get(&block_id) {
-                if let Some(qc) = qc_maker.on_block(block, &self.committee).await? {
-                    return Ok(VoteThresholded::QC(qc));
+        let mut timeouts: Vec<(&u64, &mut Box<TCMaker>)> = self
+            .timeouts
+            .iter_mut()
+            .filter(|(round, tc_maker)| {
+                **round >= block.round()
+                    && tc_maker
+                        .max_block()
+                        .map_or(false, |max_block_id| block_id == max_block_id)
+            })
+            .collect();
+
+        timeouts.sort_unstable_by(|l, r| r.0.cmp(l.0));
+
+        for (round, tc_maker) in timeouts {
+            if let Some(tc) = tc_maker
+                .on_block(block, &self.committee)
+                .await
+                .unwrap_or(None)
+            {
+                return VoteThresholded::TC(tc, block.clone());
+            }
+        }
+
+        let waiting_timeouts = self.waiting_timeouts.remove(&block_id);
+        if let Some(waiting_timeouts) = waiting_timeouts {
+            let mut waiting_timeouts: Vec<(u64, HashMap<ObjectId, HotstuffTimeoutVote>)> =
+                waiting_timeouts.into_iter().collect();
+            waiting_timeouts.sort_unstable_by(|l, r| r.0.cmp(&l.0));
+
+            for (_, timeouts) in waiting_timeouts {
+                for (_, timeout) in timeouts {
+                    if self.committee.verify_timeout(&timeout, block).await.is_ok() {
+                        if let Some((tc, block)) = self
+                            .add_timeout(timeout, block.clone())
+                            .await
+                            .map_or(None, |r| r)
+                        {
+                            return VoteThresholded::TC(tc, block);
+                        }
+                    }
                 }
             }
         }
+
+        VoteThresholded::None
     }
 
     pub async fn add_vote(
         &mut self,
         vote: HotstuffBlockQCVote,
-    ) -> BuckyResult<Option<HotstuffBlockQC>> {
+        block: Option<GroupConsensusBlock>,
+    ) -> BuckyResult<Option<(HotstuffBlockQC, GroupConsensusBlock)>> {
+        assert!(block
+            .as_ref()
+            .map_or(true, |b| b.named_object().desc().object_id()
+                == vote.block_id));
+
         let block_id = vote.block_id;
+
+        if let Some(block) = block.as_ref() {
+            self.blocks.insert(block_id, block.clone());
+        }
+        let block_ref = block.as_ref().or(self.blocks.get(&block_id));
+
         // Add the new vote to our aggregator and see if we have a QC.
         self.votes
             .entry(vote.round)
             .or_insert_with(HashMap::new)
-            .entry(vote.block_id)
+            .entry(block_id)
             .or_insert_with(|| Box::new(QCMaker::new()))
-            .append(vote, &self.committee, self.blocks.get(&block_id))
+            .append(vote, &self.committee, block_ref)
             .await
+            .map(|vote| vote.map(|v| (v, block.unwrap().clone())))
     }
 
     pub async fn add_timeout(
         &mut self,
         timeout: HotstuffTimeoutVote,
-    ) -> BuckyResult<Option<HotstuffTimeout>> {
-        let block_id = timeout.high_qc.block_id;
+        block: GroupConsensusBlock,
+    ) -> BuckyResult<Option<(HotstuffTimeout, GroupConsensusBlock)>> {
+        assert!(block.named_object().desc().object_id() == timeout.high_qc.block_id);
+
         // Add the new timeout to our aggregator and see if we have a TC.
-        self.timeouts
+        let tc_maker = self
+            .timeouts
             .entry(timeout.round)
-            .or_insert_with(|| Box::new(TCMaker::new(timeout.round)))
-            .append(timeout, &self.committee, self.blocks.get(&block_id))
+            .or_insert_with(|| Box::new(TCMaker::new(timeout.round)));
+
+        self.blocks.insert(timeout.high_qc.block_id, block);
+        let max_block_id = tc_maker.max_block().unwrap_or(timeout.high_qc.block_id);
+        let max_block = self.blocks.get(&max_block_id).unwrap();
+
+        tc_maker
+            .append(timeout, &self.committee, max_block)
             .await
+            .map(|vote| vote.map(|v| (v, max_block.clone())))
+    }
+
+    pub fn add_waiting_timeout(&mut self, timeout: HotstuffTimeoutVote) {
+        let block_id = timeout.high_qc.block_id;
+        self.waiting_timeouts
+            .entry(block_id)
+            .or_insert_with(HashMap::new)
+            .entry(timeout.round)
+            .or_insert_with(HashMap::new)
+            .entry(timeout.voter)
+            .or_insert(timeout);
     }
 
     pub fn cleanup(&mut self, round: u64) {
         self.votes.retain(|k, _| k >= &round);
         self.timeouts.retain(|k, _| k >= &round);
         self.blocks.retain(|_, block| block.round() >= round);
+        self.waiting_timeouts.retain(|_, timeouts| {
+            timeouts.retain(|k, timeouts| k >= &round);
+            !timeouts.is_empty()
+        });
         self.round = round;
     }
 }
@@ -169,7 +249,7 @@ impl QCMaker {
 
 struct TCMaker {
     round: u64,
-    votes: Vec<(ObjectId, Signature, u64)>,
+    votes: Vec<HotstuffTimeoutVote>,
     used: HashSet<ObjectId>,
     thresholded: bool,
 }
@@ -189,7 +269,7 @@ impl TCMaker {
         &mut self,
         timeout: HotstuffTimeoutVote,
         committee: &Committee,
-        block: Option<&GroupConsensusBlock>,
+        block: &GroupConsensusBlock,
     ) -> BuckyResult<Option<HotstuffTimeout>> {
         let author = timeout.voter;
 
@@ -201,13 +281,9 @@ impl TCMaker {
         }
 
         // Add the timeout to the accumulator.
-        self.votes
-            .push((author, timeout.signature, timeout.high_qc.round));
+        self.votes.push(timeout);
 
-        match block {
-            Some(block) => self.on_block(block, committee).await,
-            None => Ok(None),
-        }
+        self.on_block(block, committee).await
     }
 
     pub async fn on_block(
@@ -218,10 +294,11 @@ impl TCMaker {
         if !self.thresholded {
             self.thresholded = committee
                 .quorum_threshold(
-                    &self.votes.iter().map(|v| v.0).collect(),
+                    &self.votes.iter().map(|v| v.voter).collect(),
                     block.group_chunk_id(),
                 )
                 .await?;
+
             if self.thresholded {
                 return Ok(Some(HotstuffTimeout {
                     round: self.round,
@@ -229,14 +306,21 @@ impl TCMaker {
                         .votes
                         .iter()
                         .map(|v| HotstuffTimeoutSign {
-                            voter: v.0,
-                            high_qc_round: v.2,
-                            signature: v.1.clone(),
+                            voter: v.voter,
+                            high_qc_round: v.high_qc.round,
+                            signature: v.signature.clone(),
                         })
                         .collect(),
                 }));
             }
         }
         Ok(None)
+    }
+
+    pub fn max_block(&self) -> Option<ObjectId> {
+        self.votes
+            .iter()
+            .max_by(|l, r| l.high_qc.round.cmp(&r.high_qc.round))
+            .map(|v| v.high_qc.block_id)
     }
 }

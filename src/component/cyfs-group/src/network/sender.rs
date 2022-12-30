@@ -11,5 +11,5 @@ impl Sender {
 
     pub async fn post_package(&self, msg: HotstuffMessage, rpath: GroupRPath, to: &ObjectId) {}
 
-    pub async fn broadcast(&self, msg: HotstuffMessage, rpath: GroupRPath, to: &[&ObjectId]) {}
+    pub async fn broadcast(&self, msg: HotstuffMessage, rpath: GroupRPath, to: &[ObjectId]) {}
 }

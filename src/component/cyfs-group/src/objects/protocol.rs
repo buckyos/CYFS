@@ -106,6 +106,40 @@ pub(crate) struct HotstuffTimeoutVote {
     pub signature: Signature,
 }
 
+impl HotstuffTimeoutVote {
+    pub async fn new(
+        high_qc: HotstuffBlockQC,
+        round: u64,
+        local_id: ObjectId,
+        signer: &RsaCPUObjectSigner,
+    ) -> BuckyResult<Self> {
+        let signature = signer
+            .sign(
+                Self::hash_content(high_qc.round, round).as_slice(),
+                &SignatureSource::RefIndex(0),
+            )
+            .await?;
+
+        Ok(Self {
+            high_qc,
+            round,
+            voter: local_id,
+            signature,
+        })
+    }
+
+    fn hash(&self) -> HashValue {
+        Self::hash_content(self.high_qc.round, self.round)
+    }
+
+    fn hash_content(high_qc_round: u64, round: u64) -> HashValue {
+        let mut sha256 = sha2::Sha256::new();
+        sha256.input(high_qc_round.to_le_bytes());
+        sha256.input(round.to_le_bytes());
+        sha256.result().into()
+    }
+}
+
 impl ProtobufTransform<crate::protos::HotstuffTimeoutVote> for HotstuffTimeoutVote {
     fn transform(value: crate::protos::HotstuffTimeoutVote) -> BuckyResult<Self> {
         Ok(Self {

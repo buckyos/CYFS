@@ -144,4 +144,8 @@ impl Storage {
 
         Ok(linked_state)
     }
+
+    pub async fn find_block(&self, block_id: &ObjectId) -> BuckyResult<GroupConsensusBlock> {
+        unimplemented!()
+    }
 }
