@@ -172,6 +172,7 @@ impl ChunkWriterExt for FileTask {
                     } else {
                         chunk.len() as u64
                     };
+                    info!("{} update writen to {}", self, downloading.writen);
                     let next_index = downloading.cur_index + 1;
                     if next_index == self.ranges().len() {
                         None
@@ -240,7 +241,7 @@ impl DownloadTask for FileTask {
             TaskStateImpl::Pending => DownloadTaskState::Downloading(0 ,0.0), 
             TaskStateImpl::Downloading(downloading) => {
                 let progress = if self.0.total > 0 {
-                    downloading.writen as f32 / self.0.total as f32
+                    100.0 * downloading.writen as f32 / self.0.total as f32
                 } else {
                     0.0
                 };

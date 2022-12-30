@@ -234,7 +234,7 @@ impl DownloadTask for ChunkListTask {
             TaskStateImpl::Pending => DownloadTaskState::Downloading(0 ,0.0), 
             TaskStateImpl::Downloading(downloading) => {
                 let progress = if self.0.total > 0 {
-                    downloading.writen as f32 / self.0.total as f32
+                    100.0 * downloading.writen as f32 / self.0.total as f32
                 } else {
                     0.0
                 };
