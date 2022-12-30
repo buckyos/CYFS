@@ -46,9 +46,6 @@ pub struct RouterEventManager {
 impl RouterEventManager {
     pub async fn new(dec_id: Option<SharedObjectStackDecID>, _service_url: &str, event_type: CyfsStackEventType) -> BuckyResult<Self> {
         let inner = match event_type {
-            CyfsStackEventType::Http => {
-                unimplemented!();
-            }
             CyfsStackEventType::WebSocket(ws_url) => {
                 let ret = RouterWSEventManager::new(ws_url);
                 ret.start();
