@@ -12,6 +12,7 @@ use cyfs_base::*;
 use cyfs_util::*;
 
 use async_trait::async_trait;
+use http_types::Url;
 use std::fmt;
 use std::sync::Arc;
 
@@ -47,30 +48,17 @@ where
     }
 }
 
-enum RouterHandlerManagerInner {
-    WS(RouterWSHandlerManager),
-}
-
 #[derive(Clone)]
 pub struct RouterHandlerManager {
     dec_id: Option<SharedObjectStackDecID>,
 
-    inner: Arc<RouterHandlerManagerInner>,
+    inner: Arc<RouterWSHandlerManager>,
 }
 
 impl RouterHandlerManager {
-    pub async fn new(
-        dec_id: Option<SharedObjectStackDecID>,
-        event_type: CyfsStackEventType,
-    ) -> BuckyResult<Self> {
-        let inner = match event_type {
-            CyfsStackEventType::WebSocket(ws_url) => {
-                let ret = RouterWSHandlerManager::new(ws_url);
-                ret.start();
-
-                RouterHandlerManagerInner::WS(ret)
-            }
-        };
+    pub async fn new(dec_id: Option<SharedObjectStackDecID>, ws_url: Url) -> BuckyResult<Self> {
+        let inner = RouterWSHandlerManager::new(ws_url);
+        inner.start();
 
         Ok(Self {
             dec_id,
@@ -111,18 +99,16 @@ impl RouterHandlerManager {
         info!("will add handler: chain={}, id={}, index={}, filter={:?}, req_path={:?}, default_action={}",
             chain, id, index, filter, req_path, default_action);
 
-        match self.inner.as_ref() {
-            RouterHandlerManagerInner::WS(inner) => inner.add_handler(
-                chain,
-                id,
-                self.get_dec_id(),
-                index,
-                filter,
-                req_path,
-                default_action,
-                routine,
-            ),
-        }
+        self.inner.add_handler(
+            chain,
+            id,
+            self.get_dec_id(),
+            index,
+            filter,
+            req_path,
+            default_action,
+            routine,
+        )
     }
 
     pub async fn remove_handler(
@@ -136,19 +122,13 @@ impl RouterHandlerManager {
             chain, id, category
         );
 
-        match self.inner.as_ref() {
-            RouterHandlerManagerInner::WS(inner) => {
-                inner
-                    .remove_handler(chain, category, id, self.get_dec_id())
-                    .await
-            }
-        }
+        self.inner
+            .remove_handler(chain, category, id, self.get_dec_id())
+            .await
     }
 
     pub async fn stop(&self) {
-        match self.inner.as_ref() {
-            RouterHandlerManagerInner::WS(inner) => inner.stop().await,
-        }
+        self.inner.stop().await
     }
 }
 
