@@ -168,6 +168,13 @@ impl RouterHandlerManager {
             }
         }
     }
+
+    pub async fn stop(&self) {
+        match self.inner.as_ref() {
+            RouterHandlerManagerInner::Http(inner) => inner.stop().await,
+            RouterHandlerManagerInner::WS(inner) => inner.stop().await,
+        }
+    }
 }
 
 use super::processor::*;

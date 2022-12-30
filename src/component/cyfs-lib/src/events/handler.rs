@@ -87,6 +87,10 @@ impl RouterEventManager {
     pub async fn remove_event(&self, category: RouterEventCategory, id: &str) -> BuckyResult<bool> {
         self.inner.remove_event(category, id, self.get_dec_id()).await
     }
+
+    pub async fn stop(&self) {
+        self.inner.stop().await
+    }
 }
 
 use super::processor::*;
