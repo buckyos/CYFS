@@ -82,6 +82,7 @@ impl UdpCall {
                     return None;
                 }
                 if self.remote_index == self.tunnel.0.remotes.len() {
+                    self.remote_index = 0;
                     self.local_index += 1;
                     if self.local_index == self.tunnel.0.locals.len() {
                         return None;
