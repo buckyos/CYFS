@@ -332,9 +332,8 @@ message GroupProposalDescContent {
 
     // time
     optional bytes meta_block_id = 4;
-    uint64 timestamp = 5;
-    optional uint64 effective_begining = 6;
-    optional uint64 effective_ending = 7;
+    optional uint64 effective_begining = 5;
+    optional uint64 effective_ending = 6;
 }
 
 message GroupProposalBodyContent {

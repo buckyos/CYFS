@@ -5,10 +5,10 @@ use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
 use cyfs_core::GroupProposal;
 use futures::FutureExt;
 
-use crate::{AsProposal, BlockBuilder, GroupBlockBuilder, ASYNC_TIMEOUT};
+use crate::AsProposal;
 
 pub enum ProposalConsumeMessage {
-    BuildBlock(GroupBlockBuilder),
+    Query(Sender<Vec<GroupProposal>>),
     Remove(Vec<ObjectId>),
 }
 
@@ -18,7 +18,6 @@ pub struct PendingProposalMgr {
     network_sender: crate::network::Sender,
 
     // TODO: 需要设计一个结构便于按时间或数量拆分
-    // TODO: 要把修改group的提案单独排序处理
     buffer: HashMap<ObjectId, GroupProposal>,
 }
 
@@ -40,17 +39,22 @@ impl PendingProposalMgr {
         });
     }
 
-    pub async fn build_block(
+    pub async fn query_proposals(
         tx_consume: &Sender<ProposalConsumeMessage>,
-        builder: GroupBlockBuilder,
-    ) -> BuckyResult<()> {
+    ) -> BuckyResult<Vec<GroupProposal>> {
+        let (sender, receiver) = async_std::channel::bounded(1);
         tx_consume
-            .send(ProposalConsumeMessage::BuildBlock(builder))
+            .send(ProposalConsumeMessage::Query(sender))
             .await
             .map_err(|e| {
                 log::error!("[pending_proposal_mgr] send message(query) faield: {}", e);
                 BuckyError::new(BuckyErrorCode::ErrorState, "channel closed")
-            })
+            })?;
+
+        receiver.recv().await.map_err(|e| {
+            log::error!("[pending_proposal_mgr] recv message(query) failed: {}", e);
+            BuckyError::new(BuckyErrorCode::ErrorState, "channel closed")
+        })
     }
 
     pub async fn remove_proposals(
@@ -66,19 +70,8 @@ impl PendingProposalMgr {
             })
     }
 
-    async fn build_block_impl(&mut self, builder: GroupBlockBuilder) -> BuckyResult<()> {
-        let proposals = self.buffer.drain().map(|(_, p)| p).collect();
-
-        let block = builder.build(proposals).await?;
-        if block.is_none() {
-            return Ok(());
-        }
-
-        /**
-         * TODO:
-         * 1. broadcast
-         */
-        Ok(())
+    async fn query_proposals_impl(&mut self) -> Vec<GroupProposal> {
+        self.buffer.iter().map(|(_, p)| p.clone()).collect()
     }
 
     async fn run(&mut self) {
@@ -92,9 +85,9 @@ impl PendingProposalMgr {
                 message = self.rx_consume.recv().fuse() => {
                     if let Ok(message) = message {
                        match message {
-                            ProposalConsumeMessage::BuildBlock(builder) => {
-                                let r = self.build_block_impl(builder).await;
-                                notifier.send(r).await;
+                            ProposalConsumeMessage::Query(sender) => {
+                                let proposals = self.query_proposals_impl().await;
+                                sender.send(proposals).await;
                             },
                             ProposalConsumeMessage::Remove(proposal_ids) => {
                                 for id in &proposal_ids {

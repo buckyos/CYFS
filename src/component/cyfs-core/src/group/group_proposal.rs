@@ -12,7 +12,6 @@ pub struct GroupProposalDescContent {
     params: Option<Vec<u8>>,
 
     meta_block_id: Option<ObjectId>,
-    timestamp: u64,
     effective_begining: Option<u64>,
     effective_ending: Option<u64>,
 }
@@ -129,7 +128,6 @@ impl GroupProposalDescContent {
         r_path: GroupRPath,
         method: String,
         params: Option<Vec<u8>>,
-        timestamp: Option<u64>,
         meta_block_id: Option<ObjectId>,
         effective_begining: Option<u64>,
         effective_ending: Option<u64>,
@@ -139,7 +137,6 @@ impl GroupProposalDescContent {
             method,
             params,
             meta_block_id,
-            timestamp: timestamp.map_or(bucky_time_now(), |t| t),
             effective_begining,
             effective_ending,
         }
@@ -226,7 +223,6 @@ impl GroupProposalObject for GroupProposal {
             method,
             params,
             meta_block_id,
-            timestamp: timestamp.map_or(bucky_time_now(), |t| t),
             effective_begining,
             effective_ending,
         };
@@ -238,6 +234,7 @@ impl GroupProposalObject for GroupProposal {
                 decide_signatures: vec![],
             },
         )
+        .create_time(timestamp.map_or(bucky_time_now(), |t| t))
     }
 
     fn r_path(&self) -> &GroupRPath {
@@ -292,10 +289,6 @@ impl GroupProposalObject for GroupProposal {
 
     fn meta_block_id(&self) -> &Option<ObjectId> {
         &self.desc().content().meta_block_id
-    }
-
-    fn timestamp(&self) -> u64 {
-        self.desc().content().timestamp
     }
 
     fn effective_begining(&self) -> Option<u64> {

@@ -10,7 +10,7 @@ pub enum GroupUpdateDecide {
 }
 
 // Some config
-pub const ASYNC_TIMEOUT: Duration = Duration::from_millis(500);
 pub const NETWORK_TIMEOUT: Duration = Duration::from_millis(5000);
 pub const HOTSTUFF_TIMEOUT_DEFAULT: u64 = 5000;
 pub const CHANNEL_CAPACITY: usize = 1000;
+pub const TIME_PRECISION: Duration = Duration::from_millis(60000);

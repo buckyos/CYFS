@@ -20,10 +20,11 @@ pub struct Storage {
     dec_id: ObjectId,
     rpath: String,
 
-    dec_state_id: Option<ObjectId>,
+    dec_state_id: Option<ObjectId>, // max-height, max-round
     group_chunk_id: ObjectId,
-    height: u64,
+    height: u64,          // commited/header height
     last_vote_round: u64, // 参与投票的最后一个轮次
+    max_height_block: Option<GroupConsensusBlock>,
     header_block: Option<GroupConsensusBlock>,
     first_block: Option<GroupConsensusBlock>,
     prepares: HashMap<ObjectId, GroupConsensusBlock>,
@@ -145,7 +146,25 @@ impl Storage {
         Ok(linked_state)
     }
 
-    pub async fn find_block(&self, block_id: &ObjectId) -> BuckyResult<GroupConsensusBlock> {
+    pub async fn find_block_in_cache(
+        &self,
+        block_id: &ObjectId,
+    ) -> BuckyResult<GroupConsensusBlock> {
+        unimplemented!()
+    }
+
+    pub async fn find_block_in_cache_by_round(
+        &self,
+        round: u64,
+    ) -> BuckyResult<GroupConsensusBlock> {
+        unimplemented!()
+    }
+
+    pub async fn is_proposal_finished(
+        &self,
+        proposal_id: &ObjectId,
+        pre_block_id: &ObjectId,
+    ) -> BuckyResult<bool> {
         unimplemented!()
     }
 }

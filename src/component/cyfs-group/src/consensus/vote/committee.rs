@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use cyfs_base::{BuckyResult, Group, ObjectId};
-use cyfs_core::GroupConsensusBlock;
+use cyfs_core::{GroupConsensusBlock, HotstuffTimeout};
 
 use crate::{HotstuffBlockQCVote, HotstuffTimeoutVote};
 
@@ -41,6 +41,15 @@ impl Committee {
     pub async fn verify_timeout(
         &self,
         vote: &HotstuffTimeoutVote,
+        block: &GroupConsensusBlock,
+    ) -> BuckyResult<()> {
+        // 用block验vote.high_qc
+        unimplemented!()
+    }
+
+    pub async fn verify_tc(
+        &self,
+        tc: &HotstuffTimeout,
         block: &GroupConsensusBlock,
     ) -> BuckyResult<()> {
         // 用block验vote.high_qc
