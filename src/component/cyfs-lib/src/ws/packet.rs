@@ -1,4 +1,3 @@
-
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 
 use bytes::*;
@@ -6,7 +5,7 @@ use std::collections::LinkedList;
 
 const WS_PACKET_MAGIC: u8 = 0x88;
 const WS_PACKET_VERSION: u8 = 0x01;
-const WS_PACKET_HEADER_LENGTH: u8 = 10;
+const WS_PACKET_HEADER_LENGTH: usize = 10;
 // const WS_PACKET_CONTENT_MAX_LENGTH: u16 = u16::MAX - WS_PACKET_HEADER_LENGTH;
 
 pub struct WSPacketHeader {
@@ -72,23 +71,45 @@ pub struct WSPacket {
 
 impl WSPacket {
     pub fn new_from_bytes(seq: u16, cmd: u16, content: Vec<u8>) -> Self {
-
         let header = WSPacketHeader::new(seq, cmd, content.len() as u32);
-        WSPacket {
-            header,
-            content,
-        }
+        WSPacket { header, content }
     }
 
     pub fn encode(&self) -> Vec<u8> {
         assert_eq!(self.content.len(), self.header.content_length as usize);
 
-        let total = WS_PACKET_HEADER_LENGTH as usize + self.content.len();
-        let mut buf =  Vec::with_capacity(total);
+        let total = WS_PACKET_HEADER_LENGTH + self.content.len();
+        let mut buf = Vec::with_capacity(total);
         self.header.encode(&mut buf);
         buf.put_slice(&self.content);
 
         buf
+    }
+
+    pub fn decode(buf: Vec<u8>) -> BuckyResult<Self> {
+        if buf.len() < WS_PACKET_HEADER_LENGTH {
+            let msg = format!("invalid ws packet header len: buf len={}", buf.len());
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+        }
+
+        let header = WSPacketHeader::parse(&buf[0..WS_PACKET_HEADER_LENGTH])?;
+        if header.content_length as usize != buf.len() - WS_PACKET_HEADER_LENGTH {
+            let msg = format!(
+                "invalid ws packet content len: except context len={}, got len={}",
+                header.content_length,
+                buf.len() - WS_PACKET_HEADER_LENGTH
+            );
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+        }
+
+        Ok(Self {
+            header,
+            content: buf[WS_PACKET_HEADER_LENGTH..].to_vec(),
+        })
     }
 }
 
@@ -110,7 +131,7 @@ impl WSPacketParser {
     pub fn new() -> Self {
         Self {
             buf: BytesMut::with_capacity(2000),
-            remain: WS_PACKET_HEADER_LENGTH as usize,
+            remain: WS_PACKET_HEADER_LENGTH,
             state: WSPacketParserState::Header,
             header: None,
             packets: LinkedList::new(),
@@ -137,7 +158,7 @@ impl WSPacketParser {
                     self.state = WSPacketParserState::Body;
 
                     let header =
-                        WSPacketHeader::parse(&mut self.buf[0..WS_PACKET_HEADER_LENGTH as usize])?;
+                        WSPacketHeader::parse(&mut self.buf[0..WS_PACKET_HEADER_LENGTH])?;
                     self.remain = header.content_length as usize;
 
                     assert!(self.header.is_none());
@@ -145,12 +166,11 @@ impl WSPacketParser {
                 }
                 WSPacketParserState::Body => {
                     self.state = WSPacketParserState::Header;
-                    self.remain = WS_PACKET_HEADER_LENGTH as usize;
+                    self.remain = WS_PACKET_HEADER_LENGTH;
 
                     assert!(self.header.is_some());
                     let header = self.header.take().unwrap();
-                    let content = self.buf[..header.content_length as usize]
-                        .to_owned();
+                    let content = self.buf[..header.content_length as usize].to_owned();
 
                     trace!("ws recv packet: seq={}, len={}", header.seq, content.len());
 
