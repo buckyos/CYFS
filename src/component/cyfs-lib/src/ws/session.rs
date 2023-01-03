@@ -15,6 +15,7 @@ use std::marker::Send;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use futures::future::{AbortHandle, Aborted};
 
 // ping间隔
 pub const WS_PING_INTERVAL_IN_SECS: Duration = Duration::from_secs(30);
@@ -38,6 +39,8 @@ pub struct WebSocketSession {
 
     handler: Box<dyn WebSocketRequestHandler>,
     requestor: Arc<WebSocketRequestManager>,
+
+    canceler: Mutex<Option<AbortHandle>>,
 }
 
 impl Drop for WebSocketSession {
@@ -62,6 +65,7 @@ impl WebSocketSession {
             tx: Mutex::new(None),
             handler: handler.clone_handler(),
             requestor: Arc::new(WebSocketRequestManager::new(handler)),
+            canceler: Mutex::new(None),
         }
     }
 
@@ -79,6 +83,14 @@ impl WebSocketSession {
 
     pub fn conn_info(&self) -> &(SocketAddr, SocketAddr) {
         &self.conn_info
+    }
+
+    pub fn stop(&self) {
+        let canceler = self.canceler.lock().unwrap().take();
+        if let Some(canceler) = canceler {
+            info!("will stop ws session: {}", self.sid);
+            canceler.abort();
+        }
     }
 
     pub async fn post_msg(&self, msg: Vec<u8>) -> BuckyResult<()> {
@@ -151,7 +163,19 @@ impl WebSocketSession {
         // 正式通知session启动了
         session.handler.on_session_begin(&session).await;
 
-        let ret = Self::run_loop(session.clone(), stream, rx, as_server).await;
+        let (fut, handle) = futures::future::abortable(Self::run_loop(session.clone(), stream, rx, as_server));
+        {
+            let mut canceler = session.canceler.lock().unwrap();
+            assert!(canceler.is_none());
+            *canceler = Some(handle);
+        }
+
+        let ret = match fut.await {
+            Ok(ret) => ret,
+            Err(Aborted) => {
+                Err(BuckyError::from(BuckyErrorCode::Aborted))
+            }
+        };
 
         session.handler.on_session_end(&session).await;
 

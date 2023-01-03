@@ -1,7 +1,7 @@
 use super::request::*;
 use super::session::*;
 use super::session_manager::*;
-use cyfs_base::{BuckyError, BuckyResult};
+use cyfs_base::*;
 
 use async_std::net::TcpStream;
 use cyfs_debug::Mutex;
@@ -19,7 +19,6 @@ struct WebSocketClientHandles {
     waker: Option<AbortHandle>,
 
     // 取消运行
-    canceler: Option<AbortHandle>,
     running_task: Option<async_std::task::JoinHandle<()>>,
 }
 
@@ -27,7 +26,6 @@ impl Default for WebSocketClientHandles {
     fn default() -> Self {
         Self {
             waker: None,
-            canceler: None,
             running_task: None,
         }
     }
@@ -40,7 +38,10 @@ pub struct WebSocketClient {
 
     session_manager: WebSocketSessionManager,
 
+    // 用以唤醒重试等待
     handles: Arc<Mutex<WebSocketClientHandles>>,
+
+    session: Arc<Mutex<Option<Arc<WebSocketSession>>>>,
 }
 
 impl WebSocketClient {
@@ -58,6 +59,7 @@ impl WebSocketClient {
             service_addr,
             session_manager: WebSocketSessionManager::new(handler),
             handles: Arc::new(Mutex::new(WebSocketClientHandles::default())),
+            session: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -72,36 +74,18 @@ impl WebSocketClient {
 
     pub fn start(&self) {
         let this = self.clone();
-        let (release_task, handle) = futures::future::abortable(async move {
-            this.run().await;
-        });
+        let task = async_std::task::spawn(this.run());
 
-        let this = self.clone();
-        let task = async_std::task::spawn(async move {
-            match release_task.await {
-                Ok(_) => {
-                    info!("ws client completed: {}", this.service_url);
-                }
-                Err(Aborted) => {
-                    info!("ws client cancelled: {}", this.service_url);
-                }
-            }
-        });
-
-        {
-            let mut handles = self.handles.lock().unwrap();
-            assert!(handles.canceler.is_none());
-            assert!(handles.running_task.is_none());
-            handles.canceler = Some(handle);
-            handles.running_task = Some(task);
-        }
+        let mut handles = self.handles.lock().unwrap();
+        assert!(handles.running_task.is_none());
+        handles.running_task = Some(task);
     }
 
-    pub async fn run(self) {
+    async fn run(self) {
         let mut retry_interval = WS_CONNECT_RETRY_MIN_INTERVAL_SECS;
 
         loop {
-            info!("will ws connect to {}", self.service_url);
+            info!("ws will connect to {}", self.service_url);
 
             match self.run_once().await {
                 Ok(_) => {
@@ -109,6 +93,9 @@ impl WebSocketClient {
                     retry_interval = WS_CONNECT_RETRY_MIN_INTERVAL_SECS;
                 }
                 Err(e) => {
+                    if e.code() == BuckyErrorCode::Aborted {
+                        break;
+                    }
                     error!("ws session complete with error: {}", e);
                 }
             };
@@ -127,11 +114,13 @@ impl WebSocketClient {
                         retry_interval = WS_CONNECT_RETRY_MAX_INTERVAL_SECS;
                     }
                 }
-                Err(futures::future::Aborted { .. }) => {
+                Err(Aborted { .. }) => {
                     retry_interval = WS_CONNECT_RETRY_MIN_INTERVAL_SECS;
                 }
             };
         }
+
+        info!("ws client stopped! url={}", self.service_url);
     }
 
     // 立即发起一次重试
@@ -154,24 +143,36 @@ impl WebSocketClient {
             tcp_stream.peer_addr().unwrap(),
         );
 
-        self.session_manager
-            .run_client_session(&self.service_url, conn_info, tcp_stream)
-            .await
+        let session = self
+            .session_manager
+            .new_session(&self.service_url, conn_info)?;
+
+        {
+            let mut current = self.session.lock().unwrap();
+            assert!(current.is_none());
+            *current = Some(session.clone());
+        }
+
+        let ret = self
+            .session_manager
+            .run_client_session(&self.service_url, session, tcp_stream)
+            .await;
+
+        self.session.lock().unwrap().take();
+
+        ret
     }
 
     pub async fn stop(&self) {
-        let (canceler, task) = {
-            let mut handles = self.handles.lock().unwrap();
-            (handles.canceler.take(), handles.running_task.take())
-        };
+        self.session_manager.stop();
 
-        if let Some(canceler) = canceler {
-            info!("will stop ws client: {}", self.service_url);
-            canceler.abort();
+        if let Some(session) = self.session.lock().unwrap().take() {
+            session.stop();
+        }
 
-            if let Some(task) = task {
-                task.await;
-            }
+        let task = self.handles.lock().unwrap().running_task.take();
+        if let Some(task) = task {
+            task.await;
         }
     }
 }
