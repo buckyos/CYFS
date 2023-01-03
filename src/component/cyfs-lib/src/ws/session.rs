@@ -1,14 +1,15 @@
 use super::packet::*;
 use super::request::*;
+use async_std::future::TimeoutError;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_debug::Mutex;
 
 use async_std::channel::{Receiver, Sender};
 use async_std::io::{Read, Write};
 use async_tungstenite::{tungstenite::Message, WebSocketStream};
-use futures::future::{AbortHandle, Abortable};
+use futures::future::Either;
+use futures_util::sink::*;
 use futures_util::StreamExt;
-use futures_util::{sink::*, stream::SplitSink};
 use http_types::Url;
 use std::marker::Send;
 use std::net::SocketAddr;
@@ -25,87 +26,6 @@ pub const WS_ALIVE_TIMEOUT_IN_SECS: Duration = Duration::from_secs(60 * 10);
 #[cfg(not(debug_assertions))]
 pub const WS_ALIVE_TIMEOUT_IN_SECS: Duration = Duration::from_secs(60 * 10);
 
-struct WebSocketSender<S>
-where
-    S: Read + Write + Unpin + Send + 'static,
-{
-    rx: Receiver<Message>,
-    outgoing: SplitSink<WebSocketStream<S>, Message>,
-}
-
-impl<S> WebSocketSender<S>
-where
-    S: Read + Write + Unpin + Send + 'static,
-{
-    fn start_run(self) -> AbortHandle {
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let fut = Abortable::new(self.run(), abort_registration);
-
-        async_std::task::spawn(async move {
-            let _ret = fut.await;
-        });
-
-        abort_handle
-    }
-
-    fn start_run_with_ping(self) -> AbortHandle {
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let fut = Abortable::new(self.run_with_ping(), abort_registration);
-
-        async_std::task::spawn(async move {
-            let _ret = fut.await;
-        });
-
-        abort_handle
-    }
-
-    async fn run(mut self) {
-        loop {
-            match self.rx.recv().await {
-                Ok(msg) => {
-                    if let Err(e) = self.outgoing.send(msg).await {
-                        error!("ws send msg failed, now will stop: {}", e);
-                        break;
-                    }
-                }
-                Err(e) => {
-                    info!("ws send msg stopped: {}", e);
-                    break;
-                }
-            }
-        }
-    }
-
-    async fn run_with_ping(mut self) {
-        loop {
-            let ret = async_std::future::timeout(WS_PING_INTERVAL_IN_SECS, self.rx.recv()).await;
-
-            match ret {
-                Ok(ret) => match ret {
-                    Ok(msg) => {
-                        if let Err(e) = self.outgoing.send(msg).await {
-                            error!("ws send msg failed, now will stop: {}", e);
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        info!("ws send msg stopped: {}", e);
-                        break;
-                    }
-                },
-
-                Err(_) => {
-                    let msg = Message::Ping(Vec::new());
-                    if let Err(e) = self.outgoing.send(msg).await {
-                        error!("ws send ping failed, now will stop: {}", e);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub struct WebSocketSession {
     sid: u32,
 
@@ -114,10 +34,16 @@ pub struct WebSocketSession {
     source: String,
 
     // 消息发送端
-    tx: Arc<Mutex<Option<Sender<Message>>>>,
+    tx: Mutex<Option<Sender<Message>>>,
 
     handler: Box<dyn WebSocketRequestHandler>,
     requestor: Arc<WebSocketRequestManager>,
+}
+
+impl Drop for WebSocketSession {
+    fn drop(&mut self) {
+        warn!("ws session dropped! sid={}", self.sid);
+    }
 }
 
 impl WebSocketSession {
@@ -133,7 +59,7 @@ impl WebSocketSession {
             sid,
             conn_info,
             source,
-            tx: Arc::new(Mutex::new(None)),
+            tx: Mutex::new(None),
             handler: handler.clone_handler(),
             requestor: Arc::new(WebSocketRequestManager::new(handler)),
         }
@@ -211,7 +137,6 @@ impl WebSocketSession {
         S: Read + Write + Unpin + Send + 'static,
     {
         let (tx, rx) = async_std::channel::bounded::<Message>(1024);
-        let (outgoing, mut incoming) = stream.split();
 
         // 保存sender
         {
@@ -223,147 +148,15 @@ impl WebSocketSession {
         // 初始化请求管理器
         session.requestor.bind_session(session.clone());
 
-        // ws的消息发送器
-        let sender = WebSocketSender { rx, outgoing };
-
-        let sender_canceller = if as_server {
-            // server端需要开启ping
-            sender.start_run_with_ping()
-        } else {
-            // client端不需要开启ping，收到ping后需要应答pong
-            sender.start_run()
-        };
-
         // 正式通知session启动了
         session.handler.on_session_begin(&session).await;
 
-        // 消息的流式解析器
-        let mut parser = WSPacketParser::new();
-
-        // 记录最后一次活动时间
-        let mut last_alive = Instant::now();
-
-        let ret = loop {
-  
-            // trace!("try recv from ws session: {}", session.sid());
-
-            let ret = async_std::future::timeout(WS_PING_INTERVAL_IN_SECS, incoming.next()).await;
-
-            // trace!("recv sth. from ws session: {}, ret={:?}", session.sid(), ret);
-
-            // 判断是不是超时
-            if ret.is_err() {
-                // 检查连接是否还在活跃
-                let now = Instant::now();
-                if now - last_alive >= WS_ALIVE_TIMEOUT_IN_SECS {
-                    let msg = format!("ws session alive timeout: sid={}", session.sid());
-                    error!("{}", msg);
-
-                    break Err(BuckyError::new(BuckyErrorCode::Timeout, msg));
-                }
-
-                continue;
-            }
-
-            let ret = ret.unwrap();
-            if ret.is_none() {
-                info!(
-                    "ws recv complete, sid={}, source={}",
-                    session.sid(),
-                    session.source
-                );
-                break Ok(());
-            }
-
-            match ret.unwrap() {
-                Ok(msg) => {
-                    if msg.is_close() {
-                        info!(
-                            "ws rx closed msg: sid={}, source={}",
-                            session.sid(),
-                            session.source
-                        );
-                        break Ok(());
-                    }
-
-                    // 收到了有效消息，需要更新最后活跃时刻
-                    last_alive = Instant::now();
-
-                    // 如果收到ping后，那么需要答复pong
-                    if msg.is_ping() {
-                        // 会自动发送pong
-                        /*
-                        trace!(
-                            "ws recv ping: sid={}, is_server={}",
-                            session.sid(),
-                            as_server
-                        );
-                        */
-                        continue;
-                    } else if msg.is_pong() {
-                        /*
-                        trace!(
-                            "ws recv pong: sid={}, is_server={}",
-                            session.sid(),
-                            as_server
-                        );
-                        */
-                        continue;
-                    }
-
-                    let mut data = msg.into_data();
-                    if let Err(e) = parser.push(&mut data) {
-                        error!("parse ws packet error: {}", e);
-                        break Err(e);
-                    }
-
-                    while let Some(packet) = parser.next_packet() {
-                        let requestor = session.requestor.clone();
-                        // let abort_state = abort_state.clone();
-                        // let has_err = has_err.clone();
-
-                        async_std::task::spawn(async move {
-                            match WebSocketRequestManager::on_msg(requestor.clone(), packet).await {
-                                Ok(_) => {
-                                    // 处理消息成功了
-                                }
-                                Err(e) => {
-                                    error!("process ws request error: {}", e);
-
-                                    /*
-                                    // 处理消息失败，不需要终止当前session
-                                    // 只要包格式正确,session就可以继续使用
-                                    *has_err.lock().unwrap() = Some(e);
-
-                                    let mut abort_state = abort_state.lock().unwrap();
-                                    abort_state.is_abort = true;
-                                    if let Some(abort_handle) = abort_state.handle.take() {
-                                        warn!("will abort ws session: {}", requestor.sid());
-                                        abort_handle.abort();
-                                    }
-                                    */
-                                }
-                            }
-                        });
-                    }
-                }
-
-                Err(e) => {
-                    let msg = format!("ws recv error: sid={}, err={}", session.sid(), e);
-                    warn!("{}", msg);
-
-                    break Err(BuckyError::new(BuckyErrorCode::ConnectionAborted, msg));
-                }
-            }
-        };
+        let ret = Self::run_loop(session.clone(), stream, rx, as_server).await;
 
         session.handler.on_session_end(&session).await;
 
         // 通知session结束
         session.requestor.unbind_session();
-
-        // 终止发送循环
-        sender_canceller.abort();
 
         // 终止发送
         {
@@ -372,5 +165,181 @@ impl WebSocketSession {
         }
 
         ret
+    }
+
+    async fn run_loop<S>(
+        session: Arc<Self>,
+        stream: WebSocketStream<S>,
+        rx: Receiver<Message>,
+        with_ping: bool,
+    ) -> BuckyResult<()>
+    where
+        S: Read + Write + Unpin + Send + 'static,
+    {
+        let (mut outgoing, mut incoming) = stream.split();
+
+        // 记录最后一次活动时间
+        let mut last_alive = Instant::now();
+
+        let ret = loop {
+            // trace!("try recv from ws session: {}", session.sid());
+
+            let send_recv = futures::future::select(incoming.next(), rx.recv());
+            let ret = async_std::future::timeout(WS_PING_INTERVAL_IN_SECS, send_recv).await;
+
+            // trace!("recv sth. from ws session: {}, ret={:?}", session.sid(), ret);
+
+            match ret {
+                Err(TimeoutError { .. }) => {
+                    if with_ping {
+                        let msg = Message::Ping(Vec::new());
+                        if let Err(e) = outgoing.send(msg).await {
+                            let msg = format!(
+                                "ws send msg error: sid={}, err={}",
+                                session.sid(),
+                                e
+                            );
+                            warn!("{}", msg);
+
+                            break Err(BuckyError::new(
+                                BuckyErrorCode::ConnectionAborted,
+                                msg,
+                            ));
+                        }
+                    }
+
+                    // 检查连接是否还在活跃
+                    let now = Instant::now();
+                    if now - last_alive >= WS_ALIVE_TIMEOUT_IN_SECS {
+                        let msg = format!("ws session alive timeout: sid={}", session.sid());
+                        error!("{}", msg);
+
+                        break Err(BuckyError::new(BuckyErrorCode::Timeout, msg));
+                    }
+
+                    continue;
+                }
+                Ok(ret) => {
+                    match ret {
+                        Either::Left((ret, _fut)) => {
+                            if ret.is_none() {
+                                info!(
+                                    "ws recv complete, sid={}, source={}",
+                                    session.sid(),
+                                    session.source
+                                );
+                                break Ok(());
+                            }
+
+                            match ret.unwrap() {
+                                Ok(msg) => {
+                                    if msg.is_close() {
+                                        info!(
+                                            "ws rx closed msg: sid={}, source={}",
+                                            session.sid(),
+                                            session.source
+                                        );
+                                        break Ok(());
+                                    }
+
+                                    // 收到了有效消息，需要更新最后活跃时刻
+                                    last_alive = Instant::now();
+
+                                    // 如果收到ping后，那么需要答复pong
+                                    if msg.is_ping() {
+                                        // 会自动发送pong
+                                        /*
+                                        trace!(
+                                            "ws recv ping: sid={}, is_server={}",
+                                            session.sid(),
+                                            as_server
+                                        );
+                                        */
+                                        continue;
+                                    } else if msg.is_pong() {
+                                        /*
+                                        trace!(
+                                            "ws recv pong: sid={}, is_server={}",
+                                            session.sid(),
+                                            as_server
+                                        );
+                                        */
+                                        continue;
+                                    }
+
+                                    async_std::task::spawn(Self::process_msg(
+                                        session.requestor.clone(),
+                                        msg,
+                                    ));
+                                }
+
+                                Err(e) => {
+                                    let msg =
+                                        format!("ws recv error: sid={}, err={}", session.sid(), e);
+                                    warn!("{}", msg);
+
+                                    break Err(BuckyError::new(
+                                        BuckyErrorCode::ConnectionAborted,
+                                        msg,
+                                    ));
+                                }
+                            }
+                        }
+                        Either::Right((ret, _fut)) => match ret {
+                            Ok(msg) => {
+                                if let Err(e) = outgoing.send(msg).await {
+                                    let msg = format!(
+                                        "ws send msg error: sid={}, err={}",
+                                        session.sid(),
+                                        e
+                                    );
+                                    warn!("{}", msg);
+
+                                    break Err(BuckyError::new(
+                                        BuckyErrorCode::ConnectionAborted,
+                                        msg,
+                                    ));
+                                }
+                            }
+                            Err(e) => {
+                                info!("ws send msg stopped: {}", e);
+                                break Ok(());
+                            }
+                        },
+                    }
+                }
+            }
+        };
+
+        ret
+    }
+
+    async fn process_msg(requestor: Arc<WebSocketRequestManager>, msg: Message) -> BuckyResult<()> {
+        let data = msg.into_data();
+        let packet = WSPacket::decode(data)?;
+
+        match WebSocketRequestManager::on_msg(requestor, packet).await {
+            Ok(_) => {
+                // 处理消息成功了
+            }
+            Err(e) => {
+                error!("process ws request error: {}", e);
+
+                /*
+                // 处理消息失败，不需要终止当前session
+                // 只要包格式正确,session就可以继续使用
+                *has_err.lock().unwrap() = Some(e);
+
+                let mut abort_state = abort_state.lock().unwrap();
+                abort_state.is_abort = true;
+                if let Some(abort_handle) = abort_state.handle.take() {
+                    warn!("will abort ws session: {}", requestor.sid());
+                    abort_handle.abort();
+                }
+                */
+            }
+        }
+
+        Ok(())
     }
 }
