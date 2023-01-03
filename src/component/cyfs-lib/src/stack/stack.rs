@@ -280,6 +280,15 @@ impl RequestorHolder {
             }
         }
     }
+
+    async fn stop(&self) {
+        if let Some(requestor) = &self.http {
+            requestor.stop().await;
+        }
+        if let Some(requestor) = &self.ws {
+            requestor.stop().await;
+        }
+    }
 }
 
 impl SharedCyfsStack {
@@ -436,6 +445,17 @@ impl SharedCyfsStack {
         Ok(ret)
     }
 
+    pub async fn stop(&self) {
+        self.requestor_holder.stop().await;
+
+        if let Some(manager) = &self.router_handlers {
+            manager.stop().await;
+        }
+        if let Some(manager) = &self.router_events {
+            manager.stop().await;
+        }
+    }
+    
     pub fn param(&self) -> &SharedCyfsStackParam {
         &self.param
     }

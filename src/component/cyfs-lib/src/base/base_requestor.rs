@@ -70,6 +70,8 @@ pub trait HttpRequestor: Send + Sync {
     ) -> BuckyResult<Response>;
 
     fn clone_requestor(&self) -> Box<dyn HttpRequestor>;
+
+    async fn stop(&self);
 }
 
 pub type HttpRequestorRef = Arc<Box<dyn HttpRequestor>>;
@@ -157,6 +159,10 @@ impl HttpRequestor for TcpHttpRequestor {
 
     fn clone_requestor(&self) -> Box<dyn HttpRequestor> {
         Box::new(self.clone())
+    }
+
+    async fn stop(&self) {
+        // do nothing
     }
 }
 
@@ -265,6 +271,10 @@ impl HttpRequestor for BdtHttpRequestor {
 
     fn clone_requestor(&self) -> Box<dyn HttpRequestor> {
         Box::new(self.clone())
+    }
+
+    async fn stop(&self) {
+        // to nothing
     }
 }
 
@@ -404,6 +414,10 @@ impl HttpRequestor for WSHttpRequestor {
     fn clone_requestor(&self) -> Box<dyn HttpRequestor> {
         Box::new(self.clone())
     }
+
+    async fn stop(&self) {
+        self.client.stop().await
+    }
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -512,5 +526,9 @@ impl HttpRequestor for RequestorWithRetry {
 
     fn clone_requestor(&self) -> Box<dyn HttpRequestor> {
         self.requestor.clone_requestor()
+    }
+
+    async fn stop(&self) {
+        self.requestor.stop().await
     }
 }
