@@ -11,6 +11,9 @@ use cyfs_util::*;
 use crate::{
     stack::{WeakStack, Stack},
 };
+use super::super::{
+    download::*
+};
 use super::{
     storage::*,  
     cache::*,
@@ -22,40 +25,23 @@ pub struct Config {
     pub raw_caches: RawCacheConfig
 }
 
-struct ChunkDownloaders {
-    mergable: Option<WeakChunkDownloader>, 
-    unmergable: LinkedList<WeakChunkDownloader>
-}
-
-impl ChunkDownloaders {
-    fn create_downloader(&mut self, stack: &WeakStack, cache: ChunkCache, mergable: bool) -> ChunkDownloader {
-        if mergable {
-            if let Some(weak) = self.mergable.as_ref() {
-                if let Some(downloader) = weak.to_strong() {
-                    return downloader;
-                } 
-            }
-            let downloader = ChunkDownloader::new(stack.clone(), cache);
-            self.mergable = Some(downloader.to_weak());
-            downloader
-        } else {
-            let downloader = ChunkDownloader::new(stack.clone(), cache);
-            self.unmergable.push_back(downloader.to_weak());
-            downloader
-        }
-    }
-}
-
-struct Downloaders {
-    chunk_entries: BTreeMap<ChunkId, ChunkDownloaders>
-}
+struct Downloaders(LinkedList<WeakChunkDownloader>);
 
 impl Downloaders {
-    fn create_downloader(&mut self, stack: &WeakStack, cache: ChunkCache, mergable: bool) -> ChunkDownloader {
-        self.chunk_entries.entry(cache.chunk().clone()).or_insert(ChunkDownloaders {
-            mergable: None, 
-            unmergable: Default::default()
-        }).create_downloader(stack, cache, mergable)
+    fn new() -> Self {
+        Self(Default::default())
+    }
+
+    fn create_downloader(
+        &mut self, 
+        stack: &WeakStack, 
+        cache: ChunkCache, 
+        task: Box<dyn DownloadTask>, 
+        context: Box<dyn DownloadContext>
+    ) -> ChunkDownloader {
+        let downloader = ChunkDownloader::new(stack.clone(), cache, task, context);
+        self.0.push_back(downloader.to_weak());
+        downloader
     }
 }
 
@@ -119,7 +105,7 @@ impl ChunkManager {
             store: Box::new(EmptyChunkWrapper::new(store)), 
             raw_caches: RawCacheManager::new(stack.config().ndn.chunk.raw_caches.clone()), 
             caches: Mutex::new(Default::default()), 
-            downloaders: RwLock::new(Downloaders { chunk_entries: Default::default() })
+            downloaders: RwLock::new(Downloaders::new())
         }
     }
 
@@ -144,10 +130,10 @@ impl ChunkManager {
         cache
     }
 
-    pub fn create_downloader(&self, chunk: &ChunkId, mergable: bool) -> ChunkDownloader {
+    pub fn create_downloader(&self, chunk: &ChunkId, task: Box<dyn DownloadTask>, context: Box<dyn DownloadContext>) -> ChunkDownloader {
         let cache = self.create_cache(chunk);
         let mut downloaders = self.downloaders.write().unwrap();
-        downloaders.create_downloader(&self.stack, cache, mergable)
+        downloaders.create_downloader(&self.stack, cache, task, context)
     }
 
 }

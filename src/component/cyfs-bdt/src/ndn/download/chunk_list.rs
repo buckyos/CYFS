@@ -23,7 +23,6 @@ use super::{
 };
 
 struct DownloadingChunk {
-    context_id: IncreaseId, 
     downloader: ChunkDownloader, 
 }
 
@@ -102,40 +101,31 @@ impl ChunkListTask {
         let stack = Stack::from(&self.0.stack);
         let chunk = &self.chunk_list().chunks()[index];
 
-        let downloader = stack.ndn().chunk_manager().create_downloader(chunk, self.context().is_mergable());
+        let downloader = stack.ndn().chunk_manager().create_downloader(chunk, self.clone_as_task(), self.context().clone_as_context());
         let cache = downloader.cache().clone();
-        let cancel = {
+        let _ = {
             let mut state = self.0.state.write().unwrap();
             match &mut state.task_state {
                 TaskStateImpl::Pending => {
-                    let context_id = downloader.context().add_context(self.context());
                     state.task_state = TaskStateImpl::Downloading(DownloadingState { 
                         cur_chunk: DownloadingChunk {
-                            context_id, 
                             downloader, 
                         }, 
                         history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
                         drain_score: 0 
                     });
-                    Ok(None)
+                    Ok(())
                 }, 
                 TaskStateImpl::Downloading(downloading) => {
-                    let context_id = downloader.context().add_context(self.context());
-                    let cancel = Some((downloading.cur_chunk.context_id, downloading.cur_chunk.downloader.clone()));
                     downloading.cur_chunk = DownloadingChunk {
-                        context_id, 
                         downloader, 
                     };
-                    Ok(cancel)
+                    Ok(())
                 },
-                TaskStateImpl::Finished => Ok(None), 
+                TaskStateImpl::Finished => Ok(()), 
                 TaskStateImpl::Error(err) => Err(err.clone())
             }
         }?;
-
-        if let Some((id, downloader)) = cancel {
-            downloader.context().remove_context(&id);
-        }
 
         Ok(cache)
     }
@@ -217,7 +207,7 @@ impl DownloadTask for ChunkListTask {
 
 
     fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
-        let (waiters, cancel) = {
+        let waiters = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
                 ControlStateImpl::Normal(waiters) => {
@@ -228,26 +218,20 @@ impl DownloadTask for ChunkListTask {
                 _ => None
             };
 
-            let cancel = match &state.task_state {
-                TaskStateImpl::Downloading(downloading) => {
-                    let cancel = Some((downloading.cur_chunk.context_id, downloading.cur_chunk.downloader.clone()));
+            match &state.task_state {
+                TaskStateImpl::Downloading(_) => {
                     state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
-                    cancel
                 }, 
-                _ => None
+                _ => {}
             };
 
-            (waiters, cancel)
+            waiters
         };
 
         if let Some(waiters) = waiters {
             waiters.wake();
         }
 
-        if let Some((id, downloader)) = cancel {
-            downloader.context().remove_context(&id);
-        }
-        
         Ok(DownloadTaskControlState::Canceled)
     }
 

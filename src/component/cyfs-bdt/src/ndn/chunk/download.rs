@@ -30,7 +30,8 @@ enum StateImpl {
 
 struct ChunkDowloaderImpl { 
     stack: WeakStack, 
-    context: MultiDownloadContext, 
+    task: Box<dyn DownloadTask>, 
+    context: Box<dyn DownloadContext>, 
     cache: ChunkCache, 
     state: RwLock<StateImpl>, 
 }
@@ -56,13 +57,16 @@ impl ChunkDownloader {
 impl ChunkDownloader {
     pub fn new(
         stack: WeakStack, 
-        cache: ChunkCache,
+        cache: ChunkCache, 
+        task: Box<dyn DownloadTask>, 
+        context: Box<dyn DownloadContext>
     ) -> Self {
         let downloader = Self(Arc::new(ChunkDowloaderImpl {
             stack, 
             cache, 
+            task, 
+            context, 
             state: RwLock::new(StateImpl::Loading), 
-            context: MultiDownloadContext::new(), 
         }));
 
         {
@@ -95,8 +99,12 @@ impl ChunkDownloader {
         downloader
     }
 
-    pub fn context(&self) -> &MultiDownloadContext {
-        &self.0.context
+    pub fn owner(&self) -> &dyn DownloadTask {
+        self.0.task.as_ref()
+    }
+
+    pub fn context(&self) -> &dyn DownloadContext {
+        self.0.context.as_ref()
     }
 
     pub fn cache(&self) -> &ChunkCache {
@@ -158,7 +166,7 @@ impl ChunkDownloader {
             }
         };
         if let Some(session) = session {
-            if !self.context().source_exists(session.source()) {
+            if !task::block_on(self.context().source_exists(session.source())) {
                 session.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "user canceled"));
                 let state = &mut *self.0.state.write().unwrap();
                 match state {
@@ -183,14 +191,13 @@ impl ChunkDownloader {
 
         let cache = &self.0.cache;
         let stack = Stack::from(&self.0.stack);
-        let mut sources = self.context().sources_of(&DownloadSourceFilter::default(), 1);
+        let mut sources = task::block_on(self.context().sources_of(&DownloadSourceFilter::default(), 1));
 
         if sources.len() > 0 { 
             let source = sources.pop_front().unwrap();
             let channel = stack.ndn().channel_manager().create_channel(&source.target).unwrap();
             
-            let context_id = source.context_id;
-            let mut source: DownloadSourceWithReferer<DeviceId> = source.into();
+            let mut source: DownloadSource<DeviceId> = source.into();
             source.codec_desc = match &source.codec_desc {
                 ChunkCodecDesc::Unknown => ChunkCodecDesc::Stream(None, None, None).fill_values(self.chunk()), 
                 ChunkCodecDesc::Stream(..) => source.codec_desc.fill_values(self.chunk()), 
@@ -200,7 +207,8 @@ impl ChunkDownloader {
             match channel.download( 
                 self.chunk().clone(), 
                 source, 
-                cache.stream().clone()
+                cache.stream().clone(), 
+                Some(self.context().referer().to_owned())
             ) {
                 Ok(session) => {
                     let (start, exists) = {
@@ -218,7 +226,6 @@ impl ChunkDownloader {
                         }
                     };
                     if start {
-                        let _ = self.context().context_of(&context_id).map(|context| context.on_new_session(&session));
                         session.start();
                         session.cur_speed()
                     } else if let Some(session) = exists {
