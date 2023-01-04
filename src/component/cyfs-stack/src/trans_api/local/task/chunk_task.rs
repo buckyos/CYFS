@@ -1,6 +1,6 @@
 use super::super::download_task_manager::DownloadTaskState;
 use crate::ndn_api::{
-    ChunkListReaderAdapter, ChunkManagerWriter, ChunkWriter, ChunkWriterRef, ContextManager,
+    ChunkListReaderAdapter, ChunkWriter, ChunkWriterRef, ContextManager,
     LocalChunkWriter,
 };
 use crate::trans_api::TransStore;
@@ -425,11 +425,7 @@ impl TaskFactory for DownloadChunkTaskFactory {
                     param.save_path.as_ref().unwrap().as_bytes().to_vec(),
                 )
             } else {
-                let chunk_writer: Box<dyn ChunkWriter> = Box::new(ChunkManagerWriter::new(
-                    self.named_data_components.chunk_manager.clone(),
-                    self.named_data_components.ndc.clone(),
-                    self.named_data_components.tracker.clone(),
-                ));
+                let chunk_writer = self.named_data_components.new_chunk_writer();
                 (chunk_writer, Vec::new())
             };
 
@@ -467,11 +463,7 @@ impl TaskFactory for DownloadChunkTaskFactory {
                     param.save_path.as_ref().unwrap().as_bytes().to_vec(),
                 )
             } else {
-                let chunk_writer: Box<dyn ChunkWriter> = Box::new(ChunkManagerWriter::new(
-                    self.named_data_components.chunk_manager.clone(),
-                    self.named_data_components.ndc.clone(),
-                    self.named_data_components.tracker.clone(),
-                ));
+                let chunk_writer = self.named_data_components.new_chunk_writer();
                 (chunk_writer, Vec::new())
             };
 
