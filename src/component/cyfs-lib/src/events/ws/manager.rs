@@ -216,6 +216,10 @@ impl RouterWSEventManagerImpl {
         }
     }
 
+    pub fn sid(&self) -> Option<u32> {
+        self.session.as_ref().map(|session| session.sid())
+    }
+
     pub fn get_event(&self, id: &RouterEventId) -> Option<Arc<RouterEventItem>> {
         self.events.get(id).map(|v| v.clone())
     }
@@ -323,7 +327,10 @@ impl RouterWSEventManagerImpl {
     ) -> BuckyResult<Option<String>> {
         let event = RouterWSEventEmitParam::decode_string(&content)?;
 
-        info!("on event: category={}, id={}, param={}", event.category, event.id, event.param);
+        info!(
+            "on event: category={}, id={}, param={}",
+            event.category, event.id, event.param
+        );
 
         let id = RouterEventId {
             category: event.category,
@@ -454,7 +461,10 @@ impl RouterWSEventManager {
     }
 
     pub async fn stop(&self) {
-        self.client.stop().await
+        info!("will stop event manager! sid={:?}", self.manager.lock().unwrap().sid());
+
+        self.client.stop().await;
+        // assert!(self.manager.lock().unwrap().session.is_none());
     }
 
     pub fn add_event<REQ, RESP>(

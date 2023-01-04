@@ -42,6 +42,12 @@ struct CyfsStackProcessors {
     pub local_cache_meta: GlobalStateMetaOutputProcessorRef,
 }
 
+impl Drop for CyfsStackProcessors {
+    fn drop(&mut self) {
+        warn!("CyfsStackProcessors dropped!");
+    }
+}
+
 pub(crate) struct ObjectServices {
     non_service: NONRequestor,
     ndn_service: NDNRequestor,
@@ -62,6 +68,12 @@ pub(crate) struct ObjectServices {
     local_cache_meta: GlobalStateMetaRequestor,
 }
 
+impl Drop for ObjectServices {
+    fn drop(&mut self) {
+        warn!("object services dropped!");
+    }
+}
+
 #[derive(Clone)]
 pub struct SharedCyfsStack {
     param: SharedCyfsStackParam,
@@ -72,7 +84,7 @@ pub struct SharedCyfsStack {
     services: Arc<ObjectServices>,
     processors: Arc<CyfsStackProcessors>,
 
-    // router_handlers事件处理器
+    // router handler
     router_handlers: Option<RouterHandlerManager>,
 
     // router events
