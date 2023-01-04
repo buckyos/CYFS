@@ -18,12 +18,16 @@ impl Committee {
     pub async fn quorum_threshold(
         &self,
         voters: &HashSet<ObjectId>,
-        group_chunk_id: &ObjectId,
+        group_chunk_id: Option<&ObjectId>,
     ) -> BuckyResult<bool> {
         unimplemented!()
     }
 
-    pub async fn get_leader(&self, group_chunk_id: &ObjectId, round: u64) -> BuckyResult<ObjectId> {
+    pub async fn get_leader(
+        &self,
+        group_chunk_id: Option<&ObjectId>,
+        round: u64,
+    ) -> BuckyResult<ObjectId> {
         unimplemented!()
     }
 
@@ -41,7 +45,7 @@ impl Committee {
     pub async fn verify_timeout(
         &self,
         vote: &HotstuffTimeoutVote,
-        block: &GroupConsensusBlock,
+        pre_block: Option<&GroupConsensusBlock>,
     ) -> BuckyResult<()> {
         // 用block验vote.high_qc
         unimplemented!()
@@ -50,7 +54,7 @@ impl Committee {
     pub async fn verify_tc(
         &self,
         tc: &HotstuffTimeout,
-        block: &GroupConsensusBlock,
+        pre_block: Option<&GroupConsensusBlock>,
     ) -> BuckyResult<()> {
         // 用block验vote.high_qc
         unimplemented!()

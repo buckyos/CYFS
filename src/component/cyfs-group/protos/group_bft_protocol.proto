@@ -9,7 +9,7 @@ message HotstuffBlockQCVote {
 }
 
 message HotstuffTimeoutVote {
-    bytes high_qc = 1; // encode(core:HotstuffBlockQc)
+    optional bytes high_qc = 1; // encode(core:HotstuffBlockQc)
     uint64 round = 2;
     bytes voter = 3;
     bytes signature = 4;

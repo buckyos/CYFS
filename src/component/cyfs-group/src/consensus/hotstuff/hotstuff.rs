@@ -2,9 +2,10 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 
 use async_std::channel::{Receiver, Sender};
 use cyfs_base::{
-    bucky_time_now, bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group,
+    bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, ChunkId, Group,
     NamedObject, ObjectDesc, ObjectId, RsaCPUObjectSigner,
 };
+use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupConsensusBlockProposal, GroupProposal,
     GroupProposalObject, GroupRPath, HotstuffBlockQC, HotstuffTimeout,
@@ -23,9 +24,9 @@ pub struct Hotstuff {
     committee: Committee,
     store: Storage,
     signer: RsaCPUObjectSigner,
-    round: u64,               // 当前轮次
-    high_qc: HotstuffBlockQC, // 最后一次通过投票的确认信息
-    timer: Timer,             // 定时器
+    round: u64,                       // 当前轮次
+    high_qc: Option<HotstuffBlockQC>, // 最后一次通过投票的确认信息
+    timer: Timer,                     // 定时器
     vote_mgr: VoteMgr,
     network_sender: crate::network::Sender,
     non_driver: crate::network::NonDriver,
@@ -34,8 +35,9 @@ pub struct Hotstuff {
     delegate: Arc<Box<dyn RPathDelegate>>,
     order_block_mgr: OrderBlockMgr,
     rpath: GroupRPath,
-    tx_message_inner: Sender<HotstuffMessage>,
-    rx_message_inner: Receiver<HotstuffMessage>,
+    tx_message_inner: Sender<(GroupConsensusBlock, bool)>,
+    rx_message_inner: Receiver<(GroupConsensusBlock, bool)>,
+    rx_proposal_waiter: Option<(Receiver<u64>, u64)>,
 }
 
 impl Hotstuff {
@@ -52,14 +54,15 @@ impl Hotstuff {
         rpath: GroupRPath,
     ) {
         let mut round = 0;
-        let mut high_qc = HotstuffBlockQC::default();
+        let mut high_qc = None;
+        let mut high_qc_round = 0;
 
         for block in store.prepares().values() {
             if block.round() > round {
                 round = block.round();
             }
 
-            if block.qc().round > high_qc.round {
+            if block.qc().as_ref().map_or(0, |qc| qc.round) > high_qc_round {
                 high_qc = block.qc().clone();
             }
         }
@@ -69,7 +72,7 @@ impl Hotstuff {
                 round = block.round();
             }
 
-            if block.qc().round > high_qc.round {
+            if block.qc().as_ref().map_or(0, |qc| qc.round) > high_qc_round {
                 high_qc = block.qc().clone();
             }
         }
@@ -96,6 +99,7 @@ impl Hotstuff {
             tx_proposal_consume,
             tx_message_inner,
             rx_message_inner,
+            rx_proposal_waiter: None,
         };
     }
 
@@ -113,7 +117,7 @@ impl Hotstuff {
             // check leader
             let leader = self
                 .committee
-                .get_leader(block.group_chunk_id(), block.round())
+                .get_leader(Some(block.group_chunk_id()), block.round())
                 .await?;
             if &leader != block.owner() {
                 log::warn!(
@@ -293,7 +297,9 @@ impl Hotstuff {
         match self.vote_mgr.add_voting_block(block).await {
             VoteThresholded::QC(qc) => return self.process_block_qc(qc, block).await,
             VoteThresholded::TC(tc, max_high_qc_block) => {
-                return self.process_timeout_qc(tc, &max_high_qc_block).await
+                return self
+                    .process_timeout_qc(tc, max_high_qc_block.as_ref())
+                    .await
             }
             VoteThresholded::None => {}
         }
@@ -306,7 +312,7 @@ impl Hotstuff {
         if let Some(vote) = self.make_vote(block).await {
             let next_leader = self
                 .committee
-                .get_leader(block.group_chunk_id(), self.round + 1)
+                .get_leader(Some(block.group_chunk_id()), self.round + 1)
                 .await?;
 
             if self.local_id == next_leader {
@@ -325,8 +331,9 @@ impl Hotstuff {
         Ok(())
     }
 
-    async fn process_qc(&mut self, qc: &HotstuffBlockQC) {
-        self.advance_round(qc.round).await;
+    async fn process_qc(&mut self, qc: &Option<HotstuffBlockQC>) {
+        self.advance_round(qc.as_ref().map_or(0, |qc| qc.round))
+            .await;
         self.update_high_qc(qc);
     }
 
@@ -342,8 +349,8 @@ impl Hotstuff {
         }
     }
 
-    fn update_high_qc(&mut self, qc: &HotstuffBlockQC) {
-        if qc.round > self.high_qc.round {
+    fn update_high_qc(&mut self, qc: &Option<HotstuffBlockQC>) {
+        if qc.as_ref().map_or(0, |qc| qc.round) > self.high_qc.as_ref().map_or(0, |qc| qc.round) {
             self.high_qc = qc.clone();
         }
     }
@@ -372,11 +379,12 @@ impl Hotstuff {
         }
 
         // round只能逐个递增
-        let is_valid_round = if block.round() == block.qc().round + 1 {
+        let is_valid_round = if block.round() == block.qc().as_ref().map_or(0, |qc| qc.round) + 1 {
             true
         } else if let Some(tc) = block.tc() {
             block.round() == tc.round + 1
-                && block.qc().round >= tc.votes.iter().map(|v| v.high_qc_round).max().unwrap()
+                && block.qc().as_ref().map_or(0, |qc| qc.round)
+                    >= tc.votes.iter().map(|v| v.high_qc_round).max().unwrap()
         } else {
             false
         };
@@ -432,9 +440,7 @@ impl Hotstuff {
                 .get_block(&vote.block_id, Some(&vote.voter))
                 .await?;
 
-            self.tx_message_inner
-                .send(HotstuffMessage::Block(block))
-                .await;
+            self.tx_message_inner.send((block, false)).await;
         }
 
         Ok(())
@@ -445,12 +451,12 @@ impl Hotstuff {
         qc: HotstuffBlockQC,
         block: &GroupConsensusBlock,
     ) -> BuckyResult<()> {
-        self.process_qc(&qc).await;
+        self.process_qc(&Some(qc)).await;
 
         if self.local_id
             == self
                 .committee
-                .get_leader(block.group_chunk_id(), self.round)
+                .get_leader(Some(block.group_chunk_id()), self.round)
                 .await?
         {
             self.generate_proposal(None).await;
@@ -459,38 +465,42 @@ impl Hotstuff {
     }
 
     async fn handle_timeout(&mut self, timeout: &HotstuffTimeoutVote) -> BuckyResult<()> {
-        if timeout.round < self.round || timeout.high_qc.round >= timeout.round {
+        if timeout.round < self.round
+            || timeout.high_qc.as_ref().map_or(0, |qc| qc.round) >= timeout.round
+        {
             return Ok(());
         }
 
-        let block = match self
-            .store
-            .find_block_in_cache(&timeout.high_qc.block_id)
-            .await
-        {
-            Ok(block) => block,
-            Err(_) => {
-                self.vote_mgr.add_waiting_timeout(timeout.clone());
-                let block = self
-                    .non_driver
-                    .get_block(&timeout.high_qc.block_id, Some(&timeout.voter))
-                    .await?;
+        let block = match timeout.high_qc.as_ref() {
+            Some(qc) => match self.store.find_block_in_cache(&qc.block_id).await {
+                Ok(block) => Some(block),
+                Err(_) => {
+                    self.vote_mgr.add_waiting_timeout(timeout.clone());
+                    let block = self
+                        .non_driver
+                        .get_block(&qc.block_id, Some(&timeout.voter))
+                        .await?;
 
-                self.tx_message_inner
-                    .send(HotstuffMessage::Block(block))
-                    .await;
-                return Ok(());
-            }
+                    self.tx_message_inner.send((block, false)).await;
+                    return Ok(());
+                }
+            },
+            None => None,
         };
 
-        self.committee.verify_timeout(timeout, &block).await?;
+        self.committee
+            .verify_timeout(timeout, block.as_ref())
+            .await?;
 
         self.process_qc(&timeout.high_qc).await;
 
-        if let Some((tc, max_high_qc_block)) =
-            self.vote_mgr.add_timeout(timeout.clone(), block).await?
+        if let Some((tc, max_high_qc_block)) = self
+            .vote_mgr
+            .add_timeout(timeout.clone(), block.as_ref())
+            .await?
         {
-            self.process_timeout_qc(tc, &max_high_qc_block).await?;
+            self.process_timeout_qc(tc, max_high_qc_block.as_ref())
+                .await?;
         }
         Ok(())
     }
@@ -498,14 +508,17 @@ impl Hotstuff {
     async fn process_timeout_qc(
         &mut self,
         tc: HotstuffTimeout,
-        max_high_qc_block: &GroupConsensusBlock,
+        max_high_qc_block: Option<&GroupConsensusBlock>,
     ) -> BuckyResult<()> {
         self.advance_round(tc.round).await;
 
         if self.local_id
             == self
                 .committee
-                .get_leader(max_high_qc_block.group_chunk_id(), self.round)
+                .get_leader(
+                    max_high_qc_block.map(|block| block.group_chunk_id()),
+                    self.round,
+                )
                 .await?
         {
             self.generate_proposal(Some(tc)).await;
@@ -533,18 +546,26 @@ impl Hotstuff {
             return Ok(());
         }
 
-        let block = self
-            .store
-            .find_block_in_cache_by_round(max_high_qc.high_qc_round)
-            .await?;
-        self.committee.verify_tc(tc, &block).await?;
+        let block = if max_high_qc.high_qc_round == 0 {
+            None
+        } else {
+            let block = self
+                .store
+                .find_block_in_cache_by_round(max_high_qc.high_qc_round)
+                .await?;
+            Some(block)
+        };
+        self.committee.verify_tc(tc, block.as_ref()).await?;
 
         self.advance_round(tc.round).await;
 
         if self.local_id
             == self
                 .committee
-                .get_leader(block.group_chunk_id(), self.round)
+                .get_leader(
+                    block.as_ref().map(|block| block.group_chunk_id()),
+                    self.round,
+                )
                 .await?
         {
             self.generate_proposal(Some(tc.clone())).await;
@@ -584,9 +605,15 @@ impl Hotstuff {
 
     async fn generate_proposal(&mut self, tc: Option<HotstuffTimeout>) -> BuckyResult<()> {
         let mut proposals = PendingProposalMgr::query_proposals(&self.tx_proposal_consume).await?;
-        proposals.sort_by(|left, right| left.desc().create_time().cmp(right.desc().create_time()));
+        proposals.sort_by(|left, right| left.desc().create_time().cmp(&right.desc().create_time()));
 
         let now = SystemTime::now();
+
+        let pre_block = match self.high_qc.as_ref() {
+            Some(qc) => Some(self.store.find_block_in_cache(&qc.block_id).await?),
+            None => None,
+        };
+        let latest_group = self.committee.get_group(None).await?;
 
         let mut remove_proposals = vec![];
         // let mut dup_proposals = vec![];
@@ -594,18 +621,23 @@ impl Hotstuff {
         let mut timeout_proposals = vec![];
         let mut executed_proposals = vec![];
         let mut failed_proposals = vec![];
-        let mut result_state_id = self.store.dec_state_id();
+        let mut result_state_id = match pre_block.as_ref() {
+            Some(block) => block.result_state_id().clone(),
+            None => self.store.dec_state_id(),
+        };
 
         for proposal in proposals {
-            if let Ok(is_finished) = self
-                .store
-                .is_proposal_finished(&proposal.id(), &self.high_qc.block_id)
-                .await
-            {
-                if is_finished {
-                    // dup_proposals.push(proposal);
-                    remove_proposals.push(proposal.id());
-                    continue;
+            if let Some(high_qc) = self.high_qc.as_ref() {
+                if let Ok(is_finished) = self
+                    .store
+                    .is_proposal_finished(&proposal.id(), &high_qc.block_id)
+                    .await
+                {
+                    if is_finished {
+                        // dup_proposals.push(proposal);
+                        remove_proposals.push(proposal.id());
+                        continue;
+                    }
                 }
             }
 
@@ -613,30 +645,28 @@ impl Hotstuff {
             if now
                 .duration_since(create_time)
                 .or(create_time.duration_since(now))
+                .unwrap()
                 > TIME_PRECISION
             {
                 // 时间误差太大
-                time_adjust_proposals.push(proposal);
                 remove_proposals.push(proposal.id());
+                time_adjust_proposals.push(proposal);
                 continue;
             }
 
             if let Some(ending) = proposal.effective_ending() {
                 if now >= bucky_time_to_system_time(ending) {
+                    remove_proposals.push(proposal.id());
                     timeout_proposals.push(proposal);
-                    remove_proposals.push(proposal.id())
+                    continue;
                 }
             }
 
-            match self
-                .delegate
-                .on_execute(&proposal, result_state_id)
-                .await
-            {
+            match self.delegate.on_execute(&proposal, result_state_id).await {
                 Ok(exe_result) => {
                     result_state_id = exe_result.result_state_id;
                     executed_proposals.push((proposal, exe_result));
-                },
+                }
                 Err(e) => {
                     remove_proposals.push(proposal.id());
                     failed_proposals.push((proposal, e));
@@ -661,6 +691,13 @@ impl Hotstuff {
 
         PendingProposalMgr::remove_proposals(&self.tx_proposal_consume, remove_proposals).await;
 
+        if self
+            .try_wait_proposals(executed_proposals.as_slice(), &pre_block)
+            .await
+        {
+            return Ok(());
+        }
+
         let proposals_param = executed_proposals
             .into_iter()
             .map(|(proposal, exe_result)| GroupConsensusBlockProposal {
@@ -670,9 +707,35 @@ impl Hotstuff {
                     .receipt
                     .map_or(vec![], |receipt| receipt.object_raw),
                 context: exe_result.context,
-            });
+            })
+            .collect();
 
-        GroupConsensusBlock::create(self.rpath.clone(), proposals_param, result_state_id, self.store.header_height())
+        let group_chunk_id = ChunkMeta::from(&latest_group)
+            .to_chunk()
+            .await
+            .unwrap()
+            .calculate_id();
+
+        let block = GroupConsensusBlock::create(
+            self.rpath.clone(),
+            proposals_param,
+            result_state_id,
+            self.store.header_height(),
+            ObjectId::default(), // TODO: meta block id
+            self.round,
+            group_chunk_id.object_id(),
+            self.high_qc.clone(),
+            tc,
+            self.local_id,
+        );
+
+        self.tx_message_inner.send((block.clone(), true)).await;
+
+        self.broadcast(HotstuffMessage::Block(block), &latest_group)
+            .await;
+
+        self.rx_proposal_waiter = None;
+        Ok(())
     }
 
     async fn broadcast(&self, msg: HotstuffMessage, group: &Group) -> BuckyResult<()> {
@@ -688,6 +751,41 @@ impl Hotstuff {
             .await;
 
         Ok(())
+    }
+
+    async fn try_wait_proposals(
+        &mut self,
+        executed_proposals: &[(GroupProposal, ExecuteResult)],
+        pre_block: &Option<GroupConsensusBlock>,
+    ) -> bool {
+        // empty block, qc only, it's unuseful when no block to qc
+        let mut will_wait_proposals = false;
+        if executed_proposals.len() == 0 {
+            match pre_block.as_ref() {
+                None => will_wait_proposals = true,
+                Some(pre_block) => {
+                    if pre_block.proposals().len() == 0 {
+                        match pre_block.prev_block_id() {
+                            Some(pre_pre_block_id) => {
+                                let pre_pre_block =
+                                    self.store.find_block_in_cache(pre_pre_block_id).await?;
+                                if pre_pre_block.proposals().len() == 0 {
+                                    will_wait_proposals = true;
+                                }
+                            }
+                            None => will_wait_proposals = true,
+                        }
+                    }
+                }
+            }
+        }
+
+        if will_wait_proposals {
+            let (tx, rx) = async_std::channel::bounded(1);
+            self.rx_proposal_waiter = Some((rx, self.round));
+        }
+
+        will_wait_proposals
     }
 
     async fn run(&mut self) {
@@ -713,22 +811,27 @@ impl Hotstuff {
         // and receive timeout notifications from our Timeout Manager.
         loop {
             let result = futures::select! {
-                Some(message) = self.rx_message.recv() => match message {
+                message = self.rx_message.recv().fuse() => match message {
                     HotstuffMessage::Block(block) => self.handle_block(&block).await,
-                    HotstuffMessage::BlockVote(vote) => self.handle_vote(&vote).await,
+                    HotstuffMessage::BlockVote(vote) => self.handle_vote(&vote, None).await,
                     HotstuffMessage::TimeoutVote(timeout) => self.handle_timeout(&timeout).await,
                     HotstuffMessage::Timeout(tc) => self.handle_tc(&tc).await,
-                    _ => panic!("Unexpected protocol message")
                 },
-                Some(message) = self.rx_message_inner.recv() => match message {
-                    HotstuffMessage::Block(block) => self.handle_block(&block).await,
-                    HotstuffMessage::BlockVote(vote) => self.handle_vote(&vote).await,
-                    HotstuffMessage::TimeoutVote(timeout) => self.handle_timeout(&timeout).await,
-                    HotstuffMessage::Timeout(tc) => self.handle_tc(&tc).await,
-                    _ => panic!("Unexpected protocol message")
+                (block, is_from_local) = self.rx_message_inner.recv().fuse() => {
+                    if is_from_local {
+                        self.process_block(&block).await
+                    } else {
+                        self.handle_block(&block).await
+                    }
                 },
-                Some(block) = self.rx_loopback.recv() => self.process_block(&block).await,
                 () = &mut self.timer => self.local_timeout_round().await,
+                wait_round = self.rx_proposal_waiter.map_or(std::future::pending::<u64>(), |(rx, round)| rx.recv().fuse()) => {
+                    if let Some((_, round)) = self.rx_proposal_waiter {
+                        if wait_round == round {
+                            self.generate_proposal(None).await
+                        }
+                    }
+                }
             };
         }
     }

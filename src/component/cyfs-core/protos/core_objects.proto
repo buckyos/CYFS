@@ -413,7 +413,7 @@ message GroupConsensusBlockBodyContent {
 
     repeated Proposal proposals = 1;
 
-    HotstuffBlockQc qc = 2;
+    optional HotstuffBlockQc qc = 2;
     optional HotstuffTimeout tc = 3;
 }
 

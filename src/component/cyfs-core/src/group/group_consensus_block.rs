@@ -161,7 +161,7 @@ impl ProtobufTransform<&GroupConsensusBlockProposal>
 #[cyfs_protobuf_type(crate::codec::protos::GroupConsensusBlockBodyContent)]
 pub struct GroupConsensusBlockBodyContent {
     proposals: Vec<GroupConsensusBlockProposal>,
-    qc: HotstuffBlockQC,
+    qc: Option<HotstuffBlockQC>,
     tc: Option<HotstuffTimeout>,
 }
 
@@ -213,7 +213,7 @@ pub trait GroupConsensusBlockObject {
         meta_block_id: ObjectId,
         round: u64,
         group_chunk_id: ObjectId,
-        qc: HotstuffBlockQC,
+        qc: Option<HotstuffBlockQC>,
         tc: Option<HotstuffTimeout>,
         owner: ObjectId,
     ) -> Self;
@@ -223,12 +223,12 @@ pub trait GroupConsensusBlockObject {
     fn result_state_id(&self) -> &ObjectId;
     fn height(&self) -> u64;
     fn meta_block_id(&self) -> &ObjectId;
-    fn prev_block_id(&self) -> &ObjectId;
+    fn prev_block_id(&self) -> Option<&ObjectId>;
     fn owner(&self) -> &ObjectId;
     fn named_object(&self) -> &NamedObjectBase<GroupConsensusBlockType>;
     fn round(&self) -> u64;
     fn group_chunk_id(&self) -> &ObjectId;
-    fn qc(&self) -> &HotstuffBlockQC;
+    fn qc(&self) -> &Option<HotstuffBlockQC>;
     fn tc(&self) -> &Option<HotstuffTimeout>;
 }
 
@@ -241,7 +241,7 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
         meta_block_id: ObjectId,
         round: u64,
         group_chunk_id: ObjectId,
-        qc: HotstuffBlockQC,
+        qc: Option<HotstuffBlockQC>,
         tc: Option<HotstuffTimeout>,
         owner: ObjectId,
     ) -> Self {
@@ -308,9 +308,9 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
         &desc.meta_block_id
     }
 
-    fn prev_block_id(&self) -> &ObjectId {
+    fn prev_block_id(&self) -> Option<&ObjectId> {
         let body = self.0.body().as_ref().unwrap().content();
-        &body.qc.block_id
+        body.qc.as_ref().map(|qc| &qc.block_id)
     }
 
     fn owner(&self) -> &ObjectId {
@@ -332,7 +332,7 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
         &desc.group_chunk_id
     }
 
-    fn qc(&self) -> &HotstuffBlockQC {
+    fn qc(&self) -> &Option<HotstuffBlockQC> {
         let body = self.0.body().as_ref().unwrap().content();
         &body.qc
     }

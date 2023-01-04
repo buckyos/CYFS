@@ -20,11 +20,10 @@ pub struct Storage {
     dec_id: ObjectId,
     rpath: String,
 
-    dec_state_id: Option<ObjectId>, // max-height, max-round
+    dec_state_id: Option<ObjectId>, // commited/header state id
     group_chunk_id: ObjectId,
     height: u64,          // commited/header height
     last_vote_round: u64, // 参与投票的最后一个轮次
-    max_height_block: Option<GroupConsensusBlock>,
     header_block: Option<GroupConsensusBlock>,
     first_block: Option<GroupConsensusBlock>,
     prepares: HashMap<ObjectId, GroupConsensusBlock>,

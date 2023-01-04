@@ -9,6 +9,7 @@ use crate::AsProposal;
 
 pub enum ProposalConsumeMessage {
     Query(Sender<Vec<GroupProposal>>),
+    Wait(Sender<u64>, u64),
     Remove(Vec<ObjectId>),
 }
 
@@ -92,6 +93,13 @@ impl PendingProposalMgr {
                             ProposalConsumeMessage::Remove(proposal_ids) => {
                                 for id in &proposal_ids {
                                     self.buffer.remove(id);
+                                }
+                            },
+                            ProposalConsumeMessage::Wait(tx_waker, round) => {
+                                if self.buffer.len() > 0 {
+                                    tx_waker.send(round).await
+                                } else {
+                                    self.
                                 }
                             }
                         }

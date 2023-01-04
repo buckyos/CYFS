@@ -176,7 +176,6 @@ pub trait GroupProposalObject {
     fn params_hash(&self) -> BuckyResult<Option<HashValue>>;
     fn params_object_id(&self) -> BuckyResult<Option<ObjectId>>;
     fn meta_block_id(&self) -> &Option<ObjectId>;
-    fn timestamp(&self) -> u64;
     fn effective_begining(&self) -> Option<u64>;
     fn effective_ending(&self) -> Option<u64>;
 

@@ -286,18 +286,18 @@ impl Group {
         }
     }
 
-    pub fn group_hash(&self) -> ObjectId {
-        let mut without_sign = self.clone();
-        without_sign.common_mut().join_signatures = vec![];
+    // pub fn group_hash(&self) -> ObjectId {
+    //     let mut without_sign = self.clone();
+    //     without_sign.common_mut().join_signatures = vec![];
 
-        let mut hash = HashValue::default();
-        let remain = without_sign
-            .raw_encode(hash.as_mut_slice(), &Some(RawEncodePurpose::Hash))
-            .unwrap();
-        assert_eq!(remain.len(), 0);
+    //     let mut hash = HashValue::default();
+    //     let remain = without_sign
+    //         .raw_encode(hash.as_mut_slice(), &Some(RawEncodePurpose::Hash))
+    //         .unwrap();
+    //     assert_eq!(remain.len(), 0);
 
-        ObjectId::from_slice_value(&hash.as_slice()[..31])
-    }
+    //     ObjectId::from_slice_value(&hash.as_slice()[..31])
+    // }
 
     fn common(&self) -> &CommonGroupBodyContent {
         self.body().as_ref().unwrap().content().common()
