@@ -4,13 +4,12 @@ use cyfs_base::*;
 use cyfs_lib::*;
 
 use rusqlite::{params, Connection, OptionalExtension};
+use std::cell::RefCell;
 use std::convert::{TryFrom, TryInto};
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use thread_local::ThreadLocal;
-use std::cell::RefCell;
-
 
 pub(crate) struct SqliteDBDataCache {
     data_file: PathBuf,
@@ -79,22 +78,32 @@ impl SqliteDBDataCache {
     }
 
     fn create_new_conn(&self) -> BuckyResult<Connection> {
-        Connection::open(&self.data_file).map_err(|e| {
-            let msg = format!("open ndc db failed, db={}, e={}", self.data_file.display(), e);
-            error!("{}", msg);
+        Connection::open(&self.data_file)
+            .map_err(|e| {
+                let msg = format!(
+                    "open ndc db failed, db={}, e={}",
+                    self.data_file.display(),
+                    e
+                );
+                error!("{}", msg);
 
-            BuckyError::new(BuckyErrorCode::SqliteError, msg)
-        }).map(|conn| {
-            debug!("open ndc db for thread={:?}, file={}", std::thread::current().id(), self.data_file.display());
-            assert!(conn.is_autocommit());
+                BuckyError::new(BuckyErrorCode::SqliteError, msg)
+            })
+            .map(|conn| {
+                debug!(
+                    "open ndc db for thread={:?}, file={}",
+                    std::thread::current().id(),
+                    self.data_file.display()
+                );
+                assert!(conn.is_autocommit());
 
-            // 设置一个30s的锁重试
-            if let Err(e) = conn.busy_timeout(std::time::Duration::from_secs(30)) {
-                error!("init sqlite busy_timeout error! {}", e);
-            }
+                // 设置一个30s的锁重试
+                if let Err(e) = conn.busy_timeout(std::time::Duration::from_secs(30)) {
+                    error!("init sqlite busy_timeout error! {}", e);
+                }
 
-            conn
-        })
+                conn
+            })
     }
 
     fn init_db(&self) -> BuckyResult<()> {
@@ -145,7 +154,7 @@ impl SqliteDBDataCache {
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
         })?;
 
-        let ret = (||{
+        let ret = (|| {
             if let Err(e) = Self::insert_file_main(&tx, req, &file_hash, &file_id, len) {
                 if e.code() != BuckyErrorCode::AlreadyExists {
                     return Err(e);
@@ -187,7 +196,6 @@ impl SqliteDBDataCache {
                 error!("{}", e);
                 BuckyError::new(BuckyErrorCode::SqliteError, msg)
             })?;
-
         }
 
         ret
@@ -280,10 +288,7 @@ impl SqliteDBDataCache {
     }
 
     fn delete_file_main(conn: &Connection, file_id: &str) -> BuckyResult<usize> {
-        let sql = format!(
-            r#"DELETE FROM file WHERE file_id='{}'"#,
-            file_id
-        );
+        let sql = format!(r#"DELETE FROM file WHERE file_id='{}'"#, file_id);
 
         let count = conn.execute(&sql, []).map_err(|e| {
             let msg = format!("execute delete file error: sql={}, err={}", sql, e);
@@ -294,11 +299,12 @@ impl SqliteDBDataCache {
 
         if count > 0 {
             assert!(count == 1);
-            info!("delete file from ndc success! file_id={}, count={}", file_id, count);
-        } else {
             info!(
-                "delete file from ndc but not found! file_id={}", file_id,
+                "delete file from ndc success! file_id={}, count={}",
+                file_id, count
             );
+        } else {
+            info!("delete file from ndc but not found! file_id={}", file_id,);
         };
 
         Ok(count)
@@ -341,17 +347,17 @@ impl SqliteDBDataCache {
                 BuckyError::new(code, msg)
             })?;
 
-            info!("insert file quick hash: file={}, quick_hash={}, len={}", file_id, hash, len);
+            info!(
+                "insert file quick hash: file={}, quick_hash={}, len={}",
+                file_id, hash, len
+            );
         }
 
         Ok(())
     }
 
     fn delete_file_all_quick_hash(conn: &Connection, file_id: &str) -> BuckyResult<usize> {
-        let sql = format!(
-            r#"DELETE FROM file_quick_hash WHERE file_id='{}'"#,
-            file_id
-        );
+        let sql = format!(r#"DELETE FROM file_quick_hash WHERE file_id='{}'"#, file_id);
 
         let count = conn.execute(&sql, []).map_err(|e| {
             let msg = format!(
@@ -415,17 +421,17 @@ impl SqliteDBDataCache {
                 BuckyError::new(code, msg)
             })?;
 
-            info!("insert file ref dirs: file={}, dir={}, inner_path={}", file_id, dir_id, inner_path);
+            info!(
+                "insert file ref dirs: file={}, dir={}, inner_path={}",
+                file_id, dir_id, inner_path
+            );
         }
 
         Ok(())
     }
 
     fn delete_file_all_refdirs(conn: &Connection, file_id: &str) -> BuckyResult<usize> {
-        let sql = format!(
-            r#"DELETE FROM file_dirs WHERE file_id='{}';"#,
-            file_id
-        );
+        let sql = format!(r#"DELETE FROM file_dirs WHERE file_id='{}';"#, file_id);
 
         let count = conn.execute(&sql, []).map_err(|e| {
             let msg = format!("execute delete file ref dirs error: sql={}, {}", sql, e);
@@ -672,7 +678,7 @@ impl SqliteDBDataCache {
         hash: &str,
         len: u64,
     ) -> BuckyResult<Vec<String>> {
-        let sql; 
+        let sql;
         let params;
         let len = len as i64;
         if len > 0 {
@@ -682,7 +688,6 @@ impl SqliteDBDataCache {
             sql = "SELECT file_id FROM file_quick_hash WHERE hash=?1";
             params = params![hash].to_owned();
         }
-
 
         let mut stmt = conn.prepare(&sql).map_err(|e| {
             let msg = format!("prepare select file quick hash error: {}", e);
@@ -762,8 +767,11 @@ impl SqliteDBDataCache {
         let conn = self.get_conn()?.borrow();
 
         // 首先查找chunk关联的所有file_id
-        let file_id_list =
-            Self::get_chunk_ref_objects_with_relation(&conn, &chunk_id, ChunkObjectRelation::FileBody)?;
+        let file_id_list = Self::get_chunk_ref_objects_with_relation(
+            &conn,
+            &chunk_id,
+            ChunkObjectRelation::FileBody,
+        )?;
 
         // 针对每个file_id，依次查询
         for file_id in file_id_list {
@@ -828,13 +836,20 @@ impl SqliteDBDataCache {
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
         })?;
 
-        let ret = (||{
+        let ret = (|| {
             if let Err(e) = Self::insert_chunk_main(&tx, req, &chunk_id) {
                 if e.code() != BuckyErrorCode::AlreadyExists {
                     return Err(e);
                 }
 
-                // TODO 如果已经存在，那么是不是要删除现有的，然后插入新的?
+                // update state if already exists!
+                let req = UpdateChunkStateRequest {
+                    chunk_id: req.chunk_id.clone(),
+                    current_state: None,
+                    state: req.state,
+                };
+
+                Self::update_chunk_state_main(&tx, &req)?;
             }
 
             if let Some(list) = &req.trans_sessions {
@@ -1032,7 +1047,7 @@ impl SqliteDBDataCache {
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
         })?;
 
-        let ret = (||{
+        let ret = (|| {
             let count = Self::delete_chunk_main(&tx, &chunk_id)?;
             if count > 0 {
                 // FIXME 删除ref_objects和trans_sessions失败会不会对最终结果造成影响？
@@ -1117,12 +1132,17 @@ impl SqliteDBDataCache {
         Ok(count)
     }
 
-    fn delete_chunk_trans_sessions(conn: &Connection, list: &Vec<String>, chunk_id: &str) -> BuckyResult<usize> {
-
+    fn delete_chunk_trans_sessions(
+        conn: &Connection,
+        list: &Vec<String>,
+        chunk_id: &str,
+    ) -> BuckyResult<usize> {
         let mut total = 0;
         for trans_id in list {
-            let sql = format!(r#"DELETE FROM chunk_trans WHERE chunk_id='{}' and trans_id='{}'"#,
-                chunk_id, trans_id);
+            let sql = format!(
+                r#"DELETE FROM chunk_trans WHERE chunk_id='{}' and trans_id='{}'"#,
+                chunk_id, trans_id
+            );
 
             let count = conn.execute(&sql, []).map_err(|e| {
                 let msg = format!(
@@ -1180,14 +1200,19 @@ impl SqliteDBDataCache {
         Ok(count)
     }
 
-    fn delete_chunk_ref_objects(conn: &Connection, list: &Vec<ChunkObjectRef>, chunk_id: &str) -> BuckyResult<usize> {
-
+    fn delete_chunk_ref_objects(
+        conn: &Connection,
+        list: &Vec<ChunkObjectRef>,
+        chunk_id: &str,
+    ) -> BuckyResult<usize> {
         let mut total = 0;
         for item in list {
             let object_id = item.object_id.to_string();
             let relation: u8 = item.relation.into();
-            let sql = format!(r#"DELETE FROM chunk_ref WHERE chunk_id='{}' and object_id='{}' AND relation='{}'"#,
-                chunk_id, object_id, relation);
+            let sql = format!(
+                r#"DELETE FROM chunk_ref WHERE chunk_id='{}' and object_id='{}' AND relation='{}'"#,
+                chunk_id, object_id, relation
+            );
 
             let count = conn.execute(&sql, []).map_err(|e| {
                 let msg = format!(
@@ -1236,7 +1261,10 @@ impl SqliteDBDataCache {
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
         })?;
 
-        info!("update chunk update_time success! chunk={}, update_time={}", chunk_id, update_time);
+        info!(
+            "update chunk update_time success! chunk={}, update_time={}",
+            chunk_id, update_time
+        );
 
         Ok(())
     }
@@ -1260,14 +1288,19 @@ impl SqliteDBDataCache {
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
         })?;
 
-        debug!("update chunk last_access_time success! chunk={}, last_access_time={}", chunk_id, last_access_time);
+        debug!(
+            "update chunk last_access_time success! chunk={}, last_access_time={}",
+            chunk_id, last_access_time
+        );
 
         Ok(())
     }
 
     // 更新一组chunk的last_access_time
-    fn update_chunk_list_last_access_time(conn: &Connection, chunk_id_list: &Vec<String>) -> BuckyResult<()> {
-
+    fn update_chunk_list_last_access_time(
+        conn: &Connection,
+        chunk_id_list: &Vec<String>,
+    ) -> BuckyResult<()> {
         let query_list: Vec<String> = chunk_id_list
             .iter()
             .map(|v| format!(r#""{}""#, v))
@@ -1278,8 +1311,8 @@ impl SqliteDBDataCache {
 
         let sql = format!(
             "UPDATE chunk SET last_access_time={} WHERE chunk_id IN ({});",
-            last_access_time,
-            query_list);
+            last_access_time, query_list
+        );
 
         conn.execute(&sql, []).map_err(|e| {
             let msg = format!(
@@ -1291,17 +1324,27 @@ impl SqliteDBDataCache {
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
         })?;
 
-        info!("update chunk last_access_time success! chunk={}, last_access_time={}", query_list, last_access_time);
+        info!(
+            "update chunk last_access_time success! chunk={}, last_access_time={}",
+            query_list, last_access_time
+        );
 
         Ok(())
     }
 
     // 更新chunk的状态
     fn update_chunk_state(&self, req: &UpdateChunkStateRequest) -> BuckyResult<ChunkState> {
+        let conn = self.get_conn()?.borrow_mut();
+
+        Self::update_chunk_state_main(&conn, req)
+    }
+
+    fn update_chunk_state_main(
+        conn: &Connection,
+        req: &UpdateChunkStateRequest,
+    ) -> BuckyResult<ChunkState> {
         let chunk_id = req.chunk_id.to_string();
         let state: u8 = u8::from(&req.state);
-
-        let conn = self.get_conn()?.borrow_mut();
 
         // 首先查询现有的state状态
         let old_state = Self::get_chunk_state(&conn, &chunk_id)?;
@@ -1317,8 +1360,10 @@ impl SqliteDBDataCache {
         // 根据不同的条件更新
         let count = if let Some(current_state) = &req.current_state {
             if old_state != *current_state {
-                let msg = format!("update chunk state but not match, cur={:?}, expect={:?}",
-                old_state, current_state);
+                let msg = format!(
+                    "update chunk state but not match, cur={:?}, expect={:?}",
+                    old_state, current_state
+                );
                 info!("{}", msg);
                 return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
             }
@@ -1356,8 +1401,6 @@ impl SqliteDBDataCache {
             })?
         };
 
-        drop(conn);
-
         // 可能在此期间发生了竞争？删除或者改变了
         if count == 0 {
             let msg = format!("update chunk state but not found or state unmatch! chunk={}, cur_state={:?}, state={:?}",
@@ -1380,16 +1423,11 @@ impl SqliteDBDataCache {
             SELECT state FROM chunk WHERE chunk_id=?1;
         "#;
 
-        let ret = conn.query_row(
-                sql,
-                params![
-                    chunk_id
-                ],
-                |row| {
-                    let state: u8 = row.get(0).unwrap();
-                    Ok(state)
-                },
-            )
+        let ret = conn
+            .query_row(sql, params![chunk_id], |row| {
+                let state: u8 = row.get(0).unwrap();
+                Ok(state)
+            })
             .optional()
             .map_err(|e| {
                 let msg = format!("get chunk state error: sql={}, err={}", sql, e);
@@ -1402,10 +1440,8 @@ impl SqliteDBDataCache {
             Some(v) => {
                 let state = ChunkState::try_from(v)?;
                 Ok(Some(state))
-            },
-            None => {
-                Ok(None)
-            },
+            }
+            None => Ok(None),
         }
     }
 
@@ -1413,7 +1449,6 @@ impl SqliteDBDataCache {
         &self,
         req: &UpdateChunkTransSessionRequest,
     ) -> BuckyResult<()> {
-
         let chunk_id = req.chunk_id.to_string();
 
         let mut conn = self.get_conn()?.borrow_mut();
@@ -1436,7 +1471,6 @@ impl SqliteDBDataCache {
 
             Ok(())
         })();
-
 
         if ret.is_ok() {
             tx.commit().map_err(|e| {
@@ -1461,7 +1495,6 @@ impl SqliteDBDataCache {
         ret
     }
 
-
     pub fn update_chunk_ref_objects(&self, req: &UpdateChunkRefsRequest) -> BuckyResult<()> {
         let chunk_id = req.chunk_id.to_string();
 
@@ -1472,7 +1505,7 @@ impl SqliteDBDataCache {
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
         })?;
 
-        let ret = (||{
+        let ret = (|| {
             if !req.remove_list.is_empty() {
                 Self::delete_chunk_ref_objects(&tx, &req.remove_list, &chunk_id)?;
             }
@@ -1513,10 +1546,14 @@ impl SqliteDBDataCache {
     pub fn exists_chunks(&self, req: &ExistsChunkRequest) -> BuckyResult<Vec<bool>> {
         let conn = self.get_conn()?.borrow();
 
-        let states: Vec<String> = req.states.iter().map(|state| {
-            let state: u8 = u8::from(*state);
-            state.to_string()
-        }).collect();
+        let states: Vec<String> = req
+            .states
+            .iter()
+            .map(|state| {
+                let state: u8 = u8::from(*state);
+                state.to_string()
+            })
+            .collect();
         let states = states.join(",");
 
         let mut result = Vec::with_capacity(req.chunk_list.len());
@@ -1529,9 +1566,13 @@ impl SqliteDBDataCache {
     }
 
     fn exists_chunk(conn: &Connection, chunk_id: &ChunkId, states: &str) -> BuckyResult<bool> {
-        let sql = format!(r#"
+        let sql = format!(
+            r#"
             SELECT EXISTS(SELECT 1 FROM chunk WHERE chunk_id="{}" AND state IN ({}) LIMIT 1);
-        "#, chunk_id.to_string(), states);
+        "#,
+            chunk_id.to_string(),
+            states
+        );
 
         let ret = conn
             .query_row(&sql, params![], |row| {
@@ -1547,9 +1588,7 @@ impl SqliteDBDataCache {
             })?;
 
         match ret {
-            Some(v) => {
-                Ok(v)
-            }
+            Some(v) => Ok(v),
             None => Ok(false),
         }
     }
@@ -1565,7 +1604,6 @@ impl SqliteDBDataCache {
 
         let mut data = data.unwrap();
         if req.flags != 0 {
-
             if req.flags & NDC_CHUNK_REQUEST_FLAG_TRANS_SESSIONS != 0 {
                 data.trans_sessions = Some(Self::get_chunk_trans_sessions_impl(&conn, &chunk_id)?);
             }
@@ -1581,7 +1619,11 @@ impl SqliteDBDataCache {
         Ok(Some(data))
     }
 
-    fn get_chunk_main(conn: &Connection, chunk_id: &str, chunk: &ChunkId) -> BuckyResult<Option<ChunkCacheData>> {
+    fn get_chunk_main(
+        conn: &Connection,
+        chunk_id: &str,
+        chunk: &ChunkId,
+    ) -> BuckyResult<Option<ChunkCacheData>> {
         let sql = r#"
             SELECT insert_time,update_time,last_access_time,state,flags
             FROM chunk WHERE chunk_id=?1;
@@ -1611,9 +1653,10 @@ impl SqliteDBDataCache {
         }
     }
 
-
-    pub fn get_chunks(&self, req: &Vec<GetChunkRequest>) -> BuckyResult<Vec<Option<ChunkCacheData>>> {
-
+    pub fn get_chunks(
+        &self,
+        req: &Vec<GetChunkRequest>,
+    ) -> BuckyResult<Vec<Option<ChunkCacheData>>> {
         let conn = self.get_conn()?.borrow();
         let mut result_list = Vec::new();
         let mut chunk_id_list = Vec::new();
@@ -1628,13 +1671,14 @@ impl SqliteDBDataCache {
 
             let mut data = data.unwrap();
             if req.flags != 0 {
-
                 if req.flags & NDC_CHUNK_REQUEST_FLAG_TRANS_SESSIONS != 0 {
-                    data.trans_sessions = Some(Self::get_chunk_trans_sessions_impl(&conn, &chunk_id)?);
+                    data.trans_sessions =
+                        Some(Self::get_chunk_trans_sessions_impl(&conn, &chunk_id)?);
                 }
 
                 if req.flags & NDC_CHUNK_REQUEST_FLAG_REF_OBJECTS != 0 {
-                    data.ref_objects = Some(Self::get_chunk_ref_objects_impl(&conn, &chunk_id, &None)?);
+                    data.ref_objects =
+                        Some(Self::get_chunk_ref_objects_impl(&conn, &chunk_id, &None)?);
                 }
             }
 
@@ -1649,17 +1693,20 @@ impl SqliteDBDataCache {
         Ok(result_list)
     }
 
-    pub fn get_chunk_trans_sessions(&self, req: &GetChunkTransSessionsRequest)
-        -> BuckyResult<Vec<String>> {
+    pub fn get_chunk_trans_sessions(
+        &self,
+        req: &GetChunkTransSessionsRequest,
+    ) -> BuckyResult<Vec<String>> {
         let chunk_id = req.chunk_id.to_string();
 
         let conn = self.get_conn()?.borrow();
         Self::get_chunk_trans_sessions_impl(&conn, &chunk_id)
     }
 
-    fn get_chunk_trans_sessions_impl(conn: &Connection, chunk_id: &str)
-        -> BuckyResult<Vec<String>> {
-
+    fn get_chunk_trans_sessions_impl(
+        conn: &Connection,
+        chunk_id: &str,
+    ) -> BuckyResult<Vec<String>> {
         let sql = "SELECT trans_id FROM chunk_trans WHERE chunk_id='?1'";
         let params = params![chunk_id];
 
@@ -1686,17 +1733,24 @@ impl SqliteDBDataCache {
         Ok(result_list)
     }
 
-    pub fn get_chunk_ref_objects(&self, req: &GetChunkRefObjectsRequest) -> BuckyResult<Vec<ChunkObjectRef>> {
+    pub fn get_chunk_ref_objects(
+        &self,
+        req: &GetChunkRefObjectsRequest,
+    ) -> BuckyResult<Vec<ChunkObjectRef>> {
         let chunk_id = req.chunk_id.to_string();
 
         let conn = self.get_conn()?.borrow();
         Self::get_chunk_ref_objects_impl(&conn, &chunk_id, &req.relation)
     }
 
-    fn get_chunk_ref_objects_impl(conn: &Connection, chunk_id: &str, relation: &Option<ChunkObjectRelation>) -> BuckyResult<Vec<ChunkObjectRef>> {
-
+    fn get_chunk_ref_objects_impl(
+        conn: &Connection,
+        chunk_id: &str,
+        relation: &Option<ChunkObjectRelation>,
+    ) -> BuckyResult<Vec<ChunkObjectRef>> {
         if let Some(relation) = relation {
-            let list = Self::get_chunk_ref_objects_with_relation(&conn, &chunk_id, relation.clone())?;
+            let list =
+                Self::get_chunk_ref_objects_with_relation(&conn, &chunk_id, relation.clone())?;
 
             // 转换到ChunkObjectRef列表
             let mut result_list = Vec::new();
@@ -1721,9 +1775,14 @@ impl SqliteDBDataCache {
         }
     }
 
-    fn get_chunk_all_ref_objects(conn: &Connection, chunk_id: &str) -> BuckyResult<Vec<ChunkObjectRef>> {
-
-        let sql = format!("SELECT object_id, relation FROM chunk_ref WHERE chunk_id='{}';", chunk_id);
+    fn get_chunk_all_ref_objects(
+        conn: &Connection,
+        chunk_id: &str,
+    ) -> BuckyResult<Vec<ChunkObjectRef>> {
+        let sql = format!(
+            "SELECT object_id, relation FROM chunk_ref WHERE chunk_id='{}';",
+            chunk_id
+        );
 
         let mut stmt = conn.prepare(&sql).map_err(|e| {
             let msg = format!("prepare select chunk all ref objects error: {}", e);
@@ -1766,7 +1825,6 @@ impl SqliteDBDataCache {
 
 #[async_trait::async_trait]
 impl NamedDataCache for SqliteDBDataCache {
-
     fn clone(&self) -> Box<dyn NamedDataCache> {
         Box::new(Clone::clone(&self as &SqliteDBDataCache)) as Box<dyn NamedDataCache>
     }
@@ -1783,19 +1841,31 @@ impl NamedDataCache for SqliteDBDataCache {
         todo!();
     }
 
-    async fn get_file_by_hash(&self, req: &GetFileByHashRequest) -> BuckyResult<Option<FileCacheData>> {
+    async fn get_file_by_hash(
+        &self,
+        req: &GetFileByHashRequest,
+    ) -> BuckyResult<Option<FileCacheData>> {
         SqliteDBDataCache::get_file_by_hash(&self, req)
     }
 
-    async fn get_file_by_file_id(&self, req: &GetFileByFileIdRequest) -> BuckyResult<Option<FileCacheData>> {
+    async fn get_file_by_file_id(
+        &self,
+        req: &GetFileByFileIdRequest,
+    ) -> BuckyResult<Option<FileCacheData>> {
         SqliteDBDataCache::get_file_by_file_id(&self, req)
     }
 
-    async fn get_files_by_quick_hash(&self, req: &GetFileByQuickHashRequest) -> BuckyResult<Vec<FileCacheData>> {
+    async fn get_files_by_quick_hash(
+        &self,
+        req: &GetFileByQuickHashRequest,
+    ) -> BuckyResult<Vec<FileCacheData>> {
         SqliteDBDataCache::get_files_by_quick_hash(&self, req)
     }
 
-    async fn get_files_by_chunk(&self, req: &GetFileByChunkRequest) -> BuckyResult<Vec<FileCacheData>> {
+    async fn get_files_by_chunk(
+        &self,
+        req: &GetFileByChunkRequest,
+    ) -> BuckyResult<Vec<FileCacheData>> {
         SqliteDBDataCache::get_files_by_chunk(&self, req)
     }
     async fn get_dirs_by_file(&self, req: &GetDirByFileRequest) -> BuckyResult<Vec<FileDirRef>> {
@@ -1827,11 +1897,17 @@ impl NamedDataCache for SqliteDBDataCache {
         SqliteDBDataCache::get_chunk(&self, req)
     }
 
-    async fn get_chunks(&self, req: &Vec<GetChunkRequest>) -> BuckyResult<Vec<Option<ChunkCacheData>>> {
+    async fn get_chunks(
+        &self,
+        req: &Vec<GetChunkRequest>,
+    ) -> BuckyResult<Vec<Option<ChunkCacheData>>> {
         SqliteDBDataCache::get_chunks(&self, req)
     }
 
-    async fn get_chunk_ref_objects(&self, req: &GetChunkRefObjectsRequest) -> BuckyResult<Vec<ChunkObjectRef>> {
+    async fn get_chunk_ref_objects(
+        &self,
+        req: &GetChunkRefObjectsRequest,
+    ) -> BuckyResult<Vec<ChunkObjectRef>> {
         SqliteDBDataCache::get_chunk_ref_objects(&self, req)
     }
 }
