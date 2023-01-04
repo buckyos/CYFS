@@ -42,6 +42,8 @@ impl LocalFileWriter {
 #[async_trait::async_trait]
 impl ChunkWriter for LocalFileWriter {
     async fn write(&self, chunk_id: &ChunkId, chunk: Box<dyn Chunk>) -> BuckyResult<()> {
+        info!("will write chunk to local file! chunk={}, file={}", chunk_id, self.file_path.display());
+        
         {
             let mut local_file = self.local_file.lock().await;
             local_file.put_chunk(chunk_id, chunk.as_ref()).await?;
