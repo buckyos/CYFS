@@ -285,8 +285,9 @@ impl Channel {
     pub fn download(
         &self,  
         chunk: ChunkId, 
-        source: DownloadSourceWithReferer<DeviceId>, 
-        cache: ChunkStreamCache
+        source: DownloadSource<DeviceId>, 
+        cache: ChunkStreamCache, 
+        referer: Option<String>
     ) -> BuckyResult<DownloadSession> {
         let session = DownloadSession::interest(
             chunk, 
@@ -294,6 +295,7 @@ impl Channel {
             self.clone(), 
 	        source, 
             cache,
+            referer
         );
 
         let session_state = self.0.state.write().unwrap().download.add(session.clone()).map_err(|err| {

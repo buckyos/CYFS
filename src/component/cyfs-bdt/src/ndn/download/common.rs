@@ -1,6 +1,5 @@
 use std::{
     collections::{LinkedList}, 
-    sync::{Arc, RwLock}, 
     io::SeekFrom, 
     ops::Range
 };
@@ -79,101 +78,12 @@ pub struct DownloadSource<T: std::fmt::Debug + Clone + Send + Sync> {
     pub codec_desc: ChunkCodecDesc, 
 }
 
-
-pub struct DownloadSourceWithReferer<T: Send + Sync> {
-    pub target: T, 
-    pub codec_desc: ChunkCodecDesc, 
-    pub referer: String, 
-    pub context_id: IncreaseId 
-}
-
-impl Into<DownloadSourceWithReferer<DeviceId>> for DownloadSourceWithReferer<DeviceDesc> {
-    fn into(self) -> DownloadSourceWithReferer<DeviceId> {
-        DownloadSourceWithReferer {
+impl Into<DownloadSource<DeviceId>> for DownloadSource<DeviceDesc> {
+    fn into(self) -> DownloadSource<DeviceId> {
+        DownloadSource {
             target: self.target.device_id(), 
             codec_desc: self.codec_desc, 
-            referer: self.referer, 
-            context_id: self.context_id 
         }
-    }
-}
-
-struct MultiContextImpl {
-    gen_id: IncreaseIdGenerator, 
-    contexts: LinkedList<(IncreaseId, Box<dyn DownloadContext>)>
-}
-
-#[derive(Clone)]
-pub struct MultiDownloadContext(Arc<RwLock<MultiContextImpl>>);
-
-impl MultiDownloadContext {
-    pub fn new() -> Self {
-        Self(Arc::new(RwLock::new(MultiContextImpl {
-            gen_id: IncreaseIdGenerator::new(), 
-            contexts: (LinkedList::new())
-        })))
-    }
-
-    pub fn count(&self) -> usize {
-        self.0.read().unwrap().contexts.len()
-    }
-
-    pub fn add_context(&self, context: &dyn DownloadContext) -> IncreaseId {
-        let mut state = self.0.write().unwrap();
-        let id = state.gen_id.generate();
-        state.contexts.push_back((id, context.clone_as_context()));
-        id
-    }
-
-    pub fn context_of(&self, context_id: &IncreaseId) -> Option<Box<dyn DownloadContext>> {
-        self.0.read().unwrap().contexts.iter().find_map(|(id, context)| if id.eq(context_id) { Some(context.clone_as_context())} else { None })
-    }
-
-    pub fn remove_context(&self, remove_id: &IncreaseId) {
-        let mut state = self.0.write().unwrap();
-        
-        if let Some((index, _)) = state.contexts.iter().enumerate().find(|(_, (id, _))| id.eq(remove_id)) {
-            let mut back_parts = state.contexts.split_off(index);
-            let _ = back_parts.pop_front();
-            state.contexts.append(&mut back_parts);
-            // contexts.remove(index);
-        }
-    }
-
-    pub fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSourceWithReferer<DeviceDesc>> {
-        let mut result = LinkedList::new();
-        let mut limit = limit;
-        let state = self.0.read().unwrap();
-        for (id, context) in state.contexts.iter() {
-            let part = task::block_on(context.sources_of(&filter, limit));
-            limit -= part.len();
-            for source in part {
-                result.push_back(DownloadSourceWithReferer {
-                    target: source.target, 
-                    codec_desc: source.codec_desc, 
-                    referer: context.referer().to_owned(), 
-                    context_id: *id  
-                });
-            }
-            if limit == 0 {
-                break;
-            }
-        }   
-        result
-    }
-
-    pub fn source_exists(&self, source: &DownloadSourceWithReferer<DeviceId>) -> bool {
-        let state = self.0.read().unwrap();
-        state.contexts.iter().find(|(id, context)|{
-            if source.context_id.eq(id) {
-                task::block_on(context.source_exists(&DownloadSource {
-                    target: source.target.clone(), 
-                    codec_desc: source.codec_desc.clone()
-                }))
-            } else {
-                false
-            }
-        }).is_some()
     }
 }
 
