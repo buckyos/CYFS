@@ -35,7 +35,7 @@ impl FileStateUpdater {
     }
 }
 
-pub struct ChunkStateUpdater;
+struct ChunkStateUpdater;
 
 impl ChunkStateUpdater {
     pub async fn update_chunk_state(
@@ -49,7 +49,7 @@ impl ChunkStateUpdater {
         };
 
         ndc.update_chunk_state(&req).await.map_err(|e| {
-            error!("update chunk state error! chyunk={}, {}", chunk_id, e);
+            error!("update chunk state error! chunk={}, {}", chunk_id, e);
             e
         })?;
 
@@ -76,7 +76,7 @@ impl ChunkManagerStateUpdater {
         };
         if let Err(e) = tracker.add_position(&request).await {
             if e.code() != BuckyErrorCode::AlreadyExists {
-                error!("add to tracker failed for {}", e);
+                error!("add chunk to tracker failed! chunk={}, {}", chunk_id, e);
                 return Err(e);
             }
         };
