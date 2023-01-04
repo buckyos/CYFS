@@ -239,6 +239,12 @@ struct RouterWSHandlerManagerImpl {
     session: Option<Arc<WebSocketSession>>,
 }
 
+impl Drop for RouterWSHandlerManagerImpl {
+    fn drop(&mut self) {
+        warn!("router handler manager dropped! sid={:?}", self.sid());
+    }
+}
+
 impl RouterWSHandlerManagerImpl {
     pub fn new() -> Self {
         Self {
@@ -246,6 +252,10 @@ impl RouterWSHandlerManagerImpl {
             unregister_handlers: HashMap::new(),
             session: None,
         }
+    }
+
+    pub fn sid(&self) -> Option<u32> {
+        self.session.as_ref().map(|session| session.sid())
     }
 
     pub fn get_handler(&self, id: &RouterHandlerId) -> Option<Arc<RouterHandlerItem>> {
@@ -276,7 +286,10 @@ impl RouterWSHandlerManagerImpl {
                         let _ = handler_item.register(&requestor).await;
                     });
                 } else {
-                    warn!("add handler but ws session does not exist yet, now will pending! id={}", handler_item.id);
+                    warn!(
+                        "add handler but ws session does not exist yet, now will pending! id={}",
+                        handler_item.id
+                    );
                 }
 
                 Ok(())
@@ -484,12 +497,9 @@ impl RouterWSHandlerManager {
         let manager = Arc::new(Mutex::new(RouterWSHandlerManagerImpl::new()));
 
         let handler = RouterWSHandlerRequestHandler::new(manager.clone());
-
         let client = WebSocketClient::new(service_url, Box::new(handler));
 
-        let ret = Self { manager, client };
-
-        ret
+        Self { manager, client }
     }
 
     pub fn start(&self) {
@@ -497,7 +507,10 @@ impl RouterWSHandlerManager {
     }
 
     pub async fn stop(&self) {
+        info!("will stop router handler manager! sid={:?}", self.manager.lock().unwrap().sid());
+
         self.client.stop().await;
+        // assert!(self.manager.lock().unwrap().session.is_none());
     }
 
     pub fn add_handler<REQ, RESP>(

@@ -52,7 +52,7 @@ where
 pub struct RouterHandlerManager {
     dec_id: Option<SharedObjectStackDecID>,
 
-    inner: Arc<RouterWSHandlerManager>,
+    inner: RouterWSHandlerManager,
 }
 
 impl RouterHandlerManager {
@@ -62,7 +62,7 @@ impl RouterHandlerManager {
 
         Ok(Self {
             dec_id,
-            inner: Arc::new(inner),
+            inner,
         })
     }
 
