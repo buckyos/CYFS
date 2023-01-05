@@ -45,9 +45,9 @@ impl RouterHandlerItem {
     async fn register(&self, requestor: &Arc<WebSocketRequestManager>) -> BuckyResult<()> {
         info!(
             "will add ws router handler: chain={}, category={}, id={}, sid={}, routine={}",
-            self.id,
             self.chain,
             self.category,
+            self.id,
             requestor.sid(),
             self.routine.is_some()
         );
@@ -506,9 +506,12 @@ impl RouterWSHandlerManager {
     }
 
     pub async fn stop(&self) {
-        info!("will stop router handler manager! sid={:?}", self.manager.lock().unwrap().sid());
+        let sid = self.manager.lock().unwrap().sid();
+        info!("will stop router handler manager! sid={:?}", sid);
 
         self.client.stop().await;
+        
+        info!("stop router handler manager complete! sid={:?}", sid);
         // assert!(self.manager.lock().unwrap().session.is_none());
     }
 
