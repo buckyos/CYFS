@@ -14,7 +14,7 @@ use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
 use crate::{
-    consensus::{order_block::OrderBlockMgr, proposal, timer::Timer},
+    consensus::{order_block::OrderBlockMgr, timer::Timer},
     AsProposal, Committee, ExecuteResult, HotstuffBlockQCVote, HotstuffMessage,
     HotstuffTimeoutVote, PendingProposalMgr, ProposalConsumeMessage, RPathDelegate, Storage,
     VoteMgr, VoteThresholded, CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
@@ -43,7 +43,8 @@ pub struct Hotstuff {
 }
 
 impl Hotstuff {
-    pub fn spawn(
+    #[allow(clippy::too_many_arguments)]
+    pub async fn spawn(
         local_id: ObjectId,
         committee: Committee,
         store: Storage,
@@ -65,15 +66,16 @@ impl Hotstuff {
         let (tx_message_inner, rx_message_inner) = async_std::channel::bounded(CHANNEL_CAPACITY);
 
         let vote_mgr = VoteMgr::new(committee.clone(), round);
+        let init_timer_interval = store.group().consensus_interval();
 
-        let obj = Self {
+        let mut hotstuff = Self {
             local_id,
             committee,
             store,
             signer,
             round,
             high_qc,
-            timer: Timer::new(store.group().consensus_interval()),
+            timer: Timer::new(init_timer_interval),
             vote_mgr,
             network_sender,
             rx_message,
@@ -87,6 +89,8 @@ impl Hotstuff {
             rx_proposal_waiter: None,
             tc: None,
         };
+
+        async_std::task::spawn(async move { hotstuff.run().await });
     }
 
     // TODO: 网络层应该防御，只从当前group节点获取信息
@@ -226,7 +230,7 @@ impl Hotstuff {
     }
 
     async fn check_block_proposal_result_state_by_app(
-        &self,
+        &mut self,
         block: &GroupConsensusBlock,
         proposals: &HashMap<ObjectId, GroupProposal>,
         prev_block: &Option<GroupConsensusBlock>,
@@ -769,7 +773,7 @@ impl Hotstuff {
         Ok(())
     }
 
-    async fn broadcast(&self, msg: HotstuffMessage, group: &Group) -> BuckyResult<()> {
+    async fn broadcast(&mut self, msg: HotstuffMessage, group: &Group) -> BuckyResult<()> {
         let targets: Vec<ObjectId> = group
             .ood_list()
             .iter()
@@ -822,7 +826,7 @@ impl Hotstuff {
         will_wait_proposals
     }
 
-    async fn fetch_block(&self, block_id: &ObjectId, remote: ObjectId) -> BuckyResult<()> {
+    async fn fetch_block(&mut self, block_id: &ObjectId, remote: ObjectId) -> BuckyResult<()> {
         let block = self.non_driver.get_block(block_id, Some(&remote)).await?;
 
         self.tx_message_inner.send((block, remote)).await;
