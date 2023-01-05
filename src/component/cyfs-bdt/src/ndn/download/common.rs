@@ -90,9 +90,9 @@ impl Into<DownloadSource<DeviceId>> for DownloadSource<DeviceDesc> {
 
 #[derive(Clone, Copy)]
 pub enum DownloadTaskPriority {
-    Backgroud = 1, 
-    Normal = 2, 
-    Realtime = 4,
+    Backgroud, 
+    Normal, 
+    Realtime(u32/*min speed*/),
 }
 
 impl Default for DownloadTaskPriority {
@@ -121,6 +121,7 @@ pub enum DownloadTaskControlState {
 #[async_trait::async_trait]
 pub trait DownloadTask: Send + Sync {
     fn clone_as_task(&self) -> Box<dyn DownloadTask>;
+
     fn state(&self) -> DownloadTaskState;
     fn control_state(&self) -> DownloadTaskControlState;
     async fn wait_user_canceled(&self) -> BuckyError;
@@ -157,6 +158,9 @@ pub trait DownloadTask: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait LeafDownloadTask: DownloadTask {
+    fn priority(&self) -> DownloadTaskPriority {
+        DownloadTaskPriority::default()
+    }
     fn clone_as_leaf_task(&self) -> Box<dyn LeafDownloadTask>;
     fn abs_group_path(&self) -> Option<String>;
     fn context(&self) -> &dyn DownloadContext;

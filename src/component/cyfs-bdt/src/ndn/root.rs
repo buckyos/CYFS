@@ -54,7 +54,7 @@ impl DownloadRoot {
             if let Some(sub) = parent.sub_task(part) {
                 parent = sub;
             } else {
-                let sub = DownloadGroup::new(self.sub.history_config().clone(), None);
+                let sub = DownloadGroup::new(self.sub.history_config().clone());
                 parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
                 parent = sub.clone_as_task();
             }
@@ -120,7 +120,7 @@ impl UploadRoot {
             if let Some(sub) = parent.sub_task(part) {
                 parent = sub;
             } else {
-                let sub = UploadGroup::new(self.sub.history_config().clone(), None);
+                let sub = UploadGroup::new(self.sub.history_config().clone());
                 parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
                 parent = sub.clone_as_task();
             }
@@ -171,11 +171,11 @@ impl RootTask {
         Self(Arc::new(RootTaskImpl {
             max_download_speed, 
             download: DownloadRoot {
-                sub: DownloadGroup::new(history_speed.clone(), None), 
+                sub: DownloadGroup::new(history_speed.clone()), 
                 id_gen: IncreaseIdGenerator::new()
             }, 
             upload: UploadRoot {
-                sub: UploadGroup::new(history_speed.clone(), None), 
+                sub: UploadGroup::new(history_speed.clone()), 
                 id_gen: IncreaseIdGenerator::new()
             }
         }))

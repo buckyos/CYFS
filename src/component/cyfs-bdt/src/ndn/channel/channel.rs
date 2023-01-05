@@ -454,7 +454,6 @@ impl Channel {
 
     async fn on_interest(&self, command: &Interest) -> BuckyResult<()> {
         info!("{} got interest {:?}", self, command);
-        // 如果已经存在上传 session，什么也不干
         let session = {
             let state = self.0.state.write().unwrap();
             if let Some(session) = state.tunnels.iter().find_map(|tunnel| tunnel.uploaders().find(&command.session_id)) {

@@ -5,9 +5,9 @@ use crate::{
 
 #[derive(Clone, Copy)]
 pub enum UploadTaskPriority {
-    Backgroud = 1, 
-    Normal = 2, 
-    Realtime = 4,
+    Backgroud, 
+    Normal, 
+    Realtime(u32/*min speed*/),
 }
 
 impl Default for UploadTaskPriority {
@@ -41,9 +41,20 @@ pub trait UploadTask: Send + Sync {
     async fn wait_finish(&self) -> UploadTaskState;
     fn control_state(&self) -> UploadTaskControlState;
 
-    fn priority_score(&self) -> u8 {
-        UploadTaskPriority::Normal as u8
+    fn resume(&self) -> BuckyResult<UploadTaskControlState> {
+        Ok(UploadTaskControlState::Normal)
     }
+    fn cancel(&self) -> BuckyResult<UploadTaskControlState> {
+        Ok(UploadTaskControlState::Normal)
+    }
+    fn pause(&self) -> BuckyResult<UploadTaskControlState> {
+        Ok(UploadTaskControlState::Normal)
+    }
+    
+    fn close(&self) -> BuckyResult<()> {
+        Ok(())
+    }
+
     fn add_task(&self, _path: Option<String>, _sub: Box<dyn UploadTask>) -> BuckyResult<()> {
         Err(BuckyError::new(BuckyErrorCode::NotSupport, "no implement"))
     }

@@ -32,13 +32,11 @@ enum ControlStateImpl {
 }
 
 struct StateImpl {
-    abs_path: Option<String>, 
     task_state: TaskStateImpl, 
     control_state: ControlStateImpl, 
 }
 
 struct TaskImpl {
-    priority: DownloadTaskPriority, 
     history_speed: HistorySpeedConfig, 
     state: RwLock<StateImpl>
 }
@@ -47,12 +45,8 @@ struct TaskImpl {
 pub struct DownloadGroup(Arc<TaskImpl>);
 
 impl DownloadGroup {
-    pub fn new(
-        history_speed: HistorySpeedConfig, 
-        priority: Option<DownloadTaskPriority>, 
-    ) -> Self {
+    pub fn new(history_speed: HistorySpeedConfig) -> Self {
         Self(Arc::new(TaskImpl {
-            priority: priority.unwrap_or_default(), 
             history_speed: history_speed.clone(), 
             state: RwLock::new(StateImpl {
                 task_state: TaskStateImpl::Downloading(DownloadingState {
@@ -62,7 +56,6 @@ impl DownloadGroup {
                     closed: false, 
                 }),
                 control_state: ControlStateImpl::Normal(StateWaiter::new()), 
-                abs_path: None
             })
         }))
     }

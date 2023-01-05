@@ -14,7 +14,8 @@ pub struct InterestHandlerRequest {
     pub prefer_type: ChunkCodecDesc, 
     pub from: Option<DeviceId>,
     pub referer: Option<BdtDataRefererInfo>, 
-    pub from_channel: DeviceId 
+    pub from_channel: DeviceId, 
+    pub group_path: Option<String>
 }
 
 
@@ -27,6 +28,7 @@ impl JsonCodec<InterestHandlerRequest> for InterestHandlerRequest {
         JsonCodecHelper::encode_option_string_field(&mut obj, "from", self.from.as_ref());
         JsonCodecHelper::encode_option_field(&mut obj, "referer", self.referer.as_ref());
         JsonCodecHelper::encode_string_field(&mut obj, "from_channel", &self.from_channel);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "group_path", &self.group_path);
         obj
     }
 
@@ -39,6 +41,7 @@ impl JsonCodec<InterestHandlerRequest> for InterestHandlerRequest {
             from: JsonCodecHelper::decode_option_string_field(obj, "from")?, 
             referer: JsonCodecHelper::decode_option_field(obj, "referer")?, 
             from_channel: JsonCodecHelper::decode_string_field(obj, "from_channel")?, 
+            group_path: JsonCodecHelper::decode_option_string_field(obj, "group_path")?, 
         })
     }
 }
@@ -55,8 +58,11 @@ impl std::fmt::Display for InterestHandlerRequest {
         if let Some(referer) = &self.referer {
             write!(f, ", referer: {}", referer)?;
         }
-        
+        if let Some(group_path) = &self.group_path {
+            write!(f, ", group_path: {}", group_path)?;
+        }
         write!(f, ", from_channel: {:?}", self.from_channel)
+       
     }
 }
 
