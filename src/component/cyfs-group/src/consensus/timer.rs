@@ -4,7 +4,8 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 pub struct Timer {
-    sleep: Pin<Box<dyn Future<Output = ()>>>,
+    sleep: Option<Pin<Box<dyn Future<Output = ()>>>>,
+    duration: u64,
 }
 
 impl Timer {
@@ -16,24 +17,26 @@ impl Timer {
             )
             .await;
         });
-        Self { sleep }
+        Self {
+            sleep: Some(sleep),
+            duration,
+        }
     }
 
     pub fn reset(&mut self, duration: u64) {
-        self.sleep = Box::pin(async {
+        let sleep = Box::pin(async {
             async_std::future::timeout(
                 Duration::from_millis(duration),
                 std::future::pending::<()>(),
             )
             .await;
         });
+        self.duration = duration;
+        self.sleep = Some(sleep);
     }
-}
 
-impl Future for Timer {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        self.sleep.as_mut().poll(cx)
+    pub async fn wait_next(&mut self) {
+        self.sleep.take().unwrap().await;
+        self.reset(self.duration);
     }
 }

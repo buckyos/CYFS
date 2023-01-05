@@ -12,6 +12,7 @@ pub enum BlockLinkState {
         HashMap<ObjectId, GroupProposal>,
     ), // <prev-block, proposals>
     Pending,
+    InvalidBranch,
 }
 
 pub struct Storage {
@@ -165,5 +166,24 @@ impl Storage {
         pre_block_id: &ObjectId,
     ) -> BuckyResult<bool> {
         unimplemented!()
+    }
+
+    pub fn block_with_max_round(&self) -> Option<GroupConsensusBlock> {
+        let mut max_round = 0;
+        let mut max_block = None;
+        for block in self.prepares().values() {
+            if block.round() > max_round {
+                max_round = block.round();
+                max_block = Some(block);
+            }
+        }
+
+        for block in self.pre_commits().values() {
+            if block.round() > max_round {
+                max_round = block.round();
+                max_block = Some(block);
+            }
+        }
+        max_block.map(|block| block.clone())
     }
 }

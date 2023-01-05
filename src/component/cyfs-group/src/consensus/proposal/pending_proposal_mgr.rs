@@ -9,13 +9,14 @@ use crate::AsProposal;
 
 pub enum ProposalConsumeMessage {
     Query(Sender<Vec<GroupProposal>>),
-    Wait(Sender<u64>, u64),
+    Wait(Sender<()>),
     Remove(Vec<ObjectId>),
 }
 
 pub struct PendingProposalMgr {
     rx_product: Receiver<GroupProposal>,
     rx_consume: Receiver<ProposalConsumeMessage>,
+    tx_proposal_waker: Option<Sender<()>>,
     network_sender: crate::network::Sender,
 
     // TODO: 需要设计一个结构便于按时间或数量拆分
@@ -34,6 +35,7 @@ impl PendingProposalMgr {
                 rx_consume,
                 buffer: HashMap::new(),
                 network_sender,
+                tx_proposal_waker: None,
             }
             .run()
             .await
@@ -81,6 +83,9 @@ impl PendingProposalMgr {
                 proposal = self.rx_product.recv().fuse() => {
                     if let Ok(proposal) = proposal {
                         self.buffer.insert(proposal.id(), proposal);
+                        if let Some(waker) = self.tx_proposal_waker.take() {
+                            waker.send(()).await;
+                        }
                     }
                 },
                 message = self.rx_consume.recv().fuse() => {
@@ -95,11 +100,11 @@ impl PendingProposalMgr {
                                     self.buffer.remove(id);
                                 }
                             },
-                            ProposalConsumeMessage::Wait(tx_waker, round) => {
+                            ProposalConsumeMessage::Wait(tx_waker) => {
                                 if self.buffer.len() > 0 {
-                                    tx_waker.send(round).await
+                                    tx_waker.send(()).await;
                                 } else {
-                                    self.
+                                    self.tx_proposal_waker = Some(tx_waker)
                                 }
                             }
                         }

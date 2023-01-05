@@ -3,8 +3,6 @@
 use cyfs_base::{BuckyResult, ObjectId};
 use cyfs_core::GroupProposal;
 
-use crate::AsProposal;
-
 #[async_trait::async_trait]
 pub trait AsConsensus {
     async fn push_proposal(&self, proposal: GroupProposal) -> BuckyResult<()>;
