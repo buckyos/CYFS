@@ -82,6 +82,7 @@ struct SessionImpl {
     session_id: TempSeq, 
     source: DownloadSource<DeviceId>, 
     referer: Option<String>,  
+    group_path: Option<String>, 
     state: RwLock<StateImpl>, 
 }
 
@@ -102,13 +103,15 @@ impl DownloadSession {
         channel: Channel, 
         source: DownloadSource<DeviceId>, 
         cache: ChunkStreamCache,
-        referer: Option<String>
+        referer: Option<String>, 
+        group_path: Option<String>
     ) -> Self { 
         Self(Arc::new(SessionImpl {
             chunk, 
             session_id,  
             source, 
             referer, 
+            group_path, 
             state: RwLock::new(StateImpl::Interesting(InterestingState { 
                 history_speed: HistorySpeed::new(0, channel.config().history_speed.clone()), 
                 waiters: StateWaiter::new(), 
@@ -126,6 +129,10 @@ impl DownloadSession {
 
     pub fn referer(&self) -> &Option<String> {
         &self.0.referer
+    }
+
+    pub fn group_path(&self) -> &Option<String> {
+        &self.0.group_path
     }
 
     pub fn start(&self) {
@@ -152,22 +159,13 @@ impl DownloadSession {
                 chunk: self.chunk().clone(), 
                 prefer_type: self.source().codec_desc.clone(), 
                 referer: self.referer().clone(), 
+                group_path: self.group_path().clone(), 
                 from: None, 
-                group_path: None
             };
             info!("{} sent {:?}", self, interest);
             self.channel().interest(interest);
         }
        
-    }
-
-
-    pub fn canceled(
-        _chunk: ChunkId, 
-        _session_id: TempSeq, 
-        _channel: Channel
-    ) -> Self {
-        unimplemented!()
     }
 
     pub fn chunk(&self) -> &ChunkId {

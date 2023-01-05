@@ -208,7 +208,8 @@ impl ChunkDownloader {
                 self.chunk().clone(), 
                 source, 
                 cache.stream().clone(), 
-                Some(self.context().referer().to_owned())
+                Some(self.context().referer().to_owned()), 
+                self.owner().abs_group_path().clone()
             ) {
                 Ok(session) => {
                     let (start, exists) = {
