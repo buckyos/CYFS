@@ -191,7 +191,6 @@ impl RootTask {
 
     pub fn on_schedule(&self, now: Timestamp) {
         self.download().sub.calc_speed(now);
-        self.download().sub.on_drain(self.0.max_download_speed);
         self.upload().sub.calc_speed(now);
     }
 }

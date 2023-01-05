@@ -36,10 +36,9 @@ impl Downloaders {
         &mut self, 
         stack: &WeakStack, 
         cache: ChunkCache, 
-        task: Box<dyn DownloadTask>, 
-        context: Box<dyn DownloadContext>
+        task: Box<dyn LeafDownloadTask>
     ) -> ChunkDownloader {
-        let downloader = ChunkDownloader::new(stack.clone(), cache, task, context);
+        let downloader = ChunkDownloader::new(stack.clone(), cache, task);
         self.0.push_back(downloader.to_weak());
         downloader
     }
@@ -130,10 +129,10 @@ impl ChunkManager {
         cache
     }
 
-    pub fn create_downloader(&self, chunk: &ChunkId, task: Box<dyn DownloadTask>, context: Box<dyn DownloadContext>) -> ChunkDownloader {
+    pub fn create_downloader(&self, chunk: &ChunkId, task: Box<dyn LeafDownloadTask>) -> ChunkDownloader {
         let cache = self.create_cache(chunk);
         let mut downloaders = self.downloaders.write().unwrap();
-        downloaders.create_downloader(&self.stack, cache, task, context)
+        downloaders.create_downloader(&self.stack, cache, task)
     }
 
 }

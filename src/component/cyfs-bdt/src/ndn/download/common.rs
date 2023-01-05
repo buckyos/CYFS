@@ -135,20 +135,14 @@ pub trait DownloadTask: Send + Sync {
         Ok(DownloadTaskControlState::Normal)
     }
 
-    fn priority_score(&self) -> u8 {
-        DownloadTaskPriority::Normal as u8
-    }
     fn add_task(&self, _path: Option<String>, _sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
         Err(BuckyError::new(BuckyErrorCode::NotSupport, "no implement"))
     }
     fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask>> {
         None
     }
-    fn abs_group_path(&self) -> Option<String> {
-        None
-    }
     fn on_post_add_to_root(&self, _abs_path: String) {
-        
+
     }
 
     fn close(&self) -> BuckyResult<()> {
@@ -158,18 +152,21 @@ pub trait DownloadTask: Send + Sync {
     fn calc_speed(&self, when: Timestamp) -> u32;
     fn cur_speed(&self) -> u32;
     fn history_speed(&self) -> u32;
+}
 
-    fn drain_score(&self) -> i64 {
-        0
-    }
-    fn on_drain(&self, expect_speed: u32) -> u32;
+
+#[async_trait::async_trait]
+pub trait LeafDownloadTask: DownloadTask {
+    fn clone_as_leaf_task(&self) -> Box<dyn LeafDownloadTask>;
+    fn abs_group_path(&self) -> Option<String>;
+    fn context(&self) -> &dyn DownloadContext;
 }
 
 
 pub struct DownloadTaskReader {
     cache: ChunkCache, 
     offset: usize,
-    task: Box<dyn DownloadTask>
+    task: Box<dyn LeafDownloadTask>
 }
 
 
@@ -188,7 +185,7 @@ impl std::fmt::Display for DownloadTaskReader {
 }
 
 impl DownloadTaskReader {
-    pub fn new(cache: ChunkCache, task: Box<dyn DownloadTask>) -> Self {
+    pub fn new(cache: ChunkCache, task: Box<dyn LeafDownloadTask>) -> Self {
         Self {
             cache, 
             offset: 0, 
@@ -196,7 +193,7 @@ impl DownloadTaskReader {
         }
     }
 
-    pub fn task(&self) -> &dyn DownloadTask {
+    pub fn task(&self) -> &dyn LeafDownloadTask {
         self.task.as_ref()
     }
 }

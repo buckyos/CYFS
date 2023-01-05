@@ -30,14 +30,29 @@ enum StateImpl {
 
 struct ChunkDowloaderImpl { 
     stack: WeakStack, 
-    task: Box<dyn DownloadTask>, 
-    context: Box<dyn DownloadContext>, 
+    task: Box<dyn LeafDownloadTask>, 
     cache: ChunkCache, 
     state: RwLock<StateImpl>, 
 }
 
 #[derive(Clone)]
 pub struct ChunkDownloader(Arc<ChunkDowloaderImpl>);
+
+impl Drop for ChunkDowloaderImpl {
+    fn drop(&mut self) {
+        let session = {
+            let state = &mut *self.state.write().unwrap();
+            match state {
+                StateImpl::Downloading(downloading) => downloading.session.clone(), 
+                _ => None
+            }
+        };
+       
+        if let Some(session) = session {
+            session.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "user canceled"));
+        }
+    }
+}
 
 pub struct WeakChunkDownloader(Weak<ChunkDowloaderImpl>);
 
@@ -58,14 +73,12 @@ impl ChunkDownloader {
     pub fn new(
         stack: WeakStack, 
         cache: ChunkCache, 
-        task: Box<dyn DownloadTask>, 
-        context: Box<dyn DownloadContext>
+        task: Box<dyn LeafDownloadTask>
     ) -> Self {
         let downloader = Self(Arc::new(ChunkDowloaderImpl {
             stack, 
             cache, 
             task, 
-            context, 
             state: RwLock::new(StateImpl::Loading), 
         }));
 
@@ -99,12 +112,8 @@ impl ChunkDownloader {
         downloader
     }
 
-    pub fn owner(&self) -> &dyn DownloadTask {
+    pub fn owner(&self) -> &dyn LeafDownloadTask {
         self.0.task.as_ref()
-    }
-
-    pub fn context(&self) -> &dyn DownloadContext {
-        self.0.context.as_ref()
     }
 
     pub fn cache(&self) -> &ChunkCache {
@@ -154,10 +163,6 @@ impl ChunkDownloader {
         }
     }
 
-    pub fn drain_score(&self) -> i64 {
-        0
-    }
-
     pub fn on_drain(&self, _: u32) -> u32 {
         let (session, start) = {
             match &*self.0.state.read().unwrap() {
@@ -166,7 +171,7 @@ impl ChunkDownloader {
             }
         };
         if let Some(session) = session {
-            if !task::block_on(self.context().source_exists(session.source())) {
+            if !task::block_on(self.owner().context().source_exists(session.source())) {
                 session.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "user canceled"));
                 let state = &mut *self.0.state.write().unwrap();
                 match state {
@@ -191,7 +196,7 @@ impl ChunkDownloader {
 
         let cache = &self.0.cache;
         let stack = Stack::from(&self.0.stack);
-        let mut sources = task::block_on(self.context().sources_of(&DownloadSourceFilter::default(), 1));
+        let mut sources = task::block_on(self.owner().context().sources_of(&DownloadSourceFilter::default(), 1));
 
         if sources.len() > 0 { 
             let source = sources.pop_front().unwrap();
@@ -208,7 +213,7 @@ impl ChunkDownloader {
                 self.chunk().clone(), 
                 source, 
                 cache.stream().clone(), 
-                Some(self.context().referer().to_owned()), 
+                Some(self.owner().context().referer().to_owned()), 
                 self.owner().abs_group_path().clone()
             ) {
                 Ok(session) => {
