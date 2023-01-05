@@ -67,7 +67,9 @@ impl DownloadRoot {
         let (parent, parent_path, rel_path) = self.makesure_path(path)?;
         let rel_path = rel_path.unwrap_or(self.next_index());
         let _ = parent.add_task(Some(rel_path.clone()), task.clone_as_task())?;
-        Ok([parent_path, rel_path].join(""))
+        let abs_path = [parent_path, rel_path].join("");
+        task.on_post_add_to_root(abs_path.clone());
+        Ok(abs_path)
     }
 
     pub fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {

@@ -33,6 +33,7 @@ enum ControlStateImpl {
 }
 
 struct StateImpl {
+    abs_path: Option<String>, 
     task_state: TaskStateImpl, 
     control_state: ControlStateImpl, 
 }
@@ -62,7 +63,8 @@ impl DownloadGroup {
                     drain_score: 0, 
                     closed: false, 
                 }),
-                control_state: ControlStateImpl::Normal(StateWaiter::new())
+                control_state: ControlStateImpl::Normal(StateWaiter::new()), 
+                abs_path: None
             })
         }))
     }

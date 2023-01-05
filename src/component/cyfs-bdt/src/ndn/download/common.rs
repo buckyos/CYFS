@@ -144,6 +144,13 @@ pub trait DownloadTask: Send + Sync {
     fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask>> {
         None
     }
+    fn abs_group_path(&self) -> Option<String> {
+        None
+    }
+    fn on_post_add_to_root(&self, _abs_path: String) {
+        
+    }
+
     fn close(&self) -> BuckyResult<()> {
         Ok(())
     }

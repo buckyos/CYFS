@@ -39,12 +39,15 @@ enum ControlStateImpl {
 }
 
 struct StateImpl {
+    abs_path: Option<String>, 
     control_state: ControlStateImpl, 
     task_state: TaskStateImpl,
 }
 
 struct ChunkTaskImpl {
+    stack: WeakStack, 
     chunk: ChunkId, 
+    context: Box<dyn DownloadContext>, 
     state: RwLock<StateImpl>,  
 }
 
@@ -63,28 +66,25 @@ impl ChunkTask {
         chunk: ChunkId, 
         context: Box<dyn DownloadContext>, 
     ) -> Self {
-        let strong_stack = Stack::from(&stack);
-
-        let task = Self(Arc::new(ChunkTaskImpl { 
+        Self(Arc::new(ChunkTaskImpl { 
+            stack, 
             chunk, 
+            context, 
             state: RwLock::new(StateImpl {
+                abs_path: None, 
                 task_state: TaskStateImpl::Init, 
                 control_state: ControlStateImpl::Normal(StateWaiter::new()),
             }),
-        }));
-
-        let downloader = strong_stack.ndn().chunk_manager().create_downloader(task.chunk(), task.clone_as_task(), context);
-        task.0.state.write().unwrap().task_state = TaskStateImpl::Downloading(DownloadingState {
-            downloader, 
-        });
-
-        task
+        }))
     } 
 
     pub fn chunk(&self) -> &ChunkId {
         &self.0.chunk
     }
 
+    pub fn context(&self) -> &dyn DownloadContext {
+        self.0.context.as_ref()
+    }
 }
 
 #[async_trait::async_trait]
@@ -113,8 +113,24 @@ impl DownloadTask for ChunkTask {
         DownloadTaskPriority::Normal as u8
     }
 
-    fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask>> {
-        None
+    fn abs_group_path(&self) -> Option<String> {
+        self.0.state.read().unwrap().abs_path.clone()
+    }
+
+    fn on_post_add_to_root(&self, abs_path: String) {
+        let stack = Stack::from(&self.0.stack);
+        let downloader = stack.ndn().chunk_manager().create_downloader(self.chunk(), self.clone_as_task(), self.context().clone_as_context());
+
+        let mut state = self.0.state.write().unwrap();
+        state.abs_path = Some(abs_path);
+        match &state.task_state {
+            TaskStateImpl::Init => {
+                state.task_state = TaskStateImpl::Downloading(DownloadingState {
+                    downloader, 
+                });
+            }, 
+            _ => {}
+        }
     }
 
     fn calc_speed(&self, when: Timestamp) -> u32 {

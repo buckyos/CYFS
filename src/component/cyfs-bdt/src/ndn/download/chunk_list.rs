@@ -45,6 +45,7 @@ enum TaskStateImpl {
 }
 
 struct StateImpl {
+    abs_path: Option<String>, 
     control_state: ControlStateImpl, 
     task_state: TaskStateImpl,
 }
@@ -78,6 +79,7 @@ impl ChunkListTask {
             name, 
             context, 
             state: RwLock::new(StateImpl {
+                abs_path: None, 
                 task_state: TaskStateImpl::Pending,
                 control_state: ControlStateImpl::Normal(StateWaiter::new()),
             }), 
@@ -153,6 +155,14 @@ impl DownloadTask for ChunkListTask {
         }
     }
 
+    
+    fn abs_group_path(&self) -> Option<String> {
+        self.0.state.read().unwrap().abs_path.clone()
+    }
+
+    fn on_post_add_to_root(&self, abs_path: String) {
+        self.0.state.write().unwrap().abs_path = Some(abs_path);
+    }
 
     fn calc_speed(&self, when: Timestamp) -> u32 {
         let mut state = self.0.state.write().unwrap();
@@ -378,7 +388,7 @@ impl ChunkListTask {
     ) -> (Self, ChunkListTaskReader) {
         let task = Self::new(stack, name, chunk_list, context);
         let reader = ChunkListTaskReader::new(task.clone());
-
+        
         (task, reader)
     }
 }
