@@ -180,18 +180,14 @@ impl WebSocketRequestHandler for RouterWSEventRequestEvent {
         let session = session.clone();
         let owner = self.owner.clone();
 
-        task::spawn(async move {
-            RouterWSEventManagerImpl::on_session_begin(owner, session).await;
-        });
+        RouterWSEventManagerImpl::on_session_begin(owner, session).await;
     }
 
     async fn on_session_end(&self, session: &Arc<WebSocketSession>) {
         let session = session.clone();
         let owner = self.owner.clone();
 
-        task::spawn(async move {
-            RouterWSEventManagerImpl::on_session_end(owner, session).await;
-        });
+        RouterWSEventManagerImpl::on_session_end(owner, session).await;
     }
 
     fn clone_handler(&self) -> Box<dyn WebSocketRequestHandler> {
@@ -367,9 +363,12 @@ impl RouterWSEventManagerImpl {
             assert!(manager.session.is_none());
             manager.session = Some(session.clone());
         }
-        Self::unregister_all(&manager, &session).await;
 
-        Self::register_all(&manager, &session).await;
+        async_std::task::spawn(async move {
+            Self::unregister_all(&manager, &session).await;
+            
+            Self::register_all(&manager, &session).await;
+        });
     }
 
     async fn register_all(

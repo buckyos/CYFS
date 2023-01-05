@@ -14,6 +14,7 @@ use cyfs_util::*;
 use async_trait::async_trait;
 use http_types::Url;
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[async_trait]
@@ -53,16 +54,17 @@ pub struct RouterHandlerManager {
     dec_id: Option<SharedObjectStackDecID>,
 
     inner: RouterWSHandlerManager,
+    started: Arc<AtomicBool>,
 }
 
 impl RouterHandlerManager {
     pub async fn new(dec_id: Option<SharedObjectStackDecID>, ws_url: Url) -> BuckyResult<Self> {
         let inner = RouterWSHandlerManager::new(ws_url);
-        inner.start();
 
         Ok(Self {
             dec_id,
             inner,
+            started: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -72,6 +74,19 @@ impl RouterHandlerManager {
 
     pub fn clone_processor(&self) -> RouterHandlerManagerProcessorRef {
         Arc::new(Box::new(self.clone()))
+    }
+
+    fn try_start(&self) {
+        match self
+            .started
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        {
+            Ok(_) => {
+                info!("will start router handler manager!");
+                self.inner.start()
+            }
+            Err(_) => {}
+        }
     }
 
     pub fn add_handler<REQ, RESP>(
@@ -99,6 +114,8 @@ impl RouterHandlerManager {
         info!("will add handler: chain={}, id={}, index={}, filter={:?}, req_path={:?}, default_action={}",
             chain, id, index, filter, req_path, default_action);
 
+        self.try_start();
+
         self.inner.add_handler(
             chain,
             id,
@@ -121,6 +138,8 @@ impl RouterHandlerManager {
             "will remove handler: chain={}, category={}, id={}",
             chain, id, category
         );
+
+        self.try_start();
 
         self.inner
             .remove_handler(chain, category, id, self.get_dec_id())

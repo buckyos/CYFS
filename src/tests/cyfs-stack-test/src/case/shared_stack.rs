@@ -30,5 +30,16 @@ async fn use_once(mut param: SharedCyfsStackParam) {
     let resp = stack.util().get_device_static_info(req).await.unwrap();
     info!("{}", resp);
 
+    let ret = stack.router_handlers().put_object().add_handler(
+        RouterHandlerChain::PreRouter,
+        "put-object1",
+        0,
+        Some("*".to_owned()),
+        None,
+        RouterHandlerAction::Default,
+        None,
+    ).await;
+    assert!(ret.is_ok());
+
     stack.stop().await;
 }
