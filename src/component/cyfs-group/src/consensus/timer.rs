@@ -1,10 +1,9 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{Context, Poll};
 use std::time::Duration;
 
 pub struct Timer {
-    sleep: Option<Pin<Box<dyn Future<Output = ()>>>>,
+    sleep: Option<Pin<Box<dyn Send + Sync + Future<Output = ()>>>>,
     duration: u64,
 }
 

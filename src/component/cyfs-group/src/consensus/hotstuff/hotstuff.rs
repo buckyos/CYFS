@@ -58,10 +58,10 @@ impl Hotstuff {
     ) {
         let max_round_block = store.block_with_max_round();
 
-        let mut round = store
+        let round = store
             .last_vote_round()
             .max(max_round_block.as_ref().map_or(1, |block| block.round()));
-        let mut high_qc = max_round_block.map_or(None, |block| block.qc().clone());
+        let high_qc = max_round_block.map_or(None, |block| block.qc().clone());
 
         let (tx_message_inner, rx_message_inner) = async_std::channel::bounded(CHANNEL_CAPACITY);
 
@@ -230,7 +230,7 @@ impl Hotstuff {
     }
 
     async fn check_block_proposal_result_state_by_app(
-        &mut self,
+        &self,
         block: &GroupConsensusBlock,
         proposals: &HashMap<ObjectId, GroupProposal>,
         prev_block: &Option<GroupConsensusBlock>,
@@ -773,7 +773,7 @@ impl Hotstuff {
         Ok(())
     }
 
-    async fn broadcast(&mut self, msg: HotstuffMessage, group: &Group) -> BuckyResult<()> {
+    async fn broadcast(&self, msg: HotstuffMessage, group: &Group) -> BuckyResult<()> {
         let targets: Vec<ObjectId> = group
             .ood_list()
             .iter()
