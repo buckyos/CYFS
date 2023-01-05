@@ -29,8 +29,8 @@ struct CyfsStackProcessors {
     pub util_service: UtilOutputProcessorRef,
     pub trans_service: TransOutputProcessorRef,
 
-    pub router_handlers: Option<RouterHandlerManagerProcessorRef>,
-    pub router_events: Option<RouterEventManagerProcessorRef>,
+    pub router_handlers: RouterHandlerManagerProcessorRef,
+    pub router_events: RouterEventManagerProcessorRef,
 
     pub root_state: GlobalStateOutputProcessorRef,
     pub root_state_accessor: GlobalStateAccessorOutputProcessorRef,
@@ -85,10 +85,10 @@ pub struct SharedCyfsStack {
     processors: Arc<CyfsStackProcessors>,
 
     // router handler
-    router_handlers: Option<RouterHandlerManager>,
+    router_handlers: RouterHandlerManager,
 
     // router events
-    router_events: Option<RouterEventManager>,
+    router_events: RouterEventManager,
 
     // 当前协议栈的device
     device_info: Arc<RwLock<Option<(DeviceId, Device)>>>,
@@ -101,7 +101,6 @@ pub struct SharedCyfsStack {
 
 #[derive(Debug, Clone)]
 pub enum CyfsStackEventType {
-    None,
     WebSocket(Url),
 }
 
@@ -409,16 +408,14 @@ impl SharedCyfsStack {
         // 初始化对应的事件处理器，二选一
         let router_handlers = match &param.event_type {
             CyfsStackEventType::WebSocket(ws_url) => {
-                Some(RouterHandlerManager::new(Some(dec_id.clone()), ws_url.clone()).await?)
+                RouterHandlerManager::new(Some(dec_id.clone()), ws_url.clone()).await?
             }
-            CyfsStackEventType::None => None,
         };
 
         let router_events = match &param.event_type {
             CyfsStackEventType::WebSocket(ws_url) => {
-                Some(RouterEventManager::new(Some(dec_id.clone()), ws_url.clone()).await?)
+                RouterEventManager::new(Some(dec_id.clone()), ws_url.clone()).await?
             }
-            CyfsStackEventType::None => None,
         };
 
         // 缓存所有processors，用以uni_stack直接返回使用
@@ -428,8 +425,8 @@ impl SharedCyfsStack {
             crypto_service: services.crypto_service.clone_processor(),
             util_service: services.util_service.clone_processor(),
             trans_service: services.trans_service.clone_processor(),
-            router_handlers: router_handlers.as_ref().map(|v| v.clone_processor()),
-            router_events: router_events.as_ref().map(|v| v.clone_processor()),
+            router_handlers: router_handlers.clone_processor(),
+            router_events: router_events.clone_processor(),
             root_state: services.root_state.clone_processor(),
             root_state_accessor: services.root_state_accessor.clone_processor(),
             local_cache: services.local_cache.clone_processor(),
@@ -460,12 +457,9 @@ impl SharedCyfsStack {
     pub async fn stop(&self) {
         self.requestor_holder.stop().await;
 
-        if let Some(manager) = &self.router_handlers {
-            manager.stop().await;
-        }
-        if let Some(manager) = &self.router_events {
-            manager.stop().await;
-        }
+        self.router_handlers.stop().await;
+
+        self.router_events.stop().await;
     }
     
     pub fn param(&self) -> &SharedCyfsStackParam {
@@ -571,11 +565,11 @@ impl SharedCyfsStack {
     }
 
     pub fn router_handlers(&self) -> &RouterHandlerManager {
-        self.router_handlers.as_ref().unwrap()
+        &self.router_handlers
     }
 
     pub fn router_events(&self) -> &RouterEventManager {
-        self.router_events.as_ref().unwrap()
+        &self.router_events
     }
 
     // root_state 根状态管理相关接口
@@ -729,11 +723,11 @@ impl UniCyfsStack for SharedCyfsStack {
     }
 
     fn router_handlers(&self) -> &RouterHandlerManagerProcessorRef {
-        &self.processors.router_handlers.as_ref().unwrap()
+        &self.processors.router_handlers
     }
 
     fn router_events(&self) -> &RouterEventManagerProcessorRef {
-        &self.processors.router_events.as_ref().unwrap()
+        &self.processors.router_events
     }
 
     fn root_state(&self) -> &GlobalStateOutputProcessorRef {
