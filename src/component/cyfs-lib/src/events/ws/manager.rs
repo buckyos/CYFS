@@ -203,6 +203,12 @@ struct RouterWSEventManagerImpl {
     session: Option<Arc<WebSocketSession>>,
 }
 
+impl Drop for RouterWSEventManagerImpl {
+    fn drop(&mut self) {
+        warn!("router event manager dropped! sid={:?}", self.sid());
+    }
+}
+
 impl RouterWSEventManagerImpl {
     pub fn new() -> Self {
         Self {
@@ -366,7 +372,7 @@ impl RouterWSEventManagerImpl {
 
         async_std::task::spawn(async move {
             Self::unregister_all(&manager, &session).await;
-            
+
             Self::register_all(&manager, &session).await;
         });
     }
@@ -460,9 +466,13 @@ impl RouterWSEventManager {
     }
 
     pub async fn stop(&self) {
-        info!("will stop event manager! sid={:?}", self.manager.lock().unwrap().sid());
+        let sid = self.manager.lock().unwrap().sid();
+        info!("will stop event manager! sid={:?}", sid);
 
         self.client.stop().await;
+
+        info!("stop event manager complete! sid={:?}", sid);
+
         // assert!(self.manager.lock().unwrap().session.is_none());
     }
 

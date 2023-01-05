@@ -31,6 +31,11 @@ impl Default for WebSocketClientHandles {
     }
 }
 
+struct WebSocketClientSessionState {
+    session: Option<Arc<WebSocketSession>>,
+    stopped: bool,
+}
+
 #[derive(Clone)]
 pub struct WebSocketClient {
     service_url: Url,
@@ -41,7 +46,7 @@ pub struct WebSocketClient {
     // 用以唤醒重试等待
     handles: Arc<Mutex<WebSocketClientHandles>>,
 
-    session: Arc<Mutex<Option<Arc<WebSocketSession>>>>,
+    session: Arc<Mutex<WebSocketClientSessionState>>,
 }
 
 impl WebSocketClient {
@@ -59,7 +64,10 @@ impl WebSocketClient {
             service_addr,
             session_manager: WebSocketSessionManager::new(handler),
             handles: Arc::new(Mutex::new(WebSocketClientHandles::default())),
-            session: Arc::new(Mutex::new(None)),
+            session: Arc::new(Mutex::new(WebSocketClientSessionState {
+                session: None,
+                stopped: false,
+            })),
         }
     }
 
@@ -147,26 +155,45 @@ impl WebSocketClient {
             .session_manager
             .new_session(&self.service_url, conn_info)?;
 
-        {
-            let mut current = self.session.lock().unwrap();
-            assert!(current.is_none());
-            *current = Some(session.clone());
-        }
+        let stopped = {
+            let mut state = self.session.lock().unwrap();
+            assert!(state.session.is_none());
+            if !state.stopped {
+                state.session = Some(session.clone());
+            } else {
+                warn!(
+                    "ws client run session but already stopped! sid={}",
+                    session.sid()
+                );
+            }
 
-        let ret = self
-            .session_manager
-            .run_client_session(&self.service_url, session, tcp_stream)
-            .await;
+            state.stopped
+        };
 
-        self.session.lock().unwrap().take();
+        let ret = if !stopped {
+            let ret = self
+                .session_manager
+                .run_client_session(&self.service_url, session, tcp_stream)
+                .await;
+
+            self.session.lock().unwrap().session.take();
+
+            ret
+        } else {
+            Err(BuckyError::from(BuckyErrorCode::Aborted))
+        };
 
         ret
     }
 
     pub async fn stop(&self) {
-        self.session_manager.stop();
+        let session = {
+            let mut state = self.session.lock().unwrap();
+            state.stopped = true;
+            state.session.take()
+        };
 
-        if let Some(session) = self.session.lock().unwrap().take() {
+        if let Some(session) = session {
             session.stop();
         }
 
@@ -174,5 +201,7 @@ impl WebSocketClient {
         if let Some(task) = task {
             task.await;
         }
+
+        self.session_manager.stop();
     }
 }

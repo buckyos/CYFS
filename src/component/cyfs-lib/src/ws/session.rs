@@ -8,6 +8,7 @@ use async_std::channel::{Receiver, Sender};
 use async_std::io::{Read, Write};
 use async_tungstenite::{tungstenite::Message, WebSocketStream};
 use futures::future::Either;
+use futures::future::{AbortHandle, Aborted};
 use futures_util::sink::*;
 use futures_util::StreamExt;
 use http_types::Url;
@@ -15,7 +16,6 @@ use std::marker::Send;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use futures::future::{AbortHandle, Aborted};
 
 // ping间隔
 pub const WS_PING_INTERVAL_IN_SECS: Duration = Duration::from_secs(30);
@@ -26,6 +26,11 @@ pub const WS_ALIVE_TIMEOUT_IN_SECS: Duration = Duration::from_secs(60 * 10);
 
 #[cfg(not(debug_assertions))]
 pub const WS_ALIVE_TIMEOUT_IN_SECS: Duration = Duration::from_secs(60 * 10);
+
+struct WebSocketCancelerState {
+    canceler: Option<AbortHandle>,
+    stopped: bool,
+}
 
 pub struct WebSocketSession {
     sid: u32,
@@ -40,7 +45,7 @@ pub struct WebSocketSession {
     handler: Box<dyn WebSocketRequestHandler>,
     requestor: Arc<WebSocketRequestManager>,
 
-    canceler: Mutex<Option<AbortHandle>>,
+    canceler: Mutex<WebSocketCancelerState>,
 }
 
 impl Drop for WebSocketSession {
@@ -65,7 +70,10 @@ impl WebSocketSession {
             tx: Mutex::new(None),
             handler: handler.clone_handler(),
             requestor: Arc::new(WebSocketRequestManager::new(handler)),
-            canceler: Mutex::new(None),
+            canceler: Mutex::new(WebSocketCancelerState {
+                canceler: None,
+                stopped: false,
+            }),
         }
     }
 
@@ -86,7 +94,12 @@ impl WebSocketSession {
     }
 
     pub fn stop(&self) {
-        let canceler = self.canceler.lock().unwrap().take();
+        let canceler = {
+            let mut state = self.canceler.lock().unwrap();
+            state.stopped = true;
+            state.canceler.take()
+        };
+
         if let Some(canceler) = canceler {
             info!("will stop ws session: {}", self.sid);
             canceler.abort();
@@ -163,18 +176,30 @@ impl WebSocketSession {
         // 正式通知session启动了
         session.handler.on_session_begin(&session).await;
 
-        let (fut, handle) = futures::future::abortable(Self::run_loop(session.clone(), stream, rx, as_server));
-        {
-            let mut canceler = session.canceler.lock().unwrap();
-            assert!(canceler.is_none());
-            *canceler = Some(handle);
-        }
+        let (fut, handle) =
+            futures::future::abortable(Self::run_loop(session.clone(), stream, rx, as_server));
 
-        let ret = match fut.await {
-            Ok(ret) => ret,
-            Err(Aborted) => {
-                Err(BuckyError::from(BuckyErrorCode::Aborted))
+        let stopped = {
+            let mut state = session.canceler.lock().unwrap();
+            assert!(state.canceler.is_none());
+            if !state.stopped {
+                state.canceler = Some(handle);
+            } else {
+                warn!(
+                    "ws session start but already been stopped! sid={}",
+                    session.sid
+                );
             }
+            state.stopped
+        };
+
+        let ret = if !stopped {
+            match fut.await {
+                Ok(ret) => ret,
+                Err(Aborted) => Err(BuckyError::from(BuckyErrorCode::Aborted)),
+            }
+        } else {
+            Err(BuckyError::from(BuckyErrorCode::Aborted))
         };
 
         session.handler.on_session_end(&session).await;
@@ -218,17 +243,11 @@ impl WebSocketSession {
                     if with_ping {
                         let msg = Message::Ping(Vec::new());
                         if let Err(e) = outgoing.send(msg).await {
-                            let msg = format!(
-                                "ws send msg error: sid={}, err={}",
-                                session.sid(),
-                                e
-                            );
+                            let msg =
+                                format!("ws send msg error: sid={}, err={}", session.sid(), e);
                             warn!("{}", msg);
 
-                            break Err(BuckyError::new(
-                                BuckyErrorCode::ConnectionAborted,
-                                msg,
-                            ));
+                            break Err(BuckyError::new(BuckyErrorCode::ConnectionAborted, msg));
                         }
                     }
 
