@@ -2,7 +2,7 @@ use crate::*;
 use crate::state_storage::{State, NameExtra, DescExtra, Storage, storage_in_mem_path, StorageRef};
 use async_trait::async_trait;
 use cyfs_base::*;
-use sqlx::{Row, Connection, ConnectOptions, Sqlite};
+use sqlx::{Row, ConnectOptions};
 use crate::helper::get_meta_err_code;
 use async_std::sync::{Mutex, MutexGuard, Arc};
 use std::str::FromStr;

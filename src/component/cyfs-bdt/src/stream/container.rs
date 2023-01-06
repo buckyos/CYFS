@@ -330,6 +330,7 @@ struct StreamEstablishState {
 
 #[derive(Clone)]
 pub struct Config {
+    pub retry_sn_timeout: Duration, 
     pub connect_timeout: Duration,
     pub nagle: Duration,
     pub recv_timeout: Duration,
@@ -810,7 +811,7 @@ impl StreamContainerImpl {
             }
         }
         .map(|question| {
-            let local_device = Stack::from(&self.stack).local().clone();
+            let local_device = Stack::from(&self.stack).sn_client().ping().default_local();
             TcpSynConnection {
                 sequence: self.sequence,
                 result: 0u8,
@@ -844,7 +845,7 @@ impl StreamContainerImpl {
                 sequence: self.sequence,
                 to_session_id: remote_id,
                 result: TCP_ACK_CONNECTION_RESULT_OK,
-                to_device_desc: Stack::from(&self.stack).local().clone(),
+                to_device_desc: Stack::from(&self.stack).sn_client().ping().default_local(),
                 payload: TailedOwnedData::from(payload),
             }
         })

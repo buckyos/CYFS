@@ -1,6 +1,7 @@
 use super::anonymous::AnonymousManager;
 use super::proxy::CyfsProxy;
 use cyfs_base::*;
+use cyfs_lib::BrowserSanboxMode;
 use cyfs_stack_loader::*;
 use cyfs_util::*;
 use ood_control::OOD_CONTROLLER;
@@ -21,6 +22,9 @@ pub(crate) struct CyfsStackInsConfig {
 
     // local Proxy service'r port, default is 38090
     pub proxy_port: u16,
+
+    // the browser sanbox mode
+    pub browser_mode: Option<BrowserSanboxMode>,
 }
 
 #[derive(Debug)]
@@ -65,7 +69,7 @@ impl CyfsStackInsImpl {
 
     pub fn set_config(&mut self, node: toml::Value) -> BuckyResult<()> {
         assert!(self.config.is_none());
-        info!("will load non stack config: {:?}", toml::to_string(&node));
+        info!("will load non stack config: {}", toml::to_string_pretty(&node).unwrap_or("".to_owned()));
         let non_config = CyfsServiceLoaderConfig::new_from_config(node)?;
         self.config = Some(non_config);
 
@@ -88,7 +92,7 @@ impl CyfsStackInsImpl {
         let config = CyfsServiceLoaderConfig::new(params)?;
         info!(
             "will use default non stack config: {}",
-            toml::to_string(&config.node).unwrap()
+            toml::to_string(config.node()).unwrap()
         );
         assert!(self.config.is_none());
         self.config = Some(config);
@@ -104,7 +108,12 @@ impl CyfsStackInsImpl {
 
     async fn init_stack(&mut self) -> BuckyResult<()> {
         assert!(self.config.is_some());
-        let config = self.config.take().unwrap();
+        let mut config = self.config.take().unwrap();
+
+        // modify the config with arg params
+        if let Some(mode) = &self.stack_config.browser_mode {
+            config.reset_browser_mode(mode)?;
+        }
 
         if let Err(e) = CyfsServiceLoader::load(config).await {
             error!("load non stack failed! err={}", e);

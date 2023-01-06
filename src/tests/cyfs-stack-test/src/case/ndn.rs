@@ -25,6 +25,8 @@ pub async fn test() {
 
     test_range_file(&dec_id).await;
 
+    test_chunk_in_bundle().await;
+    
     // 添加目录到user1ood
     let (dir_id, file_id, inner_path, chunk_id) = add_dir(&dec_id).await;
 
@@ -38,8 +40,6 @@ pub async fn test() {
 
     let stack = TestLoader::get_shared_stack(DeviceIndex::User2Device2);
     get_file(&dir_id, &dec_id, &stack, false).await;
-
-    test_chunk_in_bundle().await;
 
     info!("test all ndn case success!");
 }

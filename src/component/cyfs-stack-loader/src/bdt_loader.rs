@@ -248,7 +248,7 @@ impl BdtConfigLoader {
             let mut endpoint = Endpoint::from((protocol.unwrap(), item));
             // 如果设置了system_default标志，将endpoint的system_default设置为true，这个选项在移动平台使用
             if system_default {
-                endpoint.set_system_default(true);
+                endpoint.set_area(EndpointArea::Default);
             }
             endpoints.push(endpoint);
         }
@@ -259,7 +259,7 @@ impl BdtConfigLoader {
             let mut endpoint = Endpoint::from((protocol.unwrap(), addr));
             // 如果设置了system_default标志，将endpoint的system_default设置为true，这个选项在移动平台使用
             if system_default {
-                endpoint.set_system_default(true);
+                endpoint.set_area(EndpointArea::Default);
             }
             endpoints.push(endpoint);
         }

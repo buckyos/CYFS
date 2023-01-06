@@ -16,7 +16,6 @@ use crate::{
     history::keystore::{self, Keystore},
     protocol::{*, v0::*},
     types::*,
-    sn::Config,
 };
 
 use super::{
@@ -79,7 +78,7 @@ impl SnService {
             local_device_id: local_device.desc().device_id(),
             local_device: local_device.clone(),
             stopped: AtomicBool::new(false),
-            peer_mgr: PeerManager::new(Duration::from_secs(300), Config::default()),
+            peer_mgr: PeerManager::new(),
             call_stub: CallStub::new(),
             thread_pool: thread_pool.clone(),
             contract,

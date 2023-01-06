@@ -5,8 +5,13 @@ use std::{
     sync::RwLock, 
     collections::{BTreeMap, LinkedList}
 };
-use async_std::{sync::{Arc}, task};
+use async_std::{
+    sync::{Arc}, 
+    task, 
+    future
+};
 use async_trait::{async_trait};
+use futures::future::{Abortable, AbortHandle};
 use cyfs_base::*;
 use crate::{
     types::*, 
@@ -93,7 +98,7 @@ impl ConnectStreamBuilder {
     async fn build_inner(&self) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
 
-        let local = stack.local().clone();
+        let local = stack.sn_client().ping().default_local();
         let build_params = &self.0.params;
         
         let first_box = self.first_box(&local).await;
@@ -102,24 +107,55 @@ impl ConnectStreamBuilder {
         }
 
         let first_box = Arc::new(first_box.unwrap());
-
-        let actions = if let Some(remote) = build_params.remote_desc.as_ref() {
+        let remote_id = build_params.remote_const.device_id();
+        let cached_remote = stack.device_cache().get_inner(&remote_id);
+        let known_remote = cached_remote.as_ref().or_else(|| build_params.remote_desc.as_ref());
+        
+        let actions = if let Some(remote) = known_remote {
+            info!("{} explore_endpoint_pair with known remote {:?}", self, remote.connect_info().endpoints());
             self.explore_endpoint_pair(remote, first_box.clone(), |ep| ep.is_static_wan())
         } else {
-            vec![]
+            vec![] 
         };
         
         if actions.len() == 0 {
-            let remote_sn = build_params.nearest_sn(&stack).await?;
-            let actions = self.call_sn(remote_sn, first_box).await?;
-            if actions.len() == 0 {
-                Err(BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"))
-            } else {
-                Ok(())
+            let nearest_sn = build_params.nearest_sn(&stack);
+            if let Some(sn) = nearest_sn {
+                info!("{} call nearest sn, sn={}", self, sn);
+                let timeout_ret = future::timeout(stack.config().stream.stream.retry_sn_timeout, self.call_sn(vec![sn.clone()], first_box.clone())).await;
+                let retry_sn_list = match timeout_ret {
+                    Ok(finish_ret) => {
+                        match finish_ret {
+                            Ok(_) => {
+                                info!("{} call nearest sn finished, sn={}", self, sn);
+                                false
+                            }, 
+                            Err(err) => {
+                                if err.code() == BuckyErrorCode::Interrupted {
+                                    info!("{} call nearest sn canceled, sn={}", self, sn);
+                                    false
+                                } else {
+                                    error!("{} call nearest sn failed, sn={}, err={}", self, sn, err);
+                                    true
+                                }
+                            }
+                        }
+                    },
+                    Err(_) => {
+                        warn!("{} call nearest sn timeout {}", self, sn);
+                        true
+                    }
+                };
+                if retry_sn_list {
+                    if let Some(sn_list) = build_params.retry_sn_list(&stack, &sn) {
+                        info!("{} retry sn list call, sn={:?}", self, sn_list);
+                        let _ = self.call_sn(sn_list, first_box).await;
+                    }
+                }
             }
-        } else {
-            Ok(())
-        }
+        } 
+
+        Ok(())
     }
 
     pub async fn build(&self) {
@@ -163,17 +199,40 @@ impl ConnectStreamBuilder {
         Some(first_box)
     }
 
-    async fn call_sn(&self, sn: Device, first_box: Arc<PackageBox>) -> BuckyResult<Vec<DynConnectStreamAction>> {
+    async fn call_sn(&self, sn_list: Vec<DeviceId>, first_box: Arc<PackageBox>) -> BuckyResult<()> {
+        let (cancel, reg) = AbortHandle::new_pair();
+
+        let builder = self.clone();
+        task::spawn(async move {
+            let _ = builder.wait_establish().await;
+            cancel.abort();
+        });
+
+        let (sender, receiver) = async_std::channel::bounded::<BuckyResult<()>>(1);
+        let builder = self.clone();
+        task::spawn(async move {
+            let result = Abortable::new(builder.call_sn_inner(sn_list.clone(), first_box), reg).await;
+            let result = match result {
+                Ok(result) => result, 
+                Err(_) => {
+                    info!("{} call sn interrupted, sn={:?}", builder, sn_list);
+                    Err(BuckyError::new(BuckyErrorCode::Interrupted, "canceled"))
+                }
+            };
+            let _ = sender.try_send(result);
+        });
+       
+        receiver.recv().await.unwrap()
+    }
+
+    async fn call_sn_inner(&self, sn_list: Vec<DeviceId>, first_box: Arc<PackageBox>) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
         let stream = &self.0.stream;
         let tunnel = stream.as_ref().tunnel();
-        let remote = stack.sn_client().call(
-            &vec![],  
+        let call_session = stack.sn_client().call().call(
+            None,
             tunnel.remote(),
-            &sn, 
-            true, 
-            true,
-            true,
+            &sn_list,
             |sn_call| {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 //FIXME 先不调用raw_measure_with_context
@@ -185,38 +244,65 @@ impl ConnectStreamBuilder {
                 buf.truncate(len);
                 info!("{} encode first box to sn call, len: {}, package_box {:?}", self, len, first_box);
                 buf
-            }).await?;
+            }).await.map_err(|err| {
+                error!("{} call sn failed, sn={:?}, err={}", self, sn_list, err);
+                err
+            })?; 
         
-        if let Some(proxy_buidler) = {
-            let state = &mut *self.0.state.write().unwrap();
-            match state {
-                ConnectStreamBuilderState::Connecting(connecting) => {
-                    if connecting.proxy.is_none() {
-                        let proxy = ProxyBuilder::new(
-                            tunnel.clone(), 
-                            remote.get_obj_update_time(),  
-                            first_box.clone());
-                        debug!("{} create proxy builder", self);
-                        connecting.proxy = Some(proxy);
+        let mut success = false;
+        loop {
+            if let Some(session) = call_session.next().await
+                .map_err(|err| {error!("{} call sn failed, sn={:?}, err={}", self, sn_list, err); err})
+                .ok().and_then(|opt| opt) {
+                match session.result().unwrap() {
+                    Ok(remote) => {
+                        info!("{} call sn session responsed, sn={:?}, endpoints={:?}", self, session.sn(), remote.connect_info().endpoints());
+                        if let Some(proxy_buidler) = {
+                            let state = &mut *self.0.state.write().unwrap();
+                            match state {
+                                ConnectStreamBuilderState::Connecting(connecting) => {
+                                    if connecting.proxy.is_none() {
+                                        let proxy = ProxyBuilder::new(
+                                            tunnel.clone(), 
+                                            remote.get_obj_update_time(),  
+                                            first_box.clone());
+                                        debug!("{} create proxy builder", self);
+                                        connecting.proxy = Some(proxy);
+                                    }
+                                    connecting.proxy.clone()
+                                }, 
+                                _ => {
+                                    debug!("{} ignore proxy builder for not in connecting state", self);
+                                    None
+                                }
+                            }
+                        } {
+                            //FIXME: 使用正确的proxy策略
+                            for proxy in stack.proxy_manager().active_proxies() {
+                                let _ = proxy_buidler.syn_proxy(ProxyType::Active(proxy)).await;
+                            }
+                            for proxy in remote.connect_info().passive_pn_list().iter().cloned() {
+                                let _ = proxy_buidler.syn_proxy(ProxyType::Passive(proxy)).await;
+                            }
+                        }
+                        success = true;
+                        let _ = self.explore_endpoint_pair(&remote, first_box.clone(), |_| true);
+                    }, 
+                    Err(err) => {
+                        error!("{} call sn session failed, sn={:?}, err={}", self, session.sn(), err);
                     }
-                    connecting.proxy.clone()
-                }, 
-                _ => {
-                    debug!("{} ignore proxy builder for not in connecting state", self);
-                    None
                 }
-            }
-        } {
-            //FIXME: 使用正确的proxy策略
-            for proxy in stack.proxy_manager().active_proxies() {
-                let _ = proxy_buidler.syn_proxy(ProxyType::Active(proxy)).await;
-            }
-            for proxy in remote.connect_info().passive_pn_list().iter().cloned() {
-                let _ = proxy_buidler.syn_proxy(ProxyType::Passive(proxy)).await;
+            } else {
+                break;
             }
         }
         
-        Ok(self.explore_endpoint_pair(&remote, first_box, |_| true))
+        if success {
+            Ok(())
+        } else {
+            error!("{} call sn session failed, sn={:?}", self, sn_list);
+            Err(BuckyError::new(BuckyErrorCode::Failed, "all failed"))
+        }
     }
 
     fn explore_endpoint_pair<F: Fn(&Endpoint) -> bool>(&self, remote: &Device, first_box: Arc<PackageBox>, filter: F) -> Vec<DynConnectStreamAction> {
@@ -470,7 +556,7 @@ impl PingClientCalledEvent for ConnectStreamBuilder {
         task::spawn(async move {
             let stack = Stack::from(&builder.0.stack);
             let tunnel = builder.0.stream.as_ref().tunnel().clone();
-            if let Some(first_box) = builder.first_box(&stack.device_cache().local()).await {
+            if let Some(first_box) = builder.first_box(&stack.sn_client().ping().default_local()).await {
                 if let Some(proxy_builder) = {
                     let state = &mut *builder.0.state.write().unwrap();
                     match state {

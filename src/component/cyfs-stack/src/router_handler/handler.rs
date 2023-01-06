@@ -81,7 +81,7 @@ where
         } else {
             None
         };
-        
+
         let req_path = match req_path {
             Some(v) => {
                 let mut req_path = RequestGlobalStatePath::from_str(&v)?;
@@ -352,11 +352,10 @@ where
 
         let filter = if let Some(filter) = &data.filter {
             let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
-            Some(ExpEvaluator::new(&filter, reserved_token_list)?)
+            Some(ExpEvaluator::new(filter, reserved_token_list)?)
         } else {
             None
         };
-        
 
         info!(
             "new handler from saved data: chain={}, category={}, {:?}",
@@ -550,10 +549,10 @@ where
                 // then match the dynamic filter
                 if !filter.eval(param).unwrap() {
                     continue;
-                } 
+                }
                 exec = true;
             }
-            
+
             if exec {
                 debug!(
                     "router handler select filter: chain={}, category={}, param={}, handler={}",

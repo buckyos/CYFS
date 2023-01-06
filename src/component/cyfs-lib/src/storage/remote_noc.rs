@@ -55,18 +55,29 @@ impl NamedObjectCache for RemoteNamedObjectCache {
             Ok(resp) => {
                 // FIXME update the get_object resp to adapt the new noc get_object
                 let data = NamedObjectCacheObjectRawData {
-                    meta: NamedObjectMetaData {
-                        object_id: resp.object.object_id.clone(),
-                        owner_id: resp.object.object().owner().to_owned(),
-                        create_dec_id: cyfs_core::get_system_dec_app().to_owned(),
-                        insert_time: bucky_time_now(),
-                        update_time: bucky_time_now(),
-                        object_update_time: resp.object_update_time,
-                        object_expired_time: resp.object_expires_time,
-                        storage_category: NamedObjectStorageCategory::Storage,
-                        context: None,
-                        last_access_rpath: None,
-                        access_string: 9,
+                    meta: {
+                        let object = resp.object.object();
+
+                        NamedObjectMetaData {
+                            object_id: resp.object.object_id.clone(),
+                            object_type: object.obj_type(),
+                            owner_id: object.owner().to_owned(),
+                            create_dec_id: cyfs_core::get_system_dec_app().to_owned(),
+                            insert_time: bucky_time_now(),
+                            update_time: bucky_time_now(),
+                            object_create_time: match object.create_time() {
+                                0 => None,
+                                v @ _ => Some(v),
+                            },
+                            object_update_time: resp.object_update_time,
+                            object_expired_time: resp.object_expires_time,
+                            author: object.author().to_owned(),
+                            dec_id: object.dec_id().to_owned(),
+                            storage_category: NamedObjectStorageCategory::Storage,
+                            context: None,
+                            last_access_rpath: None,
+                            access_string: 9,
+                        }
                     },
                     object: Some(resp.object),
                 };
@@ -94,12 +105,19 @@ impl NamedObjectCache for RemoteNamedObjectCache {
                 let meta = if let Some(ref object) = resp.object {
                     let meta = NamedObjectMetaData {
                         object_id: object.object_id.clone(),
+                        object_type: object.object().obj_type(),
                         owner_id: object.object().owner().to_owned(),
                         create_dec_id: cyfs_core::get_system_dec_app().to_owned(),
                         insert_time: bucky_time_now(),
                         update_time: bucky_time_now(),
+                        object_create_time: match object.object().create_time() {
+                            0 => None,
+                            v @ _ => Some(v),
+                        },
                         object_update_time: object.object().update_time(),
                         object_expired_time: object.object().expired_time(),
+                        author: object.object().author().to_owned(),
+                        dec_id: object.object().dec_id().to_owned(),
                         storage_category: NamedObjectStorageCategory::Storage,
                         context: None,
                         last_access_rpath: None,
@@ -141,9 +159,17 @@ impl NamedObjectCache for RemoteNamedObjectCache {
         unimplemented!();
     }
 
-    async fn check_object_access(&self, 
-        _req: &NamedObjectCacheCheckObjectAccessRequest
+    async fn check_object_access(
+        &self,
+        _req: &NamedObjectCacheCheckObjectAccessRequest,
     ) -> BuckyResult<Option<()>> {
+        unimplemented!();
+    }
+
+    fn bind_object_meta_access_provider(
+        &self,
+        _object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    ) {
         unimplemented!();
     }
 }

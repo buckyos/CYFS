@@ -155,7 +155,7 @@ impl NONDirLoader {
                     // 创建一个单chunk的file对象
                     let builder = File::new_no_owner(
                         chunk_id.len() as u64,
-                        HashValue::from(chunk_id.hash()),
+                        HashValue::try_from(chunk_id.hash()).unwrap(),
                         ChunkList::ChunkInList(vec![chunk_id.to_owned()]),
                     );
                     let builder = builder.no_create_time();

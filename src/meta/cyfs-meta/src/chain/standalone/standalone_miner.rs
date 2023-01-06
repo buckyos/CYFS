@@ -2,7 +2,6 @@ use crate::{Chain};
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use crate::state_storage::StorageRef;
-use crate::archive_storage::ArchiveStorageRef;
 use cyfs_base::*;
 use crate::chain::{Miner, BaseMiner, MinerRuner};
 use std::thread;
@@ -11,6 +10,7 @@ use log::*;
 use async_trait::async_trait;
 use std::sync::Arc;
 use cyfs_base_meta::MetaTx;
+use crate::stat::{Stat, StatConfig};
 
 pub struct StandaloneMiner {
     base: BaseMiner,
@@ -57,8 +57,14 @@ impl StandaloneMiner {
         })
     }
 
-    pub async fn load(coinbase: ObjectId, interval: u32, bfc_spv_node: String, dir: &Path, new_storage: fn (path: &Path) -> StorageRef, trace: bool, archive_storage: fn (path: &Path, trace: bool) -> ArchiveStorageRef) -> BuckyResult<Self> {
-        let chain = Chain::load(dir, new_storage, trace, archive_storage).await?;
+    pub async fn load(coinbase: ObjectId, interval: u32, bfc_spv_node: String, dir: &Path, new_storage: fn (path: &Path) -> StorageRef, stat_config: Option<StatConfig>) -> BuckyResult<Self> {
+        let stat = stat_config.map(|config|{
+            info!("standalone miner enable stat module.");
+            let stat = Stat::new(config);
+            stat.start();
+            stat
+        });
+        let chain = Chain::load(dir, new_storage, stat).await?;
         Ok(StandaloneMiner {
             base: BaseMiner::new(coinbase, interval, chain, bfc_spv_node, None)
         })

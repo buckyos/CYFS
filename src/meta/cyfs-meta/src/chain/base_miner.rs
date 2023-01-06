@@ -2,7 +2,7 @@ use cyfs_base_meta::*;
 
 use cyfs_base::*;
 
-use crate::{state_storage::*, archive_storage::*};
+use crate::{state_storage::*};
 
 use crate::executor::context::{Config, ConfigRef, UnionWithdrawManager};
 use crate::rent::rent_manager::RentManager;
@@ -16,6 +16,7 @@ use async_std::sync::{Mutex, MutexGuard};
 use crate::{get_meta_err_code, NFTAuction};
 use std::convert::TryFrom;
 use crate::chain::storage::chain_storage::ChainStorageRef;
+use crate::stat::Stat;
 
 pub struct BaseMiner {
     coinbase: ObjectId,
@@ -60,17 +61,15 @@ impl BaseMiner {
             }
 
             // ref_state.being_transaction().await?;
-            let archive_storage = self.chain.get_chain_storage().archive_storage();
-            let ref_archive = archive_storage.create_archive(false).await;
             let ret = BlockExecutor::execute_block(&header,
                                                    &mut block_body,
                                                    &ref_state,
-                                                   &ref_archive,
                                                    &config,
                                                    Some(self.chain.get_chain_storage()),
                                                    self.bfc_spv_node.clone(),
                                                    self.miner_key.clone(),
-                                                   self.coinbase.clone()).await;
+                                                   self.coinbase.clone(),
+                                                    self.chain.get_stat()).await;
             if ret.is_ok() {
                 // ref_state.commit().await?;
             } else {
@@ -159,7 +158,7 @@ impl BaseMiner {
 pub struct BlockExecutor {}
 
 impl BlockExecutor {
-    pub async fn execute_block(header: &BlockDesc, block: &mut BlockBody, ref_state: &StateRef, ref_archive: &ArchiveRef, config: &ConfigRef, chain_storage: Option<&ChainStorageRef>, mint_url: String, miner_key: Option<PrivateKey>, miner_id: ObjectId) -> BuckyResult<()> {
+    pub async fn execute_block(header: &BlockDesc, block: &mut BlockBody, ref_state: &StateRef, config: &ConfigRef, chain_storage: Option<&ChainStorageRef>, mint_url: String, miner_key: Option<PrivateKey>, miner_id: ObjectId, stat: Option<Stat>) -> BuckyResult<()> {
         // ref_state.being_transaction().await?;
         let ret = async {
             let event_manager = EventManager::new(&ref_state, &config);
@@ -175,11 +174,10 @@ impl BlockExecutor {
                 &event_manager,
                 &union_withdraw_manager,
                 &nft_auction,
-                ref_archive,
                 mint_url,
                 miner_key,
                 miner_id,
-                false);
+                false, stat);
             let mut receipts = vec![];
             header.calculate_id();
             for tx in block.transactions() {
@@ -226,7 +224,7 @@ impl BlockExecutor {
         ret
     }
 
-    pub async fn execute_and_verify_block(block: &Block, storage: &StorageRef, archive_storage: &ArchiveStorageRef, chain_storage: Option<&ChainStorageRef>, mint_url: &str, miner_key: Option<PrivateKey>, miner_id: ObjectId) -> BuckyResult<bool> {
+    pub async fn execute_and_verify_block(block: &Block, storage: &StorageRef, chain_storage: Option<&ChainStorageRef>, mint_url: &str, miner_key: Option<PrivateKey>, miner_id: ObjectId, stat: Option<Stat>) -> BuckyResult<bool> {
         let (block_desc, block_body) = {
             log::info!("old_state_hash {}", storage.state_hash().await?.to_string());
             let ref_state = storage.create_state(false).await;
@@ -236,7 +234,6 @@ impl BlockExecutor {
             let auction = Auction::new(&ref_state, &config, &rent_manager, &event_manager);
             let union_withdraw_manager = UnionWithdrawManager::new(&ref_state, &config, &event_manager);
             let nft_auction = NFTAuction::new(&ref_state, &config, &event_manager);
-            let ref_archive = archive_storage.create_archive(false).await;
             let tx_executor = TxExecutor::new(
                 &ref_state,
                 &config,
@@ -245,11 +242,10 @@ impl BlockExecutor {
                 &event_manager,
                 &union_withdraw_manager,
                 &nft_auction,
-                &ref_archive,
                 mint_url.to_owned(),
                 miner_key,
                 miner_id,
-                true);
+                true, stat);
             let block_desc = block.desc();
             let mut block_body = BlockBody::new();
             let mut receipts = Vec::new();

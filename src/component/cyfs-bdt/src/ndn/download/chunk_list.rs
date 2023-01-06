@@ -24,6 +24,7 @@ use super::{
 struct DownloadingState {
     cur_index: usize, 
     cur_task: ChunkTask, 
+    writen: u64,
     history_speed: HistorySpeed
 }
 
@@ -44,6 +45,7 @@ struct TaskImpl {
     name: String, 
     chunk_list: ChunkListDesc, 
     ranges: Vec<(usize, Option<Range<u64>>)>, 
+    total: u64, 
     context: SingleDownloadContext, 
     state: RwLock<StateImpl>,  
     writers: Vec<Box<dyn ChunkWriterExt>>,
@@ -73,6 +75,7 @@ impl ChunkListTask {
             stack, 
             name, 
             ranges, 
+            total: chunk_list.total_len(), 
             chunk_list, 
             context, 
             state: RwLock::new(StateImpl {
@@ -92,22 +95,25 @@ impl ChunkListTask {
         context: SingleDownloadContext, 
         writers: Vec<Box <dyn ChunkWriterExt>>, 
     ) -> Self {
-        let ranges = if ranges.is_none() {
-            (0..chunk_list.chunks().len()).into_iter().map(|i| (i, None)).collect()
+        let (total, ranges) = if ranges.is_none() {
+            (chunk_list.total_len(),  (0..chunk_list.chunks().len()).into_iter().map(|i| (i, None)).collect())
         } else {
             let ranges = ranges.unwrap();
             let mut dst_ranges = vec![];
+            let mut total = 0;
             for range in ranges {
+                total += (range.end - range.start) as u64; 
                 for (index, range) in chunk_list.range_of(range) {
                     dst_ranges.push((index, Some(range)));
                 }   
             } 
-            dst_ranges
+            (total, dst_ranges)
         };
 
         Self(Arc::new(TaskImpl {
             stack, 
             name, 
+            total, 
             chunk_list, 
             ranges, 
             context, 
@@ -155,6 +161,11 @@ impl ChunkWriterExt for ChunkListTask {
             let mut state = self.0.state.write().unwrap();
             match &mut state.task_state {
                 TaskStateImpl::Downloading(downloading) => {
+                    downloading.writen += if let Some(r) = range.as_ref() {
+                        r.end - r.start
+                    } else {
+                        chunk.len() as u64
+                    };
                     let next_index = downloading.cur_index + 1;
                     if next_index == self.ranges().len() {
                         None
@@ -221,7 +232,14 @@ impl DownloadTask for ChunkListTask {
     fn state(&self) -> DownloadTaskState {
         match &self.0.state.read().unwrap().task_state {
             TaskStateImpl::Pending => DownloadTaskState::Downloading(0 ,0.0), 
-            TaskStateImpl::Downloading(_) => DownloadTaskState::Downloading(0 ,0.0), 
+            TaskStateImpl::Downloading(downloading) => {
+                let progress = if self.0.total > 0 {
+                    100.0 * downloading.writen as f32 / self.0.total as f32
+                } else {
+                    0.0
+                };
+                DownloadTaskState::Downloading(downloading.history_speed.latest(), progress)
+            }, 
             TaskStateImpl::Finished => DownloadTaskState::Finished, 
             TaskStateImpl::Error(err) => DownloadTaskState::Error(*err), 
         }
@@ -287,7 +305,8 @@ impl DownloadTask for ChunkListTask {
                         state.task_state = TaskStateImpl::Downloading(DownloadingState {
                             history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
                             cur_index: 0, 
-                            cur_task: chunk_task.clone()
+                            cur_task: chunk_task.clone(), 
+                            writen: 0
                         });
                         info!("{} create sub task {}", self, chunk_task);
                         Some(chunk_task)
