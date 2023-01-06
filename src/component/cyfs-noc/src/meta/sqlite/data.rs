@@ -53,7 +53,7 @@ pub(super) struct NamedObjectMetaUpdateInfoRaw {
     pub access_string: u32,
 
     // version 1
-    pub object_type: u16,
+    pub object_type: Option<u16>,
     pub object_create_time: Option<u64>,
 
     pub dec_id: Option<Vec<u8>>,
@@ -127,7 +127,7 @@ impl TryInto<NamedObjectMetaUpdateInfo> for NamedObjectMetaUpdateInfoRaw {
             access_string: self.access_string,
 
             // version 1
-            object_type: self.object_type,
+            object_type: self.object_type.unwrap_or(0),
             object_create_time: self.object_create_time,
             owner_id: convert_option_value(&self.owner_id)?,
             author: match self.author {
@@ -182,7 +182,7 @@ impl TryInto<NamedObjectMetaAccessInfo> for NamedObjectMetaAccessInfoRaw {
 
 pub(super) struct NamedObjectMetaDataRaw {
     pub object_id: String,
-    pub object_type: u16,
+    pub object_type: Option<u16>,
 
     pub owner_id: Option<String>,
     pub create_dec_id: String,
@@ -250,7 +250,7 @@ impl TryInto<NamedObjectMetaData> for NamedObjectMetaDataRaw {
     fn try_into(self) -> Result<NamedObjectMetaData, Self::Error> {
         Ok(NamedObjectMetaData {
             object_id: ObjectId::from_str(&self.object_id)?,
-            object_type: self.object_type,
+            object_type: self.object_type.unwrap_or(0),
             owner_id: convert_option_value(&self.owner_id)?,
             create_dec_id: ObjectId::from_str(&self.create_dec_id)?,
 
