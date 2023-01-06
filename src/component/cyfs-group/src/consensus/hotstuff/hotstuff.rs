@@ -20,6 +20,10 @@ use crate::{
     VoteMgr, VoteThresholded, CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
 };
 
+/**
+ * TODO: generate empty block when the 'Node' is synchronizing
+*/
+
 pub struct Hotstuff {
     local_id: ObjectId,
     committee: Committee,
