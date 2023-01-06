@@ -665,6 +665,7 @@ impl Hotstuff {
             None => self.store.dec_state_id(),
         };
 
+        // TODO: The time may be too long for too many proposals
         for proposal in proposals {
             if let Some(high_qc) = self.high_qc.as_ref() {
                 if let Ok(is_finished) = self
