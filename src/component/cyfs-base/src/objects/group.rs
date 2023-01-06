@@ -54,11 +54,11 @@ impl GroupBodyContent {
         &mut self.common_mut().members
     }
 
-    pub fn ood_list(&self) -> &Vec<DeviceId> {
+    pub fn ood_list(&self) -> &Vec<ObjectId> {
         &self.common().ood_list
     }
 
-    pub fn ood_list_mut(&mut self) -> &mut Vec<DeviceId> {
+    pub fn ood_list_mut(&mut self) -> &mut Vec<ObjectId> {
         &mut self.common_mut().ood_list
     }
 
@@ -172,12 +172,34 @@ impl Group {
         self.common_mut().members = members;
     }
 
-    pub fn ood_list(&self) -> &[DeviceId] {
+    pub fn ood_list(&self) -> &[ObjectId] {
         self.common().ood_list.as_slice()
     }
 
-    pub fn set_ood_list(&mut self, oods: Vec<DeviceId>) {
+    pub fn set_ood_list(&mut self, oods: Vec<ObjectId>) {
         self.common_mut().ood_list = oods;
+    }
+
+    pub fn contain_ood(&self, ood_id: &ObjectId) -> bool {
+        self.ood_list().contains(ood_id)
+    }
+
+    pub fn is_same_ood_list(&self, other: &Group) -> bool {
+        let my_oods = self.ood_list();
+        let other_oods = other.ood_list();
+
+        for id in my_oods {
+            if !other_oods.contains(id) {
+                return false;
+            }
+        }
+
+        for id in other_oods {
+            if !my_oods.contains(id) {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn version(&self) -> u64 {
@@ -196,39 +218,39 @@ impl Group {
         self.common_mut().consensus_interval = interval;
     }
 
-    pub fn join_member(
-        &self,
-        member_id: &ObjectId,
-        private_key: &PrivateKey,
-    ) -> BuckyResult<&GroupJoinSignature> {
-        unimplemented!()
-    }
+    // pub fn join_member(
+    //     &self,
+    //     member_id: &ObjectId,
+    //     private_key: &PrivateKey,
+    // ) -> BuckyResult<&GroupJoinSignature> {
+    //     unimplemented!()
+    // }
 
-    pub fn verify(
-        &self,
-        signature: &GroupJoinSignature,
-        member_id: &ObjectId,
-        public_key: &PublicKey,
-    ) -> BuckyResult<bool> {
-        unimplemented!()
-    }
+    // pub fn verify(
+    //     &self,
+    //     signature: &GroupJoinSignature,
+    //     member_id: &ObjectId,
+    //     public_key: &PublicKey,
+    // ) -> BuckyResult<bool> {
+    //     unimplemented!()
+    // }
 
-    pub fn verify_member(
-        &self,
-        member_id: &ObjectId,
-        is_admin: bool,
-        public_key: &PublicKey,
-    ) -> BuckyResult<bool> {
-        unimplemented!()
-    }
+    // pub fn verify_member(
+    //     &self,
+    //     member_id: &ObjectId,
+    //     is_admin: bool,
+    //     public_key: &PublicKey,
+    // ) -> BuckyResult<bool> {
+    //     unimplemented!()
+    // }
 
-    pub fn verify_members(
-        &self,
-        members: &[(ObjectId, PublicKey)],
-        is_admin: bool,
-    ) -> BuckyResult<bool> {
-        unimplemented!()
-    }
+    // pub fn verify_members(
+    //     &self,
+    //     members: &[(ObjectId, PublicKey)],
+    //     is_admin: bool,
+    // ) -> BuckyResult<bool> {
+    //     unimplemented!()
+    // }
 
     pub fn is_simple_group(&self) -> bool {
         match self.desc().content() {
@@ -522,7 +544,7 @@ struct CommonGroupBodyContent {
 
     role_acls: Vec<GroupRoleACL>,
 
-    ood_list: Vec<DeviceId>,
+    ood_list: Vec<ObjectId>,
     history_block_max: u64,
     history_block_lifespan: u64,
 
@@ -539,7 +561,7 @@ impl CommonGroupBodyContent {
         icon: Option<FileId>,
         description: String,
         members: Vec<GroupMember>,
-        ood_list: Vec<DeviceId>,
+        ood_list: Vec<ObjectId>,
     ) -> Self {
         Self {
             name,
@@ -686,7 +708,7 @@ impl SimpleGroupBodyContent {
         icon: Option<FileId>,
         description: String,
         members: Vec<GroupMember>,
-        ood_list: Vec<DeviceId>,
+        ood_list: Vec<ObjectId>,
     ) -> Self {
         Self {
             common: CommonGroupBodyContent::new(name, icon, description, members, ood_list),
@@ -764,7 +786,7 @@ impl OrgBodyContent {
         description: String,
         admins: Vec<GroupMember>,
         members: Vec<GroupMember>,
-        ood_list: Vec<DeviceId>,
+        ood_list: Vec<ObjectId>,
     ) -> Self {
         Self {
             common: CommonGroupBodyContent::new(name, icon, description, members, ood_list),

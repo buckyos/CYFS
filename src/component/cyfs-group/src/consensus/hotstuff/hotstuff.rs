@@ -93,12 +93,21 @@ impl Hotstuff {
         async_std::task::spawn(async move { hotstuff.run().await });
     }
 
-    // TODO: 网络层应该防御，只从当前group节点获取信息
     async fn handle_block(
         &mut self,
         block: &GroupConsensusBlock,
         remote: ObjectId,
     ) -> BuckyResult<()> {
+        let latest_group = self.committee.get_group(None).await?;
+        if !latest_group.contain_ood(&remote) {
+            log::warn!(
+                "receive block({}) from unknown({})",
+                block.named_object().desc().object_id(),
+                remote
+            );
+            return Ok(());
+        }
+
         /**
          * 1. 验证block投票签名
          * 2. 验证出块节点
@@ -322,10 +331,7 @@ impl Hotstuff {
         }
 
         if let Some(vote) = self.make_vote(block).await {
-            let next_leader = self
-                .committee
-                .get_leader(Some(block.group_chunk_id()), self.round + 1)
-                .await?;
+            let next_leader = self.committee.get_leader(None, self.round + 1).await?;
 
             if self.local_id == next_leader {
                 self.handle_vote(&vote, Some(block), remote).await?;
@@ -839,21 +845,32 @@ impl Hotstuff {
         let max_round_block = self.store.block_with_max_round();
         let group_chunk_id = max_round_block.as_ref().map(|block| block.group_chunk_id());
         let last_group = self.committee.get_group(group_chunk_id).await;
+        let latest_group = match group_chunk_id.as_ref() {
+            Some(_) => self.committee.get_group(None).await,
+            None => last_group.clone(),
+        };
 
-        let duration = last_group
+        let duration = latest_group
             .as_ref()
             .map_or(HOTSTUFF_TIMEOUT_DEFAULT, |g| g.consensus_interval());
         self.timer.reset(duration);
 
-        if let Ok(leader) = self.committee.get_leader(group_chunk_id, self.round).await {
+        if let Ok(leader) = self.committee.get_leader(None, self.round).await {
             if leader == self.local_id {
                 match max_round_block {
                     Some(max_round_block)
-                        if max_round_block.owner() == &self.local_id && last_group.is_ok() =>
+                        if max_round_block.owner() == &self.local_id
+                            && latest_group.is_ok()
+                            && last_group.is_ok()
+                            && last_group
+                                .as_ref()
+                                .unwrap()
+                                .is_same_ood_list(latest_group.as_ref().unwrap()) =>
                     {
+                        // discard the generated block when the ood-list is changed
                         self.broadcast(
                             HotstuffMessage::Block(max_round_block),
-                            &last_group.unwrap(),
+                            &latest_group.unwrap(),
                         )
                         .await;
                     }
