@@ -80,7 +80,7 @@ impl Hotstuff {
             network_sender,
             rx_message,
             delegate,
-            synchronizer: Synchronizer::new(),
+            synchronizer: Synchronizer::spawn(network_sender.clone(), rpath.clone(), rx_message),
             non_driver,
             rpath,
             tx_proposal_consume,
@@ -469,12 +469,7 @@ impl Hotstuff {
     ) -> BuckyResult<()> {
         self.process_qc(&Some(qc)).await;
 
-        if self.local_id
-            == self
-                .committee
-                .get_leader(Some(block.group_chunk_id()), self.round)
-                .await?
-        {
+        if self.local_id == self.committee.get_leader(None, self.round).await? {
             self.generate_proposal(None).await;
         }
         Ok(())
@@ -528,15 +523,7 @@ impl Hotstuff {
         self.advance_round(tc.round).await;
         self.tc = Some(tc.clone());
 
-        if self.local_id
-            == self
-                .committee
-                .get_leader(
-                    max_high_qc_block.map(|block| block.group_chunk_id()),
-                    self.round,
-                )
-                .await?
-        {
+        if self.local_id == self.committee.get_leader(None, self.round).await? {
             self.generate_proposal(Some(tc)).await;
             Ok(())
         } else {
@@ -589,15 +576,7 @@ impl Hotstuff {
         self.advance_round(tc.round).await;
         self.tc = Some(tc.clone());
 
-        if self.local_id
-            == self
-                .committee
-                .get_leader(
-                    block.as_ref().map(|block| block.group_chunk_id()),
-                    self.round,
-                )
-                .await?
-        {
+        if self.local_id == self.committee.get_leader(None, self.round).await? {
             self.generate_proposal(Some(tc.clone())).await;
         }
         Ok(())

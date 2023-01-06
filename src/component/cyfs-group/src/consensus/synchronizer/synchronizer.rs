@@ -4,7 +4,11 @@ use cyfs_core::GroupConsensusBlock;
 pub struct Synchronizer {}
 
 impl Synchronizer {
-    pub fn new() -> Self {
+    pub fn spawn(
+        network_sender: crate::network::Sender,
+        rpath: GroupRPath,
+        rx_message: Receiver<(HotstuffMessage, ObjectId)>,
+    ) -> Self {
         Self {}
     }
 
@@ -37,5 +41,16 @@ impl Synchronizer {
 
     pub fn pop_link_from(&self, block: &GroupConsensusBlock) -> BuckyResult<()> {
         unimplemented!()
+    }
+}
+
+
+struct SynchronizerRunner {
+
+}
+
+impl SynchronizerRunner {
+    async fn run(&mut self) {
+        
     }
 }
