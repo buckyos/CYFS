@@ -257,14 +257,15 @@ impl HttpBdtListener {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct HttpBdtListenerManager {
-    server_list: Mutex<Vec<Arc<HttpBdtListener>>>,
+    server_list: Arc<Mutex<Vec<Arc<HttpBdtListener>>>>,
 }
 
 impl HttpBdtListenerManager {
     pub fn new() -> HttpBdtListenerManager {
         HttpBdtListenerManager {
-            server_list: Mutex::new(Vec::new()),
+            server_list: Arc::new(Mutex::new(Vec::new())),
         }
     }
 

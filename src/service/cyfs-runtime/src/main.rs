@@ -11,7 +11,10 @@ mod proxy;
 mod runtime;
 mod stack;
 
+use std::str::FromStr;
+
 use cyfs_debug::*;
+use cyfs_lib::BrowserSanboxMode;
 use stack::PROXY_PORT;
 
 use clap::{App, Arg};
@@ -76,6 +79,11 @@ async fn main_run() {
                 .long("cyfs-root")
                 .takes_value(true)
                 .help(&cyfs_root_help),
+        ).arg(
+            Arg::with_name("browser-mode")
+                .long("browser-mode")
+                .takes_value(true)
+                .help("The browser sanbox mode, default is strict"),
         );
 
     let app = cyfs_util::process::prepare_args(app);
@@ -143,11 +151,24 @@ async fn main_run() {
         None => PROXY_PORT,
     };
 
+    let browser_mode = match matches.value_of("browser-mode") {
+        Some(v) => {
+            Some(BrowserSanboxMode::from_str(v).map_err(|e| {
+                println!("invalid browser mode param! {}, {}", v, e);
+                std::process::exit(-1);
+            }).unwrap())
+        }
+        None => {
+            None
+        }
+    };
+
     let stack_config = stack::CyfsStackInsConfig {
         is_mobile_stack: false,
         anonymous,
         random_id,
         proxy_port,
+        browser_mode,
     };
 
     async_std::task::spawn(async {

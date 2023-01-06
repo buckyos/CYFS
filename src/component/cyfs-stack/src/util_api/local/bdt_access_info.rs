@@ -1,6 +1,6 @@
-use cyfs_base::BuckyResult;
+use cyfs_base::*;
 use cyfs_lib::*;
-use cyfs_bdt::StackGuard;
+use cyfs_bdt::{StackGuard, SnStatus};
 
 #[derive(Clone)]
 pub(crate) struct BdtNetworkAccessInfoManager {
@@ -106,16 +106,31 @@ impl BdtNetworkAccessInfoManager {
 
         // 遍历所有sn 的状态
         let sn_client = self.stack.sn_client();
-        let sn_list = sn_client.sn_list();
-        for sn in sn_list {
-            let status = sn_client.status_of(&sn).unwrap();
-
-            debug!("sn status of {} is {}", sn, status);
+        if let Some(client) = sn_client.ping().default_client() {
+            debug!("sn status of {} is {}", client.sn(), SnStatus::Online);
 
             info.sn.push(BdtNetworkAccessSn {
-                sn,
-                sn_status: status,
+                sn: client.sn().clone(),
+                sn_status: SnStatus::Online,
             });
+
+            for sn_id in sn_client.ping().sn_list().iter().map(|sn| sn.desc().device_id()).filter(|sn_id| client.sn() != sn_id) {
+                debug!("sn status of {} is {}", sn_id, SnStatus::Offline);
+
+                info.sn.push(BdtNetworkAccessSn {
+                    sn: sn_id, 
+                    sn_status: SnStatus::Offline,
+                });
+            }
+        } else {
+            for sn_id in sn_client.ping().sn_list().iter().map(|sn| sn.desc().device_id()) {
+                debug!("sn status of {} is {}", sn_id, SnStatus::Offline);
+
+                info.sn.push(BdtNetworkAccessSn {
+                    sn: sn_id, 
+                    sn_status: SnStatus::Offline,
+                });
+            }
         }
 
         Ok(info)

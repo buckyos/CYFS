@@ -27,8 +27,8 @@ async fn send_large_stream(
 ) -> BuckyResult<()> {
     let param = BuildTunnelParams {
         remote_const: rn_stack.local_const().clone(),
-        remote_sn: vec![],
-        remote_desc: Some(rn_stack.local().clone()),
+        remote_sn: None,
+        remote_desc: Some(rn_stack.sn_client().ping().default_local()),
     };
     let mut stream = ln_stack
         .stream_manager()

@@ -382,7 +382,7 @@ impl KeyManager {
                 if match &exist.borrow().info.encrypted {
                     EncryptedKey::Unconfirmed(_) => true, 
                     EncryptedKey::Confirmed => false, 
-                    EncryptedKey::None => true
+                    EncryptedKey::None => false
                 } {
                     remain.push(exist.clone());
                 }

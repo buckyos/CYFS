@@ -74,10 +74,9 @@ async fn main() {
 }
 
 fn load_device_info(folder_path: &Path) -> BuckyResult<(Device, PrivateKey)> {
-    let (mut device, _) = Device::decode_from_file(folder_path.with_extension("desc").as_path(), &mut vec![])?;
+    let (device, _) = Device::decode_from_file(folder_path.with_extension("desc").as_path(), &mut vec![])?;
     let (private_key, _) = PrivateKey::decode_from_file(folder_path.with_extension("sec").as_path(), &mut vec![])?;
-
-    for endpoint in device.mut_connect_info().mut_endpoints() {
+	for endpoint in device.mut_connect_info().mut_endpoints() {
         match endpoint.mut_addr() {
             SocketAddr::V4(ref mut addr) => {
                 addr.set_ip(Ipv4Addr::UNSPECIFIED)

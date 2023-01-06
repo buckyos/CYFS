@@ -97,12 +97,6 @@ impl ProxyManager {
     pub fn dump_proxies(&self) -> Vec<DeviceId> {
         self.proxies.read().unwrap().dump_proxies.iter().cloned().collect()
     }
-
-    pub async fn sync_passive_proxies(&self) {
-        let stack = Stack::from(&self.stack);
-        stack.reset_local().await;
-        stack.sn_client().resend_ping();
-    }
 }
 
 impl OnUdpPackageBox for ProxyManager {

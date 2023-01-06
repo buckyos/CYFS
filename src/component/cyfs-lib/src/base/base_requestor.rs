@@ -195,7 +195,7 @@ impl HttpRequestor for BdtHttpRequestor {
         let begin = std::time::Instant::now();
         let build_params = BuildTunnelParams {
             remote_const: self.device.desc().clone(),
-            remote_sn: vec![],
+            remote_sn: None,
             remote_desc: Some(self.device.clone()),
         };
 
