@@ -40,7 +40,6 @@
 |               |--pre-commits // pre-commit状态的block
 |               |   |--${block.id}
 |               |       |--block
-|               |       |--result-state-->ObjectId(result-state)
 |               |
 |               |--finish-proposals
 |               |   |--flip-time-->Timestamp // 取block时间戳

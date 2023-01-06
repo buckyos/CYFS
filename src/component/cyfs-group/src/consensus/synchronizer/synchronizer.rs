@@ -1,18 +1,28 @@
 use cyfs_base::{BuckyResult, ObjectId};
 use cyfs_core::GroupConsensusBlock;
 
-pub struct OrderBlockMgr {}
+pub struct Synchronizer {}
 
-impl OrderBlockMgr {
+impl Synchronizer {
     pub fn new() -> Self {
         Self {}
     }
 
-    pub fn sync_with_height(&self, min_height: u64, remote: ObjectId) -> BuckyResult<()> {
+    pub fn sync_with_height(
+        &self,
+        min_height: u64,
+        max_height: u64,
+        remote: ObjectId,
+    ) -> BuckyResult<()> {
         unimplemented!()
     }
 
-    pub fn sync_with_round(&self, min_round: u64, remote: ObjectId) -> BuckyResult<()> {
+    pub fn sync_with_round(
+        &self,
+        min_round: u64,
+        max_round: u64,
+        remote: ObjectId,
+    ) -> BuckyResult<()> {
         unimplemented!()
     }
 

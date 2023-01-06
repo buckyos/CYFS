@@ -13,6 +13,9 @@ pub(crate) enum HotstuffMessage {
     BlockVote(HotstuffBlockQCVote),
     TimeoutVote(HotstuffTimeoutVote),
     Timeout(cyfs_core::HotstuffTimeout),
+
+    SyncWithHeight(u64, u64),
+    SyncWithRound(u64, u64),
 }
 
 #[derive(Clone, RawEncode, RawDecode)]

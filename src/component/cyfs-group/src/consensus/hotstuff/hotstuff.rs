@@ -14,7 +14,7 @@ use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
 use crate::{
-    consensus::{order_block::OrderBlockMgr, timer::Timer},
+    consensus::{synchronizer::Synchronizer, timer::Timer},
     AsProposal, Committee, ExecuteResult, HotstuffBlockQCVote, HotstuffMessage,
     HotstuffTimeoutVote, PendingProposalMgr, ProposalConsumeMessage, RPathDelegate, Storage,
     VoteMgr, VoteThresholded, CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
@@ -35,7 +35,7 @@ pub struct Hotstuff {
     rx_message: Receiver<(HotstuffMessage, ObjectId)>,
     tx_proposal_consume: Sender<ProposalConsumeMessage>,
     delegate: Arc<Box<dyn RPathDelegate>>,
-    order_block_mgr: OrderBlockMgr,
+    synchronizer: Synchronizer,
     rpath: GroupRPath,
     tx_message_inner: Sender<(GroupConsensusBlock, ObjectId)>,
     rx_message_inner: Receiver<(GroupConsensusBlock, ObjectId)>,
@@ -80,7 +80,7 @@ impl Hotstuff {
             network_sender,
             rx_message,
             delegate,
-            order_block_mgr: OrderBlockMgr::new(),
+            synchronizer: Synchronizer::new(),
             non_driver,
             rpath,
             tx_proposal_consume,
@@ -165,7 +165,7 @@ impl Hotstuff {
                     }
 
                     let max_round_block = self.store.block_with_max_round();
-                    return self.order_block_mgr.push_outorder_block(
+                    return self.synchronizer.push_outorder_block(
                         block,
                         max_round_block.map_or(1, |block| block.round() + 1),
                         remote,
@@ -183,7 +183,7 @@ impl Hotstuff {
         self.check_block_proposal_result_state_by_app(block, &proposals, &prev_block)
             .await?;
 
-        self.order_block_mgr.pop_link_from(block)?;
+        self.synchronizer.pop_link_from(block)?;
 
         self.process_qc(block.qc()).await;
 
@@ -574,8 +574,9 @@ impl Hotstuff {
                 Err(_) => {
                     // 同步前序block
                     let max_round_block = self.store.block_with_max_round();
-                    return self.order_block_mgr.sync_with_round(
+                    return self.synchronizer.sync_with_round(
                         max_round_block.map_or(1, |block| block.round() + 1),
+                        max_high_qc.high_qc_round,
                         remote,
                     );
                 }
@@ -910,7 +911,8 @@ impl Hotstuff {
                     Err(e) => {
                         log::warn!("[hotstuff] rx_message closed.");
                         Ok(())
-                    }
+                    },
+                    _ => panic!("unknown message")
                 },
                 message = self.rx_message_inner.recv().fuse() => match message {
                     Ok((block, remote)) => {

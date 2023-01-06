@@ -1,7 +1,7 @@
 mod block;
 mod consensus;
 mod hotstuff;
-mod order_block;
+mod synchronizer;
 mod proposal;
 mod timer;
 mod vote;
