@@ -26,6 +26,7 @@ use super::{
 
 struct StateImpl {
     raw_cache: OnceCell<Box<dyn RawCache>>, 
+    pushed_len: usize, 
     indices: IncomeIndexQueue, 
     waiters: BTreeMap::<u32, StateWaiter>
 }
@@ -52,6 +53,7 @@ impl ChunkStreamCache {
         Self(Arc::new(CacheImpl {
             chunk: chunk.clone(),
             state: RwLock::new(StateImpl {
+                pushed_len: 0,
                 raw_cache: OnceCell::new(), 
                 indices: IncomeIndexQueue::new(end), 
                 waiters: BTreeMap::new()
@@ -135,6 +137,9 @@ impl ChunkStreamCache {
             let (result, waiter) = {
                 let mut state = self.0.state.write().unwrap();
                 let result = state.indices.push(index..index + 1);
+                if result.pushed() {
+                    state.pushed_len += len;
+                }
                 (result, state.waiters.remove(&index))
             };
             if let Some(waiter) = waiter {
@@ -151,6 +156,10 @@ impl ChunkStreamCache {
 
     pub fn exists(&self, index: u32) -> BuckyResult<bool> {
         self.0.state.read().unwrap().indices.exists(index)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.state.read().unwrap().pushed_len
     }
 
     pub async fn wait_exists<T: futures::Future<Output=BuckyError>>(&self, index: u32, abort: T) -> BuckyResult<()> {

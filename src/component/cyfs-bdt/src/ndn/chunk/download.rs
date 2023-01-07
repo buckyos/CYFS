@@ -104,12 +104,28 @@ impl ChunkDownloader {
                
                 if !finished {
                     downloader.on_drain(0);
+                    downloader.sync_finished().await;
                 }
                 
             });
         }
         
         downloader
+    }
+
+    async fn sync_finished(&self) {
+        if self.cache().wait_exists(0..self.cache().chunk().len(), || self.owner().wait_user_canceled()).await.is_ok() {
+            let state = &mut *self.0.state.write().unwrap();
+            *state = StateImpl::Finished;
+        }
+    }
+
+    async fn finished(&self) -> bool {
+        if let StateImpl::Finished = &*self.0.state.read().unwrap() {
+            true
+        } else {
+            false
+        }
     }
 
     pub fn owner(&self) -> &dyn LeafDownloadTask {

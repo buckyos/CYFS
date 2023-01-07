@@ -30,7 +30,7 @@ enum TaskStateImpl {
     Init, 
     Downloading(DownloadingState),
     Error(BuckyError), 
-    Finished(ChunkCache),
+    Finished,
 }
 
 enum ControlStateImpl {
@@ -97,6 +97,17 @@ impl LeafDownloadTask for ChunkTask {
     fn context(&self) -> &dyn DownloadContext {
         self.0.context.as_ref()
     }
+
+    fn finish(&self) {
+        let mut state = self.0.state.write().unwrap();
+
+        match &state.task_state {
+            TaskStateImpl::Downloading(_) => {
+                state.task_state = TaskStateImpl::Finished;
+            }, 
+            _ => {}
+        };
+    }
 }
 
 #[async_trait::async_trait]
@@ -107,10 +118,10 @@ impl DownloadTask for ChunkTask {
 
     fn state(&self) -> DownloadTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Init => DownloadTaskState::Downloading(0, 0.0), 
-            TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.downloader.cur_speed(), 0.0), 
+            TaskStateImpl::Init => DownloadTaskState::Downloading(0), 
+            TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.downloader.cur_speed()), 
             TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone()), 
-            TaskStateImpl::Finished(_) => DownloadTaskState::Finished
+            TaskStateImpl::Finished => DownloadTaskState::Finished
         }
     }
 
@@ -179,7 +190,6 @@ impl DownloadTask for ChunkTask {
         }
     }
 
-
     fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
         let waiters = {
             let mut state = self.0.state.write().unwrap();
@@ -231,7 +241,11 @@ pub struct ChunkTaskReader(DownloadTaskReader);
 
 impl Drop for ChunkTaskReader {
     fn drop(&mut self) {
-        let _ = self.0.task().cancel();
+        if self.0.offset() == self.0.cache().chunk().len() {
+            self.0.task().finish();
+        } else {
+            let _ = self.0.task().cancel();
+        }
     }
 }
 

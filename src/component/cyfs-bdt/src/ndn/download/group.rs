@@ -73,7 +73,7 @@ impl DownloadTask for DownloadGroup {
 
     fn state(&self) -> DownloadTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.history_speed.latest(), 0.0), 
+            TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.history_speed.latest()), 
             TaskStateImpl::Finished => DownloadTaskState::Finished, 
             TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone())
         }
