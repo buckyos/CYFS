@@ -273,6 +273,8 @@ impl PingClient {
                 device_endpoints.push(ep);
             }
 
+            local.body_mut().as_mut().unwrap().increase_update_time(bucky_time_now());
+
             let stack = Stack::from(&self.0.stack);
             let _ = sign_and_set_named_object_body(
                 stack.keystore().signer(),
@@ -280,11 +282,7 @@ impl PingClient {
                 &SignatureSource::RefIndex(0),
             ).await;
 
-            local
-                .body_mut()
-                .as_mut()
-                .unwrap()
-                .increase_update_time(bucky_time_now());
+           
 
             let updated = {
                 let mut store = self.0.local_device.write().unwrap();
