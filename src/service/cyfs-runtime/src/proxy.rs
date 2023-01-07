@@ -273,34 +273,36 @@ impl CyfsProxy {
 
         server.at("/file-upload-tool").get(|_| {
             info!("request open file upload");
-            #[cfg(target_os = "windows")]
-            const UPLOADER_PROG_NAME: &str = "cyfs-file-uploader.exe";
+            let upload_prog_name;
 
-            #[cfg(target_os = "macos")]
-            const UPLOADER_PROG_NAME: &str = "cyfs-file-uploader.app";
+            if cfg!(target_os = "windows") {
+                upload_prog_name = "cyfs-file-uploader.exe";
+            } else if cfg!(target_os = "macos") {
+                upload_prog_name = "cyfs-file-uploader.app";
+            } else {
+                upload_prog_name = "cyfs-file-uploader";
+            }
 
             async move {
                 let upload_tool_path = std::env::current_exe()
                     .unwrap()
                     .parent()
                     .unwrap()
-                    .join(UPLOADER_PROG_NAME);
+                    .join(upload_prog_name);
                 if !upload_tool_path.exists() {
                     info!("file upload tool not found. {}", upload_tool_path.display());
                     return Ok(Response::new(StatusCode::NotFound));
                 }
 
                 let mut cmd;
-                #[cfg(target_os = "windows")]
-                {
+                if cfg!(target_os = "windows") {
                     cmd = async_std::process::Command::new("start");
                     cmd.args(&["", &upload_tool_path.to_string_lossy().to_string()]);
-                }
-
-                #[cfg(target_os = "macos")]
-                {
+                } else if cfg!(target_os = "macos") {
                     cmd = async_std::process::Command::new("open");
                     cmd.args(&[&upload_tool_path.to_string_lossy().to_string()]);
+                } else {
+                    return Ok(Response::new(StatusCode::NotImplemented));
                 }
 
                 cmd.stdout(Stdio::null()).stderr(Stdio::null());
