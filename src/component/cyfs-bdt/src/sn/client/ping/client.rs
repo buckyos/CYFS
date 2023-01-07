@@ -280,6 +280,12 @@ impl PingClient {
                 &SignatureSource::RefIndex(0),
             ).await;
 
+            local
+                .body_mut()
+                .as_mut()
+                .unwrap()
+                .increase_update_time(bucky_time_now());
+
             let updated = {
                 let mut store = self.0.local_device.write().unwrap();
                 if store.body().as_ref().unwrap().update_time() < local.body().as_ref().unwrap().update_time() {
