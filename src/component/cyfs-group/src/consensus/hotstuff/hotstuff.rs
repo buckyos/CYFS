@@ -170,8 +170,8 @@ impl Hotstuff {
 
                     let max_round_block = self.store.block_with_max_round();
                     return self.synchronizer.push_outorder_block(
-                        block,
-                        max_round_block.map_or(1, |block| block.round() + 1),
+                        block.clone(),
+                        max_round_block.map_or(1, |block| block.height() + 1),
                         remote,
                     );
                 }
@@ -566,7 +566,7 @@ impl Hotstuff {
                     // 同步前序block
                     let max_round_block = self.store.block_with_max_round();
                     return self.synchronizer.sync_with_round(
-                        max_round_block.map_or(1, |block| block.round() + 1),
+                        max_round_block.map_or(1, |block| block.height() + 1),
                         max_high_qc.high_qc_round,
                         remote,
                     );
