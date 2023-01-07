@@ -829,6 +829,7 @@ impl ExpReservedTokenTranslator for InterestHandlerRequest {
             "chunk" => ExpTokenEvalValue::from_string(&self.chunk), 
             "from" => ExpTokenEvalValue::from_opt_string(&self.from), 
             "from_channel" => ExpTokenEvalValue::from_string(&self.from_channel), 
+            "group_path" => ExpTokenEvalValue::from_opt_glob(&self.group_path),
             _ => {
                 if let Some(referer) = &self.referer {
                     if let Some(v) = ExpReservedTokenTranslatorHelper::trans_bdt_interest_referer(token, referer) {
@@ -1439,7 +1440,7 @@ impl RouterHandlerReservedTokenList {
         token_list.add_string("from");
         Self::add_bdt_interest_referer_tokens(&mut token_list);
         token_list.add_string("from_channel");
-
+        token_list.add_glob("group_path");
         token_list
     }
 
