@@ -14,8 +14,8 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use tide::listener::Listener;
-use tide::Response;
 use tide::security::{CorsMiddleware, Origin};
+use tide::Response;
 
 struct NonHttpServerInner {
     http_server: HttpServerHandlerRef,
@@ -272,20 +272,44 @@ impl CyfsProxy {
         server.at("/file-cache").post(file_cache);
 
         server.at("/file-upload-tool").get(|_| {
+            info!("request open file upload");
             #[cfg(target_os = "windows")]
             const UPLOADER_PROG_NAME: &str = "cyfs-file-uploader.exe";
 
-            #[cfg(not(target_os = "windows"))]
-            const UPLOADER_PROG_NAME: &str = "cyfs-file-uploader";
+            #[cfg(target_os = "macos")]
+            const UPLOADER_PROG_NAME: &str = "cyfs-file-uploader.app";
+
             async move {
-                let upload_tool_path = std::env::current_exe().unwrap().parent().unwrap().join(UPLOADER_PROG_NAME);
+                let upload_tool_path = std::env::current_exe()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .join(UPLOADER_PROG_NAME);
                 if !upload_tool_path.exists() {
+                    info!("file upload tool not found. {}", upload_tool_path.display());
                     return Ok(Response::new(StatusCode::NotFound));
                 }
-                let mut cmd = async_std::process::Command::new(&upload_tool_path);
+
+                let mut cmd;
+                #[cfg(target_os = "windows")]
+                {
+                    cmd = async_std::process::Command::new("start");
+                    cmd.args(&["", &upload_tool_path.to_string_lossy().to_string()]);
+                }
+
+                #[cfg(target_os = "macos")]
+                {
+                    cmd = async_std::process::Command::new("open");
+                    cmd.args(&[&upload_tool_path.to_string_lossy().to_string()]);
+                }
+
                 cmd.stdout(Stdio::null()).stderr(Stdio::null());
                 let status = if let Err(e) = cmd.spawn() {
-                    warn!("spawn file uploader {} err {}", upload_tool_path.display(), e);
+                    warn!(
+                        "spawn file uploader {} err {}",
+                        upload_tool_path.display(),
+                        e
+                    );
                     StatusCode::InternalServerError
                 } else {
                     StatusCode::Ok
