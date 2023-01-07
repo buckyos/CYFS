@@ -254,7 +254,7 @@ impl Task for DownloadChunkTask {
                     err_code: None,
                     speed: speed as u64,
                     upload_speed: 0,
-                    downloaded_progress: progress as u64,
+                    downloaded_progress: ((task.downloaded() as f32 / self.chunk_id.len() as f32) * 100.0) as u64,
                     sum_size: self.chunk_id.len() as u64,
                     group,
                 },

@@ -190,6 +190,15 @@ impl DownloadTask for ChunkTask {
         }
     }
 
+    fn downloaded(&self) -> u64 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(downloading) => downloading.downloader.cache().stream().len() as u64, 
+            TaskStateImpl::Finished => self.chunk().len() as u64, 
+            _ => 0
+        }
+    }
+
     fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
         let waiters = {
             let mut state = self.0.state.write().unwrap();

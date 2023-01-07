@@ -153,6 +153,9 @@ pub trait DownloadTask: Send + Sync {
     fn calc_speed(&self, when: Timestamp) -> u32;
     fn cur_speed(&self) -> u32;
     fn history_speed(&self) -> u32;
+    fn downloaded(&self) -> u64 {
+        0
+    }
 }
 
 
