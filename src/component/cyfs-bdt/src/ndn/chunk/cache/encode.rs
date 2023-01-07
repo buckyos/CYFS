@@ -117,6 +117,10 @@ impl IncomeIndexQueue {
         index.start == 0 && index.end == self.end
     }
 
+    pub fn end(&self) -> u32 {
+        self.end
+    }
+
     pub fn try_push(&self, index: Range<u32>) -> PushIndexResult {
         if index.start >= self.end {
             return PushIndexResult {

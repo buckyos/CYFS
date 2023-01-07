@@ -293,8 +293,8 @@ impl Task for DownloadFileTask {
 
             let state = task.state();
             match state {
-                cyfs_bdt::DownloadTaskState::Downloading(speed, progress) => {
-                    log::info!("downloading speed {} progress {}", speed, progress);
+                cyfs_bdt::DownloadTaskState::Downloading(speed) => {
+                    log::info!("downloading speed {}", speed);
                     {
                         let mut task_status = self.task_status.lock().unwrap();
                         task_status.status = TaskStatus::Running;

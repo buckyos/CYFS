@@ -105,7 +105,7 @@ impl Default for DownloadTaskPriority {
 // 对scheduler的接口
 #[derive(Debug, Serialize, Deserialize)]
 pub enum DownloadTaskState {
-    Downloading(u32/*速度*/, f32/*进度*/),
+    Downloading(u32/*速度*/),
     Paused,
     Error(BuckyError/*被cancel的原因*/), 
     Finished
@@ -164,6 +164,7 @@ pub trait LeafDownloadTask: DownloadTask {
     fn clone_as_leaf_task(&self) -> Box<dyn LeafDownloadTask>;
     fn abs_group_path(&self) -> Option<String>;
     fn context(&self) -> &dyn DownloadContext;
+    fn finish(&self);
 }
 
 
@@ -199,6 +200,14 @@ impl DownloadTaskReader {
 
     pub fn task(&self) -> &dyn LeafDownloadTask {
         self.task.as_ref()
+    }
+
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn cache(&self) -> &ChunkCache {
+        &self.cache
     }
 }
 
