@@ -23,6 +23,7 @@ use super::{
 };
 
 struct DownloadingState { 
+    downloaded: u64, 
     cur_chunk: ChunkDownloader, 
     history_speed: HistorySpeed,
 }
@@ -36,7 +37,7 @@ enum TaskStateImpl {
     Pending, 
     Downloading(DownloadingState), 
     Error(BuckyError), 
-    Finished
+    Finished(u64)
 }
 
 struct StateImpl {
@@ -101,16 +102,18 @@ impl ChunkListTask {
             match &mut state.task_state {
                 TaskStateImpl::Pending => {
                     state.task_state = TaskStateImpl::Downloading(DownloadingState { 
+                        downloaded: 0, 
                         cur_chunk: downloader, 
                         history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
                     });
                     Ok(())
                 }, 
                 TaskStateImpl::Downloading(downloading) => {
+                    downloading.downloaded += downloading.cur_chunk.cache().stream().len() as u64;
                     downloading.cur_chunk = downloader;
                     Ok(())
                 },
-                TaskStateImpl::Finished => Ok(()), 
+                TaskStateImpl::Finished(_) => Ok(()), 
                 TaskStateImpl::Error(err) => Err(err.clone())
             }
         }?;
@@ -136,9 +139,10 @@ impl LeafDownloadTask for ChunkListTask {
     fn finish(&self) {
         let mut state = self.0.state.write().unwrap();
 
-        match &state.task_state {
-            TaskStateImpl::Downloading(_) => {
-                state.task_state = TaskStateImpl::Finished;
+        match &mut state.task_state {
+            TaskStateImpl::Downloading(downloading) => {
+                downloading.downloaded += downloading.cur_chunk.cache().stream().len() as u64;
+                state.task_state = TaskStateImpl::Finished(downloading.downloaded);
             }, 
             _ => {}
         };
@@ -155,7 +159,7 @@ impl DownloadTask for ChunkListTask {
         match &self.0.state.read().unwrap().task_state {
             TaskStateImpl::Pending => DownloadTaskState::Downloading(0), 
             TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.history_speed.latest()), 
-            TaskStateImpl::Finished => DownloadTaskState::Finished, 
+            TaskStateImpl::Finished(_) => DownloadTaskState::Finished, 
             TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone()), 
         }
     }
@@ -196,6 +200,15 @@ impl DownloadTask for ChunkListTask {
         let state = self.0.state.read().unwrap();
         match &state.task_state {
             TaskStateImpl::Downloading(downloading) => downloading.history_speed.average(), 
+            _ => 0,
+        }
+    }
+
+    fn downloaded(&self) -> u64 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(downloading) => downloading.downloaded + downloading.cur_chunk.cache().stream().len() as u64, 
+            TaskStateImpl::Finished(downloaded) => *downloaded, 
             _ => 0,
         }
     }

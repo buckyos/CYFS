@@ -28,7 +28,7 @@ impl JsonCodec<InterestHandlerRequest> for InterestHandlerRequest {
         JsonCodecHelper::encode_option_string_field(&mut obj, "from", self.from.as_ref());
         JsonCodecHelper::encode_option_field(&mut obj, "referer", self.referer.as_ref());
         JsonCodecHelper::encode_string_field(&mut obj, "from_channel", &self.from_channel);
-        JsonCodecHelper::encode_option_string_field(&mut obj, "group_path", &self.group_path);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "group_path", self.group_path.as_ref());
         obj
     }
 
