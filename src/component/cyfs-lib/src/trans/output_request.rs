@@ -275,6 +275,7 @@ pub enum TransTaskGroupControlAction {
     Resume,
     Cancel,
     Pause,
+    Close
 }
 
 #[derive(Debug, Serialize, Deserialize)]

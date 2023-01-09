@@ -69,13 +69,17 @@ impl ChunkTask {
     ) -> Self {
         Self(Arc::new(ChunkTaskImpl { 
             stack, 
-            chunk, 
             context, 
             state: RwLock::new(StateImpl {
                 abs_path: None, 
-                task_state: TaskStateImpl::Init, 
+                task_state: if chunk.len() > 0 {
+                    TaskStateImpl::Init
+                } else {
+                    TaskStateImpl::Finished
+                }, 
                 control_state: ControlStateImpl::Normal(StateWaiter::new()),
             }),
+            chunk, 
         }))
     } 
 
@@ -111,9 +115,10 @@ impl LeafDownloadTask for ChunkTask {
     }
 }
 
-#[async_trait::async_trait]
-impl DownloadTask for ChunkTask {
-    fn clone_as_task(&self) -> Box<dyn DownloadTask> {
+
+
+impl NdnTask for ChunkTask {
+    fn clone_as_task(&self) -> Box<dyn NdnTask> {
         Box::new(self.clone())
     }
 
@@ -130,36 +135,6 @@ impl DownloadTask for ChunkTask {
         match &self.0.state.read().unwrap().control_state {
             ControlStateImpl::Normal(_) => NdnTaskControlState::Normal, 
             ControlStateImpl::Canceled => NdnTaskControlState::Canceled
-        }
-    }
-
-    fn on_post_add_to_root(&self, abs_path: String) {
-        let stack = Stack::from(&self.0.stack);
-        let downloader = stack.ndn().chunk_manager().create_downloader(self.chunk(), self.clone_as_leaf_task());
-
-        let mut state = self.0.state.write().unwrap();
-        state.abs_path = Some(abs_path);
-        match &state.task_state {
-            TaskStateImpl::Init => {
-                state.task_state = TaskStateImpl::Downloading(DownloadingState {
-                    downloader, 
-                });
-            }, 
-            _ => {}
-        }
-    }
-
-    fn calc_speed(&self, when: Timestamp) -> u32 {
-        if let Some(downloader) = {
-            let state = self.0.state.read().unwrap();
-            match &state.task_state {
-                TaskStateImpl::Downloading(downloading) => Some(downloading.downloader.clone()), 
-                _ => None
-            }
-        } {
-            downloader.calc_speed(when)
-        } else {
-            0
         }
     }
 
@@ -191,15 +166,6 @@ impl DownloadTask for ChunkTask {
         }
     }
 
-    fn downloaded(&self) -> u64 {
-        let state = self.0.state.read().unwrap();
-        match &state.task_state {
-            TaskStateImpl::Downloading(downloading) => downloading.downloader.cache().stream().len() as u64, 
-            TaskStateImpl::Finished => self.chunk().len() as u64, 
-            _ => 0
-        }
-    }
-
     fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
         let waiters = {
             let mut state = self.0.state.write().unwrap();
@@ -227,6 +193,55 @@ impl DownloadTask for ChunkTask {
         }
 
         Ok(NdnTaskControlState::Canceled)
+    }
+
+}
+
+
+#[async_trait::async_trait]
+impl DownloadTask for ChunkTask {
+    fn clone_as_download_task(&self) -> Box<dyn DownloadTask> {
+        Box::new(self.clone())
+    }
+
+    
+    fn on_post_add_to_root(&self, abs_path: String) {
+        let stack = Stack::from(&self.0.stack);
+        let downloader = stack.ndn().chunk_manager().create_downloader(self.chunk(), self.clone_as_leaf_task());
+
+        let mut state = self.0.state.write().unwrap();
+        state.abs_path = Some(abs_path);
+        match &state.task_state {
+            TaskStateImpl::Init => {
+                state.task_state = TaskStateImpl::Downloading(DownloadingState {
+                    downloader, 
+                });
+            }, 
+            _ => {}
+        }
+    }
+
+    fn calc_speed(&self, when: Timestamp) -> u32 {
+        if let Some(downloader) = {
+            let state = self.0.state.read().unwrap();
+            match &state.task_state {
+                TaskStateImpl::Downloading(downloading) => Some(downloading.downloader.clone()), 
+                _ => None
+            }
+        } {
+            downloader.calc_speed(when)
+        } else {
+            0
+        }
+    }
+
+    fn downloaded(&self) -> u64 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(downloading) => downloading.downloader.cache().stream().len() as u64, 
+            TaskStateImpl::Finished => self.chunk().len() as u64, 
+            _ => 0
+        }
     }
 
     async fn wait_user_canceled(&self) -> BuckyError {

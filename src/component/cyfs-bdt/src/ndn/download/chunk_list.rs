@@ -149,9 +149,8 @@ impl LeafDownloadTask for ChunkListTask {
     }
 }
 
-#[async_trait::async_trait]
-impl DownloadTask for ChunkListTask {
-    fn clone_as_task(&self) -> Box<dyn DownloadTask> {
+impl NdnTask for ChunkListTask {
+    fn clone_as_task(&self) -> Box<dyn NdnTask> {
         Box::new(self.clone())
     }
 
@@ -171,23 +170,6 @@ impl DownloadTask for ChunkListTask {
         }
     }
 
-
-    fn on_post_add_to_root(&self, abs_path: String) {
-        self.0.state.write().unwrap().abs_path = Some(abs_path);
-    }
-
-    fn calc_speed(&self, when: Timestamp) -> u32 {
-        let mut state = self.0.state.write().unwrap();
-        match &mut state.task_state {
-            TaskStateImpl::Downloading(downloading) => {
-                let cur_speed = downloading.cur_chunk.calc_speed(when);
-                downloading.history_speed.update(Some(cur_speed), when);
-                cur_speed
-            }
-            _ => 0,
-        }
-    }
-
     fn cur_speed(&self) -> u32 {
         let state = self.0.state.read().unwrap();
         match &state.task_state {
@@ -204,15 +186,7 @@ impl DownloadTask for ChunkListTask {
         }
     }
 
-    fn downloaded(&self) -> u64 {
-        let state = self.0.state.read().unwrap();
-        match &state.task_state {
-            TaskStateImpl::Downloading(downloading) => downloading.downloaded + downloading.cur_chunk.cache().stream().len() as u64, 
-            TaskStateImpl::Finished(downloaded) => *downloaded, 
-            _ => 0,
-        }
-    }
-
+    
     fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
         let waiters = {
             let mut state = self.0.state.write().unwrap();
@@ -240,6 +214,38 @@ impl DownloadTask for ChunkListTask {
         }
 
         Ok(NdnTaskControlState::Canceled)
+    }
+}
+
+#[async_trait::async_trait]
+impl DownloadTask for ChunkListTask {
+    fn clone_as_download_task(&self) -> Box<dyn DownloadTask> {
+        Box::new(self.clone())
+    }
+
+    fn on_post_add_to_root(&self, abs_path: String) {
+        self.0.state.write().unwrap().abs_path = Some(abs_path);
+    }
+
+    fn calc_speed(&self, when: Timestamp) -> u32 {
+        let mut state = self.0.state.write().unwrap();
+        match &mut state.task_state {
+            TaskStateImpl::Downloading(downloading) => {
+                let cur_speed = downloading.cur_chunk.calc_speed(when);
+                downloading.history_speed.update(Some(cur_speed), when);
+                cur_speed
+            }
+            _ => 0,
+        }
+    }
+
+    fn downloaded(&self) -> u64 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(downloading) => downloading.downloaded + downloading.cur_chunk.cache().stream().len() as u64, 
+            TaskStateImpl::Finished(downloaded) => *downloaded, 
+            _ => 0,
+        }
     }
 
     async fn wait_user_canceled(&self) -> BuckyError {
@@ -310,8 +316,6 @@ impl std::io::Seek for ChunkListTaskReader {
 
             Ok(new_offset)
         }
-
-       
     }
 }
 

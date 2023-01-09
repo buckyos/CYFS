@@ -312,23 +312,8 @@ impl UploadSession {
             }
         }
     }
-}
 
-#[async_trait::async_trait]
-impl UploadTask for UploadSession {
-    fn clone_as_task(&self) -> Box<dyn UploadTask> {
-        Box::new(self.clone())
-    }
-
-    fn state(&self) -> NdnTaskState {
-        match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Uploading(_) => NdnTaskState::Running(0), 
-            TaskStateImpl::Finished => NdnTaskState::Finished, 
-            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()),
-        }
-    }
-
-    async fn wait_finish(&self) -> NdnTaskState {
+    pub async fn wait_finish(&self) -> NdnTaskState {
         let waiter = match &mut self.0.state.write().unwrap().task_state {
             TaskStateImpl::Uploading(uploading) => Some(uploading.waiters.new_waiter()), 
             _ => None, 
@@ -340,20 +325,23 @@ impl UploadTask for UploadSession {
             self.state()
         }
     }
+}
+
+impl NdnTask for UploadSession {
+    fn clone_as_task(&self) -> Box<dyn NdnTask> {
+        Box::new(self.clone())
+    }
+    
+    fn state(&self) -> NdnTaskState {
+        match &self.0.state.read().unwrap().task_state {
+            TaskStateImpl::Uploading(_) => NdnTaskState::Running(0), 
+            TaskStateImpl::Finished => NdnTaskState::Finished, 
+            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()),
+        }
+    }
 
     fn control_state(&self) -> NdnTaskControlState {
         self.0.state.read().unwrap().control_state.clone()
-    }
-
-    fn calc_speed(&self, when: Timestamp) -> u32 {
-        match &mut self.0.state.write().unwrap().task_state {
-            TaskStateImpl::Uploading(uploading) => {
-                let cur_speed = uploading.speed_counter.update(when);
-                uploading.history_speed.update(Some(cur_speed), when);
-                cur_speed
-            }, 
-            _ => 0
-        }
     }
 
     fn cur_speed(&self) -> u32 {
@@ -369,6 +357,24 @@ impl UploadTask for UploadSession {
         match &self.0.state.read().unwrap().task_state {
             TaskStateImpl::Uploading(uploading) => {
                 uploading.history_speed.average()
+            }, 
+            _ => 0
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl UploadTask for UploadSession {
+    fn clone_as_upload_task(&self) -> Box<dyn UploadTask> {
+        Box::new(self.clone())
+    }
+
+    fn calc_speed(&self, when: Timestamp) -> u32 {
+        match &mut self.0.state.write().unwrap().task_state {
+            TaskStateImpl::Uploading(uploading) => {
+                let cur_speed = uploading.speed_counter.update(when);
+                uploading.history_speed.update(Some(cur_speed), when);
+                cur_speed
             }, 
             _ => 0
         }

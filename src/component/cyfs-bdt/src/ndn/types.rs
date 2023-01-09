@@ -496,3 +496,25 @@ pub enum NdnTaskControlState {
     Canceled, 
 }
 
+pub trait NdnTask: Send + Sync {
+    fn clone_as_task(&self) -> Box<dyn NdnTask>;
+    fn state(&self) -> NdnTaskState;
+    fn control_state(&self) -> NdnTaskControlState;
+
+    fn resume(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    fn pause(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    
+    fn close(&self) -> BuckyResult<()> {
+        Ok(())
+    }
+
+    fn cur_speed(&self) -> u32;
+    fn history_speed(&self) -> u32;
+}

@@ -22,25 +22,8 @@ impl Default for UploadTaskPriority {
 
 
 #[async_trait::async_trait]
-pub trait UploadTask: Send + Sync {
-    fn clone_as_task(&self) -> Box<dyn UploadTask>;
-    fn state(&self) -> NdnTaskState;
-    async fn wait_finish(&self) -> NdnTaskState;
-    fn control_state(&self) -> NdnTaskControlState;
-
-    fn resume(&self) -> BuckyResult<NdnTaskControlState> {
-        Ok(NdnTaskControlState::Normal)
-    }
-    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
-        Ok(NdnTaskControlState::Normal)
-    }
-    fn pause(&self) -> BuckyResult<NdnTaskControlState> {
-        Ok(NdnTaskControlState::Normal)
-    }
-    
-    fn close(&self) -> BuckyResult<()> {
-        Ok(())
-    }
+pub trait UploadTask: NdnTask {
+    fn clone_as_upload_task(&self) -> Box<dyn UploadTask>;
 
     fn add_task(&self, _path: Option<String>, _sub: Box<dyn UploadTask>) -> BuckyResult<()> {
         Err(BuckyError::new(BuckyErrorCode::NotSupport, "no implement"))
@@ -50,6 +33,4 @@ pub trait UploadTask: Send + Sync {
     }
 
     fn calc_speed(&self, when: Timestamp) -> u32;
-    fn cur_speed(&self) -> u32;
-    fn history_speed(&self) -> u32;
 }
