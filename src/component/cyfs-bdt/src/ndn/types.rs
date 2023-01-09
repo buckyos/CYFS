@@ -548,6 +548,9 @@ pub trait NdnTask: Send + Sync {
     fn cancel_by_error(&self, _err: BuckyError) -> BuckyResult<NdnTaskControlState> {
         Ok(NdnTaskControlState::Normal)
     }
+    fn cancel_by_error(&self) -> BuckyResult<NdnTaskControlState> {
+        
+    }
     fn pause(&self) -> BuckyResult<NdnTaskControlState> {
         Ok(NdnTaskControlState::Normal)
     }
