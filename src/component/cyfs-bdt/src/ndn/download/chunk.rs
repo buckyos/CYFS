@@ -15,7 +15,8 @@ use crate::{
     stack::{WeakStack, Stack}
 };
 use super::super::{
-    chunk::*, 
+    chunk::*,
+    types::* 
 };
 use super::{
     common::*
@@ -116,19 +117,19 @@ impl DownloadTask for ChunkTask {
         Box::new(self.clone())
     }
 
-    fn state(&self) -> DownloadTaskState {
+    fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Init => DownloadTaskState::Downloading(0), 
-            TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.downloader.cur_speed()), 
-            TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone()), 
-            TaskStateImpl::Finished => DownloadTaskState::Finished
+            TaskStateImpl::Init => NdnTaskState::Running(0), 
+            TaskStateImpl::Downloading(downloading) => NdnTaskState::Running(downloading.downloader.cur_speed()), 
+            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()), 
+            TaskStateImpl::Finished => NdnTaskState::Finished
         }
     }
 
-    fn control_state(&self) -> DownloadTaskControlState {
+    fn control_state(&self) -> NdnTaskControlState {
         match &self.0.state.read().unwrap().control_state {
-            ControlStateImpl::Normal(_) => DownloadTaskControlState::Normal, 
-            ControlStateImpl::Canceled => DownloadTaskControlState::Canceled
+            ControlStateImpl::Normal(_) => NdnTaskControlState::Normal, 
+            ControlStateImpl::Canceled => NdnTaskControlState::Canceled
         }
     }
 
@@ -199,7 +200,7 @@ impl DownloadTask for ChunkTask {
         }
     }
 
-    fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
         let waiters = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
@@ -225,7 +226,7 @@ impl DownloadTask for ChunkTask {
             waiters.wake();
         }
 
-        Ok(DownloadTaskControlState::Canceled)
+        Ok(NdnTaskControlState::Canceled)
     }
 
     async fn wait_user_canceled(&self) -> BuckyError {

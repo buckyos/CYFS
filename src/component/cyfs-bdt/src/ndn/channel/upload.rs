@@ -29,7 +29,7 @@ struct UploadingState {
 
 struct StateImpl {
     task_state: TaskStateImpl, 
-    control_state: UploadTaskControlState, 
+    control_state: NdnTaskControlState, 
 }
 
 enum TaskStateImpl {
@@ -74,7 +74,7 @@ impl UploadSession {
                     speed_counter: SpeedCounter::new(0), 
                     encoder
                 }), 
-                control_state: UploadTaskControlState::Normal
+                control_state: NdnTaskControlState::Normal
             }), 
             channel, 
         }))
@@ -320,15 +320,15 @@ impl UploadTask for UploadSession {
         Box::new(self.clone())
     }
 
-    fn state(&self) -> UploadTaskState {
+    fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Uploading(_) => UploadTaskState::Uploading(0), 
-            TaskStateImpl::Finished => UploadTaskState::Finished, 
-            TaskStateImpl::Error(err) => UploadTaskState::Error(err.clone()),
+            TaskStateImpl::Uploading(_) => NdnTaskState::Running(0), 
+            TaskStateImpl::Finished => NdnTaskState::Finished, 
+            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()),
         }
     }
 
-    async fn wait_finish(&self) -> UploadTaskState {
+    async fn wait_finish(&self) -> NdnTaskState {
         let waiter = match &mut self.0.state.write().unwrap().task_state {
             TaskStateImpl::Uploading(uploading) => Some(uploading.waiters.new_waiter()), 
             _ => None, 
@@ -341,7 +341,7 @@ impl UploadTask for UploadSession {
         }
     }
 
-    fn control_state(&self) -> UploadTaskControlState {
+    fn control_state(&self) -> NdnTaskControlState {
         self.0.state.read().unwrap().control_state.clone()
     }
 

@@ -473,31 +473,63 @@ impl LocalTransService {
     ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
         let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
 
-        let task = self
-            .bdt_stack
-            .ndn()
-            .root_task()
-            .download()
-            .sub_task(&group)
-            .ok_or_else(|| {
-                let msg = format!("get task group but ot found! group={}", group);
-                error!("{}", msg);
-                BuckyError::new(BuckyErrorCode::NotFound, msg)
-            })?;
+        match req.group_type {
+            TransTaskGroupType::Download => {
+                let task = self
+                    .bdt_stack
+                    .ndn()
+                    .root_task()
+                    .download()
+                    .sub_task(&group)
+                    .ok_or_else(|| {
+                        let msg = format!("get task group but ot found! group={}", group);
+                        error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::NotFound, msg)
+                    })?;
 
-        let mut resp = TransGetTaskGroupStateInputResponse {
-            state: task.state(),
-            control_state: task.control_state(),
-            speed: None,
-            cur_speed: task.cur_speed(),
-            history_speed: task.history_speed(),
-        };
+                let mut resp = TransGetTaskGroupStateInputResponse {
+                    state: task.state(),
+                    control_state: task.control_state(),
+                    speed: None,
+                    cur_speed: task.cur_speed(),
+                    history_speed: task.history_speed(),
+                };
 
-        if let Some(tm) = req.speed_when {
-            resp.speed = Some(task.calc_speed(tm));
+                if let Some(tm) = req.speed_when {
+                    resp.speed = Some(task.cur_speed());
+                }
+
+                Ok(resp)
+            }, 
+            TransTaskGroupType::Upload => {
+                let task = self
+                    .bdt_stack
+                    .ndn()
+                    .root_task()
+                    .upload()
+                    .sub_task(&group)
+                    .ok_or_else(|| {
+                        let msg = format!("get task group but ot found! group={}", group);
+                        error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::NotFound, msg)
+                    })?;
+
+                let mut resp = TransGetTaskGroupStateInputResponse {
+                    state: task.state(),
+                    control_state: task.control_state(),
+                    speed: None,
+                    cur_speed: task.cur_speed(),
+                    history_speed: task.history_speed(),
+                };
+
+                if let Some(tm) = req.speed_when {
+                    resp.speed = Some(task.cur_speed());
+                }
+
+                Ok(resp)
+            }, 
         }
-
-        Ok(resp)
+        
     }
 
     async fn control_task_group(
@@ -506,23 +538,46 @@ impl LocalTransService {
     ) -> BuckyResult<TransControlTaskGroupInputResponse> {
         let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
 
-        let task = self
-            .bdt_stack
-            .ndn()
-            .root_task()
-            .download()
-            .sub_task(&group)
-            .ok_or_else(|| {
-                let msg = format!("get task group but ot found! group={}", group);
-                error!("{}", msg);
-                BuckyError::new(BuckyErrorCode::NotFound, msg)
-            })?;
+        let control_state = match req.group_type {
+            TransTaskGroupType::Download => {
+                let task = self
+                    .bdt_stack
+                    .ndn()
+                    .root_task()
+                    .download()
+                    .sub_task(&group)
+                    .ok_or_else(|| {
+                        let msg = format!("get task group but ot found! group={}", group);
+                        error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::NotFound, msg)
+                    })?;
 
-        let control_state = match req.action {
-            TransTaskGroupControlAction::Pause => task.pause()?,
-            TransTaskGroupControlAction::Resume => task.resume()?,
-            TransTaskGroupControlAction::Cancel => task.cancel()?,
-        };
+                match req.action {
+                    TransTaskGroupControlAction::Pause => task.pause()?,
+                    TransTaskGroupControlAction::Resume => task.resume()?,
+                    TransTaskGroupControlAction::Cancel => task.cancel()?,
+                }
+            }, 
+            TransTaskGroupType::Upload => {
+                let task = self
+                    .bdt_stack
+                    .ndn()
+                    .root_task()
+                    .upload()
+                    .sub_task(&group)
+                    .ok_or_else(|| {
+                        let msg = format!("get task group but ot found! group={}", group);
+                        error!("{}", msg);
+                        BuckyError::new(BuckyErrorCode::NotFound, msg)
+                    })?;
+
+                match req.action {
+                    TransTaskGroupControlAction::Pause => task.pause()?,
+                    TransTaskGroupControlAction::Resume => task.resume()?,
+                    TransTaskGroupControlAction::Cancel => task.cancel()?,
+                }
+            },
+        }; 
 
         let resp = TransControlTaskGroupInputResponse { control_state };
 

@@ -3,8 +3,11 @@ use std::{
     time::Duration, 
     collections::LinkedList, 
 };
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use serde_json::{Map, Value};
-use serde::Serialize;
 use cyfs_base::*;
 use crate::{
     types::*
@@ -474,3 +477,22 @@ impl SpeedCounter {
         self.cur_speed
     }
 }
+
+
+
+// 对scheduler的接口
+#[derive(Debug, Serialize, Deserialize)]
+pub enum NdnTaskState {
+    Running(u32/*速度*/),
+    Paused,
+    Error(BuckyError/*被cancel的原因*/), 
+    Finished
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum NdnTaskControlState {
+    Normal, 
+    Paused, 
+    Canceled, 
+}
+

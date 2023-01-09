@@ -71,19 +71,19 @@ impl DownloadTask for DownloadGroup {
         Box::new(self.clone())
     }
 
-    fn state(&self) -> DownloadTaskState {
+    fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.history_speed.latest()), 
-            TaskStateImpl::Finished => DownloadTaskState::Finished, 
-            TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone())
+            TaskStateImpl::Downloading(downloading) => NdnTaskState::Running(downloading.history_speed.latest()), 
+            TaskStateImpl::Finished => NdnTaskState::Finished, 
+            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone())
         }
         
     }
 
-    fn control_state(&self) -> DownloadTaskControlState {
+    fn control_state(&self) -> NdnTaskControlState {
         match &self.0.state.read().unwrap().control_state {
-            ControlStateImpl::Normal(_) => DownloadTaskControlState::Normal, 
-            ControlStateImpl::Canceled => DownloadTaskControlState::Canceled
+            ControlStateImpl::Normal(_) => NdnTaskControlState::Normal, 
+            ControlStateImpl::Canceled => NdnTaskControlState::Canceled
         }
     }
 
@@ -157,7 +157,7 @@ impl DownloadTask for DownloadGroup {
             TaskStateImpl::Downloading(downloading) => {
                 for sub in &downloading.running {
                     match sub.state() {
-                        DownloadTaskState::Finished | DownloadTaskState::Error(_) => continue, 
+                        NdnTaskState::Finished | NdnTaskState::Error(_) => continue, 
                         _ => {
                             cur_speed += sub.calc_speed(when);
                             running.push(sub.clone_as_task());
@@ -192,7 +192,7 @@ impl DownloadTask for DownloadGroup {
         }
     }
 
-    fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
         let (tasks, waiters) = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
@@ -224,7 +224,7 @@ impl DownloadTask for DownloadGroup {
             let _ = task.cancel();
         }
         
-        Ok(DownloadTaskControlState::Canceled)
+        Ok(NdnTaskControlState::Canceled)
     }
 
     async fn wait_user_canceled(&self) -> BuckyError {

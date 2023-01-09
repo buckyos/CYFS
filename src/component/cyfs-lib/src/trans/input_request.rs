@@ -102,7 +102,7 @@ pub struct TransQueryTasksInputResponse {
 #[derive(Debug)]
 pub struct TransGetTaskGroupStateInputRequest {
     pub common: NDNInputRequestCommon,
-
+    pub group_type: TransTaskGroupType, 
     pub group: String,
     pub speed_when: Option<u64>,
 }
@@ -113,7 +113,7 @@ pub type TransGetTaskGroupStateInputResponse = TransGetTaskGroupStateOutputRespo
 #[derive(Debug)]
 pub struct TransControlTaskGroupInputRequest {
     pub common: NDNInputRequestCommon,
-
+    pub group_type: TransTaskGroupType, 
     pub group: String,
     pub action: TransTaskGroupControlAction,
 }

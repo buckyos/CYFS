@@ -2,6 +2,9 @@ use cyfs_base::*;
 use crate::{
     types::*
 };
+use super::super::{
+    types::*
+};
 
 #[derive(Clone, Copy)]
 pub enum UploadTaskPriority {
@@ -17,38 +20,22 @@ impl Default for UploadTaskPriority {
 }
 
 
-// 对scheduler的接口
-#[derive(Debug)]
-pub enum UploadTaskState {
-    Uploading(u32/*速度*/),
-    Paused,
-    Error(BuckyError/*被cancel的原因*/), 
-    Finished
-}
-
-#[derive(Clone, Debug)]
-pub enum UploadTaskControlState {
-    Normal, 
-    Paused, 
-    Canceled, 
-}
-
 
 #[async_trait::async_trait]
 pub trait UploadTask: Send + Sync {
     fn clone_as_task(&self) -> Box<dyn UploadTask>;
-    fn state(&self) -> UploadTaskState;
-    async fn wait_finish(&self) -> UploadTaskState;
-    fn control_state(&self) -> UploadTaskControlState;
+    fn state(&self) -> NdnTaskState;
+    async fn wait_finish(&self) -> NdnTaskState;
+    fn control_state(&self) -> NdnTaskControlState;
 
-    fn resume(&self) -> BuckyResult<UploadTaskControlState> {
-        Ok(UploadTaskControlState::Normal)
+    fn resume(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
     }
-    fn cancel(&self) -> BuckyResult<UploadTaskControlState> {
-        Ok(UploadTaskControlState::Normal)
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
     }
-    fn pause(&self) -> BuckyResult<UploadTaskControlState> {
-        Ok(UploadTaskControlState::Normal)
+    fn pause(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
     }
     
     fn close(&self) -> BuckyResult<()> {

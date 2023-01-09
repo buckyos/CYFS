@@ -18,10 +18,7 @@ use super::super::{
     chunk::*,
     channel::{DownloadSession, protocol::v0::*}
 };
-use serde::{
-    Deserialize,
-    Serialize,
-};
+
 
 #[derive(Clone, Debug)]
 pub struct DownloadSourceFilter {
@@ -102,38 +99,23 @@ impl Default for DownloadTaskPriority {
 }
 
 
-// 对scheduler的接口
-#[derive(Debug, Serialize, Deserialize)]
-pub enum DownloadTaskState {
-    Downloading(u32/*速度*/),
-    Paused,
-    Error(BuckyError/*被cancel的原因*/), 
-    Finished
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum DownloadTaskControlState {
-    Normal, 
-    Paused, 
-    Canceled, 
-}
 
 #[async_trait::async_trait]
 pub trait DownloadTask: Send + Sync {
     fn clone_as_task(&self) -> Box<dyn DownloadTask>;
 
-    fn state(&self) -> DownloadTaskState;
-    fn control_state(&self) -> DownloadTaskControlState;
+    fn state(&self) -> NdnTaskState;
+    fn control_state(&self) -> NdnTaskControlState;
     async fn wait_user_canceled(&self) -> BuckyError;
 
-    fn resume(&self) -> BuckyResult<DownloadTaskControlState> {
-        Ok(DownloadTaskControlState::Normal)
+    fn resume(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
     }
-    fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
-        Ok(DownloadTaskControlState::Normal)
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
     }
-    fn pause(&self) -> BuckyResult<DownloadTaskControlState> {
-        Ok(DownloadTaskControlState::Normal)
+    fn pause(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
     }
 
     fn add_task(&self, _path: Option<String>, _sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
@@ -222,7 +204,7 @@ impl DownloadTaskSplitRead for DownloadTaskReader {
     ) -> Poll<std::io::Result<Option<(ChunkCache, Range<usize>)>>> {
         let pined = self.get_mut();
         trace!("{} split_read: {} offset: {}", pined, buffer.len(), pined.offset);
-        if let DownloadTaskState::Error(err) = pined.task.state() {
+        if let NdnTaskState::Error(err) = pined.task.state() {
             trace!("{} split_read: {} offset: {} error: {}", pined, buffer.len(), pined.offset, err);
             return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
         } 

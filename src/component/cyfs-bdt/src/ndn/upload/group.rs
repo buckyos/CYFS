@@ -72,23 +72,23 @@ impl UploadTask for UploadGroup {
         Box::new(self.clone())
     }
 
-    fn state(&self) -> UploadTaskState {
-        UploadTaskState::Uploading(0)
+    fn state(&self) -> NdnTaskState {
+        NdnTaskState::Running(0)
     }
 
-    async fn wait_finish(&self) -> UploadTaskState {
+    async fn wait_finish(&self) -> NdnTaskState {
         unimplemented!()
     }
 
-    fn control_state(&self) -> UploadTaskControlState {
+    fn control_state(&self) -> NdnTaskControlState {
         match &self.0.state.read().unwrap().control_state {
-            ControlStateImpl::Normal(_) => UploadTaskControlState::Normal, 
-            ControlStateImpl::Canceled => UploadTaskControlState::Canceled
+            ControlStateImpl::Normal(_) => NdnTaskControlState::Normal, 
+            ControlStateImpl::Canceled => NdnTaskControlState::Canceled
         }
     }
 
     
-    fn cancel(&self) -> BuckyResult<UploadTaskControlState> {
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
         let (tasks, waiters) = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
@@ -120,7 +120,7 @@ impl UploadTask for UploadGroup {
             let _ = task.cancel();
         }
         
-        Ok(UploadTaskControlState::Canceled)
+        Ok(NdnTaskControlState::Canceled)
     }
 
     fn add_task(&self, path: Option<String>, sub: Box<dyn UploadTask>) -> BuckyResult<()> {
@@ -193,7 +193,7 @@ impl UploadTask for UploadGroup {
             TaskStateImpl::Uploading(uploading) => {
                 for sub in &uploading.running {
                     match sub.state() {
-                        UploadTaskState::Finished | UploadTaskState::Error(_) => continue, 
+                        NdnTaskState::Finished | NdnTaskState::Error(_) => continue, 
                         _ => {
                             cur_speed += sub.calc_speed(when);
                             running.push(sub.clone_as_task());

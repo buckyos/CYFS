@@ -155,19 +155,19 @@ impl DownloadTask for ChunkListTask {
         Box::new(self.clone())
     }
 
-    fn state(&self) -> DownloadTaskState {
+    fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Pending => DownloadTaskState::Downloading(0), 
-            TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.history_speed.latest()), 
-            TaskStateImpl::Finished(_) => DownloadTaskState::Finished, 
-            TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone()), 
+            TaskStateImpl::Pending => NdnTaskState::Running(0), 
+            TaskStateImpl::Downloading(downloading) => NdnTaskState::Running(downloading.history_speed.latest()), 
+            TaskStateImpl::Finished(_) => NdnTaskState::Finished, 
+            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()), 
         }
     }
 
-    fn control_state(&self) -> DownloadTaskControlState {
+    fn control_state(&self) -> NdnTaskControlState {
         match &self.0.state.read().unwrap().control_state {
-            ControlStateImpl::Normal(_) => DownloadTaskControlState::Normal, 
-            ControlStateImpl::Canceled => DownloadTaskControlState::Canceled
+            ControlStateImpl::Normal(_) => NdnTaskControlState::Normal, 
+            ControlStateImpl::Canceled => NdnTaskControlState::Canceled
         }
     }
 
@@ -213,7 +213,7 @@ impl DownloadTask for ChunkListTask {
         }
     }
 
-    fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
         let waiters = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
@@ -239,7 +239,7 @@ impl DownloadTask for ChunkListTask {
             waiters.wake();
         }
 
-        Ok(DownloadTaskControlState::Canceled)
+        Ok(NdnTaskControlState::Canceled)
     }
 
     async fn wait_user_canceled(&self) -> BuckyError {
@@ -327,7 +327,7 @@ impl DownloadTaskSplitRead for ChunkListTaskReader {
         if ranges.is_empty() {
             return Poll::Ready(Ok(None));
         }
-        if let DownloadTaskState::Error(err) = pined.task.state() {
+        if let NdnTaskState::Error(err) = pined.task.state() {
             return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
         } 
         let (index, range) = ranges[0].clone();

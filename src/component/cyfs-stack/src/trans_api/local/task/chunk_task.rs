@@ -249,7 +249,7 @@ impl Task for DownloadChunkTask {
 
             let state = task.state();
             match state {
-                cyfs_bdt::DownloadTaskState::Downloading(speed) => DownloadTaskState {
+                cyfs_bdt::NdnTaskState::Running(speed) => DownloadTaskState {
                     task_status: TaskStatus::Running,
                     err_code: None,
                     speed: speed as u64,
@@ -258,7 +258,7 @@ impl Task for DownloadChunkTask {
                     sum_size: self.chunk_id.len() as u64,
                     group,
                 },
-                cyfs_bdt::DownloadTaskState::Paused => DownloadTaskState {
+                cyfs_bdt::NdnTaskState::Paused => DownloadTaskState {
                     task_status: TaskStatus::Paused,
                     err_code: None,
                     speed: 0,
@@ -267,7 +267,7 @@ impl Task for DownloadChunkTask {
                     sum_size: self.chunk_id.len() as u64,
                     group,
                 },
-                cyfs_bdt::DownloadTaskState::Error(err) => {
+                cyfs_bdt::NdnTaskState::Error(err) => {
                     if err.code() == BuckyErrorCode::Interrupted {
                         DownloadTaskState {
                             task_status: TaskStatus::Stopped,
@@ -296,7 +296,7 @@ impl Task for DownloadChunkTask {
                         }
                     }
                 }
-                cyfs_bdt::DownloadTaskState::Finished => {
+                cyfs_bdt::NdnTaskState::Finished => {
                     *self.task_status.lock().unwrap() = TaskStatus::Finished;
                     self.task_store
                         .as_ref()

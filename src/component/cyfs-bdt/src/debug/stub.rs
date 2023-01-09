@@ -530,10 +530,10 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTask>, timeout: u32) -
 
     loop {
         match task.state() {
-            DownloadTaskState::Finished => {
+            NdnTaskState::Finished => {
                 break Ok(());
             },
-            DownloadTaskState::Downloading(speed) => {
+            NdnTaskState::Running(speed) => {
                 if speed > 0 {
                     i = 0;
 
@@ -544,7 +544,7 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTask>, timeout: u32) -
                     i += 1;
                 }
             },
-            DownloadTaskState::Error(e) => {
+            NdnTaskState::Error(e) => {
                 break Err(format!("download err, code: {:?}\r\n", e));
             },
             _ => {
