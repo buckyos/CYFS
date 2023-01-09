@@ -4,6 +4,7 @@ use cyfs_core::GroupRPath;
 
 use crate::HotstuffMessage;
 
+#[derive(Clone)]
 pub(crate) struct Sender {}
 
 impl Sender {

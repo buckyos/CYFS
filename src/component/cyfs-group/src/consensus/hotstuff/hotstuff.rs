@@ -71,6 +71,7 @@ impl Hotstuff {
 
         let vote_mgr = VoteMgr::new(committee.clone(), round);
         let init_timer_interval = store.group().consensus_interval();
+        let max_height = store.header_height() + 2;
 
         let mut hotstuff = Self {
             local_id,
@@ -84,7 +85,13 @@ impl Hotstuff {
             network_sender,
             rx_message,
             delegate,
-            synchronizer: Synchronizer::spawn(network_sender.clone(), rpath.clone(), rx_message),
+            synchronizer: Synchronizer::spawn(
+                network_sender.clone(),
+                rpath.clone(),
+                max_height,
+                round,
+                rx_message,
+            ),
             non_driver,
             rpath,
             tx_proposal_consume,
@@ -169,11 +176,13 @@ impl Hotstuff {
                     }
 
                     let max_round_block = self.store.block_with_max_round();
-                    return self.synchronizer.push_outorder_block(
+                    self.synchronizer.push_outorder_block(
                         block.clone(),
                         max_round_block.map_or(1, |block| block.height() + 1),
                         remote,
                     );
+
+                    return Ok(());
                 }
                 crate::storage::BlockLinkState::InvalidBranch => {
                     log::warn!("receive block in invalid branch.");
@@ -565,11 +574,12 @@ impl Hotstuff {
                 Err(_) => {
                     // 同步前序block
                     let max_round_block = self.store.block_with_max_round();
-                    return self.synchronizer.sync_with_round(
+                    self.synchronizer.sync_with_round(
                         max_round_block.map_or(1, |block| block.height() + 1),
                         max_high_qc.high_qc_round,
                         remote,
                     );
+                    return Ok(());
                 }
             };
             Some(block)
@@ -879,7 +889,7 @@ impl Hotstuff {
         }
     }
 
-    async fn run(&mut self) {
+    async fn run(&mut self) -> ! {
         self.recover().await;
 
         // This is the main loop: it processes incoming blocks and votes,
@@ -895,7 +905,7 @@ impl Hotstuff {
                         log::warn!("[hotstuff] rx_message closed.");
                         Ok(())
                     },
-                    _ => panic!("unknown message")
+                    Ok((HotstuffMessage::SyncRequest((min_bound, max_bound)), remote)) => self.synchronizer.process_sync_request(min_bound, max_bound, remote, &self.store).await
                 },
                 message = self.rx_message_inner.recv().fuse() => match message {
                     Ok((block, remote)) => {

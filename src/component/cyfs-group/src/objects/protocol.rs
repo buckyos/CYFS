@@ -7,6 +7,12 @@ use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, Hots
 use serde::Serialize;
 use sha2::Digest;
 
+#[derive(Copy, RawEncode, RawDecode)]
+pub enum SyncBound {
+    Height(u64),
+    Round(u64),
+}
+
 #[derive(Clone, RawEncode, RawDecode)]
 pub(crate) enum HotstuffMessage {
     Block(cyfs_core::GroupConsensusBlock),
@@ -14,8 +20,7 @@ pub(crate) enum HotstuffMessage {
     TimeoutVote(HotstuffTimeoutVote),
     Timeout(cyfs_core::HotstuffTimeout),
 
-    SyncWithHeight(u64, u64),
-    SyncWithRound(u64, u64),
+    SyncRequest(SyncBound, SyncBound),
 }
 
 #[derive(Clone, RawEncode, RawDecode)]

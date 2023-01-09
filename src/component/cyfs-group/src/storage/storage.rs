@@ -66,10 +66,6 @@ impl Storage {
         unimplemented!()
     }
 
-    pub fn prepare_height(&self) -> u64 {
-        unimplemented!()
-    }
-
     pub fn pre_commits(&self) -> &HashMap<ObjectId, GroupConsensusBlock> {
         unimplemented!()
     }
@@ -94,7 +90,7 @@ impl Storage {
         unimplemented!()
     }
 
-    pub fn get_rpath_by_id(rpath_id: &ObjectId) -> BuckyResult<Option<GroupRPath>> {
+    pub async fn get_block_by_height(&self, height: u64) -> BuckyResult<GroupConsensusBlock> {
         unimplemented!()
     }
 
