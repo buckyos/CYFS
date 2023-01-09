@@ -335,7 +335,7 @@ impl NdnTask for UploadSession {
     
     fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Uploading(_) => NdnTaskState::Running, 
+            TaskStateImpl::Uploading(_) => NdnTaskState::Running,
             TaskStateImpl::Finished => NdnTaskState::Finished, 
             TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()),
         }

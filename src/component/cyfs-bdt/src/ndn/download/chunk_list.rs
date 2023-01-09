@@ -193,7 +193,6 @@ impl NdnTask for ChunkListTask {
 
 
     fn cancel_by_error(&self, err: BuckyError) -> BuckyResult<NdnTaskControlState> {
-
         let waiters = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {

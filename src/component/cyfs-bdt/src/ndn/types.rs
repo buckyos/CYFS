@@ -560,3 +560,4 @@ impl ProgressCounter {
         self.cur_speed
     }
 }
+

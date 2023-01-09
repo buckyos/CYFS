@@ -475,7 +475,6 @@ impl LocalTransService {
     ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
         let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
 
-        // use cyfs_bdt::{DownloadTask, UploadTask, NdnTask};
         let task = match req.group_type {
             TransTaskGroupType::Download => self.bdt_stack.ndn().root_task().download().sub_task(&group).map(|task| task.clone_as_task()), 
             TransTaskGroupType::Upload => self.bdt_stack.ndn().root_task().upload().sub_task(&group).map(|task| task.clone_as_task()), 
@@ -493,11 +492,11 @@ impl LocalTransService {
             history_speed: task.history_speed(),
         };
 
-
-                Ok(resp)
-            }, 
+        if let Some(tm) = req.speed_when {
+            resp.speed = Some(task.cur_speed());
         }
-        
+
+        Ok(resp)
     }
 
     async fn control_task_group(

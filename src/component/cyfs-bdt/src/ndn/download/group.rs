@@ -117,6 +117,7 @@ impl NdnTask for DownloadGroup {
         }
     }
 
+
     fn cancel_by_error(&self, err: BuckyError) -> BuckyResult<NdnTaskControlState> {
         let (tasks, waiters) = {
             let mut state = self.0.state.write().unwrap();
