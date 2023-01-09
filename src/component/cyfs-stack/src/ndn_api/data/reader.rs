@@ -47,7 +47,14 @@ impl ChunkStoreReader {
         path: &Path,
         offset: u64,
     ) -> BuckyResult<Box<dyn AsyncReadWithSeek + Unpin + Send + Sync>> {
-        debug!("begin read {} from file {:?}", chunk, path);
+        debug!(
+            "begin read chunk from file, chunk={}, offset={}, len={}, path={}",
+            chunk,
+            offset,
+            chunk.len(),
+            path.display()
+        );
+
         let mut file = OpenOptions::new()
             .read(true)
             .open(path)
@@ -59,7 +66,13 @@ impl ChunkStoreReader {
             })?;
 
         let actual_offset = file.seek(SeekFrom::Start(offset)).await.map_err(|e| {
-            let msg = format!("seek file {:?} to offset {} failed for {}", path, offset, e);
+            let msg = format!(
+                "seek file to offset failed! chunk={}, offset={}, path={}, {}",
+                chunk,
+                offset,
+                path.display(),
+                e
+            );
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::IoError, msg)
@@ -67,8 +80,8 @@ impl ChunkStoreReader {
 
         if actual_offset != offset {
             let msg = format!(
-                "seek file {:?} to offset {} actual offset {}",
-                path, offset, actual_offset
+                "seek file to offset but unmatch! chunk={}, path={}, except offset={}, got={}",
+                chunk, path.display(), offset, actual_offset
             );
             error!("{}", msg);
 
@@ -183,7 +196,7 @@ impl ChunkStoreReader {
         let (reader, _) = self.read_impl(chunk).await?;
         Ok(reader)
     }
-    
+
     /*
     async fn read_to_buf(chunk: &ChunkId, path: &Path, offset: u64) -> BuckyResult<Vec<u8>> {
         let mut reader = Self::read_chunk(chunk, path, offset).await?;
