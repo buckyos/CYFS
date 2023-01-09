@@ -509,6 +509,9 @@ pub trait NdnTask: Send + Sync {
     fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
         Ok(NdnTaskControlState::Normal)
     }
+    fn cancel_by_error(&self) -> BuckyResult<NdnTaskControlState> {
+        
+    }
     fn pause(&self) -> BuckyResult<NdnTaskControlState> {
         Ok(NdnTaskControlState::Normal)
     }
@@ -557,4 +560,5 @@ impl ProgressCounter {
         self.cur_speed
     }
 }
+
 
