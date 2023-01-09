@@ -3,7 +3,6 @@ use super::session::*;
 use cyfs_base::{bucky_time_now, BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_debug::Mutex;
 
-
 use async_trait::async_trait;
 use futures::future::{AbortHandle, Abortable};
 use futures::prelude::*;
@@ -16,7 +15,6 @@ use std::time::Duration;
 
 // ws request的默认超时时间
 const WS_REQUEST_DEFAULT_TIMEOUT: Duration = Duration::from_secs(60 * 10 * 10);
-
 
 #[async_trait]
 pub trait WebSocketRequestHandler: Send + Sync + 'static {
@@ -47,11 +45,9 @@ pub trait WebSocketRequestHandler: Send + Sync + 'static {
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;
 
-        self.on_string_request(requestor, cmd, content).await.map(|v| {
-            v.map(|v| {
-                v.into_bytes()
-            })
-        })
+        self.on_string_request(requestor, cmd, content)
+            .await
+            .map(|v| v.map(|v| v.into_bytes()))
     }
 
     async fn on_string_request(
@@ -77,14 +73,23 @@ struct RequestItem {
 }
 
 impl RequestItem {
-    fn timeout(&mut self) {
+    fn new(seq: u16) -> Self {
+        Self {
+            seq,
+            send_tick: bucky_time_now(),
+            resp: None,
+            waker: None,
+        }
+    }
+
+    fn resp(&mut self, code: BuckyErrorCode) {
         if let Some(waker) = self.waker.take() {
             if self.resp.is_none() {
-                self.resp = Some(Err(BuckyError::from(BuckyErrorCode::Timeout)));
+                self.resp = Some(Err(BuckyError::from(code)));
             } else {
                 warn!(
-                    "ws request timeout but already has resp! send_tick={}, seq={}",
-                    self.send_tick, self.seq
+                    "end ws request with {:?} but already has resp! send_tick={}, seq={}",
+                    code, self.send_tick, self.seq
                 );
                 unreachable!();
             }
@@ -92,11 +97,20 @@ impl RequestItem {
             waker.abort();
         }
     }
+
+    fn timeout(&mut self) {
+        self.resp(BuckyErrorCode::Timeout);
+    }
+
+    fn abort(&mut self) {
+        self.resp(BuckyErrorCode::Aborted);
+    }
 }
 
 impl Drop for RequestItem {
     fn drop(&mut self) {
-        self.timeout();
+        // info!("will drop ws request! seq={}", self.seq);
+        self.abort();
     }
 }
 
@@ -127,12 +141,7 @@ impl WebSocketRequestContainer {
             self.next_seq = 1;
         }
 
-        let req_item = RequestItem {
-            seq,
-            send_tick: bucky_time_now(),
-            resp: None,
-            waker: None,
-        };
+        let req_item = RequestItem::new(seq);
 
         let req_item = Arc::new(Mutex::new(req_item));
         let (old, mut list) = self.list.notify_insert(seq, req_item.clone());
@@ -187,23 +196,12 @@ impl WebSocketRequestContainer {
 
     // 清空所有元素
     fn clear(&mut self) {
-        self.list.clear();
-
-        /*
-        这里没办法移除所有元素并依次调用timeout，所以只能调用clear，在requestitem的drop里面触发timeout
-        if self.list.is_empty() {
-            Vec::new()
-        } else {
-            let timeout_now = Instant::now().checked_add(Duration::from_secs(WS_REQUEST_DEFAULT_TIMEOUT * 2)).unwrap();
-
-            for item in self.list.peek_iter().next() {
-
-            }
-            let ret = self.list.remove_expired(now);
-            assert!(self.list.is_empty());
-            ret
+        for (seq, item) in self.list.iter() {
+            info!("will abort ws request: seq={}", seq);
+            item.lock().unwrap().abort();
         }
-        */
+
+        self.list.clear();
     }
 
     fn on_timeout(sid: u32, list: Vec<(u16, Arc<Mutex<RequestItem>>)>) {
@@ -239,6 +237,8 @@ impl Drop for WebSocketRequestManager {
             info!("will stop ws request monitor: sid={}", self.sid());
             canceler.abort();
         }
+
+        self.reqs.lock().unwrap().clear();
     }
 }
 
@@ -289,6 +289,10 @@ impl WebSocketRequestManager {
             let mut local = self.session.lock().unwrap();
             assert!(local.is_some());
 
+            debug!(
+                "ws request manager unbind session! sid={}",
+                local.as_ref().unwrap().sid()
+            );
             local.take()
         };
     }
@@ -369,7 +373,9 @@ impl WebSocketRequestManager {
 
             return Err(e);
         }
-        
+
+        // info!("request send complete, now will wait for resp! cmd={}", cmd);
+
         // 等待唤醒
         let future = Abortable::new(async_std::future::pending::<()>(), abort_registration);
         future.await.unwrap_err();
@@ -389,7 +395,8 @@ impl WebSocketRequestManager {
 
     // 不带应答的请求
     async fn post_req_without_resp(&self, cmd: u16, msg: String) -> BuckyResult<()> {
-        self.post_bytes_req_without_resp(cmd, msg.into_bytes()).await
+        self.post_bytes_req_without_resp(cmd, msg.into_bytes())
+            .await
     }
 
     async fn post_bytes_req_without_resp(&self, cmd: u16, msg: Vec<u8>) -> BuckyResult<()> {
@@ -501,7 +508,6 @@ impl WebSocketRequestManager {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
