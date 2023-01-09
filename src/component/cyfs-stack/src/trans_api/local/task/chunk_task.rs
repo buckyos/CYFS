@@ -249,6 +249,7 @@ impl Task for DownloadChunkTask {
 
             let state = task.state();
             match state {
+
                 cyfs_bdt::NdnTaskState::Running => DownloadTaskState {
                     task_status: TaskStatus::Running,
                     err_code: None,

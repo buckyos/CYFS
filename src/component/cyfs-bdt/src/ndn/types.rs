@@ -524,6 +524,7 @@ pub trait NdnTask: Send + Sync {
     fn history_speed(&self) -> u32;
 }
 
+
 pub struct ProgressCounter {
     last_recv: u64, 
     last_update: Timestamp, 
@@ -560,5 +561,3 @@ impl ProgressCounter {
         self.cur_speed
     }
 }
-
-

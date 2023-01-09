@@ -293,7 +293,9 @@ impl Task for DownloadFileTask {
 
             let state = task.state();
             match state {
+
                 cyfs_bdt::NdnTaskState::Running => {
+
                     log::info!("downloading speed {}", task.cur_speed());
                     let progress = ((task.downloaded() as f32 / self.file.desc().content().len() as f32) * 100.0) as u64;
                     {

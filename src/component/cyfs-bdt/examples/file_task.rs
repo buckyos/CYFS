@@ -107,6 +107,7 @@ async fn main() {
     loop {
         log::info!("task speed {} progress {}", task.cur_speed(), task.downloaded() as f32 / file_len as f32);
         let _ = async_std::task::sleep(Duration::from_secs(1)).await;
+
         if let NdnTaskState::Finished = task.state() {
             break;
         }
