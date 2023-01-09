@@ -73,7 +73,7 @@ impl NdnTask for UploadGroup {
     
     fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Uploading(uploading) => NdnTaskState::Running(uploading.history_speed.latest()), 
+            TaskStateImpl::Uploading(_) => NdnTaskState::Running, 
             TaskStateImpl::Finished => NdnTaskState::Finished, 
             TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone())
         }

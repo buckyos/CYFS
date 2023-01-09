@@ -23,8 +23,9 @@ use super::{
 };
 
 struct DownloadingState { 
-    downloaded: u64, 
-    cur_chunk: ChunkDownloader, 
+    downloaded: u64,  
+    cur_speed: ProgressCounter,  
+    cur_chunk: (ChunkDownloader, usize), 
     history_speed: HistorySpeed,
 }
 
@@ -95,30 +96,29 @@ impl ChunkListTask {
         let stack = Stack::from(&self.0.stack);
         let chunk = &self.chunk_list().chunks()[index];
 
-        let downloader = stack.ndn().chunk_manager().create_downloader(chunk, self.clone_as_leaf_task());
-        let cache = downloader.cache().clone();
-        let _ = {
-            let mut state = self.0.state.write().unwrap();
-            match &mut state.task_state {
-                TaskStateImpl::Pending => {
-                    state.task_state = TaskStateImpl::Downloading(DownloadingState { 
-                        downloaded: 0, 
-                        cur_chunk: downloader, 
-                        history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
-                    });
-                    Ok(())
-                }, 
-                TaskStateImpl::Downloading(downloading) => {
-                    downloading.downloaded += downloading.cur_chunk.cache().stream().len() as u64;
-                    downloading.cur_chunk = downloader;
-                    Ok(())
-                },
-                TaskStateImpl::Finished(_) => Ok(()), 
-                TaskStateImpl::Error(err) => Err(err.clone())
-            }
-        }?;
-
-        Ok(cache)
+        let mut state = self.0.state.write().unwrap();
+        match &mut state.task_state {
+            TaskStateImpl::Pending => {
+                let downloader = stack.ndn().chunk_manager().create_downloader(chunk, self.clone_as_leaf_task());
+                state.task_state = TaskStateImpl::Downloading(DownloadingState { 
+                    downloaded: 0, 
+                    cur_speed: ProgressCounter::new(0), 
+                    cur_chunk: (downloader.clone(), index), 
+                    history_speed: HistorySpeed::new(0, stack.config().ndn.channel.history_speed.clone()), 
+                });
+                Ok(downloader.cache().clone())
+            }, 
+            TaskStateImpl::Downloading(downloading) => {
+                let (downloader, cur_index) = &downloading.cur_chunk;
+                if *cur_index != index {
+                    downloading.downloaded += downloader.cache().stream().len() as u64;
+                    downloading.cur_chunk = (stack.ndn().chunk_manager().create_downloader(chunk, self.clone_as_leaf_task()), index);
+                }
+                Ok(downloading.cur_chunk.0.cache().clone())
+            },
+            TaskStateImpl::Finished(_) => unreachable!(), 
+            TaskStateImpl::Error(err) => Err(err.clone())
+        }
     }
 }
 
@@ -141,7 +141,7 @@ impl LeafDownloadTask for ChunkListTask {
 
         match &mut state.task_state {
             TaskStateImpl::Downloading(downloading) => {
-                downloading.downloaded += downloading.cur_chunk.cache().stream().len() as u64;
+                downloading.downloaded += downloading.cur_chunk.0.cache().stream().len() as u64;
                 state.task_state = TaskStateImpl::Finished(downloading.downloaded);
             }, 
             _ => {}
@@ -156,10 +156,10 @@ impl NdnTask for ChunkListTask {
 
     fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Pending => NdnTaskState::Running(0), 
-            TaskStateImpl::Downloading(downloading) => NdnTaskState::Running(downloading.history_speed.latest()), 
+            TaskStateImpl::Pending => NdnTaskState::Running, 
+            TaskStateImpl::Downloading(_) => NdnTaskState::Running, 
             TaskStateImpl::Finished(_) => NdnTaskState::Finished, 
-            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()), 
+            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()),
         }
     }
 
@@ -231,7 +231,9 @@ impl DownloadTask for ChunkListTask {
         let mut state = self.0.state.write().unwrap();
         match &mut state.task_state {
             TaskStateImpl::Downloading(downloading) => {
-                let cur_speed = downloading.cur_chunk.calc_speed(when);
+                let downloaded = downloading.downloaded + downloading.cur_chunk.0.cache().stream().len() as u64;
+                let cur_speed = downloading.cur_speed.update(downloaded, when);
+                debug!("{} calc_speed update cur_speed {}", self, cur_speed);
                 downloading.history_speed.update(Some(cur_speed), when);
                 cur_speed
             }

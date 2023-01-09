@@ -124,8 +124,8 @@ impl NdnTask for ChunkTask {
 
     fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Init => NdnTaskState::Running(0), 
-            TaskStateImpl::Downloading(downloading) => NdnTaskState::Running(downloading.downloader.cur_speed()), 
+            TaskStateImpl::Init => NdnTaskState::Running, 
+            TaskStateImpl::Downloading(_) => NdnTaskState::Running, 
             TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()), 
             TaskStateImpl::Finished => NdnTaskState::Finished
         }
