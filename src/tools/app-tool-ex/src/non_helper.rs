@@ -1,7 +1,7 @@
 //use crate::app_manager_ex::USER_APP_LIST;
 use cyfs_base::*;
 use cyfs_core::{
-    get_system_dec_app, AppCmdList, AppLocalList, AppLocalStatus, DecApp, DecAppId,
+    AppCmdList, AppLocalList, AppLocalStatus, DecApp, DecAppId,
     APP_LOCAL_LIST_PATH, CMD_LIST_PATH,
 };
 use cyfs_lib::*;
