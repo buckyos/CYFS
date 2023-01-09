@@ -132,7 +132,7 @@ impl NdnTask for DownloadGroup {
 
             let tasks = match &mut state.task_state {
                 TaskStateImpl::Downloading(downloading) => {
-                    let tasks: Vec<Box<dyn DownloadTask>> = downloading.running.iter().map(|t| t.clone_as_task()).collect();
+                    let tasks: Vec<Box<dyn DownloadTask>> = downloading.running.iter().map(|t| t.clone_as_download_task()).collect();
                     state.task_state = TaskStateImpl::Error(err.clone());
                     tasks
                 },
@@ -150,9 +150,8 @@ impl NdnTask for DownloadGroup {
             let _ = task.cancel_by_error(err.clone());
         }
         
-        Ok(DownloadTaskControlState::Canceled)
+        Ok(NdnTaskControlState::Canceled)
     }
-
 }
 
 
@@ -238,23 +237,6 @@ impl DownloadTask for DownloadGroup {
     }
 
 
-    fn cur_speed(&self) -> u32 {
-        let state = self.0.state.read().unwrap();
-        match &state.task_state {
-            TaskStateImpl::Downloading(downloading) => downloading.history_speed.latest(),
-            _ => 0
-        }
-    }
-
-    fn history_speed(&self) -> u32 {
-        let state = self.0.state.read().unwrap();
-        match &state.task_state {
-            TaskStateImpl::Downloading(downloading) => downloading.history_speed.average(),
-            _ => 0
-        }
-    }
-
-   
     async fn wait_user_canceled(&self) -> BuckyError {
         let waiter = {
             let mut state = self.0.state.write().unwrap();

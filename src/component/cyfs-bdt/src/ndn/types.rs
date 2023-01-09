@@ -512,6 +512,9 @@ pub trait NdnTask: Send + Sync {
     fn cancel_by_error(&self, _err: BuckyError) -> BuckyResult<NdnTaskControlState> {
         Ok(NdnTaskControlState::Normal)
     }
+    fn cancel_by_error(&self) -> BuckyResult<NdnTaskControlState> {
+        
+    }
     fn pause(&self) -> BuckyResult<NdnTaskControlState> {
         Ok(NdnTaskControlState::Normal)
     }
@@ -523,42 +526,3 @@ pub trait NdnTask: Send + Sync {
     fn cur_speed(&self) -> u32;
     fn history_speed(&self) -> u32;
 }
-
-
-pub struct ProgressCounter {
-    last_recv: u64, 
-    last_update: Timestamp, 
-    cur_speed: u32
-}
-
-
-impl ProgressCounter {
-    pub fn new(init_recv: u64) -> Self {
-        Self {
-            last_recv: init_recv,  
-            last_update: bucky_time_now(), 
-            cur_speed: 0
-        }
-    }
-
-    pub fn update(&mut self, cur_recv: u64, when: Timestamp) -> u32 {
-        if cur_recv < self.last_recv {
-            return 0;
-        }
-
-        if when > self.last_update {
-            let last_recv = cur_recv - self.last_recv;
-            self.cur_speed = ((last_recv * 1000 * 1000) as f64 / (when - self.last_update) as f64) as u32;
-            self.last_recv = cur_recv;
-            self.last_update = when;
-            self.cur_speed
-        } else {
-            self.cur_speed
-        }
-    }
-
-    pub fn cur_speed(&self) -> u32 {
-        self.cur_speed
-    }
-}
-
