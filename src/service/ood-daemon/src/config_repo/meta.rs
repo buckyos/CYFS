@@ -8,6 +8,7 @@ use cyfs_stack_loader::LOCAL_DEVICE_MANAGER;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use std::sync::Mutex;
 
 #[derive(Serialize, Deserialize)]
 struct DeviceConfigGenerator {
@@ -138,6 +139,11 @@ impl DeviceConfigGenerator {
     }
 }
 
+struct LocalCache {
+    service_list: AppList,
+    device_config: String,
+}
+
 pub struct DeviceConfigMetaRepo {
     desc: String,
 
@@ -146,6 +152,8 @@ pub struct DeviceConfigMetaRepo {
     service_list_id: Option<ObjectId>,
 
     meta_client: MetaClient,
+
+    cache: Mutex<Option<LocalCache>>,
 }
 
 impl DeviceConfigMetaRepo {
@@ -158,6 +166,7 @@ impl DeviceConfigMetaRepo {
             device_id: None,
             service_list_id: None,
             meta_client,
+            cache: Mutex::new(None),
         }
     }
 
@@ -390,6 +399,21 @@ impl DeviceConfigMetaRepo {
         device_config.sync_list(service_list);
         Ok(device_config)
     }
+
+    // return true if is the same
+    fn compare_service_list(left: &AppList, right: &AppList) -> bool {
+        if left.body().as_ref().unwrap().update_time()
+            != right.body().as_ref().unwrap().update_time()
+        {
+            return false;
+        }
+
+        if left.to_vec().unwrap() != right.to_vec().unwrap() {
+            return false;
+        }
+
+        true
+    }
 }
 
 #[async_trait]
@@ -402,11 +426,28 @@ impl DeviceConfigRepo for DeviceConfigMetaRepo {
         // 从mete-chain拉取对应的service_list
         let service_list = self.load_service_list().await?;
 
+        {
+            let cache = self.cache.lock().unwrap();
+            if let Some(cache) = &*cache {
+                if Self::compare_service_list(&cache.service_list, &service_list) {
+                    return Ok(cache.device_config.clone());
+                }
+            }
+        }
+
         let device_config = self
             .update_service_list_to_device_config(&service_list)
             .await?;
 
         let device_config_str = device_config.to_string();
+
+        {
+            let mut cache = self.cache.lock().unwrap();
+            *cache = Some(LocalCache {
+                service_list,
+                device_config: device_config_str.clone(),
+            });
+        }
 
         debug!(
             "load device_config from meta: device_id={}, config={}",
