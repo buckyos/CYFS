@@ -3,7 +3,8 @@ use std::{
     fmt, 
     //time::Duration,
     sync::RwLock, 
-    collections::{BTreeMap, LinkedList}
+    collections::{BTreeMap, LinkedList}, 
+    time::Duration
 };
 use async_std::{
     sync::{Arc}, 
@@ -63,6 +64,7 @@ enum ConnectStreamBuilderState {
 }
 struct ConnectStreamBuilderImpl {
     stack: WeakStack, 
+    start_at: Timestamp, 
     params: BuildTunnelParams, 
     stream: StreamContainer, 
     state: RwLock<ConnectStreamBuilderState>
@@ -85,6 +87,7 @@ impl ConnectStreamBuilder {
         Self(Arc::new(ConnectStreamBuilderImpl {
             stack, 
             params, 
+            start_at: bucky_time_now(), 
             stream,
             state: RwLock::new(ConnectStreamBuilderState::Connecting(ConnectingState {
                 action_entries: BTreeMap::new(), 
@@ -93,6 +96,15 @@ impl ConnectStreamBuilder {
                 waiter: StateWaiter::new()
             }))
         }))
+    }
+
+    fn escaped(&self) -> Duration {
+        let now = bucky_time_now();
+        if now > self.0.start_at {
+            Duration::from_micros(now - self.0.start_at)
+        } else {
+            Duration::from_micros(0)
+        }
     }
 
     async fn build_inner(&self) -> BuckyResult<()> {
@@ -128,28 +140,39 @@ impl ConnectStreamBuilder {
                         match finish_ret {
                             Ok(_) => {
                                 info!("{} call nearest sn finished, sn={}", self, sn);
-                                false
+                                if TunnelBuilderState::Establish != self.state() {
+                                    let escaped = self.escaped();
+                                    if stack.config().stream.stream.retry_sn_timeout > escaped {
+                                        Some(Duration::from_secs(0))
+                                    } else {
+                                        Some(stack.config().stream.stream.retry_sn_timeout - escaped)
+                                    }
+                                } else {
+                                    None
+                                }
                             }, 
                             Err(err) => {
                                 if err.code() == BuckyErrorCode::Interrupted {
                                     info!("{} call nearest sn canceled, sn={}", self, sn);
-                                    false
+                                    None
                                 } else {
                                     error!("{} call nearest sn failed, sn={}, err={}", self, sn, err);
-                                    true
+                                    Some(Duration::from_secs(0))
                                 }
                             }
                         }
                     },
                     Err(_) => {
                         warn!("{} call nearest sn timeout {}", self, sn);
-                        true
+                        Some(Duration::from_secs(0))
                     }
                 };
-                if retry_sn_list {
-                    if let Some(sn_list) = build_params.retry_sn_list(&stack, &sn) {
-                        info!("{} retry sn list call, sn={:?}", self, sn_list);
-                        let _ = self.call_sn(sn_list, first_box).await;
+                if let Some(delay) = retry_sn_list {
+                    if future::timeout(delay, self.wait_establish()).await.is_err() {
+                        if let Some(sn_list) = build_params.retry_sn_list(&stack, &sn) {
+                            info!("{} retry sn list call, sn={:?}", self, sn_list);
+                            let _ = self.call_sn(sn_list, first_box).await;
+                        }
                     }
                 }
             }
