@@ -249,10 +249,10 @@ impl Task for DownloadChunkTask {
 
             let state = task.state();
             match state {
-                cyfs_bdt::DownloadTaskState::Downloading(speed) => DownloadTaskState {
+                cyfs_bdt::DownloadTaskState::Downloading => DownloadTaskState {
                     task_status: TaskStatus::Running,
                     err_code: None,
-                    speed: speed as u64,
+                    speed: task.cur_speed() as u64,
                     upload_speed: 0,
                     downloaded_progress: ((task.downloaded() as f32 / self.chunk_id.len() as f32) * 100.0) as u64,
                     sum_size: self.chunk_id.len() as u64,

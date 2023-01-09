@@ -105,7 +105,7 @@ impl Default for DownloadTaskPriority {
 // 对scheduler的接口
 #[derive(Debug, Serialize, Deserialize)]
 pub enum DownloadTaskState {
-    Downloading(u32/*速度*/),
+    Downloading,
     Paused,
     Error(BuckyError/*被cancel的原因*/), 
     Finished

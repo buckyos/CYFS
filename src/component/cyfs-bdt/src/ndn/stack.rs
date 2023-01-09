@@ -80,7 +80,7 @@ impl NdnStack {
         let stack = Stack::from(&self.0.stack);
         let last_schedule = self.0.last_schedule.load(Ordering::SeqCst);
         if now > last_schedule 
-            && Duration::from_millis(now - last_schedule) > stack.config().ndn.schedule_interval {
+            && Duration::from_micros(now - last_schedule) > stack.config().ndn.schedule_interval {
             self.channel_manager().on_schedule(now);
             // self.chunk_manager().on_schedule(now);
             self.root_task().on_schedule(now);

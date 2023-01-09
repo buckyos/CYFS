@@ -118,8 +118,8 @@ impl DownloadTask for ChunkTask {
 
     fn state(&self) -> DownloadTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Init => DownloadTaskState::Downloading(0), 
-            TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.downloader.cur_speed()), 
+            TaskStateImpl::Init => DownloadTaskState::Downloading, 
+            TaskStateImpl::Downloading(_) => DownloadTaskState::Downloading, 
             TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone()), 
             TaskStateImpl::Finished => DownloadTaskState::Finished
         }

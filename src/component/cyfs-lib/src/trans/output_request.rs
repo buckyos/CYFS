@@ -20,7 +20,7 @@ pub enum TransTaskState {
     Downloading(TransTaskOnAirState),
     Paused,
     Canceled,
-    Finished(u32 /*upload_speed*/),
+    Finished(u32/*upload_speed*/),
     Err(BuckyErrorCode),
 }
 
