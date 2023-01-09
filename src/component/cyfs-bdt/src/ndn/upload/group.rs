@@ -70,6 +70,7 @@ impl NdnTask for UploadGroup {
     fn clone_as_task(&self) -> Box<dyn NdnTask> {
         Box::new(self.clone())
     }
+
     
     fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {

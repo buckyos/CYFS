@@ -327,6 +327,7 @@ impl UploadSession {
     }
 }
 
+
 impl NdnTask for UploadSession {
     fn clone_as_task(&self) -> Box<dyn NdnTask> {
         Box::new(self.clone())

@@ -142,6 +142,7 @@ impl Default for DownloadTaskPriority {
 
 
 
+
 #[async_trait::async_trait]
 pub trait DownloadTask: NdnTask {
     fn clone_as_download_task(&self) -> Box<dyn DownloadTask>;

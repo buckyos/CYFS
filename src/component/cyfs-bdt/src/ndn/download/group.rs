@@ -235,7 +235,6 @@ impl DownloadTask for DownloadGroup {
         }
     }
 
-
     async fn wait_user_canceled(&self) -> BuckyError {
         let waiter = {
             let mut state = self.0.state.write().unwrap();

@@ -482,7 +482,6 @@ impl SpeedCounter {
 
 
 
-// 对scheduler的接口
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NdnTaskState {
     Running,
