@@ -6,7 +6,7 @@ use cyfs_core::NFTListDesc;
 pub enum NFTState {
     Normal,
     Auctioning((u64, CoinTokenId, u64)),
-    Selling((u64, CoinTokenId)),
+    Selling((u64, CoinTokenId, u64)),
 }
 
 #[derive(RawEncode, RawDecode, Clone, Debug)]
@@ -171,6 +171,7 @@ pub struct NFTSellTx {
     pub nft_id: ObjectId,
     pub price: u64,
     pub coin_id: CoinTokenId,
+    pub duration_block_num: u64,
 }
 
 #[derive(RawEncode, RawDecode, Clone, Debug)]
@@ -216,6 +217,13 @@ pub struct NFTSetNameTx {
     pub name: String,
 }
 
+#[derive(RawEncode, RawDecode, Clone, Debug)]
+pub struct NFTTransTx {
+    pub nft_id: ObjectId,
+    pub to: ObjectId,
+    pub nft_cached: Option<ObjectId>,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct NFTData {
     pub nft_id: String,
@@ -230,6 +238,8 @@ pub struct NFTData {
     pub block_number: i64,
     pub parent_id: Option<String>,
     pub sub_list: Option<Vec<String>>,
+    pub price: u64,
+    pub coin_id: CoinTokenId,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -242,6 +252,7 @@ pub struct NFTTransferRecord {
     pub block_number: i64,
     pub from: String,
     pub to: String,
+    pub cached: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -258,6 +269,8 @@ pub struct NFTDetail {
     pub state: NFTState,
     pub like_count: i64,
     pub block_number: i64,
+    pub price: u64,
+    pub coin_id: CoinTokenId,
 }
 
 pub struct NFTTransRecord {
@@ -266,4 +279,5 @@ pub struct NFTTransRecord {
     pub block_number: i64,
     pub from: String,
     pub to: String,
+    pub nft_cached: Option<String>,
 }

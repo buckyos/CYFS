@@ -1,19 +1,13 @@
-use std::path::PathBuf;
 use super::output_request::*;
 use crate::base::*;
 use cyfs_base::*;
-
+use std::path::PathBuf;
 
 pub struct UtilInputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
 
-    // 来源DEC
-    pub dec_id: Option<ObjectId>,
-
-    // 来源设备和协议
-    pub source: DeviceId,
-    pub protocol: NONProtocol,
+    pub source: RequestSourceInfo,
 
     // 用以默认行为
     pub target: Option<ObjectId>,
@@ -36,8 +30,7 @@ pub struct UtilGetZoneInputRequest {
     pub object_raw: Option<Vec<u8>>,
 }
 
-
-pub type UtilGetZoneInputResponse  = UtilGetZoneOutputResponse;
+pub type UtilGetZoneInputResponse = UtilGetZoneOutputResponse;
 
 // resolve_ood
 pub struct UtilResolveOODInputRequest {
@@ -54,13 +47,12 @@ pub struct UtilGetOODStatusInputRequest {
     pub common: UtilInputRequestCommon,
 }
 
-pub type UtilGetOODStatusInputResponse  = UtilGetOODStatusOutputResponse;
+pub type UtilGetOODStatusInputResponse = UtilGetOODStatusOutputResponse;
 
 // get_noc_stat
 pub struct UtilGetNOCInfoInputRequest {
     pub common: UtilInputRequestCommon,
 }
-
 
 pub type UtilGetNOCInfoInputResponse = UtilGetNOCInfoOutputResponse;
 

@@ -1,17 +1,15 @@
 use super::fail_cache::*;
 use super::meta_cache::*;
-use crate::non::NONInputProcessorRef;
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DeviceId, NameInfo, NameState, ObjectId};
-use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
+use cyfs_base::*;
 use cyfs_lib::*;
+use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
 
 use async_trait::async_trait;
-use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct RawMetaCache {
-    noc: Arc<OnceCell<NONInputProcessorRef>>,
+    noc: NamedObjectCacheRef,
     meta_client: Arc<MetaClient>,
     device_id: DeviceId,
 
@@ -20,26 +18,19 @@ pub(crate) struct RawMetaCache {
 }
 
 impl RawMetaCache {
-    pub fn new(target: MetaMinerTarget) -> Self {
+    pub fn new(target: MetaMinerTarget, noc: NamedObjectCacheRef) -> MetaCacheRef {
         info!("raw meta cache: {}", target.to_string());
-        let meta_client = MetaClient::new_target(target);
+        let meta_client =
+            MetaClient::new_target(target).with_timeout(std::time::Duration::from_secs(60 * 2));
 
-        Self {
-            noc: Arc::new(OnceCell::new()),
+        let ret = Self {
+            noc,
             meta_client: Arc::new(meta_client),
             device_id: DeviceId::default(),
             fail_cache: MetaFailCache::new(),
-        }
-    }
+        };
 
-    pub(crate) fn bind_noc(&self, noc: NONInputProcessorRef) {
-        if let Err(_) = self.noc.set(noc) {
-            unreachable!();
-        }
-    }
-
-    fn noc(&self) -> &NONInputProcessorRef {
-        self.noc.get().unwrap()
+        Arc::new(Box::new(ret))
     }
 
     async fn get_from_meta(
@@ -49,12 +40,8 @@ impl RawMetaCache {
         let key = MetaCacheKey::Object(object_id.to_owned());
         if let Some(e) = self.fail_cache.get(&key) {
             let ret = match e.code() {
-                BuckyErrorCode::NotFound => {
-                    Ok(None)
-                }
-                _ => {
-                    Err(e)
-                }
+                BuckyErrorCode::NotFound => Ok(None),
+                _ => Err(e),
             };
 
             return ret;
@@ -71,7 +58,8 @@ impl RawMetaCache {
                         Some(resp)
                     }
                     None => {
-                        self.fail_cache.add(key.clone(), BuckyError::from(BuckyErrorCode::NotFound));
+                        self.fail_cache
+                            .add(key.clone(), BuckyError::from(BuckyErrorCode::NotFound));
                         None
                     }
                 }
@@ -94,39 +82,32 @@ impl RawMetaCache {
             Some(resp.object.clone()),
         );
 
-        let req = NONPutObjectInputRequest {
-            common: NONInputRequestCommon {
-                req_path: None,
-                dec_id: None,
-                source: self.device_id.clone(),
-                protocol: NONProtocol::Meta,
-                level: NONAPILevel::NOC,
-                target: None,
-                flags: 0,
-            },
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_system().protocol(RequestProtocol::Meta),
+            storage_category: NamedObjectStorageCategory::Cache,
+            context: None,
+            last_access_rpath: None,
             object,
+            access_string: None,
         };
 
-        match self.noc().put_object(req).await {
+        match self.noc.put_object(&req).await {
             Ok(resp) => match resp.result {
-                NONPutObjectResult::AlreadyExists => {
+                NamedObjectCachePutObjectResult::AlreadyExists => {
                     info!("meta object alreay in noc: {}", object_id);
                     Ok(false)
                 }
-                NONPutObjectResult::Merged => {
+                NamedObjectCachePutObjectResult::Merged => {
                     info!("meta object alreay in noc but signs merged: {}", object_id);
                     Ok(true)
                 }
-                NONPutObjectResult::Accept => {
+                NamedObjectCachePutObjectResult::Accept => {
                     info!("put meta object to noc success! {}", object_id);
                     Ok(true)
                 }
-                NONPutObjectResult::Updated => {
+                NamedObjectCachePutObjectResult::Updated => {
                     info!("put meta object to noc and updated! {}", object_id);
                     Ok(true)
-                }
-                NONPutObjectResult::AcceptWithSign => {
-                    unreachable!();
                 }
             },
             Err(e) => {
@@ -196,13 +177,17 @@ impl RawMetaCache {
             return Err(e);
         }
 
-        self.meta_client.get_name(name).await.map_err(|e| {
-            self.fail_cache.add(key, e.clone());
-            e
-        }).map(|v| {
-            self.fail_cache.on_success();
-            v
-        })
+        self.meta_client
+            .get_name(name)
+            .await
+            .map_err(|e| {
+                self.fail_cache.add(key, e.clone());
+                e
+            })
+            .map(|v| {
+                self.fail_cache.on_success();
+                v
+            })
     }
 }
 

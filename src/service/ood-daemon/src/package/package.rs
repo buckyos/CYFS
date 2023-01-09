@@ -56,7 +56,7 @@ impl ServicePackage {
     }
     */
 
-    fn udpate_version_file(root: &Path, fid: &str) {
+    fn update_version_file(root: &Path, fid: &str) {
         let version_file = root.join("version");
         if let Err(e) = fs::write(&version_file, fid) {
             error!(
@@ -70,7 +70,7 @@ impl ServicePackage {
     // 更新current目录
     pub fn update_current(root: &Path, target_folder: &Path, fid: &str) {
         // fid写入{root}/version文件
-        Self::udpate_version_file(root, fid);
+        Self::update_version_file(root, fid);
         let current_link = root.join("current");
 
         #[cfg(windows)]

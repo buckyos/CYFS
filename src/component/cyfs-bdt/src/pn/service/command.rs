@@ -9,7 +9,8 @@ use async_std::{
 };
 use cyfs_base::*;
 use crate::{  
-    protocol::*, 
+    types::*, 
+    protocol::{*, v0::*}, 
     interface::udp::*
 };
 use super::service::{Service, WeakService};
@@ -29,8 +30,8 @@ impl std::fmt::Display for CommandTunnel {
 }
 
 thread_local! {
-    static UDP_RECV_BUFFER: RefCell<[u8; MTU]> = RefCell::new([0u8; MTU]);
-    static BOX_CRYPTO_BUFFER: RefCell<[u8; MTU]> = RefCell::new([0u8; MTU]);
+    static UDP_RECV_BUFFER: RefCell<[u8; MTU_LARGE]> = RefCell::new([0u8; MTU_LARGE]);
+    static BOX_CRYPTO_BUFFER: RefCell<[u8; MTU_LARGE]> = RefCell::new([0u8; MTU_LARGE]);
 }
 
 
@@ -115,15 +116,10 @@ impl CommandTunnel {
                 let tunnel = self.clone();
                 if package_box.has_exchange() {
                     async_std::task::spawn(async move {
-                        let exchange: &Exchange = package_box.packages()[0].as_ref();
-                        if !exchange.verify(package_box.key()).await {
-                            warn!("{} exchg verify failed, from {}.", tunnel, from);
-                            return;
-                        }
+                        // let exchange: &Exchange = package_box.packages()[0].as_ref();
                         service.keystore().add_key(
                             package_box.key(),
                             package_box.remote(),
-                            true,
                         );
                         let _ = tunnel.on_package_box(package_box, from);
                     });
@@ -144,7 +140,8 @@ impl CommandTunnel {
         proxy_endpoint: BuckyResult<SocketAddr>,  
         syn_proxy: &SynProxy, 
         to: &SocketAddr, 
-        key: &AesKey) -> BuckyResult<()> {
+        key: &MixAesKey
+    ) -> BuckyResult<()> {
         let (proxy_endpoint, err) = match proxy_endpoint {
             Ok(proxy_endpoint) => (Some(Endpoint::from((Protocol::Udp, proxy_endpoint))), None), 
             Err(err) => (None, Some(err.code()))
@@ -157,11 +154,11 @@ impl CommandTunnel {
             err
         };
         let mut package_box = PackageBox::encrypt_box(
-            syn_proxy.from_peer_id.clone(), 
+            syn_proxy.from_peer_info.desc().device_id(), 
             key.clone());
         package_box.append(vec![DynamicPackage::from(ack_proxy)]);
         
-        let mut context = PackageBoxEncodeContext::from(syn_proxy.from_peer_info.desc());
+        let mut context = PackageBoxEncodeContext::default();
         let _ = BOX_CRYPTO_BUFFER.with(|thread_crypto_buf| {
             let crypto_buf = &mut thread_crypto_buf.borrow_mut()[..];
             let buf_len = crypto_buf.len();

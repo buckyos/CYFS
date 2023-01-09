@@ -30,6 +30,10 @@ const tools = [
         "include": ["x86_64-pc-windows-msvc"]
     },
     {
+        "name": "sn-updater",
+        "include": ["x86_64-pc-windows-msvc"]
+    },
+    {
         "name": "pack-tools",
         "include": formal_platform
     },
@@ -80,14 +84,7 @@ const services = [
         "pub": true,
         "config_file": service_default_cfg,
         "id": "9tGpLNnDwJ1nReZqJgWev5eoe23ygViGDC4idnCK1Dy5"
-    },
-	{
-        "name": "dsg-service",
-        "include": only_ood,
-        "pub": true,
-        "config_file": service_default_cfg,
-        "id": "9tGpLNnPtNxqwjgcxKfMpyaQqVRkLQ5aka69FgWy5PLU"
-    },
+    }
 ]
 
 
@@ -127,6 +124,21 @@ const metas = [
         "name": "browser-meta-spv",
         "include": formal_platform
     },
+    {
+        "name": "meta-stat",
+        "include": formal_platform
+    },
+]
+
+const misc = [
+    {
+        "name": "sn-miner-rust",
+        "include": formal_platform
+    },
+    {
+        "name": "cyfs-monitor",
+        "include": formal_platform
+    }
 ]
 
 module.exports = {
@@ -134,5 +146,6 @@ module.exports = {
     services,
     sdk,
     installer,
-    metas
+    metas,
+    misc
 }

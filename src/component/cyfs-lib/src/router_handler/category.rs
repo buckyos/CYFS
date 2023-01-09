@@ -4,7 +4,7 @@ use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
 pub enum RouterHandlerCategory {
     PutObject,
     GetObject,
@@ -20,13 +20,16 @@ pub enum RouterHandlerCategory {
 
     SignObject,
     VerifyObject,
+    EncryptData,
+    DecryptData,
 
-    Acl,
+    Acl, 
+    Interest, 
 }
 
-impl fmt::Display for RouterHandlerCategory {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match &*self {
+impl RouterHandlerCategory {
+    pub fn as_str(&self) -> &str {
+        match &*self {
             Self::PutObject => "put_object",
             Self::GetObject => "get_object",
 
@@ -41,11 +44,24 @@ impl fmt::Display for RouterHandlerCategory {
 
             Self::SignObject => "sign_object",
             Self::VerifyObject => "verify_object",
+            Self::EncryptData => "encrypt_data",
+            Self::DecryptData => "decrypt_data",
 
-            Self::Acl => "acl",
-        };
+            Self::Acl => "acl", 
+            Self::Interest => "interest", 
+        }
+    }
+}
 
-        fmt::Display::fmt(s, f)
+impl fmt::Debug for RouterHandlerCategory {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl fmt::Display for RouterHandlerCategory {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -67,8 +83,12 @@ impl FromStr for RouterHandlerCategory {
 
             "sign_object" => Self::SignObject,
             "verify_object" => Self::VerifyObject,
+            "encrypt_data" => Self::EncryptData,
+            "decrypt_data" => Self::DecryptData,
 
             "acl" => Self::Acl,
+
+            "interest" => Self::Interest, 
 
             v @ _ => {
                 let msg = format!("unknown router handler category: {}", v);
@@ -147,9 +167,27 @@ impl RouterHandlerCategoryInfo for RouterHandlerVerifyObjectRequest {
     }
 }
 
+impl RouterHandlerCategoryInfo for RouterHandlerEncryptDataRequest {
+    fn category() -> RouterHandlerCategory {
+        RouterHandlerCategory::EncryptData
+    }
+}
+
+impl RouterHandlerCategoryInfo for RouterHandlerDecryptDataRequest {
+    fn category() -> RouterHandlerCategory {
+        RouterHandlerCategory::DecryptData
+    }
+}
+
 impl RouterHandlerCategoryInfo for RouterHandlerAclRequest {
     fn category() -> RouterHandlerCategory {
         RouterHandlerCategory::Acl
+    }
+}
+
+impl RouterHandlerCategoryInfo for RouterHandlerInterestRequest {
+    fn category() -> RouterHandlerCategory {
+        RouterHandlerCategory::Interest
     }
 }
 

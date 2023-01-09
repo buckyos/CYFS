@@ -9,7 +9,10 @@ pub struct RootStateOutputRequestCommon {
     // 来源DEC
     pub dec_id: Option<ObjectId>,
 
-    // 用以默认行为
+    // 目标DEC，如果为None，默认等价于dec_id
+    pub target_dec_id: Option<ObjectId>,
+
+    // 目标设备
     pub target: Option<ObjectId>,
 
     pub flags: u32,
@@ -19,6 +22,7 @@ impl RootStateOutputRequestCommon {
     pub fn new() -> Self {
         Self {
             dec_id: None,
+            target_dec_id: None,
             target: None,
             flags: 0,
         }
@@ -29,6 +33,9 @@ impl fmt::Display for RootStateOutputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(dec_id) = &self.dec_id {
             write!(f, "dec_id: {}", dec_id)?;
+        }
+        if let Some(dec_id) = &self.target_dec_id {
+            write!(f, "target_dec_id: {}", dec_id)?;
         }
 
         if let Some(target) = &self.target {
@@ -107,12 +114,39 @@ pub struct RootStateGetCurrentRootOutputResponse {
     pub dec_root: Option<ObjectId>,
 }
 
-// create_op_env
 #[derive(Clone)]
+pub struct RootStateOpEnvAccess {
+    pub path: String,
+    pub access: AccessPermissions,
+}
+
+impl fmt::Display for RootStateOpEnvAccess {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "path: {}, access: {}", self.path, self.access.as_str())
+    }
+}
+impl fmt::Debug for RootStateOpEnvAccess {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+
+impl RootStateOpEnvAccess {
+    pub fn new(path: impl Into<String>, access: AccessPermissions) -> Self {
+        Self {
+            path: path.into(),
+            access,
+        }
+    }
+}
+
+// create_op_env
+#[derive(Clone, Debug)]
 pub struct RootStateCreateOpEnvOutputRequest {
     pub common: RootStateOutputRequestCommon,
 
     pub op_env_type: ObjectMapOpEnvType,
+    pub access: Option<RootStateOpEnvAccess>,
 }
 
 impl RootStateCreateOpEnvOutputRequest {
@@ -120,6 +154,15 @@ impl RootStateCreateOpEnvOutputRequest {
         Self {
             common: RootStateOutputRequestCommon::new(),
             op_env_type,
+            access: None,
+        }
+    }
+
+    pub fn new_with_access(op_env_type: ObjectMapOpEnvType, access: RootStateOpEnvAccess) -> Self {
+        Self {
+            common: RootStateOutputRequestCommon::new(),
+            op_env_type,
+            access: Some(access),
         }
     }
 }
@@ -132,6 +175,9 @@ pub struct RootStateCreateOpEnvOutputResponse {
 pub struct OpEnvOutputRequestCommon {
     // 来源DEC
     pub dec_id: Option<ObjectId>,
+
+    // 目标DEC，如果为None，默认等价于dec_id
+    pub target_dec_id: Option<ObjectId>,
 
     // 用以默认行为
     pub target: Option<ObjectId>,
@@ -146,6 +192,7 @@ impl OpEnvOutputRequestCommon {
     pub fn new_empty() -> Self {
         Self {
             dec_id: None,
+            target_dec_id: None,
             target: None,
             flags: 0,
             sid: 0,
@@ -159,6 +206,9 @@ impl fmt::Display for OpEnvOutputRequestCommon {
 
         if let Some(dec_id) = &self.dec_id {
             write!(f, ", dec_id: {}", dec_id)?;
+        }
+        if let Some(target_dec_id) = &self.target_dec_id {
+            write!(f, ", target_dec_id: {}", target_dec_id)?;
         }
 
         if let Some(target) = &self.target {
@@ -235,7 +285,10 @@ impl OpEnvCreateNewOutputRequest {
         }
     }
 
-    pub fn new_with_full_path(full_path: impl Into<String>, content_type: ObjectMapSimpleContentType) -> Self {
+    pub fn new_with_full_path(
+        full_path: impl Into<String>,
+        content_type: ObjectMapSimpleContentType,
+    ) -> Self {
         let full_path = full_path.into();
         assert!(full_path.len() > 0);
 
@@ -247,7 +300,11 @@ impl OpEnvCreateNewOutputRequest {
         }
     }
 
-    pub fn new_with_path_and_key(path: impl Into<String>, key: impl Into<String>, content_type: ObjectMapSimpleContentType) -> Self {
+    pub fn new_with_path_and_key(
+        path: impl Into<String>,
+        key: impl Into<String>,
+        content_type: ObjectMapSimpleContentType,
+    ) -> Self {
         let path = path.into();
         let key = key.into();
         assert!(OpEnvPathHelper::check_valid(&path, &key));
@@ -372,7 +429,6 @@ pub struct OpEnvCommitOutputResponse {
 
 // abort
 pub type OpEnvAbortOutputRequest = OpEnvNoParamOutputRequest;
-
 
 pub struct OpEnvPathHelper {}
 
@@ -777,31 +833,57 @@ pub struct OpEnvNextOutputResponse {
 // reset
 pub type OpEnvResetOutputRequest = OpEnvNoParamOutputRequest;
 
+// list
+pub struct OpEnvListOutputRequest {
+    pub common: OpEnvOutputRequestCommon,
+
+    // for path-env
+    pub path: Option<String>,
+}
+
+impl OpEnvListOutputRequest {
+    pub fn new() -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+            path: None,
+        }
+    }
+
+    pub fn new_path(path: impl Into<String>) -> Self {
+        Self {
+            common: OpEnvOutputRequestCommon::new_empty(),
+            path: Some(path.into()),
+        }
+    }
+}
+
+pub type OpEnvListOutputResponse = OpEnvNextOutputResponse;
+
 //////////////////////////
 /// root-state access requests
 
 // get_object_by_path
 #[derive(Clone)]
-pub struct RootStateAccessGetObjectByPathOutputRequest {
+pub struct RootStateAccessorGetObjectByPathOutputRequest {
     pub common: RootStateOutputRequestCommon,
 
     pub inner_path: String,
 }
 
-impl fmt::Display for RootStateAccessGetObjectByPathOutputRequest {
+impl fmt::Display for RootStateAccessorGetObjectByPathOutputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
         write!(f, ", inner_path: {}", self.inner_path)
     }
 }
 
-pub struct RootStateAccessGetObjectByPathOutputResponse {
+pub struct RootStateAccessorGetObjectByPathOutputResponse {
     pub object: NONGetObjectOutputResponse,
     pub root: ObjectId,
     pub revision: u64,
 }
 
-impl fmt::Display for RootStateAccessGetObjectByPathOutputResponse {
+impl fmt::Display for RootStateAccessorGetObjectByPathOutputResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.object.fmt(f)?;
         write!(f, ", root: {}, revision: {}", self.root, self.revision)
@@ -809,7 +891,7 @@ impl fmt::Display for RootStateAccessGetObjectByPathOutputResponse {
 }
 
 // list
-pub struct RootStateAccessListOutputRequest {
+pub struct RootStateAccessorListOutputRequest {
     pub common: RootStateOutputRequestCommon,
 
     pub inner_path: String,
@@ -819,7 +901,7 @@ pub struct RootStateAccessListOutputRequest {
     pub page_size: Option<u32>,
 }
 
-impl fmt::Display for RootStateAccessListOutputRequest {
+impl fmt::Display for RootStateAccessorListOutputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
 
@@ -831,7 +913,7 @@ impl fmt::Display for RootStateAccessListOutputRequest {
     }
 }
 
-pub struct RootStateAccessListOutputResponse {
+pub struct RootStateAccessorListOutputResponse {
     pub list: Vec<ObjectMapContentItem>,
 
     pub root: ObjectId,

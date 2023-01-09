@@ -1,12 +1,19 @@
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
-use cyfs_util::{ProcessUtil, get_app_dir};
+use cyfs_util::{get_app_dir, ProcessUtil};
 use log::*;
 use serde::Deserialize;
 use serde_json::Value;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, ExitStatus};
+use std::time::Duration;
+use wait_timeout::ChildExt;
+
+const STATUS_CMD_TIME_OUT_IN_SECS: u64 = 15;
+const STOP_CMD_TIME_OUT_IN_SECS: u64 = 60;
+const START_CMD_TIME_OUT_IN_SECS: u64 = 5 * 60;
+const INSTALL_CMD_TIME_OUT_IN_SECS: u64 = 10 * 60;
 
 #[derive(Deserialize, Clone)]
 pub struct DAppInfo {
@@ -226,7 +233,7 @@ impl DApp {
                 BuckyError::from(BuckyErrorCode::ExecuteError)
             })?;
             info!(
-                "start app {} {} success! and write pid {:?}",
+                "start app:{} {} success! and write pid {:?}",
                 self.dec_id, self.info.id, id
             );
 
@@ -237,16 +244,78 @@ impl DApp {
         Ok(false)
     }
 
-    fn status_by_cmd(&self) -> BuckyResult<bool> {
-        // 通过命令行判定app运行状态
-        let mut ret = DApp::run(&self.info.status, &self.work_dir, false, None)?;
-        return match ret.wait()?.code() {
+    //time_out == 0 wait forever
+    fn run_cmd(
+        &self,
+        cmd: &str,
+        dir: &Path,
+        detach: bool,
+        stdout: Option<File>,
+        time_out: u64,
+    ) -> BuckyResult<i32> {
+        let mut process = DApp::run(cmd, dir, detach, stdout)?;
+
+        let app_id = self.info.id.as_str();
+
+        let wait_exit_status = |status: ExitStatus| match status.code() {
             None => {
-                error!("app {} get no ret", self.info.id);
+                error!("get process code failed, app:{}, cmd:{}", app_id, cmd);
                 Err(BuckyError::from(BuckyErrorCode::ExecuteError))
             }
-            Some(code) => Ok(code != 0),
+            Some(code) => {
+                info!(
+                    "get process code success, app:{}, cmd:{}, code:{}",
+                    app_id, cmd, code
+                );
+                Ok(code)
+            }
         };
+
+        if time_out == 0 {
+            let exit_status = process.wait().map_err(|e| {
+                error!(
+                    "wait process failed, app:{}, cmd:{}, err:{}",
+                    app_id, cmd, e
+                );
+                e
+            })?;
+            return wait_exit_status(exit_status);
+        }
+
+        let exit_status = process
+            .wait_timeout(Duration::from_secs(time_out))
+            .map_err(|e| {
+                warn!(
+                    "wait timeout process failed, app:{}, cmd:{}, err:{}",
+                    app_id, cmd, e
+                );
+                e
+            })?;
+
+        match exit_status {
+            None => {
+                let _ = process.kill();
+                let _ = process.wait();
+                error!(
+                    "process not exit after timeout, app:{}, cmd:{}",
+                    app_id, cmd
+                );
+                Err(BuckyError::from(BuckyErrorCode::ExecuteError))
+            }
+            Some(status) => wait_exit_status(status),
+        }
+    }
+
+    fn status_by_cmd(&self) -> BuckyResult<bool> {
+        // 通过命令行判定app运行状态
+        let exit_code = self.run_cmd(
+            &self.info.status,
+            &self.work_dir,
+            false,
+            None,
+            STATUS_CMD_TIME_OUT_IN_SECS,
+        )?;
+        Ok(exit_code != 0)
     }
 
     pub fn status(&mut self) -> BuckyResult<bool> {
@@ -286,52 +355,69 @@ impl DApp {
     }
 
     pub fn stop(&mut self) -> BuckyResult<bool> {
-        if self.status()? {
-            let process = self.process.take();
-            if process.is_some() {
-                let mut process = process.unwrap();
-                info!("stop app through child process");
-                match process.kill() {
-                    Ok(_) => {
-                        info!("kill app success, name={}", &self.info.id);
-                    }
-                    Err(err) => {
-                        if err.kind() == std::io::ErrorKind::InvalidInput {
-                            info!("kill app but not exists! name={}", &self.info.id);
-                        } else {
-                            error!("kill app got err, name={}, err={}", &self.info.id, err);
+        match self.status() {
+            Err(e) => {
+                warn!("check app status failed, app:{}, err:{}", &self.info.id, e);
+                let _ = self._force_stop();
+            }
+            Ok(is_running) => {
+                if is_running {
+                    let process = self.process.take();
+                    if process.is_some() {
+                        let mut process = process.unwrap();
+                        info!("stop app through child process");
+                        match process.kill() {
+                            Ok(_) => {
+                                info!("kill app success, name={}", &self.info.id);
+                            }
+                            Err(err) => {
+                                if err.kind() == std::io::ErrorKind::InvalidInput {
+                                    info!("kill app but not exists! name={}", &self.info.id);
+                                } else {
+                                    error!("kill app got err, name={}, err={}", &self.info.id, err);
+                                }
+                            }
+                        }
+
+                        // 需要通过wait来释放进程的一些资源
+                        match process.wait() {
+                            Ok(status) => {
+                                info!(
+                                    "app exit! service={}, status={}",
+                                    &self.info.id,
+                                    status.code().unwrap_or_default()
+                                );
+                            }
+                            Err(e) => {
+                                error!("app exit error! service={}, err={}", &self.info.id, e);
+                            }
+                        }
+                        return Ok(true);
+                    } else {
+                        info!("stop app through cmd");
+
+                        match self.run_cmd(
+                            &self.info.stop,
+                            &self.work_dir,
+                            false,
+                            None,
+                            STOP_CMD_TIME_OUT_IN_SECS,
+                        ) {
+                            Ok(code) => {
+                                if code != 0 {
+                                    let _ = self._force_stop();
+                                }
+                            }
+                            Err(e) => {
+                                error!("kill app by cmd failed, err:{}", e);
+                                let _ = self._force_stop();
+                            }
                         }
                     }
-                }
-
-                // 需要通过wait来释放进程的一些资源
-                match process.wait() {
-                    Ok(status) => {
-                        info!(
-                            "app exit! service={}, status={}",
-                            &self.info.id,
-                            status.code().unwrap_or_default()
-                        );
-                    }
-                    Err(e) => {
-                        error!("app exit error! service={}, err={}", &self.info.id, e);
-                    }
-                }
-                return Ok(true);
-            } else {
-                info!("stop app through cmd");
-                let result = match DApp::run(&self.info.stop, &self.work_dir, false, None) {
-                    Ok(mut child) => Ok(child.wait()?.code().unwrap_or(0) == 0),
-                    Err(e) => Err(e),
-                };
-
-                if !result? {
+                } else {
                     let _ = self._force_stop();
                 }
             }
-        } else {
-            // info!("app:{} inner status error, try to stop by pid", self.info.id);
-            let _ = self._force_stop();
         }
 
         Ok(false)
@@ -360,7 +446,7 @@ impl DApp {
                 .arg(&pid)
                 .spawn()
                 .map_err(|e| {
-                    error!("kill app {} failed! err {}", pid, e);
+                    error!("kill app:{} failed! err {}", pid, e);
                     BuckyError::from(BuckyErrorCode::ExecuteError)
                 })?;
         }
@@ -371,7 +457,7 @@ impl DApp {
                 .arg(&pid)
                 .spawn()
                 .map_err(|e| {
-                    error!("kill app {} failed! err {}", pid, e);
+                    error!("kill app:{} failed! err {}", pid, e);
                     BuckyError::from(BuckyErrorCode::ExecuteError)
                 })?;
         }
@@ -388,27 +474,42 @@ impl DApp {
             for path in &self.info.executable {
                 let cmd = format!("chmod +x \"{}\"", path);
                 // 就算执行不成功，也可以让开发者打包的时候就设置好，这里不成功不算错
-                if let Ok(mut child) = DApp::run(&cmd, &self.work_dir, false, None) {
-                    let _ = child.wait();
-                }
+                let _ = self.run_cmd(
+                    &cmd,
+                    &self.work_dir,
+                    false,
+                    None,
+                    INSTALL_CMD_TIME_OUT_IN_SECS,
+                );
             }
         }
         let mut cmd_index = 0;
         for cmd in &self.info.install {
             let log_file = self.work_dir.join(format!("install_{}.log", cmd_index));
             let file = std::fs::File::create(log_file).ok();
-            let mut child = DApp::run(cmd, &self.work_dir, false, file)?;
-            let exit_code = child.wait()?;
-            if !exit_code.success() {
-                error!(
-                    "run app {} install cmd {} err {}",
-                    &self.info.id,
-                    cmd,
-                    exit_code.code().unwrap_or(-1)
-                );
-                return Err(BuckyError::from(BuckyErrorCode::ExecuteError));
-            }
-            cmd_index += 1;
+
+            match self.run_cmd(
+                cmd,
+                &self.work_dir,
+                false,
+                file,
+                INSTALL_CMD_TIME_OUT_IN_SECS,
+            ) {
+                Err(e) => {
+                    error!("run app:{} install cmd {} err {}", &self.info.id, cmd, e);
+                    return Err(e);
+                }
+                Ok(code) => {
+                    if code != 0 {
+                        error!(
+                            "run app:{} install cmd {} exit code: {}",
+                            &self.info.id, cmd, code
+                        );
+                        return Err(BuckyError::from(BuckyErrorCode::ExecuteError));
+                    }
+                    cmd_index += 1;
+                }
+            };
         }
         Ok(true)
     }

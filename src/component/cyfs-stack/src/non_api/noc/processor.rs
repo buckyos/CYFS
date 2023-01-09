@@ -1,48 +1,54 @@
 use super::super::acl::*;
-use super::super::file::NONFileServiceProcessor;
 use super::super::handler::*;
-use crate::ndn_api::NDCLevelInputProcessor;
+use super::super::inner_path::NONInnerPathServiceProcessor;
+use super::super::validate::NONGlobalStateValidatorProcessor;
+use super::handler::NONRouterHandler;
 use crate::router_handler::RouterHandlersManager;
-use crate::resolver::OodResolver;
-use crate::{acl::*, non::*};
+use crate::zone::ZoneManagerRef;
+use crate::{non::*, AclManagerRef};
 use cyfs_base::*;
+use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 
-
-use std::convert::TryFrom;
 use std::sync::Arc;
-use cyfs_chunk_cache::ChunkManager;
 
 pub(crate) struct NOCLevelInputProcessor {
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
+
+    // action's handler with router handler system, now only valid for post_object
+    handler: NONRouterHandler,
 }
 
 impl NOCLevelInputProcessor {
-    fn new_raw(noc: Box<dyn NamedObjectCache>) -> NONInputProcessorRef {
-        let ret = Self { noc };
+    fn new(
+        zone_manager: ZoneManagerRef,
+        router_handlers: &RouterHandlersManager,
+        noc: NamedObjectCacheRef,
+    ) -> NONInputProcessorRef {
+        let handler = NONRouterHandler::new(&router_handlers, zone_manager);
+        let ret = Self { noc, handler };
         Arc::new(Box::new(ret))
     }
 
-    // 带file服务的noc processor
-    pub(crate) fn new_raw_with_file_service(
-        noc: Box<dyn NamedObjectCache>,
+    // noc processor with inner_path service
+    pub(crate) fn new_with_inner_path_service(
+        noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        ood_resolver: OodResolver,
         router_handlers: RouterHandlersManager,
+        zone_manager: ZoneManagerRef,
         chunk_manager: Arc<ChunkManager>,
     ) -> NONInputProcessorRef {
-        let raw_processor = Self::new_raw(noc.clone_noc());
+        let raw_processor = Self::new(zone_manager, &router_handlers, noc.clone());
 
-        let ndc = NDCLevelInputProcessor::new_raw(chunk_manager, ndc, tracker, raw_processor.clone());
-
-        let file_processor =
-            NONFileServiceProcessor::new(NONAPILevel::NOC, raw_processor, ndc, ood_resolver, noc);
+        // add inner_path supports
+        let inner_path_processor =
+            NONInnerPathServiceProcessor::new(raw_processor, chunk_manager, ndc, tracker, noc);
 
         // 增加pre-noc前置处理器
         let pre_processor = NONHandlerPreProcessor::new(
             RouterHandlerChain::PreNOC,
-            file_processor,
+            inner_path_processor,
             router_handlers.clone(),
         );
 
@@ -56,18 +62,35 @@ impl NOCLevelInputProcessor {
         post_processor
     }
 
-    // 创建一个带本地权限的processor
-    pub(crate) fn new_local(
+    // processor with rmeta acl + valdiate
+    pub(crate) fn new_rmeta_acl(
         acl: AclManagerRef,
         raw_processor: NONInputProcessorRef,
     ) -> NONInputProcessorRef {
-        // 带local input acl的处理器
-        let acl_processor = NONAclLocalInputProcessor::new(acl, raw_processor.clone());
+        // should use validate for req_path
+        let validate_noc_processor = NONGlobalStateValidatorProcessor::new(
+            acl.global_state_validator().clone(),
+            raw_processor.clone(),
+        );
 
-        // 使用acl switcher连接
-        let processor = NONInputAclSwitcher::new(acl_processor, raw_processor);
+        // should process with rmeta
+        let rmeta_processor = NONGlobalStateMetaAclInputProcessor::new(acl, validate_noc_processor);
 
-        processor
+        rmeta_processor
+    }
+
+    // processor with local device acl + rmeta acl + valdiate
+    pub(crate) fn new_local_rmeta_acl(
+        acl: AclManagerRef,
+        raw_processor: NONInputProcessorRef,
+    ) -> NONInputProcessorRef {
+        // should process with rmeta
+        let rmeta_processor = Self::new_rmeta_acl(acl, raw_processor);
+
+        // only allowed on current device
+        let acl_processor = NONLocalAclInputProcessor::new(rmeta_processor);
+
+        acl_processor
     }
 
     pub async fn put_object(
@@ -75,41 +98,45 @@ impl NOCLevelInputProcessor {
         req: NONPutObjectInputRequest,
     ) -> BuckyResult<NONPutObjectInputResponse> {
         debug!(
-            "will put object to local noc: id={}, source={}, dec={:?}",
-            req.object.object_id, req.common.source, req.common.dec_id,
+            "will put object to local noc: id={}, access={:?}, {}",
+            req.object.object_id, req.access, req.common.source,
         );
 
-        let noc_req = NamedObjectCacheInsertObjectRequest {
-            protocol: req.common.protocol,
-            source: req.common.source.clone(),
-            dec_id: req.common.dec_id.clone(),
-
-            object: req.object.clone_object(),
-            object_id: req.object.object_id,
-            object_raw: req.object.object_raw,
-            flags: req.common.flags,
+        let noc_req = NamedObjectCachePutObjectRequest {
+            source: req.common.source,
+            object: req.object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: req.access.as_ref().map(|v| v.value()),
         };
 
-        let resp = match self.noc.insert_object(&noc_req).await {
+        let resp = match self.noc.put_object(&noc_req).await {
             Ok(resp) => {
                 match resp.result {
-                    NamedObjectCacheInsertResult::Accept => {
+                    NamedObjectCachePutObjectResult::Accept => {
                         info!(
-                            "put object to local noc success: id={}",
-                            req.object.object_id
+                            "put object to local noc success: id={}, access={:?}",
+                            noc_req.object.object_id, req.access,
                         );
                     }
-                    NamedObjectCacheInsertResult::Updated => {
-                        info!("object alreay in noc and updated: {}", req.object.object_id);
-                    }
-                    NamedObjectCacheInsertResult::AlreadyExists => {
-                        // 对象已经在noc里面了
-                        info!("object alreay in noc: {}", req.object.object_id);
-                    }
-                    NamedObjectCacheInsertResult::Merged => {
+                    NamedObjectCachePutObjectResult::Updated => {
                         info!(
-                            "object alreay in noc and signs merged: {}",
-                            req.object.object_id
+                            "object alreay in noc and updated: id={}, access={:?}",
+                            noc_req.object.object_id, req.access
+                        );
+                    }
+                    NamedObjectCachePutObjectResult::AlreadyExists => {
+                        // 对象已经在noc里面了
+                        info!(
+                            "object alreay in noc: id={}, access={:?}",
+                            noc_req.object.object_id, req.access
+                        );
+                    }
+                    NamedObjectCachePutObjectResult::Merged => {
+                        info!(
+                            "object alreay in noc and signs merged: id={}, access={:?}",
+                            noc_req.object.object_id, req.access,
                         );
                     }
                 }
@@ -120,22 +147,22 @@ impl NOCLevelInputProcessor {
                 match e.code() {
                     BuckyErrorCode::Ignored => {
                         warn!(
-                            "put object to local noc but been ignored: id={}, {}",
-                            req.object.object_id, e
+                            "put object to local noc but been ignored: id={}, access={:?}, {}",
+                            noc_req.object.object_id, req.access, e
                         );
                     }
 
                     BuckyErrorCode::Reject => {
                         warn!(
-                            "put object to local noc but been rejected: id={}, {}",
-                            req.object.object_id, e
+                            "put object to local noc but been rejected: id={}, access={:?}, {}",
+                            noc_req.object.object_id, req.access, e
                         );
                     }
 
                     _ => {
                         error!(
-                            "put object to local noc failed: id={}, {}",
-                            req.object.object_id, e
+                            "put object to local noc failed: id={}, access={:?}, {}",
+                            noc_req.object.object_id, req.access, e
                         );
                     }
                 }
@@ -147,8 +174,42 @@ impl NOCLevelInputProcessor {
         // 返回对象的两个时间
         Ok(NONPutObjectInputResponse {
             result: resp.result.into(),
-            object_expires_time: resp.object_expires_time,
-            object_update_time: resp.object_update_time,
+            object_expires_time: resp.expires_time,
+            object_update_time: resp.update_time,
+        })
+    }
+
+    async fn update_object_meta(
+        &self,
+        req: NONPutObjectInputRequest,
+    ) -> BuckyResult<NONPutObjectInputResponse> {
+        assert!(req.object.is_empty());
+
+        debug!(
+            "will update object meta local noc: id={}, access={:?}, {}",
+            req.object.object_id, req.access, req.common.source,
+        );
+
+        let noc_req = NamedObjectCacheUpdateObjectMetaRequest {
+            source: req.common.source,
+            object_id: req.object.object_id,
+            storage_category: None,
+            context: None,
+            last_access_rpath: None,
+            access_string: req.access.as_ref().map(|v| v.value()),
+        };
+
+        self.noc.update_object_meta(&noc_req).await?;
+
+        info!(
+            "update object meta success: id={}, access={:?}",
+            noc_req.object_id, req.access,
+        );
+
+        Ok(NONPutObjectInputResponse {
+            result: NONPutObjectResult::Accept,
+            object_expires_time: None,
+            object_update_time: None,
         })
     }
 
@@ -157,21 +218,14 @@ impl NOCLevelInputProcessor {
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
         let noc_req = NamedObjectCacheGetObjectRequest {
-            protocol: req.common.protocol,
-            object_id: req.object_id.clone(),
             source: req.common.source,
+            object_id: req.object_id.clone(),
+            last_access_rpath: None,
         };
 
         match self.noc.get_object(&noc_req).await {
             Ok(Some(resp)) => {
-                assert!(resp.object.is_some());
-                assert!(resp.object_raw.is_some());
-
-                let mut resp = NONGetObjectInputResponse::new(
-                    req.object_id,
-                    resp.object_raw.unwrap(),
-                    resp.object,
-                );
+                let mut resp = NONGetObjectInputResponse::new_with_object(resp.object);
                 resp.init_times()?;
 
                 Ok(resp)
@@ -187,43 +241,11 @@ impl NOCLevelInputProcessor {
 
     pub async fn select_object(
         &self,
-        req: NONSelectObjectInputRequest,
+        _req: NONSelectObjectInputRequest,
     ) -> BuckyResult<NONSelectObjectInputResponse> {
-        let filter = NamedObjectCacheSelectObjectFilter::from(req.filter.clone());
-        let opt = match &req.opt {
-            Some(opt) => Some(NamedObjectCacheSelectObjectOption::try_from(opt)?),
-            None => None,
-        };
-
-        debug!(
-            "will process select_object request: filter={:?}, opt={:?}",
-            filter, opt
-        );
-
-        // 从noc查询
-        let noc_req = NamedObjectCacheSelectObjectRequest {
-            protocol: req.common.protocol,
-            source: req.common.source,
-            filter,
-            opt,
-        };
-
-        let ret = self.noc.select_object(&noc_req).await?;
-
-        // 对所有结果转换为目标类型
-        let mut objects: Vec<SelectResponseObjectInfo> = Vec::new();
-        for item in ret.into_iter() {
-            let object = NONObjectInfo::new(item.object_id, item.object_raw.unwrap(), item.object);
-            let resp_info = SelectResponseObjectInfo {
-                size: object.object_raw.len() as u32,
-                insert_time: item.insert_time,
-                object: Some(object),
-            };
-
-            objects.push(resp_info);
-        }
-
-        Ok(NONSelectObjectInputResponse { objects })
+        let msg = format!("select_object not yet supported!");
+        error!("{}", msg);
+        Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
     }
 
     pub async fn delete_object(
@@ -231,7 +253,6 @@ impl NOCLevelInputProcessor {
         req: NONDeleteObjectInputRequest,
     ) -> BuckyResult<NONDeleteObjectInputResponse> {
         let noc_req = NamedObjectCacheDeleteObjectRequest {
-            protocol: req.common.protocol,
             object_id: req.object_id.clone(),
             source: req.common.source,
             flags: req.common.flags,
@@ -241,15 +262,14 @@ impl NOCLevelInputProcessor {
             Ok(ret) => {
                 let mut resp = NONDeleteObjectInputResponse { object: None };
 
-                if let Some(data) = ret.object {
-                    assert!(data.object.is_some());
-                    assert!(data.object_raw.is_some());
-
-                    let object =
-                        NONObjectInfo::new(req.object_id, data.object_raw.unwrap(), data.object);
-                    resp.object = Some(object);
+                if req.common.flags & CYFS_REQUEST_FLAG_DELETE_WITH_QUERY != 0 {
+                    if let Some(data) = ret.object {
+                        assert!(data.object.is_some());
+    
+                        resp.object = Some(data);
+                    }
                 }
-
+                
                 Ok(resp)
             }
             Err(e) => Err(e),
@@ -263,40 +283,38 @@ impl NONInputProcessor for NOCLevelInputProcessor {
         &self,
         req: NONPutObjectInputRequest,
     ) -> BuckyResult<NONPutObjectInputResponse> {
-        NOCLevelInputProcessor::put_object(&self, req).await
+        if req.object.is_empty() {
+            Self::update_object_meta(&self, req).await
+        } else {
+            Self::put_object(&self, req).await
+        }
     }
 
     async fn get_object(
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        NOCLevelInputProcessor::get_object(&self, req).await
+        Self::get_object(&self, req).await
     }
 
     async fn post_object(
         &self,
         req: NONPostObjectInputRequest,
     ) -> BuckyResult<NONPostObjectInputResponse> {
-        let msg = format!(
-            "post_object not support on noc level! id={}",
-            req.object.object_id
-        );
-        error!("{}", msg);
-
-        Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
+        self.handler.post_object(req).await
     }
 
     async fn select_object(
         &self,
         req: NONSelectObjectInputRequest,
     ) -> BuckyResult<NONSelectObjectInputResponse> {
-        NOCLevelInputProcessor::select_object(&self, req).await
+        Self::select_object(&self, req).await
     }
 
     async fn delete_object(
         &self,
         req: NONDeleteObjectInputRequest,
     ) -> BuckyResult<NONDeleteObjectInputResponse> {
-        NOCLevelInputProcessor::delete_object(&self, req).await
+        Self::delete_object(&self, req).await
     }
 }

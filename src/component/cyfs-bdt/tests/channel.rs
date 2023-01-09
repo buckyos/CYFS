@@ -2,7 +2,7 @@ use async_std::{future, io::prelude::*, task};
 use cyfs_base::*;
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
-    download::*, ChunkDownloadConfig, ChunkReader, ChunkWriter, MemChunkStore, MemTracker, Stack,
+    download::*, SingleDownloadContext, ChunkReader, ChunkWriter, MemChunkStore, MemTracker, Stack,
     StackConfig, StackGuard, StackOpenParams,
 };
 use std::{sync::Arc, time::Duration};
@@ -49,8 +49,9 @@ async fn one_small_chunk(ln_ep: &[&str], rn_ep: &[&str], uploader_config: Option
 
     let _ = download_chunk(
         &*ln_stack,
-        chunkid.clone(),
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()),
+        chunkid.clone(), 
+        None, 
+        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])),
         vec![ln_store.clone_as_writer()],
     )
     .await;
@@ -101,8 +102,9 @@ async fn empty_chunk() {
 
     let _ = download_chunk(
         &*ln_stack,
-        chunkid.clone(),
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()),
+        chunkid.clone(), 
+        None, 
+        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
         vec![ln_store.clone_as_writer()],
     )
     .await;
@@ -136,12 +138,11 @@ async fn one_small_chunk_with_refer() {
         .await
         .unwrap();
 
-    let mut config = ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone());
-    config.referer = Some("referer".to_owned());
     let _ = download_chunk(
         &*ln_stack,
-        chunkid.clone(),
-        config,
+        chunkid.clone(), 
+        None, 
+        Some(SingleDownloadContext::streams(Some("referer".to_owned()), vec![rn_stack.local_device_id().clone()])), 
         vec![ln_store.clone_as_writer()],
     )
     .await;
@@ -202,8 +203,9 @@ async fn one_small_chunk_in_file() {
 
     let _ = download_chunk(
         &*ln_stack,
-        chunkid.clone(),
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()),
+        chunkid.clone(), 
+        None, 
+        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])),
         vec![ln_store.clone_as_writer()],
     )
     .await;
@@ -299,14 +301,15 @@ async fn one_small_chunk_double_source() {
         .await
         .unwrap();
 
-    let config = ChunkDownloadConfig::from(vec![
+    let context = SingleDownloadContext::streams(None, vec![
         ref_stack.local_device_id().clone(),
         src_stack.local_device_id().clone(),
     ]);
     let _ = download_chunk(
         &*down_stack,
-        chunkid.clone(),
-        config,
+        chunkid.clone(), 
+        None, 
+        Some(context),
         vec![down_store.clone_as_writer()],
     )
     .await;

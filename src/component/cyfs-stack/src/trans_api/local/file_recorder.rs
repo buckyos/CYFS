@@ -13,8 +13,8 @@ pub struct AddFileRequest {
 pub(in crate::trans_api) struct FileRecorder {
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
-    noc: Box<dyn NamedObjectCache>,
-    device_id: DeviceId,
+    noc: NamedObjectCacheRef,
+    dec_id: ObjectId,
 }
 
 impl Clone for FileRecorder {
@@ -22,8 +22,8 @@ impl Clone for FileRecorder {
         Self {
             ndc: self.ndc.clone(),
             tracker: self.tracker.clone(),
-            noc: self.noc.clone_noc(),
-            device_id: self.device_id.clone(),
+            noc: self.noc.clone(),
+            dec_id: self.dec_id.clone(),
         }
     }
 }
@@ -32,14 +32,14 @@ impl FileRecorder {
     pub fn new(
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        noc: Box<dyn NamedObjectCache>,
-        device_id: DeviceId,
+        noc: NamedObjectCacheRef,
+        dec_id: ObjectId,
     ) -> Self {
         Self {
             ndc,
             tracker,
             noc,
-            device_id,
+            dec_id,
         }
     }
 
@@ -192,32 +192,30 @@ impl FileRecorder {
         // 添加到noc
         let object_raw = file.to_vec()?;
         let object = Arc::new(AnyNamedObject::Standard(StandardObject::File(file.clone())));
-        let req = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
-            object_id: file_id.object_id().to_owned(),
-            dec_id: None,
+        let object = NONObjectInfo::new(file_id.object_id().to_owned(), object_raw, Some(object));
+
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
             object,
-            object_raw,
-            flags: 0,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: None,
         };
 
-
-        match self.noc.insert_object(&req).await {
-            Ok(resp) => {
-                match resp.result {
-                    NamedObjectCacheInsertResult::Accept
-                    | NamedObjectCacheInsertResult::Updated => {
-                        info!("insert file object to noc success success: {}", file_id);
-                    }
-                    NamedObjectCacheInsertResult::AlreadyExists => {
-                        warn!("insert object but already exists: {}", file_id);
-                    }
-                    NamedObjectCacheInsertResult::Merged => {
-                        warn!("insert file object but signs merged success: {}", file_id);
-                    }
+        match self.noc.put_object(&req).await {
+            Ok(resp) => match resp.result {
+                NamedObjectCachePutObjectResult::Accept
+                | NamedObjectCachePutObjectResult::Updated => {
+                    info!("insert file object to noc success success: {}", file_id);
                 }
-            }
+                NamedObjectCachePutObjectResult::AlreadyExists => {
+                    warn!("insert object but already exists: {}", file_id);
+                }
+                NamedObjectCachePutObjectResult::Merged => {
+                    warn!("insert file object but signs merged success: {}", file_id);
+                }
+            },
             Err(e) => {
                 error!("insert file object to noc failed: {} {}", file_id, e);
                 return Err(e);
@@ -228,7 +226,11 @@ impl FileRecorder {
         self.add_file_to_ndc(file, dirs).await
     }
 
-    pub async fn add_file_to_ndc(&self, file: &File, dirs: Option<Vec<FileDirRef>>) -> BuckyResult<()> {
+    pub async fn add_file_to_ndc(
+        &self,
+        file: &File,
+        dirs: Option<Vec<FileDirRef>>,
+    ) -> BuckyResult<()> {
         let file_id = file.desc().file_id();
         let file_req = InsertFileRequest {
             file_id: file_id.clone(),
@@ -239,27 +241,15 @@ impl FileRecorder {
         };
 
         self.ndc.insert_file(&file_req).await.map_err(|e| {
-            error!(
-                "record file to ndc error! file={}, {}",
-                file_id,
-                e
-            );
+            error!("record file to ndc error! file={}, {}", file_id, e);
             e
         })?;
 
-        info!(
-            "record file to ndc+tracker success! file={}",
-            file_id,
-        );
+        info!("record file to ndc+tracker success! file={}", file_id,);
         Ok(())
     }
 
-    pub async fn record_file_chunk_list(
-        &self,
-        source: &Path,
-        file: &File,
-    ) -> BuckyResult<()> {
-
+    pub async fn record_file_chunk_list(&self, source: &Path, file: &File) -> BuckyResult<()> {
         let file_id = file.desc().file_id();
 
         let chunk_list = if let Some(body) = file.body() {
@@ -441,32 +431,30 @@ impl FileRecorder {
         // 添加到noc
         let object_raw = dir.to_vec()?;
         let object = Arc::new(AnyNamedObject::Standard(StandardObject::Dir(dir)));
-        let req = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
-            object_id: dir_id.object_id().to_owned(),
-            dec_id: None,
+        let object = NONObjectInfo::new(dir_id.object_id().to_owned(), object_raw, Some(object));
+
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
             object,
-            object_raw,
-            flags: 0,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: None,
         };
 
-        match self.noc.insert_object(&req).await {
-            Ok(resp) => {
-                match resp.result {
-                    NamedObjectCacheInsertResult::Accept
-                    | NamedObjectCacheInsertResult::Updated => {
-                        info!("insert dir object to noc success success: {}", dir_id);
-                    }
-                    NamedObjectCacheInsertResult::AlreadyExists => {
-                        warn!("insert dir object but already exists: {}", dir_id);
-                    }
-                    NamedObjectCacheInsertResult::Merged => {
-                        warn!("insert dir object but signs merged success: {}", dir_id);
-                    }
+        match self.noc.put_object(&req).await {
+            Ok(resp) => match resp.result {
+                NamedObjectCachePutObjectResult::Accept
+                | NamedObjectCachePutObjectResult::Updated => {
+                    info!("insert dir object to noc success success: {}", dir_id);
                 }
-
-            }
+                NamedObjectCachePutObjectResult::AlreadyExists => {
+                    warn!("insert dir object but already exists: {}", dir_id);
+                }
+                NamedObjectCachePutObjectResult::Merged => {
+                    warn!("insert dir object but signs merged success: {}", dir_id);
+                }
+            },
             Err(e) => {
                 error!("insert dir object to noc failed: {} {}", dir_id, e);
                 return Err(e);

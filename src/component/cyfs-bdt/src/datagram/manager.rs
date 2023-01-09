@@ -7,7 +7,7 @@ use async_std::sync::Arc;
 use rand::{thread_rng, Rng};
 use cyfs_base::*;
 use crate::{
-    protocol::{Datagram, OnPackage, OnPackageResult}, 
+    protocol::{*, v0::*}, 
     tunnel::TunnelContainer, 
     stack::{WeakStack, Stack}, 
 };
@@ -36,6 +36,9 @@ pub struct Config {
     pub max_try_random_vport_times: usize,
     pub piece_cache_duration: Duration,
     pub recv_cache_count: usize,
+    pub expired_tick_sec: u64,
+    pub fragment_cache_size: usize,
+    pub fragment_expired_us: u64,
 }
 
 struct DatagramManagerImpl {
@@ -136,12 +139,12 @@ impl DatagramManager {
     }
 }
 
-impl OnPackage<Datagram, &TunnelContainer> for DatagramManager {
-    fn on_package(&self, pkg: &Datagram, from: &TunnelContainer) -> Result<OnPackageResult, BuckyError> {
+impl OnPackage<Datagram, (&TunnelContainer, bool)> for DatagramManager {
+    fn on_package(&self, pkg: &Datagram, context: (&TunnelContainer, bool)) -> Result<OnPackageResult, BuckyError> {
         if let Some(tunnel) = self.0.find_tunnel(pkg.to_vport) {
-            tunnel.on_package(pkg, from)
+            tunnel.on_package(pkg, context)
         } else {
-            log::warn!("datagram recv data to unknown vport: {}, from: {}.", pkg.to_vport, from);
+            log::warn!("datagram recv data to unknown vport: {}, from: {}.", pkg.to_vport, context.0);
             Err(BuckyError::new(BuckyErrorCode::ErrorState, "no datagram-tunnel bind"))
         }
     }

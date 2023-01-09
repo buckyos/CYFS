@@ -1,12 +1,11 @@
 use crate::app_cmd_executor::AppCmdExecutor;
 use crate::app_controller::AppController;
+use crate::app_install_detail::AppInstallDetail;
 use crate::event_handler::EventListener;
 use crate::non_helper::*;
-use app_manager_lib::{AppManagerConfig, AppManagerHostMode};
 use async_std::channel::{Receiver, Sender};
 use async_std::stream::StreamExt;
 use cyfs_base::*;
-use cyfs_client::NamedCacheClient;
 use cyfs_core::*;
 use cyfs_lib::*;
 use log::*;
@@ -17,18 +16,15 @@ use version_compare::Version;
 
 //pub const USER_APP_LIST: &str = "user_app";
 
+//中间状态最长保持时间:15分钟
+const STATUS_LASTED_TIME_LIMIT_IN_MICROS: u64 = 15 * 60 * 1000 * 1000;
+
 //1分钟检查一次状态
-const CHECK_STATUS_INTERVAL_IN_MICRO: u64 = 1 * 60 * 1000 * 1000; //2 * 60 * 1000 * 1000;
-
-//中间状态最长保持时间:10分钟
-const STATUS_LASTED_TIME_LIMIT_IN_MICROS: u64 = 10 * 60 * 1000 * 1000;
-
-//每12小时检查一次app的新版本
-const CHECK_APP_UPDATE_INTERVAL_IN_SECS: u64 = 12 * 60 * 60;
-
-//get sys app list every 10 mins
-const CHECK_SYS_APP_INTERVAL_IN_SECS: u64 = 10 * 60;
-
+const CHECK_STATUS_INTERVAL_IN_SECS: u64 = 1 * 60; //2 * 60 * 1000 * 1000;
+                                                   //每6小时检查一次app的新版本
+const CHECK_APP_UPDATE_INTERVAL_IN_SECS: u64 = 6 * 60 * 60;
+//get sys app list every 30 mins
+const CHECK_SYS_APP_INTERVAL_IN_SECS: u64 = 30 * 60;
 //sys app start retry count limit
 const START_RETRY_LIMIT: u8 = 3;
 
@@ -46,20 +42,17 @@ pub struct AppManager {
     cmd_list: Option<Arc<Mutex<AppCmdList>>>,
     status_list: Arc<RwLock<HashMap<DecAppId, Arc<Mutex<AppLocalStatus>>>>>,
     owner: ObjectId,
-    app_controller: Arc<AppController>,
+    app_controller: Option<Arc<AppController>>,
     sender: Sender<bool>,
     receiver: Receiver<bool>,
-    last_check_timestamp: Mutex<u64>,
     cmd_executor: Option<AppCmdExecutor>,
     non_helper: Arc<NonHelper>,
     use_docker: bool,
-    //是不是首次检查app状态，如果是首次，处于running状态的app要被拉起一次
-    first_check: Mutex<bool>,
     start_couter: Arc<RwLock<HashMap<DecAppId, u8>>>,
 }
 
 impl AppManager {
-    pub fn new(shared_stack: SharedCyfsStack, named_cache_client: NamedCacheClient) -> Self {
+    pub fn new(shared_stack: SharedCyfsStack, use_docker: bool) -> Self {
         let device = shared_stack.local_device();
         let owner = device
             .desc()
@@ -67,10 +60,7 @@ impl AppManager {
             .to_owned()
             .unwrap_or_else(|| device.desc().calculate_id());
         let (sender, receiver) = async_std::channel::unbounded();
-        let app_config = AppManagerConfig::new();
-        let use_docker =
-            *app_config.host_mode() == AppManagerHostMode::Default && cfg!(target_os = "linux");
-        info!("app use docker:{}", use_docker);
+
         Self {
             shared_stack: shared_stack.clone(),
             app_local_list: Arc::new(RwLock::new(None)),
@@ -78,19 +68,12 @@ impl AppManager {
             cmd_list: None,
             status_list: Arc::new(RwLock::new(HashMap::new())),
             owner,
-            app_controller: Arc::new(AppController::new(
-                shared_stack.clone(),
-                owner.clone(),
-                named_cache_client,
-                use_docker,
-            )),
+            app_controller: None,
             sender,
             receiver,
-            last_check_timestamp: Mutex::new(0),
             cmd_executor: None,
             non_helper: Arc::new(NonHelper::new(owner, shared_stack)),
             use_docker,
-            first_check: Mutex::new(true),
             start_couter: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -106,15 +89,24 @@ impl AppManager {
         let mut status_list = HashMap::new();
         for app_id in app_local_list.app_list() {
             let local_status = self.non_helper.get_local_status(app_id).await;
+            info!("[INIT] push status to list:{}", local_status.output());
             status_list.insert(app_id.clone(), Arc::new(Mutex::new(local_status)));
         }
 
         *self.app_local_list.write().unwrap() = Some(app_local_list);
         *self.status_list.write().unwrap() = status_list;
 
+        let mut app_controller = AppController::new(self.use_docker);
+        app_controller
+            .prepare_start(self.shared_stack.clone(), self.owner.clone())
+            .await?;
+        let controller = Arc::new(app_controller);
+        AppController::start_monitor_sn(controller.clone()).await;
+        self.app_controller = Some(controller);
+
         self.cmd_executor = Some(AppCmdExecutor::new(
             self.owner.clone(),
-            self.app_controller.clone(),
+            self.app_controller.as_ref().unwrap().clone(),
             //self.app_local_list.clone(),
             self.status_list.clone(),
             cmd_list,
@@ -130,15 +122,16 @@ impl AppManager {
             app_manager: manager.clone(),
         };
 
-        let filter = format!("obj_type == {}", CoreObjectType::AppCmd as u16);
+        //let filter = format!("obj_type == {}", CoreObjectType::AppCmd as u16);
         manager
             .shared_stack
             .router_handlers()
             .add_handler(
-                RouterHandlerChain::PreRouter,
-                "app_manager_ex_pre_post_to_noc",
+                RouterHandlerChain::Handler,
+                "app_manager_cmd_handler",
                 0,
-                &filter,
+                None, //Some(filter.clone()),
+                Some(CYFS_SYSTEM_APP_CMD_VIRTUAL_PATH.to_owned()),
                 RouterHandlerAction::Default,
                 Some(Box::new(listener)),
             )
@@ -157,6 +150,8 @@ impl AppManager {
                         .unwrap()
                         .execute_cmd()
                         .await;
+                } else {
+                    error!("executor recv failed!");
                 }
             }
         });
@@ -164,11 +159,13 @@ impl AppManager {
         // 起一个1分钟的timer，检查App的状态
         let manager_checker = manager.clone();
         async_std::task::spawn(async move {
-            //先触发一次
-            manager_checker.check_app_status().await;
+            manager_checker.check_app_status_on_startup().await;
             let mut interval =
-                async_std::stream::interval(Duration::from_micros(CHECK_STATUS_INTERVAL_IN_MICRO));
+                async_std::stream::interval(Duration::from_secs(CHECK_STATUS_INTERVAL_IN_SECS));
             while let Some(_) = interval.next().await {
+                if let Err(e) = manager_checker.sender.send(false).await {
+                    error!("active executor failed! err:{}", e);
+                }
                 manager_checker.check_app_status().await;
             }
         });
@@ -298,7 +295,7 @@ impl AppManager {
             match self.get_app_update_version(&app_id, &app_cur_version).await {
                 Ok(update_version) => {
                     info!(
-                        "will update app, appid: {}, target version:{}",
+                        "will update app, appid:{}, target version:{}",
                         app_id, update_version
                     );
                     //模拟用户发起一个安装请求
@@ -311,10 +308,122 @@ impl AppManager {
                     let _ = self.on_app_cmd(install_cmd, false).await;
                 }
                 Err(e) => {
-                    info!("get app update version failed. app: {}, err: {}", app_id, e)
+                    info!("get app update version failed. app:{}, err: {}", app_id, e)
                 }
             }
         }
+    }
+
+    async fn fix_status_on_startup(&self) {
+        let status_list = self.status_list.read().unwrap().clone();
+        for (app_id, status) in status_list {
+            let mut status_clone = None;
+            {
+                let mut status = status.lock().unwrap();
+                let status_code = status.status();
+                let fix_status = match status_code {
+                    AppLocalStatusCode::Stopping => Some(AppLocalStatusCode::StopFailed),
+                    AppLocalStatusCode::Starting => Some(AppLocalStatusCode::StartFailed),
+                    AppLocalStatusCode::Installing => Some(AppLocalStatusCode::InstallFailed),
+                    AppLocalStatusCode::Uninstalling => Some(AppLocalStatusCode::UninstallFailed),
+                    _ => None,
+                };
+                if fix_status.is_some() {
+                    let fix_code = fix_status.unwrap();
+                    status.set_status(fix_code);
+                    status_clone = Some(status.clone());
+                    info!(
+                        "### fix app status on startup, app:{}, from {} to {}",
+                        app_id, status_code, fix_code
+                    );
+                }
+            }
+            if let Some(new_status) = status_clone {
+                let _ = self.non_helper.put_local_status(&new_status).await;
+            }
+        }
+    }
+
+    /*在appmanager启动的时候调用，会根据localstatus尝试重建本地状态
+     */
+    async fn check_app_status_on_startup(&self) {
+        info!("######[START] check app status on startup!");
+        self.fix_status_on_startup().await;
+
+        let status_list = self.status_list.read().unwrap().clone();
+        for (app_id, status) in status_list {
+            let status_code = status.lock().unwrap().status();
+            info!("### app:{}, status should be: {}", app_id, status_code);
+
+            let mut need_start = false;
+            let mut need_install = false;
+
+            match status_code {
+                AppLocalStatusCode::Init
+                | AppLocalStatusCode::Uninstalled
+                | AppLocalStatusCode::InstallFailed
+                | AppLocalStatusCode::ErrStatus => {
+                    info!(
+                        "### [STARTUP CEHCK] pass on startup, app:{}, status:{}",
+                        app_id, status_code
+                    );
+                    continue;
+                }
+                AppLocalStatusCode::Running
+                | AppLocalStatusCode::StartFailed
+                | AppLocalStatusCode::RunException => {
+                    need_start = true;
+                    need_install = true;
+                }
+                AppLocalStatusCode::Stop
+                | AppLocalStatusCode::NoService
+                | AppLocalStatusCode::StopFailed => {
+                    need_install = true;
+                }
+                AppLocalStatusCode::UninstallFailed => {
+                    //do uninstall
+                    info!("### [STARTUP CEHCK] app is uninstallFailed, try to uninstall it again, app:{}", app_id);
+                    let uninstall_cmd = AppCmd::uninstall(self.owner.clone(), app_id.clone());
+                    let _ = self.on_app_cmd(uninstall_cmd, false).await;
+                }
+                v @ _ => {
+                    info!(
+                        "### [STARTUP CEHCK] status will not be handled!, app:{}, status:{}",
+                        app_id, v
+                    );
+                }
+            }
+
+            if need_install || need_start {
+                let target_version = status.lock().unwrap().version().map(|s| s.to_owned());
+                let install_detail = AppInstallDetail::new(&app_id);
+                let installed_version = install_detail.get_install_version().map(|s| s.to_owned());
+                if target_version.is_some() {
+                    let target_ver = target_version.unwrap();
+                    info!("### [STARTUP CEHCK] app:{}, version in status:{:?}, installed version:{:?}", app_id, target_ver, installed_version);
+                    if installed_version.is_none() || installed_version.unwrap() != target_ver {
+                        info!("### [STARTUP CEHCK] app need install, app:{}, status:{}, ver:{:?}, need start:{}", app_id, status_code, target_ver, need_start);
+                        let install_cmd = AppCmd::install(
+                            self.owner.clone(),
+                            app_id.clone(),
+                            &target_ver,
+                            need_start,
+                        );
+                        let _ = self.on_app_cmd(install_cmd, false).await;
+                    } else if need_start {
+                        info!(
+                            "### [STARTUP CEHCK] app need restart, app:{}, status:{}",
+                            app_id, status_code
+                        );
+                        let _ = self.restart_app(&app_id, status.clone()).await;
+                    }
+                } else {
+                    unreachable!();
+                }
+            }
+        }
+
+        info!("######[END] check app status on startup!");
     }
 
     /* 根据local_status检查app状态
@@ -322,22 +431,21 @@ impl AppManager {
     处于此种状态超过一定时间（STATUS_LASTED_TIME_LIMIT_IN_MICROS 10分钟）会进入错误状态。
     已经入错误状态的app不用管。等下一个命令纠正它。
     已经入Running状态的app要确保它正在运行。
-    当AppManager首次启动的时候，
-    已经处于running状态的app，如果正在运行，要重启一次，如果没运行，要拉起一次（OOD重启的情况）。
     除Running状态的其他非中间状态，不用管。
     */
     async fn check_app_status(&self) {
         info!("###### will check app status!");
         let status_list = self.status_list.read().unwrap().clone();
-        let first_check = *self.first_check.lock().unwrap();
         for (app_id, status) in status_list {
             let status_code = status.lock().unwrap().status();
-            info!("### app {}, status should be: {}", app_id, status_code);
+            info!(
+                "###[STATUS CHECK] app:{}, status should be: {}",
+                app_id, status_code
+            );
             if status_code == AppLocalStatusCode::Running {
                 //进入running说明启动成功，检查一下服务在不在，不在的话算运行异常
                 //这里考虑重启ood以后，已经处于running状态的app，如果正在运行，要重启一次，如果没运行，要拉起一次
-                self.check_running_app(&app_id, status.clone(), first_check)
-                    .await;
+                self.check_running_app(&app_id, status.clone()).await;
                 continue;
             }
 
@@ -345,6 +453,7 @@ impl AppManager {
             {
                 //要在锁里操作，因为执行器也可能改变App的状态
                 let mut status = status.lock().unwrap();
+                let status_code = status.status();
                 let status_lasted_time = bucky_time_now() - status.last_status_update_time();
                 let is_lasted_exceeds_limit =
                     status_lasted_time > STATUS_LASTED_TIME_LIMIT_IN_MICROS;
@@ -373,7 +482,7 @@ impl AppManager {
                 match target_status_code {
                     Some(target_status) => {
                         info!(
-                            "will change status by checker, app:{}, from [{}] to [{}], is lasted exceeds limit: {}",
+                            "[STATUS CHECK] will change status by checker, app:{}, from [{}] to [{}], is lasted exceeds limit: {}",
                             app_id, status_code, target_status, is_lasted_exceeds_limit
                         );
 
@@ -389,9 +498,6 @@ impl AppManager {
                 let _ = self.non_helper.put_local_status(&new_status).await;
             }
         }
-
-        *self.first_check.lock().unwrap() = false;
-        *self.last_check_timestamp.lock().unwrap() = bucky_time_now();
     }
 
     async fn install_sys_app(&self) {
@@ -406,6 +512,8 @@ impl AppManager {
         let status_list = self.status_list.read().unwrap().clone();
         let sys_app_list = sys_app_list.app_list();
 
+        //if app not installed, install it
+        //if app install failed or start failed, retry. only if installed version == target version
         for (app_id, target_status) in sys_app_list {
             let target_version = target_status.version();
             let target_status = target_status.status();
@@ -419,122 +527,88 @@ impl AppManager {
             }
             let local_status = status_list.get(app_id);
             let mut need_install = false;
-            let mut reset_retry = false;
+            //let mut reset_retry = false;
+            let installed_version;
+            let status_code;
 
             if let Some(local_status) = local_status {
                 let local_status = local_status.lock().unwrap();
                 info!("### sys app status: {}", local_status.output());
-                let status_code = local_status.status();
-                if status_code == AppLocalStatusCode::Uninstalled {
-                    info!("### sys app is uninstalled, will skip it. app:{}", app_id);
-                    continue;
-                    //sys app被卸载了的话，就不要再安装了
-                }
-                if !local_status.auto_update() {
-                    info!(
-                        "### sys app auto update is turned off, will skip it. app:{}",
-                        app_id
-                    );
-                    continue;
-                }
-
-                if let Some(install_version) = local_status.version() {
-                    if install_version != target_version {
-                        //has new version, reset retry
-                        info!("### sys app has new version, reset retry count. app:{}, installed ver:{}, target ver:{}", 
-                        app_id, install_version, target_version);
-                        reset_retry = true;
-                    }
-                    //user maybe shutdown auto update? TODO
-                    if install_version != target_version
-                        || status_code == AppLocalStatusCode::InstallFailed
-                        || status_code == AppLocalStatusCode::StartFailed
-                        || status_code == AppLocalStatusCode::Init
-                    {
-                        warn!("### sys app is in error state or version is not match, will reinstall it. app:{}, target version:{}, status: {}, installed ver:{}", 
-                        app_id, target_version, status_code, install_version);
-                        need_install = true;
-                    }
-                } else {
-                    info!("### sys app is not installed, install it. app:{}", app_id);
-                    need_install = true;
-                }
+                status_code = local_status.status();
+                installed_version = local_status.version().map_or(None, |v| Some(v.to_owned()));
             } else {
                 info!("### sys app status is not found. app:{}", app_id);
                 //list里没有，直接取一次status
                 let local_status = self.non_helper.get_local_status(app_id).await;
-                if local_status.status() == AppLocalStatusCode::Uninstalled {
-                    info!("### sys app is uninstalled, will skip it. app:{}", app_id);
-                    continue;
-                    //sys app被卸载了的话，就不要再安装了
-                } else {
-                    info!(
-                        "### sys app is not added yet, will install it. app:{}, target version:{}",
-                        app_id, target_version
-                    );
-                    need_install = true;
-                }
+                status_code = local_status.status();
+                installed_version = local_status.version().map_or(None, |v| Some(v.to_owned()));
             }
 
-            if need_install || reset_retry {
-                let mut counters = self.start_couter.write().unwrap();
-                if reset_retry {
-                    counters.insert(app_id.clone(), 0);
-                }
-                if need_install {
-                    let cur_count = *counters.get(app_id).unwrap_or(&0);
-                    if cur_count > START_RETRY_LIMIT {
-                        need_install = false;
+            if status_code == AppLocalStatusCode::Init {
+                info!("### sys app is inited, will install it, app:{}", app_id);
+                need_install = true;
+            } else if status_code == AppLocalStatusCode::InstallFailed
+                || status_code == AppLocalStatusCode::StartFailed
+            {
+                if let Some(ver) = installed_version {
+                    if ver == target_version {
                         info!(
-                            "###sys app start retry count is out of limit! skip it. app:{}",
+                            "### sys app did not start correctly, will reinstall it, app:{}",
                             app_id
                         );
-                    } else {
-                        info!(
-                            "### start sys app:{}, retry count:{}",
-                            app_id,
-                            cur_count + 1
-                        );
-                        counters.insert(app_id.clone(), cur_count + 1);
+                        need_install = true
                     }
                 }
             }
 
-            if need_install {
-                info!(
-                    "### will install sys app:{}, ver:{}",
-                    app_id, target_version
-                );
-                // simulate user request, after install, will manager the app as a user app.
-                let _ = self.on_add_cmd(app_id).await;
-                let install_cmd =
-                    AppCmd::install(self.owner.clone(), app_id.clone(), target_version, true);
-                let _ = self.on_app_cmd(install_cmd, false).await;
+            if !need_install {
+                continue;
             }
+
+            {
+                let mut counters = self.start_couter.write().unwrap();
+
+                let cur_count = *counters.get(app_id).unwrap_or(&0);
+                if cur_count > START_RETRY_LIMIT {
+                    info!(
+                        "###sys app start retry count is out of limit! skip it. app:{}",
+                        app_id
+                    );
+                    continue;
+                } else {
+                    info!(
+                        "### start sys app:{}, retry count:{}",
+                        app_id,
+                        cur_count + 1
+                    );
+                    counters.insert(app_id.clone(), cur_count + 1);
+                }
+            }
+
+            info!(
+                "### will install sys app:{}, ver:{}",
+                app_id, target_version
+            );
+            // simulate user request, after install, will manager the app as a user app.
+            let _ = self.on_add_cmd(app_id).await;
+            let install_cmd =
+                AppCmd::install(self.owner.clone(), app_id.clone(), target_version, true);
+            let _ = self.on_app_cmd(install_cmd, false).await;
         }
     }
 
-    async fn check_running_app(
-        &self,
-        app_id: &DecAppId,
-        status: Arc<Mutex<AppLocalStatus>>,
-        first_check: bool,
-    ) {
-        match self.app_controller.is_app_running(app_id).await {
+    async fn check_running_app(&self, app_id: &DecAppId, status: Arc<Mutex<AppLocalStatus>>) {
+        match self
+            .app_controller
+            .as_ref()
+            .unwrap()
+            .is_app_running(app_id)
+            .await
+        {
             Ok(is_running) => {
-                info!(
-                    "checking running status, running: [{}] app: {}",
-                    is_running, app_id
-                );
+                info!("[RUNNING CHECK] running: [{}] app:{}", is_running, app_id);
                 if is_running {
-                    if !first_check {
-                        return;
-                    }
-                    info!(
-                        "app is running when first check, will restart it. app: {}",
-                        app_id
-                    );
-                    let _ = self.restart_app(app_id, status.clone()).await;
+                    return;
                 } else {
                     let mut try_start = false;
                     let mut status_clone = None;
@@ -544,33 +618,24 @@ impl AppManager {
                         if cur_status_code != AppLocalStatusCode::Running {
                             //判断状态是否还是Running，如果不是就不改变状态了
                             info!(
-                            "after check app running, but current status is not running, skip. app: {}, status: {}",
+                            "[RUNNING CHECK] after check app running, but current status is not running, skip. app:{}, status: {}",
                             app_id, cur_status_code
                         );
                             return;
                         }
-                        if first_check {
-                            //第一次检查，尝试拉起一次app，先停止再启动
-                            info!(
-                                "### first check app, last status is running, will try restart it. app:{}",
-                                app_id
-                            );
-                            try_start = true;
+                        //status is running, but not actually
+                        let mut counters = self.start_couter.write().unwrap();
+                        let cur_count = *counters.get(app_id).unwrap_or(&0);
+                        if cur_count > START_RETRY_LIMIT {
+                            let target_status_code = AppLocalStatusCode::RunException;
+                            info!("[RUNNING CHECK] app failed count is out of limit! app:{}, change app status from [{}] to [{}]", 
+                            app_id, cur_status_code, target_status_code);
+                            status.set_status(target_status_code);
+                            status_clone = Some(status.clone());
                         } else {
-                            //status is running, but not actually
-                            let mut counters = self.start_couter.write().unwrap();
-                            let cur_count = *counters.get(app_id).unwrap_or(&0);
-                            if cur_count > START_RETRY_LIMIT {
-                                let target_status_code = AppLocalStatusCode::RunException;
-                                info!("### app failed count is out of limit! app:{}, change app status from [{}] to [{}]", 
-                                app_id, cur_status_code, target_status_code);
-                                status.set_status(target_status_code);
-                                status_clone = Some(status.clone());
-                            } else {
-                                info!("### app status is running, but not actually. will restart it, app: {}, retry count:{}", app_id, cur_count + 1);
-                                counters.insert(app_id.clone(), cur_count + 1);
-                                try_start = true;
-                            }
+                            info!("[RUNNING CHECK] app status is running, but not actually. will restart it, app:{}, retry count:{}", app_id, cur_count + 1);
+                            counters.insert(app_id.clone(), cur_count + 1);
+                            try_start = true;
                         }
                     }
                     if try_start {
@@ -582,14 +647,10 @@ impl AppManager {
             }
             Err(e) => {
                 warn!(
-                    "checking running status failed will reinstall it, app: {}, err: {}",
+                    "[RUNNING CHECK] checking running status failed will reinstall it, app:{}, err: {}",
                     app_id, e
                 );
-                let version;
-                {
-                    let status = status.lock().unwrap();
-                    version = status.version().unwrap().to_owned();
-                }
+                let version = status.lock().unwrap().version().unwrap().to_owned();
                 let _ = self.on_add_cmd(app_id).await;
                 let install_cmd =
                     AppCmd::install(self.owner.clone(), app_id.clone(), &version, true);
@@ -614,7 +675,7 @@ impl AppManager {
             return Err(BuckyError::from((BuckyErrorCode::AlreadyExists, err_msg)));
         } else {
             //add直接添加，不用加入到cmd队列。添加App到appList
-            info!("add app to list, app: {}", app_id);
+            info!("add app to list, app:{}", app_id);
             self.app_local_list
                 .write()
                 .unwrap()
@@ -750,7 +811,7 @@ impl AppManager {
                 AppCmdExecutor::get_next_status_with_cmd(next_cmd.cmd()).unwrap();
 
             info!(
-                "cmd accept [{:?}], will change status from [{}] to [{}], app: {}, cmd groups: {:?}",
+                "cmd accept [{:?}], will change status from [{}] to [{}], app:{}, cmd groups: {:?}",
                 cmd_code, status_code, next_status_code, app_id, cmd_group_code
             );
             status.set_status(next_status_code);
@@ -969,6 +1030,8 @@ impl AppManager {
             .await?;
         let ver_dep = self
             .app_controller
+            .as_ref()
+            .unwrap()
             .query_app_version_dep(app_id, app_version, &dec_app)
             .await?;
         if ver_dep.0 != "*" {
@@ -1082,7 +1145,9 @@ impl AppManager {
             cmd_list_clone.output()
         );
         let _ = self.non_helper.put_cmd_list(&cmd_list_clone).await;
-        let _ = self.sender.send(false).await;
+        if let Err(e) = self.sender.send(false).await {
+            error!("active executor failed! err:{}", e);
+        }
 
         Ok(())
     }
@@ -1120,7 +1185,7 @@ impl AppManager {
                 status_clone = Some(status.clone());
 
                 info!(
-                    "will change status from [{}] to [{}], app: {}",
+                    "will change status from [{}] to [{}], app:{}",
                     status_code, next_status_code, app_id
                 );
             }
@@ -1149,7 +1214,9 @@ impl AppManager {
             cmd_list_clone.output()
         );
         let _ = self.non_helper.put_cmd_list(&cmd_list_clone).await;
-        let _ = self.sender.send(false).await;
+        if let Err(e) = self.sender.send(false).await {
+            error!("active executor failed! err:{}", e);
+        }
 
         Ok(())
     }

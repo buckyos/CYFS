@@ -5,7 +5,7 @@ use http_types::{Response, StatusCode};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use cyfs_base::BuckyError;
+use cyfs_base::{BuckyError, BuckyResult};
 use futures::future::{self, AbortHandle, Aborted};
 
 use super::http_listener_base::HttpListenerBase;
@@ -14,7 +14,7 @@ use base::ListenerUtil;
 #[derive(Debug)]
 pub(super) struct HttpTcpListener {
     pub listen: SocketAddr,
-    base: Arc<Mutex<HttpListenerBase>>,
+    base: HttpListenerBase,
 
     running: bool,
     canceler: Option<AbortHandle>,
@@ -24,7 +24,7 @@ impl HttpTcpListener {
     pub fn new() -> HttpTcpListener {
         HttpTcpListener {
             listen: "0.0.0.0:0".parse().unwrap(),
-            base: Arc::new(Mutex::new(HttpListenerBase::new())),
+            base: HttpListenerBase::new(),
 
             running: false,
             canceler: None,
@@ -37,14 +37,11 @@ impl HttpTcpListener {
             self.listen, forward_id
         );
 
-        let mut base = self.base.lock().unwrap();
-        base.bind_forward(forward_id);
+        self.base.bind_forward(forward_id);
     }
 
     pub fn unbind_forward(&self, forward_id: u32) -> bool {
-        let mut base = self.base.lock().unwrap();
-
-        if base.unbind_forward(forward_id) {
+        if self.base.unbind_forward(forward_id) {
             info!(
                 "http tcp listener unbind forward: listener={}, forward_id={}",
                 self.listen, forward_id
@@ -55,14 +52,11 @@ impl HttpTcpListener {
         }
     }
 
-    pub fn load(
-        &mut self,
-        _server_node: &toml::value::Table,
-    ) -> Result<(), BuckyError> {
+    pub fn load(&mut self, _server_node: &toml::value::Table) -> BuckyResult<()> {
         Ok(())
     }
 
-    async fn run(listener: Arc<Mutex<HttpTcpListener>>) -> Result<(), BuckyError> {
+    async fn run(listener: Arc<Mutex<HttpTcpListener>>) -> BuckyResult<()> {
         {
             let mut listener = listener.lock().unwrap();
 
@@ -85,7 +79,7 @@ impl HttpTcpListener {
         ret
     }
 
-    async fn run_inner(listener: Arc<Mutex<HttpTcpListener>>) -> Result<(), BuckyError> {
+    async fn run_inner(listener: Arc<Mutex<HttpTcpListener>>) -> BuckyResult<()> {
         let listen;
         {
             let listener = listener.lock().unwrap();
@@ -188,7 +182,7 @@ impl HttpTcpListener {
         listener: &Arc<Mutex<HttpTcpListener>>,
         addr: String,
         stream: TcpStream,
-    ) -> Result<(), BuckyError> {
+    ) -> BuckyResult<()> {
         let peer_addr = stream.peer_addr()?;
         info!(
             "starting accept new tcp connection at {} from {}",
@@ -197,26 +191,30 @@ impl HttpTcpListener {
 
         // 一条连接上只accept一次
         let opts = async_h1::ServerOptions::default();
-        let ret = async_h1::accept_with_opts(stream.clone(), |mut req| async move {
-            info!("recv tcp http request: {:?}, len={:?}", req, req.len());
+        let ret = async_h1::accept_with_opts(
+            stream.clone(),
+            |mut req| async move {
+                info!("recv tcp http request: {:?}, len={:?}", req, req.len());
 
-            let base;
-            {
-                let server = listener.lock().unwrap();
-                if server.running {
-                    base = server.base.clone();
-                } else {
-                    error!("tcp http server already closed, server={}", server.listen);
-                    return Ok(Response::new(StatusCode::InternalServerError));
+                let base;
+                {
+                    let server = listener.lock().unwrap();
+                    if server.running {
+                        base = server.base.clone();
+                    } else {
+                        error!("tcp http server already closed, server={}", server.listen);
+                        return Ok(Response::new(StatusCode::InternalServerError));
+                    }
                 }
-            }
 
-            // 用户自己的请求不可附带CYFS_REMOTE_PEER，避免被攻击
-            req.remove_header(cyfs_base::CYFS_REMOTE_DEVICE);
+                // 用户自己的请求不可附带CYFS_REMOTE_PEER，避免被攻击
+                req.remove_header(cyfs_base::CYFS_REMOTE_DEVICE);
 
-            let resp = HttpListenerBase::dispatch_request(&base, req).await;
-            Ok(resp)
-        }, opts)
+                let resp = base.dispatch_request(req).await;
+                Ok(resp)
+            },
+            opts,
+        )
         .await;
 
         match ret {
@@ -258,13 +256,13 @@ impl HttpTcpListener {
 }
 
 pub(super) struct HttpTcpListenerManager {
-    server_list: Vec<Arc<Mutex<HttpTcpListener>>>,
+    server_list: Mutex<Vec<Arc<Mutex<HttpTcpListener>>>>,
 }
 
 impl HttpTcpListenerManager {
     pub fn new() -> HttpTcpListenerManager {
         HttpTcpListenerManager {
-            server_list: Vec::new(),
+            server_list: Mutex::new(Vec::new()),
         }
     }
 
@@ -274,11 +272,7 @@ impl HttpTcpListenerManager {
         listen: "127.0.0.1:80",
     }
     */
-    pub fn load(
-        &mut self,
-        server_node: &toml::value::Table,
-        forward_id: u32,
-    ) -> Result<(), BuckyError> {
+    pub fn load(&self, server_node: &toml::value::Table, forward_id: u32) -> BuckyResult<()> {
         let listener_list: Vec<SocketAddr> = ListenerUtil::load_tcp_listener(server_node)?;
         assert!(listener_list.len() > 0);
 
@@ -300,24 +294,29 @@ impl HttpTcpListenerManager {
         return Ok(());
     }
 
-    fn get_or_create(&mut self, listen: &SocketAddr) -> Arc<Mutex<HttpTcpListener>> {
-        let ret = self.server_list.iter().any(|item| {
-            let item = item.lock().unwrap();
-            item.listen == *listen
-        });
+    fn get_or_create(&self, listen: &SocketAddr) -> Arc<Mutex<HttpTcpListener>> {
+        {
+            let mut list = self.server_list.lock().unwrap();
 
-        if !ret {
-            let mut server = HttpTcpListener::new();
-            server.listen = listen.clone();
-            let server = Arc::new(Mutex::new(server));
-            self.server_list.push(server);
+            let ret = list.iter().any(|item| {
+                let item = item.lock().unwrap();
+                item.listen == *listen
+            });
+
+            if !ret {
+                let mut server = HttpTcpListener::new();
+                server.listen = listen.clone();
+                let server = Arc::new(Mutex::new(server));
+                list.push(server);
+            }
         }
 
         return self.get_item(listen).unwrap();
     }
 
-    pub fn get_item(&mut self, listen: &SocketAddr) -> Option<Arc<Mutex<HttpTcpListener>>> {
-        for server in &self.server_list {
+    pub fn get_item(&self, listen: &SocketAddr) -> Option<Arc<Mutex<HttpTcpListener>>> {
+        let list = self.server_list.lock().unwrap();
+        for server in list.iter() {
             if server.lock().unwrap().listen == *listen {
                 return Some(server.clone());
             }
@@ -327,12 +326,14 @@ impl HttpTcpListenerManager {
     }
 
     pub fn unbind_forward(&self, forward_id: u32) {
-        for server in &self.server_list {
+        let list = self.server_list.lock().unwrap().clone();
+
+        for server in list {
             let mut server = server.lock().unwrap();
             server.unbind_forward(forward_id);
 
             // 如果没有绑定任何转发器，那么停止该listener
-            if server.base.lock().unwrap().forward_count() == 0 {
+            if server.base.forward_count() == 0 {
                 server.stop();
             }
         }
@@ -340,7 +341,9 @@ impl HttpTcpListenerManager {
 
     // 启动所有服务
     pub fn start(&self) {
-        for server in &self.server_list {
+        let list = self.server_list.lock().unwrap().clone();
+
+        for server in list {
             if !server.lock().unwrap().running {
                 let server = server.clone();
                 task::spawn(async move {
@@ -351,9 +354,11 @@ impl HttpTcpListenerManager {
     }
 
     pub fn stop_idle(&self) {
-        for server in &self.server_list {
+        let list = self.server_list.lock().unwrap().clone();
+
+        for server in list {
             let mut server = server.lock().unwrap();
-            if server.base.lock().unwrap().forward_count() == 0 {
+            if server.base.forward_count() == 0 {
                 server.stop();
             }
         }

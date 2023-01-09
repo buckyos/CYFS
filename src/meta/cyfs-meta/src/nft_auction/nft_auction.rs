@@ -27,6 +27,7 @@ impl NFTAuction {
            let auction_ref = auction_ref.clone();
             Box::pin(async move {
                 if let Event::NFTStopAuction(event) = event {
+                    log::info!("nft {} stop auction", event.nft_id.to_string());
                     auction_ref.to_rc()?.on_stop_auction(&cur_block, &event).await
                 } else {
                     Err(crate::meta_err!(ERROR_INVALID))
@@ -99,9 +100,18 @@ impl NFTAuction {
     }
 
     pub async fn auction(&self, caller_id: &ObjectId, nft_id: &ObjectId, price: u64, coin_id: &CoinTokenId, stop_block: u64) -> BuckyResult<()> {
+        log::info!("auction nft {} price {} stop_block {}", nft_id.to_string(), price, stop_block);
         let (nft_desc, _, state) = self.ref_state.to_rc()?.nft_get(nft_id).await?;
         if let NFTState::Auctioning(_) = state {
             return Err(meta_err!(ERROR_NFT_IS_AUCTIONING));
+        }
+
+        if let NFTState::Selling(_) = state {
+            let event_params = Event::NFTStopSell(NFTStopSell {
+                nft_id: nft_id.clone(),
+            });
+            let id = hash_data(event_params.to_vec()?.as_slice());
+            self.event_manager.to_rc()?.drop_once_event(id.to_string().as_str()).await?;
         }
 
         let beneficiary = self.ref_state.to_rc()?.get_beneficiary(nft_id).await?;
@@ -174,6 +184,7 @@ impl NFTAuction {
         price: u64,
         coin_id: &CoinTokenId,
         stop_block: u64) -> BuckyResult<()> {
+        log::info!("create_and_auction {} name {} price {} stop_block {}", nft_id.to_string(), name, price, stop_block);
         let state = NFTState::Auctioning((price, coin_id.clone(), stop_block));
         self.ref_state.to_rc()?.nft_create(nft_id, desc, name, &state).await?;
 
@@ -187,6 +198,7 @@ impl NFTAuction {
     }
 
     pub async fn bid(&self, buyer_id: &ObjectId, nft_id: &ObjectId, price: u64, coin_id: &CoinTokenId) -> BuckyResult<()> {
+        log::info!("{} bid nft {} price {}", buyer_id.to_string(), nft_id.to_string(), price);
         let (_, _, state) = self.ref_state.to_rc()?.nft_get(nft_id).await?;
         if let NFTState::Auctioning((start_price, need_coin_id, _)) = state {
             if coin_id != &need_coin_id {

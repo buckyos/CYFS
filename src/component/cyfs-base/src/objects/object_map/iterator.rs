@@ -634,7 +634,7 @@ mod test {
 
     async fn test_iterator() {
         let noc = ObjectMapMemoryNOCCache::new();
-        let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
+        let root_cache = ObjectMapRootMemoryCache::new_default_ref(None, noc);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         let owner = ObjectId::default();

@@ -1,19 +1,19 @@
 use crate::resolver::OodResolver;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::StackGuard;
+use cyfs_lib::*;
 
-use crate::trans::TransInputProcessor;
+use crate::trans::{TransInputProcessor, TransInputProcessorRef};
 use crate::trans_api::local::FileRecorder;
 use crate::trans_api::{DownloadTaskManager, PublishManager, TransStore};
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::File;
+use cyfs_chunk_cache::ChunkManager;
 use cyfs_core::{TransContext, TransContextObject};
+use cyfs_task_manager::{TaskId, TaskManager, TaskStatus};
 use std::convert::TryFrom;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use cyfs_task_manager::{TaskId, TaskManager, TaskStatus};
 
 fn trans_task_status_to_task_status(task_status: TransTaskStatus) -> TaskStatus {
     match task_status {
@@ -36,10 +36,9 @@ fn task_status_to_trans_task_status(task_status: TaskStatus) -> TransTaskStatus 
 pub(crate) struct LocalTransService {
     download_tasks: Arc<DownloadTaskManager>,
     publish_manager: Arc<PublishManager>,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     bdt_stack: StackGuard,
 
-    file_recorder: FileRecorder,
     ood_resolver: OodResolver,
     chunk_manager: Arc<ChunkManager>,
     tracker: Box<dyn TrackerCache>,
@@ -51,9 +50,8 @@ impl Clone for LocalTransService {
         Self {
             download_tasks: self.download_tasks.clone(),
             publish_manager: self.publish_manager.clone(),
-            noc: self.noc.clone_noc(),
+            noc: self.noc.clone(),
             bdt_stack: self.bdt_stack.clone(),
-            file_recorder: self.file_recorder.clone(),
             ood_resolver: self.ood_resolver.clone(),
             chunk_manager: self.chunk_manager.clone(),
             tracker: self.tracker.clone(),
@@ -64,7 +62,7 @@ impl Clone for LocalTransService {
 
 impl LocalTransService {
     pub fn new(
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
@@ -83,15 +81,8 @@ impl LocalTransService {
             task_manager.clone(),
             ndc.clone(),
             tracker.clone(),
-            noc.clone_noc(),
+            noc.clone(),
             bdt_stack.local_device_id().clone(),
-        );
-
-        let file_recorder = FileRecorder::new(
-            ndc.clone(),
-            tracker.clone(),
-            noc.clone_noc(),
-            bdt_stack.local_device_id().to_owned(),
         );
 
         Self {
@@ -99,7 +90,6 @@ impl LocalTransService {
             publish_manager: Arc::new(publish_manager),
             noc,
             bdt_stack,
-            file_recorder,
             ood_resolver,
             chunk_manager,
             tracker,
@@ -155,22 +145,16 @@ impl LocalTransService {
             let file = match self
                 .noc
                 .get_object(&NamedObjectCacheGetObjectRequest {
-                    protocol: NONProtocol::Native,
-                    source: self.bdt_stack.local_device_id().clone(),
+                    source: req.common.source.clone(),
                     object_id: req.file_id.unwrap(),
+                    last_access_rpath: None,
                 })
                 .await?
             {
-                Some(resp) => {
-                    if resp.object_raw.is_some() {
-                        match File::clone_from_slice(resp.object_raw.as_ref().unwrap().as_slice()) {
-                            Ok(file) => Some(file),
-                            Err(_) => None,
-                        }
-                    } else {
-                        None
-                    }
-                }
+                Some(resp) => match File::clone_from_slice(resp.object.object_raw.as_slice()) {
+                    Ok(file) => Some(file),
+                    Err(_) => None,
+                },
                 None => None,
             };
 
@@ -178,8 +162,8 @@ impl LocalTransService {
                 let file_recorder = FileRecorder::new(
                     self.ndc.clone(),
                     self.tracker.clone(),
-                    self.noc.clone_noc(),
-                    self.bdt_stack.local_device_id().clone(),
+                    self.noc.clone(),
+                    req.common.source.dec.clone(),
                 );
                 file_recorder
                     .add_file_to_ndc(file.as_ref().unwrap(), None)
@@ -216,37 +200,20 @@ impl LocalTransService {
     ) -> BuckyResult<TransPublishFileInputResponse> {
         info!("trans recv add file request: {:?}", req);
 
-        let dec_id = if req.common.dec_id.is_some() {
-            req.common.dec_id.as_ref().unwrap().clone()
-        } else {
-            let msg = format!(
-                "trans add file dec id is none! file={}",
-                req.local_path.to_string_lossy().to_string()
-            );
-            error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        };
-
         let file = if req.file_id.is_some() {
             match self
                 .noc
                 .get_object(&NamedObjectCacheGetObjectRequest {
-                    protocol: NONProtocol::Native,
-                    source: self.bdt_stack.local_device_id().clone(),
+                    source: req.common.source.clone(),
                     object_id: req.file_id.unwrap(),
+                    last_access_rpath: None,
                 })
                 .await?
             {
-                Some(resp) => {
-                    if resp.object_raw.is_some() {
-                        match File::clone_from_slice(resp.object_raw.as_ref().unwrap().as_slice()) {
-                            Ok(file) => Some(file),
-                            Err(_) => None,
-                        }
-                    } else {
-                        None
-                    }
-                }
+                Some(resp) => match File::clone_from_slice(resp.object.object_raw.as_slice()) {
+                    Ok(file) => Some(file),
+                    Err(_) => None,
+                },
                 None => None,
             }
         } else {
@@ -255,8 +222,8 @@ impl LocalTransService {
         let file_id = self
             .publish_manager
             .publish_local_file(
-                req.common.source,
-                dec_id,
+                req.common.source.zone.device.unwrap(),
+                req.common.source.dec,
                 req.local_path.to_string_lossy().to_string(),
                 req.owner.clone(),
                 file,
@@ -278,22 +245,11 @@ impl LocalTransService {
     ) -> BuckyResult<TransPublishFileInputResponse> {
         info!("trans recv add dir request: {:?}", req);
 
-        let dec_id = if req.common.dec_id.is_some() {
-            req.common.dec_id.as_ref().unwrap().clone()
-        } else {
-            let msg = format!(
-                "trans add dir dec id is none! file={}",
-                req.local_path.to_string_lossy().to_string()
-            );
-            error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        };
-
         let dir_id = self
             .publish_manager
             .publish_local_dir(
-                req.common.source,
-                dec_id,
+                req.common.source.zone.device.unwrap(),
+                req.common.source.dec,
                 req.local_path.to_string_lossy().to_string(),
                 req.owner.clone(),
                 req.file_id,
@@ -351,32 +307,24 @@ impl LocalTransService {
         Self::ensure_dir(local_path).await?;
 
         let referer = BdtDataRefererInfo {
+            // FIXME: set target field from o link
+            target: None, 
             object_id: req.object_id,
             inner_path: None, // trans-task都是file为粒度
-            dec_id: req.common.dec_id,
+            dec_id: Some(req.common.source.dec.clone()),
             req_path: req.common.req_path,
             referer_object: req.common.referer_object,
             flags: req.common.flags,
         };
 
-        let dec_id = if req.common.dec_id.is_some() {
-            req.common.dec_id.as_ref().unwrap().clone()
-        } else {
-            let msg = format!(
-                "trans create task dec id is none! file_id={}",
-                req.object_id.to_string()
-            );
-            error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        };
         let task_id = if req.object_id.obj_type_code() == ObjectTypeCode::File {
-            let object = self.get_object_from_noc(&req.object_id).await?;
+            let object = self.get_object_from_noc(&req.common.source, &req.object_id).await?;
             if let AnyNamedObject::Standard(StandardObject::File(file_obj)) = object.as_ref() {
                 let task_id = self
                     .download_tasks
                     .create_file_task(
-                        req.common.source,
-                        dec_id,
+                        req.common.source.zone.device.unwrap(),
+                        req.common.source.dec,
                         req.context_id,
                         file_obj.clone(),
                         Some(local_path.to_string()),
@@ -397,8 +345,8 @@ impl LocalTransService {
             let task_id = self
                 .download_tasks
                 .create_chunk_task(
-                    req.common.source,
-                    dec_id,
+                    req.common.source.zone.device.unwrap(),
+                    req.common.source.dec,
                     req.context_id,
                     ChunkId::try_from(&req.object_id)?,
                     Some(local_path.to_string()),
@@ -443,17 +391,6 @@ impl LocalTransService {
             task_id, req
         );
 
-        let dec_id = if req.common.dec_id.is_some() {
-            req.common.dec_id.as_ref().unwrap().clone()
-        } else {
-            let msg = format!(
-                "trans control task dec id is none! task={}",
-                req.task_id.to_string()
-            );
-            error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        };
-
         let _state = match req.action {
             TransTaskControlAction::Start => {
                 self.download_tasks.start_task(&task_id).await?;
@@ -463,7 +400,11 @@ impl LocalTransService {
             }
             TransTaskControlAction::Delete => {
                 self.download_tasks
-                    .remove_task(&req.common.source, &dec_id, &task_id)
+                    .remove_task(
+                        req.common.source.zone.device.as_ref().unwrap(),
+                        &req.common.source.dec,
+                        &task_id,
+                    )
                     .await?;
             }
         };
@@ -508,11 +449,6 @@ impl LocalTransService {
         &self,
         req: TransQueryTasksInputRequest,
     ) -> BuckyResult<TransQueryTasksInputResponse> {
-        if req.common.dec_id.is_none() {
-            let msg = format!("query tasks need dec_id");
-            log::error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        }
         let task_status = if req.task_status.is_some() {
             Some(trans_task_status_to_task_status(req.task_status.unwrap()))
         } else {
@@ -521,8 +457,8 @@ impl LocalTransService {
         let task_list = self
             .download_tasks
             .get_tasks(
-                &req.common.source,
-                req.common.dec_id.as_ref().unwrap(),
+                req.common.source.zone.device.as_ref().unwrap(),
+                &req.common.source.dec,
                 &req.context_id,
                 task_status,
                 req.range,
@@ -531,21 +467,17 @@ impl LocalTransService {
         Ok(TransQueryTasksInputResponse { task_list })
     }
 
-    async fn get_object_from_noc(&self, object_id: &ObjectId) -> BuckyResult<Arc<AnyNamedObject>> {
+    async fn get_object_from_noc(&self, source: &RequestSourceInfo, object_id: &ObjectId) -> BuckyResult<Arc<AnyNamedObject>> {
         // 如果没指定flags，那么使用默认值
         // let flags = req.flags.unwrap_or(0);
         let noc_req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
+            source: source.clone(),
             object_id: object_id.to_owned(),
-            source: self.bdt_stack.local_device_id().to_owned(),
+            last_access_rpath: None,
         };
 
         match self.noc.get_object(&noc_req).await {
-            Ok(Some(resp)) => {
-                assert!(resp.object.is_some());
-                assert!(resp.object_raw.is_some());
-                Ok(resp.object.unwrap())
-            }
+            Ok(Some(resp)) => Ok(resp.object.object.unwrap()),
             Ok(None) => {
                 let msg = format!("noc get object but not found: {}", object_id);
                 debug!("{}", msg);
@@ -554,30 +486,25 @@ impl LocalTransService {
             Err(e) => Err(e),
         }
     }
+
+    pub fn clone_processor(&self) -> TransInputProcessorRef {
+        Arc::new(Box::new(self.clone()))
+    }
 }
 
 #[async_trait::async_trait]
 impl TransInputProcessor for LocalTransService {
     async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext> {
-        if req.common.dec_id.is_none() {
-            let msg = format!("get context need dec_id");
-            log::error!("{}", msg.as_str());
-            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
-        }
-
         let noc_req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.bdt_stack.local_device_id().to_owned(),
-            object_id: TransContext::gen_context_id(req.common.dec_id.unwrap(), req.context_name),
+            object_id: TransContext::gen_context_id(req.common.source.dec.clone(), req.context_name),
+            source: req.common.source,
+            last_access_rpath: None,
         };
+
         match self.noc.get_object(&noc_req).await {
-            Ok(Some(resp)) => {
-                assert!(resp.object.is_some());
-                assert!(resp.object_raw.is_some());
-                Ok(TransContext::clone_from_slice(
-                    resp.object_raw.unwrap().as_slice(),
-                )?)
-            }
+            Ok(Some(resp)) => Ok(TransContext::clone_from_slice(
+                resp.object.object_raw.as_slice(),
+            )?),
             Ok(None) => {
                 let msg = format!("noc get object but not found: {}", noc_req.object_id);
                 debug!("{}", msg);
@@ -589,18 +516,18 @@ impl TransInputProcessor for LocalTransService {
 
     async fn put_context(&self, req: TransUpdateContextInputRequest) -> BuckyResult<()> {
         let object_raw = req.context.to_vec()?;
-        let object = AnyNamedObject::clone_from_slice(object_raw.as_slice())?;
-        let noc_req = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.bdt_stack.local_device_id().clone(),
-            object_id: req.context.desc().calculate_id(),
-            dec_id: req.common.dec_id,
-            object_raw,
-            object: Arc::new(object),
-            flags: 0,
+        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
+
+        let req = NamedObjectCachePutObjectRequest {
+            source: req.common.source,
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: None,
         };
 
-        self.noc.insert_object(&noc_req).await?;
+        self.noc.put_object(&req).await?;
         Ok(())
     }
 

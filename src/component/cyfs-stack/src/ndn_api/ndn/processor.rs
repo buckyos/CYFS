@@ -1,9 +1,8 @@
 use super::super::acl::*;
+use super::super::forward::*;
 use super::super::handler::*;
 use super::super::ndc::NDCLevelInputProcessor;
 use super::super::ndc::NDNObjectLoader;
-use super::forward::NDNForwardDataOutputProcessor;
-use super::forward_object_processor::NDNForwardObjectProcessor;
 use super::NDNOutputFailHandleProcessor;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
@@ -33,7 +32,6 @@ pub(crate) struct NDNLevelInputProcessor {
     chunk_manager: ChunkManagerRef,
 
     // 对象加载器
-    local_object_loader: NDNObjectLoader,
     target_object_loader: NDNObjectLoader,
 
     // local ndn
@@ -46,34 +44,32 @@ pub(crate) struct NDNLevelInputProcessor {
 }
 
 impl NDNLevelInputProcessor {
-    fn new_raw(
+    fn new(
         acl: AclManagerRef,
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        raw_noc_processor: NONInputProcessorRef,
-        inner_non_processor: NONInputProcessorRef,
+        non_processor: NONInputProcessorRef,
         router_handlers: RouterHandlersManager,
         chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
-        let ndc_processor = NDCLevelInputProcessor::new_raw(
+        let ndc_processor = NDCLevelInputProcessor::new(
+            acl.clone(),
             chunk_manager.clone(),
             ndc,
             tracker,
-            raw_noc_processor.clone(),
+            non_processor.clone(),
         );
 
-        // 第一个是本地查询器，第二个是远程查询器
-        let local_object_loader = NDNObjectLoader::new(raw_noc_processor);
-        let target_object_loader = NDNObjectLoader::new(inner_non_processor);
+        // target object loader
+        let target_object_loader = NDNObjectLoader::new(non_processor);
 
         let ret = Self {
             acl,
             bdt_stack,
             chunk_manager,
-            local_object_loader,
             target_object_loader,
             ndc_processor,
             router_handlers,
@@ -89,21 +85,19 @@ impl NDNLevelInputProcessor {
         bdt_stack: StackGuard,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        raw_noc_processor: NONInputProcessorRef,
-        inner_non_processor: NONInputProcessorRef,
+        non_processor: NONInputProcessorRef,
         router_handlers: RouterHandlersManager,
         chunk_manager: ChunkManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
         // 不带input acl的处理器
-        let raw_processor = Self::new_raw(
-            acl.clone(),
+        let processor = Self::new(
+            acl,
             bdt_stack,
             ndc,
             tracker,
-            raw_noc_processor,
-            inner_non_processor,
+            non_processor,
             router_handlers,
             chunk_manager,
             forward,
@@ -111,12 +105,9 @@ impl NDNLevelInputProcessor {
         );
 
         // 带同zone input acl的处理器
-        let acl_processor = NDNAclInnerInputProcessor::new(acl, raw_processor.clone());
+        let acl_processor = NDNAclZoneInputProcessor::new(processor);
 
-        // 使用acl switcher连接
-        let processor = NDNInputAclSwitcher::new(acl_processor, raw_processor);
-
-        processor
+        acl_processor
     }
 
     async fn get_data_forward(&self, target: DeviceId) -> BuckyResult<NDNInputProcessorRef> {
@@ -130,18 +121,10 @@ impl NDNLevelInputProcessor {
             target.clone(),
         );
 
-        // 限定同zone output权限
-        let processor =
-            NDNAclInnerOutputProcessor::new(self.acl.clone(), target.clone(), processor);
-
         // 增加前置的object加载器
-        // 先尝试从本地加载, 再通过non从远程加载
-        let processor = NDNForwardObjectProcessor::new(
-            target,
-            Some(self.local_object_loader.clone()),
-            self.target_object_loader.clone(),
-            processor,
-        );
+        // 通过合适的non processor加载目标object
+        let processor =
+            NDNForwardObjectProcessor::new(target, self.target_object_loader.clone(), processor);
 
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(
@@ -175,14 +158,10 @@ impl NDNLevelInputProcessor {
         // 转换为input processor
         let input_processor = NDNInputTransformer::new(processor);
 
-        // 限定同zone output权限
-        let processor =
-            NDNAclInnerOutputProcessor::new(self.acl.clone(), target.clone(), input_processor);
-
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(
             RouterHandlerChain::PreForward,
-            processor,
+            input_processor,
             self.router_handlers.clone(),
         );
 

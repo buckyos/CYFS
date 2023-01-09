@@ -1,4 +1,4 @@
-use crate::ndn::*;
+use crate::{ndn::*, NamedObjectCachePutObjectResult};
 use cyfs_base::*;
 
 use serde_json::{Map, Value};
@@ -189,6 +189,27 @@ impl FromStr for NONPutObjectResult {
     }
 }
 
+impl Into<NONPutObjectResult> for NamedObjectCachePutObjectResult {
+    fn into(self) -> NONPutObjectResult {
+        match self {
+            Self::Accept => NONPutObjectResult::Accept,
+            Self::AlreadyExists => NONPutObjectResult::AlreadyExists,
+            Self::Updated => NONPutObjectResult::Updated,
+            Self::Merged => NONPutObjectResult::Merged,
+        }
+    }
+}
+
+impl Into<NamedObjectCachePutObjectResult> for NONPutObjectResult {
+    fn into(self) -> NamedObjectCachePutObjectResult {
+        match self {
+            Self::Accept | Self::AcceptWithSign => NamedObjectCachePutObjectResult::Accept,
+            Self::AlreadyExists => NamedObjectCachePutObjectResult::AlreadyExists,
+            Self::Updated => NamedObjectCachePutObjectResult::Updated,
+            Self::Merged => NamedObjectCachePutObjectResult::Merged,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct NONObjectInfo {
@@ -222,6 +243,10 @@ impl NONObjectInfo {
         Ok(Self::new(object_id, object_raw, Some(Arc::new(object))))
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.object_raw.is_empty()
+    }
+    
     pub fn object(&self) -> &Arc<AnyNamedObject> {
         self.object.as_ref().unwrap()
     }
@@ -389,6 +414,29 @@ impl ObjectFormat for NONObjectInfo {
     }
 }
 
+impl RawEncode for NONObjectInfo {
+    fn raw_measure(&self, purpose: &Option<RawEncodePurpose>) -> Result<usize, BuckyError> {
+        self.object_raw.raw_measure(purpose)
+    }
+
+    fn raw_encode<'a>(
+        &self,
+        buf: &'a mut [u8],
+        purpose: &Option<RawEncodePurpose>,
+    ) -> Result<&'a mut [u8], BuckyError> {
+        self.object_raw.raw_encode(buf, purpose)
+    }
+}
+
+impl<'de> RawDecode<'de> for NONObjectInfo {
+    fn raw_decode(buf: &'de [u8]) -> Result<(Self, &'de [u8]), BuckyError> {
+        let (object_raw, buf) = Vec::raw_decode(buf)?;
+        let ret = Self::new_from_object_raw(object_raw)?;
+
+        Ok((ret, buf))
+    }
+}
+
 #[derive(Clone)]
 pub struct NONSlimObjectInfo {
     pub object_id: ObjectId,
@@ -397,6 +445,12 @@ pub struct NONSlimObjectInfo {
 }
 
 impl fmt::Debug for NONSlimObjectInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+
+impl fmt::Display for NONSlimObjectInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "object_id: {}", self.object_id)?;
         if let Some(object_raw) = &self.object_raw {

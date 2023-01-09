@@ -1,6 +1,9 @@
 //use crate::app_manager_ex::USER_APP_LIST;
 use cyfs_base::*;
-use cyfs_core::*;
+use cyfs_core::{
+    get_system_dec_app, AppCmdList, AppLocalList, AppLocalStatus, DecApp, DecAppId,
+    APP_LOCAL_LIST_PATH, CMD_LIST_PATH,
+};
 use cyfs_lib::*;
 use log::*;
 
@@ -21,7 +24,7 @@ impl NonHelper {
     }
 
     pub async fn init(&mut self) -> BuckyResult<()> {
-        let dec_id = Some(get_system_dec_app().object_id().clone());
+        let dec_id = Some(cyfs_core::get_system_dec_app().clone());
         let stack = SharedCyfsStack::open_default(dec_id).await?;
         stack.wait_online(None).await?;
         self.owner = stack.local_device().desc().owner().clone();
@@ -90,6 +93,7 @@ impl NonHelper {
             .get_object(NONGetObjectRequest {
                 common: NONOutputRequestCommon {
                     req_path: None,
+                    source: None,
                     dec_id: None,
                     level: NONAPILevel::Router,
                     target,
@@ -116,12 +120,17 @@ impl NonHelper {
             .put_object(NONPutObjectRequest {
                 common: NONOutputRequestCommon::new(NONAPILevel::Router),
                 object: NONObjectInfo::new(obj.desc().calculate_id(), obj.to_vec()?, None),
+                access: None,
             })
             .await
     }
 
     // send cmds without reponse object
-    pub async fn post_object_without_resp<D, T, N>(&self, obj: &N) -> BuckyResult<()>
+    pub async fn post_object_without_resp<D, T, N>(
+        &self,
+        obj: &N,
+        req_path: Option<String>,
+    ) -> BuckyResult<()>
     where
         D: ObjectType,
         T: RawEncode,
@@ -129,8 +138,10 @@ impl NonHelper {
         N: NamedObject<D>,
         <D as ObjectType>::ContentType: BodyContent,
     {
-        let req =
+        let mut req =
             NONPostObjectOutputRequest::new_router(None, obj.desc().calculate_id(), obj.to_vec()?);
+        req.common.req_path = req_path;
+
         let ret = self
             .shared_stack
             .as_ref()

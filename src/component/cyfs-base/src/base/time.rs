@@ -9,7 +9,7 @@ pub fn system_time_to_bucky_time(time: &SystemTime) -> u64 {
 }
 
 pub fn bucky_time_to_system_time(time: u64) -> SystemTime {
-    UNIX_EPOCH + Duration::from_micros(time - _TIME_TTO_MICROSECONDS_OFFSET)
+    UNIX_EPOCH + Duration::from_micros(bucky_time_to_unix_time(time))
 }
 
 // 转换为UNIX_EPOCH开始的微秒数

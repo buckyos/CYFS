@@ -87,8 +87,7 @@ async fn run_bind(matches: &ArgMatches<'_>) -> ! {
     std::process::exit(0);
 }
 
-#[async_std::main]
-async fn main() {
+async fn main_run() {
     let matches = App::new("ood installer tools")
         .version(cyfs_base::get_version())
         .about("ood installer tools for ffs system")
@@ -119,18 +118,10 @@ async fn main() {
                 .takes_value(false)
                 .help("Don't start ood-daemon service, default is yes"),
         )
-        .arg(
-            Arg::with_name("no_cyfs_repo")
-                .long("no-cyfs-repo")
-                .takes_value(false)
-                .help("Don't extract cyfs_repo.desc, default is yes"),
-        )
-        .arg(
-            Arg::with_name("no_app_repo")
-                .long("no-app-repo")
-                .takes_value(false)
-                .help("Don't extract app_repo.desc, default is yes"),
-        )
+        .arg(Arg::with_name("overwrite")
+            .long("overwrite")
+            .takes_value(false)
+            .help("overwrite any exists config file"))
         .arg(
             Arg::with_name("root")
                 .long("root")
@@ -270,10 +261,8 @@ async fn main() {
     };
 
     info!("current target: {}", target);
-    let asset = OODAsset::new(&target);
-    let no_cyfs_repo = matches.is_present("no_cyfs_repo");
-    let no_app_repo = matches.is_present("no_app_repo");
-    if let Err(_e) = asset.extract(no_cyfs_repo, no_app_repo) {
+    let asset = OODAsset::new(&target, matches.is_present("overwrite"));
+    if let Err(_e) = asset.extract() {
         std::process::exit(-1);
     }
 
@@ -294,6 +283,8 @@ async fn main() {
     if matches.is_present("sync_repo") {
         if let Err(_e) = repo_downloader::RepoDownloader::new().load().await {
             std::process::exit(-1);
+        } else {
+            std::process::exit(0);
         }
     }
 
@@ -320,4 +311,10 @@ async fn main() {
 
     info!("init ood finished!!!");
     std::process::exit(0);
+}
+
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run());
 }

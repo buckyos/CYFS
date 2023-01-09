@@ -1,5 +1,5 @@
 use crate::trans::{TransInputProcessor, TransInputProcessorRef};
-use cyfs_base::{BuckyResult, DeviceId};
+use cyfs_base::*;
 use cyfs_core::TransContext;
 use cyfs_lib::*;
 use std::sync::Arc;
@@ -10,13 +10,13 @@ pub(crate) struct TransInputTransformer {
 
 impl TransInputTransformer {
     pub fn new(processor: TransOutputProcessorRef) -> TransInputProcessorRef {
-        Arc::new(Self { processor })
+        Arc::new(Box::new(Self { processor }))
     }
 
     fn convert_common(common: NDNInputRequestCommon) -> NDNOutputRequestCommon {
         NDNOutputRequestCommon {
             req_path: common.req_path,
-            dec_id: common.dec_id,
+            dec_id: Some(common.source.dec),
             level: common.level,
             target: common.target,
             referer_object: common.referer_object,
@@ -26,10 +26,11 @@ impl TransInputTransformer {
 
     fn convert_non_common(common: NONInputRequestCommon) -> NONOutputRequestCommon {
         NONOutputRequestCommon {
-            req_path: common.req_path.clone(),
-            dec_id: common.dec_id.clone(),
-            level: common.level.clone(),
-            target: common.target.clone(),
+            req_path: common.req_path,
+            source: common.source.zone.device,
+            dec_id: Some(common.source.dec),
+            level: common.level,
+            target: common.target,
             flags: common.flags,
         }
     }
@@ -75,16 +76,13 @@ impl TransInputProcessor for TransInputTransformer {
     }
 
     async fn control_task(&self, req: TransControlTaskInputRequest) -> BuckyResult<()> {
-        let out_req = TransTaskOutputRequest {
-            common: Self::convert_common(req.common),
-            task_id: req.task_id,
-        };
-        let out_resp = match req.action {
-            TransTaskControlAction::Start => self.processor.start_task(&out_req).await?,
-            TransTaskControlAction::Stop => self.processor.stop_task(&out_req).await?,
-            TransTaskControlAction::Delete => self.processor.delete_task(&out_req).await?,
-        };
-        Ok(out_resp)
+        self.processor
+            .control_task(TransControlTaskOutputRequest {
+                common: Self::convert_common(req.common),
+                task_id: req.task_id,
+                action: req.action,
+            })
+            .await
     }
 
     async fn query_tasks(
@@ -138,34 +136,26 @@ impl TransInputProcessor for TransInputTransformer {
 
 pub(crate) struct TransOutputTransformer {
     processor: TransInputProcessorRef,
-    source: DeviceId,
-    protocol: Option<NONProtocol>,
+    source: RequestSourceInfo,
 }
 
 impl TransOutputTransformer {
     pub(crate) fn new(
         processor: TransInputProcessorRef,
-        source: DeviceId,
-        protocol: Option<NONProtocol>,
+        source: RequestSourceInfo,
     ) -> TransOutputProcessorRef {
-        Arc::new(Self {
-            processor,
-            source,
-            protocol,
-        })
+        Arc::new(Self { processor, source })
     }
 
     fn convert_common(&self, common: &NDNOutputRequestCommon) -> NDNInputRequestCommon {
-        let protocol = if self.protocol.is_some() {
-            self.protocol.clone().unwrap()
-        } else {
-            NONProtocol::Native
-        };
+        let mut source = self.source.clone();
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
+
         NDNInputRequestCommon {
             req_path: common.req_path.clone(),
-            dec_id: common.dec_id,
-            source: self.source.clone(),
-            protocol,
+            source,
             level: common.level.clone(),
             referer_object: common.referer_object.clone(),
             target: common.target,
@@ -175,16 +165,14 @@ impl TransOutputTransformer {
     }
 
     fn convert_non_common(&self, common: &NONOutputRequestCommon) -> NONInputRequestCommon {
-        let protocol = if self.protocol.is_some() {
-            self.protocol.clone().unwrap()
-        } else {
-            NONProtocol::Native
-        };
+        let mut source = self.source.clone();
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
+
         NONInputRequestCommon {
             req_path: common.req_path.clone(),
-            dec_id: common.dec_id.clone(),
-            source: self.source.clone(),
-            protocol,
+            source,
             level: common.level.clone(),
             target: common.target.clone(),
             flags: common.flags,
@@ -211,16 +199,6 @@ impl TransOutputProcessor for TransOutputTransformer {
         };
 
         let in_resp = self.processor.put_context(in_req).await?;
-        Ok(in_resp)
-    }
-
-    async fn start_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
-        let in_req = TransControlTaskInputRequest {
-            common: self.convert_common(&req.common),
-            task_id: req.task_id.clone(),
-            action: TransTaskControlAction::Start,
-        };
-        let in_resp = self.processor.control_task(in_req).await?;
         Ok(in_resp)
     }
 
@@ -276,26 +254,6 @@ impl TransOutputProcessor for TransOutputTransformer {
         })
     }
 
-    async fn stop_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
-        let in_req = TransControlTaskInputRequest {
-            common: self.convert_common(&req.common),
-            task_id: req.task_id.clone(),
-            action: TransTaskControlAction::Stop,
-        };
-        let in_resp = self.processor.control_task(in_req).await?;
-        Ok(in_resp)
-    }
-
-    async fn delete_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
-        let in_req = TransControlTaskInputRequest {
-            common: self.convert_common(&req.common),
-            task_id: req.task_id.clone(),
-            action: TransTaskControlAction::Delete,
-        };
-        let in_resp = self.processor.control_task(in_req).await?;
-        Ok(in_resp)
-    }
-
     async fn query_tasks(
         &self,
         req: &TransQueryTasksOutputRequest,
@@ -310,5 +268,15 @@ impl TransOutputProcessor for TransOutputTransformer {
         Ok(TransQueryTasksOutputResponse {
             task_list: in_resp.task_list,
         })
+    }
+
+    async fn control_task(&self, req: TransControlTaskOutputRequest) -> BuckyResult<()> {
+        self.processor
+            .control_task(TransControlTaskInputRequest {
+                common: self.convert_common(&req.common),
+                task_id: req.task_id.clone(),
+                action: req.action.clone(),
+            })
+            .await
     }
 }

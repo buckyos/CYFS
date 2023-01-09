@@ -1,20 +1,48 @@
-use std::path::Path;
-use std::sync::{Arc, Mutex};
-use sha2::Digest;
-use cyfs_base::*;
-use cyfs_lib::{NamedObjectCache, NamedObjectCacheGetObjectRequest, NONProtocol};
-use cyfs_task_manager::*;
-use cyfs_util::cache::{NamedDataCache, TrackerCache};
-use crate::root_state_api::ObjectMapNOCCacheAdapter;
 use crate::trans_api::local::FileRecorder;
 use crate::util_api::{BuildDirParams, BuildDirTaskStatus, BuildFileParams, BuildFileTaskStatus};
+use cyfs_base::*;
+use cyfs_debug::Mutex;
+use cyfs_lib::*;
+use cyfs_task_manager::*;
+use cyfs_util::cache::{NamedDataCache, TrackerCache};
+use sha2::Digest;
+use std::path::Path;
+use std::sync::Arc;
 
-#[derive(RawEncode, RawDecode)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
+#[cyfs_protobuf_type(super::trans_proto::PublishLocalFile)]
 pub struct PublishLocalFile {
     local_path: String,
     owner: ObjectId,
+    dec_id: ObjectId,
     file: File,
-    chunk_size: u32
+    chunk_size: u32,
+}
+
+impl ProtobufTransform<super::trans_proto::PublishLocalFile> for PublishLocalFile {
+    fn transform(
+        value: crate::trans_api::local::trans_proto::PublishLocalFile,
+    ) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path,
+            owner: ObjectId::clone_from_slice(value.owner.as_slice()),
+            dec_id: ObjectId::clone_from_slice(value.dec_id.as_slice()),
+            file: File::clone_from_slice(value.file.as_slice())?,
+            chunk_size: value.chunk_size,
+        })
+    }
+}
+
+impl ProtobufTransform<&PublishLocalFile> for super::trans_proto::PublishLocalFile {
+    fn transform(value: &PublishLocalFile) -> BuckyResult<Self> {
+        Ok(Self {
+            local_path: value.local_path.clone(),
+            owner: value.owner.as_slice().to_vec(),
+            dec_id: value.dec_id.as_slice().to_vec(),
+            file: value.file.to_vec()?,
+            chunk_size: value.chunk_size,
+        })
+    }
 }
 
 #[derive(RawEncode, RawDecode)]
@@ -30,8 +58,8 @@ struct PublishLocalFileTask {
     task_id: TaskId,
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
-    noc: Box<dyn NamedObjectCache>,
-    device_id: DeviceId,
+    noc: NamedObjectCacheRef,
+    dec_id: ObjectId,
     local_path: String,
     owner: ObjectId,
     file: File,
@@ -40,14 +68,16 @@ struct PublishLocalFileTask {
 }
 
 impl PublishLocalFileTask {
-    pub fn new(local_path: String,
-               owner: ObjectId,
-               file: File,
-               chunk_size: u32,
-               ndc: Box<dyn NamedDataCache>,
-               tracker: Box<dyn TrackerCache>,
-               noc: Box<dyn NamedObjectCache>,
-               device_id: DeviceId) -> Self {
+    pub fn new(
+        local_path: String,
+        owner: ObjectId,
+        file: File,
+        chunk_size: u32,
+        ndc: Box<dyn NamedDataCache>,
+        tracker: Box<dyn TrackerCache>,
+        noc: NamedObjectCacheRef,
+        dec_id: ObjectId,
+    ) -> Self {
         let mut sha256 = sha2::Sha256::new();
         sha256.input(PUBLISH_TASK_CATEGORY.0.to_be_bytes());
         sha256.input(PUBLISH_LOCAL_FILE_TASK.0.to_be_bytes());
@@ -59,12 +89,12 @@ impl PublishLocalFileTask {
             ndc,
             tracker,
             noc,
-            device_id,
+            dec_id,
             local_path,
             owner,
             file,
             chunk_size,
-            task_state: Mutex::new(PublishLocalFileTaskStatus::Stopped)
+            task_state: Mutex::new(PublishLocalFileTaskStatus::Stopped),
         }
     }
 }
@@ -95,18 +125,29 @@ impl Runnable for PublishLocalFileTask {
             let mut state = self.task_state.lock().unwrap();
             *state = PublishLocalFileTaskStatus::Running;
         }
-        let file_recorder = FileRecorder::new(self.ndc.clone(), self.tracker.clone(), self.noc.clone_noc(), self.device_id.clone());
+        let file_recorder = FileRecorder::new(
+            self.ndc.clone(),
+            self.tracker.clone(),
+            self.noc.clone(),
+            self.dec_id.clone(),
+        );
 
-        file_recorder.record_file_chunk_list(Path::new(self.local_path.as_str()), &self.file).await.map_err(|e| {
-            let mut state = self.task_state.lock().unwrap();
-            *state = PublishLocalFileTaskStatus::Failed(e.clone());
-            e
-        })?;
-        file_recorder.add_file_to_ndc(&self.file, None).await.map_err(|e| {
-            let mut state = self.task_state.lock().unwrap();
-            *state = PublishLocalFileTaskStatus::Failed(e.clone());
-            e
-        })?;
+        file_recorder
+            .record_file_chunk_list(Path::new(self.local_path.as_str()), &self.file)
+            .await
+            .map_err(|e| {
+                let mut state = self.task_state.lock().unwrap();
+                *state = PublishLocalFileTaskStatus::Failed(e.clone());
+                e
+            })?;
+        file_recorder
+            .add_file_to_ndc(&self.file, None)
+            .await
+            .map_err(|e| {
+                let mut state = self.task_state.lock().unwrap();
+                *state = PublishLocalFileTaskStatus::Failed(e.clone());
+                e
+            })?;
 
         let mut state = self.task_state.lock().unwrap();
         *state = PublishLocalFileTaskStatus::Finished;
@@ -123,18 +164,16 @@ impl Runnable for PublishLocalFileTask {
 struct PublishLocalFileTaskFactory {
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
-    noc: Box<dyn NamedObjectCache>,
-    device_id: DeviceId,
+    noc: NamedObjectCacheRef,
 }
 
 impl PublishLocalFileTaskFactory {
-    pub(crate) fn new(ndc: Box<dyn NamedDataCache>, tracker: Box<dyn TrackerCache>, noc: Box<dyn NamedObjectCache>, device_id: DeviceId) -> Self {
-        Self {
-            ndc,
-            tracker,
-            noc,
-            device_id
-        }
+    pub(crate) fn new(
+        ndc: Box<dyn NamedDataCache>,
+        tracker: Box<dyn TrackerCache>,
+        noc: NamedObjectCacheRef,
+    ) -> Self {
+        Self { ndc, tracker, noc }
     }
 }
 
@@ -154,13 +193,18 @@ impl TaskFactory for PublishLocalFileTaskFactory {
             params.chunk_size,
             self.ndc.clone(),
             self.tracker.clone(),
-            self.noc.clone_noc(),
-            self.device_id.clone()
+            self.noc.clone(),
+            params.dec_id,
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
 
-    async fn restore(&self, _task_status: TaskStatus, params: &[u8], _data: &[u8]) -> BuckyResult<Box<dyn Task>> {
+    async fn restore(
+        &self,
+        _task_status: TaskStatus,
+        params: &[u8],
+        _data: &[u8],
+    ) -> BuckyResult<Box<dyn Task>> {
         let params = PublishLocalFile::clone_from_slice(params)?;
 
         let runnable = PublishLocalFileTask::new(
@@ -170,17 +214,19 @@ impl TaskFactory for PublishLocalFileTaskFactory {
             params.chunk_size,
             self.ndc.clone(),
             self.tracker.clone(),
-            self.noc.clone_noc(),
-            self.device_id.clone()
+            self.noc.clone(),
+            params.dec_id,
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
 }
 
-#[derive(RawEncode, RawDecode)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[cyfs_protobuf_type(super::trans_proto::PublishLocalDir)]
 pub struct PublishLocalDir {
     local_path: String,
     root_id: ObjectId,
+    dec_id: ObjectId,
 }
 
 struct PublishLocalDirTask {
@@ -188,20 +234,22 @@ struct PublishLocalDirTask {
     task_id: TaskId,
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
-    noc: Box<dyn NamedObjectCache>,
-    device_id: DeviceId,
+    noc: NamedObjectCacheRef,
+    dec_id: ObjectId,
     local_path: String,
     root_id: ObjectId,
     task_state: Mutex<PublishLocalFileTaskStatus>,
 }
 
 impl PublishLocalDirTask {
-    pub fn new(local_path: String,
-               root_id: ObjectId,
-               ndc: Box<dyn NamedDataCache>,
-               tracker: Box<dyn TrackerCache>,
-               noc: Box<dyn NamedObjectCache>,
-               device_id: DeviceId) -> Self {
+    pub fn new(
+        local_path: String,
+        root_id: ObjectId,
+        ndc: Box<dyn NamedDataCache>,
+        tracker: Box<dyn TrackerCache>,
+        noc: NamedObjectCacheRef,
+        dec_id: ObjectId,
+    ) -> Self {
         let mut sha256 = sha2::Sha256::new();
         sha256.input(PUBLISH_TASK_CATEGORY.0.to_be_bytes());
         sha256.input(PUBLISH_LOCAL_DIR_TASK.0.to_be_bytes());
@@ -213,16 +261,16 @@ impl PublishLocalDirTask {
             ndc,
             tracker,
             noc,
-            device_id,
+            dec_id,
             local_path,
             root_id,
-            task_state: Mutex::new(PublishLocalFileTaskStatus::Stopped)
+            task_state: Mutex::new(PublishLocalFileTaskStatus::Stopped),
         }
     }
 
     async fn publish(&self) -> BuckyResult<()> {
-        let noc = ObjectMapNOCCacheAdapter::new_noc_cache(&self.device_id, self.noc.clone_noc());
-        let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
+        let noc = ObjectMapNOCCacheAdapter::new_noc_cache(self.noc.clone());
+        let root_cache = ObjectMapRootMemoryCache::new_default_ref(Some(self.dec_id.clone()), noc);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
         let root = cache.get_object_map(&self.root_id).await?;
         let root_path = Path::new(self.local_path.as_str());
@@ -231,28 +279,46 @@ impl PublishLocalDirTask {
             let mut it = ObjectMapPathIterator::new(
                 root.unwrap(),
                 cache,
-                ObjectMapPathIteratorOption::new(true, false)).await;
+                ObjectMapPathIteratorOption::new(true, false),
+            )
+            .await;
             while !it.is_end() {
                 let list = it.next(10).await?;
                 for item in list.list.iter() {
                     if let ObjectMapContentItem::Map((file_name, object_id)) = &item.value {
                         if object_id.obj_type_code() == ObjectTypeCode::File {
-                            let resp = self.noc.get_object(&NamedObjectCacheGetObjectRequest {
-                                protocol: NONProtocol::Native,
-                                source: self.device_id.clone(),
-                                object_id: object_id.clone()
-                            }).await?;
+                            let resp = self
+                                .noc
+                                .get_object(&NamedObjectCacheGetObjectRequest {
+                                    source: RequestSourceInfo::new_local_dec(Some(
+                                        self.dec_id.clone(),
+                                    )),
+                                    object_id: object_id.clone(),
+                                    last_access_rpath: None,
+                                })
+                                .await?;
                             if resp.is_some() {
-                                let file = File::clone_from_slice(resp.unwrap().object_raw.unwrap().as_slice())?;
-                                let file_recorder = FileRecorder::new(self.ndc.clone(),
-                                                                      self.tracker.clone(),
-                                                                      self.noc.clone_noc(),
-                                                                      self.device_id.clone());
+                                let file = File::clone_from_slice(
+                                    resp.unwrap().object.object_raw.as_slice(),
+                                )?;
+                                let file_recorder = FileRecorder::new(
+                                    self.ndc.clone(),
+                                    self.tracker.clone(),
+                                    self.noc.clone(),
+                                    self.dec_id.clone(),
+                                );
 
                                 let sub_path = Path::new(item.path.as_str());
-                                let file_path = root_path.join(sub_path.strip_prefix("/").unwrap()).join(file_name);
-                                log::info!("publish file {}", file_path.to_string_lossy().to_string());
-                                file_recorder.record_file_chunk_list(file_path.as_path(), &file).await?;
+                                let file_path = root_path
+                                    .join(sub_path.strip_prefix("/").unwrap())
+                                    .join(file_name);
+                                log::info!(
+                                    "publish file {}",
+                                    file_path.to_string_lossy().to_string()
+                                );
+                                file_recorder
+                                    .record_file_chunk_list(file_path.as_path(), &file)
+                                    .await?;
                                 file_recorder.add_file_to_ndc(&file, None).await?;
                             }
                         }
@@ -297,7 +363,7 @@ impl Runnable for PublishLocalDirTask {
                 let mut state = self.task_state.lock().unwrap();
                 *state = PublishLocalFileTaskStatus::Finished;
                 Ok(())
-            },
+            }
             Err(e) => {
                 let mut state = self.task_state.lock().unwrap();
                 *state = PublishLocalFileTaskStatus::Failed(e.clone());
@@ -315,23 +381,16 @@ impl Runnable for PublishLocalDirTask {
 struct PublishLocalDirTaskFactory {
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
-    noc: Box<dyn NamedObjectCache>,
-    device_id: DeviceId,
+    noc: NamedObjectCacheRef,
 }
 
 impl PublishLocalDirTaskFactory {
     pub(crate) fn new(
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        noc: Box<dyn NamedObjectCache>,
-        device_id: DeviceId
+        noc: NamedObjectCacheRef,
     ) -> Self {
-        Self {
-            ndc,
-            tracker,
-            noc,
-            device_id
-        }
+        Self { ndc, tracker, noc }
     }
 }
 
@@ -349,13 +408,18 @@ impl TaskFactory for PublishLocalDirTaskFactory {
             params.root_id,
             self.ndc.clone(),
             self.tracker.clone(),
-            self.noc.clone_noc(),
-            self.device_id.clone()
+            self.noc.clone(),
+            params.dec_id,
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
 
-    async fn restore(&self, _task_status: TaskStatus, params: &[u8], _data: &[u8]) -> BuckyResult<Box<dyn Task>> {
+    async fn restore(
+        &self,
+        _task_status: TaskStatus,
+        params: &[u8],
+        _data: &[u8],
+    ) -> BuckyResult<Box<dyn Task>> {
         let params = PublishLocalDir::clone_from_slice(params)?;
 
         let runnable = PublishLocalDirTask::new(
@@ -363,8 +427,8 @@ impl TaskFactory for PublishLocalDirTaskFactory {
             params.root_id,
             self.ndc.clone(),
             self.tracker.clone(),
-            self.noc.clone_noc(),
-            self.device_id.clone()
+            self.noc.clone(),
+            params.dec_id,
         );
         Ok(Box::new(RunnableTask::new(runnable)))
     }
@@ -380,25 +444,19 @@ impl PublishManager {
         task_manager: Arc<TaskManager>,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        noc: Box<dyn NamedObjectCache>,
-        device_id: DeviceId
+        noc: NamedObjectCacheRef,
+        device_id: DeviceId,
     ) -> Self {
-        task_manager.register_task_factory(
-            PublishLocalDirTaskFactory::new(
+        task_manager
+            .register_task_factory(PublishLocalDirTaskFactory::new(
                 ndc.clone(),
                 tracker.clone(),
-                noc.clone_noc(),
-                device_id.clone(),
-            )
-        ).unwrap();
-        task_manager.register_task_factory(
-            PublishLocalFileTaskFactory::new(
-                ndc,
-                tracker,
-                noc,
-                device_id.clone(),
-            )
-        ).unwrap();
+                noc.clone(),
+            ))
+            .unwrap();
+        task_manager
+            .register_task_factory(PublishLocalFileTaskFactory::new(ndc, tracker, noc))
+            .unwrap();
 
         let tmp_task_manager = task_manager.clone();
         async_std::task::spawn(async move {
@@ -409,12 +467,14 @@ impl PublishManager {
 
         Self {
             task_manager,
-            device_id
+            device_id,
         }
     }
 
     pub async fn clear_finished_task(task_manager: Arc<TaskManager>) -> BuckyResult<()> {
-        let list = task_manager.get_tasks_by_category(PUBLISH_TASK_CATEGORY).await?;
+        let list = task_manager
+            .get_tasks_by_category(PUBLISH_TASK_CATEGORY)
+            .await?;
         for (task_id, _, task_status, _, _) in list.iter() {
             if *task_status == TaskStatus::Finished {
                 task_manager.remove_task_by_task_id(task_id).await?;
@@ -436,17 +496,31 @@ impl PublishManager {
             let params = BuildFileParams {
                 local_path: local_path.clone(),
                 owner,
-                chunk_size
+                dec_id: dec_id.clone(),
+                chunk_size,
             };
-            let task_id = self.task_manager.create_task(dec_id.clone(), source.clone(), BUILD_FILE_TASK, params).await?;
+            let task_id = self
+                .task_manager
+                .create_task(dec_id.clone(), source.clone(), BUILD_FILE_TASK, params)
+                .await?;
             self.task_manager.start_task(&task_id).await?;
             self.task_manager.check_and_waiting_stop(&task_id).await;
-            let detail_status = BuildFileTaskStatus::clone_from_slice(self.task_manager.get_task_detail_status(&task_id).await?.as_slice())?;
-            self.task_manager.remove_task(&dec_id, &source, &task_id).await?;
+            let detail_status = BuildFileTaskStatus::clone_from_slice(
+                self.task_manager
+                    .get_task_detail_status(&task_id)
+                    .await?
+                    .as_slice(),
+            )?;
+            self.task_manager
+                .remove_task(&dec_id, &source, &task_id)
+                .await?;
             if let BuildFileTaskStatus::Finished(file) = detail_status {
                 file
             } else {
-                return Err(BuckyError::new(BuckyErrorCode::Failed, format!("publish local file {} failed", local_path)));
+                return Err(BuckyError::new(
+                    BuckyErrorCode::Failed,
+                    format!("publish local file {} failed", local_path),
+                ));
             }
         } else {
             file.unwrap()
@@ -456,20 +530,34 @@ impl PublishManager {
         let params = PublishLocalFile {
             local_path: local_path.clone(),
             owner,
+            dec_id: dec_id.clone(),
             file,
-            chunk_size
+            chunk_size,
         };
 
-        let task_id = self.task_manager.create_task(dec_id.clone(), source.clone(), PUBLISH_LOCAL_FILE_TASK, params).await?;
+        let task_id = self
+            .task_manager
+            .create_task(
+                dec_id.clone(),
+                source.clone(),
+                PUBLISH_LOCAL_FILE_TASK,
+                params,
+            )
+            .await?;
         self.task_manager.start_task(&task_id).await?;
         self.task_manager.check_and_waiting_stop(&task_id).await;
         let detail_status = self.task_manager.get_task_detail_status(&task_id).await?;
-        self.task_manager.remove_task(&dec_id, &source, &task_id).await?;
+        self.task_manager
+            .remove_task(&dec_id, &source, &task_id)
+            .await?;
         let state = PublishLocalFileTaskStatus::clone_from_slice(detail_status.as_slice())?;
         if let PublishLocalFileTaskStatus::Finished = state {
             Ok(file_id)
         } else {
-            Err(BuckyError::new(BuckyErrorCode::Failed, format!("publish local file {} failed", local_path)))
+            Err(BuckyError::new(
+                BuckyErrorCode::Failed,
+                format!("publish local file {} failed", local_path),
+            ))
         }
     }
 
@@ -486,19 +574,33 @@ impl PublishManager {
             let params = BuildDirParams {
                 local_path: local_path.clone(),
                 owner,
+                dec_id: dec_id.clone(),
                 chunk_size,
-                device_id: self.device_id.clone()
+                device_id: self.device_id.object_id().clone(),
             };
 
-            let task_id = self.task_manager.create_task(dec_id.clone(), source.clone(), BUILD_DIR_TASK, params).await?;
+            let task_id = self
+                .task_manager
+                .create_task(dec_id.clone(), source.clone(), BUILD_DIR_TASK, params)
+                .await?;
             self.task_manager.start_task(&task_id).await?;
             self.task_manager.check_and_waiting_stop(&task_id).await;
-            let detail_status = BuildDirTaskStatus::clone_from_slice(self.task_manager.get_task_detail_status(&task_id).await?.as_slice())?;
-            self.task_manager.remove_task(&dec_id, &source, &task_id).await?;
+            let detail_status = BuildDirTaskStatus::clone_from_slice(
+                self.task_manager
+                    .get_task_detail_status(&task_id)
+                    .await?
+                    .as_slice(),
+            )?;
+            self.task_manager
+                .remove_task(&dec_id, &source, &task_id)
+                .await?;
             if let BuildDirTaskStatus::Finished(object_id) = detail_status {
                 object_id
             } else {
-                return Err(BuckyError::new(BuckyErrorCode::Failed, format!("publish local dir {} failed", local_path)));
+                return Err(BuckyError::new(
+                    BuckyErrorCode::Failed,
+                    format!("publish local dir {} failed", local_path),
+                ));
             }
         } else {
             dir.unwrap()
@@ -506,19 +608,33 @@ impl PublishManager {
 
         let params = PublishLocalDir {
             local_path: local_path.clone(),
-            root_id: root_id.clone()
+            root_id: root_id.clone(),
+            dec_id: dec_id.clone(),
         };
 
-        let task_id = self.task_manager.create_task(dec_id.clone(), source.clone(), PUBLISH_LOCAL_DIR_TASK, params).await?;
+        let task_id = self
+            .task_manager
+            .create_task(
+                dec_id.clone(),
+                source.clone(),
+                PUBLISH_LOCAL_DIR_TASK,
+                params,
+            )
+            .await?;
         self.task_manager.start_task(&task_id).await?;
         self.task_manager.check_and_waiting_stop(&task_id).await;
         let detail_status = self.task_manager.get_task_detail_status(&task_id).await?;
-        self.task_manager.remove_task(&dec_id, &source, &task_id).await?;
+        self.task_manager
+            .remove_task(&dec_id, &source, &task_id)
+            .await?;
         let state = PublishLocalFileTaskStatus::clone_from_slice(detail_status.as_slice())?;
         if let PublishLocalFileTaskStatus::Finished = state {
             Ok(root_id)
         } else {
-            Err(BuckyError::new(BuckyErrorCode::Failed, format!("publish local dir {} failed", local_path)))
+            Err(BuckyError::new(
+                BuckyErrorCode::Failed,
+                format!("publish local dir {} failed", local_path),
+            ))
         }
     }
 }

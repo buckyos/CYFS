@@ -1,9 +1,10 @@
-use crate::base::*;
 use crate::non::*;
+use crate::prelude::*;
 use crate::NONOutputProcessorRef;
-use cyfs_base::{BuckyErrorCode, BuckyResult, DeviceId};
+use cyfs_base::*;
 
 use async_trait::async_trait;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct RemoteNamedObjectCache {
@@ -18,51 +19,57 @@ impl RemoteNamedObjectCache {
             device_id: device_id.to_owned(),
         }
     }
+
+    pub fn into_noc(self) -> NamedObjectCacheRef {
+        Arc::new(Box::new(self))
+    }
 }
 
 #[async_trait]
 impl NamedObjectCache for RemoteNamedObjectCache {
-    async fn insert_object(
+    async fn put_object(
         &self,
-        obj_info: &NamedObjectCacheInsertObjectRequest,
-    ) -> BuckyResult<NamedObjectCacheInsertResponse> {
+        req: &NamedObjectCachePutObjectRequest,
+    ) -> BuckyResult<NamedObjectCachePutObjectResponse> {
         let req = NONPutObjectOutputRequest::new_noc(
-            obj_info.object_id.clone(),
-            obj_info.object_raw.clone(),
+            req.object.object_id.clone(),
+            req.object.object_raw.clone(),
         );
 
         let resp = self.non_service.put_object(req).await?;
 
-        Ok(NamedObjectCacheInsertResponse {
+        Ok(NamedObjectCachePutObjectResponse {
             result: resp.result.into(),
-            object_expires_time: resp.object_expires_time,
-            object_update_time: resp.object_update_time,
+            expires_time: resp.object_expires_time,
+            update_time: resp.object_update_time,
         })
     }
 
-    async fn get_object(
+    async fn get_object_raw(
         &self,
         req: &NamedObjectCacheGetObjectRequest,
-    ) -> BuckyResult<Option<ObjectCacheData>> {
+    ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
         let req = NONGetObjectOutputRequest::new_noc(req.object_id.clone(), None);
 
         match self.non_service.get_object(req).await {
             Ok(resp) => {
-                let mut data = ObjectCacheData {
-                    protocol: NONProtocol::HttpLocal,
-                    source: self.device_id.clone(),
-                    object_id: resp.object.object_id.clone(),
-                    dec_id: None,
-                    object_raw: Some(resp.object.object_raw),
-                    object: resp.object.object,
-                    flags: 0u32,
-                    create_time: 0u64,
-                    update_time: 0u64,
-                    insert_time: 0u64,
-                    rank: OBJECT_RANK_NONE,
+                // FIXME update the get_object resp to adapt the new noc get_object
+                let data = NamedObjectCacheObjectRawData {
+                    meta: NamedObjectMetaData {
+                        object_id: resp.object.object_id.clone(),
+                        owner_id: resp.object.object().owner().to_owned(),
+                        create_dec_id: cyfs_core::get_system_dec_app().to_owned(),
+                        insert_time: bucky_time_now(),
+                        update_time: bucky_time_now(),
+                        object_update_time: resp.object_update_time,
+                        object_expired_time: resp.object_expires_time,
+                        storage_category: NamedObjectStorageCategory::Storage,
+                        context: None,
+                        last_access_rpath: None,
+                        access_string: 9,
+                    },
+                    object: Some(resp.object),
                 };
-
-                data.rebuild_object()?;
 
                 Ok(Some(data))
             }
@@ -76,83 +83,38 @@ impl NamedObjectCache for RemoteNamedObjectCache {
         }
     }
 
-    async fn select_object(
-        &self,
-        req: &NamedObjectCacheSelectObjectRequest,
-    ) -> BuckyResult<Vec<ObjectCacheData>> {
-        let noc_filter = req.filter.clone().into();
-        let noc_opt: Option<SelectOption> = match &req.opt {
-            Some(opt) => Some(opt.clone().into()),
-            None => None,
-        };
-
-        let noc_select_req = NONSelectObjectOutputRequest::new_noc(noc_filter, noc_opt);
-
-        let resp = self.non_service.select_object(noc_select_req).await?;
-
-        let mut list = Vec::new();
-        for item in resp.objects {
-            let object = item.object.unwrap();
-            let mut data = ObjectCacheData {
-                protocol: NONProtocol::HttpLocal,
-                source: self.device_id.clone(),
-                object_id: object.object_id,
-                dec_id: None,
-                object_raw: Some(object.object_raw),
-                object: object.object,
-                flags: 0u32,
-                create_time: 0u64,
-                update_time: 0u64,
-                insert_time: 0u64,
-                rank: OBJECT_RANK_NONE,
-            };
-
-            if let Err(e) = data.rebuild_object() {
-                error!(
-                    "rebuild object cache data error! obj={}, err={}",
-                    data.object_id, e
-                );
-                continue;
-            }
-
-            list.push(data);
-        }
-
-        Ok(list)
-    }
-
     async fn delete_object(
         &self,
         req: &NamedObjectCacheDeleteObjectRequest,
-    ) -> BuckyResult<NamedObjectCacheDeleteObjectResult> {
+    ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
         let noc_req = NONDeleteObjectOutputRequest::new_noc(req.object_id.clone(), None);
 
         match self.non_service.delete_object(noc_req).await {
             Ok(resp) => {
-                let object = if let Some(object) = resp.object {
-                    let mut data = ObjectCacheData {
-                        protocol: NONProtocol::HttpLocal,
-                        source: self.device_id.clone(),
-                        object_id: req.object_id.clone(),
-                        dec_id: None,
-                        object_raw: Some(object.object_raw),
-                        object: object.object,
-                        flags: 0u32,
-                        create_time: 0u64,
-                        update_time: 0u64,
-                        insert_time: 0u64,
-                        rank: OBJECT_RANK_NONE,
+                let meta = if let Some(ref object) = resp.object {
+                    let meta = NamedObjectMetaData {
+                        object_id: object.object_id.clone(),
+                        owner_id: object.object().owner().to_owned(),
+                        create_dec_id: cyfs_core::get_system_dec_app().to_owned(),
+                        insert_time: bucky_time_now(),
+                        update_time: bucky_time_now(),
+                        object_update_time: object.object().update_time(),
+                        object_expired_time: object.object().expired_time(),
+                        storage_category: NamedObjectStorageCategory::Storage,
+                        context: None,
+                        last_access_rpath: None,
+                        access_string: 9,
                     };
-                    data.rebuild_object()?;
 
-                    Some(data)
+                    Some(meta)
                 } else {
                     None
                 };
 
-                let ret = NamedObjectCacheDeleteObjectResult {
+                let ret = NamedObjectCacheDeleteObjectResponse {
                     deleted_count: 1,
-                    object: object,
+                    object: resp.object,
+                    meta,
                 };
 
                 Ok(ret)
@@ -165,15 +127,23 @@ impl NamedObjectCache for RemoteNamedObjectCache {
         unimplemented!();
     }
 
-    fn sync_server(&self) -> Option<Box<dyn NamedObjectCacheSyncServer>> {
-        unreachable!();
+    async fn update_object_meta(
+        &self,
+        _req: &NamedObjectCacheUpdateObjectMetaRequest,
+    ) -> BuckyResult<()> {
+        unimplemented!();
     }
 
-    fn sync_client(&self) -> Option<Box<dyn NamedObjectCacheSyncClient>> {
-        unreachable!();
+    async fn exists_object(
+        &self,
+        _req: &NamedObjectCacheExistsObjectRequest,
+    ) -> BuckyResult<NamedObjectCacheExistsObjectResponse> {
+        unimplemented!();
     }
 
-    fn clone_noc(&self) -> Box<dyn NamedObjectCache> {
-        Box::new(self.clone()) as Box<dyn NamedObjectCache>
+    async fn check_object_access(&self, 
+        _req: &NamedObjectCacheCheckObjectAccessRequest
+    ) -> BuckyResult<Option<()>> {
+        unimplemented!();
     }
 }

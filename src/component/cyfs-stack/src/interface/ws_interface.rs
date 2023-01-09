@@ -78,7 +78,7 @@ impl WebSocketRequestHandler for WebSocketRequestInnerHandler {
     }
 
     async fn on_session_begin(&self, session: &Arc<WebSocketSession>) {
-        info!("ws event new session: sid={}", session.sid());
+        debug!("ws event new session: sid={}", session.sid());
     }
 
     async fn on_session_end(&self, session: &Arc<WebSocketSession>) {
@@ -102,10 +102,16 @@ impl WebSocketEventInterface {
         addr: SocketAddr,
         auth: Option<InterfaceAuth>,
     ) -> Self {
+        let protocol = if auth.is_some() {
+            RequestProtocol::HttpLocalAuth
+        } else {
+            RequestProtocol::HttpLocal
+        };
+
         let router_handlers_handler =
-            RouterHandlerWebSocketHandler::new(NONProtocol::HttpLocal, router_handlers_manager);
+            RouterHandlerWebSocketHandler::new(protocol, router_handlers_manager);
         let router_events_handler =
-            RouterEventWebSocketHandler::new(NONProtocol::HttpLocal, router_events_manager);
+            RouterEventWebSocketHandler::new(protocol, router_events_manager);
 
         let handler = WebSocketRequestInnerHandler {
             http_ws_service,

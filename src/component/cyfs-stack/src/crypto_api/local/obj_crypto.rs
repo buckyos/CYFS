@@ -3,10 +3,10 @@ use super::obj_verifier::*;
 use crate::crypto::*;
 use crate::resolver::*;
 use crate::zone::*;
-use cyfs_lib::*;
-use cyfs_bdt::StackGuard;
 use cyfs_base::*;
-
+use cyfs_bdt::StackGuard;
+use cyfs_lib::*;
+use super::codec::CryptoCodec;
 
 use std::sync::Arc;
 
@@ -14,12 +14,13 @@ use std::sync::Arc;
 pub struct ObjectCrypto {
     signer: Arc<ObjectSigner>,
     verifier: Arc<ObjectVerifier>,
+    codec: Arc<CryptoCodec>,
 }
 
 impl ObjectCrypto {
     pub(crate) fn new(
         verifier: Arc<ObjectVerifier>,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         device_manager: Box<dyn DeviceCache>,
         bdt_stack: StackGuard,
     ) -> Self {
@@ -31,7 +32,10 @@ impl ObjectCrypto {
 
         let signer = Arc::new(signer);
 
-        Self { signer, verifier }
+        let codec = CryptoCodec::new(zone_manager, bdt_stack);
+        let codec = Arc::new(codec);
+
+        Self { signer, verifier, codec }
     }
 
     pub fn clone_processor(&self) -> CryptoInputProcessorRef {
@@ -61,5 +65,19 @@ impl CryptoInputProcessor for ObjectCrypto {
         req: CryptoSignObjectInputRequest,
     ) -> BuckyResult<CryptoSignObjectInputResponse> {
         self.signer.sign_object(req).await
+    }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataInputRequest,
+    ) -> BuckyResult<CryptoEncryptDataInputResponse> {
+        self.codec.encrypt_data(req).await
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataInputRequest,
+    ) -> BuckyResult<CryptoDecryptDataInputResponse> {
+        self.codec.decrypt_data(req).await
     }
 }

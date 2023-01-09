@@ -21,6 +21,10 @@ mod test_drive;
 mod test_obj_searcher;
 mod zone;
 mod role;
+mod storage;
+mod meta;
+mod call;
+mod mime;
 
 pub async fn test_restart() {
     let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
@@ -32,6 +36,19 @@ pub async fn test_restart() {
 pub async fn test() {
     // role::test().await;
 
+    // meta::test().await;
+
+    // crypto::test().await;
+
+    //root_state::test().await;
+    mime::test().await;
+    ndn::test().await;
+    //non::test().await;
+    //call::test().await;
+    return;
+
+    meta::test().await;
+    
     codec::test().await;
     test_restart().await;
 

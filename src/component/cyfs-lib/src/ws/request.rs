@@ -15,7 +15,7 @@ use std::sync::{
 use std::time::Duration;
 
 // ws request的默认超时时间
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60 * 10);
+const WS_REQUEST_DEFAULT_TIMEOUT: Duration = Duration::from_secs(60 * 10 * 10);
 
 
 #[async_trait]
@@ -107,7 +107,7 @@ struct WebSocketRequestContainer {
 
 impl WebSocketRequestContainer {
     fn new() -> Self {
-        let list = LruCache::with_expiry_duration(DEFAULT_TIMEOUT);
+        let list = LruCache::with_expiry_duration(WS_REQUEST_DEFAULT_TIMEOUT);
 
         Self { list, next_seq: 1 }
     }
@@ -122,7 +122,7 @@ impl WebSocketRequestContainer {
     ) {
         let seq = self.next_seq;
         self.next_seq += 1;
-        if self.next_seq == 0 {
+        if self.next_seq == u16::MAX {
             warn!("ws request seq roll back! sid={}", sid);
             self.next_seq = 1;
         }
@@ -194,7 +194,7 @@ impl WebSocketRequestContainer {
         if self.list.is_empty() {
             Vec::new()
         } else {
-            let timeout_now = Instant::now().checked_add(Duration::from_secs(DEFAULT_TIMEOUT * 2)).unwrap();
+            let timeout_now = Instant::now().checked_add(Duration::from_secs(WS_REQUEST_DEFAULT_TIMEOUT * 2)).unwrap();
 
             for item in self.list.peek_iter().next() {
 
@@ -354,6 +354,14 @@ impl WebSocketRequestManager {
             WebSocketRequestContainer::on_timeout(self.sid(), timeout_list);
         }
 
+        // Init waker before send the packet
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        {
+            let mut item = item.lock().unwrap();
+            assert!(item.waker.is_none());
+            item.waker = Some(abort_handle);
+        }
+
         let packet = WSPacket::new_from_bytes(seq, cmd, msg);
         let buf = packet.encode();
         if let Err(e) = self.post_to_session(buf).await {
@@ -361,14 +369,7 @@ impl WebSocketRequestManager {
 
             return Err(e);
         }
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-
-        {
-            let mut item = item.lock().unwrap();
-            assert!(item.waker.is_none());
-            item.waker = Some(abort_handle);
-        }
-
+        
         // 等待唤醒
         let future = Abortable::new(async_std::future::pending::<()>(), abort_registration);
         future.await.unwrap_err();
@@ -495,8 +496,40 @@ impl WebSocketRequestManager {
     fn stop_monitor(&self) {
         let mut monitor_canceler = self.monitor_canceler.lock().unwrap();
         if let Some(canceler) = monitor_canceler.take() {
-            info!("will stop ws request monitor: sid={}", self.sid());
+            debug!("will stop ws request monitor: sid={}", self.sid());
             canceler.abort();
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use futures::future::{AbortHandle, Abortable};
+
+    async fn test_wakeup() {
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+
+        abort_handle.abort();
+
+        async_std::task::spawn(async move {
+            async_std::task::sleep(std::time::Duration::from_secs(2)).await;
+            abort_handle.abort();
+        });
+
+        // 等待唤醒
+        let future = Abortable::new(async_std::future::pending::<()>(), abort_registration);
+        future.await.unwrap_err();
+
+        println!("future wait complete!");
+
+        async_std::task::sleep(std::time::Duration::from_secs(3)).await;
+    }
+
+    #[test]
+    fn test() {
+        async_std::task::block_on(async move {
+            test_wakeup().await;
+        })
     }
 }

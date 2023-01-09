@@ -304,6 +304,11 @@ impl NonHelper {
             return Err(e);
         }
 
+        info!(
+            "save app web dir success, app:{}, ver:{}, dir:{}",
+            app_id, ver, web_dir_id
+        );
+
         Ok(())
     }
 
@@ -337,6 +342,11 @@ impl NonHelper {
             return Err(e);
         }
 
+        info!(
+            "remove app web dir success, app:{}, ver:{}, dir:{}",
+            app_id, ver, web_dir_id
+        );
+
         Ok(())
     }
 
@@ -349,6 +359,10 @@ impl NonHelper {
             );
             return Err(e);
         }
+        info!(
+            "register app name success, app:{}, name:{}",
+            app_id, app_name
+        );
 
         Ok(())
     }
@@ -365,6 +379,11 @@ impl NonHelper {
             );
             return Err(e);
         }
+
+        info!(
+            "unregister app name success, app:{}, name:{}",
+            app_id, app_name
+        );
 
         Ok(())
     }
@@ -419,6 +438,7 @@ impl NonHelper {
             .get_object(NONGetObjectRequest {
                 common: NONOutputRequestCommon {
                     req_path: None,
+                    source: None,
                     dec_id: None,
                     level: NONAPILevel::Router,
                     target,
@@ -443,6 +463,7 @@ impl NonHelper {
             .put_object(NONPutObjectRequest {
                 common: NONOutputRequestCommon::new(NONAPILevel::Router),
                 object: NONObjectInfo::new(obj.desc().calculate_id(), obj.to_vec()?, None),
+                access: None,
             })
             .await
     }
@@ -456,8 +477,9 @@ impl NonHelper {
         N: NamedObject<D>,
         <D as ObjectType>::ContentType: BodyContent,
     {
-        let req =
+        let mut req =
             NONPostObjectOutputRequest::new_router(None, obj.desc().calculate_id(), obj.to_vec()?);
+        req.common.req_path = Some(CYFS_SYSTEM_APP_VIRTUAL_PATH.to_owned());
         let ret = self.shared_stack.non_service().post_object(req).await;
 
         match ret {

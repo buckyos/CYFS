@@ -78,7 +78,7 @@ ObjectId = Hash(Encode(NamedObject))
 # GET Object(NamedObject) 获取命名对象
 
 `cyfs://o[/$ownerid]/$objectid[/$innerpath][?mode=object&format=json]` (这种格式的URL为 ObjectLink URL,或简称为O Link)
-获取指定的NamedObjecct，通过Http resp body返回。body的格式为指定格式。
+获取指定的NamedObject，通过Http resp body返回。body的格式为指定格式。
 在不传入mode的情况下，GET的行为会根据请求NamedObject的类型进行一些智能的处理.
 
 ## 智能处理

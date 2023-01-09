@@ -8,7 +8,7 @@ use crate::{
     interface
 };
 use super::super::{
-    protocol::*, 
+    protocol::v0::*, 
     channel::Channel
 };
 use super::{
@@ -63,9 +63,15 @@ impl ChannelTunnel for TcpTunnel {
         self.0.active_timestamp
     }
 
+    fn on_resent_interest(&self, _interest: &Interest) -> BuckyResult<()> {
+        Err(BuckyError::new(BuckyErrorCode::Ignored, ""))
+    }
+
     fn send_piece_control(&self, control: PieceControl) {
-        debug!("{} will send piece control {:?}", self, control);
-        let _ = control.split_send(&DynamicTunnel::new(self.0.raw_tunnel.clone()));
+        if control.command != PieceControlCommand::Continue {
+            info!("{} will send piece control {:?}", self, control);
+            let _ = control.split_send(&DynamicTunnel::new(self.0.raw_tunnel.clone()));
+        }
     }
 
     fn on_piece_data(&self, _piece: &PieceData) -> BuckyResult<()> {
@@ -76,8 +82,11 @@ impl ChannelTunnel for TcpTunnel {
         unreachable!()
     }
 
-    fn on_piece_control(&self, _ctrl: &mut PieceControl) -> BuckyResult<()> {
-        // FIXME: 可能的实现是阻止重发 continue
+    fn on_piece_control(&self, ctrl: &mut PieceControl) -> BuckyResult<()> {
+        if PieceControlCommand::Continue == ctrl.command && ctrl.max_index.is_some() { 
+            info!("{} will discard send buffer to resend", self);
+            let _ = self.0.raw_tunnel.discard_data_piece();
+        }
         Ok(())
     }
 

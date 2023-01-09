@@ -1,6 +1,6 @@
 use http_types::{Url};
-use cyfs_bdt::StreamGuard;
 use cyfs_base::*;
+use cyfs_bdt::stream_pool::PooledStream;
 
 pub enum DeviceTarget{
     Local,
@@ -14,14 +14,14 @@ pub enum ChunkNodeType{
 }
 
 pub struct ChunkSourceContext{
-    pub bdt_stream: Option<StreamGuard>,
+    pub bdt_stream: Option<PooledStream>,
     pub peer_id: DeviceId, 
     pub end_point: String,
     pub vport: u16, 
 }
 
 pub struct ChunkCacheContext{
-    pub bdt_stream: Option<StreamGuard>,
+    pub bdt_stream: Option<PooledStream>,
     pub peer_id: DeviceId, 
     pub end_point: String,
     pub vport: u16, 
@@ -37,7 +37,7 @@ pub trait ChunkClientContext {
 
     fn get_end_point(&self)->&str;
 
-    fn get_bdt_stream(self)->Option<StreamGuard>;
+    fn get_bdt_stream(self)->Option<PooledStream>;
 }
 
 impl ChunkClientContext for ChunkSourceContext {
@@ -49,7 +49,7 @@ impl ChunkClientContext for ChunkSourceContext {
         &self.end_point
     }
 
-    fn get_bdt_stream(self)->Option<StreamGuard>{
+    fn get_bdt_stream(self)->Option<PooledStream>{
         self.bdt_stream
     }
 }
@@ -63,7 +63,7 @@ impl ChunkClientContext for ChunkCacheContext {
         &self.end_point
     }
 
-    fn get_bdt_stream(self)->Option<StreamGuard>{
+    fn get_bdt_stream(self)->Option<PooledStream>{
         self.bdt_stream
     }
 }
@@ -105,7 +105,7 @@ impl ChunkSourceContext {
         }
     }
 
-    pub fn source_http_bdt_local(peer_id:&DeviceId, bdt_stream: StreamGuard)->Self{
+    pub fn source_http_bdt_local(peer_id:&DeviceId, bdt_stream: PooledStream)->Self{
         
         let (end_point,vport) = Self::get_source_endpoint(&peer_id.to_string(), DeviceTarget::Local);
 
@@ -117,7 +117,7 @@ impl ChunkSourceContext {
         }
     }
 
-    pub fn source_http_bdt_local_proxy(peer_id:&DeviceId, bdt_stream: StreamGuard)->Self{
+    pub fn source_http_bdt_local_proxy(peer_id:&DeviceId, bdt_stream: PooledStream)->Self{
         
         let (end_point,vport) = Self::get_source_endpoint(&peer_id.to_string(), DeviceTarget::LocalProxy);
 
@@ -129,7 +129,7 @@ impl ChunkSourceContext {
         }
     }
 
-    pub fn source_http_bdt_remote(peer_id:&DeviceId, bdt_stream: StreamGuard)->Self{
+    pub fn source_http_bdt_remote(peer_id:&DeviceId, bdt_stream: PooledStream)->Self{
 
         let (end_point,vport) = Self::get_source_endpoint(&peer_id.to_string(), DeviceTarget::Remote);
 
@@ -189,7 +189,7 @@ impl ChunkCacheContext {
         }
     }
 
-    pub fn cache_http_bdt_local(peer_id:&DeviceId, bdt_stream: StreamGuard)->Self{
+    pub fn cache_http_bdt_local(peer_id:&DeviceId, bdt_stream: PooledStream)->Self{
 
         let (end_point,vport) = Self::get_cache_endpoint(&peer_id.to_string(), DeviceTarget::Local);
 
@@ -201,7 +201,7 @@ impl ChunkCacheContext {
         }
     }
 
-    pub fn cache_http_bdt_local_proxy(peer_id:&DeviceId, bdt_stream: StreamGuard)->Self{
+    pub fn cache_http_bdt_local_proxy(peer_id:&DeviceId, bdt_stream: PooledStream)->Self{
 
         let (end_point,vport) = Self::get_cache_endpoint(&peer_id.to_string(), DeviceTarget::LocalProxy);
 
@@ -213,7 +213,7 @@ impl ChunkCacheContext {
         }
     }
 
-    pub fn cache_http_bdt_remote(peer_id:&DeviceId, bdt_stream: StreamGuard)->Self{
+    pub fn cache_http_bdt_remote(peer_id:&DeviceId, bdt_stream: PooledStream)->Self{
 
         let (end_point,vport) = Self::get_cache_endpoint(&peer_id.to_string(), DeviceTarget::Remote);
 

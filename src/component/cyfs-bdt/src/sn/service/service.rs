@@ -14,8 +14,9 @@ use cyfs_base::*;
 
 use crate::{
     history::keystore::{self, Keystore},
-    protocol::*,
+    protocol::{*, v0::*},
     types::*,
+    sn::Config,
 };
 
 use super::{
@@ -23,7 +24,7 @@ use super::{
     net_listener::{MessageSender, NetListener, UdpSender},
     peer_manager::PeerManager,
     receipt::*,
-    resend_queue::ResendQueue,
+    resend_queue::{ResendQueue, ResendCallbackTrait},
 };
 
 // const TRACKER_INTERVAL: Duration = Duration::from_secs(60);
@@ -43,8 +44,9 @@ struct ServiceImpl {
 
     // call_tracker: CallTracker,
     peer_mgr: PeerManager,
-    resend_queue: ResendQueue,
+    resend_queue: Option<ResendQueue>,
     call_stub: CallStub,
+
 }
 
 #[derive(Clone)]
@@ -58,7 +60,7 @@ impl SnService {
     ) -> SnService {
         let thread_pool = ThreadPool::new().unwrap();
 
-        Self(Arc::new(ServiceImpl {
+        let service = Self(Arc::new(ServiceImpl {
             seq_generator: TempSeqGenerator::new(),
             key_store: Keystore::new(
                 local_secret.clone(),
@@ -73,32 +75,36 @@ impl SnService {
                     capacity: 100000,
                 },
             ),
-            resend_queue: ResendQueue::new(thread_pool.clone(), Duration::from_millis(200), 5),
+            resend_queue: None,/* ResendQueue::new(thread_pool.clone(), Duration::from_millis(200), 5), */
             local_device_id: local_device.desc().device_id(),
             local_device: local_device.clone(),
             stopped: AtomicBool::new(false),
-            peer_mgr: PeerManager::new(Duration::from_secs(300)),
+            peer_mgr: PeerManager::new(Duration::from_secs(300), Config::default()),
             call_stub: CallStub::new(),
-            thread_pool,
+            thread_pool: thread_pool.clone(),
             contract,
             // call_tracker: CallTracker {
             //     calls: Default::default(),
             //     begin_time: Instant::now()
             // }
-        }))
+        }));
+
+        let resend_queue = ResendQueue::new(thread_pool, Duration::from_millis(200), 5, Box::new(service.clone()));
+
+        let mut_service = unsafe { &mut *(Arc::as_ptr(&service.0) as *mut ServiceImpl) };
+        mut_service.resend_queue = Some(resend_queue);
+
+        service
     }
 
     pub async fn start(&self) -> BuckyResult<()> {
         let mut endpoints_v4 = vec![];
         let mut endpoints_v6 = vec![];
         for endpoint in self.0.local_device.connect_info().endpoints() {
-            let mut addr = endpoint.addr().clone();
-            if addr.is_ipv4() {
-                addr.set_ip("0.0.0.0".parse().unwrap());
-                endpoints_v4.push(Endpoint::from((endpoint.protocol(), addr)));
+            if endpoint.addr().is_ipv4() {
+                endpoints_v4.push(endpoint.clone());
             } else {
-                addr.set_ip("::".parse().unwrap());
-                endpoints_v6.push(Endpoint::from((endpoint.protocol(), addr)));
+                endpoints_v6.push(endpoint.clone());
             };
         }
 
@@ -157,7 +163,7 @@ impl SnService {
     }
 
     fn resend_queue(&self) -> &ResendQueue {
-        &self.0.resend_queue
+        self.0.resend_queue.as_ref().unwrap()
     }
 
     fn peer_manager(&self) -> &PeerManager {
@@ -195,7 +201,13 @@ impl SnService {
 
     fn clean_timeout_resource(&self) {
         let now = bucky_time_now();
-        self.peer_manager().try_knock_timeout(now);
+
+        if let Some(drops) = self.peer_manager().try_knock_timeout(now) {
+            for device in &drops {
+                self.key_store().reset_peer(device)
+            }
+        }
+
         self.resend_queue().try_resend(now);
         self.0.call_stub.recycle(now);
         // {
@@ -219,9 +231,8 @@ impl SnService {
         let cmd_pkg = match first_pkg.cmd_code() {
             PackageCmdCode::Exchange => {
                 let exchg = <Box<dyn Any + Send>>::downcast::<Exchange>(first_pkg.into_any()); // pkg.into_any().downcast::<Exchange>();
-                if let Ok(_exchg) = exchg {
-                    self.key_store()
-                        .add_key(pkg_box.key(), pkg_box.remote(), true);
+                if let Ok(_) = exchg {
+                    self.key_store().add_key(pkg_box.key(), pkg_box.remote());
                 } else {
                     warn!("fetch exchange failed, from: {:?}.", resp_sender.remote());
                     return;
@@ -288,7 +299,7 @@ impl SnService {
         &self,
         ping_req: Box<SnPing>,
         resp_sender: MessageSender,
-        encryptor: Option<(&AesKey, &DeviceId)>,
+        encryptor: Option<(&MixAesKey, &DeviceId)>,
         send_time: Timestamp,
     ) {
         let from_peer_id = match ping_req.from_peer_id.as_ref() {
@@ -460,7 +471,7 @@ impl SnService {
         &self,
         mut call_req: Box<SnCall>,
         resp_sender: MessageSender,
-        _encryptor: Option<(&AesKey, &DeviceId)>,
+        _encryptor: Option<(&MixAesKey, &DeviceId)>,
         _send_time: Timestamp,
     ) {
         let from_peer_id = &call_req.from_peer_id;
@@ -497,6 +508,13 @@ impl SnService {
         //     call_result = BuckyErrorCode::NotFound;
         // };
 
+
+        let call_requestor = self.peer_manager().find_peer(&call_req.from_peer_id);
+
+        if let Some(call_requestor) = call_requestor.as_ref() {
+            call_requestor.peer_status.add_record(call_req.to_peer_id.clone(), call_req.seq);
+        }
+
         let call_resp =
             if let Some(to_peer_cache) = self.peer_manager().find_peer(&call_req.to_peer_id) {
                 // Self::call_stat_contract(to_peer_cache, &call_req);
@@ -521,7 +539,6 @@ impl SnService {
                             let mut called_req = SnCalled {
                                 seq: called_seq,
                                 to_peer_id: call_req.to_peer_id.clone(),
-                                from_peer_id: from_peer_id.clone(),
                                 sn_peer_id: self.local_device_id().clone(),
                                 peer_info: from_peer_desc,
                                 call_seq: call_req.seq,
@@ -585,6 +602,17 @@ impl SnService {
                 }
             };
 
+        match &call_resp.result {
+            0 => { /* wait confirm */ },
+
+            _ => {
+                if let Some(call_requestor) = call_requestor.as_ref() {
+                    call_requestor.peer_status.record(call_req.to_peer_id.clone(), call_req.seq, BuckyErrorCode::from(call_resp.result as u16));
+                }
+            }
+
+        }
+
         self.send_resp(
             resp_sender,
             DynamicPackage::from(call_resp),
@@ -592,7 +620,7 @@ impl SnService {
         );
     }
 
-    fn handle_called_resp(&self, called_resp: Box<SnCalledResp>, _aes_key: Option<&AesKey>) {
+    fn handle_called_resp(&self, called_resp: Box<SnCalledResp>, _aes_key: Option<&MixAesKey>) {
         info!("called-resp seq {}.", called_resp.seq.value());
         self.resend_queue().confirm_pkg(called_resp.seq.value());
 
@@ -609,5 +637,21 @@ impl SnService {
         //         cached_peer.receipt.rto = ((cached_peer.receipt.rto as u32 * 7 + rto) / 8) as u16;
         //     }
         // }
+    }
+}
+
+impl ResendCallbackTrait for SnService {
+    fn on_callback(&self, pkg: Arc<PackageBox>, errno: BuckyErrorCode) {
+        if let Some(p) = pkg.packages_no_exchange()
+                                    .get(0)
+                                    .map(| p | {
+                                        let p: &SnCalled = p.as_ref();
+                                        p
+                                    }) {
+            self.peer_manager().find_peer(&p.peer_info.desc().device_id())
+                .map(| requestor | {
+                    requestor.peer_status.record(p.to_peer_id.clone(), p.call_seq, errno);
+                });
+        }
     }
 }

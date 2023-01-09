@@ -1,9 +1,6 @@
 use super::name_cache::*;
-use crate::meta::MetaCache;
-use cyfs_base::{
-    bucky_time_now, BuckyError, BuckyErrorCode, BuckyResult, NameInfo, NameLink, NameState,
-    ObjectId,
-};
+use crate::meta::*;
+use cyfs_base::*;
 use cyfs_lib::*;
 
 use cyfs_debug::Mutex;
@@ -13,18 +10,17 @@ use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-
 // name缓存超时时间，默认一天
-// const NAME_CACHE_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60 * 24;
-const NAME_CACHE_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
+const NAME_CACHE_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60 * 24;
+// const NAME_CACHE_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
 
 // name查询但不存在的超时时间，默认一小时
-//const NAME_CACHE_NOT_FOUND_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60;
-const NAME_CACHE_NOT_FOUND_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
+const NAME_CACHE_NOT_FOUND_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60;
+// const NAME_CACHE_NOT_FOUND_TIMEOUT_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
 
 // 查询出错重试的最大时长，共享同一个
-// const NAME_CACHE_ERROR_MAX_RETRY_INTERVAL_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60;
-const NAME_CACHE_ERROR_MAX_RETRY_INTERVAL_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
+const NAME_CACHE_ERROR_MAX_RETRY_INTERVAL_IN_MICRO_SECS: u64 = 1000 * 1000 * 60 * 60;
+// const NAME_CACHE_ERROR_MAX_RETRY_INTERVAL_IN_MICRO_SECS: u64 = 1000 * 1000 * 60; // 暂时改为一分钟
 
 // 递归解析的最大深度
 const NAME_RESOLVE_MAX_DEPTH: u8 = 8;
@@ -47,7 +43,7 @@ struct NameResolvingItem {
 #[derive(Clone)]
 pub struct NameResolver {
     cache: NOCCollectionSync<NameCache>,
-    meta_cache: Arc<Box<dyn MetaCache>>,
+    meta_cache: MetaCacheRef,
 
     resolving_list: Arc<Mutex<HashMap<String, NameResolvingItem>>>,
 
@@ -55,10 +51,10 @@ pub struct NameResolver {
 }
 
 impl NameResolver {
-    pub fn new(meta_cache: Box<dyn MetaCache>, noc: Box<dyn NamedObjectCache>) -> Self {
+    pub fn new(meta_cache: MetaCacheRef, noc: NamedObjectCacheRef) -> Self {
         let id = "cyfs-name-cache";
         Self {
-            meta_cache: Arc::new(meta_cache),
+            meta_cache,
             cache: NOCCollectionSync::new(id, noc),
             resolving_list: Arc::new(Mutex::new(HashMap::new())),
             next_retry_interval: Arc::new(AtomicU64::new(1000 * 1000 * 2)),
@@ -85,6 +81,17 @@ impl NameResolver {
         self.cache
             .start_save(std::time::Duration::from_secs(60 * 5));
         Ok(())
+    }
+
+    pub fn reset_name(&self, name: &str) -> bool {
+        let mut data = self.cache.coll().lock().unwrap();
+        match data.try_get(name) {
+            Some(item) => {
+                item.reset(name);
+                true
+            }
+            None => false,
+        }
     }
 
     pub async fn lookup(&self, name: &str) -> BuckyResult<NameResult> {

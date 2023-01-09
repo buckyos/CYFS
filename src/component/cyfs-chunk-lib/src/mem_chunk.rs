@@ -109,15 +109,19 @@ impl Deref for MemChunk {
 #[async_trait::async_trait]
 impl Chunk for MemChunk {
     fn get_chunk_meta(&self) -> ChunkMeta {
-        ChunkMeta::MemChunk(self.buf.clone())
+        ChunkMeta::MemChunk(self.buf[..self.data_len].to_vec())
     }
 
     fn get_len(&self) -> usize {
-        self.buf.len()
+        self.data_len
     }
 
     fn into_vec(self: Box<Self>) -> Vec<u8> {
-        self.buf
+        if self.buf.len() == self.data_len {
+            self.buf
+        } else {
+            self.buf[..self.data_len].to_vec()
+        }
     }
 
     async fn read(&mut self, buf: &mut [u8]) -> BuckyResult<usize> {
@@ -239,7 +243,6 @@ impl <'a> Chunk for MemRefChunk<'a> {
 
 #[cfg(test)]
 mod test_mem_chunk {
-    use std::io::Write;
     use std::sync::Arc;
     use crate::{Chunk, ChunkMut, MemChunk, MemRefChunk, SharedMemChunk};
 
@@ -260,7 +263,7 @@ mod test_mem_chunk {
     fn test_mem_async_test() {
         async_std::task::block_on(async move {
             let mut mem_chunk = MemChunk::new(20, 0);
-            mem_chunk.write("test".as_bytes()).await;
+            mem_chunk.write("test".as_bytes()).await.unwrap();
         })
     }
 
@@ -268,7 +271,7 @@ mod test_mem_chunk {
     fn test_share_mem_test() {
         async_std::task::block_on(async move {
             let mut mem_chunk = SharedMemChunk::new(20, 0, "test").unwrap();
-            mem_chunk.write("test".as_bytes()).await;
+            mem_chunk.write("test".as_bytes()).await.unwrap();
 
             let mut mem_chunk2 = SharedMemChunk::new(20, mem_chunk.get_len(), "test").unwrap();
             let mut buf = [0u8;4];

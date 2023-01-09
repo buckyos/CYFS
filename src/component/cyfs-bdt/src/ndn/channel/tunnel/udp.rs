@@ -2,9 +2,10 @@ use log::*;
 use std::{
     collections::{LinkedList},
     time::{Duration},
-    cell::RefCell
+    cell::RefCell, 
+    sync::Mutex
 };
-use cyfs_debug::Mutex;
+// use cyfs_debug::Mutex;
 use async_std::{
     sync::Arc, 
 };
@@ -16,7 +17,7 @@ use crate::{
     cc::{self, CongestionControl},
 };
 use super::super::{
-    protocol::*, 
+    protocol::v0::*, 
     channel::Channel
 };
 use super::{
@@ -201,6 +202,10 @@ impl ChannelTunnel for UdpTunnel {
         self.0.active_timestamp
     }
 
+    fn on_resent_interest(&self, _interest: &Interest) -> BuckyResult<()> {
+        Ok(())
+    }
+
     fn send_piece_control(&self, control: PieceControl) {
         debug!("{} will send piece control {:?}", self, control);
         let _ = control.split_send(&DynamicTunnel::new(self.0.raw_tunnel.clone()));
@@ -324,10 +329,10 @@ impl ChannelTunnel for UdpTunnel {
                     if cc.no_resp_counter > self.config().no_resp_loss_count  {
                         debug!("{} outcome on no resp {} rto {:?} ", self, loss_count, cc.cc.rto());
                         cc.no_resp_counter = 0;
-                        cc.cc.on_no_resp(0);
+                        cc.cc.on_no_resp((loss_count * PieceData::max_payload()) as u64);
                     } else {
                         debug!("{} outcome on loss count {} rto {:?} ", self, loss_count, cc.cc.rto());
-                        cc.cc.on_loss(0);
+                        cc.cc.on_loss((loss_count * PieceData::max_payload()) as u64);
                     }
 
                     let cwnd = (cc.cc.cwnd() / PieceData::max_payload() as u64) as usize;

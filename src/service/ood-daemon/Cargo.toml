@@ -16,7 +16,8 @@ cyfs-core = { path = "../../component/cyfs-core" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
 cyfs-client = { path = "../../tools/cyfs-client" }
-base = { path = "../base", default-features = false, features = ["mongo"] }
+cyfs-lib = { path = "../../component/cyfs-lib" }
+base = { path = "../base" }
 ood-control = { path = "../ood-control" }
 lazy_static = "1.4"
 serde = "1.0"
@@ -25,7 +26,6 @@ log = "0.4"
 zip = "0.6"
 async-trait = "0.1.53"
 futures-util = "0.3"
-url = "2.2"
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 fs_extra = "1.2"
 futures = "0.3"
@@ -33,3 +33,4 @@ clap = "2.34.0"
 async-h1 = "2.3.3"
 once_cell = "1.12"
 toml = "0.5"
+http-types = "2.12"

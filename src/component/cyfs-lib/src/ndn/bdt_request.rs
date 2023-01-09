@@ -6,18 +6,26 @@ use std::fmt;
 
 // 用以bdt层的权限控制交换信息
 pub struct BdtDataRefererInfo {
+    // refer target: maybe owner of object; or dsg contract etc.
+    pub target: Option<ObjectId>, 
     pub object_id: ObjectId,
     pub inner_path: Option<String>,
 
+    // source-dec-id
     pub dec_id: Option<ObjectId>,
 
+    // target-dec-id and req-path, etc
     pub req_path: Option<String>,
+    
     pub referer_object: Vec<NDNDataRefererObject>,
     pub flags: u32,
 }
 
 impl fmt::Display for BdtDataRefererInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(target) = &self.target {
+            write!(f, ", target: {}", target)?;
+        }
         write!(f, "object_id: {:?}", self.object_id)?;
         if let Some(inner_path) = &self.inner_path {
             write!(f, ", inner_path: {}", inner_path)?;
@@ -41,7 +49,7 @@ impl fmt::Display for BdtDataRefererInfo {
 impl JsonCodec<BdtDataRefererInfo> for BdtDataRefererInfo {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
-
+        JsonCodecHelper::encode_option_string_field(&mut obj, "target", self.target.as_ref());
         JsonCodecHelper::encode_string_field(&mut obj, "object_id", &self.object_id);
         JsonCodecHelper::encode_option_string_field(&mut obj, "inner_path", self.inner_path.as_ref());
 
@@ -63,6 +71,7 @@ impl JsonCodec<BdtDataRefererInfo> for BdtDataRefererInfo {
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<BdtDataRefererInfo> {
         Ok(Self {
+            target: JsonCodecHelper::decode_option_string_field(obj,"target")?,
             object_id: JsonCodecHelper::decode_string_field(obj,"object_id")?,
             inner_path: JsonCodecHelper::decode_option_string_field(obj,"inner_path")?,
             dec_id: JsonCodecHelper::decode_option_string_field(obj, "dec_id")?,

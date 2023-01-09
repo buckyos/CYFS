@@ -95,6 +95,10 @@ pub fn parse_tx(tx: &MetaTxBody) -> (u32, String) {
             to = tx.nft_id.to_string();
             41
         }
+        MetaTxBody::NFTTrans(tx) => {
+            to = tx.to.to_string();
+            42
+        }
     };
 
     (tx_type, to)

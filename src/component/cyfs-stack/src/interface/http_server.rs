@@ -41,6 +41,22 @@ pub enum HttpRequestSource {
     Local(SocketAddr),
 }
 
+impl HttpRequestSource {
+    pub fn is_local(&self) -> bool {
+        match &self {
+            Self::Local(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_remote(&self) -> bool {
+        match &self {
+            Self::Remote(_) => true,
+            _ => false,
+        }
+    }
+}
+
 #[async_trait::async_trait]
 pub trait HttpServerHandler: Send + Sync {
     async fn respond(
@@ -156,10 +172,12 @@ impl HttpServerHandler for AuthenticatedHttpServer {
         source: HttpRequestSource,
         mut req: http_types::Request,
     ) -> http_types::Result<http_types::Response> {
-        if let Err(e) = self.check_dec(&source, &mut req) {
-            return Ok(RequestorHelper::trans_error(e));
+        if req.method() != http_types::Method::Options {
+            if let Err(e) = self.check_dec(&source, &mut req) {
+                return Ok(RequestorHelper::trans_error(e));
+            }
         }
-
+        
         self.handler.respond(source, req).await
     }
 }

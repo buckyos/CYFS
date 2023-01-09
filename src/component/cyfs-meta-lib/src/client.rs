@@ -1,17 +1,17 @@
 use cyfs_base::*;
 use cyfs_base_meta::*;
-
 use crate::MetaMinerTarget;
 
-use async_std::net::TcpStream;
 use http_types::{Method, Request, Url};
 use log::*;
 use serde_json::Value;
 use std::convert::TryFrom;
 use primitive_types::H256;
+use std::time::Duration;
 
 pub struct MetaClient {
     miner_host: Url,
+    request_timeout: Option<Duration>,
 }
 
 pub const UNION_ACCOUNT_TYPE_CHUNK_PROOF: u8 = 0;
@@ -34,7 +34,13 @@ impl MetaClient {
 
         Self {
             miner_host: Url::parse(&host).unwrap(),
+            request_timeout: None,
         }
+    }
+
+    pub fn with_timeout(mut self, request_timeout: Duration) -> Self {
+        self.request_timeout = Some(request_timeout);
+        self
     }
 
     fn gen_url(&self, path: &str) -> Url {
@@ -561,8 +567,29 @@ impl MetaClient {
 
         let req = Request::new(Method::Get, url);
 
-        debug!("miner request url={}", req.url());
+        if let Some(timeout) = &self.request_timeout {
+            match async_std::future::timeout(timeout.to_owned(), self.request_tx(req)).await {
+                Ok(ret) => ret,
+                Err(async_std::future::TimeoutError { .. }) => {
+                    let msg = format!("meta request tx timeout!");
+                    error!("{}", msg);
+    
+                    Err(BuckyError::new(BuckyErrorCode::Timeout, msg))
+                }
+            }
+        } else {
+            self.request_tx(req).await
+        }
+    }
 
+    async fn request_tx(&self, req: Request) -> BuckyResult<TxInfo> {
+        debug!("miner request tx url={}", req.url());
+
+        let mut resp = surf::client().send(req).await.map_err(|err| {
+            error!("http connect error! host={}, err={}", self.miner_host, err);
+            err
+        })?;
+        /*
         let host = self.miner_host.host_str().unwrap();
         let port = self.miner_host.port().unwrap_or(80);
         let addr = format!("{}:{}", host, port);
@@ -579,6 +606,7 @@ impl MetaClient {
             error!("http connect error! host={}, err={}", self.miner_host, err);
             err
         })?;
+        */
         let ret: Value = resp.body_json().await?;
         if 0 == ret.get("err").unwrap().as_u64().unwrap() {
             Ok(serde_json::from_value(ret.get("result").unwrap().clone())?)
@@ -623,8 +651,33 @@ impl MetaClient {
         req: Request,
         buf: &'de mut Vec<u8>,
     ) -> BuckyResult<T> {
+        if let Some(timeout) = &self.request_timeout {
+            match async_std::future::timeout(timeout.to_owned(), self.request_miner_impl(req, buf)).await {
+                Ok(ret) => ret,
+                Err(async_std::future::TimeoutError { .. }) => {
+                    let msg = format!("meta request timeout!");
+                    error!("{}", msg);
+    
+                    Err(BuckyError::new(BuckyErrorCode::Timeout, msg))
+                }
+            }
+        } else {
+            self.request_miner_impl(req, buf).await
+        }
+    }
+
+    async fn request_miner_impl<'de, T: RawDecode<'de>>(
+        &self,
+        req: Request,
+        buf: &'de mut Vec<u8>,
+    ) -> BuckyResult<T> {
         debug!("miner request url={}", req.url());
 
+        let mut resp = surf::client().send(req).await.map_err(|err| {
+            error!("http connect error! host={}, err={}", self.miner_host, err);
+            err
+        })?;
+        /*
         let host = self.miner_host.host_str().unwrap();
         let port = self.miner_host.port().unwrap_or(80);
         let addr = format!("{}:{}", host, port);
@@ -641,6 +694,7 @@ impl MetaClient {
             error!("http connect error! host={}, err={}", self.miner_host, err);
             err
         })?;
+        */
         let ret_hex = resp.body_string()
             .await
             .map_err(|err| {
@@ -1181,7 +1235,8 @@ impl MetaClient {
         secret: &PrivateKey,
         nft_id: ObjectId,
         price: u64,
-        coin_id: CoinTokenId
+        coin_id: CoinTokenId,
+        duration_block_num: u64,
     ) -> BuckyResult<TxId> {
         let req = self
             .commit_request_ex(
@@ -1191,6 +1246,7 @@ impl MetaClient {
                     nft_id,
                     price,
                     coin_id,
+                    duration_block_num
                 }),
                 10, 10,
                 Vec::new(),

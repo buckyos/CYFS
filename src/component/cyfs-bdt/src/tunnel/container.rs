@@ -15,7 +15,7 @@ use std::{
 use cyfs_base::*;
 use crate::{
     types::*,
-    protocol::*,
+    protocol::{*, v0::*},
     interface::{
         self, 
         udp::{
@@ -28,7 +28,9 @@ use crate::{
     },
     sn::client::PingClientCalledEvent, 
     stream::{StreamContainer, RemoteSequence}, 
-    stack::{Stack, WeakStack}
+    stack::{Stack, WeakStack}, 
+    dht::KadId, 
+    MTU
 };
 use super::{
     tunnel::*, 
@@ -41,7 +43,22 @@ use super::{
 pub struct BuildTunnelParams {
     pub remote_const: DeviceDesc, 
     pub remote_sn: Vec<DeviceId>, 
-    pub remote_desc: Option<Device>
+    pub remote_desc: Option<Device>,
+}
+
+
+impl BuildTunnelParams {
+    pub(crate) async fn nearest_sn(&self, stack: &Stack) -> BuckyResult<Device> {
+        let remote = self.remote_const.device_id();
+        let sn_id = self.remote_desc.as_ref().and_then(|device| {
+            device.connect_info().sn_list().get(0).cloned()
+        }).or_else(|| self.remote_sn.iter().min_by(|l, r| l.object_id().distance(remote.object_id()).cmp(&r.object_id().distance(remote.object_id()))).cloned())
+        .or_else(|| stack.device_cache().nearest_sn_of(&remote))
+        .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidParam, "neither remote device nor sn in build params"))?;
+
+        stack.device_cache().get(&sn_id).await
+            .ok_or_else(|| BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"))
+    }
 }
 
 #[derive(Clone)]
@@ -134,6 +151,14 @@ impl TunnelContainer {
         }))
     }
 
+    pub fn mtu(&self) -> usize {
+        if let Ok(tunnel) = self.default_tunnel() {
+            tunnel.mtu()
+        } else {
+            MTU-12
+        }
+    }
+
     fn mark_in_use(&self) {
         let mut state = self.0.state.write().unwrap();
         state.recyle_state = TunnelRecycleState::InUse;
@@ -203,6 +228,14 @@ impl TunnelContainer {
         &self.0.remote_const
     }
 
+    pub fn protocol_version(&self) -> u8 {
+        0
+    }
+
+    pub fn stack_version(&self) -> u32 {
+        0
+    }
+
     pub fn default_tunnel(&self) -> BuckyResult<DynamicTunnel> {
         let state = self.0.state.read().unwrap();
         match &state.tunnel_state {
@@ -253,7 +286,27 @@ impl TunnelContainer {
         tunnel.as_ref().send_package(package)
     }
 
-    pub fn build_send(&self, package: DynamicPackage, build_params: BuildTunnelParams) -> BuckyResult<()> {
+    pub fn send_plaintext(&self, package: DynamicPackage) -> Result<(), BuckyError> {
+        let tunnel = self.default_tunnel()?;
+
+        let mut buf = vec![0u8; MTU];
+
+        let buf_len = buf.len();
+        let enc_from = tunnel.as_ref().raw_data_header_len();
+
+        let mut context = merge_context::FirstEncode::new();
+        let enc: &dyn RawEncodeWithContext<merge_context::FirstEncode> = package.as_ref();
+        let buf_ptr = enc.raw_encode_with_context(&mut buf[enc_from..], &mut context, &None)?;
+
+        let len = buf_len - buf_ptr.len();
+
+        match tunnel.as_ref().send_raw_data(&mut buf[..len]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(BuckyError::new(BuckyErrorCode::Failed, format!("{}", e)))
+        }
+    }
+
+    pub fn build_send(&self, package: DynamicPackage, build_params: BuildTunnelParams, plaintext: bool) -> BuckyResult<()> {
         let (tunnel, builder) = {
             let mut state = self.0.state.write().unwrap();
             match &mut state.tunnel_state {
@@ -288,7 +341,11 @@ impl TunnelContainer {
 
         if let Some(tunnel) = tunnel {
             trace!("{} send packages from {}", self, tunnel.as_ref().as_ref());
-            tunnel.as_ref().send_package(package)
+            if plaintext {
+                self.send_plaintext(package)
+            } else {
+                tunnel.as_ref().send_package(package)
+            }
         } else if let Some(builder) = builder {
             //FIXME: 加入到connecting的 send 缓存里面去  
             self.stack().keystore().reset_peer(self.remote());
@@ -591,19 +648,24 @@ impl TunnelContainer {
                         Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel's connecting"))
                     }, 
                     TunnelStateImpl::Active(active) => {
-                        let cur_timestamp = active.remote_timestamp;
-                        if cur_timestamp == active_timestamp {
-                            info!("{} Active({})=>Dead", self, cur_timestamp);
-                            state.last_update = bucky_time_now();
-                            state.tunnel_state = TunnelStateImpl::Dead(TunnelDeadState {
-                                former_state: TunnelState::Active(cur_timestamp), 
-                                when: bucky_time_now()
-                            });
-                            let mut tunnel_entries = BTreeMap::new();
-                            std::mem::swap(&mut tunnel_entries, &mut state.tunnel_entries);
-                            Ok(tunnel_entries.into_iter().map(|(_, tunnel)| tunnel).collect())
+                        if active.default_tunnel.as_ref().local().is_tcp() {
+                            info!("{} ignore mark dead for tcp default", self);
+                            Err(BuckyError::new(BuckyErrorCode::ErrorState, "default tcp tunnel"))
                         } else {
-                            Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel's active"))
+                            let cur_timestamp = active.remote_timestamp;
+                            if cur_timestamp == active_timestamp {
+                                info!("{} Active({})=>Dead", self, cur_timestamp);
+                                state.last_update = bucky_time_now();
+                                state.tunnel_state = TunnelStateImpl::Dead(TunnelDeadState {
+                                    former_state: TunnelState::Active(cur_timestamp), 
+                                    when: bucky_time_now()
+                                });
+                                let mut tunnel_entries = BTreeMap::new();
+                                std::mem::swap(&mut tunnel_entries, &mut state.tunnel_entries);
+                                Ok(tunnel_entries.into_iter().map(|(_, tunnel)| tunnel).collect())
+                            } else {
+                                Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel's active"))
+                            }
                         }
                     }, 
                     TunnelStateImpl::Dead(_) => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel's dead"))
@@ -618,13 +680,50 @@ impl TunnelContainer {
 
     pub(super) fn on_raw_data(&self, data: &[u8]) -> BuckyResult<()> {
         let tunnel_impl = &self.0;
-        let (cmd_code, _) = u8::raw_decode(data)?;
+        let (cmd_code, buf) = u8::raw_decode(data)?;
         let cmd_code = PackageCmdCode::try_from(cmd_code)?;
         match cmd_code {
+            PackageCmdCode::Datagram => {
+                let (pkg, _) = Datagram::raw_decode_with_context(buf, &mut merge_context::OtherDecode::default())?;
+                let _ = Stack::from(&tunnel_impl.stack).datagram_manager().on_package(&pkg, (self, true));
+                Ok(())
+            },
             PackageCmdCode::SessionData => unimplemented!(), 
-            _ => Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_udp_raw_data(data, self), 
+            _ => {
+                Stack::from(&tunnel_impl.stack).ndn().channel_manager().on_udp_raw_data(data, self)
+            }, 
         }
     }
+
+
+    
+    // 注意R端的打洞包要用SynTunnel不能用AckTunnel
+    // 因为可能出现如下时序：L端收到R端的打洞包，停止继续发送打洞包；但是R端没有收到L端的打洞包，继续发送打洞包；
+    //   如果R端发的是AckTunnel，L端收到之后不会回复；如果L端改成对AckTunnel回复SynTunnel/AckTunnel都不合适，会导致循环回复
+    //   R端发SynTunnel的话，L端收到之后可以回复复AckTunnel 
+    // pub(super) fn syn_tunnel_package(&self, syn_tunnel: &SynTunnel, local: Device) -> SynTunnel {
+    //     SynTunnel {
+    //         protocol_version: self.protocol_version(), 
+    //         stack_version: self.stack_version(), 
+    //         from_device_id: local.desc().device_id(),
+    //         to_device_id: syn_tunnel.from_device_id.clone(),
+    //         sequence: syn_tunnel.sequence,
+    //         from_device_desc: local,
+    //         send_time: 0
+    //     }
+    // }
+
+    // pub(super) fn ack_tunnel_package(&self, syn_tunnel: &SynTunnel, local: Device) -> AckTunnel {
+    //     AckTunnel {
+    //         protocol_version: self.protocol_version(), 
+    //         stack_version: self.stack_version(), 
+    //         sequence: syn_tunnel.sequence,
+    //         result: 0,
+    //         send_time: 0,
+    //         mtu: c::MTU as u16,
+    //         to_device_desc: local       
+    //     }
+    // }
 }
 
 impl fmt::Display for TunnelContainer {
@@ -816,8 +915,8 @@ impl OnUdpPackageBox for TunnelContainer {
     }
 }
 
-impl OnUdpRawData<(interface::udp::Interface, DeviceId, AesKey, Endpoint)> for TunnelContainer {
-    fn on_udp_raw_data(&self, data: &[u8], context: (interface::udp::Interface, DeviceId, AesKey, Endpoint)) -> Result<(), BuckyError> {
+impl OnUdpRawData<(interface::udp::Interface, DeviceId, MixAesKey, Endpoint)> for TunnelContainer {
+    fn on_udp_raw_data(&self, data: &[u8], context: (interface::udp::Interface, DeviceId, MixAesKey, Endpoint)) -> Result<(), BuckyError> {
         // // 先创建 udp tunnel
         let (interface, _, key, remote) = context;
         let ep_pair = EndpointPair::from((interface.local(), remote));
@@ -1041,7 +1140,7 @@ impl PingClientCalledEvent<PackageBox> for TunnelContainer {
 impl OnPackage<SynTunnel> for TunnelContainer {
     fn on_package(&self, pkg: &SynTunnel, _: Option<()>) -> Result<OnPackageResult, BuckyError> {
         // 缓存syn tunnel里面的 desc
-        Stack::from(&self.0.stack).device_cache().add(&pkg.from_device_id, &pkg.from_device_desc);
+        Stack::from(&self.0.stack).device_cache().add(&pkg.from_device_desc.desc().device_id(), &pkg.from_device_desc);
         Ok(OnPackageResult::Handled)
     }
 }
@@ -1084,7 +1183,7 @@ impl OnPackage<TcpAckConnection, interface::tcp::AcceptInterface> for TunnelCont
 
 impl OnPackage<Datagram> for TunnelContainer {
     fn on_package(&self, pkg: &Datagram, _: Option<()>) -> Result<OnPackageResult, BuckyError> {
-        Stack::from(&self.0.stack).datagram_manager().on_package(pkg, self)
+        Stack::from(&self.0.stack).datagram_manager().on_package(pkg, (self, false))
             .map_err(|err| {
                 debug!("{} handle package {} error {}", self, pkg, err);
                 err

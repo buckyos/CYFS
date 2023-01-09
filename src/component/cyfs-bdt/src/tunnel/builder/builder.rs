@@ -2,7 +2,7 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*, 
+    protocol::{*, v0::*}, 
 };
 
 pub enum TunnelBuilderState {

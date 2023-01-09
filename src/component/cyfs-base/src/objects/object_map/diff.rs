@@ -954,7 +954,7 @@ mod test {
 
     async fn test_diff() {
         let noc = ObjectMapMemoryNOCCache::new();
-        let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
+        let root_cache = ObjectMapRootMemoryCache::new_default_ref(None, noc);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         let prev_id = gen_prev(&cache).await;
@@ -1071,7 +1071,7 @@ mod test_path_diff {
 
     async fn test_diff() {
         let noc = ObjectMapMemoryNOCCache::new();
-        let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
+        let root_cache = ObjectMapRootMemoryCache::new_default_ref(None, noc);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         test1(&cache).await;

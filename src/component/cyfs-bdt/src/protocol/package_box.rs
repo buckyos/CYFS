@@ -1,28 +1,43 @@
-use super::package::*;
-use cyfs_base::*;
+use super::{
+    common::*, 
+    package::*
+};
 
 //TODO: Option<AesKey> 支持明文包
 pub struct PackageBox {
     remote: DeviceId,
-    key: AesKey,
+    key: MixAesKey, 
     packages: Vec<DynamicPackage>,
 }
 
+impl std::fmt::Debug for PackageBox {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PackageBox:{{remote:{},key:{},packages:", self.remote, self.key)?;
+        for package in self.packages() {
+            use crate::protocol;
+            downcast_handle!(package, |p| {
+                let _ = write!(f, "{:?};", p);
+            });
+        }
+        write!(f, "}}")
+    }
+}
+
 impl PackageBox {
-    pub fn from_packages(remote: DeviceId, key: AesKey, packages: Vec<DynamicPackage>) -> Self {
+    pub fn from_packages(remote: DeviceId, key: MixAesKey, packages: Vec<DynamicPackage>) -> Self {
         // session package 的数组，不合并
         let mut package_box = Self::encrypt_box(remote, key);
         package_box.append(packages);
         package_box
     }
 
-    pub fn from_package(remote: DeviceId, key: AesKey, package: DynamicPackage) -> Self {
-        let mut package_box = Self::encrypt_box(remote.clone(), key.clone());
+    pub fn from_package(remote: DeviceId, key: MixAesKey, package: DynamicPackage) -> Self {
+        let mut package_box = Self::encrypt_box(remote.clone(), key);
         package_box.packages.push(package);
         package_box
     }
 
-    pub fn encrypt_box(remote: DeviceId, key: AesKey) -> Self {
+    pub fn encrypt_box(remote: DeviceId, key: MixAesKey) -> Self {
         Self {
             remote,
             key,
@@ -53,7 +68,7 @@ impl PackageBox {
         &self.remote
     }
 
-    pub fn key(&self) -> &AesKey {
+    pub fn key(&self) -> &MixAesKey {
         &self.key
     }
 

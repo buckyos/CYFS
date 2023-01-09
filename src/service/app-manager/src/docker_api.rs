@@ -46,7 +46,6 @@ impl Default for RunConfig {
     }
 }
 
-
 // entry strip content
 // 有些配置需要在docker run之后处理
 // start script 注入docker entrypoint, app run的命令设置在docker run cmd(作为首个参数)
@@ -194,7 +193,7 @@ fn get_dockerfile_gz_path(id: &str, version: &str) -> BuckyResult<PathBuf> {
 }
 
 fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
-    info!("start to handle container mount params of app {}", id);
+    info!("start to handle container mount params of app:{}", id);
 
     // mount log 目录
     let log_dir = get_cyfs_root_path().join("log").join("app").join(id);
@@ -215,16 +214,8 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
             read_only: Some(false),
             ..Default::default()
         },
-        // mount app data 目录(volume 形式)
-        // Mount {
-        //     target: Some("/cyfs/data/app".to_string()),
-        //     source: Some(id.to_string()),
-        //     typ: Some(bollard::models::MountTypeEnum::VOLUME),
-        //     read_only: Some(false),
-        //     ..Default::default()
-        // },
         Mount {
-            target: Some("/cyfs/data/app".to_string()),
+            target: Some(format!("/cyfs/data/app/{}", id)),
             source: Some(app_data_dir.as_path().display().to_string()),
             typ: Some(bollard::models::MountTypeEnum::BIND),
             read_only: Some(false),
@@ -235,6 +226,14 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
             source: Some(get_temp_path().into_os_string().into_string().unwrap()),
             typ: Some(bollard::models::MountTypeEnum::BIND),
             read_only: Some(false),
+            ..Default::default()
+        },
+        Mount {
+            // container's dns  conf bind host config
+            target: Some("/etc/resolv.conf".to_string()),
+            source: Some("/etc/resolv.conf".to_string()),
+            typ: Some(bollard::models::MountTypeEnum::BIND),
+            read_only: Some(true),
             ..Default::default()
         },
         Mount {
@@ -405,7 +404,10 @@ impl DockerApi {
         self.docker
             .remove_image(&image_name, remove_options, None)
             .await
-            .map_err(to_bucky_error)?;
+            .map_err(|e| {
+                warn!("remove image failed, name:{}, err:{}", image_name, e);
+                to_bucky_error(e)
+            })?;
 
         Ok(())
     }
@@ -436,7 +438,7 @@ impl DockerApi {
         config: RunConfig,
         command: Option<Vec<String>>,
     ) -> BuckyResult<()> {
-        info!("docker run dec app {}, config {:?}", id, config);
+        info!("docker run dec app:{}, config {:?}", id, config);
         if self.is_running(id).await.unwrap() {
             info!("docker container is alreay running   {}", id);
             return Ok(());
@@ -475,7 +477,7 @@ impl DockerApi {
             }),
             ..Default::default()
         };
-        info!("docker run dec app {}, host_config {:?}", id, host_config);
+        info!("docker run dec app:{}, host_config {:?}", id, host_config);
 
         // 内存限制
         if config.memory.is_some() {
@@ -538,7 +540,7 @@ impl DockerApi {
         if run_result.is_some() {
             if let Some(bollard::errors::Error::DockerResponseConflictError { .. }) = run_result {
             } else {
-                info!("create error ");
+                info!("create container error, id:{}", id);
                 return Err(to_bucky_error(run_result.unwrap()));
             }
         }
@@ -548,15 +550,38 @@ impl DockerApi {
             .docker
             .start_container(&container_name, None::<StartContainerOptions<String>>)
             .await
-            .map_err(to_bucky_error)?;
+            .map_err(|e| {
+                warn!("start container failed, id:{}, err:{}", id, e);
+                to_bucky_error(e)
+            })?;
 
         Ok(())
     }
 
     pub async fn stop(&self, id: &str) -> BuckyResult<()> {
-        let options = Some(StopContainerOptions { t: 30 });
         let container_name = format!("decapp-{}", id.to_lowercase());
         info!("try to stop container[{}]", container_name);
+
+        let mut filters = HashMap::new();
+        filters.insert("name", vec![container_name.as_str()]);
+        let options = Some(ListContainersOptions {
+            all: true,
+            filters,
+            ..Default::default()
+        });
+
+        // list container
+        let result = self.docker.list_containers(options).await.map_err(|e| {
+            warn!("list containers failed, err:{}", e);
+            to_bucky_error(e)
+        })?;
+        info!("list container status result {:?}", result);
+        if result.len() == 0 {
+            info!("container[{:?}] not found", container_name);
+            return Ok(());
+        }
+
+        let options = Some(StopContainerOptions { t: 30 });
 
         let _ = self.docker.stop_container(&container_name, options).await;
 
@@ -568,7 +593,10 @@ impl DockerApi {
         self.docker
             .remove_container(&container_name, remove_options)
             .await
-            .map_err(to_bucky_error)?;
+            .map_err(|e| {
+                warn!("remove container failed, id:{}, err:{}", id, e);
+                to_bucky_error(e)
+            })?;
         Ok(())
     }
 
@@ -584,11 +612,10 @@ impl DockerApi {
         });
 
         // list container
-        let result = self
-            .docker
-            .list_containers(options)
-            .await
-            .map_err(to_bucky_error)?;
+        let result = self.docker.list_containers(options).await.map_err(|e| {
+            warn!("list containers failed, err:{}", e);
+            to_bucky_error(e)
+        })?;
         info!("check container status result {:?}", result);
         if result.len() == 0 {
             info!(
@@ -623,11 +650,10 @@ impl DockerApi {
             ..Default::default()
         };
         //
-        let _result = self
-            .docker
-            .create_volume(config)
-            .await
-            .map_err(to_bucky_error)?;
+        let _result = self.docker.create_volume(config).await.map_err(|e| {
+            warn!("create volume failed, id: {}, err:{}", id, e);
+            to_bucky_error(e)
+        })?;
         info!("docker create volume finish: {}", id);
         Ok(())
     }
@@ -638,7 +664,10 @@ impl DockerApi {
         self.docker
             .remove_volume(id, Some(options))
             .await
-            .map_err(to_bucky_error)?;
+            .map_err(|e| {
+                warn!("remove volume failed, id:{}, err:{}", id, e);
+                to_bucky_error(e)
+            })?;
         Ok(())
     }
 

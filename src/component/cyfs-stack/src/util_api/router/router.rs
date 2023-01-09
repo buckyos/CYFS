@@ -1,21 +1,19 @@
+use super::super::acl::UtilAclInnerInputProcessor;
 use super::super::local::UtilLocalService;
-use crate::acl::AclManagerRef;
 use crate::forward::ForwardProcessorManager;
-use crate::meta::{ObjectFailHandler};
+use crate::meta::ObjectFailHandler;
 use crate::util::*;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
-use crate::zone::ZoneManager;
-use super::super::acl::UtilAclInnerInputProcessor;
 
 use std::sync::Arc;
-
 
 #[derive(Clone)]
 pub struct UtilRouter {
     processor: UtilInputProcessorRef,
 
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 
     forward: ForwardProcessorManager,
 
@@ -24,17 +22,15 @@ pub struct UtilRouter {
 
 impl UtilRouter {
     pub(crate) fn new(
-        acl: AclManagerRef,
         local_service: UtilLocalService,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> Self {
-
         let processor = local_service.clone_processor();
 
         // 限定同zone
-        let processor = UtilAclInnerInputProcessor::new(acl, processor);
+        let processor = UtilAclInnerInputProcessor::new(processor);
 
         Self {
             processor,
@@ -45,11 +41,9 @@ impl UtilRouter {
         }
     }
 
-
     pub fn clone_processor(&self) -> UtilInputProcessorRef {
         Arc::new(Box::new(self.clone()))
     }
-
 
     async fn get_forward(&self, target: DeviceId) -> BuckyResult<UtilInputProcessorRef> {
         // 获取到目标的processor
@@ -68,13 +62,17 @@ impl UtilRouter {
     async fn get_target(&self, target: Option<&ObjectId>) -> BuckyResult<Option<DeviceId>> {
         let ret = match target {
             Some(object_id) => {
-                let (_, device_id) = self.zone_manager.resolve_target(Some(object_id), None).await?;
-                    if device_id == *self.zone_manager.get_current_device_id() {
-                        None
-                    } else {
-                        Some(device_id)
-                    }
+                let info = self
+                    .zone_manager
+                    .target_zone_manager()
+                    .resolve_target(Some(object_id))
+                    .await?;
+                if info.target_device == *self.zone_manager.get_current_device_id() {
+                    None
+                } else {
+                    Some(info.target_device)
                 }
+            }
             None => None,
         };
 
@@ -165,7 +163,7 @@ impl UtilRouter {
 
     async fn build_file_object(
         &self,
-        req: UtilBuildFileInputRequest
+        req: UtilBuildFileInputRequest,
     ) -> BuckyResult<UtilBuildFileInputResponse> {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.build_file_object(req).await
@@ -237,12 +235,17 @@ impl UtilInputProcessor for UtilRouter {
         Self::get_version_info(&self, req).await
     }
 
-    async fn build_file_object(&self, req: UtilBuildFileInputRequest) -> BuckyResult<UtilBuildFileInputResponse> {
+    async fn build_file_object(
+        &self,
+        req: UtilBuildFileInputRequest,
+    ) -> BuckyResult<UtilBuildFileInputResponse> {
         Self::build_file_object(self, req).await
     }
 
-    async fn build_dir_from_object_map(&self, req: UtilBuildDirFromObjectMapInputRequest)
-        -> BuckyResult<UtilBuildDirFromObjectMapInputResponse> {
+    async fn build_dir_from_object_map(
+        &self,
+        req: UtilBuildDirFromObjectMapInputRequest,
+    ) -> BuckyResult<UtilBuildDirFromObjectMapInputResponse> {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.build_dir_from_object_map(req).await
     }

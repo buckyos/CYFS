@@ -8,6 +8,7 @@ impl JsonCodec<RootStateOutputRequestCommon> for RootStateOutputRequestCommon {
         let mut obj = Map::new();
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "target_dec_id", self.target_dec_id.as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "target", self.target.as_ref());
         JsonCodecHelper::encode_number_field(&mut obj, "flags", self.flags);
 
@@ -17,6 +18,7 @@ impl JsonCodec<RootStateOutputRequestCommon> for RootStateOutputRequestCommon {
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<RootStateOutputRequestCommon> {
         Ok(Self {
             dec_id: JsonCodecHelper::decode_option_string_field(obj, "dec_id")?,
+            target_dec_id: JsonCodecHelper::decode_option_string_field(obj, "target_dec_id")?,
             target: JsonCodecHelper::decode_option_string_field(obj, "target")?,
             flags: JsonCodecHelper::decode_int_field(obj, "flags")?,
         })
@@ -63,12 +65,33 @@ impl JsonCodec<RootStateGetCurrentRootOutputResponse> for RootStateGetCurrentRoo
 }
 
 // create_op_env
+impl JsonCodec<Self> for RootStateOpEnvAccess {
+    fn encode_json(&self) -> Map<String, Value> {
+        let mut obj = Map::new();
+
+        JsonCodecHelper::encode_string_field(&mut obj, "path", &self.path);
+        JsonCodecHelper::encode_number_field(&mut obj, "access", self.access as u8);
+
+        obj
+    }
+
+    fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
+        let access: u8 = JsonCodecHelper::decode_int_field(obj, "access")?;
+        
+        Ok(Self {
+            path: JsonCodecHelper::decode_string_field(obj, "path")?,
+            access: AccessPermissions::try_from(access)?,
+        })
+    }
+}
+
 impl JsonCodec<Self> for RootStateCreateOpEnvOutputRequest {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
 
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
         JsonCodecHelper::encode_string_field(&mut obj, "op_env_type", &self.op_env_type);
+        JsonCodecHelper::encode_option_field(&mut obj, "access", self.access.as_ref());
 
         obj
     }
@@ -77,6 +100,7 @@ impl JsonCodec<Self> for RootStateCreateOpEnvOutputRequest {
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             op_env_type: JsonCodecHelper::decode_string_field(obj, "op_env_type")?,
+            access: JsonCodecHelper::decode_option_field(obj, "access")?,
         })
     }
 }
@@ -103,6 +127,7 @@ impl JsonCodec<Self> for OpEnvOutputRequestCommon {
         let mut obj = Map::new();
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "target_dec_id", self.target_dec_id.as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "target", self.target.as_ref());
         JsonCodecHelper::encode_number_field(&mut obj, "flags", self.flags);
         JsonCodecHelper::encode_string_field(&mut obj, "sid", &self.sid);
@@ -113,6 +138,7 @@ impl JsonCodec<Self> for OpEnvOutputRequestCommon {
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
         Ok(Self {
             dec_id: JsonCodecHelper::decode_option_string_field(obj, "dec_id")?,
+            target_dec_id: JsonCodecHelper::decode_option_string_field(obj, "target_dec_id")?,
             target: JsonCodecHelper::decode_option_string_field(obj, "target")?,
             flags: JsonCodecHelper::decode_int_field(obj, "flags")?,
             sid: JsonCodecHelper::decode_int_field(obj, "sid")?,

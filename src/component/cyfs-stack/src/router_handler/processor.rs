@@ -1,19 +1,34 @@
 use super::handler::RouterHandler;
 use super::handler_manager::*;
 use cyfs_base::*;
-use cyfs_util::*;
 use cyfs_lib::*;
+use cyfs_util::*;
+
+pub struct SharedRouterHandlersManager {
+    manager: RouterHandlersManager,
+    source: RequestSourceInfo,
+}
+
+impl SharedRouterHandlersManager {
+    pub fn new(manager: RouterHandlersManager, source: RequestSourceInfo) -> Self {
+        Self {
+            manager,
+            source,
+        }
+    }
+}
 
 macro_rules! declare_router_handler_processor {
     ($REQ:ty, $RESP:ty, $func:ident) => {
         #[async_trait::async_trait]
-        impl RouterHandlerProcessor<$REQ, $RESP> for RouterHandlersManager {
+        impl RouterHandlerProcessor<$REQ, $RESP> for SharedRouterHandlersManager {
             async fn add_handler(
                 &self,
                 chain: RouterHandlerChain,
                 id: &str,
                 index: i32,
-                filter: &str,
+                filter: Option<String>,
+                req_path: Option<String>,
                 default_action: RouterHandlerAction,
                 routine: Option<
                     Box<
@@ -24,10 +39,18 @@ macro_rules! declare_router_handler_processor {
                     >,
                 >,
             ) -> BuckyResult<()> {
-                let handler =
-                    RouterHandler::new(id.to_owned(), None, index, filter, default_action, routine)?;
+                let handler = RouterHandler::new(
+                    &self.source,
+                    id.to_owned(),
+                    None,
+                    index,
+                    filter,
+                    req_path,
+                    default_action,
+                    routine,
+                )?;
 
-                self.handlers(&chain).$func().add_handler(handler)
+                self.manager.handlers(&chain).$func().add_handler(handler)
             }
 
             async fn remove_handler(
@@ -35,7 +58,7 @@ macro_rules! declare_router_handler_processor {
                 chain: RouterHandlerChain,
                 id: &str,
             ) -> BuckyResult<bool> {
-                let ret = self.handlers(&chain).$func().remove_handler(id, None);
+                let ret = self.manager.handlers(&chain).$func().remove_handler(id, None);
 
                 Ok(ret)
             }
@@ -91,10 +114,24 @@ declare_router_handler_processor!(
     verify_object
 );
 
+declare_router_handler_processor!(
+    CryptoEncryptDataInputRequest,
+    CryptoEncryptDataInputResponse,
+    encrypt_data
+);
+declare_router_handler_processor!(
+    CryptoDecryptDataInputRequest,
+    CryptoDecryptDataInputResponse,
+    decrypt_data
+);
+
 // acl handlers
 declare_router_handler_processor!(AclHandlerRequest, AclHandlerResponse, acl);
 
-impl RouterHandlerManagerProcessor for RouterHandlersManager {
+// interest handlers
+declare_router_handler_processor!(InterestHandlerRequest, InterestHandlerResponse, interest);
+
+impl RouterHandlerManagerProcessor for SharedRouterHandlersManager {
     fn get_object(
         &self,
     ) -> &dyn RouterHandlerProcessor<NONGetObjectInputRequest, NONGetObjectInputResponse> {
@@ -155,8 +192,24 @@ impl RouterHandlerManagerProcessor for RouterHandlersManager {
     {
         self
     }
+    fn encrypt_data(
+        &self,
+    ) -> &dyn RouterHandlerProcessor<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse> {
+        self
+    }
+
+    fn decrypt_data(
+        &self,
+    ) -> &dyn RouterHandlerProcessor<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse> {
+        self
+    }
+
 
     fn acl(&self) -> &dyn RouterHandlerProcessor<AclHandlerRequest, AclHandlerResponse> {
+        self
+    }
+
+    fn interest(&self) -> &dyn RouterHandlerProcessor<InterestHandlerRequest, InterestHandlerResponse> {
         self
     }
 }

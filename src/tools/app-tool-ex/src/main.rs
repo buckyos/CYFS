@@ -36,8 +36,8 @@ fn get_owner(matches: &ArgMatches<'_>) -> Option<(StandardObject, PrivateKey)> {
     }
 }
 
-#[async_std::main]
-async fn main() -> BuckyResult<()> {
+
+async fn main_run() -> BuckyResult<()> {
     simple_logger::SimpleLogger::new()
         .with_level(LevelFilter::Debug)
         .init()
@@ -217,7 +217,13 @@ async fn main() -> BuckyResult<()> {
                     let id = DecAppId::from_str(matches.value_of("id").unwrap()).unwrap();
                     let owner_id = ObjectId::from_str(matches.value_of("owner").unwrap()).unwrap();
                     let cmd = AppCmd::add(helper.get_owner(), id, Some(owner_id));
-                    match helper.post_object_without_resp(&cmd).await {
+                    match helper
+                        .post_object_without_resp(
+                            &cmd,
+                            Some(CYFS_SYSTEM_APP_CMD_VIRTUAL_PATH.to_owned()),
+                        )
+                        .await
+                    {
                         Ok(_) => {
                             info!("===> add success");
                         }
@@ -240,7 +246,13 @@ async fn main() -> BuckyResult<()> {
                         run = true;
                     }
                     let cmd = AppCmd::install(helper.get_owner(), id, ver, run);
-                    match helper.post_object_without_resp(&cmd).await {
+                    match helper
+                        .post_object_without_resp(
+                            &cmd,
+                            Some(CYFS_SYSTEM_APP_CMD_VIRTUAL_PATH.to_owned()),
+                        )
+                        .await
+                    {
                         Ok(_) => {
                             info!("===> install success");
                         }
@@ -258,7 +270,13 @@ async fn main() -> BuckyResult<()> {
                     let _ = helper.init().await;
                     let id = DecAppId::from_str(matches.value_of("id").unwrap()).unwrap();
                     let cmd = AppCmd::uninstall(helper.get_owner(), id);
-                    match helper.post_object_without_resp(&cmd).await {
+                    match helper
+                        .post_object_without_resp(
+                            &cmd,
+                            Some(CYFS_SYSTEM_APP_CMD_VIRTUAL_PATH.to_owned()),
+                        )
+                        .await
+                    {
                         Ok(_) => {
                             info!("===> uninstall success");
                         }
@@ -276,7 +294,13 @@ async fn main() -> BuckyResult<()> {
                     let _ = helper.init().await;
                     let id = DecAppId::from_str(matches.value_of("id").unwrap()).unwrap();
                     let cmd = AppCmd::start(helper.get_owner(), id);
-                    match helper.post_object_without_resp(&cmd).await {
+                    match helper
+                        .post_object_without_resp(
+                            &cmd,
+                            Some(CYFS_SYSTEM_APP_CMD_VIRTUAL_PATH.to_owned()),
+                        )
+                        .await
+                    {
                         Ok(_) => {
                             info!("===> start success");
                         }
@@ -294,7 +318,13 @@ async fn main() -> BuckyResult<()> {
                     let _ = helper.init().await;
                     let id = DecAppId::from_str(matches.value_of("id").unwrap()).unwrap();
                     let cmd = AppCmd::stop(helper.get_owner(), id);
-                    match helper.post_object_without_resp(&cmd).await {
+                    match helper
+                        .post_object_without_resp(
+                            &cmd,
+                            Some(CYFS_SYSTEM_APP_CMD_VIRTUAL_PATH.to_owned()),
+                        )
+                        .await
+                    {
                         Ok(_) => {
                             info!("===> stop success");
                         }
@@ -312,7 +342,13 @@ async fn main() -> BuckyResult<()> {
                     let _ = helper.init().await;
                     let id = DecAppId::from_str(matches.value_of("id").unwrap()).unwrap();
                     let cmd = AppCmd::remove(helper.get_owner(), id);
-                    match helper.post_object_without_resp(&cmd).await {
+                    match helper
+                        .post_object_without_resp(
+                            &cmd,
+                            Some(CYFS_SYSTEM_APP_CMD_VIRTUAL_PATH.to_owned()),
+                        )
+                        .await
+                    {
                         Ok(_) => {
                             info!("===> remove success");
                         }
@@ -334,7 +370,13 @@ async fn main() -> BuckyResult<()> {
                         autoupdate = false;
                     }
                     let cmd = AppCmd::set_auto_update(helper.get_owner(), id, autoupdate);
-                    match helper.post_object_without_resp(&cmd).await {
+                    match helper
+                        .post_object_without_resp(
+                            &cmd,
+                            Some(CYFS_SYSTEM_APP_CMD_VIRTUAL_PATH.to_owned()),
+                        )
+                        .await
+                    {
                         Ok(_) => {
                             info!("===> set autoupdate success");
                         }
@@ -357,4 +399,10 @@ async fn main() -> BuckyResult<()> {
     }
 
     Ok(())
+}
+
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run());
 }

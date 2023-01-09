@@ -1,5 +1,6 @@
 use crate::{DeviceInfo, LOCAL_DEVICE_MANAGER};
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
+use cyfs_lib::BrowserSanboxMode;
 
 pub const BDT_ENDPOINTS: &str = r#"
 [[stack.bdt.endpoint]]
@@ -50,12 +51,12 @@ isolate = "${isolate}"
 
 [stack.front]
 enable = ${front_enable}
+browser_mode = "${browser_mode}"
 
 [stack.meta]
 #target = dev
 
 [stack.noc]
-type = "sqlite"
 
 [[stack.interface]]
 type = "http"
@@ -130,6 +131,9 @@ pub struct CyfsServiceLoaderParam {
 
     // is front module enabled
     pub front_enable: bool,
+
+    // sanbox mode for browser requests
+    pub browser_mode: BrowserSanboxMode,
 }
 
 impl Default for CyfsServiceLoaderParam {
@@ -149,6 +153,7 @@ impl Default for CyfsServiceLoaderParam {
             sync_service: true,
             is_mobile_stack: false,
             front_enable : true,
+            browser_mode: BrowserSanboxMode::default(),
         }
     }
 }
@@ -232,7 +237,8 @@ impl CyfsServiceLoaderConfig {
                 "${http-bdt-vport}",
                 &cyfs_base::NON_STACK_BDT_VPORT.to_string(),
             )
-            .replace("${front_enable}", &param.front_enable.to_string());
+            .replace("${front_enable}", &param.front_enable.to_string())
+            .replace("${browser_mode}", param.browser_mode.as_str());
 
         // 根据是否传入了ws_addr，选择enable=true或者enable=false
         if let Some(ws_addr) = &param.non_ws_addr {

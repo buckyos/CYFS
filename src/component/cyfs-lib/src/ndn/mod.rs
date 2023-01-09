@@ -7,6 +7,7 @@ mod processor;
 mod request;
 mod request_codec;
 mod requestor;
+mod handler;
 
 pub use bdt_request::*;
 pub use def::*;
@@ -16,3 +17,4 @@ pub use processor::*;
 pub use request::*;
 pub use request_codec::*;
 pub use requestor::*;
+pub use handler::*;

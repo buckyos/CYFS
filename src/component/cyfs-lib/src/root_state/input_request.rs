@@ -6,12 +6,11 @@ use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct RootStateInputRequestCommon {
-    // 来源DEC
-    pub dec_id: Option<ObjectId>,
+    // 来源信息
+    pub source: RequestSourceInfo,
 
-    // 来源设备和协议
-    pub source: DeviceId,
-    pub protocol: NONProtocol,
+    // 操作的目标DEC,如果为空，那么默认是source.dec
+    pub target_dec_id: Option<ObjectId>,
 
     pub target: Option<ObjectId>,
 
@@ -20,11 +19,11 @@ pub struct RootStateInputRequestCommon {
 
 impl fmt::Display for RootStateInputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(dec_id) = &self.dec_id {
-            write!(f, "dec_id: {}", dec_id)?;
+        write!(f, "{}", self.source)?;
+
+        if let Some(target_dec_id) = &self.target_dec_id {
+            write!(f, ", target_dec_id: {}", target_dec_id)?;
         }
-        write!(f, ", source: {}", self.source.to_string())?;
-        write!(f, ", protocol: {}", self.protocol.to_string())?;
 
         if let Some(target) = &self.target {
             write!(f, ", target: {}", target)?;
@@ -59,12 +58,19 @@ pub struct RootStateCreateOpEnvInputRequest {
     pub common: RootStateInputRequestCommon,
 
     pub op_env_type: ObjectMapOpEnvType,
+
+    pub access: Option<RootStateOpEnvAccess>,
 }
 
 impl fmt::Display for RootStateCreateOpEnvInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
-        write!(f, ", op_env_type: {}", self.op_env_type.to_string())
+        write!(f, ", op_env_type: {}", self.op_env_type.to_string())?;
+        if let Some(access) = &self.access {
+            write!(f, ", access: {}", access)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -72,12 +78,11 @@ pub type RootStateCreateOpEnvInputResponse = RootStateCreateOpEnvOutputResponse;
 
 #[derive(Clone, Debug)]
 pub struct OpEnvInputRequestCommon {
-    // 来源DEC
-    pub dec_id: Option<ObjectId>,
+    // 来源信息
+    pub source: RequestSourceInfo,
 
-    // 来源设备和协议
-    pub source: DeviceId,
-    pub protocol: NONProtocol,
+    // 操作的目标DEC,如果为空，那么默认是source.dec
+    pub target_dec_id: Option<ObjectId>,
 
     pub target: Option<ObjectId>,
 
@@ -89,13 +94,13 @@ pub struct OpEnvInputRequestCommon {
 
 impl fmt::Display for OpEnvInputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(dec_id) = &self.dec_id {
-            write!(f, ", dec_id: {}", dec_id)?;
-        }
-        write!(f, ", source: {}", self.source.to_string())?;
-        write!(f, ", protocol: {}", self.protocol.to_string())?;
+        write!(f, "{}", self.source)?;
 
         write!(f, ", flags: {}", self.flags)?;
+
+        if let Some(target_dec_id) = &self.target_dec_id {
+            write!(f, ", target_dec_id: {}", target_dec_id)?;
+        }
 
         if let Some(target) = &self.target {
             write!(f, ", target: {}", target)?;
@@ -116,7 +121,6 @@ impl fmt::Display for OpEnvNoParamInputRequest {
         write!(f, "common: {}", self.common)
     }
 }
-
 
 /// single_op_env methods
 // load
@@ -208,7 +212,6 @@ pub type OpEnvCommitInputResponse = OpEnvCommitOutputResponse;
 
 // abort
 pub type OpEnvAbortInputRequest = OpEnvNoParamInputRequest;
-
 
 // metadata
 pub struct OpEnvMetadataInputRequest {
@@ -382,32 +385,51 @@ pub type OpEnvNextInputResponse = OpEnvNextOutputResponse;
 // reset
 pub type OpEnvResetInputRequest = OpEnvNoParamInputRequest;
 
+// list
+// next
+pub struct OpEnvListInputRequest {
+    pub common: OpEnvInputRequestCommon,
+
+    // for path-op-env
+    pub path: Option<String>,
+}
+
+impl fmt::Display for OpEnvListInputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)?;
+
+        write!(f, ", path: {:?}", self.path)
+    }
+}
+
+pub type OpEnvListInputResponse = OpEnvNextOutputResponse;
+
 //////////////////////////
-/// root-state access requests
+/// global-state accessor requests
 
 // get_object_by_path
 #[derive(Clone)]
-pub struct RootStateAccessGetObjectByPathInputRequest {
+pub struct RootStateAccessorGetObjectByPathInputRequest {
     pub common: RootStateInputRequestCommon,
 
     pub inner_path: String,
 }
 
-impl fmt::Display for RootStateAccessGetObjectByPathInputRequest {
+impl fmt::Display for RootStateAccessorGetObjectByPathInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
         write!(f, ", inner_path: {}", self.inner_path)
     }
 }
 
-pub struct RootStateAccessGetObjectByPathInputResponse {
+pub struct RootStateAccessorGetObjectByPathInputResponse {
     pub object: NONGetObjectInputResponse,
     pub root: ObjectId,
     pub revision: u64,
 }
 
 // list
-pub struct RootStateAccessListInputRequest {
+pub struct RootStateAccessorListInputRequest {
     pub common: RootStateInputRequestCommon,
 
     pub inner_path: String,
@@ -417,7 +439,7 @@ pub struct RootStateAccessListInputRequest {
     pub page_size: Option<u32>,
 }
 
-impl fmt::Display for RootStateAccessListInputRequest {
+impl fmt::Display for RootStateAccessorListInputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
 
@@ -429,4 +451,4 @@ impl fmt::Display for RootStateAccessListInputRequest {
     }
 }
 
-pub type RootStateAccessListInputResponse = RootStateAccessListOutputResponse;
+pub type RootStateAccessorListInputResponse = RootStateAccessorListOutputResponse;

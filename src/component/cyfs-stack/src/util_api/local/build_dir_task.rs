@@ -1,36 +1,34 @@
+use crate::util_api::{BuildFileParams, BuildFileTaskStatus};
+use async_std::task::JoinHandle;
+use cyfs_base::*;
+use cyfs_debug::Mutex;
+use cyfs_lib::*;
+use cyfs_task_manager::*;
+use cyfs_util::*;
+use futures::future::AbortHandle;
+use sha2::Digest;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
-use std::sync::Mutex;
-use async_std::task::JoinHandle;
-use futures::future::AbortHandle;
-use cyfs_base::*;
-use cyfs_lib::NamedObjectCache;
-use cyfs_util::*;
-use sha2::Digest;
-use cyfs_task_manager::*;
-use crate::root_state_api::ObjectMapNOCCacheAdapter;
-use crate::util_api::{BuildFileParams, BuildFileTaskStatus};
 
-#[derive(RawEncode, RawDecode)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[cyfs_protobuf_type(super::util_proto::BuildDirParams)]
 pub struct BuildDirParams {
     pub local_path: String,
     pub owner: ObjectId,
+    pub dec_id: ObjectId,
     pub chunk_size: u32,
-    pub device_id: DeviceId,
+    pub device_id: ObjectId,
 }
 
 pub struct BuildDirTaskFactory {
     task_manager: Weak<TaskManager>,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
 }
 
 impl BuildDirTaskFactory {
-    pub fn new(task_manager: Weak<TaskManager>, noc: Box<dyn NamedObjectCache>) -> Self {
-        Self {
-            task_manager,
-            noc
-        }
+    pub fn new(task_manager: Weak<TaskManager>, noc: NamedObjectCacheRef) -> Self {
+        Self { task_manager, noc }
     }
 }
 
@@ -45,25 +43,34 @@ impl TaskFactory for BuildDirTaskFactory {
         let task = BuildDirTask::new(
             params.local_path,
             params.owner,
+            params.dec_id,
             params.chunk_size,
             self.task_manager.clone(),
-            params.device_id,
-            self.noc.clone_noc());
+            DeviceId::try_from(params.device_id)?,
+            self.noc.clone(),
+        );
         Ok(Box::new(task))
     }
 
-    async fn restore(&self, _task_status: TaskStatus, params: &[u8], data: &[u8]) -> BuckyResult<Box<dyn Task>> {
+    async fn restore(
+        &self,
+        _task_status: TaskStatus,
+        params: &[u8],
+        data: &[u8],
+    ) -> BuckyResult<Box<dyn Task>> {
         let params = BuildDirParams::clone_from_slice(params)?;
         let task_state = DirTaskState::clone_from_slice(data)?;
 
         let task = BuildDirTask::restore(
             params.local_path,
             params.owner,
+            params.dec_id,
             params.chunk_size,
             self.task_manager.clone(),
-            params.device_id,
-            self.noc.clone_noc(),
-            task_state);
+            DeviceId::try_from(params.device_id)?,
+            self.noc.clone(),
+            task_state,
+        );
         Ok(Box::new(task))
     }
 }
@@ -92,7 +99,7 @@ impl PathPostorderIterator {
         Self {
             root_path,
             cur_path: None,
-            path_states: HashMap::new()
+            path_states: HashMap::new(),
         }
     }
 
@@ -123,11 +130,14 @@ impl PathPostorderIterator {
                             break;
                         }
                     }
-                    path_states.insert(cur_path.clone(), PathPostorderIteratorPathState {
-                        dir_list,
-                        iter_dir_pos: state_index,
-                        file_list
-                    });
+                    path_states.insert(
+                        cur_path.clone(),
+                        PathPostorderIteratorPathState {
+                            dir_list,
+                            iter_dir_pos: state_index,
+                            file_list,
+                        },
+                    );
                 }
             }
         }
@@ -135,20 +145,34 @@ impl PathPostorderIterator {
         Self {
             root_path,
             cur_path,
-            path_states
+            path_states,
         }
     }
 
     pub fn get_state(&self) -> PathPostorderIteratorState {
         PathPostorderIteratorState {
             root_path: self.root_path.to_string_lossy().to_string(),
-            cur_path: if self.cur_path.is_none() { None } else {Some(self.cur_path.as_ref().unwrap().to_string_lossy().to_string())},
+            cur_path: if self.cur_path.is_none() {
+                None
+            } else {
+                Some(
+                    self.cur_path
+                        .as_ref()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string(),
+                )
+            },
         }
     }
 
     fn list_dir(path: &Path) -> BuckyResult<(Vec<PathBuf>, Vec<PathBuf>)> {
         let paths = std::fs::read_dir(path).map_err(|err| {
-            let msg = format!("read_dir {} err:{}", path.to_string_lossy().to_string(), err);
+            let msg = format!(
+                "read_dir {} err:{}",
+                path.to_string_lossy().to_string(),
+                err
+            );
             log::error!("{}", msg.as_str());
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
@@ -164,7 +188,7 @@ impl PathPostorderIterator {
                     } else {
                         dir_list.push(sub.path());
                     }
-                },
+                }
                 Err(err) => {
                     log::error!("read_dir err:{}", err);
                 }
@@ -183,11 +207,14 @@ impl PathPostorderIterator {
             } else {
                 for (index, sub_dir) in dir_list.iter().enumerate() {
                     if let Ok((sub_path, sub_file_list)) = self.get_item(sub_dir.to_path_buf()) {
-                        self.path_states.insert(cur_path.clone(), PathPostorderIteratorPathState {
-                            dir_list,
-                            iter_dir_pos: index,
-                            file_list
-                        });
+                        self.path_states.insert(
+                            cur_path.clone(),
+                            PathPostorderIteratorPathState {
+                                dir_list,
+                                iter_dir_pos: index,
+                                file_list,
+                            },
+                        );
                         return Ok((sub_path, sub_file_list));
                     }
                 }
@@ -220,12 +247,20 @@ impl Iterator for PathPostorderIterator {
 
                     let (iter_dir_pos, dir_list) = match self.path_states.get(cur_path.as_path()) {
                         Some(state) => {
-                            if state.dir_list.is_empty() || state.iter_dir_pos >= state.dir_list.len() - 1 {
+                            if state.dir_list.is_empty()
+                                || state.iter_dir_pos >= state.dir_list.len() - 1
+                            {
                                 let state = self.path_states.remove(cur_path.as_path()).unwrap();
                                 self.cur_path = Some(cur_path.clone());
                                 return Some((cur_path, state.file_list));
                             } else {
-                                (state.iter_dir_pos + 1, state.dir_list[state.iter_dir_pos + 1..].iter().map(|path| path.clone()).collect::<Vec<PathBuf>>())
+                                (
+                                    state.iter_dir_pos + 1,
+                                    state.dir_list[state.iter_dir_pos + 1..]
+                                        .iter()
+                                        .map(|path| path.clone())
+                                        .collect::<Vec<PathBuf>>(),
+                                )
                             }
                         }
                         None => {
@@ -241,7 +276,10 @@ impl Iterator for PathPostorderIterator {
                     while pos < dir_list.len() {
                         let sub_path = dir_list[pos].clone();
                         if let Ok((new_cur_path, file_list)) = self.get_item(sub_path) {
-                            self.path_states.get_mut(cur_path.as_path()).unwrap().iter_dir_pos = iter_dir_pos + pos;
+                            self.path_states
+                                .get_mut(cur_path.as_path())
+                                .unwrap()
+                                .iter_dir_pos = iter_dir_pos + pos;
                             self.cur_path = Some(new_cur_path.clone());
                             return Some((new_cur_path, file_list));
                         }
@@ -319,12 +357,12 @@ impl TaskState {
                 cur_path: None,
                 cur_path_file_list: vec![],
                 it_state: None,
-                sub_list: HashMap::new()
+                sub_list: HashMap::new(),
             },
             task_status: BuildDirTaskStatus::Stopped,
             canceler: None,
             runnable_handle: None,
-            building_task_list: HashSet::new()
+            building_task_list: HashSet::new(),
         }
     }
 
@@ -334,7 +372,7 @@ impl TaskState {
             task_status: BuildDirTaskStatus::Stopped,
             canceler: None,
             runnable_handle: None,
-            building_task_list: HashSet::new()
+            building_task_list: HashSet::new(),
         }
     }
 }
@@ -343,24 +381,29 @@ pub struct BuildDirTask {
     task_store: Option<Arc<dyn TaskStore>>,
     local_path: String,
     owner: ObjectId,
+    dec_id: ObjectId,
     chunk_size: u32,
     device_id: DeviceId,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     task_state: Arc<Mutex<TaskState>>,
     task_manager: Weak<TaskManager>,
     waiting_list: Arc<Mutex<Vec<AsyncCondvarRef>>>,
 }
 
 impl BuildDirTask {
-    fn new(local_path: String,
-               owner: ObjectId,
-               chunk_size: u32,
-               task_manager: Weak<TaskManager>,
-               device_id: DeviceId,
-               noc: Box<dyn NamedObjectCache>) -> Self {
+    fn new(
+        local_path: String,
+        owner: ObjectId,
+        dec_id: ObjectId,
+        chunk_size: u32,
+        task_manager: Weak<TaskManager>,
+        device_id: DeviceId,
+        noc: NamedObjectCacheRef,
+    ) -> Self {
         let mut sha2 = sha2::Sha256::new();
         sha2.input(local_path.as_bytes());
-        sha2.input(owner.to_string().as_bytes());
+        sha2.input(owner.as_slice());
+        sha2.input(dec_id.as_slice());
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_DIR_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
@@ -369,25 +412,30 @@ impl BuildDirTask {
             task_store: None,
             local_path,
             owner,
+            dec_id,
             chunk_size,
             device_id,
             noc,
             task_state: Arc::new(Mutex::new(TaskState::new())),
             task_manager,
-            waiting_list: Arc::new(Mutex::new(vec![]))
+            waiting_list: Arc::new(Mutex::new(vec![])),
         }
     }
 
-    fn restore(local_path: String,
-                   owner: ObjectId,
-                   chunk_size: u32,
-                   task_manager: Weak<TaskManager>,
-                   device_id: DeviceId,
-                   noc: Box<dyn NamedObjectCache>,
-                   task_state: DirTaskState) -> Self {
+    fn restore(
+        local_path: String,
+        owner: ObjectId,
+        dec_id: ObjectId,
+        chunk_size: u32,
+        task_manager: Weak<TaskManager>,
+        device_id: DeviceId,
+        noc: NamedObjectCacheRef,
+        task_state: DirTaskState,
+    ) -> Self {
         let mut sha2 = sha2::Sha256::new();
         sha2.input(local_path.as_bytes());
-        sha2.input(owner.to_string().as_bytes());
+        sha2.input(owner.as_slice());
+        sha2.input(dec_id.as_slice());
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_DIR_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
@@ -396,22 +444,35 @@ impl BuildDirTask {
             task_store: None,
             local_path,
             owner,
+            dec_id,
             chunk_size,
             device_id,
             noc,
             task_state: Arc::new(Mutex::new(TaskState::new2(task_state))),
             task_manager,
-            waiting_list: Arc::new(Mutex::new(vec![]))
+            waiting_list: Arc::new(Mutex::new(vec![])),
         }
     }
 
-    async fn build_dir(&self, path: PathBuf, sub_list: Vec<PathBuf>, start_pos: usize) -> BuckyResult<ObjectId> {
+    async fn build_dir(
+        &self,
+        path: PathBuf,
+        sub_list: Vec<PathBuf>,
+        start_pos: usize,
+    ) -> BuckyResult<ObjectId> {
         let path_str = path.to_string_lossy().to_string();
         log::info!("build_dir {}", path_str.as_str());
         {
             let mut task_state = self.task_state.lock().unwrap();
-            if !task_state.task_state.sub_list.contains_key(path_str.as_str()) {
-                task_state.task_state.sub_list.insert(path_str.clone(), HashMap::new());
+            if !task_state
+                .task_state
+                .sub_list
+                .contains_key(path_str.as_str())
+            {
+                task_state
+                    .task_state
+                    .sub_list
+                    .insert(path_str.clone(), HashMap::new());
             }
         }
         let cpu_nums = num_cpus::get();
@@ -419,55 +480,76 @@ impl BuildDirTask {
         let mut task_list = Vec::new();
         for sub in sub_list[start_pos..].iter() {
             let sub_file = path.join(sub);
-            log::info!("build_dir sub_file {}", sub_file.to_string_lossy().to_string());
+            log::info!(
+                "build_dir sub_file {}",
+                sub_file.to_string_lossy().to_string()
+            );
             let file_name = sub.file_name().unwrap().to_string_lossy().to_string();
             let task_manager = match self.task_manager.upgrade() {
                 Some(task_manager) => task_manager,
                 None => {
-                    return Err(BuckyError::new(BuckyErrorCode::Failed, "task manager invalid"));
+                    return Err(BuckyError::new(
+                        BuckyErrorCode::Failed,
+                        "task manager invalid",
+                    ));
                 }
             };
 
             let build_file_params = BuildFileParams {
                 local_path: sub_file.to_string_lossy().to_string(),
                 owner: self.owner.clone(),
-                chunk_size: self.chunk_size
+                dec_id: self.dec_id.clone(),
+                chunk_size: self.chunk_size,
             };
 
-            let task_id = task_manager.create_task(
-                ObjectId::default(),
-                self.device_id.clone(),
-                BUILD_FILE_TASK,
-                build_file_params).await?;
+            let task_id = task_manager
+                .create_task(
+                    self.dec_id.clone(),
+                    self.device_id.clone(),
+                    BUILD_FILE_TASK,
+                    build_file_params,
+                )
+                .await?;
 
             {
                 let mut task_state = self.task_state.lock().unwrap();
                 task_state.building_task_list.insert(task_id);
             }
-            let task: JoinHandle<BuckyResult<(TaskId, String, ObjectId)>> = async_std::task::spawn(async move {
-                let ret: BuckyResult<(TaskId, String, ObjectId)> = async move {
-                    task_manager.start_task(&task_id).await?;
-                    task_manager.check_and_waiting_stop(&task_id).await;
-                    let status = BuildFileTaskStatus::clone_from_slice(
-                        task_manager.get_task_detail_status(&task_id).await?.as_slice())?;
-                    if let BuildFileTaskStatus::Finished(file) = status {
-                        let file_id = file.desc().calculate_id();
-                        Ok((task_id, file_name, file_id))
-                    } else {
-                        let msg = format!("build_file_object unexpect status");
-                        log::error!("{}", msg.as_str());
-                        Err(BuckyError::new(BuckyErrorCode::InvalidInput, msg))
+            let task: JoinHandle<BuckyResult<(TaskId, String, ObjectId)>> =
+                async_std::task::spawn(async move {
+                    let ret: BuckyResult<(TaskId, String, ObjectId)> = async move {
+                        task_manager.start_task(&task_id).await?;
+                        task_manager.check_and_waiting_stop(&task_id).await;
+                        let status = BuildFileTaskStatus::clone_from_slice(
+                            task_manager
+                                .get_task_detail_status(&task_id)
+                                .await?
+                                .as_slice(),
+                        )?;
+                        if let BuildFileTaskStatus::Finished(file) = status {
+                            let file_id = file.desc().calculate_id();
+                            Ok((task_id, file_name, file_id))
+                        } else {
+                            let msg = format!("build_file_object unexpect status");
+                            log::error!("{}", msg.as_str());
+                            Err(BuckyError::new(BuckyErrorCode::InvalidInput, msg))
+                        }
                     }
-                }.await;
-                ret
-            });
+                    .await;
+                    ret
+                });
             task_list.push(task);
             if task_list.len() >= cpu_nums {
                 let ret = futures::future::select_all(task_list).await;
                 let task_ret = ret.0;
                 if let Ok((task_id, file_name, object_id)) = task_ret {
                     let mut task_state = self.task_state.lock().unwrap();
-                    task_state.task_state.sub_list.get_mut(path_str.as_str()).unwrap().insert(file_name, object_id);
+                    task_state
+                        .task_state
+                        .sub_list
+                        .get_mut(path_str.as_str())
+                        .unwrap()
+                        .insert(file_name, object_id);
                     task_state.building_task_list.remove(&task_id);
                 }
                 task_list = ret.2;
@@ -479,7 +561,11 @@ impl BuildDirTask {
             };
 
             if self.task_store.is_some() {
-                self.task_store.as_ref().unwrap().save_task_data(&self.task_id, state_data).await?;
+                self.task_store
+                    .as_ref()
+                    .unwrap()
+                    .save_task_data(&self.task_id, state_data)
+                    .await?;
             }
         }
 
@@ -488,7 +574,12 @@ impl BuildDirTask {
             for ret in rets {
                 if let Ok((task_id, file_name, object_id)) = ret {
                     let mut task_state = self.task_state.lock().unwrap();
-                    task_state.task_state.sub_list.get_mut(path_str.as_str()).unwrap().insert(file_name, object_id);
+                    task_state
+                        .task_state
+                        .sub_list
+                        .get_mut(path_str.as_str())
+                        .unwrap()
+                        .insert(file_name, object_id);
                     task_state.building_task_list.remove(&task_id);
                 }
             }
@@ -498,29 +589,45 @@ impl BuildDirTask {
                 task_state.task_state.to_vec()?
             };
             if self.task_store.is_some() {
-                self.task_store.as_ref().unwrap().save_task_data(&self.task_id, state_data).await?;
+                self.task_store
+                    .as_ref()
+                    .unwrap()
+                    .save_task_data(&self.task_id, state_data)
+                    .await?;
             }
         }
         let sub_list = {
             let mut task_state = self.task_state.lock().unwrap();
             task_state.task_state.cur_path = None;
             task_state.task_state.cur_path_file_list = Vec::new();
-            task_state.task_state.sub_list.remove(path_str.as_str()).unwrap()
+            task_state
+                .task_state
+                .sub_list
+                .remove(path_str.as_str())
+                .unwrap()
         };
-        let noc = ObjectMapNOCCacheAdapter::new_noc_cache(&self.device_id, self.noc.clone_noc());
-        let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
+        let noc = ObjectMapNOCCacheAdapter::new_noc_cache(self.noc.clone());
+        let root_cache = ObjectMapRootMemoryCache::new_default_ref(Some(self.dec_id.clone()), noc);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         let mut object_map = ObjectMap::new(
             ObjectMapSimpleContentType::Map,
             Some(self.owner.clone()),
-            None)
-            .no_create_time()
-            .build();
+            None,
+        )
+        .no_create_time()
+        .build();
 
         for (sub_name, object_id) in sub_list.iter() {
-            log::info!("build dir {} {} {}", path_str.as_str(), sub_name.as_str(), object_id.to_string());
-            object_map.insert_with_key(&cache, sub_name, object_id).await?;
+            log::info!(
+                "build dir {} {} {}",
+                path_str.as_str(),
+                sub_name.as_str(),
+                object_id.to_string()
+            );
+            object_map
+                .insert_with_key(&cache, sub_name, object_id)
+                .await?;
         }
 
         let map_id = object_map.object_id();
@@ -534,16 +641,32 @@ impl BuildDirTask {
         let (path, sub_list) = {
             let task_state = self.task_state.lock().unwrap();
             if task_state.task_state.cur_path.is_some() {
-                let map = task_state.task_state.sub_list.get(task_state.task_state.cur_path.as_ref().unwrap());
+                let map = task_state
+                    .task_state
+                    .sub_list
+                    .get(task_state.task_state.cur_path.as_ref().unwrap());
                 if map.is_some() {
                     let map = map.unwrap();
-                    let sub_list = task_state.task_state.cur_path_file_list.iter()
-                        .filter(|file_name|!map.contains_key(*file_name))
+                    let sub_list = task_state
+                        .task_state
+                        .cur_path_file_list
+                        .iter()
+                        .filter(|file_name| !map.contains_key(*file_name))
                         .map(|file_name| PathBuf::from(file_name))
                         .collect();
-                    (Some(PathBuf::from(task_state.task_state.cur_path.as_ref().unwrap())), sub_list)
+                    (
+                        Some(PathBuf::from(
+                            task_state.task_state.cur_path.as_ref().unwrap(),
+                        )),
+                        sub_list,
+                    )
                 } else {
-                    (Some(PathBuf::from(task_state.task_state.cur_path.as_ref().unwrap())), Vec::new())
+                    (
+                        Some(PathBuf::from(
+                            task_state.task_state.cur_path.as_ref().unwrap(),
+                        )),
+                        Vec::new(),
+                    )
                 }
             } else {
                 (None, Vec::new())
@@ -561,7 +684,11 @@ impl BuildDirTask {
             };
 
             if self.task_store.is_some() {
-                self.task_store.as_ref().unwrap().save_task_data(&self.task_id, state_data).await?;
+                self.task_store
+                    .as_ref()
+                    .unwrap()
+                    .save_task_data(&self.task_id, state_data)
+                    .await?;
             }
 
             if path.to_string_lossy().to_string() == self.local_path {
@@ -570,22 +697,25 @@ impl BuildDirTask {
                 let parent_str = path.parent().unwrap().to_string_lossy().to_string();
                 let file_name = path.file_name().unwrap().to_string_lossy().to_string();
                 let mut task_state = self.task_state.lock().unwrap();
-                if !task_state.task_state.sub_list.contains_key(parent_str.as_str()) {
+                if !task_state
+                    .task_state
+                    .sub_list
+                    .contains_key(parent_str.as_str())
+                {
                     let mut map = HashMap::new();
                     map.insert(file_name, map_id);
                     task_state.task_state.sub_list.insert(parent_str, map);
                 }
             }
         }
-        let mut it =
-            {
-                let mut task_state = self.task_state.lock().unwrap();
-                if task_state.task_state.it_state.is_some() {
-                    PathPostorderIterator::from_state(task_state.task_state.it_state.take().unwrap())
-                } else {
-                    PathPostorderIterator::new(PathBuf::from(self.local_path.clone()))
-                }
-            };
+        let mut it = {
+            let mut task_state = self.task_state.lock().unwrap();
+            if task_state.task_state.it_state.is_some() {
+                PathPostorderIterator::from_state(task_state.task_state.it_state.take().unwrap())
+            } else {
+                PathPostorderIterator::new(PathBuf::from(self.local_path.clone()))
+            }
+        };
         let mut it_ret = it.next();
         while it_ret.is_some() {
             let (path, sub_list) = it_ret.unwrap();
@@ -594,7 +724,10 @@ impl BuildDirTask {
             {
                 let mut task_state = self.task_state.lock().unwrap();
                 task_state.task_state.cur_path = Some(path_str.clone());
-                task_state.task_state.cur_path_file_list = sub_list.iter().map(|p| p.to_string_lossy().to_string()).collect();
+                task_state.task_state.cur_path_file_list = sub_list
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
                 task_state.task_state.it_state = Some(it_state);
             }
 
@@ -608,7 +741,11 @@ impl BuildDirTask {
             };
 
             if self.task_store.is_some() {
-                self.task_store.as_ref().unwrap().save_task_data(&self.task_id, state_data).await?;
+                self.task_store
+                    .as_ref()
+                    .unwrap()
+                    .save_task_data(&self.task_id, state_data)
+                    .await?;
             }
 
             if path.to_string_lossy().to_string() == self.local_path {
@@ -617,13 +754,27 @@ impl BuildDirTask {
                 let parent_str = path.parent().unwrap().to_string_lossy().to_string();
                 let file_name = path.file_name().unwrap().to_string_lossy().to_string();
                 let mut task_state = self.task_state.lock().unwrap();
-                log::info!("insert dir id {} {} {}", parent_str.as_str(), file_name.as_str(), map_id.to_string());
-                if !task_state.task_state.sub_list.contains_key(parent_str.as_str()) {
+                log::info!(
+                    "insert dir id {} {} {}",
+                    parent_str.as_str(),
+                    file_name.as_str(),
+                    map_id.to_string()
+                );
+                if !task_state
+                    .task_state
+                    .sub_list
+                    .contains_key(parent_str.as_str())
+                {
                     let mut map = HashMap::new();
                     map.insert(file_name, map_id);
                     task_state.task_state.sub_list.insert(parent_str, map);
                 } else {
-                    task_state.task_state.sub_list.get_mut(parent_str.as_str()).unwrap().insert(file_name, map_id);
+                    task_state
+                        .task_state
+                        .sub_list
+                        .get_mut(parent_str.as_str())
+                        .unwrap()
+                        .insert(file_name, map_id);
                 }
             }
             it_ret = it.next();
@@ -653,18 +804,10 @@ impl Task for BuildDirTask {
     async fn get_task_status(&self) -> TaskStatus {
         let task_state = self.task_state.lock().unwrap();
         match task_state.task_status {
-            BuildDirTaskStatus::Stopped => {
-                TaskStatus::Stopped
-            }
-            BuildDirTaskStatus::Running => {
-                TaskStatus::Running
-            }
-            BuildDirTaskStatus::Finished(_) => {
-                TaskStatus::Finished
-            }
-            BuildDirTaskStatus::Failed(_) => {
-                TaskStatus::Failed
-            }
+            BuildDirTaskStatus::Stopped => TaskStatus::Stopped,
+            BuildDirTaskStatus::Running => TaskStatus::Running,
+            BuildDirTaskStatus::Finished(_) => TaskStatus::Finished,
+            BuildDirTaskStatus::Failed(_) => TaskStatus::Failed,
         }
     }
 
@@ -675,9 +818,7 @@ impl Task for BuildDirTask {
     async fn start_task(&self) -> BuckyResult<()> {
         unsafe {
             let this: &'static Self = std::mem::transmute(self);
-            let (ft, handle) = futures::future::abortable(async move {
-                this.run().await
-            });
+            let (ft, handle) = futures::future::abortable(async move { this.run().await });
 
             {
                 let mut state = self.task_state.lock().unwrap();
@@ -694,47 +835,62 @@ impl Task for BuildDirTask {
                         tmp_data.task_status = BuildDirTaskStatus::Running;
                     }
                     if task_store.is_some() {
-                        task_store.as_ref().unwrap().save_task_status(&task_id, TaskStatus::Running).await?;
+                        task_store
+                            .as_ref()
+                            .unwrap()
+                            .save_task_status(&task_id, TaskStatus::Running)
+                            .await?;
                     }
                     match ft.await {
-                        Ok(ret) => {
-                            match ret {
-                                Ok(object_id) => {
-                                    {
-                                        let mut tmp_data = task_state.lock().unwrap();
-                                        tmp_data.task_status = BuildDirTaskStatus::Finished(object_id);
-                                        tmp_data.canceler = None;
-                                        tmp_data.runnable_handle = None;
-                                    }
-                                    if task_store.is_some() {
-                                        task_store.as_ref().unwrap().save_task_status(&task_id, TaskStatus::Finished).await?;
-                                    }
+                        Ok(ret) => match ret {
+                            Ok(object_id) => {
+                                {
+                                    let mut tmp_data = task_state.lock().unwrap();
+                                    tmp_data.task_status = BuildDirTaskStatus::Finished(object_id);
+                                    tmp_data.canceler = None;
+                                    tmp_data.runnable_handle = None;
                                 }
-                                Err(err) => {
-                                    {
-                                        let mut tmp_data = task_state.lock().unwrap();
-                                        tmp_data.task_status = BuildDirTaskStatus::Failed(err);
-                                        tmp_data.canceler = None;
-                                        tmp_data.runnable_handle = None;
-                                    }
-                                    if task_store.is_some() {
-                                        task_store.as_ref().unwrap().save_task_status(&task_id, TaskStatus::Failed).await?;
-                                    }
+                                if task_store.is_some() {
+                                    task_store
+                                        .as_ref()
+                                        .unwrap()
+                                        .save_task_status(&task_id, TaskStatus::Finished)
+                                        .await?;
                                 }
                             }
-                        }
+                            Err(err) => {
+                                {
+                                    let mut tmp_data = task_state.lock().unwrap();
+                                    tmp_data.task_status = BuildDirTaskStatus::Failed(err);
+                                    tmp_data.canceler = None;
+                                    tmp_data.runnable_handle = None;
+                                }
+                                if task_store.is_some() {
+                                    task_store
+                                        .as_ref()
+                                        .unwrap()
+                                        .save_task_status(&task_id, TaskStatus::Failed)
+                                        .await?;
+                                }
+                            }
+                        },
                         Err(_) => {
                             {
                                 let mut tmp_data = task_state.lock().unwrap();
                                 tmp_data.task_status = BuildDirTaskStatus::Stopped;
                             }
                             if task_store.is_some() {
-                                task_store.as_ref().unwrap().save_task_status(&task_id, TaskStatus::Stopped).await?;
+                                task_store
+                                    .as_ref()
+                                    .unwrap()
+                                    .save_task_status(&task_id, TaskStatus::Stopped)
+                                    .await?;
                             }
                         }
                     }
                     Ok(())
-                }.await;
+                }
+                .await;
             });
             {
                 let mut task_state = self.task_state.lock().unwrap();
@@ -818,8 +974,8 @@ impl Task for BuildDirTask {
 
 #[cfg(test)]
 mod test_dir {
-    use std::path::PathBuf;
     use crate::util_api::local::PathPostorderIterator;
+    use std::path::PathBuf;
 
     #[test]
     fn test_path_iter() {

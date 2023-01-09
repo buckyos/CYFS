@@ -2,8 +2,8 @@ use super::http_server::{DefaultHttpServer, HttpDefaultHandler, RawHttpServer};
 use super::{ObjectHttpBdtListener, ObjectListener, SyncHttpListener};
 use crate::sync::*;
 use cyfs_base::BuckyResult;
-use cyfs_lib::NONProtocol;
 use cyfs_bdt::StackGuard;
+use cyfs_lib::RequestProtocol;
 
 use std::sync::Arc;
 
@@ -37,7 +37,7 @@ impl SyncListenerManager {
 
         for vport in params.bdt_listeners {
             info!("new http-bdt sync bdt listener: vport={}", vport);
-            let server = SyncHttpListener::new(NONProtocol::HttpBdt, sync_server, sync_client);
+            let server = SyncHttpListener::new(RequestProtocol::HttpBdt, sync_server, sync_client);
             let handler = RawHttpServer::new(server.into_server()).into();
             let http_server = DefaultHttpServer::new(handler, default_handler.clone());
 

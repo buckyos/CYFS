@@ -83,7 +83,7 @@ Based on the above principles, a folder on a disk can be encoded into a privileg
 # GET Object(NamedObject) Get the named object
 
 `cyfs://o[/$ownerid]/$objectid[/$innerpath][?mode=object&format=json]` (URL in this format is ObjectLink URL, or `O Link` for short)
-Get the specified NamedObjecct and return it through the Http resp body. The format of the body is the specified format.
+Get the specified NamedObject and return it through the Http resp body. The format of the body is the specified format.
 Without passing in mode, the behavior of GET will do some `Smart Recognition` based on the object-type of the requested NamedObject.
 
 ## Smart Recognition

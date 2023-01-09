@@ -4,15 +4,16 @@ use cyfs_lib::*;
 
 #[derive(Clone, Debug)]
 pub struct FrontORequest {
-    pub protocol: NONProtocol,
-    pub source: DeviceId,
+    pub source: RequestSourceInfo,
 
     pub target: Vec<ObjectId>,
 
-    pub dec_id: Option<ObjectId>,
-
     pub object_id: ObjectId,
     pub inner_path: Option<String>,
+    pub range: Option<NDNDataRequestRange>,
+
+    // for ndn requests
+    pub referer_objects: Vec<NDNDataRefererObject>,
 
     pub mode: FrontRequestGetMode,
     pub format: FrontRequestObjectFormat,
@@ -27,17 +28,19 @@ pub struct FrontOResponse {
 
 #[derive(Clone, Debug)]
 pub struct FrontRRequest {
-    pub protocol: NONProtocol,
-    pub source: DeviceId,
+    // 来源信息
+    pub source: RequestSourceInfo,
 
     pub category: GlobalStateCategory,
 
     pub target: Option<ObjectId>,
 
-    pub dec_id: Option<ObjectId>,
+    pub target_dec_id: Option<ObjectId>,
 
-    pub action: RootStateAccessAction,
+    pub action: GlobalStateAccessorAction,
     pub inner_path: Option<String>,
+    pub range: Option<NDNDataRequestRange>,
+
     pub page_index: Option<u32>,
     pub page_size: Option<u32>,
 
@@ -51,19 +54,21 @@ pub struct FrontRResponse {
     pub revision: u64,
 
     pub data: Option<NDNGetDataInputResponse>,
-    
+
     // for list action
     pub list: Option<Vec<ObjectMapContentItem>>,
 }
 
 pub struct FrontNDNRequest {
-    pub protocol: NONProtocol,
-    pub source: DeviceId,
+    // 来源信息
+    pub source: RequestSourceInfo,
 
     pub target: Vec<ObjectId>,
-    pub dec_id: Option<ObjectId>,
 
     pub object: NONObjectInfo,
+    pub range: Option<NDNDataRequestRange>,
+
+    pub referer_objects: Vec<NDNDataRefererObject>,
 
     pub flags: u32,
 }
@@ -73,28 +78,39 @@ impl FrontNDNRequest {
         assert_eq!(req.object_id.obj_type_code(), ObjectTypeCode::Chunk);
 
         FrontNDNRequest {
-            protocol: req.protocol,
             source: req.source,
-
             target: req.target,
-            dec_id: req.dec_id,
-
             object: NONObjectInfo::new(req.object_id, vec![], None),
+            range: req.range,
+            referer_objects: req.referer_objects,
             flags: req.flags,
         }
     }
 
-    pub fn new_o_file(req: FrontORequest, object: NONObjectInfo) -> Self {
+    pub fn new_o_file(mut req: FrontORequest, object: NONObjectInfo) -> Self {
         assert_eq!(object.object_id.obj_type_code(), ObjectTypeCode::File);
 
+        let referer_objects = if req.object_id != object.object_id {
+            let referer_object = NDNDataRefererObject {
+                target: None,
+                object_id: req.object_id,
+                inner_path: req.inner_path,
+            };
+            let mut referer_objects= vec![referer_object];
+            if req.referer_objects.len() > 0 {
+                referer_objects.append(&mut req.referer_objects)
+            }
+            referer_objects
+        } else {
+            req.referer_objects
+        };
+
         FrontNDNRequest {
-            protocol: req.protocol,
             source: req.source,
-
             target: req.target,
-            dec_id: req.dec_id,
-
             object,
+            range: req.range,
+            referer_objects,
             flags: req.flags,
         }
     }
@@ -106,13 +122,11 @@ impl FrontNDNRequest {
         };
 
         FrontNDNRequest {
-            protocol: req.protocol,
             source: req.source,
-
             target,
-            dec_id: req.dec_id,
-
             object,
+            range: req.range,
+            referer_objects: vec![],
             flags: req.flags,
         }
     }
@@ -161,8 +175,8 @@ pub enum FrontARequestGoal {
 
 #[derive(Debug)]
 pub struct FrontARequest {
-    pub protocol: NONProtocol,
-    pub source: DeviceId,
+    // 来源信息
+    pub source: RequestSourceInfo,
 
     pub target: Option<ObjectId>,
 
@@ -171,6 +185,10 @@ pub struct FrontARequest {
 
     pub mode: FrontRequestGetMode,
     pub format: FrontRequestObjectFormat,
+
+    pub origin_url: http_types::Url,
+
+    pub referer_objects: Vec<NDNDataRefererObject>,
 
     pub flags: u32,
 }

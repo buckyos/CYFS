@@ -60,7 +60,7 @@ impl GlobalStateRoot {
         category: GlobalStateCategory,
         device_id: &DeviceId,
         owner: Option<ObjectId>,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         noc_cache: ObjectMapNOCCacheRef,
         config: StackGlobalConfig,
     ) -> BuckyResult<Self> {
@@ -75,17 +75,19 @@ impl GlobalStateRoot {
         let mut root = root_index.get_root_state().root_state;
         if root.is_none() {
             
-
             // 初始化全局root对象
-            let object_map = ObjectMap::new(ObjectMapSimpleContentType::Map, owner.clone(), None)
-                .no_create_time()
-                .build();
+            let object_map = ObjectMap::new(
+                ObjectMapSimpleContentType::Map, 
+                owner.clone(), 
+                Some(cyfs_core::get_system_dec_app().to_owned())
+            ).no_create_time().class(ObjectMapClass::GlobalRoot).build();
+
             let root_id = object_map.flush_id();
 
-            info!("first init global state! category={}, owner={:?}, root={}", category, owner, root_id);
+            info!("first init global state root! category={}, owner={:?}, root={}", category, owner, root_id);
 
             // 需要立刻保存到noc
-            noc_cache.put_object_map(root_id, object_map).await?;
+            noc_cache.put_object_map(None, root_id, object_map).await?;
 
             root_index.update_root_state(root_id, None).await?;
             root = Some(root_id);
@@ -152,13 +154,25 @@ impl GlobalStateRoot {
         self.root.root_cache()
     }
 
+    fn check_dec(dec_id: &ObjectId,) -> BuckyResult<()> {
+        if cyfs_core::get_anonymous_dec_app() == dec_id {
+            let msg = format!("anonymous dec app does not support global-state!");
+            error!("{}", msg);
+            Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
+        } else {
+            Ok(())
+        }
+    }
+
     pub(super) async fn get_dec_root(
         &self,
         dec_id: &ObjectId,
         auto_create: bool,
     ) -> BuckyResult<Option<DecRootInfo>> {
+        Self::check_dec(dec_id)?;
+
         let key = dec_id.to_string();
-        let env = self.root.create_op_env().await?;
+        let env = self.root.create_op_env(None).await?;
         let root_id = env.get_by_key("/", &key).await.map_err(|e| {
             error!(
                 "get dec root from global state error! category={}, dec={}, {}",
@@ -199,6 +213,7 @@ impl GlobalStateRoot {
                     self.owner.clone(),
                     Some(dec_id.to_owned()),
                 )
+                .class(ObjectMapClass::DecRoot)
                 .no_create_time()
                 .build();
                 let root_id = object_map.flush_id();
@@ -206,14 +221,14 @@ impl GlobalStateRoot {
                 info!("first create dec root! category={}, dec={}, root={}", self.category, dec_id, root_id);
 
                  // 需要立刻保存到noc
-                self.noc_cache.put_object_map(root_id, object_map).await?;
+                self.noc_cache.put_object_map(Some(dec_id.to_owned()), root_id, object_map).await?;
 
                 // 更新root状态并保存
                 env.insert_with_key("/", &key, &root_id).await?;
                 let global_root_id = env.commit().await.map_err(|e| {
                     error!(
-                        "first create dec root but commit to global state root error! category={}, dec={}, dec_root={}",
-                        self.category, dec_id, root_id
+                        "first create dec root but commit to global state root error! category={}, dec={}, dec_root={}, {}",
+                        self.category, dec_id, root_id, e
                     );
                     e
                 })?;
@@ -242,7 +257,8 @@ impl GlobalStateRoot {
         dec_id: &ObjectId,
         new_root_id: ObjectId,
         prev_id: ObjectId,
-    ) -> BuckyResult<()> {
+    ) -> BuckyResult<ObjectId> {
+        Self::check_dec(dec_id)?;
 
         // first check access mode
         if !self.access_mode().is_writable() {
@@ -252,7 +268,7 @@ impl GlobalStateRoot {
         }
 
         let key = dec_id.to_string();
-        let env = self.root.create_op_env().await?;
+        let env = self.root.create_op_env(None).await?;
         
         env.set_with_key("/", &key, &new_root_id, &Some(prev_id), false)
             .await
@@ -282,7 +298,7 @@ impl GlobalStateRoot {
         // 保存dec_root->global_root的映射
         self.revision.insert_dec_root(&dec_id, new_root_id, global_root_id.clone());
 
-        Ok(())
+        Ok(global_root_id)
     }
 }
 

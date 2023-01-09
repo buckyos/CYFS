@@ -3,6 +3,7 @@ mod listener;
 mod protocol;
 mod request;
 mod service;
+mod http_request;
 
 pub use def::*;
 pub use request::*;

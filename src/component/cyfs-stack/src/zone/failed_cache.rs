@@ -2,7 +2,8 @@ use cyfs_base::*;
 use cyfs_core::*;
 
 use lru_time_cache::{Entry, LruCache};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 /*
 用以缓存下面两种zone信息：

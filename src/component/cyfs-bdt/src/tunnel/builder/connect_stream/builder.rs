@@ -3,15 +3,16 @@ use std::{
     fmt, 
     //time::Duration,
     sync::RwLock, 
-    collections::BTreeMap
+    collections::{BTreeMap, LinkedList}
 };
 use async_std::{sync::{Arc}, task};
 use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*, 
-    interface::*, 
+    protocol::{*, v0::*}, 
+    interface::{*, udp::MTU_LARGE}, 
+    history::keystore, 
     sn::client::PingClientCalledEvent, 
     stack::{WeakStack, Stack}, 
     stream::{StreamContainer}
@@ -21,13 +22,14 @@ use super::super::{action::*, builder::*, proxy::*};
 use super::{action::*, package::*, tcp::*};
 
 
-struct Connecting1State { 
+struct ConnectingState { 
     action_entries: BTreeMap<EndpointPair, DynConnectStreamAction>, 
+    pre_established_actions: LinkedList<DynConnectStreamAction>,     
     proxy: Option<ProxyBuilder>, 
     waiter: StateWaiter 
 }
 
-impl Connecting1State {
+impl ConnectingState {
     fn add_action<T: ConnectStreamAction>(&mut self, action: T) -> Result<DynConnectStreamAction, BuckyError> {
         self.add_dyn_action(action.clone_as_connect_stream_action())
     }
@@ -47,15 +49,10 @@ impl Connecting1State {
     }
 }
 
-struct Connecting2State {
-    action: DynConnectStreamAction, 
-    waiter: StateWaiter
-}
 
 
 enum ConnectStreamBuilderState {
-    Connecting1(Connecting1State), 
-    Connecting2(Connecting2State),  
+    Connecting(ConnectingState), 
     Establish, 
     Closed
 }
@@ -84,24 +81,24 @@ impl ConnectStreamBuilder {
             stack, 
             params, 
             stream,
-            state: RwLock::new(ConnectStreamBuilderState::Connecting1(Connecting1State {
+            state: RwLock::new(ConnectStreamBuilderState::Connecting(ConnectingState {
                 action_entries: BTreeMap::new(), 
+                pre_established_actions: LinkedList::new(), 
                 proxy: None, 
                 waiter: StateWaiter::new()
             }))
         }))
     }
 
-    pub async fn build(&self) {
-        self.sync_state_with_stream();
+    async fn build_inner(&self) -> BuckyResult<()> {
         let stack = Stack::from(&self.0.stack);
-        let stream = &self.0.stream;
+
         let local = stack.local().clone();
         let build_params = &self.0.params;
         
         let first_box = self.first_box(&local).await;
         if first_box.is_none() {
-            return ;
+            return Ok(());
         }
 
         let first_box = Arc::new(first_box.unwrap());
@@ -113,26 +110,25 @@ impl ConnectStreamBuilder {
         };
         
         if actions.len() == 0 {
-            if build_params.remote_sn.len() == 0 {
-                let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::InvalidParam, "neither remote device nor sn in build params"));
-                return;
-            } 
-            if let Some(sn) = stack.device_cache().get(&build_params.remote_sn[0]).await {
-                match self.call_sn(sn, first_box).await {
-                    Ok(actions) => {
-                        if actions.len() == 0 {
-                            let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"));
-                        }
-                    },
-                    Err(err) => {
-                        let msg = format!("call sn err:{}", err.msg());
-                        let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(err.code(), msg.as_str()));
-                    }
-                }
+            let remote_sn = build_params.nearest_sn(&stack).await?;
+            let actions = self.call_sn(remote_sn, first_box).await?;
+            if actions.len() == 0 {
+                Err(BuckyError::new(BuckyErrorCode::NotConnected, "on endpoint pair can establish"))
             } else {
-                let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::InvalidParam, "got sn device object failed"));
-            } 
+                Ok(())
+            }
+        } else {
+            Ok(())
         }
+    }
+
+    pub async fn build(&self) {
+        self.sync_state_with_stream();
+
+        let _ = self.build_inner().await
+            .map_err(|err| {
+                let _ = self.0.stream.as_ref().cancel_connecting_with(&err);
+            });
     }
 
     async fn first_box(&self, local: &Device) -> Option<PackageBox> {
@@ -144,28 +140,30 @@ impl ConnectStreamBuilder {
             return None;
         }
         let syn_session_data = syn_session_data.unwrap();
-        let key_stub = stack.keystore().create_key(stream.as_ref().tunnel().remote(), true);
+        let key_stub = stack.keystore().create_key(stream.as_ref().tunnel().remote_const(), true);
         // 生成第一个package box
-        let mut first_box = PackageBox::encrypt_box(stream.as_ref().tunnel().remote().clone(), key_stub.aes_key.clone());
+        let mut first_box = PackageBox::encrypt_box(
+            stream.as_ref().tunnel().remote().clone(), 
+            key_stub.key.clone());
             
         let syn_tunnel = SynTunnel {
-            from_device_id: local.desc().device_id(), 
+            protocol_version: stream.as_ref().tunnel().protocol_version(), 
+            stack_version: stream.as_ref().tunnel().stack_version(), 
             to_device_id: stream.as_ref().tunnel().remote().clone(), 
-            from_container_id: IncreaseId::default(),
             from_device_desc: local.clone(),
             sequence: syn_session_data.syn_info.as_ref().unwrap().sequence.clone(), 
             send_time: syn_session_data.send_time.clone()
         };
-        if !key_stub.is_confirmed {
-            let mut exchg = Exchange::from(&syn_tunnel);
-            let _ = exchg.sign(&key_stub.aes_key, stack.keystore().signer()).await;
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
+            let mut exchg = Exchange::from((&syn_tunnel, encrypted, key_stub.key.mix_key));
+            let _ = exchg.sign(stack.keystore().signer()).await;
             first_box.push(exchg);
         }
-        first_box.push(syn_tunnel).push(syn_session_data.clone());
+        first_box.push(syn_tunnel).push(syn_session_data.clone_with_data());
         Some(first_box)
     }
 
-    async fn call_sn(&self, sn: Device, first_box: Arc<PackageBox>) -> Result<Vec<DynConnectStreamAction>, BuckyError> {
+    async fn call_sn(&self, sn: Device, first_box: Arc<PackageBox>) -> BuckyResult<Vec<DynConnectStreamAction>> {
         let stack = Stack::from(&self.0.stack);
         let stream = &self.0.stream;
         let tunnel = stream.as_ref().tunnel();
@@ -177,33 +175,34 @@ impl ConnectStreamBuilder {
             true,
             false,
             |sn_call| {
-                let mut context = udp::PackageBoxEncodeContext::from((tunnel.remote_const(), sn_call));
+                let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 //FIXME 先不调用raw_measure_with_context
                 //let len = first_box.raw_measure_with_context(&mut context).unwrap();
-                let mut buf = vec![0u8; 2048];
+                let mut buf = vec![0u8; MTU_LARGE];
                 let b = first_box.raw_encode_with_context(&mut buf, &mut context, &None).unwrap();
                 //buf[0..b.len()].as_ref()
-                let len = 2048 - b.len();
+                let len = MTU_LARGE - b.len();
                 buf.truncate(len);
+                info!("{} encode first box to sn call, len: {}, package_box {:?}", self, len, first_box);
                 buf
             }).await?;
         
         if let Some(proxy_buidler) = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
-                ConnectStreamBuilderState::Connecting1(connecting1) => {
-                    if connecting1.proxy.is_none() {
+                ConnectStreamBuilderState::Connecting(connecting) => {
+                    if connecting.proxy.is_none() {
                         let proxy = ProxyBuilder::new(
                             tunnel.clone(), 
                             remote.get_obj_update_time(),  
                             first_box.clone());
                         debug!("{} create proxy builder", self);
-                        connecting1.proxy = Some(proxy);
+                        connecting.proxy = Some(proxy);
                     }
-                    connecting1.proxy.clone()
+                    connecting.proxy.clone()
                 }, 
                 _ => {
-                    debug!("{} ignore proxy builder for not in connecting1 state", self);
+                    debug!("{} ignore proxy builder for not in connecting state", self);
                     None
                 }
             }
@@ -263,9 +262,9 @@ impl ConnectStreamBuilder {
         }
 
         match &mut *self.0.state.write().unwrap() {
-            ConnectStreamBuilderState::Connecting1(ref mut connecting1) => {
+            ConnectStreamBuilderState::Connecting(ref mut connecting) => {
                 for a in &actions {
-                    let _ = connecting1.add_dyn_action(a.clone_as_connect_stream_action());
+                    let _ = connecting.add_dyn_action(a.clone_as_connect_stream_action());
                 }
             }, 
             _ => {
@@ -286,12 +285,9 @@ impl ConnectStreamBuilder {
                 Ok(_) => {
                     let state = &mut *builder_impl.state.write().unwrap();
                     match state {
-                        ConnectStreamBuilderState::Connecting1(_) => {
-                            unreachable!("connection never establish when builder still connecting1")
-                        }, 
-                        ConnectStreamBuilderState::Connecting2(ref mut connecting2) => {
-                            info!("{} connecting2 => establish", builder);
-                            let waiter = connecting2.waiter.transfer();
+                        ConnectStreamBuilderState::Connecting(ref mut connecting) => {
+                            info!("{} connecting => establish", builder);
+                            let waiter = connecting.waiter.transfer();
                             *state = ConnectStreamBuilderState::Establish;
                             waiter
                         }, 
@@ -308,15 +304,9 @@ impl ConnectStreamBuilder {
                 Err(_) => {
                     let state = &mut *builder_impl.state.write().unwrap();
                     match state {
-                        ConnectStreamBuilderState::Connecting1(ref mut connecting1) => {
+                        ConnectStreamBuilderState::Connecting(ref mut connecting) => {
                             info!("{} connecting1 => closed", builder);
-                            let waiter = connecting1.waiter.transfer();
-                            *state = ConnectStreamBuilderState::Closed;
-                            waiter
-                        }, 
-                        ConnectStreamBuilderState::Connecting2(ref mut connecting2) => {
-                            info!("{} connecting2 => closed", builder);
-                            let waiter = connecting2.waiter.transfer();
+                            let waiter = connecting.waiter.transfer();
                             *state = ConnectStreamBuilderState::Closed;
                             waiter
                         }, 
@@ -334,22 +324,25 @@ impl ConnectStreamBuilder {
         });
     }
 
+    fn stream(&self) -> &StreamContainer {
+        &self.0.stream
+    }
+
     fn wait_action_pre_establish<T: 'static + ConnectStreamAction>(&self, action: T) {
         // 第一个action进入establish 时，忽略其他action，builder进入pre establish， 调用 continue connect
         let builder = self.clone();
         task::spawn(async move {
-            let continue_action = match action.wait_pre_establish().await {
+            let action = match action.wait_pre_establish().await {
                 ConnectStreamState::PreEstablish => {
                     let state = &mut *builder.0.state.write().unwrap();
                     match state {
-                        ConnectStreamBuilderState::Connecting1(ref mut connecting1) => {
-                            info!("{} connecting1 => connecting2 use action {}", builder, action);
-                            let connecting2 = Connecting2State {
-                                waiter: connecting1.waiter.transfer(), 
-                                action: action.clone_as_connect_stream_action()
-                            };
-                            *state = ConnectStreamBuilderState::Connecting2(connecting2);
-                            Some(action.clone_as_connect_stream_action())
+                        ConnectStreamBuilderState::Connecting(ref mut connecting) => {
+                            connecting.pre_established_actions.push_back(action.clone_as_connect_stream_action());
+                            if connecting.pre_established_actions.len() == 1 {
+                                connecting.pre_established_actions.front().map(|a| a.clone_as_connect_stream_action())
+                            } else {
+                                None
+                            }
                         }, 
                         _ => {
                             None
@@ -360,8 +353,34 @@ impl ConnectStreamBuilder {
                     None
                 }
             };
-            if let Some(continue_action) = continue_action {
-                let _ = continue_action.continue_connect().await;
+
+            
+            if let Some(action) = action {
+                let mut action = action;
+                loop {
+                    match action.continue_connect().await {
+                        Ok(selector) => {
+                            let _ = builder.stream().as_ref().establish_with(selector, builder.stream()).await;
+                            break;
+                        }, 
+                        Err(_) => {
+                            let state = &mut *builder.0.state.write().unwrap();
+                            match state {
+                                ConnectStreamBuilderState::Connecting(ref mut connecting) => {
+                                    let _ = connecting.pre_established_actions.pop_front().unwrap();
+                                    if let Some(next) = connecting.pre_established_actions.front() {
+                                        action = next.clone_as_connect_stream_action();
+                                    } else {
+                                        break;    
+                                    }
+                                }
+                                _ => {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         });
     }
@@ -375,8 +394,7 @@ impl TunnelBuilder for ConnectStreamBuilder {
 
     fn state(&self) -> TunnelBuilderState {
         match &*self.0.state.read().unwrap() {
-            ConnectStreamBuilderState::Connecting1(_) => TunnelBuilderState::Connecting, 
-            ConnectStreamBuilderState::Connecting2(_) => TunnelBuilderState::Connecting,
+            ConnectStreamBuilderState::Connecting(_) => TunnelBuilderState::Connecting, 
             ConnectStreamBuilderState::Establish => TunnelBuilderState::Establish,
             ConnectStreamBuilderState::Closed => TunnelBuilderState::Closed,
         }
@@ -384,8 +402,7 @@ impl TunnelBuilder for ConnectStreamBuilder {
 
     async fn wait_establish(&self) -> Result<(), BuckyError> {
         let (state, waiter) = match &mut *self.0.state.write().unwrap() {
-            ConnectStreamBuilderState::Connecting1(connecting1) => (TunnelBuilderState::Connecting, Some(connecting1.waiter.new_waiter())),
-            ConnectStreamBuilderState::Connecting2(connecting2) => (TunnelBuilderState::Connecting, Some(connecting2.waiter.new_waiter())),
+            ConnectStreamBuilderState::Connecting(connecting) => (TunnelBuilderState::Connecting, Some(connecting.waiter.new_waiter())),
             ConnectStreamBuilderState::Establish => (TunnelBuilderState::Establish, None),
             ConnectStreamBuilderState::Closed => (TunnelBuilderState::Closed, None)
         };
@@ -410,8 +427,8 @@ impl OnPackage<TcpAckConnection, tcp::AcceptInterface> for ConnectStreamBuilder 
         let action = AcceptReverseTcpStream::new(self.0.stream.clone(), *interface.local(), *interface.remote());
         
         let _ = match &mut *self.0.state.write().unwrap() {
-            ConnectStreamBuilderState::Connecting1(ref mut connecting1) => {
-                connecting1.add_action(action.clone())
+            ConnectStreamBuilderState::Connecting(ref mut connecting) => {
+                connecting.add_action(action.clone())
             }, 
             _ => {
                 Err(BuckyError::new(BuckyErrorCode::ErrorState, "accept tcp interface with tcp ack connection in no connecting1 state"))
@@ -431,8 +448,8 @@ impl OnPackage<SessionData> for ConnectStreamBuilder {
             unreachable!()
         } else if pkg.is_syn_ack() {
             let action = match &*self.0.state.read().unwrap() {
-                ConnectStreamBuilderState::Connecting1(ref connecting1) => {
-                    connecting1.action_of(&ConnectPackageStream::endpoint_pair()).map(|a| ConnectPackageStream::from(a)).ok_or_else(| | BuckyError::new(BuckyErrorCode::ErrorState, "got syn ack while package stream not connecting"))
+                ConnectStreamBuilderState::Connecting(ref connecting) => {
+                    connecting.action_of(&ConnectPackageStream::endpoint_pair()).map(|a| ConnectPackageStream::from(a)).ok_or_else(| | BuckyError::new(BuckyErrorCode::ErrorState, "got syn ack while package stream not connecting"))
                 }, 
                 _ => {
                     Err(BuckyError::new(BuckyErrorCode::ErrorState, "got syn ack  in no connecting1 state"))
@@ -457,17 +474,17 @@ impl PingClientCalledEvent for ConnectStreamBuilder {
                 if let Some(proxy_builder) = {
                     let state = &mut *builder.0.state.write().unwrap();
                     match state {
-                        ConnectStreamBuilderState::Connecting1(connecting1) => {
-                            if connecting1.proxy.is_none() {
+                        ConnectStreamBuilderState::Connecting(connecting) => {
+                            if connecting.proxy.is_none() {
                                 let proxy = ProxyBuilder::new(
                                     tunnel, 
                                     remote_timestamp,  
                                     Arc::new(first_box));
                                 debug!("{} create proxy builder", builder);
-                                connecting1.proxy = Some(proxy);
+                                connecting.proxy = Some(proxy);
                             }
                             
-                            connecting1.proxy.clone()
+                            connecting.proxy.clone()
                         }, 
                         _ => None
                     }
@@ -487,8 +504,8 @@ impl PingClientCalledEvent for ConnectStreamBuilder {
 impl OnPackage<AckProxy, &DeviceId> for ConnectStreamBuilder {
     fn on_package(&self, pkg: &AckProxy, proxy: &DeviceId) -> Result<OnPackageResult, BuckyError> {
         if let Some(proxy_builder) = match &*self.0.state.read().unwrap() {
-            ConnectStreamBuilderState::Connecting1(connecting1) => {
-                connecting1.proxy.clone()
+            ConnectStreamBuilderState::Connecting(connecting) => {
+                connecting.proxy.clone()
             }, 
             _ => {
                 None

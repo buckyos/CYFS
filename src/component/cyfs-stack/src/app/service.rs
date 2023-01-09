@@ -1,7 +1,7 @@
 use crate::front::*;
 use crate::root_state::GlobalStateInputProcessorRef;
 use crate::root_state::GlobalStateOutputTransformer;
-use crate::ZoneManager;
+use crate::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_debug::Mutex;
 use cyfs_lib::GlobalStateStub;
@@ -22,16 +22,16 @@ pub struct AppService {
 
 impl AppService {
     pub async fn new(
-        zone_manager: &ZoneManager,
+        zone_manager: &ZoneManagerRef,
         root_state: GlobalStateInputProcessorRef,
     ) -> BuckyResult<Self> {
         let info = zone_manager.get_current_info().await?;
-
-        let processor = GlobalStateOutputTransformer::new(root_state, info.device_id.clone());
+        let source = zone_manager.get_current_source_info(&Some(cyfs_core::get_system_dec_app().to_owned())).await?;
+        let processor = GlobalStateOutputTransformer::new(root_state, source);
         let root_state_stub = GlobalStateStub::new(
             processor,
             Some(info.zone_device_ood_id.object_id().clone()),
-            Some(cyfs_core::get_system_dec_app().object_id().to_owned()),
+            Some(cyfs_core::get_system_dec_app().to_owned()),
         );
 
         Ok(Self {
@@ -127,6 +127,8 @@ impl AppService {
         dec_id: &ObjectId,
         ver: &FrontARequestVersion,
     ) -> BuckyResult<Option<ObjectId>> {
+        debug!("will search app web dir: dec={}, ver={:?}", dec_id, ver);
+
         let ver_seg = match ver {
             FrontARequestVersion::Current | FrontARequestVersion::DirID(_) => "current",
             FrontARequestVersion::Version(ver) => ver.as_str(),

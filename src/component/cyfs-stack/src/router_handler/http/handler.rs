@@ -1,30 +1,26 @@
 use super::super::RouterHandlersManager;
 use super::processor::*;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-
+#[derive(Clone)]
 pub(crate) struct RouterHandlerHttpHandler {
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
 
     processor: RouterHandlerHttpProcessor,
+    zone_manager: ZoneManagerRef,
 }
 
-impl Clone for RouterHandlerHttpHandler {
-    fn clone(&self) -> Self {
-        Self {
-            protocol: self.protocol.clone(),
-            processor: self.processor.clone(),
-        }
-    }
-}
 
 impl RouterHandlerHttpHandler {
-    pub fn new(protocol: NONProtocol, manager: RouterHandlersManager) -> Self {
+    pub fn new(protocol: RequestProtocol, manager: RouterHandlersManager) -> Self {
+        let zone_manager = manager.acl_manager().zone_manager().clone();
         let processor = RouterHandlerHttpProcessor::new(manager);
         Self {
             protocol,
             processor,
+            zone_manager,
         }
     }
 
@@ -32,27 +28,35 @@ impl RouterHandlerHttpHandler {
         req: &tide::Request<State>,
     ) -> BuckyResult<(RouterHandlerChain, RouterHandlerCategory, String)> {
         // 提取路径上的handler_chain+handler_category+handler_id
-        let handler_chain: RouterHandlerChain = req.param("handler_chain").map_err(|e| {
-            let msg = format!("invalid handler_chain: {}", e);
-            error!("{}", msg);
+        let handler_chain: RouterHandlerChain = req
+            .param("handler_chain")
+            .map_err(|e| {
+                let msg = format!("invalid handler_chain: {}", e);
+                error!("{}", msg);
 
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        })?.parse()?;
+                BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+            })?
+            .parse()?;
 
-        let handler_category: RouterHandlerCategory =
-            req.param("handler_category").map_err(|e| {
+        let handler_category: RouterHandlerCategory = req
+            .param("handler_category")
+            .map_err(|e| {
                 let msg = format!("invalid handler_category: {}", e);
                 error!("{}", msg);
 
                 BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-            })?.parse()?;
+            })?
+            .parse()?;
 
-        let handler_id: String = req.param("handler_id").map_err(|e| {
-            let msg = format!("invalid handler_id: {}", e);
-            error!("{}", msg);
+        let handler_id: String = req
+            .param("handler_id")
+            .map_err(|e| {
+                let msg = format!("invalid handler_id: {}", e);
+                error!("{}", msg);
 
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        })?.to_owned();
+                BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+            })?
+            .to_owned();
 
         Ok((handler_chain, handler_category, handler_id))
     }
@@ -64,9 +68,7 @@ impl RouterHandlerHttpHandler {
     ) -> tide::Response {
         let ret = self.on_add_handler_request(req, body).await;
         match ret {
-            Ok(_) => {
-                RequestorHelper::new_ok_response()
-            }
+            Ok(_) => RequestorHelper::new_ok_response(),
             Err(e) => {
                 error!("router add handler error: {}", e);
                 RequestorHelper::trans_error(e)
@@ -123,7 +125,10 @@ impl RouterHandlerHttpHandler {
             source,
         };
 
-        self.processor.on_add_handler_request(add_req).await
+        let mut source = self.zone_manager.get_current_source_info(&add_req.dec_id).await?;
+        source.protocol = self.protocol;
+
+        self.processor.on_add_handler_request(source, add_req).await
     }
 
     async fn on_remove_handler_request<State>(

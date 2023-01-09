@@ -205,7 +205,8 @@ async fn put_object(stack: &SharedCyfsStack, dec_id: &ObjectId) {
         RouterHandlerChain::PreRouter,
         "put-object1",
         0,
-        &filter,
+        Some(filter.clone()),
+        None,
         RouterHandlerAction::Default,
         Some(Box::new(listener)),
     );
@@ -218,7 +219,8 @@ async fn put_object(stack: &SharedCyfsStack, dec_id: &ObjectId) {
         "watch-object1",
         // 观察者模式使用负数索引
         -1,
-        &filter,
+        Some(filter.clone()),
+        None,
         RouterHandlerAction::Pass,
         Some(Box::new(listener)),
     );
@@ -288,7 +290,8 @@ async fn post_object(stack: &SharedCyfsStack, dec_id: &ObjectId) {
         RouterHandlerChain::PreRouter,
         "post-object1",
         0,
-        &filter,
+        Some(filter.clone()),
+        None,
         RouterHandlerAction::Default,
         Some(Box::new(listener)),
     );
@@ -360,7 +363,8 @@ async fn get_object(stack: &SharedCyfsStack, dec_id: &ObjectId) {
             RouterHandlerChain::PreRouter,
             "get-object1",
             0,
-            &filter,
+            Some(filter.clone()),
+            None,
             RouterHandlerAction::Default,
             Some(Box::new(listener)),
         )

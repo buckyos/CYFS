@@ -1,6 +1,7 @@
 use cyfs_base_meta::*;
 use cyfs_base::*;
-use crate::state_storage::{StorageRef};
+use crate::archive_storage::ArchiveStorageRef;
+use crate::state_storage::StorageRef;
 use crate::chain::chain_storage::ChainStorageRef;
 use std::path::{Path, PathBuf};
 use crate::chain::{ChainStorage};
@@ -43,18 +44,18 @@ pub struct Chain {
 }
 
 impl Chain {
-    pub async fn new(dir: PathBuf, block: Option<Block>, storage: StorageRef) -> BuckyResult<Self> {
-        let chain_storage = ChainStorage::reset(dir, block, storage).await?;
+    pub async fn new(dir: PathBuf, block: Option<Block>, storage: StorageRef, archive_storage: ArchiveStorageRef) -> BuckyResult<Self> {
+        let chain_storage = ChainStorage::reset(dir, block, storage, archive_storage).await?;
         Ok(Self {
             storage: chain_storage
         })
     }
 
-    pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef) -> BuckyResult<Self> {
-        let chain_storage = ChainStorage::load(dir, new_storage).await?;
+    pub async fn load(dir: &Path, new_storage: fn (path: &Path) -> StorageRef, trace: bool, archive_storage: fn (path: &Path, trace: bool) -> ArchiveStorageRef) -> BuckyResult<Self> {
+        let chain_storage = ChainStorage::load(dir, new_storage, trace, archive_storage).await?;
         let ret = chain_storage.get_tip_info().await;
         if ret.is_ok() {
-            let (_tip_header, _) = ret.unwrap();
+            let (_tip_header, _, _) = ret.unwrap();
         }
         Ok(Self {
             storage: chain_storage

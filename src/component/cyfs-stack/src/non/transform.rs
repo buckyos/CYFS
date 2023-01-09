@@ -20,8 +20,11 @@ impl NONInputTransformer {
             // 请求路径，可为空
             req_path: common.req_path,
 
+            // 来源设备
+            source: common.source.zone.device,
+
             // 来源DEC
-            dec_id: common.dec_id,
+            dec_id: Some(common.source.dec),
 
             // 默认行为
             level: common.level,
@@ -41,6 +44,7 @@ impl NONInputTransformer {
             common: Self::convert_common(req.common),
 
             object: req.object,
+            access: req.access,
         };
 
         let out_resp = self.processor.put_object(out_req).await?;
@@ -178,22 +182,29 @@ impl NONInputProcessor for NONInputTransformer {
 // 实现从output到input的转换
 pub(crate) struct NONOutputTransformer {
     processor: NONInputProcessorRef,
-    source: DeviceId,
+    source: RequestSourceInfo,
 }
 
 impl NONOutputTransformer {
-    pub fn new(processor: NONInputProcessorRef, source: DeviceId) -> NONOutputProcessorRef {
+    pub fn new(
+        processor: NONInputProcessorRef,
+        source: RequestSourceInfo,
+    ) -> NONOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: NONOutputRequestCommon) -> NONInputRequestCommon {
+        let mut source = self.source.clone();
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
+
         NONInputRequestCommon {
             // 请求路径，可为空
             req_path: common.req_path,
 
-            // 来源DEC
-            dec_id: common.dec_id,
+            source,
 
             // 默认行为
             level: common.level,
@@ -202,9 +213,6 @@ impl NONOutputTransformer {
             target: common.target,
 
             flags: common.flags,
-
-            source: self.source.clone(),
-            protocol: NONProtocol::Native,
         }
     }
 
@@ -216,6 +224,7 @@ impl NONOutputTransformer {
             common: self.convert_common(req.common),
 
             object: req.object,
+            access: req.access,
         };
 
         let in_resp = self.processor.put_object(in_req).await?;

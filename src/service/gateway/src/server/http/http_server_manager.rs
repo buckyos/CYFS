@@ -1,9 +1,10 @@
 use super::http_bdt_listener::HttpBdtListenerManager;
 use super::http_forward::HTTP_FORWARD_MANAGER;
 use super::http_tcp_listener::HttpTcpListenerManager;
-use cyfs_base::{BuckyError, BuckyErrorCode};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 
 use std::collections::hash_map::{Entry, HashMap};
+use std::sync::Mutex;
 
 pub(super) struct HttpServer {
     id: String,
@@ -20,7 +21,7 @@ pub struct HttpServerManager {
     bdt_listener_manager: HttpBdtListenerManager,
     tcp_listener_manager: HttpTcpListenerManager,
 
-    named_server_list: HashMap<String, HttpServer>,
+    named_server_list: Mutex<HashMap<String, HttpServer>>,
 }
 
 impl HttpServerManager {
@@ -28,11 +29,11 @@ impl HttpServerManager {
         HttpServerManager {
             bdt_listener_manager: HttpBdtListenerManager::new(),
             tcp_listener_manager: HttpTcpListenerManager::new(),
-            named_server_list: HashMap::new(),
+            named_server_list: Mutex::new(HashMap::new()),
         }
     }
 
-    pub fn load(&mut self, stream_node: &Vec<toml::Value>) -> Result<(), BuckyError> {
+    pub fn load(&self, stream_node: &Vec<toml::Value>) -> BuckyResult<()> {
         for v in stream_node {
             let node = v.as_table();
             if node.is_none() {
@@ -61,7 +62,7 @@ impl HttpServerManager {
         Ok(())
     }
 
-    pub fn load_server(&mut self, server_node: &toml::value::Table) -> Result<(), BuckyError> {
+    pub fn load_server(&self, server_node: &toml::value::Table) -> BuckyResult<()> {
         // 获取server id，可能为空
         let id = if let Some(v) = server_node.get("id") {
             v.as_str()
@@ -83,7 +84,9 @@ impl HttpServerManager {
         if id.is_some() {
             let id = id.unwrap();
             let server = HttpServer::new(id.to_owned(), forward_id);
-            match self.named_server_list.entry(id.to_owned()) {
+
+            let mut list = self.named_server_list.lock().unwrap();
+            match list.entry(id.to_owned()) {
                 Entry::Occupied(_v) => {
                     let msg = format!("http server with id already exists! id={}", id);
                     error!("{}", msg);
@@ -120,11 +123,7 @@ impl HttpServerManager {
         Ok(())
     }
 
-    fn load_listeners(
-        &mut self,
-        forward_id: u32,
-        listener_list: &Vec<toml::Value>,
-    ) -> Result<(), BuckyError> {
+    fn load_listeners(&self, forward_id: u32, listener_list: &Vec<toml::Value>) -> BuckyResult<()> {
         for v in listener_list {
             if !v.is_table() {
                 return BuckyError::error_with_log(format!(
@@ -143,10 +142,10 @@ impl HttpServerManager {
     }
 
     fn load_listener(
-        &mut self,
+        &self,
         forward_id: u32,
         listener_node: &toml::value::Table,
-    ) -> Result<(), BuckyError> {
+    ) -> BuckyResult<()> {
         let mut listener_type = "tcp";
         let v = listener_node.get("type");
         if v.is_some() {
@@ -167,7 +166,6 @@ impl HttpServerManager {
                 }
 
                 let listener = ret.unwrap();
-                let listener = listener.lock().unwrap();
                 listener.bind_forward(forward_id);
             }
             _ => {
@@ -186,16 +184,20 @@ impl HttpServerManager {
         self.bdt_listener_manager.start();
     }
 
-    pub fn remove_server(&mut self, id: &str) -> Result<(), BuckyError> {
-        let item = self.named_server_list.remove(id);
-        if item.is_none() {
-            let msg = format!("http server not found! id={}", id);
-            error!("{}", msg);
+    pub fn remove_server(&self, id: &str) -> BuckyResult<()> {
+        let server = {
+            let mut list = self.named_server_list.lock().unwrap();
+            let item = list.remove(id);
+            if item.is_none() {
+                let msg = format!("http server not found! id={}", id);
+                error!("{}", msg);
 
-            return Err(BuckyError::from((BuckyErrorCode::NotFound, msg)));
-        }
+                return Err(BuckyError::from((BuckyErrorCode::NotFound, msg)));
+            }
 
-        let server = item.unwrap();
+            item.unwrap()
+        };
+
         info!(
             "will stop and remove http server: id={}, forward={}",
             id, server.forward_id

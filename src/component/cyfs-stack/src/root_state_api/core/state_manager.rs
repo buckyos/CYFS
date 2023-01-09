@@ -1,4 +1,3 @@
-use super::cache::*;
 use super::root::*;
 use super::root_index::RootInfo;
 use crate::config::StackGlobalConfig;
@@ -31,10 +30,10 @@ impl GlobalStateManager {
         category: GlobalStateCategory,
         device_id: &DeviceId,
         owner: Option<ObjectId>,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         config: StackGlobalConfig,
     ) -> BuckyResult<Self> {
-        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone_noc());
+        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(noc.clone());
         let global_root_state = GlobalStateRoot::load(
             category.clone(),
             device_id,
@@ -58,6 +57,10 @@ impl GlobalStateManager {
         Ok(ret)
     }
 
+    pub fn category(&self) -> GlobalStateCategory {
+        self.category
+    }
+
     pub fn access_mode(&self) -> GlobalStateAccessMode {
         self.global_root_state.access_mode()
     }
@@ -68,7 +71,10 @@ impl GlobalStateManager {
         new_root_info: RootInfo,
         prev_root_id: Option<ObjectId>,
     ) -> BuckyResult<()> {
-        info!("will direct set root state: category={}, {:?} -> {:?}", self.category, prev_root_id, new_root_info);
+        info!(
+            "will direct set root state: category={}, {:?} -> {:?}",
+            self.category, prev_root_id, new_root_info
+        );
 
         // should keep the lock during the whole func
         // Prevent inconsistencies in the instantaneous state caused by the successive setting of global_root and dec_root
@@ -125,6 +131,10 @@ impl GlobalStateManager {
 
     pub fn root_cache(&self) -> &ObjectMapRootCacheRef {
         self.global_root_state.root_cache()
+    }
+
+    pub fn is_dec_exists(&self, dec_id: &ObjectId) -> bool {
+        self.global_root_state.revision().is_dec_exists(dec_id)
     }
 
     // return (global_root, revision, dec_root)
@@ -271,6 +281,8 @@ impl ObjectMapRootEvent for GlobalStateManager {
 
         self.global_root_state
             .update_dec_root(dec_id.as_ref().unwrap(), new_root_id, prev_id)
-            .await
+            .await?;
+
+        Ok(())
     }
 }

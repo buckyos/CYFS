@@ -6,7 +6,6 @@ use cyfs_util::TomlHelper;
 
 use std::path::Path;
 use std::sync::Arc;
-use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct SystemConfig {
@@ -25,7 +24,9 @@ impl SystemConfig {
     pub fn new() -> Self {
         Self {
             config_desc: String::from("cyfs_repo"),
-            version: ServiceListVersion::default(),
+
+            // now all the channels should use Nightly version, not support any other version anymore!
+            version: ServiceListVersion::Nightly,
             target: String::from(""),
         }
     }
@@ -115,8 +116,9 @@ impl SystemConfig {
                     self.config_desc = TomlHelper::decode_from_string(v)?;
                 }
                 "version" => {
-                    let v: String =  TomlHelper::decode_from_string(v)?;
-                    self.version = ServiceListVersion::from_str(&v)?;
+                    warn!("version field will be ignored! version={:?}", v);
+                    // let v: String =  TomlHelper::decode_from_string(v)?;
+                    // self.version = ServiceListVersion::from_str(&v)?;
                 }
                 "target" => {
                     self.target = TomlHelper::decode_from_string(v)?;

@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Mutex}, 
+    sync::Arc, 
     time::Duration, 
     ops::Range
 };
@@ -10,19 +10,20 @@ use async_trait::async_trait;
 use sha2::Digest;
 use cyfs_base::*;
 use cyfs_bdt::{
-    DownloadTaskControl, 
-    TaskControlState, 
-    ChunkDownloadConfig, 
+    DownloadTask, 
+    DownloadTaskState, 
+    SingleDownloadContext, 
     ChunkWriter, 
     ChunkWriterExt, 
     download::*
 };
+use cyfs_debug::Mutex;
 mod utils;
 
-async fn watch_task_finish(task: Box<dyn DownloadTaskControl>) -> BuckyResult<()> {
+async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {
     loop {
-        match task.control_state() {
-            TaskControlState::Finished => {
+        match task.state() {
+            DownloadTaskState::Finished => {
                 break Ok(());
             },
             _ => {}
@@ -60,7 +61,8 @@ async fn one_small_file() {
     let task = download_file(
         &*ln_stack, 
         file, 
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()), 
+        None, 
+        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
         vec![ln_store.clone_as_writer()]).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task)).await.unwrap();
     let _ = recv.unwrap();
@@ -99,7 +101,8 @@ async fn same_chunk_file() {
 
     let task = download_file(
         &*ln_stack, file, 
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()), 
+        None, 
+        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
         vec![ln_store.clone_as_writer()]).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task)).await.unwrap();
     let _ = recv.unwrap();
@@ -126,7 +129,8 @@ async fn empty_file() {
 
     let task = download_file(
         &*ln_stack, file, 
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()), 
+        None, 
+        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
         vec![ln_store.clone_as_writer()]).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task)).await.unwrap();
     let _ = recv.unwrap();
@@ -137,18 +141,6 @@ async fn empty_file() {
 
 #[async_std::test]
 async fn one_small_file_with_ranges() {
-    cyfs_debug::CyfsLoggerBuilder::new_app("bdt-one-small-file-with-ranges")
-        .level("debug")
-        .console("info")
-        .build()
-        .unwrap()
-        .start();
-
-    cyfs_debug::PanicBuilder::new("bdt-one-small-file-with-ranges", "bdt-one-small-file-with-ranges")
-        .exit_on_panic(true)
-        .build()
-        .start();
-
     let ((ln_stack, _), (rn_stack, rn_store)) = utils::local_stack_pair(
         &["W4udp127.0.0.1:10006"], 
         &["W4udp127.0.0.1:10007"]
@@ -228,7 +220,8 @@ async fn one_small_file_with_ranges() {
         &*ln_stack, 
         file, 
         Some(vec![range.clone(), range.start + 1024 * 1024..range.end + 1024 * 1024]), 
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()), 
+        None, 
+        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
         vec![RangeWriter::new(range_hash.result().into()).clone_as_writer()]).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), watch_task_finish(task)).await.unwrap();
     let _ = recv.unwrap();

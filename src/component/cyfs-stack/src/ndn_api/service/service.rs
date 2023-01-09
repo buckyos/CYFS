@@ -8,7 +8,7 @@ use crate::ndn::*;
 use crate::non::*;
 use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_chunk_cache::ChunkManagerRef;
@@ -32,14 +32,8 @@ impl NDNService {
         tracker: Box<dyn TrackerCache>,
 
         ood_resolver: OodResolver,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
-
-        // 不带权限的本地noc处理器
-        raw_noc_processor: NONInputProcessorRef,
-
-        // 带inner权限的non处理器
-        inner_non_processor: NONInputProcessorRef,
 
         // 带acl的non router
         non_router: NONInputProcessorRef,
@@ -53,7 +47,7 @@ impl NDNService {
             chunk_manager.clone(),
             ndc.clone(),
             tracker.clone(),
-            raw_noc_processor.clone(),
+            non_router.clone(),
         );
 
         let ndn_processor = NDNLevelInputProcessor::new_zone(
@@ -61,8 +55,7 @@ impl NDNService {
             bdt_stack.clone(),
             ndc.clone(),
             tracker.clone(),
-            raw_noc_processor.clone(),
-            inner_non_processor,
+            non_router.clone(),
             router_handlers.clone(),
             chunk_manager.clone(),
             forward.clone(),

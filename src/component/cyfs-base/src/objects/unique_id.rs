@@ -1,9 +1,9 @@
 use crate::*;
 
+use base58::ToBase58;
 use generic_array::typenum::{marker_traits::Unsigned, U16};
 use generic_array::GenericArray;
 use std::fmt;
-use base58::ToBase58;
 
 // unique id in const info
 #[derive(Clone, Eq, PartialEq)]
@@ -79,6 +79,14 @@ impl UniqueId {
         let mut sha256 = sha2::Sha256::new();
         sha256.input(src);
         Self::create(&sha256.result())
+    }
+
+    pub fn create_with_random() -> Self {
+        let mut id = Self::default();
+        let (l, h) = id.as_mut_slice().split_at_mut(8);
+        l.copy_from_slice(&rand::random::<u64>().to_be_bytes());
+        h.copy_from_slice(&rand::random::<u64>().to_be_bytes());
+        id
     }
 }
 
@@ -161,5 +169,24 @@ impl ProtobufTransform<Vec<u8>> for UniqueId {
         }
 
         Ok(id)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::*;
+
+    #[test]
+    fn test_codec() {
+        let id = UniqueId::default();
+        let len = id.raw_measure(&None).unwrap();
+        assert_eq!(len, 16);
+        let buf = id.to_vec().unwrap();
+        let (id2, left) = UniqueId::raw_decode(&buf).unwrap();
+        assert_eq!(id, id2);
+        assert!(left.is_empty());
+
+        let hash = id.raw_hash_value().unwrap();
+        println!("hash: {}", hash);
     }
 }

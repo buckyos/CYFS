@@ -3,7 +3,32 @@ use super::process_mutex::{ProcessMutex, CURRENT_PROC_LOCK, SERVICE_NAME};
 use clap::{App, Arg, ArgMatches};
 use std::error::Error;
 
-#[derive(Debug, Eq, PartialEq)]
+pub trait ProcessCmdFuncs: Send + Sync {
+    fn exit_process(&self, action: ProcessAction, code: i32) -> !;
+}
+
+struct DefaultProcessCmdFuncs;
+
+impl ProcessCmdFuncs for DefaultProcessCmdFuncs {
+    fn exit_process(&self, _action: ProcessAction, code: i32) -> ! {
+        std::process::exit(code)
+    }
+}
+
+static PROCESS_CMD_FUNCS: once_cell::sync::OnceCell<Box<dyn ProcessCmdFuncs>> =
+    once_cell::sync::OnceCell::new();
+
+pub fn get_process_cmd_funcs() -> &'static Box<dyn ProcessCmdFuncs> {
+    PROCESS_CMD_FUNCS.get_or_init(|| Box::new(DefaultProcessCmdFuncs {}))
+}
+
+pub fn set_process_cmd_funcs(
+    funcs: Box<dyn ProcessCmdFuncs>,
+) -> Result<(), Box<dyn ProcessCmdFuncs>> {
+    PROCESS_CMD_FUNCS.set(funcs)
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum ProcessAction {
     Start,
     Stop,
@@ -63,7 +88,7 @@ pub fn prepare_args<'a, 'b>(args: App<'a, 'b>) -> App<'a, 'b> {
     )
 }
 
-fn parse_cmd(service_name: &str, matches: &ArgMatches) -> (ProcessAction, Option<String>) {
+pub fn parse_cmd(service_name: &str, matches: &ArgMatches) -> (ProcessAction, Option<String>) {
     let mut fid: Option<String> = None;
     let mut cmd = ProcessAction::Start;
 
@@ -124,7 +149,7 @@ fn check_current_fid(fid: &str) -> Result<bool, Box<dyn Error>> {
     })
 }
 
-static mut PROCESS_LOCK: Option<ProcessLock> = None;
+static PROCESS_LOCK: once_cell::sync::OnceCell<ProcessLock> = once_cell::sync::OnceCell::new();
 
 // 检查一个服务|APP的状态
 pub fn check_process_status(service_name: &str, fid: Option<&str>) -> ProcessStatusCode {
@@ -225,7 +250,9 @@ pub fn check_cmd_and_exec_with_args_ext(
         } else {
             let console_log = matches.is_present("console-log");
             if console_log || (cmd != ProcessAction::Start && cmd != ProcessAction::Install) {
-                simple_logger::SimpleLogger::default().init().unwrap();
+                if let Err(e) = simple_logger::SimpleLogger::default().init() {
+                    println!("init simple logger error! {}", e);
+                }
             } else {
                 // start和install模式交给service本身决定，一般使用文件日志
             }
@@ -238,7 +265,7 @@ pub fn check_cmd_and_exec_with_args_ext(
             let code = ProcessStatusCode::NotExists as i32;
             error!("process running out of time! now will exit with {}", code);
             crate::flush_log();
-            std::process::exit(code);
+            get_process_cmd_funcs().exit_process(cmd, code);
         });
     }
 
@@ -246,17 +273,17 @@ pub fn check_cmd_and_exec_with_args_ext(
         ProcessAction::Stop => {
             if *CURRENT_PROC_LOCK {
                 info!("process mutex not exists! service={}", service_name);
-                std::process::exit(0);
+                get_process_cmd_funcs().exit_process(cmd, 0);
             }
 
             let exit_code = try_stop_process(service_name);
-            std::process::exit(exit_code);
+            get_process_cmd_funcs().exit_process(cmd, exit_code);
         }
         ProcessAction::Status => {
             // 如果进程锁不存在，那么该进程一定不存在
             if *CURRENT_PROC_LOCK {
                 info!("process mutex not exists! service={}", service_name);
-                std::process::exit(ProcessStatusCode::NotExists as i32);
+                get_process_cmd_funcs().exit_process(cmd, ProcessStatusCode::NotExists as i32);
             }
 
             let mut proc = ProcessLock::new(service_name);
@@ -276,7 +303,7 @@ pub fn check_cmd_and_exec_with_args_ext(
                             } else {
                                 ProcessStatusCode::RunningOther
                             }
-                        } 
+                        }
                         Err(_e) => {
                             // 检测出错，那么都认为是running
                             ProcessStatusCode::Running
@@ -297,7 +324,7 @@ pub fn check_cmd_and_exec_with_args_ext(
                 "check status return, service={}, status={:?}",
                 service_name, status
             );
-            std::process::exit(status as i32);
+            get_process_cmd_funcs().exit_process(cmd, status as i32);
         }
         ProcessAction::Install => {
             return ProcessAction::Install;
@@ -308,7 +335,7 @@ pub fn check_cmd_and_exec_with_args_ext(
                 warn!("{}", msg);
                 println!("{}", msg);
 
-                std::process::exit(1);
+                get_process_cmd_funcs().exit_process(cmd, 1);
             }
 
             let mut proc = ProcessLock::new(service_name);
@@ -322,11 +349,11 @@ pub fn check_cmd_and_exec_with_args_ext(
                 error!("{}", msg);
                 println!("{}", msg);
 
-                std::process::exit(1);
+                get_process_cmd_funcs().exit_process(cmd, 1);
             }
 
-            unsafe {
-                PROCESS_LOCK = Some(proc);
+            if let Err(_) = PROCESS_LOCK.set(proc) {
+                unreachable!();
             }
 
             return ProcessAction::Start;
@@ -394,8 +421,8 @@ pub fn try_enter_proc(service_name: &str) -> bool {
         return false;
     }
 
-    unsafe {
-        PROCESS_LOCK = Some(proc);
+    if let Err(_) = PROCESS_LOCK.set(proc) {
+        unreachable!();
     }
 
     true

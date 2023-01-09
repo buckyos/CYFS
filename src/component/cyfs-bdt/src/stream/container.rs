@@ -3,8 +3,9 @@ mod dep {
         package::PackageStream, stream_provider::StreamProvider, tcp::TcpStream,
     };
     pub use crate::{
+        types::*, 
         interface::*,
-        protocol::*,
+        protocol::{*, v0::*},
         stack::{Stack, WeakStack},
         tunnel::{
             self, AcceptReverseTcpStream, AcceptStreamBuilder, BuildTunnelAction,
@@ -19,6 +20,8 @@ mod dep {
     pub use futures::future::{AbortHandle, Abortable, Aborted};
     pub use std::{fmt, future::Future, net::Shutdown, ops::Deref, sync::RwLock, time::Duration};
 }
+
+const ANSWER_MAX_LEN: usize = 1024*25;
 
 mod connector {
     use super::dep::*;
@@ -103,7 +106,9 @@ mod connector {
             task::spawn(async move {
                 match action.wait_pre_establish().await {
                     ConnectStreamState::PreEstablish => match action.continue_connect().await {
-                        Ok(_) => {}
+                        Ok(selector) => {
+                            let _ = stream.as_ref().establish_with(selector, &stream).await;
+                        }
                         Err(err) => {
                             let _ = stream.as_ref().cancel_connecting_with(&err);
                         }
@@ -142,7 +147,9 @@ mod connector {
             task::spawn(async move {
                 match action.wait_pre_establish().await {
                     ConnectStreamState::PreEstablish => match action.continue_connect().await {
-                        Ok(_) => {}
+                        Ok(selector) => {
+                            let _ = stream.as_ref().establish_with(selector, &stream).await;
+                        }
                         Err(err) => {
                             let _ = stream.as_ref().cancel_connecting_with(&err);
                         }
@@ -249,7 +256,9 @@ mod connector {
                             match state {
                                 ConnectStreamState::PreEstablish => {
                                     match provider.action.continue_connect().await {
-                                        Ok(_) => {}
+                                        Ok(selector) => {
+                                            let _ = stream.as_ref().establish_with(selector, &stream).await;
+                                        }
                                         Err(err) => {
                                             let _ = stream.as_ref().cancel_connecting_with(&err);
                                         }
@@ -372,7 +381,7 @@ enum StreamStateImpl {
 struct PackageStreamProviderSelector {}
 pub enum StreamProviderSelector {
     Package(IncreaseId /*remote id*/, Option<SessionData>),
-    Tcp(async_std::net::TcpStream, AesKey),
+    Tcp(async_std::net::TcpStream, MixAesKey, Option<TcpAckConnection>),
 }
 
 pub struct StreamContainerImpl {
@@ -382,6 +391,7 @@ pub struct StreamContainerImpl {
     local_id: IncreaseId,
     sequence: TempSeq,
     state: RwLock<StreamStateImpl>,
+    answer_data: RwLock<Option<Vec<u8>>>,
 }
 
 impl fmt::Display for StreamContainerImpl {
@@ -413,6 +423,7 @@ impl StreamContainerImpl {
             local_id,
             sequence: sequence,
             state: RwLock::new(StreamStateImpl::Initial),
+            answer_data: RwLock::new(None)
         };
 
         StreamContainer(Arc::new(stream_impl))
@@ -553,19 +564,47 @@ impl StreamContainerImpl {
             e
         })?;
 
-        let (provider, provider_stub) = match selector {
-            StreamProviderSelector::Package(remote_id, _session_data) => {
+        let (provider, provider_stub, answer_data) = match selector {
+            StreamProviderSelector::Package(remote_id, ack) => {
+                let answer_data = match ack {
+                    Some(session_data) => {
+                        if session_data.payload.as_ref().len() > 0 {
+                            let mut answer = vec![0; session_data.payload.as_ref().len()];
+                            answer.copy_from_slice(session_data.payload.as_ref());
+                            answer
+                        } else {
+                            vec![]
+                        }
+                    },
+                    _ => vec![],
+                };
+
                 let stream = PackageStream::new(self, self.local_id.clone(), remote_id)?;
                 (
                     Box::new(stream.clone()) as Box<dyn StreamProvider>,
                     Box::new(stream) as Box<dyn StreamProvider>,
+                    answer_data,
                 )
             }
-            StreamProviderSelector::Tcp(socket, key) => {
-                let stream = TcpStream::new(arc_self.clone(), socket, key)?;
+            StreamProviderSelector::Tcp(socket, key, ack) => {
+                let answer_data = match ack {
+                    Some(tcp_ack_connection) => {
+                        if tcp_ack_connection.payload.as_ref().len() > 0 {
+                            let mut answer = vec![0; tcp_ack_connection.payload.as_ref().len()];
+                            answer.copy_from_slice(tcp_ack_connection.payload.as_ref());
+                            answer
+                        } else {
+                            vec![]
+                        }
+                    },
+                    _ => vec![],
+                };
+
+                let stream = TcpStream::new(arc_self.clone(), socket, key.enc_key)?;
                 (
                     Box::new(stream.clone()) as Box<dyn StreamProvider>,
                     Box::new(stream) as Box<dyn StreamProvider>,
+                    answer_data,
                 )
             }
         };
@@ -591,6 +630,12 @@ impl StreamContainerImpl {
                         remote_timestamp,
                         provider: provider_stub,
                     });
+
+                    if answer_data.len() > 0 {
+                        let data = &mut *self.answer_data.write().unwrap();
+                        *data = Some(answer_data);
+                    }
+
                     Ok(waiter)
                 }
             },
@@ -706,7 +751,7 @@ impl StreamContainerImpl {
         }
         .map(|question| {
             let mut session = SessionData::new();
-            session.stream_pos = 1;
+            session.stream_pos = 0;
             session.syn_info = Some(SessionSynInfo {
                 sequence: self.sequence,
                 from_session_id: self.local_id.clone(),
@@ -734,13 +779,13 @@ impl StreamContainerImpl {
         }
         .map(|remote_id| {
             let mut session = SessionData::new();
-            session.stream_pos = 1;
+            session.stream_pos = 0;
             session.syn_info = Some(SessionSynInfo {
                 sequence: self.sequence,
                 from_session_id: self.local_id.clone(),
                 to_vport: 0,
             });
-            session.ack_stream_pos = 1; //TODO
+            session.ack_stream_pos = 0;
             session.send_time = bucky_time_now();
             session.flags_add(SESSIONDATA_FLAG_SYN | SESSIONDATA_FLAG_ACK);
             session.to_session_id = Some(remote_id.clone());
@@ -771,17 +816,15 @@ impl StreamContainerImpl {
                 result: 0u8,
                 to_vport: self.remote_port,
                 from_session_id: self.local_id,
-                from_device_id: local_device.desc().device_id(),
                 from_device_desc: local_device,
                 to_device_id: self.tunnel().remote().clone(),
-                proxy_device_id: None,
                 reverse_endpoint: None,
                 payload: TailedOwnedData::from(question),
             }
         })
     }
 
-    pub fn ack_tcp_stream(&self, _answer: &[u8]) -> Option<TcpAckConnection> {
+    pub fn ack_tcp_stream(&self, answer: &[u8]) -> Option<TcpAckConnection> {
         {
             match &*self.state.read().unwrap() {
                 StreamStateImpl::Connecting(connecting) => match connecting {
@@ -793,12 +836,17 @@ impl StreamContainerImpl {
                 _ => None,
             }
         }
-        .map(|remote_id| TcpAckConnection {
-            sequence: self.sequence,
-            to_session_id: remote_id,
-            result: TCP_ACK_CONNECTION_RESULT_OK,
-            to_device_desc: Stack::from(&self.stack).local().clone(),
-            payload: TailedOwnedData::from(Vec::new()),
+        .map(|remote_id| {
+            let mut payload = vec![0u8; answer.len()];
+            payload.copy_from_slice(answer);
+
+            TcpAckConnection {
+                sequence: self.sequence,
+                to_session_id: remote_id,
+                result: TCP_ACK_CONNECTION_RESULT_OK,
+                to_device_desc: Stack::from(&self.stack).local().clone(),
+                payload: TailedOwnedData::from(payload),
+            }
         })
     }
 
@@ -878,6 +926,13 @@ pub struct StreamContainer(Arc<StreamContainerImpl>);
 
 impl StreamContainer {
     pub async fn confirm(&self, answer: &[u8]) -> Result<(), BuckyError> {
+        if answer.len() > ANSWER_MAX_LEN {
+            return Err(BuckyError::new(
+                BuckyErrorCode::Failed,
+                format!("answer's length large than {}", ANSWER_MAX_LEN),
+            ));
+        }
+
         let builder = {
             let state = &*self.0.state.read().unwrap();
             match state {
@@ -952,23 +1007,91 @@ impl StreamContainer {
         }
     }
 
+    fn has_first_answer(&self) -> bool {
+        self.0.answer_data.read().unwrap().is_some()
+    }
+
+    fn read_first_answer(&self, buf: &mut [u8]) -> usize {
+        if self.has_first_answer() {
+            let answer_data = &mut *self.0.answer_data.write().unwrap();
+            match answer_data {
+                Some(answer_buf) => {
+                    let mut read_len = answer_buf.len();
+                    if read_len > buf.len() {
+                        read_len = buf.len();
+                    }
+        
+                    buf[..read_len].copy_from_slice(&answer_buf[..read_len]);
+        
+                    if read_len == answer_buf.len() {
+                        *answer_data = None;
+                    } else {
+                        let data = &answer_buf[read_len..];
+
+                        *answer_data = Some(data.to_vec())
+                    }
+        
+                    read_len
+                },
+                None => 0
+            }
+        } else {
+            0
+        }
+    }
+
     fn poll_read(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<std::io::Result<usize>> {
         debug!("{} poll read {} bytes", self.as_ref(), buf.len());
-        self.poll_io_wait_establish(cx.waker().clone(), true, |provider| {
+        let read_len = self.read_first_answer(buf);
+        if read_len > 0 {
+            return Poll::Ready(Ok(read_len));
+        }
+
+        let provider = {
+            let state = &*self.0.state.read().unwrap();
+            match state {
+                StreamStateImpl::Initial | StreamStateImpl::Connecting(_) => {
+                    trace!(
+                        "{} poll-write in initial/connecting.",
+                        self.as_ref(),
+                    );
+                    None
+                }, 
+                StreamStateImpl::Establish(s) => Some(s.provider.clone_as_provider()),
+                StreamStateImpl::Closing(s) => Some(s.provider.clone_as_provider()), 
+                _ => {
+                    return Poll::Ready(Ok(0));
+                }
+            }
+        };
+        
+        if let Some (provider) = provider {
+            let read_len = self.read_first_answer(buf);
+            if read_len > 0 {
+                return Poll::Ready(Ok(read_len));
+            }
             provider.poll_read(cx, buf)
-        })
+        } else {
+            let waker = cx.waker().clone();
+            let container_impl = self.0.clone();
+            task::spawn(async move {
+                let _ = container_impl.wait_establish().await;
+                waker.wake();
+            });
+            Poll::Pending
+        }
     }
 
     fn poll_write(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
         debug!("{} poll write {} bytes", self.as_ref(), buf.len());
-        self.poll_io_wait_establish(cx.waker().clone(), false, |provider| {
+        self.poll_write_wait_establish(cx.waker().clone(), |provider| {
             provider.poll_write(cx, buf)
         })
     }
 
     fn poll_flush(&self, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         debug!("{} poll flush", self.as_ref());
-        self.poll_io_wait_establish(cx.waker().clone(), false, |provider| {
+        self.poll_write_wait_establish(cx.waker().clone(), |provider| {
             provider.poll_flush(cx)
         })
     }
@@ -1045,10 +1168,9 @@ impl StreamContainer {
         }
     }
 
-    fn poll_io_wait_establish<R>(
+    fn poll_write_wait_establish<R>(
         &self,
         waker: Waker,
-        is_read: bool,
         mut proc: impl FnMut(&dyn StreamProvider) -> Poll<std::io::Result<R>>,
     ) -> Poll<std::io::Result<R>> {
         let provider = {
@@ -1057,18 +1179,13 @@ impl StreamContainer {
                 StreamStateImpl::Establish(s) => Some(s.provider.clone_as_provider()),
                 StreamStateImpl::Initial | StreamStateImpl::Connecting(_) => {
                     trace!(
-                        "{} poll-io(read:{}) in initial/connecting.",
+                        "{} poll-write in initial/connecting.",
                         self.as_ref(),
-                        is_read
                     );
                     None
-                }
-                StreamStateImpl::Closing(s) if is_read => {
-                    trace!("{} poll-io(read:{}) in closing.", self.as_ref(), is_read);
-                    Some(s.provider.clone_as_provider())
-                }
+                }, 
                 _ => {
-                    let msg = format!("{} poll-io(read:{}) in closed.", self.as_ref(), is_read);
+                    let msg = format!("{} poll-write in close.", self.as_ref());
                     error!("{}", msg);
                     return Poll::Ready(Err(std::io::Error::new(ErrorKind::NotConnected, msg)));
                 }

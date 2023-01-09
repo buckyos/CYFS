@@ -1,5 +1,6 @@
 use super::super::acl::*;
 use super::super::handler::*;
+use super::super::validate::NONGlobalStateValidatorProcessor;
 use super::fail_handler::NONOutputFailHandleProcessor;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -20,17 +21,16 @@ pub(crate) struct NONLevelInputProcessor {
 }
 
 impl NONLevelInputProcessor {
-    pub(crate) fn new_raw(
+    fn new_raw(
         acl: AclManagerRef,
-        // 使用无权限的noc processor
-        raw_noc_processor: NONInputProcessorRef,
+        noc_processor: NONInputProcessorRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
         router_handlers: RouterHandlersManager,
     ) -> NONInputProcessorRef {
         let ret = Self {
             acl,
-            noc: raw_noc_processor,
+            noc: noc_processor,
             forward,
             fail_handler,
             router_handlers,
@@ -39,6 +39,7 @@ impl NONLevelInputProcessor {
         Arc::new(Box::new(ret))
     }
 
+    // processor with zone acl + rmeta acl + validate
     pub(crate) fn new_zone(
         acl: AclManagerRef,
         raw_noc_processor: NONInputProcessorRef,
@@ -46,22 +47,27 @@ impl NONLevelInputProcessor {
         fail_handler: ObjectFailHandler,
         router_handlers: RouterHandlersManager,
     ) -> NONInputProcessorRef {
+        // shoule use validate
+        let validate_noc_processor =
+        NONGlobalStateValidatorProcessor::new(acl.global_state_validator().clone(), raw_noc_processor);
+
+        // should process with rmeta
+        let rmeta_processor =
+            NONGlobalStateMetaAclInputProcessor::new(acl.clone(), validate_noc_processor);
+
         // 不带input acl的处理器
-        let raw_processor = Self::new_raw(
+        let non_processor = Self::new_raw(
             acl.clone(),
-            raw_noc_processor,
+            rmeta_processor,
             forward,
             fail_handler,
             router_handlers,
         );
 
-        // 带同zone input acl的处理器
-        let acl_processor = NONAclInnerInputProcessor::new(acl, raw_processor.clone());
+        // with zone input acl
+        let acl_processor = NONZoneAclInputProcessor::new(non_processor);
 
-        // 使用acl switcher连接
-        let processor = NONInputAclSwitcher::new(acl_processor, raw_processor);
-
-        processor
+        acl_processor
     }
 
     async fn get_forward(&self, target: DeviceId) -> BuckyResult<NONInputProcessorRef> {
@@ -74,9 +80,6 @@ impl NONLevelInputProcessor {
         // 增加一层错误监测处理
         let processor =
             NONOutputFailHandleProcessor::new(target.clone(), self.fail_handler.clone(), processor);
-
-        // 限定同zone权限
-        let processor = NONAclInnerOutputProcessor::new(self.acl.clone(), target, processor);
 
         // 转换为input processor
         let input_processor = NONInputTransformer::new(processor);
@@ -157,6 +160,16 @@ impl NONLevelInputProcessor {
         processor.get_object(req).await
     }
 
+    pub async fn post_object(
+        &self,
+        req: NONPostObjectInputRequest,
+    ) -> BuckyResult<NONPostObjectInputResponse> {
+        debug!("will post object from non: {}", req);
+
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.post_object(req).await
+    }
+
     pub async fn select_object(
         &self,
         req: NONSelectObjectInputRequest,
@@ -198,13 +211,7 @@ impl NONInputProcessor for NONLevelInputProcessor {
         &self,
         req: NONPostObjectInputRequest,
     ) -> BuckyResult<NONPostObjectInputResponse> {
-        let msg = format!(
-            "post_object not support on non level! id={}",
-            req.object.object_id
-        );
-        error!("{}", msg);
-
-        Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
+        NONLevelInputProcessor::post_object(&self, req).await
     }
 
     async fn select_object(

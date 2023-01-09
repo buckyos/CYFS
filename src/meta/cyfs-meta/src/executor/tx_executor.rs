@@ -27,6 +27,7 @@ pub struct TxExecutor {
     pub event_manager: EventManagerWeakRef,
     pub union_withdraw_manager: UnionWithdrawManagerWeakRef,
     pub nft_auction: NFTAuctionWeakRef,
+    pub ref_archive: ArchiveWeakRef,
     pub evm_config: evm::Config,
     pub mint_url: String,
     pub miner_key: Option<PrivateKey>,
@@ -42,6 +43,7 @@ impl TxExecutor {
                , event_manager: &EventManagerRef
                , union_withdraw_manager: &UnionWithdrawManagerRef
                , nft_auction: &NFTAuctionRef
+               , archive: &ArchiveRef
                , mint_url: String
                , miner_key: Option<PrivateKey>
                , miner_id: ObjectId
@@ -51,6 +53,7 @@ impl TxExecutor {
             let weak_ref_state = weak_ref_state.clone();
             Box::pin(async move {
                 if let Event::NFTCancelApplyBuy(event) = event {
+                    log::info!("nft {} user {} cancel apply buy", event.nft_id.to_string(), event.user_id.to_string());
                     let ret = weak_ref_state.to_rc()?.nft_get_apply_buy(&event.nft_id, &event.user_id).await?;
                     if ret.is_some() {
                         let (price, coin_id) = ret.unwrap();
@@ -62,6 +65,23 @@ impl TxExecutor {
                 }
             })
         });
+        let weak_ref_state = StateRef::downgrade(state);
+        event_manager.register_listener(EventType::NFTStopSell, move |_cur_block: BlockDesc, event: Event| {
+            let weak_ref_state = weak_ref_state.clone();
+            Box::pin(async move {
+                if let Event::NFTStopSell(event) = event {
+                    log::info!("nft {} stop sell", event.nft_id.to_string());
+                    let (_, _, state) = weak_ref_state.to_rc()?.nft_get(&event.nft_id).await?;
+                    if let NFTState::Selling(_) = state {
+                        let new_state = NFTState::Normal;
+                        weak_ref_state.to_rc()?.nft_update_state(&event.nft_id, &new_state).await?;
+                    }
+                    Ok(EventResult::new(0, Vec::new()))
+                } else {
+                    Err(meta_err!(ERROR_INVALID))
+                }
+            })
+        });
         TxExecutor {
             ref_state: StateRef::downgrade(state),
             config: ConfigRef::downgrade(config),
@@ -70,6 +90,7 @@ impl TxExecutor {
             event_manager: EventManagerRef::downgrade(event_manager),
             union_withdraw_manager: UnionWithdrawManagerRef::downgrade(union_withdraw_manager),
             nft_auction: NFTAuctionRef::downgrade(nft_auction),
+            ref_archive: ArchiveRef::downgrade(archive),
             evm_config: evm::Config::istanbul(),    // 先把evm的config创建在这里，以后能自己设置了，应该是外边传进来的
             mint_url,
             miner_key,
@@ -124,12 +145,7 @@ impl TxExecutor {
                     // 给0号主币充值
                     self.ref_state
                         .to_rc()?
-                        .inc_balance(&CoinTokenId::Coin(0), caller.id(), 10000000000)
-                        .await?;
-                    // 给1号主币也充这么多
-                    self.ref_state
-                        .to_rc()?
-                        .inc_balance(&CoinTokenId::Coin(1), caller.id(), 10000000000)
+                        .inc_balance(&CoinTokenId::Coin(0), caller.id(), 100000000)
                         .await?;
                 } else if let SavedMetaObject::Device(_) = &desc {
                     self.ref_state
@@ -145,6 +161,7 @@ impl TxExecutor {
         self.ref_state.to_rc()?.dec_balance(&CoinTokenId::Coin(tx.desc().content().gas_coin_id), caller.id(), total_fee).await.map_err(|_| crate::meta_err!(ERROR_INVALID))?;
 
         let mut context = ExecuteContext::new(&self.ref_state.to_rc()?,
+                                              &self.ref_archive.to_rc()?,
                                               owner_block,
                                               caller,
                                               &self.config.to_rc()?,
@@ -348,6 +365,9 @@ impl TxExecutor {
                 },
                 MetaTxBody::NFTSetNameTx(tx) => {
                     result = self.execute_nft_set_name(&mut context, tx).await;
+                },
+                MetaTxBody::NFTTrans(tx) => {
+                    result = self.execute_nft_trans(&mut context, tx).await;
                 }
                 _ => {
                     error!("execute unsupport transcation");
@@ -397,7 +417,7 @@ impl TxExecutor {
 
 #[cfg(test)]
 mod tx_executor_tests {
-    use crate::{BlockDescContent, NFTAuction, sql_storage_tests, State};
+    use crate::{BlockDescContent, new_archive_storage, NFTAuction, sql_storage_tests, State};
     use crate::executor::context::{Config, UnionWithdrawManager};
     use crate::events::event_manager::EventManager;
     use crate::rent::rent_manager::RentManager;
@@ -407,6 +427,7 @@ mod tx_executor_tests {
     use crate::executor::tx_executor::TxExecutor;
     use std::str::FromStr;
     use std::convert::TryFrom;
+    use std::path::Path;
     use std::time::Duration;
     use cyfs_core::{NFTList, NFTListObject};
 
@@ -424,7 +445,7 @@ mod tx_executor_tests {
             let union_withdraw_manager = UnionWithdrawManager::new(&state, &config, &event_manager);
             let nft_auction = NFTAuction::new(&state, &config, &event_manager);
             let executor = TxExecutor::new(&state, &config, &rent_manager, &auction, &event_manager,
-                                           &union_withdraw_manager, &nft_auction, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
+                                           &union_withdraw_manager, &nft_auction, new_archive_storage(Path::new(""), false).create_archive(false).await, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
 
             let baseid1 = ObjectId::from_str("5r4MYfF7qVAbn1gdNy9JaNQUW5DfFM8yD3pnwFWY8nn6").unwrap();
 
@@ -602,7 +623,7 @@ mod tx_executor_tests {
             let union_withdraw_manager = UnionWithdrawManager::new(&state, &config, &event_manager);
             let nft_auction = NFTAuction::new(&state, &config, &event_manager);
             let executor = TxExecutor::new(&state, &config, &rent_manager, &auction, &event_manager,
-                                           &union_withdraw_manager, &nft_auction, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
+                                           &union_withdraw_manager, &nft_auction, new_archive_storage(Path::new(""), false).create_archive(false).await, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
 
             let baseid1 = ObjectId::from_str("5r4MYfF7qVAbn1gdNy9JaNQUW5DfFM8yD3pnwFWY8nn6").unwrap();
 
@@ -895,7 +916,7 @@ mod tx_executor_tests {
                 let union_withdraw_manager = UnionWithdrawManager::new(&state, &config, &event_manager);
                 let nft_auction = NFTAuction::new(&state, &config, &event_manager);
                 let executor = TxExecutor::new(&state, &config, &rent_manager, &auction, &event_manager,
-                                               &union_withdraw_manager, &nft_auction, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
+                                               &union_withdraw_manager, &nft_auction, new_archive_storage(Path::new(""), false).create_archive(false).await, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
 
                 if i == 1 {
                     state.inc_balance(&ctid, &id1, 300).await.unwrap();
@@ -962,7 +983,7 @@ mod tx_executor_tests {
             let union_withdraw_manager = UnionWithdrawManager::new(&state, &config, &event_manager);
             let nft_auction = NFTAuction::new(&state, &config, &event_manager);
             let executor = TxExecutor::new(&state, &config, &rent_manager, &auction, &event_manager,
-                                           &union_withdraw_manager, &nft_auction, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
+                                           &union_withdraw_manager, &nft_auction, new_archive_storage(Path::new(""), false).create_archive(false).await, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
 
             let baseid1 = ObjectId::from_str("5r4MYfF7qVAbn1gdNy9JaNQUW5DfFM8yD3pnwFWY8nn4").unwrap();
 
@@ -1447,7 +1468,7 @@ mod tx_executor_tests {
             let union_withdraw_manager = UnionWithdrawManager::new(&state, &config, &event_manager);
             let nft_auction = NFTAuction::new(&state, &config, &event_manager);
             let executor = TxExecutor::new(&state, &config, &rent_manager, &auction, &event_manager,
-                                           &union_withdraw_manager, &nft_auction, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
+                                           &union_withdraw_manager, &nft_auction, new_archive_storage(Path::new(""), false).create_archive(false).await, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
 
             let baseid1 = ObjectId::from_str("5r4MYfF7qVAbn1gdNy9JaNQUW5DfFM8yD3pnwFWY8nn4").unwrap();
 
@@ -1567,7 +1588,7 @@ mod tx_executor_tests {
     pub fn init_test_log() {
         let mut init_log = INIT_LOG.lock().unwrap();
         if !*init_log {
-            cyfs_base::init_log("test_dsg_client", None);
+            cyfs_util::init_log("test_dsg_client", None);
         }
         *init_log = true;
     }
@@ -1596,7 +1617,7 @@ mod tx_executor_tests {
             let union_withdraw_manager = UnionWithdrawManager::new(&state, &config, &event_manager);
             let nft_auction = NFTAuction::new(&state, &config, &event_manager);
             let executor = TxExecutor::new(&state, &config, &rent_manager, &auction, &event_manager,
-                                           &union_withdraw_manager, &nft_auction, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
+                                           &union_withdraw_manager, &nft_auction, new_archive_storage(Path::new(""), false).create_archive(false).await, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
 
             let baseid1 = ObjectId::from_str("5r4MYfF7qVAbn1gdNy9JaNQUW5DfFM8yD3pnwFWY8nn4").unwrap();
 
@@ -1708,7 +1729,7 @@ mod tx_executor_tests {
                     , chunk_list.clone()).create_time(now).build();
                 nft_list5.push(file.into_desc());
                 names5.push(format!("test_{}", i));
-                sell_list5.push(NFTState::Selling((1, CoinTokenId::Coin(0))));
+                sell_list5.push(NFTState::Selling((1, CoinTokenId::Coin(0), 0)));
             }
             let nft_list5 = NFTList::new(id1.clone(), nft_list5);
             let nft_list_id5 = nft_list.desc().calculate_id();
@@ -1871,7 +1892,7 @@ mod tx_executor_tests {
                         , MetaTxBody::NFTCreate2(NFTCreateTx2 {
                             desc: NFTDesc::ListDesc(nft_list5.desc().clone()),
                             name: "test".to_string(),
-                            state: NFTState::Selling((0, CoinTokenId::Coin(0))),
+                            state: NFTState::Selling((0, CoinTokenId::Coin(0), 0)),
                             sub_names: names5.clone(),
                             sub_states: vec![]
                         })
@@ -1892,7 +1913,7 @@ mod tx_executor_tests {
                         , MetaTxBody::NFTCreate2(NFTCreateTx2 {
                             desc: NFTDesc::ListDesc(nft_list5.desc().clone()),
                             name: "test".to_string(),
-                            state: NFTState::Selling((1, CoinTokenId::Coin(0))),
+                            state: NFTState::Selling((1, CoinTokenId::Coin(0), 0)),
                             sub_names: names.clone(),
                             sub_states: sell_list5.clone()
                         })
@@ -1996,6 +2017,7 @@ mod tx_executor_tests {
                             nft_id: file_id.clone(),
                             price: 1,
                             coin_id: CoinTokenId::Coin(0),
+                            duration_block_num: 0
                         })
                         , Vec::new()
                     ).build();
@@ -2046,7 +2068,7 @@ mod tx_executor_tests {
             let union_withdraw_manager = UnionWithdrawManager::new(&state, &config, &event_manager);
             let nft_auction = NFTAuction::new(&state, &config, &event_manager);
             let executor = TxExecutor::new(&state, &config, &rent_manager, &auction, &event_manager,
-                                           &union_withdraw_manager, &nft_auction, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
+                                           &union_withdraw_manager, &nft_auction, new_archive_storage(Path::new(""), false).create_archive(false).await, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
 
             let baseid1 = ObjectId::from_str("5r4MYfF7qVAbn1gdNy9JaNQUW5DfFM8yD3pnwFWY8nn4").unwrap();
 
@@ -2275,6 +2297,7 @@ mod tx_executor_tests {
                             nft_id: nft_list.desc().calculate_id(),
                             price: 1,
                             coin_id: CoinTokenId::Coin(0),
+                            duration_block_num: 0
                         })
                         , Vec::new()
                     ).build();
@@ -2356,6 +2379,7 @@ mod tx_executor_tests {
                             nft_id: nft_list.desc().calculate_id(),
                             price: 1,
                             coin_id: CoinTokenId::Coin(0),
+                            duration_block_num: 0
                         })
                         , Vec::new()
                     ).build();
@@ -2404,7 +2428,7 @@ mod tx_executor_tests {
             let union_withdraw_manager = UnionWithdrawManager::new(&state, &config, &event_manager);
             let nft_auction = NFTAuction::new(&state, &config, &event_manager);
             let executor = TxExecutor::new(&state, &config, &rent_manager, &auction, &event_manager,
-                                           &union_withdraw_manager, &nft_auction, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
+                                           &union_withdraw_manager, &nft_auction, new_archive_storage(Path::new(""), false).create_archive(false).await, "http://127.0.0.1:11998".to_owned(), None, ObjectId::default(), true);
 
             let baseid1 = ObjectId::from_str("5r4MYfF7qVAbn1gdNy9JaNQUW5DfFM8yD3pnwFWY8nn4").unwrap();
 

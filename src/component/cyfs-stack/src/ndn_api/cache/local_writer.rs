@@ -6,7 +6,8 @@ use cyfs_util::cache::{NamedDataCache, TrackerCache};
 
 use futures::AsyncWriteExt;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 pub struct LocalFileWriter {
     file_path: PathBuf,

@@ -7,6 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::error::Error;
 use std::fmt::{self, Debug, Display};
 use std::io::ErrorKind;
+// use std::process::{ExitCode, Termination};
 
 // 系统的内置error code范围 [BUCKY_SYSTEM_ERROR_CODE_START, BUCKY_SYSTEM_ERROR_CODE_END)
 pub const BUCKY_SYSTEM_ERROR_CODE_START: u16 = 0;
@@ -92,6 +93,8 @@ pub enum BuckySystemErrorCode {
     Conflict = 50,
 
     OutofSessionLimit = 60,
+
+    Redirect = 66,
 
     MongoDBError = 99,
     SqliteError = 100,
@@ -203,6 +206,8 @@ pub enum BuckyErrorCode {
 
     OutofSessionLimit,
 
+    Redirect,
+
     MongoDBError,
     SqliteError,
     UrlError,
@@ -290,6 +295,7 @@ impl Into<BuckySystemErrorCode> for BuckyErrorCode {
             Self::Conflict => BuckySystemErrorCode::Conflict,
 
             Self::OutofSessionLimit => BuckySystemErrorCode::OutofSessionLimit,
+            Self::Redirect => BuckySystemErrorCode::Redirect,
 
             Self::MongoDBError => BuckySystemErrorCode::MongoDBError,
             Self::SqliteError => BuckySystemErrorCode::SqliteError,
@@ -377,6 +383,8 @@ impl Into<BuckyErrorCode> for BuckySystemErrorCode {
             Self::Conflict => BuckyErrorCode::Conflict,
 
             Self::OutofSessionLimit => BuckyErrorCode::OutofSessionLimit,
+
+            Self::Redirect => BuckyErrorCode::Redirect,
 
             Self::MongoDBError => BuckyErrorCode::MongoDBError,
             Self::SqliteError => BuckyErrorCode::SqliteError,
@@ -1211,7 +1219,13 @@ impl Into<ErrorKind> for BuckyErrorCode {
         }
     }
 }
-
+/*
+impl Termination for BuckyError {
+    fn report(self) -> ExitCode {
+        ExitCode::from(self.code.into_u8())
+    }
+}
+*/
 #[cfg(test)]
 mod tests {
     use crate::*;

@@ -1,3 +1,5 @@
+extern crate core;
+
 pub use chain::{Chain, Miner};
 pub use creator::*;
 pub use cyfs_base_meta::*;
@@ -9,6 +11,7 @@ pub use network::*;
 pub use server::*;
 pub use state_storage::*;
 pub use nft_auction::*;
+pub use archive_storage::*;
 
 mod tmp_manager;
 mod state_storage;
@@ -18,6 +21,7 @@ mod creator;
 mod name_auction;
 mod events;
 mod rent;
+mod archive_storage;
 #[macro_use]
 mod helper;
 mod mint;

@@ -2,8 +2,9 @@ use log::*;
 use std::{
     time::Duration, 
     collections::LinkedList, 
+    sync::Mutex
 };
-use cyfs_debug::{Mutex};
+// use cyfs_debug::{Mutex};
 use async_std::{
     task, 
     future, 
@@ -12,7 +13,7 @@ use async_std::{
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*
+    protocol::{*, v0::*}
 };
 use super::{
     recv_queue::RecvQueue, 
@@ -404,5 +405,27 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Read
             to_wake.wake();
         }
         Ok(OnPackageResult::Handled)
+    }
+}
+
+
+
+
+#[test]
+fn profile_debug_mutex() {
+    for i in 0..10000 {
+        use cyfs_debug::Mutex;
+        let m = Mutex::new(i);
+        *cyfs_debug::lock!(m).unwrap() = 0;
+    }
+}
+
+
+#[test]
+fn profile_mutex() {
+    for i in 0..10000 {
+        use std::sync::Mutex;
+        let m = Mutex::new(i);
+        *m.lock().unwrap() = 0;
     }
 }

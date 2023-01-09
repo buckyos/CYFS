@@ -1,12 +1,10 @@
+use super::gateway_monitor::GATEWAY_MONITOR;
 use crate::config::{init_system_config, DeviceConfigManager};
 use crate::service::ServiceMode;
 use crate::service::SERVICE_MANAGER;
 use cyfs_base::BuckyResult;
 use cyfs_util::*;
-use ood_control::{
-    ControlInterface, ControlInterfaceAddrType, ControlInterfaceParam, OODControlMode,
-    OOD_CONTROLLER,
-};
+use ood_control::OOD_CONTROLLER;
 
 use async_std::task;
 use futures::future::{AbortHandle, Abortable};
@@ -32,44 +30,25 @@ impl EventListenerSyncRoutine<(), ()> for BindNotify {
 pub struct Daemon {
     mode: ServiceMode,
     device_config_manager: DeviceConfigManager,
+    no_monitor: bool,
 }
 
 impl Daemon {
     // add code here
-    pub fn new(mode: ServiceMode) -> Daemon {
+    pub fn new(mode: ServiceMode, no_monitor: bool) -> Self {
         let device_config_manager = DeviceConfigManager::new();
 
-        Daemon {
+        Self {
             mode,
             device_config_manager,
+            no_monitor,
         }
     }
 
-    pub async fn run(&mut self) -> BuckyResult<()> {
+    pub async fn run(&self) -> BuckyResult<()> {
         init_system_config().await?;
 
         self.device_config_manager.init().await?;
-
-        let control_mode = match self.mode {
-            ServiceMode::Daemon => Some(OODControlMode::Daemon),
-            ServiceMode::Runtime => Some(OODControlMode::Runtime),
-            _ => None,
-        };
-
-        if let Some(mode) = control_mode {
-            let param = ControlInterfaceParam {
-                mode,
-                tcp_port: None,
-                require_access_token: false,
-                tcp_host: None,
-                addr_type: ControlInterfaceAddrType::All,
-            };
-
-            let control_interface = ControlInterface::new(param, &OOD_CONTROLLER);
-            if let Err(e) = control_interface.start().await {
-                return Err(e);
-            }
-        }
 
         // 关注绑定事件
         let notify = BindNotify {
@@ -77,12 +56,14 @@ impl Daemon {
         };
         OOD_CONTROLLER.bind_event().on(Box::new(notify.clone()));
 
+        let _ = GATEWAY_MONITOR.init().await;
+
         self.run_check_loop(notify).await;
 
         Ok(())
     }
 
-    async fn run_check_loop(&mut self, notify: BindNotify) {
+    async fn run_check_loop(&self, notify: BindNotify) {
         Self::start_check_service_state();
 
         let mut need_load_config = true;
@@ -137,9 +118,13 @@ impl Daemon {
                 );
 
                 // 需要确保ood-daemon-monitor已经启动
-                use crate::monitor::ServiceMonitor;
-                if ServiceMonitor::launch_monitor().is_ok() {
-                    task::sleep(Duration::from_secs(5)).await;
+                if !self.no_monitor {
+                    use crate::monitor::ServiceMonitor;
+                    if ServiceMonitor::launch_monitor().is_ok() {
+                        task::sleep(Duration::from_secs(5)).await;
+                        std::process::exit(0);
+                    }
+                } else {
                     std::process::exit(0);
                 }
             }
@@ -167,7 +152,7 @@ impl Daemon {
     fn start_check_service_state() {
         task::spawn(async move {
             loop {
-                SERVICE_MANAGER.sync_all_service_state();
+                SERVICE_MANAGER.sync_all_service_state().await;
 
                 task::sleep(Duration::from_secs(60)).await;
             }

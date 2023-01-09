@@ -1141,13 +1141,28 @@ pub struct ExpEvaluator {
     rpn: Vec<ExpEvalItem>,
 }
 
-impl std::fmt::Display for ExpEvaluator {
+impl std::fmt::Debug for ExpEvaluator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}, ", self.exp)?;
+        write!(f, "{}", self.exp)?;
 
         Ok(())
     }
 }
+
+impl std::fmt::Display for ExpEvaluator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.exp)?;
+
+        Ok(())
+    }
+}
+
+impl PartialEq for ExpEvaluator {
+    fn eq(&self, other: &Self) -> bool {
+        self.exp() == other.exp()
+    }
+}
+impl Eq for ExpEvaluator {}
 
 impl ExpEvaluator {
     pub fn new(exp: &str, reserved_token_list: &ExpReservedTokenList) -> BuckyResult<Self> {
@@ -1220,7 +1235,7 @@ impl ExpEvaluator {
                         ExpOpArity::Unary => {
                             if operands.len() < 1 {
                                 let msg = format!(
-                                    "exp operator need one operands, got none: exp={}, op={}",
+                                    "exp operator need one operands, got none: exp={}, op='{}'",
                                     exp,
                                     op.to_str()
                                 );
@@ -1232,7 +1247,7 @@ impl ExpEvaluator {
                             let (operand, _) = operands.pop().unwrap();
                             if operand.is_const_token() {
                                 let msg = format!(
-                                    "unary operator not support const token: exp={}, op={}",
+                                    "unary operator not support const token: exp={}, op='{}'",
                                     exp,
                                     op.to_str()
                                 );
@@ -1268,7 +1283,7 @@ impl ExpEvaluator {
                             // 二元运算，至少要有一个关键字或者一个中间结果，不能两个都是常量
                             if left.is_const_token() && right.is_const_token() {
                                 let msg = format!(
-                                    "binary operator not support two const token: exp={}, op={}",
+                                    "binary operator not support two const token: exp={}, op='{}'",
                                     exp,
                                     op.to_str()
                                 );
@@ -1303,7 +1318,7 @@ impl ExpEvaluator {
                                     && !right_value.is_none()
                                     && left_value != right_value
                                 {
-                                    let msg = format!("binary operator left type and right type not equal: exp={}, op={}, left={:?}, right={:?}", 
+                                    let msg = format!("binary operator left type and right type not equal: exp={}, op='{}', left={:?}, right={:?}", 
                                         exp, op.to_str(), left_value, right_value);
                                     error!("{}", msg);
                                     return Err(BuckyError::new(

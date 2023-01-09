@@ -7,7 +7,7 @@ use cyfs_lib::*;
 use std::sync::Arc;
 
 pub(crate) struct RouterEventWebSocketHandler {
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
 
     processor: RouterEventWSProcessor,
 }
@@ -22,7 +22,7 @@ impl Clone for RouterEventWebSocketHandler {
 }
 
 impl RouterEventWebSocketHandler {
-    pub fn new(protocol: NONProtocol, manager: RouterEventsManager) -> Self {
+    pub fn new(protocol: RequestProtocol, manager: RouterEventsManager) -> Self {
         let processor = RouterEventWSProcessor::new(manager);
         Self {
             protocol,
@@ -60,7 +60,7 @@ impl RouterEventWebSocketHandler {
                     if let Some(auth) = auth {
                         auth.check_option_dec(req.dec_id.as_ref(), &source)?;
                     }
-                    
+
                     self.on_remove_event_request(req).map(|v| Some(v))
                 }
             }

@@ -3,7 +3,7 @@ use cyfs_base::*;
 use std::convert::TryFrom;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Debug)]
 pub enum SnServiceGrade {
     None = 0,
     Discard = 1,
@@ -88,7 +88,7 @@ impl<'de> RawDecode<'de> for SnServiceGrade {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum SnServiceReceiptVersion {
     Invalid = 0,
     Current = 1,
@@ -177,7 +177,7 @@ impl RawEncode for SnServiceReceiptSignature {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct SnServiceReceipt {
     pub version: SnServiceReceiptVersion,
     pub grade: SnServiceGrade,
@@ -317,6 +317,7 @@ impl<'de> RawDecode<'de> for SnServiceReceipt {
     }
 }
 
+#[derive(Debug)]
 pub struct ReceiptWithSignature(SnServiceReceipt, Signature);
 
 impl ReceiptWithSignature {

@@ -96,6 +96,10 @@ impl GlobalStateRequestor {
             }
         }
 
+        if let Some(target_dec_id) = &com_req.target_dec_id {
+            http_req.insert_header(cyfs_base::CYFS_TARGET_DEC_ID, target_dec_id.to_string());
+        }
+
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
         }
@@ -175,6 +179,10 @@ impl GlobalStateRequestor {
 
 #[async_trait::async_trait]
 impl GlobalStateOutputProcessor for GlobalStateRequestor {
+    fn get_category(&self) -> GlobalStateCategory {
+        self.category
+    }
+
     async fn get_current_root(
         &self,
         req: RootStateGetCurrentRootOutputRequest,
@@ -267,6 +275,10 @@ impl OpEnvRequestor {
         http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());
 
         http_req.insert_header(cyfs_base::CYFS_OP_ENV_ACTION, action.to_string());
+
+        if let Some(target_dec_id) = &com_req.target_dec_id {
+            http_req.insert_header(cyfs_base::CYFS_TARGET_DEC_ID, target_dec_id.to_string());
+        }
 
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
@@ -791,12 +803,46 @@ impl OpEnvRequestor {
             Err(e)
         }
     }
+
+    // list
+    fn encode_list_request(&self, req: &OpEnvListOutputRequest) -> Request {
+        let url = self.service_url.join("list").unwrap();
+        let mut http_req = Request::new(Method::Get, url);
+
+        self.encode_common_headers(OpEnvAction::List, &req.common, &mut http_req);
+        RequestorHelper::encode_opt_header_with_encoding(
+            &mut http_req,
+            cyfs_base::CYFS_OP_ENV_PATH,
+            req.path.as_deref(),
+        );
+
+        http_req
+    }
+
+    async fn list(&self, req: OpEnvListOutputRequest) -> BuckyResult<OpEnvListOutputResponse> {
+        let http_req = self.encode_list_request(&req);
+        let mut resp = self.requestor.request(http_req).await?;
+        if resp.status().is_success() {
+            let resp: OpEnvListOutputResponse =
+                RequestorHelper::decode_json_body(&mut resp).await?;
+            info!("list for op_env success: sid={}", self.sid,);
+            Ok(resp)
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!("list for op_env error! sid={}, {}", self.sid, e);
+            Err(e)
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl OpEnvOutputProcessor for OpEnvRequestor {
     fn get_sid(&self) -> u64 {
         self.sid
+    }
+
+    fn get_category(&self) -> GlobalStateCategory {
+        self.category
     }
 
     async fn load(&self, req: OpEnvLoadOutputRequest) -> BuckyResult<()> {
@@ -895,17 +941,21 @@ impl OpEnvOutputProcessor for OpEnvRequestor {
     async fn reset(&self, req: OpEnvResetOutputRequest) -> BuckyResult<()> {
         Self::reset(&self, req).await
     }
+
+    async fn list(&self, req: OpEnvListOutputRequest) -> BuckyResult<OpEnvListOutputResponse> {
+        Self::list(&self, req).await
+    }
 }
 
 #[derive(Clone)]
-pub struct GlobalStateAccessRequestor {
+pub struct GlobalStateAccessorRequestor {
     category: GlobalStateCategory,
     dec_id: Option<SharedObjectStackDecID>,
     requestor: HttpRequestorRef,
     service_url: Url,
 }
 
-impl GlobalStateAccessRequestor {
+impl GlobalStateAccessorRequestor {
     pub fn new_default_tcp(
         category: GlobalStateCategory,
         dec_id: Option<SharedObjectStackDecID>,
@@ -961,11 +1011,11 @@ impl GlobalStateAccessRequestor {
         &self.category
     }
 
-    pub fn into_processor(self) -> GlobalStateAccessOutputProcessorRef {
+    pub fn into_processor(self) -> GlobalStateAccessorOutputProcessorRef {
         Arc::new(Box::new(self))
     }
 
-    pub fn clone_processor(&self) -> GlobalStateAccessOutputProcessorRef {
+    pub fn clone_processor(&self) -> GlobalStateAccessorOutputProcessorRef {
         self.clone().into_processor()
     }
 
@@ -981,6 +1031,10 @@ impl GlobalStateAccessRequestor {
             if let Some(dec_id) = dec_id.get() {
                 http_req.insert_header(cyfs_base::CYFS_DEC_ID, dec_id.to_string());
             }
+        }
+
+        if let Some(target_dec_id) = &com_req.target_dec_id {
+            http_req.insert_header(cyfs_base::CYFS_TARGET_DEC_ID, target_dec_id.to_string());
         }
 
         if let Some(target) = &com_req.target {
@@ -1001,7 +1055,7 @@ impl GlobalStateAccessRequestor {
     // get_object_by_path
     fn encode_get_object_by_path_request(
         &self,
-        req: &RootStateAccessGetObjectByPathOutputRequest,
+        req: &RootStateAccessorGetObjectByPathOutputRequest,
     ) -> Request {
         let url = self.gen_url(&req.inner_path);
 
@@ -1013,12 +1067,12 @@ impl GlobalStateAccessRequestor {
 
     pub async fn decode_get_object_by_path_response(
         resp: &mut Response,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathOutputResponse> {
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathOutputResponse> {
         let object = NONRequestorHelper::decode_get_object_response(resp).await?;
         let root = RequestorHelper::decode_header(resp, cyfs_base::CYFS_ROOT)?;
         let revision = RequestorHelper::decode_header(resp, cyfs_base::CYFS_REVISION)?;
 
-        Ok(RootStateAccessGetObjectByPathOutputResponse {
+        Ok(RootStateAccessorGetObjectByPathOutputResponse {
             object,
             root,
             revision,
@@ -1027,8 +1081,8 @@ impl GlobalStateAccessRequestor {
 
     async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathOutputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathOutputResponse> {
+        req: RootStateAccessorGetObjectByPathOutputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathOutputResponse> {
         debug!("access get_object_by_path: {}", req);
 
         let http_req = self.encode_get_object_by_path_request(&req);
@@ -1053,13 +1107,13 @@ impl GlobalStateAccessRequestor {
     }
 
     // list
-    fn encode_list_request(&self, req: &RootStateAccessListOutputRequest) -> Request {
+    fn encode_list_request(&self, req: &RootStateAccessorListOutputRequest) -> Request {
         let mut url = self.gen_url(&req.inner_path);
         debug!("list url: {}, {}", url, req.inner_path);
 
         {
             let mut querys = url.query_pairs_mut();
-            querys.append_pair("action", &RootStateAccessAction::List.to_string());
+            querys.append_pair("action", &GlobalStateAccessorAction::List.to_string());
 
             if let Some(page_index) = &req.page_index {
                 querys.append_pair("page_index", &page_index.to_string());
@@ -1078,12 +1132,12 @@ impl GlobalStateAccessRequestor {
 
     pub async fn decode_list_response(
         resp: &mut Response,
-    ) -> BuckyResult<RootStateAccessListOutputResponse> {
+    ) -> BuckyResult<RootStateAccessorListOutputResponse> {
         let list = RequestorHelper::decode_json_body(resp).await?;
         let root = RequestorHelper::decode_header(resp, cyfs_base::CYFS_ROOT)?;
         let revision = RequestorHelper::decode_header(resp, cyfs_base::CYFS_REVISION)?;
 
-        Ok(RootStateAccessListOutputResponse {
+        Ok(RootStateAccessorListOutputResponse {
             list,
             root,
             revision,
@@ -1092,8 +1146,8 @@ impl GlobalStateAccessRequestor {
 
     async fn list(
         &self,
-        req: RootStateAccessListOutputRequest,
-    ) -> BuckyResult<RootStateAccessListOutputResponse> {
+        req: RootStateAccessorListOutputRequest,
+    ) -> BuckyResult<RootStateAccessorListOutputResponse> {
         debug!("access list: {}", req);
 
         let http_req = self.encode_list_request(&req);
@@ -1125,18 +1179,18 @@ impl GlobalStateAccessRequestor {
 }
 
 #[async_trait::async_trait]
-impl GlobalStateAccessOutputProcessor for GlobalStateAccessRequestor {
+impl GlobalStateAccessorOutputProcessor for GlobalStateAccessorRequestor {
     async fn get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathOutputRequest,
-    ) -> BuckyResult<RootStateAccessGetObjectByPathOutputResponse> {
+        req: RootStateAccessorGetObjectByPathOutputRequest,
+    ) -> BuckyResult<RootStateAccessorGetObjectByPathOutputResponse> {
         Self::get_object_by_path(self, req).await
     }
 
     async fn list(
         &self,
-        req: RootStateAccessListOutputRequest,
-    ) -> BuckyResult<RootStateAccessListOutputResponse> {
+        req: RootStateAccessorListOutputRequest,
+    ) -> BuckyResult<RootStateAccessorListOutputResponse> {
         Self::list(self, req).await
     }
 }

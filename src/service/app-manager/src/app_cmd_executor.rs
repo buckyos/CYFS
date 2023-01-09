@@ -1,4 +1,5 @@
 use crate::app_controller::{AppActionResult, AppController};
+use crate::app_install_detail::AppInstallDetail;
 use crate::docker_api::*;
 use crate::docker_network_manager::{DockerNetworkManager, CYFS_BRIDGE_NAME};
 use crate::non_helper::*;
@@ -6,7 +7,7 @@ use cyfs_base::*;
 use cyfs_core::*;
 use log::*;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock, atomic::AtomicBool, atomic::Ordering};
 
 const APP_DIR_MAIN_PATH: &str = "/app";
 
@@ -14,18 +15,17 @@ pub struct AppCmdExecutor {
     owner: ObjectId,
     app_controller: Arc<AppController>,
     docker_network_manager: DockerNetworkManager,
-    //app_local_list: Arc<RwLock<Option<AppLocalList>>>,
     status_list: Arc<RwLock<HashMap<DecAppId, Arc<Mutex<AppLocalStatus>>>>>,
     cmd_list: Arc<Mutex<AppCmdList>>,
     non_helper: Arc<NonHelper>,
     use_docker: bool,
+    is_idle: AtomicBool,
 }
 
 impl AppCmdExecutor {
     pub fn new(
         owner: ObjectId,
         app_controller: Arc<AppController>,
-        //app_local_list: Arc<RwLock<Option<AppLocalList>>>,
         status_list: Arc<RwLock<HashMap<DecAppId, Arc<Mutex<AppLocalStatus>>>>>,
         cmd_list: Arc<Mutex<AppCmdList>>,
         non_helper: Arc<NonHelper>,
@@ -40,6 +40,7 @@ impl AppCmdExecutor {
             cmd_list,
             non_helper,
             use_docker,
+            is_idle: AtomicBool::new(true),
         }
     }
 
@@ -55,6 +56,11 @@ impl AppCmdExecutor {
     }
 
     pub async fn execute_cmd(&self) {
+        if let Err(_) = self.is_idle.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst) {
+            info!("executor is working, pass");
+            return;
+        }
+        
         loop {
             let cmd_item;
             let cmd_list_clone;
@@ -122,8 +128,17 @@ impl AppCmdExecutor {
                         }
                     };
                 }
-                None => break,
+                None => {
+                    info!(
+                        "cmd list is empty, executor idle",
+                    );
+                    break;
+                }
             }
+        }
+
+        if let Err(_) = self.is_idle.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
+            warn!("set executor to idle failed.");
         }
     }
 
@@ -135,7 +150,7 @@ impl AppCmdExecutor {
     ) -> BuckyResult<()> {
         let app_id = cmd.app_id();
         let cmd_code = cmd.cmd();
-        //info!("will execute cmd, app: {}, cmd: {:?}", app_id, cmd_code);
+        //info!("will execute cmd, app:{}, cmd: {:?}", app_id, cmd_code);
 
         self.pre_change_status(
             app_id,
@@ -173,7 +188,7 @@ impl AppCmdExecutor {
             if self.use_docker {
                 match self.docker_network_manager.get_valid_app_ip(app_id) {
                     Ok(ip) => {
-                        info!("get ip for app: {}, ip: {}", app_id, ip);
+                        info!("get ip for app:{}, ip: {}", app_id, ip);
                         if let Err(e) = self.register_app(app_id, &ip).await {
                             error!("register app to stack failed, app:{}, err:{}", app_id, e);
                             sub_err = SubErrorCode::RegisterAppFailed;
@@ -292,7 +307,12 @@ impl AppCmdExecutor {
             .install_internal(status.clone(), cmd, retry_count, &ver)
             .await
         {
-            Ok(v) => v,
+            Ok(v) => {
+                //save app install detail to local file when install successfully
+                let mut install_detail = AppInstallDetail::new(app_id);
+                let _ = install_detail.set_install_version(Some(&ver));
+                v
+            }
             Err(e) => {
                 sub_err = e;
                 AppLocalStatusCode::InstallFailed
@@ -394,6 +414,10 @@ impl AppCmdExecutor {
         )
         .await?;
 
+        //set install version to None when uninstall begin
+        let mut install_detail = AppInstallDetail::new(app_id);
+        let _ = install_detail.set_install_version(None);
+
         let web_id;
         let ver;
         {
@@ -404,27 +428,19 @@ impl AppCmdExecutor {
 
         let mut target_status_code = AppLocalStatusCode::Uninstalled;
         let mut sub_err = SubErrorCode::None;
-        if let Err(e) = self.app_controller.uninstall_app(app_id).await {
-            //uninstall务必成功，这里先输出一个警告
-            warn!("uninstall app failed, app:{}, err:{}", app_id, e);
-            target_status_code = AppLocalStatusCode::UninstallFailed;
-            sub_err = e;
-        }
+
         if let Some(obj_id) = web_id {
             let _ = self
                 .non_helper
                 .remove_app_web_dir(app_id, &ver, &obj_id)
                 .await;
-            // if let Ok(dec_app) = self.non_helper.get_dec_app(app_id.object_id(), None).await {
-            //     let _ = self
-            //         .non_helper
-            //         .unregister_app_name(dec_app.name(), app_id)
-            //         .await;
-            //     let _ = self
-            //         .non_helper
-            //         .remove_app_web_dir(app_id, &ver, &obj_id)
-            //         .await;
-            // }
+        }
+
+        if let Err(e) = self.app_controller.uninstall_app(app_id).await {
+            //uninstall务必成功，这里先输出一个警告
+            warn!("uninstall app failed, app:{}, err:{}", app_id, e);
+            target_status_code = AppLocalStatusCode::UninstallFailed;
+            sub_err = e;
         }
 
         let _ = self
@@ -543,7 +559,7 @@ impl AppCmdExecutor {
             if cur_status_code != pre_status {
                 //判断状态是否还是要求的前置状态，如果不是就不改变状态了
                 let err_msg = format!(
-                    "after execute cmd [{:?}], current status is [{}], app: {}, skip change status.",
+                    "after execute cmd [{:?}], current status is [{}], app:{}, skip change status.",
                     cmd_code, cur_status_code, app_id
                 );
                 warn!("{}", err_msg);
@@ -551,7 +567,7 @@ impl AppCmdExecutor {
             }
 
             info!(
-                "after execute cmd [{:?}], change app from [{}] to [{}], app: {}",
+                "after execute cmd [{:?}], change app from [{}] to [{}], app:{}",
                 cmd_code, cur_status_code, target_status_code, app_id
             );
             status.set_sub_error(sub_error);
@@ -629,7 +645,7 @@ impl AppCmdExecutor {
                 let next_status = Self::get_next_status_with_cmd(cmd_code);
                 if let Some(v) = next_status {
                     info!(
-                        "next cmd is {:?}, will change app {} to status: {}",
+                        "next cmd is {:?}, will change app:{} to status: {}",
                         cmd_code, app_id, v
                     );
                 }
@@ -648,7 +664,7 @@ impl AppCmdExecutor {
             let next_status = Self::get_next_status_with_cmd(cmd_code);
             if let Some(v) = next_status {
                 info!(
-                    "next cmd is {:?}, will change app {} to status: {}",
+                    "next cmd is {:?}, will change app:{} to status: {}",
                     cmd_code, app_id, v
                 );
             }

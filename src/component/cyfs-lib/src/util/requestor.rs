@@ -46,34 +46,6 @@ impl UtilRequestor {
         self.clone().into_processor()
     }
 
-    // url支持下面的格式，其中device_id是可选
-    // {host:port}/util/{util_path}/[req_path/]object_id[/inner_path]
-    fn format_url(
-        &self,
-        util_path: &str,
-        req_path: Option<&String>,
-        object_id: Option<&ObjectId>,
-    ) -> Url {
-        let mut parts = vec![];
-        parts.push(util_path);
-
-        if let Some(req_path) = req_path {
-            parts.push(
-                req_path
-                    .as_str()
-                    .trim_start_matches('/')
-                    .trim_end_matches('/'),
-            );
-        }
-
-        let object_id = object_id.map(|v| v.to_string());
-        if let Some(object_id) = &object_id {
-            parts.push(object_id.as_str());
-        }
-        let p = parts.join("/");
-        self.service_url.join(&p).unwrap()
-    }
-
     fn encode_common_headers(&self, com_req: &UtilRequestCommon, http_req: &mut Request) {
         if let Some(dec_id) = &com_req.dec_id {
             http_req.insert_header(cyfs_base::CYFS_DEC_ID, dec_id.to_string());
@@ -83,6 +55,8 @@ impl UtilRequestor {
             }
         }
 
+        RequestorHelper::encode_opt_header_with_encoding(http_req, cyfs_base::CYFS_REQ_PATH, com_req.req_path.as_deref());
+
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
         }
@@ -91,7 +65,7 @@ impl UtilRequestor {
     }
 
     fn encode_get_device_request(&self, req: &UtilGetDeviceRequest) -> Request {
-        let url = self.format_url("device", req.common.req_path.as_ref(), None);
+        let url = self.service_url.join("device").unwrap();
         let mut http_req = Request::new(Method::Get, url);
         self.encode_common_headers(&req.common, &mut http_req);
 
@@ -139,10 +113,11 @@ impl UtilRequestor {
     }
 
     fn encode_get_zone_request(&self, req: UtilGetZoneRequest) -> Request {
-        let url = self.format_url("zone", req.common.req_path.as_ref(), req.object_id.as_ref());
+        let url = self.service_url.join("zone").unwrap();
         let mut http_req = Request::new(Method::Post, url);
         self.encode_common_headers(&req.common, &mut http_req);
 
+        RequestorHelper::encode_opt_header(&mut http_req, cyfs_base::CYFS_OBJECT_ID, &req.object_id);
         if let Some(object_raw) = req.object_raw {
             http_req.set_body(object_raw);
         }
@@ -189,23 +164,14 @@ impl UtilRequestor {
         }
     }
 
-    // url支持下面的格式，其中owner_id是可选
-    // {host:port}/[req_path/]object_id?owner={owner_id}
-    fn format_resolve_url(&self,  req_path: Option<&String>, owner_id: Option<&ObjectId>, object_id: &ObjectId) -> Url {
-        let mut url = self.format_url("resolve_ood", req_path, Some(object_id));
-
-        if let Some(owner_id) = owner_id {
-            url.query_pairs_mut().append_pair("owner", &owner_id.to_string());
-        }
-
-        url
-    }
-
     fn encode_resolve_ood_request(&self, req: &UtilResolveOODRequest) -> Request {
-        let url = self.format_resolve_url(req.common.req_path.as_ref(), req.owner_id.as_ref(), &req.object_id);
+        let url = self.service_url.join("resolve_ood").unwrap();
 
         // 目前没有body
         let mut http_req = Request::new(Method::Get, url);
+        RequestorHelper::encode_header(&mut http_req, cyfs_base::CYFS_OBJECT_ID, &req.object_id);
+        RequestorHelper::encode_opt_header(&mut http_req, cyfs_base::CYFS_OWNER_ID, &req.owner_id);
+
         self.encode_common_headers(&req.common, &mut http_req);
 
         http_req
@@ -228,7 +194,7 @@ impl UtilRequestor {
     }
 
     fn encode_get_ood_status_request(&self, req: UtilGetOODStatusRequest) -> Request {
-        let url = self.format_url("ood_status", req.common.req_path.as_ref(), None);
+        let url = self.service_url.join("ood_status").unwrap();
         let mut http_req = Request::new(Method::Get, url);
         self.encode_common_headers(&req.common, &mut http_req);
 
@@ -264,7 +230,7 @@ impl UtilRequestor {
     }
 
     fn encode_get_noc_info_request(&self, req: UtilGetNOCInfoRequest) -> Request {
-        let url = self.format_url("noc_info", req.common.req_path.as_ref(), None);
+        let url = self.service_url.join("noc_info").unwrap();
         let mut http_req = Request::new(Method::Get, url);
         self.encode_common_headers(&req.common, &mut http_req);
 
@@ -299,7 +265,7 @@ impl UtilRequestor {
         &self,
         req: UtilGetNetworkAccessInfoRequest,
     ) -> Request {
-        let url = self.format_url("network_access_info", req.common.req_path.as_ref(), None);
+        let url = self.service_url.join("network_access_info").unwrap();
         let mut http_req = Request::new(Method::Get, url);
         self.encode_common_headers(&req.common, &mut http_req);
 
@@ -340,7 +306,7 @@ impl UtilRequestor {
         &self,
         req: UtilGetDeviceStaticInfoRequest,
     ) -> Request {
-        let url = self.format_url("device_static_info", req.common.req_path.as_ref(), None);
+        let url = self.service_url.join("device_static_info").unwrap();
         let mut http_req = Request::new(Method::Get, url);
         self.encode_common_headers(&req.common, &mut http_req);
 
@@ -378,7 +344,7 @@ impl UtilRequestor {
     }
 
     fn encode_get_system_info_request(&self, req: UtilGetSystemInfoRequest) -> Request {
-        let url = self.format_url("system_info", req.common.req_path.as_ref(), None);
+        let url = self.service_url.join("system_info").unwrap();
         let mut http_req = Request::new(Method::Get, url);
         self.encode_common_headers(&req.common, &mut http_req);
 
@@ -414,7 +380,7 @@ impl UtilRequestor {
     }
 
     fn encode_get_version_info_request(&self, req: UtilGetVersionInfoRequest) -> Request {
-        let url = self.format_url("version_info", req.common.req_path.as_ref(), None);
+        let url = self.service_url.join("version_info").unwrap();
         let mut http_req = Request::new(Method::Get, url);
         self.encode_common_headers(&req.common, &mut http_req);
 
@@ -455,7 +421,7 @@ impl UtilRequestor {
         &self,
         req: UtilBuildFileOutputRequest
     ) -> BuckyResult<UtilBuildFileOutputResponse> {
-        let url = self.format_url("build_file", req.common.req_path.as_ref(), None);
+        let url = self.service_url.join("build_file").unwrap();
         let mut http_req = Request::new(Method::Post, url);
         self.encode_common_headers(&req.common, &mut http_req);
         let body = req.encode_string();
@@ -488,7 +454,7 @@ impl UtilRequestor {
         &self,
         req: UtilBuildDirFromObjectMapOutputRequest
     ) -> BuckyResult<UtilBuildDirFromObjectMapOutputResponse> {
-        let url = self.format_url("build_dir_from_object_map", req.common.req_path.as_ref(), None);
+        let url = self.service_url.join("build_dir_from_object_map").unwrap();
         let mut http_req = Request::new(Method::Post, url);
         self.encode_common_headers(&req.common, &mut http_req);
         let body = req.encode_string();

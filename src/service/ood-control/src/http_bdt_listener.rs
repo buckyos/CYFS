@@ -4,7 +4,8 @@ use cyfs_bdt::{StackGuard, StreamGuard as BdtStream, StreamListenerGuard};
 
 use async_std::stream::StreamExt;
 use async_std::task;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 pub(super) struct HttpBdtListenerImpl {
     bdt_stack: StackGuard,
@@ -132,7 +133,7 @@ impl HttpBdtListener {
             addr, remote_addr
         );
 
-        if let Err(e) = stream.confirm(&Vec::from("answer")).await {
+        if let Err(e) = stream.confirm(&vec![]).await {
             error!("bdt stream confirm error! {:?} {}", remote_addr, e);
 
             return Err(e);

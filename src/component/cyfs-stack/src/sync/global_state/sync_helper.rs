@@ -3,13 +3,11 @@ use crate::root_state_api::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::sync::Arc;
-
 #[derive(Clone)]
 pub(crate) struct GlobalStateSyncHelper {
     state: GlobalStateLocalService,
     device_id: DeviceId,
-    noc: Arc<Box<dyn NamedObjectCache>>,
+    noc: NamedObjectCacheRef,
     noc_cache: ObjectMapNOCCacheRef,
     cache: ObjectMapRootCacheRef,
 }
@@ -18,10 +16,10 @@ impl GlobalStateSyncHelper {
     pub fn new(
         state: GlobalStateLocalService,
         device_id: &DeviceId,
-        noc: Arc<Box<dyn NamedObjectCache>>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
-        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(&device_id, noc.clone_noc());
-        let cache = ObjectMapRootMemoryCache::new_default_ref(noc_cache.clone());
+        let noc_cache = ObjectMapNOCCacheAdapter::new_noc_cache(noc.clone());
+        let cache = ObjectMapRootMemoryCache::new_default_ref(None, noc_cache.clone());
 
         Self {
             state,
@@ -40,7 +38,7 @@ impl GlobalStateSyncHelper {
         &self.state
     }
 
-    pub fn noc(&self) -> &Arc<Box<dyn NamedObjectCache>> {
+    pub fn noc(&self) -> &NamedObjectCacheRef {
         &self.noc
     }
 

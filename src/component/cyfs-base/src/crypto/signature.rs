@@ -1,4 +1,4 @@
-use generic_array::typenum::{marker_traits::Unsigned, U16, U32, U64};
+use generic_array::typenum::{marker_traits::Unsigned, U16, U32, U64, U96};
 use generic_array::GenericArray;
 use std::ptr::slice_from_raw_parts;
 
@@ -48,6 +48,7 @@ impl Default for Signature {
 pub enum SignData {
     Rsa1024(GenericArray<u32, U32>),
     Rsa2048(GenericArray<u32, U64>),
+    Rsa3072(GenericArray<u32, U96>),
     Ecc(GenericArray<u32, U16>),
 }
 
@@ -56,6 +57,7 @@ impl SignData {
         match self {
             Self::Rsa1024(_) => "rsa1024",
             Self::Rsa2048(_) => "rsa2048",
+            Self::Rsa3072(_) => "rsa3072",
             Self::Ecc(_) => "ecc",
         }
     }
@@ -72,6 +74,12 @@ impl SignData {
                 &*slice_from_raw_parts(
                     sign.as_ptr() as *const u8,
                     std::mem::size_of::<u32>() * U64::to_usize(),
+                )
+            },
+            SignData::Rsa3072(sign) => unsafe {
+                &*slice_from_raw_parts(
+                    sign.as_ptr() as *const u8,
+                    std::mem::size_of::<u32>() * U96::to_usize(),
                 )
             },
             SignData::Ecc(sign) => unsafe {
@@ -188,6 +196,7 @@ impl RawEncode for Signature {
                 * match self.sign {
                     SignData::Rsa1024(_) => U32::to_usize(),
                     SignData::Rsa2048(_) => U64::to_usize(),
+                    SignData::Rsa3072(_) => U96::to_usize(),
                     SignData::Ecc(_) => U16::to_usize(),
                 };
 
@@ -250,6 +259,18 @@ impl RawEncode for Signature {
             SignData::Rsa2048(sign) => {
                 let buf = KEY_TYPE_RSA2048.raw_encode(buf, purpose)?;
                 let bytes = std::mem::size_of::<u32>() * U64::to_usize();
+                unsafe {
+                    std::ptr::copy(
+                        sign.as_slice().as_ptr() as *const u8,
+                        buf.as_mut_ptr(),
+                        bytes,
+                    );
+                }
+                &mut buf[bytes..]
+            }
+            SignData::Rsa3072(sign) => {
+                let buf = KEY_TYPE_RSA3072.raw_encode(buf, purpose)?;
+                let bytes = std::mem::size_of::<u32>() * U96::to_usize();
                 unsafe {
                     std::ptr::copy(
                         sign.as_slice().as_ptr() as *const u8,
@@ -346,6 +367,26 @@ impl<'de> RawDecode<'de> for Signature {
                 }
 
                 (SignData::Rsa2048(sign), &buf[bytes..])
+            }
+            KEY_TYPE_RSA3072 => {
+                let bytes = std::mem::size_of::<u32>() * U96::to_usize();
+                if buf.len() < bytes {
+                    return Err(BuckyError::new(
+                        BuckyErrorCode::OutOfLimit,
+                        "not enough buffer for rsa3072 signature",
+                    ));
+                }
+
+                let mut sign = GenericArray::default();
+                unsafe {
+                    std::ptr::copy(
+                        buf.as_ptr(),
+                        sign.as_mut_slice().as_mut_ptr() as *mut u8,
+                        bytes,
+                    );
+                }
+
+                (SignData::Rsa3072(sign), &buf[bytes..])
             }
             KEY_TYPE_SECP256K1 => {
                 let bytes = std::mem::size_of::<u32>() * U16::to_usize();

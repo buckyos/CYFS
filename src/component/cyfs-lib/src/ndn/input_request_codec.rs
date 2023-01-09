@@ -1,6 +1,6 @@
 use super::input_request::*;
-use cyfs_base::*;
 use crate::base::NDNDataRequestRange;
+use cyfs_base::*;
 
 use serde_json::{Map, Value};
 
@@ -9,9 +9,7 @@ impl JsonCodec<NDNInputRequestCommon> for NDNInputRequestCommon {
         let mut obj = Map::new();
 
         JsonCodecHelper::encode_option_string_field(&mut obj, "req_path", self.req_path.as_ref());
-        JsonCodecHelper::encode_option_string_field(&mut obj, "dec_id", self.dec_id.as_ref());
-        JsonCodecHelper::encode_string_field(&mut obj, "source", &self.source);
-        JsonCodecHelper::encode_string_field(&mut obj, "protocol", &self.protocol);
+        JsonCodecHelper::encode_field(&mut obj, "source", &self.source);
         JsonCodecHelper::encode_string_field(&mut obj, "level", &self.level);
         JsonCodecHelper::encode_option_string_field(&mut obj, "target", self.target.as_ref());
         JsonCodecHelper::encode_str_array_field(&mut obj, "referer_object", &self.referer_object);
@@ -23,12 +21,8 @@ impl JsonCodec<NDNInputRequestCommon> for NDNInputRequestCommon {
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
         Ok(Self {
             req_path: JsonCodecHelper::decode_option_string_field(obj, "req_path")?,
-            dec_id: JsonCodecHelper::decode_option_string_field(obj, "dec_id")?,
-
-            source: JsonCodecHelper::decode_string_field(obj, "source")?,
-            protocol: JsonCodecHelper::decode_string_field(obj, "protocol")?,
+            source: JsonCodecHelper::decode_field(obj, "source")?,
             level: JsonCodecHelper::decode_string_field(obj, "level")?,
-
             referer_object: JsonCodecHelper::decode_str_array_field(obj, "referer_object")?,
             target: JsonCodecHelper::decode_option_string_field(obj, "target")?,
             flags: JsonCodecHelper::decode_int_field(obj, "flags")?,
@@ -47,13 +41,9 @@ impl JsonCodec<NDNGetDataInputRequest> for NDNGetDataInputRequest {
         JsonCodecHelper::encode_string_field(&mut obj, "data_type", &self.data_type);
 
         if let Some(range) = &self.range {
-            JsonCodecHelper::encode_string_field_2(
-                &mut obj,
-                "range",
-                range.encode_string(),
-            );
+            JsonCodecHelper::encode_string_field_2(&mut obj, "range", range.encode_string());
         }
-        
+
         JsonCodecHelper::encode_option_string_field(
             &mut obj,
             "inner_path",
@@ -64,9 +54,8 @@ impl JsonCodec<NDNGetDataInputRequest> for NDNGetDataInputRequest {
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
-        let range = JsonCodecHelper::decode_option_string_field(obj, "range")?.map(|s: String| {
-            NDNDataRequestRange::new_unparsed(s)
-        });
+        let range = JsonCodecHelper::decode_option_string_field(obj, "range")?
+            .map(|s: String| NDNDataRequestRange::new_unparsed(s));
 
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
@@ -97,7 +86,7 @@ impl JsonCodec<NDNGetDataInputResponse> for NDNGetDataInputResponse {
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<Self> {
         let attr =
-            JsonCodecHelper::decode_option_int_filed(obj, "attr")?.map(|v| Attributes::new(v));
+            JsonCodecHelper::decode_option_int_field(obj, "attr")?.map(|v| Attributes::new(v));
 
         // 现在事件不支持data的返回和修改
         let data = Box::new(async_std::io::Cursor::new(vec![]));
@@ -216,7 +205,6 @@ impl JsonCodec<Self> for NDNQueryFileParam {
     }
 }
 
-
 impl JsonCodec<Self> for NDNQueryFileInfo {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
@@ -265,4 +253,3 @@ impl JsonCodec<Self> for NDNQueryFileInputResponse {
         })
     }
 }
-

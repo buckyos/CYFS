@@ -1,7 +1,7 @@
 use super::def::*;
+use crate::base::NDNDataRequestRange;
 use crate::*;
 use cyfs_base::*;
-use crate::base::NDNDataRequestRange;
 
 use async_std::io::Read;
 use std::any::Any;
@@ -17,12 +17,7 @@ pub struct NDNInputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
 
-    // 来源DEC
-    pub dec_id: Option<ObjectId>,
-
-    // 来源设备和协议
-    pub source: DeviceId,
-    pub protocol: NONProtocol,
+    pub source: RequestSourceInfo,
 
     // api级别
     pub level: NDNAPILevel,
@@ -39,15 +34,86 @@ pub struct NDNInputRequestCommon {
     pub user_data: Option<NDNInputRequestUserData>,
 }
 
+impl NDNInputRequestCommon {
+    pub fn check_param_with_referer(&self, object_id: &ObjectId) -> BuckyResult<()> {
+        match object_id.obj_type_code() {
+            ObjectTypeCode::Chunk => {
+                for item in &self.referer_object {
+                    match item.object_id.obj_type_code() {
+                        ObjectTypeCode::File => {
+                            if !item.is_inner_path_empty() {
+                                let msg = format!("ndn referer_object is file but inner_path is not empty! obj={}, referer={}", 
+                                object_id, item);
+                                error!("{}", msg);
+                                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                            }
+                        }
+                        ObjectTypeCode::Dir => {}
+                        ObjectTypeCode::ObjectMap => {
+                            if item.is_inner_path_empty() {
+                                let msg = format!("ndn referer_object is object_map but inner_path is empty! obj={}, referer={}", object_id, item);
+                                error!("{}", msg);
+                                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                            }
+                        }
+                        t @ _ => {
+                            let msg = format!("unsupport ndn referer_object type for chunk! chunk={}, referer={}, type={:?}", 
+                            object_id, item, t);
+                            error!("{}", msg);
+                            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                        }
+                    }
+                }
+            }
+            ObjectTypeCode::File => {
+                for item in &self.referer_object {
+                    match item.object_id.obj_type_code() {
+                        ObjectTypeCode::Dir | ObjectTypeCode::ObjectMap => {
+                            if item.is_inner_path_empty() {
+                                let msg = format!("ndn referer_object is dir or object_map but inner_path is empty! obj={}, referer={}", 
+                                object_id, item);
+                                error!("{}", msg);
+                                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                            }
+                        }
+                        t @ _ => {
+                            let msg = format!("unsupport ndn referer_object type for file! obj={}, referer={}, type={:?}", 
+                            object_id, item, t);
+                            error!("{}", msg);
+                            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                        }
+                    }
+                }
+            }
+            ObjectTypeCode::Dir | ObjectTypeCode::ObjectMap => {
+                if self.referer_object.len() > 0 {
+                    let msg = format!(
+                        "ndn referer_object not support for dir/object_map! obj={}, type={:?}",
+                        object_id,
+                        object_id.obj_type_code()
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+                }
+            }
+            t @ _ => {
+                let msg = format!(
+                    "unsupport ndn object_id type! obj={}, type={:?}",
+                    object_id, t,
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl fmt::Display for NDNInputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "req_path: {:?}", self.req_path)?;
-
-        if let Some(dec_id) = &self.dec_id {
-            write!(f, ", dec_id: {}", dec_id)?;
-        }
-        write!(f, ", source: {}", self.source.to_string())?;
-        write!(f, ", protocol: {}", self.protocol.to_string())?;
+        write!(f, ", {}", self.source)?;
         write!(f, ", level: {}", self.level.to_string())?;
 
         if let Some(target) = &self.target {
@@ -116,7 +182,7 @@ pub struct NDNGetDataInputRequest {
     // request data range
     pub range: Option<NDNDataRequestRange>,
 
-    // 对dir_id有效
+    // 对dir/objectmap有效
     pub inner_path: Option<String>,
 }
 
@@ -131,6 +197,12 @@ impl fmt::Display for NDNGetDataInputRequest {
         }
 
         write!(f, ", inner_path: {:?}", self.inner_path)
+    }
+}
+
+impl NDNGetDataInputRequest {
+    pub fn check_valid(&self) -> BuckyResult<()> {
+        self.common.check_param_with_referer(&self.object_id)
     }
 }
 
@@ -244,7 +316,8 @@ impl fmt::Display for NDNDeleteDataInputResponse {
 // query flags for the return value optional fields
 pub const NDN_QUERY_FILE_REQUEST_FLAG_QUICK_HASN: u32 =
     cyfs_util::cache::NDC_FILE_REQUEST_FLAG_QUICK_HASN;
-pub const NDN_QUERY_FILE_REQUEST_FLAG_REF_DIRS: u32 = cyfs_util::cache::NDC_FILE_REQUEST_FLAG_REF_DIRS;
+pub const NDN_QUERY_FILE_REQUEST_FLAG_REF_DIRS: u32 =
+    cyfs_util::cache::NDC_FILE_REQUEST_FLAG_REF_DIRS;
 
 #[derive(Debug, Clone)]
 pub enum NDNQueryFileParam {
@@ -267,9 +340,7 @@ impl NDNQueryFileParam {
     pub fn file_id(&self) -> Option<ObjectId> {
         match self {
             Self::File(id) => Some(id.to_owned()),
-            _ => {
-                None
-            }
+            _ => None,
         }
     }
 
@@ -316,7 +387,6 @@ impl fmt::Display for NDNQueryFileParam {
         write!(f, "{}={}", t, v)
     }
 }
-
 
 #[derive(Clone)]
 pub struct NDNQueryFileInputRequest {

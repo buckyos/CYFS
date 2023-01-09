@@ -33,20 +33,16 @@ impl GlobalStateRequestHandler {
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
 
-        // 尝试提取dec字段
-        let dec_id: Option<ObjectId> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
-
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
+        let target_dec_id: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET_DEC_ID)?;
+
         let ret = RootStateInputRequestCommon {
             source: req.source.clone(),
-            protocol: req.protocol.clone(),
-
-            dec_id,
+            target_dec_id,
             target,
-
             flags: flags.unwrap_or(0),
         };
 
@@ -132,6 +128,7 @@ impl GlobalStateRequestHandler {
         let req = RootStateCreateOpEnvInputRequest {
             common,
             op_env_type: output_req.op_env_type,
+            access: output_req.access,
         };
 
         info!("recv create_op_env request: {}", req);
@@ -163,23 +160,19 @@ impl OpEnvRequestHandler {
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
 
-        // 尝试提取dec字段
-        let dec_id: Option<ObjectId> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
-
         // 提取sid
         let sid: u64 = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_OP_ENV_SID)?;
 
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
+        let target_dec_id: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET_DEC_ID)?;
+
         let ret = OpEnvInputRequestCommon {
             source: req.source.clone(),
-            protocol: req.protocol.clone(),
-
-            dec_id,
+            target_dec_id,
             target,
-
             flags: flags.unwrap_or(0),
             sid,
         };
@@ -425,7 +418,10 @@ impl OpEnvRequestHandler {
         let output_req: OpEnvCommitOutputRequest =
             RequestorHelper::decode_json_body(&mut req.request).await?;
 
-        let req = OpEnvCommitInputRequest { common, op_type: output_req.op_type };
+        let req = OpEnvCommitInputRequest {
+            common,
+            op_type: output_req.op_type,
+        };
 
         info!("recv op_env commit request: {}", req);
 
@@ -878,10 +874,7 @@ impl OpEnvRequestHandler {
         }
     }
 
-    async fn on_reset<State: Send>(
-        &self,
-        req: OpEnvInputHttpRequest<State>,
-    ) -> BuckyResult<()> {
+    async fn on_reset<State: Send>(&self, req: OpEnvInputHttpRequest<State>) -> BuckyResult<()> {
         // 检查action
         let action = Self::decode_action(&req)?;
         if action != OpEnvAction::Reset {
@@ -893,24 +886,63 @@ impl OpEnvRequestHandler {
 
         let common = Self::decode_common_headers(&req)?;
 
-
-        let req = OpEnvResetInputRequest {
-            common,
-        };
+        let req = OpEnvResetInputRequest { common };
 
         debug!("recv op_env reset request: {}", req);
 
         self.processor.reset(req).await
     }
+
+    // next
+    pub async fn process_list_request<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> Response {
+        let ret = self.on_list(req).await;
+        match ret {
+            Ok(resp) => {
+                let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+                http_resp.set_body(resp.encode_string());
+                http_resp.into()
+            }
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    async fn on_list<State: Send>(
+        &self,
+        req: OpEnvInputHttpRequest<State>,
+    ) -> BuckyResult<OpEnvListInputResponse> {
+        // 检查action
+        let action = Self::decode_action(&req)?;
+        if action != OpEnvAction::List {
+            let msg = format!("invalid op_env list action! {:?}", action);
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        let common = Self::decode_common_headers(&req)?;
+        let path = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            &req.request,
+            cyfs_base::CYFS_OP_ENV_PATH,
+        )?;
+
+        let req = OpEnvListInputRequest { common, path };
+
+        debug!("recv op_env list request: {}", req);
+
+        self.processor.list(req).await
+    }
 }
 
 #[derive(Clone)]
-pub(crate) struct GlobalStateAccessRequestHandler {
-    processor: GlobalStateAccessInputProcessorRef,
+pub(crate) struct GlobalStateAccessorRequestHandler {
+    processor: GlobalStateAccessorInputProcessorRef,
 }
 
-impl GlobalStateAccessRequestHandler {
-    pub fn new(processor: GlobalStateAccessInputProcessorRef) -> Self {
+impl GlobalStateAccessorRequestHandler {
+    pub fn new(processor: GlobalStateAccessorInputProcessorRef) -> Self {
         Self { processor }
     }
 
@@ -923,19 +955,16 @@ impl GlobalStateAccessRequestHandler {
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
 
         // 尝试提取dec字段
-        let dec_id: Option<ObjectId> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
+        let target_dec_id: Option<ObjectId> =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET_DEC_ID)?;
 
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
         let ret = RootStateInputRequestCommon {
             source: req.source.clone(),
-            protocol: req.protocol.clone(),
-
-            dec_id,
+            target_dec_id,
             target,
-
             flags: flags.unwrap_or(0),
         };
 
@@ -960,13 +989,13 @@ impl GlobalStateAccessRequestHandler {
         // extract params from url querys
         let mut page_index: Option<u32> = None;
         let mut page_size: Option<u32> = None;
-        let mut action = RootStateAccessAction::GetObjectByPath;
+        let mut action = GlobalStateAccessorAction::GetObjectByPath;
 
         let pairs = req.request.url().query_pairs();
         for (k, v) in pairs {
             match k.as_ref() {
                 "action" => {
-                    action = RootStateAccessAction::from_str(v.as_ref())?;
+                    action = GlobalStateAccessorAction::from_str(v.as_ref())?;
                 }
                 "page_index" => {
                     let v = v.as_ref().parse().map_err(|e| {
@@ -985,7 +1014,7 @@ impl GlobalStateAccessRequestHandler {
                     page_size = Some(v);
                 }
                 _ => {
-                    warn!("unknown global state access url query: {}={}", k, v);
+                    warn!("unknown global state accessor url query: {}={}", k, v);
                 }
             }
         }
@@ -993,8 +1022,8 @@ impl GlobalStateAccessRequestHandler {
         let inner_path = req.request.param("inner_path").unwrap_or("/");
         let inner_path = RequestorHelper::decode_utf8("inner_path", inner_path)?;
 
-        let inner_path = if inner_path.starts_with("/") {
-            inner_path
+        let inner_path: String = if inner_path.starts_with("/") {
+            inner_path.to_string()
         } else {
             format!("/{}", inner_path)
         };
@@ -1002,12 +1031,12 @@ impl GlobalStateAccessRequestHandler {
         let common = Self::decode_common_headers(&req)?;
 
         match action {
-            RootStateAccessAction::GetObjectByPath => {
-                let req = RootStateAccessGetObjectByPathInputRequest { common, inner_path };
+            GlobalStateAccessorAction::GetObjectByPath => {
+                let req = RootStateAccessorGetObjectByPathInputRequest { common, inner_path };
                 self.on_get_object_by_path(req).await
             }
-            RootStateAccessAction::List => {
-                let req = RootStateAccessListInputRequest {
+            GlobalStateAccessorAction::List => {
+                let req = RootStateAccessorListInputRequest {
                     common,
                     inner_path,
                     page_index,
@@ -1019,7 +1048,7 @@ impl GlobalStateAccessRequestHandler {
     }
 
     fn encode_get_object_by_path_response(
-        resp: RootStateAccessGetObjectByPathInputResponse,
+        resp: RootStateAccessorGetObjectByPathInputResponse,
     ) -> Response {
         let mut http_resp = NONRequestHandler::encode_get_object_response(
             resp.object,
@@ -1033,7 +1062,7 @@ impl GlobalStateAccessRequestHandler {
 
     async fn on_get_object_by_path(
         &self,
-        req: RootStateAccessGetObjectByPathInputRequest,
+        req: RootStateAccessorGetObjectByPathInputRequest,
     ) -> BuckyResult<Response> {
         let resp = self.processor.get_object_by_path(req).await?;
 
@@ -1041,7 +1070,7 @@ impl GlobalStateAccessRequestHandler {
         Ok(http_resp)
     }
 
-    async fn on_list(&self, req: RootStateAccessListInputRequest) -> BuckyResult<Response> {
+    async fn on_list(&self, req: RootStateAccessorListInputRequest) -> BuckyResult<Response> {
         let resp = self.processor.list(req).await?;
 
         let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);

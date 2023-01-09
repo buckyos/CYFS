@@ -1678,17 +1678,34 @@ impl ObjectMapSimpleContentType {
             None => false,
         }
     }
-}
 
-impl ToString for ObjectMapSimpleContentType {
-    fn to_string(&self) -> String {
-        match *self {
+    pub fn as_str(&self) -> &str {
+        match self {
             Self::Map => "map",
             Self::DiffMap => "diffmap",
             Self::Set => "set",
             Self::DiffSet => "diffset",
         }
-        .to_owned()
+    }
+
+    pub fn is_map(&self) -> bool {
+        match self {
+            Self::Map => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_set(&self) -> bool {
+        match self {
+            Self::Set => true,
+            _ => false,
+        }
+    }
+}
+
+impl ToString for ObjectMapSimpleContentType {
+    fn to_string(&self) -> String {
+        self.as_str().to_owned()
     }
 }
 
@@ -1986,13 +2003,20 @@ impl ObjectMapContentHashCache {
 }
 
 // ObjectMap对象的分类
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ObjectMapClass {
     // 根节点
     Root = 0,
 
     // hub模式下的子节点
     Sub = 1,
+
+    // DecRoot
+    DecRoot = 2,
+
+    // GlobalRoot
+    GlobalRoot = 3,
 }
 
 impl ObjectMapClass {
@@ -2000,6 +2024,8 @@ impl ObjectMapClass {
         match self {
             Self::Root => "root",
             Self::Sub => "sub",
+            Self::DecRoot => "dec-root",
+            Self::GlobalRoot => "global-root",
         }
     }
 }
@@ -2018,6 +2044,8 @@ impl TryFrom<u8> for ObjectMapClass {
         let ret = match value {
             0 => Self::Root,
             1 => Self::Sub,
+            2 => Self::DecRoot,
+            3 => Self::GlobalRoot,
 
             _ => {
                 let msg = format!("unknown objectmap class: {}", value);
@@ -2110,6 +2138,13 @@ impl ObjectMapDescContent {
 
     pub fn class(&self) -> ObjectMapClass {
         self.class.clone()
+    }
+
+    pub fn set_class(&mut self, class: ObjectMapClass) {
+        if self.class != class {
+            self.class = class;
+            self.mark_dirty();
+        }
     }
 
     pub fn content(&self) -> &ObjectMapContent {
@@ -2229,6 +2264,7 @@ impl ObjectMapDescContent {
         if self.content.is_dirty() {
             self.size += raw_encode_size(key) + ObjectId::raw_bytes().unwrap() as u64;
             self.total += 1;
+            self.inflate_check_point(builder, cache).await?;
             self.mark_dirty();
         }
 
@@ -2474,8 +2510,16 @@ impl ObjectMapDescContent {
             self.mark_dirty();
         } else {
             // 只是发生了replace操作，元素个数不变，大小可能改变
+            let current = self.size;
             self.size += raw_encode_size(value);
             self.size -= raw_encode_size(ret.as_ref().unwrap());
+
+            if self.size > current {
+                self.inflate_check_point(builder, cache).await?;
+            } else if self.size < current {
+                self.deflate_check_point(cache).await?;
+            }
+
             if self.content.is_dirty() {
                 self.mark_dirty();
             }
@@ -3227,7 +3271,7 @@ mod test {
 
     async fn test_map() {
         let noc = ObjectMapMemoryNOCCache::new();
-        let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
+        let root_cache = ObjectMapRootMemoryCache::new_default_ref(None, noc);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         let owner = ObjectId::default();
@@ -3274,7 +3318,7 @@ mod test {
 
     async fn test_set() {
         let noc = ObjectMapMemoryNOCCache::new();
-        let root_cache = ObjectMapRootMemoryCache::new_default_ref(noc);
+        let root_cache = ObjectMapRootMemoryCache::new_default_ref(None, noc);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
         let owner = ObjectId::default();

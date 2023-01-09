@@ -4,13 +4,17 @@ use crate::trans_api::TransStore;
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::*;
 use cyfs_bdt::{
-    ChunkDownloadConfig, ChunkWriter, DownloadTaskControl, StackGuard, TaskControlState,
+    self,
+    SingleDownloadContext,
+    ChunkWriter,
+    StackGuard,
 };
 use cyfs_task_manager::*;
 
 use sha2::Digest;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 pub struct DownloadChunkTask {
     task_id: TaskId,
@@ -19,7 +23,7 @@ pub struct DownloadChunkTask {
     device_list: Vec<DeviceId>,
     referer: String,
     context_id: Option<ObjectId>,
-    session: async_std::sync::Mutex<Option<Box<dyn DownloadTaskControl>>>,
+    session: async_std::sync::Mutex<Option<Box<dyn cyfs_bdt::DownloadTask>>>,
     writer: Box<dyn ChunkWriter>,
     task_store: Option<Arc<dyn TaskStore>>,
     task_status: Mutex<TaskStatus>,
@@ -36,6 +40,7 @@ impl DownloadChunkTask {
         writer: Box<dyn ChunkWriter>,
     ) -> Self {
         let mut sha256 = sha2::Sha256::new();
+        sha256.input(DOWNLOAD_CHUNK_TASK.0.to_le_bytes());
         sha256.input(chunk_id.as_slice());
         sha256.input(task_label_data.as_slice());
         let task_id = sha256.result().into();
@@ -89,16 +94,21 @@ impl Task for DownloadChunkTask {
             }
         }
 
-        let mut config = ChunkDownloadConfig::force_stream(self.device_list[0].clone());
-        if self.referer.len() > 0 {
-            config.referer = Some(self.referer.to_owned());
-        }
+        let context = SingleDownloadContext::streams(
+            if self.referer.len() > 0 {
+                Some(self.referer.to_owned())
+            } else {
+                None
+            },
+            vec![self.device_list[0].clone()]);
+
         // 创建bdt层的传输任务
         *session = Some(
             cyfs_bdt::download::download_chunk(
                 &self.bdt_stack,
                 self.chunk_id.clone(),
-                config,
+                None,
+                Some(context),
                 vec![self.writer.clone_as_writer()],
             )
             .await
@@ -165,9 +175,9 @@ impl Task for DownloadChunkTask {
     async fn get_task_detail_status(&self) -> BuckyResult<Vec<u8>> {
         let session = self.session.lock().await;
         let task_state = if session.is_some() {
-            let control_state = session.as_ref().unwrap().control_state();
-            match control_state {
-                TaskControlState::Downloading(speed, progress) => DownloadTaskState {
+            let state = session.as_ref().unwrap().state();
+            match state {
+                cyfs_bdt::DownloadTaskState::Downloading(speed, progress) => DownloadTaskState {
                     task_status: TaskStatus::Running,
                     err_code: None,
                     speed: speed as u64,
@@ -175,7 +185,7 @@ impl Task for DownloadChunkTask {
                     downloaded_progress: progress as u64,
                     sum_size: self.chunk_id.len() as u64,
                 },
-                TaskControlState::Paused => DownloadTaskState {
+                cyfs_bdt::DownloadTaskState::Paused => DownloadTaskState {
                     task_status: TaskStatus::Paused,
                     err_code: None,
                     speed: 0,
@@ -183,15 +193,34 @@ impl Task for DownloadChunkTask {
                     downloaded_progress: 0,
                     sum_size: self.chunk_id.len() as u64,
                 },
-                TaskControlState::Canceled => DownloadTaskState {
-                    task_status: TaskStatus::Stopped,
-                    err_code: None,
-                    speed: 0,
-                    upload_speed: 0,
-                    downloaded_progress: 0,
-                    sum_size: self.chunk_id.len() as u64,
-                },
-                TaskControlState::Finished => {
+                cyfs_bdt::DownloadTaskState::Error(err) => {
+                    if err == BuckyErrorCode::Interrupted {
+                        DownloadTaskState {
+                            task_status: TaskStatus::Stopped,
+                            err_code: None,
+                            speed: 0,
+                            upload_speed: 0,
+                            downloaded_progress: 0,
+                            sum_size: self.chunk_id.len() as u64,
+                        }
+                    } else {
+                        *self.task_status.lock().unwrap() = TaskStatus::Failed;
+                        self.task_store
+                            .as_ref()
+                            .unwrap()
+                            .save_task_status(&self.task_id, TaskStatus::Failed)
+                            .await?;
+                        DownloadTaskState {
+                            task_status: TaskStatus::Failed,
+                            err_code: Some(err),
+                            speed: 0,
+                            upload_speed: 0,
+                            downloaded_progress: 0,
+                            sum_size: 0,
+                        }
+                    }
+                }
+                cyfs_bdt::DownloadTaskState::Finished => {
                     *self.task_status.lock().unwrap() = TaskStatus::Finished;
                     self.task_store
                         .as_ref()
@@ -205,22 +234,6 @@ impl Task for DownloadChunkTask {
                         upload_speed: 0,
                         downloaded_progress: 100,
                         sum_size: self.chunk_id.len() as u64,
-                    }
-                }
-                TaskControlState::Err(err) => {
-                    *self.task_status.lock().unwrap() = TaskStatus::Failed;
-                    self.task_store
-                        .as_ref()
-                        .unwrap()
-                        .save_task_status(&self.task_id, TaskStatus::Failed)
-                        .await?;
-                    DownloadTaskState {
-                        task_status: TaskStatus::Failed,
-                        err_code: Some(err),
-                        speed: 0,
-                        upload_speed: 0,
-                        downloaded_progress: 0,
-                        sum_size: 0,
                     }
                 }
             }
@@ -244,8 +257,9 @@ impl Task for DownloadChunkTask {
     }
 }
 
-#[derive(RawEncode, RawDecode)]
-pub struct DownloadChunkParamV1 {
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]
+#[cyfs_protobuf_type(super::super::trans_proto::DownloadChunkParam)]
+pub struct DownloadChunkParam {
     pub chunk_id: ChunkId,
     pub device_list: Vec<DeviceId>,
     pub referer: String,
@@ -253,40 +267,57 @@ pub struct DownloadChunkParamV1 {
     pub context_id: Option<ObjectId>,
 }
 
-#[derive(RawEncode, RawDecode)]
-pub enum DownloadChunkParam {
-    V1(DownloadChunkParamV1),
+impl ProtobufTransform<super::super::trans_proto::DownloadChunkParam> for DownloadChunkParam {
+    fn transform(value: crate::trans_api::local::trans_proto::DownloadChunkParam) -> BuckyResult<Self> {
+        let mut device_list = Vec::new();
+        for item in value.device_list.iter() {
+            device_list.push(DeviceId::clone_from_slice(item.as_slice())?);
+        }
+        Ok(Self {
+            chunk_id: ChunkId::from(value.chunk_id),
+            device_list,
+            referer: value.referer,
+            save_path: value.save_path,
+            context_id: if value.context_id.is_some() {Some(ObjectId::clone_from_slice(value.context_id.as_ref().unwrap().as_slice()))} else {None}
+        })
+    }
+}
+
+impl ProtobufTransform<&DownloadChunkParam> for super::super::trans_proto::DownloadChunkParam {
+    fn transform(value: &DownloadChunkParam) -> BuckyResult<Self> {
+        let mut device_list = Vec::new();
+        for item in value.device_list.iter() {
+            device_list.push(item.to_vec()?);
+        }
+        Ok(Self {
+            chunk_id: value.chunk_id.as_slice().to_vec(),
+            device_list,
+            referer: value.referer.clone(),
+            save_path: value.save_path.clone(),
+            context_id: if value.context_id.is_some() {Some(value.context_id.as_ref().unwrap().to_vec()?)} else {None}
+        })
+    }
 }
 
 impl DownloadChunkParam {
     pub fn chunk_id(&self) -> &ChunkId {
-        match self {
-            DownloadChunkParam::V1(param) => &param.chunk_id,
-        }
+        &self.chunk_id
     }
 
     pub fn device_list(&self) -> &Vec<DeviceId> {
-        match self {
-            DownloadChunkParam::V1(param) => &param.device_list,
-        }
+        &self.device_list
     }
 
     pub fn referer(&self) -> &str {
-        match self {
-            DownloadChunkParam::V1(param) => param.referer.as_str(),
-        }
+        self.referer.as_str()
     }
 
     pub fn save_path(&self) -> &Option<String> {
-        match self {
-            DownloadChunkParam::V1(param) => &param.save_path,
-        }
+        &self.save_path
     }
 
     pub fn context_id(&self) -> &Option<ObjectId> {
-        match self {
-            DownloadChunkParam::V1(param) => &param.context_id,
-        }
+        &self.context_id
     }
 }
 

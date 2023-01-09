@@ -44,7 +44,8 @@ struct RouterHandlerItem {
     id: String,
     dec_id: Option<ObjectId>,
     index: i32,
-    filter: String,
+    filter: Option<String>,
+    req_path: Option<String>,
     default_action: RouterHandlerAction,
     routine: Option<Box<dyn RouterHandlerAnyRoutine>>,
 
@@ -185,7 +186,8 @@ impl RouterHttpHandlerManager {
         id: &str,
         dec_id: Option<ObjectId>,
         index: i32,
-        filter: &str,
+        filter: Option<String>,
+        req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<
             Box<
@@ -205,7 +207,8 @@ impl RouterHttpHandlerManager {
             id: id.to_owned(),
             dec_id,
             index,
-            filter: filter.to_owned(),
+            filter: filter.clone(),
+            req_path: req_path.clone(),
             default_action: default_action.clone(),
             routine: None,
             register: None,
@@ -233,6 +236,7 @@ impl RouterHttpHandlerManager {
             dec_id,
             index,
             filter,
+            req_path,
             default_action,
             http_routine,
             &service_url,

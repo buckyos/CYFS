@@ -1,17 +1,47 @@
 use lazy_static::lazy_static;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use crate::control::HttpControlInterface;
 use crate::server::http::HttpServerManager;
 use crate::server::stream::StreamServerManager;
 use cyfs_base::*;
-use cyfs_stack_loader::ZoneRoleChangedParam;
+use cyfs_lib::*;
 use cyfs_stack_loader::STACK_MANAGER;
-use cyfs_util::EventListenerSyncRoutine;
+use cyfs_util::EventListenerAsyncRoutine;
 
 struct ZoneRoleChangedNotify {}
 
+#[async_trait::async_trait]
+impl
+    EventListenerAsyncRoutine<
+        RouterEventZoneRoleChangedEventRequest,
+        RouterEventZoneRoleChangedEventResult,
+    > for ZoneRoleChangedNotify
+{
+    async fn call(
+        &self,
+        param: &RouterEventZoneRoleChangedEventRequest,
+    ) -> BuckyResult<RouterEventZoneRoleChangedEventResult> {
+        warn!(
+            "gateway recv zone role changed notify! now will restart! {}",
+            param
+        );
+        async_std::task::spawn(async {
+            async_std::task::sleep(std::time::Duration::from_secs(3)).await;
+            std::process::exit(0);
+        });
+
+        let resp = RouterEventResponse {
+            call_next: true,
+            handled: true,
+            response: None,
+        };
+
+        Ok(resp)
+    }
+}
+
+/*
 impl EventListenerSyncRoutine<ZoneRoleChangedParam, ()> for ZoneRoleChangedNotify {
     fn call(&self, param: &ZoneRoleChangedParam) -> BuckyResult<()> {
         warn!(
@@ -26,7 +56,7 @@ impl EventListenerSyncRoutine<ZoneRoleChangedParam, ()> for ZoneRoleChangedNotif
         Ok(())
     }
 }
-
+*/
 pub struct Gateway {
     config_file: PathBuf,
     pub stream_server_manager: StreamServerManager,
@@ -47,7 +77,7 @@ impl Gateway {
         }
     }
 
-    pub async fn load_config(&mut self) -> Result<(), BuckyError> {
+    pub async fn load_config(&self) -> BuckyResult<()> {
         let config_file = self.config_file.as_path();
         if !config_file.exists() {
             let msg = format!(
@@ -90,7 +120,7 @@ impl Gateway {
         Ok(u)
     }
 
-    async fn parse_config(&mut self, cfg_node: toml::Value) -> Result<(), BuckyError> {
+    async fn parse_config(&self, cfg_node: toml::Value) -> BuckyResult<()> {
         if !cfg_node.is_table() {
             let msg = format!(
                 "config root node invalid format! file={}",
@@ -143,18 +173,26 @@ impl Gateway {
         Ok(())
     }
 
-    fn init_stack(&self) {
+    async fn init_stack() {
         let stack = STACK_MANAGER.get_default_cyfs_stack().unwrap();
 
         let notifier = ZoneRoleChangedNotify {};
-        stack
-            .zone_role_manager()
+        if let Err(e) = stack
+            .open_uni_stack(&Some(cyfs_core::get_system_dec_app().to_owned()))
+            .await
+            .router_events()
             .zone_role_changed_event()
-            .on(Box::new(notifier));
+            .add_event("gateway-watcher", -1, Box::new(notifier))
+            .await
+        {
+            error!("watch zone role changed event failed! {}", e);
+        }
     }
 
     pub fn start(&self) {
-        self.init_stack();
+        async_std::task::spawn(async move {
+            Self::init_stack().await;
+        });
 
         self.stream_server_manager.start();
 
@@ -165,5 +203,5 @@ impl Gateway {
 }
 
 lazy_static! {
-    pub static ref GATEWAY: Mutex<Gateway> = Mutex::new(Gateway::new());
+    pub static ref GATEWAY: Gateway = Gateway::new();
 }

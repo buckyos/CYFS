@@ -1,5 +1,6 @@
 use async_std::future;
 use cyfs_base::*;
+use cyfs_debug::Mutex;
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
 use rand::Rng;
 use std::fmt;
@@ -9,9 +10,27 @@ use std::{
         atomic::{AtomicU32, Ordering},
         Arc,
     },
-    time::{Duration, SystemTime}
+    time::{Duration, SystemTime, UNIX_EPOCH}
 };
-use cyfs_debug::Mutex;
+
+#[derive(Clone)]
+pub struct MixAesKey {
+    pub enc_key: AesKey, 
+    pub mix_key: AesKey
+}
+
+impl std::fmt::Display for MixAesKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "enc {}, mix {}", self.enc_key.to_hex().unwrap(), self.mix_key.to_hex().unwrap())
+    }
+}
+
+
+impl MixAesKey {
+    pub fn mix_hash(&self) -> KeyMixHash {
+        self.mix_key.mix_hash(Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / 60))
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Sequence(u32);

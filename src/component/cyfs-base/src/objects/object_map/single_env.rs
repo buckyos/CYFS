@@ -1,13 +1,13 @@
+use super::access::OpEnvPathAccess;
 use super::cache::*;
 use super::iterator::*;
 use super::object_map::*;
 use super::path::*;
 use crate::*;
 
-
 use async_std::sync::Mutex as AsyncMutex;
-use std::sync::Arc;
 use once_cell::sync::OnceCell;
+use std::sync::Arc;
 
 pub struct ObjectMapSingleOpEnv {
     sid: u64,
@@ -26,6 +26,9 @@ pub struct ObjectMapSingleOpEnv {
     cache: ObjectMapOpEnvCacheRef,
 
     iterator: OnceCell<AsyncMutex<ObjectMapIterator>>,
+
+    // 权限相关
+    access: Option<OpEnvPathAccess>,
 }
 
 impl ObjectMapSingleOpEnv {
@@ -35,6 +38,7 @@ impl ObjectMapSingleOpEnv {
         root_cache: &ObjectMapRootCacheRef,
         owner: Option<ObjectId>,
         dec_id: Option<ObjectId>,
+        access: Option<OpEnvPathAccess>,
     ) -> Self {
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
 
@@ -46,6 +50,7 @@ impl ObjectMapSingleOpEnv {
             root: AsyncMutex::new(None),
             cache,
             iterator: OnceCell::new(),
+            access,
         }
     }
 
@@ -122,7 +127,7 @@ impl ObjectMapSingleOpEnv {
     }
 
     pub async fn load_by_path(&self, full_path: &str) -> BuckyResult<()> {
-        let (path, key) = ObjectMapPath::parse_full_path(full_path)?;
+        let (path, key) = ObjectMapPath::parse_path_allow_empty_key(full_path)?;
 
         self.load_by_key(path, key).await
     }
@@ -130,19 +135,31 @@ impl ObjectMapSingleOpEnv {
     // 加载指定路径上的object_map
     // root不能使用single_op_env直接操作，所以必须至少要指定一个key
     pub async fn load_by_key(&self, path: &str, key: &str) -> BuckyResult<()> {
-        let root = self.root_holder.get_current_root();
-        let object_path = ObjectMapPath::new(root.clone(), self.cache.clone());
-        let value = object_path.get_by_key(path, key).await?;
-        if value.is_none() {
-            let msg = format!(
-                "load single_op_env by path but not found!  root={}, path={}, key={}",
-                root, path, key
-            );
-            error!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_path_key(path, key, RequestOpType::Read)?;
         }
 
-        let value = value.unwrap();
+        let root = self.root_holder.get_current_root();
+
+        let value = if key.len() > 0 {
+            let object_path = ObjectMapPath::new(root.clone(), self.cache.clone());
+            let value = object_path.get_by_key(path, key).await?;
+            if value.is_none() {
+                let msg = format!(
+                    "load single_op_env by path but not found! root={}, path={}, key={}",
+                    root, path, key
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            }
+
+            value.unwrap()
+        } else {
+            assert_eq!(path, "/");
+            root
+        };
+
         info!(
             "will load single_op_env by path! root={}, path={}, key={}, value={}",
             root, path, key, value
@@ -155,7 +172,7 @@ impl ObjectMapSingleOpEnv {
     pub async fn list(&self) -> BuckyResult<ObjectMapContentList> {
         let ret = self.root.lock().await;
         if ret.is_none() {
-            let msg = format!("single op_env root not been init yet!");
+            let msg = format!("single op_env root not been init yet! sid={}", self.sid);
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
@@ -171,7 +188,7 @@ impl ObjectMapSingleOpEnv {
     pub async fn next(&self, step: usize) -> BuckyResult<ObjectMapContentList> {
         let ret = self.root.lock().await;
         if ret.is_none() {
-            let msg = format!("single op_env root not been init yet!");
+            let msg = format!("single op_env root not been init yet! sid={}", self.sid);
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
@@ -195,7 +212,7 @@ impl ObjectMapSingleOpEnv {
 
         let ret = self.root.lock().await;
         if ret.is_none() {
-            let msg = format!("single op_env root not been init yet!");
+            let msg = format!("single op_env root not been init yet! sid={}", self.sid);
             error!("{}", msg);
             return;
         }
@@ -209,7 +226,10 @@ impl ObjectMapSingleOpEnv {
 
         let new_it = ObjectMapIterator::new(false, &obj, self.cache.clone());
 
-        info!("will reset single op_env iterator: root={}", obj.cached_object_id().unwrap());
+        info!(
+            "will reset single op_env iterator: root={}",
+            obj.cached_object_id().unwrap()
+        );
 
         let iterator = ret.unwrap();
         *iterator.lock().await = new_it;
@@ -218,7 +238,7 @@ impl ObjectMapSingleOpEnv {
     pub async fn metadata(&self) -> BuckyResult<ObjectMapMetaData> {
         let ret = self.root.lock().await;
         if ret.is_none() {
-            let msg = format!("single op_env root not been init yet!");
+            let msg = format!("single op_env root not been init yet! sid={}", self.sid);
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
@@ -231,7 +251,7 @@ impl ObjectMapSingleOpEnv {
     pub async fn get_by_key(&self, key: &str) -> BuckyResult<Option<ObjectId>> {
         let ret = self.root.lock().await;
         if ret.is_none() {
-            let msg = format!("single op_env root not been init yet! key={}", key);
+            let msg = format!("single op_env root not been init yet! sid={}", self.sid);
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
@@ -266,8 +286,8 @@ impl ObjectMapSingleOpEnv {
         let mut ret = self.root.lock().await;
         if ret.is_none() {
             let msg = format!(
-                "single op_env root not been init yet! key={}, value={}",
-                key, value
+                "single op_env root not been init yet! sid={}, key={}, value={}",
+                self.sid, key, value
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
@@ -279,10 +299,17 @@ impl ObjectMapSingleOpEnv {
             .await
     }
 
-    pub async fn remove_with_key(&self, key: &str, prev_value: &Option<ObjectId>,) -> BuckyResult<Option<ObjectId>> {
+    pub async fn remove_with_key(
+        &self,
+        key: &str,
+        prev_value: &Option<ObjectId>,
+    ) -> BuckyResult<Option<ObjectId>> {
         let mut ret = self.root.lock().await;
         if ret.is_none() {
-            let msg = format!("single op_env root not been init yet! key={}", key);
+            let msg = format!(
+                "single op_env root not been init yet! sid={}, key={}",
+                self.sid, key
+            );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
@@ -297,7 +324,10 @@ impl ObjectMapSingleOpEnv {
     pub async fn contains(&self, object_id: &ObjectId) -> BuckyResult<bool> {
         let ret = self.root.lock().await;
         if ret.is_none() {
-            let msg = format!("single op_env root not been init yet! value={}", object_id);
+            let msg = format!(
+                "single op_env root not been init yet! sid={}, value={}",
+                self.sid, object_id
+            );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
@@ -308,7 +338,10 @@ impl ObjectMapSingleOpEnv {
     pub async fn insert(&self, object_id: &ObjectId) -> BuckyResult<bool> {
         let mut ret = self.root.lock().await;
         if ret.is_none() {
-            let msg = format!("single op_env root not been init yet! value={}", object_id);
+            let msg = format!(
+                "single op_env root not been init yet! sid={}, value={}",
+                self.sid, object_id
+            );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
@@ -319,7 +352,10 @@ impl ObjectMapSingleOpEnv {
     pub async fn remove(&self, object_id: &ObjectId) -> BuckyResult<bool> {
         let mut ret = self.root.lock().await;
         if ret.is_none() {
-            let msg = format!("single op_env root not been init yet! value={}", object_id);
+            let msg = format!(
+                "single op_env root not been init yet! sid={}, value={}",
+                self.sid, object_id
+            );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
@@ -327,15 +363,18 @@ impl ObjectMapSingleOpEnv {
         ret.as_mut().unwrap().remove(&self.cache, object_id).await
     }
 
-    async fn update_root(&self) -> BuckyResult<ObjectId> {
-        let root = self.root.lock().await.take();
-        if root.is_none() {
-            let msg = format!("update root error, single op_env root not been init yet!");
+    async fn update_root(&self, finish: bool) -> BuckyResult<ObjectId> {
+        let mut root_slot = self.root.lock().await;
+        if root_slot.is_none() {
+            let msg = format!(
+                "update root error, single op_env root not been init yet! sid={}",
+                self.sid
+            );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
         }
 
-        let root = root.unwrap();
+        let root = root_slot.as_ref().unwrap();
         let object_id = root.cached_object_id().unwrap();
         let new_id = root.flush_id();
         if object_id == new_id {
@@ -348,9 +387,16 @@ impl ObjectMapSingleOpEnv {
 
         // 发生改变了，需要提交到noc
         info!(
-            "single op_env root object changed! {} => {}",
-            object_id, new_id
+            "single op_env root object changed! sid={}, {} => {}",
+            self.sid, object_id, new_id
         );
+
+        let root = if finish {
+            root_slot.take().unwrap()
+        } else {
+            root.clone()
+        };
+
         self.cache.put_object_map(&new_id, root)?;
 
         if let Err(e) = self.cache.gc(true, &new_id).await {
@@ -359,26 +405,28 @@ impl ObjectMapSingleOpEnv {
 
         self.cache.commit().await?;
 
-        info!("single op_env update root success! id={}", new_id);
+        info!(
+            "single op_env update root success! sid={}, root=={}",
+            self.sid, new_id
+        );
         Ok(new_id)
     }
 
     pub async fn update(&self) -> BuckyResult<ObjectId> {
-        self.update_root().await
+        self.update_root(false).await
     }
 
     pub async fn commit(self) -> BuckyResult<ObjectId> {
-        self.update_root().await
+        self.update_root(true).await
     }
 
     pub fn abort(self) -> BuckyResult<()> {
-        info!("will abord single_op_env: sid={}", self.sid);
+        info!("will abort single_op_env: sid={}", self.sid);
         self.cache.abort();
 
         Ok(())
     }
 }
-
 
 #[derive(Clone)]
 pub struct ObjectMapSingleOpEnvRef(Arc<ObjectMapSingleOpEnv>);
@@ -390,13 +438,21 @@ impl ObjectMapSingleOpEnvRef {
 
     fn into_raw(self) -> BuckyResult<ObjectMapSingleOpEnv> {
         let sid = self.sid();
-        let env = Arc::try_unwrap(self.0).map_err(|_| {
-            let msg = format!("single_op_env's ref_count is more than one! sid={}", sid);
+        let env = Arc::try_unwrap(self.0).map_err(|this| {
+            let msg = format!(
+                "single_op_env's ref_count is more than one! sid={}, ref={}",
+                sid,
+                Arc::strong_count(&this)
+            );
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::ErrorState, msg)
         })?;
 
         Ok(env)
+    }
+
+    pub fn is_dropable(&self) -> bool {
+        Arc::strong_count(&self.0) == 1
     }
 
     pub async fn commit(self) -> BuckyResult<ObjectId> {

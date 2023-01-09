@@ -1,8 +1,5 @@
 use crate::meta::*;
-use cyfs_base::{
-    AnyNamedObject, AnyNamedObjectVerifyHelper, BuckyError, BuckyErrorCode, BuckyResult, DeviceId,
-    ObjectId, PublicKey, PublicKeyRef, RawDecode, RsaCPUObjectVerifier, Verifier,
-};
+use cyfs_base::*;
 use cyfs_lib::*;
 
 use once_cell::sync::OnceCell;
@@ -26,7 +23,7 @@ pub struct VerifyObjectInnerRequest {
 }
 
 pub struct ObjectVerifier {
-    noc: OnceCell<Box<dyn NamedObjectCache>>,
+    noc: OnceCell<NamedObjectCacheRef>,
 
     local_device_id: DeviceId,
 
@@ -42,13 +39,13 @@ impl ObjectVerifier {
         }
     }
 
-    pub(crate) fn bind_noc(&self, noc: Box<dyn NamedObjectCache>) {
+    pub(crate) fn bind_noc(&self, noc: NamedObjectCacheRef) {
         if let Err(_) = self.noc.set(noc) {
             unreachable!();
         }
     }
 
-    pub fn noc(&self) -> &Box<dyn NamedObjectCache> {
+    pub fn noc(&self) -> &NamedObjectCacheRef {
         self.noc.get().unwrap()
     }
 
@@ -397,9 +394,9 @@ impl ObjectVerifier {
         }
 
         info!(
-            "verify object signs success! obj={}, pk={:?}, type={:?}",
+            "verify object signs success! obj={}, type={:?}",
             req.object_id,
-            verifier.public_key(),
+            // verifier.public_key(),
             verify_type
         );
 
@@ -440,12 +437,12 @@ impl ObjectVerifier {
     // 查找一个owner对象，先从本地查找，再从meta-chain查找
     async fn search_object_raw(&self, object_id: &ObjectId) -> BuckyResult<Vec<u8>> {
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
             object_id: object_id.clone(),
-            source: self.local_device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
+            last_access_rpath: None,
         };
         if let Ok(Some(obj)) = self.noc().get_object(&req).await {
-            return Ok(obj.object_raw.unwrap());
+            return Ok(obj.object.object_raw);
         }
 
         // 从meta查询

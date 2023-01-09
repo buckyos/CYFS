@@ -11,14 +11,14 @@ const DEVICE_DEFAULT_APP_LIST_ID: &str = "device-default-app-list";
 
 struct DefaultAppManager {
     list: Arc<Mutex<Option<DefaultAppList>>>,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
 
     // 当前设备id
     device_id: DeviceId,
 }
 
 impl DefaultAppManager {
-    pub fn new(device_id: &DeviceId, noc: Box<dyn NamedObjectCache>) -> Self {
+    pub fn new(device_id: &DeviceId, noc: NamedObjectCacheRef) -> Self {
         Self {
             list: Arc::new(Mutex::new(None)),
             noc,
@@ -86,7 +86,7 @@ impl DefaultAppManager {
             DEVICE_DEFAULT_APP_LIST_ID,
         );
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
+            protocol: RequestProtocol::Native,
             object_id,
             source: self.device_id.clone(),
         };
@@ -121,7 +121,7 @@ impl DefaultAppManager {
             (object_id, object_raw, object)
         };
         let info = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
+            protocol: RequestProtocol::Native,
             source: self.device_id.to_owned(),
             object_id,
             dec_id: None,
@@ -133,8 +133,8 @@ impl DefaultAppManager {
         match self.noc.insert_object(&info).await {
             Ok(resp) => {
                 match resp.result {
-                    NamedObjectCacheInsertResult::Accept
-                    | NamedObjectCacheInsertResult::Updated => {
+                    NamedObjectCachePutObjectResult::Accept
+                    | NamedObjectCachePutObjectResult::Updated => {
                         info!(
                             "insert default app list object to noc success! id={}",
                             info.object_id

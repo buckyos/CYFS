@@ -9,9 +9,12 @@ pub const CYFS_NON_ACTION: &str = "cyfs-non-action";
 pub const CYFS_NDN_ACTION: &str = "cyfs-ndn-action";
 
 pub const CYFS_DEC_ID: &str = "cyfs-dec-id";
+pub const CYFS_TARGET_DEC_ID: &str = "cyfs-target-dec-id";
+
 // select请求的filter内部的dec-id，和请求本身的dec-id区分
 pub const CYFS_FILTER_DEC_ID: &str = "cyfs-filter-dec-id";
 
+pub const CYFS_REQ_PATH: &str = "cyfs-req-path";
 pub const CYFS_INNER_PATH: &str = "cyfs-inner-path";
 
 pub const CYFS_OWNER_ID: &str = "cyfs-owner-id";
@@ -33,17 +36,23 @@ pub const CYFS_VERIFY_SIGNS: &str = "cyfs-verify-signs";
 
 pub const CYFS_VERIFY_TYPE: &str = "cyfs-verify-type";
 pub const CYFS_SIGN_TYPE: &str = "cyfs-sign-type";
-pub const CYFS_SIGN_FLAGS: &str = "cyfs-sign-flags";
+pub const CYFS_CRYPTO_FLAGS: &str = "cyfs-crypto-flags";
 pub const CYFS_VERIFY_RET: &str = "cyfs-verify-ret";
-
 pub const CYFS_SIGN_RET: &str = "cyfs-sign-ret";
+
+pub const CYFS_ENCRYPT_TYPE: &str = "cyfs-encrypt-type";
+pub const CYFS_DECRYPT_TYPE: &str = "cyfs-decrypt-type";
+pub const CYFS_DECRYPT_RET: &str = "cyfs-decrypt-ret";
+pub const CYFS_AES_KEY: &str = "cyfs-aes-key";
 
 pub const CYFS_FLAGS: &str = "cyfs-flags";
 pub const CYFS_TARGET: &str = "cyfs-target";
+pub const CYFS_SOURCE: &str = "cyfs-source";
 pub const CYFS_REFERER_OBJECT: &str = "cyfs-referer-object";
 pub const CYFS_FILTER_FLAGS: &str = "cyfs-filter-flags";
 pub const CYFS_REVISION: &str = "cyfs-revision";
 pub const CYFS_ROOT: &str = "cyfs-root";
+pub const CYFS_ACCESS: &str = "cyfs-access";
 
 pub const CYFS_TIMEOUT: &str = "cyfs-timeout";
 
@@ -82,3 +91,6 @@ pub const CYFS_OP_ENV_TYPE: &str = "cyfs-op-env-type";
 pub const CYFS_OP_ENV_PATH: &str = "cyfs-op-env-path";
 pub const CYFS_OP_ENV_KEY: &str = "cyfs-op-env-key";
 pub const CYFS_OP_ENV_VALUE: &str = "cyfs-op-env-value";
+
+// meta
+pub const CYFS_META_ACTION: &str = "cyfs-meta-aciton";

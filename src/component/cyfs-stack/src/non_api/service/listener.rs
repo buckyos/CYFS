@@ -1,5 +1,6 @@
 use super::handler::*;
 use crate::non::*;
+use crate::zone::ZoneManagerRef;
 use cyfs_lib::*;
 
 use async_trait::async_trait;
@@ -13,14 +14,21 @@ enum NONRequestType {
 }
 
 pub(crate) struct NONRequestHandlerEndpoint {
-    protocol: NONProtocol,
+    zone_manager: ZoneManagerRef,
+    protocol: RequestProtocol,
     req_type: NONRequestType,
     handler: NONRequestHandler,
 }
 
 impl NONRequestHandlerEndpoint {
-    fn new(protocol: NONProtocol, req_type: NONRequestType, handler: NONRequestHandler) -> Self {
+    fn new(
+        zone_manager: ZoneManagerRef,
+        protocol: RequestProtocol,
+        req_type: NONRequestType,
+        handler: NONRequestHandler,
+    ) -> Self {
         Self {
+            zone_manager,
             protocol,
             req_type,
             handler,
@@ -28,7 +36,10 @@ impl NONRequestHandlerEndpoint {
     }
 
     async fn process_request<State: Send>(&self, req: ::tide::Request<State>) -> Response {
-        let req = NONInputHttpRequest::new(&self.protocol, req);
+        let req = match NONInputHttpRequest::new(&self.zone_manager, &self.protocol, req).await {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
 
         match self.req_type {
             NONRequestType::Get => self.handler.process_get_request(req).await,
@@ -39,37 +50,48 @@ impl NONRequestHandlerEndpoint {
     }
 
     pub fn register_server(
-        protocol: &NONProtocol,
+        zone_manager: &ZoneManagerRef,
+        protocol: &RequestProtocol,
         handler: &NONRequestHandler,
         server: &mut ::tide::Server<()>,
     ) {
         // get_object/select_object
-        server.at("/non/*must").get(NONRequestHandlerEndpoint::new(
-            protocol.to_owned(),
-            NONRequestType::Get,
-            handler.clone(),
-        ));
-        // select_object在没req_path情况下，url只有/non段
-        server.at("/non").get(NONRequestHandlerEndpoint::new(
-            protocol.to_owned(),
-            NONRequestType::Get,
-            handler.clone(),
-        ));
         server.at("/non/").get(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            NONRequestType::Get,
+            handler.clone(),
+        ));
+        server.at("/non").get(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::Get,
             handler.clone(),
         ));
 
         // put_object
-        server.at("/non/*must").put(NONRequestHandlerEndpoint::new(
+        server.at("/non/").put(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            NONRequestType::PutObject,
+            handler.clone(),
+        ));
+        server.at("/non").put(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::PutObject,
             handler.clone(),
         ));
 
         // post_object
-        server.at("/non/*must").post(NONRequestHandlerEndpoint::new(
+        server.at("/non/").post(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
+            protocol.to_owned(),
+            NONRequestType::PostObject,
+            handler.clone(),
+        ));
+        server.at("/non").post(NONRequestHandlerEndpoint::new(
+            zone_manager.clone(),
             protocol.to_owned(),
             NONRequestType::PostObject,
             handler.clone(),
@@ -77,8 +99,17 @@ impl NONRequestHandlerEndpoint {
 
         // delete_object
         server
-            .at("/non/*must")
+            .at("/non/")
             .delete(NONRequestHandlerEndpoint::new(
+                zone_manager.clone(),
+                protocol.to_owned(),
+                NONRequestType::DeleteObject,
+                handler.clone(),
+            ));
+        server
+            .at("/non")
+            .delete(NONRequestHandlerEndpoint::new(
+                zone_manager.clone(),
                 protocol.to_owned(),
                 NONRequestType::DeleteObject,
                 handler.clone(),

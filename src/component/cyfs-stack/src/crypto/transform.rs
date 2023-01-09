@@ -21,7 +21,7 @@ impl CryptoInputTransformer {
             req_path: common.req_path,
 
             // 来源DEC
-            dec_id: common.dec_id,
+            dec_id: common.source.get_opt_dec().cloned(),
 
             // 用以处理默认行为
             target: common.target,
@@ -62,6 +62,40 @@ impl CryptoInputTransformer {
 
         Ok(out_resp)
     }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataInputRequest,
+    ) -> BuckyResult<CryptoEncryptDataInputResponse> {
+        let out_req = CryptoEncryptDataOutputRequest {
+            common: Self::convert_common(req.common),
+
+            encrypt_type: req.encrypt_type,
+            data: req.data,
+            flags: req.flags,
+        };
+
+        let out_resp = self.processor.encrypt_data(out_req).await?;
+
+        Ok(out_resp)
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataInputRequest,
+    ) -> BuckyResult<CryptoDecryptDataInputResponse> {
+        let out_req = CryptoDecryptDataOutputRequest {
+            common: Self::convert_common(req.common),
+
+            decrypt_type: req.decrypt_type,
+            data: req.data,
+            flags: req.flags,
+        };
+
+        let out_resp = self.processor.decrypt_data(out_req).await?;
+
+        Ok(out_resp)
+    }
 }
 
 #[async_trait::async_trait]
@@ -70,44 +104,62 @@ impl CryptoInputProcessor for CryptoInputTransformer {
         &self,
         req: CryptoVerifyObjectInputRequest,
     ) -> BuckyResult<CryptoVerifyObjectInputResponse> {
-        CryptoInputTransformer::verify_object(&self, req).await
+        Self::verify_object(&self, req).await
     }
 
     async fn sign_object(
         &self,
         req: CryptoSignObjectInputRequest,
     ) -> BuckyResult<CryptoSignObjectInputResponse> {
-        CryptoInputTransformer::sign_object(&self, req).await
+        Self::sign_object(&self, req).await
+    }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataInputRequest,
+    ) -> BuckyResult<CryptoEncryptDataInputResponse> {
+        Self::encrypt_data(&self, req).await
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataInputRequest,
+    ) -> BuckyResult<CryptoDecryptDataInputResponse> {
+        Self::decrypt_data(&self, req).await
     }
 }
 
 // 实现从output到input的转换
 pub(crate) struct CryptoOutputTransformer {
     processor: CryptoInputProcessorRef,
-    source: DeviceId,
+    source: RequestSourceInfo,
 }
 
 impl CryptoOutputTransformer {
-    pub fn new(processor: CryptoInputProcessorRef, source: DeviceId) -> CryptoOutputProcessorRef {
+    pub fn new(
+        processor: CryptoInputProcessorRef,
+        source: RequestSourceInfo,
+    ) -> CryptoOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: CryptoOutputRequestCommon) -> CryptoInputRequestCommon {
+        let mut source = self.source.clone();
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
+
         CryptoInputRequestCommon {
             // 请求路径，可为空
             req_path: common.req_path,
-
-            // 来源DEC
-            dec_id: common.dec_id,
 
             // 用以处理默认行为
             target: common.target,
 
             flags: common.flags,
 
-            source: self.source.clone(),
-            protocol: NONProtocol::Native,
+            source,
         }
     }
 
@@ -144,6 +196,40 @@ impl CryptoOutputTransformer {
 
         Ok(resp)
     }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataOutputRequest,
+    ) -> BuckyResult<CryptoEncryptDataOutputResponse> {
+        let in_req = CryptoEncryptDataInputRequest {
+            common: self.convert_common(req.common),
+
+            encrypt_type: req.encrypt_type,
+            data: req.data,
+            flags: req.flags,
+        };
+
+        let resp = self.processor.encrypt_data(in_req).await?;
+
+        Ok(resp)
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataOutputRequest,
+    ) -> BuckyResult<CryptoDecryptDataOutputResponse> {
+        let in_req = CryptoDecryptDataInputRequest {
+            common: self.convert_common(req.common),
+
+            decrypt_type: req.decrypt_type,
+            data: req.data,
+            flags: req.flags,
+        };
+
+        let resp = self.processor.decrypt_data(in_req).await?;
+
+        Ok(resp)
+    }
 }
 
 #[async_trait::async_trait]
@@ -152,13 +238,27 @@ impl CryptoOutputProcessor for CryptoOutputTransformer {
         &self,
         req: CryptoVerifyObjectOutputRequest,
     ) -> BuckyResult<CryptoVerifyObjectOutputResponse> {
-        CryptoOutputTransformer::verify_object(&self, req).await
+        Self::verify_object(&self, req).await
     }
 
     async fn sign_object(
         &self,
         req: CryptoSignObjectOutputRequest,
     ) -> BuckyResult<CryptoSignObjectOutputResponse> {
-        CryptoOutputTransformer::sign_object(&self, req).await
+        Self::sign_object(&self, req).await
+    }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataOutputRequest,
+    ) -> BuckyResult<CryptoEncryptDataOutputResponse> {
+        Self::encrypt_data(&self, req).await
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataOutputRequest,
+    ) -> BuckyResult<CryptoDecryptDataOutputResponse> {
+        Self::decrypt_data(&self, req).await
     }
 }

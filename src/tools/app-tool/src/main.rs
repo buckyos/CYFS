@@ -15,8 +15,6 @@ use log::*;
 use std::path::Path;
 use std::str::FromStr;
 
-// put: 运行在一个跨进程non stack后边，通过PutApp对象添加/改变一个App状态
-// remove: 运行在一个跨进程non stack后边，通过RemoveApp对象移除一个App
 // app create: 创建一个App对象，通过参数指定是否上链
 // app set: 给App对象set一个source，App对象可以是文件也可以是链上ID
 // app remove: 移除一个App对象的指定source
@@ -74,6 +72,7 @@ where
         .put_object(NONPutObjectRequest {
             common: NONOutputRequestCommon::new(NONAPILevel::Router),
             object: NONObjectInfo::new_from_object_raw(obj.to_vec().unwrap()).unwrap(),
+            access: None
         })
         .await
     {
@@ -305,8 +304,8 @@ lazy_static! {
     static ref DEFAULT_TARGET: String = MetaMinerTarget::default().to_string();
 }
 
-#[async_std::main]
-async fn main() -> BuckyResult<()> {
+
+async fn main_run() -> BuckyResult<()> {
     simple_logger::SimpleLogger::new()
         .with_level(LevelFilter::Debug)
         .init()
@@ -446,6 +445,10 @@ async fn main() -> BuckyResult<()> {
                             .long("type")
                             .default_value("app")
                             .possible_values(&["app", "service"]),
+                    ).arg(
+                        Arg::with_name("clear")
+                            .long("clear")
+                            .help("cleat list before update")
                     )
                     .arg(meta_arg.clone()),
                 ),
@@ -761,6 +764,9 @@ async fn main() -> BuckyResult<()> {
                             std::fs::File::open(matches.value_of("config").unwrap()).unwrap(),
                         )
                         .unwrap();
+                        if matches.is_present("clear") {
+                            list.clear();
+                        }
                         // 需要config格式：[{id, ver, status}]
                         for service in config.as_array().unwrap() {
                             let app_id = DecAppId::from_str(
@@ -913,4 +919,10 @@ async fn main() -> BuckyResult<()> {
     }
 
     Ok(())
+}
+
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run());
 }

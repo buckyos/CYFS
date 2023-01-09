@@ -21,7 +21,7 @@ impl UtilInputTransformer {
             req_path: common.req_path,
 
             // 来源DEC
-            dec_id: common.dec_id,
+            dec_id: common.source.get_opt_dec().cloned(),
 
             // 用以处理默认行为
             target: common.target,
@@ -192,13 +192,13 @@ impl UtilInputTransformer {
 
     async fn build_file_object(
         &self,
-        req: UtilBuildFileInputRequest
+        req: UtilBuildFileInputRequest,
     ) -> BuckyResult<UtilBuildFileInputResponse> {
         let out_req = UtilBuildFileOutputRequest {
             common: Self::convert_common(req.common),
             local_path: req.local_path,
             owner: req.owner,
-            chunk_size: req.chunk_size
+            chunk_size: req.chunk_size,
         };
 
         let out_resp = self.processor.build_file_object(out_req).await?;
@@ -207,7 +207,7 @@ impl UtilInputTransformer {
 
     async fn build_dir_from_object_map(
         &self,
-        req: UtilBuildDirFromObjectMapInputRequest
+        req: UtilBuildDirFromObjectMapInputRequest,
     ) -> BuckyResult<UtilBuildDirFromObjectMapInputResponse> {
         let out_req = UtilBuildDirFromObjectMapOutputRequest {
             common: Self::convert_common(req.common),
@@ -285,42 +285,51 @@ impl UtilInputProcessor for UtilInputTransformer {
         UtilInputTransformer::get_version_info(&self, req).await
     }
 
-    async fn build_file_object(&self, req: UtilBuildFileInputRequest) -> BuckyResult<UtilBuildFileInputResponse> {
+    async fn build_file_object(
+        &self,
+        req: UtilBuildFileInputRequest,
+    ) -> BuckyResult<UtilBuildFileInputResponse> {
         UtilInputTransformer::build_file_object(&self, req).await
     }
 
-    async fn build_dir_from_object_map(&self, req: UtilBuildDirFromObjectMapInputRequest)
-        -> BuckyResult<UtilBuildDirFromObjectMapInputResponse> {
+    async fn build_dir_from_object_map(
+        &self,
+        req: UtilBuildDirFromObjectMapInputRequest,
+    ) -> BuckyResult<UtilBuildDirFromObjectMapInputResponse> {
         UtilInputTransformer::build_dir_from_object_map(&self, req).await
     }
 }
 
 pub(crate) struct UtilOutputTransformer {
     processor: UtilInputProcessorRef,
-    source: DeviceId,
+    source: RequestSourceInfo,
 }
 
 impl UtilOutputTransformer {
-    pub fn new(processor: UtilInputProcessorRef, source: DeviceId) -> UtilOutputProcessorRef {
+    pub fn new(
+        processor: UtilInputProcessorRef,
+        source: RequestSourceInfo,
+    ) -> UtilOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: UtilOutputRequestCommon) -> UtilInputRequestCommon {
+        let mut source = self.source.clone();
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
+
         UtilInputRequestCommon {
             // 请求路径，可为空
             req_path: common.req_path,
-
-            // 来源DEC
-            dec_id: common.dec_id,
 
             // 用以处理默认行为
             target: common.target,
 
             flags: common.flags,
 
-            source: self.source.clone(),
-            protocol: NONProtocol::Native,
+            source,
         }
     }
 }
@@ -448,7 +457,10 @@ impl UtilOutputProcessor for UtilOutputTransformer {
         Ok(resp)
     }
 
-    async fn build_file_object(&self, req: UtilBuildFileOutputRequest) -> BuckyResult<UtilBuildFileOutputResponse> {
+    async fn build_file_object(
+        &self,
+        req: UtilBuildFileOutputRequest,
+    ) -> BuckyResult<UtilBuildFileOutputResponse> {
         let in_req = UtilBuildFileInputRequest {
             common: self.convert_common(req.common),
             local_path: req.local_path,
@@ -460,7 +472,10 @@ impl UtilOutputProcessor for UtilOutputTransformer {
         Ok(resp)
     }
 
-    async fn build_dir_from_object_map(&self, req: UtilBuildDirFromObjectMapOutputRequest) -> BuckyResult<UtilBuildDirFromObjectMapOutputResponse> {
+    async fn build_dir_from_object_map(
+        &self,
+        req: UtilBuildDirFromObjectMapOutputRequest,
+    ) -> BuckyResult<UtilBuildDirFromObjectMapOutputResponse> {
         let in_req = UtilBuildDirFromObjectMapInputRequest {
             common: self.convert_common(req.common),
             object_map_id: req.object_map_id,

@@ -35,13 +35,8 @@ impl UpstreamDatagramSender for DatagramTunnel {
         let device_id = DeviceId::from_str(addr[0]).unwrap();
         let vport = addr[1].parse::<u16>().unwrap();
 
-        let mut options = DatagramOptions {
-            sequence: None,
-            author_id: None,
-            create_time: None,
-            send_time: None,
-            pieces: None
-        };
+        let mut options = DatagramOptions::default();
+        
         (**self).send_to(buf, &mut options, &device_id, vport).map_err(|e| BuckyError::from(e))?;
 
         Ok(buf.len())

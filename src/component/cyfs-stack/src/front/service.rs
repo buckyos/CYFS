@@ -6,21 +6,21 @@ use crate::ndn::NDNInputProcessorRef;
 use crate::ndn_api::NDNForwardObjectData;
 use crate::non::NONInputProcessorRef;
 use crate::resolver::OodResolver;
-use crate::root_state::GlobalStateAccessInputProcessorRef;
+use crate::root_state::GlobalStateAccessorInputProcessorRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
 enum GlobalStateResponse {
-    Object(RootStateAccessGetObjectByPathInputResponse),
-    List(RootStateAccessListInputResponse),
+    Object(RootStateAccessorGetObjectByPathInputResponse),
+    List(RootStateAccessorListInputResponse),
 }
 
 pub(crate) struct FrontService {
     non: NONInputProcessorRef,
     ndn: NDNInputProcessorRef,
 
-    root_state: GlobalStateAccessInputProcessorRef,
-    local_cache: GlobalStateAccessInputProcessorRef,
+    root_state: GlobalStateAccessorInputProcessorRef,
+    local_cache: GlobalStateAccessorInputProcessorRef,
 
     app: AppService,
 
@@ -31,8 +31,8 @@ impl FrontService {
     pub fn new(
         non: NONInputProcessorRef,
         ndn: NDNInputProcessorRef,
-        root_state: GlobalStateAccessInputProcessorRef,
-        local_cache: GlobalStateAccessInputProcessorRef,
+        root_state: GlobalStateAccessorInputProcessorRef,
+        local_cache: GlobalStateAccessorInputProcessorRef,
         app: AppService,
         ood_resolver: OodResolver,
     ) -> Self {
@@ -111,9 +111,7 @@ impl FrontService {
 
         let common = NONInputRequestCommon {
             req_path: None,
-            dec_id: req.dec_id,
             source: req.source,
-            protocol: req.protocol,
             level: NONAPILevel::Router,
             target,
             flags: req.flags,
@@ -142,9 +140,7 @@ impl FrontService {
 
         let common = NDNInputRequestCommon {
             req_path: None,
-            dec_id: req.dec_id,
             source: req.source,
-            protocol: req.protocol,
             level: NDNAPILevel::Router,
             referer_object: vec![],
             target,
@@ -156,7 +152,7 @@ impl FrontService {
             common,
             object_id: req.object.object_id,
             data_type: NDNDataType::Mem,
-            range: None,
+            range: req.range,
             inner_path: None,
         };
 
@@ -188,9 +184,7 @@ impl FrontService {
 
         let common = NDNInputRequestCommon {
             req_path: None,
-            dec_id: req.dec_id,
             source: req.source,
-            protocol: req.protocol,
             level: NDNAPILevel::Router,
             referer_object: vec![],
             target,
@@ -202,7 +196,7 @@ impl FrontService {
             common,
             object_id: req.object.object_id,
             data_type: NDNDataType::Mem,
-            range: None,
+            range: req.range,
             inner_path: None,
         };
 
@@ -343,17 +337,19 @@ impl FrontService {
 
         let state_resp = self.process_global_state_request(req.clone()).await?;
 
-       let resp = match state_resp {
+        let resp = match state_resp {
             GlobalStateResponse::Object(state_resp) => {
                 match state_resp.object.object.object_id.obj_type_code() {
                     ObjectTypeCode::Chunk => {
                         // verify the mode
-                        let mode = Self::select_mode(&req.mode, &state_resp.object.object.object_id)?;
+                        let mode =
+                            Self::select_mode(&req.mode, &state_resp.object.object.object_id)?;
                         assert_eq!(mode, FrontRequestGetMode::Data);
-        
-                        let ndn_req = FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
+
+                        let ndn_req =
+                            FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
                         let resp = self.process_get_chunk(ndn_req).await?;
-        
+
                         FrontRResponse {
                             object: Some(state_resp.object),
                             root: state_resp.root,
@@ -364,8 +360,9 @@ impl FrontService {
                     }
                     _ => {
                         // decide the mode
-                        let mode = Self::select_mode(&req.mode, &state_resp.object.object.object_id)?;
-        
+                        let mode =
+                            Self::select_mode(&req.mode, &state_resp.object.object.object_id)?;
+
                         match mode {
                             FrontRequestGetMode::Object => FrontRResponse {
                                 object: Some(state_resp.object),
@@ -375,10 +372,12 @@ impl FrontService {
                                 list: None,
                             },
                             FrontRequestGetMode::Data => {
-                                let ndn_req =
-                                    FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
+                                let ndn_req = FrontNDNRequest::new_r_resp(
+                                    req,
+                                    state_resp.object.object.clone(),
+                                );
                                 let ndn_resp = self.process_get_file(ndn_req).await?;
-        
+
                                 FrontRResponse {
                                     object: Some(state_resp.object),
                                     root: state_resp.root,
@@ -392,29 +391,25 @@ impl FrontService {
                     }
                 }
             }
-            GlobalStateResponse::List(state_resp) => {
-                FrontRResponse {
-                    object: None,
-                    root: state_resp.root,
-                    revision: state_resp.revision,
-                    data: None,
-                    list: Some(state_resp.list),
-                }
-            }
+            GlobalStateResponse::List(state_resp) => FrontRResponse {
+                object: None,
+                root: state_resp.root,
+                revision: state_resp.revision,
+                data: None,
+                list: Some(state_resp.list),
+            },
         };
 
         Ok(resp)
     }
 
-   
     async fn process_global_state_request(
         &self,
         req: FrontRRequest,
     ) -> BuckyResult<GlobalStateResponse> {
         let common = RootStateInputRequestCommon {
-            dec_id: req.dec_id,
+            target_dec_id: req.target_dec_id,
             source: req.source,
-            protocol: req.protocol,
             target: req.target,
             flags: req.flags,
         };
@@ -425,18 +420,19 @@ impl FrontService {
         };
 
         match req.action {
-            RootStateAccessAction::GetObjectByPath => {
-                let state_req = RootStateAccessGetObjectByPathInputRequest {
+            GlobalStateAccessorAction::GetObjectByPath => {
+                let state_req = RootStateAccessorGetObjectByPathInputRequest {
                     common,
                     inner_path: req.inner_path.unwrap_or("".to_owned()),
                 };
-        
-                processor.get_object_by_path(state_req).await.map(|resp| {
-                    GlobalStateResponse::Object(resp)
-                })
+
+                processor
+                    .get_object_by_path(state_req)
+                    .await
+                    .map(|resp| GlobalStateResponse::Object(resp))
             }
-            RootStateAccessAction::List => {
-                let state_req = RootStateAccessListInputRequest {
+            GlobalStateAccessorAction::List => {
+                let state_req = RootStateAccessorListInputRequest {
                     common,
                     inner_path: req.inner_path.unwrap_or("".to_owned()),
 
@@ -444,12 +440,12 @@ impl FrontService {
                     page_size: req.page_size,
                 };
 
-                processor.list(state_req).await.map(|resp| {
-                    GlobalStateResponse::List(resp)
-                })
+                processor
+                    .list(state_req)
+                    .await
+                    .map(|resp| GlobalStateResponse::List(resp))
             }
         }
-        
     }
 
     pub async fn process_a_request(&self, req: FrontARequest) -> BuckyResult<FrontAResponse> {
@@ -464,36 +460,37 @@ impl FrontService {
             FrontARequestGoal::Web(web_req) => {
                 let ret = self.app.get_app_web_dir(&req.dec, &web_req.version).await?;
                 match ret {
-                    AppInstallStatus::Installed((dec_id, dir_id)) => {
+                    AppInstallStatus::Installed((_dec_id, dir_id)) => {
                         let o_req = FrontORequest {
-                            protocol: req.protocol,
                             source: req.source,
-
                             target,
 
-                            dec_id: Some(dec_id),
                             object_id: dir_id,
                             inner_path: web_req.inner_path,
+                            range: None,
 
                             mode: req.mode,
                             format: req.format,
 
+                            referer_objects: req.referer_objects,
+
                             flags: req.flags,
                         };
 
-                        let url = self.gen_o_redirect_url(&o_req);
-                        FrontAResponse::Redirect(url)
-                        //let o_resp = self.process_o_request(o_req).await?;
-                        //FrontAResponse::Response(o_resp)
+                        // let url = self.gen_o_redirect_url(&o_req, &req.origin_url);
+                        // FrontAResponse::Redirect(url)
+                        let o_resp = self.process_o_request(o_req).await?;
+                        FrontAResponse::Response(o_resp)
                     }
                     AppInstallStatus::NotInstalled(dec) => {
                         let dec_id = dec.as_dec_id().or(req.dec.as_dec_id());
                         let name = dec.as_name().or(req.dec.as_name());
-                        
+
                         let url = self.gen_app_not_installed_redirect_url(
                             dec_id,
                             name,
                             Some(&web_req.version),
+                            &req.origin_url,
                         );
                         FrontAResponse::Redirect(url)
                     }
@@ -502,32 +499,36 @@ impl FrontService {
             FrontARequestGoal::LocalStatus => {
                 let ret = self.app.get_app_local_status(&req.dec).await?;
                 match ret {
-                    AppInstallStatus::Installed((dec_id, local_status_id)) => {
+                    AppInstallStatus::Installed((_dec_id, local_status_id)) => {
                         let o_req = FrontORequest {
-                            protocol: req.protocol,
                             source: req.source,
-
                             target,
 
-                            dec_id: Some(dec_id),
                             object_id: local_status_id,
                             inner_path: None,
+                            range: None,
 
                             mode: req.mode,
                             format: req.format,
 
+                            referer_objects: req.referer_objects,
+                            
                             flags: req.flags,
                         };
 
                         let o_resp = self.process_o_request(o_req).await?;
-
                         FrontAResponse::Response(o_resp)
                     }
                     AppInstallStatus::NotInstalled(dec) => {
                         let dec_id = dec.as_dec_id().or(req.dec.as_dec_id());
                         let name = dec.as_name().or(req.dec.as_name());
 
-                        let url = self.gen_app_not_installed_redirect_url(dec_id, name, None);
+                        let url = self.gen_app_not_installed_redirect_url(
+                            dec_id,
+                            name,
+                            None,
+                            &req.origin_url,
+                        );
                         FrontAResponse::Redirect(url)
                     }
                 }
@@ -537,10 +538,7 @@ impl FrontService {
         Ok(resp)
     }
 
-    fn gen_o_redirect_url(
-        &self,
-        req: &FrontORequest,
-    ) -> String {
+    fn gen_o_redirect_url(&self, req: &FrontORequest, origin_url: &http_types::Url) -> String {
         let mut parts = vec![];
         if req.target.len() > 0 {
             let targets: Vec<String> = req.target.iter().map(|v| v.to_string()).collect();
@@ -556,7 +554,7 @@ impl FrontService {
         let url = format!("/o/{}", parts.join("/"));
 
         let mut querys = vec![];
-        if let Some(dec_id) = &req.dec_id {
+        if let Some(dec_id) = req.source.get_opt_dec() {
             querys.push(format!("dec_id={}", dec_id));
         }
 
@@ -572,13 +570,27 @@ impl FrontService {
             querys.push(format!("format={}", req.format.as_str()));
         }
 
+        // merge origin query pairs
+        for (key, value) in origin_url.query_pairs() {
+            let s = format!("{}=", key);
+            if let Some(_) = querys.iter().find(|&v| v.starts_with(&s)) {
+                warn!(
+                    "a protocol query name conflicts with reserved! key={}, value={}",
+                    key, value
+                );
+                continue;
+            }
+
+            querys.push(format!("{}={}", key, value));
+        }
+
         let url = if querys.len() > 0 {
             let querys = querys.join("&");
             format!("{}?{}", url, querys)
         } else {
             url
         };
-        
+
         url
     }
 
@@ -587,6 +599,7 @@ impl FrontService {
         dec_id: Option<&ObjectId>,
         name: Option<&str>,
         version: Option<&FrontARequestVersion>,
+        origin_url: &http_types::Url,
     ) -> String {
         let mut querys = vec![];
 
@@ -602,7 +615,7 @@ impl FrontService {
                 percent_encoding::utf8_percent_encode(name, percent_encoding::NON_ALPHANUMERIC)
                     .collect();
 
-                querys.push(format!("name={}", v));
+            querys.push(format!("name={}", v));
         }
 
         if let Some(version) = &version {
@@ -617,15 +630,29 @@ impl FrontService {
             }
         }
 
+        // merge origin query pairs
+        for (key, value) in origin_url.query_pairs() {
+            let s = format!("{}=", key);
+            if let Some(_) = querys.iter().find(|&v| v.starts_with(&s)) {
+                warn!(
+                    "a protocol query name conflicts with reserved! key={}, value={}",
+                    key, value
+                );
+                continue;
+            }
+
+            querys.push(format!("{}={}", key, value));
+        }
+
         let url = if querys.len() > 0 {
             let querys = querys.join("&");
             format!("{}?{}", APP_DETAIL_URL, querys)
         } else {
             APP_DETAIL_URL.to_owned()
         };
-        
+
         url
     }
 }
 
-const APP_DETAIL_URL: &str = "/static/app/app_detail.html";
+const APP_DETAIL_URL: &str = "/static/DecAppStore/app_detail.html";

@@ -57,7 +57,7 @@ where
         id: &str,
         session_requestor: Arc<WebSocketRequestManager>,
     ) -> BuckyResult<Self> {
-        info!(
+        debug!(
             "new ws router event routine: categroy={}, id={}, sid={}",
             categroy,
             id,

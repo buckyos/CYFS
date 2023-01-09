@@ -1,12 +1,12 @@
 ![CYFS Logo](./doc/logos/CYFS_logo.png)
 [![cyfs-lib-ver](https://img.shields.io/crates/v/cyfs-lib?label=cyfs-lib&style=plastic)](https://crates.io/crates/cyfs-lib)
-![rust](https://img.shields.io/badge/rustc-1.57%2B-green?style=plastic)
+![rust](https://img.shields.io/badge/rustc-1.63%2B-green?style=plastic)
 ![liscence](https://img.shields.io/crates/l/cyfs-base?style=plastic)
 ![Downloads](https://img.shields.io/crates/d/cyfs-base?style=plastic)
 
 ****CYFS：Next Generation Protocl Family to Build Web3****    
 + CYFS是CYberFileSystem的缩写
-+ 官方主页: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index_en.html](cyfs://cyfs/index_en.html)  
++ 官方主页: [https://www.cyfs.com/](https://www.cyfs.com) ,[cyfs://cyfs/index](cyfs://cyfs/index)  
 + Discord 讨论组：[https://discord.gg/dXDxjXTEjT](https://discord.gg/dXDxjXTEjT)   
 + CYFS白皮书(Coming soon)   
 + Language: [English](./README.md)
@@ -54,8 +54,9 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 1. [《编译并部署DIYOOD》](doc/zh-CN/Hello_CYFS/0.%E7%BC%96%E8%AF%91%E5%B9%B6%E9%83%A8%E7%BD%B2DIYOOD.md)    
 2. [《创建自己的身份文件》](doc/zh-CN/Hello_CYFS/1.%E5%88%9B%E5%BB%BA%E8%87%AA%E5%B7%B1%E7%9A%84%E8%BA%AB%E4%BB%BD%E6%96%87%E4%BB%B6.md)
 3. [《发布文件并下载》](doc/zh-CN/Hello_CYFS/2.%E5%8F%91%E5%B8%83%E6%96%87%E4%BB%B6%E5%B9%B6%E4%B8%8B%E8%BD%BD.md)
-4. [《发布网站并查看》](doc/zh-CN/Hello_CYFS/3.%E5%8F%91%E5%B8%83%E7%BD%91%E7%AB%99%E5%B9%B6%E6%9F%A5%E7%9C%8B.md)
-5. [《给朋友一点打赏》](doc/zh-CN/Hello_CYFS/4.%E7%BB%99%E6%9C%8B%E5%8F%8B%E4%B8%80%E7%82%B9%E6%89%93%E8%B5%8F.md)
+4. [《给朋友一点打赏》](doc/zh-CN/Hello_CYFS/3.%E7%BB%99%E6%9C%8B%E5%8F%8B%E4%B8%80%E7%82%B9%E6%89%93%E8%B5%8F.md)
+5. [《发布网站并查看》](doc/zh-CN/Hello_CYFS/4.%E5%8F%91%E5%B8%83%E7%BD%91%E7%AB%99%E5%B9%B6%E6%9F%A5%E7%9C%8B.md)
+
 
 也可以使用下面的简易流程进行一次“不求甚解”的初体验～
 
@@ -71,7 +72,7 @@ CYFS通过升级Web的基础协议（TCP/IP+DNS+HTTP），实现了真正的Web3
 准备一台闲置的Linux主机，最好是VPS，有2G以上内存。
 准备工作:
 - node.js 14或以上版本
-- rustc 1.57或以上版本
+- rustc 1.63或以上版本
 
 运行下面命令进行OOD System的编译。
 
@@ -202,6 +203,22 @@ cyfs浏览器的下载，参见[这里](./download.md)
     - 5.4 路由器能识别BDT发出的Chunk请求包，进行拦截、转发，进一步优化网络的整体负载
     - 5.5 只有OOD会进行Chunk上传
 6. 当FileObject的第一个Chunk就绪并验证后，步骤1的HTTP GET请求开始返回数据
+
+# DecApp开发实践
+下边的系列文章介绍了如何基于CYFS，实现一个留言板DecApp。这是一个很长的文章系列，详细讲述了开发一个DecApp的一般流程
+1. [《简介》](./doc/zh-CN/实战留言板系统/1.简介.md)
+2. [《DEC App基本原理》](./doc/zh-CN/实战留言板系统/2.DEC%20App%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86.md)
+3. [《实现自己的留言服务》](./doc/zh-CN/实战留言板系统/3.%E5%AE%9E%E7%8E%B0%E8%87%AA%E5%B7%B1%E7%9A%84%E7%95%99%E8%A8%80%E6%9C%8D%E5%8A%A1.md)
+4. [《运行和调试自己的留言服务》](./doc/zh-CN/实战留言板系统/4.%E8%BF%90%E8%A1%8C%E5%92%8C%E8%B0%83%E8%AF%95%E8%87%AA%E5%B7%B1%E7%9A%84%E7%95%99%E8%A8%80%E6%9C%8D%E5%8A%A1.md)
+5. [《扩展阅读：上个章节成果原理的进一步讲解和一些工具介绍》](./doc/zh-CN/实战留言板系统/5.%E6%89%A9%E5%B1%95%E9%98%85%E8%AF%BB%EF%BC%9A%E4%B8%8A%E4%B8%AA%E7%AB%A0%E8%8A%82%E6%88%90%E6%9E%9C%E5%8E%9F%E7%90%86%E7%9A%84%E8%BF%9B%E4%B8%80%E6%AD%A5%E8%AE%B2%E8%A7%A3%E5%92%8C%E4%B8%80%E4%BA%9B%E5%B7%A5%E5%85%B7%E4%BB%8B%E7%BB%8D.md)
+6. [《实现前端》](./doc/zh-CN/实战留言板系统/6.%E5%AE%9E%E7%8E%B0%E5%89%8D%E7%AB%AF.md)
+7. [《发给朋友看看:理解CYFS权限系统》](./doc/zh-CN/实战留言板系统/7.%E5%8F%91%E7%BB%99%E6%9C%8B%E5%8F%8B%E7%9C%8B%E7%9C%8B%2C%E7%90%86%E8%A7%A3CYFS%E6%9D%83%E9%99%90%E7%B3%BB%E7%BB%9F.md)
+8. [《使用模拟器对应用进行跨 Zone 测试》](./doc/zh-CN/实战留言板系统/8.%E4%BD%BF%E7%94%A8%E6%A8%A1%E6%8B%9F%E5%99%A8%E5%AF%B9%E5%BA%94%E7%94%A8%E8%BF%9B%E8%A1%8C%E8%B7%A8%20Zone%20%E6%B5%8B%E8%AF%95.md)
+9.  [《扩展阅读：去中心、可信数据、语义数据，数据产权》](./doc/zh-CN/实战留言板系统/9.%E6%89%A9%E5%B1%95%E9%98%85%E8%AF%BB%EF%BC%9A%E5%8E%BB%E4%B8%AD%E5%BF%83%E3%80%81%E5%8F%AF%E4%BF%A1%E6%95%B0%E6%8D%AE%E3%80%81%E8%AF%AD%E4%B9%89%E6%95%B0%E6%8D%AE%EF%BC%8C%E6%95%B0%E6%8D%AE%E4%BA%A7%E6%9D%83.md)
+10. [《添加评论》](./doc/zh-CN/实战留言板系统/10.%E6%B7%BB%E5%8A%A0%E8%AF%84%E8%AE%BA.md)
+11. [《扩展阅读：进一步了解数据交换合约和DAO》](./doc/zh-CN/实战留言板系统/11.%E6%89%A9%E5%B1%95%E9%98%85%E8%AF%BB%EF%BC%9A%E8%BF%9B%E4%B8%80%E6%AD%A5%E4%BA%86%E8%A7%A3%E6%95%B0%E6%8D%AE%E4%BA%A4%E6%8D%A2%E5%90%88%E7%BA%A6%E5%92%8CDAO.md)
+12. [《DEC App的数据安全与高可用》](./doc/zh-CN/实战留言板系统/12.DEC%20App%E7%9A%84%E6%95%B0%E6%8D%AE%E5%AE%89%E5%85%A8%E4%B8%8E%E9%AB%98%E5%8F%AF%E7%94%A8.md)
+13. [《总结》](./doc/zh-CN/实战留言板系统/13.%E6%80%BB%E7%BB%93.md)
 
 # 目录结构
 

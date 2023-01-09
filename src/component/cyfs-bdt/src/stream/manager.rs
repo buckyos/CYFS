@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::{RwLock}};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*,
+    protocol::{*, v0::*},
     interface::*,  
     tunnel::{TunnelGuard, TunnelContainer, BuildTunnelParams}, 
     stack::{Stack, WeakStack}
@@ -13,6 +13,8 @@ use super::{
     listener::*
 };
 use log::*;
+
+const QUESTION_MAX_LEN: usize = 1024*25;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct RemoteSequence(DeviceId, TempSeq);
@@ -79,6 +81,13 @@ impl StreamManager {
         question: Vec<u8>, 
         build_params: BuildTunnelParams
     ) -> Result<StreamGuard, BuckyError> {
+        if question.len() > QUESTION_MAX_LEN {
+            return Err(BuckyError::new(
+                BuckyErrorCode::Failed,
+                format!("question's length large than {}", QUESTION_MAX_LEN),
+            ));
+        }
+
         info!("{} connect stream to {}:{}", self, build_params.remote_const.device_id(), port);
         let manager_impl = &self.0;
         let stack = Stack::from(&manager_impl.stack);
@@ -210,8 +219,9 @@ impl OnPackage<SessionData, &TunnelContainer> for StreamManager {
                 if let Some(stream) = self.stream_of_remote_sequence(&remote_seq) {
                     Some(stream)
                 } else {
-                    let mut question = vec![];
+                    let mut question = vec![0; pkg.payload.as_ref().len()];
                     question.copy_from_slice(pkg.payload.as_ref());
+
                     self.try_accept(
                         stack.tunnel_manager().container_of(tunnel.remote()).unwrap(), 
                         syn_info.to_vport,
@@ -248,7 +258,7 @@ impl OnPackage<TcpSynConnection, (&TunnelContainer, tcp::AcceptInterface)> for S
             if let Some(stream) = self.stream_of_remote_sequence(&remote_seq) {
                 Some(stream)
             } else {
-                let mut question = vec![];
+                let mut question = vec![0; pkg.payload.as_ref().len()];
                 question.copy_from_slice(pkg.payload.as_ref());
                 self.try_accept(
                     stack.tunnel_manager().container_of(tunnel.remote()).unwrap(), 
@@ -276,7 +286,7 @@ impl OnPackage<TcpSynConnection, &TunnelContainer> for StreamManager {
             if let Some(stream) = self.stream_of_remote_sequence(&remote_seq) {
                 Some(stream)
             } else {
-                let mut question = vec![];
+                let mut question = vec![0; pkg.payload.as_ref().len()];
                 question.copy_from_slice(pkg.payload.as_ref());
                 self.try_accept(
                     stack.tunnel_manager().container_of(tunnel.remote()).unwrap(), 

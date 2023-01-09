@@ -1,11 +1,12 @@
-use cyfs_base::*;
 use super::super::*;
+use cyfs_base::*;
 
 use serde_json::{Map, Value};
 
 #[derive(Debug)]
 pub struct RouterAddHandlerParam {
-    pub filter: String,
+    pub filter: Option<String>,
+    pub req_path: Option<String>,
     pub index: i32,
 
     pub default_action: RouterHandlerAction,
@@ -21,23 +22,10 @@ impl JsonCodec<RouterAddHandlerParam> for RouterAddHandlerParam {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
 
-        /*
-        obj.insert(
-            "category".to_string(),
-            Value::Object(self.category.encode_json()),
-        );
+        JsonCodecHelper::encode_option_string_field(&mut obj, "filter", self.filter.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "req_path", self.req_path.as_ref());
 
-        obj.insert("id".to_string(), Value::String(self.id.clone()));
-        */
-
-        obj.insert(
-            "filter".to_string(),
-            Value::String(self.filter.clone()),
-        );
-        obj.insert(
-            "index".to_string(),
-            Value::String(self.index.to_string()),
-        );
+        obj.insert("index".to_string(), Value::String(self.index.to_string()));
         obj.insert(
             "default_action".to_string(),
             Value::Object(self.default_action.encode_json()),
@@ -54,9 +42,8 @@ impl JsonCodec<RouterAddHandlerParam> for RouterAddHandlerParam {
     }
 
     fn decode_json(req_obj: &Map<String, Value>) -> BuckyResult<Self> {
-        //let mut category: Option<RouterRuleCategory> = None;
-        //let mut id: Option<String> = None;
         let mut filter: Option<String> = None;
+        let mut req_path: Option<String> = None;
         let mut default_action: Option<RouterHandlerAction> = None;
         let mut routine: Option<String> = None;
         let mut index: Option<i32> = None;
@@ -65,6 +52,9 @@ impl JsonCodec<RouterAddHandlerParam> for RouterAddHandlerParam {
             match k.as_str() {
                 "filter" => {
                     filter = Some(JsonCodecHelper::decode_from_string(&v)?);
+                }
+                "req_path" => {
+                    req_path = Some(JsonCodecHelper::decode_from_string(&v)?);
                 }
 
                 "index" => {
@@ -82,7 +72,8 @@ impl JsonCodec<RouterAddHandlerParam> for RouterAddHandlerParam {
                     if v.is_string() {
                         default_action = Some(JsonCodecHelper::decode_from_string(v)?);
                     } else if v.is_object() {
-                        default_action = Some(RouterHandlerAction::decode_json(v.as_object().unwrap())?);
+                        default_action =
+                            Some(RouterHandlerAction::decode_json(v.as_object().unwrap())?);
                     } else {
                         let msg = format!("invalid default_action field format: {:?}", v);
                         warn!("{}", msg);
@@ -107,15 +98,16 @@ impl JsonCodec<RouterAddHandlerParam> for RouterAddHandlerParam {
             }
         }
 
-        if filter.is_none() || index.is_none() || default_action.is_none() {
-            let msg = format!("router handler request field missing: filter/default_action");
+        if index.is_none() || default_action.is_none() {
+            let msg = format!("router handler request field missing: index/default_action");
             warn!("{}", msg);
 
             return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
         }
 
         let req = Self {
-            filter: filter.unwrap(),
+            filter,
+            req_path,
             index: index.unwrap(),
             default_action: default_action.unwrap(),
             routine,

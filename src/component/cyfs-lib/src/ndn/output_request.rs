@@ -213,7 +213,7 @@ impl fmt::Display for NDNPutDataOutputResponse {
 支持三种形式:
 chunk_id
 file_id
-dir_id/inner_path
+dir_id|object_map + inner_path
 */
 #[derive(Clone)]
 pub struct NDNGetDataOutputRequest {

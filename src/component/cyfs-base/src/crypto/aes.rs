@@ -9,6 +9,7 @@ use sha2::Digest;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
+use std::str::FromStr;
 
 // aes key used to crypto data
 #[derive(Clone, Eq, PartialEq)]
@@ -16,7 +17,12 @@ pub struct AesKey(GenericArray<u8, U48>);
 
 impl std::fmt::Debug for AesKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "AesKey: {}", hex::encode(self.0.as_slice()))
+        write!(f, "{}", self.to_base58())
+    }
+}
+impl std::fmt::Display for AesKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_base58())
     }
 }
 
@@ -99,6 +105,20 @@ impl From<&[u8; 48]> for AesKey {
     }
 }
 
+impl From<Vec<u8>> for AesKey {
+    fn from(v: Vec<u8>) -> Self {
+        let ar: [u8; 48] = v.try_into().unwrap_or_else(|v: Vec<u8>| {
+            panic!(
+                "AesKey expected a Vec of length {} but it was {}",
+                48,
+                v.len()
+            )
+        });
+
+        Self(GenericArray::clone_from_slice(&ar))
+    }
+}
+
 impl Default for AesKey {
     fn default() -> Self {
         Self(GenericArray::default())
@@ -106,6 +126,47 @@ impl Default for AesKey {
 }
 
 impl AesKey {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn to_base58(&self) -> String {
+        self.0.as_slice().to_base58()
+    }
+
+    pub fn from_base58(s: &str) -> BuckyResult<Self> {
+        let buf = s.from_base58().map_err(|e| {
+            let msg = format!(
+                "convert base58 str to AesKey buf failed, str={}, {:?}",
+                s, e
+            );
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?;
+
+        if buf.len() != 48 {
+            let msg = format!(
+                "convert base58 str to AesKey failed, len unmatch: str={}",
+                s
+            );
+            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+        }
+
+        Ok(Self::from(buf))
+    }
+
+    pub fn proxy(n: u64) -> AesKey {
+        let mut key = [0u8; 48];
+        for i in 0..3 {
+            key[i * 8..(i + 1) * 8].copy_from_slice(&n.to_be_bytes());
+        }
+        for i in 3..6 {
+            let r = rand::random::<u64>();
+            key[i * 8..(i + 1) * 8].copy_from_slice(&r.to_be_bytes());
+        }
+        AesKey::from(&key)
+    }
+
     pub fn random() -> AesKey {
         let mut key = [0u8; 48];
         for i in 0..6 {
@@ -215,6 +276,12 @@ impl AesKey {
     }
 }
 
+impl FromStr for AesKey {
+    type Err = BuckyError;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Self::from_base58(s)
+    }
+}
 // aes key 的mixhash
 #[derive(Eq, PartialEq, Hash, Clone, Ord, PartialOrd, Debug)]
 pub struct KeyMixHash(GenericArray<u8, U8>);

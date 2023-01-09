@@ -1,17 +1,22 @@
-use cyfs_base::*;
-use std::collections::HashMap;
-use std::sync::{Arc, atomic, atomic::{AtomicU64, AtomicU32}, RwLock};
-use std::future::Future;
-use crate::{TempSeqGenerator, TempSeq};
-use std::time::{Instant, Duration};
-use crate::interface::{udp::{Interface, PackageBoxEncodeContext}, tcp};
-use std::pin::Pin;
+use std::{
+    sync::{Arc, atomic, atomic::{AtomicU64, AtomicU32}, RwLock}, 
+    collections::HashMap, 
+    time::{Instant, Duration}, 
+    future::Future, 
+    pin::Pin, 
+    task::Waker
+};
 use async_std::task;
-use crate::protocol::{Exchange, SnCall, SnCallResp, PackageBox, PackageCmdCode, DynamicPackage};
-use crate::sn::client::{Config};
-use std::task::Waker;
 use futures::task::{Context, Poll};
-use crate::stack::{WeakStack, Stack};
+use cyfs_base::*;
+use crate::{
+    types::{TempSeqGenerator, TempSeq},
+    interface::{udp::{Interface, PackageBoxEncodeContext}, tcp}, 
+    protocol::{*, v0::*}, 
+    sn::Config,
+    history::keystore, 
+    stack::{WeakStack, Stack}
+};
 
 pub struct CallManager {
     stack: WeakStack,
@@ -50,7 +55,7 @@ impl CallManager {
         let session = Arc::new(CallSession::create(self,
                                                    reverse_endpoints,
                                                    remote_peerid,
-                                                   sn,
+                                                   &sn,
                                                    is_always_call,
                                                    is_encrypto,
                                                    with_local,
@@ -63,7 +68,11 @@ impl CallManager {
             sessions.insert(seq, session.clone());
         }
 
-        session.start(self.call_interval, self.timeout, self.on_stop.clone());
+        let call_interval = self.call_interval;
+        let timeout = self.timeout;
+        let on_stop = self.on_stop.clone();
+
+        session.start(call_interval, timeout, on_stop);
 
         CallFuture {
             call_result
@@ -154,7 +163,7 @@ impl CallSession {
         };
         call_pkg.payload = SizedOwnedData::from(payload_generater(&call_pkg));
 
-        if !with_local && stack.sn_client().ping.is_cached(&sn_peerid) {
+        if !with_local {
             call_pkg.peer_info = None;
         }
 
@@ -183,6 +192,8 @@ impl CallSession {
                      is_always_call: bool,
                      seq: TempSeq) -> SnCall {
         SnCall {
+            protocol_version: 0, 
+            stack_version: 0, 
             seq: seq,
             to_peer_id: remote_peerid.clone(),
             from_peer_id: local_peerid.clone(),
@@ -210,20 +221,12 @@ impl CallSession {
 
         task::spawn(async move {
             let mut is_tcp_try = false;
-            let mut sign_futures = vec![];
-            for client in clients.values() {
-                unsafe {
-                    let client = &mut *(Arc::as_ptr(&client.inner) as *mut CallClientInner);
-                    sign_futures.push(client.sign_exchange());
-                }
-            }
-            futures::future::join_all(sign_futures).await;
-
+            
             loop {
                 // UDP重发
                 let mut send_count = 0;
                 for client in clients.values() {
-                    send_count += client.send_udp_pkg();
+                    send_count += client.send_udp_pkg().await;
                 }
 
                 // UDP没有发包的情况下，尽快启用TCP测试一次
@@ -261,11 +264,30 @@ impl CallSession {
                 if !is_tcp_try {
                     is_tcp_try = true;
                     for client in clients.values() {
-                        client.try_send_tcp_pkg(timeout);
+                        client.try_send_tcp_pkg(timeout).await;
                     }
                 }
             }
         });
+    }
+
+    fn on_call_error(&self, err: BuckyError) {
+        let waker = {
+            let call_result = &mut *self.call_result.write().unwrap();
+
+            match call_result.found_peer {
+                Some(_) => {}
+                None => {
+                    call_result.found_peer = Some(Err(err));
+                }
+            }
+
+            call_result.waker.clone()
+        };
+
+        if let Some(waker) = waker {
+            waker.wake();
+        }
     }
 
     fn on_call_resp(&self, resp: &SnCallResp, from: &Endpoint) -> Result<(), BuckyError> {
@@ -348,39 +370,27 @@ struct CallClientInner {
     stack: WeakStack,
     sn_peerid: DeviceId,
     sn: Device,
-    aes_key: Option<(AesKey, bool)>, // <key,exchange>
+    aes_key: keystore::FoundKey, 
     pkgs: Vec<SendPackage>,
     last_resp_time: AtomicU64,
 }
 
 impl CallClientInner {
     fn init_pkgs(&mut self, mut call_pkg: SnCall) {
-        match self.aes_key.as_ref() {
-            Some((_, is_exchange)) if *is_exchange => {
-                let stack = Stack::from(&self.stack);
-                let exchg = Exchange {
-                    sequence: call_pkg.seq,
-                    seq_key_sign: Signature::default(),
-                    from_device_id: stack.local_device_id().clone(),
-                    send_time: 0,
-                    from_device_desc: match call_pkg.peer_info.as_ref() {
-                        Some(from) => from.clone(),
-                        None => stack.device_cache().local()
-                    },
-                };
-                self.pkgs.push(SendPackage::Exchange(exchg));
-            }
-            _ => {}
-        };
-
         call_pkg.sn_peer_id = self.sn_peerid.clone();
-        self.pkgs.push(SendPackage::Call(call_pkg));
-    }
 
-    async fn sign_exchange(&mut self) {
-        if let SendPackage::Exchange(exchg) = self.pkgs.get_mut(0).unwrap() {
-            let _ = exchg.sign(&self.aes_key.as_ref().unwrap().0, Stack::from(&self.stack).keystore().signer()).await;
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = &self.aes_key.encrypted {
+            let stack = Stack::from(&self.stack);
+            let local_device = match call_pkg.peer_info.as_ref() {
+                Some(from) => from.clone(),
+                None => stack.device_cache().local()
+            };
+            let exchg = Exchange::from((&call_pkg, local_device, encrypted.clone(), self.aes_key.key.mix_key.clone()));
+            self.pkgs.push(SendPackage::Exchange(exchg));
         }
+
+        
+        self.pkgs.push(SendPackage::Call(call_pkg));
     }
 }
 
@@ -390,19 +400,12 @@ struct CallClient {
 }
 
 impl CallClient {
-    fn create(mgr: &CallManager, sn_peerid: &DeviceId, sn: &Device, is_encrypto: bool, call_pkg: SnCall) -> CallClient {
-        let key = if is_encrypto {
-            let key = Stack::from(&mgr.stack).keystore().create_key(&sn_peerid, false);
-            Some((key.aes_key.clone(), !key.is_confirmed))
-        } else {
-            None
-        };
-
+    fn create(mgr: &CallManager, sn_peerid: &DeviceId, sn: &Device, _is_encrypto: bool, call_pkg: SnCall) -> CallClient {
         let mut inner = CallClientInner {
             stack: mgr.stack.clone(),
             sn_peerid: sn_peerid.clone(),
             sn: sn.clone(),
-            aes_key: key,
+            aes_key: Stack::from(&mgr.stack).keystore().create_key(sn.desc(), false),
             pkgs: vec![],
             last_resp_time: AtomicU64::new(0)
         };
@@ -419,16 +422,16 @@ impl CallClient {
         *last_resp_time = self.inner.last_resp_time.swap(now, atomic::Ordering::Release);
     }
 
-    fn prepare_pkgs_to_send(&self) -> Result<PackageBox, BuckyError> {
-        assert!(self.inner.aes_key.is_some());
+    async fn prepare_pkgs_to_send(&self) -> BuckyResult<PackageBox> {
         // <TODO>暂时不支持明文
-        let mut pkg_box = PackageBox::encrypt_box(self.inner.sn_peerid.clone(), self.inner.aes_key.as_ref().unwrap().0.clone());
+        let mut pkg_box = PackageBox::encrypt_box(self.inner.sn_peerid.clone(), self.inner.aes_key.key.clone());
         let now_abs = bucky_time_now();
         for pkg in self.inner.pkgs.as_slice() {
             match pkg {
                 SendPackage::Exchange(exchg) => {
                     let mut exchg = (*exchg).clone();
                     exchg.send_time = now_abs;
+                    exchg.sign(Stack::from(&self.inner.stack).keystore().signer()).await?;
                     pkg_box.push(exchg);
                 },
                 SendPackage::Call(call) => {
@@ -442,7 +445,7 @@ impl CallClient {
         Ok(pkg_box)
     }
 
-    fn send_udp_pkg(&self) -> usize {
+    async fn send_udp_pkg(&self) -> usize {
         // 已经有返回
         if self.inner.last_resp_time.load(atomic::Ordering::Acquire) > 0 {
             return 0;
@@ -453,8 +456,8 @@ impl CallClient {
             return 0;
         }
 
-        if let Ok(pkg_box) = self.prepare_pkgs_to_send() {
-            let mut context = PackageBoxEncodeContext::from(self.inner.sn.desc());
+        if let Ok(pkg_box) = self.prepare_pkgs_to_send().await {
+            let mut context = PackageBoxEncodeContext::default();
 
             struct SendIter<'a> {
                 from: &'a Vec<Interface>,
@@ -512,9 +515,9 @@ impl CallClient {
         }
     }
 
-    fn try_send_tcp_pkg(&self, time_limit: Duration) {
+    async fn try_send_tcp_pkg(&self, time_limit: Duration) {
         let inner = self.inner.clone();
-        let pkg_box = match self.prepare_pkgs_to_send() {
+        let pkg_box = match self.prepare_pkgs_to_send().await {
             Ok(pkg_box) => pkg_box,
             Err(e) => {
                 log::error!("call prepare pkg for tcp failed, e: {}", e);
@@ -528,7 +531,12 @@ impl CallClient {
             for ep in remote_eps {
                 if ep.is_tcp() {
                     connect_futures.push(
-                        Box::pin(tcp::Interface::connect(ep.clone(), inner.sn_peerid.clone(), inner.sn.desc().clone(), pkg_box.key().clone(), time_limit))
+                        Box::pin(tcp::Interface::connect(
+                            ep.clone(), 
+                            inner.sn_peerid.clone(), 
+                            inner.sn.desc().clone(), 
+                            pkg_box.key().clone(), 
+                            time_limit))
                     );
                 }
             }

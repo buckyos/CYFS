@@ -3,6 +3,7 @@ mod debug_config;
 mod log;
 mod log_util;
 mod panic;
+mod dump;
 
 #[cfg(feature = "http_report")]
 mod http_target;
@@ -15,6 +16,7 @@ pub use check::*;
 pub use debug_config::*;
 pub use log_util::*;
 pub use panic::*;
+pub use dump::*;
 
 #[cfg(feature = "http_report")]
 pub use http_target::*;
@@ -33,6 +35,10 @@ mod tests {
             .build()
             .unwrap()
             .start();
+
+        info!("create minidump file");
+        let helper = dump::DumpHelper::get_instance();
+        helper.dump();
     }
 }
 

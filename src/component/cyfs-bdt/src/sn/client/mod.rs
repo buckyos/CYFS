@@ -6,21 +6,10 @@ use crate::sn::client::call::CallManager;
 use crate::interface::udp::OnUdpPackageBox;
 use crate::interface::udp;
 use cyfs_base::*;
-use crate::protocol::{PackageCmdCode, SnPingResp, SnCalled, SnCall, SnCallResp};
+use crate::protocol::{*, v0::*};
 use std::future::Future;
 use crate::stack::{Stack, WeakStack};
 use crate::{SnServiceReceipt, SnServiceGrade};
-use std::time::Duration;
-
-#[derive(Copy, Clone)]
-pub struct Config {
-    pub ping_interval_init: Duration,
-    pub ping_interval: Duration,
-    pub offline: Duration,
-
-    pub call_interval: Duration,
-    pub call_timeout: Duration,
-}
 
 pub struct ClientManager {
     ping: PingManager,
@@ -112,7 +101,7 @@ impl OnUdpPackageBox for ClientManager {
                     match pkg.as_any().downcast_ref::<SnCalled>() {
                         None => return Err(BuckyError::new(BuckyErrorCode::InvalidData, "should be SnCalled")),
                         Some(called) => {
-                            let _ = self.ping.on_called(called, &from, from_interface.clone());
+                            let _ = self.ping.on_called(called, package_box.as_ref(), &from, from_interface.clone());
                         }
                     }
                 },

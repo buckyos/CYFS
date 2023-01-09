@@ -2,6 +2,7 @@ use cyfs_lib::NDNAction;
 
 use http_types::{mime, Mime, Url};
 use mime_sniffer::{HttpRequest, MimeTypeSniffer};
+use std::borrow::Cow;
 use std::str::FromStr;
 
 pub(crate) struct MimeHelper;
@@ -74,14 +75,14 @@ impl MimeHelper {
             return;
         }
 
-         // 根据内容猜测
+        // 根据内容猜测
         // read some content and try sniff the mime
         use async_std::io::ReadExt;
         let mut body = resp.take_body().into_reader();
         let body_len = resp.len();
         let mut content: Vec<u8> = vec![0; 512];
         let read_content_len;
-        match body.read(&mut content,).await {
+        match body.read(&mut content).await {
             Ok(bytes) => {
                 if bytes == 0 {
                     warn!("sniff mime read resp body but got empty! url={}", url);
@@ -98,14 +99,48 @@ impl MimeHelper {
         }
 
         let str_url = url.to_string();
-        let hreq = HttpRequest {
-            content: &content,
-            url: &str_url,
-            //type_hint: "application/octet-stream",
-            type_hint: "*/*",
-        };
-        match hreq.sniff_mime_type() {
-            Some(v) => match ::tide::http::Mime::from_str(v) {
+
+        let mut count = 0;
+        let mut type_hint = Cow::Borrowed("*/*");
+        let mut result = None;
+        loop {
+            if count > 5 {
+                warn!("sniff mime more then 5 times! url={}", str_url);
+                break;
+            }
+            count += 1;
+
+            let hreq = HttpRequest {
+                content: &content,
+                url: &str_url,
+                type_hint: &type_hint,
+            };
+            match hreq.sniff_mime_type() {
+                Some(v) => {
+                    if let Some(prev) = &result {
+                        if prev == v {
+                            break;
+                        }
+                    }
+
+                    result = Some(v.to_owned());
+
+                    if v.ends_with("/xml") {
+                        type_hint = Cow::Owned(v.to_owned());
+                        continue;
+                    }
+
+                    break;
+                }
+                None => {
+                    warn!("sniff mime from url but not found: {}", url);
+                    break;
+                }
+            };
+        }
+
+        if let Some(v) = result {
+            match ::tide::http::Mime::from_str(&v) {
                 Ok(m) => {
                     info!("sniff mime: {} -> {}", url, m);
                     resp.set_content_type(m);
@@ -113,11 +148,8 @@ impl MimeHelper {
                 Err(e) => {
                     error!("parse mime error! value={}, {}", v, e);
                 }
-            },
-            None => {
-                warn!("sniff mime from url but not found: {}", url);
             }
-        };
+        }
 
         let new_body = http_types::Body::from_bytes(content[..read_content_len].to_vec());
 
@@ -126,9 +158,12 @@ impl MimeHelper {
                 if len >= read_content_len {
                     Some(len - read_content_len)
                 } else {
-                    error!("sniff mime but read len is more than content len: {} > {}", read_content_len, len);
+                    error!(
+                        "sniff mime but read len is more than content len: {} > {}",
+                        read_content_len, len
+                    );
                     None
-                }   
+                }
             }
             None => None,
         };

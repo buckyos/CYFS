@@ -21,7 +21,7 @@ impl ChunkManager {
     pub fn new(ctx: &ChunkContext) -> ChunkManager {
         ChunkManager{
             chunk_store: ChunkStore::new(&ctx.chunk_dir),
-            meta_client: MetaClient::new_target(MetaMinerTarget::default()),
+            meta_client: MetaClient::new_target(MetaMinerTarget::default()).with_timeout(std::time::Duration::from_secs(60 * 2)),
             ctx: ctx.clone(),
             device_id: ctx.get_device_id()
         }
@@ -45,6 +45,10 @@ impl ChunkManager {
         })?;
 
         Ok(reader)
+    }
+
+    pub fn delete(&self, chunk_id: &ChunkId) -> BuckyResult<()> {
+        self.chunk_store.delete(chunk_id)
     }
 
     pub async fn set(&self, chunk_id: &ChunkId, data: &[u8])->BuckyResult<()>{

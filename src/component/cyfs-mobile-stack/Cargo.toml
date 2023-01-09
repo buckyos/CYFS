@@ -14,9 +14,7 @@ cyfs-debug = {path="../cyfs-debug"}
 cyfs-base = {path="../cyfs-base"}
 cyfs-lib = {path="../cyfs-lib"}
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
-cyfs-stack-loader = { path = "../../component/cyfs-stack-loader", features = [
-    "sqlite",
-], default-features = false }
+cyfs-stack-loader = { path = "../../component/cyfs-stack-loader" }
 log = "0.4"
 hex = "0.4"
 async-trait = "0.1.53"

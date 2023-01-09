@@ -1,8 +1,8 @@
 use cyfs_base::*;
 
 use std::collections::{HashMap, hash_map::Entry};
-use std::sync::{Arc, Mutex};
-
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 struct ObjectState {
     last_sync: u64,

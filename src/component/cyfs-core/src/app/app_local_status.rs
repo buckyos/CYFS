@@ -464,7 +464,7 @@ impl AppLocalStatusObj for AppLocalStatus {
         let self_id = self.desc().calculate_id();
         let auto_update = self.auto_update();
         format!(
-            "[AppLocalStatus] appid: {} statusid: {}, status:{}, ver:{:?}, auto_update: {}, sub err:{}",
+            "[AppLocalStatus] appid:{} statusid:{}, status:{}, ver:{:?}, auto_update:{}, sub err:{}",
             app_id, self_id, status, ver, auto_update, sub_err
         )
     }

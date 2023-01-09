@@ -1,5 +1,4 @@
 use super::config::*;
-use super::table::AclTableContainer;
 use cyfs_base::*;
 
 use std::path::PathBuf;
@@ -53,19 +52,16 @@ impl AclFileLoader {
 pub(super) struct AclLoader<'a> {
     file_loader: AclFileLoader,
     config: &'a mut AclConfig,
-    acl: AclTableContainer,
 }
 
 impl<'a> AclLoader<'a> {
     pub fn new(
         file_loader: AclFileLoader,
         config: &'a mut AclConfig,
-        acl: AclTableContainer,
     ) -> Self {
         Self {
             file_loader,
             config,
-            acl,
         }
     }
 
@@ -79,8 +75,6 @@ impl<'a> AclLoader<'a> {
                 if let Some(node) = table.get("config") {
                     self.config.load(node)?;
                 }
-
-                self.acl.load(table, false)?;
 
                 Ok(())
             }

@@ -22,7 +22,7 @@ pub struct ObjectSignRequest {
 }
 
 pub struct ObjectSigner {
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
     device_manager: Box<dyn DeviceCache>,
 
     signer: Box<dyn Signer>,
@@ -32,7 +32,7 @@ pub struct ObjectSigner {
 
 impl ObjectSigner {
     pub(crate) fn new(
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         device_manager: Box<dyn DeviceCache>,
         bdt_stack: &StackGuard,
     ) -> Self {
@@ -76,7 +76,7 @@ impl ObjectSigner {
         // 至少要指定一个要使用的签名源
         if !self.need_sign(&req.flags) {
             let msg = format!(
-                "invalid sign flags, sign object support by device/people! flags={}",
+                "invalid sign flags, sign object support by device/owner! flags={}",
                 req.flags
             );
             error!("{}", msg);

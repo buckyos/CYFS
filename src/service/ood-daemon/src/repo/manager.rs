@@ -1,4 +1,4 @@
-//use super::http::HttpRepo;
+use super::http::HttpRepo;
 use super::local::LocalRepo;
 use super::named_data::NamedDataRepo;
 use crate::config::PATHS;
@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
 pub enum RepoType {
-    //Http,
+    Http,
     NamedData,
     Local,
 }
@@ -102,7 +102,8 @@ impl RepoManager {
 
         async_std::task::spawn(async move {
             Self::fetch_service_with_repo_list(&cache_dir, &fid, &repo_list).await
-        }).await
+        })
+        .await
     }
 
     async fn fetch_service_with_repo_list(
@@ -140,7 +141,7 @@ impl RepoManager {
             match Self::fetch_service_with_repo(&repo, &info, local_file.as_path()).await {
                 Ok(_) => {
                     info!(
-                        "find pkg from repo success! fid={}, repo={:?}",
+                        "fetch pkg from repo success! fid={}, repo={:?}",
                         fid,
                         repo.get_type()
                     );
@@ -212,21 +213,18 @@ impl RepoManager {
 
         let repo_type: String = TomlHelper::decode_string_field(repo_item_node, "type")?;
         match repo_type.as_str() {
-            "named_data" => {
-                return Self::load_named_data_repo(repo_item_node).await;
-            }
-            "local" => {
-                return Self::load_local_repo(repo_item_node);
-            }
+            "named_data" => Self::load_named_data_repo(repo_item_node).await,
+            "local" => Self::load_local_repo(repo_item_node),
+            "http" => Self::load_http_repo(repo_item_node),
             _ => {
-                let msg = format!("unknown repo type {:?}", repo_type);
+                let msg = format!("unknown repo type {}", repo_type);
                 error!("{}", msg);
                 Err(BuckyError::new(BuckyErrorCode::UnSupport, msg))
             }
         }
     }
 
-    fn load_local_repo(repo_item_node: &toml::value::Table) -> Result<Box<dyn Repo>, BuckyError> {
+    fn load_local_repo(repo_item_node: &toml::value::Table) -> BuckyResult<Box<dyn Repo>> {
         // local_store是可选项
         let local_store: Option<String> =
             TomlHelper::decode_option_string_field(repo_item_node, "local_store")?;
@@ -244,6 +242,15 @@ impl RepoManager {
             Ok(repo) => Ok(Box::new(repo)),
             Err(e) => Err(e),
         }
+    }
+
+    fn load_http_repo(repo_item_node: &toml::value::Table) -> BuckyResult<Box<dyn Repo>> {
+        let url: String = TomlHelper::decode_string_field(repo_item_node, "url")?;
+
+        info!("load http repo success! url={:?}", url);
+
+        let http_repo = HttpRepo::new(&url)?;
+        Ok(Box::new(http_repo))
     }
 }
 

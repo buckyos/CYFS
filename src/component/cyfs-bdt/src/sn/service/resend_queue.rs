@@ -26,24 +26,33 @@ struct PackageResendInfo {
     nick_name: String,
 }
 
+pub trait ResendCallbackTrait: Send + Sync {
+    fn on_callback(&self, pkg: Arc<PackageBox>, errno: BuckyErrorCode);
+}
+
 pub struct ResendQueue {
     default_interval: Duration,
     max_times: u8,
     thread_pool: ThreadPool, 
     
     packages: Mutex<HashMap<u32, PackageResendInfo>>, 
+
+    cb: Box<dyn ResendCallbackTrait>,
+
 }
 
 impl ResendQueue {
     pub fn new(
         thread_pool: ThreadPool, 
         default_interval: Duration, 
-        max_times: u8) -> ResendQueue {
+        max_times: u8,
+        cb: Box<dyn ResendCallbackTrait>) -> ResendQueue {
         ResendQueue {
             default_interval,
             max_times,
             thread_pool, 
             packages: Mutex::new(Default::default()), 
+            cb,
         }
     }
 
@@ -83,7 +92,7 @@ impl ResendQueue {
                     interval: self.default_interval,
                     times: 1,
                     last_time: bucky_time_now(),
-                    nick_name: pkg_nick_name.clone()
+                    nick_name: pkg_nick_name.clone(),
                 });
                 Some((sender, pkg_box.clone()))
             }
@@ -104,7 +113,9 @@ impl ResendQueue {
     }
 
     pub fn confirm_pkg(&self, pkg_id: u32) {
-        self.packages.lock().unwrap().remove(&pkg_id);
+        if let Some(will_remove) = self.packages.lock().unwrap().remove(&pkg_id) {
+            self.cb.on_callback(will_remove.pkg.clone(), BuckyErrorCode::Ok);
+        }
     }
 
     pub fn try_resend(&self, now: Timestamp) {
@@ -135,6 +146,7 @@ impl ResendQueue {
                 let pkg = packages.remove(&id);
                 if let Some(p) = pkg {
                     warn!("{} resend timeout, to: {}.", p.nick_name, p.sender.session_name());
+                    self.cb.on_callback(p.pkg.clone(), BuckyErrorCode::Timeout);
                 }
             }
         }

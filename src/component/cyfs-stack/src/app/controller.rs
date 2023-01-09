@@ -2,8 +2,8 @@ use super::state_storage::*;
 use crate::interface::ObjectListenerManagerRef;
 use cyfs_base::*;
 use cyfs_core::*;
-use cyfs_util::*;
 use cyfs_lib::*;
+use cyfs_util::*;
 
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, RwLock};
@@ -26,10 +26,10 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
         );
 
         // only req post through http-local interface is valid!
-        if param.request.common.protocol != NONProtocol::HttpLocal {
+        if param.request.common.source.protocol != RequestProtocol::HttpLocal {
             let msg = format!(
                 "app_manager action only valid on http-local interface! req protocol={:?}",
-                param.request.common.protocol
+                param.request.common.source.protocol
             );
             error!("{}", msg);
 
@@ -235,20 +235,22 @@ impl AppController {
         &self,
         router_handlers: &RouterHandlerManagerProcessorRef,
     ) -> BuckyResult<()> {
-        let filter = format!("obj_type == {}", CoreObjectType::AppManagerAction.as_u16(),);
+        // let filter = format!("obj_type == {}", CoreObjectType::AppManagerAction.as_u16(),);
 
         // add post_object handler for app_manager's action cmd
         let routine = OnAppActionWatcher {
             owner: self.clone(),
         };
 
+        let req_path = RequestGlobalStatePath::new_system_dec(Some(CYFS_SYSTEM_APP_VIRTUAL_PATH));
         if let Err(e) = router_handlers
             .post_object()
             .add_handler(
                 RouterHandlerChain::Handler,
                 APP_MANAGER_CONTROLLER_HANDLER_ID,
                 1,
-                &filter,
+                None,
+                Some(req_path.to_string()),
                 RouterHandlerAction::Reject,
                 Some(Box::new(routine)),
             )
@@ -258,7 +260,7 @@ impl AppController {
             return Err(e);
         }
 
-        info!("add app_manager contoller success! filter={}", filter);
+        info!("add app_manager controller success! req_path={}", req_path.to_string());
 
         if let Ok(_) = self.auth_app_list.load().await {
             if self.auth_app_list.count() > 0 {

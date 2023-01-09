@@ -9,7 +9,10 @@ pub struct NONOutputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
 
-    // 来源DEC
+    // 来源Device，默认为空表示当前协议栈的device-id，在zone内转发请求时候会使用此字段
+    pub source: Option<DeviceId>,
+
+    // 来源DEC,如果为None，默认为system-dec
     pub dec_id: Option<ObjectId>,
 
     // api级别
@@ -25,6 +28,7 @@ impl NONOutputRequestCommon {
     pub fn new(level: NONAPILevel) -> Self {
         Self {
             req_path: None,
+            source: None,
             dec_id: None,
             level,
             target: None,
@@ -37,6 +41,10 @@ impl fmt::Display for NONOutputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "req_path: {:?}", self.req_path)?;
         write!(f, ", level: {:?}", self.level)?;
+
+        if let Some(source) = &self.source {
+            write!(f, ", source: {}", source)?;
+        }
 
         if let Some(dec_id) = &self.dec_id {
             write!(f, ", dec_id: {}", dec_id)?;
@@ -58,6 +66,7 @@ pub struct NONPutObjectOutputRequest {
     pub common: NONOutputRequestCommon,
 
     pub object: NONObjectInfo,
+    pub access: Option<AccessString>,
 }
 
 impl NONPutObjectOutputRequest {
@@ -65,6 +74,7 @@ impl NONPutObjectOutputRequest {
         Self {
             common: NONOutputRequestCommon::new(level),
             object: NONObjectInfo::new(object_id, object_raw, None),
+            access: None,
         }
     }
 
@@ -90,7 +100,60 @@ impl NONPutObjectOutputRequest {
 impl fmt::Display for NONPutObjectOutputRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "common: {}", self.common)?;
-        write!(f, ", object: {}", self.object)
+        write!(f, ", object: {}", self.object)?;
+        if let Some(access) = &self.access {
+            write!(f, ", access: {}", access.to_string())?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct NONUpdateObjectMetaOutputRequest {
+    pub common: NONOutputRequestCommon,
+
+    pub object_id: ObjectId,
+    pub access: Option<AccessString>,
+}
+
+impl NONUpdateObjectMetaOutputRequest {
+    pub fn new(level: NONAPILevel, object_id: ObjectId, access: Option<AccessString>) -> Self {
+        Self {
+            common: NONOutputRequestCommon::new(level),
+            object_id,
+            access,
+        }
+    }
+
+    pub fn new_noc(object_id: ObjectId, access: Option<AccessString>) -> Self {
+        Self::new(NONAPILevel::NOC, object_id, access)
+    }
+
+    pub fn new_non(target: Option<DeviceId>, object_id: ObjectId, access: Option<AccessString>) -> Self {
+        let mut ret = Self::new(NONAPILevel::NON, object_id, access);
+        ret.common.target = target.map(|v| v.into());
+
+        ret
+    }
+
+    pub fn new_router(target: Option<ObjectId>, object_id: ObjectId, access: Option<AccessString>) -> Self {
+        let mut ret = Self::new(NONAPILevel::Router, object_id, access);
+        ret.common.target = target;
+
+        ret
+    }
+}
+
+impl fmt::Display for NONUpdateObjectMetaOutputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)?;
+        write!(f, ", object: {}", self.object_id)?;
+        if let Some(access) = &self.access {
+            write!(f, ", access: {}", access.to_string())?;
+        }
+
+        Ok(())
     }
 }
 
@@ -153,6 +216,22 @@ impl NONGetObjectOutputRequest {
         ret.common.target = target;
 
         ret
+    }
+
+    pub fn object_debug_info(&self) -> String {
+        if let Some(req_path) = &self.common.req_path {
+            if let Some(inner_path) = &self.inner_path {
+                format!("{}:{}:{}", req_path, self.object_id, inner_path)
+            } else {
+                format!("{}:{}", req_path, self.object_id)
+            }
+        } else {
+            if let Some(inner_path) = &self.inner_path {
+                format!("{}:{}", self.object_id, inner_path)
+            } else {
+                self.object_id.to_string()
+            }
+        }
     }
 }
 

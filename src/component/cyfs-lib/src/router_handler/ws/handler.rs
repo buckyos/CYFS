@@ -19,7 +19,8 @@ struct RouterHandlerItem {
     id: String,
     dec_id: Option<ObjectId>,
     index: i32,
-    filter: String,
+    filter: Option<String>,
+    req_path: Option<String>,
     default_action: RouterHandlerAction,
     routine: Option<Box<dyn RouterHandlerAnyRoutine>>,
 }
@@ -53,6 +54,7 @@ impl RouterHandlerItem {
 
         let mut param = RouterAddHandlerParam {
             filter: self.filter.clone(),
+            req_path: self.req_path.clone(),
             index: self.index,
             default_action: self.default_action.clone(),
             routine: None,
@@ -273,6 +275,8 @@ impl RouterWSHandlerManagerImpl {
                     task::spawn(async move {
                         let _ = handler_item.register(&requestor).await;
                     });
+                } else {
+                    warn!("add handler but ws session does not exist yet, now will pending! id={}", handler_item.id);
                 }
 
                 Ok(())
@@ -498,7 +502,8 @@ impl RouterWSHandlerManager {
         id: &str,
         dec_id: Option<ObjectId>,
         index: i32,
-        filter: &str,
+        filter: Option<String>,
+        req_path: Option<String>,
         default_action: RouterHandlerAction,
         routine: Option<
             Box<
@@ -523,6 +528,7 @@ impl RouterWSHandlerManager {
             dec_id,
             index,
             filter: filter.to_owned(),
+            req_path,
             default_action: default_action.clone(),
             routine: None,
         };

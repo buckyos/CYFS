@@ -16,6 +16,7 @@ cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-base-meta = { path = "../../component/cyfs-base-meta" }
 cyfs-chunk = { path = "../../component/cyfs-chunk" }
 cyfs-chunk-client = { path = "../../tools/cyfs-chunk-client" }
+cyfs-lib = {path="../../component/cyfs-lib"}
 async-std = { version = "1.11", features = ["unstable", "attributes"] }
 url = "2.2"
 async-h1 = "2.3.3"
@@ -28,3 +29,4 @@ cyfs-meta-lib = { path = "../../component/cyfs-meta-lib" }
 hex = "0.4"
 walkdir = "2.3"
 async-trait = "0.1.53"
+once_cell = "1.13"

@@ -83,31 +83,44 @@ impl DebugConfig {
         }
     }
 
+    pub fn get_config(key: &str) -> Option<&'static toml::Value> {
+        use once_cell::sync::OnceCell;
+        static S_INSTANCE: OnceCell<BuckyResult<toml::value::Table>> = OnceCell::new();
+        let root = S_INSTANCE.get_or_init(|| {
+            let config = DebugConfig::new();
+            config.load()
+        });
+
+        match root {
+            Ok(root) => root.get(key),
+            Err(_) => None,
+        }
+    }
+
     pub fn set_config_file(&mut self, file: &Path) {
         self.config_file = Some(file.to_owned());
     }
 
-    pub fn load_log_config(&self) -> BuckyResult<toml::Value> {
+    pub fn load(&self) -> BuckyResult<toml::value::Table> {
         if let Some(file) = &self.config_file {
-            self.load(file, "log")
+            self.load_root(file)
         } else {
             println!("config file not found!");
             Err(BuckyError::from(BuckyErrorCode::NotFound))
         }
     }
 
-    fn load(&self, config_path: &Path, key: &str) -> BuckyResult<toml::Value> {
-        let contents = std::fs::read_to_string(config_path)
-            .map_err(|e| {
-                let msg = format!(
-                    "load log config failed! file={}, err={}",
-                    config_path.display(),
-                    e
-                );
-                error!("{}", msg);
+    fn load_root(&self, config_path: &Path) -> BuckyResult<toml::value::Table> {
+        let contents = std::fs::read_to_string(config_path).map_err(|e| {
+            let msg = format!(
+                "load log config failed! file={}, err={}",
+                config_path.display(),
+                e
+            );
+            error!("{}", msg);
 
-                BuckyError::new(BuckyErrorCode::IoError, msg)
-            })?;
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
 
         let cfg_node: toml::Value = toml::from_str(&contents).map_err(|e| {
             let msg = format!(
@@ -123,7 +136,7 @@ impl DebugConfig {
 
         // println!("debug config: {:?}", cfg_node);
 
-        let node = cfg_node.as_table().ok_or_else(|| {
+        if !cfg_node.is_table() {
             let msg = format!(
                 "invalid log config format! file={}, content={}",
                 config_path.display(),
@@ -131,13 +144,12 @@ impl DebugConfig {
             );
             error!("{}", msg);
 
-            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
-        })?;
+            return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+        }
 
-        let node = node.get(key).ok_or_else(|| {
-            println!("config node not found! key={}", key);
-            BuckyError::from(BuckyErrorCode::NotFound)
-        })?;
-        Ok(node.clone())
+        match cfg_node {
+            toml::Value::Table(v) => Ok(v),
+            _ => unreachable!(),
+        }
     }
 }

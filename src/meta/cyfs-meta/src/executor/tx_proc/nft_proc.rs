@@ -1,4 +1,4 @@
-use cyfs_base::{BuckyResult, CoinTokenId, hash_data, ObjectDesc, ObjectTypeCode, RawConvertTo};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, CoinTokenId, hash_data, ObjectDesc, ObjectTypeCode, RawConvertTo};
 use cyfs_base_meta::*;
 use crate::{ArcWeakHelper, ExecuteContext, get_meta_err_code, meta_err, State};
 use crate::tx_executor::TxExecutor;
@@ -34,7 +34,21 @@ impl TxExecutor {
                 *price,
                 coind_id,
                 *stop_block + context.block().number() as u64).await?;
+        } else if let NFTState::Selling((price, _, stop_block)) = &tx.state {
+            log::info!("create and sell {} price {} stop_block {}", object_id.to_string(), price, stop_block);
+            context.ref_state().to_rc()?.nft_create(
+                &object_id,
+                &tx.desc,
+                tx.name.as_str(),
+                &tx.state).await?;
+
+            let event_params = Event::NFTStopSell(NFTStopSell {
+                nft_id: object_id.clone()
+            });
+            let id = hash_data(event_params.to_vec()?.as_slice());
+            self.event_manager.to_rc()?.add_or_update_once_event(id.to_string().as_str(), &event_params, *stop_block as i64 + context.block().number()).await?;
         } else {
+            log::info!("create nft {}", object_id.to_string());
             context.ref_state().to_rc()?.nft_create(
                 &object_id,
                 &tx.desc,
@@ -70,6 +84,18 @@ impl TxExecutor {
                         *price,
                         coin_id,
                         *stop_block + context.block().number() as u64).await?;
+                } else if let NFTState::Selling((_, _, stop_block)) = nft_state {
+                    context.ref_state().to_rc()?.nft_create(
+                        &object_id,
+                        &tx.desc,
+                        tx.name.as_str(),
+                        &tx.state).await?;
+
+                    let event_params = Event::NFTStopSell(NFTStopSell {
+                        nft_id: object_id.clone()
+                    });
+                    let id = hash_data(event_params.to_vec()?.as_slice());
+                    self.event_manager.to_rc()?.add_or_update_once_event(id.to_string().as_str(), &event_params, *stop_block as i64 + context.block().number()).await?;
                 } else {
                     context.ref_state().to_rc()?.nft_create(
                         &object_id,
@@ -107,7 +133,7 @@ impl TxExecutor {
                             &NFTState::Normal).await?;
                         context.ref_state().to_rc()?.set_beneficiary(&sub_id, &beneficiary).await?;
                     }
-                } else if let NFTState::Selling((price, coin_id)) = nft_state {
+                } else if let NFTState::Selling((price, coin_id, _)) = nft_state {
                     context.ref_state().to_rc()?.nft_create(
                         &object_id,
                         &tx.desc,
@@ -144,7 +170,7 @@ impl TxExecutor {
                                 &sub_id,
                                 &sub_nft_desc,
                                 sub_name,
-                                &NFTState::Selling((0, coin_id.clone()))).await?;
+                                &NFTState::Selling((0, coin_id.clone(), u64::MAX))).await?;
                             context.ref_state().to_rc()?.set_beneficiary(&sub_id, &beneficiary).await?;
                         }
                     }
@@ -201,6 +227,7 @@ impl TxExecutor {
         context: &mut ExecuteContext,
         tx: &NFTApplyBuyTx
     ) -> BuckyResult<()> {
+        log::info!("{} apply buy {} price {}", context.caller().id().to_string(), tx.nft_id.to_string(), tx.price);
         match context.ref_state().to_rc()?.nft_get(&tx.nft_id).await {
             Ok((nft_desc, _, state)) => {
                 if let NFTState::Auctioning(_) = state {
@@ -310,6 +337,7 @@ impl TxExecutor {
         context: &mut ExecuteContext,
         tx: &NFTAgreeApplyTx
     ) -> BuckyResult<()> {
+        log::info!("{} agree user {} apply buy {}", context.caller().id().to_string(), tx.user_id.to_string(), tx.nft_id.to_string());
         let (nft_desc, _, state) = context.ref_state().to_rc()?.nft_get(&tx.nft_id).await?;
         let beneficiary = context.ref_state().to_rc()?.get_beneficiary(&tx.nft_id).await?;
         if let NFTState::Auctioning(_) = state {
@@ -398,6 +426,7 @@ impl TxExecutor {
         context: &mut ExecuteContext,
         tx: &NFTSellTx
     ) -> BuckyResult<()> {
+        log::info!("{} sell nft {} price {} duration {}", context.caller().id().to_string(), tx.nft_id.to_string(), tx.price, tx.duration_block_num);
         let (nft_desc, _, state) = context.ref_state().to_rc()?.nft_get(&tx.nft_id).await?;
         let beneficiary = context.ref_state().to_rc()?.get_beneficiary(&tx.nft_id).await?;
         if &beneficiary != context.caller().id() {
@@ -423,7 +452,7 @@ impl TxExecutor {
                     return Err(meta_err!(ERROR_NOT_SUPPORT));
                 }
 
-                let state = NFTState::Selling((0, tx.coin_id.clone()));
+                let state = NFTState::Selling((0, tx.coin_id.clone(), u64::MAX));
                 context.ref_state().to_rc()?.nft_update_state(&sub_id, &state).await?;
 
                 let apply_list = context.ref_state().to_rc()?.nft_get_apply_buy_list(&sub_id, 0, i64::MAX).await?;
@@ -441,8 +470,17 @@ impl TxExecutor {
         }
 
 
-        let state = NFTState::Selling((tx.price, tx.coin_id.clone()));
+        let state = NFTState::Selling((tx.price, tx.coin_id.clone(), context.block().number() as u64 + tx.duration_block_num));
         context.ref_state().to_rc()?.nft_update_state(&tx.nft_id, &state).await?;
+
+        let event_params = Event::NFTStopSell(NFTStopSell {
+            nft_id: tx.nft_id.clone()
+        });
+        let event_id = hash_data(event_params.to_vec()?.as_slice());
+        self.event_manager.to_rc()?.add_or_update_once_event(
+            event_id.to_string().as_str(),
+            &event_params,
+            context.block().number() + tx.duration_block_num as i64).await?;
 
         let apply_list = context.ref_state().to_rc()?.nft_get_apply_buy_list(&tx.nft_id, 0, i64::MAX).await?;
         for (buyer_id, price, coin_id) in apply_list.iter() {
@@ -493,16 +531,16 @@ impl TxExecutor {
 
                 let state = if tx.price == 0 {
                     let (sub_coin_id, sub_price) = tx.sub_sell_infos.get(index).unwrap();
-                    NFTState::Selling((*sub_price, sub_coin_id.clone()))
+                    NFTState::Selling((*sub_price, sub_coin_id.clone(), u64::MAX))
                 } else {
-                    NFTState::Selling((0, tx.coin_id.clone()))
+                    NFTState::Selling((0, tx.coin_id.clone(), u64::MAX))
                 };
                 context.ref_state().to_rc()?.nft_update_state(&sub_id, &state).await?;
             }
         }
 
 
-        let state = NFTState::Selling((tx.price, tx.coin_id.clone()));
+        let state = NFTState::Selling((tx.price, tx.coin_id.clone(), u64::MAX));
         context.ref_state().to_rc()?.nft_update_state(&tx.nft_id, &state).await?;
         Ok(())
     }
@@ -542,6 +580,12 @@ impl TxExecutor {
             }
         }
 
+        let event_params = Event::NFTStopSell(NFTStopSell {
+            nft_id: tx.nft_id.clone()
+        });
+        let id = hash_data(event_params.to_vec()?.as_slice());
+        self.event_manager.to_rc()?.drop_once_event(id.to_string().as_str()).await?;
+
         context.ref_state().to_rc()?.nft_update_state(&tx.nft_id, &NFTState::Normal).await?;
         Ok(())
     }
@@ -551,8 +595,9 @@ impl TxExecutor {
         context: &mut ExecuteContext,
         tx: &NFTBuyTx
     ) -> BuckyResult<()> {
+        log::info!("{} buy nft {} price {}", context.caller().id().to_string(), tx.nft_id.to_string(), tx.price);
         let (nft_desc, _, state) = context.ref_state().to_rc()?.nft_get(&tx.nft_id).await?;
-        if let NFTState::Selling((mut price, coin_id)) = state {
+        if let NFTState::Selling((mut price, coin_id, _)) = state {
             let beneficiary = context.ref_state().to_rc()?.get_beneficiary(&tx.nft_id).await?;
             if context.caller().id() == &beneficiary {
                 return Err(meta_err!(ERROR_NFT_IS_OWNER));
@@ -562,7 +607,7 @@ impl TxExecutor {
                 if parent_id.is_some() {
                     let parent_beneficiary = context.ref_state().to_rc()?.get_beneficiary(parent_id.as_ref().unwrap()).await?;
                     if parent_beneficiary == beneficiary {
-                        if let NFTState::Selling((price, _)) = state {
+                        if let NFTState::Selling((price, _, _)) = state {
                             if price == 0 {
                                 return Err(meta_err!(ERROR_NFT_IS_SUB));
                             }
@@ -578,7 +623,7 @@ impl TxExecutor {
                         continue;
                     }
                     let (_, _, sub_state) = context.ref_state().to_rc()?.nft_get(&sub_id).await?;
-                    if let NFTState::Selling((sub_price, _)) = sub_state {
+                    if let NFTState::Selling((sub_price, _, _)) = sub_state {
                         sum_price += sub_price;
                     } else {
                         continue;
@@ -610,6 +655,13 @@ impl TxExecutor {
                 context.ref_state().to_rc()?.inc_balance(&coin_id, &beneficiary, price as i64).await?;
                 context.ref_state().to_rc()?.set_beneficiary(&tx.nft_id, context.caller().id()).await?;
                 context.ref_state().to_rc()?.nft_update_state(&tx.nft_id, &NFTState::Normal).await?;
+
+                let event_params = Event::NFTStopSell(NFTStopSell {
+                    nft_id: tx.nft_id.clone()
+                });
+                let id = hash_data(event_params.to_vec()?.as_slice());
+                self.event_manager.to_rc()?.drop_once_event(id.to_string().as_str()).await?;
+
                 Ok(())
             }
         } else {
@@ -638,6 +690,24 @@ impl TxExecutor {
 
         context.ref_state().to_rc()?.nft_set_name(&tx.nft_id, tx.name.as_str()).await?;
 
+        Ok(())
+    }
+
+    pub async fn execute_nft_trans(
+        &self,
+        context: &mut ExecuteContext,
+        tx: &NFTTransTx
+    ) -> BuckyResult<()> {
+        // 获取address现在的受益人信息, 没有受益人的情况，benefi是address自己
+        let benefi = context.ref_state().to_rc()?.get_beneficiary(&tx.nft_id).await?;
+
+        // 检查caller是不是受益人，或者受益人的owner
+        if context.caller().id() != &benefi {
+            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, "caller is not benefi or benefi`s owner"));
+        }
+
+        // 修改benefi
+        context.ref_state().to_rc()?.set_beneficiary(&tx.nft_id, &tx.to).await?;
         Ok(())
     }
 }

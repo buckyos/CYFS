@@ -1,8 +1,9 @@
 use cyfs_base::*;
 
 use lru_time_cache::{Entry, LruCache};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
+use cyfs_debug::Mutex;
 
 #[derive(Clone)]
 pub struct OodInfo {

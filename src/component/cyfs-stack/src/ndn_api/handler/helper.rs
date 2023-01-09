@@ -1,5 +1,5 @@
-use cyfs_lib::*;
 use crate::non_api::RequestHandlerHelper;
+use cyfs_lib::*;
 
 struct NDNRequestUtil;
 
@@ -40,7 +40,6 @@ impl NDNRequestUtil {
         origin.attr = handler.attr;
     }
 
-
     fn update_delete_data_request(
         origin: &mut NDNDeleteDataInputRequest,
         handler: NDNDeleteDataInputRequest,
@@ -59,7 +58,6 @@ impl NDNRequestUtil {
     }
 }
 
-
 // put_data
 impl RequestHandlerHelper<NDNPutDataInputRequest> for NDNPutDataInputRequest {
     fn update(&mut self, handler: NDNPutDataInputRequest) {
@@ -69,14 +67,18 @@ impl RequestHandlerHelper<NDNPutDataInputRequest> for NDNPutDataInputRequest {
     fn debug_info(&self) -> String {
         self.object_id.to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
+
+    fn source(&self) -> &RequestSourceInfo {
+        &self.common.source
+    }
 }
 impl RequestHandlerHelper<NDNPutDataInputResponse> for NDNPutDataInputResponse {
     fn update(&mut self, handler: NDNPutDataInputResponse) {
         NDNRequestUtil::update_put_data_response(self, handler)
-    }
-
-    fn debug_info(&self) -> String {
-        unimplemented!();
     }
 }
 
@@ -89,18 +91,20 @@ impl RequestHandlerHelper<NDNGetDataInputRequest> for NDNGetDataInputRequest {
     fn debug_info(&self) -> String {
         self.object_id.to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
+
+    fn source(&self) -> &RequestSourceInfo {
+        &self.common.source
+    }
 }
 impl RequestHandlerHelper<NDNGetDataInputResponse> for NDNGetDataInputResponse {
     fn update(&mut self, handler: Self) {
         NDNRequestUtil::update_get_data_response(self, handler)
     }
-
-    fn debug_info(&self) -> String {
-        unimplemented!();
-    }
 }
-
-
 
 // delete_data
 impl RequestHandlerHelper<NDNDeleteDataInputRequest> for NDNDeleteDataInputRequest {
@@ -111,14 +115,44 @@ impl RequestHandlerHelper<NDNDeleteDataInputRequest> for NDNDeleteDataInputReque
     fn debug_info(&self) -> String {
         self.object_id.to_string()
     }
+
+    fn req_path(&self) -> &Option<String> {
+        &self.common.req_path
+    }
+
+    fn source(&self) -> &RequestSourceInfo {
+        &self.common.source
+    }
 }
 
 impl RequestHandlerHelper<NDNDeleteDataInputResponse> for NDNDeleteDataInputResponse {
     fn update(&mut self, handler: Self) {
         NDNRequestUtil::update_delete_data_response(self, handler)
     }
+}
+
+// interest handler
+impl RequestHandlerHelper<InterestHandlerRequest> for InterestHandlerRequest {
+    fn update(&mut self, handler: Self) {
+        self.referer = handler.referer;
+        self.prefer_type = handler.prefer_type;
+    }
 
     fn debug_info(&self) -> String {
+        self.session_id.value().to_string()
+    }
+
+    fn req_path(&self) -> &Option<String> {
+        &None
+    }
+
+    fn source(&self) -> &RequestSourceInfo {
         unimplemented!();
+    }
+}
+
+impl RequestHandlerHelper<InterestHandlerResponse> for InterestHandlerResponse {
+    fn update(&mut self, handler: Self) {
+        *self = handler.clone();
     }
 }

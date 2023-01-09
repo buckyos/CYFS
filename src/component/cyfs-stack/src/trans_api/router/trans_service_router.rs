@@ -7,42 +7,31 @@ use std::sync::Arc;
 use crate::forward::ForwardProcessorManager;
 use crate::trans::{TransInputProcessor, TransInputProcessorRef, TransInputTransformer};
 use crate::trans_api::TransAclInnerInputProcessor;
-use crate::zone::ZoneManager;
-use crate::AclManagerRef;
+use crate::zone::ZoneManagerRef;
 
+#[derive(Clone)]
 pub struct TransServiceRouter {
     processor: TransInputProcessorRef,
     forward: ForwardProcessorManager,
     fail_handler: ObjectFailHandler,
-    zone_manager: ZoneManager,
-}
-
-impl Clone for TransServiceRouter {
-    fn clone(&self) -> Self {
-        Self {
-            processor: self.processor.clone(),
-            forward: self.forward.clone(),
-            fail_handler: self.fail_handler.clone(),
-            zone_manager: self.zone_manager.clone(),
-        }
-    }
+    zone_manager: ZoneManagerRef,
 }
 
 impl TransServiceRouter {
     pub(crate) fn new(
-        acl: AclManagerRef,
         forward: ForwardProcessorManager,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         fail_handler: ObjectFailHandler,
         processor: TransInputProcessorRef,
-    ) -> Self {
-        let processor = TransAclInnerInputProcessor::new(acl, processor);
-        Self {
+    ) -> TransInputProcessorRef {
+        let processor = TransAclInnerInputProcessor::new(processor);
+        let ret = Self {
             processor,
             zone_manager,
             forward,
             fail_handler,
-        }
+        };
+        Arc::new(Box::new(ret))
     }
 
     async fn get_forward(&self, target: DeviceId) -> BuckyResult<TransInputProcessorRef> {
@@ -56,14 +45,15 @@ impl TransServiceRouter {
     async fn get_target(&self, target: Option<&ObjectId>) -> BuckyResult<Option<DeviceId>> {
         let ret = match target {
             Some(object_id) => {
-                let (_, device_id) = self
+                let info = self
                     .zone_manager
-                    .resolve_target(Some(object_id), None)
+                    .target_zone_manager()
+                    .resolve_target(Some(object_id))
                     .await?;
-                if device_id == *self.zone_manager.get_current_device_id() {
+                if info.target_device == *self.zone_manager.get_current_device_id() {
                     None
                 } else {
-                    Some(device_id)
+                    Some(info.target_device)
                 }
             }
             None => None,

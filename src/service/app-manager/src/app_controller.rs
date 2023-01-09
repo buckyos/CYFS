@@ -1,18 +1,22 @@
+use crate::app_acl_util::*;
 use crate::dapp::DApp;
 use crate::docker_api::*;
 use crate::package::AppPackage;
 use cyfs_base::*;
 use cyfs_client::NamedCacheClient;
-use cyfs_core::*;
-use log::*;
+use cyfs_core::{DecApp, DecAppId, DecAppObj, SubErrorCode};
 use cyfs_lib::*;
 use cyfs_util::*;
+use log::*;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+use async_std::prelude::StreamExt;
 
-pub type AppActionResult<T> = std::result::Result<T, SubErrorCode>;
+pub type AppActionResult<T> = Result<T, SubErrorCode>;
 
 pub struct PermissionNode {
     key: String,
@@ -20,20 +24,29 @@ pub struct PermissionNode {
 }
 
 pub struct AppController {
-    shared_stack: SharedCyfsStack,
-    owner: ObjectId,
-    named_cache_client: NamedCacheClient,
+    shared_stack: Option<SharedCyfsStack>,
+    owner: Option<ObjectId>,
     docker_api: Option<DockerApi>,
+    named_cache_client: Option<NamedCacheClient>,
+    sn_hash: RwLock<HashValue>,
     use_docker: bool,
 }
 
+async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
+    stack.wait_online(Some(Duration::from_secs(5))).await?;
+
+    let info = stack.util().get_device_static_info(UtilGetDeviceStaticInfoOutputRequest::new()).await?;
+    let mut devices = vec![];
+    for sn_id in &info.info.sn_list {
+        let resp = stack.non_service().get_object(NONGetObjectOutputRequest::new_noc(sn_id.object_id().clone(), None)).await?;
+        devices.push(Device::clone_from_slice(&resp.object.object_raw)?);
+    }
+
+    Ok(devices)
+}
+
 impl AppController {
-    pub fn new(
-        shared_stack: SharedCyfsStack,
-        owner: ObjectId,
-        named_cache_client: NamedCacheClient,
-        use_docker: bool,
-    ) -> Self {
+    pub fn new(use_docker: bool) -> Self {
         // check platform
         let docker_api;
         if use_docker {
@@ -43,12 +56,60 @@ impl AppController {
         }
 
         Self {
-            shared_stack,
-            owner,
-            named_cache_client,
+            shared_stack: None,
+            owner: None,
+            named_cache_client: None,
+            sn_hash: RwLock::new(HashValue::default()),
             docker_api,
             use_docker,
         }
+    }
+
+    pub async fn prepare_start(
+        &mut self,
+        shared_stack: SharedCyfsStack,
+        owner: ObjectId,
+    ) -> BuckyResult<()> {
+        let sn_list = get_sn_list(&shared_stack).await.unwrap_or_else(|e| {
+            error!("get sn list from runtime err {}, use built-in sn list", e);
+            get_builtin_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect()
+        });
+
+        let sn_hash = hash_data(&sn_list.to_vec().unwrap());
+        *self.sn_hash.write().unwrap() = sn_hash;
+        self.shared_stack = Some(shared_stack);
+        self.owner = Some(owner);
+        let mut named_cache_client = NamedCacheClient::new();
+        named_cache_client.init(None, None, None, Some(sn_list)).await?;
+        self.named_cache_client = Some(named_cache_client);
+        Ok(())
+    }
+
+    pub async fn start_monitor_sn(this: Arc<AppController>) {
+        // 起一个5分钟的timer，查sn
+        async_std::task::spawn(async move {
+            let mut interval = async_std::stream::interval(Duration::from_secs(5*60));
+            while let Some(_) = interval.next().await {
+                let sn_list = get_sn_list(this.shared_stack.as_ref().unwrap()).await.unwrap_or_else(|e| {
+                    error!("get sn list from stack err {}, use built-in sn list", e);
+                    get_builtin_sn_desc().as_slice().iter().map(|(_, device)| device.clone()).collect()
+                });
+                let sn_hash = hash_data(&sn_list.to_vec().unwrap());
+                let old_hash = this.sn_hash.read().unwrap().clone();
+                if old_hash != sn_hash {
+                    info!("sn list from stack changed, {:?}", &sn_list);
+                    match this.named_cache_client.as_ref().unwrap().reset_sn_list(sn_list).await {
+                        Ok(_) => {
+                            *this.sn_hash.write().unwrap() = sn_hash;
+                        }
+                        Err(e) => {
+                            error!("change named cache client sn list err {}", e);
+                        }
+                    }
+
+                }
+            }
+        });
     }
 
     //返回isNoService，还有webDir
@@ -61,7 +122,7 @@ impl AppController {
         info!("try to install app:{}, ver:{}", app_id, version);
         let source_id = dec_app.find_source(version).map_err(|e| {
             error!(
-                "app {} cannot find source for ver {}, err: {}",
+                "app:{} cannot find source for ver {}, err: {}",
                 app_id, version, e
             );
             SubErrorCode::DownloadFailed
@@ -74,25 +135,30 @@ impl AppController {
             version,
         );
         // 返回了安装的service路径和web路径
-        let (service_dir, web_dir) = pkg.install(&self.named_cache_client).await.map_err(|e| {
-            error!("install app {} failed, {}", app_id, e);
-            SubErrorCode::DownloadFailed
-        })?;
+        let (service_dir, web_dir) = pkg
+            .install(self.named_cache_client.as_ref().unwrap())
+            .await
+            .map_err(|e| {
+                error!("install app:{} failed, {}", app_id, e);
+                SubErrorCode::DownloadFailed
+            })?;
 
         let web_dir_id = if web_dir.exists() {
             let pub_resp = self
                 .shared_stack
+                .as_ref()
+                .unwrap()
                 .trans()
                 .publish_file(&TransPublishFileOutputRequest {
                     common: NDNOutputRequestCommon {
                         req_path: None,
-                        dec_id: Some(get_system_dec_app().object_id().clone()),
+                        dec_id: Some(cyfs_core::get_system_dec_app().clone()),
                         level: Default::default(),
                         target: None,
                         referer_object: vec![],
                         flags: 0,
                     },
-                    owner: self.owner,
+                    owner: self.owner.unwrap(),
                     local_path: web_dir,
                     chunk_size: 1024 * 1024,
                     file_id: None,
@@ -101,7 +167,7 @@ impl AppController {
                 .await
                 .map_err(|e| {
                     error!(
-                        "pub web dir failed when install. app {} failed, err:,{}",
+                        "pub web dir failed when install. app:{} failed, err:,{}",
                         app_id, e
                     );
                     SubErrorCode::PubDirFailed
@@ -127,7 +193,7 @@ impl AppController {
                 })
                 .map_err(|e| {
                     error!(
-                        "trans objmap to dir failed when install. app {}, objmap id: {}, failed, {}",
+                        "trans objmap to dir failed when install. app:{}, objmap id: {}, failed, {}",
                         app_id, pub_resp.file_id, e
                     );
                     SubErrorCode::PubDirFailed
@@ -143,7 +209,7 @@ impl AppController {
             // serivce install. e.g. npm install
             let dapp = DApp::load_from_app_id(&app_id.to_string()).map_err(|e| {
                 error!(
-                    "get dapp instance failed when install. app {} failed, err:,{}",
+                    "get dapp instance failed when install. app:{} failed, err:,{}",
                     app_id, e
                 );
                 SubErrorCode::LoadFailed
@@ -159,11 +225,11 @@ impl AppController {
                 info!("run docker install!");
                 let id = app_id.to_string();
 
-                // 可执行命令，如果有，需要再docker里 chmod +x
+                // 可执行命令，如果有，需要在docker里 chmod +x
                 let executable = {
                     let res = dapp.get_executable_binary().map_err(|e| {
                         error!(
-                            "get executable failed when install. app {} failed, err:,{}",
+                            "get executable failed when install. app:{} failed, err:,{}",
                             app_id, e
                         );
                         SubErrorCode::LoadFailed
@@ -175,9 +241,11 @@ impl AppController {
                     }
                 };
                 let docker_api = self.docker_api.as_ref().unwrap();
-                docker_api.install(&id, version, executable).await
+                docker_api
+                    .install(&id, version, executable)
+                    .await
                     .map_err(|e| {
-                        error!("docker install failed. app {} failed, {}", app_id, e);
+                        error!("docker install failed. app:{} failed, {}", app_id, e);
                         SubErrorCode::DockerFailed
                     })?;
             }
@@ -208,7 +276,7 @@ impl AppController {
         // docker remove
         // 删除镜像
         if self.docker_api.is_some() {
-            info!("docker instance try to uninstall app {}", app_id);
+            info!("docker instance try to uninstall app:{}", app_id);
             let id = app_id.to_string();
             let docker_api = self.docker_api.as_ref().unwrap();
             // docker_api.volume_remove(&id).await; // 这里不用删除 volume 保留用户数据。
@@ -303,7 +371,7 @@ impl AppController {
     ) -> BuckyResult<Option<HashMap<String, String>>> {
         debug!("query app permission, {}-{}", app_id, version);
         let source_id = dec_app.find_source(version).map_err(|e| {
-            error!("app {} cannot find source for ver {}", app_id, version);
+            error!("app:{} cannot find source for ver {}", app_id, version);
             e
         })?;
         let owner_id_str = self.get_owner_id_str(&app_id).await;
@@ -317,23 +385,32 @@ impl AppController {
         let acl_dir;
 
         match pkg
-            .download_permission_config(&self.named_cache_client)
+            .download_permission_config(self.named_cache_client.as_ref().unwrap())
             .await
         {
             Ok(dir) => acl_dir = dir,
             Err(e) => {
                 //下载acl失败，默认没有任何权限
-                warn!("download acl config failed. app: {}， err: {}", app_id, e);
+                warn!("download acl config failed. app:{}， err: {}", app_id, e);
                 return Ok(None);
             }
         }
 
         let acl_file = acl_dir.join("acl.cfg");
         if !acl_file.exists() {
-            info!("acl config not found. app: {}", app_id);
+            info!("acl config not found. app:{}", app_id);
             return Ok(None);
         }
-        let acl = File::open(acl_file)?;
+
+        let acl_config = AppAclUtil::load_from_file(app_id, &acl_file)?;
+
+        let _ =
+            AppAclUtil::apply_acl(app_id, self.shared_stack.as_ref().unwrap(), acl_config).await;
+
+        //TODO: Requires users to agree to permissions, not automatic settings
+        Ok(None)
+
+        /*let acl = File::open(acl_file)?;
         let acl_info: Value = serde_json::from_reader(acl)?;
         let acl_map = acl_info.as_object().ok_or_else(|| {
             let msg = format!("invalid acl file format: {}", acl_info);
@@ -349,7 +426,7 @@ impl AppController {
             permissions.insert(k.to_string(), v.to_string());
         }
 
-        Ok(Some(permissions))
+        Ok(Some(permissions))*/
     }
 
     // 查询app对stack的版本依赖，返回（minVer，maxVer）
@@ -363,15 +440,12 @@ impl AppController {
         let dep_dir = get_app_dep_dir(&app_id.to_string(), version);
         let dep_file = dep_dir.join("dependent.cfg");
         if dep_file.exists() {
-            info!(
-                "dep config already exists. app: {}, ver:{}",
-                app_id, version
-            );
+            info!("dep config already exists. app:{}, ver:{}", app_id, version);
             return self.parse_dep_config(app_id, dep_file);
         }
 
         let source_id = dec_app.find_source(version).map_err(|e| {
-            error!("app {} cannot find source for ver {}", app_id, version);
+            error!("app:{} cannot find source for ver {}", app_id, version);
             e
         })?;
         let owner_id_str = self.get_owner_id_str(&app_id).await;
@@ -383,7 +457,7 @@ impl AppController {
         );
 
         let _ = pkg
-            .download_dep_config(dep_dir, &self.named_cache_client)
+            .download_dep_config(dep_dir, self.named_cache_client.as_ref().unwrap())
             .await
             .map_err(|e| {
                 error!("download app dep {} failed, {}", app_id, e);
@@ -402,7 +476,7 @@ impl AppController {
 
         if !dep_file.exists() {
             //没有设置兼容性的话，默认全匹配
-            info!("dep config not found. app: {}", app_id);
+            info!("dep config not found. app:{}", app_id);
             return Ok(default_ret);
         }
 
@@ -442,10 +516,13 @@ impl AppController {
         // DecApp会更新，这里要主动从远端获取
         let resp = self
             .shared_stack
+            .as_ref()
+            .unwrap()
             .non_service()
             .get_object(NONGetObjectRequest {
                 common: NONOutputRequestCommon {
                     req_path: None,
+                    source: None,
                     dec_id: None,
                     level: NONAPILevel::Router,
                     target: None,
@@ -465,6 +542,8 @@ impl AppController {
             ObjectTypeCode::People => {
                 match self
                     .shared_stack
+                    .as_ref()
+                    .unwrap()
                     .util_service()
                     .resolve_ood(UtilResolveOODOutputRequest::new(
                         app_id.object_id().to_owned(),
@@ -496,6 +575,7 @@ mod tests {
     use super::*;
     use std::process::Command;
     //use cyfs_core::;
+    use cyfs_core::{AppCmd, AppCmdObj};
     use std::convert::TryFrom;
     use std::str::FromStr;
 
@@ -515,8 +595,13 @@ mod tests {
             .owner()
             .to_owned()
             .unwrap_or_else(|| device.desc().calculate_id());
-        let app_controller = AppController::new(stack, owner, named_cache_client, false);
+
+        let mut app_controller = AppController::new(false);
+        app_controller.prepare_start(stack, owner).await;
+
         app_controller
+        //let app_controller = AppController::new(stack, owner, named_cache_client, false);
+        //app_controller
     }
 
     // 安装app
@@ -532,6 +617,7 @@ mod tests {
             .put_object(NONPutObjectOutputRequest {
                 common: NONOutputRequestCommon {
                     req_path: None,
+                    source: None,
                     dec_id: None,
                     level: NONAPILevel::NOC,
                     target: None,
@@ -542,6 +628,7 @@ mod tests {
                     object_raw: appcmd.to_vec().unwrap(),
                     object: None,
                 },
+                access: None,
             })
             .await
             .unwrap();

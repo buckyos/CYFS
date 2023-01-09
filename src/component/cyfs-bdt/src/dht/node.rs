@@ -1,5 +1,5 @@
 use super::k_bucket::*;
-use crate::protocol::Datagram;
+use crate::protocol::v0::*;
 use async_std;
 use async_trait::async_trait;
 use cyfs_base::*;
@@ -36,16 +36,8 @@ impl KadId for ObjectId {
     }
     fn kad_index(dist: &Self) -> u32 {
         let self_bytes = dist.as_slice();
-        for i in 0..ObjectId::raw_bytes().unwrap() {
-            for j in 0..8 as u8 {
-                if (self_bytes[i] >> (7 - j)) & 0x1 != 0 {
-                    return (8 as usize * (ObjectId::raw_bytes().unwrap())) as u32
-                        - (i * 8 + j as usize) as u32;
-                }
-            }
-        }
 
-        (ObjectId::raw_bytes().unwrap() * 8 - 1) as u32
+        (unsafe {*{self_bytes[0..4].as_ptr() as *const u32}}) % ObjectId::bits()
     }
     fn bits() -> u32 {
         ObjectId::raw_bytes().unwrap() as u32

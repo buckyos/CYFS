@@ -11,7 +11,7 @@ mod service;
 use clap::{App, Arg};
 use std::str::FromStr;
 
-use daemon::Daemon;
+use daemon::{Daemon, start_control};
 use service::{ServiceMode, SERVICE_MANAGER};
 
 #[macro_use]
@@ -19,8 +19,8 @@ extern crate log;
 
 const SERVICE_NAME: &str = ::cyfs_base::OOD_DAEMON_NAME;
 
-#[async_std::main]
-async fn main() {
+
+async fn main_run() {
     let app = App::new("ood-daemon service")
         .version(cyfs_base::get_version())
         .about("ood-daemon service for cyfs system")
@@ -38,11 +38,47 @@ async fn main() {
                 .help("Run ood-daemon service without backend monitor service"),
         )
         .arg(
+            Arg::with_name("no_ood_control")
+                .long("no-ood-control")
+                .takes_value(false)
+                .help("Run ood-daemon service without ood control service"),
+        )
+        .arg(
             Arg::with_name("mode")
                 .long("mode")
                 .takes_value(true)
                 .default_value("daemon")
                 .help("Daemon service mode, daemon|installer|vood, default is daemon"),
+        )
+        .arg(
+            Arg::with_name("port")
+                .long("port")
+                .takes_value(true)
+                .help("Specify OOD bind service port"),
+        )
+        .arg(
+            Arg::with_name("host")
+                .long("host")
+                .takes_value(true)
+                .help("Specify OOD service public address for external services and tools, installer will bind 0 addr by default"),
+        )
+        .arg(
+            Arg::with_name("strict-host")
+                .long("strict-host")
+                .takes_value(true)
+                .help("Specify OOD bind service public address"),
+        )
+        .arg(
+            Arg::with_name("ipv4_only")
+                .long("ipv4-only")
+                .takes_value(false)
+                .help("Specify OOD bind service just use ipv4 address"),
+        )
+        .arg(
+            Arg::with_name("ipv6_only")
+                .long("ipv6-only")
+                .takes_value(false)
+                .help("Specify OOD bind service just use ipv6 address"),
         );
 
     let app = cyfs_util::process::prepare_args(app);
@@ -92,8 +128,25 @@ async fn main() {
     };
     SERVICE_MANAGER.change_mode(mode.clone());
 
-    let mut daemon = Daemon::new(mode);
+    let no_ood_control = matches.is_present("no_ood_control");
+
+    if !no_ood_control {
+        if let Err(e) = start_control(mode.clone(), &matches).await {
+            println!("start ood control failed! {}", e);
+            std::process::exit(-1);
+        }
+    } else {
+        info!("will run without ood control service");
+    }
+
+    let daemon = Daemon::new(mode, no_monitor);
     if let Err(e) = daemon.run().await {
         error!("daemon run error! err={}", e);
     }
+}
+
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run())
 }

@@ -1,4 +1,9 @@
-use std::{net::{IpAddr, Ipv4Addr, SocketAddr}, path::Path, str::FromStr, time::{Duration, Instant}};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr, Shutdown},
+    path::Path, 
+    str::FromStr, 
+    time::{Duration, Instant}
+};
 use async_std::{
     sync::Arc, 
     task, 
@@ -15,10 +20,10 @@ use crate::{
     tunnel::{BuildTunnelParams}, 
     datagram::{self, DatagramOptions},
     download::*,
-    DownloadTaskControl, 
-    TaskControlState,
+    DownloadTask, 
+    DownloadTaskState, 
     types::*,
-    ChunkDownloadConfig,
+    SingleDownloadContext
 };
 use super::command::*;
 use super::super::sn::client::SnStatus;
@@ -83,10 +88,10 @@ impl DebugStub {
                 match debug_tunnel.recv_v().await {
                     Ok(datagrams) => {
                         for datagram in datagrams {
-                            let resp = b"debug";
+                            //let resp = b"debug";
                             let mut options = datagram.options.clone();
                             let _ = debug_tunnel.send_to(
-                                resp.as_ref(), 
+                                datagram.data.as_ref(),//resp.as_ref(), 
                                 &mut options, 
                                 &datagram.source.remote, 
                                 datagram.source.vport);
@@ -115,6 +120,7 @@ impl DebugStub {
                     DebugCommand::PutChunk(command) => self.put_chunk(tunnel.clone(), command).await,
                     DebugCommand::PutFile(command) => self.put_file(tunnel.clone(), command).await,
                     DebugCommand::SnConnStatus(command) => self.sn_conn_status(tunnel.clone(), command).await,
+                    DebugCommand::BenchDatagram(command) => self.bench_datagram(tunnel.clone(), command).await,
                 } {
                     let _ = tunnel.write_all(err.as_ref()).await;
                 }
@@ -235,16 +241,126 @@ impl DebugStub {
         Ok(())
     }
 
+    async fn bench_datagram(&self, tunnel: TcpStream, command: DebugCommandBenchDatagram) -> Result<(), String> {
+        let mut tunnel = tunnel;
+
+        let from = 1;
+        let to = 65535;
+        let plaintext = command.plaintext;
+
+        let s = format!("bench_datagram: plaintext:{} timeout:{:?} from:{} to:{}\r\n",
+            plaintext, command.timeout, from, to);
+        let _ = tunnel.write_all(s.as_bytes()).await;
+
+        let mut n_ok = 0;
+        let stack = Stack::from(&self.0.stack);
+        let datagram = stack.datagram_manager().bind(0)
+            .map_err(|err| format!("deamon bind datagram tunnel failed for {}\r\n", err))?;
+        for i in from..to {
+            let mut options = DatagramOptions::default();
+            let _ = tunnel.write_all("send data.\r\n".as_ref()).await;
+
+            let data = rand_data_gen(i);
+            let ts = cyfs_base::bucky_time_now();
+            options.sequence = Some(TempSeq::from(ts as u32));
+            if i%2 == 0 {
+                options.create_time = Some(ts+10);
+            }
+            if i%4 == 0 {
+                options.send_time = Some(ts+20);
+            }
+            if i%8 == 0 {
+                options.author_id = Some(command.remote.desc().device_id().clone());
+            }
+            options.plaintext = plaintext;
+            let _ = datagram.send_to(
+                &data, 
+                &mut options, 
+                &command.remote.desc().device_id(), 
+                datagram::ReservedVPort::Debug.into());
+            match future::timeout(command.timeout, datagram.recv_v()).await {
+                Err(_err) => {
+                    let _ = tunnel.write_all("timeout\r\n".as_ref()).await;
+                },
+                Ok(res) => {
+                    let datagrams = res.unwrap();
+                    for datagram in datagrams {
+                        if let Some(opt) = datagram.options.sequence {
+                            if opt == options.sequence.unwrap() {
+                                let md5_recv = md5::compute(&datagram.data);
+                                let md5_send = md5::compute(&data);
+                                if md5_recv == md5_send {
+                                    n_ok += 1;
+                                }
+                                let s = format!("respose: plaintext: {} time: {:.1} ms, success {}/{}, fail {}\r\n", 
+                                                    options.plaintext,
+                                                    (cyfs_base::bucky_time_now() - ts) as f64 / 1000.0,
+                                                    n_ok,
+                                                    i,
+                                                    i-n_ok);
+                                let _ = tunnel.write_all(s.as_bytes()).await;
+                                break ;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     async fn nc(&self, tunnel: TcpStream, command: DebugCommandNc) -> Result<(), String> {
         let mut tunnel = tunnel;
         let stack = Stack::from(&self.0.stack);
         let _ = tunnel.write_all("connecting stream\r\n".as_ref()).await;
-        let _ = stack.stream_manager().connect(command.port, vec![], BuildTunnelParams {
-            remote_const: command.remote.desc().clone(), 
-            remote_sn: vec![], 
-            remote_desc: Some(command.remote.clone())
+
+        let question = b"question?";
+        let mut conn = stack.stream_manager().connect(
+            command.port, 
+            question.to_vec(), 
+            BuildTunnelParams {
+                remote_const: command.remote.desc().clone(), 
+                remote_sn: vec![], 
+                remote_desc: Some(command.remote.clone())
         }).await.map_err(|err| format!("Err: {}\r\n", err.msg().to_string()))?;
+
+        let _ = tunnel.write_all("Connect success, read answer\r\n".as_ref()).await;
+
+        let mut answer = [0; 128];
+        match conn.read(&mut answer).await {
+            Ok(len) => {
+                let s = format!("Read answer success, len={} content={:?}\r\n", 
+                    len, String::from_utf8(answer[..len].to_vec()).expect(""));
+                let _ = tunnel.write_all(s.as_bytes()).await;
+            },
+            Err(e) => {
+                let s = format!("Read answer fail, err={}\r\n", e);
+                let _ = tunnel.write_all(s.as_bytes()).await;
+                return Ok(());
+            }
+        }
+
+        let _ = conn.write_all(b"hello world.").await;
+
+        let mut buf = [0u8; 128];
+        match conn.read(&mut buf).await {
+            Ok(len) => {
+                let s = format!("Read data success, len={} content={:?}\r\n", 
+                    len, String::from_utf8(buf[..len].to_vec()).expect(""));
+                let _ = tunnel.write_all(s.as_bytes()).await;
+            },
+            Err(e) => {
+                let s = format!("Read data fail, err={}\r\n", e);
+                let _ = tunnel.write_all(s.as_bytes()).await;
+                return Ok(());
+            }
+        }
+
         let _ = tunnel.write_all("Ok: stream connected\r\n".as_ref()).await;
+
+        let _ = conn.shutdown(Shutdown::Both);
+
         Ok(())
     }
 
@@ -259,7 +375,8 @@ impl DebugStub {
         let _ = tunnel.write_all("start downloading chunk..\r\n".as_ref()).await;
         let task = download_chunk_to_path(&stack,
             chunk_id,
-            ChunkDownloadConfig::from(remotes),
+            None, 
+            Some(SingleDownloadContext::streams(None, remotes)),
             &local_path).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
 
@@ -286,8 +403,11 @@ impl DebugStub {
         let local_path = command.local_path;
 
         let _ = tunnel.write_all("start downloading file..\r\n".as_ref()).await;
-        let task = download_file_to_path(&stack, file_id, 
-            ChunkDownloadConfig::from(remotes), 
+        let task = download_file_to_path(
+            &stack, 
+            file_id, 
+            None,  
+            Some(SingleDownloadContext::streams(None, remotes)),
             &local_path).await.map_err(|e| {
                 format!("download err: {}\r\n", e)
         })?;
@@ -402,16 +522,16 @@ impl DebugStub {
     }
 }
 
-async fn watchdog_download_finished(task: Box<dyn DownloadTaskControl>, timeout: u32) -> Result<(), String> {
+async fn watchdog_download_finished(task: Box<dyn DownloadTask>, timeout: u32) -> Result<(), String> {
     let mut _timeout = 1800; //todo: when bdt support download speed, use timeout instead
     let mut i = 0;
 
     loop {
-        match task.control_state() {
-            TaskControlState::Finished => {
+        match task.state() {
+            DownloadTaskState::Finished => {
                 break Ok(());
             },
-            TaskControlState::Downloading(speed, _) => {
+            DownloadTaskState::Downloading(speed, _) => {
                 if speed > 0 {
                     i = 0;
 
@@ -422,18 +542,15 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTaskControl>, timeout:
                     i += 1;
                 }
             },
-            TaskControlState::Canceled => {
-                break Err(format!("download canceled\r\n"));
-            },
-            TaskControlState::Paused => {
-            },
-            TaskControlState::Err(e) => {
+            DownloadTaskState::Error(e) => {
                 break Err(format!("download err, code: {:?}\r\n", e));
             },
+            _ => {
+
+            }
         }
 
         if i >= _timeout {
-            let _ = task.cancel();
             break Err(format!("download timeout\r\n"));
         }
 
@@ -449,4 +566,36 @@ fn get_filesize(path: &Path) -> u64 {
     }
 
     0
+}
+
+fn rand_data_gen(len: usize) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.resize(len, 0u8);
+
+    let mut r = 0;
+    for i in 0..len {
+        if i%10 == 0 {
+            r = rand::random::<u8>();
+        }
+        buf[i] = r;
+    }
+
+    buf
+}
+
+fn rand_data_gen_buf(len: usize) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.resize(len + 8, 0u8);
+
+    buf[0..8].copy_from_slice(&len.to_be_bytes());
+
+    let mut r = 0;
+    for i in 8..len {
+        if i%10 == 0 {
+            r = rand::random::<u8>();
+        }
+        buf[i] = r;
+    }
+
+    buf
 }

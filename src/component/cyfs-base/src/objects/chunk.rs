@@ -1,15 +1,15 @@
 use crate::*;
 
+use base58::{FromBase58, ToBase58};
 use generic_array::typenum::{marker_traits::Unsigned, U32};
 use generic_array::GenericArray;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::{
     convert::{Into, TryFrom},
     str::FromStr,
 };
-use base58::{FromBase58, ToBase58};
-use serde::{Serialize, Deserialize};
 
 // unique id in const info
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -44,27 +44,11 @@ impl std::fmt::Display for ChunkId {
 impl FromStr for ChunkId {
     type Err = BuckyError;
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let buf = s.from_base58().map_err(|_e| {
-            log::error!("convert base58 str to object id failed, str:{}", s);
-            let msg = format!("convert base58 str to object id failed, str:{}", s);
-            BuckyError::new(BuckyErrorCode::ParseError, msg)
-        })?;
-
-        if buf.len() != 32 {
-            let msg = format!(
-                "convert base58 str to chunk id failed, str is too long:{}, len:{}",
-                s,
-                buf.len()
-            );
-            return Err(BuckyError::new(BuckyErrorCode::ParseError, msg));
+        if OBJECT_ID_BASE36_RANGE.contains(&s.len()) {
+            Self::from_base36(s)
+        } else {
+            Self::from_base58(s)
         }
-
-        let mut id = Self::default();
-        unsafe {
-            std::ptr::copy(buf.as_ptr(), id.as_mut_slice().as_mut_ptr(), buf.len());
-        }
-
-        Ok(id)
     }
 }
 
@@ -104,7 +88,10 @@ impl ProtobufTransform<Vec<u8>> for ChunkId {
         if value.len() != 32 {
             return Err(BuckyError::new(
                 BuckyErrorCode::InvalidParam,
-                format!("try convert from vec<u8> to chunk id failed, invalid len {}", value.len())
+                format!(
+                    "try convert from vec<u8> to chunk id failed, invalid len {}",
+                    value.len()
+                ),
             ));
         }
         let mut id = Self::default();
@@ -113,6 +100,26 @@ impl ProtobufTransform<Vec<u8>> for ChunkId {
         }
 
         Ok(id)
+    }
+}
+
+impl From<[u8; 32]> for ChunkId {
+    fn from(v: [u8; 32]) -> Self {
+        Self(GenericArray::from(v))
+    }
+}
+
+impl From<Vec<u8>> for ChunkId {
+    fn from(v: Vec<u8>) -> Self {
+        let ar: [u8; 32] = v.try_into().unwrap_or_else(|v: Vec<u8>| {
+            panic!(
+                "ChunkId expected a Vec of length {} but it was {}",
+                32,
+                v.len()
+            )
+        });
+
+        Self(GenericArray::from(ar))
     }
 }
 
@@ -157,6 +164,48 @@ impl ChunkId {
 
     pub fn to_string(&self) -> String {
         self.0.as_slice().to_base58()
+    }
+
+    pub fn to_base36(&self) -> String {
+        self.0.as_slice().to_base36()
+    }
+
+    pub fn from_base58(s: &str) -> BuckyResult<Self> {
+        let buf = s.from_base58().map_err(|e| {
+            let msg = format!("convert base58 str to chunk id failed, str:{}, {:?}", s, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::ParseError, msg)
+        })?;
+
+        if buf.len() != 32 {
+            let msg = format!(
+                "convert base58 str to chunk id failed, str's len not matched:{}, len:{}",
+                s,
+                buf.len()
+            );
+            return Err(BuckyError::new(BuckyErrorCode::ParseError, msg));
+        }
+
+        Ok(Self::from(buf))
+    }
+
+    pub fn from_base36(s: &str) -> BuckyResult<Self> {
+        let buf = s.from_base36().map_err(|e| {
+            let msg = format!("convert base36 str to chunk id failed, str:{}, {:?}", s, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::ParseError, msg)
+        })?;
+
+        if buf.len() != 32 {
+            let msg = format!(
+                "convert base36 str to chunk id failed, str's len not matched:{}, len:{}",
+                s,
+                buf.len()
+            );
+            return Err(BuckyError::new(BuckyErrorCode::ParseError, msg));
+        }
+
+        Ok(Self::from(buf))
     }
 
     pub async fn calculate(data: &[u8]) -> BuckyResult<Self> {

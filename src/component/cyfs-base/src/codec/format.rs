@@ -1,5 +1,6 @@
 use crate::*;
 
+use itertools::Itertools;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
@@ -230,7 +231,7 @@ impl ObjectFormat for PublicKey {
     fn format_json(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
 
-        JsonCodecHelper::encode_string_field(&mut map, "type", self.type_str());
+        JsonCodecHelper::encode_string_field(&mut map, "type", self.key_type_str());
 
         let raw = self.to_vec().unwrap();
         map.insert("raw_data".to_string(), Value::String(hex::encode(&raw)));
@@ -481,8 +482,7 @@ impl ObjectFormat for StandardObject {
         match self {
             StandardObject::Device(o) => o.format_json(),
             StandardObject::People(o) => o.format_json(),
-            StandardObject::SimpleGroup(o) => o.format_json(),
-            StandardObject::Org(o) => o.format_json(),
+            StandardObject::Group(o) => o.format_json(),
             StandardObject::AppGroup(o) => o.format_json(),
             StandardObject::UnionAccount(o) => o.format_json(),
             StandardObject::ChunkId(chunk_id) => chunk_id.format_json(),
@@ -494,6 +494,10 @@ impl ObjectFormat for StandardObject {
             StandardObject::Action(o) => o.format_json(),
             StandardObject::ObjectMap(o) => o.format_json(),
             StandardObject::Contract(o) => o.format_json(),
+            StandardObject::SimpleGroup => {
+                panic!("SimpleGroup is deprecated, you can use the Group.")
+            }
+            StandardObject::Org => panic!("Org is deprecated, you can use the Group."),
         }
     }
 }
@@ -532,6 +536,7 @@ impl ObjectFormat for DeviceBodyContent {
         );
 
         JsonCodecHelper::encode_option_string_field(&mut map, "name", self.name());
+        JsonCodecHelper::encode_option_number_field(&mut map, "bdt_version", self.bdt_version());
 
         map.into()
     }
@@ -560,7 +565,7 @@ impl ObjectFormat for PeopleBodyContent {
 }
 
 // simple group
-impl ObjectFormat for SimpleGroupDescContent {
+impl ObjectFormat for GroupDescContent {
     fn format_json(&self) -> serde_json::Value {
         let map = serde_json::Map::new();
 
@@ -568,28 +573,21 @@ impl ObjectFormat for SimpleGroupDescContent {
     }
 }
 
-impl ObjectFormat for SimpleGroupBodyContent {
+impl ObjectFormat for GroupBodyContent {
     fn format_json(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
 
-        JsonCodecHelper::encode_str_array_field(&mut map, "members", self.members());
-        JsonCodecHelper::encode_str_array_field(&mut map, "ood_list", &self.ood_list());
-        JsonCodecHelper::encode_string_field(&mut map, "ood_work_mode", &self.ood_work_mode());
+        JsonCodecHelper::encode_string_field(&mut map, "name", self.name());
+        JsonCodecHelper::encode_str_array_field(
+            &mut map,
+            "members",
+            &self.members().iter().map(|m| m.id).collect_vec(),
+        );
+        JsonCodecHelper::encode_str_array_field(&mut map, "ood_list", self.ood_list());
 
         map.into()
     }
 }
-
-// org
-impl ObjectFormat for OrgDescContent {
-    fn format_json(&self) -> serde_json::Value {
-        let map = serde_json::Map::new();
-
-        map.into()
-    }
-}
-
-impl ObjectFormatAutoWithSerde for OrgBodyContent {}
 
 // appgroup
 impl ObjectFormat for AppGroupDescContent {
@@ -903,6 +901,34 @@ fn test() {
     let value = file.desc().format_json();
     let s = value.to_string();
     println!("{}", s);
+
+    let secret = PrivateKey::generate_rsa(1024).unwrap();
+    let public = secret.public();
+    let mut device = Device::new(
+        Some(owner),
+        UniqueId::default(),
+        vec![],
+        vec![],
+        vec![],
+        public,
+        Area::new(1, 2, 3, 4),
+        DeviceCategory::OOD,
+    )
+    .build();
+    device.set_bdt_version(Some(2));
+
+    println!("new device obj: {}", device.format_json().to_string());
+
+    let (mut old_device, _) =
+        Device::decode_from_file("c:\\cyfs\\etc\\desc\\device.desc".as_ref(), &mut vec![]).unwrap();
+
+    println!("old device obj: {}", old_device.format_json().to_string());
+
+    old_device.set_bdt_version(Some(5));
+    println!(
+        "old device set bdt ver obj: {}",
+        old_device.format_json().to_string()
+    );
 }
 
 use std::collections::{hash_map::Entry, HashMap};
@@ -944,7 +970,10 @@ impl FormatFactory {
                 v.insert(f);
             }
             Entry::Occupied(mut o) => {
-                warn!("register ext object format but already exists! obj_type={}", obj_type);
+                warn!(
+                    "register ext object format but already exists! obj_type={}",
+                    obj_type
+                );
                 o.insert(f);
             }
         }

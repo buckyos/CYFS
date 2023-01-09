@@ -3,7 +3,7 @@ use cyfs_base::*;
 use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::{
     download::*,
-    ChunkDownloadConfig,
+    SingleDownloadContext, 
     ChunkReader,
     ChunkWriter,
     MemChunkStore,
@@ -12,6 +12,7 @@ use cyfs_bdt::{
     Stack,
     StackGuard,
     StackOpenParams,
+    DownloadTask, 
 };
 use std::{sync::Arc, time::Duration};
 mod utils;
@@ -29,6 +30,17 @@ async fn watch_recv_chunk(stack: StackGuard, chunkid: ChunkId) -> BuckyResult<Ch
         }
     }
 }
+
+fn watch_resource(task: Box<dyn DownloadTask>) {
+    task::spawn(async move {
+        loop {
+            log::info!("task state: {:?}", task.state());
+            task::sleep(Duration::from_millis(500)).await;
+        }
+    });   
+}
+
+
 
 #[async_std::main]
 async fn main() {
@@ -119,16 +131,19 @@ async fn main() {
             .await
             .unwrap();
 
-        let _ = download_chunk(
+        let task = download_chunk(
             &*down_stack,
-            chunkid.clone(),
-            ChunkDownloadConfig::from(vec![
+            chunkid.clone(), 
+            None, 
+            Some(SingleDownloadContext::streams(None, vec![
                 ref_stack.local_device_id().clone(),
-                src_stack.local_device_id().clone(),
-            ]),
+                src_stack.local_device_id().clone(),]
+            )),
             vec![down_store.clone_as_writer()],
         )
-        .await;
+        .await.unwrap();
+
+        watch_resource(task);
 
         let recv = future::timeout(
             Duration::from_secs(5),

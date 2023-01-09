@@ -4,34 +4,117 @@ use generic_array::GenericArray;
 use libc::memcpy;
 use rand::{thread_rng, Rng};
 use rsa::PublicKeyParts;
-use std::os::raw::c_void;
+use std::{os::raw::c_void, str::FromStr};
 
 // 密钥类型的编码
 pub(crate) const KEY_TYPE_RSA: u8 = 0u8;
 pub(crate) const KEY_TYPE_RSA2048: u8 = 1u8;
+pub(crate) const KEY_TYPE_RSA3072: u8 = 2u8;
 pub(crate) const KEY_TYPE_SECP256K1: u8 = 5u8;
 
-#[derive(Clone)]
+// rsa key size in bits
+pub(crate) const RSA_KEY_BITS: usize = 1024;
+pub(crate) const RSA2048_KEY_BITS: usize = 2048;
+pub(crate) const RSA3072_KEY_BITS: usize = 3072;
+
+// rsa key size in bytes
+pub(crate) const RSA_KEY_BYTES: usize = 128;
+pub(crate) const RSA2048_KEY_BYTES: usize = 256;
+pub(crate) const RSA3072_KEY_BYTES: usize = 384;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum PrivateKeyType {
+    Rsa,
+    Secp256k1,
+}
+
+impl PrivateKeyType {
+    pub fn as_str(&self) -> &str {
+        match *self {
+            Self::Rsa => "rsa",
+            Self::Secp256k1 => "secp256k1",
+        }
+    }
+}
+
+impl Default for PrivateKeyType {
+    fn default() -> Self {
+        Self::Rsa
+    }
+}
+
+impl std::fmt::Display for PrivateKeyType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for PrivateKeyType {
+    type Err = BuckyError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "rsa" => Self::Rsa,
+            "secp256k1" => Self::Secp256k1,
+             _ => {
+                let msg = format!("unknown PrivateKey type: {}", s);
+                warn!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg))
+             }
+        })
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum PrivateKey {
     Rsa(rsa::RSAPrivateKey),
     Secp256k1(::secp256k1::SecretKey),
 }
-// 避免私钥被日志打印出来
 
+// 避免私钥被日志打印出来
 impl std::fmt::Debug for PrivateKey {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "[Protected PrivateKey]")
     }
 }
+impl std::fmt::Display for PrivateKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "[Protected PrivateKey]")
+    }
+}
+
+pub const CYFS_PRIVTAE_KEY_DEFAULT_RSA_BITS: usize = 1024;
 
 impl PrivateKey {
+    pub fn key_type(&self) -> PrivateKeyType {
+        match *self {
+            Self::Rsa(_) => PrivateKeyType::Rsa,
+            Self::Secp256k1(_) => PrivateKeyType::Secp256k1,
+        }
+    }
+
+    fn check_bits(bits: usize) -> BuckyResult<()> {
+        match bits {
+            RSA_KEY_BITS | RSA2048_KEY_BITS | RSA3072_KEY_BITS=> {
+                Ok(())
+            }
+            _ => {
+                let msg = format!("unsupport rsa key bits: {}", bits);
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::UnSupport, msg))
+            }
+        }
+    }
     // 生成rsa密钥的相关接口
     pub fn generate_rsa(bits: usize) -> Result<Self, BuckyError> {
+        Self::check_bits(bits)?;
+
         let mut rng = thread_rng();
         Self::generate_rsa_by_rng(&mut rng, bits)
     }
 
     pub fn generate_rsa_by_rng<R: Rng>(rng: &mut R, bits: usize) -> Result<Self, BuckyError> {
+        Self::check_bits(bits)?;
+
         match rsa::RSAPrivateKey::new(rng, bits) {
             Ok(rsa) => Ok(Self::Rsa(rsa)),
             Err(e) => Err(BuckyError::from(e)),
@@ -49,6 +132,13 @@ impl PrivateKey {
         Ok(Self::Secp256k1(key))
     }
 
+    pub fn generate_by_rng<R: Rng>(rng: &mut R, bits: Option<usize>, pt: PrivateKeyType) -> BuckyResult<Self> {
+        match pt {
+            PrivateKeyType::Rsa => Self::generate_rsa_by_rng(rng, bits.unwrap_or(CYFS_PRIVTAE_KEY_DEFAULT_RSA_BITS)),
+            PrivateKeyType::Secp256k1 => Self::generate_secp256k1_by_rng(rng)
+        }
+    }
+
     pub fn public(&self) -> PublicKey {
         match self {
             Self::Rsa(private_key) => PublicKey::Rsa(private_key.to_public_key()),
@@ -58,28 +148,27 @@ impl PrivateKey {
         }
     }
 
-    pub fn sign(&self, data: &[u8], sign_source: SignatureSource) -> Signature {
+    pub fn sign(&self, data: &[u8], sign_source: SignatureSource) -> BuckyResult<Signature> {
         let create_time = bucky_time_now();
 
         // 签名必须也包含签名的时刻，这个时刻是敏感的不可修改
         let mut data_new = data.to_vec();
         data_new.resize(data.len() + create_time.raw_measure(&None).unwrap(), 0);
         create_time
-            .raw_encode(&mut data_new.as_mut_slice()[data.len()..], &None)
-            .unwrap();
+            .raw_encode(&mut data_new.as_mut_slice()[data.len()..], &None)?;
 
-        match self {
+        let sign = match self {
             Self::Rsa(private_key) => {
                 let hash = hash_data(&data_new);
                 let sign = private_key
                     .sign(
                         rsa::PaddingScheme::new_pkcs1v15_sign(Some(rsa::Hash::SHA2_256)),
                         &hash.as_slice(),
-                    )
-                    .unwrap();
+                    )?;
+
                 assert_eq!(sign.len(), private_key.size());
                 let sign_data = match private_key.size() {
-                    128 => {
+                    RSA_KEY_BYTES => {
                         let mut sign_array: [u32; 32] = [0; 32];
                         unsafe {
                             memcpy(
@@ -90,7 +179,7 @@ impl PrivateKey {
                         };
                         SignData::Rsa1024(GenericArray::from(sign_array))
                     }
-                    256 => {
+                    RSA2048_KEY_BYTES => {
                         let mut sign_array: [u32; 64] = [0; 64];
                         unsafe {
                             memcpy(
@@ -101,8 +190,23 @@ impl PrivateKey {
                         };
                         SignData::Rsa2048(*GenericArray::from_slice(&sign_array))
                     }
+                    RSA3072_KEY_BYTES => {
+                        let mut sign_array: [u32; 96] = [0; 96];
+                        unsafe {
+                            memcpy(
+                                sign_array.as_mut_ptr() as *mut c_void,
+                                sign.as_ptr() as *const c_void,
+                                sign.len(),
+                            )
+                        };
+                        SignData::Rsa3072(*GenericArray::from_slice(&sign_array))
+                    }
 
-                    _ => unreachable!(),
+                    len @ _ =>  {
+                        let msg = format!("unsupport rsa key length! {}", len);
+                        error!("{}", msg);
+                        return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
+                    }
                 };
 
                 Signature::new(sign_source, 0, create_time, sign_data)
@@ -127,40 +231,82 @@ impl PrivateKey {
                 let sign_data = SignData::Ecc(GenericArray::from(sign_array));
                 Signature::new(sign_source, 0, create_time, sign_data)
             }
-        }
+        };
+
+        Ok(sign)
     }
 
     pub fn decrypt(&self, input: &[u8], output: &mut [u8]) -> BuckyResult<usize> {
+        let buf = self.decrypt_data(input)?;
+        if output.len() < buf.len() {
+            let msg = format!(
+                "rsa decrypt error, except={}, got={}",
+                buf.len(),
+                output.len()
+            );
+            error!("{}", msg);
+
+            Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
+        } else {
+            output[..buf.len()].copy_from_slice(buf.as_slice());
+            Ok(buf.len())
+        }
+    }
+
+    pub fn decrypt_data(&self, input: &[u8]) -> BuckyResult<Vec<u8>> {
         match self {
             Self::Rsa(private_key) => {
                 let buf = private_key
                     .decrypt(rsa::PaddingScheme::PKCS1v15Encrypt, input)
                     .map_err(|e| BuckyError::from(e))?;
-                if output.len() < buf.len() {
-                    let msg = format!(
-                        "rsa decrypt error, except={}, got={}",
-                        buf.len(),
-                        output.len()
-                    );
-                    error!("{}", msg);
-
-                    Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg))
-                } else {
-                    output[..buf.len()].copy_from_slice(buf.as_slice());
-                    Ok(buf.len())
-                }
+                Ok(buf)
             }
 
             Self::Secp256k1(_) => {
                 // 目前secp256k1的非对称加解密只支持交换aes_key时候使用
-                unimplemented!();
+                let msg = format!("direct decyrpt with private key of secp256 not support!");
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::NotSupport, msg))
             }
         }
     }
 
-    pub fn decrypt_aeskey(&self, input: &[u8], output: &mut [u8]) -> BuckyResult<usize> {
+    pub fn decrypt_aeskey<'d>(&self, input: &'d [u8], output: &mut [u8]) -> BuckyResult<(&'d [u8], usize)> {
+        let (input, data) = self.decrypt_aeskey_data(input)?;
+        if output.len() < data.len() {
+            let msg = format!(
+                "not enough buffer for decrypt aeskey result, except={}, got={}",
+                data.len(),
+                output.len()
+            );
+            error!("{}", msg);
+
+            return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+        }
+
+        output.copy_from_slice(&data);
+        Ok((input, data.len()))
+    }
+
+    pub fn decrypt_aeskey_data<'d>(&self, input: &'d [u8]) -> BuckyResult<(&'d [u8], Vec<u8>)> {
         match self {
-            Self::Rsa(_) => self.decrypt(input, output),
+            Self::Rsa(_) => {
+                let key_size = self.public().key_size();
+                if input.len() < key_size {
+                    let msg = format!(
+                        "not enough buffer for RSA private key, except={}, got={}",
+                        key_size,
+                        input.len()
+                    );
+                    error!("{}", msg);
+
+                    return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+                }
+
+                let buf = self.decrypt_data(&input[..key_size])?;
+
+                Ok((&input[key_size..], buf))
+            },
 
             Self::Secp256k1(private_key) => {
                 if input.len() < ::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE {
@@ -175,7 +321,7 @@ impl PrivateKey {
                 }
 
                 let ephemeral_pk = ::secp256k1::PublicKey::parse_slice(
-                    &input,
+                    &input[..::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE],
                     Some(::secp256k1::PublicKeyFormat::Compressed),
                 )
                 .map_err(|e| {
@@ -185,20 +331,8 @@ impl PrivateKey {
                     BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
                 })?;
                 let aes_key = ::cyfs_ecies::utils::decapsulate(&ephemeral_pk, &private_key);
-                if output.len() < aes_key.len() {
-                    let msg = format!(
-                        "not enough buffer for secp256k1 ecies aeskey, except={}, got={}",
-                        aes_key.len(),
-                        output.len()
-                    );
-                    error!("{}", msg);
-
-                    return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
-                }
-
-                output.copy_from_slice(&aes_key);
-
-                Ok(aes_key.len())
+                
+                Ok((&input[::secp256k1::util::COMPRESSED_PUBLIC_KEY_SIZE..], aes_key.into()))
             }
         }
     }
@@ -304,13 +438,20 @@ impl<'de> RawDecode<'de> for PrivateKey {
 
 #[cfg(test)]
 mod test {
-    use crate::{PrivateKey, RawConvertTo, RawDecode, SignatureSource};
+    use crate::{PrivateKey, RawConvertTo, RawDecode, SignatureSource, Signature, RawFrom};
 
     #[test]
     fn private_key() {
+        secp_private_key_sign();
+        rsa_private_key_sign(1024);
+        rsa_private_key_sign(2048);
+        rsa_private_key_sign(3072);
+    }
+
+    fn rsa_private_key_sign(bits: usize) {
         let msg = b"112233445566778899";
-        let pk1 = PrivateKey::generate_rsa(1024).unwrap();
-        let sign = pk1.sign(msg, SignatureSource::RefIndex(0));
+        let pk1 = PrivateKey::generate_rsa(bits).unwrap();
+        let sign = pk1.sign(msg, SignatureSource::RefIndex(0)).unwrap();
         assert!(pk1.public().verify(msg, &sign));
 
         let pk1_buf = pk1.to_vec().unwrap();
@@ -318,5 +459,55 @@ mod test {
         assert!(buf.len() == 0);
 
         assert!(pk2.public().verify(msg, &sign));
+
+        let buf = sign.to_vec().unwrap();
+        let sign2 = Signature::clone_from_slice(&buf).unwrap();
+        assert_eq!(sign, sign2);
+    }
+
+    fn secp_private_key_sign() {
+        let msg = b"112233445566778899";
+        let pk1 = PrivateKey::generate_secp256k1().unwrap();
+        let sign = pk1.sign(msg, SignatureSource::RefIndex(0)).unwrap();
+        assert!(pk1.public().verify(msg, &sign));
+
+        let pk1_buf = pk1.to_vec().unwrap();
+        let (pk2, buf) = PrivateKey::raw_decode(&pk1_buf).unwrap();
+        assert!(buf.len() == 0);
+
+        assert!(pk2.public().verify(msg, &sign));
+
+        let buf = sign.to_vec().unwrap();
+        let sign2 = Signature::clone_from_slice(&buf).unwrap();
+        assert_eq!(sign, sign2);
+    }
+
+    #[test]
+    fn crypto() {
+        rsa_private_key_crypto(1024);
+        rsa_private_key_crypto(2048);
+        rsa_private_key_crypto(3072);
+
+        let pk1 = PrivateKey::generate_secp256k1().unwrap();
+        let (aes_key, mut data) = pk1.public().gen_aeskey_and_encrypt().unwrap();
+        println!("secp256k1 aes_key encrypt len={}", data.len());
+        let (buf, data2) = pk1.decrypt_aeskey_data(&data).unwrap();
+        assert_eq!(buf.len(), 0);
+        assert_eq!(aes_key.as_slice(), data2);
+
+        let encrypt_len = data.len();
+        data.resize(1024, 0);
+        let mut output = vec![0; 48];
+        let (buf, size) = pk1.decrypt_aeskey(&data, &mut output).unwrap();
+        assert_eq!(buf.len(), 1024 - encrypt_len);
+        assert_eq!(aes_key.as_slice(), &output[0..size]);
+    }
+
+    fn rsa_private_key_crypto(bits: usize) {
+        let pk1 = PrivateKey::generate_rsa(bits).unwrap();
+        let (aes_key, data) = pk1.public().gen_aeskey_and_encrypt().unwrap();
+        let (buf, data2) = pk1.decrypt_aeskey_data(&data).unwrap();
+        assert_eq!(buf.len(), 0);
+        assert_eq!(aes_key.as_slice(), data2);
     }
 }

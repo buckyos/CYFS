@@ -10,13 +10,26 @@ use cyfs_base::BuckyError;
 use cyfs_bdt::StreamGuard as BdtStream;
 
 #[derive(Debug)]
+pub(crate) struct ServerRunningState {
+    pub running: bool,
+    pub canceler: Option<AbortHandle>,
+}
+
+impl ServerRunningState {
+    pub fn new() -> Self {
+        Self {
+            running: false,
+            canceler: None,
+        }
+    }
+}
+#[derive(Debug, Clone)]
 pub(super) struct HttpBdtListener {
     pub stack: String,
     pub vport: u16,
-    base: Arc<Mutex<HttpListenerBase>>,
+    base: HttpListenerBase,
 
-    running: bool,
-    canceler: Option<AbortHandle>,
+    state: Arc<Mutex<ServerRunningState>>,
 }
 
 impl HttpBdtListener {
@@ -24,11 +37,14 @@ impl HttpBdtListener {
         HttpBdtListener {
             vport: 0u16,
             stack: String::from(""),
-            base: Arc::new(Mutex::new(HttpListenerBase::new())),
+            base: HttpListenerBase::new(),
 
-            running: false,
-            canceler: None,
+            state: Arc::new(Mutex::new(ServerRunningState::new())),
         }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.state.lock().unwrap().running
     }
 
     pub fn bind_forward(&self, forward_id: u32) {
@@ -37,13 +53,11 @@ impl HttpBdtListener {
             self.stack, self.vport, forward_id
         );
 
-        let mut base = self.base.lock().unwrap();
-        base.bind_forward(forward_id);
+        self.base.bind_forward(forward_id);
     }
 
     pub fn unbind_forward(&self, forward_id: u32) -> bool {
-        let mut base = self.base.lock().unwrap();
-        if base.unbind_forward(forward_id) {
+        if self.base.unbind_forward(forward_id) {
             info!(
                 "http bdt listener unbind forward: listener={}:{}, forward_id={}",
                 self.stack, self.vport, forward_id
@@ -54,75 +68,68 @@ impl HttpBdtListener {
         }
     }
 
-    pub fn load(
-        &mut self,
-        _server_node: &toml::value::Table,
-    ) -> Result<(), BuckyError> {
+    pub fn load(&self, _server_node: &toml::value::Table) -> Result<(), BuckyError> {
         Ok(())
     }
 
-    pub async fn run(listener: Arc<Mutex<HttpBdtListener>>) -> Result<(), BuckyError> {
+    pub async fn run(&self) -> Result<(), BuckyError> {
         {
-            let mut listener = listener.lock().unwrap();
+            let mut state = self.state.lock().unwrap();
             // 这里判断一次状态
-            if listener.running {
+            if state.running {
                 warn!(
                     "http bdt listener already running! listen={}:{}",
-                    listener.stack, listener.vport
+                    self.stack, self.vport
                 );
                 return Ok(());
             }
 
-            listener.running = true;
+            state.running = true;
         }
 
-        let ret = Self::run_inner(listener.clone()).await;
+        let ret = self.run_inner().await;
 
-        listener.lock().unwrap().running = false;
+        self.state.lock().unwrap().running = false;
 
         ret
     }
 
-    async fn run_inner(listener: Arc<Mutex<HttpBdtListener>>) -> Result<(), BuckyError> {
-        let stack_id;
-        let vport;
-        {
-            let listener = listener.lock().unwrap();
-            stack_id = listener.stack.clone();
-            vport = listener.vport;
-        }
-
+    async fn run_inner(&self) -> Result<(), BuckyError> {
         let stack;
         let addr;
-        let listen = format!("({}:{})", stack_id, vport);
+        let listen = format!("({}:{})", self.stack, self.vport);
 
         {
-            let stack_item = STACK_MANAGER.get_bdt_stack(Some(&stack_id));
+            let stack_item = STACK_MANAGER.get_bdt_stack(Some(&self.stack));
             if stack_item.is_none() {
                 return BuckyError::error_with_log(format!(
                     "bdt server stack not found! stack={}",
-                    stack_id
+                    self.stack
                 ));
             }
 
             stack = stack_item.unwrap();
-            let local_addr = STACK_MANAGER.get_bdt_stack_local_addr(Some(&stack_id)).unwrap();
+            let local_addr = STACK_MANAGER
+                .get_bdt_stack_local_addr(Some(&self.stack))
+                .unwrap();
             addr = format!("http://{}", local_addr);
         }
 
-        let bdt_listener = stack.stream_manager().listen(vport);
+        let bdt_listener = stack.stream_manager().listen(self.vport);
         if let Err(e) = bdt_listener {
             error!(
                 "http bdt listen error: stack={}, {}:{} {}",
-                stack_id, addr, vport, e
+                self.stack, addr, self.vport, e
             );
             return Err(e);
         } else {
-            info!("http bdt listen: stack={}, {}:{}", stack_id, addr, vport);
+            info!(
+                "http bdt listen: stack={}, {}:{}",
+                self.stack, addr, self.vport
+            );
         }
 
         let listen2 = listen.clone();
-        let listener2 = listener.clone();
 
         let (future, handle) = future::abortable(async move {
             let bdt_listener = bdt_listener.unwrap();
@@ -134,10 +141,10 @@ impl HttpBdtListener {
                     Some(Ok(pre_stream)) => {
                         info!("recv new bdt connection: {:?}", pre_stream.stream.remote());
 
-                        let listener = listener.clone();
+                        let this = self.clone();
                         let addr = addr.clone();
                         task::spawn(async move {
-                            if let Err(e) = Self::accept(&listener, addr, pre_stream.stream).await {
+                            if let Err(e) = this.accept(addr, pre_stream.stream).await {
                                 error!("process stream error: err={}", e);
                             }
                         });
@@ -159,9 +166,9 @@ impl HttpBdtListener {
 
         // 保存abort_handle
         {
-            let mut listener = listener2.lock().unwrap();
-            assert!(listener.canceler.is_none());
-            listener.canceler = Some(handle);
+            let mut state = self.state.lock().unwrap();
+            assert!(state.canceler.is_none());
+            state.canceler = Some(handle);
         }
 
         match future.await {
@@ -171,9 +178,9 @@ impl HttpBdtListener {
                     listen2
                 );
 
-                let mut listener = listener2.lock().unwrap();
-                listener.canceler = None;
-                listener.running = false;
+                let mut state = self.state.lock().unwrap();
+                state.canceler = None;
+                state.running = false;
             }
             Err(Aborted) => {
                 info!("http bdt listener recv incoming aborted: {}", listen2);
@@ -183,20 +190,20 @@ impl HttpBdtListener {
         Ok(())
     }
 
-    pub fn stop(&mut self) {
-        if let Some(abort) = self.canceler.take() {
+    pub fn stop(&self) {
+        let ret = {
+            let mut state = self.state.lock().unwrap();
+            state.running = false;
+            state.canceler.take()
+        };
+
+        if let Some(abort) = ret {
             info!("will stop http bdt listener: {}:{}", self.stack, self.vport);
             abort.abort();
         }
-
-        self.running = false;
     }
 
-    async fn accept(
-        listener: &Arc<Mutex<HttpBdtListener>>,
-        addr: String,
-        stream: BdtStream,
-    ) -> Result<(), BuckyError> {
+    async fn accept(&self, addr: String, stream: BdtStream) -> Result<(), BuckyError> {
         let remote_addr = stream.remote();
         let remote_addr = (remote_addr.0.clone(), remote_addr.1);
         info!(
@@ -204,37 +211,38 @@ impl HttpBdtListener {
             addr, remote_addr
         );
 
-        if let Err(e) = stream.confirm(&Vec::from("answer")).await {
+        if let Err(e) = stream.confirm(&vec![]).await {
             error!("bdt stream confirm error! {:?}, {}", remote_addr, e,);
             return Err(e);
         }
 
         let device_id = &remote_addr.0;
         let opts = async_h1::ServerOptions::default();
-        let ret = async_h1::accept_with_opts(stream, |mut req| async move {
-            info!("recv bdt http request: {:?}", req);
+        let ret = async_h1::accept_with_opts(
+            stream,
+            |mut req| async move {
+                info!("recv bdt http request: {:?}", req);
 
-            let base;
-            {
-                let server = listener.lock().unwrap();
-                if server.running {
-                    base = server.base.clone();
-                } else {
-                    error!(
-                        "bdt http server already closed, server=({}, {})",
-                        server.stack, server.vport
-                    );
-                    return Ok(Response::new(StatusCode::InternalServerError));
+                {
+                    let state = self.state.lock().unwrap();
+                    if !state.running {
+                        error!(
+                            "bdt http server already closed, server=({}, {})",
+                            self.stack, self.vport
+                        );
+                        return Ok(Response::new(StatusCode::InternalServerError));
+                    }
                 }
-            }
 
-            // req插入remote_peer_id头部
-            // 注意这里用insert而不是append，防止用户自带此header导致错误peerid被结算攻击
-            req.insert_header(cyfs_base::CYFS_REMOTE_DEVICE, device_id.to_string());
+                // req插入remote_peer_id头部
+                // 注意这里用insert而不是append，防止用户自带此header导致错误peerid被结算攻击
+                req.insert_header(cyfs_base::CYFS_REMOTE_DEVICE, device_id.to_string());
 
-            let resp = HttpListenerBase::dispatch_request(&base, req).await;
-            Ok(resp)
-        }, opts)
+                let resp = self.base.dispatch_request(req).await;
+                Ok(resp)
+            },
+            opts,
+        )
         .await;
 
         if let Err(e) = ret {
@@ -250,13 +258,13 @@ impl HttpBdtListener {
 }
 
 pub(super) struct HttpBdtListenerManager {
-    server_list: Vec<Arc<Mutex<HttpBdtListener>>>,
+    server_list: Mutex<Vec<Arc<HttpBdtListener>>>,
 }
 
 impl HttpBdtListenerManager {
     pub fn new() -> HttpBdtListenerManager {
         HttpBdtListenerManager {
-            server_list: Vec::new(),
+            server_list: Mutex::new(Vec::new()),
         }
     }
 
@@ -268,48 +276,47 @@ impl HttpBdtListenerManager {
     }
     */
     pub fn load(
-        &mut self,
+        &self,
         server_node: &toml::value::Table,
-    ) -> Result<Arc<Mutex<HttpBdtListener>>, BuckyError> {
+    ) -> Result<Arc<HttpBdtListener>, BuckyError> {
         let (stack, vport) = ListenerUtil::load_bdt_listener(server_node)?;
 
-        let listener = self.get_or_create(stack.as_str(), vport);
+        let item = self.get_or_create(stack.as_str(), vport);
+        if let Err(e) = item.load(server_node) {
+            error!(
+                "load bdt listener failed! err={}, node={:?}",
+                e, server_node
+            );
+        }
+
+        return Ok(item);
+    }
+
+    fn get_or_create(&self, stack: &str, vport: u16) -> Arc<HttpBdtListener> {
         {
-            let mut item = listener.lock().unwrap();
-            if let Err(e) = item.load(server_node) {
-                error!(
-                    "load bdt listener failed! err={}, node={:?}",
-                    e, server_node
-                );
+            let mut list = self.server_list.lock().unwrap();
+            let ret = list
+                .iter()
+                .any(|item| item.stack == stack && item.vport == vport);
+
+            if !ret {
+                let mut server = HttpBdtListener::new();
+                server.stack = stack.to_owned();
+                server.vport = vport;
+
+                let server = Arc::new(server);
+                list.push(server);
             }
         }
 
-        return Ok(listener);
+        self.get_item(stack, vport).unwrap()
     }
 
-    fn get_or_create(&mut self, stack: &str, vport: u16) -> Arc<Mutex<HttpBdtListener>> {
-        let ret = self.server_list.iter().any(|item| {
-            let item = item.lock().unwrap();
-            item.stack == stack && item.vport == vport
-        });
-
-        if !ret {
-            let mut server = HttpBdtListener::new();
-            server.stack = stack.to_owned();
-            server.vport = vport;
-
-            let server = Arc::new(Mutex::new(server));
-            self.server_list.push(server);
-        }
-
-        return self.get_item(stack, vport).unwrap();
-    }
-
-    pub fn get_item(&self, stack: &str, vport: u16) -> Option<Arc<Mutex<HttpBdtListener>>> {
-        for server in &self.server_list {
-            let item = server.lock().unwrap();
+    pub fn get_item(&self, stack: &str, vport: u16) -> Option<Arc<HttpBdtListener>> {
+        let list = self.server_list.lock().unwrap();
+        for item in &*list {
             if item.stack == stack && item.vport == vport {
-                return Some(server.clone());
+                return Some(item.clone());
             }
         }
 
@@ -317,23 +324,24 @@ impl HttpBdtListenerManager {
     }
 
     pub fn unbind_forward(&self, forward_id: u32) {
-        for server in &self.server_list {
-            let mut server = server.lock().unwrap();
+        let list = self.server_list.lock().unwrap();
+        for server in &*list {
             server.unbind_forward(forward_id);
 
             // 如果没有绑定任何转发器，那么停止该listener
-            if server.base.lock().unwrap().forward_count() == 0 {
+            if server.base.forward_count() == 0 {
                 server.stop();
             }
         }
     }
 
     pub fn start(&self) {
-        for server in &self.server_list {
-            if !server.lock().unwrap().running {
+        let list = self.server_list.lock().unwrap();
+        for server in &*list {
+            if !server.is_running() {
                 let server = server.clone();
                 task::spawn(async move {
-                    let _r = HttpBdtListener::run(server).await;
+                    let _r = server.run().await;
                 });
             }
         }

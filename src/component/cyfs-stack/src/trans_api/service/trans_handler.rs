@@ -1,36 +1,59 @@
 use cyfs_base::*;
 use cyfs_core::TransContext;
 use cyfs_lib::*;
-
+use crate::ndn_api::NDNInputHttpRequest;
 use crate::non::NONInputHttpRequest;
-use crate::trans::{TransInputProcessorRef, TransOutputTransformer};
+
+use crate::trans::TransInputProcessorRef;
 
 #[derive(Clone)]
 pub(crate) struct TransRequestHandler {
-    protocol: NONProtocol,
     processor: TransInputProcessorRef,
 }
 
 impl TransRequestHandler {
-    pub fn new(
-        protocol: NONProtocol,
-        processor: TransInputProcessorRef,
-    ) -> Self {
+    pub fn new(processor: TransInputProcessorRef) -> Self {
         Self {
-            protocol,
             processor,
         }
     }
 
-    fn get_processor<State>(&self, req: &NONInputHttpRequest<State>) -> TransOutputProcessorRef {
-        TransOutputTransformer::new(self.processor.clone(), req.source.clone(), Some(self.protocol.clone()))
+    fn decode_common_headers<State>(
+        req: &NDNInputHttpRequest<State>,
+    ) -> BuckyResult<NDNInputRequestCommon> {
+        // req_path
+        let req_path =
+            RequestorHelper::decode_optional_header_with_utf8_decoding(&req.request, cyfs_base::CYFS_REQ_PATH)?;
+
+        // 尝试提取flags
+        let flags: Option<u32> =
+            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
+
+        // 尝试提取target字段
+        let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
+
+        let level = RequestorHelper::decode_header(&req.request, CYFS_API_LEVEL)?;
+        let referer_object = RequestorHelper::decode_optional_headers_with_utf8_decoding(&req.request, CYFS_REFERER_OBJECT)?.unwrap_or(vec![]);
+
+        let ret = NDNInputRequestCommon {
+            req_path,
+            source: req.source.clone(),
+            level,
+            referer_object,
+            target,
+            flags: flags.unwrap_or(0),
+            user_data: None
+        };
+
+        Ok(ret)
     }
 
     // trans/start
-    pub async fn process_create_task<State>(&self, req: tide::Request<State>) -> tide::Response {
+    pub async fn process_create_task<State>(&self, req: NONInputHttpRequest<State>,) -> tide::Response {
         match self.on_create_task(req).await {
             Ok(resp) => {
                 let mut http_resp: tide::Response = RequestorHelper::new_ok_response();
+                http_resp.set_content_type(::tide::http::mime::JSON);
                 http_resp.set_body(resp.encode_string());
                 http_resp
             }
@@ -38,7 +61,7 @@ impl TransRequestHandler {
         }
     }
 
-    pub async fn process_control_task<State>(&self, req: tide::Request<State>) -> tide::Response {
+    pub async fn process_control_task<State>(&self, req: NONInputHttpRequest<State>) -> tide::Response {
         match self.on_control_task(req).await {
             Ok(()) => {
                 let http_resp: tide::Response = RequestorHelper::new_ok_response();
@@ -49,12 +72,13 @@ impl TransRequestHandler {
         }
     }
 
-    pub async fn process_get_task_state<State>(&self, req: tide::Request<State>) -> tide::Response {
+    pub async fn process_get_task_state<State>(&self, req: NONInputHttpRequest<State>) -> tide::Response {
         match self.on_get_task_state(req).await {
             Ok(state) => {
                 let mut http_resp: tide::Response = RequestorHelper::new_ok_response();
 
                 let body = serde_json::to_string(&state).unwrap();
+                http_resp.set_content_type(::tide::http::mime::JSON);
                 http_resp.set_body(body);
 
                 http_resp
@@ -63,12 +87,13 @@ impl TransRequestHandler {
         }
     }
 
-    pub async fn process_publish_file<State>(&self, req: tide::Request<State>) -> tide::Response {
+    pub async fn process_publish_file<State>(&self, req: NONInputHttpRequest<State>) -> tide::Response {
         match self.on_add_file(req).await {
             Ok(resp) => {
                 let mut http_resp: tide::Response = RequestorHelper::new_ok_response();
 
                 let body = resp.encode_string();
+                http_resp.set_content_type(::tide::http::mime::JSON);
                 http_resp.set_body(body);
                 http_resp
             }
@@ -76,19 +101,19 @@ impl TransRequestHandler {
         }
     }
 
-    pub async fn process_get_context<State>(&self, req: tide::Request<State>) -> tide::Response {
+    pub async fn process_get_context<State>(&self, req: NONInputHttpRequest<State>) -> tide::Response {
         match self.on_get_context(req).await {
             Ok(resp) => {
                 let mut http_resp: tide::Response = RequestorHelper::new_ok_response();
                 let body = resp.to_hex().unwrap();
                 http_resp.set_body(body);
                 http_resp
-            },
-            Err(e) => RequestorHelper::trans_error(e)
+            }
+            Err(e) => RequestorHelper::trans_error(e),
         }
     }
 
-    pub async fn process_put_context<State>(&self, req: tide::Request<State>) -> tide::Response {
+    pub async fn process_put_context<State>(&self, req: NONInputHttpRequest<State>) -> tide::Response {
         match self.on_update_context(req).await {
             Ok(()) => {
                 let http_resp: tide::Response = RequestorHelper::new_ok_response();
@@ -99,12 +124,16 @@ impl TransRequestHandler {
         }
     }
 
-    pub async fn process_query_tasks_context<State>(&self, req: tide::Request<State>) -> tide::Response {
+    pub async fn process_query_tasks_context<State>(
+        &self,
+        req: NONInputHttpRequest<State>,
+    ) -> tide::Response {
         match self.on_query_tasks_context(req).await {
             Ok(resp) => {
                 let mut http_resp: tide::Response = RequestorHelper::new_ok_response();
 
                 let body = resp.encode_string();
+                http_resp.set_content_type(::tide::http::mime::JSON);
                 http_resp.set_body(body);
 
                 http_resp
@@ -113,124 +142,164 @@ impl TransRequestHandler {
         }
     }
 
-    async fn on_create_task<State>(&self, req: tide::Request<State>) -> BuckyResult<TransCreateTaskOutputResponse> {
-        let mut http_req = NONInputHttpRequest::new(&self.protocol, req);
-
+    async fn on_create_task<State>(
+        &self,
+        mut req: NONInputHttpRequest<State>,
+    ) -> BuckyResult<TransCreateTaskInputResponse> {
+        let common = Self::decode_common_headers(&req)?;
         // 提取body里面的object对象，如果有的话
-        let body = http_req.request.body_string().await.map_err(|e| {
+        let body = req.request.body_json().await.map_err(|e| {
             let msg = format!("trans start task failed, read body bytes error! {}", e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
 
-        let req = TransCreateTaskOutputRequest::decode_string(&body)?;
+        let req = TransCreateTaskInputRequest {
+            common,
+            object_id: JsonCodecHelper::decode_string_field(&body, "object_id")?,
+            local_path: JsonCodecHelper::decode_string_field(&body, "local_path")?,
+            device_list: JsonCodecHelper::decode_str_array_field(&body, "device_list")?,
+            context_id: JsonCodecHelper::decode_option_string_field(&body, "context_id")?,
+            auto_start: JsonCodecHelper::decode_bool_field(&body, "auto_start")?
+        };
 
-        self.get_processor(&http_req).create_task(&req).await
+        req.check_valid()?;
+        
+        self.processor.create_task(req).await
     }
 
-    async fn on_control_task<State>(&self, req: tide::Request<State>) -> BuckyResult<()> {
-        let mut http_req = NONInputHttpRequest::new(&self.protocol, req);
+    async fn on_control_task<State>(&self, mut req: NONInputHttpRequest<State>) -> BuckyResult<()> {
+        let common = Self::decode_common_headers(&req)?;
 
         // 提取body里面的object对象，如果有的话
-        let body = http_req.request.body_string().await.map_err(|e| {
+        let body = req.request.body_json().await.map_err(|e| {
             let msg = format!("trans control task failed, read body bytes error! {}", e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
 
-        let req = TransControlTaskOutputRequest::decode_string(&body)?;
-
-        match req.action {
-            TransTaskControlAction::Stop => {
-                self.get_processor(&http_req).stop_task(&TransTaskOutputRequest {common: req.common, task_id: req.task_id}).await
-            },
-            TransTaskControlAction::Start => {
-                self.get_processor(&http_req).start_task(&TransTaskOutputRequest {common: req.common, task_id: req.task_id}).await
-            },
-            TransTaskControlAction::Delete => {
-                self.get_processor(&http_req).delete_task(&TransTaskOutputRequest {common: req.common, task_id: req.task_id}).await
-            },
-        }
+        let req = TransControlTaskInputRequest{
+            common,
+            task_id: JsonCodecHelper::decode_string_field(&body, "task_id")?,
+            action: JsonCodecHelper::decode_string_field(&body, "action")?,
+        };
+        self.processor.control_task(req).await
     }
 
     async fn on_get_task_state<State>(
         &self,
-        req: tide::Request<State>,
+        mut req: NONInputHttpRequest<State>,
     ) -> BuckyResult<TransTaskState> {
-        let mut http_req = NONInputHttpRequest::new(&self.protocol, req);
+        let common = Self::decode_common_headers(&req)?;
         // 提取body里面的object对象，如果有的话
-        let body = http_req.request.body_string().await.map_err(|e| {
+        let body = req.request.body_json().await.map_err(|e| {
             let msg = format!("trans get task state failed, read body bytes error! {}", e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
 
-        let req = TransGetTaskStateOutputRequest::decode_string(&body)?;
+        let req = TransGetTaskStateInputRequest {
+            common,
+            task_id: JsonCodecHelper::decode_string_field(&body, "task_id")?,
+        };
 
-        self.get_processor(&http_req).get_task_state(&req).await
+        self.processor.get_task_state(req).await
     }
 
     async fn on_add_file<State>(
         &self,
-        req: tide::Request<State>,
-    ) -> BuckyResult<TransPublishFileOutputResponse> {
-        let mut http_req = NONInputHttpRequest::new(&self.protocol, req);
-
+        mut req: NONInputHttpRequest<State>,
+    ) -> BuckyResult<TransPublishFileInputResponse> {
+        let common = Self::decode_common_headers(&req)?;
         // 提取body里面的object对象，如果有的话
-        let body = http_req.request.body_string().await.map_err(|e| {
+        let body = req.request.body_json().await.map_err(|e| {
             let msg = format!("trans add file failed, read body bytes error! {}", e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
 
-        let req = TransPublishFileOutputRequest::decode_string(&body)?;
+        let req = TransPublishFileInputRequest{
+            common,
+            owner: JsonCodecHelper::decode_string_field(&body, "owner")?,
+            local_path: JsonCodecHelper::decode_string_field(&body, "local_path")?,
+            chunk_size: JsonCodecHelper::decode_int_field(&body, "chunk_size")?,
+            file_id: JsonCodecHelper::decode_option_string_field(&body, "file_id")?,
+            dirs: JsonCodecHelper::decode_option_array_field(&body, "dirs")?
+        };
 
-        self.get_processor(&http_req).publish_file(&req).await
+        self.processor.publish_file(req).await
     }
 
-    async fn on_get_context<State>(&self, req: tide::Request<State>) -> BuckyResult<TransContext> {
-        let mut http_req = NONInputHttpRequest::new(&self.protocol, req);
+    async fn on_get_context<State>(&self, mut req: NONInputHttpRequest<State>) -> BuckyResult<TransContext> {
+        let common = Self::decode_common_headers(&req)?;
 
-        let body = http_req.request.body_string().await.map_err(|e| {
+        let body = req.request.body_json().await.map_err(|e| {
             let msg = format!("trans get context failed, read body bytes error! {}", e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
 
-        let req = TransGetContextOutputRequest::decode_string(&body)?;
-        self.get_processor(&http_req).get_context(&req).await
+        let req = TransGetContextInputRequest {
+            common,
+            context_name: JsonCodecHelper::decode_string_field(&body, "context_name")?
+        };
+        self.processor.get_context(req).await
     }
 
-    async fn on_update_context<State>(&self, req: tide::Request<State>) -> BuckyResult<()> {
-        let mut http_req = NONInputHttpRequest::new(&self.protocol, req);
+    async fn on_update_context<State>(&self, mut req: NONInputHttpRequest<State>) -> BuckyResult<()> {
+        let common = Self::decode_common_headers(&req)?;
 
-        let body = http_req.request.body_string().await.map_err(|e| {
+        let body = req.request.body_json().await.map_err(|e| {
             let msg = format!("trans get context failed, read body bytes error! {}", e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
 
-        let req = TransPutContextOutputRequest::decode_string(&body)?;
-        self.get_processor(&http_req).put_context(&req).await
+        let context = TransContext::clone_from_hex(
+            JsonCodecHelper::decode_string_field::<String>(&body, "context")?.as_str(),
+            &mut Vec::new(),
+        )?;
+
+        let req = TransUpdateContextInputRequest {
+            common,
+            context
+        };
+        self.processor.put_context(req).await
     }
 
-    async fn on_query_tasks_context<State>(&self, req: tide::Request<State>) -> BuckyResult<TransQueryTasksOutputResponse> {
-        let mut http_req = NONInputHttpRequest::new(&self.protocol, req);
+    async fn on_query_tasks_context<State>(
+        &self,
+        mut req: NONInputHttpRequest<State>,
+    ) -> BuckyResult<TransQueryTasksInputResponse> {
+        let common = Self::decode_common_headers(&req)?;
 
-        let body = http_req.request.body_string().await.map_err(|e| {
+        let body = req.request.body_json().await.map_err(|e| {
             let msg = format!("trans querty tasks failed, read body bytes error! {}", e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
 
-        let req = TransQueryTasksOutputRequest::decode_string(&body)?;
-        self.get_processor(&http_req).query_tasks(&req).await
+        let offset = JsonCodecHelper::decode_option_string_field(&body, "offset")?;
+        let length = JsonCodecHelper::decode_option_string_field(&body, "length")?;
+        let range = if offset.is_some() && length.is_some() {
+            Some((offset.unwrap(), length.unwrap()))
+        } else {
+            None
+        };
+
+        let req = TransQueryTasksInputRequest {
+            common,
+            context_id: JsonCodecHelper::decode_option_string_field(&body, "context_id")?,
+            task_status: JsonCodecHelper::decode_option_string_field(&body, "task_status")?,
+            range
+        };
+        self.processor.query_tasks(req).await
     }
 }

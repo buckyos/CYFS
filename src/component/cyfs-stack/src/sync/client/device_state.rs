@@ -1,8 +1,7 @@
 use crate::root_state_api::GlobalStateLocalService;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
-
 
 #[derive(RawEncode, RawDecode, Debug, Clone, Eq, PartialEq)]
 pub struct LocalZoneState {
@@ -47,7 +46,11 @@ impl std::fmt::Display for DeviceState {
         write!(
             f,
             "{},{},{},{},{}",
-            self.root_state, self.root_state_revision, self.zone_role, self.ood_work_mode, self.owner_update_time,
+            self.root_state,
+            self.root_state_revision,
+            self.zone_role,
+            self.ood_work_mode,
+            self.owner_update_time,
         )
     }
 }
@@ -74,25 +77,25 @@ pub(crate) struct DeviceStateManager {
     device_id: DeviceId,
 
     root_state: GlobalStateLocalService,
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 
     state: NOCCollectionSync<DeviceLocalState>,
 
     event: Box<dyn DeviceStateManagerEvent>,
 
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
 }
 
 impl DeviceStateManager {
     pub fn new(
         device_id: &DeviceId,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         root_state: GlobalStateLocalService,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         event: Box<dyn DeviceStateManagerEvent>,
     ) -> Self {
         let id = format!("device-sync-state-{}", device_id.to_string());
-        let state = NOCCollectionSync::new(&id, noc.clone_noc());
+        let state = NOCCollectionSync::new(&id, noc.clone());
 
         Self {
             device_id: device_id.to_owned(),

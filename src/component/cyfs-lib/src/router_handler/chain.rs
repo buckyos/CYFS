@@ -5,7 +5,7 @@ use std::fmt;
 use std::str::FromStr;
 
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
 pub enum RouterHandlerChain {
     PreNOC,
     PostNOC,
@@ -21,12 +21,14 @@ pub enum RouterHandlerChain {
 
     Handler,
 
-    Acl,
+    Acl, 
+
+    NDN,
 }
 
-impl fmt::Display for RouterHandlerChain {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match &*self {
+impl RouterHandlerChain {
+    pub fn as_str(&self) -> &str {
+        match &*self {
             Self::PreNOC => "pre_noc",
             Self::PostNOC => "post_noc",
 
@@ -42,9 +44,19 @@ impl fmt::Display for RouterHandlerChain {
             Self::Handler => "handler",
 
             Self::Acl => "acl",
-        };
 
-        fmt::Display::fmt(s, f)
+            Self::NDN => "ndn"
+        }
+    }
+}
+impl fmt::Debug for RouterHandlerChain {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+impl fmt::Display for RouterHandlerChain {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -66,7 +78,9 @@ impl FromStr for RouterHandlerChain {
 
             "handler" => Self::Handler,
             
-            "acl" => Self::Acl,
+            "acl" => Self::Acl, 
+
+            "ndn" => Self::NDN, 
             
             v @ _ => {
                 let msg = format!("unknown router chain: {}", v);

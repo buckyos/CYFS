@@ -127,7 +127,7 @@ impl RawEncode for DeviceDescContent {
         if buf.len() < size {
             return Err(BuckyError::new(
                 BuckyErrorCode::OutOfLimit,
-                "[raw_encode] not enough buffer for DeviceDescContent",
+                format!("[raw_encode] not enough buffer for DeviceDescContent, except {}, actual {}", size, buf.len()),
             ));
         }
 
@@ -156,6 +156,7 @@ pub struct DeviceBodyContent {
     sn_list: Vec<DeviceId>,
     passive_pn_list: Vec<DeviceId>,
     name: Option<String>,
+    bdt_version: Option<u8>,
 }
 
 // body使用protobuf编解码
@@ -198,6 +199,7 @@ impl Default for DeviceBodyContent {
             sn_list: Vec::new(),
             passive_pn_list: Vec::new(),
             name: None,
+            bdt_version: None,
         }
     }
 }
@@ -208,12 +210,14 @@ impl DeviceBodyContent {
         sn_list: Vec<DeviceId>,
         passive_pn_list: Vec<DeviceId>,
         name: Option<String>,
+        bdt_version: Option<u8>,
     ) -> Self {
         Self {
             endpoints,
             sn_list,
             passive_pn_list,
             name,
+            bdt_version,
         }
     }
 
@@ -247,6 +251,9 @@ impl DeviceBodyContent {
     pub fn set_name(&mut self, name: Option<String>) {
         self.name = name
     }
+
+    pub fn bdt_version(&self) -> Option<u8> {self.bdt_version}
+    pub fn set_bdt_version(&mut self, bdt_version: Option<u8>) {self.bdt_version = bdt_version}
 }
 
 // protos编解码
@@ -261,8 +268,13 @@ impl TryFrom<&DeviceBodyContent> for protos::DeviceBodyContent {
         ret.set_passive_pn_list(ProtobufCodecHelper::encode_buf_list(
             &value.passive_pn_list,
         )?);
+
         if let Some(name) = &value.name {
             ret.set_name(name.to_owned());
+        }
+
+        if let Some(bdt_version) = value.bdt_version {
+            ret.set_bdt_version(bdt_version as u32);
         }
 
         Ok(ret)
@@ -278,10 +290,15 @@ impl TryFrom<protos::DeviceBodyContent> for DeviceBodyContent {
             sn_list: ProtobufCodecHelper::decode_buf_list(value.take_sn_list())?,
             passive_pn_list: ProtobufCodecHelper::decode_buf_list(value.take_passive_pn_list())?,
             name: None,
+            bdt_version: None,
         };
 
         if value.has_name() {
             ret.name = Some(value.take_name());
+        }
+
+        if value.has_bdt_version() {
+            ret.bdt_version = Some(value.get_bdt_version() as u8);
         }
 
         Ok(ret)
@@ -320,7 +337,7 @@ impl Device {
     ) -> DeviceBuilder {
         let desc_content = DeviceDescContent::new(unique_id);
 
-        let body_content = DeviceBodyContent::new(endpoints, sn_list, passive_pn_list, None);
+        let body_content = DeviceBodyContent::new(endpoints, sn_list, passive_pn_list, None, None);
         let mut real_area = area.clone();
         real_area.inner = category as u8;
 
@@ -350,6 +367,18 @@ impl Device {
             .set_name(name)
     }
 
+    pub fn bdt_version(&self) -> Option<u8> {
+        self.body().as_ref().unwrap().content().bdt_version()
+    }
+
+    pub fn set_bdt_version(&mut self, bdt_version: Option<u8>) {
+        self.body_mut()
+            .as_mut()
+            .unwrap()
+            .content_mut()
+            .set_bdt_version(bdt_version)
+    }
+
     pub fn category(&self) -> BuckyResult<DeviceCategory> {
         match DeviceCategory::try_from(self.desc().area().as_ref().unwrap().inner) {
             Ok(category) => Ok(category),
@@ -372,16 +401,36 @@ mod test {
     use std::str::FromStr;
 
     use std::convert::TryFrom;
+    use hex::encode;
     //use std::path::Path;
 
     #[test]
     fn test_decode() {
         // let device = "0001580e4800000000857283dc484f7a184c158fa8e2deec97145ca5b8d0fd0bd6de4057e2000d5e02010030818902818100b96dad4eee3ff9ec6b666595e2c3767b2d1f67007147d48962f1ff545e476585ce7b38513d35c6d835f6ccc5b2728de64b569df33f5f0a11c906cf7db6cbcea68e36f0ceb1e485a085991c7a7aaab0f0deafc0b44035a9fec7041f5177ba3fd545f898b8149b287cef15cb7984047114a83245521f3d4947812a9bace47d1d350203010001000000000000000000000000000000000000000000000000001069f84401d28397116f58a580b99d437900002f3e1afce634ec0001408b0a070a721fc0a864100a070c721fc0a864100a1312721f000000000000000000000000000000000a1314721f00000000000000000000000000000000122044000000010f6bb5a1f53156de084c5f116f8c60aba978dbc5752e81cb2ce07f1a2044000000019ab0d16fabaece45f63e77f715e102c925d7db23ff68b572ad4ca52209302d52756e74696d65010000002f3e0f2dd0a37d002f7977a55ef776a8a892b8ab73da95acdb1352825024de84b39fa215ab5a46bf573513251acf4b27927978c75f51cbfc6d0f7914456bb48c382487eb99f1f056d9f72082cb0da823a9a3ebb445aa450be78b0121bcecec311b26ac03612130c4eb2d1b51e90b59c8da5081865456a0a803a2838fdcd43078b08c1db86ddd0f06010000002f3e0f2dd0a47d008ac5f0a2384ab0814b37d45ede8c0f37aea9d44160e274fb9f964b2afd6a29508547a3de179f8fac518d152006209d6702a2ae13e813ca9f67b3fc64cc21a4ffce76062c74af0a12bc54b26d884f321a9b2c2b91dc07db3b2a5dc46f6687d020f460d58b990ecd9dbadf020ca9fd91299b2dd0aebbb4e6913e49d64e6e721b2a";
-        let device = "0001580e4800000000857283dc484f7a184c158fa8e2deec97145ca5b8d0fd0bd6de4057e2000d5e02010030818902818100b96dad4eee3ff9ec6b666595e2c3767b2d1f67007147d48962f1ff545e476585ce7b38513d35c6d835f6ccc5b2728de64b569df33f5f0a11c906cf7db6cbcea68e36f0ceb1e485a085991c7a7aaab0f0deafc0b44035a9fec7041f5177ba3fd545f898b8149b287cef15cb7984047114a83245521f3d4947812a9bace47d1d350203010001000000000000000000000000000000000000000000000000001069f84401d28397116f58a580b99d437900002f3e1ad112fd9c000140690a070a721fc0a864100a1312721f000000000000000000000000000000000a070c721fc0a864100a1314721f00000000000000000000000000000000122044000000010f6bb5a1f53156de084c5f116f8c60aba978dbc5752e81cb2ce07f2209302d52756e74696d65010000002f3e0f2dd0a37d002f7977a55ef776a8a892b8ab73da95acdb1352825024de84b39fa215ab5a46bf573513251acf4b27927978c75f51cbfc6d0f7914456bb48c382487eb99f1f056d9f72082cb0da823a9a3ebb445aa450be78b0121bcecec311b26ac03612130c4eb2d1b51e90b59c8da5081865456a0a803a2838fdcd43078b08c1db86ddd0f06010000002f3e0f2dd0a47d008ac5f0a2384ab0814b37d45ede8c0f37aea9d44160e274fb9f964b2afd6a29508547a3de179f8fac518d152006209d6702a2ae13e813ca9f67b3fc64cc21a4ffce76062c74af0a12bc54b26d884f321a9b2c2b91dc07db3b2a5dc46f6687d020f460d58b990ecd9dbadf020ca9fd91299b2dd0aebbb4e6913e49d64e6e721b2a";
-        
+        // let device = "0001580e4800000000857283dc484f7a184c158fa8e2deec97145ca5b8d0fd0bd6de4057e2000d5e02010030818902818100b96dad4eee3ff9ec6b666595e2c3767b2d1f67007147d48962f1ff545e476585ce7b38513d35c6d835f6ccc5b2728de64b569df33f5f0a11c906cf7db6cbcea68e36f0ceb1e485a085991c7a7aaab0f0deafc0b44035a9fec7041f5177ba3fd545f898b8149b287cef15cb7984047114a83245521f3d4947812a9bace47d1d350203010001000000000000000000000000000000000000000000000000001069f84401d28397116f58a580b99d437900002f3e1ad112fd9c000140690a070a721fc0a864100a1312721f000000000000000000000000000000000a070c721fc0a864100a1314721f00000000000000000000000000000000122044000000010f6bb5a1f53156de084c5f116f8c60aba978dbc5752e81cb2ce07f2209302d52756e74696d65010000002f3e0f2dd0a37d002f7977a55ef776a8a892b8ab73da95acdb1352825024de84b39fa215ab5a46bf573513251acf4b27927978c75f51cbfc6d0f7914456bb48c382487eb99f1f056d9f72082cb0da823a9a3ebb445aa450be78b0121bcecec311b26ac03612130c4eb2d1b51e90b59c8da5081865456a0a803a2838fdcd43078b08c1db86ddd0f06010000002f3e0f2dd0a47d008ac5f0a2384ab0814b37d45ede8c0f37aea9d44160e274fb9f964b2afd6a29508547a3de179f8fac518d152006209d6702a2ae13e813ca9f67b3fc64cc21a4ffce76062c74af0a12bc54b26d884f321a9b2c2b91dc07db3b2a5dc46f6687d020f460d58b990ecd9dbadf020ca9fd91299b2dd0aebbb4e6913e49d64e6e721b2a";
+        let old_str = "00015a0e002f4943def944e94800000000e471f8f0e4069b9ec1f04a5e652a9bcb30432d50416468d744a0c700000000000100308189028181009cf42aa4b1c72607dca379fff9f57101521c3b6ef83400eca478083e27542c74a5a3ab4320e7a3e270977747e0e4a86b78304f103557fc8acdb9a5413e6b663fb52baa7b0b86c9513cb805dd776ea72fb6e2a22272363a4976429d20dc819f984a0d2f3ca41d3fa508dd90acad6bb711bb9537371b2e77f9e604873769ea50f3020301000100000000000000000000000000000000000000000000000000100000000000000000000000000000000000002f4943def944eb0001090a07090000000000000100fe002f4943defc32c600079f4ba67290707f9757e5f3ffa9c64c537fbd2b9cf3f13e27c0b7bd3000e93a399044736a0c8b0ce42e0bd783d937a5d53f7e5a92a9f78a2c1054e80a1e6a084d7ea05974cbb02ec3199eb04894b860645c56451b74652fd9e168c5a6e02a446d008f74985ce8efd51827744f7ed3a143c519d0e369b5176dabc44c53e7f22b0100fe002f4943defc59d20007d5c812c7814a6a921d6fdd480c7a07d7e3f5ffcf4f38921732c0c3d46c52173e193d0a7aa0ce28fc29c177dad7350f01587121309140809d8fca75e885eb44b8dc2cce62afd3a2579427182f1b3dc836e87710a17912e9457853e59b2ad1bea38105a8a84a4108de444bae097d7e52545b67dbbb7b31f59bdf653ee5374e69";
+        {
+            let device = "0001580e4800000000661456d9a5d0503f01cbca7dc66dea0d4de188f44a3751ee66d0230000000000010a027fee89e7e40d2f9544683e480d28575794f56013a49d81b119ce3b84ff29e761000000107e8397450134fdbf16e62a576a32e35900002f4b38abe31967000140680a070a1481c0a838010a070a1481c0a864ed0a070c1481c0a838010a070c1481c0a864ed12204400000001d707019d5593b7e33a6acf5c2beb475df3feffecee8acadb8f0b741a204400000001ecdeb526690e03f1feb00d51796cc7cca0eac8a1f06915780163360100fe002f4b38abc85cb0055c4f938cd5ee2f303909cb4556d5b8033c48e69db17308d01e886e823111002645f936ed188cb9848452b9fec239f5fc8394110421ff440007b51f3e676fa2f10100ff002f4b38abe3197405863ac70379ab5cddec296d5ca292a918815e59741b22bbc8e24765d6feb25e2940c15a24979fe71ba97ffa754c405449ba64cc8a79034b579703f2fd0054b0dd";
+
+            let mut buf = vec![];
+            let d = Device::clone_from_hex(&device, &mut buf).unwrap();
+            println!("{}", d.desc().public_key().key_type_str());
+
+            d.to_vec().unwrap();
+            let id = d.desc().device_id();
+            println!("{}", id);
+        }
+
         let mut buf = vec![];
-        let device = Device::clone_from_hex(device, &mut buf).unwrap();
-        device.to_vec().unwrap();
+        let device = Device::clone_from_hex(old_str, &mut buf).unwrap();
+        let new_device = device.to_vec().unwrap();
+        let new_str = encode(new_device);
+        for i in 0 .. old_str.len() {
+            if old_str.as_bytes()[i] != new_str.as_bytes()[i] {
+                println!("{}, {:#x}!={:#x}", i, old_str.as_bytes()[i], new_str.as_bytes()[i]);
+            }
+        }
+        assert_eq!(old_str, new_str);
     }
 
     #[test]

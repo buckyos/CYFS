@@ -24,8 +24,8 @@ members = [
     "./component/cyfs-task-manager",
     "./component/cyfs-chunk-cache",
     "./component/cyfs-chunk-lib",
-	"./component/cyfs-mobile-stack",
-    "./component/cyfs-dsg-client",
+    "./component/cyfs-mobile-stack",
+    "./component/cyfs-group",
 
     "./service/base",
     "./service/ood-control",
@@ -36,7 +36,6 @@ members = [
     "./service/file-manager",
     "./service/cyfs-runtime",
     "./service/app-manager-lib",
-    "./service/dsg-service",
 
     "./tools/cyfs-client",
     "./tools/pack-tools",
@@ -52,19 +51,27 @@ members = [
     "./tools/bdt-debuger",
     "./tools/bdt-debuger-deamon",
     "./tools/cyfs-check",
+    "./tools/sn-updater",
 
     "./meta/browser-meta-spv",
     "./meta/cyfs-meta",
     "./meta/cyfs-meta-genesis",
     "./meta/cyfs-meta-miner",
     "./meta/cyfs-meta-spv",
+    "./meta/meta-stat",
+
+    "./misc/sn-miner-rust",
+    "./misc/pn-miner",
+    "./misc/cyfs-monitor",
 
     "./tests/cyfs-stack-test",
+    "./tests/cyfs-bench-mark",
+    "./tests/cyfs-stack-bench",
 ]
 
 [profile.release]
 opt-level = 3
-debug = false
+debug = true
 debug-assertions = false
 overflow-checks = false
 lto = false

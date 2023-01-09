@@ -33,9 +33,10 @@ impl RouterEventItem {
 
     async fn register(&self, requestor: &Arc<WebSocketRequestManager>) -> BuckyResult<()> {
         info!(
-            "will add ws router event: category={}, id={}, sid={}",
+            "will add ws router event: category={}, id={}, index={}, sid={}",
             self.id,
             self.category,
+            self.index,
             requestor.sid(),
         );
 
@@ -69,8 +70,8 @@ impl RouterEventItem {
 
         if resp.err == 0 {
             info!(
-                "add ws router event success: category={}, id={}",
-                req.category, req.id
+                "add ws router event success: category={}, id={}, index={}",
+                req.category, req.id, self.index,
             );
             Ok(())
         } else {
@@ -254,10 +255,11 @@ impl RouterWSEventManagerImpl {
         id: &str,
         dec_id: Option<ObjectId>,
     ) -> BuckyResult<bool> {
-        let unregister_item = manager
-            .lock()
-            .unwrap()
-            .remove_event_op(category.clone(), id.to_owned(), dec_id);
+        let unregister_item =
+            manager
+                .lock()
+                .unwrap()
+                .remove_event_op(category.clone(), id.to_owned(), dec_id);
 
         let ret = manager.lock().unwrap().session.clone();
         if let Some(session) = ret {
@@ -295,7 +297,10 @@ impl RouterWSEventManagerImpl {
                 info!("will remove ws router event: id={:?}, dec={:?}", id, dec_id,);
             }
             None => {
-                info!("will remove ws router event without exists: id={:?}, dec={:?}", id, dec_id,);
+                info!(
+                    "will remove ws router event without exists: id={:?}, dec={:?}",
+                    id, dec_id,
+                );
             }
         };
 
@@ -317,6 +322,8 @@ impl RouterWSEventManagerImpl {
         content: String,
     ) -> BuckyResult<Option<String>> {
         let event = RouterWSEventEmitParam::decode_string(&content)?;
+
+        info!("on event: category={}, id={}, param={}", event.category, event.id, event.param);
 
         let id = RouterEventId {
             category: event.category,
@@ -451,9 +458,9 @@ impl RouterWSEventManager {
         id: &str,
         dec_id: Option<ObjectId>,
         index: i32,
-        routine: 
-            Box<dyn EventListenerAsyncRoutine<RouterEventRequest<REQ>, RouterEventResponse<RESP>>>,
-        
+        routine: Box<
+            dyn EventListenerAsyncRoutine<RouterEventRequest<REQ>, RouterEventResponse<RESP>>,
+        >,
     ) -> BuckyResult<()>
     where
         REQ: Send + Sync + 'static + JsonCodec<REQ> + fmt::Display,
@@ -472,10 +479,25 @@ impl RouterWSEventManager {
             routine: Box::new(routine),
         };
 
+        info!(
+            "will add event: category={}, id={}, dec={:?}, index={}",
+            event_item.category, event_item.id, event_item.dec_id, event_item.index
+        );
+
         self.manager.lock().unwrap().add_event(event_item)
     }
 
-    pub async fn remove_event(&self, category: RouterEventCategory, id: &str, dec_id: Option<ObjectId>,) -> BuckyResult<bool> {
+    pub async fn remove_event(
+        &self,
+        category: RouterEventCategory,
+        id: &str,
+        dec_id: Option<ObjectId>,
+    ) -> BuckyResult<bool> {
+        info!(
+            "will remove event: category={}, id={}, dec={:?},",
+            category, id, dec_id,
+        );
+
         RouterWSEventManagerImpl::remove_event(&self.manager, category, id, dec_id).await
     }
 }

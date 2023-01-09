@@ -13,10 +13,13 @@ pub trait UniCyfsStack: Send + Sync {
     fn router_events(&self) -> &RouterEventManagerProcessorRef;
 
     fn root_state(&self) -> &GlobalStateOutputProcessorRef;
-    fn root_state_access(&self) -> &GlobalStateAccessOutputProcessorRef;
+    fn root_state_accessor(&self) -> &GlobalStateAccessorOutputProcessorRef;
 
     fn local_cache(&self) -> &GlobalStateOutputProcessorRef;
-    fn local_cache_access(&self) -> &GlobalStateAccessOutputProcessorRef;
+    fn local_cache_accessor(&self) -> &GlobalStateAccessorOutputProcessorRef;
+
+    fn root_state_meta(&self) -> &GlobalStateMetaOutputProcessorRef;
+    fn local_cache_meta(&self) -> &GlobalStateMetaOutputProcessorRef;
 }
 
-pub type UniObjectStackRef = Arc<dyn UniCyfsStack>;
+pub type UniCyfsStackRef = Arc<dyn UniCyfsStack>;

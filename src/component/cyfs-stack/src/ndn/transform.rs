@@ -21,7 +21,7 @@ impl NDNInputTransformer {
             req_path: common.req_path,
 
             // 来源DEC
-            dec_id: common.dec_id,
+            dec_id: common.source.get_opt_dec().cloned(),
 
             // 默认行为
             level: common.level,
@@ -76,7 +76,10 @@ impl NDNInputTransformer {
         Ok(resp)
     }
 
-    async fn put_shared_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
+    async fn put_shared_data(
+        &self,
+        req: NDNPutDataInputRequest,
+    ) -> BuckyResult<NDNPutDataInputResponse> {
         let out_req = NDNPutDataOutputRequest {
             common: Self::convert_common(req.common),
 
@@ -94,7 +97,10 @@ impl NDNInputTransformer {
         Ok(resp)
     }
 
-    async fn get_shared_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
+    async fn get_shared_data(
+        &self,
+        req: NDNGetDataInputRequest,
+    ) -> BuckyResult<NDNGetDataInputResponse> {
         let out_req = NDNGetDataOutputRequest {
             common: Self::convert_common(req.common),
 
@@ -181,22 +187,27 @@ impl NDNInputProcessor for NDNInputTransformer {
 // 实现从output到input的转换
 pub(crate) struct NDNOutputTransformer {
     processor: NDNInputProcessorRef,
-    source: DeviceId,
+    source: RequestSourceInfo,
 }
 
 impl NDNOutputTransformer {
-    pub fn new(processor: NDNInputProcessorRef, source: DeviceId) -> NDNOutputProcessorRef {
+    pub fn new(
+        processor: NDNInputProcessorRef,
+        source: RequestSourceInfo,
+    ) -> NDNOutputProcessorRef {
         let ret = Self { processor, source };
         Arc::new(Box::new(ret))
     }
 
     fn convert_common(&self, common: NDNOutputRequestCommon) -> NDNInputRequestCommon {
+        let mut source = self.source.clone();
+        if let Some(dec_id) = common.dec_id {
+            source.set_dec(dec_id);
+        }
+
         NDNInputRequestCommon {
             // 请求路径，可为空
             req_path: common.req_path,
-
-            // 来源DEC
-            dec_id: common.dec_id,
 
             // 默认行为
             level: common.level,
@@ -208,9 +219,7 @@ impl NDNOutputTransformer {
 
             referer_object: common.referer_object,
 
-            source: self.source.clone(),
-            protocol: NONProtocol::Native,
-
+            source,
             user_data: None,
         }
     }

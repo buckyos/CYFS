@@ -4,6 +4,7 @@ use crate::front::{FrontProtocolHandler, FrontRequestHandlerEndpoint};
 use crate::name::NameResolver;
 use crate::ndn_api::*;
 use crate::non_api::*;
+use crate::rmeta_api::*;
 use crate::root_state_api::*;
 use crate::router_handler::{
     RouterHandlerHttpHandler, RouterHandlerRequestHandlerEndpoint, RouterHandlersManager,
@@ -12,9 +13,9 @@ use crate::stack::ObjectServices;
 use crate::sync::*;
 use crate::trans_api::{TransRequestHandler, TransRequestHandlerEndpoint};
 use crate::util_api::*;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
-use cyfs_lib::{GlobalStateCategory, NONProtocol, RequestorHelper};
+use cyfs_lib::{GlobalStateCategory, RequestProtocol, RequestorHelper};
 
 use std::sync::Arc;
 
@@ -63,7 +64,7 @@ pub(super) struct ObjectHttpListener {
 
 impl ObjectHttpListener {
     pub fn new(
-        protocol: NONProtocol,
+        protocol: RequestProtocol,
         services: &ObjectServices,
         router_handlers: &RouterHandlersManager,
         _acl: AclManagerRef,
@@ -71,20 +72,21 @@ impl ObjectHttpListener {
         sync_client: Option<&Arc<DeviceSyncClient>>,
         root_state: &GlobalStateService,
         local_cache: &GlobalStateLocalService,
+        global_state_meta: &GlobalStateMetaService,
         name_resolver: &NameResolver,
-        zone_manager: &ZoneManager,
+        zone_manager: &ZoneManagerRef,
     ) -> Self {
         let mut server = new_server();
 
         default_handler(&mut server);
 
-        if protocol == NONProtocol::HttpLocal || protocol == NONProtocol::HttpLocalAuth {
+        if protocol == RequestProtocol::HttpLocal || protocol == RequestProtocol::HttpLocalAuth {
             // router handlers
             let handler = RouterHandlerHttpHandler::new(protocol.clone(), router_handlers.clone());
             RouterHandlerRequestHandlerEndpoint::register_server(&handler, &mut server);
         }
 
-        if protocol == NONProtocol::HttpLocal {
+        if protocol == RequestProtocol::HttpLocal {
             // front service
             if let Some(front) = &services.front_service {
                 let handler = FrontProtocolHandler::new(
@@ -93,7 +95,12 @@ impl ObjectHttpListener {
                     front.clone(),
                 );
                 let handler = Arc::new(handler);
-                FrontRequestHandlerEndpoint::register_server(&protocol, &handler, &mut server);
+                FrontRequestHandlerEndpoint::register_server(
+                    zone_manager,
+                    &protocol,
+                    &handler,
+                    &mut server,
+                );
             }
         }
 
@@ -110,6 +117,7 @@ impl ObjectHttpListener {
         // root_state
         let handler = GlobalStateRequestHandler::new(root_state.clone_global_state_processor());
         GlobalStateRequestHandlerEndpoint::register_server(
+            zone_manager,
             &protocol,
             GlobalStateCategory::RootState.as_str(),
             &handler,
@@ -118,14 +126,16 @@ impl ObjectHttpListener {
 
         let handler = OpEnvRequestHandler::new(root_state.clone_op_env_processor());
         OpEnvRequestHandlerEndpoint::register_server(
+            zone_manager,
             &protocol,
             GlobalStateCategory::RootState.as_str(),
             &handler,
             &mut server,
         );
 
-        let handler = GlobalStateAccessRequestHandler::new(root_state.clone_access_processor());
-        GlobalStateAccessRequestHandlerEndpoint::register_server(
+        let handler = GlobalStateAccessorRequestHandler::new(root_state.clone_accessor_processor());
+        GlobalStateAccessorRequestHandlerEndpoint::register_server(
+            zone_manager,
             &protocol,
             GlobalStateCategory::RootState.as_str(),
             &handler,
@@ -135,6 +145,7 @@ impl ObjectHttpListener {
         // local_cache
         let handler = GlobalStateRequestHandler::new(local_cache.clone_global_state_processor());
         GlobalStateRequestHandlerEndpoint::register_server(
+            zone_manager,
             &protocol,
             GlobalStateCategory::LocalCache.as_str(),
             &handler,
@@ -143,14 +154,41 @@ impl ObjectHttpListener {
 
         let handler = OpEnvRequestHandler::new(local_cache.clone_op_env_processor());
         OpEnvRequestHandlerEndpoint::register_server(
+            zone_manager,
             &protocol,
             GlobalStateCategory::LocalCache.as_str(),
             &handler,
             &mut server,
         );
 
-        let handler = GlobalStateAccessRequestHandler::new(root_state.clone_access_processor());
-        GlobalStateAccessRequestHandlerEndpoint::register_server(
+        let handler =
+            GlobalStateAccessorRequestHandler::new(local_cache.clone_accessor_processor());
+        GlobalStateAccessorRequestHandlerEndpoint::register_server(
+            zone_manager,
+            &protocol,
+            GlobalStateCategory::LocalCache.as_str(),
+            &handler,
+            &mut server,
+        );
+
+        // root-state meta
+        let handler = GlobalStateMetaRequestHandler::new(
+            global_state_meta.clone_processor(GlobalStateCategory::RootState),
+        );
+        GlobalStateMetaRequestHandlerEndpoint::register_server(
+            zone_manager,
+            &protocol,
+            GlobalStateCategory::RootState.as_str(),
+            &handler,
+            &mut server,
+        );
+
+        // local-cache meta
+        let handler = GlobalStateMetaRequestHandler::new(
+            global_state_meta.clone_processor(GlobalStateCategory::LocalCache),
+        );
+        GlobalStateMetaRequestHandlerEndpoint::register_server(
+            zone_manager,
             &protocol,
             GlobalStateCategory::LocalCache.as_str(),
             &handler,
@@ -159,24 +197,33 @@ impl ObjectHttpListener {
 
         // crypto service
         let handler = CryptoRequestHandler::new(services.crypto_service.clone_processor());
-        CryptoRequestHandlerEndpoint::register_server(&protocol, &handler, &mut server);
+        CryptoRequestHandlerEndpoint::register_server(
+            zone_manager,
+            &protocol,
+            &handler,
+            &mut server,
+        );
 
         // non
         let handler = NONRequestHandler::new(services.non_service.clone_processor());
-        NONRequestHandlerEndpoint::register_server(&protocol, &handler, &mut server);
+        NONRequestHandlerEndpoint::register_server(zone_manager, &protocol, &handler, &mut server);
 
         // ndn
         let handler = NDNRequestHandler::new(services.ndn_service.clone_processor());
-        NDNRequestHandlerEndpoint::register_server(&protocol, &handler, &mut server);
+        NDNRequestHandlerEndpoint::register_server(zone_manager, &protocol, &handler, &mut server);
 
         // util
         let handler = UtilRequestHandler::new(services.util_service.clone_processor());
-        UtilRequestHandlerEndpoint::register_server(&protocol, &handler, &mut server);
+        UtilRequestHandlerEndpoint::register_server(zone_manager, &protocol, &handler, &mut server);
 
         // trans service
-        let handler =
-            TransRequestHandler::new(protocol.clone(), services.trans_service.clone_processor());
-        TransRequestHandlerEndpoint::register_server(&handler, &mut server);
+        let handler = TransRequestHandler::new(services.trans_service.clone_processor());
+        TransRequestHandlerEndpoint::register_server(
+            zone_manager,
+            &protocol,
+            &handler,
+            &mut server,
+        );
 
         Self { server }
     }
@@ -192,7 +239,7 @@ pub(super) struct SyncHttpListener {
 
 impl SyncHttpListener {
     pub fn new(
-        protocol: NONProtocol,
+        protocol: RequestProtocol,
         sync_server: Option<&Arc<ZoneSyncServer>>,
         sync_client: Option<&Arc<DeviceSyncClient>>,
     ) -> Self {
@@ -200,7 +247,7 @@ impl SyncHttpListener {
 
         // sync只支持bdt协议
         match protocol {
-            NONProtocol::HttpBdt => {
+            RequestProtocol::HttpBdt => {
                 if let Some(sync_server) = sync_server {
                     let handler =
                         ZoneSyncRequestHandler::new(protocol.clone(), sync_server.clone());

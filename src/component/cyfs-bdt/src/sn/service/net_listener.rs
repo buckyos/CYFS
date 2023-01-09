@@ -17,12 +17,13 @@ use futures::{
 };
 use cyfs_base::*;
 use crate::{
+    types::*, 
     protocol::*,
     history::keystore::Keystore, 
     interface::{
-        udp::{MTU, PackageBoxDecodeContext, PackageBoxEncodeContext},
+        udp::{PackageBoxDecodeContext, PackageBoxEncodeContext, MTU_LARGE},
         tcp::{AcceptInterface, PackageInterface},
-    },
+    }, sn::service::statistic::StatisticManager, 
 };
 use super::SnService;
 
@@ -39,12 +40,16 @@ impl NetListener {
             if let PackageCmdCode::Exchange = first_pkg.cmd_code() {
                 let exchg = first_pkg.as_any().downcast_ref::<Exchange>();
                 if let Some(exchg) = exchg {
-                    if !exchg.verify(pkg_box.key()).await {
-                        warn!("exchange sign-verify failed, from: {:?}.", resp_sender.remote());
+                    if !exchg.verify(service.local_device_id()).await {
+                        let error_message = format!("exchange sign-verify failed, from: {:?}.", resp_sender.remote());
+                        warn!("{}", error_message);
+                        StatisticManager::get_instance().get_peer_status(service.local_device_id().clone(), bucky_time_now()).recod_error(error_message);
                         return;
                     }
                 } else {
-                    warn!("fetch exchange failed, from: {:?}.", resp_sender.remote());
+                    let error_message = format!("fetch exchange failed, from: {:?}.", resp_sender.remote());
+                    warn!("{}", error_message);
+                    StatisticManager::get_instance().get_peer_status(service.local_device_id().clone(), bucky_time_now()).recod_error(error_message);
                     return;
                 }
                 cmd_pkg = pkg_box.packages().get(1);
@@ -64,12 +69,16 @@ impl NetListener {
                             match verify_object_body_sign(&RsaCPUObjectVerifier::new(peer_info.desc().public_key().clone()), peer_info, sig).await {
                                 Ok(is_ok) => {
                                     if !is_ok {
-                                        log::warn!("sn-ping verify but unmatch, from {:?}", resp_sender.remote());
+                                        let error_message = format!("sn-ping verify but unmatch, from {:?}", resp_sender.remote());
+                                        warn!("{}", error_message);
+                                        StatisticManager::get_instance().get_peer_status(service.local_device_id().clone(), bucky_time_now()).recod_error(error_message);
                                         return;
                                     }
                                 },
                                 Err(e) => {
-                                    log::warn!("sn-ping verify failed, from {:?}, {}", resp_sender.remote(), e);
+                                    let error_message = format!("sn-ping verify failed, from {:?}, {}", resp_sender.remote(), e);
+                                    warn!("{}", error_message);
+                                    StatisticManager::get_instance().get_peer_status(service.local_device_id().clone(), bucky_time_now()).recod_error(error_message);
                                     return;
                                 }
                             }
@@ -222,7 +231,7 @@ impl NetListener {
                     if let PackageCmdCode::Exchange = first_pkg.cmd_code() {
                         let exchg = first_pkg.as_any().downcast_ref::<Exchange>();
                         if let Some(exchg) = exchg {
-                            if !exchg.verify(pkg_box.key()).await {
+                            if !exchg.verify().await {
                                 warn!("exchange sign-verify failed, from: {:?}.", resp_sender.remote());
                                 return;
                             }
@@ -268,7 +277,7 @@ impl NetListener {
     }
     */
 
-    async fn bind(endpoints: &[Endpoint], key_store: &Keystore) -> (Vec<BuckyResult<UdpListener>>, Vec<BuckyResult<TcpAcceptor>>) {
+    async fn bind(endpoints: &[Endpoint], local_device_id: &DeviceId, key_store: &Keystore) -> (Vec<BuckyResult<UdpListener>>, Vec<BuckyResult<TcpAcceptor>>) {
         let mut udp_futures = vec![];
         let mut tcp_futures = vec![];
 
@@ -282,7 +291,7 @@ impl NetListener {
                     udp_futures.push(UdpListener::bind(endpoint.addr().clone(), key_store.clone()));
                 },
                 Protocol::Tcp => {
-                    tcp_futures.push(TcpAcceptor::bind(endpoint.addr().clone(), key_store.clone()));
+                    tcp_futures.push(TcpAcceptor::bind(local_device_id.clone(), endpoint.addr().clone(), key_store.clone()));
                 }
                 Protocol::Unk => {
                     log::info!("sn-miner unknown listener.")
@@ -304,8 +313,8 @@ impl NetListener {
         endpoints_v4: &[Endpoint], 
         service: SnService) -> BuckyResult<(NetListener, usize, usize)> {
         
-        let (mut udp_results, mut tcp_results) = Self::bind(endpoints_v6, service.key_store()).await;
-        let (mut udp_results_v4, mut tcp_results_v4) = Self::bind(endpoints_v4, service.key_store()).await;
+        let (mut udp_results, mut tcp_results) = Self::bind(endpoints_v6, service.local_device_id(), service.key_store()).await;
+        let (mut udp_results_v4, mut tcp_results_v4) = Self::bind(endpoints_v4, service.local_device_id(), service.key_store()).await;
 
         udp_results.append(&mut udp_results_v4);
         tcp_results.append(&mut tcp_results_v4);
@@ -426,7 +435,7 @@ impl UdpListener {
 
     async fn recv(&self) -> BuckyResult<(PackageBox, MessageSender)> {
         loop {
-            let mut recv_buf = [0; MTU];
+            let mut recv_buf = [0; MTU_LARGE];
             let rr = self.0.socket.recv_from(&mut recv_buf).await;
 
             match rr {
@@ -437,11 +446,17 @@ impl UdpListener {
                     let ctx = PackageBoxDecodeContext::new_inplace(recv.as_mut_ptr(), recv.len(), &self.0.key_store);
                     match PackageBox::raw_decode_with_context(recv, ctx) {
                         Ok((package_box, _)) => {
-                            let resp_sender = MessageSender::Udp(UdpSender::new(self.0.clone(), package_box.remote().clone(), package_box.key().clone(), from));
+                            let resp_sender = MessageSender::Udp(UdpSender::new(
+                                self.0.clone(), 
+                                package_box.remote().clone(), 
+                                package_box.key().clone(), 
+                                from));
                             break Ok((package_box, resp_sender))
                         },
                         Err(e) => {
-                            warn!("udp({}) decode failed, len={}, from={}, e={}, first-u16: {}", self.0.addr, recv.len(), from, e, u16::raw_decode(recv).unwrap_or((0, recv)).0);
+                            let error_message = format!("udp({}) decode failed, len={}, from={}, e={}, first-u16: {}", self.0.addr, recv.len(), from, e, u16::raw_decode(recv).unwrap_or((0, recv)).0);
+                            warn!("{}", error_message);
+                            StatisticManager::get_instance().get_endpoint_status(from).recod_error(error_message);
                         }
                     }
                 },
@@ -467,13 +482,14 @@ impl UdpListener {
 #[derive(Clone)]
 // 暂时只支持QA
 struct TcpAcceptor {
+    local_device_id: DeviceId, 
     addr: SocketAddr,
     socket: Arc<TcpListener>,
     key_store: Keystore,
 }
 
 impl TcpAcceptor {
-    async fn bind(addr: SocketAddr, key_store: Keystore) -> BuckyResult<TcpAcceptor> {
+    async fn bind(local_device_id: DeviceId, addr: SocketAddr, key_store: Keystore) -> BuckyResult<TcpAcceptor> {
         match TcpListener::bind(addr.clone()).await {
             Err(e) => {
                 warn!("tcp-listener({}) bind failed, err: {}", addr, e);
@@ -482,6 +498,7 @@ impl TcpAcceptor {
             Ok(socket) => {
                 info!("tcp-listener({}) bind ok.", addr);
                 Ok(TcpAcceptor {
+                    local_device_id, 
                     addr,
                     socket: Arc::new(socket),
                     key_store,
@@ -495,14 +512,16 @@ impl TcpAcceptor {
             match self.socket.accept().await {
                 Ok((socket, from_addr)) => {
                     debug!("tcp-listener({}) accept a stream, will read the first package, from {:?}", self.addr, from_addr);
-                    match AcceptInterface::accept(socket.clone(), &self.key_store, Duration::from_secs(2)).await {
+                    match AcceptInterface::accept(socket.clone(), &self.local_device_id,&self.key_store, Duration::from_secs(2)).await {
                         Ok((interface, first_box)) => {
                             break Ok((first_box, MessageSender::Tcp(TcpSender {
                                 handle: interface.into()
                             })))
                         },
                         Err(e) => {
-                            warn!("tcp-listener({}) accept a stream, but the first package read failed, from {:?}. err: {}", self.addr, from_addr, e);
+                            let error_message = format!("tcp-listener({}) accept a stream, but the first package read failed, from {:?}. err: {}", self.addr, from_addr, e);
+                            warn!("{}", error_message);
+                            StatisticManager::get_instance().get_endpoint_status(from_addr).recod_error(error_message);
                             let _ = socket.shutdown(Shutdown::Both);
                         }
                     }
@@ -528,24 +547,24 @@ impl TcpAcceptor {
 pub struct UdpSender {
     handle: Arc<UdpInterface>,
     remote_device_id: DeviceId,
-    aes_key: AesKey,
+    key: MixAesKey,
     to_addr: SocketAddr,
 }
 
 impl UdpSender {
-    fn new(handle: Arc<UdpInterface>, remote_device_id: DeviceId, aes_key: AesKey, to_addr: SocketAddr) -> UdpSender {
+    fn new(handle: Arc<UdpInterface>, remote_device_id: DeviceId, key: MixAesKey, to_addr: SocketAddr) -> UdpSender {
         UdpSender {
             handle,
             remote_device_id,
-            aes_key,
-            to_addr
+            key,
+            to_addr,
         }
     }
 }
 
 impl UdpSender {
     pub fn box_pkg(&self, pkg: DynamicPackage) -> PackageBox {
-        let mut package_box = PackageBox::encrypt_box(self.remote_device_id.clone(), self.aes_key.clone());
+        let mut package_box = PackageBox::encrypt_box(self.remote_device_id.clone(), self.key.clone());
         package_box.append(vec![pkg]);
         package_box
     }
@@ -553,7 +572,7 @@ impl UdpSender {
     pub async fn send(&self,
                   pkg_box: &PackageBox) -> BuckyResult<()> {
 
-        let mut encode_buf = [0; MTU];
+        let mut encode_buf = [0; MTU_LARGE];
         let send_buf = {
             let mut context = PackageBoxEncodeContext::default();
 
@@ -596,6 +615,10 @@ impl UdpSender {
                 self.to_addr
         )
     }
+
+    pub fn key(&self) -> &MixAesKey {
+        &self.key
+    }
 }
 
 pub struct TcpSender {
@@ -604,9 +627,9 @@ pub struct TcpSender {
 
 impl TcpSender {
     pub async fn send(&mut self, pkg: DynamicPackage) -> BuckyResult<()> {
-        let mut send_buf = [0; MTU];
+        let mut send_buf = [0; MTU_LARGE];
 
-        match self.handle.send_package(&mut send_buf, pkg).await {
+        match self.handle.send_package(&mut send_buf, pkg, false).await {
             Ok(()) => Ok(()),
             Err(e) => {
                 error!("tcp({}) send-to({}) failed error({}).", self.local_str(), self.remote_str(), e);

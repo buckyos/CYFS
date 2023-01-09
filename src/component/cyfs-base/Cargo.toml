@@ -1,50 +1,52 @@
-[package]
-name = "cyfs-base"
-version = "0.5.1"
-authors = ["liuzhicong <liuzhicong@buckyos.com>"]
-edition = "2021"
-license = "BSD-2-Clause"
-description = "Rust cyfs-base package"
-rust-version = "1.57"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package]
+name = 'cyfs-base'
+version = '0.6.7'
+authors = ['liuzhicong <liuzhicong@buckyos.com>']
+edition = '2021'
+license = 'BSD-2-Clause'
+description = 'Rust cyfs-base package'
+rust-version = '1.63'
 
 [build-dependencies]
-protoc-rust = "2"
-chrono = "0.4"
-protoc-bin-vendored = "3"
+protoc-rust = '2'
+chrono = '0.4'
+protoc-bin-vendored = '3'
 
 [dependencies]
-cyfs-base-derive = {path = "../cyfs-base-derive", version = "0.5"}
-cyfs-ecies = { path = "../../3rd/cyfs-ecies", version = "0.1.4"}
-hex = "0.4"
-sha2 = { version="0.8" }
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4"
-serde_json = "1.0"
-url = "2.2"
-rand = "0.7"
-http-types = "2.12"
-libc = "0.2"
-async-std = { version = "1.11", features = ["attributes", "unstable"] }
-async-trait = "0.1.53"
-lazy_static = "1.4"
-generic-array = { version = "0.12", default-features = false, features = ["serde"] }
-aes = "=0.7"
-block-modes = "=0.8"
-rsa = "0.3.0"
-rsa-export = "0.1.1"
-int-enum = "0.4"
-libsecp256k1 = "0.3.5"
-base58 = "0.2.0"
-primitive-types = "0.9"
-protobuf = { version = "2", features = ["with-bytes"] }
-async-recursion = "1.0"
-lru_time_cache = "0.11"
-once_cell = "1.12"
-chrono = "0.4"
-simple_logger = "2.1"
+cyfs-base-derive = { path = '../cyfs-base-derive', version = '0.5' }
+cyfs-ecies = { path = '../../3rd/cyfs-ecies', version = '0.1.4' }
+hex = '0.4'
+sha2 = { version = '0.8' }
+serde = { version = '1.0', features = ['derive'] }
+log = '0.4'
+serde_json = '1.0'
+url = '2.2'
+rand = '0.7'
+http-types = '2.12'
+libc = '0.2'
+async-std = { version = '1.11', features = ['attributes', 'unstable'] }
+async-trait = '0.1.53'
+lazy_static = '1.4'
+generic-array = { version = '0.12', default-features = false, features = ['serde'] }
+aes = '=0.7'
+block-modes = '=0.8'
+rsa = '0.3.0'
+rsa-export = '0.1.1'
+int-enum = '0.4'
+libsecp256k1 = '0.3.5'
+base58 = '0.2.0'
+primitive-types = '0.9'
+protobuf = { version = '2', features = ['with-bytes'] }
+async-recursion = '1.0'
+lru_time_cache = '0.11'
+once_cell = '1.12'
+chrono = '0.4'
+simple_logger = '2.1'
+intbits = '0.2'
+itertools = '0.10'
+base-x = '0.2.0'
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-zip = "0.6"
-rusqlite = { version = "0.27.0", features = ["bundled"] }
+zip = '0.6'
+rusqlite = { version = '0.27.0', features = ['bundled'] }

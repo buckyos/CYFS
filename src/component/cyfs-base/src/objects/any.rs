@@ -14,8 +14,7 @@ macro_rules! match_any_obj {
             AnyNamedObject::Standard(o) => match o {
                 StandardObject::Device($o) => $body,
                 StandardObject::People($o) => $body,
-                StandardObject::SimpleGroup($o) => $body,
-                StandardObject::Org($o) => $body,
+                StandardObject::Group($o) => $body,
                 StandardObject::AppGroup($o) => $body,
                 StandardObject::UnionAccount($o) => $body,
                 StandardObject::ChunkId($chunk_id) => $chunk_body,
@@ -27,6 +26,10 @@ macro_rules! match_any_obj {
                 StandardObject::Action($o) => $body,
                 StandardObject::ObjectMap($o) => $body,
                 StandardObject::Contract($o) => $body,
+                StandardObject::SimpleGroup => {
+                    panic!("SimpleGroup is deprecated, you can use the Group.")
+                }
+                StandardObject::Org => panic!("Org is deprecated, you can use the Group."),
             },
             AnyNamedObject::Core($o) => $body,
             AnyNamedObject::DECApp($o) => $body,
@@ -226,6 +229,32 @@ impl AnyNamedObject {
         }
     }
 
+    // reset the object's body with the same obj_type object
+    pub fn set_body_expect(&mut self, other: &Self) {
+        assert_eq!(self.obj_type(), other.obj_type());
+
+        match self {
+            Self::Standard(o) => match other {
+                Self::Standard(other) => {
+                    o.set_body_expect(other);
+                }
+                _ => unreachable!(),
+            },
+            Self::Core(o) => match other {
+                Self::Core(other) => {
+                    *o.body_mut() = other.body().to_owned();
+                }
+                _ => unreachable!(),
+            },
+            Self::DECApp(o) => match other {
+                Self::DECApp(other) => {
+                    *o.body_mut() = other.body().to_owned();
+                }
+                _ => unreachable!(),
+            },
+        }
+    }
+
     // 设置对象body的修改时间
     pub fn set_body_update_time(&mut self, time: u64) {
         match_any_obj!(
@@ -295,7 +324,6 @@ impl AnyNamedObject {
     }
 }
 
-
 impl RawEncode for AnyNamedObject {
     fn raw_measure(&self, purpose: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
         match self {
@@ -346,13 +374,6 @@ impl<'de> RawDecode<'de> for AnyNamedObject {
                     buf,
                 ));
             }
-            ObjectTypeCode::Org => {
-                let (org, buf) = Org::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/org error:{}", e);
-                    e
-                })?;
-                return Ok((AnyNamedObject::Standard(StandardObject::Org(org)), buf));
-            }
             ObjectTypeCode::AppGroup => {
                 let (app_group, buf) = AppGroup::raw_decode(buf).map_err(|e| {
                     log::error!("AnyNamedObject::raw_decode/app_group error:{}", e);
@@ -363,15 +384,12 @@ impl<'de> RawDecode<'de> for AnyNamedObject {
                     buf,
                 ));
             }
-            ObjectTypeCode::SimpleGroup => {
-                let (simple_group, buf) = SimpleGroup::raw_decode(buf).map_err(|e| {
-                    log::error!("AnyNamedObject::raw_decode/simple_group error:{}", e);
+            ObjectTypeCode::Group => {
+                let (group, buf) = Group::raw_decode(buf).map_err(|e| {
+                    log::error!("AnyNamedObject::raw_decode/group error:{}", e);
                     e
                 })?;
-                return Ok((
-                    AnyNamedObject::Standard(StandardObject::SimpleGroup(simple_group)),
-                    buf,
-                ));
+                return Ok((AnyNamedObject::Standard(StandardObject::Group(group)), buf));
             }
             ObjectTypeCode::UnionAccount => {
                 let (ua, buf) = UnionAccount::raw_decode(buf).map_err(|e| {
@@ -554,7 +572,7 @@ mod tests {
         let desc_content = DeviceDescContent::new(unique_id.clone());
 
         let body_content =
-            DeviceBodyContent::new(endpoints, sn_list, Vec::new(), Some(name.to_owned()));
+            DeviceBodyContent::new(endpoints, sn_list, Vec::new(), Some(name.to_owned()), None);
         let secret1 = PrivateKey::generate_rsa(1024).unwrap();
         let public_key = secret1.public();
 
@@ -584,40 +602,34 @@ mod tests {
     }
 }
 
-
-
 macro_rules! any_for_standard_target {
     ($as_name:ident, $into_name:ident, $target:ident) => {
         impl AnyNamedObject {
             pub fn $as_name(&self) -> &$target {
                 match self {
-                    AnyNamedObject::Standard(s) => {
-                        match s {
-                            StandardObject::$target(f) => f,
-                            _ => unreachable!(),
-                        }
-                    }
+                    AnyNamedObject::Standard(s) => match s {
+                        StandardObject::$target(f) => f,
+                        _ => unreachable!(),
+                    },
                     _ => unreachable!(),
                 }
             }
             pub fn $into_name(self) -> $target {
                 match self {
-                    AnyNamedObject::Standard(s) => {
-                        match s {
-                            StandardObject::$target(f) => f,
-                            _ => unreachable!(),
-                        }
-                    }
+                    AnyNamedObject::Standard(s) => match s {
+                        StandardObject::$target(f) => f,
+                        _ => unreachable!(),
+                    },
                     _ => unreachable!(),
                 }
             }
         }
-    }
+    };
 }
 
 any_for_standard_target!(as_file, into_file, File);
 any_for_standard_target!(as_dir, into_dir, Dir);
 any_for_standard_target!(as_people, into_people, People);
 any_for_standard_target!(as_device, into_device, Device);
-any_for_standard_target!(as_simple_group, into_simple_group, SimpleGroup);
+any_for_standard_target!(as_group, into_group, Group);
 any_for_standard_target!(as_object_map, into_object_map, ObjectMap);

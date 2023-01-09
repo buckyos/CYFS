@@ -1,5 +1,6 @@
 // use super::dsg::{DSGService, DSGServiceOptions};
 use super::params::*;
+use super::uni_stack::*;
 use crate::acl::{AclManager, AclManagerRef};
 use crate::admin::AdminManager;
 use crate::app::{AppController, AppService};
@@ -15,21 +16,25 @@ use crate::interface::{
 use crate::meta::*;
 use crate::name::NameResolver;
 use crate::ndn::NDNOutputTransformer;
-use crate::ndn_api::{ChunkStoreReader, NDNBdtDataAclProcessor, NDNService};
+use crate::ndn_api::{BdtNDNEventHandler, ChunkStoreReader, NDNService};
 use crate::non::NONOutputTransformer;
 use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
-use crate::root_state::{GlobalStateAccessOutputTransformer, GlobalStateOutputTransformer};
-use crate::root_state_api::{GlobalStateLocalService, GlobalStateService};
+use crate::rmeta::GlobalStateMetaOutputTransformer;
+use crate::rmeta_api::{GlobalStateMetaLocalService, GlobalStateMetaService};
+use crate::root_state::{GlobalStateAccessorOutputTransformer, GlobalStateOutputTransformer};
+use crate::root_state_api::{
+    GlobalStateLocalService, GlobalStateService, GlobalStateValidatorManager,
+};
 use crate::router_handler::RouterHandlersManager;
 use crate::trans::TransOutputTransformer;
 use crate::trans_api::{create_trans_store, TransService};
 use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
-use crate::zone::{ZoneManager, ZoneRoleManager};
+use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use cyfs_base::*;
 use cyfs_bdt::{ChunkReader, DeviceCache, Stack, StackGuard, StackOpenParams};
-use cyfs_chunk_cache::ChunkManager;
+use cyfs_chunk_cache::{ChunkManager, ChunkManagerRef};
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
@@ -37,32 +42,6 @@ use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
-// 用来增加一些已知对象到本地noc
-#[derive(Clone)]
-pub struct KnownObject {
-    // 对象内容
-    pub object_id: ObjectId,
-
-    pub object_raw: Vec<u8>,
-    pub object: Arc<AnyNamedObject>,
-}
-
-struct CyfsStackProcessors {
-    pub non_service: NONOutputProcessorRef,
-    pub ndn_service: NDNOutputProcessorRef,
-    pub crypto_service: CryptoOutputProcessorRef,
-    pub util_service: UtilOutputProcessorRef,
-    pub trans_service: TransOutputProcessorRef,
-
-    pub router_handlers: RouterHandlerManagerProcessorRef,
-    pub router_events: RouterEventManagerProcessorRef,
-
-    pub root_state: GlobalStateOutputProcessorRef,
-    pub root_state_access: GlobalStateAccessOutputProcessorRef,
-
-    pub local_cache: GlobalStateOutputProcessorRef,
-    pub local_cache_access: GlobalStateAccessOutputProcessorRef,
-}
 
 #[derive(Clone)]
 pub(crate) struct ObjectServices {
@@ -85,15 +64,14 @@ pub struct CyfsStackImpl {
 
     device_manager: DeviceInfoManager,
 
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 
-    noc: ObjectCacheManager,
+    noc: NamedObjectCacheRef,
 
     ndc: Box<dyn NamedDataCache>,
     tracker: Box<dyn TrackerCache>,
 
     services: ObjectServices,
-    processors: CyfsStackProcessors,
 
     interface: OnceCell<ObjectListenerManagerRef>,
 
@@ -118,19 +96,21 @@ pub struct CyfsStackImpl {
 
     // local_cache
     local_cache: GlobalStateLocalService,
+
+    // global_state_meta
+    global_state_meta: GlobalStateMetaService,
 }
 
 impl CyfsStackImpl {
-    // known_objects 外部指定的已知对象列表
     pub async fn open(
         bdt_param: BdtStackParams,
         param: CyfsStackParams,
-        known_objects: Vec<KnownObject>,
+        known_objects: CyfsStackKnownObjects, // known_objects 外部指定的已知对象列表
     ) -> BuckyResult<Self> {
         Self::register_custom_objects_format();
-        
+
         let stack_params = param.clone();
-        let config = StackGlobalConfig::new(stack_params);
+        let config = StackGlobalConfig::new(stack_params, bdt_param.clone());
 
         let device = bdt_param.device.clone();
         let device_id = device.desc().device_id();
@@ -141,8 +121,19 @@ impl CyfsStackImpl {
             None => "",
         };
 
-        let noc =
-            Self::init_raw_noc(&device_id, param.noc.noc_type, isolate, known_objects).await?;
+        let noc = Self::init_raw_noc(isolate, known_objects).await?;
+
+        // meta with cache
+        let raw_meta_cache = RawMetaCache::new(param.meta.target, noc.clone());
+
+        // 名字解析服务
+        let name_resolver = NameResolver::new(raw_meta_cache.clone(), noc.clone());
+        name_resolver.start().await?;
+
+        // 加载全局状态
+        let (local_root_state, local_cache) =
+            Self::load_global_state(&device_id, &device, noc.clone(), &config).await?;
+        let current_root = local_root_state.state().get_current_root();
 
         // 初始化data cache和tracker
         let ndc = Self::init_ndc(isolate)?;
@@ -152,51 +143,94 @@ impl CyfsStackImpl {
         let trans_store = create_trans_store(isolate).await?;
         let chunk_manager = Arc::new(ChunkManager::new());
 
-        // 不使用rules的meta_client
-        // 内部依赖带rule-noc，需要使用延迟绑定策略
-        let raw_meta_cache = RawMetaCache::new(param.meta.target);
+        // init sn config manager
+        let root_state_processor = GlobalStateOutputTransformer::new(
+            local_root_state.clone_global_state_processor(),
+            RequestSourceInfo::new_local_system(),
+        );
+        let sn_config_manager = SNConfigManager::new(
+            name_resolver.clone(),
+            raw_meta_cache.clone(),
+            root_state_processor,
+            noc.clone(),
+            config.clone(),
+        );
+        sn_config_manager.init().await?;
 
         // init object searcher for global use
         let obj_searcher = CompoundObjectSearcher::new(
-            noc.clone_noc(),
+            noc.clone(),
             device_id.clone(),
             raw_meta_cache.clone_meta(),
         );
 
-        // 带rules的meta client
-        let rule_meta_cache = MetaCacheWithRule::new(raw_meta_cache.clone());
-
-        // 内部依赖带rule-noc，需要使用延迟绑定策略
+        // init signs verifier
         let verifier = ObjectVerifier::new(
             bdt_param.device.desc().device_id().to_owned(),
             raw_meta_cache.clone_meta(),
         );
         let verifier = Arc::new(verifier);
-        verifier.bind_noc(noc.clone_noc());
+        verifier.bind_noc(noc.clone());
 
         // device_manager和zone_manager使用raw_noc
         let device_manager = DeviceInfoManager::new(
-            noc.clone_noc(),
+            noc.clone(),
             verifier.clone(),
             obj_searcher.clone().into_ref(),
             bdt_param.device.clone(),
         );
 
         let fail_handler =
-            ObjectFailHandler::new(raw_meta_cache.clone_meta(), device_manager.clone_cache());
+            ObjectFailHandler::new(raw_meta_cache.clone(), device_manager.clone_cache());
+
+        // Init zone manager
+        let root_state_processor = GlobalStateOutputTransformer::new(
+            local_root_state.clone_global_state_processor(),
+            RequestSourceInfo::new_local_system(),
+        );
+        let local_cache_processor = GlobalStateOutputTransformer::new(
+            local_cache.clone_global_state_processor(),
+            RequestSourceInfo::new_local_system(),
+        );
 
         let zone_manager = ZoneManager::new(
-            noc.clone_noc(),
+            noc.clone(),
             device_manager.clone_cache(),
             device_id.clone(),
             device_category,
-            raw_meta_cache.clone_meta(),
+            raw_meta_cache.clone(),
             fail_handler.clone(),
+            root_state_processor,
+            local_cache_processor,
         );
         zone_manager.init().await?;
 
+        // first init current zone info
+        let zm = zone_manager.clone();
+        async_std::task::spawn(async move { zm.get_current_info().await }).await?;
+
+        // FIXME Which dec-id should choose to use for uni-stack's source? now use anonymous dec as default
+        let source = zone_manager.get_current_source_info(&None).await?;
+
+        // load local global-state meta
+        let local_global_state_meta =
+            Self::load_global_state_meta(isolate, &local_root_state, noc.clone(), &source);
+
+        // init global-state validator
+        let validator = GlobalStateValidatorManager::new(&local_root_state, &local_cache);
+
+        // acl
+        let acl_manager = Arc::new(AclManager::new(
+            local_global_state_meta.clone(),
+            validator,
+            noc.clone(),
+            param.config.isolate.clone(),
+            zone_manager.clone(),
+        ));
+
         // handlers
-        let router_handlers = RouterHandlersManager::new(param.config.isolate.clone());
+        let router_handlers =
+            RouterHandlersManager::new(param.config.isolate.clone(), acl_manager.clone());
         if let Err(e) = router_handlers.load().await {
             error!("load router handlers error! {}", e);
         }
@@ -204,27 +238,20 @@ impl CyfsStackImpl {
         // events
         let router_events = RouterEventsManager::new();
 
-        // acl
-        let acl_manager = Arc::new(AclManager::new(
-            noc.clone_noc(),
-            param.config.isolate.clone(),
-            device_manager.clone_cache(),
-            zone_manager.clone(),
-            router_handlers.clone(),
-        ));
-
         // role manager
         let zone_role_manager = ZoneRoleManager::new(
             device_id.clone(),
             zone_manager.clone(),
-            noc.clone_noc(),
+            noc.clone(),
             raw_meta_cache.clone(),
             acl_manager.clone(),
+            router_events.clone(),
             config.clone(),
         );
 
         // 初始化bdt协议栈
-        let bdt_stack = Self::init_bdt_stack(
+        let (bdt_stack, bdt_event) = Self::init_bdt_stack(
+            zone_manager.clone(),
             acl_manager.clone(),
             bdt_param,
             device_manager.clone_cache(),
@@ -232,16 +259,13 @@ impl CyfsStackImpl {
             ndc.clone(),
             tracker.clone(),
             router_handlers.clone(),
-            Box::new(ChunkStoreReader::new(
-                chunk_manager.clone(),
-                ndc.clone(),
-                tracker.clone(),
-            )),
+            chunk_manager.clone(),
+            &sn_config_manager,
         )
         .await?;
 
         // enable the zone search ablity for obj_searcher
-        obj_searcher.init_zone_searcher(zone_manager.clone(), noc.clone_noc(), bdt_stack.clone());
+        obj_searcher.init_zone_searcher(zone_manager.clone(), noc.clone(), bdt_stack.clone());
 
         // non和router通用的转发器，不带权限检查(non和router内部根据层级选择正确的acl适配器)
         let forward_manager =
@@ -268,13 +292,8 @@ impl CyfsStackImpl {
             router_handlers.clone(),
         );
 
-        // 名字解析服务
-        let name_resolver = NameResolver::new(rule_meta_cache.clone_meta(), noc.clone_noc());
-        name_resolver.start().await?;
-
         let util_service = UtilService::new(
-            acl_manager.clone(),
-            noc.clone_noc(),
+            noc.clone(),
             ndc.clone(),
             bdt_stack.clone(),
             forward_manager.clone(),
@@ -286,7 +305,7 @@ impl CyfsStackImpl {
         );
 
         let (non_service, ndn_service) = NONService::new(
-            noc.clone_noc(),
+            noc.clone(),
             bdt_stack.clone(),
             ndc.clone(),
             tracker.clone(),
@@ -295,15 +314,15 @@ impl CyfsStackImpl {
             zone_manager.clone(),
             ood_resoler.clone(),
             router_handlers.clone(),
-            rule_meta_cache.clone_meta(),
+            raw_meta_cache.clone(),
             fail_handler.clone(),
             chunk_manager.clone(),
         );
 
-        raw_meta_cache.bind_noc(non_service.raw_noc_processor().clone());
+        bdt_event.bind_non_processor(non_service.rmeta_noc_processor().clone());
 
         let trans_service = TransService::new(
-            noc.clone_noc(),
+            noc.clone(),
             bdt_stack.clone(),
             ndc.clone(),
             tracker.clone(),
@@ -322,21 +341,25 @@ impl CyfsStackImpl {
         let crypto_service = Arc::new(crypto_service);
         let util_service = Arc::new(util_service);
 
-        // 加载全局状态
-        let (root_state, local_cache) = Self::load_global_state(
-            &device_id,
-            &device,
-            noc.clone_noc(),
+        // load root-state service
+        let root_state = Self::load_root_state_service(
+            local_root_state,
             acl_manager.clone(),
             forward_manager.clone(),
             zone_manager.clone(),
             fail_handler.clone(),
             &non_service,
             &ndn_service,
-            &config,
         )
         .await?;
-        let current_root = root_state.local_service().state().get_current_root();
+
+        // load global state meta service
+        let global_state_meta = Self::load_global_state_meta_service(
+            local_global_state_meta,
+            forward_manager.clone(),
+            zone_manager.clone(),
+            fail_handler.clone(),
+        );
 
         let front_service = if param.front.enable {
             let app_service =
@@ -345,8 +368,8 @@ impl CyfsStackImpl {
             let front_service = FrontService::new(
                 non_service.clone_processor(),
                 ndn_service.clone_processor(),
-                root_state.clone_access_processor(),
-                local_cache.clone_access_processor(),
+                root_state.clone_accessor_processor(),
+                local_cache.clone_accessor_processor(),
                 app_service,
                 ood_resoler.clone(),
             );
@@ -367,53 +390,6 @@ impl CyfsStackImpl {
             front_service,
         };
 
-        // 缓存所有processors，用以uni_stack直接返回使用
-        let processors = CyfsStackProcessors {
-            non_service: NONOutputTransformer::new(
-                services.non_service.clone_processor(),
-                device_id.clone(),
-            ),
-            ndn_service: NDNOutputTransformer::new(
-                services.ndn_service.clone_processor(),
-                device_id.clone(),
-            ),
-            crypto_service: CryptoOutputTransformer::new(
-                services.crypto_service.clone_processor(),
-                device_id.clone(),
-            ),
-            util_service: UtilOutputTransformer::new(
-                services.util_service.clone_processor(),
-                device_id.clone(),
-            ),
-            trans_service: TransOutputTransformer::new(
-                services.trans_service.clone_processor(),
-                device_id.clone(),
-                None,
-            ),
-            router_handlers: router_handlers.clone_processor(),
-            router_events: router_events.clone_processor(),
-
-            root_state: GlobalStateOutputTransformer::new(
-                root_state.clone_global_state_processor(),
-                device_id.clone(),
-            ),
-
-            root_state_access: GlobalStateAccessOutputTransformer::new(
-                root_state.clone_access_processor(),
-                device_id.clone(),
-            ),
-
-            local_cache: GlobalStateOutputTransformer::new(
-                local_cache.clone_global_state_processor(),
-                device_id.clone(),
-            ),
-
-            local_cache_access: GlobalStateAccessOutputTransformer::new(
-                local_cache.clone_access_processor(),
-                device_id.clone(),
-            ),
-        };
-
         let admin_manager = AdminManager::new(
             zone_role_manager.clone(),
             services.crypto_service.local_service().verifier().clone(),
@@ -430,6 +406,8 @@ impl CyfsStackImpl {
             root_state,
             local_cache,
 
+            global_state_meta,
+
             device_manager,
             zone_manager,
 
@@ -439,7 +417,6 @@ impl CyfsStackImpl {
             tracker,
 
             services,
-            processors,
 
             interface: OnceCell::new(),
             app_controller: OnceCell::new(),
@@ -456,9 +433,10 @@ impl CyfsStackImpl {
             acl_manager,
         };
 
-        // first init current zone info
-        let zone_manager = stack.zone_manager.clone();
-        async_std::task::spawn(async move { zone_manager.get_current_info().await }).await?;
+        // init an system-dec router-handler processor for later use
+        let mut system_source = source.clone();
+        system_source.dec = cyfs_core::get_system_dec_app().to_owned();
+        let system_router_handlers = stack.router_handlers.clone_processor(system_source);
 
         // root_state should never change during stack init and before role_manager init access_mode
         let now_root = stack.root_state.local_service().state().get_current_root();
@@ -477,13 +455,14 @@ impl CyfsStackImpl {
             .await?;
 
         // 首先初始化acl
-        stack.acl_manager.init().await;
+        stack.acl_manager.init().await?;
 
         Self::init_chunk_manager(&chunk_manager, isolate).await?;
 
         if param.config.sync_service {
             // 避免调用栈过深，使用task异步初始化
 
+            let system_router_handlers = system_router_handlers.clone();
             let (ret, s) = async_std::task::spawn(async move {
                 let ret = stack
                     .zone_role_manager
@@ -491,7 +470,7 @@ impl CyfsStackImpl {
                         &stack.root_state.local_service(),
                         &stack.bdt_stack,
                         &stack.device_manager.clone_cache(),
-                        &stack.router_handlers,
+                        &system_router_handlers,
                         &stack.services.util_service,
                         chunk_manager,
                     )
@@ -510,7 +489,10 @@ impl CyfsStackImpl {
         }
 
         // init admin manager
-        stack.admin_manager.init(&stack.router_handlers).await?;
+        stack.admin_manager.init(&system_router_handlers).await?;
+
+        // bind bdt stack and start sync
+        sn_config_manager.bind_bdt_stack(stack.bdt_stack.clone());
 
         // 初始化对外interface
         let mut interface = ObjectListenerManager::new(device_id.clone());
@@ -529,6 +511,7 @@ impl CyfsStackImpl {
 
         interface.init(
             init_params,
+            &stack.config,
             &stack.services,
             &stack.router_handlers,
             &stack.router_events,
@@ -537,6 +520,7 @@ impl CyfsStackImpl {
             &stack.zone_role_manager,
             &stack.root_state,
             &stack.local_cache,
+            &stack.global_state_meta,
         );
 
         let interface = Arc::new(interface);
@@ -546,9 +530,7 @@ impl CyfsStackImpl {
 
         // init app controller
         let app_controller = AppController::new(param.config.isolate.clone(), interface);
-        app_controller
-            .init(&stack.router_handlers.clone_processor())
-            .await?;
+        app_controller.init(&system_router_handlers).await?;
 
         if let Err(_) = stack.app_controller.set(app_controller) {
             unreachable!();
@@ -598,15 +580,9 @@ impl CyfsStackImpl {
     async fn load_global_state(
         device_id: &DeviceId,
         device: &Device,
-        noc: Box<dyn NamedObjectCache>,
-        acl: AclManagerRef,
-        forward: ForwardProcessorManager,
-        zone_manager: ZoneManager,
-        fail_handler: ObjectFailHandler,
-        non_service: &Arc<NONService>,
-        ndn_service: &Arc<NDNService>,
+        noc: NamedObjectCacheRef,
         config: &StackGlobalConfig,
-    ) -> BuckyResult<(GlobalStateService, GlobalStateLocalService)> {
+    ) -> BuckyResult<(GlobalStateLocalService, GlobalStateLocalService)> {
         let owner = match device.desc().owner() {
             Some(owner) => owner.to_owned(),
             None => {
@@ -618,54 +594,103 @@ impl CyfsStackImpl {
             }
         };
 
-        let ndn_processor = ndn_service.get_api(&NDNAPILevel::Router).clone();
-
-        let noc_processor = non_service.raw_noc_processor().clone();
-
-        // root_state
-        let root_state = GlobalStateService::load(
+        // load root state
+        let root_state = GlobalStateLocalService::load(
             GlobalStateCategory::RootState,
-            acl,
-            &device_id,
-            Some(owner),
-            noc.clone_noc(),
-            forward,
-            zone_manager,
-            fail_handler,
-            noc_processor,
-            ndn_processor,
+            device_id,
+            Some(owner.clone()),
+            noc.clone(),
             config.clone(),
         )
         .await?;
-        info!(
-            "load root state success! device={}, owner={}",
-            device_id, owner
-        );
 
-        // local_state
-        let local_state = GlobalStateLocalService::load(
+        // make sure the system dec root state is created
+        config.change_access_mode(GlobalStateCategory::RootState, GlobalStateAccessMode::Write);
+        root_state
+            .state()
+            .get_dec_root_manager(cyfs_core::get_system_dec_app(), true)
+            .await?;
+        config.change_access_mode(GlobalStateCategory::RootState, GlobalStateAccessMode::Read);
+
+        // load local cache
+        let local_cache = GlobalStateLocalService::load(
             GlobalStateCategory::LocalCache,
-            &device_id,
+            device_id,
             Some(owner),
             noc,
             config.clone(),
         )
         .await?;
-        info!(
-            "load local cache success! device={}, owner={}",
-            device_id, owner
-        );
 
-        // local state always writable
+        // local cache always writable
         config.change_access_mode(
             GlobalStateCategory::LocalCache,
             GlobalStateAccessMode::Write,
         );
 
-        Ok((root_state, local_state))
+        info!(
+            "load local global state success! device={}, owner={}",
+            device_id, owner
+        );
+
+        Ok((root_state, local_cache))
+    }
+
+    async fn load_root_state_service(
+        local_service: GlobalStateLocalService,
+        acl: AclManagerRef,
+        forward: ForwardProcessorManager,
+        zone_manager: ZoneManagerRef,
+        fail_handler: ObjectFailHandler,
+        non_service: &Arc<NONService>,
+        ndn_service: &Arc<NDNService>,
+    ) -> BuckyResult<GlobalStateService> {
+        let ndn_processor = ndn_service.get_api(&NDNAPILevel::Router).clone();
+        let noc_processor = non_service.raw_noc_processor().clone();
+
+        // root_state
+        let root_state = GlobalStateService::load(
+            GlobalStateCategory::RootState,
+            local_service,
+            acl,
+            forward,
+            zone_manager,
+            fail_handler,
+            noc_processor,
+            ndn_processor,
+        )
+        .await?;
+        info!("load root state service success!",);
+
+        Ok(root_state)
+    }
+
+    fn load_global_state_meta(
+        isolate: &str,
+        root_state: &GlobalStateLocalService,
+        noc: NamedObjectCacheRef,
+        source: &RequestSourceInfo,
+    ) -> GlobalStateMetaLocalService {
+        let processor = root_state.clone_global_state_processor();
+        let processor = GlobalStateOutputTransformer::new(processor, source.clone());
+
+        GlobalStateMetaLocalService::new(isolate, processor, root_state.clone(), noc.clone())
+    }
+
+    fn load_global_state_meta_service(
+        local_service: GlobalStateMetaLocalService,
+        forward: ForwardProcessorManager,
+        zone_manager: ZoneManagerRef,
+        fail_handler: ObjectFailHandler,
+    ) -> GlobalStateMetaService {
+        let global_state_meta =
+            GlobalStateMetaService::new(local_service, forward, zone_manager, fail_handler);
+
+        global_state_meta
     }
 
     async fn init_bdt_stack(
+        zone_manager: ZoneManagerRef,
         acl: AclManagerRef,
         params: BdtStackParams,
         device_cache: Box<dyn DeviceCache>,
@@ -673,8 +698,24 @@ impl CyfsStackImpl {
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
         router_handlers: RouterHandlersManager,
-        chunk_store: Box<dyn ChunkReader>,
-    ) -> BuckyResult<StackGuard> {
+        chunk_manager: ChunkManagerRef,
+        sn_config_manager: &SNConfigManager,
+    ) -> BuckyResult<(StackGuard, BdtNDNEventHandler)> {
+        let chunk_store = Box::new(ChunkStoreReader::new(
+            chunk_manager.clone(),
+            ndc.clone(),
+            tracker.clone(),
+        )) as Box<dyn ChunkReader>;
+
+        let event = BdtNDNEventHandler::new(
+            zone_manager,
+            acl,
+            router_handlers,
+            chunk_manager,
+            ndc.clone(),
+            tracker.clone(),
+        );
+
         let mut bdt_params = StackOpenParams::new(isolate);
 
         if !params.tcp_port_mapping.is_empty() {
@@ -685,9 +726,19 @@ impl CyfsStackImpl {
             bdt_params.config.interface.udp.sn_only = sn_only;
         }
 
+        // priority: params sn(always loaded from config dir) > sn config manager(always loaded from meta) > buildin sn
         if !params.known_sn.is_empty() {
             bdt_params.known_sn = Some(params.known_sn);
+        } else {
+            // use sn from sn config manager
+            let mut sn_list = sn_config_manager.get_sn_list();
+            if sn_list.is_empty() {
+                sn_list = cyfs_util::get_builtin_sn_desc().clone();
+            }
+
+            bdt_params.known_sn = Some(sn_list.into_iter().map(|v| v.1).collect());
         }
+
         if !params.known_device.is_empty() {
             bdt_params.known_device = Some(params.known_device);
         }
@@ -699,8 +750,7 @@ impl CyfsStackImpl {
         bdt_params.outer_cache = Some(device_cache);
         bdt_params.chunk_store = Some(chunk_store);
 
-        let acl = NDNBdtDataAclProcessor::new(acl, router_handlers);
-        bdt_params.ndn_acl = Some(Box::new(acl));
+        bdt_params.ndn_event = Some(Box::new(event.clone()));
 
         let ret = Stack::open(params.device, params.secret, bdt_params).await;
 
@@ -719,44 +769,39 @@ impl CyfsStackImpl {
         let begin = std::time::Instant::now();
         let net_listener = bdt_stack.net_manager().listener().clone();
         let ret = net_listener.wait_online().await;
-        let during = std::time::Instant::now() - begin;
         if let Err(e) = ret {
             error!(
-                "bdt stack wait sn online failed! {}, during={}s, {}",
+                "bdt stack wait sn online failed! {}, during={}ms, {}",
                 bdt_stack.local_device_id(),
-                during.as_secs(),
+                begin.elapsed().as_millis(),
                 e
             );
         } else {
             info!(
-                "bdt stack sn online success! {}, during={}s",
+                "bdt stack sn online success! {}, during={}ms",
                 bdt_stack.local_device_id(),
-                during.as_secs()
+                begin.elapsed().as_millis(),
             );
         }
 
-        Ok(bdt_stack)
+        Ok((bdt_stack, event))
     }
 
     async fn init_raw_noc(
-        device_id: &DeviceId,
-        noc_type: NamedObjectStorageType,
         isolate: &str,
-        known_objects: Vec<KnownObject>,
-    ) -> BuckyResult<ObjectCacheManager> {
-        let mut noc = ObjectCacheManager::new(device_id);
-
+        known_objects: CyfsStackKnownObjects,
+    ) -> BuckyResult<NamedObjectCacheRef> {
         let isolate = isolate.to_owned();
 
         // 这里切换线程同步初始化，否则debug下可能会导致主线程调用栈过深
         let noc = async_std::task::spawn(async move {
-            match noc.init(noc_type, &isolate).await {
-                Ok(_) => {
-                    info!("init object cache manager success!");
+            match NamedObjectCacheManager::create(&isolate).await {
+                Ok(noc) => {
+                    info!("init named object cache manager success!");
                     Ok(noc)
                 }
                 Err(e) => {
-                    error!("init object cache manager failed: {}", e);
+                    error!("init named object cache manager failed: {}", e);
                     Err(e)
                 }
             }
@@ -765,22 +810,26 @@ impl CyfsStackImpl {
 
         // 这里异步的初始化一些已知对象
         let noc2 = noc.clone();
-        let device_id = device_id.clone();
-        async_std::task::spawn(async move {
+        let task = async_std::task::spawn(async move {
             // 初始化known_objects
-            for item in known_objects.into_iter() {
-                let req = NamedObjectCacheInsertObjectRequest {
-                    protocol: NONProtocol::Native,
-                    source: device_id.clone(),
-                    object_id: item.object_id,
-                    dec_id: None,
-                    object_raw: item.object_raw,
-                    object: item.object,
-                    flags: 0u32,
+            for object in known_objects.list.into_iter() {
+
+                let req = NamedObjectCachePutObjectRequest {
+                    source: RequestSourceInfo::new_local_system(),
+                    object,
+                    storage_category: NamedObjectStorageCategory::Storage,
+                    context: None,
+                    last_access_rpath: None,
+                    access_string: None,
                 };
-                let _ = noc2.insert_object_with_event(&req, None).await;
+                let _ = noc2.put_object(&req).await;
             }
         });
+
+        if known_objects.mode == CyfsStackKnownObjectsInitMode::Sync {
+            task.await;
+        }
+        
         Ok(noc)
     }
 
@@ -840,10 +889,7 @@ impl CyfsStackImpl {
         }
     }
 
-    async fn init_chunk_manager(
-        chunk_manager: &Arc<ChunkManager>,
-        isolate: &str,
-    ) -> BuckyResult<()> {
+    async fn init_chunk_manager(chunk_manager: &ChunkManagerRef, isolate: &str) -> BuckyResult<()> {
         match chunk_manager.init(isolate).await {
             Ok(()) => {
                 log::info!("init chunk manager success!");
@@ -922,36 +968,103 @@ impl CyfsStackImpl {
 
     fn register_custom_objects_format() {
         use std::sync::atomic::{AtomicBool, Ordering};
-    
+
         static INIT_DONE: AtomicBool = AtomicBool::new(false);
         if !INIT_DONE.swap(true, Ordering::SeqCst) {
             cyfs_core::register_core_objects_format();
             cyfs_lib::register_core_objects_format();
         }
     }
-    
+
+    pub async fn open_uni_stack(&self, dec_id: &Option<ObjectId>) -> UniCyfsStackRef {
+        let processors = self.gen_processors(dec_id).await;
+        Arc::new(processors)
+    }
+
+    async fn gen_processors(&self, dec_id: &Option<ObjectId>) -> CyfsStackProcessors {
+        let source = self
+            .zone_manager
+            .get_current_source_info(dec_id)
+            .await
+            .unwrap();
+
+        // 缓存所有processors，用以uni_stack直接返回使用
+        let processors = CyfsStackProcessors {
+            non_service: NONOutputTransformer::new(
+                self.services.non_service.clone_processor(),
+                source.clone(),
+            ),
+            ndn_service: NDNOutputTransformer::new(
+                self.services.ndn_service.clone_processor(),
+                source.clone(),
+            ),
+            crypto_service: CryptoOutputTransformer::new(
+                self.services.crypto_service.clone_processor(),
+                source.clone(),
+            ),
+            util_service: UtilOutputTransformer::new(
+                self.services.util_service.clone_processor(),
+                source.clone(),
+            ),
+            trans_service: TransOutputTransformer::new(
+                self.services.trans_service.clone_processor(),
+                source.clone(),
+            ),
+            router_handlers: self.router_handlers.clone_processor(source.clone()),
+            router_events: self.router_events.clone_processor(),
+
+            root_state: GlobalStateOutputTransformer::new(
+                self.root_state.clone_global_state_processor(),
+                source.clone(),
+            ),
+
+            root_state_accessor: GlobalStateAccessorOutputTransformer::new(
+                self.root_state.clone_accessor_processor(),
+                source.clone(),
+            ),
+
+            local_cache: GlobalStateOutputTransformer::new(
+                self.local_cache.clone_global_state_processor(),
+                source.clone(),
+            ),
+
+            local_cache_accessor: GlobalStateAccessorOutputTransformer::new(
+                self.local_cache.clone_accessor_processor(),
+                source.clone(),
+            ),
+
+            root_state_meta: GlobalStateMetaOutputTransformer::new(
+                self.global_state_meta
+                    .clone_processor(GlobalStateCategory::RootState),
+                source.clone(),
+            ),
+            local_cache_meta: GlobalStateMetaOutputTransformer::new(
+                self.global_state_meta
+                    .clone_processor(GlobalStateCategory::LocalCache),
+                source.clone(),
+            ),
+        };
+
+        processors
+    }
 }
 
 #[derive(Clone)]
 pub struct CyfsStack {
     stack: Arc<CyfsStackImpl>,
-
-    // uni_stack
-    uni_stack: Arc<OnceCell<UniObjectStackRef>>,
 }
 
 impl CyfsStack {
     pub async fn open(
         bdt_param: BdtStackParams,
         param: CyfsStackParams,
-        known_objects: Vec<KnownObject>,
+        known_objects: CyfsStackKnownObjects,
     ) -> BuckyResult<CyfsStack> {
         info!("will init object stack: {:?}", param);
 
         let stack_impl = CyfsStackImpl::open(bdt_param, param, known_objects).await?;
         Ok(Self {
             stack: Arc::new(stack_impl),
-            uni_stack: Arc::new(OnceCell::new()),
         })
     }
 
@@ -975,7 +1088,7 @@ impl CyfsStack {
         &self.stack.bdt_stack
     }
 
-    pub fn noc_manager(&self) -> &ObjectCacheManager {
+    pub fn noc_manager(&self) -> &NamedObjectCacheRef {
         &self.stack.noc
     }
 
@@ -983,7 +1096,7 @@ impl CyfsStack {
         &self.stack.device_manager
     }
 
-    pub fn zone_manager(&self) -> &ZoneManager {
+    pub fn zone_manager(&self) -> &ZoneManagerRef {
         &self.stack.zone_manager
     }
 
@@ -1023,30 +1136,42 @@ impl CyfsStack {
         &self.stack.root_state
     }
 
-    pub fn root_state_stub(
+    // use system dec as default dec
+    pub async fn root_state_stub(
         &self,
         target: Option<ObjectId>,
-        dec_id: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
     ) -> GlobalStateStub {
+        let source = self
+            .zone_manager()
+            .get_current_source_info(&Some(cyfs_core::get_system_dec_app().to_owned()))
+            .await
+            .unwrap();
         let processor = GlobalStateOutputTransformer::new(
             self.stack.root_state.clone_global_state_processor(),
-            self.zone_manager().get_current_device_id().clone(),
+            source,
         );
 
-        GlobalStateStub::new(processor, target, dec_id)
+        GlobalStateStub::new(processor, target, target_dec_id)
     }
 
     pub fn local_cache(&self) -> &GlobalStateLocalService {
         &self.stack.local_cache
     }
 
-    pub fn local_cache_stub(&self, dec_id: Option<ObjectId>) -> GlobalStateStub {
+    // use system dec as default dec
+    pub async fn local_cache_stub(&self, target_dec_id: Option<ObjectId>) -> GlobalStateStub {
+        let source = self
+            .zone_manager()
+            .get_current_source_info(&Some(cyfs_core::get_system_dec_app().to_owned()))
+            .await
+            .unwrap();
         let processor = GlobalStateOutputTransformer::new(
             self.stack.local_cache.clone_global_state_processor(),
-            self.zone_manager().get_current_device_id().clone(),
+            source,
         );
 
-        GlobalStateStub::new(processor, None, dec_id)
+        GlobalStateStub::new(processor, None, target_dec_id)
     }
 
     // 只有ood才会开启DSG服务
@@ -1069,57 +1194,7 @@ impl CyfsStack {
         self.stack.open_shared_object_stack(dec_id).await
     }
 
-    fn create_uni_stack(&self) -> UniObjectStackRef {
-        Arc::new(self.clone())
-    }
-
-    pub fn uni_stack(&self) -> &UniObjectStackRef {
-        self.uni_stack.get_or_init(|| self.create_uni_stack())
-    }
-}
-
-impl UniCyfsStack for CyfsStack {
-    fn non_service(&self) -> &NONOutputProcessorRef {
-        &self.stack.processors.non_service
-    }
-
-    fn ndn_service(&self) -> &NDNOutputProcessorRef {
-        &self.stack.processors.ndn_service
-    }
-
-    fn crypto_service(&self) -> &CryptoOutputProcessorRef {
-        &self.stack.processors.crypto_service
-    }
-
-    fn util_service(&self) -> &UtilOutputProcessorRef {
-        &self.stack.processors.util_service
-    }
-
-    fn trans_service(&self) -> &TransOutputProcessorRef {
-        &self.stack.processors.trans_service
-    }
-
-    fn router_handlers(&self) -> &RouterHandlerManagerProcessorRef {
-        &self.stack.processors.router_handlers
-    }
-
-    fn router_events(&self) -> &RouterEventManagerProcessorRef {
-        &self.stack.processors.router_events
-    }
-
-    fn root_state(&self) -> &GlobalStateOutputProcessorRef {
-        &self.stack.processors.root_state
-    }
-
-    fn root_state_access(&self) -> &GlobalStateAccessOutputProcessorRef {
-        &self.stack.processors.root_state_access
-    }
-
-    fn local_cache(&self) -> &GlobalStateOutputProcessorRef {
-        &self.stack.processors.local_cache
-    }
-
-    fn local_cache_access(&self) -> &GlobalStateAccessOutputProcessorRef {
-        &self.stack.processors.local_cache_access
+    pub async fn open_uni_stack(&self, dec_id: &Option<ObjectId>) -> UniCyfsStackRef {
+        self.stack.open_uni_stack(dec_id).await
     }
 }

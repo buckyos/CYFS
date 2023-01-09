@@ -1,5 +1,5 @@
 use crate::crypto::*;
-use crate::{non::NONInputHttpRequest, non_api::NONRequestUrlParser};
+use crate::non::NONInputHttpRequest;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -18,24 +18,22 @@ impl CryptoRequestHandler {
     fn decode_common_headers<State>(
         req: &NONInputHttpRequest<State>,
     ) -> BuckyResult<CryptoInputRequestCommon> {
+        // req_path
+        let req_path = RequestorHelper::decode_optional_header_with_utf8_decoding(
+            &req.request,
+            cyfs_base::CYFS_REQ_PATH,
+        )?;
+
         // 尝试提取flags
         let flags: Option<u32> =
             RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_FLAGS)?;
-
-        // 尝试提取dec字段
-        let dec_id: Option<ObjectId> =
-            RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_DEC_ID)?;
 
         // 尝试提取target字段
         let target = RequestorHelper::decode_optional_header(&req.request, cyfs_base::CYFS_TARGET)?;
 
         let ret = CryptoInputRequestCommon {
-            req_path: None,
-
+            req_path,
             source: req.source.clone(),
-            protocol: req.protocol.clone(),
-
-            dec_id,
             target,
             flags: flags.unwrap_or(0),
         };
@@ -43,6 +41,7 @@ impl CryptoRequestHandler {
         Ok(ret)
     }
 
+    // verify_object
     pub async fn process_verify_object<State>(
         &self,
         req: NONInputHttpRequest<State>,
@@ -72,12 +71,9 @@ impl CryptoRequestHandler {
         req: NONInputHttpRequest<State>,
         body: Vec<u8>,
     ) -> BuckyResult<CryptoVerifyObjectInputResponse> {
-        let param = NONRequestUrlParser::parse_put_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
 
-        let mut object = NONObjectInfo::new(param.object_id, body, None);
-        object.decode_and_verify()?;
+        let object = NONObjectInfo::new_from_object_raw(body)?;
 
         let sign_type: VerifySignType =
             RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_SIGN_TYPE)?;
@@ -95,7 +91,7 @@ impl CryptoRequestHandler {
                     cyfs_base::CYFS_SIGN_OBJ,
                 )?;
 
-                let mut sign_object = NONSlimObjectInfo::new(object_id, object_raw,None);
+                let mut sign_object = NONSlimObjectInfo::new(object_id, object_raw, None);
                 sign_object.decode_and_verify()?;
 
                 VerifyObjectType::Object(sign_object)
@@ -126,6 +122,7 @@ impl CryptoRequestHandler {
         self.processor.verify_object(req).await
     }
 
+    // sign_object
     pub async fn process_sign_object<State>(
         &self,
         req: NONInputHttpRequest<State>,
@@ -154,14 +151,11 @@ impl CryptoRequestHandler {
         req: NONInputHttpRequest<State>,
         body: Vec<u8>,
     ) -> BuckyResult<CryptoSignObjectInputResponse> {
-        let param = NONRequestUrlParser::parse_put_param(&req.request)?;
-        let mut common = Self::decode_common_headers(&req)?;
-        common.req_path = param.req_path;
+        let common = Self::decode_common_headers(&req)?;
 
-        let mut object = NONObjectInfo::new(param.object_id, body, None);
-        object.decode_and_verify()?;
+        let object = NONObjectInfo::new_from_object_raw(body)?;
 
-        let flags = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_SIGN_FLAGS)?;
+        let flags = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_CRYPTO_FLAGS)?;
 
         let req = CryptoSignObjectInputRequest {
             common,
@@ -172,5 +166,95 @@ impl CryptoRequestHandler {
         info!("recv sign object request: {:?}", req);
 
         self.processor.sign_object(req).await
+    }
+
+    // encrypt_data
+    pub async fn process_encrypt_data<State>(
+        &self,
+        req: NONInputHttpRequest<State>,
+        body: Vec<u8>,
+    ) -> Response {
+        let ret = self.on_encrypt_request(req, body).await;
+        match ret {
+            Ok(resp) => Self::encode_encrypt_response(resp),
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    fn encode_encrypt_response(resp: CryptoEncryptDataInputResponse) -> Response {
+        let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+        RequestorHelper::encode_opt_header(&mut http_resp, CYFS_AES_KEY, &resp.aes_key);
+        http_resp.set_body(resp.result);
+
+        http_resp.into()
+    }
+
+    async fn on_encrypt_request<State>(
+        &self,
+        req: NONInputHttpRequest<State>,
+        body: Vec<u8>,
+    ) -> BuckyResult<CryptoEncryptDataInputResponse> {
+        let common = Self::decode_common_headers(&req)?;
+
+        let data = if body.len() > 0 { Some(body) } else { None };
+
+        let encrypt_type: CryptoEncryptType =
+            RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_ENCRYPT_TYPE)?;
+
+        let flags = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_CRYPTO_FLAGS)?;
+
+        let req = CryptoEncryptDataInputRequest {
+            common,
+            encrypt_type,
+            data,
+            flags,
+        };
+
+        info!("recv encrypt data request: {:?}", req);
+        self.processor.encrypt_data(req).await
+    }
+
+    // decrypt_data
+    pub async fn process_decrypt_data<State>(
+        &self,
+        req: NONInputHttpRequest<State>,
+        body: Vec<u8>,
+    ) -> Response {
+        let ret = self.on_decrypt_request(req, body).await;
+        match ret {
+            Ok(resp) => Self::encode_decrypt_response(resp),
+            Err(e) => RequestorHelper::trans_error(e),
+        }
+    }
+
+    fn encode_decrypt_response(resp: CryptoDecryptDataInputResponse) -> Response {
+        let mut http_resp = RequestorHelper::new_response(StatusCode::Ok);
+        RequestorHelper::encode_header(&mut http_resp, CYFS_DECRYPT_RET, &resp.result);
+        http_resp.set_body(resp.data);
+
+        http_resp.into()
+    }
+
+    async fn on_decrypt_request<State>(
+        &self,
+        req: NONInputHttpRequest<State>,
+        body: Vec<u8>,
+    ) -> BuckyResult<CryptoDecryptDataInputResponse> {
+        let common = Self::decode_common_headers(&req)?;
+
+        let decrypt_type: CryptoDecryptType =
+            RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_DECRYPT_TYPE)?;
+
+        let flags = RequestorHelper::decode_header(&req.request, cyfs_base::CYFS_CRYPTO_FLAGS)?;
+
+        let req = CryptoDecryptDataInputRequest {
+            common,
+            decrypt_type,
+            data: body,
+            flags,
+        };
+
+        info!("recv decrypt data request: {:?}", req);
+        self.processor.decrypt_data(req).await
     }
 }

@@ -7,7 +7,7 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*, 
+    protocol::{*, v0::*}, 
     interface::*, 
     stream::{StreamContainer, StreamProviderSelector}, 
     tunnel::{self, Tunnel, TunnelContainer, ProxyType}, 
@@ -119,12 +119,12 @@ impl ConnectTcpStream {
             task::spawn(async move {
                 let tunnel_container: &TunnelContainer = ca.0.stream.as_ref().tunnel();
                 let keystore = tunnel_container.stack().keystore().clone();
-                let key = keystore.create_key(tunnel_container.remote(), false);
+                let key = keystore.create_key(tunnel_container.remote_const(), false);
                 let connect_result = tcp::Interface::connect(/*ca.local().addr().ip(),*/
                                                                     *ca.remote(),
                                                                     tunnel_container.remote().clone(),
                                                                     tunnel_container.remote_const().clone(),
-                                                                    key.aes_key, 
+                                                                    key.key, 
                                                                     Stack::from(&ca.0.stack).config().tunnel.tcp.connect_timeout
                 ).await;
 
@@ -218,7 +218,7 @@ impl ConnectStreamAction for ConnectTcpStream {
         }
     }
 
-    async fn continue_connect(&self) -> Result<(), BuckyError> {
+    async fn continue_connect(&self) -> BuckyResult<StreamProviderSelector> {
         // 向已经联通的tcp interface发 tcp syn connection，收到对端返回的tcp ack connection时establish
         let interface = {
             let state = &mut *self.0.state.write().unwrap();
@@ -237,7 +237,7 @@ impl ConnectStreamAction for ConnectTcpStream {
             }
         }?;
         let syn_stream = self.0.stream.as_ref().syn_tcp_stream().ok_or_else(|| BuckyError::new(BuckyErrorCode::ErrorState, "continue connect on stream not connecting"))?;
-        let _ = match interface.confirm_connect(&Stack::from(&self.0.stack), vec![DynamicPackage::from(syn_stream)], Stack::from(&self.0.stack).config().tunnel.tcp.confirm_timeout).await {
+        let ack = match interface.confirm_connect(&Stack::from(&self.0.stack), vec![DynamicPackage::from(syn_stream)], Stack::from(&self.0.stack).config().tunnel.tcp.confirm_timeout).await {
             Ok(resp_box) => {
                 let packages = resp_box.packages_no_exchange();
                 if packages.len() == 1 && packages[0].cmd_code() == PackageCmdCode::TcpAckConnection {
@@ -249,7 +249,7 @@ impl ConnectStreamAction for ConnectTcpStream {
                     match state {
                         ConnectTcpStreamState::Connecting2 => {
                             *state = ConnectTcpStreamState::Establish;
-                            Ok(())
+                            Ok(ack.clone())
                         }, 
                         _ => Err(BuckyError::new(BuckyErrorCode::ErrorState, "tcp stram got ack but action not in connecting2 state"))
                     }
@@ -265,12 +265,14 @@ impl ConnectStreamAction for ConnectTcpStream {
                 Err(e)
             }
         }.map_err(|e| {
-            // 这里出错的话 标记 tunnel dead
-            self.0.tunnel.mark_dead(self.0.tunnel.state());
+            // self.0.tunnel.mark_dead(self.0.tunnel.state());
             e
         })?;
 
-        self.0.stream.as_ref().establish_with(StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone()), &self.0.stream).await
+        Ok(StreamProviderSelector::Tcp(
+                interface.socket().clone(), 
+                interface.key().clone(), 
+                Some(ack.clone())))
     }
 }
 
@@ -430,7 +432,7 @@ impl ConnectStreamAction for AcceptReverseTcpStream {
         }
     }
 
-    async fn continue_connect(&self) -> Result<(), BuckyError> {
+    async fn continue_connect(&self) -> BuckyResult<StreamProviderSelector> {
         // 向已经联通的tcp interface发 tcp syn connection，收到对端返回的tcp ack connection时establish
         let interface = {
             let state = &mut *self.0.state.write().unwrap();
@@ -464,7 +466,10 @@ impl ConnectStreamAction for AcceptReverseTcpStream {
             }
         }?;
 
-        self.0.stream.as_ref().establish_with(StreamProviderSelector::Tcp(interface.socket().clone(), interface.key().clone()), &self.0.stream).await
+        Ok(StreamProviderSelector::Tcp(
+                interface.socket().clone(), 
+                interface.key().clone(), 
+                None))
     }
 }
 

@@ -15,8 +15,10 @@ use async_trait::{async_trait};
 use ringbuf;
 use cyfs_base::*;
 use crate::{
-    types::*, 
-    protocol::{self, *},
+    types::*,
+    protocol::{self, *, v0::*},
+    history::keystore, 
+    MTU,
     interface::{self, *, tcp::{OnTcpInterface, RecvBox, PackageInterface}}
 };
 use super::{tunnel::{self, DynamicTunnel, TunnelOwner, ProxyType}, TunnelContainer};
@@ -59,17 +61,29 @@ struct ConnectingState {
     connector: ConnectorState 
 }
 
+
+
 enum PackageElem {
     Package(DynamicPackage), 
-    RawData(Vec<u8>)
+    RawData(Vec<u8>),  
 }
+
+enum CommandElem {
+    Discard(usize)
+}
+
+enum SignalElem {
+    Package(PackageElem), 
+    Command(CommandElem)
+}
+
 
 struct PreActiveState {
     owner: TunnelContainer, 
     connector: ConnectorState, 
     remote_timestamp: Timestamp, 
-    package_writer: Sender<PackageElem>,
-    package_reader: Receiver<PackageElem>, 
+    signal_writer: Sender<SignalElem>,
+    signal_reader: Receiver<SignalElem>, 
 }
 
 struct ActiveState {
@@ -77,7 +91,7 @@ struct ActiveState {
     interface: tcp::PackageInterface, 
     remote_timestamp: Timestamp, 
     syn_seq: TempSeq, 
-    package_writer: Sender<PackageElem>,
+    signal_writer: Sender<SignalElem>,
     piece_writer: ringbuf::Producer<u8>, 
     dead_waiters: StateWaiter
 }
@@ -88,7 +102,8 @@ struct TunnelImpl {
     keeper_count: AtomicI32, 
     last_active: AtomicU64, 
     retain_connect_timestamp: AtomicU64, 
-    state: Mutex<TunnelState>
+    state: Mutex<TunnelState>,
+    mtu: usize,
 }
 
 #[derive(Clone)]
@@ -106,6 +121,7 @@ impl Tunnel {
         ep_pair: EndpointPair) -> Self {
         let remote_device_id = owner.remote().clone();
         let tunnel = Self(Arc::new(TunnelImpl {
+            mtu: MTU-12, 
             remote_device_id, 
             local_remote: ep_pair, 
             keeper_count: AtomicI32::new(0), 
@@ -182,7 +198,7 @@ impl Tunnel {
                 TunnelState::Connecting(connecting) => {
                     info!("{} Connecting=>PreActive", self);
                     let owner = connecting.owner.clone();
-                    let (package_writer, package_reader) = bounded(owner.config().tcp.package_buffer);
+                    let (signal_writer, signal_reader) = bounded(owner.config().tcp.package_buffer);
                     *state = TunnelState::PreActive(PreActiveState {
                         owner: owner.clone(), 
                         remote_timestamp, 
@@ -191,8 +207,8 @@ impl Tunnel {
                             ConnectorState::Connecting => ConnectorState::Connecting, 
                             ConnectorState::ReverseConnecting(_) => unreachable!()
                         },
-                        package_writer, 
-                        package_reader
+                        signal_writer, 
+                        signal_reader
                     });
                     Ok(NextStep {
                         owner, 
@@ -218,14 +234,14 @@ impl Tunnel {
                     if active.remote_timestamp < remote_timestamp {
                         info!("{} Active=>PreActive", self);
                         let owner = active.owner.clone();
-                        let (package_writer, package_reader) = bounded(owner.config().tcp.package_buffer);
+                        let (signal_writer, signal_reader) = bounded(owner.config().tcp.package_buffer);
                         let former_state = tunnel::TunnelState::Active(active.remote_timestamp);
                         *state = TunnelState::PreActive(PreActiveState {
                             owner: owner.clone(), 
                             remote_timestamp, 
                             connector: ConnectorState::None, 
-                            package_writer, 
-                            package_reader
+                            signal_writer, 
+                            signal_reader
                         });
                         Ok(NextStep {
                             owner, 
@@ -266,11 +282,26 @@ impl Tunnel {
         }
     }
 
+    pub fn discard_data_piece(&self) -> BuckyResult<()> {
+        let (signal_writer, len) = {
+            let state = &mut *self.0.state.lock().unwrap();
+            match state {
+                TunnelState::Active(active) => Ok((active.signal_writer.clone(), active.piece_writer.len())), 
+                _ => Err(BuckyError::new(BuckyErrorCode::ErrorState, "not active"))
+            }
+        }?;
+        if len > 0 {
+            info!("{} send discard command: {}", self, len);
+            let _ = signal_writer.try_send(SignalElem::Command(CommandElem::Discard(len)));
+        }
+        Ok(())
+    }
+
     pub fn send_data_piece(&self, buf: &[u8]) -> BuckyResult<()> {
         let state = &mut *self.0.state.lock().unwrap();
         match state {
             TunnelState::Active(active) => {
-                if active.piece_writer.capacity() - active.piece_writer.len() >= buf.len() {
+                if active.piece_writer.remaining() >= buf.len() {
                     let len = active.piece_writer.push_slice(buf);
                     assert_eq!(len, buf.len());
                     Ok(())
@@ -289,7 +320,7 @@ impl Tunnel {
                     owner: TunnelContainer, 
                     former_state: tunnel::TunnelState, 
                     cur_state: tunnel::TunnelState, 
-                    package_reader: Receiver<PackageElem>, 
+                    signal_reader: Receiver<SignalElem>, 
                     piece_reader: ringbuf::Consumer<u8>, 
                     reverse_waiter: Option<AbortHandle>, 
                     to_close: Option<tcp::PackageInterface>, 
@@ -302,7 +333,7 @@ impl Tunnel {
                         TunnelState::Connecting(connecting) => {
                             info!("{} connecting => active(remote:{}, seq:{:?})", self, remote_timestamp, syn_seq);
                             let owner = connecting.owner.clone();
-                            let (package_writer, package_reader) = bounded(owner.config().tcp.package_buffer);
+                            let (signal_writer, signal_reader) = bounded(owner.config().tcp.package_buffer);
                             let ring_buf = ringbuf::RingBuffer::<u8>::new(owner.config().tcp.piece_buffer * udp::MTU);
                             let (piece_writer, piece_reader) = ring_buf.split();
                             let mut dead_waiters = StateWaiter::new();
@@ -312,7 +343,7 @@ impl Tunnel {
                                 interface: interface.clone(), 
                                 remote_timestamp, 
                                 syn_seq, 
-                                package_writer, 
+                                signal_writer, 
                                 piece_writer, 
                                 dead_waiters
                             });
@@ -321,7 +352,7 @@ impl Tunnel {
                                 owner, 
                                 former_state: tunnel::TunnelState::Connecting, 
                                 cur_state: tunnel::TunnelState::Active(remote_timestamp), 
-                                package_reader, 
+                                signal_reader, 
                                 piece_reader,   
                                 reverse_waiter: None, 
                                 to_close: None, 
@@ -337,8 +368,8 @@ impl Tunnel {
                             let ring_buf = ringbuf::RingBuffer::<u8>::new(owner.config().tcp.piece_buffer * udp::MTU);
                             let (piece_writer, piece_reader) = ring_buf.split();
 
-                            let package_reader = pre_active.package_reader.clone();
-                            let package_writer = pre_active.package_writer.clone();
+                            let signal_reader = pre_active.signal_reader.clone();
+                            let signal_writer = pre_active.signal_writer.clone();
 
                             let mut dead_waiters = StateWaiter::new();
                             let dead_waiter = dead_waiters.new_waiter();
@@ -354,7 +385,7 @@ impl Tunnel {
                                 interface: interface.clone(),  
                                 remote_timestamp, 
                                 syn_seq, 
-                                package_writer, 
+                                signal_writer, 
                                 piece_writer, 
                                 dead_waiters
                             });
@@ -362,7 +393,7 @@ impl Tunnel {
                                 owner, 
                                 former_state, 
                                 cur_state: tunnel::TunnelState::Active(remote_timestamp), 
-                                package_reader, 
+                                signal_reader, 
                                 piece_reader, 
                                 reverse_waiter, 
                                 to_close: None, 
@@ -378,7 +409,7 @@ impl Tunnel {
     
                                 let ring_buf = ringbuf::RingBuffer::<u8>::new(owner.config().tcp.piece_buffer * udp::MTU);
                                 let (piece_writer, piece_reader) = ring_buf.split();
-                                let (package_writer, package_reader) = bounded(owner.config().tcp.package_buffer);
+                                let (signal_writer, signal_reader) = bounded(owner.config().tcp.package_buffer);
                                 let to_close = Some(active.interface.clone());
                                 
                                 let mut dead_waiters = StateWaiter::new();
@@ -389,7 +420,7 @@ impl Tunnel {
                                     interface: interface.clone(),  
                                     remote_timestamp, 
                                     syn_seq, 
-                                    package_writer, 
+                                    signal_writer, 
                                     piece_writer, 
                                     dead_waiters
                                 });
@@ -397,7 +428,7 @@ impl Tunnel {
                                     owner, 
                                     former_state, 
                                     cur_state: tunnel::TunnelState::Active(remote_timestamp), 
-                                    package_reader, 
+                                    signal_reader, 
                                     piece_reader, 
                                     reverse_waiter: None, 
                                     to_close, 
@@ -414,7 +445,7 @@ impl Tunnel {
                         reverse_waiter.abort();
                     }
                     self.start_recv(next_step.owner.clone(), interface, next_step.dead_waiter);
-                    self.start_send(next_step.owner.clone(), next_step.package_reader, next_step.piece_reader);
+                    self.start_send(next_step.owner.clone(), next_step.signal_reader, next_step.piece_reader);
 
                     if next_step.former_state != next_step.cur_state {
                         next_step.owner.sync_tunnel_state(&DynamicTunnel::new(self.clone()), next_step.former_state, next_step.cur_state);
@@ -587,7 +618,7 @@ impl Tunnel {
     async fn connect_inner(&self, owner: TunnelContainer, interface: Option<tcp::Interface>) -> Result<(tcp::PackageInterface, Timestamp, TempSeq), BuckyError> {
         info!("{} connect interface", self);
         let stack = owner.stack();
-        let key_stub = stack.keystore().create_key(owner.remote(), true);
+        let key_stub = stack.keystore().create_key(owner.remote_const(), true);
         let interface = if let Some(interface) = interface {
             Ok(interface)
         } else {
@@ -596,15 +627,15 @@ impl Tunnel {
             *tunnel::Tunnel::remote(self), 
             owner.remote().clone(), 
             owner.remote_const().clone(), 
-            key_stub.aes_key, 
+            key_stub.key, 
             owner.config().tcp.connect_timeout).await
         }?;
         let syn_seq = owner.generate_sequence();
         let syn_tunnel = SynTunnel {
-            from_device_id: stack.local_device_id().clone(),
+            protocol_version: owner.protocol_version(), 
+            stack_version: owner.stack_version(),  
             to_device_id: owner.remote().clone(),
             sequence: syn_seq.clone(),
-            from_container_id: IncreaseId::default(),
             from_device_desc: stack.local().clone(),
             send_time: bucky_time_now()
         };
@@ -634,19 +665,19 @@ impl Tunnel {
         let sn_id = remote.connect_info().sn_list().get(0).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "device no sn"))?;
         let sn = stack.device_cache().get(sn_id).await.ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "sn not cached"))?;
 
-        let key_stub = stack.keystore().create_key(owner.remote(), true);
-        let mut syn_box = PackageBox::encrypt_box(owner.remote().clone(), key_stub.aes_key.clone());
+        let key_stub = stack.keystore().create_key(owner.remote_const(), true);
+        let mut syn_box = PackageBox::encrypt_box(owner.remote().clone(), key_stub.key.clone());
         let syn_tunnel = SynTunnel {
-            from_device_id: stack.local_device_id().clone(),
+            protocol_version: owner.protocol_version(), 
+            stack_version: owner.stack_version(),  
             to_device_id: owner.remote().clone(),
             sequence: owner.generate_sequence(),
-            from_container_id: IncreaseId::default(),
             from_device_desc: stack.local().clone(),
             send_time: bucky_time_now()
         };
-        if !key_stub.is_confirmed {
-            let mut exchg = Exchange::from(&syn_tunnel);
-            exchg.sign(&key_stub.aes_key, stack.keystore().signer()).await?;
+        if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
+            let mut exchg = Exchange::from((&syn_tunnel, encrypted, key_stub.key.mix_key));
+            exchg.sign(stack.keystore().signer()).await?;
             syn_box.push(exchg);
         }
         syn_box.push(syn_tunnel);
@@ -674,8 +705,8 @@ impl Tunnel {
             true,
             false,
             |sn_call| {
-                let mut context = udp::PackageBoxEncodeContext::from((owner.remote_const(), sn_call));
-                let mut buf = vec![0u8; interface::udp::MTU];
+                let mut context = udp::PackageBoxEncodeContext::from(sn_call);
+                let mut buf = vec![0u8; interface::udp::MTU_LARGE];
                 let enc_len = syn_box.raw_tail_encode_with_context(&mut buf, &mut context, &None).unwrap().len();
                 buf.truncate(enc_len);
                 buf
@@ -721,7 +752,7 @@ impl Tunnel {
     fn start_send(
         &self, 
         owner: TunnelContainer, 
-        package_reader: Receiver<PackageElem>, 
+        signal_reader: Receiver<SignalElem>, 
         piece_reader: ringbuf::Consumer<u8>,  
         ) {
         let tunnel = self.clone();
@@ -745,23 +776,47 @@ impl Tunnel {
 
             info!("{} send loop start, {}", tunnel, owner.config().tcp.piece_interval.as_millis());
             loop {
-                let mut send_buf = [0u8; udp::MTU];
+                let mut send_buf = [0u8; udp::MTU_LARGE];
+                let mut piece_buf = [0u8; udp::MTU];
+              
+                fn handle_command(
+                    piece_reader: &mut ringbuf::Consumer<u8>, 
+                    command: CommandElem 
+                ) -> BuckyResult<()> {
+                    match command {
+                        CommandElem::Discard(len) => piece_reader.discard(len),
+                    };
+                    Ok(())
+                }
 
                 async fn handle_package(
                     interface: &PackageInterface, 
                     send_buf: &mut [u8], 
                     pkg: PackageElem) -> BuckyResult<()> {
                     match pkg {
-                        PackageElem::Package(package) => interface.send_package(send_buf, package).await, 
+                        PackageElem::Package(package) => interface.send_package(send_buf, package, false).await, 
                         PackageElem::RawData(data) => interface.send_raw_data(data).await
                     }
                 }
+
+                async fn handle_signal(
+                    interface: &PackageInterface, 
+                    piece_reader: &mut ringbuf::Consumer<u8>, 
+                    send_buf: &mut [u8], 
+                    signal: SignalElem
+                ) -> BuckyResult<()> {
+                    match signal {
+                        SignalElem::Package(package) => handle_package(interface, send_buf, package).await, 
+                        SignalElem::Command(command) => handle_command(piece_reader, command)
+                    }
+                }
+
 
                 async fn handle_piece(
                     interface: &PackageInterface, 
                     send_buf: &mut [u8], 
                     piece_reader: &mut ringbuf::Consumer<u8>, 
-                    package_reader: &Receiver<PackageElem>) -> BuckyResult<()> {
+                    signal_reader: &Receiver<SignalElem>) -> BuckyResult<()> {
                     loop {
                         let len = piece_reader.pop_slice(send_buf);
                         if len > 0 {
@@ -778,21 +833,21 @@ impl Tunnel {
                         } else {
                             break Ok(());
                         }
-                        if package_reader.len() > 0 {
+                        if signal_reader.len() > 0 {
                             // 优先处理package
                             break Ok(());
                         }
                     }
                 }
 
-                match future::timeout(owner.config().tcp.piece_interval, package_reader.recv()).await {
+                match future::timeout(owner.config().tcp.piece_interval, signal_reader.recv()).await {
                     Ok(recv) => {
                         match recv {
-                            Ok(pkg) => {
-                                match handle_package(&interface, &mut send_buf, pkg).await {
+                            Ok(signal) => {
+                                match handle_signal(&interface, &mut piece_reader, &mut send_buf, signal).await {
                                     Ok(_) => {
-                                        if package_reader.len() == 0 {
-                                            match handle_piece(&interface, &mut send_buf, &mut piece_reader, &package_reader).await {
+                                        if signal_reader.len() == 0 {
+                                            match handle_piece(&interface, &mut piece_buf, &mut piece_reader, &signal_reader).await {
                                                 Ok(_) => {
                                                     // continue
                                                 }, 
@@ -818,7 +873,7 @@ impl Tunnel {
                         }
                     }
                     Err(_err) => {
-                        match handle_piece(&interface, &mut send_buf, &mut piece_reader, &package_reader).await {
+                        match handle_piece(&interface, &mut piece_buf, &mut piece_reader, &signal_reader).await {
                             Ok(_) => {
                                 // continue
                             }, 
@@ -839,8 +894,7 @@ impl Tunnel {
         owner: TunnelContainer, 
         interface: tcp::PackageInterface) {
         // recv loop
-
-        let mut recv_buf = [0u8; udp::MTU];
+        let mut recv_buf = [0u8; udp::MTU_LARGE];
         loop {
             // tunnel显式销毁时，需要shutdown tcp stream; 这里receive_package就会出错了
             match interface.receive_package(&mut recv_buf).await {
@@ -851,8 +905,8 @@ impl Tunnel {
                         RecvBox::Package(package_box) => {
                             let stack = owner.stack();
                             if package_box.has_exchange() {
-                                stack.keystore()
-                                    .add_key(package_box.key(), package_box.remote(), true);
+                                // let exchange: &Exchange = package_box.packages()[0].as_ref();
+                                stack.keystore().add_key(package_box.key(), package_box.remote());
                             }
                             if let Err(err) = package_box.packages().iter().try_for_each(|pkg| {
                                 if pkg.cmd_code() == PackageCmdCode::PingTunnel {
@@ -963,7 +1017,6 @@ impl Tunnel {
                                     info!("send ping, tunnel:{}", tunnel);
                                     let ping = PingTunnel {
                                         package_id: 0,
-                                        to_container_id: IncreaseId::default(),
                                         send_time: now,
                                         recv_data: 0,
                                     };
@@ -985,6 +1038,10 @@ impl Tunnel {
 
 #[async_trait]
 impl tunnel::Tunnel for Tunnel {
+    fn mtu(&self) -> usize {
+        self.0.mtu
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -1022,20 +1079,20 @@ impl tunnel::Tunnel for Tunnel {
         if package.cmd_code() == PackageCmdCode::SessionData {
             return Err(BuckyError::new(BuckyErrorCode::UnSupport, "session data should not send from tcp tunnel"));
         }
-        let (package_writer, to_connect) = {
+        let (signal_writer, to_connect) = {
             match &*self.0.state.lock().unwrap() {
                 TunnelState::PreActive(pre_active) => {
-                    Ok((pre_active.package_writer.clone(), true))
+                    Ok((pre_active.signal_writer.clone(), true))
                 }, 
                 TunnelState::Active(active) => {
-                    Ok((active.package_writer.clone(), false))
+                    Ok((active.signal_writer.clone(), false))
                 },
                 _ => {
                     Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel not active"))
                 }
             }
         }?;
-        let _ = package_writer.try_send(PackageElem::Package(package));
+        let _ = signal_writer.try_send(SignalElem::Package(PackageElem::Package(package)));
         if to_connect {
             let _ = self.connect();
         }
@@ -1047,13 +1104,13 @@ impl tunnel::Tunnel for Tunnel {
     }
 
     fn send_raw_data(&self, data: &mut [u8]) -> Result<usize, BuckyError> {
-        let (package_writer, to_connect) = {
+        let (signal_writer, to_connect) = {
             match &*self.0.state.lock().unwrap() {
                 TunnelState::PreActive(pre_active) => {
-                    Ok((pre_active.package_writer.clone(), true))
+                    Ok((pre_active.signal_writer.clone(), true))
                 }, 
                 TunnelState::Active(active) => {
-                    Ok((active.package_writer.clone(), false))
+                    Ok((active.signal_writer.clone(), false))
                 },
                 _ => {
                     Err(BuckyError::new(BuckyErrorCode::ErrorState, "tunnel not active"))
@@ -1061,7 +1118,7 @@ impl tunnel::Tunnel for Tunnel {
             }
         }?;
         let len = data.len();
-        let _ = package_writer.try_send(PackageElem::RawData(Vec::from(data)));
+        let _ = signal_writer.try_send(SignalElem::Package(PackageElem::RawData(Vec::from(data))));
         if to_connect {
             let _ = self.connect();
         }
@@ -1130,7 +1187,6 @@ impl OnPackage<PingTunnel> for Tunnel {
     fn on_package(&self, ping: &PingTunnel, _context: Option<()>) -> Result<OnPackageResult, BuckyError> {
         let ping_resp = PingTunnelResp {
             ack_package_id: ping.package_id,
-            to_container_id: IncreaseId::default(),
             send_time: bucky_time_now(),
             recv_data: 0,
         };
@@ -1186,9 +1242,9 @@ impl OnTcpInterface for Tunnel {
             if let Some(owner) = owner {
                 owner.on_package(syn_tunnel, None)?;
                 let ack_tunnel = AckTunnel {
+                    protocol_version: owner.protocol_version(), 
+                    stack_version: owner.stack_version(),  
                     sequence: syn_tunnel.sequence,
-                    from_container_id: IncreaseId::default(),
-                    to_container_id: IncreaseId::default(),
                     result: ret,
                     send_time: bucky_time_now(),
                     mtu: udp::MTU as u16,

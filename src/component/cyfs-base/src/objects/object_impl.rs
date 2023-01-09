@@ -1,7 +1,6 @@
 use crate::*;
 
 use std::marker::PhantomData;
-use serde::Serialize;
 
 
 /// 子Desc类型系统
@@ -1492,15 +1491,14 @@ where
 
             if left_buf.len() != 0 {
                 let msg = format!(
-                    "decode desc content buffer but left buf is not empty: desc_content_size={}, left={}",
+                    "decode desc content buffer but remaining buf is not empty: obj_type={}, desc_content_size={}, remaining={}",
+                    T::obj_type(),
                     desc_content_size,
                     left_buf.len()
                 );
-                error!("{}", msg);
-                return Err(BuckyError::new(BuckyErrorCode::InvalidFormat, msg));
+                warn!("{}", msg);
             }
 
-            assert!(left_buf.len() == 0);
             (desc_content, &buf[desc_content_size..])
         };
 
@@ -1876,10 +1874,9 @@ where
         //println!("object type:{}, expected:{}", ctx.obj_type(), O::obj_type());
         if O::obj_type() != OBJECT_TYPE_ANY {
             if ctx.obj_type() != O::obj_type() {
-                return Err(BuckyError::new(
-                    BuckyErrorCode::OutOfLimit,
-                    "named obj_type_code not match",
-                ));
+                let msg = format!("obj_type_code not match! required={:?}, got={:?}", O::obj_type(), ctx.obj_type());
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
             }
         }
 
@@ -1963,23 +1960,6 @@ pub trait BodyContent {
         String::from("BodyContent")
     }
 }
-
-// 两个默认的空body_content
-#[derive(Clone, Default, cyfs_base_derive::RawEncode, cyfs_base_derive::RawDecode, Serialize)]
-pub struct EmptyBodyContent;
-
-impl BodyContent for EmptyBodyContent {}
-
-#[derive(Clone, Default, Serialize)]
-pub struct EmptyProtobufBodyContent;
-
-impl BodyContent for EmptyProtobufBodyContent {
-    fn format(&self) -> u8 {
-        OBJECT_CONTENT_CODEC_FORMAT_PROTOBUF
-    }
-}
-
-crate::inner_impl_empty_protobuf_raw_codec!(EmptyProtobufBodyContent);
 
 /// NamedObject Type 泛型定义
 /// ===

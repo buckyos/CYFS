@@ -1,15 +1,17 @@
 use super::super::client::SyncClientRequestor;
 use super::super::protocol::SyncChunksRequest;
 use super::cache::SyncObjectsStateCache;
+use super::dir_sync::DirListSync;
 use crate::ndn_api::ChunkManagerWriter;
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::*;
-use cyfs_lib::*;
 use cyfs_bdt::*;
+use cyfs_chunk_cache::ChunkManager;
+use cyfs_lib::*;
 
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 struct AssociationChunks {
     list: HashSet<ChunkId>,
@@ -113,15 +115,15 @@ impl AssociationChunks {
 
 #[derive(Clone)]
 pub(super) struct ChunksCollector {
-    noc: Arc<Box<dyn NamedObjectCache>>,
+    noc: NamedObjectCacheRef,
     device_id: DeviceId,
     chunks: Arc<Mutex<AssociationChunks>>,
 }
 
 impl ChunksCollector {
-    pub fn new(noc: Box<dyn NamedObjectCache>, device_id: DeviceId) -> Self {
+    pub fn new(noc: NamedObjectCacheRef, device_id: DeviceId) -> Self {
         Self {
-            noc: Arc::new(noc),
+            noc,
             device_id,
             chunks: Arc::new(Mutex::new(AssociationChunks::new())),
         }
@@ -141,7 +143,10 @@ impl ChunksCollector {
                 self.append_impl(object_id).await?;
             }
             ObjectTypeCode::Chunk => {
-                self.chunks.lock().unwrap().append_chunk(object_id.as_chunk_id());
+                self.chunks
+                    .lock()
+                    .unwrap()
+                    .append_chunk(object_id.as_chunk_id());
             }
             _ => {}
         }
@@ -150,21 +155,22 @@ impl ChunksCollector {
     }
 
     pub fn append_chunk(&self, chunk_id: &ChunkId) {
+        // debug!("add assoc chunk: {}", chunk_id);
         self.chunks.lock().unwrap().append_chunk(chunk_id);
     }
 
     async fn append_impl(&self, object_id: &ObjectId) -> BuckyResult<()> {
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
+            source: RequestSourceInfo::new_local_system(),
             object_id: object_id.to_owned(),
+            last_access_rpath: None,
         };
 
         let resp = self.noc.get_object(&req).await?;
         match resp {
             Some(data) => {
-                let object = data.object.as_ref().unwrap();
-                self.append_object(object_id, object);
+                let object = data.object.object.unwrap();
+                self.append_object(object_id, &object);
             }
             None => {
                 debug!("file or dir not found in noc: id={}", object_id,);
@@ -299,6 +305,14 @@ impl DataSync {
         }
     }
 
+    pub fn create_dir_sync(&self) -> DirListSync {
+        DirListSync::new(
+            self.state_cache.clone(),
+            self.bdt_stack.clone(),
+            self.chunk_manager.clone(),
+        )
+    }
+
     async fn filter_exists_chunks(&self, chunk_list: Vec<ChunkId>) -> BuckyResult<Vec<ChunkId>> {
         let ndc = self.bdt_stack.ndn().chunk_manager().ndc();
         let mut sync_list = vec![];
@@ -421,17 +435,15 @@ impl DataSync {
         for chunk_id in chunk_list {
             match self.sync_single_chunk(&chunk_id).await {
                 Ok(()) => continue,
-                Err(e) => {
-                    match e.code() {
-                        BuckyErrorCode::NotFound => {
-                            self.state_cache.miss_object(chunk_id.as_object_id());
-                        }
-                        _ => {
-                            error!("sync single chunk but failed! now will stop sync chunk list! chunk={}, {}", chunk_id, e);
-                            return Err(e);
-                        }
+                Err(e) => match e.code() {
+                    BuckyErrorCode::NotFound => {
+                        self.state_cache.miss_object(chunk_id.as_object_id());
                     }
-                }
+                    _ => {
+                        error!("sync single chunk but failed! now will stop sync chunk list! chunk={}, {}", chunk_id, e);
+                        return Err(e);
+                    }
+                },
             }
         }
 
@@ -439,14 +451,11 @@ impl DataSync {
     }
 
     async fn sync_single_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<()> {
-        info!(
-            "will sync single chunk, chunk={}",
-            chunk_id
-        );
+        info!("will sync single chunk, chunk={}", chunk_id);
 
         let task_id = format!("sync_chunk_{}", chunk_id);
 
-        let config = ChunkDownloadConfig::force_stream(self.ood_device_id.clone());
+        let context = SingleDownloadContext::streams(None, vec![self.ood_device_id.clone()]);
         let writer = Box::new(ChunkManagerWriter::new(
             self.chunk_manager.clone(),
             self.bdt_stack.ndn().chunk_manager().ndc().clone(),
@@ -459,7 +468,8 @@ impl DataSync {
         let _controller = cyfs_bdt::download::download_chunk(
             &self.bdt_stack,
             chunk_id.to_owned(),
-            config,
+            None, 
+            Some(context),
             vec![writer, Box::new(waiter.clone())],
         )
         .await
@@ -498,7 +508,7 @@ impl DataSync {
 
         let task_id = format!("sync_chunks_{}", file_id);
 
-        let config = ChunkDownloadConfig::force_stream(self.ood_device_id.clone());
+        let context = SingleDownloadContext::streams(None, vec![self.ood_device_id.clone()]);
         let writer = Box::new(ChunkManagerWriter::new(
             self.chunk_manager.clone(),
             self.bdt_stack.ndn().chunk_manager().ndc().clone(),
@@ -511,7 +521,8 @@ impl DataSync {
         let _controller = cyfs_bdt::download::download_file(
             &self.bdt_stack,
             file,
-            config,
+            None, 
+            Some(context),
             vec![writer, Box::new(waiter.clone())],
         )
         .await

@@ -1,9 +1,7 @@
 use crate::config::StackGlobalConfig;
 use crate::crypto_api::*;
-use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneRoleManager;
 use cyfs_base::*;
-use cyfs_core::*;
 use cyfs_lib::*;
 use cyfs_util::*;
 
@@ -71,7 +69,7 @@ impl AdminManager {
 
     pub async fn init(
         &self,
-        router_handlers: &RouterHandlersManager,
+        router_handlers: &RouterHandlerManagerProcessorRef,
     ) -> BuckyResult<()> {
         self.register_router_handler(router_handlers).await?;
 
@@ -80,22 +78,22 @@ impl AdminManager {
 
     async fn register_router_handler(
         &self,
-        router_handlers: &RouterHandlersManager,
+        router_handlers: &RouterHandlerManagerProcessorRef,
     ) -> BuckyResult<()> {
-        let filter = format!("obj_type == {}", CoreObjectType::Admin as u16);
-
         // add post_object handler for app_manager's action cmd
         let routine = OnAdminCommandWatcher {
             owner: self.clone(),
         };
 
+        let req_path = RequestGlobalStatePath::new_system_dec(Some(CYFS_SYSTEM_ADMIN_VIRTUAL_PATH));
         if let Err(e) = router_handlers
             .post_object()
             .add_handler(
                 RouterHandlerChain::Handler,
                 ADMIN_MANAGER_HANDLER_ID,
                 1,
-                &filter,
+                None,
+                Some(req_path.to_string()),
                 RouterHandlerAction::Default,
                 Some(Box::new(routine)),
             )
@@ -108,7 +106,7 @@ impl AdminManager {
         Ok(())
     }
 
-    async fn on_admin_command(&self, source: &DeviceId, object: &NONObjectInfo) -> BuckyResult<()> {
+    async fn on_admin_command(&self, source: &RequestSourceInfo, object: &NONObjectInfo) -> BuckyResult<()> {
         // decode to AdminObject
         let admin_object = AdminObject::clone_from_slice(&object.object_raw).map_err(|e| {
             let msg = format!(
@@ -132,8 +130,7 @@ impl AdminManager {
         }
 
         // check if command source'device is current zone's device
-        let zone = self.role_manager.zone_manager().get_current_zone().await?;
-        if !zone.is_known_device(source) {
+        if !source.is_current_zone() {
             let msg = format!(
                 "command source device is not in current zone! device={}",
                 source,

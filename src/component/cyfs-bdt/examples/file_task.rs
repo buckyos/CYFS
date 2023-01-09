@@ -1,16 +1,21 @@
 use async_std::{fs, future, io::prelude::*};
 use cyfs_base::*;
 use cyfs_bdt::{
-    download::*, ChunkDownloadConfig, DownloadTaskControl, Stack, StackOpenParams, TaskControlState,
+    download::*, 
+    SingleDownloadContext,  
+    Stack, 
+    StackOpenParams, 
+    DownloadTask, 
+    DownloadTaskState, 
 };
 use sha2::Digest;
 use std::time::Duration;
 mod utils;
 
-async fn watch_task_finish(task: Box<dyn DownloadTaskControl>) -> BuckyResult<()> {
+async fn watch_task_finish(task: Box<dyn DownloadTask>) -> BuckyResult<()> {
     loop {
-        match task.control_state() {
-            TaskControlState::Finished => {
+        match task.state() {
+            DownloadTaskState::Finished => {
                 break Ok(());
             }
             _ => {}
@@ -103,8 +108,9 @@ async fn main() {
     let down_path = down_dir.join(file.desc().file_id().to_string().as_str());
     let task = download_file_to_path(
         &*ln_stack,
-        file,
-        ChunkDownloadConfig::force_stream(rn_stack.local_device_id().clone()),
+        file, 
+        None, 
+        Some(SingleDownloadContext::streams(None, vec![rn_stack.local_device_id().clone()])), 
         down_path.as_path(),
     )
     .await

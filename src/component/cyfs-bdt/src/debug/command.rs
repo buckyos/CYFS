@@ -53,6 +53,11 @@ pub fn debug_command_line() -> clap::App<'static, 'static> {
         .subcommand(SubCommand::with_name("sn_conn_status")
             .arg(Arg::with_name("timeout").required(true))
         )
+        .subcommand(SubCommand::with_name("bench_datagram")
+            .arg(Arg::with_name("remote").required(true))
+            .arg(Arg::with_name("plaintext").required(true))
+            .arg(Arg::with_name("timeout").required(true))
+        )
 }
 
 pub enum DebugCommand {
@@ -64,6 +69,7 @@ pub enum DebugCommand {
     PutChunk(DebugCommandPutChunk),
     PutFile(DebugCommandPutFile),
     SnConnStatus(DebugCommandSnConnStatus),
+    BenchDatagram(DebugCommandBenchDatagram),
 }
 
 impl DebugCommand {
@@ -175,6 +181,19 @@ impl DebugCommand {
                     timeout_sec: timeout,
                 }))
             },
+            "bench_datagram" => {
+                let subcommand = params.subcommand_matches("bench_datagram").unwrap();
+                let remote = remote_device(stack, subcommand.value_of("remote").unwrap()).await
+                    .map_err(|err| format!("load remote desc {} failed for {}\r\n", subcommand.value_of("remote").unwrap(), err))?;
+                let plaintext = u32::from_str(subcommand.value_of("plaintext").unwrap()).unwrap();
+                let timeout = u64::from_str(subcommand.value_of("timeout").unwrap()).unwrap();
+
+                Ok(Self::BenchDatagram(DebugCommandBenchDatagram {
+                    remote,
+                    timeout: Duration::from_secs(timeout),
+                    plaintext: plaintext != 0
+                }))
+            }
             _ => {
                 Err(format!("invalid subcommand {}\r\n", subcommand))
             }
@@ -183,6 +202,12 @@ impl DebugCommand {
 }
 
 pub struct DebugCommandTest {}
+
+pub struct DebugCommandBenchDatagram {
+    pub remote: Device, 
+    pub timeout: Duration,
+    pub plaintext: bool,
+}
 
 pub struct DebugCommandPing {
     pub remote: Device, 

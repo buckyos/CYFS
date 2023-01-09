@@ -7,10 +7,10 @@ use crate::acl::AclManagerRef;
 use crate::root_state_api::GlobalStateLocalService;
 use crate::zone::ZoneRoleManager;
 use crate::zone::*;
-use cyfs_chunk_cache::ChunkManager;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DeviceId};
-use cyfs_lib::*;
 use cyfs_bdt::{DeviceCache, StackGuard};
+use cyfs_chunk_cache::ChunkManager;
+use cyfs_lib::*;
 
 use once_cell::sync::OnceCell;
 use std::sync::{Arc, RwLock};
@@ -72,7 +72,7 @@ pub(crate) struct DeviceSyncClient {
     device_id: DeviceId,
     ood_device_id: RwLock<DeviceId>,
 
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
     state_manager: Arc<DeviceStateManager>,
     acl_manager: AclManagerRef,
 
@@ -88,12 +88,12 @@ pub(crate) struct DeviceSyncClient {
 impl DeviceSyncClient {
     pub async fn new(
         role_manager: ZoneRoleManager,
-        zone_manager: &ZoneManager,
+        zone_manager: &ZoneManagerRef,
         root_state: GlobalStateLocalService,
         bdt_stack: &StackGuard,
         ood_sync_vport: u16,
         device_manager: Box<dyn DeviceCache>,
-        raw_noc: Box<dyn NamedObjectCache>,
+        raw_noc: NamedObjectCacheRef,
         acl_manager: AclManagerRef,
         chunk_manager: Arc<ChunkManager>,
     ) -> BuckyResult<Self> {
@@ -110,7 +110,7 @@ impl DeviceSyncClient {
         let event = SyncStateInductor::new(role_manager.clone());
         let state_manager = DeviceStateManager::new(
             &device_id,
-            raw_noc.clone_noc(),
+            raw_noc.clone(),
             root_state.clone(),
             zone_manager.clone(),
             Box::new(event.clone()),
@@ -296,7 +296,11 @@ impl DeviceSyncClient {
     }
 
     // 获取目标ood的状态，目前都是通过ping推导出来的
-    pub async fn get_ood_status(&self) -> BuckyResult<OODStatus> {
+    pub async fn get_ood_status(&self, flush_ping: bool) -> BuckyResult<OODStatus> {
+        if flush_ping {
+            self.ping_client.wakeup_ping_and_wait().await;
+        }
+
         let device_state = self.state_manager.get_device_state().await?;
         let zone_state = self.state_manager.get_zone_state();
 

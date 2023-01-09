@@ -1,10 +1,54 @@
-use crate::{NamedObjectId, ObjectType, ChunkId};
+use crate::{ChunkId, HashValue, NamedObjectId, ObjectType};
 
-use serde::de::{self, Visitor, Deserialize, Deserializer};
+use serde::de::{self, Deserialize, Deserializer, Visitor};
 use serde::ser::{Serialize, Serializer};
 use std::str::FromStr;
 
+// T with impl FromStr
+pub struct TStringVisitor<T>
+where
+    T: FromStr,
+{
+    dummy: std::marker::PhantomData<T>,
+}
 
+impl<T> TStringVisitor<T>
+where
+    T: FromStr,
+{
+    pub fn new() -> Self {
+        Self {
+            dummy: std::marker::PhantomData,
+        }
+    }
+}
+impl<'de, T> Visitor<'de> for TStringVisitor<T>
+where
+    T: FromStr,
+    <T as FromStr>::Err: std::fmt::Display,
+{
+    type Value = T;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("encoded string value error")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+        <T as FromStr>::Err: std::fmt::Display,
+    {
+        match T::from_str(v) {
+            Ok(ret) => Ok(ret),
+            Err(e) => {
+                let msg = format!("invalid string value: {}, {}", v, e);
+                Err(E::custom(msg))
+            }
+        }
+    }
+}
+
+// NamedObjectId
 impl<T: ObjectType> Serialize for NamedObjectId<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -14,40 +58,14 @@ impl<T: ObjectType> Serialize for NamedObjectId<T> {
     }
 }
 
-struct NamedObjectIdVisitor<T> {
-    _phantom: std::marker::PhantomData<T>,
-}
-
-impl<'de, T: ObjectType> Visitor<'de> for NamedObjectIdVisitor<T> {
-    type Value = NamedObjectId<T>;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("base58 encoded string object id")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        match NamedObjectId::from_str(v) {
-            Ok(ret) => Ok(ret),
-            Err(e) => {
-                let msg = format!("invalid object id string: {}, {}", v, e);
-                Err(E::custom(msg))
-            }
-        }
-    }
-}
-
 impl<'de, T: ObjectType> Deserialize<'de> for NamedObjectId<T> {
-    fn deserialize<D>(deserializer: D) -> Result<NamedObjectId<T>, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_str(NamedObjectIdVisitor { _phantom: std::marker::PhantomData })
+        deserializer.deserialize_str(TStringVisitor::<Self>::new())
     }
 }
-
 
 // chunk_id
 impl Serialize for ChunkId {
@@ -59,44 +77,40 @@ impl Serialize for ChunkId {
     }
 }
 
-struct ChunkIdVisitor {
-}
-
-impl<'de> Visitor<'de> for ChunkIdVisitor {
-    type Value = ChunkId;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("base58 encoded string chunk id")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        match ChunkId::from_str(v) {
-            Ok(ret) => Ok(ret),
-            Err(e) => {
-                let msg = format!("invalid chunk id string: {}, {}", v, e);
-                Err(E::custom(msg))
-            }
-        }
-    }
-}
-
 impl<'de> Deserialize<'de> for ChunkId {
     fn deserialize<D>(deserializer: D) -> Result<ChunkId, D::Error>
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_str(ChunkIdVisitor { })
+        deserializer.deserialize_str(TStringVisitor::<ChunkId>::new())
     }
 }
+
+// HashValue
+impl Serialize for HashValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for HashValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(TStringVisitor::<Self>::new())
+    }
+}
+
 
 #[cfg(test)]
 mod test {
     use crate::*;
-    use std::str::FromStr;
     use serde::*;
+    use std::str::FromStr;
 
     #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
     struct OODStatus {
@@ -119,5 +133,12 @@ mod test {
 
         let status2: OODStatus = serde_json::from_str(&s).unwrap();
         assert_eq!(status, status2);
+
+        let hash = hash_data("test".as_bytes());
+        let s = serde_json::to_string(&hash).unwrap();
+        println!("{}", s);
+
+        let hash2: HashValue = serde_json::from_str(&s).unwrap();
+        assert_eq!(hash, hash2);
     }
 }

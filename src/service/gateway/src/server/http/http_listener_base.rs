@@ -11,33 +11,36 @@ use cyfs_base::BuckyError;
 
 #[derive(Debug, Clone)]
 pub(super) struct HttpListenerBase {
-    forwards: Vec<u32>,
+    forwards: Arc<Mutex<Vec<u32>>>,
 }
 
 impl HttpListenerBase {
     pub fn new() -> HttpListenerBase {
         HttpListenerBase {
-            forwards: Vec::new(),
+            forwards: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
     pub fn forward_count(&self) -> usize {
-        self.forwards.len()
+        self.forwards.lock().unwrap().len()
     }
 
-    pub fn bind_forward(&mut self, forward_id: u32) {
+    pub fn bind_forward(&self, forward_id: u32) {
         assert!(forward_id > 0);
-        assert!(!self.forwards.iter().any(|x| *x == forward_id));
 
-        self.forwards.push(forward_id);
+        let mut forwards = self.forwards.lock().unwrap();
+        assert!(!forwards.iter().any(|x| *x == forward_id));
+
+        forwards.push(forward_id);
     }
 
-    pub fn unbind_forward(&mut self, forward_id: u32) -> bool {
+    pub fn unbind_forward(&self, forward_id: u32) -> bool {
         assert!(forward_id > 0);
 
-        for i in 0..self.forwards.len() {
-            if self.forwards[i] == forward_id {
-                self.forwards.remove(i);
+        let mut forwards = self.forwards.lock().unwrap();
+        for i in 0..forwards.len() {
+            if forwards[i] == forward_id {
+                forwards.remove(i);
 
                 return true;
             }
@@ -46,8 +49,8 @@ impl HttpListenerBase {
         false
     }
 
-    pub async fn dispatch_request(base: &Arc<Mutex<HttpListenerBase>>, req: Request) -> Response {
-        let mut resp = Self::dispatch_request_impl(base, req).await;
+    pub async fn dispatch_request(&self, req: Request) -> Response {
+        let mut resp = self.dispatch_request_impl(req).await;
 
         info!(
             "resp body: status={:?}, len={:?}",
@@ -59,13 +62,12 @@ impl HttpListenerBase {
         return resp;
     }
 
-    async fn dispatch_request_impl(base: &Arc<Mutex<HttpListenerBase>>, req: Request) -> Response {
+    async fn dispatch_request_impl(&self, req: Request) -> Response {
         let mut proxy_pass: Option<String> = None;
 
         let forwards;
         {
-            let base = base.lock().unwrap();
-            forwards = base.forwards.clone();
+            forwards = self.forwards.lock().unwrap().clone();
         }
 
         {

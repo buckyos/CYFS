@@ -7,7 +7,7 @@ use crate::crypto::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::router_handler::RouterHandlersManager;
-use crate::zone::ZoneManager;
+use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -19,7 +19,7 @@ pub struct CryptoRouter {
 
     processor: CryptoInputProcessorRef,
 
-    zone_manager: ZoneManager,
+    zone_manager: ZoneManagerRef,
 
     forward: ForwardProcessorManager,
 
@@ -32,7 +32,7 @@ impl CryptoRouter {
     fn new_raw(
         acl: AclManagerRef,
         processor: CryptoInputProcessorRef,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
         router_handlers: RouterHandlersManager,
@@ -75,7 +75,7 @@ impl CryptoRouter {
     pub(crate) fn new_acl(
         acl: AclManagerRef,
         object_crypto: ObjectCrypto,
-        zone_manager: ZoneManager,
+        zone_manager: ZoneManagerRef,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
         router_handlers: RouterHandlersManager,
@@ -94,9 +94,7 @@ impl CryptoRouter {
 
         let acl_router = CryptoAclInputProcessor::new(acl, raw_router.clone());
 
-        let processor = CryptoInputAclSwitcher::new(acl_router, raw_router);
-
-        processor
+        acl_router
     }
 
     async fn get_forward(&self, target: DeviceId) -> BuckyResult<CryptoInputProcessorRef> {
@@ -110,14 +108,6 @@ impl CryptoRouter {
         let processor = CryptoOutputFailHandleProcessor::new(
             target.clone(),
             self.fail_handler.clone(),
-            processor,
-        );
-
-        // 标准acl output权限
-        let processor = CryptoAclOutputProcessor::new(
-            NONProtocol::HttpBdt,
-            self.acl.clone(),
-            target,
             processor,
         );
 
@@ -145,14 +135,15 @@ impl CryptoRouter {
     async fn get_target(&self, target: Option<&ObjectId>) -> BuckyResult<Option<DeviceId>> {
         let ret = match target {
             Some(object_id) => {
-                let (_, device_id) = self
+                let info = self
                     .zone_manager
-                    .resolve_target(Some(object_id), None)
+                    .target_zone_manager()
+                    .resolve_target(Some(object_id))
                     .await?;
-                if device_id == *self.zone_manager.get_current_device_id() {
+                if info.target_device == *self.zone_manager.get_current_device_id() {
                     None
                 } else {
-                    Some(device_id)
+                    Some(info.target_device)
                 }
             }
             None => None,
@@ -191,5 +182,21 @@ impl CryptoInputProcessor for CryptoRouter {
     ) -> BuckyResult<CryptoSignObjectInputResponse> {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.sign_object(req).await
+    }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataInputRequest,
+    ) -> BuckyResult<CryptoEncryptDataInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.encrypt_data(req).await
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataInputRequest,
+    ) -> BuckyResult<CryptoDecryptDataInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.decrypt_data(req).await
     }
 }

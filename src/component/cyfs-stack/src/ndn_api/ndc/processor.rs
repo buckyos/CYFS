@@ -1,16 +1,18 @@
-use super::super::acl::{NDNAclLocalInputProcessor, NDNInputAclSwitcher};
-use super::super::file::{zero_bytes_reader, LocalDataManager};
+use super::super::acl::NDNAclLocalInputProcessor;
+use super::super::data::{zero_bytes_reader, LocalDataManager};
 use super::object_loader::NDNObjectLoader;
-use crate::acl::*;
 use crate::ndn::*;
+use crate::ndn_api::NDNForwardObjectData;
+use crate::ndn_api::acl::NDNAclInputProcessor;
 use crate::non::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 use cyfs_util::cache::NamedDataCache;
-use futures::AsyncReadExt;
-
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_chunk_lib::{ChunkMeta, MemRefChunk};
+use crate::acl::AclManagerRef;
+
+use futures::AsyncReadExt;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
@@ -21,22 +23,29 @@ pub(crate) struct NDCLevelInputProcessor {
 }
 
 impl NDCLevelInputProcessor {
-    pub fn new_raw(
+    pub fn new(
+        acl: AclManagerRef,
         chunk_manager: Arc<ChunkManager>,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
 
-        // 不带权限的non处理器
+        // router non processor, but only get_object from current stack
         non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
-        let object_loader = NDNObjectLoader::new(non_processor);
-
+ 
         let ret = Self {
-            data_manager: LocalDataManager::new(chunk_manager, ndc, tracker),
-            object_loader,
+            data_manager: LocalDataManager::new(chunk_manager.clone(), ndc.clone(), tracker.clone()),
+            object_loader: NDNObjectLoader::new(non_processor.clone()),
         };
 
-        Arc::new(Box::new(ret))
+        let raw_processor = Arc::new(Box::new(ret) as Box<dyn NDNInputProcessor>);
+
+        // add default ndn acl and chunk verifier 
+        let data_manager = LocalDataManager::new(chunk_manager, ndc, tracker);
+        let acl_processor = NDNAclInputProcessor::new(acl, data_manager, raw_processor);
+        acl_processor.bind_non_processor(non_processor);
+
+        Arc::new(Box::new(acl_processor))
     }
 
     // 创建一个带本地权限的processor
@@ -45,18 +54,15 @@ impl NDCLevelInputProcessor {
         chunk_manager: Arc<ChunkManager>,
         ndc: Box<dyn NamedDataCache>,
         tracker: Box<dyn TrackerCache>,
-        raw_noc_processor: NONInputProcessorRef,
+        non_processor: NONInputProcessorRef,
     ) -> NDNInputProcessorRef {
-        // 不带input acl的处理器
-        let raw_processor = Self::new_raw(chunk_manager, ndc, tracker, raw_noc_processor);
 
-        // 带local input acl的处理器
-        let acl_processor = NDNAclLocalInputProcessor::new(acl, raw_processor.clone());
+        let processor = Self::new(acl, chunk_manager, ndc, tracker, non_processor);
 
-        // 使用acl switcher连接
-        let processor = NDNInputAclSwitcher::new(acl_processor, raw_processor);
+        // with current device's acl
+        let local_processor = NDNAclLocalInputProcessor::new(processor.clone());
 
-        processor
+        local_processor
     }
 
     async fn put_chunk(
@@ -138,10 +144,17 @@ impl NDCLevelInputProcessor {
 
     // 从本地noc查找file对象
     async fn get_file(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
-        let (file_id, file) = self.object_loader.get_file_object(&req, None).await?;
-        assert_eq!(file_id, file.desc().calculate_id());
 
-        let total_size = file.desc().content().len();
+        let udata = if let Some(udata) = &req.common.user_data {
+            NDNForwardObjectData::from_any(udata)
+        } else {
+            let (file_id, file) = self.object_loader.get_file_object(&req, None).await?;
+            assert_eq!(file_id, file.desc().calculate_id());
+            let user_data = NDNForwardObjectData { file, file_id };
+            Arc::new(user_data)
+        };
+
+        let total_size = udata.file.desc().content().len();
 
         // process range
         let mut need_process = true;
@@ -167,14 +180,14 @@ impl NDCLevelInputProcessor {
         }
 
         let (data, length) = if need_process {
-            self.data_manager.get_file(&file, ranges).await?
+            self.data_manager.get_file(&udata.file, ranges).await?
         } else {
             (zero_bytes_reader(), 0)
         };
 
         let resp = NDNGetDataInputResponse {
-            object_id: file_id,
-            owner_id: file.desc().owner().to_owned(),
+            object_id: udata.file_id.clone(),
+            owner_id: udata.file.desc().owner().to_owned(),
             attr: None,
             length,
             range: resp_range,

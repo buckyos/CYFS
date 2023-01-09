@@ -53,4 +53,24 @@ impl CryptoOutputProcessor for CryptoOutputFailHandleProcessor {
             e
         })
     }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataOutputRequest,
+    ) -> BuckyResult<CryptoEncryptDataOutputResponse> {
+        self.next.encrypt_data(req).await.map_err(|e| {
+            self.on_connect_failed(&e);
+            e
+        })
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataOutputRequest,
+    ) -> BuckyResult<CryptoDecryptDataOutputResponse> {
+        self.next.decrypt_data(req).await.map_err(|e| {
+            self.on_connect_failed(&e);
+            e
+        })
+    }
 }

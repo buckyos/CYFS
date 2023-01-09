@@ -5,13 +5,10 @@ authors = ["liyaxing <liyaxing@buckyos.com>"]
 edition = "2021"
 license = "BSD-2-Clause"
 description = "Rust cyfs-stack package"
+build = "build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-default = ["mongo"]
-mongo = ["cyfs-noc/mongo"]
-sqlite = ["cyfs-noc/sqlite"]
 
 [dependencies]
 cyfs-bdt = { path = "../../component/cyfs-bdt" }
@@ -20,7 +17,7 @@ cyfs-core = { path = "../../component/cyfs-core" }
 cyfs-debug = { path = "../../component/cyfs-debug" }
 cyfs-lib = { path = "../../component/cyfs-lib" }
 cyfs-chunk-lib = { path = "../../component/cyfs-chunk-lib" }
-cyfs-noc = { path = "../../component/cyfs-noc", default-features = false }
+cyfs-noc = { path = "../../component/cyfs-noc" }
 cyfs-ndc = { path = "../../component/cyfs-ndc" }
 cyfs-tracker-cache = { path = "../../component/cyfs-tracker-cache" }
 cyfs-task-manager = { path = "../../component/cyfs-task-manager" }
@@ -50,6 +47,7 @@ percent-encoding = "2.1"
 num_cpus = "1.13.1"
 crossbeam = "0.8"
 semver = "1.0"
+prost = "0.11.2"
 
 [target.'cfg(all(target_os="windows", target_env = "gnu"))'.dependencies]
 sqlx = { version = "0.5.11", features = [
@@ -69,3 +67,7 @@ sqlx = { version = "0.5.11", features = [
 
 [dev-dependencies]
 rand = "0.8.4"
+
+[build-dependencies]
+prost-build = "0.11.2"
+protoc-bin-vendored = "3.0.0"

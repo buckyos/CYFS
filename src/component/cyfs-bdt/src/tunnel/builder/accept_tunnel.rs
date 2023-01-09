@@ -7,8 +7,8 @@ use async_trait::{async_trait};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    protocol::*,
-    tunnel::{self, TunnelState, ProxyType, TunnelContainer}, 
+    protocol::{*, v0::*},
+    tunnel::{TunnelState, ProxyType, TunnelContainer}, 
     stack::{Stack, WeakStack}
 };
 use super::{
@@ -66,7 +66,15 @@ impl AcceptTunnelBuilder {
             let local = stack.device_cache().local();
             let syn_tunnel: &SynTunnel = caller_box.packages_no_exchange()[0].as_ref();           
             // first box 包含 ack tunnel 和 session data
-            let ack_tunnel = tunnel::udp::Tunnel::syn_tunnel(syn_tunnel, local.clone());
+            let tunnel = &self.0.tunnel;
+            let ack_tunnel = SynTunnel {
+                protocol_version: tunnel.protocol_version(), 
+                stack_version: tunnel.stack_version(), 
+                to_device_id: syn_tunnel.from_device_desc.desc().device_id(),
+                sequence: syn_tunnel.sequence,
+                from_device_desc: local,
+                send_time: 0
+            };
             let mut first_box = PackageBox::encrypt_box(caller_box.remote().clone(), caller_box.key().clone());
             first_box.append(vec![DynamicPackage::from(ack_tunnel)]);
             let first_box = Arc::new(first_box);

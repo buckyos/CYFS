@@ -249,12 +249,12 @@ pub fn show_desc(matches: &ArgMatches) {
                             ua.desc().content().right()
                         );
                     }
-                    StandardObject::SimpleGroup(g) => {
+                    StandardObject::Group(g) => {
                         println!("desc type: Group");
                         if matches.is_present("all") || matches.is_present("show_members") {
                             print!("members: [");
                             for owner in g.body().as_ref().unwrap().content().members() {
-                                print!("{}, ", owner);
+                                print!("{}, ", owner.id);
                             }
                             println!("]");
                         }

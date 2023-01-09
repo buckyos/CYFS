@@ -1,20 +1,29 @@
+use std::{
+    sync::{Arc, RwLock, atomic::{AtomicU8, AtomicU32, AtomicU64, AtomicBool}}, 
+    collections::{HashMap, hash_map::Entry},
+    convert::TryFrom, 
+    time::{SystemTime, Instant, Duration, UNIX_EPOCH}
+};
+use async_std::{
+    task
+};
+use core::{
+    sync::atomic
+};
+
 use cyfs_base::*;
-use std::sync::{Arc, RwLock};
-use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, AtomicBool};
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::collections::hash_map::Entry;
-use std::time::{SystemTime, Instant, Duration, UNIX_EPOCH};
-use async_std::task;
-use crate::protocol::{SnPing, SnPingResp, Exchange, SnCalled, SnCalledResp, PackageBox};
-use crate::{TempSeqGenerator, TempSeq};
-use core::sync::atomic;
-use crate::interface::{NetListener, UpdateOuterResult, udp::{Interface, PackageBoxEncodeContext}};
-use crate::sn::client::{Config};
-// use std::net::{SocketAddr, Ipv6Addr};
-use crate::sn::types::{SnServiceReceiptVersion, SnServiceGrade, SnServiceReceipt, ReceiptWithSignature};
-use crate::stack::{WeakStack, Stack};
 use cyfs_debug::Mutex;
+use crate::{
+    types::*, 
+    protocol::{*, v0::*}, 
+    interface::{NetListener, UpdateOuterResult, udp::{Interface, PackageBoxEncodeContext}}, 
+    history::keystore, 
+    sn::{
+        types::{SnServiceReceiptVersion, SnServiceGrade, SnServiceReceipt, ReceiptWithSignature}, 
+        Config,
+    },  
+    stack::{WeakStack, Stack}
+};
 
 
 const INVALID_CALL_DELAY: u16 = 0xFFFF;
@@ -95,9 +104,14 @@ impl PingManager {
 
     pub fn stop(&self) -> Result<(), BuckyError> {
         log::info!("{} stopping.", self);
-        self.is_started.store(false, atomic::Ordering::Release);
-        let clients: Vec<Arc<Client>> = self.clients.read().unwrap().iter().map(|c| c.1.clone()).collect();
-        for client in clients {
+        let to_stop = {
+            let mut clients = self.clients.write().unwrap();
+            let to_stop: Vec<Arc<Client>> = clients.values().cloned().collect();
+            clients.clear();
+            to_stop
+        };
+        
+        for client in to_stop {
             client.stop();
         }
 
@@ -184,7 +198,7 @@ impl PingManager {
         }
     }
 
-    pub fn on_called(&self, called: &SnCalled, from: &Endpoint, from_interface: Interface) -> Result<(), BuckyError> {
+    pub fn on_called(&self, called: &SnCalled, in_box: &PackageBox, from: &Endpoint, from_interface: Interface) -> Result<(), BuckyError> {
         if &called.to_peer_id != Stack::from(&self.env.stack).local_device_id() {
             log::warn!("{} called, recv called to other: {}.", self, called.to_peer_id.to_string());
             return Err(BuckyError::new(BuckyErrorCode::AddrNotAvailable, "called to other"));
@@ -193,7 +207,7 @@ impl PingManager {
         log::info!("{} called, sn: {}, from: {}, seq: {}, from-eps: {}.",
             self, 
             called.sn_peer_id.to_string(),
-            called.from_peer_id.to_string(),
+            called.peer_info.desc().device_id().to_string(),
             called.seq.value(),
             called.peer_info.connect_info().endpoints().iter().map(|ep| ep.to_string()).collect::<Vec<String>>().concat());
 
@@ -201,6 +215,7 @@ impl PingManager {
 
         let stack = Stack::from(&self.env.stack);
         let called = called.clone();
+        let key = in_box.key().clone();
         let from = from.clone();
         task::spawn(async move {
             let peer_info = &called.peer_info;
@@ -220,7 +235,7 @@ impl PingManager {
                 match client {
                     None => log::warn!("{} the sn maybe is removed when recv called-req.", stack.local_device_id()),
                     Some(client) => {
-                        client.on_called(&called, called.call_seq, bucky_time_to_system_time(called.call_send_time), &from, from_interface);
+                        client.on_called(&called, &key, called.call_seq, bucky_time_to_system_time(called.call_send_time), &from, from_interface);
                     }
                 };
             }
@@ -245,6 +260,20 @@ impl PingManager {
         let clients: Vec<Arc<Client>> = self.clients.read().unwrap().iter().map(|kv| kv.1.clone()).collect();
         for c in clients {
             c.reset();
+        }
+    }
+
+    pub async fn wait_online(&self, sn: &DeviceId) -> bool {
+        let client = {
+            self.clients.read().unwrap()
+                .get(sn)
+                .cloned()
+        };
+
+        if let Some(client) = client {
+            client.wait_online().await
+        } else {
+            false
         }
     }
 }
@@ -321,7 +350,7 @@ struct Client {
 }
 
 impl Client {
-    fn new(mgr: &PingManager, sn: &Device, is_encrypto: bool, appraiser: Box<dyn ServiceAppraiser>) -> Client {
+    fn new(mgr: &PingManager, sn: &Device, _is_encrypto: bool, appraiser: Box<dyn ServiceAppraiser>) -> Client {
         let mut last_receipt = SnServiceReceipt::default();
         last_receipt.version = SnServiceReceiptVersion::Invalid;
         last_receipt.start_time = UNIX_EPOCH;
@@ -344,15 +373,15 @@ impl Client {
             sessions.push(session);
         }
 
-        let mut inner = ClientInner {
+        let inner = ClientInner {
             env: mgr.env.clone(),
             create_time: Instant::now(),
             sn_peerid: sn_peerid.clone(),
             sn: sn.clone(),
-            aes_key: None,
             sessions: RwLock::new(sessions),
             active_session_index: AtomicU32::new(std::u32::MAX),
             client_status: AtomicU8::new(PING_CLIENT_STATUS_INIT),
+            ping_status: RwLock::new(PingState::Connecting(StateWaiter::new())),
             sn_status: AtomicU8::new(SN_STATUS_INIT),
             last_ping_time: AtomicU64::new(0),
             last_resp_time: AtomicU64::new(0),
@@ -374,10 +403,6 @@ impl Client {
             }
         };
 
-        if is_encrypto {
-            let found_key = Stack::from(&mgr.env.stack).keystore().create_key(&inner.sn_peerid, false);
-            inner.aes_key = Some(found_key.aes_key.clone());
-        }
 
         Client {
             inner: Arc::new(inner),
@@ -397,6 +422,16 @@ impl Client {
         self.inner.last_ping_time.store(0, atomic::Ordering::Release);
         self.inner.last_resp_time.store(0, atomic::Ordering::Release);
         self.inner.last_update_seq.store(1, atomic::Ordering::Release);
+
+        {
+            let state = &mut *self.inner.ping_status.write().unwrap();
+            match state {
+                PingState::Connecting(_) => {},
+                PingState::Online => {
+                    *state = PingState::Connecting(StateWaiter::new());
+                }
+            }
+        }
 
         let net_listener = Stack::from(&self.inner.env.stack).net_manager().listener().clone();
         for udp in net_listener.udp() {
@@ -510,13 +545,34 @@ impl Client {
         });
     }
 
-    pub fn on_called(&self, called: &SnCalled, call_seq: TempSeq, call_time: SystemTime, from: &Endpoint, from_interface: Interface) {
-        let _ = self.inner.on_called(called, call_seq, call_time, from, from_interface);
+    pub fn on_called(&self, called: &SnCalled, key: &MixAesKey, call_seq: TempSeq, call_time: SystemTime, from: &Endpoint, from_interface: Interface) {
+        let _ = self.inner.on_called(called, key, call_seq, call_time, from, from_interface);
     }
 
     fn is_cached(&self) -> bool {
         self.inner.last_update_seq.load(atomic::Ordering::Acquire) == 0
     }
+
+    pub async fn wait_online(&self) -> bool {
+        let waiter = {
+            let state = &mut *self.inner.ping_status.write().unwrap();
+            match state {
+                PingState::Connecting(waiter) => Some(waiter.new_waiter()),
+                PingState::Online => None,
+            }
+        };
+
+        if let Some(waiter) = waiter {
+            StateWaiter::wait(waiter, || true).await
+        } else {
+            true
+        }
+    }
+}
+
+enum PingState {
+    Connecting(StateWaiter),
+    Online,
 }
 
 struct ClientInner {
@@ -526,10 +582,10 @@ struct ClientInner {
     sn_peerid: DeviceId,
     sn: Device,
 
-    aes_key: Option<AesKey>,
     sessions: RwLock<Vec<Session>>,
     active_session_index: AtomicU32,
 
+    ping_status: RwLock<PingState>,
     client_status: AtomicU8,
     sn_status: AtomicU8,
 
@@ -565,7 +621,7 @@ impl ClientInner {
                         if now < last_resp_time || now - last_resp_time < env.offline_ms as u64 {
                             // online
                             if self.sn_status.compare_exchange(SN_STATUS_CONNECTING, SN_STATUS_ONLINE, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst).is_ok() {
-                                PingClientStateEvent::online(&Stack::from(&self.env.stack), &self.sn);
+                                self.online(&self.sn);
                             }
                             SN_STATUS_ONLINE
                         } else {
@@ -578,7 +634,7 @@ impl ClientInner {
 
                     if cur_status != SN_STATUS_ONLINE && now > last_ping_time && now - last_ping_time > env.offline_ms as u64 {
                         if self.sn_status.compare_exchange(SN_STATUS_CONNECTING, SN_STATUS_OFFLINE, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst).is_ok() {
-                            PingClientStateEvent::offline(&Stack::from(&self.env.stack), &self.sn);
+                            self.offline(&self.sn);
                         }
                     }
                 }
@@ -587,7 +643,7 @@ impl ClientInner {
                 if last_resp_time != 0 {
                     if now < last_resp_time || now - last_resp_time < env.offline_ms as u64 {
                         if self.sn_status.compare_exchange(SN_STATUS_OFFLINE, SN_STATUS_ONLINE, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst).is_ok() {
-                            PingClientStateEvent::online(&Stack::from(&self.env.stack), &self.sn);
+                            self.online(&self.sn);
                         }
                     }
                 }
@@ -596,7 +652,7 @@ impl ClientInner {
                 assert!(last_resp_time > 0);
                 if now > last_resp_time && now - last_resp_time > env.offline_ms as u64 {
                     if self.sn_status.compare_exchange(SN_STATUS_ONLINE, SN_STATUS_OFFLINE, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst).is_ok() {
-                        PingClientStateEvent::offline(&Stack::from(&self.env.stack), &self.sn);
+                        self.offline(&self.sn);
                     }
                 }
             }
@@ -658,33 +714,20 @@ impl ClientInner {
         let seq = self.seq_genarator.generate();
 
         let stack = Stack::from(&self.env.stack);
-        let (local_peer, local_deviceid) = {
-            (stack.device_cache().local(), stack.local_device_id().clone())
-        };
-        assert!(self.aes_key.is_some()); // <TODO>暂时不支持明文
-        let mut pkg_box = PackageBox::encrypt_box(self.sn_peerid.clone(), self.aes_key.as_ref().unwrap().clone());
-
+        let local_peer = stack.device_cache().local();
+        
         let last_resp_time = self.last_resp_time.load(atomic::Ordering::Acquire);
-        let to_session_index = if (last_resp_time == 0 || (now < last_resp_time || now - last_resp_time > 1000)) && self.aes_key.is_some() {
-            let mut exchg = Exchange {
-                sequence: seq,
-                seq_key_sign: Signature::default(),
-                from_device_id: local_deviceid,
-                send_time: now_abs_u64,
-                from_device_desc: local_peer.clone(),
-            };
-            let _ = exchg.sign(self.aes_key.as_ref().unwrap(), stack.keystore().signer()).await;
-            pkg_box.push(exchg);
+        let to_session_index = if last_resp_time == 0 || (now < last_resp_time || now - last_resp_time > 1000) {
             self.active_session_index.store(std::u32::MAX, atomic::Ordering::Release);
             std::u32::MAX
         } else {
             self.active_session_index.load(atomic::Ordering::Acquire)
         };
 
-        let sessions = self.sessions.read().unwrap();
         let to_sessions = {
+            let sessions = self.sessions.read().unwrap();
             let to_session = if to_session_index != std::u32::MAX {
-                (*sessions).get(to_session_index as usize)
+                sessions.get(to_session_index as usize)
             } else {
                 None
             };
@@ -703,8 +746,10 @@ impl ClientInner {
             let stack = Stack::from(&self.env.stack);
             let last_update_seq = self.last_update_seq.swap(seq.value(), atomic::Ordering::AcqRel);
             let mut ping_pkg = SnPing {
+                protocol_version: 0, 
+                stack_version: 0, 
                 seq,
-                from_peer_id: if self.aes_key.is_some() { Some(stack.local_device_id().clone()) } else { None }, // 加密通信，密钥就能代表deviceid
+                from_peer_id: Some(stack.local_device_id().clone()),
                 sn_peer_id: self.sn_peerid.clone(),
                 peer_info: if last_update_seq != 0 { Some(local_peer.clone()) } else { None }, // 本地信息更新了信息，需要同步，或者服务器要求更新
                 send_time: now_abs_u64,
@@ -721,22 +766,35 @@ impl ClientInner {
             ping_pkg
         };
 
+        let key_stub = stack.keystore().create_key(self.sn.desc(), true);
+
+        let mut pkg_box = PackageBox::encrypt_box(
+            self.sn_peerid.clone(), 
+            key_stub.key.clone());
+
+        if let keystore::EncryptedKey::Unconfirmed(key_encrypted) = key_stub.encrypted {
+            let stack = Stack::from(&self.env.stack);
+            let mut exchg = Exchange::from((&ping_pkg, local_peer.clone(), key_encrypted, key_stub.key.mix_key));
+            let _ = exchg.sign(stack.keystore().signer()).await;
+            pkg_box.push(exchg);
+        }
+
         let ping_seq = ping_pkg.seq.clone();
         pkg_box.push(ping_pkg);
 
-        let mut context = PackageBoxEncodeContext::from(self.sn.desc());
+        let mut context = PackageBoxEncodeContext::default();
 
         self.last_ping_time.store(now, atomic::Ordering::Release);
 
         self.contract.will_ping(seq.value());
 
-        struct SendIter<'a> {
-            sessions: Vec<(&'a Interface, Vec<Endpoint>)>,
+        struct SendIter {
+            sessions: Vec<(Interface, Vec<Endpoint>)>,
             sub_pos: usize,
             pos: usize,
         }
 
-        impl <'a> Iterator for SendIter<'a> {
+        impl Iterator for SendIter {
             type Item = (Interface, Endpoint);
 
             fn next(&mut self) -> Option<Self::Item> {
@@ -772,23 +830,62 @@ impl ClientInner {
         Ok(())
     }
 
-    fn on_called(&self, called: &SnCalled, call_seq: TempSeq, call_time: std::time::SystemTime, from: &Endpoint, from_interface: Interface) -> Result<(), BuckyError> {
+    fn on_called(&self, called: &SnCalled, key: &MixAesKey, call_seq: TempSeq, call_time: std::time::SystemTime, from: &Endpoint, from_interface: Interface) -> Result<(), BuckyError> {
         let resp = SnCalledResp {
             seq: called.seq,
             result: 0,
             sn_peer_id: self.sn_peerid.clone(),
         };
 
-        assert!(self.aes_key.is_some()); // <TODO>暂时不支持明文
-        let mut pkg_box = PackageBox::encrypt_box(self.sn_peerid.clone(), self.aes_key.as_ref().unwrap().clone());
+        
+
+        let mut pkg_box = PackageBox::encrypt_box(
+            self.sn_peerid.clone(), 
+            key.clone());
         pkg_box.push(resp);
 
-        let mut context = PackageBoxEncodeContext::from(self.sn.desc());
+        let mut context = PackageBoxEncodeContext::default();
         let _ = from_interface.send_box_to(&mut context, &pkg_box, from)?;
 
         self.contract.on_called(called, call_seq, call_time);
 
         Ok(())
+    }
+}
+
+impl PingClientStateEvent for ClientInner{
+    fn online(&self, sn: &Device) {
+        PingClientStateEvent::online(&Stack::from(&self.env.stack), sn);
+
+        let waker = {
+            let state = &mut *self.ping_status.write().unwrap();
+            match state {
+                PingState::Connecting(waker) => {
+                    let waker = waker.transfer();
+                    *state = PingState::Online;
+                    Some(waker)
+                },
+                PingState::Online => None,
+            }
+        };
+
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+
+    fn offline(&self, sn: &Device) {
+        PingClientStateEvent::offline(&Stack::from(&self.env.stack), sn);
+
+        {
+            let state = &mut *self.ping_status.write().unwrap();
+            match state {
+                PingState::Connecting(_) => {},
+                PingState::Online => {
+                    *state = PingState::Connecting(StateWaiter::new());
+                }
+            }
+        }
     }
 }
 
@@ -802,7 +899,7 @@ struct Session {
 }
 
 impl Session {
-    fn prepare_send_endpoints(&self, now: u64) -> (&Interface, Vec<Endpoint>) {
+    fn prepare_send_endpoints(&self, now: u64) -> (Interface, Vec<Endpoint>) {
         let local_endpoint = self.interface.local();
         let to_endpoints = {
             let (eps, is_reset) = {
@@ -826,7 +923,7 @@ impl Session {
 
         self.last_ping_time.store(now, atomic::Ordering::Release);
 
-        (&self.interface, to_endpoints)
+        (self.interface.clone(), to_endpoints)
     }
 
     fn on_ping_resp(&self, resp: &SnPingResp, from: &Endpoint, from_interface: Interface, now: u64, rto: &mut u16, is_handled: &mut bool) -> UpdateOuterResult {
@@ -925,7 +1022,7 @@ impl Contract {
             receipt.call_delay = ((receipt.call_delay as u32 * 7 + delay as u32) / 8) as u16
         }
 
-        let (called_inc, call_peer_inc) = match stat.call_peers.entry(called.from_peer_id.clone()) {
+        let (called_inc, call_peer_inc) = match stat.call_peers.entry(called.peer_info.desc().device_id()) {
             Entry::Occupied(exist) => {
                 let exist = exist.into_mut();
                 if exist.last_seq != seq {
@@ -937,7 +1034,7 @@ impl Contract {
             }
             Entry::Vacant(entry) => {
                 let init_stat = CallPeerStat {
-                    peerid: called.from_peer_id.clone(),
+                    peerid: called.peer_info.desc().device_id(),
                     last_seq: seq,
                     is_connect_success: false
                 };

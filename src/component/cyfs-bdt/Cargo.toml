@@ -1,38 +1,39 @@
-[package]
-name = "cyfs-bdt"
-version = "0.5.2"
-authors = ["liuzhicong <liuzhicong@buckyos.com>"]
-edition = "2021"
-license = "BSD-2-Clause"
-description = "Rust cyfs-bdt package"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package]
+name = 'cyfs-bdt'
+version = '0.6.7'
+authors = ['liuzhicong <liuzhicong@buckyos.com>']
+edition = '2021'
+license = 'BSD-2-Clause'
+description = 'Rust cyfs-bdt package'
 
 [dependencies]
-async-std = { version = "1.11", features = ["unstable", "attributes"] }
-async-trait = "0.1.53"
-bytes = "0.4"
-cyfs-base = { path = "../cyfs-base" , version = "0.5"}
-cyfs-debug = { path = "../cyfs-debug", version = "0.5"}
-chrono = "0.4"
-futures = { version = "0.3", features = ["default", "thread-pool"] }
-libc = "0.2"
-winapi = "0.3"
-log = "0.4"
-once_cell = "1.12"
-lru_time_cache = "0.11"
-rand = "0.7.3"
-cyfs-util = { path = "../cyfs-util", version = "0.5" }
-hex = "0.4.2"
-cyfs-raptorq = { path = "../cyfs-raptor-q", version = "1.6" }
-ringbuf = "0.2.8"
-rusqlite = { version = "0.27.0", features = ["bundled", "blob"] }
-socket2 = "0.4.4"
-generic-array = { version = "0.12", default-features = false, features = [
-    "serde",
+async-std = { version = '1.11', features = ['unstable', 'attributes'] }
+async-trait = '0.1.53'
+bytes = '0.4'
+cyfs-base = { path = '../cyfs-base', version = '0.6' }
+cyfs-debug = { path = '../cyfs-debug', version = '0.6', default-features = false }
+chrono = '0.4'
+futures = { version = '0.3', features = ['default', 'thread-pool'] }
+libc = '0.2'
+winapi = '0.3'
+log = '0.4'
+once_cell = '1.12'
+lru_time_cache = '0.11'
+rand = '0.7.3'
+cyfs-util = { path = '../cyfs-util', version = '0.6' }
+hex = '0.4.2'
+cyfs-raptorq = { path = '../cyfs-raptor-q', version = '1.6' }
+ringbuf = '0.2.8'
+rusqlite = { version = '0.27.0', features = ['bundled', 'blob'] }
+socket2 = '0.4.4'
+generic-array = { version = '0.12', default-features = false, features = [
+	'serde',
 ] }
-sha2 = "0.8"
-clap = "2.34.0"
+sha2 = '0.8'
+clap = '2.34.0'
+serde_json = '1.0'
+md5 = '0.7.0'
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.24"
+nix = '0.24'

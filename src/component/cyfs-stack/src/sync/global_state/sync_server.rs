@@ -4,8 +4,6 @@ use crate::root_state_api::GlobalStateLocalService;
 use cyfs_base::*;
 use cyfs_lib::*;
 
-use std::sync::Arc;
-
 pub(crate) struct GlobalStateSyncServer {
     state: GlobalStateSyncHelper,
 }
@@ -14,7 +12,7 @@ impl GlobalStateSyncServer {
     pub fn new(
         state: GlobalStateLocalService,
         device_id: &DeviceId,
-        noc: Arc<Box<dyn NamedObjectCache>>,
+        noc: NamedObjectCacheRef,
     ) -> Self {
         let state = GlobalStateSyncHelper::new(state, device_id, noc);
 
@@ -139,8 +137,13 @@ impl GlobalStateSyncServer {
         let info = NONObjectInfo::new(object_id.to_owned(), object_raw, None);
 
         SelectResponseObjectInfo {
-            insert_time: 0,
-            size: info.object_raw.len() as u32,
+            meta: SelectResponseObjectMetaInfo {
+                insert_time: 0,
+                create_dec_id: None,
+                context: None,
+                last_access_rpath: None,
+                access_string: None,
+            },
             object: Some(info),
         }
     }

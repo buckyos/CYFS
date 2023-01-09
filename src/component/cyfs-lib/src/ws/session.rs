@@ -349,8 +349,8 @@ impl WebSocketSession {
                 }
 
                 Err(e) => {
-                    let msg = format!("ws recv error: err={}", e);
-                    error!("{}", msg);
+                    let msg = format!("ws recv error: sid={}, err={}", session.sid(), e);
+                    warn!("{}", msg);
 
                     break Err(BuckyError::new(BuckyErrorCode::ConnectionAborted, msg));
                 }

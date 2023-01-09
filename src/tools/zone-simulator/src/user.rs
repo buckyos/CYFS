@@ -108,7 +108,7 @@ impl TestUser {
 
         // 创建people
         let path = CyfsChainBipPath::new_people(None, Some(index));
-        let sk = bip.sub_key(&path).unwrap();
+        let sk = bip.sub_key_ex(&path, PrivateKeyType::Secp256k1, None).unwrap();
 
         let signer = RsaCPUObjectSigner::new(sk.public(), sk.clone());
 
@@ -140,7 +140,7 @@ impl TestUser {
 
         // 创建ood
         let path = CyfsChainBipPath::new_device(0, None, Some(1));
-        let ood_sk = bip.sub_key(&path).unwrap();
+        let ood_sk = bip.sub_key_ex(&path, PrivateKeyType::Secp256k1, None).unwrap();
         let unique_id = format!("{}-ood", name);
         let unique_id = UniqueId::create_with_hash(unique_id.as_bytes());
         let builder = Device::new(
@@ -177,7 +177,7 @@ impl TestUser {
         let mut standby_ood = None;
         if ood_work_mode == OODWorkMode::ActiveStandby {
             let path = CyfsChainBipPath::new_device(0, None, Some(2));
-            let ood_sk = bip.sub_key(&path).unwrap();
+            let ood_sk = bip.sub_key_ex(&path, PrivateKeyType::Secp256k1, None).unwrap();
             let unique_id = format!("{}-ood2", name);
             let unique_id = UniqueId::create_with_hash(unique_id.as_bytes());
             let builder = Device::new(
@@ -223,7 +223,7 @@ impl TestUser {
 
         // 创建第一个device
         let path = CyfsChainBipPath::new_device(0, None, Some(2));
-        let device1_sk = bip.sub_key(&path).unwrap();
+        let device1_sk = bip.sub_key_ex(&path, PrivateKeyType::Rsa, Some(1024)).unwrap();
         let unique_id = format!("{}-device1", name);
         let unique_id = UniqueId::create_with_hash(unique_id.as_bytes());
         let builder = Device::new(
@@ -254,7 +254,7 @@ impl TestUser {
 
         // 创建第二个device
         let path = CyfsChainBipPath::new_device(0, None, Some(3));
-        let device2_sk = bip.sub_key(&path).unwrap();
+        let device2_sk = bip.sub_key_ex(&path, PrivateKeyType::Rsa, Some(2048)).unwrap();
         let unique_id = format!("{}-device2", name);
         let unique_id = UniqueId::create_with_hash(unique_id.as_bytes());
         let builder = Device::new(

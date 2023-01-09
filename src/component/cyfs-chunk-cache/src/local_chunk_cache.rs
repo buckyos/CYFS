@@ -1,7 +1,7 @@
 use std::fs::{create_dir_all};
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::u64;
 use cyfs_base::*;
 use sysinfo::{DiskExt, RefreshKind, SystemExt};
@@ -11,6 +11,7 @@ use futures_lite::AsyncWriteExt;
 use num_traits::abs;
 use scan_dir::ScanDir;
 use cyfs_chunk_lib::ChunkMeta;
+use cyfs_debug::Mutex;
 
 #[derive(Clone, RawEncode, RawDecode)]
 pub(crate) struct LocalChunkCacheMetaRecord {
@@ -503,14 +504,28 @@ impl SingleDiskChunkCache {
     }
 
     fn get_file_path(&self, file_id: &ChunkId, is_create: bool) -> PathBuf {
-        let hash_str = file_id.to_string();
-        let (tmp, last) = hash_str.split_at(42);
-        let (first, mid) = tmp.split_at(40);
-        let path = self.path.join(last).join(mid);
-        if is_create && !path.exists() {
-            let _ = create_dir_all(path.as_path());
+        #[cfg(target_os = "windows")]
+        {
+            let hash_str = file_id.to_base36();
+            let (tmp, last) = hash_str.split_at(hash_str.len() - 3);
+            let (first, mid) = tmp.split_at(tmp.len() - 3);
+            let path = self.path.join(last).join(mid);
+            if is_create && !path.exists() {
+                let _ = create_dir_all(path.as_path());
+            }
+            path.join(first)
         }
-        path.join(first)
+        #[cfg(not(target_os = "windows"))]
+        {
+            let hash_str = file_id.to_string();
+            let (tmp, last) = hash_str.split_at(hash_str.len() - 2);
+            let (first, mid) = tmp.split_at(tmp.len() - 2);
+            let path = self.path.join(last).join(mid);
+            if is_create && !path.exists() {
+                let _ = create_dir_all(path.as_path());
+            }
+            path.join(first)
+        }
     }
 
     pub async fn remove_file(&self, file_id: &ChunkId) -> BuckyResult<()> {
@@ -780,7 +795,7 @@ mod test_local_chunk_cache {
 
     #[async_trait::async_trait]
     impl ChunkCache for SingleDiskChunkCacheMock {
-        async fn get_chunk(&self, chunk_id: &ChunkId, chunk_type: ChunkType) -> BuckyResult<Box<dyn Chunk>> {
+        async fn get_chunk(&self, chunk_id: &ChunkId, _chunk_type: ChunkType) -> BuckyResult<Box<dyn Chunk>> {
             return match self.chunk_map.lock().unwrap().get(chunk_id) {
                 Some(chunk) => {
                     Ok(Box::new(ChunkMock {buf: Vec::from(chunk.as_ref().deref())}))
@@ -791,11 +806,11 @@ mod test_local_chunk_cache {
             }
         }
 
-        async fn new_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<Box<dyn ChunkMut>> {
+        async fn new_chunk(&self, _chunk_id: &ChunkId) -> BuckyResult<Box<dyn ChunkMut>> {
             todo!()
         }
 
-        async fn delete_chunk(&self, chunk_id: &ChunkId) -> BuckyResult<()> {
+        async fn delete_chunk(&self, _chunk_id: &ChunkId) -> BuckyResult<()> {
             todo!()
         }
 
@@ -804,11 +819,11 @@ mod test_local_chunk_cache {
             Ok(())
         }
 
-        async fn is_exist(&self, chunk_id: &ChunkId) -> bool {
+        async fn is_exist(&self, _chunk_id: &ChunkId) -> bool {
             todo!()
         }
 
-        async fn get_chunk_meta(&self, chunk_id: &ChunkId, chunk_type: ChunkType) -> BuckyResult<ChunkMeta> {
+        async fn get_chunk_meta(&self, _chunk_id: &ChunkId, _chunk_type: ChunkType) -> BuckyResult<ChunkMeta> {
             todo!()
         }
     }
@@ -838,7 +853,7 @@ mod test_local_chunk_cache {
             Ok(self.buf.len())
         }
 
-        async fn seek(&mut self, pos: SeekFrom) -> BuckyResult<u64> {
+        async fn seek(&mut self, _pos: SeekFrom) -> BuckyResult<u64> {
             Ok(0)
         }
     }

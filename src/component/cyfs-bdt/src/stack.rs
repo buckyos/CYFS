@@ -10,7 +10,7 @@ use crate::{
         tcp::{self, OnTcpInterface},
         udp::{self, OnUdpPackageBox, OnUdpRawData, UdpPackageBox},
     },
-    protocol::*,
+    protocol::{*, v0::*},
     sn::{
         self,
         client::{PingClientCalledEvent, PingClientStateEvent},
@@ -18,11 +18,10 @@ use crate::{
     stream::{self, StreamManager},
     tunnel::{self, TunnelManager},
     pn::client::ProxyManager,
-    ndn::{self, NdnStack, ChunkReader}, 
+    ndn::{self, HistorySpeedConfig, NdnStack, ChunkReader, NdnEventHandler}, 
     debug::{self, DebugStub}
 };
 use cyfs_util::{
-    acl::*, 
     cache::*
 };
 use async_std::{
@@ -52,7 +51,7 @@ pub struct StackConfig {
     pub statistic_interval: Duration, 
     pub keystore: keystore::Config,
     pub interface: interface::Config, 
-    pub sn_client: sn::client::Config,
+    pub sn_client: sn::Config,
     pub tunnel: tunnel::Config,
     pub stream: stream::Config,
     pub datagram: datagram::Config,
@@ -75,7 +74,7 @@ impl StackConfig {
                     recv_buffer: 52428800
                 }
             }, 
-            sn_client: sn::client::Config {
+            sn_client: sn::Config {
                 ping_interval_init: Duration::from_millis(500),
                 ping_interval: Duration::from_millis(25000),
                 offline: Duration::from_millis(300000),
@@ -135,14 +134,18 @@ impl StackConfig {
                 max_try_random_vport_times: 5,
                 piece_cache_duration: Duration::from_millis(1000),
                 recv_cache_count: 16,
+                expired_tick_sec: 10,
+                fragment_cache_size: 100 *1024*1024,
+                fragment_expired_us: 30 *1000*1000,
             },
             ndn: ndn::Config {
-                atomic_interval: Duration::from_millis(1), 
+                atomic_interval: Duration::from_millis(10), 
                 schedule_interval: Duration::from_secs(1), 
                 channel: ndn::channel::Config {
                     precoding_timeout: Duration::from_secs(900),
                     resend_interval: Duration::from_millis(500), 
                     resend_timeout: Duration::from_secs(5), 
+                    wait_redirect_timeout: Duration::from_millis(500),
                     msl: Duration::from_secs(60), 
                     udp: ndn::channel::tunnel::udp::Config {
                         no_resp_loss_count: 3, 
@@ -152,18 +155,13 @@ impl StackConfig {
                             min_rto: Duration::from_millis(200),
                             cc_impl: cc::ImplConfig::BBR(Default::default()),
                         }
+                    }, 
+                    history_speed: HistorySpeedConfig {
+                        attenuation: 0.5, 
+                        expire: Duration::from_secs(20),  
+                        atomic: Duration::from_secs(1)
                     }
-                },
-                limit: ndn::LimitConfig {
-                    max_connections_per_source: 8u16,
-
-                    max_connections: 512u16,
-                    max_cpu_usage: 100u8,
-                    max_memory_usage: 100u8,
-                    max_upstream_bandwidth: 0u32,
-                    max_downstream_bandwidth: 0u32,
-                },
-                dir: ndn::DirConfig::default(),
+                }
             }, 
             debug: None
         }
@@ -196,8 +194,8 @@ pub struct StackOpenParams {
     pub ndc: Option<Box<dyn NamedDataCache>>,
     pub tracker: Option<Box<dyn TrackerCache>>, 
     pub chunk_store: Option<Box<dyn ChunkReader>>, 
-    
-    pub ndn_acl: Option<Box<dyn BdtDataAclProcessor>>
+
+    pub ndn_event: Option<Box<dyn NdnEventHandler>>,
 }
 
 impl StackOpenParams {
@@ -208,12 +206,12 @@ impl StackOpenParams {
             known_sn: None, 
             known_device: None, 
             active_pn: None, 
-            passive_pn: None, 
+            passive_pn: None,
             outer_cache: None,
             ndc: None, 
             tracker: None, 
             chunk_store: None, 
-            ndn_acl: None 
+            ndn_event: None,
         }
     }
 }
@@ -304,6 +302,13 @@ impl Stack {
             lazy_components: None, 
             ndn: None
         }));
+
+        let mut known_sn = vec![];
+        if params.known_sn.is_some() {
+            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
+        }
+        stack.device_cache().reset_sn_list(&known_sn);
+
         let datagram_manager = DatagramManager::new(stack.to_weak());
 
         let proxy_manager = ProxyManager::new(stack.to_weak());
@@ -316,7 +321,6 @@ impl Stack {
             proxy_manager.add_active_proxy(&pn);
         }
 
-
         for pn in passive_pn {
             proxy_manager.add_passive_proxy(&pn);
         }
@@ -327,42 +331,42 @@ impl Stack {
             None
         };
 
-        let components = StackLazyComponents {
-            sn_client: sn::client::ClientManager::create(stack.to_weak()),
-            tunnel_manager: TunnelManager::new(stack.to_weak()),
-            stream_manager: StreamManager::new(stack.to_weak()),
-            datagram_manager, 
-            proxy_manager, 
-            debug_stub: debug_stub.clone()
-        };
-        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-        stack_impl.lazy_components = Some(components);
+        {
+            let components = StackLazyComponents {
+                sn_client: sn::client::ClientManager::create(stack.to_weak()),
+                tunnel_manager: TunnelManager::new(stack.to_weak()),
+                stream_manager: StreamManager::new(stack.to_weak()),
+                datagram_manager, 
+                proxy_manager, 
+                debug_stub: debug_stub.clone()
+            };
+            
+            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+            stack_impl.lazy_components = Some(components);
+    
+            let mut ndc = None;
+            std::mem::swap(&mut ndc, &mut params.ndc);
+            let mut tracker = None;
+            std::mem::swap(&mut tracker, &mut params.tracker);
+            let mut ndn_event = None;
+            std::mem::swap(&mut ndn_event, &mut params.ndn_event);
+    
+            let mut chunk_store = None;
+            std::mem::swap(&mut chunk_store, &mut params.chunk_store);
+    
+            let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_event);
+            let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
+            stack_impl.ndn = Some(ndn);
+        }   
+        
 
-        let mut ndc = None;
-        std::mem::swap(&mut ndc, &mut params.ndc);
-        let mut tracker = None;
-        std::mem::swap(&mut tracker, &mut params.tracker);
-        let mut ndn_acl = None;
-        std::mem::swap(&mut ndn_acl, &mut params.ndn_acl);
-
-        let mut chunk_store = None;
-        std::mem::swap(&mut chunk_store, &mut params.chunk_store);
-
-        let mut ndn_acl = None;
-        std::mem::swap(&mut ndn_acl, &mut params.ndn_acl);
-
-        let ndn = NdnStack::open(stack.to_weak(), ndc, tracker, chunk_store, ndn_acl);
-        let stack_impl = unsafe { &mut *(Arc::as_ptr(&stack.0) as *mut StackImpl) };
-        stack_impl.ndn = Some(ndn);
-
-
-        let mut known_sn = vec![];
-        if params.known_sn.is_some() {
-            std::mem::swap(&mut known_sn, params.known_sn.as_mut().unwrap());
-        }
-        for sn in known_sn {
-            stack.device_cache().add(&sn.desc().device_id(), &sn);
-            stack.sn_client().add_sn_ping(&sn, true, None);
+        // get nearest sn in sn-list
+        if let Some(sn) = stack.device_cache().nearest_sn_of(stack.local_device_id()) {
+            let sn_device = stack.device_cache().get(&sn).await.unwrap();
+            stack.sn_client().add_sn_ping(&sn_device, true, None);
+        } else {
+            // don't find nearest sn
+            warn!("failed found SN-device sn-list: {}", known_sn.len());
         }
 
         let mut known_device = vec![];
@@ -395,6 +399,7 @@ impl Stack {
             }
         });
 
+        info!("{}: opened, version 0.5.4", stack); 
         Ok(StackGuard::from(stack))
     }
 
@@ -490,6 +495,7 @@ impl Stack {
 
         let mut passive_pn_list = self.proxy_manager().passive_proxies();
         std::mem::swap(local.mut_connect_info().mut_passive_pn_list(), &mut passive_pn_list);
+
          
         local
             .body_mut()
@@ -504,6 +510,26 @@ impl Stack {
         .await;
         self.device_cache().update_local(&local);
         self.tunnel_manager().reset();
+    }
+
+    pub async fn reset_sn_list(&self, sn_list: Vec<Device>) -> BuckyResult<()> {
+        info!("{} reset_sn_list {:?}", self, sn_list);
+        self.device_cache().reset_sn_list(&sn_list);
+
+        // need get nearest sn
+        if let Some(sn_id) = self.device_cache().nearest_sn_of(self.local_device_id()) {
+            if self.sn_client().sn_list().contains(&sn_id) {
+                info!("{} has been exists in sn clients.", sn_id);
+            } else {
+                let _ = self.sn_client().stop_ping();
+                self.sn_client().add_sn_ping(&self.device_cache().get(&sn_id).await.unwrap(), true, None);
+            }
+        } else {
+            // don't find nearest sn
+            unreachable!("failed found SN-device sn-list: {}", sn_list.len());
+        }
+
+        Ok(())
     }
 
     pub async fn reset(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {
@@ -552,10 +578,10 @@ impl OnUdpPackageBox for Stack {
         trace!("{} on_udp_package_box", self.local_device_id().as_ref());
         //FIXME: 用sequence 和 send time 过滤
         if package_box.as_ref().has_exchange() {
+            // let exchange: &Exchange = package_box.as_ref().packages()[0].as_ref();
             self.keystore().add_key(
                 package_box.as_ref().key(),
-                package_box.as_ref().remote(),
-                true,
+                package_box.as_ref().remote()
             );
         }
         if package_box.as_ref().is_tunnel() {
@@ -572,11 +598,11 @@ impl OnUdpPackageBox for Stack {
     }
 }
 
-impl OnUdpRawData<(udp::Interface, DeviceId, AesKey, Endpoint)> for Stack {
+impl OnUdpRawData<(udp::Interface, DeviceId, MixAesKey, Endpoint)> for Stack {
     fn on_udp_raw_data(
         &self,
         data: &[u8],
-        context: (udp::Interface, DeviceId, AesKey, Endpoint),
+        context: (udp::Interface, DeviceId, MixAesKey, Endpoint),
     ) -> Result<(), BuckyError> {
         self.tunnel_manager().on_udp_raw_data(data, context)
     }
@@ -590,8 +616,9 @@ impl OnTcpInterface for Stack {
     ) -> Result<OnPackageResult, BuckyError> {
         //FIXME: 用sequence 和 send time 过滤
         if first_box.has_exchange() {
+            // let exchange: &Exchange = first_box.packages()[0].as_ref();
             self.keystore()
-                .add_key(first_box.key(), first_box.remote(), true);
+                .add_key(first_box.key(), first_box.remote());
         }
         if first_box.is_tunnel() {
             self.tunnel_manager().on_tcp_interface(interface, first_box)
@@ -611,9 +638,10 @@ impl PingClientStateEvent for Stack {
         // unimplemented!()
     }
 
-    fn offline(&self, _sn: &Device) {
+    fn offline(&self, sn: &Device) {
         info!("{} sn offline, please implement it if not.", self.local_device_id());
         // unimplemented!()
+        self.keystore().reset_peer(&sn.desc().device_id());
     }
 }
 
@@ -635,8 +663,8 @@ impl PingClientCalledEvent for Stack {
             err
         })?;
         if caller_box.has_exchange() {
-            self.keystore()
-                .add_key(caller_box.key(), caller_box.remote(), true);
+            // let exchange: &Exchange = caller_box.packages()[0].as_ref();
+            self.keystore().add_key(caller_box.key(), caller_box.remote());
         }
         self.tunnel_manager().on_called(called, caller_box)
     }

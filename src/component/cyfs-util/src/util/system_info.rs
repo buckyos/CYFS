@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use sysinfo::{DiskExt, DiskType, NetworkExt, ProcessorExt, RefreshKind, System, SystemExt};
+use sysinfo::{CpuExt, DiskExt, DiskType, NetworkExt, RefreshKind, System, SystemExt};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SystemInfo {
@@ -9,6 +9,7 @@ pub struct SystemInfo {
 
     pub cpu_usage: f32,
 
+    // memory size in bytes
     pub total_memory: u64,
     pub used_memory: u64,
 
@@ -16,11 +17,11 @@ pub struct SystemInfo {
     pub received_bytes: u64,
     pub transmitted_bytes: u64,
 
-    // SSD硬盘容量和可用容量，包括Unknown
+    // SSD硬盘容量和可用容量，包括Unknown, in bytes
     pub ssd_disk_total: u64,
     pub ssd_disk_avail: u64,
 
-    // HDD硬盘容量和可用容量
+    // HDD硬盘容量和可用容量, in bytes
     pub hdd_disk_total: u64,
     pub hdd_disk_avail: u64,
 }
@@ -37,7 +38,7 @@ impl Default for SystemInfo {
             ssd_disk_total: 0,
             ssd_disk_avail: 0,
             hdd_disk_total: 0,
-            hdd_disk_avail: 0
+            hdd_disk_avail: 0,
         }
     }
 }
@@ -53,7 +54,13 @@ struct SystemInfoManagerInner {
 
 impl SystemInfoManagerInner {
     pub fn new() -> Self {
-        let r = RefreshKind::new().with_networks().with_networks_list().with_memory().with_cpu().with_disks().with_disks_list();
+        let r = RefreshKind::new()
+            .with_networks()
+            .with_networks_list()
+            .with_memory()
+            .with_cpu(sysinfo::CpuRefreshKind::new().with_cpu_usage())
+            .with_disks()
+            .with_disks_list();
         let handler = System::new_with_specifics(r);
 
         let mut info_inner = SystemInfo::default();
@@ -68,9 +75,7 @@ impl SystemInfoManagerInner {
                     name
                 }
             }
-            None => {
-                "MY PC".to_owned()
-            }
+            None => "MY PC".to_owned(),
         };
 
         info!("os name: {:?}", info_inner.name);
@@ -101,7 +106,7 @@ impl SystemInfoManagerInner {
         self.handler.refresh_all();
         self.update_memory();
         self.update_cpu();
-        self.udpate_network();
+        self.update_network();
         self.update_disks();
     }
 
@@ -116,7 +121,9 @@ impl SystemInfoManagerInner {
         self.info_inner.ssd_disk_total = 0;
         self.info_inner.ssd_disk_avail = 0;
         for disk in self.handler.disks() {
-            if disk.is_removable() { continue;}
+            if disk.is_removable() {
+                continue;
+            }
             match disk.type_() {
                 DiskType::HDD => {
                     self.info_inner.hdd_disk_total += disk.total_space();
@@ -138,16 +145,18 @@ impl SystemInfoManagerInner {
     }
 
     fn update_cpu(&mut self) {
-        self.info_inner.cpu_usage = self.handler.global_processor_info().cpu_usage();
+        self.info_inner.cpu_usage = self.handler.global_cpu_info().cpu_usage();
     }
 
-    fn udpate_network(&mut self) {
-
+    fn update_network(&mut self) {
         let networks = self.handler.networks();
         let mut received_total = 0;
         let mut transmitted_total = 0;
         for (interface_name, network) in networks {
-            if interface_name.find("Hyper-V Virtual Ethernet Adapter").is_some() {
+            if interface_name
+                .find("Hyper-V Virtual Ethernet Adapter")
+                .is_some()
+            {
                 //info!("will ignore as Hyper-V Virtual Ethernet Adapter addr: {}", description);
                 continue;
             }

@@ -8,12 +8,12 @@ use tide::Response;
 
 #[derive(Clone)]
 pub(crate) struct ZoneSyncRequestHandler {
-    protocol: NONProtocol,
+    protocol: RequestProtocol,
     server: Arc<ZoneSyncServer>,
 }
 
 impl ZoneSyncRequestHandler {
-    pub fn new(protocol: NONProtocol, server: Arc<ZoneSyncServer>) -> Self {
+    pub fn new(protocol: RequestProtocol, server: Arc<ZoneSyncServer>) -> Self {
         Self { protocol, server }
     }
 
@@ -22,8 +22,11 @@ impl ZoneSyncRequestHandler {
         RequestorHelper::encode_header(&mut http_resp, cyfs_base::CYFS_REVISION, &resp.revision);
         RequestorHelper::encode_opt_header(&mut http_resp, cyfs_base::CYFS_TARGET, &resp.target);
 
-        if resp.objects.len() >  0{
-            SyncObjectsResponse::encode_objects(&mut http_resp, &resp.objects);
+        if resp.objects.len() > 0 {
+            if let Err(e)  = SyncObjectsResponse::encode_objects(&mut http_resp, resp.objects) {
+                error!("encode diff response error! {}", e);
+                return RequestorHelper::trans_error(e);
+            }
         }
 
         http_resp.into()
@@ -55,9 +58,7 @@ impl ZoneSyncRequestHandler {
     ) -> Response {
         let ret = self.on_diff(req, body).await;
         match ret {
-            Ok(resp) => {
-                Self::encode_diff_response(resp)
-            }
+            Ok(resp) => Self::encode_diff_response(resp),
             Err(e) => RequestorHelper::trans_error(e),
         }
     }

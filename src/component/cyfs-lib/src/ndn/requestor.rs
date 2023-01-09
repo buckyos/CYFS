@@ -6,7 +6,6 @@ use crate::stack::SharedObjectStackDecID;
 use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};
-use std::borrow::Cow;
 use std::sync::Arc;
 
 pub struct NDNRequestorHelper;
@@ -32,7 +31,7 @@ impl NDNRequestorHelper {
             object_id,
             owner_id,
             attr,
-            
+
             range,
 
             length,
@@ -42,7 +41,6 @@ impl NDNRequestorHelper {
         Ok(ret)
     }
 }
-
 
 #[derive(Clone)]
 pub struct NDNRequestor {
@@ -83,42 +81,6 @@ impl NDNRequestor {
         self.clone().into_processor()
     }
 
-    // url支持下面的格式，其中device_id是可选
-    // {host:port}/ndn/[req_path/]object_id[/inner_path]
-    fn format_url(
-        &self,
-        req_path: Option<&String>,
-        object_id: Option<&ObjectId>,
-        inner_path: Option<&String>,
-    ) -> Url {
-        let mut parts = vec![];
-        if let Some(req_path) = req_path {
-            parts.push(Cow::Borrowed(
-                req_path
-                    .as_str()
-                    .trim_start_matches('/')
-                    .trim_end_matches('/'),
-            ));
-        }
-
-        if let Some(object_id) = object_id {
-            let object_id = object_id.to_string();
-            parts.push(Cow::Owned(object_id));
-        }
-
-        if let Some(inner_path) = inner_path {
-            parts.push(Cow::Borrowed(
-                inner_path
-                    .as_str()
-                    .trim_start_matches('/')
-                    .trim_end_matches('/'),
-            ));
-        }
-
-        let p = parts.join("/");
-        self.service_url.join(&p).unwrap()
-    }
-
     fn encode_common_headers(
         &self,
         action: NDNAction,
@@ -141,25 +103,25 @@ impl NDNRequestor {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
         }
 
-        if !com_req.referer_object.is_empty() {
-            let headers: Vec<String> = com_req
-                .referer_object
-                .iter()
-                .map(|v| v.to_string())
-                .collect();
+        RequestorHelper::encode_opt_header_with_encoding(
+            http_req,
+            cyfs_base::CYFS_REQ_PATH,
+            com_req.req_path.as_deref(),
+        );
 
-            RequestorHelper::insert_headers(http_req, cyfs_base::CYFS_REFERER_OBJECT, &headers);
+        if !com_req.referer_object.is_empty() {
+            RequestorHelper::insert_headers_with_encoding(http_req, cyfs_base::CYFS_REFERER_OBJECT, &com_req.referer_object);
         }
 
         http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());
     }
 
     fn encode_put_data_request(&self, req: &NDNPutDataOutputRequest) -> Request {
-        let url = self.format_url(req.common.req_path.as_ref(), Some(&req.object_id), None);
-
-        let mut http_req = Request::new(Method::Put, url);
+        let mut http_req = Request::new(Method::Put, self.service_url.clone());
 
         self.encode_common_headers(NDNAction::PutData, &req.common, &mut http_req);
+
+        http_req.insert_header(cyfs_base::CYFS_OBJECT_ID, req.object_id.to_string());
 
         http_req
     }
@@ -237,11 +199,11 @@ impl NDNRequestor {
     }
 
     fn encode_put_shared_data_request(&self, req: &NDNPutDataOutputRequest) -> Request {
-        let url = self.format_url(req.common.req_path.as_ref(), Some(&req.object_id), None);
-
-        let mut http_req = Request::new(Method::Put, url);
+        let mut http_req = Request::new(Method::Put, self.service_url.clone());
 
         self.encode_common_headers(NDNAction::PutSharedData, &req.common, &mut http_req);
+
+        http_req.insert_header(cyfs_base::CYFS_OBJECT_ID, req.object_id.to_string());
 
         http_req
     }
@@ -283,15 +245,16 @@ impl NDNRequestor {
         }
     }
 
-    fn encode_get_data_request(&self, req: &NDNGetDataOutputRequest) -> Request {
-        let url = self.format_url(
-            req.common.req_path.as_ref(),
-            Some(&req.object_id),
-            req.inner_path.as_ref(),
-        );
+    fn encode_get_data_request(&self, action: NDNAction, req: &NDNGetDataOutputRequest) -> Request {
+        let mut http_req = Request::new(Method::Get, self.service_url.clone());
+        self.encode_common_headers(action, &req.common, &mut http_req);
 
-        let mut http_req = Request::new(Method::Post, url);
-        self.encode_common_headers(NDNAction::GetData, &req.common, &mut http_req);
+        http_req.insert_header(cyfs_base::CYFS_OBJECT_ID, req.object_id.to_string());
+        RequestorHelper::encode_opt_header_with_encoding(
+            &mut http_req,
+            cyfs_base::CYFS_INNER_PATH,
+            req.inner_path.as_deref(),
+        );
 
         if let Some(ref range) = req.range {
             http_req.insert_header("Range", range.encode_string());
@@ -304,12 +267,11 @@ impl NDNRequestor {
         &self,
         req: NDNGetDataOutputRequest,
     ) -> BuckyResult<NDNGetDataOutputResponse> {
-        let http_req = self.encode_get_data_request(&req);
+        let http_req = self.encode_get_data_request(NDNAction::GetData, &req);
 
         let mut resp = self.requestor.request(http_req).await?;
 
         if resp.status().is_success() {
-            
             match NDNRequestorHelper::decode_get_data_response(&mut resp).await {
                 Ok(resp) => {
                     info!("get data from ndn service success: {}", resp);
@@ -328,19 +290,6 @@ impl NDNRequestor {
             );
             Err(e)
         }
-    }
-
-    fn encode_get_shared_data_request(&self, req: &NDNGetDataOutputRequest) -> Request {
-        let url = self.format_url(
-            req.common.req_path.as_ref(),
-            Some(&req.object_id),
-            req.inner_path.as_ref(),
-        );
-
-        let mut http_req = Request::new(Method::Post, url);
-        self.encode_common_headers(NDNAction::GetSharedData, &req.common, &mut http_req);
-
-        http_req
     }
 
     async fn decode_get_shared_data_response(
@@ -381,7 +330,7 @@ impl NDNRequestor {
         &self,
         req: NDNGetDataOutputRequest,
     ) -> BuckyResult<NDNGetDataOutputResponse> {
-        let http_req = self.encode_get_shared_data_request(&req);
+        let http_req = self.encode_get_data_request(NDNAction::GetSharedData, &req);
 
         let mut resp = self.requestor.request(http_req).await?;
 
@@ -399,14 +348,13 @@ impl NDNRequestor {
     }
 
     fn encode_delete_data_request(&self, req: &NDNDeleteDataOutputRequest) -> Request {
-        let url = self.format_url(
-            req.common.req_path.as_ref(),
-            Some(&req.object_id),
-            req.inner_path.as_ref(),
-        );
-
-        let mut http_req = Request::new(Method::Delete, url);
+        let mut http_req = Request::new(Method::Delete, self.service_url.clone());
         self.encode_common_headers(NDNAction::DeleteData, &req.common, &mut http_req);
+
+        http_req.insert_header(cyfs_base::CYFS_OBJECT_ID, req.object_id.to_string());
+        if let Some(inner_path) = &req.inner_path {
+            http_req.insert_header(cyfs_base::CYFS_INNER_PATH, inner_path);
+        }
 
         http_req
     }
@@ -443,14 +391,14 @@ impl NDNRequestor {
     }
 
     fn encode_query_file_request(&self, req: &NDNQueryFileOutputRequest) -> Request {
-        let mut url = self.format_url(req.common.req_path.as_ref(), None, None);
+        let mut url = self.service_url.clone();
 
         let (t, v) = req.param.to_key_pair();
         url.query_pairs_mut()
             .append_pair("type", t)
             .append_pair("value", &v);
 
-        let mut http_req = Request::new(Method::Post, url);
+        let mut http_req = Request::new(Method::Get, url);
         self.encode_common_headers(NDNAction::QueryFile, &req.common, &mut http_req);
 
         http_req

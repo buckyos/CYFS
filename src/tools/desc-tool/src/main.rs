@@ -25,11 +25,11 @@ fn calc_nonce(peer_desc_file: &str, _bits: u32) {
                     // p.const_info.calc_pow(bits, &mut nonce)
                     Ok(())
                 },
-                StandardObject::SimpleGroup(_p) => {
-                    // TODO: 加calc pow
-                    // p.const_info.calc_pow(bits, &mut nonce)
-                    Ok(())
-                },
+                // StandardObject::SimpleGroup(_p) => {
+                //     // TODO: 加calc pow
+                //     // p.const_info.calc_pow(bits, &mut nonce)
+                //     Ok(())
+                // },
                 _ => {
                     error!("not support object type");
                     Err(BuckyError::new(BuckyErrorCode::NotSupport, ""))
@@ -64,8 +64,8 @@ fn calc_subcommand<'a, 'b>() -> App<'a, 'b> {
             .help("Input Object info file"))
 }
 
-#[async_std::main]
-async fn main() {
+
+async fn main_run() {
     simple_logger::SimpleLogger::new().with_level(LevelFilter::Debug).init().unwrap();
     let matches = App::new("desc-tool").version(cyfs_base::get_version()).about("tool to create or show desc files")
         .subcommand(create_subcommand())
@@ -97,4 +97,10 @@ async fn main() {
             std::process::exit(1);
         }
     }
+}
+
+fn main() {
+    cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
+
+    async_std::task::block_on(main_run());
 }

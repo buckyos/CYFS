@@ -23,7 +23,7 @@ fn new_object(dec_id: &ObjectId, id: &str) -> Text {
         .build()
 }
 
-fn gen_text_object_list(dec_id: &ObjectId,) -> Vec<(Text,ObjectId)> {
+fn gen_text_object_list(dec_id: &ObjectId) -> Vec<(Text, ObjectId)> {
     let mut list = vec![];
 
     let object = new_object(dec_id, "first-text");
@@ -37,195 +37,171 @@ fn gen_text_object_list(dec_id: &ObjectId,) -> Vec<(Text,ObjectId)> {
     list
 }
 
-async fn clear_all(dec_id: &ObjectId) {
-    let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
-
-    let device1 = stack.local_device_id();
-    let device2 = TestLoader::get_shared_stack(DeviceIndex::User1Device2).local_device_id();
-    let ood = TestLoader::get_shared_stack(DeviceIndex::User1OOD).local_device_id();
-
-    let list= gen_text_object_list(dec_id);
-    for (_, object_id) in list {
-        info!("will clear object={}, dec={}, target={}", object_id, dec_id, device1);
-        test_delete_object(&object_id, dec_id, &stack, &device1).await;
-
-        info!("will clear object={}, dec={}, target={}", object_id, dec_id, device2);
-        test_delete_object(&object_id, dec_id, &stack, &device2).await;
-
-        info!("will clear object={}, dec={}, target={}", object_id, dec_id, ood);
-        test_delete_object(&object_id, dec_id, &stack, &ood).await;
-    }
-}
-
 pub async fn test() {
-    let dec_id = new_dec("test-non");
-
-    clear_all(&dec_id).await;
-
-    async_std::task::spawn(async move {
-        loop {
-            let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-            test_put_object(&dec_id, &stack).await;
-
-            async_std::task::sleep(std::time::Duration::from_secs(5)).await;
-        }
-    });
-
-    test_outer_put(&dec_id).await;
-
-    let target;
-    {
-        let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
-        // stack.wait_online(None).await.unwrap();
-        target = stack.local_device_id();
-        test_put_object(&dec_id, &stack).await;
-    }
-
-    let list = {
-        let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
-        test_select(&dec_id, &stack, &target).await;
-        test_select_with_req_path(&dec_id, &stack, &target).await
-    };
-
-    for object_id in list {
-        let stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
-        test_delete_object(&object_id, &dec_id, &stack, &target).await;
-    }
+    zone_same_dec_without_req_path().await;
+    zone_get_with_req_path().await;
 
     info!("test all non case success!");
 }
 
-async fn test_outer_put(dec_id: &ObjectId) {
-    let object = new_object(dec_id, "first-outter-text");
-    let object_id = object.text_id().object_id().to_owned();
+async fn zone_same_dec_without_req_path() {
+    let device1 = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+    let device2 = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
 
-    let stack = TestLoader::get_shared_stack(DeviceIndex::User2Device2);
-    let target_stack = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+    let dec1 = device1.dec_id().unwrap();
+    let dec2 = device2.dec_id().unwrap();
+    assert_eq!(dec1, dec2);
 
-    let mut req =
-        NONPutObjectOutputRequest::new_router(None, object_id.clone(), object.to_vec().unwrap());
-    req.common.dec_id = Some(dec_id.clone());
-    req.common.target = Some(target_stack.local_device_id().into());
+    let object = new_object(&dec1, "zone_same_dec_without_req_path");
+    let object_id = object.desc().calculate_id();
 
-    let ret = stack.non_service().put_object(req).await;
-    match ret {
-        Err(e) => {
-            assert_eq!(e.code(), BuckyErrorCode::PermissionDenied);
-        }
-        Ok(_) => unreachable!(),
-    }
-}
-
-async fn test_delete_object(
-    object_id: &ObjectId,
-    dec_id: &ObjectId,
-    stack: &SharedCyfsStack,
-    target: &DeviceId,
-) {
-    let mut req = NONDeleteObjectOutputRequest::new_router(
-        Some(target.object_id().to_owned()),
+    // first delete
+    let del_req = NONDeleteObjectOutputRequest::new_noc(
         object_id.to_owned(),
         None,
     );
-    req.common.dec_id = Some(dec_id.to_owned());
 
-    req.common.target = Some(target.object_id().to_owned());
-    let _resp = stack.non_service().delete_object(req).await.unwrap();
+    let _resp = device1.non_service().delete_object(del_req.clone()).await.unwrap();
+    let _resp = device2.non_service().delete_object(del_req.clone()).await.unwrap();
     info!("delete object success! {}", object_id);
+
+    // put_object to ood1
+    let mut req =
+        NONPutObjectOutputRequest::new_router(None, object_id.clone(), object.to_vec().unwrap());
+
+    let mut access = AccessString::new(0);
+    access.set_group_permissions(AccessGroup::CurrentZone, AccessPermissions::Full);
+    access.set_group_permissions(AccessGroup::CurrentDevice, AccessPermissions::Full);
+    access.set_group_permissions(AccessGroup::OwnerDec, AccessPermissions::Full);
+    req.access = Some(access.clone());
+
+    device1.non_service().put_object(req).await.unwrap();
+
+    // update object meta
+    access.set_group_permissions(AccessGroup::FriendZone, AccessPermissions::ReadOnly);
+    let update_req = NONUpdateObjectMetaOutputRequest::new_router(
+        None, object_id.clone(), Some(access),
+    );
+    device1.non_service().update_object_meta(update_req).await.unwrap();
+
+    // test get by same dec
+    let req = NONGetObjectRequest::new_router(None, object_id, None);
+    let _ret = device1.non_service().get_object(req.clone()).await.unwrap();
+
+    // test get by other dec
+    let new_dec = new_dec("zone_same_dec_without_req_path");
+    let device3 = device2.fork_with_new_dec(Some(new_dec.clone())).await.unwrap();
+    device3.wait_online(None).await.unwrap();
+    let ret = device3.non_service().get_object(req.clone()).await;
+    assert!(ret.is_err());
+    let err = ret.err().unwrap();
+    assert_eq!(err.code(), BuckyErrorCode::PermissionDenied);
 }
 
-async fn test_put_object(dec_id: &ObjectId, stack: &SharedCyfsStack) {
-    {
-        let object = new_object(dec_id, "first-text");
-        let object_id = object.text_id().object_id().to_owned();
+async fn zone_get_with_req_path() {
+    let device1 = TestLoader::get_shared_stack(DeviceIndex::User1Device1);
+    let device2 = TestLoader::get_shared_stack(DeviceIndex::User1Device2);
+    let ood1 = TestLoader::get_shared_stack(DeviceIndex::User1OOD);
 
-        info!("will test put object to ood: {}", object_id);
+    let new_dec = new_dec("zone_get_with_req_path");
+    let device3 = device2.fork_with_new_dec(Some(new_dec.clone())).await.unwrap();
+    device3.wait_online(None).await.unwrap();
 
-        let mut req = NONPutObjectOutputRequest::new_router(
-            None,
-            object_id.clone(),
-            object.to_vec().unwrap(),
-        );
-        req.common.dec_id = Some(dec_id.clone());
 
-        let ret = stack.non_service().put_object(req).await.unwrap();
-        match ret.result {
-            NONPutObjectResult::Accept => {
-                info!("first put_object success! {}", object_id);
-            }
-            NONPutObjectResult::Updated => {
-                info!("updated put_object success! {}", object_id);
-            }
-            NONPutObjectResult::AlreadyExists => {
-                info!("put_object but already exists! {}", object_id);
-            }
-            _ => {
-                unreachable!();
-            }
-        }
-    }
+    let dec1 = device1.dec_id().unwrap();
+    let dec2 = device2.dec_id().unwrap();
+    assert_eq!(dec1, dec2);
 
-    {
-        let object = new_object(dec_id, "second-text");
-        let object_id = object.text_id().object_id().to_owned();
+    let object = new_object(&dec1, "zone_same_dec_with_req_path");
+    let object_id = object.desc().calculate_id();
 
-        let mut req =
-            NONPutObjectOutputRequest::new_router(None, object_id, object.to_vec().unwrap());
-        req.common.dec_id = Some(dec_id.clone());
+    // first delete from device1 and device2' local cache
+    let del_req = NONDeleteObjectOutputRequest::new_noc(
+        object_id.to_owned(),
+        None,
+    );
 
-        let ret = stack.non_service().put_object(req).await.unwrap();
-        match ret.result {
-            NONPutObjectResult::Accept => {
-                info!("first put_object success! {}", object_id);
-            }
-            NONPutObjectResult::Updated => {
-                info!("updated put_object success! {}", object_id);
-            }
-            _ => {
-                unreachable!();
-            }
-        }
-    }
-}
+    let _resp = device1.non_service().delete_object(del_req.clone()).await.unwrap();
+    let _resp = device2.non_service().delete_object(del_req.clone()).await.unwrap();
+    info!("delete object success! {}", object_id);
 
-async fn test_select(dec_id: &ObjectId, stack: &SharedCyfsStack, target: &DeviceId) {
-    let mut filter = SelectFilter::default();
-    filter.obj_type = Some(CoreObjectType::Text.into());
-    filter.dec_id = Some(dec_id.clone());
+    // put object to ood with access without otherdec field
+    let mut req =
+        NONPutObjectOutputRequest::new_router(None, object_id.clone(), object.to_vec().unwrap());
+    let mut access = AccessString::default();
+    access.clear_group_permissions(AccessGroup::OthersDec);
+    req.access = Some(access);
 
-    let mut req = NONSelectObjectRequest::new(NONAPILevel::NON, filter, None);
-    req.common.target = Some(target.object_id().to_owned());
-    let resp = stack.non_service().select_object(req).await.unwrap();
+    device1.non_service().put_object(req).await.unwrap();
 
-    /*
-    // used for clear old data
-    for item in &resp.objects {
-        test_delete_object(&item.object.as_ref().unwrap().object_id, dec_id, stack, target).await;
-    }
-    */
+    let path = "/test/non/zone_same_dec_with_req_path";
+
+    // clear rmeta from ood
+    let stub = device1.root_state_meta_stub(Some(ood1.local_device_id().object_id().to_owned()), None);
+    stub.clear_access().await.unwrap();
+
+    // dec1 modify ood's state with object_id
+    let stub = device1.root_state_stub(Some(ood1.local_device_id().object_id().to_owned()), None);
+    let op_env = stub.create_path_op_env().await.unwrap();
+    op_env.set_with_path(path, &object_id, None, true).await.unwrap();
+    let root_info = op_env.commit().await.unwrap();
+
+    // dec2(==dec1) get with req_path from ood， ok
+    let req_path = RequestGlobalStatePath::new(Some(dec2.to_owned()), Some(path));
+    let mut get_req = NONGetObjectRequest::new_router(None, object_id, None);
+    get_req.common.req_path = Some(req_path.to_string());
+
+    let ret = device2.non_service().get_object(get_req.clone()).await;
+    assert!(ret.is_ok());
     
-    assert_eq!(resp.objects.len(), 2);
-}
+    // must delete from device2(==device3)'s local cache
+    let mut del_req_with_object = del_req.clone();
+    del_req_with_object.common.flags  = CYFS_REQUEST_FLAG_DELETE_WITH_QUERY;
+    let resp = device2.non_service().delete_object(del_req_with_object).await.unwrap();
+    assert!(resp.object.is_some());
 
-async fn test_select_with_req_path(
-    dec_id: &ObjectId,
-    stack: &SharedCyfsStack,
-    target: &DeviceId,
-) -> Vec<ObjectId> {
-    let mut filter = SelectFilter::default();
-    filter.obj_type = Some(CoreObjectType::Text.into());
-    filter.dec_id = Some(dec_id.clone());
+    // dec3 get with req_path from ood, reject
+    let ret = device3.non_service().get_object(get_req.clone()).await;
+    assert!(ret.is_err());
+    let err = ret.err().unwrap();
+    assert_eq!(err.code(), BuckyErrorCode::PermissionDenied);
 
-    let mut req = NONSelectObjectRequest::new(NONAPILevel::NON, filter, None);
-    req.common.target = Some(target.object_id().to_owned());
-    req.common.req_path = Some("/test/select".to_owned());
-    req.common.dec_id = Some(dec_id.to_owned());
 
-    let resp = stack.non_service().select_object(req).await.unwrap();
-    assert_eq!(resp.objects.len(), 2);
+    // dec1 open path's access for other dec
+    // open_access
+    let mut access = AccessString::new(0);
+    access.set_group_permission(AccessGroup::CurrentZone, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::CurrentDevice, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::OwnerDec, AccessPermission::Read);
+    access.set_group_permission(AccessGroup::OthersDec, AccessPermission::Read);
+    let item = GlobalStatePathAccessItem {
+        path: path.to_owned(),
+        access: GlobalStatePathGroupAccess::Default(access.value()),
+    };
+    device1
+        .root_state_meta_stub(Some(ood1.local_device_id().object_id().to_owned()), None)
+        .add_access(item)
+        .await
+        .unwrap();
 
-    resp.objects
-        .into_iter()
-        .map(|item| item.object.unwrap().object_id)
-        .collect()
+    // dec3 get with req_path, ok
+    let ret = device3.non_service().get_object(get_req.clone()).await;
+    assert!(ret.is_ok());
+
+    let _resp = device3.non_service().delete_object(del_req.clone()).await.unwrap();
+
+    // dec3 get with req_path and dec_root, ok
+    let mut req_path = RequestGlobalStatePath::new(Some(dec2.to_owned()), Some(path));
+    req_path.set_root(root_info.root);
+    get_req.common.req_path = Some(req_path.to_string());
+    let ret = device3.non_service().get_object(get_req.clone()).await;
+    assert!(ret.is_ok());
+
+    let _resp = device3.non_service().delete_object(del_req.clone()).await.unwrap();
+
+    let mut req_path = RequestGlobalStatePath::new(Some(dec2.to_owned()), Some(path));
+    req_path.set_dec_root(root_info.dec_root);
+    get_req.common.req_path = Some(req_path.to_string());
+    let ret = device3.non_service().get_object(get_req.clone()).await;
+    assert!(ret.is_ok());
 }

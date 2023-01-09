@@ -80,6 +80,10 @@ impl Service {
         self.info.lock().unwrap().bind(root);
     }
 
+    pub fn get_script(&self, name: &str) -> Option<String> {
+        self.info.lock().unwrap().get_script(name)
+    }
+
     // bind后，初始化一个service
     pub async fn init(&self) -> BuckyResult<()> {
         assert!(self.state() == ServiceState::STOP);
@@ -176,6 +180,10 @@ impl Service {
             return;
         }
 
+        self.direct_sync_state(target_state);
+    }
+
+    pub fn direct_sync_state(&self, target_state: ServiceState) {
         self.update_state();
 
         if self.state() == target_state {
@@ -301,7 +309,11 @@ impl Service {
             return;
         }
 
-        assert!(self.state.lock().unwrap().process.is_none());
+        if self.state.lock().unwrap().process.is_some() {
+            warn!("start process but state.process is not empty! name={}", self.name());
+            return;
+        }
+
         assert_eq!(self.state(), ServiceState::STOP);
 
         let v = start_script.as_ref().unwrap();

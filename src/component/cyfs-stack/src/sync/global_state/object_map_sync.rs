@@ -3,12 +3,14 @@ use super::super::protocol::*;
 use super::assoc::AssociationObjects;
 use super::cache::SyncObjectsStateCache;
 use super::data::{ChunksCollector, DataSync};
+use super::dir_sync::*;
 use super::walker::*;
 use cyfs_base::*;
 use cyfs_lib::*;
 
 use futures::future::{AbortHandle, Abortable};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 // sync的重试间隔
 const SYNC_RETRY_MIN_INTERVAL_SECS: u64 = 10;
@@ -20,7 +22,7 @@ pub(super) struct ObjectMapSync {
     cache: ObjectMapOpEnvCacheRef,
     state_cache: SyncObjectsStateCache,
     requestor: Arc<SyncClientRequestor>,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     device_id: DeviceId,
 
     sync_waker: Mutex<Option<AbortHandle>>,
@@ -35,11 +37,11 @@ impl ObjectMapSync {
         cache: ObjectMapOpEnvCacheRef,
         state_cache: SyncObjectsStateCache,
         requestor: Arc<SyncClientRequestor>,
-        noc: Box<dyn NamedObjectCache>,
+        noc: NamedObjectCacheRef,
         device_id: DeviceId,
         data_sync: DataSync,
     ) -> Self {
-        let chunks_collector = ChunksCollector::new(noc.clone_noc(), device_id.clone());
+        let chunks_collector = ChunksCollector::new(noc.clone(), device_id.clone());
 
         Self {
             target,
@@ -74,23 +76,49 @@ impl ObjectMapSync {
 
         loop {
             let list = walker.next(64).await;
-            if list.is_empty() && self.chunks_collector.is_empty() {
-                info!("sync object & chunk list complete! target={}", self.target);
+            if list.is_empty() {
+                info!("sync object complete! target={}", self.target);
+                break Ok(());
+            }
+
+            if let Err(e) = self.sync_objects_with_assoc(list, had_err).await {
+                break Err(e);
+            }
+        }
+    }
+
+    // sync objects with all assoc objects
+    async fn sync_objects_with_assoc(
+        &self,
+        mut list: Vec<ObjectId>,
+        had_err: &mut bool,
+    ) -> BuckyResult<()> {
+        let mut dir_sync = self.data_sync.create_dir_sync();
+
+        loop {
+            if list.is_empty() && self.chunks_collector.is_empty() && dir_sync.is_empty() {
+                info!(
+                    "sync object & chunk list & dir list complete! target={}",
+                    self.target
+                );
                 break Ok(());
             }
 
             // sync objects
-            if !list.is_empty() {
-                // filter the missing objects
-                let list = self.state_cache.filter_missing(list);
-                if !list.is_empty() {
-                    if let Err(e) = self.sync_objects_with_assoc(list, had_err).await {
-                        error!(
-                            "sync object list error! now will stop sync target={}",
-                            self.target,
-                        );
-                        break Err(e);
-                    }
+            let sync_list = self.state_cache.filter_missing(list);
+            match self
+                .sync_objects_with_assoc_once(sync_list, &mut dir_sync, had_err)
+                .await
+            {
+                Ok(assoc_objects) => {
+                    list = assoc_objects;
+                }
+                Err(e) => {
+                    error!(
+                        "sync object list error! now will stop sync target={}",
+                        self.target,
+                    );
+                    break Err(e);
                 }
             }
 
@@ -107,58 +135,57 @@ impl ObjectMapSync {
             }
         }
     }
-
     // sync objects with all assoc objects
-    async fn sync_objects_with_assoc(
+    async fn sync_objects_with_assoc_once(
         &self,
-        mut list: Vec<ObjectId>,
+        list: Vec<ObjectId>,
+        dir_sync: &mut DirListSync,
         had_err: &mut bool,
-    ) -> BuckyResult<()> {
-        loop {
-            let mut assoc = AssociationObjects::new(self.chunks_collector.clone());
+    ) -> BuckyResult<Vec<ObjectId>> {
+        let mut assoc = AssociationObjects::new(self.chunks_collector.clone());
 
-            let mut sync_list = vec![];
-            {
-                std::mem::swap(&mut list, &mut sync_list);
-            }
+        // first sync objects
+        if !list.is_empty() {
+            debug!("will sync assoc list: {:?}", list);
 
-            if let Err(e) = self.sync_objects(sync_list, had_err, &mut assoc).await {
+            if let Err(e) = self.sync_objects(list, had_err, &mut assoc, dir_sync).await {
                 error!(
                     "sync object list error! now will stop sync target={}",
                     self.target,
                 );
-                break Err(e);
+                return Err(e);
             }
+        }
 
-            let assoc_list = assoc.into_list();
-            if assoc_list.is_empty() {
-                break Ok(());
-            }
+        // then sync dirs once
+        // dir_sync will try to parse dir and extract all relative objects and chunks
+        dir_sync.sync_once(&mut assoc).await;
 
-            // filter the missing objects
-            let assoc_list = self.state_cache.filter_missing(assoc_list);
-            if assoc_list.is_empty() {
-                return Ok(());
-            }
+        let assoc_list = assoc.into_list();
+        if assoc_list.is_empty() {
+            return Ok(vec![]);
+        }
 
-            // filter the already exists objects
-            for id in assoc_list {
-                match self.cache.exists(&id).await {
-                    Ok(exists) if !exists => {
-                        list.push(id);
-                    }
-                    _ => {
-                        // TODO wht should do if call exists error?
-                    }
+        // filter the missing objects
+        let assoc_list = self.state_cache.filter_missing(assoc_list);
+        if assoc_list.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // filter the already exists objects
+        let mut list = vec![];
+        for id in assoc_list {
+            match self.cache.exists(&id).await {
+                Ok(exists) if !exists => {
+                    list.push(id);
+                }
+                _ => {
+                    // TODO wht should do if call exists error?
                 }
             }
-
-            if list.is_empty() {
-                break Ok(());
-            }
-
-            debug!("will sync assoc list: {:?}", list);
         }
+
+        Ok(list)
     }
 
     async fn sync_objects(
@@ -166,6 +193,7 @@ impl ObjectMapSync {
         list: Vec<ObjectId>,
         had_err: &mut bool,
         assoc_objects: &mut AssociationObjects,
+        dir_sync: &mut DirListSync,
     ) -> BuckyResult<()> {
         // 重试间隔
         let mut retry_interval = SYNC_RETRY_MIN_INTERVAL_SECS;
@@ -173,7 +201,7 @@ impl ObjectMapSync {
 
         loop {
             match self
-                .sync_objects_once(list.clone(), had_err, assoc_objects)
+                .sync_objects_once(list.clone(), had_err, assoc_objects, dir_sync)
                 .await
             {
                 Ok(_) => break,
@@ -229,6 +257,7 @@ impl ObjectMapSync {
         list: Vec<ObjectId>,
         had_err: &mut bool,
         assoc_objects: &mut AssociationObjects,
+        dir_sync: &mut DirListSync,
     ) -> BuckyResult<()> {
         debug!("will sync objects: {:?}", list);
 
@@ -241,23 +270,34 @@ impl ObjectMapSync {
         let sync_resp = self.requestor.sync_objects(sync_req).await?;
 
         // try cache the missing object list
-        list.into_iter().for_each(|id| {
+        for id in &list {
             let exists = sync_resp
                 .objects
                 .iter()
                 .find(|item| {
                     let object = item.object.as_ref().unwrap();
-                    object.object_id == id
+                    object.object_id == *id
                 })
                 .is_some();
             if !exists {
+                if *id == self.target {
+                    let msg = format!("sync objects but target object is missing! {}", id);
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::Failed, msg));
+                }
+
                 self.state_cache.miss_object(&id);
             }
-        });
+        }
 
         // extract all assoc objects/chunks
         sync_resp.objects.iter().for_each(|item| {
-            assoc_objects.append(item.object.as_ref().unwrap());
+            let info = item.object.as_ref().unwrap();
+            assoc_objects.append(info);
+
+            if info.object_id.obj_type_code() == ObjectTypeCode::Dir {
+                dir_sync.append_dir(info);
+            }
         });
 
         self.save_objects(sync_resp.objects, had_err).await;
@@ -286,7 +326,7 @@ impl ObjectMapSync {
                     }
 
                     // save objects to noc
-                    if let Err(_e) = self.put_others(object).await {
+                    if let Err(_e) = self.put_others(item.meta, object).await {
                         *had_err = true;
                     }
                 }
@@ -326,37 +366,41 @@ impl ObjectMapSync {
         Ok(())
     }
 
-    async fn put_others(&self, object: NONObjectInfo) -> BuckyResult<()> {
-        let req = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
-            object_id: object.object_id.clone(),
-            dec_id: None,
-            object: object.object.unwrap(),
-            object_raw: object.object_raw,
-            flags: 0,
+    async fn put_others(
+        &self,
+        meta: SelectResponseObjectMetaInfo,
+        object: NONObjectInfo,
+    ) -> BuckyResult<()> {
+        let source = RequestSourceInfo::new_local_dec(meta.create_dec_id);
+        let req = NamedObjectCachePutObjectRequest {
+            source,
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: meta.context,
+            last_access_rpath: meta.last_access_rpath,
+            access_string: meta.access_string,
         };
 
-        match self.noc.insert_object(&req).await {
+        match self.noc.put_object(&req).await {
             Ok(resp) => {
                 match resp.result {
-                    NamedObjectCacheInsertResult::Accept
-                    | NamedObjectCacheInsertResult::Updated => {
+                    NamedObjectCachePutObjectResult::Accept
+                    | NamedObjectCachePutObjectResult::Updated => {
                         info!(
                             "sync diff insert object to noc success: {}",
-                            object.object_id
+                            req.object.object_id
                         );
                     }
-                    NamedObjectCacheInsertResult::AlreadyExists => {
+                    NamedObjectCachePutObjectResult::AlreadyExists => {
                         warn!(
                             "sync diff insert object but already exists: {}",
-                            object.object_id
+                            req.object.object_id
                         );
                     }
-                    NamedObjectCacheInsertResult::Merged => {
+                    NamedObjectCachePutObjectResult::Merged => {
                         warn!(
                             "sync diff insert object but signs merged success: {}",
-                            object.object_id
+                            req.object.object_id
                         );
                     }
                 }
@@ -366,7 +410,7 @@ impl ObjectMapSync {
             Err(e) => {
                 error!(
                     "sync diff insert object to noc failed: {} {}",
-                    object.object_id, e
+                    req.object.object_id, e
                 );
                 Err(e)
             }

@@ -1,28 +1,27 @@
-use std::sync::{Arc};
 use cyfs_base::*;
-use cyfs_lib::{NamedObjectCache, NamedObjectCacheGetObjectRequest, NamedObjectCacheInsertObjectRequest, NONProtocol};
-use sha2::Digest;
+use cyfs_lib::*;
 use cyfs_task_manager::*;
 use cyfs_util::*;
+use sha2::Digest;
+use std::sync::Arc;
 
-#[derive(RawEncode, RawDecode)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
+#[cyfs_protobuf_type(super::util_proto::BuildFileParams)]
 pub struct BuildFileParams {
     pub local_path: String,
     pub owner: ObjectId,
-    pub chunk_size: u32
+    pub dec_id: ObjectId,
+    pub chunk_size: u32,
 }
 
 pub struct BuildFileTaskFactory {
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     ndc: Box<dyn NamedDataCache>,
 }
 
 impl BuildFileTaskFactory {
-    pub fn new(noc: Box<dyn NamedObjectCache>, ndc: Box<dyn NamedDataCache>) -> Self {
-        Self {
-            noc,
-            ndc
-        }
+    pub fn new(noc: NamedObjectCacheRef, ndc: Box<dyn NamedDataCache>) -> Self {
+        Self { noc, ndc }
     }
 }
 
@@ -37,12 +36,19 @@ impl TaskFactory for BuildFileTaskFactory {
         Ok(Box::new(RunnableTask::new(BuildFileTask::new(
             params.local_path,
             params.owner,
+            params.dec_id,
             params.chunk_size,
-            self.noc.clone_noc(),
-            self.ndc.clone()))))
+            self.noc.clone(),
+            self.ndc.clone(),
+        ))))
     }
 
-    async fn restore(&self, _task_status: TaskStatus, params: &[u8], data: &[u8]) -> BuckyResult<Box<dyn Task>> {
+    async fn restore(
+        &self,
+        _task_status: TaskStatus,
+        params: &[u8],
+        data: &[u8],
+    ) -> BuckyResult<Box<dyn Task>> {
         let params = BuildFileParams::clone_from_slice(params)?;
         let task_state = if data.len() > 0 {
             FileTaskState::clone_from_slice(data)?
@@ -53,10 +59,12 @@ impl TaskFactory for BuildFileTaskFactory {
         Ok(Box::new(RunnableTask::new(BuildFileTask::restore(
             params.local_path,
             params.owner,
+            params.dec_id,
             params.chunk_size,
             task_state,
-            self.noc.clone_noc(),
-            self.ndc.clone()))))
+            self.noc.clone(),
+            self.ndc.clone(),
+        ))))
     }
 }
 
@@ -82,7 +90,7 @@ impl TaskState {
             state,
             status: BuildFileTaskStatus::Stopped,
             task_id,
-            task_store: None
+            task_store: None,
         }
     }
 
@@ -94,15 +102,28 @@ impl TaskState {
 #[async_trait::async_trait]
 impl FileObjectBuilderState for TaskState {
     async fn get_cur_state(&self) -> BuckyResult<(u64, (u64, [u32; 8]), Vec<ChunkId>)> {
-        Ok((self.state.pos, self.state.hash_state(), self.state.chunk_list.clone()))
+        Ok((
+            self.state.pos,
+            self.state.hash_state(),
+            self.state.chunk_list.clone(),
+        ))
     }
 
-    async fn update(&mut self, pos: u64, hash_state: (u64, &[u32; 8]), chunk_id: ChunkId) -> BuckyResult<()> {
+    async fn update(
+        &mut self,
+        pos: u64,
+        hash_state: (u64, &[u32; 8]),
+        chunk_id: ChunkId,
+    ) -> BuckyResult<()> {
         self.state.pos = pos;
         self.state.set_hash_state(hash_state);
         self.state.chunk_list.push(chunk_id);
         if self.task_store.is_some() {
-            self.task_store.as_ref().unwrap().save_task_data(&self.task_id, self.state.to_vec()?).await?;
+            self.task_store
+                .as_ref()
+                .unwrap()
+                .save_task_data(&self.task_id, self.state.to_vec()?)
+                .await?;
         }
         Ok(())
     }
@@ -116,13 +137,17 @@ impl FileTaskState {
             hash_pos: 0,
             hash_state,
             pos: 0,
-            chunk_list: vec![]
+            chunk_list: vec![],
         }
     }
 
     pub fn set_hash_state(&mut self, state: (u64, &[u32; 8])) {
         unsafe {
-            std::ptr::copy(state.1.as_ptr() as *const u8, self.hash_state.as_mut_ptr(), 32);
+            std::ptr::copy(
+                state.1.as_ptr() as *const u8,
+                self.hash_state.as_mut_ptr(),
+                32,
+            );
         }
         self.hash_pos = state.0;
     }
@@ -162,8 +187,9 @@ pub struct BuildFileTask {
     task_state: FileObjectBuilderStateWrapper<TaskState>,
     local_path: String,
     owner: ObjectId,
+    dec_id: ObjectId,
     chunk_size: u32,
-    noc: Box<dyn NamedObjectCache>,
+    noc: NamedObjectCacheRef,
     ndc: Box<dyn NamedDataCache>,
 }
 
@@ -171,37 +197,47 @@ impl BuildFileTask {
     pub(crate) fn new(
         local_path: String,
         owner: ObjectId,
+        dec_id: ObjectId,
         chunk_size: u32,
-        noc: Box<dyn NamedObjectCache>,
-        ndc: Box<dyn NamedDataCache>) -> Self {
+        noc: NamedObjectCacheRef,
+        ndc: Box<dyn NamedDataCache>,
+    ) -> Self {
         let mut sha2 = sha2::Sha256::new();
         sha2.input(local_path.as_bytes());
-        sha2.input(owner.to_string().as_bytes());
+        sha2.input(owner.as_slice());
+        sha2.input(dec_id.as_slice());
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_FILE_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
         Self {
             task_id: task_id.clone(),
             task_store: None,
-            task_state: FileObjectBuilderStateWrapper::new(TaskState::new(FileTaskState::new(), task_id)),
+            task_state: FileObjectBuilderStateWrapper::new(TaskState::new(
+                FileTaskState::new(),
+                task_id,
+            )),
             local_path,
             owner,
+            dec_id,
             chunk_size,
             noc,
-            ndc
+            ndc,
         }
     }
 
     pub(crate) fn restore(
         local_path: String,
         owner: ObjectId,
+        dec_id: ObjectId,
         chunk_size: u32,
         task_state: FileTaskState,
-        noc: Box<dyn NamedObjectCache>,
-        ndc: Box<dyn NamedDataCache>) -> Self {
+        noc: NamedObjectCacheRef,
+        ndc: Box<dyn NamedDataCache>,
+    ) -> Self {
         let mut sha2 = sha2::Sha256::new();
         sha2.input(local_path.as_bytes());
-        sha2.input(owner.to_string().as_bytes());
+        sha2.input(owner.as_slice());
+        sha2.input(dec_id.as_slice());
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_FILE_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
@@ -211,9 +247,10 @@ impl BuildFileTask {
             task_state: FileObjectBuilderStateWrapper::new(TaskState::new(task_state, task_id)),
             local_path,
             owner,
+            dec_id,
             chunk_size,
             noc,
-            ndc
+            ndc,
         }
     }
 }
@@ -238,58 +275,105 @@ impl Runnable for BuildFileTask {
 
     async fn set_task_store(&mut self, task_store: Arc<dyn TaskStore>) {
         self.task_store = Some(task_store.clone());
-        self.task_state.get_state_mut().await.set_task_store(task_store);
+        self.task_state
+            .get_state_mut()
+            .await
+            .set_task_store(task_store);
     }
 
     async fn run(&self) -> BuckyResult<()> {
         self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Running;
-        let builder = FileObjectBuilder::new(self.local_path.clone(), self.owner.clone(), self.chunk_size, Some(self.task_state.clone()));
+        let builder = FileObjectBuilder::<TaskState>::new(
+            self.local_path.clone(),
+            self.owner.clone(),
+            self.chunk_size,
+            None,
+        );
         let file = match builder.build().await {
-            Ok(file) => {
-                file
-            },
+            Ok(file) => file,
             Err(e) => {
-                self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Failed(e.clone());
+                self.task_state.get_state_mut().await.state = FileTaskState::new();
+                if self.task_store.is_some() {
+                    self.task_store
+                        .as_ref()
+                        .unwrap()
+                        .save_task_data(&self.task_id, Vec::new())
+                        .await?;
+                }
+                self.task_state.get_state_mut().await.status =
+                    BuildFileTaskStatus::Failed(e.clone());
                 return Err(e);
             }
         };
-        let query_ret = self.ndc.get_file_by_hash(&GetFileByHashRequest {
-            hash: file.desc().content().hash().to_string(),
-            flags: 0
-        }).await?;
+        let query_ret = self
+            .ndc
+            .get_file_by_hash(&GetFileByHashRequest {
+                hash: file.desc().content().hash().to_string(),
+                flags: 0,
+            })
+            .await?;
         if query_ret.is_some() {
-            let file = self.noc.get_object(&NamedObjectCacheGetObjectRequest {
-                protocol: NONProtocol::Native,
-                source: Default::default(),
-                object_id: query_ret.unwrap().file_id.object_id().clone()
-            }).await?;
-            if file.is_some() && file.as_ref().unwrap().object_raw.is_some() {
-                if let Ok(file) = File::clone_from_slice(
-                    file.as_ref().unwrap().object_raw.as_ref().unwrap().as_slice()) {
-                    self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Finished(file);
+            let file = self
+                .noc
+                .get_object(&NamedObjectCacheGetObjectRequest {
+                    last_access_rpath: None,
+                    source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
+                    object_id: query_ret.unwrap().file_id.object_id().clone(),
+                })
+                .await?;
+            if let Some(file) = file {
+                if let Ok(file) = File::clone_from_slice(file.object.object_raw.as_slice()) {
+                    self.task_state.get_state_mut().await.state = FileTaskState::new();
+                    if self.task_store.is_some() {
+                        self.task_store
+                            .as_ref()
+                            .unwrap()
+                            .save_task_data(&self.task_id, Vec::new())
+                            .await?;
+                    }
+                    self.task_state.get_state_mut().await.status =
+                        BuildFileTaskStatus::Finished(file);
                     return Ok(());
                 }
             }
         }
 
-        let object_id = file.desc().calculate_id();
         let object_raw = file.to_vec()?;
-        let object = AnyNamedObject::clone_from_slice(object_raw.as_slice())?;
-        match self.noc.insert_object(&NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: Default::default(),
-            object_id: object_id.clone(),
-            dec_id: None,
-            object_raw,
-            object: Arc::new(object),
-            flags: 0,
-        }).await {
+        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
+
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: None,
+        };
+
+        match self.noc.put_object(&req).await {
             Ok(_) => {
+                self.task_state.get_state_mut().await.state = FileTaskState::new();
+                if self.task_store.is_some() {
+                    self.task_store
+                        .as_ref()
+                        .unwrap()
+                        .save_task_data(&self.task_id, Vec::new())
+                        .await?;
+                }
                 self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Finished(file);
                 Ok(())
-            },
+            }
             Err(e) => {
-                self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Failed(e.clone());
+                self.task_state.get_state_mut().await.state = FileTaskState::new();
+                if self.task_store.is_some() {
+                    self.task_store
+                        .as_ref()
+                        .unwrap()
+                        .save_task_data(&self.task_id, Vec::new())
+                        .await?;
+                }
+                self.task_state.get_state_mut().await.status =
+                    BuildFileTaskStatus::Failed(e.clone());
                 Err(e)
             }
         }
@@ -302,64 +386,73 @@ impl Runnable for BuildFileTask {
 
 #[cfg(test)]
 mod build_file_task_test {
+    use crate::util_api::local::{BuildFileParams, BuildFileTaskFactory, BuildFileTaskStatus};
+    use cyfs_base::{
+        BuckyResult, ChunkState, DeviceId, NamedObject, ObjectDesc, ObjectId, RawFrom,
+    };
+    use cyfs_lib::*;
+    use cyfs_task_manager::test_task_manager::create_test_task_manager;
+    use cyfs_task_manager::BUILD_FILE_TASK;
+    use futures::AsyncWriteExt;
     use std::path::Path;
     use std::time::Duration;
-    use futures::AsyncWriteExt;
-    use cyfs_base::{BuckyResult, ChunkState, DeviceId, NamedObject, ObjectDesc, ObjectId, RawFrom};
-    use cyfs_lib::{NamedObjectCache, NamedObjectCacheDeleteObjectRequest, NamedObjectCacheDeleteObjectResult, NamedObjectCacheGetObjectRequest, NamedObjectCacheInsertObjectRequest, NamedObjectCacheInsertResponse, NamedObjectCacheInsertResult, NamedObjectCacheSelectObjectRequest, NamedObjectCacheStat, NamedObjectCacheSyncClient, NamedObjectCacheSyncServer, ObjectCacheData};
-    use cyfs_task_manager::{BUILD_FILE_TASK};
-    use cyfs_task_manager::test_task_manager::create_test_task_manager;
-    use cyfs_util::cache::*;
-    use crate::util_api::local::{BuildFileParams, BuildFileTaskFactory, BuildFileTaskStatus};
+    use std::sync::Arc;
 
-    struct MemoryNoc {
-
-    }
+    struct MemoryNoc {}
 
     #[async_trait::async_trait]
     impl NamedObjectCache for MemoryNoc {
-        async fn insert_object(&self, obj_info: &NamedObjectCacheInsertObjectRequest) -> BuckyResult<NamedObjectCacheInsertResponse> {
-            Ok(NamedObjectCacheInsertResponse {
-                result: NamedObjectCacheInsertResult::Accept,
-                object_update_time: None,
-                object_expires_time: None
+        async fn put_object(
+            &self,
+            req: &NamedObjectCachePutObjectRequest,
+        ) -> BuckyResult<NamedObjectCachePutObjectResponse> {
+            Ok(NamedObjectCachePutObjectResponse {
+                result: NamedObjectCachePutObjectResult::Accept,
+                update_time: None,
+                expires_time: None,
             })
         }
 
-        async fn get_object(&self, req: &NamedObjectCacheGetObjectRequest) -> BuckyResult<Option<ObjectCacheData>> {
-            todo!()
+        async fn get_object_raw(
+            &self,
+            req: &NamedObjectCacheGetObjectRequest,
+        ) -> BuckyResult<Option<NamedObjectCacheObjectRawData>> {
+            todo!();
         }
 
-        async fn select_object(&self, req: &NamedObjectCacheSelectObjectRequest) -> BuckyResult<Vec<ObjectCacheData>> {
-            todo!()
+        async fn delete_object(
+            &self,
+            req: &NamedObjectCacheDeleteObjectRequest,
+        ) -> BuckyResult<NamedObjectCacheDeleteObjectResponse> {
+            todo!();
         }
 
-        async fn delete_object(&self, req: &NamedObjectCacheDeleteObjectRequest) -> BuckyResult<NamedObjectCacheDeleteObjectResult> {
-            todo!()
+        async fn exists_object(
+            &self,
+            req: &NamedObjectCacheExistsObjectRequest,
+        ) -> BuckyResult<NamedObjectCacheExistsObjectResponse> {
+            todo!();
+        }
+
+        async fn update_object_meta(
+            &self,
+            req: &NamedObjectCacheUpdateObjectMetaRequest,
+        ) -> BuckyResult<()> {
+            todo!();
+        }
+
+        async fn check_object_access(&self,
+            req: &NamedObjectCacheCheckObjectAccessRequest
+        ) -> BuckyResult<Option<()>> {
+            todo!();
         }
 
         async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
-            todo!()
-        }
-
-        fn sync_server(&self) -> Option<Box<dyn NamedObjectCacheSyncServer>> {
-            todo!()
-        }
-
-        fn sync_client(&self) -> Option<Box<dyn NamedObjectCacheSyncClient>> {
-            todo!()
-        }
-
-        fn clone_noc(&self) -> Box<dyn NamedObjectCache> {
-            Box::new(Self {
-
-            })
+            todo!();
         }
     }
 
-    struct MemoryNDC {
-
-    }
+    struct MemoryNDC {}
 
     #[async_trait::async_trait]
     impl NamedDataCache for MemoryNDC {
@@ -375,27 +468,45 @@ mod build_file_task_test {
             todo!()
         }
 
-        async fn file_update_quick_hash(&self, req: &FileUpdateQuickhashRequest) -> BuckyResult<()> {
+        async fn file_update_quick_hash(
+            &self,
+            req: &FileUpdateQuickhashRequest,
+        ) -> BuckyResult<()> {
             todo!()
         }
 
-        async fn get_file_by_hash(&self, req: &GetFileByHashRequest) -> BuckyResult<Option<FileCacheData>> {
+        async fn get_file_by_hash(
+            &self,
+            req: &GetFileByHashRequest,
+        ) -> BuckyResult<Option<FileCacheData>> {
             Ok(None)
         }
 
-        async fn get_file_by_file_id(&self, req: &GetFileByFileIdRequest) -> BuckyResult<Option<FileCacheData>> {
+        async fn get_file_by_file_id(
+            &self,
+            req: &GetFileByFileIdRequest,
+        ) -> BuckyResult<Option<FileCacheData>> {
             todo!()
         }
 
-        async fn get_files_by_quick_hash(&self, req: &GetFileByQuickHashRequest) -> BuckyResult<Vec<FileCacheData>> {
+        async fn get_files_by_quick_hash(
+            &self,
+            req: &GetFileByQuickHashRequest,
+        ) -> BuckyResult<Vec<FileCacheData>> {
             todo!()
         }
 
-        async fn get_files_by_chunk(&self, req: &GetFileByChunkRequest) -> BuckyResult<Vec<FileCacheData>> {
+        async fn get_files_by_chunk(
+            &self,
+            req: &GetFileByChunkRequest,
+        ) -> BuckyResult<Vec<FileCacheData>> {
             todo!()
         }
 
-        async fn get_dirs_by_file(&self, req: &GetDirByFileRequest) -> BuckyResult<Vec<FileDirRef>> {
+        async fn get_dirs_by_file(
+            &self,
+            req: &GetDirByFileRequest,
+        ) -> BuckyResult<Vec<FileDirRef>> {
             todo!()
         }
 
@@ -407,7 +518,10 @@ mod build_file_task_test {
             todo!()
         }
 
-        async fn update_chunk_state(&self, req: &UpdateChunkStateRequest) -> BuckyResult<ChunkState> {
+        async fn update_chunk_state(
+            &self,
+            req: &UpdateChunkStateRequest,
+        ) -> BuckyResult<ChunkState> {
             todo!()
         }
 
@@ -419,11 +533,17 @@ mod build_file_task_test {
             todo!()
         }
 
-        async fn get_chunks(&self, req: &Vec<GetChunkRequest>) -> BuckyResult<Vec<Option<ChunkCacheData>>> {
+        async fn get_chunks(
+            &self,
+            req: &Vec<GetChunkRequest>,
+        ) -> BuckyResult<Vec<Option<ChunkCacheData>>> {
             todo!()
         }
 
-        async fn get_chunk_ref_objects(&self, req: &GetChunkRefObjectsRequest) -> BuckyResult<Vec<ChunkObjectRef>> {
+        async fn get_chunk_ref_objects(
+            &self,
+            req: &GetChunkRefObjectsRequest,
+        ) -> BuckyResult<Vec<ChunkObjectRef>> {
             todo!()
         }
 
@@ -456,10 +576,12 @@ mod build_file_task_test {
     #[test]
     fn test() {
         async_std::task::block_on(async move {
-            let noc = Box::new(MemoryNoc{});
-            let ndc = Box::new(MemoryNDC{});
+            let noc = Arc::new(Box::new(MemoryNoc {}) as Box<dyn NamedObjectCache>);
+            let ndc = Box::new(MemoryNDC {});
             let task_manager = create_test_task_manager().await.unwrap();
-            task_manager.register_task_factory(BuildFileTaskFactory::new(noc, ndc)).unwrap();
+            task_manager
+                .register_task_factory(BuildFileTaskFactory::new(noc, ndc))
+                .unwrap();
 
             let tmp_path = std::env::temp_dir().join("test_build_file");
             gen_random_file(tmp_path.as_path()).await;
@@ -469,14 +591,32 @@ mod build_file_task_test {
                 owner: Default::default(),
                 chunk_size: 4 * 1024 * 1024,
             };
-            let task = task_manager.create_task(ObjectId::default(), DeviceId::default(), BUILD_FILE_TASK, params).await.unwrap();
+            let task = task_manager
+                .create_task(
+                    ObjectId::default(),
+                    DeviceId::default(),
+                    BUILD_FILE_TASK,
+                    params,
+                )
+                .await
+                .unwrap();
             task_manager.start_task(&task).await.unwrap();
             async_std::task::sleep(Duration::from_secs(1)).await;
             task_manager.stop_task(&task).await.unwrap();
             task_manager.start_task(&task).await.unwrap();
             task_manager.check_and_waiting_stop(&task).await;
-            let resp = BuildFileTaskStatus::clone_from_slice(task_manager.get_task_detail_status(&task).await.unwrap().as_slice()).unwrap();
-            task_manager.remove_task(&ObjectId::default(), &DeviceId::default(), &task).await.unwrap();
+            let resp = BuildFileTaskStatus::clone_from_slice(
+                task_manager
+                    .get_task_detail_status(&task)
+                    .await
+                    .unwrap()
+                    .as_slice(),
+            )
+            .unwrap();
+            task_manager
+                .remove_task(&ObjectId::default(), &DeviceId::default(), &task)
+                .await
+                .unwrap();
             let file = if let BuildFileTaskStatus::Finished(file) = resp {
                 file
             } else {
@@ -489,11 +629,29 @@ mod build_file_task_test {
                 owner: Default::default(),
                 chunk_size: 4 * 1024 * 1024,
             };
-            let task = task_manager.create_task(ObjectId::default(), DeviceId::default(), BUILD_FILE_TASK, params).await.unwrap();
+            let task = task_manager
+                .create_task(
+                    ObjectId::default(),
+                    DeviceId::default(),
+                    BUILD_FILE_TASK,
+                    params,
+                )
+                .await
+                .unwrap();
             task_manager.start_task(&task).await.unwrap();
             task_manager.check_and_waiting_stop(&task).await;
-            let resp1 = BuildFileTaskStatus::clone_from_slice(task_manager.get_task_detail_status(&task).await.unwrap().as_slice()).unwrap();
-            task_manager.remove_task(&ObjectId::default(), &DeviceId::default(), &task).await.unwrap();
+            let resp1 = BuildFileTaskStatus::clone_from_slice(
+                task_manager
+                    .get_task_detail_status(&task)
+                    .await
+                    .unwrap()
+                    .as_slice(),
+            )
+            .unwrap();
+            task_manager
+                .remove_task(&ObjectId::default(), &DeviceId::default(), &task)
+                .await
+                .unwrap();
             let file1 = if let BuildFileTaskStatus::Finished(file) = resp1 {
                 file
             } else {

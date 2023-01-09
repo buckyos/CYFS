@@ -1,10 +1,10 @@
 use super::zone_manager::*;
 use crate::acl::AclManagerRef;
 use crate::config::StackGlobalConfig;
+use crate::events::RouterEventsManager;
 use crate::interface::{SyncListenerManager, SyncListenerManagerParams};
-use crate::meta::RawMetaCache;
+use crate::meta::MetaCacheRef;
 use crate::root_state_api::GlobalStateLocalService;
-use crate::router_handler::RouterHandlersManager;
 use crate::sync::*;
 use crate::util_api::UtilService;
 use cyfs_base::*;
@@ -18,16 +18,6 @@ use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
 const ROLE_MANAGER_HANDLER_ID: &str = "system_role_manager_controller";
-
-// zone role changed
-#[derive(Debug, Clone)]
-pub struct ZoneRoleChangedParam {
-    current_role: ZoneRole,
-    new_role: ZoneRole,
-}
-
-pub type FnZoneRoleChanged = dyn EventListenerAsyncRoutine<ZoneRoleChangedParam, ()>;
-type ZoneRoleChangeEventManager = SyncEventManagerSync<ZoneRoleChangedParam, ()>;
 
 struct OnPeopleUpdateWatcher {
     owner: ZoneRoleManager,
@@ -64,9 +54,9 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
 #[derive(Clone)]
 pub struct ZoneRoleManager {
     device_id: DeviceId,
-    zone_manager: ZoneManager,
-    noc: Arc<Box<dyn NamedObjectCache>>,
-    raw_meta_cache: RawMetaCache,
+    zone_manager: ZoneManagerRef,
+    noc: NamedObjectCacheRef,
+    raw_meta_cache: MetaCacheRef,
     acl_manager: AclManagerRef,
 
     config: StackGlobalConfig,
@@ -77,41 +67,37 @@ pub struct ZoneRoleManager {
     sync_interface: Arc<OnceCell<SyncListenerManager>>,
 
     // events
-    zone_role_changed_event: ZoneRoleChangeEventManager,
+    event_manager: RouterEventsManager,
 }
 
 impl ZoneRoleManager {
     pub(crate) fn new(
         device_id: DeviceId,
-        zone_manager: ZoneManager,
-        noc: Box<dyn NamedObjectCache>,
-        raw_meta_cache: RawMetaCache,
+        zone_manager: ZoneManagerRef,
+        noc: NamedObjectCacheRef,
+        raw_meta_cache: MetaCacheRef,
         acl_manager: AclManagerRef,
+        event_manager: RouterEventsManager,
         config: StackGlobalConfig,
     ) -> Self {
         Self {
             device_id,
             zone_manager,
-            noc: Arc::new(noc),
+            noc,
             raw_meta_cache,
             acl_manager,
+            event_manager,
 
             config,
 
             sync_server: Arc::new(OnceCell::new()),
             sync_client: Arc::new(OnceCell::new()),
             sync_interface: Arc::new(OnceCell::new()),
-
-            zone_role_changed_event: ZoneRoleChangeEventManager::new(),
         }
     }
 
-    pub fn zone_manager(&self) -> &ZoneManager {
+    pub fn zone_manager(&self) -> &ZoneManagerRef {
         &self.zone_manager
-    }
-
-    pub fn zone_role_changed_event(&self) -> &ZoneRoleChangeEventManager {
-        &self.zone_role_changed_event
     }
 
     pub(crate) fn sync_server(&self) -> Option<&Arc<ZoneSyncServer>> {
@@ -145,7 +131,10 @@ impl ZoneRoleManager {
         // verify owner's id if match
         let current_info = self.zone_manager.get_current_info().await?;
         if current_info.owner_id != object.object_id {
-            let msg = format!("unmatch zone's owner_id: current={}, got={}", current_info.owner_id, object.object_id);
+            let msg = format!(
+                "unmatch zone's owner_id: current={}, got={}",
+                current_info.owner_id, object.object_id
+            );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
         }
@@ -154,7 +143,10 @@ impl ZoneRoleManager {
         let current_update_time = current_info.owner.get_update_time();
         let new_update_time = object.object.as_ref().unwrap().get_update_time();
         if current_update_time >= new_update_time {
-            let msg = format!("zone's owner's update_time is same or older: current={}, got={}", current_update_time, new_update_time);
+            let msg = format!(
+                "zone's owner's update_time is same or older: current={}, got={}",
+                current_update_time, new_update_time
+            );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::AlreadyExists, msg));
         }
@@ -188,32 +180,31 @@ impl ZoneRoleManager {
         let owner_id = object.object_id.clone();
 
         // save to noc...
-        let req = NamedObjectCacheInsertObjectRequest {
-            protocol: NONProtocol::Native,
-            source: self.device_id.clone(),
-            object_id: object.object_id,
-            dec_id: None,
-            object: object.object.unwrap(),
-            object_raw: object.object_raw,
-            flags: 0,
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_system(),
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: Some(AccessString::full_except_write().value()),
         };
 
-        match self.noc.insert_object(&req).await {
+        match self.noc.put_object(&req).await {
             Ok(resp) => {
                 let updated = match resp.result {
-                    NamedObjectCacheInsertResult::Accept
-                    | NamedObjectCacheInsertResult::Updated => {
+                    NamedObjectCachePutObjectResult::Accept
+                    | NamedObjectCachePutObjectResult::Updated => {
                         info!("device update owner object to noc success: {}", owner_id);
                         true
                     }
-                    NamedObjectCacheInsertResult::AlreadyExists => {
+                    NamedObjectCachePutObjectResult::AlreadyExists => {
                         warn!(
                             "device update owner object but already exists: {}",
                             owner_id
                         );
                         false
                     }
-                    NamedObjectCacheInsertResult::Merged => {
+                    NamedObjectCachePutObjectResult::Merged => {
                         warn!(
                             "device update owner object but signs merged success: {}",
                             owner_id
@@ -265,6 +256,22 @@ impl ZoneRoleManager {
         Ok(())
     }
 
+    async fn emit_zone_role_changed_event(
+        &self,
+        param: ZoneRoleChangedEventRequest,
+    ) -> BuckyResult<()> {
+        let event = self.event_manager.events().try_zone_role_changed_event();
+        if event.is_none() {
+            return Ok(());
+        }
+
+        let mut emitter = event.unwrap().emitter();
+        let resp = emitter.emit(param).await;
+        info!("zone role changed event resp: {}", resp);
+
+        Ok(())
+    }
+
     async fn on_zone_changed(
         &self,
         current_info: Arc<CurrentZoneInfo>,
@@ -272,17 +279,20 @@ impl ZoneRoleManager {
     ) {
         // if zone_role changed, cyfs-stack should be restart to apply the change!
         if current_info.zone_role != new_info.zone_role {
-            warn!("zone role changed: {} -> {}", current_info.zone_role, new_info.zone_role);
+            warn!(
+                "zone role changed: {} -> {}",
+                current_info.zone_role, new_info.zone_role
+            );
 
-            let param = ZoneRoleChangedParam {
+            let param = ZoneRoleChangedEventRequest {
                 current_role: current_info.zone_role,
-                new_role: current_info.zone_role,
+                new_role: new_info.zone_role,
             };
 
-            if let Err(e) = self.zone_role_changed_event.emit(&param) {
+            if let Err(e) = self.emit_zone_role_changed_event(param).await {
                 error!("emit zone role changed event error! {}", e);
-            } else{
-                info!("emit zone role chanegd event success!");
+            } else {
+                info!("emit zone role changed event success!");
             }
         } else {
             match new_info.zone_role {
@@ -430,15 +440,13 @@ impl ZoneRoleManager {
         people_id: &ObjectId,
     ) -> BuckyResult<Option<Arc<AnyNamedObject>>> {
         let req = NamedObjectCacheGetObjectRequest {
-            protocol: NONProtocol::Native,
+            source: RequestSourceInfo::new_local_system(),
             object_id: people_id.to_owned(),
-            source: self.device_id.clone(),
+            last_access_rpath: None,
         };
 
-        if let Ok(Some(obj)) = self.noc.get_object(&req).await {
-            let object = obj.object.unwrap();
-
-            return Ok(Some(object));
+        if let Ok(Some(data)) = self.noc.get_object(&req).await {
+            Ok(data.object.object)
         } else {
             error!("load people from noc but not found! id={}", people_id);
             Ok(None)
@@ -450,7 +458,7 @@ impl ZoneRoleManager {
         root_state: &GlobalStateLocalService,
         bdt_stack: &StackGuard,
         device_manager: &Box<dyn DeviceCache>,
-        router_handlers: &RouterHandlersManager,
+        router_handlers: &RouterHandlerManagerProcessorRef,
         util_service: &Arc<UtilService>,
         chunk_manager: Arc<ChunkManager>,
     ) -> BuckyResult<()> {
@@ -513,25 +521,26 @@ impl ZoneRoleManager {
 
     async fn register_router_handler(
         &self,
-        router_handlers: &RouterHandlersManager,
+        router_handlers: &RouterHandlerManagerProcessorRef,
     ) -> BuckyResult<()> {
-        let zone = self.zone_manager.get_current_zone().await?;
-        let owner = zone.owner();
-
-        let filter = format!("object_id == {}", owner.to_string());
+        // let zone = self.zone_manager.get_current_zone().await?;
+        // let owner = zone.owner();
+        // let filter = format!("object_id == {}", owner.to_string());
 
         // add post_object handler for app_manager's action cmd
         let routine = OnPeopleUpdateWatcher {
             owner: self.clone(),
         };
 
+        let req_path = RequestGlobalStatePath::new_system_dec(Some(CYFS_SYSTEM_ROLE_VIRTUAL_PATH));
         if let Err(e) = router_handlers
             .post_object()
             .add_handler(
                 RouterHandlerChain::Handler,
                 ROLE_MANAGER_HANDLER_ID,
                 1,
-                &filter,
+                None,
+                Some(req_path.to_string()),
                 RouterHandlerAction::Default,
                 Some(Box::new(routine)),
             )
@@ -559,21 +568,13 @@ impl ZoneRoleManager {
             current_zone_info.zone_role,
         );
 
-        let noc_sync_server = self.noc.sync_server().ok_or_else(|| {
-            let msg = format!("noc sync server not support for client!");
-            error!("{}", msg);
-
-            BuckyError::new(BuckyErrorCode::NotSupport, msg)
-        })?;
-
         let server = ZoneSyncServer::new(
             &self.device_id,
             &current_zone_info.zone_id,
             self.clone(),
             self.zone_manager.clone(),
             root_state.clone(),
-            self.noc.clone_noc(),
-            noc_sync_server,
+            self.noc.clone(),
             bdt_stack.clone(),
             cyfs_base::NON_STACK_SYNC_BDT_VPORT,
             device_manager.clone_cache(),
@@ -616,7 +617,7 @@ impl ZoneRoleManager {
             bdt_stack,
             cyfs_base::NON_STACK_SYNC_BDT_VPORT,
             device_manager.clone_cache(),
-            self.noc.clone_noc(),
+            self.noc.clone(),
             self.acl_manager.clone(),
             chunk_manager,
         )

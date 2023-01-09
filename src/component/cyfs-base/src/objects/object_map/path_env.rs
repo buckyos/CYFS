@@ -1,3 +1,4 @@
+use super::access::OpEnvPathAccess;
 use super::cache::*;
 use super::iterator::*;
 use super::lock::*;
@@ -37,6 +38,9 @@ pub struct ObjectMapPathOpEnv {
 
     // 写锁，确保顺序写
     write_lock: AsyncMutex<()>,
+
+    // 权限相关
+    access: Option<OpEnvPathAccess>,
 }
 
 impl Drop for ObjectMapPathOpEnv {
@@ -51,6 +55,7 @@ impl ObjectMapPathOpEnv {
         root_holder: &ObjectMapRootHolder,
         lock: &ObjectMapPathLock,
         root_cache: &ObjectMapRootCacheRef,
+        access: Option<OpEnvPathAccess>,
     ) -> Self {
         debug!("new path_op_env: sid={},", sid);
         let cache = ObjectMapOpEnvMemoryCache::new_ref(root_cache.clone());
@@ -62,6 +67,7 @@ impl ObjectMapPathOpEnv {
             cache,
             lock: lock.clone(),
             write_lock: AsyncMutex::new(()),
+            access,
         }
     }
 
@@ -111,9 +117,19 @@ impl ObjectMapPathOpEnv {
             self.sid, path_list, duration_in_millsecs
         );
 
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path_list(&path_list, RequestOpType::Write)?;
+        }
+
         let mut req_list = vec![];
         let expired = if duration_in_millsecs > 0 {
-            bucky_time_now() + duration_in_millsecs * 1000
+            let now = bucky_time_now();
+            if duration_in_millsecs < (u64::MAX - now) / 1000 {
+                now + duration_in_millsecs * 1000
+            } else {
+                duration_in_millsecs
+            }
         } else {
             0
         };
@@ -138,16 +154,29 @@ impl ObjectMapPathOpEnv {
 
     // list
     pub async fn list(&self, path: &str) -> BuckyResult<ObjectMapContentList> {
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path(path, RequestOpType::Read)?;
+        }
         self.path().list(path).await
     }
 
     // metadata
     pub async fn metadata(&self, path: &str) -> BuckyResult<ObjectMapMetaData> {
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path(path, RequestOpType::Read)?;
+        }
         self.path().metadata(path).await
     }
 
     // map path methods
     pub async fn get_by_path(&self, full_path: &str) -> BuckyResult<Option<ObjectId>> {
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path(full_path, RequestOpType::Read)?;
+        }
+
         self.path().get_by_path(full_path).await
     }
 
@@ -161,6 +190,11 @@ impl ObjectMapPathOpEnv {
             self.sid, full_path, content_type,
         );
 
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path(full_path, RequestOpType::Write)?;
+        }
+
         let _write_lock = self.write_lock.lock().await;
         self.lock.try_enter_path(full_path, self.sid).await?;
         self.path()
@@ -173,6 +207,11 @@ impl ObjectMapPathOpEnv {
             "op_path_env insert_with_path: sid={}, full_path={}, value={}",
             self.sid, full_path, value
         );
+
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path(full_path, RequestOpType::Write)?;
+        }
 
         let _write_lock = self.write_lock.lock().await;
         self.lock.try_enter_path(full_path, self.sid).await?;
@@ -191,6 +230,11 @@ impl ObjectMapPathOpEnv {
              self.sid, full_path, value, prev_value, auto_insert,
         );
 
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path(full_path, RequestOpType::Write)?;
+        }
+
         let _write_lock = self.write_lock.lock().await;
         self.lock.try_enter_path(full_path, self.sid).await?;
         self.path()
@@ -208,6 +252,11 @@ impl ObjectMapPathOpEnv {
             self.sid, full_path, prev_value,
         );
 
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path(full_path, RequestOpType::Write)?;
+        }
+
         let _write_lock = self.write_lock.lock().await;
         self.lock.try_enter_path(full_path, self.sid).await?;
         self.path().remove_with_path(full_path, prev_value).await
@@ -215,6 +264,11 @@ impl ObjectMapPathOpEnv {
 
     // map origin methods
     pub async fn get_by_key(&self, path: &str, key: &str) -> BuckyResult<Option<ObjectId>> {
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_path_key(path, key, RequestOpType::Read)?;
+        }
+
         self.path().get_by_key(path, key).await
     }
 
@@ -228,6 +282,11 @@ impl ObjectMapPathOpEnv {
             "op_path_env create_new: sid={}, path={}, key={}, content_type={:?}",
             self.sid, path, key, content_type,
         );
+
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_path_key(path, key, RequestOpType::Write)?;
+        }
 
         let _write_lock = self.write_lock.lock().await;
         self.lock
@@ -247,6 +306,11 @@ impl ObjectMapPathOpEnv {
             "op_path_env insert_with_key: sid={}, path={}, key={}, value={}",
             self.sid, path, key, value
         );
+
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_path_key(path, key, RequestOpType::Write)?;
+        }
 
         let _write_lock = self.write_lock.lock().await;
         self.lock
@@ -268,6 +332,11 @@ impl ObjectMapPathOpEnv {
              self.sid, path, key, value, prev_value, auto_insert,
         );
 
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_path_key(path, key, RequestOpType::Write)?;
+        }
+
         let _write_lock = self.write_lock.lock().await;
         self.lock
             .try_enter_path_and_key(path, key, self.sid)
@@ -288,6 +357,11 @@ impl ObjectMapPathOpEnv {
             self.sid, path, key, prev_value,
         );
 
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_path_key(path, key, RequestOpType::Write)?;
+        }
+
         let _write_lock = self.write_lock.lock().await;
         self.lock
             .try_enter_path_and_key(path, key, self.sid)
@@ -297,6 +371,11 @@ impl ObjectMapPathOpEnv {
 
     // set methods
     pub async fn contains(&self, path: &str, object_id: &ObjectId) -> BuckyResult<bool> {
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path(path, RequestOpType::Read)?;
+        }
+
         self.path().contains(path, object_id).await
     }
 
@@ -305,6 +384,11 @@ impl ObjectMapPathOpEnv {
             "op_path_env insert: sid={}, path={}, value={}",
             self.sid, path, object_id,
         );
+
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path(path, RequestOpType::Write)?;
+        }
 
         let _write_lock = self.write_lock.lock().await;
         self.lock.try_enter_path(path, self.sid).await?;
@@ -316,6 +400,11 @@ impl ObjectMapPathOpEnv {
             "op_path_env remove: sid={}, path={}, value={}",
             self.sid, path, object_id,
         );
+
+        // First check access permissions!
+        if let Some(access) = &self.access {
+            access.check_full_path(path, RequestOpType::Write)?;
+        }
 
         let _write_lock = self.write_lock.lock().await;
         self.lock.try_enter_path(path, self.sid).await?;
@@ -340,7 +429,7 @@ impl ObjectMapPathOpEnv {
             // 1. root在外部没有发生改变，那么直接把暂存的操作提交到noc，并切换root到当前path的最新root
             // 2. root在外部发生改变了，那么需要更新path的root到最新状态，并以事务模式尝试提交，提交成功后，切换root到当前path的最新root
             if root != current_root {
-                info!("path_op_env commit but root chanegd, now will redo op list! sid={}, current_root={}, new_root={}", 
+                info!("path_op_env commit but root changed, now will redo op list! sid={}, current_root={}, new_root={}", 
                     this.sid, current_root, root);
 
                 this.cache.abort();
@@ -349,13 +438,13 @@ impl ObjectMapPathOpEnv {
                 this.path().update_root(root.clone(), &new_root)?;
 
                 info!(
-                    "will commit op list on root chanegd: {} -> {}",
+                    "will commit op list on root changed: {} -> {}",
                     current_root, root
                 );
                 this.path().commit_op_list().await?;
             } else {
                 // env操作期间，root没发生改变，那么不再重新执行op_list
-                info!("will clear op list because root not chanegd: {}", root);
+                info!("will clear op list because root not changed: {}", root);
                 this.path().clear_op_list();
             }
 
@@ -400,7 +489,7 @@ impl ObjectMapPathOpEnv {
     }
 
     pub fn abort(self) -> BuckyResult<()> {
-        info!("will abord path_op_env: sid={}", self.sid);
+        info!("will abort path_op_env: sid={}", self.sid);
 
         // 释放cache里面的pending
         self.cache.abort();
@@ -419,13 +508,21 @@ impl ObjectMapPathOpEnvRef {
 
     fn into_raw(self) -> BuckyResult<ObjectMapPathOpEnv> {
         let sid = self.sid();
-        let env = Arc::try_unwrap(self.0).map_err(|_| {
-            let msg = format!("path_op_env's ref_count is more than one! sid={}", sid);
+        let env = Arc::try_unwrap(self.0).map_err(|this| {
+            let msg = format!(
+                "path_op_env's ref_count is more than one! sid={}, ref={}",
+                sid,
+                Arc::strong_count(&this)
+            );
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::ErrorState, msg)
         })?;
 
         Ok(env)
+    }
+
+    pub fn is_dropable(&self) -> bool {
+        Arc::strong_count(&self.0) == 1
     }
 
     pub async fn commit(self) -> BuckyResult<ObjectId> {

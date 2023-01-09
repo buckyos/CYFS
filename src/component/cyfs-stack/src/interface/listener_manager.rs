@@ -1,4 +1,5 @@
 use super::auth::InterfaceAuth;
+use super::browser_server::{BrowserSanboxHttpServer, DisableBrowserRequestHttpServer};
 use super::http_server::*;
 use super::{
     ObjectHttpBdtListener, ObjectHttpListener, ObjectHttpTcpListener, ObjectListener,
@@ -6,19 +7,22 @@ use super::{
 };
 use crate::acl::AclManagerRef;
 use crate::app::AuthenticatedAppList;
+use crate::config::StackGlobalConfig;
 use crate::events::RouterEventsManager;
 use crate::interface::http_ws_listener::ObjectHttpWSService;
 use crate::name::NameResolver;
+use crate::rmeta_api::GlobalStateMetaService;
 use crate::root_state_api::*;
 use crate::router_handler::RouterHandlersManager;
 use crate::stack::ObjectServices;
 use crate::zone::ZoneRoleManager;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_lib::NONProtocol;
+use cyfs_lib::{RequestProtocol, BrowserSanboxMode};
 
+use cyfs_debug::Mutex;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 pub struct ObjectListenerManagerParams {
     pub bdt_stack: StackGuard,
@@ -88,7 +92,7 @@ impl ObjectListenerManager {
     pub fn get_available_http_listener(&self) -> Option<SocketAddr> {
         use cyfs_lib::*;
         for listener in &self.listeners {
-            if listener.get_protocol() == NONProtocol::HttpLocal {
+            if listener.get_protocol() == RequestProtocol::HttpLocal {
                 return Some(listener.get_addr());
             }
         }
@@ -117,6 +121,7 @@ impl ObjectListenerManager {
     pub(crate) fn init(
         &mut self,
         params: ObjectListenerManagerParams,
+        config: &StackGlobalConfig,
         services: &ObjectServices,
         router_handlers: &RouterHandlersManager,
         router_events: &RouterEventsManager,
@@ -125,9 +130,9 @@ impl ObjectListenerManager {
         role_manager: &ZoneRoleManager,
         root_state: &GlobalStateService,
         local_cache: &GlobalStateLocalService,
+        global_state_meta: &GlobalStateMetaService,
     ) {
         assert!(self.listeners.is_empty());
-
 
         let default_handler = HttpDefaultHandler::default();
 
@@ -135,7 +140,7 @@ impl ObjectListenerManager {
         {
             assert!(self.http_bdt_server.is_none());
             let server = ObjectHttpListener::new(
-                NONProtocol::HttpBdt,
+                RequestProtocol::HttpBdt,
                 services,
                 router_handlers,
                 acl.clone(),
@@ -143,22 +148,20 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                global_state_meta,
                 name_resolver,
                 role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
-            let http_server = DefaultHttpServer::new(
-                raw_handler.into(),
-                default_handler.clone(),
-            );
+            let http_server = DefaultHttpServer::new(raw_handler.into(), default_handler.clone());
             self.http_bdt_server = Some(http_server.into());
         }
 
         {
             assert!(self.http_tcp_server.is_none());
             let server = ObjectHttpListener::new(
-                NONProtocol::HttpLocal,
+                RequestProtocol::HttpLocal,
                 services,
                 router_handlers,
                 acl.clone(),
@@ -166,22 +169,29 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                global_state_meta,
                 name_resolver,
                 role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
-            let http_server = DefaultHttpServer::new(
-                raw_handler.into(),
-                default_handler.clone(),
-            );
-            self.http_tcp_server = Some(http_server.into());
+            let http_server = DefaultHttpServer::new(raw_handler.into(), default_handler.clone());
+            let http_server = match config.get_stack_params().front.browser_mode {
+                BrowserSanboxMode::None => http_server.into(),
+                mode @ _ => {
+                    BrowserSanboxHttpServer::new(
+                        http_server.into(),
+                        mode,
+                    ).into()
+                }
+            };
+            self.http_tcp_server = Some(http_server);
         }
 
         {
             assert!(self.http_auth_raw_server.is_none());
             let server = ObjectHttpListener::new(
-                NONProtocol::HttpLocalAuth,
+                RequestProtocol::HttpLocalAuth,
                 services,
                 router_handlers,
                 acl.clone(),
@@ -189,13 +199,14 @@ impl ObjectListenerManager {
                 role_manager.sync_client().clone(),
                 root_state,
                 local_cache,
+                global_state_meta,
                 name_resolver,
                 role_manager.zone_manager(),
             );
 
             let raw_handler = RawHttpServer::new(server.into_server());
-
-            self.http_auth_raw_server = Some(raw_handler.into());
+            let http_handler = DisableBrowserRequestHttpServer::new(raw_handler.into());
+            self.http_auth_raw_server = Some(http_handler.into());
         }
 
         // save default_handler for dynamic auth interface

@@ -49,8 +49,15 @@ impl TransRequestor {
             }
         }
 
+        RequestorHelper::encode_opt_header_with_encoding(http_req, cyfs_base::CYFS_REQ_PATH, com_req.req_path.as_deref());
+        http_req.insert_header(CYFS_API_LEVEL, com_req.level.to_string());
+
         if let Some(target) = &com_req.target {
             http_req.insert_header(cyfs_base::CYFS_TARGET, target.to_string());
+        }
+
+        if !com_req.referer_object.is_empty() {
+            RequestorHelper::insert_headers_with_encoding(http_req, cyfs_base::CYFS_REFERER_OBJECT, &com_req.referer_object);
         }
 
         http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());
@@ -203,6 +210,42 @@ impl TransRequestor {
                 Err(BuckyError::new(err_code, msg))
             }
         }
+    }
+
+    pub async fn start_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+        Self::control_task(
+            self,
+            &TransControlTaskOutputRequest {
+                common: req.common.clone(),
+                task_id: req.task_id.clone(),
+                action: TransTaskControlAction::Start,
+            },
+        )
+        .await
+    }
+
+    pub async fn stop_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+        Self::control_task(
+            self,
+            &TransControlTaskOutputRequest {
+                common: req.common.clone(),
+                task_id: req.task_id.clone(),
+                action: TransTaskControlAction::Stop,
+            },
+        )
+        .await
+    }
+
+    pub async fn delete_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+        Self::control_task(
+            self,
+            &TransControlTaskOutputRequest {
+                common: req.common.clone(),
+                task_id: req.task_id.clone(),
+                action: TransTaskControlAction::Delete,
+            },
+        )
+        .await
     }
 
     pub async fn get_task_state(
@@ -362,42 +405,6 @@ impl TransOutputProcessor for TransRequestor {
         Self::create_task(self, req).await
     }
 
-    async fn start_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
-        Self::control_task(
-            self,
-            &TransControlTaskOutputRequest {
-                common: req.common.clone(),
-                task_id: req.task_id.clone(),
-                action: TransTaskControlAction::Start,
-            },
-        )
-        .await
-    }
-
-    async fn stop_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
-        Self::control_task(
-            self,
-            &TransControlTaskOutputRequest {
-                common: req.common.clone(),
-                task_id: req.task_id.clone(),
-                action: TransTaskControlAction::Stop,
-            },
-        )
-        .await
-    }
-
-    async fn delete_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
-        Self::control_task(
-            self,
-            &TransControlTaskOutputRequest {
-                common: req.common.clone(),
-                task_id: req.task_id.clone(),
-                action: TransTaskControlAction::Delete,
-            },
-        )
-        .await
-    }
-
     async fn query_tasks(
         &self,
         req: &TransQueryTasksOutputRequest,
@@ -417,6 +424,10 @@ impl TransOutputProcessor for TransRequestor {
         req: &TransPublishFileOutputRequest,
     ) -> BuckyResult<TransPublishFileOutputResponse> {
         Self::publish_file(self, req).await
+    }
+
+    async fn control_task(&self, req: TransControlTaskOutputRequest) -> BuckyResult<()> {
+        Self::control_task(self, &req).await
     }
 }
 /*

@@ -2,22 +2,22 @@
 extern crate log;
 
 pub use app::*;
+pub use codec::*;
 pub use common::*;
 pub use coreobj::*;
-pub use friend_list::*;
-pub use storage::*;
-pub use zone::*;
-pub use trans::*;
+pub use group::*;
 pub use nft::*;
-pub use codec::*;
+pub use storage::*;
+pub use trans::*;
+pub use zone::*;
 
-pub mod codec;
-mod coreobj;
-mod zone;
-mod storage;
 mod app;
+pub mod codec;
 mod common;
-mod friend_list;
-mod trans;
-mod nft;
+mod coreobj;
+mod group;
 pub mod im;
+mod nft;
+mod storage;
+mod trans;
+mod zone;

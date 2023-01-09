@@ -3,6 +3,7 @@ syntax = "proto3";
 // StorageObject
 message StorageDescContent {
     string id = 1;
+    optional bytes hash = 2;
 }
 
 message StorageBodyContent {
@@ -247,18 +248,6 @@ message DecAppContent {
     repeated StringStringMapItem tags = 5;
 }
 
-// FriendList
-message FriendItem {
-    bytes id = 1;
-    bytes content = 2;
-}
-
-message FriendListContent {
-    repeated FriendItem friends = 1;
-    uint32 auto_confirm = 2;
-    string auto_msg = 3;
-}
-
 // AddFriend
 message AddFriendDescContent {
     bytes to = 1;
@@ -273,6 +262,11 @@ message RemoveFriendDescContent {
 message FriendOptionContent {
     optional uint32 auto_confirm = 1;
     optional string msg = 2;
+}
+
+// FriendPropety
+message FriendPropetyContent {
+    
 }
 
 // Msg
@@ -296,116 +290,6 @@ message MsgDescContent {
     MsgContent content = 2;
 }
 
-/// Topic objects
-message MsgInfo {
-    uint32 orderd = 1;
-    uint64 seq = 2;
-    bytes msg_obj_id = 3;
-    bytes member_id = 4;
-}
-
-// TopicMessageList
-message TopicMessageListDescContent {
-    bytes topic_id = 1;
-    int32 slot = 2;
-}
-
-message TopicMessageListBodyContent {
-    uint32 start = 1;
-    repeated MsgInfo msg_list = 2;
-}
-
-// TopicPublishReq
-message TopicPublishReqDescContent {
-    bytes topic_id = 1;
-    bytes topic_owner_id = 2;
-    bytes member_id = 3;
-    int32 seq = 4;
-    uint32 count = 5;
-}
-
-// TopicPublishResp
-message TopicPublishRespDescContent {
-    bytes topic_id = 1;
-    bytes topic_owner_id = 2;
-    bytes member_id = 3;
-    uint64 seq = 4;
-}
-
-// TopicPublishStatus
-message TopicPublishStatusDescContent {
-    bytes topic_id = 1;
-}
-
-message SeqInfo {
-    bytes id = 1;
-
-    int64 offset = 2;
-    uint64 start_seq = 3;
-    repeated uint64 received_seqs = 4;
-}
-
-message TopicPublishStatusBodyContent {
-    bytes topic_id = 1;
-    repeated bytes device_list = 2;
-
-    bytes msg_list = 3;
-    uint32 msg_length = 4;
-
-    repeated SeqInfo seq_map = 5;
-}
-
-// TopicPublish
-message TopicPublishDescContent {
-    bytes topic_id = 1;
-    bytes topic_owner_id = 2;
-    MsgInfo msg_info = 3;
-}
-
-// TopicSubscribeSuccess
-message TopicSubscribeSuccessDescContent {
-    bytes topic_id = 1;
-    bytes topic_owner_id = 2;
-    bytes member_id = 3;
-    int64 msg_seq = 4;
-    optional bytes msg_obj_id = 5;
-}
-
-// TopicSubscribe
-message TopicSubscribeDescContent {
-    bytes topic_id = 1;
-    bytes topic_owner_id = 2;
-    bytes member_id = 3;
-    int64 msg_offset = 4;
-    optional bytes msg_obj_id = 5;
-}
-
-// TopicUnsubscribeSuccess
-message TopicUnsubscribeSuccessDescContent {
-    bytes topic_id = 1;
-    bytes topic_owner_id = 2;
-    bytes member_id = 3;
-    optional bytes msg_obj_id = 4;
-}
-
-// TopicUnsubscribeDescContent
-message TopicUnsubscribeDescContent {
-    bytes topic_id = 1;
-    bytes topic_owner_id = 2;
-    bytes member_id = 3;
-    optional bytes msg_obj_id = 4;
-}
-
-// Topic
-message TopicDescContent {
-    bytes unique_id = 1;
-    optional bytes user_data_id = 2;
-}
-
-message TopicBodyContent {
-    optional bytes topic_publish_status_id = 1;
-}
-
 message TransContextDescContent {
     bytes dec_id = 1;
     string context_name = 2;
@@ -422,4 +306,139 @@ message NFTFileDesc {
 
 message NFTListDescContent {
     repeated NFTFileDesc nft_list = 1;
+}
+
+message SyncResponseObjectMetaInfo {
+    uint64 insert_time = 1;
+    optional bytes create_dec_id = 2;
+    optional string context = 3;
+    optional string last_access_rpath = 4;
+    optional uint32 access_string = 5;
+}
+
+message GroupRPath {
+    bytes group_id = 1;
+    bytes dec_id = 2;
+    string r_path = 3;
+}
+
+message GroupProposalDescContent {
+    // target
+    GroupRPath r_path = 1;
+
+    // for app
+    string method = 2;
+    optional bytes params = 3; // blob, app define, it canbe: blob/hash/ObjectId/any other
+
+    // time
+    optional bytes meta_block_id = 4;
+    optional uint64 effective_begining = 5;
+    optional uint64 effective_ending = 6;
+}
+
+message GroupProposalBodyContent {
+    optional bytes payload = 1;
+
+    message Signature {
+        bytes signature = 1; // sign(hash(ProposalId, proponent_id, decide))
+        bytes proponent_id = 2;
+        bytes decide = 3;
+    }
+
+    repeated Signature decide_signatures = 2;
+}
+
+message GroupUpdateGroupPropsalParam {
+    repeated bytes target_dec_id = 1; // the proccesor decs
+    optional bytes from_chunk_id = 2; // Chunk(Encode(Group))
+    bytes to_chunk_id = 3; // Chunk(Encode(Group))
+}
+
+message GroupPropsalDecideParam {
+    bytes signature = 1; // sign(hash(ProposalId, owner, decide))
+    bytes proposal_id = 2;
+    bytes decide = 3;
+}
+
+message HotstuffBlockQc {
+    bytes block_id = 1;
+    uint64 round = 2;
+
+    message VoteSignature {
+        bytes voter = 1;
+        bytes signature = 2;
+    }
+
+    repeated VoteSignature votes = 3;
+}
+
+message HotstuffTimeout {
+    uint64 round = 1;
+
+    message VoteSignature {
+        bytes voter = 1;
+        uint64 high_qc_round = 2;
+        bytes signature = 3;
+    }
+
+    repeated VoteSignature votes = 2;
+}
+
+message GroupConsensusBlockDescContent {
+    // target
+    GroupRPath r_path = 1;
+
+    // input
+    bytes body_hash = 2; // hash(Encode(proposals, proposal_result_states, proposal_receiptes))
+
+    // result
+    bytes result_state_id = 3;
+    uint64 height = 4;
+
+    // time
+    bytes meta_block_id = 5;
+    uint64 timestamp = 6;
+
+    uint64 round = 7;
+    bytes group_chunk_id = 8;
+}
+
+message GroupConsensusBlockBodyContent {
+    message Proposal {
+        bytes proposal_id = 1;
+        bytes proposal_result_state = 2;
+        bytes proposal_receipt = 3;
+        bytes context = 4;
+    }
+
+    repeated Proposal proposals = 1;
+
+    optional HotstuffBlockQc qc = 2;
+    optional HotstuffTimeout tc = 3;
+}
+
+message GroupRPathSubStatus {
+    string sub_path = 1;
+    repeated bytes state_id = 2; // for set
+}
+
+message GroupRPathStatusDescContent {
+    bytes block_id = 1;
+    optional bytes sub_status_hash = 2;
+}
+
+message GroupRPathStatusBodyContent {
+    repeated GroupRPathSubStatus sub_status = 1;
+}
+
+message GroupActionDescContent {
+    // target
+    GroupRPath r_path = 1;
+
+    // for app
+    string method = 2;
+    optional bytes params = 3; // blob, app define, it canbe: blob/hash/ObjectId/any other
+
+    optional uint64 value = 4;
+    optional bytes conclusion = 5;
 }

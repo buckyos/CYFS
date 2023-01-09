@@ -13,3 +13,7 @@ pub const PROXY_MINER_NAME: &str = "proxy-miner";
 pub const CACHE_MINER_NAME: &str = "cache-miner";
 pub const SN_MINER_NAME: &str = "sn-miner";
 pub const IP_RELAY_MINER_NAME: &str = "ip-relay-miner";
+
+
+//// meta chain names
+pub const CYFS_SN_NAME: &str = "cyfs-sn";

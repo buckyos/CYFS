@@ -15,6 +15,26 @@ impl CryptoAclInputProcessor {
         let ret = Self { acl, next };
         Arc::new(Box::new(ret))
     }
+
+    async fn check_access(
+        &self,
+        name: &str,
+        source: &RequestSourceInfo,
+        op_type: RequestOpType,
+    ) -> BuckyResult<()> {
+        assert!(source.is_current_zone());
+        if source.is_system_dec() {
+            return Ok(());
+        }
+        
+        let path = format!("{}/{}/", CYFS_CRYPTO_VIRTUAL_PATH, name);
+        let req_path = RequestGlobalStatePath::new_system_dec(Some(path));
+
+        self.acl
+            .global_state_meta()
+            .check_access(source, &req_path, op_type)
+            .await
+    }
 }
 
 #[async_trait::async_trait]
@@ -23,25 +43,10 @@ impl CryptoInputProcessor for CryptoAclInputProcessor {
         &self,
         req: CryptoVerifyObjectInputRequest,
     ) -> BuckyResult<CryptoVerifyObjectInputResponse> {
-        let params = AclRequestParams {
-            protocol: req.common.protocol.clone(),
+        req.common.source.check_current_zone("crypto.verify_object")?;
 
-            direction: AclDirection::In,
-            operation: AclOperation::VerifyObject,
+        self.check_access("verify_object", &req.common.source, RequestOpType::Call).await?;
 
-            object_id: Some(req.object.object_id.clone()),
-            object: Some(req.object.clone_object()),
-            device_id: AclRequestDevice::Source(req.common.source.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: None,
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
         self.next.verify_object(req).await
     }
 
@@ -49,108 +54,32 @@ impl CryptoInputProcessor for CryptoAclInputProcessor {
         &self,
         req: CryptoSignObjectInputRequest,
     ) -> BuckyResult<CryptoSignObjectInputResponse> {
-        let params = AclRequestParams {
-            protocol: req.common.protocol.clone(),
+        req.common.source.check_current_zone("crypto.sign_object")?;
 
-            direction: AclDirection::In,
-            operation: AclOperation::SignObject,
-
-            object_id: Some(req.object.object_id.clone()),
-            object: Some(req.object.clone_object()),
-            device_id: AclRequestDevice::Source(req.common.source.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: None,
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
-        self.next.sign_object(req).await
-    }
-}
-
-pub(crate) struct CryptoAclOutputProcessor {
-    protocol: NONProtocol,
-    acl: AclManagerRef,
-    target: DeviceId,
-    next: CryptoOutputProcessorRef,
-}
-
-impl CryptoAclOutputProcessor {
-    pub fn new(
-        protocol: NONProtocol,
-        acl: AclManagerRef,
-        target: DeviceId,
-        next: CryptoOutputProcessorRef,
-    ) -> CryptoOutputProcessorRef {
-        let ret = Self {
-            protocol,
-            acl,
-            target,
-            next,
-        };
-        Arc::new(Box::new(ret))
-    }
-}
-
-#[async_trait::async_trait]
-impl CryptoOutputProcessor for CryptoAclOutputProcessor {
-    async fn verify_object(
-        &self,
-        req: CryptoVerifyObjectOutputRequest,
-    ) -> BuckyResult<CryptoVerifyObjectOutputResponse> {
- 
-        let params = AclRequestParams {
-            protocol: self.protocol.clone(),
-
-            direction: AclDirection::Out,
-            operation: AclOperation::VerifyObject,
-
-            object_id: Some(req.object.object_id.clone()),
-            object: Some(req.object.clone_object()),
-            device_id: AclRequestDevice::Target(self.target.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: None,
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
-
-        self.next.verify_object(req).await
-    }
-
-    async fn sign_object(
-        &self,
-        req: CryptoSignObjectOutputRequest,
-    ) -> BuckyResult<CryptoSignObjectOutputResponse> {
-
-        let params = AclRequestParams {
-            protocol: self.protocol.clone(),
-
-            direction: AclDirection::Out,
-            operation: AclOperation::SignObject,
-
-            object_id: Some(req.object.object_id.clone()),
-            object: Some(req.object.clone_object()),
-            device_id: AclRequestDevice::Target(self.target.clone()),
-            dec_id: req.common.dec_id.clone(),
-
-            req_path: req.common.req_path.clone(),
-            inner_path: None,
-            referer_object: None,
-        };
-
-        let acl_req = self.acl.new_acl_request(params);
-
-        self.acl.try_match_to_result(&acl_req).await?;
+        self.check_access("sign_object", &req.common.source, RequestOpType::Call).await?;
 
         self.next.sign_object(req).await
+    }
+
+    async fn encrypt_data(
+        &self,
+        req: CryptoEncryptDataInputRequest,
+    ) -> BuckyResult<CryptoEncryptDataInputResponse> {
+        req.common.source.check_current_zone("crypto.encrypt_data")?;
+
+        self.check_access("encrypt_data", &req.common.source, RequestOpType::Call).await?;
+
+        self.next.encrypt_data(req).await
+    }
+
+    async fn decrypt_data(
+        &self,
+        req: CryptoDecryptDataInputRequest,
+    ) -> BuckyResult<CryptoDecryptDataInputResponse> {
+        req.common.source.check_current_zone("crypto.decrypt_data")?;
+
+        self.check_access("decrypt_data", &req.common.source, RequestOpType::Call).await?;
+
+        self.next.decrypt_data(req).await
     }
 }

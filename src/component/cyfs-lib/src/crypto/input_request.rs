@@ -10,12 +10,7 @@ pub struct CryptoInputRequestCommon {
     // 请求路径，可为空
     pub req_path: Option<String>,
 
-    // 来源DEC
-    pub dec_id: Option<ObjectId>,
-
-    // 来源设备和协议
-    pub source: DeviceId,
-    pub protocol: NONProtocol,
+    pub source: RequestSourceInfo,
 
     // 用以默认行为
     pub target: Option<ObjectId>,
@@ -26,12 +21,7 @@ pub struct CryptoInputRequestCommon {
 impl fmt::Display for CryptoInputRequestCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "req_path: {:?}", self.req_path)?;
-
-        if let Some(dec_id) = &self.dec_id {
-            write!(f, ", dec_id: {}", dec_id)?;
-        }
-        write!(f, ", source: {}", self.source.to_string())?;
-        write!(f, ", protocol: {}", self.protocol.to_string())?;
+        write!(f, ", {}", self.source)?;
 
         if let Some(target) = &self.target {
             write!(f, ", target: {}", target.to_string())?;
@@ -61,8 +51,7 @@ impl fmt::Display for CryptoSignObjectInputRequest {
     }
 }
 
-
-pub type CryptoSignObjectInputResponse = CryptoSignObjectOutputResponse; 
+pub type CryptoSignObjectInputResponse = CryptoSignObjectOutputResponse;
 
 #[derive(Debug, Clone)]
 pub struct CryptoVerifyObjectInputRequest {
@@ -89,3 +78,65 @@ impl fmt::Display for CryptoVerifyObjectInputRequest {
 }
 
 pub type CryptoVerifyObjectInputResponse = CryptoVerifyObjectOutputResponse;
+
+#[derive(Debug, Clone)]
+pub struct CryptoEncryptDataInputRequest {
+    pub common: CryptoInputRequestCommon,
+
+    pub encrypt_type: CryptoEncryptType,
+
+    pub data: Option<Vec<u8>>,
+
+    pub flags: u32,
+}
+
+impl CryptoEncryptDataInputRequest {
+    pub fn data_len(&self) -> usize {
+        match &self.data {
+            Some(data) => data.len(),
+            None => 0,
+        }
+    }
+}
+
+impl fmt::Display for CryptoEncryptDataInputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)?;
+
+        write!(f, ", encrypt_type: {}", self.encrypt_type.as_str())?;
+        write!(
+            f,
+            ", data: {}",
+            match &self.data {
+                Some(data) => data.len(),
+                None => 0,
+            }
+        )?;
+        write!(f, ", flags: {}", self.flags)
+    }
+}
+
+pub type CryptoEncryptDataInputResponse = CryptoEncryptDataOutputResponse;
+
+#[derive(Debug, Clone)]
+pub struct CryptoDecryptDataInputRequest {
+    pub common: CryptoInputRequestCommon,
+
+    pub decrypt_type: CryptoDecryptType,
+
+    pub data: Vec<u8>,
+
+    pub flags: u32,
+}
+
+impl fmt::Display for CryptoDecryptDataInputRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "common: {}", self.common)?;
+
+        write!(f, ", decrypt_type: {}", self.decrypt_type.as_str())?;
+        write!(f, ", data: {}", self.data.len(),)?;
+        write!(f, ", flags: {}", self.flags)
+    }
+}
+
+pub type CryptoDecryptDataInputResponse = CryptoDecryptDataOutputResponse;

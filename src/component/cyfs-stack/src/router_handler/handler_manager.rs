@@ -1,5 +1,7 @@
 use super::handler::*;
+use super::processor::SharedRouterHandlersManager;
 use super::storage::*;
+use crate::acl::AclManagerRef;
 use cyfs_base::*;
 use cyfs_lib::*;
 
@@ -30,7 +32,13 @@ pub struct RouterHandlersContainer {
     pub verify_object:
         OnceCell<RouterHandlers<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse>>,
 
+    pub encrypt_data:
+        OnceCell<RouterHandlers<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse>>,
+    pub decrypt_data:
+        OnceCell<RouterHandlers<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse>>,
+
     pub acl: OnceCell<RouterHandlers<AclHandlerRequest, AclHandlerResponse>>,
+    pub interest: OnceCell<RouterHandlers<InterestHandlerRequest, InterestHandlerResponse>>,
 }
 
 pub type RouterHandlersContainerRef = Arc<RouterHandlersContainer>;
@@ -53,8 +61,11 @@ impl RouterHandlersContainer {
 
             sign_object: OnceCell::new(),
             verify_object: OnceCell::new(),
+            encrypt_data: OnceCell::new(),
+            decrypt_data: OnceCell::new(),
 
             acl: OnceCell::new(),
+            interest: OnceCell::new(),
         }
     }
 
@@ -182,6 +193,7 @@ impl RouterHandlersContainer {
         self.delete_data.get()
     }
 
+    // sign
     pub fn sign_object(
         &self,
     ) -> &RouterHandlers<CryptoSignObjectInputRequest, CryptoSignObjectInputResponse> {
@@ -198,6 +210,7 @@ impl RouterHandlersContainer {
         self.sign_object.get()
     }
 
+    // verify
     pub fn verify_object(
         &self,
     ) -> &RouterHandlers<CryptoVerifyObjectInputRequest, CryptoVerifyObjectInputResponse> {
@@ -215,6 +228,42 @@ impl RouterHandlersContainer {
         self.verify_object.get()
     }
 
+    // encrypt
+    pub fn encrypt_data(
+        &self,
+    ) -> &RouterHandlers<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse> {
+        self.encrypt_data.get_or_init(|| {
+            RouterHandlers::<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse>::new(
+                self.chain.clone(),
+                self.storage.clone(),
+            )
+        })
+    }
+    pub fn try_encrypt_data(
+        &self,
+    ) -> Option<&RouterHandlers<CryptoEncryptDataInputRequest, CryptoEncryptDataInputResponse>>
+    {
+        self.encrypt_data.get()
+    }
+
+    // decrypt
+    pub fn decrypt_data(
+        &self,
+    ) -> &RouterHandlers<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse> {
+        self.decrypt_data.get_or_init(|| {
+            RouterHandlers::<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse>::new(
+                self.chain.clone(),
+                self.storage.clone(),
+            )
+        })
+    }
+    pub fn try_decrypt_data(
+        &self,
+    ) -> Option<&RouterHandlers<CryptoDecryptDataInputRequest, CryptoDecryptDataInputResponse>>
+    {
+        self.decrypt_data.get()
+    }
+
     // acl
     pub fn acl(&self) -> &RouterHandlers<AclHandlerRequest, AclHandlerResponse> {
         self.acl.get_or_init(|| {
@@ -226,6 +275,21 @@ impl RouterHandlersContainer {
     }
     pub fn try_acl(&self) -> Option<&RouterHandlers<AclHandlerRequest, AclHandlerResponse>> {
         self.acl.get()
+    }
+
+    // interest
+    pub fn interest(&self) -> &RouterHandlers<InterestHandlerRequest, InterestHandlerResponse> {
+        self.interest.get_or_init(|| {
+            RouterHandlers::<InterestHandlerRequest, InterestHandlerResponse>::new(
+                self.chain.clone(),
+                self.storage.clone(),
+            )
+        })
+    }
+    pub fn try_interest(
+        &self,
+    ) -> Option<&RouterHandlers<InterestHandlerRequest, InterestHandlerResponse>> {
+        self.interest.get()
     }
 
     pub(crate) fn clear_dec_handlers(&self, dec_id: &Option<ObjectId>) -> bool {
@@ -262,8 +326,18 @@ impl RouterHandlersContainer {
         if let Some(container) = self.verify_object.get() {
             changed |= container.clear_dec_handlers(dec_id)
         }
+        if let Some(container) = self.encrypt_data.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+        if let Some(container) = self.decrypt_data.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
 
         if let Some(container) = self.acl.get() {
+            changed |= container.clear_dec_handlers(dec_id)
+        }
+
+        if let Some(container) = self.interest.get() {
             changed |= container.clear_dec_handlers(dec_id)
         }
 
@@ -304,9 +378,19 @@ impl RouterHandlersContainer {
         if let Some(container) = self.verify_object.get() {
             result.verify_object = container.dump_data();
         }
+        if let Some(container) = self.encrypt_data.get() {
+            result.sign_object = container.dump_data();
+        }
+        if let Some(container) = self.decrypt_data.get() {
+            result.verify_object = container.dump_data();
+        }
 
         if let Some(container) = self.acl.get() {
             result.acl = container.dump_data();
+        }
+
+        if let Some(container) = self.interest.get() {
+            result.interest = container.dump_data();
         }
 
         result
@@ -345,9 +429,19 @@ impl RouterHandlersContainer {
         if let Some(list) = data.verify_object {
             self.verify_object().load_data(list);
         }
+        if let Some(list) = data.encrypt_data {
+            self.encrypt_data().load_data(list);
+        }
+        if let Some(list) = data.decrypt_data {
+            self.decrypt_data().load_data(list);
+        }
 
         if let Some(list) = data.acl {
             self.acl().load_data(list);
+        }
+
+        if let Some(list) = data.interest {
+            self.interest().load_data(list);
         }
     }
 }
@@ -355,6 +449,7 @@ impl RouterHandlersContainer {
 #[derive(Clone)]
 pub struct RouterHandlersManager {
     storage: RouterHandlersStorage,
+    acl_manager: AclManagerRef,
 
     pre_noc: Arc<RouterHandlersContainer>,
     post_noc: Arc<RouterHandlersContainer>,
@@ -371,13 +466,16 @@ pub struct RouterHandlersManager {
     handler: Arc<RouterHandlersContainer>,
 
     acl: Arc<RouterHandlersContainer>,
+
+    ndn: Arc<RouterHandlersContainer>,
 }
 
 impl RouterHandlersManager {
-    pub fn new(config_isolate: Option<String>) -> Self {
+    pub fn new(config_isolate: Option<String>, acl_manager: AclManagerRef) -> Self {
         let storage = RouterHandlersStorage::new(config_isolate);
         let ret = Self {
             storage: storage.clone(),
+            acl_manager,
 
             pre_noc: Arc::new(RouterHandlersContainer::new(
                 RouterHandlerChain::PreNOC,
@@ -424,6 +522,11 @@ impl RouterHandlersManager {
                 RouterHandlerChain::Acl,
                 storage.clone(),
             )),
+
+            ndn: Arc::new(RouterHandlersContainer::new(
+                RouterHandlerChain::NDN,
+                storage.clone(),
+            )),
         };
 
         storage.bind(ret.clone());
@@ -431,8 +534,14 @@ impl RouterHandlersManager {
         ret
     }
 
-    pub fn clone_processor(&self) -> RouterHandlerManagerProcessorRef {
-        Arc::new(Box::new(self.clone()))
+    pub fn acl_manager(&self) -> &AclManagerRef {
+        &self.acl_manager
+    }
+
+    pub fn clone_processor(&self, source: RequestSourceInfo) -> RouterHandlerManagerProcessorRef {
+        let sm = SharedRouterHandlersManager::new(self.clone(), source);
+
+        Arc::new(Box::new(sm))
     }
 
     pub async fn load(&self) -> BuckyResult<()> {
@@ -456,6 +565,8 @@ impl RouterHandlersManager {
             RouterHandlerChain::Handler => &self.handler,
 
             RouterHandlerChain::Acl => &self.acl,
+
+            RouterHandlerChain::NDN => &self.ndn,
         }
     }
 
@@ -475,6 +586,8 @@ impl RouterHandlersManager {
         changed |= self.handler.clear_dec_handlers(dec_id);
 
         changed |= self.acl.clear_dec_handlers(dec_id);
+
+        changed |= self.ndn.clear_dec_handlers(dec_id);
 
         if changed {
             self.storage.async_save();
@@ -521,14 +634,14 @@ impl RouterHandlersManager {
             list.post_crypto = Some(data);
         }
 
-        let data = self.handler.dump_data();
-        if !data.is_empty() {
-            list.handler = Some(data);
-        }
-
         let data = self.acl.dump_data();
         if !data.is_empty() {
             list.acl = Some(data);
+        }
+
+        let data = self.ndn.dump_data();
+        if !data.is_empty() {
+            list.ndn = Some(data);
         }
 
         list
@@ -563,12 +676,60 @@ impl RouterHandlersManager {
             self.post_crypto.load_data(data);
         }
 
-        if let Some(data) = list.handler {
-            self.handler.load_data(data);
-        }
-
         if let Some(data) = list.acl {
             self.acl.load_data(data);
         }
+
+        if let Some(data) = list.ndn {
+            self.ndn.load_data(data);
+        }
+    }
+
+    pub async fn check_access(
+        &self,
+        source: &RequestSourceInfo,
+        chain: RouterHandlerChain,
+        category: RouterHandlerCategory,
+        id: &str,
+        req_path: &Option<String>,
+        filter: &Option<String>,
+    ) -> BuckyResult<()> {
+        let req_path = if chain == RouterHandlerChain::Handler {
+            // Handler must specified valid req_path
+            if req_path.is_none() {
+                let msg = format!(
+                    "{} {} handler's req_path should specify! id={}",
+                    chain, category, id,
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+
+            use std::str::FromStr;
+            RequestGlobalStatePath::from_str(&req_path.as_ref().unwrap())?
+        } else {
+            if req_path.is_none() && filter.is_none() {
+                let msg = format!(
+                    "{} {} handler's req_path or filter should specify at least one! id={}",
+                    chain, category, id,
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+
+            let path = format!("{}/{}/{}/", CYFS_HANDLER_VIRTUAL_PATH, chain, category);
+            RequestGlobalStatePath::new_system_dec(Some(path))
+        };
+
+        if source.is_current_zone() {
+            if source.check_target_dec_permission(&req_path.dec_id) {
+                return Ok(());
+            }
+        }
+
+        self.acl_manager
+            .global_state_meta()
+            .check_access(source, &req_path, RequestOpType::Write)
+            .await
     }
 }

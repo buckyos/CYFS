@@ -8,7 +8,7 @@ use cyfs_base_meta::*;
 #[macro_export]
 macro_rules! meta_err {
     ( $err: expr) => {
-    cyfs_base::BuckyError::new(cyfs_base::BuckyErrorCodeEx::MetaError($err as u16), format!("{} {} dsg_code_err:{}", file!(), line!(), $err))
+    cyfs_base::BuckyError::new(cyfs_base::BuckyErrorCodeEx::MetaError($err as u16), format!("{} {} meta_code_err:{}", file!(), line!(), $err))
     };
 }
 
@@ -24,7 +24,7 @@ macro_rules! meta_map_err {
     ( $err: expr, $old_err_code: expr, $new_err_code: expr) => {
         {
             if get_meta_err_code($err)? == $old_err_code {
-                cyfs_base::BuckyError::new(cyfs_base::BuckyErrorCodeEx::MetaError($new_err_code as u16), format!("{} {} dsg_code_err:{}", file!(), line!(), $new_err_code))
+                cyfs_base::BuckyError::new(cyfs_base::BuckyErrorCodeEx::MetaError($new_err_code as u16), format!("{} {} meta_code_err:{}", file!(), line!(), $new_err_code))
             } else {
                 cyfs_base::BuckyError::new($err.code(), format!("{} {} base_code_err:{}", file!(), line!(), $err))
             }

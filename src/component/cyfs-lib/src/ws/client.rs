@@ -6,9 +6,9 @@ use cyfs_base::{BuckyError, BuckyResult};
 use async_std::net::TcpStream;
 use http_types::Url;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use futures::future::{AbortHandle, Abortable};
-
+use cyfs_debug::Mutex;
 
 // connect的重试间隔
 const WS_CONNECT_RETRY_MIN_INTERVAL_SECS: u64 = 2;

@@ -116,9 +116,7 @@ impl CyfsLoggerBuilder {
         self.config.disable_async_std_log();
 
         if !self.disable_file_config {
-            let debug_config = DebugConfig::new();
-
-            if let Ok(config_node) = debug_config.load_log_config() {
+            if let Some(config_node) = DebugConfig::get_config("log") {
                 if let Err(e) = self.config.load(config_node) {
                     println!("load log config error! {}", e);
                 }

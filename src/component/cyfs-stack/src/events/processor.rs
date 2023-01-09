@@ -35,9 +35,14 @@ macro_rules! declare_router_event_processor {
 
 // non events
 declare_router_event_processor!(TestEventRequest, TestEventResponse, test_event);
+declare_router_event_processor!(ZoneRoleChangedEventRequest, ZoneRoleChangedEventResponse, zone_role_changed_event);
 
 impl RouterEventManagerProcessor for RouterEventsManager {
     fn test_event(&self) -> &dyn RouterEventProcessor<TestEventRequest, TestEventResponse> {
+        self
+    }
+
+    fn zone_role_changed_event(&self) -> &dyn RouterEventProcessor<ZoneRoleChangedEventRequest, ZoneRoleChangedEventResponse> {
         self
     }
 }

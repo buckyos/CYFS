@@ -32,7 +32,7 @@ impl ForwardProcessorCreator {
             cyfs_base::NON_STACK_BDT_VPORT,
         );
 
-        // FIXME 这里暂时增加一个两分钟的超时
+        // FIXME 这里暂时增加一个超时
         let requestor = RequestorWithRetry::new(
             Box::new(bdt),
             2,
