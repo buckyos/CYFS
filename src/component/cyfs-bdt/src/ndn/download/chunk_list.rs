@@ -244,7 +244,7 @@ impl DownloadTask for ChunkListTask {
     fn downloaded(&self) -> u64 {
         let state = self.0.state.read().unwrap();
         match &state.task_state {
-            TaskStateImpl::Downloading(downloading) => downloading.downloaded + downloading.cur_chunk.cache().stream().len() as u64, 
+            TaskStateImpl::Downloading(downloading) => downloading.downloaded + downloading.cur_chunk.0.cache().stream().len() as u64, 
             TaskStateImpl::Finished(downloaded) => *downloaded, 
             _ => 0,
         }
