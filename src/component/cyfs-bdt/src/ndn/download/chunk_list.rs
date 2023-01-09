@@ -171,6 +171,7 @@ impl NdnTask for ChunkListTask {
         match &self.0.state.read().unwrap().control_state {
             ControlStateImpl::Normal(_) => NdnTaskControlState::Normal, 
             ControlStateImpl::Canceled => NdnTaskControlState::Canceled
+
         }
     }
 
