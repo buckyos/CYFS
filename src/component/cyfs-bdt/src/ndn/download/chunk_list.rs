@@ -77,7 +77,11 @@ impl ChunkListTask {
             context, 
             state: RwLock::new(StateImpl {
                 abs_path: None, 
-                task_state: TaskStateImpl::Pending,
+                task_state: if chunk_list.total_len() > 0 {
+                    TaskStateImpl::Pending
+                } else {
+                    TaskStateImpl::Finished(0)
+                },
                 control_state: ControlStateImpl::Normal(StateWaiter::new()),
             }), 
             chunk_list, 
