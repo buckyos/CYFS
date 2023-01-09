@@ -115,7 +115,9 @@ async fn main_run() {
 
     // 启动monitor服务
     if !no_monitor {
-        monitor::ServiceMonitor::start_monitor(SERVICE_NAME);
+        if let Err(e) = monitor::ServiceMonitor::start_monitor(SERVICE_NAME) {
+            error!("start monitor failed! {}", e);
+        }
     }
 
     // 切换到目标的服务模式
