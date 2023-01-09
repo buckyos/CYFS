@@ -68,13 +68,17 @@ impl ChunkTask {
     ) -> Self {
         Self(Arc::new(ChunkTaskImpl { 
             stack, 
-            chunk, 
             context, 
             state: RwLock::new(StateImpl {
                 abs_path: None, 
-                task_state: TaskStateImpl::Init, 
+                task_state: if chunk.len() > 0 {
+                    TaskStateImpl::Init
+                } else {
+                    TaskStateImpl::Finished
+                }, 
                 control_state: ControlStateImpl::Normal(StateWaiter::new()),
             }),
+            chunk, 
         }))
     } 
 
