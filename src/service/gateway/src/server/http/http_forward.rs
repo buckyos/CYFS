@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use super::http_location::HttpLocationManager;
 use super::server_name::ServerName;
-use base::VAR_MANAGER;
+use cyfs_stack_loader::VAR_MANAGER;
 use cyfs_base::BuckyError;
 
 pub(super) struct HttpForward {

@@ -1,6 +1,6 @@
 use super::DeviceConfigRepo;
 use crate::config::*;
-use base::LOCAL_DEVICE_MANAGER;
+use cyfs_stack_loader::LOCAL_DEVICE_MANAGER;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};

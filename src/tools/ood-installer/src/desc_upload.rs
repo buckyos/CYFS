@@ -1,4 +1,4 @@
-use base::LOCAL_DEVICE_MANAGER;
+use cyfs_stack_loader::LOCAL_DEVICE_MANAGER;
 use cyfs_base::*;
 use cyfs_base_meta::*;
 use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
