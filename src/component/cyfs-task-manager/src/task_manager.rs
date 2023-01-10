@@ -20,13 +20,13 @@ impl TaskInfo {
     }
 }
 
-#[derive(Clone, RawEncode, RawDecode)]
+#[derive(Debug, Clone, RawEncode, RawDecode)]
 pub struct DecInfoV1 {
     dec_id: ObjectId,
     source: DeviceId,
 }
 
-#[derive(Clone, RawEncode, RawDecode)]
+#[derive(Debug, Clone, RawEncode, RawDecode)]
 pub enum DecInfo {
     V1(DecInfoV1)
 }
