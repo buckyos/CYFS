@@ -342,6 +342,7 @@ impl TransRequestHandler {
 
         let req = TransControlTaskGroupInputRequest{
             common,
+            group_type: JsonCodecHelper::decode_string_field(&body, "group_type")?,
             group: JsonCodecHelper::decode_string_field(&body, "group")?,
             action: JsonCodecHelper::decode_serde_field(&body, "action")?,
         };
@@ -363,6 +364,7 @@ impl TransRequestHandler {
 
         let req = TransGetTaskGroupStateInputRequest {
             common,
+            group_type: JsonCodecHelper::decode_string_field(&body, "group_type")?,
             group: JsonCodecHelper::decode_string_field(&body, "group")?,
             speed_when: JsonCodecHelper::decode_option_int_field(&body, "speed_when")?,
         };

@@ -66,29 +66,28 @@ impl UploadGroup {
     }
 }
 
-#[async_trait::async_trait]
-impl UploadTask for UploadGroup {
-    fn clone_as_task(&self) -> Box<dyn UploadTask> {
+impl NdnTask for UploadGroup {
+    fn clone_as_task(&self) -> Box<dyn NdnTask> {
         Box::new(self.clone())
     }
-
-    fn state(&self) -> UploadTaskState {
-        UploadTaskState::Uploading(0)
+    
+    fn state(&self) -> NdnTaskState {
+        match &self.0.state.read().unwrap().task_state {
+            TaskStateImpl::Uploading(_) => NdnTaskState::Running, 
+            TaskStateImpl::Finished => NdnTaskState::Finished, 
+            TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone())
+        }
     }
 
-    async fn wait_finish(&self) -> UploadTaskState {
-        unimplemented!()
-    }
-
-    fn control_state(&self) -> UploadTaskControlState {
+    fn control_state(&self) -> NdnTaskControlState {
         match &self.0.state.read().unwrap().control_state {
-            ControlStateImpl::Normal(_) => UploadTaskControlState::Normal, 
-            ControlStateImpl::Canceled => UploadTaskControlState::Canceled
+            ControlStateImpl::Normal(_) => NdnTaskControlState::Normal, 
+            ControlStateImpl::Canceled => NdnTaskControlState::Canceled
         }
     }
 
     
-    fn cancel(&self) -> BuckyResult<UploadTaskControlState> {
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
         let (tasks, waiters) = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
@@ -102,7 +101,7 @@ impl UploadTask for UploadGroup {
 
             let tasks = match &mut state.task_state {
                 TaskStateImpl::Uploading(uploading) => {
-                    let tasks: Vec<Box<dyn UploadTask>> = uploading.running.iter().map(|t| t.clone_as_task()).collect();
+                    let tasks: Vec<Box<dyn UploadTask>> = uploading.running.iter().map(|t| t.clone_as_upload_task()).collect();
                     state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
                     tasks
                 },
@@ -120,55 +119,7 @@ impl UploadTask for UploadGroup {
             let _ = task.cancel();
         }
         
-        Ok(UploadTaskControlState::Canceled)
-    }
-
-    fn add_task(&self, path: Option<String>, sub: Box<dyn UploadTask>) -> BuckyResult<()> {
-        let mut state = self.0.state.write().unwrap();
-        match &mut state.task_state {
-            TaskStateImpl::Uploading(uploading) => {
-                if !uploading.closed {
-                    uploading.running.push(sub.clone_as_task());
-                    if let Some(path) = path {
-                        if let Some(exists) = uploading.entries.insert(path, sub) {
-                            let _ = exists.cancel();
-                        }
-                    }
-                    Ok(())
-                } else {
-                    Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
-                }
-            },
-            _ => Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
-        }
-    }
-
-    fn sub_task(&self, path: &str) -> Option<Box<dyn UploadTask>> {
-        if path.len() == 0 {
-            Some(self.clone_as_task())
-        } else {
-            let mut names = path.split("/");
-            let name = names.next().unwrap();
-    
-            let state = self.0.state.read().unwrap(); 
-            match &state.task_state {
-                TaskStateImpl::Uploading(uploading) => {
-                    let mut sub = uploading.entries.get(name).map(|t| t.clone_as_task());
-                    if sub.is_none() {
-                        sub 
-                    } else {
-                        for name in names {
-                            sub = sub.and_then(|t| t.sub_task(name));
-                            if sub.is_none() {
-                                break;
-                            }
-                        }
-                        sub
-                    }
-                },
-                _ => None
-            }
-        }
+        Ok(NdnTaskControlState::Canceled)
     }
 
     fn close(&self) -> BuckyResult<()> {
@@ -185,6 +136,79 @@ impl UploadTask for UploadGroup {
         Ok(())
     }
 
+    fn cur_speed(&self) -> u32 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Uploading(uploading) => uploading.history_speed.latest(),
+            _ => 0
+        }
+    }
+
+
+    fn history_speed(&self) -> u32 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Uploading(uploading) => uploading.history_speed.average(),
+            _ => 0
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl UploadTask for UploadGroup {
+    fn clone_as_upload_task(&self) -> Box<dyn UploadTask> {
+        Box::new(self.clone())
+    }
+
+    fn add_task(&self, path: Option<String>, sub: Box<dyn UploadTask>) -> BuckyResult<()> {
+        let mut state = self.0.state.write().unwrap();
+        match &mut state.task_state {
+            TaskStateImpl::Uploading(uploading) => {
+                if !uploading.closed {
+                    uploading.running.push(sub.clone_as_upload_task());
+                    if let Some(path) = path {
+                        if let Some(exists) = uploading.entries.insert(path, sub) {
+                            let _ = exists.cancel();
+                        }
+                    }
+                    Ok(())
+                } else {
+                    Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
+                }
+            },
+            _ => Err(BuckyError::new(BuckyErrorCode::ErrorState, ""))
+        }
+    }
+
+    fn sub_task(&self, path: &str) -> Option<Box<dyn UploadTask>> {
+        if path.len() == 0 {
+            Some(self.clone_as_upload_task())
+        } else {
+            let mut names = path.split("/");
+            let name = names.next().unwrap();
+    
+            let state = self.0.state.read().unwrap(); 
+            match &state.task_state {
+                TaskStateImpl::Uploading(uploading) => {
+                    let mut sub = uploading.entries.get(name).map(|t| t.clone_as_upload_task());
+                    if sub.is_none() {
+                        sub 
+                    } else {
+                        for name in names {
+                            sub = sub.and_then(|t| t.sub_task(name));
+                            if sub.is_none() {
+                                break;
+                            }
+                        }
+                        sub
+                    }
+                },
+                _ => None
+            }
+        }
+        Ok(())
+    }
+
     fn calc_speed(&self, when: Timestamp) -> u32 {
         let mut state = self.0.state.write().unwrap();
         let mut running = vec![];
@@ -193,10 +217,10 @@ impl UploadTask for UploadGroup {
             TaskStateImpl::Uploading(uploading) => {
                 for sub in &uploading.running {
                     match sub.state() {
-                        UploadTaskState::Finished | UploadTaskState::Error(_) => continue, 
+                        NdnTaskState::Finished | NdnTaskState::Error(_) => continue, 
                         _ => {
                             cur_speed += sub.calc_speed(when);
-                            running.push(sub.clone_as_task());
+                            running.push(sub.clone_as_upload_task());
                         }
                     }  
                 }
@@ -208,22 +232,6 @@ impl UploadTask for UploadGroup {
                 }
                 cur_speed
             },
-            _ => 0
-        }
-    }
-
-    fn cur_speed(&self) -> u32 {
-        let state = self.0.state.read().unwrap();
-        match &state.task_state {
-            TaskStateImpl::Uploading(uploading) => uploading.history_speed.latest(),
-            _ => 0
-        }
-    }
-
-    fn history_speed(&self) -> u32 {
-        let state = self.0.state.read().unwrap();
-        match &state.task_state {
-            TaskStateImpl::Uploading(uploading) => uploading.history_speed.average(),
             _ => 0
         }
     }

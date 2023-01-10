@@ -1,7 +1,7 @@
 use crate::*;
 use cyfs_base::*;
 
-use cyfs_bdt::{DownloadTaskControlState, DownloadTaskState};
+use cyfs_bdt::{NdnTaskControlState, NdnTaskState};
 use cyfs_core::TransContext;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -215,19 +215,55 @@ pub struct TransPublishFileOutputResponse {
     pub file_id: ObjectId,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum TransTaskGroupType {
+    Download, 
+    Upload
+}
+
+
+impl ToString for TransTaskGroupType {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Download => "download".to_owned(), 
+            Self::Upload => "upload".to_owned()
+        }
+        
+    }
+}
+
+impl FromStr for TransTaskGroupType {
+    type Err = BuckyError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let ret = match value {
+            "download" => Self::Download,
+            "upload" => Self::Upload,
+            v @ _ => {
+                let msg = format!("unknown trans group type: {}", v);
+                error!("{}", msg);
+
+                return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
+            }
+        };
+
+        Ok(ret)
+    }
+}
+
 // get task group state
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransGetTaskGroupStateOutputRequest {
     pub common: NDNOutputRequestCommon,
-
+    pub group_type: TransTaskGroupType, 
     pub group: String,
     pub speed_when: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransGetTaskGroupStateOutputResponse {
-    pub state: DownloadTaskState,
-    pub control_state: DownloadTaskControlState,
+    pub state: NdnTaskState,
+    pub control_state: NdnTaskControlState,
     pub speed: Option<u32>,
     pub cur_speed: u32,
     pub history_speed: u32,
@@ -239,17 +275,18 @@ pub enum TransTaskGroupControlAction {
     Resume,
     Cancel,
     Pause,
+    Close
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransControlTaskGroupOutputRequest {
     pub common: NDNOutputRequestCommon,
-
+    pub group_type: TransTaskGroupType, 
     pub group: String,
     pub action: TransTaskGroupControlAction,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransControlTaskGroupOutputResponse {
-    pub control_state: DownloadTaskControlState,
+    pub control_state: NdnTaskControlState,
 }

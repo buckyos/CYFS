@@ -2,7 +2,7 @@ use crate::ndn::TaskGroupHelper;
 use crate::resolver::OodResolver;
 use crate::NamedDataComponents;
 use cyfs_base::*;
-use cyfs_bdt::StackGuard;
+use cyfs_bdt::{StackGuard, self};
 use cyfs_lib::*;
 
 use crate::trans::{TransInputProcessor, TransInputProcessorRef};
@@ -473,17 +473,15 @@ impl LocalTransService {
     ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
         let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
 
-        let task = self
-            .bdt_stack
-            .ndn()
-            .root_task()
-            .download()
-            .sub_task(&group)
-            .ok_or_else(|| {
-                let msg = format!("get task group but ot found! group={}", group);
-                error!("{}", msg);
-                BuckyError::new(BuckyErrorCode::NotFound, msg)
-            })?;
+        use cyfs_bdt::{DownloadTask, UploadTask, NdnTask};
+        let task = match req.group_type {
+            TransTaskGroupType::Download => self.bdt_stack.ndn().root_task().download().sub_task(&group).map(|task| task.clone_as_task()), 
+            TransTaskGroupType::Upload => self.bdt_stack.ndn().root_task().upload().sub_task(&group).map(|task| task.clone_as_task()), 
+        }.ok_or_else(|| {
+            let msg = format!("get task group but ot found! group={}", group);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::NotFound, msg)
+        })?;
 
         let mut resp = TransGetTaskGroupStateInputResponse {
             state: task.state(),
@@ -494,7 +492,7 @@ impl LocalTransService {
         };
 
         if let Some(tm) = req.speed_when {
-            resp.speed = Some(task.calc_speed(tm));
+            resp.speed = Some(task.cur_speed());
         }
 
         Ok(resp)
@@ -506,23 +504,22 @@ impl LocalTransService {
     ) -> BuckyResult<TransControlTaskGroupInputResponse> {
         let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
 
-        let task = self
-            .bdt_stack
-            .ndn()
-            .root_task()
-            .download()
-            .sub_task(&group)
-            .ok_or_else(|| {
-                let msg = format!("get task group but ot found! group={}", group);
-                error!("{}", msg);
-                BuckyError::new(BuckyErrorCode::NotFound, msg)
-            })?;
+        use cyfs_bdt::{DownloadTask, UploadTask, NdnTask};
+        let task: Box<dyn NdnTask> = match req.group_type {
+            TransTaskGroupType::Download => self.bdt_stack.ndn().root_task().download().sub_task(&group).map(|task| task.clone_as_task()),
+            TransTaskGroupType::Upload => self.bdt_stack.ndn().root_task().upload().sub_task(&group).map(|task| task.clone_as_task()), 
+        }.ok_or_else(|| {
+            let msg = format!("get task group but ot found! group={}", group);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::NotFound, msg)
+        })?;
 
         let control_state = match req.action {
-            TransTaskGroupControlAction::Pause => task.pause()?,
-            TransTaskGroupControlAction::Resume => task.resume()?,
-            TransTaskGroupControlAction::Cancel => task.cancel()?,
-        };
+            TransTaskGroupControlAction::Pause => task.pause(),
+            TransTaskGroupControlAction::Resume => task.resume(),
+            TransTaskGroupControlAction::Cancel => task.cancel(),
+            TransTaskGroupControlAction::Close => task.close().map(|_| task.control_state())
+        }?;
 
         let resp = TransControlTaskGroupInputResponse { control_state };
 

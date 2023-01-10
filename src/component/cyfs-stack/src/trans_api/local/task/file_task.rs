@@ -293,7 +293,7 @@ impl Task for DownloadFileTask {
 
             let state = task.state();
             match state {
-                cyfs_bdt::DownloadTaskState::Downloading => {
+                cyfs_bdt::NdnTaskState::Downloading => {
                     log::info!("downloading speed {}", task.cur_speed());
                     let progress = ((task.downloaded() as f32 / self.file.desc().content().len() as f32) * 100.0) as u64;
                     {
@@ -312,7 +312,7 @@ impl Task for DownloadFileTask {
                         group,
                     }
                 }
-                cyfs_bdt::DownloadTaskState::Paused => {
+                cyfs_bdt::NdnTaskState::Paused => {
                     {
                         let mut status = self.task_status.lock().unwrap();
                         status.status = TaskStatus::Paused;
@@ -327,7 +327,7 @@ impl Task for DownloadFileTask {
                         group,
                     }
                 }
-                cyfs_bdt::DownloadTaskState::Finished => {
+                cyfs_bdt::NdnTaskState::Finished => {
                     let mut verify_task = self.verify_task.lock().await;
                     if verify_task.is_some() {
                         let task = verify_task.as_ref().unwrap();
@@ -407,7 +407,7 @@ impl Task for DownloadFileTask {
                         }
                     }
                 }
-                cyfs_bdt::DownloadTaskState::Error(err) => {
+                cyfs_bdt::NdnTaskState::Error(err) => {
                     if err.code() == BuckyErrorCode::Interrupted {
                         {
                             let mut status = self.task_status.lock().unwrap();

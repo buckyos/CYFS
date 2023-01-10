@@ -18,10 +18,7 @@ use super::super::{
     chunk::*,
     channel::{DownloadSession, protocol::v0::*}
 };
-use serde::{
-    Deserialize,
-    Serialize,
-};
+
 
 #[derive(Clone, Debug)]
 pub struct DownloadSourceFilter {
@@ -102,39 +99,13 @@ impl Default for DownloadTaskPriority {
 }
 
 
-// 对scheduler的接口
-#[derive(Debug, Serialize, Deserialize)]
-pub enum DownloadTaskState {
-    Downloading,
-    Paused,
-    Error(BuckyError/*被cancel的原因*/), 
-    Finished
-}
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum DownloadTaskControlState {
-    Normal, 
-    Paused, 
-    Canceled, 
-}
 
 #[async_trait::async_trait]
-pub trait DownloadTask: Send + Sync {
-    fn clone_as_task(&self) -> Box<dyn DownloadTask>;
+pub trait DownloadTask: NdnTask {
+    fn clone_as_download_task(&self) -> Box<dyn DownloadTask>;
 
-    fn state(&self) -> DownloadTaskState;
-    fn control_state(&self) -> DownloadTaskControlState;
     async fn wait_user_canceled(&self) -> BuckyError;
-
-    fn resume(&self) -> BuckyResult<DownloadTaskControlState> {
-        Ok(DownloadTaskControlState::Normal)
-    }
-    fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
-        Ok(DownloadTaskControlState::Normal)
-    }
-    fn pause(&self) -> BuckyResult<DownloadTaskControlState> {
-        Ok(DownloadTaskControlState::Normal)
-    }
 
     fn add_task(&self, _path: Option<String>, _sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
         Err(BuckyError::new(BuckyErrorCode::NotSupport, "no implement"))
@@ -146,13 +117,8 @@ pub trait DownloadTask: Send + Sync {
 
     }
 
-    fn close(&self) -> BuckyResult<()> {
-        Ok(())
-    }
-
     fn calc_speed(&self, when: Timestamp) -> u32;
-    fn cur_speed(&self) -> u32;
-    fn history_speed(&self) -> u32;
+
     fn downloaded(&self) -> u64 {
         0
     }
@@ -222,7 +188,7 @@ impl DownloadTaskSplitRead for DownloadTaskReader {
     ) -> Poll<std::io::Result<Option<(ChunkCache, Range<usize>)>>> {
         let pined = self.get_mut();
         trace!("{} split_read: {} offset: {}", pined, buffer.len(), pined.offset);
-        if let DownloadTaskState::Error(err) = pined.task.state() {
+        if let NdnTaskState::Error(err) = pined.task.state() {
             trace!("{} split_read: {} offset: {} error: {}", pined, buffer.len(), pined.offset, err);
             return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
         } 
@@ -255,7 +221,7 @@ impl DownloadTaskSplitRead for DownloadTaskReader {
         } else {
             let waker = cx.waker().clone();
             let cache = pined.cache.clone();
-            let task = pined.task.clone_as_task();
+            let task = pined.task.clone_as_download_task();
             let range = pined.offset..pined.offset + buffer.len();
             task::spawn(async move {
                 let _ = cache.wait_exists(range, || task.wait_user_canceled()).await;
