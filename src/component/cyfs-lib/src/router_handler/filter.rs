@@ -846,6 +846,24 @@ impl ExpReservedTokenTranslator for InterestHandlerResponse {
     fn trans(&self, token: &str) -> ExpTokenEvalValue {
         match token {
             "type" => ExpTokenEvalValue::String(self.type_str().to_owned()), 
+            "upload.groups" => match self {
+                Self::Upload { groups, .. } => ExpTokenEvalValue::from_glob_list(&groups), 
+                _ => ExpTokenEvalValue::from_glob_list(&Vec::<String>::new()), 
+            }, 
+            "upload.file_path" => match self {
+                Self::Upload { source, .. } => match source {
+                    InterestUploadSource::ChunkStore => ExpTokenEvalValue::None, 
+                    InterestUploadSource::File { path, .. } => ExpTokenEvalValue::from_opt_glob(&path.to_str())
+                }, 
+                _ => ExpTokenEvalValue::None, 
+            }, 
+            "upload.file_offset" => match self {
+                Self::Upload { source, .. } => match source {
+                    InterestUploadSource::ChunkStore => ExpTokenEvalValue::None, 
+                    InterestUploadSource::File { offset, .. } => ExpTokenEvalValue::U64(*offset), 
+                }, 
+                _ => ExpTokenEvalValue::None, 
+            }, 
             "transmit_to" => ExpTokenEvalValue::from_opt_string(&self.transmit_to().clone()), 
             "err" => {
                 if let Some(err) = self.resp_interest().map(|r| r.err.as_u16()) {
@@ -1452,7 +1470,9 @@ impl RouterHandlerReservedTokenList {
         token_list.add_u32("err");
         token_list.add_glob("redirect");
         token_list.add_string("redirect_referer_target");
-        
+        token_list.add_glob("upload.groups");
+        token_list.add_glob("upload.file_path");
+        token_list.add_glob("upload.file_offset");
         token_list.translate_resp();
 
         token_list

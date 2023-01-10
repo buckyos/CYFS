@@ -473,7 +473,7 @@ impl LocalTransService {
     ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
         let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
 
-        use cyfs_bdt::{DownloadTask, UploadTask, NdnTask};
+        // use cyfs_bdt::{DownloadTask, UploadTask, NdnTask};
         let task = match req.group_type {
             TransTaskGroupType::Download => self.bdt_stack.ndn().root_task().download().sub_task(&group).map(|task| task.clone_as_task()), 
             TransTaskGroupType::Upload => self.bdt_stack.ndn().root_task().upload().sub_task(&group).map(|task| task.clone_as_task()), 
@@ -504,8 +504,8 @@ impl LocalTransService {
     ) -> BuckyResult<TransControlTaskGroupInputResponse> {
         let group = TaskGroupHelper::check_and_fix(&req.common.source.dec, req.group);
 
-        use cyfs_bdt::{DownloadTask, UploadTask, NdnTask};
-        let task: Box<dyn NdnTask> = match req.group_type {
+        // use cyfs_bdt::{DownloadTask, UploadTask, NdnTask};
+        let task = match req.group_type {
             TransTaskGroupType::Download => self.bdt_stack.ndn().root_task().download().sub_task(&group).map(|task| task.clone_as_task()),
             TransTaskGroupType::Upload => self.bdt_stack.ndn().root_task().upload().sub_task(&group).map(|task| task.clone_as_task()), 
         }.ok_or_else(|| {
