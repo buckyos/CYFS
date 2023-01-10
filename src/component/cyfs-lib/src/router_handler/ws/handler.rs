@@ -45,9 +45,9 @@ impl RouterHandlerItem {
     async fn register(&self, requestor: &Arc<WebSocketRequestManager>) -> BuckyResult<()> {
         info!(
             "will add ws router handler: chain={}, category={}, id={}, sid={}, routine={}",
-            self.id,
             self.chain,
             self.category,
+            self.id,
             requestor.sid(),
             self.routine.is_some()
         );
@@ -212,18 +212,14 @@ impl WebSocketRequestHandler for RouterWSHandlerRequestHandler {
         let session = session.clone();
         let owner = self.owner.clone();
 
-        task::spawn(async move {
-            RouterWSHandlerManagerImpl::on_session_begin(owner, session).await;
-        });
+        RouterWSHandlerManagerImpl::on_session_begin(owner, session).await;
     }
 
     async fn on_session_end(&self, session: &Arc<WebSocketSession>) {
         let session = session.clone();
         let owner = self.owner.clone();
 
-        task::spawn(async move {
-            RouterWSHandlerManagerImpl::on_session_end(owner, session).await;
-        });
+        RouterWSHandlerManagerImpl::on_session_end(owner, session).await;
     }
 
     fn clone_handler(&self) -> Box<dyn WebSocketRequestHandler> {
@@ -239,6 +235,12 @@ struct RouterWSHandlerManagerImpl {
     session: Option<Arc<WebSocketSession>>,
 }
 
+impl Drop for RouterWSHandlerManagerImpl {
+    fn drop(&mut self) {
+        warn!("router handler manager dropped! sid={:?}", self.sid());
+    }
+}
+
 impl RouterWSHandlerManagerImpl {
     pub fn new() -> Self {
         Self {
@@ -246,6 +248,10 @@ impl RouterWSHandlerManagerImpl {
             unregister_handlers: HashMap::new(),
             session: None,
         }
+    }
+
+    pub fn sid(&self) -> Option<u32> {
+        self.session.as_ref().map(|session| session.sid())
     }
 
     pub fn get_handler(&self, id: &RouterHandlerId) -> Option<Arc<RouterHandlerItem>> {
@@ -276,7 +282,10 @@ impl RouterWSHandlerManagerImpl {
                         let _ = handler_item.register(&requestor).await;
                     });
                 } else {
-                    warn!("add handler but ws session does not exist yet, now will pending! id={}", handler_item.id);
+                    warn!(
+                        "add handler but ws session does not exist yet, now will pending! id={}",
+                        handler_item.id
+                    );
                 }
 
                 Ok(())
@@ -403,9 +412,12 @@ impl RouterWSHandlerManagerImpl {
             assert!(manager.session.is_none());
             manager.session = Some(session.clone());
         }
-        Self::unregister_all(&manager, &session).await;
+        
+        async_std::task::spawn(async move {
+            Self::unregister_all(&manager, &session).await;
 
-        Self::register_all(&manager, &session).await;
+            Self::register_all(&manager, &session).await;
+        });
     }
 
     async fn register_all(
@@ -484,16 +496,23 @@ impl RouterWSHandlerManager {
         let manager = Arc::new(Mutex::new(RouterWSHandlerManagerImpl::new()));
 
         let handler = RouterWSHandlerRequestHandler::new(manager.clone());
-
         let client = WebSocketClient::new(service_url, Box::new(handler));
 
-        let ret = Self { manager, client };
-
-        ret
+        Self { manager, client }
     }
 
     pub fn start(&self) {
         self.client.start();
+    }
+
+    pub async fn stop(&self) {
+        let sid = self.manager.lock().unwrap().sid();
+        info!("will stop router handler manager! sid={:?}", sid);
+
+        self.client.stop().await;
+        
+        info!("stop router handler manager complete! sid={:?}", sid);
+        // assert!(self.manager.lock().unwrap().session.is_none());
     }
 
     pub fn add_handler<REQ, RESP>(

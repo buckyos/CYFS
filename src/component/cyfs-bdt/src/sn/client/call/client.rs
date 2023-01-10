@@ -641,29 +641,32 @@ impl CallSession {
             }
         }
 
-        let mut state = self.0.state.write().unwrap();
         let mut next = NextStep::none();
-        match &state.state {
-            SessionState::FirstTry => {
-                if now > state.start_at && Duration::from_micros(now - state.start_at) > self.config().first_try_timeout {
-                    let call: &SnCall = state.packages.packages_no_exchange()[0].as_ref();
-                    next.reset = Some(call.clone());
-                    state.state = SessionState::SecondTry;
-                } else {
-                    next.callback = Some(state.tunnels.iter().map(|t| t.clone_as_call_tunnel()).collect());
-                }
-            }, 
-            SessionState::SecondTry => {
-                if now > state.start_at && Duration::from_micros(now - state.start_at) > self.config().timeout {
-                    state.state = SessionState::Canceled(BuckyError::new(BuckyErrorCode::Timeout, "session timeout"));
-                    next.waiter = Some(state.waiter.transfer());
-                } else {
-                    next.callback = Some(state.tunnels.iter().map(|t| t.clone_as_call_tunnel()).collect());
-                }
-            }, 
-            _ => {}
+        {
+            let mut state = self.0.state.write().unwrap();
+           
+            match &state.state {
+                SessionState::FirstTry => {
+                    if now > state.start_at && Duration::from_micros(now - state.start_at) > self.config().first_try_timeout {
+                        let call: &SnCall = state.packages.packages_no_exchange()[0].as_ref();
+                        next.reset = Some(call.clone());
+                        state.state = SessionState::SecondTry;
+                    } else {
+                        next.callback = Some(state.tunnels.iter().map(|t| t.clone_as_call_tunnel()).collect());
+                    }
+                }, 
+                SessionState::SecondTry => {
+                    if now > state.start_at && Duration::from_micros(now - state.start_at) > self.config().timeout {
+                        state.state = SessionState::Canceled(BuckyError::new(BuckyErrorCode::Timeout, "session timeout"));
+                        next.waiter = Some(state.waiter.transfer());
+                    } else {
+                        next.callback = Some(state.tunnels.iter().map(|t| t.clone_as_call_tunnel()).collect());
+                    }
+                }, 
+                _ => {}
+            }
         }
-
+       
         if let Some(waiter) = next.waiter {
             waiter.wake();
         }

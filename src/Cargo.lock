@@ -569,16 +569,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "base"
-version = "0.5.0"
-dependencies = [
- "cyfs-base",
- "cyfs-meta-lib",
- "cyfs-noc",
- "cyfs-stack-loader",
-]
-
-[[package]]
 name = "base-x"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2110,7 +2100,6 @@ dependencies = [
  "async-h1",
  "async-std",
  "async-trait",
- "base",
  "bytes 1.2.1",
  "clap",
  "cyfs-base",
@@ -3086,7 +3075,6 @@ dependencies = [
  "async-h1",
  "async-std",
  "async-trait",
- "base",
  "bytes 1.2.1",
  "clap",
  "cyfs-base",
@@ -4418,7 +4406,6 @@ dependencies = [
  "async-h1",
  "async-std",
  "async-trait",
- "base",
  "clap",
  "cyfs-base",
  "cyfs-bdt",
@@ -4427,6 +4414,7 @@ dependencies = [
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-meta-lib",
+ "cyfs-stack-loader",
  "cyfs-util",
  "fs_extra",
  "futures",
@@ -4448,12 +4436,12 @@ version = "0.5.0"
 dependencies = [
  "async-std",
  "async-trait",
- "base",
  "clap",
  "cyfs-base",
  "cyfs-base-meta",
  "cyfs-debug",
  "cyfs-meta-lib",
+ "cyfs-stack-loader",
  "cyfs-util",
  "desc-tool",
  "futures-util",

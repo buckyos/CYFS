@@ -27,6 +27,7 @@ mod call;
 mod mime;
 mod object_meta_access;
 mod context;
+mod shared_stack;
 
 pub async fn test_restart() {
     let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
@@ -36,6 +37,9 @@ pub async fn test_restart() {
 }
 
 pub async fn test() {
+    shared_stack::test().await;
+    return;
+    
     // role::test().await;
 
     // meta::test().await;

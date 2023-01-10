@@ -1,4 +1,4 @@
-use base::CyfsServiceLoaderConfig;
+use cyfs_stack_loader::CyfsServiceLoaderConfig;
 use std::path::{Path, PathBuf};
 
 use crate::control::HttpControlInterface;

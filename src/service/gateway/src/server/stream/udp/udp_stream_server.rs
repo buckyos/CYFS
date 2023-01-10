@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 
-
 use super::super::StreamServer;
 use super::stream_bdt_datagram_listener::DatagramBdtListenerManager;
 use super::stream_udp_listener::StreamUdpListenerManager;
 use cyfs_base::BuckyError;
+use cyfs_stack_loader::VAR_MANAGER;
 
 pub struct UdpStreamServer {
     proxy_pass: (String, u16),
@@ -99,8 +99,7 @@ impl StreamServer for UdpStreamServer {
                 }
                 "proxy_pass" => {
                     let proxy_pass = v.as_str().unwrap_or("");
-                    let proxy_pass = ::base::VAR_MANAGER
-                        .translate_addr_str(proxy_pass)?;
+                    let proxy_pass = VAR_MANAGER.translate_addr_str(proxy_pass)?;
 
                     match cyfs_util::parse_address(&proxy_pass) {
                         Ok(ret) => self.proxy_pass = ret,

@@ -138,7 +138,7 @@ async fn main_run() {
     cyfs_debug::CyfsLoggerBuilder::new_service("cyfs-client")
         .level("info")
         .console("info")
-        .enable_bdt(Some("warn"), Some("warn"))
+        .enable_bdt(Some("info"), Some("warn"))
         .build()
         .unwrap()
         .start();

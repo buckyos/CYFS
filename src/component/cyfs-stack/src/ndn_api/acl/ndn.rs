@@ -144,9 +144,18 @@ impl NDNAclInputProcessor {
         &self,
         mut req: NDNGetDataInputRequest,
     ) -> BuckyResult<NDNGetDataInputRequest> {
-        debug!("will check get_file access: req={}", req,);
+        debug!("will check get_file access: req={}", req);
 
-        assert!(req.common.user_data.is_none());
+        // During some request from front /o and /a, the object will been fetched at first, then load the ndn files
+        // at this case we should not check the access anymore
+        if let Some(user_data) = &req.common.user_data {
+            let udata = NDNForwardObjectData::from_any(user_data);
+            assert_eq!(udata.file_id, req.object_id);
+
+            return Ok(req);
+        }
+
+        // assert!(req.common.user_data.is_none());
 
         let (file_id, file) = self.loader()?.get_file_object(&req, None).await?;
         assert_eq!(file_id, file.desc().calculate_id());
