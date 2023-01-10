@@ -32,13 +32,16 @@ struct WriteProviderImpl {
     est_stubs: LinkedList<EstimateStub>, 
     est_id: IncreaseIdGenerator, 
     last_recv: Timestamp, 
-    cc: CongestionControl
+    cc: CongestionControl,
+    app_limited: bool,
 }
 
 impl WriteProviderImpl {
     fn check_wnd(&mut self, stream: &PackageStream, now: Timestamp, timeout: Duration, packages: &mut Vec<DynamicPackage>, logging: bool) {
         self.queue.check_wnd(stream, now, timeout, self.cc.cwnd(), packages, logging);
         self.on_pre_send_package(stream, packages);
+
+        self.app_limited = packages.len() == 0;
     }
 
     fn on_time_escape(&mut self, stream: &PackageStream, now: Timestamp, packages: &mut Vec<DynamicPackage>) -> BuckyResult<()> {
@@ -122,7 +125,8 @@ impl WriteProvider {
             est_id: IncreaseIdGenerator::new(), 
             est_stubs: LinkedList::new(), 
             last_recv: bucky_time_now(), 
-            cc: CongestionControl::new(PackageStream::mss(), &config.package.cc)
+            cc: CongestionControl::new(PackageStream::mss(), &config.package.cc),
+            app_limited: false,
         })))
     }
 
@@ -237,6 +241,16 @@ impl WriteProvider {
         let _ = stream.send_packages(packages);
         result
     }
+
+    pub fn on_sent(&self, sent_bytes: u64, sent_packages: u64) {
+        let state = &mut *cyfs_debug::lock!(self.0).unwrap();
+        match state {
+            WriteProviderState::Open(provider) => {
+                provider.cc.on_sent(bucky_time_now(), sent_bytes, sent_packages);
+            }
+            _ => {}
+        }
+    }
 }
 
 impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for WriteProvider {
@@ -260,7 +274,7 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Writ
                             if sample.id == package_id {
                                 let rtt = Duration::from_micros(bucky_time_now() - sample.send_time);
                                 let delay = rtt / 2;
-                                provider.cc.on_estimate(rtt, delay);
+                                provider.cc.on_estimate(rtt, delay, provider.app_limited);
                                 debug!("{} estimate rtt:{:?} delay:{:?} rto:{:?}", stream, rtt, delay, provider.cc.rto());
                                 to_remove = Some(index);
                                 break;  
@@ -290,8 +304,9 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Writ
                             trace!("{} newly ack {} to {}", stream, newly_acked, provider.queue.start());
                             provider.cc.on_ack(provider.queue.flight() as u64, 
                             newly_acked as u64, 
-                            Some(newly_acked as u64), 
-                            bucky_time_now());
+                            Some(1), 
+                            bucky_time_now(),
+                            provider.app_limited);
                             debug!("{} update cwnd: {}", stream, provider.cc.cwnd());
                             provider.check_wnd(stream, now, provider.cc.rto(), &mut packages, false);
                             
