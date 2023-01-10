@@ -206,7 +206,6 @@ impl UploadTask for UploadGroup {
                 _ => None
             }
         }
-        Ok(())
     }
 
     fn calc_speed(&self, when: Timestamp) -> u32 {
