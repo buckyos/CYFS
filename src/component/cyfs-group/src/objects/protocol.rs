@@ -15,21 +15,35 @@ pub enum SyncBound {
 impl Copy for SyncBound {}
 
 impl SyncBound {
-    fn value(&self) -> u64 {
+    pub fn value(&self) -> u64 {
         match self {
-            Self::Height(h) => h,
-            Self::Round(r) => r,
+            Self::Height(h) => *h,
+            Self::Round(r) => *r,
         }
     }
 
-    fn add(&self, value: u64) -> Self {
+    pub fn height(&self) -> u64 {
+        match self {
+            Self::Height(h) => *h,
+            Self::Round(r) => panic!("should be height"),
+        }
+    }
+
+    pub fn round(&self) -> u64 {
+        match self {
+            Self::Round(r) => *r,
+            Self::Height(h) => panic!("should be round"),
+        }
+    }
+
+    pub fn add(&self, value: u64) -> Self {
         match self {
             Self::Height(h) => Self::Height(*h + value),
             Self::Round(r) => Self::Round(*r + value),
         }
     }
 
-    fn sub(&self, value: u64) -> Self {
+    pub fn sub(&self, value: u64) -> Self {
         match self {
             Self::Height(h) => Self::Height(*h - value),
             Self::Round(r) => Self::Round(*r - value),

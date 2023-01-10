@@ -184,7 +184,7 @@ impl Storage {
     }
 
     // (found_block, cached_blocks)
-    pub fn find_block_by_round(
+    pub async fn find_block_by_round(
         &self,
         round: u64,
     ) -> (BuckyResult<GroupConsensusBlock>, Vec<GroupConsensusBlock>) {
@@ -195,6 +195,7 @@ impl Storage {
             );
         }
 
+        let mut blocks = vec![];
         let mut block = self.header_block.clone().unwrap();
         let mut min_height = 1;
         let mut min_round = 1;
@@ -202,9 +203,9 @@ impl Storage {
         let mut max_round = block.round();
 
         while min_height < max_height {
+            blocks.push(block.clone());
             match block.round().cmp(&round) {
                 std::cmp::Ordering::Equal => {
-                    blocks.push(block.clone());
                     return (Ok(block), blocks);
                 }
                 std::cmp::Ordering::Less => {
@@ -214,21 +215,13 @@ impl Storage {
                 std::cmp::Ordering::Greater => {
                     max_round = block.round() - 1;
                     max_height = block.height() - 1;
-
-                    let is_include = match max_bound {
-                        SyncBound::Round(max_round) => block.round() <= max_round,
-                        SyncBound::Height(max_height) => block.height() <= max_height,
-                    };
-                    if is_include {
-                        blocks.push(block);
-                    }
                 }
             }
 
             let height = min_height
                 + (round - min_round) * (max_height - min_height) / (max_round - min_round);
 
-            block = match store.get_block_by_height(height).await {
+            block = match self.get_block_by_height(height).await {
                 Ok(block) => block,
                 Err(e) => return (Err(e), blocks),
             }

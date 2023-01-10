@@ -1,9 +1,14 @@
-use std::{collections::HashSet, sync::Arc, time::Instant, vec};
+use std::{
+    collections::HashSet,
+    sync::Arc,
+    time::{Duration, Instant},
+    vec,
+};
 
 use async_std::channel::{Receiver, Sender};
 use cyfs_base::{BuckyResult, NamedObject, ObjectDesc, ObjectId};
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
-use protobuf::well_known_types::Duration;
+use futures::FutureExt;
 
 use crate::{
     consensus::timer::Timer, storage::Storage, HotstuffMessage, SyncBound, CHANNEL_CAPACITY,
@@ -40,7 +45,7 @@ impl Synchronizer {
             round,
         );
 
-        async_std::task::spawn(async move || runner.run().await);
+        async_std::task::spawn(async move { runner.run().await });
 
         Self {
             tx_sync_message,
@@ -51,11 +56,11 @@ impl Synchronizer {
 
     pub fn sync_with_height(&self, min_height: u64, max_height: u64, remote: ObjectId) {
         if min_height > max_height {
-            return Ok(());
+            return;
         }
 
         let tx_sync_message = self.tx_sync_message.clone();
-        async_std::task::spawn(async move || {
+        async_std::task::spawn(async move {
             tx_sync_message
                 .send(SynchronizerMessage::Sync(
                     min_height,
@@ -68,11 +73,11 @@ impl Synchronizer {
 
     pub fn sync_with_round(&self, min_height: u64, max_round: u64, remote: ObjectId) {
         if min_height > max_round {
-            return Ok(());
+            return;
         }
 
         let tx_sync_message = self.tx_sync_message.clone();
-        async_std::task::spawn(async move || {
+        async_std::task::spawn(async move {
             tx_sync_message
                 .send(SynchronizerMessage::Sync(
                     min_height,
@@ -90,7 +95,7 @@ impl Synchronizer {
         remote: ObjectId,
     ) {
         let tx_sync_message = self.tx_sync_message.clone();
-        async_std::task::spawn(async move || {
+        async_std::task::spawn(async move {
             tx_sync_message
                 .send(SynchronizerMessage::PushBlock(min_height, block, remote))
                 .await
@@ -102,7 +107,7 @@ impl Synchronizer {
         let height = block.height();
         let round = block.round();
         let block_id = block.named_object().desc().object_id();
-        async_std::task::spawn(async move || {
+        async_std::task::spawn(async move {
             tx_sync_message
                 .send(SynchronizerMessage::PopBlock(height, round, block_id))
                 .await
@@ -133,7 +138,15 @@ impl Synchronizer {
                     return Ok(());
                 }
 
-                let (ret, mut cached_blocks) = store.find_block_by_round(round);
+                let (ret, mut cached_blocks) = store.find_block_by_round(round).await;
+                cached_blocks.retain(|block| {
+                    let is_include = block.round() >= round
+                        && match max_bound {
+                            SyncBound::Round(max_round) => block.round() <= max_round,
+                            SyncBound::Height(max_height) => block.height() <= max_height,
+                        };
+                    is_include
+                });
                 cached_blocks.sort_unstable_by(|left, right| left.height().cmp(&right.height()));
                 blocks = cached_blocks;
 
@@ -184,12 +197,10 @@ impl Synchronizer {
 
         let network_sender = self.network_sender.clone();
         let rpath = self.rpath.clone();
-        async_std::task::spawn(async move || {
-            futures::future::join_all(
-                blocks
-                    .into_iter()
-                    .map(|block| network_sender.post_package(block, rpath.clone(), &remote)),
-            )
+        async_std::task::spawn(async move {
+            futures::future::join_all(blocks.into_iter().map(|block| {
+                network_sender.post_package(HotstuffMessage::Block(block), rpath.clone(), &remote)
+            }))
             .await;
         });
 
@@ -285,7 +296,7 @@ impl RequestSendInfo {
 
             let msg = HotstuffMessage::SyncRequest(self.min_bound, self.max_bound);
             let remote = resend_info.cmd.2;
-            async_std::task::spawn(async move || sender.post_package(msg, rpath, &remote).await);
+            async_std::task::spawn(async move { sender.post_package(msg, rpath, &remote).await });
 
             if resend_info.send_times >= SYNCHRONIZER_TRY_TIMES {
                 self.resends.remove(max_send_info_pos);
@@ -305,8 +316,8 @@ impl RequestSendInfo {
 struct SynchronizerRunner {
     network_sender: crate::network::Sender,
     rpath: GroupRPath,
-    tx_block: Sender<(HotstuffMessage, ObjectId)>,
-    rx_message: Receiver<(HotstuffMessage, ObjectId)>,
+    tx_block: Sender<(GroupConsensusBlock, ObjectId)>,
+    rx_message: Receiver<SynchronizerMessage>,
     timer: Timer,
     height: u64,
     round: u64,
@@ -319,7 +330,7 @@ impl SynchronizerRunner {
     fn new(
         network_sender: crate::network::Sender,
         rpath: GroupRPath,
-        tx_block: Sender<(HotstuffMessage, ObjectId)>,
+        tx_block: Sender<(GroupConsensusBlock, ObjectId)>,
         rx_message: Receiver<SynchronizerMessage>,
         height: u64,
         round: u64,
@@ -364,30 +375,34 @@ impl SynchronizerRunner {
                                 _ => req1.min_bound.sub(1),
                             };
 
-                            let new_req = RequestSendInfo::new(range.0, max_bound, req.clone());
+                            let mut new_req = RequestSendInfo::new(range.0, max_bound, req.clone());
                             new_req.try_send(self.rpath.clone(), &self.network_sender);
-                            self.sync_requests.insert(i, new_req);
-                            range.0 = max_bound.value() + 1;
+                            self.sync_requests.insert(pos, new_req);
+                            range.0 = max_bound.add(1);
                         }
                         std::cmp::Ordering::Equal => {
-                            match range.1.cmp(&req1.max_bound) {
+                            let cut_req = match range.1.cmp(&req1.max_bound) {
                                 std::cmp::Ordering::Greater => {
                                     range.0 = req1.max_bound.add(1);
+                                    None
                                 }
                                 _ => {
                                     range.0 = range.1.add(1);
                                     let cut = req1.splite(range.0);
                                     assert!(req1.is_valid());
-                                    if let Some(cut) = cut {
-                                        self.sync_requests.insert(i + 1, cut);
-                                    }
+                                    cut
                                 }
                             };
                             req1.resends.push(ResendInfo {
-                                last_send_time: 0,
+                                last_send_time: Instant::now()
+                                    .checked_sub(Duration::from_millis(SYNCHRONIZER_TIMEOUT << 1))
+                                    .unwrap(),
                                 send_times: 0,
                                 cmd: req.clone(),
                             });
+                            if let Some(cut) = cut_req {
+                                self.sync_requests.insert(pos + 1, cut);
+                            }
                         }
                         std::cmp::Ordering::Greater => match range.0.cmp(&req1.max_bound) {
                             std::cmp::Ordering::Greater => {}
@@ -395,7 +410,7 @@ impl SynchronizerRunner {
                                 let cut = req1.splite(range.0);
                                 assert!(req1.is_valid());
                                 if let Some(cut) = cut {
-                                    self.sync_requests.insert(i + 1, cut);
+                                    self.sync_requests.insert(pos + 1, cut);
                                 }
                             }
                         },
@@ -409,7 +424,7 @@ impl SynchronizerRunner {
 
                 if pos == self.sync_requests.len() {
                     if range.0 <= range.1 {
-                        let new_req = RequestSendInfo::new(range.0, max_bound, req.clone());
+                        let mut new_req = RequestSendInfo::new(range.0, max_bound, req.clone());
                         new_req.try_send(self.rpath.clone(), &self.network_sender);
                         self.sync_requests.push(new_req);
                         pos += 1;
@@ -434,7 +449,7 @@ impl SynchronizerRunner {
                     let (range1, range2) =
                         Self::splite_range_with_block(range, block.height(), block.round());
                     if let Some(range1) = range1 {
-                        requests.push(range1);
+                        requests.push((range1.0.height(), range1.1));
                     }
                     last_range = range2;
                 }
@@ -443,7 +458,7 @@ impl SynchronizerRunner {
         }
 
         if let Some(last_range) = last_range {
-            requests.push(last_range);
+            requests.push((last_range.0.height(), last_range.1));
         }
 
         requests
@@ -497,11 +512,10 @@ impl SynchronizerRunner {
         block: GroupConsensusBlock,
         remote: ObjectId,
     ) {
-        if block.round() <= self.round {
-            return;
-        }
-
-        if min_height >= block.height() {
+        if block.round() <= self.round
+            || min_height <= block.height()
+            || block.prev_block_id().is_none()
+        {
             return;
         }
 
@@ -516,7 +530,7 @@ impl SynchronizerRunner {
 
         match pos {
             Ok(_) => return,
-            Err(pos) => self.out_order_blocks.insert(pos, (block, remote)),
+            Err(pos) => self.out_order_blocks.insert(pos, (block.clone(), remote)),
         };
 
         self.timer.reset(SYNCHRONIZER_TIMEOUT);
@@ -542,7 +556,9 @@ impl SynchronizerRunner {
                 None => {
                     match range2 {
                         Some(range2) => req.min_bound = range2.0,
-                        None => self.sync_requests.remove(i),
+                        None => {
+                            self.sync_requests.remove(i);
+                        }
                     }
                     break;
                 }
@@ -560,10 +576,10 @@ impl SynchronizerRunner {
 
         self.timer.reset(SYNCHRONIZER_TIMEOUT);
 
-        let mut max_height = self.height.max(&new_height);
+        let mut max_height = self.height.max(new_height);
         let mut max_round = new_round;
 
-        let mut remove_block_ids = HashSet::from(&[block_id]);
+        let mut remove_block_ids = HashSet::from([block_id]);
 
         let mut remove_pos = None;
 
@@ -571,7 +587,8 @@ impl SynchronizerRunner {
             let (block, remote) = self.out_order_blocks.get(pos).unwrap();
 
             let block_id_out = block.named_object().desc().object_id();
-            if remove_block_ids.contains(&block.prev_block_id()) || block_id_out == block_id {
+            if remove_block_ids.contains(block.prev_block_id().unwrap()) || block_id_out == block_id
+            {
                 remove_block_ids.insert(block_id_out);
                 remove_pos = Some(pos);
                 max_height = max_height.max(block.height());
@@ -622,13 +639,14 @@ impl SynchronizerRunner {
         }
 
         if let Some(remove_request_pos) = remove_request_pos {
-            self.sync_requests.splice(0..(pos + 1), []);
+            self.sync_requests.splice(0..(remove_request_pos + 1), []);
         }
 
-        futures::future::join_all(order_blocks.into_iter().map(|(order_block, remote)| {
-            self.tx_block
-                .send((HotstuffMessage::Block(order_block), remote))
-        }))
+        futures::future::join_all(
+            order_blocks
+                .into_iter()
+                .map(|(order_block, remote)| self.tx_block.send((order_block, remote))),
+        )
         .await;
     }
 
@@ -647,8 +665,7 @@ impl SynchronizerRunner {
                     Ok(SynchronizerMessage::PushBlock(min_height, block, remote)) => self.handle_push_block(min_height, block, remote).await,
                     Ok(SynchronizerMessage::PopBlock(new_height, new_round, block_id)) => self.handle_pop_block(new_height, new_round, block_id).await,
                     Err(e) => {
-                        log::warn!("[synchronizer] rx_message closed.");
-                        Ok(())
+                        log::warn!("[synchronizer] rx_message closed.")
                     },
                 },
                 () = self.timer.wait_next().fuse() => self.handle_timeout().await,

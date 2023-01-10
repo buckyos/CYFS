@@ -2,8 +2,8 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 
 use async_std::channel::{Receiver, Sender};
 use cyfs_base::{
-    bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, ChunkId, Group,
-    NamedObject, ObjectDesc, ObjectId, RsaCPUObjectSigner,
+    bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
+    ObjectDesc, ObjectId, RsaCPUObjectSigner,
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
@@ -73,6 +73,14 @@ impl Hotstuff {
         let init_timer_interval = store.group().consensus_interval();
         let max_height = store.header_height() + 2;
 
+        let synchronizer = Synchronizer::spawn(
+            network_sender.clone(),
+            rpath.clone(),
+            max_height,
+            round,
+            tx_message_inner.clone(),
+        );
+
         let mut hotstuff = Self {
             local_id,
             committee,
@@ -85,13 +93,7 @@ impl Hotstuff {
             network_sender,
             rx_message,
             delegate,
-            synchronizer: Synchronizer::spawn(
-                network_sender.clone(),
-                rpath.clone(),
-                max_height,
-                round,
-                tx_message_inner.clone(),
-            ),
+            synchronizer,
             non_driver,
             rpath,
             tx_proposal_consume,
@@ -196,7 +198,7 @@ impl Hotstuff {
         self.check_block_proposal_result_state_by_app(block, &proposals, &prev_block)
             .await?;
 
-        self.synchronizer.pop_link_from(block)?;
+        self.synchronizer.pop_link_from(block);
 
         self.process_qc(block.qc()).await;
 
@@ -905,7 +907,7 @@ impl Hotstuff {
                         log::warn!("[hotstuff] rx_message closed.");
                         Ok(())
                     },
-                    Ok((HotstuffMessage::SyncRequest((min_bound, max_bound)), remote)) => self.synchronizer.process_sync_request(min_bound, max_bound, remote, &self.store).await
+                    Ok((HotstuffMessage::SyncRequest(min_bound, max_bound), remote)) => self.synchronizer.process_sync_request(min_bound, max_bound, remote, &self.store).await
                 },
                 message = self.rx_message_inner.recv().fuse() => match message {
                     Ok((block, remote)) => {

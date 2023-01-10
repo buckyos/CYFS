@@ -355,7 +355,7 @@ impl GroupMember {
 impl TryFrom<protos::GroupMember> for GroupMember {
     type Error = BuckyError;
 
-    fn try_from(mut value: protos::GroupMember) -> BuckyResult<Self> {
+    fn try_from(value: protos::GroupMember) -> BuckyResult<Self> {
         let ret = Self {
             id: ProtobufCodecHelper::decode_buf(value.id)?,
             title: value.title,
@@ -506,7 +506,7 @@ pub struct GroupJoinSignature {
 impl TryFrom<protos::GroupJoinSignature> for GroupJoinSignature {
     type Error = BuckyError;
 
-    fn try_from(mut value: protos::GroupJoinSignature) -> BuckyResult<Self> {
+    fn try_from(value: protos::GroupJoinSignature) -> BuckyResult<Self> {
         let ret = Self {
             signature: ProtobufCodecHelper::decode_buf(value.signature)?,
             member_id: ProtobufCodecHelper::decode_buf(value.member_id)?,
@@ -673,7 +673,7 @@ pub struct SimpleGroupDescContent {
 impl TryFrom<protos::SimpleGroupDescContent> for SimpleGroupDescContent {
     type Error = BuckyError;
 
-    fn try_from(mut value: protos::SimpleGroupDescContent) -> BuckyResult<Self> {
+    fn try_from(value: protos::SimpleGroupDescContent) -> BuckyResult<Self> {
         let ret = Self {
             unique_id: ProtobufCodecHelper::decode_buf(value.unique_id)?,
             admins: ProtobufCodecHelper::decode_value_list(value.admins)?,
@@ -752,7 +752,7 @@ pub struct OrgDescContent {
 impl TryFrom<protos::OrgDescContent> for OrgDescContent {
     type Error = BuckyError;
 
-    fn try_from(mut value: protos::OrgDescContent) -> BuckyResult<Self> {
+    fn try_from(value: protos::OrgDescContent) -> BuckyResult<Self> {
         let ret = Self {
             unique_id: ProtobufCodecHelper::decode_buf(value.unique_id)?,
             founder_id: ProtobufCodecHelper::decode_buf(value.founder_id)?,
