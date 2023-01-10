@@ -16,6 +16,7 @@ struct EstimateRtt {
     mdev_max: i64, //maximal m_dev for the last rtt period
     rttvar: i64, //smoothed m_dev_max
     // rtt_seq: i64, //sequence number to update rtt_var
+    min_rtt: i64,
 }
 
 impl EstimateRtt {
@@ -26,6 +27,7 @@ impl EstimateRtt {
             mdev_max: 0,
             rttvar: 0,
             // rtt_seq: 0,
+            min_rtt: 0,
         }
     }
 
@@ -33,6 +35,11 @@ impl EstimateRtt {
         let mut rtt = rtt.as_micros() as i64;
         if rtt == 0 {
             rtt = 1;
+        }
+
+        if self.min_rtt == 0 ||
+            self.min_rtt > rtt {
+            self.min_rtt = rtt;
         }
 
         if self.srtt != 0 {
@@ -111,6 +118,10 @@ impl CongestionControl {
         }
     }
     
+    pub fn on_sent(&mut self, now: Timestamp, bytes: u64, last_packet_number: u64) {
+        self.cc.on_sent(now, bytes, last_packet_number);
+    }
+
     pub fn cwnd(&self) -> u64 {
         self.cc.cwnd()
     }
@@ -123,19 +134,20 @@ impl CongestionControl {
         self.rtt
     }
 
-    pub fn on_estimate(&mut self, est_rtt: Duration, est_delay: Duration) {
+    pub fn on_estimate(&mut self, est_rtt: Duration, est_delay: Duration, app_limited: bool) {
         let (rtt, rto) = self.est_rtt.update(&self.config, est_rtt);
         self.rto = rto;
         self.rtt = rtt;
-        self.cc.on_estimate(rtt, rto, est_delay);
+        self.cc.on_estimate(Duration::from_micros(self.est_rtt.min_rtt as u64), rto, est_delay, app_limited);
     }
 
     pub fn on_ack(&mut self,
         flight: u64, 
         ack: u64,
         largest_packet_num_acked: Option<u64>, 
-        sent_time: Timestamp) {
-        self.cc.on_ack(flight, ack, largest_packet_num_acked, sent_time)
+        sent_time: Timestamp,
+        app_limited: bool) {
+        self.cc.on_ack(flight, ack, largest_packet_num_acked, sent_time, app_limited)
     }
 
     pub fn on_loss(&mut self, lost: u64) {

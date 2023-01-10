@@ -111,11 +111,14 @@ impl Ledbat {
 
 
 impl CcImpl for Ledbat {
+    fn on_sent(&mut self, now: Timestamp, bytes: u64, last_packet_number: u64) {
+    }
+
     fn cwnd(&self) -> u64 {
         self.cwnd
     }
 
-    fn on_estimate(&mut self, _rtt: Duration, _rto: Duration, delay: Duration) {
+    fn on_estimate(&mut self, _rtt: Duration, _rto: Duration, delay: Duration, _app_limited: bool) {
         self.est_delay.update(delay.as_micros() as i64);
     }
 
@@ -124,7 +127,8 @@ impl CcImpl for Ledbat {
         _flight: u64, 
         ack: u64, 
         _largest_packet_num_acked: Option<u64>, 
-        _sent_time: Timestamp
+        _sent_time: Timestamp,
+        _app_limited: bool
     ) {
         let cwnd = self.cwnd();
         let cur_delay = self.est_delay.current_delay();

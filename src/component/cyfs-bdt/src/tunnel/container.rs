@@ -313,7 +313,8 @@ impl TunnelContainer {
             Ok(())
         } else {
             let tunnel = self.default_tunnel()?;
-            tunnel.as_ref().send_package(package)
+            let _ = tunnel.as_ref().send_package(package)?;
+            Ok(())
         }     
     }
 
