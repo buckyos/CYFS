@@ -4,13 +4,66 @@ pub mod protos {
 
 use cyfs_base::*;
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, HotstuffBlockQC};
-use serde::Serialize;
 use sha2::Digest;
 
-#[derive(Copy, RawEncode, RawDecode)]
+#[derive(RawEncode, RawDecode, PartialEq, Eq, Ord, Clone)]
 pub enum SyncBound {
     Height(u64),
     Round(u64),
+}
+
+impl Copy for SyncBound {}
+
+impl SyncBound {
+    fn value(&self) -> u64 {
+        match self {
+            Self::Height(h) => h,
+            Self::Round(r) => r,
+        }
+    }
+
+    fn add(&self, value: u64) -> Self {
+        match self {
+            Self::Height(h) => Self::Height(*h + value),
+            Self::Round(r) => Self::Round(*r + value),
+        }
+    }
+
+    fn sub(&self, value: u64) -> Self {
+        match self {
+            Self::Height(h) => Self::Height(*h - value),
+            Self::Round(r) => Self::Round(*r - value),
+        }
+    }
+}
+
+impl PartialOrd for SyncBound {
+    fn partial_cmp(&self, other: &SyncBound) -> Option<std::cmp::Ordering> {
+        let ord = match self {
+            Self::Height(height) => match other {
+                Self::Height(other_height) => height.cmp(other_height),
+                Self::Round(other_round) => {
+                    if height >= other_round {
+                        std::cmp::Ordering::Greater
+                    } else {
+                        std::cmp::Ordering::Less
+                    }
+                }
+            },
+            Self::Round(round) => match other {
+                Self::Round(other_round) => round.cmp(other_round),
+                Self::Height(other_height) => {
+                    if other_height >= round {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    }
+                }
+            },
+        };
+
+        Some(ord)
+    }
 }
 
 #[derive(Clone, RawEncode, RawDecode)]

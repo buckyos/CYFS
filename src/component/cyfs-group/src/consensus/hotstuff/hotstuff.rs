@@ -90,7 +90,7 @@ impl Hotstuff {
                 rpath.clone(),
                 max_height,
                 round,
-                rx_message,
+                tx_message_inner.clone(),
             ),
             non_driver,
             rpath,

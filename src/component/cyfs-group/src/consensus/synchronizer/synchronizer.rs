@@ -1,9 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::Instant,
-    vec,
-};
+use std::{collections::HashSet, sync::Arc, time::Instant, vec};
 
 use async_std::channel::{Receiver, Sender};
 use cyfs_base::{BuckyResult, NamedObject, ObjectDesc, ObjectId};
@@ -14,56 +9,6 @@ use crate::{
     consensus::timer::Timer, storage::Storage, HotstuffMessage, SyncBound, CHANNEL_CAPACITY,
     SYNCHRONIZER_TIMEOUT, SYNCHRONIZER_TRY_TIMES,
 };
-
-impl SyncBound {
-    fn value(&self) -> u64 {
-        match self {
-            Self::Height(h) => h,
-            Self::Round(r) => r,
-        }
-    }
-
-    fn add(&self, value: u64) -> Self {
-        match self {
-            Self::Height(h) => Self::Height(*h + value),
-            Self::Round(r) => Self::Round(*r + value),
-        }
-    }
-
-    fn sub(&self, value: u64) -> Self {
-        match self {
-            Self::Height(h) => Self::Height(*h - value),
-            Self::Round(r) => Self::Round(*r - value),
-        }
-    }
-}
-
-impl Ord for SyncBound {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match self {
-            Self::Height(height) => match other {
-                Self::Height(other_height) => height.cmp(other_height),
-                Self::Round(other_round) => {
-                    if height >= other_round {
-                        std::cmp::Ordering::Greater
-                    } else {
-                        std::cmp::Ordering::Less
-                    }
-                }
-            },
-            Self::Round(round) => match other {
-                Self::Round(other_round) => round.cmp(other_round),
-                Self::Height(other_height) => {
-                    if other_height >= round {
-                        std::cmp::Ordering::Less
-                    } else {
-                        std::cmp::Ordering::Greater
-                    }
-                }
-            },
-        }
-    }
-}
 
 enum SynchronizerMessage {
     Sync(u64, SyncBound, ObjectId), // ([min-height, max-bound], remote)
@@ -83,7 +28,7 @@ impl Synchronizer {
         rpath: GroupRPath,
         height: u64,
         round: u64,
-        tx_block: Sender<(HotstuffMessage, ObjectId)>,
+        tx_block: Sender<(GroupConsensusBlock, ObjectId)>,
     ) -> Self {
         let (tx_sync_message, rx_sync_message) = async_std::channel::bounded(CHANNEL_CAPACITY);
         let runner = SynchronizerRunner::new(
@@ -171,6 +116,8 @@ impl Synchronizer {
         remote: ObjectId,
         store: &Storage,
     ) -> BuckyResult<()> {
+        // TODO: combine the requests
+
         let header_block = store.header_block();
         if header_block.is_none() {
             return Ok(());
@@ -186,56 +133,13 @@ impl Synchronizer {
                     return Ok(());
                 }
 
-                // find the height
-                let mut block = header_block.clone();
-                let mut min_height = 1;
-                let mut min_round = 1;
-                let mut max_height = block.height();
-                let mut max_round = block.round();
+                let (ret, mut cached_blocks) = store.find_block_by_round(round);
+                cached_blocks.sort_unstable_by(|left, right| left.height().cmp(&right.height()));
+                blocks = cached_blocks;
 
-                while min_height < max_height {
-                    match block.round().cmp(&round) {
-                        std::cmp::Ordering::Equal => {
-                            let pos = blocks
-                                .binary_search_by(|b| b.round().cmp(&block.round()))
-                                .unwrap_err();
-                            blocks.insert(pos, block);
-                            break;
-                        }
-                        std::cmp::Ordering::Less => {
-                            min_round = block.round() + 1;
-                            min_height = block.height() + 1;
-                        }
-                        std::cmp::Ordering::Greater => {
-                            max_round = block.round() - 1;
-                            max_height = block.height() - 1;
-
-                            let is_include = match max_bound {
-                                SyncBound::Round(max_round) => block.round() <= max_round,
-                                SyncBound::Height(max_height) => block.height() <= max_height,
-                            };
-                            if is_include {
-                                let pos = blocks
-                                    .binary_search_by(|b| b.round().cmp(&block.round()))
-                                    .unwrap_err();
-                                blocks.insert(pos, block);
-                            }
-                        }
-                    }
-
-                    let height = min_height
-                        + (round - min_round) * (max_height - min_height) / (max_round - min_round);
-
-                    block = match store.get_block_by_height(height).await {
-                        Ok(block) => block,
-                        Err(_) => break,
-                    }
-                }
-
-                if block.round() == round {
-                    Some(block.height())
-                } else {
-                    None
+                match ret {
+                    Ok(found_block) => Some(found_block.height()),
+                    Err(_) => None,
                 }
             }
             SyncBound::Height(height) => {
@@ -250,18 +154,30 @@ impl Synchronizer {
         // load all blocks in [min_height, max_bound]
         // TODO: limit count
         if let Some(min_height) = min_height {
+            let mut pos = 0;
             for height in min_height..(header_block.height() + 1) {
-                if let Err(pos) = blocks.binary_search_by(|b| b.height().cmp(&height)) {
-                    if let Ok(block) = store.get_block_by_height(height).await {
-                        let is_include = match max_bound {
-                            SyncBound::Height(height) => block.height() <= height,
-                            SyncBound::Round(round) => block.round() <= round,
-                        };
-                        if !is_include {
-                            break;
+                let exist_block = blocks.get(pos);
+                if let Some(exist_block) = exist_block {
+                    match exist_block.height().cmp(&height) {
+                        std::cmp::Ordering::Less => unreachable!(),
+                        std::cmp::Ordering::Equal => {
+                            pos += 1;
+                            continue;
                         }
-                        blocks.insert(pos, block);
+                        std::cmp::Ordering::Greater => {}
                     }
+                }
+
+                if let Ok(block) = store.get_block_by_height(height).await {
+                    let is_include = match max_bound {
+                        SyncBound::Height(height) => block.height() <= height,
+                        SyncBound::Round(round) => block.round() <= round,
+                    };
+                    if !is_include {
+                        break;
+                    }
+                    blocks.insert(pos, block);
+                    pos += 1;
                 }
             }
         }
@@ -269,9 +185,11 @@ impl Synchronizer {
         let network_sender = self.network_sender.clone();
         let rpath = self.rpath.clone();
         async_std::task::spawn(async move || {
-            futures::future::join_all(blocks.into_iter().map(|block| {
-                network_sender.post_package(HotstuffMessage::Block(block), rpath.clone(), &remote)
-            }))
+            futures::future::join_all(
+                blocks
+                    .into_iter()
+                    .map(|block| network_sender.post_package(block, rpath.clone(), &remote)),
+            )
             .await;
         });
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use cyfs_base::{BuckyResult, Group, ObjectId};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, Group, ObjectId};
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupRPath};
 
 pub enum BlockLinkState {
@@ -181,5 +181,66 @@ impl Storage {
             }
         }
         max_block.map(|block| block.clone())
+    }
+
+    // (found_block, cached_blocks)
+    pub fn find_block_by_round(
+        &self,
+        round: u64,
+    ) -> (BuckyResult<GroupConsensusBlock>, Vec<GroupConsensusBlock>) {
+        if self.header_block.is_none() {
+            return (
+                Err(BuckyError::new(BuckyErrorCode::NotFound, "not exist")),
+                vec![],
+            );
+        }
+
+        let mut block = self.header_block.clone().unwrap();
+        let mut min_height = 1;
+        let mut min_round = 1;
+        let mut max_height = block.height();
+        let mut max_round = block.round();
+
+        while min_height < max_height {
+            match block.round().cmp(&round) {
+                std::cmp::Ordering::Equal => {
+                    blocks.push(block.clone());
+                    return (Ok(block), blocks);
+                }
+                std::cmp::Ordering::Less => {
+                    min_round = block.round() + 1;
+                    min_height = block.height() + 1;
+                }
+                std::cmp::Ordering::Greater => {
+                    max_round = block.round() - 1;
+                    max_height = block.height() - 1;
+
+                    let is_include = match max_bound {
+                        SyncBound::Round(max_round) => block.round() <= max_round,
+                        SyncBound::Height(max_height) => block.height() <= max_height,
+                    };
+                    if is_include {
+                        blocks.push(block);
+                    }
+                }
+            }
+
+            let height = min_height
+                + (round - min_round) * (max_height - min_height) / (max_round - min_round);
+
+            block = match store.get_block_by_height(height).await {
+                Ok(block) => block,
+                Err(e) => return (Err(e), blocks),
+            }
+        }
+
+        if block.round() == round {
+            (Ok(block), blocks)
+        } else {
+            (
+                Err(BuckyError::new(BuckyErrorCode::NotFound, "not exist")),
+                blocks,
+            )
+        }
     }
 }

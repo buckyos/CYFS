@@ -54,11 +54,11 @@ impl GroupBodyContent {
         &mut self.common_mut().members
     }
 
-    pub fn ood_list(&self) -> &Vec<ObjectId> {
+    pub fn ood_list(&self) -> &Vec<DeviceId> {
         &self.common().ood_list
     }
 
-    pub fn ood_list_mut(&mut self) -> &mut Vec<ObjectId> {
+    pub fn ood_list_mut(&mut self) -> &mut Vec<DeviceId> {
         &mut self.common_mut().ood_list
     }
 
@@ -172,16 +172,19 @@ impl Group {
         self.common_mut().members = members;
     }
 
-    pub fn ood_list(&self) -> &[ObjectId] {
+    pub fn ood_list(&self) -> &[DeviceId] {
         self.common().ood_list.as_slice()
     }
 
-    pub fn set_ood_list(&mut self, oods: Vec<ObjectId>) {
+    pub fn set_ood_list(&mut self, oods: Vec<DeviceId>) {
         self.common_mut().ood_list = oods;
     }
 
     pub fn contain_ood(&self, ood_id: &ObjectId) -> bool {
-        self.ood_list().contains(ood_id)
+        self.ood_list()
+            .iter()
+            .find(|id| id.object_id() == ood_id)
+            .is_some()
     }
 
     pub fn is_same_ood_list(&self, other: &Group) -> bool {
@@ -544,7 +547,7 @@ struct CommonGroupBodyContent {
 
     role_acls: Vec<GroupRoleACL>,
 
-    ood_list: Vec<ObjectId>,
+    ood_list: Vec<DeviceId>,
     history_block_max: u64,
     history_block_lifespan: u64,
 
@@ -561,7 +564,7 @@ impl CommonGroupBodyContent {
         icon: Option<FileId>,
         description: String,
         members: Vec<GroupMember>,
-        ood_list: Vec<ObjectId>,
+        ood_list: Vec<DeviceId>,
     ) -> Self {
         Self {
             name,
@@ -708,7 +711,7 @@ impl SimpleGroupBodyContent {
         icon: Option<FileId>,
         description: String,
         members: Vec<GroupMember>,
-        ood_list: Vec<ObjectId>,
+        ood_list: Vec<DeviceId>,
     ) -> Self {
         Self {
             common: CommonGroupBodyContent::new(name, icon, description, members, ood_list),
@@ -786,7 +789,7 @@ impl OrgBodyContent {
         description: String,
         admins: Vec<GroupMember>,
         members: Vec<GroupMember>,
-        ood_list: Vec<ObjectId>,
+        ood_list: Vec<DeviceId>,
     ) -> Self {
         Self {
             common: CommonGroupBodyContent::new(name, icon, description, members, ood_list),
