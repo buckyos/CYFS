@@ -339,26 +339,30 @@ impl ConnectStreamBuilder {
         let connect_info = remote.connect_info();
         for udp_interface in net_listener.udp() {
             for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_udp() && ep.is_same_ip_version(&udp_interface.local()) && filter(ep)) {
-                if let Ok(tunnel) = stream.as_ref().tunnel().create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
-                    SynUdpTunnel::new(
-                        tunnel, 
-                        first_box.clone(), 
-                        stream.as_ref().tunnel().config().udp.holepunch_interval); 
-                    has_udp_tunnel = true; 
+                if let Ok((tunnel, newly_created)) = stream.as_ref().tunnel().create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
+                    if newly_created {
+                        SynUdpTunnel::new(
+                            tunnel, 
+                            first_box.clone(), 
+                            stream.as_ref().tunnel().config().udp.holepunch_interval); 
+                        has_udp_tunnel = true; 
+                    }
                 }
             }
         }
 
         // for local_ip in net_listener.ip_set() {
             for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_tcp() && filter(ep)) {
-                if let Ok(tunnel) = stream.as_ref().tunnel().create_tunnel(EndpointPair::from((Endpoint::default_tcp(remote_ep), *remote_ep)), ProxyType::None) {
-                    let action = ConnectTcpStream::new(
-                        self.0.stack.clone(), 
-                        self.0.stream.clone(), 
-                        tunnel
-                    );
-                    actions.push(action.clone_as_connect_stream_action());
-                    self.wait_action_pre_establish(action);  
+                if let Ok((tunnel, newly_created)) = stream.as_ref().tunnel().create_tunnel(EndpointPair::from((Endpoint::default_tcp(remote_ep), *remote_ep)), ProxyType::None) {
+                    if newly_created {
+                        let action = ConnectTcpStream::new(
+                            self.0.stack.clone(), 
+                            self.0.stream.clone(), 
+                            tunnel
+                        );
+                        actions.push(action.clone_as_connect_stream_action());
+                        self.wait_action_pre_establish(action);  
+                    }
                 }
             }
         // }
