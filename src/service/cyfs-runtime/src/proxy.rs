@@ -296,8 +296,7 @@ impl CyfsProxy {
 
                 let mut cmd;
                 if cfg!(target_os = "windows") {
-                    cmd = async_std::process::Command::new("start");
-                    cmd.args(&["", &upload_tool_path.to_string_lossy().to_string()]);
+                    cmd = async_std::process::Command::new(&upload_tool_path);
                 } else if cfg!(target_os = "macos") {
                     cmd = async_std::process::Command::new("open");
                     cmd.args(&[&upload_tool_path.to_string_lossy().to_string()]);
