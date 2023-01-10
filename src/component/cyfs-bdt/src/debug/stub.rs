@@ -533,8 +533,8 @@ async fn watchdog_download_finished(task: Box<dyn DownloadTask>, timeout: u32) -
             DownloadTaskState::Finished => {
                 break Ok(());
             },
-            DownloadTaskState::Downloading(speed, _) => {
-                if speed > 0 {
+            DownloadTaskState::Downloading => {
+                if task.cur_speed() > 0 {
                     i = 0;
 
                     if _timeout == 1800 { //todo

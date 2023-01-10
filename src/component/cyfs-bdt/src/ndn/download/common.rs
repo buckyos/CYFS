@@ -1,6 +1,5 @@
 use std::{
     collections::{LinkedList}, 
-    sync::{Arc, RwLock}, 
     io::SeekFrom, 
     ops::Range
 };
@@ -79,110 +78,21 @@ pub struct DownloadSource<T: std::fmt::Debug + Clone + Send + Sync> {
     pub codec_desc: ChunkCodecDesc, 
 }
 
-
-pub struct DownloadSourceWithReferer<T: Send + Sync> {
-    pub target: T, 
-    pub codec_desc: ChunkCodecDesc, 
-    pub referer: String, 
-    pub context_id: IncreaseId 
-}
-
-impl Into<DownloadSourceWithReferer<DeviceId>> for DownloadSourceWithReferer<DeviceDesc> {
-    fn into(self) -> DownloadSourceWithReferer<DeviceId> {
-        DownloadSourceWithReferer {
+impl Into<DownloadSource<DeviceId>> for DownloadSource<DeviceDesc> {
+    fn into(self) -> DownloadSource<DeviceId> {
+        DownloadSource {
             target: self.target.device_id(), 
             codec_desc: self.codec_desc, 
-            referer: self.referer, 
-            context_id: self.context_id 
         }
-    }
-}
-
-struct MultiContextImpl {
-    gen_id: IncreaseIdGenerator, 
-    contexts: LinkedList<(IncreaseId, Box<dyn DownloadContext>)>
-}
-
-#[derive(Clone)]
-pub struct MultiDownloadContext(Arc<RwLock<MultiContextImpl>>);
-
-impl MultiDownloadContext {
-    pub fn new() -> Self {
-        Self(Arc::new(RwLock::new(MultiContextImpl {
-            gen_id: IncreaseIdGenerator::new(), 
-            contexts: (LinkedList::new())
-        })))
-    }
-
-    pub fn count(&self) -> usize {
-        self.0.read().unwrap().contexts.len()
-    }
-
-    pub fn add_context(&self, context: &dyn DownloadContext) -> IncreaseId {
-        let mut state = self.0.write().unwrap();
-        let id = state.gen_id.generate();
-        state.contexts.push_back((id, context.clone_as_context()));
-        id
-    }
-
-    pub fn context_of(&self, context_id: &IncreaseId) -> Option<Box<dyn DownloadContext>> {
-        self.0.read().unwrap().contexts.iter().find_map(|(id, context)| if id.eq(context_id) { Some(context.clone_as_context())} else { None })
-    }
-
-    pub fn remove_context(&self, remove_id: &IncreaseId) {
-        let mut state = self.0.write().unwrap();
-        
-        if let Some((index, _)) = state.contexts.iter().enumerate().find(|(_, (id, _))| id.eq(remove_id)) {
-            let mut back_parts = state.contexts.split_off(index);
-            let _ = back_parts.pop_front();
-            state.contexts.append(&mut back_parts);
-            // contexts.remove(index);
-        }
-    }
-
-    pub fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSourceWithReferer<DeviceDesc>> {
-        let mut result = LinkedList::new();
-        let mut limit = limit;
-        let state = self.0.read().unwrap();
-        for (id, context) in state.contexts.iter() {
-            let part = task::block_on(context.sources_of(&filter, limit));
-            limit -= part.len();
-            for source in part {
-                result.push_back(DownloadSourceWithReferer {
-                    target: source.target, 
-                    codec_desc: source.codec_desc, 
-                    referer: context.referer().to_owned(), 
-                    context_id: *id  
-                });
-            }
-            if limit == 0 {
-                break;
-            }
-        }   
-        result
-    }
-
-    pub fn source_exists(&self, source: &DownloadSourceWithReferer<DeviceId>) -> bool {
-        let state = self.0.read().unwrap();
-        state.contexts.iter().find(|(id, context)|{
-            if source.context_id.eq(id) {
-                task::block_on(context.source_exists(&DownloadSource {
-                    target: source.target.clone(), 
-                    codec_desc: source.codec_desc.clone()
-                }))
-            } else {
-                false
-            }
-        }).is_some()
     }
 }
 
 
 #[derive(Clone, Copy)]
 pub enum DownloadTaskPriority {
-    Backgroud = 1, 
-    Normal = 2, 
-    Realtime = 4,
+    Backgroud, 
+    Normal, 
+    Realtime(u32/*min speed*/),
 }
 
 impl Default for DownloadTaskPriority {
@@ -195,7 +105,7 @@ impl Default for DownloadTaskPriority {
 // 对scheduler的接口
 #[derive(Debug, Serialize, Deserialize)]
 pub enum DownloadTaskState {
-    Downloading(u32/*速度*/, f32/*进度*/),
+    Downloading,
     Paused,
     Error(BuckyError/*被cancel的原因*/), 
     Finished
@@ -211,6 +121,7 @@ pub enum DownloadTaskControlState {
 #[async_trait::async_trait]
 pub trait DownloadTask: Send + Sync {
     fn clone_as_task(&self) -> Box<dyn DownloadTask>;
+
     fn state(&self) -> DownloadTaskState;
     fn control_state(&self) -> DownloadTaskControlState;
     async fn wait_user_canceled(&self) -> BuckyError;
@@ -225,15 +136,16 @@ pub trait DownloadTask: Send + Sync {
         Ok(DownloadTaskControlState::Normal)
     }
 
-    fn priority_score(&self) -> u8 {
-        DownloadTaskPriority::Normal as u8
-    }
     fn add_task(&self, _path: Option<String>, _sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
         Err(BuckyError::new(BuckyErrorCode::NotSupport, "no implement"))
     }
     fn sub_task(&self, _path: &str) -> Option<Box<dyn DownloadTask>> {
         None
     }
+    fn on_post_add_to_root(&self, _abs_path: String) {
+
+    }
+
     fn close(&self) -> BuckyResult<()> {
         Ok(())
     }
@@ -241,18 +153,28 @@ pub trait DownloadTask: Send + Sync {
     fn calc_speed(&self, when: Timestamp) -> u32;
     fn cur_speed(&self) -> u32;
     fn history_speed(&self) -> u32;
-
-    fn drain_score(&self) -> i64 {
+    fn downloaded(&self) -> u64 {
         0
     }
-    fn on_drain(&self, expect_speed: u32) -> u32;
+}
+
+
+#[async_trait::async_trait]
+pub trait LeafDownloadTask: DownloadTask {
+    fn priority(&self) -> DownloadTaskPriority {
+        DownloadTaskPriority::default()
+    }
+    fn clone_as_leaf_task(&self) -> Box<dyn LeafDownloadTask>;
+    fn abs_group_path(&self) -> Option<String>;
+    fn context(&self) -> &dyn DownloadContext;
+    fn finish(&self);
 }
 
 
 pub struct DownloadTaskReader {
     cache: ChunkCache, 
     offset: usize,
-    task: Box<dyn DownloadTask>
+    task: Box<dyn LeafDownloadTask>
 }
 
 
@@ -271,7 +193,7 @@ impl std::fmt::Display for DownloadTaskReader {
 }
 
 impl DownloadTaskReader {
-    pub fn new(cache: ChunkCache, task: Box<dyn DownloadTask>) -> Self {
+    pub fn new(cache: ChunkCache, task: Box<dyn LeafDownloadTask>) -> Self {
         Self {
             cache, 
             offset: 0, 
@@ -279,8 +201,16 @@ impl DownloadTaskReader {
         }
     }
 
-    pub fn task(&self) -> &dyn DownloadTask {
+    pub fn task(&self) -> &dyn LeafDownloadTask {
         self.task.as_ref()
+    }
+
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    pub fn cache(&self) -> &ChunkCache {
+        &self.cache
     }
 }
 

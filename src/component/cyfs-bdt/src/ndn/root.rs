@@ -54,7 +54,7 @@ impl DownloadRoot {
             if let Some(sub) = parent.sub_task(part) {
                 parent = sub;
             } else {
-                let sub = DownloadGroup::new(self.sub.history_config().clone(), None);
+                let sub = DownloadGroup::new(self.sub.history_config().clone());
                 parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
                 parent = sub.clone_as_task();
             }
@@ -67,7 +67,9 @@ impl DownloadRoot {
         let (parent, parent_path, rel_path) = self.makesure_path(path)?;
         let rel_path = rel_path.unwrap_or(self.next_index());
         let _ = parent.add_task(Some(rel_path.clone()), task.clone_as_task())?;
-        Ok([parent_path, rel_path].join(""))
+        let abs_path = [parent_path, rel_path].join("");
+        task.on_post_add_to_root(abs_path.clone());
+        Ok(abs_path)
     }
 
     pub fn sub_task(&self, path: &str) -> Option<Box<dyn DownloadTask>> {
@@ -118,7 +120,7 @@ impl UploadRoot {
             if let Some(sub) = parent.sub_task(part) {
                 parent = sub;
             } else {
-                let sub = UploadGroup::new(self.sub.history_config().clone(), None);
+                let sub = UploadGroup::new(self.sub.history_config().clone());
                 parent.add_task(Some(part.to_owned()), sub.clone_as_task())?;
                 parent = sub.clone_as_task();
             }
@@ -169,11 +171,11 @@ impl RootTask {
         Self(Arc::new(RootTaskImpl {
             max_download_speed, 
             download: DownloadRoot {
-                sub: DownloadGroup::new(history_speed.clone(), None), 
+                sub: DownloadGroup::new(history_speed.clone()), 
                 id_gen: IncreaseIdGenerator::new()
             }, 
             upload: UploadRoot {
-                sub: UploadGroup::new(history_speed.clone(), None), 
+                sub: UploadGroup::new(history_speed.clone()), 
                 id_gen: IncreaseIdGenerator::new()
             }
         }))
@@ -189,7 +191,6 @@ impl RootTask {
 
     pub fn on_schedule(&self, now: Timestamp) {
         self.download().sub.calc_speed(now);
-        self.download().sub.on_drain(self.0.max_download_speed);
         self.upload().sub.calc_speed(now);
     }
 }

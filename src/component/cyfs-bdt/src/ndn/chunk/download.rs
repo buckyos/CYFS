@@ -30,13 +30,29 @@ enum StateImpl {
 
 struct ChunkDowloaderImpl { 
     stack: WeakStack, 
-    context: MultiDownloadContext, 
+    task: Box<dyn LeafDownloadTask>, 
     cache: ChunkCache, 
     state: RwLock<StateImpl>, 
 }
 
 #[derive(Clone)]
 pub struct ChunkDownloader(Arc<ChunkDowloaderImpl>);
+
+impl Drop for ChunkDowloaderImpl {
+    fn drop(&mut self) {
+        let session = {
+            let state = &mut *self.state.write().unwrap();
+            match state {
+                StateImpl::Downloading(downloading) => downloading.session.clone(), 
+                _ => None
+            }
+        };
+       
+        if let Some(session) = session {
+            session.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "user canceled"));
+        }
+    }
+}
 
 pub struct WeakChunkDownloader(Weak<ChunkDowloaderImpl>);
 
@@ -56,13 +72,14 @@ impl ChunkDownloader {
 impl ChunkDownloader {
     pub fn new(
         stack: WeakStack, 
-        cache: ChunkCache,
+        cache: ChunkCache, 
+        task: Box<dyn LeafDownloadTask>
     ) -> Self {
         let downloader = Self(Arc::new(ChunkDowloaderImpl {
             stack, 
             cache, 
+            task, 
             state: RwLock::new(StateImpl::Loading), 
-            context: MultiDownloadContext::new(), 
         }));
 
         {
@@ -87,6 +104,7 @@ impl ChunkDownloader {
                
                 if !finished {
                     downloader.on_drain(0);
+                    downloader.sync_finished().await;
                 }
                 
             });
@@ -95,8 +113,23 @@ impl ChunkDownloader {
         downloader
     }
 
-    pub fn context(&self) -> &MultiDownloadContext {
-        &self.0.context
+    async fn sync_finished(&self) {
+        if self.cache().wait_exists(0..self.cache().chunk().len(), || self.owner().wait_user_canceled()).await.is_ok() {
+            let state = &mut *self.0.state.write().unwrap();
+            *state = StateImpl::Finished;
+        }
+    }
+
+    async fn finished(&self) -> bool {
+        if let StateImpl::Finished = &*self.0.state.read().unwrap() {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn owner(&self) -> &dyn LeafDownloadTask {
+        self.0.task.as_ref()
     }
 
     pub fn cache(&self) -> &ChunkCache {
@@ -146,10 +179,6 @@ impl ChunkDownloader {
         }
     }
 
-    pub fn drain_score(&self) -> i64 {
-        0
-    }
-
     pub fn on_drain(&self, _: u32) -> u32 {
         let (session, start) = {
             match &*self.0.state.read().unwrap() {
@@ -158,7 +187,7 @@ impl ChunkDownloader {
             }
         };
         if let Some(session) = session {
-            if !self.context().source_exists(session.source()) {
+            if !task::block_on(self.owner().context().source_exists(session.source())) {
                 session.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "user canceled"));
                 let state = &mut *self.0.state.write().unwrap();
                 match state {
@@ -183,14 +212,13 @@ impl ChunkDownloader {
 
         let cache = &self.0.cache;
         let stack = Stack::from(&self.0.stack);
-        let mut sources = self.context().sources_of(&DownloadSourceFilter::default(), 1);
+        let mut sources = task::block_on(self.owner().context().sources_of(&DownloadSourceFilter::default(), 1));
 
         if sources.len() > 0 { 
             let source = sources.pop_front().unwrap();
             let channel = stack.ndn().channel_manager().create_channel(&source.target).unwrap();
             
-            let context_id = source.context_id;
-            let mut source: DownloadSourceWithReferer<DeviceId> = source.into();
+            let mut source: DownloadSource<DeviceId> = source.into();
             source.codec_desc = match &source.codec_desc {
                 ChunkCodecDesc::Unknown => ChunkCodecDesc::Stream(None, None, None).fill_values(self.chunk()), 
                 ChunkCodecDesc::Stream(..) => source.codec_desc.fill_values(self.chunk()), 
@@ -200,7 +228,9 @@ impl ChunkDownloader {
             match channel.download( 
                 self.chunk().clone(), 
                 source, 
-                cache.stream().clone()
+                cache.stream().clone(), 
+                Some(self.owner().context().referer().to_owned()), 
+                self.owner().abs_group_path().clone()
             ) {
                 Ok(session) => {
                     let (start, exists) = {
@@ -218,7 +248,6 @@ impl ChunkDownloader {
                         }
                     };
                     if start {
-                        let _ = self.context().context_of(&context_id).map(|context| context.on_new_session(&session));
                         session.start();
                         session.cur_speed()
                     } else if let Some(session) = exists {

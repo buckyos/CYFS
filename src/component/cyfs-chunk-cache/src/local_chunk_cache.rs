@@ -326,7 +326,9 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
         if cache.is_some() {
             Ok(cache.unwrap().clone())
         } else {
-            Err(BuckyError::new(BuckyErrorCode::NotFound, "not alloc chunk cache"))
+            let msg = format!("alloc chunk disk cache failed! chunk={}", chunk_id);
+            log::error!("{}", msg);
+            Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
         }
     }
 
@@ -349,7 +351,9 @@ impl <CACHE: TSingleDiskChunkCache + ChunkCache, SCANNER: DiskScanner> LocalChun
             let cache = cache.unwrap().clone();
             Ok(cache)
         } else {
-            Err(BuckyError::new(BuckyErrorCode::NotFound, "not find chunk cache"))
+            let msg = format!("get chunk disk cache but not found! chunk={}", chunk_id);
+            log::error!("{}", msg);
+            Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
         }
     }
 
@@ -676,20 +680,22 @@ impl ChunkCache for SingleDiskChunkCache {
     async fn put_chunk(&self, chunk_id: &ChunkId, mut chunk: Box<dyn Chunk>) -> BuckyResult<()> {
         assert_eq!(chunk_id.len(), chunk.get_len());
         let file_path = self.get_file_path(chunk_id, true);
-        log::info!("put chunk {}", file_path.to_string_lossy().to_string());
+        log::info!("will put chunk, chunk={}, file={}", chunk_id, file_path.display());
+
         if file_path.exists() {
-            let msg = format!("[{}:{}] file {} exist", file!(), line!(), file_path.to_string_lossy().to_string());
+            let msg = format!("put chunk but local file already exist! chunk={}, file={},", chunk_id, file_path.display());
             log::info!("{}", msg.as_str());
             return Ok(());
         }
 
         let mut file = async_std::fs::OpenOptions::new().read(true).write(true).create(true).open(file_path.as_path()).await.map_err(|e| {
-            let msg = format!("[{}:{}] open {} failed.err {}", file!(), line!(), file_path.to_string_lossy().to_string(), e);
-            log::error!("{}", msg.as_str());
-            BuckyError::new(BuckyErrorCode::Failed, msg)
+            let msg = format!("put chunk but open local file failed! chunk={}, file={}, {}", chunk_id, file_path.display(), e);
+            log::error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
 
         chunk.as_mut().seek(std::io::SeekFrom::Start(0)).await?;
+
         let reader = ChunkRead::new(chunk);
         let len = async_std::io::copy(reader, file.clone()).await.map_err(|e| {
             let msg = format!("write chunk to file failed! chunk={}, len={}, file={}, {}", chunk_id, chunk_id.len(), file_path.display(), e);
@@ -705,11 +711,12 @@ impl ChunkCache for SingleDiskChunkCache {
         }
 
         file.flush().await.map_err(|e| {
-            let msg = format!("[{}:{}] flush {} failed.err {}", file!(), line!(), file_path.to_string_lossy().to_string(), e);
+            let msg = format!("put chunk to local file but flush failed! chunk={}, file={}, {}", chunk_id, file_path.display(), e);
             log::error!("{}", msg.as_str());
-            BuckyError::new(BuckyErrorCode::Failed, msg)
+            BuckyError::new(BuckyErrorCode::IoError, msg)
         })?;
-        log::info!("put chunk {} complete", file_path.to_string_lossy().to_string());
+
+        log::info!("put chunk to local file complete! chunk={}, file={}", chunk_id, file_path.display());
         Ok(())
     }
 
@@ -855,6 +862,8 @@ mod test_local_chunk_cache {
         }
 
         async fn put_chunk(&self, chunk_id: &ChunkId, mut chunk: Box<dyn Chunk>) -> BuckyResult<()> {
+            log::info!("will put chunk, chunk={}, file={}", chunk_id);
+
             chunk.as_mut().seek(std::io::SeekFrom::Start(0)).await?;
 
             let reader = ChunkRead::new(chunk);

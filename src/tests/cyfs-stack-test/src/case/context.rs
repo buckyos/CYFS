@@ -77,7 +77,7 @@ async fn test_ndn_get_by_context(dec_id: &ObjectId, target: DeviceId, file_id: F
             flags: 0,
         },
         context: root_context,
-        access: None,
+        access: Some(AccessString::dec_default()),
     };
     stack.trans().put_context(req).await.unwrap();
 

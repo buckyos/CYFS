@@ -18,7 +18,6 @@ struct DownloadingState {
     running: Vec<Box<dyn DownloadTask>>, 
     closed: bool, 
     history_speed: HistorySpeed, 
-    drain_score: i64, 
 }
 
 enum TaskStateImpl {
@@ -38,7 +37,6 @@ struct StateImpl {
 }
 
 struct TaskImpl {
-    priority: DownloadTaskPriority, 
     history_speed: HistorySpeedConfig, 
     state: RwLock<StateImpl>
 }
@@ -47,22 +45,17 @@ struct TaskImpl {
 pub struct DownloadGroup(Arc<TaskImpl>);
 
 impl DownloadGroup {
-    pub fn new(
-        history_speed: HistorySpeedConfig, 
-        priority: Option<DownloadTaskPriority>, 
-    ) -> Self {
+    pub fn new(history_speed: HistorySpeedConfig) -> Self {
         Self(Arc::new(TaskImpl {
-            priority: priority.unwrap_or_default(), 
             history_speed: history_speed.clone(), 
             state: RwLock::new(StateImpl {
                 task_state: TaskStateImpl::Downloading(DownloadingState {
                     entries: Default::default(), 
                     running: Default::default(), 
                     history_speed: HistorySpeed::new(0, history_speed), 
-                    drain_score: 0, 
                     closed: false, 
                 }),
-                control_state: ControlStateImpl::Normal(StateWaiter::new())
+                control_state: ControlStateImpl::Normal(StateWaiter::new()), 
             })
         }))
     }
@@ -80,7 +73,7 @@ impl DownloadTask for DownloadGroup {
 
     fn state(&self) -> DownloadTaskState {
         match &self.0.state.read().unwrap().task_state {
-            TaskStateImpl::Downloading(downloading) => DownloadTaskState::Downloading(downloading.history_speed.latest(), 0.0), 
+            TaskStateImpl::Downloading(_) => DownloadTaskState::Downloading, 
             TaskStateImpl::Finished => DownloadTaskState::Finished, 
             TaskStateImpl::Error(err) => DownloadTaskState::Error(err.clone())
         }
@@ -92,10 +85,6 @@ impl DownloadTask for DownloadGroup {
             ControlStateImpl::Normal(_) => DownloadTaskControlState::Normal, 
             ControlStateImpl::Canceled => DownloadTaskControlState::Canceled
         }
-    }
-
-    fn priority_score(&self) -> u8 {
-        self.0.priority as u8
     }
 
     fn add_task(&self, path: Option<String>, sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
@@ -202,45 +191,6 @@ impl DownloadTask for DownloadGroup {
             _ => 0
         }
     }
-
-    fn drain_score(&self) -> i64 {
-        let state = self.0.state.read().unwrap();
-        match &state.task_state {
-            TaskStateImpl::Downloading(downloading) => downloading.drain_score,
-            _ => 0
-        }
-    }
-
-    fn on_drain(&self, expect_speed: u32) -> u32 {
-        let running: Vec<Box<dyn DownloadTask>> = {
-            let state = self.0.state.read().unwrap();
-            match &state.task_state {
-                TaskStateImpl::Downloading(downloading) => downloading.running.iter().map(|t| t.clone_as_task()).collect(),
-                _ => vec![]
-            }
-        };
-
-
-        let mut new_expect = 0;
-        let total: f64 = running.iter().map(|t| t.drain_score() as f64).sum();
-        let score_cent = expect_speed as f64 / total;
-        for task in running {
-            new_expect += task.on_drain((task.priority_score() as f64 * score_cent) as u32);
-        }
-
-        {
-            let mut state = self.0.state.write().unwrap();
-            match &mut state.task_state {
-                TaskStateImpl::Downloading(downloading) => {
-                    downloading.drain_score += new_expect as i64 - expect_speed as i64;
-                    downloading.running.sort_by(|l, r| r.drain_score().cmp(&l.drain_score()));
-                    new_expect
-                },
-                _ => 0
-            }
-        }
-    }
-
 
     fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
         let (tasks, waiters) = {

@@ -285,8 +285,10 @@ impl Channel {
     pub fn download(
         &self,  
         chunk: ChunkId, 
-        source: DownloadSourceWithReferer<DeviceId>, 
-        cache: ChunkStreamCache
+        source: DownloadSource<DeviceId>, 
+        cache: ChunkStreamCache, 
+        referer: Option<String>, 
+        group_path: Option<String>
     ) -> BuckyResult<DownloadSession> {
         let session = DownloadSession::interest(
             chunk, 
@@ -294,6 +296,8 @@ impl Channel {
             self.clone(), 
 	        source, 
             cache,
+            referer, 
+            group_path
         );
 
         let session_state = self.0.state.write().unwrap().download.add(session.clone()).map_err(|err| {
@@ -450,7 +454,6 @@ impl Channel {
 
     async fn on_interest(&self, command: &Interest) -> BuckyResult<()> {
         info!("{} got interest {:?}", self, command);
-        // 如果已经存在上传 session，什么也不干
         let session = {
             let state = self.0.state.write().unwrap();
             if let Some(session) = state.tunnels.iter().find_map(|tunnel| tunnel.uploaders().find(&command.session_id)) {
