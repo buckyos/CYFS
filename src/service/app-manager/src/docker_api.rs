@@ -245,8 +245,12 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
     // https://github.com/docker/docker-ce/blob/44a430f4c43e61c95d4e9e9fd6a0573fa113a119/components/engine/libnetwork/resolvconf/resolvconf.go#L52
     // https://superuser.com/questions/1702091/how-should-systemd-resolved-and-docker-interact
     let resolv = "/etc/resolv.conf";
-    let resolv_content = std::fs::read_to_string(resolv)
-        .map_err(|err| BuckyError::new(BuckyErrorCode::Failed, err))?;
+    let resolv_content = std::fs::read_to_string(resolv).map_err(|err| {
+        BuckyError::new(
+            BuckyErrorCode::Failed,
+            format!("failed to read the resolv file: {}", err),
+        )
+    })?;
     let reg = regex::Regex::new(r"127.0.0.53").unwrap();
     let is_host_systemd_resolved = resolv_content.contains("127.0.0.53");
     if !is_host_systemd_resolved {
