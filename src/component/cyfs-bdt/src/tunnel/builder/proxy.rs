@@ -201,14 +201,16 @@ impl OnPackage<AckProxy, &DeviceId> for SynProxyTunnel {
             }
         }?;
 
-        let udp_tunnel: udp::Tunnel = self.0.tunnel.create_tunnel(ep_pair, self.0.proxy.clone())?;
+        let (udp_tunnel, newly_created) = self.0.tunnel.create_tunnel::<udp::Tunnel>(ep_pair, self.0.proxy.clone())?;
         
-        let _ = SynUdpTunnel::new(
-            udp_tunnel, 
-            first_box, 
-            self.tunnel().config().udp.holepunch_interval
-        );
-
+        if newly_created {
+            let _ = SynUdpTunnel::new(
+                udp_tunnel, 
+                first_box, 
+                self.tunnel().config().udp.holepunch_interval
+            );
+        }
+       
         Ok(OnPackageResult::Break)
     }
 }
