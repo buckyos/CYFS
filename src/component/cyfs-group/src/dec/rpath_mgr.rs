@@ -5,7 +5,7 @@ use cyfs_core::{DecAppId, GroupRPath};
 
 use crate::{DelegateFactory, IsCreateRPath, RPathClient, RPathControl};
 
-type ByRPath = HashMap<String, BftConsensus>;
+type ByRPath = HashMap<String, RPathControl>;
 type ByDec = HashMap<DecAppId, ByRPath>;
 type ByGroup = HashMap<GroupId, ByDec>;
 

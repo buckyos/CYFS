@@ -24,7 +24,7 @@ use crate::{
  * TODO: generate empty block when the 'Node' is synchronizing
 */
 
-pub struct Hotstuff {
+pub(crate) struct Hotstuff {
     local_id: ObjectId,
     committee: Committee,
     store: Storage,

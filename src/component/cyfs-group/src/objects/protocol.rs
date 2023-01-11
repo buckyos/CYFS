@@ -234,7 +234,7 @@ impl ProtobufTransform<crate::protos::HotstuffTimeoutVote> for HotstuffTimeoutVo
 impl ProtobufTransform<&HotstuffTimeoutVote> for crate::protos::HotstuffTimeoutVote {
     fn transform(value: &HotstuffTimeoutVote) -> BuckyResult<Self> {
         let ret = crate::protos::HotstuffTimeoutVote {
-            high_qc: match value.high_qc {
+            high_qc: match value.high_qc.as_ref() {
                 Some(qc) => Some(qc.to_vec()?),
                 None => None,
             },

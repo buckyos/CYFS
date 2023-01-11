@@ -1,7 +1,7 @@
 use cyfs_base::{BuckyResult, GroupId};
 use cyfs_core::DecAppId;
 
-use crate::GroupDecControl;
+use crate::RPathControl;
 
 pub struct GroupManager {}
 
@@ -11,7 +11,7 @@ impl GroupManager {
         group_id: GroupId,
         dec_id: DecAppId,
         r_path: &str,
-    ) -> BuckyResult<GroupDecControl> {
+    ) -> BuckyResult<RPathControl> {
         unimplemented!()
     }
 }

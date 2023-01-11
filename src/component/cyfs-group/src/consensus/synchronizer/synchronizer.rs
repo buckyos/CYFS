@@ -36,7 +36,7 @@ impl Synchronizer {
         tx_block: Sender<(GroupConsensusBlock, ObjectId)>,
     ) -> Self {
         let (tx_sync_message, rx_sync_message) = async_std::channel::bounded(CHANNEL_CAPACITY);
-        let runner = SynchronizerRunner::new(
+        let mut runner = SynchronizerRunner::new(
             network_sender.clone(),
             rpath.clone(),
             tx_block,
@@ -264,7 +264,7 @@ impl RequestSendInfo {
         }
 
         let now = Instant::now();
-        let max_send_info_pos = 0;
+        let mut max_send_info_pos = 0;
         for i in 1..self.resends.len() {
             let resend_info = self.resends.get(i).unwrap();
             let max_send_info = self.resends.get(max_send_info_pos).unwrap();
@@ -296,6 +296,7 @@ impl RequestSendInfo {
 
             let msg = HotstuffMessage::SyncRequest(self.min_bound, self.max_bound);
             let remote = resend_info.cmd.2;
+            let sender = sender.clone();
             async_std::task::spawn(async move { sender.post_package(msg, rpath, &remote).await });
 
             if resend_info.send_times >= SYNCHRONIZER_TRY_TIMES {

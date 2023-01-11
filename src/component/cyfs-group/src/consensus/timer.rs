@@ -9,7 +9,7 @@ pub struct Timer {
 
 impl Timer {
     pub fn new(duration: u64) -> Self {
-        let sleep = Box::pin(async {
+        let sleep = Box::pin(async move {
             async_std::future::timeout(
                 Duration::from_millis(duration),
                 std::future::pending::<()>(),
@@ -23,7 +23,7 @@ impl Timer {
     }
 
     pub fn reset(&mut self, duration: u64) {
-        let sleep = Box::pin(async {
+        let sleep = Box::pin(async move {
             async_std::future::timeout(
                 Duration::from_millis(duration),
                 std::future::pending::<()>(),

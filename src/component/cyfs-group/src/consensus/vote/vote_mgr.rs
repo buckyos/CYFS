@@ -10,7 +10,7 @@ use cyfs_core::{
 
 use crate::{Committee, HotstuffBlockQCVote, HotstuffTimeoutVote};
 
-pub struct VoteMgr {
+pub(crate) struct VoteMgr {
     committee: Committee,
     round: u64,
     blocks: HashMap<ObjectId, GroupConsensusBlock>,
@@ -19,7 +19,7 @@ pub struct VoteMgr {
     waiting_timeouts: HashMap<ObjectId, HashMap<u64, HashMap<ObjectId, HotstuffTimeoutVote>>>, // <block-id, <round, <voter-id, TC>>>
 }
 
-pub enum VoteThresholded {
+pub(crate) enum VoteThresholded {
     QC(HotstuffBlockQC),
     TC(HotstuffTimeout, Option<GroupConsensusBlock>),
     None,
@@ -111,7 +111,7 @@ impl VoteMgr {
         VoteThresholded::None
     }
 
-    pub async fn add_vote(
+    pub(crate) async fn add_vote(
         &mut self,
         vote: HotstuffBlockQCVote,
         block: Option<GroupConsensusBlock>,
@@ -139,7 +139,7 @@ impl VoteMgr {
             .map(|vote| vote.map(|v| (v, block.unwrap().clone())))
     }
 
-    pub async fn add_timeout(
+    pub(crate) async fn add_timeout(
         &mut self,
         timeout: HotstuffTimeoutVote,
         block: Option<&GroupConsensusBlock>,
@@ -172,8 +172,13 @@ impl VoteMgr {
             .map(|vote| vote.map(|v| (v, max_block.cloned())))
     }
 
-    pub fn add_waiting_timeout(&mut self, timeout: HotstuffTimeoutVote) {
-        let block_id = timeout.high_qc.unwrap().block_id;
+    pub(crate) fn add_waiting_timeout(&mut self, timeout: HotstuffTimeoutVote) {
+        let block_id = timeout
+            .high_qc
+            .as_ref()
+            .expect("pre-block is empty")
+            .block_id;
+
         self.waiting_timeouts
             .entry(block_id)
             .or_insert_with(HashMap::new)
@@ -188,7 +193,7 @@ impl VoteMgr {
         self.timeouts.retain(|k, _| k >= &round);
         self.blocks.retain(|_, block| block.round() >= round);
         self.waiting_timeouts.retain(|_, timeouts| {
-            timeouts.retain(|k, timeouts| k >= &round);
+            timeouts.retain(|k, _| k >= &round);
             !timeouts.is_empty()
         });
         self.round = round;

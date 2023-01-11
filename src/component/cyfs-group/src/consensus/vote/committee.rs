@@ -6,7 +6,7 @@ use cyfs_core::{GroupConsensusBlock, HotstuffTimeout};
 use crate::{HotstuffBlockQCVote, HotstuffTimeoutVote};
 
 #[derive(Clone)]
-pub struct Committee {}
+pub(crate) struct Committee {}
 
 impl Committee {
     pub fn spawn() {}
