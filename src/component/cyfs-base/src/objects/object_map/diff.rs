@@ -159,7 +159,7 @@ impl ObjectMapDiff {
         let diff_object = self.result.take().unwrap();
 
         let id = diff_object.flush_id();
-        self.cache.put_object_map(&id, diff_object)?;
+        self.cache.put_object_map(&id, diff_object, None)?;
 
         Ok(id)
     }
@@ -646,7 +646,7 @@ impl ObjectMapDiff {
             "apply diff to source object success! source={}, diff={}, result={}",
             source_id, diff_id, id
         );
-        cache.put_object_map(&id, source)?;
+        cache.put_object_map(&id, source, None)?;
 
         Ok(id)
     }
@@ -784,7 +784,7 @@ impl ObjectMapDiff {
         if let Some(expanded_altered) = expanded_altered {
             let new_diff_id = expanded_altered.flush_id();
             assert_ne!(new_diff_id, *diff_id);
-            cache.put_object_map(&new_diff_id, expanded_altered)?;
+            cache.put_object_map(&new_diff_id, expanded_altered, None)?;
 
             Ok(new_diff_id)
         } else {
