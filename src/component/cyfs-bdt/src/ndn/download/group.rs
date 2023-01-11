@@ -192,7 +192,7 @@ impl DownloadTask for DownloadGroup {
         }
     }
 
-    fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
+    fn cancel_by_error(&self, err: BuckyError) -> BuckyResult<DownloadTaskControlState> {
         let (tasks, waiters) = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
@@ -207,7 +207,7 @@ impl DownloadTask for DownloadGroup {
             let tasks = match &mut state.task_state {
                 TaskStateImpl::Downloading(downloading) => {
                     let tasks: Vec<Box<dyn DownloadTask>> = downloading.running.iter().map(|t| t.clone_as_task()).collect();
-                    state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
+                    state.task_state = TaskStateImpl::Error(err.clone());
                     tasks
                 },
                 _ => vec![]
@@ -221,7 +221,7 @@ impl DownloadTask for DownloadGroup {
         }
 
         for task in tasks {
-            let _ = task.cancel();
+            let _ = task.cancel_by_error(err.clone());
         }
         
         Ok(DownloadTaskControlState::Canceled)

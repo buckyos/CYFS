@@ -203,7 +203,7 @@ impl DownloadTask for ChunkTask {
         }
     }
 
-    fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
+    fn cancel_by_error(&self, err: BuckyError) -> BuckyResult<DownloadTaskControlState> {
         let waiters = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
@@ -217,7 +217,7 @@ impl DownloadTask for ChunkTask {
 
             match &state.task_state {
                 TaskStateImpl::Downloading(_) => {
-                    state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
+                    state.task_state = TaskStateImpl::Error(err);
                 }, 
                 _ => {}
             };
@@ -251,6 +251,13 @@ impl DownloadTask for ChunkTask {
 
 
 pub struct ChunkTaskReader(DownloadTaskReader);
+
+impl ChunkTaskReader {
+    pub fn task(&self) -> &dyn LeafDownloadTask {
+        self.0.task()
+    }
+}
+
 
 impl Drop for ChunkTaskReader {
     fn drop(&mut self) {

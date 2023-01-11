@@ -130,8 +130,9 @@ pub trait DownloadTask: Send + Sync {
         Ok(DownloadTaskControlState::Normal)
     }
     fn cancel(&self) -> BuckyResult<DownloadTaskControlState> {
-        Ok(DownloadTaskControlState::Normal)
+        self.cancel_by_error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"))
     }
+    fn cancel_by_error(&self, err: BuckyError) -> BuckyResult<DownloadTaskControlState>;
     fn pause(&self) -> BuckyResult<DownloadTaskControlState> {
         Ok(DownloadTaskControlState::Normal)
     }
