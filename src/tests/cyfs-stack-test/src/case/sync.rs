@@ -135,6 +135,8 @@ async fn add_file(stack: &SharedCyfsStack) -> FileId {
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        access: None,
+        
         // 关联的dirs
         file_id: None,
         dirs: None,

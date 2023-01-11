@@ -83,6 +83,8 @@ async fn add_dir(dec_id: &ObjectId) -> (DirId, FileId, String, ChunkId) {
         // chunk大小
         chunk_size: 1024 * 1024,
 
+        access: None,
+
         // 关联的dirs
         file_id: None,
         dirs: None,
@@ -466,6 +468,8 @@ async fn test_range_file(dec_id: &ObjectId) {
         // chunk大小
         chunk_size: 1024 * 1024,
 
+        access: None,
+
         // 关联的dirs
         file_id: None,
         dirs: None,
@@ -581,6 +585,8 @@ pub async fn test_chunk_in_bundle() {
 
         // chunk大小
         chunk_size: 1024 * 1024,
+
+        access: None,
 
         // 关联的dirs
         file_id: None,
