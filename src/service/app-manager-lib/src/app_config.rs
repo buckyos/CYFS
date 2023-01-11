@@ -57,6 +57,25 @@ pub struct AppConfig {
     pub sandbox: HashMap<DecAppId, SandBoxMode>,
 }
 
+impl AppConfig {
+    pub fn can_install_system(&self) -> bool {
+        self.source != AppSource::User
+    }
+
+    pub fn can_install_user(&self) -> bool {
+        self.source != AppSource::System
+    }
+
+    pub fn use_docker(&self) -> bool {
+        for (_, mode) in &self.sandbox {
+            if *mode == SandBoxMode::Docker {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -101,12 +120,7 @@ impl AppManagerConfig {
     }
 
     pub fn use_docker(&self) -> bool {
-        for (_, mode) in &self.app.sandbox {
-            if *mode == SandBoxMode::Docker {
-                return true;
-            }
-        }
-        self.config.sandbox == SandBoxMode::Docker
+        self.app.use_docker() || self.config.sandbox == SandBoxMode::Docker
     }
 
     pub fn app_use_docker(&self, id: &DecAppId) -> bool {
