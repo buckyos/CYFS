@@ -190,7 +190,7 @@ impl NdnTask for ChunkListTask {
         }
     }
 
-    
+
     fn cancel_by_error(&self, err: BuckyError) -> BuckyResult<NdnTaskControlState> {
         let waiters = {
             let mut state = self.0.state.write().unwrap();
@@ -283,6 +283,10 @@ impl ChunkListTaskReader {
             offset: 0, 
             task
         }
+    }
+
+    pub fn task(&self) -> &dyn LeafDownloadTask {
+        &self.task
     }
 }
 

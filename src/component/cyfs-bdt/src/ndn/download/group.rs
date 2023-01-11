@@ -117,7 +117,7 @@ impl NdnTask for DownloadGroup {
         }
     }
 
-    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
+     fn cancel_by_error(&self, err: BuckyError) -> BuckyResult<DownloadTaskControlState> {
         let (tasks, waiters) = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
@@ -131,8 +131,8 @@ impl NdnTask for DownloadGroup {
 
             let tasks = match &mut state.task_state {
                 TaskStateImpl::Downloading(downloading) => {
-                    let tasks: Vec<Box<dyn DownloadTask>> = downloading.running.iter().map(|t| t.clone_as_download_task()).collect();
-                    state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
+                    let tasks: Vec<Box<dyn DownloadTask>> = downloading.running.iter().map(|t| t.clone_as_task()).collect();
+                    state.task_state = TaskStateImpl::Error(err.clone());
                     tasks
                 },
                 _ => vec![]
@@ -146,11 +146,12 @@ impl NdnTask for DownloadGroup {
         }
 
         for task in tasks {
-            let _ = task.cancel();
+            let _ = task.cancel_by_error(err.clone());
         }
         
-        Ok(NdnTaskControlState::Canceled)
+        Ok(DownloadTaskControlState::Canceled)
     }
+
 }
 
 
@@ -235,6 +236,24 @@ impl DownloadTask for DownloadGroup {
         }
     }
 
+
+    fn cur_speed(&self) -> u32 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(downloading) => downloading.history_speed.latest(),
+            _ => 0
+        }
+    }
+
+    fn history_speed(&self) -> u32 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(downloading) => downloading.history_speed.average(),
+            _ => 0
+        }
+    }
+
+   
     async fn wait_user_canceled(&self) -> BuckyError {
         let waiter = {
             let mut state = self.0.state.write().unwrap();
