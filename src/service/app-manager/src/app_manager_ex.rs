@@ -1069,24 +1069,26 @@ impl AppManager {
     }
 
     async fn get_sys_app_list(&self) {
-        if let Some(id) = self.get_sys_app_list_owner_id() {
-            // 得到AppId
-            let sys_app_list_id = AppList::generate_id(id.clone(), "", APPLIST_APP_CATEGORY);
-            info!("try get sys app list {}", sys_app_list_id);
-            // 用non，从target或链上取真正的AppList
-            match self
-                .non_helper
-                .get_object(&sys_app_list_id, None, CYFS_ROUTER_REQUEST_FLAG_FLUSH)
-                .await
-            {
-                Ok(resp) => {
-                    if let Ok(app_list) = AppList::clone_from_slice(&resp.object.object_raw) {
-                        // 这里只存储，这个函数只在初始化时候调用，后续有check status的步骤
-                        *self.sys_app_list.write().unwrap() = Some(app_list);
+        if self.config.app.can_install_system() {
+            if let Some(id) = self.get_sys_app_list_owner_id() {
+                // 得到AppId
+                let sys_app_list_id = AppList::generate_id(id.clone(), "", APPLIST_APP_CATEGORY);
+                info!("try get sys app list {}", sys_app_list_id);
+                // 用non，从target或链上取真正的AppList
+                match self
+                    .non_helper
+                    .get_object(&sys_app_list_id, None, CYFS_ROUTER_REQUEST_FLAG_FLUSH)
+                    .await
+                {
+                    Ok(resp) => {
+                        if let Ok(app_list) = AppList::clone_from_slice(&resp.object.object_raw) {
+                            // 这里只存储，这个函数只在初始化时候调用，后续有check status的步骤
+                            *self.sys_app_list.write().unwrap() = Some(app_list);
+                        }
                     }
-                }
-                Err(e) => {
-                    warn!("get sys app list from {} fail, err {}", &id, e);
+                    Err(e) => {
+                        warn!("get sys app list from {} fail, err {}", &id, e);
+                    }
                 }
             }
         }
