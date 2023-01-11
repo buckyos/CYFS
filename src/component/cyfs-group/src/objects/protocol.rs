@@ -3,7 +3,10 @@ pub mod protos {
 }
 
 use cyfs_base::*;
-use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, HotstuffBlockQC};
+use cyfs_core::{
+    GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, GroupRPathStatus, HotstuffBlockQC,
+};
+use cyfs_lib::NONObjectInfo;
 use sha2::Digest;
 
 #[derive(RawEncode, RawDecode, PartialEq, Eq, Ord, Clone)]
@@ -88,6 +91,11 @@ pub(crate) enum HotstuffMessage {
     Timeout(cyfs_core::HotstuffTimeout),
 
     SyncRequest(SyncBound, SyncBound),
+
+    StateChangeNotify(GroupConsensusBlock, GroupConsensusBlock), // (block, qc-block)
+    ProposalResult(ObjectId, NONObjectInfo),                     // (proposal-id, ExecuteResult)
+    QueryState(String),
+    VerifiableState(GroupRPathStatus),
 }
 
 #[derive(Clone, RawEncode, RawDecode)]
@@ -96,6 +104,7 @@ pub(crate) enum HotstuffPackage {
     BlockVote(ProtocolAddress, HotstuffBlockQCVote),
     TimeoutVote(ProtocolAddress, HotstuffTimeoutVote),
     Timeout(ProtocolAddress, cyfs_core::HotstuffTimeout),
+    SyncRequest(ProtocolAddress, SyncBound, SyncBound),
 }
 
 #[derive(Clone, RawEncode, RawDecode)]
@@ -108,6 +117,7 @@ pub(crate) enum ProtocolAddress {
 #[cyfs_protobuf_type(crate::protos::HotstuffBlockQcVote)]
 pub(crate) struct HotstuffBlockQCVote {
     pub block_id: ObjectId,
+    pub prev_block_id: Option<ObjectId>,
     pub round: u64,
     pub voter: ObjectId,
     pub signature: Signature,
@@ -123,7 +133,7 @@ impl HotstuffBlockQCVote {
         let round = block.round();
         let signature = signer
             .sign(
-                Self::hash_content(&block_id, round).as_slice(),
+                Self::hash_content(&block_id, block.prev_block_id(), round).as_slice(),
                 &SignatureSource::RefIndex(0),
             )
             .await?;
@@ -133,17 +143,25 @@ impl HotstuffBlockQCVote {
             round,
             voter: local_id,
             signature,
+            prev_block_id: block.prev_block_id().map(|id| id.clone()),
         })
     }
 
     fn hash(&self) -> HashValue {
-        Self::hash_content(&self.block_id, self.round)
+        Self::hash_content(&self.block_id, self.prev_block_id.as_ref(), self.round)
     }
 
-    fn hash_content(block_id: &ObjectId, round: u64) -> HashValue {
+    fn hash_content(
+        block_id: &ObjectId,
+        prev_block_id: Option<&ObjectId>,
+        round: u64,
+    ) -> HashValue {
         let mut sha256 = sha2::Sha256::new();
         sha256.input(block_id.as_slice());
         sha256.input(round.to_le_bytes());
+        if let Some(prev_block_id) = prev_block_id {
+            sha256.input(prev_block_id.as_slice());
+        }
         sha256.result().into()
     }
 }
@@ -155,6 +173,10 @@ impl ProtobufTransform<crate::protos::HotstuffBlockQcVote> for HotstuffBlockQCVo
             signature: Signature::raw_decode(value.signature.as_slice())?.0,
             block_id: ObjectId::raw_decode(value.block_id.as_slice())?.0,
             round: value.round,
+            prev_block_id: match value.prev_block_id.as_ref() {
+                Some(id) => Some(ObjectId::raw_decode(id.as_slice())?.0),
+                None => None,
+            },
         })
     }
 }
@@ -166,6 +188,10 @@ impl ProtobufTransform<&HotstuffBlockQCVote> for crate::protos::HotstuffBlockQcV
             round: value.round,
             voter: value.voter.to_vec()?,
             signature: value.signature.to_vec()?,
+            prev_block_id: match value.prev_block_id.as_ref() {
+                Some(id) => Some(id.to_vec()?),
+                None => None,
+            },
         };
 
         Ok(ret)

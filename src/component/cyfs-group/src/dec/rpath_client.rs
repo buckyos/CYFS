@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cyfs_base::BuckyResult;
 use cyfs_core::{GroupConsensusBlock, GroupProposal, GroupRPath, GroupRPathStatus};
 use cyfs_lib::NONObjectInfo;

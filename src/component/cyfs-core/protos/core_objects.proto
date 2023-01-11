@@ -362,14 +362,15 @@ message GroupPropsalDecideParam {
 
 message HotstuffBlockQc {
     bytes block_id = 1;
-    uint64 round = 2;
+    optional bytes prev_block_id = 2; //
+    uint64 round = 3;
 
     message VoteSignature {
         bytes voter = 1;
         bytes signature = 2;
     }
 
-    repeated VoteSignature votes = 3;
+    repeated VoteSignature votes = 4;
 }
 
 message HotstuffTimeout {

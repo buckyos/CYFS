@@ -6,6 +6,7 @@ use serde::Serialize;
 use sha2::Digest;
 
 // TODO: 后面再封装这个对象
+#[derive(Clone, RawEncode, RawDecode)]
 pub struct GroupRPathStatus {}
 
 #[cfg(test)]

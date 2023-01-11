@@ -3,7 +3,8 @@ syntax = "proto3";
 
 message HotstuffBlockQCVote {
     bytes block_id = 1;
-    uint64 round = 2;
+    optional bytes prev_block_id = 2;
+    uint64 round = 3;
     bytes voter = 4;
     bytes signature = 5;
 }

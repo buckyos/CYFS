@@ -15,11 +15,11 @@ impl RPathControlRaw {
         unimplemented!()
     }
 
-    pub fn select_branch(&self, block_id: ObjectId, source: ObjectId) -> BuckyResult<()> {
+    async fn push_proposal(&self, proposal: GroupProposal) -> BuckyResult<()> {
         unimplemented!()
     }
 
-    async fn on_post_proposal(&self, proposal: GroupProposal) -> BuckyResult<()> {
+    pub fn select_branch(&self, block_id: ObjectId, source: ObjectId) -> BuckyResult<()> {
         unimplemented!()
     }
 

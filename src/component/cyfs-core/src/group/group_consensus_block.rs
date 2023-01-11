@@ -75,6 +75,7 @@ impl ProtobufTransform<&HotstuffBlockQCSign>
 #[cyfs_protobuf_type(crate::codec::protos::HotstuffBlockQc)]
 pub struct HotstuffBlockQC {
     pub block_id: ObjectId,
+    pub prev_block_id: Option<ObjectId>,
     pub round: u64,
     pub votes: Vec<HotstuffBlockQCSign>,
 }

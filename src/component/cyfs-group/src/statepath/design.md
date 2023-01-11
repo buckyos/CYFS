@@ -60,3 +60,14 @@
             |--str(version-seq)-->GroupUpdateProposal // Chunk(Encode(group))
             |--str(group-hash)-->GroupUpdateProposal
 ```
+
+member 同步结构
+
+```
+|--${/} // config by the DecAPP
+    |--${group-id}
+        |--${r-path}
+            |--state-->ObjectId // the latest state
+            |--block-->Block // the hightest block
+            |--qc-->qc-block // the qc for the ${block}
+```

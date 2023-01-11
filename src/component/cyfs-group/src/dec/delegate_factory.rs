@@ -7,16 +7,23 @@ pub trait DelegateFactory {
     async fn create_rpath_delegate(
         &self,
         group: &Group,
-        dec_id: &ObjectId,
         rpath: &str,
         with_proposal: Option<&GroupProposal>,
     ) -> BuckyResult<Box<dyn RPathDelegate>>;
+
+    async fn on_state_changed(
+        &self,
+        group_id: &ObjectId,
+        rpath: &str,
+        state_id: ObjectId,
+        pre_state_id: Option<ObjectId>,
+    );
 }
 
 pub struct ExecuteResult {
-    pub result_state_id: ObjectId,            // pack block
+    pub result_state_id: ObjectId,      // pack block
     pub receipt: Option<NONObjectInfo>, // to client
-    pub context: Vec<u8>,                     // timestamp etc.
+    pub context: Vec<u8>,               // timestamp etc.
 }
 
 #[async_trait::async_trait]

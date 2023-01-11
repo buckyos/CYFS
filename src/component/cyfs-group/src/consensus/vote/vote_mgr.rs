@@ -251,6 +251,7 @@ impl QCMaker {
             if self.thresholded {
                 return Ok(Some(HotstuffBlockQC {
                     block_id: block.named_object().desc().object_id(),
+                    prev_block_id: block.prev_block_id().map(|id| id.clone()),
                     round: block.round(),
                     votes: self
                         .votes

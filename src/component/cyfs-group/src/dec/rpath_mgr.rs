@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use cyfs_base::{BuckyResult, GroupId, ObjectId};
-use cyfs_core::{DecAppId, GroupRPath};
+use cyfs_core::DecAppId;
 
 use crate::{DelegateFactory, IsCreateRPath, RPathClient, RPathControl};
 
@@ -9,12 +9,12 @@ type ByRPath = HashMap<String, RPathControl>;
 type ByDec = HashMap<DecAppId, ByRPath>;
 type ByGroup = HashMap<GroupId, ByDec>;
 
-pub struct RPathControlMgr {
+pub struct GroupRPathMgr {
     dec_id: DecAppId,
     by_group: ByGroup,
 }
 
-impl RPathControlMgr {
+impl GroupRPathMgr {
     pub fn new(dec_id: DecAppId) -> Self {
         Self {
             by_group: ByGroup::default(),
@@ -44,6 +44,18 @@ impl RPathControlMgr {
     }
 
     pub async fn rpath_client(&self, group_id: &GroupId, rpath: &str) -> BuckyResult<RPathClient> {
+        unimplemented!()
+    }
+
+    pub async fn rpath_control(
+        &self,
+        group_id: &GroupId,
+        rpath: &str,
+    ) -> BuckyResult<RPathControl> {
+        unimplemented!()
+    }
+
+    pub async fn set_sync_path(&self, path: String) -> BuckyResult<()> {
         unimplemented!()
     }
 

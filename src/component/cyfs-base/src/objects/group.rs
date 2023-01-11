@@ -4,6 +4,12 @@ use crate::*;
 use std::collections::HashSet;
 use std::convert::TryFrom;
 
+pub enum GroupMemberScope {
+    Admin,
+    Member,
+    All,
+}
+
 #[derive(Clone, Debug, RawEncode, RawDecode)]
 pub enum GroupDescContent {
     SimpleGroup(SimpleGroupDescContent),
@@ -309,6 +315,14 @@ impl Group {
             GroupBodyContent::Org(body) => body,
             _ => panic!("group type not match, expect: org"),
         }
+    }
+
+    pub fn select_members_with_distance(
+        &self,
+        target: &ObjectId,
+        scope: GroupMemberScope,
+    ) -> Vec<&ObjectId> {
+        unimplemented!()
     }
 
     // pub fn group_hash(&self) -> ObjectId {
