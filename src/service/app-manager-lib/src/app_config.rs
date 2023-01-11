@@ -6,8 +6,6 @@ use cyfs_core::DecAppId;
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
-
 
 /*
 [config]
@@ -23,7 +21,7 @@ id1 = "no"
 id2 = "docker"
 */
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AppManagerConfig {
     #[serde(default)]
     pub config: ManagerConfig,
@@ -32,7 +30,7 @@ pub struct AppManagerConfig {
     pub app: AppConfig,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ManagerConfig {
     #[serde(default)]
     pub sandbox: SandBoxMode,
@@ -46,7 +44,7 @@ impl Default for ManagerConfig {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
     pub include: Vec<DecAppId>,
@@ -95,12 +93,16 @@ impl AppManagerConfig {
             return Err(BuckyError::from(BuckyErrorCode::NotFound))
         }
 
-        Ok(toml::from_slice(&std::fs::read(path)?)?)
+        Ok(toml::from_slice(&std::fs::read(path)?).map_err(|e|{
+            let msg = format!("parse app manager config err {}", e);
+            error!("{}", &msg);
+            BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
+        })?)
     }
 
     pub fn use_docker(&self) -> bool {
         for (_, mode) in &self.app.sandbox {
-            if mode == SandBoxMode::Docker {
+            if *mode == SandBoxMode::Docker {
                 return true;
             }
         }
@@ -108,7 +110,7 @@ impl AppManagerConfig {
     }
 
     pub fn app_use_docker(&self, id: &DecAppId) -> bool {
-        self.app.sandbox.get(id).map(|s|s == SandBoxMode::Docker).unwrap_or(self.config.sandbox == SandBoxMode::Docker)
+        self.app.sandbox.get(id).map(|s|*s == SandBoxMode::Docker).unwrap_or(self.config.sandbox == SandBoxMode::Docker)
     }
 }
 

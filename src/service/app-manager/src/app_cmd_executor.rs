@@ -8,7 +8,7 @@ use cyfs_core::*;
 use log::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock, atomic::AtomicBool, atomic::Ordering};
-use app_manager_lib::AppConfig;
+use app_manager_lib::{AppManagerConfig};
 
 const APP_DIR_MAIN_PATH: &str = "/app";
 
@@ -19,8 +19,7 @@ pub struct AppCmdExecutor {
     status_list: Arc<RwLock<HashMap<DecAppId, Arc<Mutex<AppLocalStatus>>>>>,
     cmd_list: Arc<Mutex<AppCmdList>>,
     non_helper: Arc<NonHelper>,
-    use_docker: bool,
-    config: AppConfig,
+    config: AppManagerConfig,
     is_idle: AtomicBool,
 }
 
@@ -31,8 +30,7 @@ impl AppCmdExecutor {
         status_list: Arc<RwLock<HashMap<DecAppId, Arc<Mutex<AppLocalStatus>>>>>,
         cmd_list: Arc<Mutex<AppCmdList>>,
         non_helper: Arc<NonHelper>,
-        config: AppConfig,
-        use_docker: bool,
+        config: AppManagerConfig,
     ) -> Self {
         Self {
             owner,
@@ -43,13 +41,13 @@ impl AppCmdExecutor {
             cmd_list,
             non_helper,
             config,
-            use_docker,
             is_idle: AtomicBool::new(true),
         }
     }
 
     pub fn init(&self) -> BuckyResult<()> {
-        if self.use_docker {
+        if self.config.use_docker() {
+            info!("app manager init docker network manager");
             if let Err(e) = self.docker_network_manager.init() {
                 error!("init docker network manager failed, err: {}", e);
                 return Err(e);
@@ -188,8 +186,10 @@ impl AppCmdExecutor {
         let mut sub_err = SubErrorCode::None;
 
         //获取App对应的容器IP
+        let use_docker = self.config.app_use_docker(app_id);
         loop {
-            if self.use_docker {
+            if use_docker {
+                info!("app {} use docker register ip", app_id);
                 match self.docker_network_manager.get_valid_app_ip(app_id) {
                     Ok(ip) => {
                         info!("get ip for app:{}, ip: {}", app_id, ip);
