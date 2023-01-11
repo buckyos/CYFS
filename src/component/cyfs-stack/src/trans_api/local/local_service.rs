@@ -220,6 +220,7 @@ impl LocalTransService {
                 req.owner.clone(),
                 file,
                 req.chunk_size,
+                req.access,
             )
             .await?;
 
@@ -246,6 +247,7 @@ impl LocalTransService {
                 req.owner.clone(),
                 req.file_id,
                 req.chunk_size,
+                req.access,
             )
             .await?;
 

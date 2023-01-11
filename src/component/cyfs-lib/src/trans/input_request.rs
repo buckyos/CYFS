@@ -72,6 +72,8 @@ pub struct TransPublishFileInputRequest {
     // chunk大小
     pub chunk_size: u32,
 
+    pub access: Option<AccessString>,
+    
     pub file_id: Option<ObjectId>,
     // 关联的dirs
     pub dirs: Option<Vec<FileDirRef>>,

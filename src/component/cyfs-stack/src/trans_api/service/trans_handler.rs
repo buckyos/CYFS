@@ -87,7 +87,7 @@ impl TransRequestHandler {
     }
 
     pub async fn process_publish_file<State>(&self, req: NONInputHttpRequest<State>) -> tide::Response {
-        match self.on_add_file(req).await {
+        match self.on_publish_file(req).await {
             Ok(resp) => {
                 let mut http_resp: tide::Response = RequestorHelper::new_ok_response();
 
@@ -209,18 +209,21 @@ impl TransRequestHandler {
         self.processor.get_task_state(req).await
     }
 
-    async fn on_add_file<State>(
+    async fn on_publish_file<State>(
         &self,
         mut req: NONInputHttpRequest<State>,
     ) -> BuckyResult<TransPublishFileInputResponse> {
         let common = Self::decode_common_headers(&req)?;
         // 提取body里面的object对象，如果有的话
         let body = req.request.body_json().await.map_err(|e| {
-            let msg = format!("trans add file failed, read body bytes error! {}", e);
+            let msg = format!("trans publish file failed, read body bytes error! {}", e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::InvalidParam, msg)
         })?;
+
+        let access: Option<u32> = JsonCodecHelper::decode_option_int_field(&body, "access")?;
+        let access = access.map(|v| AccessString::new(v));
 
         let req = TransPublishFileInputRequest{
             common,
@@ -228,7 +231,8 @@ impl TransRequestHandler {
             local_path: JsonCodecHelper::decode_string_field(&body, "local_path")?,
             chunk_size: JsonCodecHelper::decode_int_field(&body, "chunk_size")?,
             file_id: JsonCodecHelper::decode_option_string_field(&body, "file_id")?,
-            dirs: JsonCodecHelper::decode_option_array_field(&body, "dirs")?
+            dirs: JsonCodecHelper::decode_option_array_field(&body, "dirs")?,
+            access,
         };
 
         self.processor.publish_file(req).await

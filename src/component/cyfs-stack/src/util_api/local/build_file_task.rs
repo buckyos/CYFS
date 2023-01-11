@@ -12,6 +12,7 @@ pub struct BuildFileParams {
     pub owner: ObjectId,
     pub dec_id: ObjectId,
     pub chunk_size: u32,
+    pub access: Option<u32>,
 }
 
 pub struct BuildFileTaskFactory {
@@ -38,6 +39,7 @@ impl TaskFactory for BuildFileTaskFactory {
             params.owner,
             params.dec_id,
             params.chunk_size,
+            params.access,
             self.noc.clone(),
             self.ndc.clone(),
         ))))
@@ -61,6 +63,7 @@ impl TaskFactory for BuildFileTaskFactory {
             params.owner,
             params.dec_id,
             params.chunk_size,
+            params.access,
             task_state,
             self.noc.clone(),
             self.ndc.clone(),
@@ -189,6 +192,7 @@ pub struct BuildFileTask {
     owner: ObjectId,
     dec_id: ObjectId,
     chunk_size: u32,
+    access: Option<u32>,
     noc: NamedObjectCacheRef,
     ndc: Box<dyn NamedDataCache>,
 }
@@ -199,6 +203,7 @@ impl BuildFileTask {
         owner: ObjectId,
         dec_id: ObjectId,
         chunk_size: u32,
+        access: Option<u32>,
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
     ) -> Self {
@@ -209,6 +214,7 @@ impl BuildFileTask {
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_FILE_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
+
         Self {
             task_id: task_id.clone(),
             task_store: None,
@@ -220,6 +226,7 @@ impl BuildFileTask {
             owner,
             dec_id,
             chunk_size,
+            access,
             noc,
             ndc,
         }
@@ -230,6 +237,7 @@ impl BuildFileTask {
         owner: ObjectId,
         dec_id: ObjectId,
         chunk_size: u32,
+        access: Option<u32>,
         task_state: FileTaskState,
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
@@ -241,6 +249,7 @@ impl BuildFileTask {
         sha2.input(chunk_size.to_be_bytes());
         sha2.input(BUILD_FILE_TASK.into().to_be_bytes());
         let task_id: TaskId = sha2.result().into();
+
         Self {
             task_id: task_id.clone(),
             task_store: None,
@@ -249,6 +258,7 @@ impl BuildFileTask {
             owner,
             dec_id,
             chunk_size,
+            access,
             noc,
             ndc,
         }

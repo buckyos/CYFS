@@ -115,6 +115,7 @@ impl TransInputProcessor for TransInputTransformer {
             chunk_size: req.chunk_size,
             file_id: req.file_id,
             dirs: req.dirs,
+            access: req.access,
         };
 
         let out_resp = self.processor.publish_file(out_req).await?;
@@ -230,6 +231,7 @@ impl TransOutputProcessor for TransOutputTransformer {
             chunk_size: req.chunk_size,
             file_id: req.file_id,
             dirs: req.dirs,
+            access: req.access,
         };
 
         let in_resp = self.processor.publish_file(in_req).await?;
