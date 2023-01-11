@@ -114,7 +114,7 @@ impl DownloadContext for SingleSourceContext {
         result
     }
 
-    fn on_new_session(&self, new_session: &DownloadSession) {
+    fn on_new_session(&self, _task: &dyn LeafDownloadTask, new_session: &DownloadSession) {
         let waiter = {
             let mut session = self.0.session.write().unwrap();
             match &mut *session {

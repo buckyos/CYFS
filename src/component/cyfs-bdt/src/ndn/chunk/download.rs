@@ -248,6 +248,7 @@ impl ChunkDownloader {
                         }
                     };
                     if start {
+                        self.owner().context().on_new_session(self.owner(), &session);
                         session.start();
                         session.cur_speed()
                     } else if let Some(session) = exists {

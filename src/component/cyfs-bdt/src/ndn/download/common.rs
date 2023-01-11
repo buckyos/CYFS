@@ -69,7 +69,9 @@ pub trait DownloadContext: Send + Sync {
     fn referer(&self) -> &str;
     async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool;
     async fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSource<DeviceDesc>>;
-    fn on_new_session(&self, _session: &DownloadSession) {}
+    fn on_new_session(&self, _task: &dyn LeafDownloadTask, _session: &DownloadSession) {}
+    // called when tried all source in context but task didn't finish  
+    fn on_drain(&self, _task: &dyn LeafDownloadTask, _when: Timestamp) {}
 }
 
 #[derive(Clone, Debug)]
