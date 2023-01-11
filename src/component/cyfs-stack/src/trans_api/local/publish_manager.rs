@@ -491,6 +491,7 @@ impl PublishManager {
         owner: ObjectId,
         file: Option<File>,
         chunk_size: u32,
+        access: Option<AccessString>,
     ) -> BuckyResult<FileId> {
         let file = if file.is_none() {
             let params = BuildFileParams {
@@ -498,6 +499,7 @@ impl PublishManager {
                 owner,
                 dec_id: dec_id.clone(),
                 chunk_size,
+                access: access.map(|v| v.value()),
             };
             let task_id = self
                 .task_manager
@@ -569,6 +571,7 @@ impl PublishManager {
         owner: ObjectId,
         dir: Option<ObjectId>,
         chunk_size: u32,
+        access: Option<AccessString>,
     ) -> BuckyResult<ObjectId> {
         let root_id = if dir.is_none() {
             let params = BuildDirParams {
@@ -576,6 +579,7 @@ impl PublishManager {
                 owner,
                 dec_id: dec_id.clone(),
                 chunk_size,
+                access: access.map(|v| v.value()),
                 device_id: self.device_id.object_id().clone(),
             };
 
