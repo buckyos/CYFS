@@ -148,6 +148,7 @@ pub trait DownloadTask: NdnTask {
 
     async fn wait_user_canceled(&self) -> BuckyError;
 
+
     fn add_task(&self, _path: Option<String>, _sub: Box<dyn DownloadTask>) -> BuckyResult<()> {
         Err(BuckyError::new(BuckyErrorCode::NotSupport, "no implement"))
     }
