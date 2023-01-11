@@ -1,7 +1,7 @@
 #![windows_subsystem = "windows"]
 use crate::app_controller::AppController;
 use crate::app_manager_ex::AppManager as AppManagerEx;
-use app_manager_lib::{AppManagerConfig, AppManagerHostMode};
+use app_manager_lib::{AppManagerConfig, AppManagerHostMode, SandBoxMode};
 use clap::App;
 use cyfs_base::*;
 use cyfs_core::DecAppId;
@@ -69,9 +69,8 @@ async fn main_run() {
     //cyfs_base::init_log_with_isolate_bdt(APP_MANAGER_NAME, Some("debug"), None);
     //let action = cyfs_util::process::check_cmd_and_exec(APP_MANAGER_NAME);
 
-    let app_config = AppManagerConfig::new();
-    let use_docker =
-        *app_config.host_mode() == AppManagerHostMode::Default && cfg!(target_os = "linux");
+    let app_config = AppManagerConfig::load();
+    let use_docker = app_config.use_docker();
 
     let app = App::new(&format!("{}", APP_MANAGER_NAME)).version(cyfs_base::get_version());
 
@@ -126,7 +125,7 @@ async fn main_run() {
     }
     let _ = cyfs_stack.wait_online(None).await;
 
-    let mut app_manager = AppManagerEx::new(cyfs_stack, use_docker);
+    let mut app_manager = AppManagerEx::new(cyfs_stack, app_config);
 
     if let Err(e) = app_manager.init().await {
         error!("init app manamger err, {}", e);

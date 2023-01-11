@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use async_std::prelude::StreamExt;
+use app_manager_lib::AppManagerConfig;
 
 pub type AppActionResult<T> = Result<T, SubErrorCode>;
 
@@ -26,10 +27,10 @@ pub struct PermissionNode {
 pub struct AppController {
     shared_stack: Option<SharedCyfsStack>,
     owner: Option<ObjectId>,
-    docker_api: Option<DockerApi>,
+    docker_api: DockerApi,
     named_cache_client: Option<NamedCacheClient>,
     sn_hash: RwLock<HashValue>,
-    use_docker: bool,
+    config: AppManagerConfig
 }
 
 async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
@@ -46,22 +47,14 @@ async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
 }
 
 impl AppController {
-    pub fn new(use_docker: bool) -> Self {
-        // check platform
-        let docker_api;
-        if use_docker {
-            docker_api = Some(DockerApi::new());
-        } else {
-            docker_api = None;
-        }
-
+    pub fn new(config: AppManagerConfig) -> Self {
         Self {
             shared_stack: None,
             owner: None,
             named_cache_client: None,
             sn_hash: RwLock::new(HashValue::default()),
-            docker_api,
-            use_docker,
+            docker_api: DockerApi::new(),
+            config,
         }
     }
 
@@ -237,7 +230,8 @@ impl AppController {
             }
 
             //run docker install -> build image
-            if self.docker_api.is_some() {
+            let use_docker = self.config.app_use_docker(app_id);
+            if use_docker {
                 info!("run docker install!");
                 let id = app_id.to_string();
 
@@ -256,8 +250,7 @@ impl AppController {
                         Some(res)
                     }
                 };
-                let docker_api = self.docker_api.as_ref().unwrap();
-                docker_api
+                self.docker_api
                     .install(&id, version, executable)
                     .await
                     .map_err(|e| {
@@ -291,12 +284,12 @@ impl AppController {
 
         // docker remove
         // 删除镜像
-        if self.docker_api.is_some() {
+        let use_docker = self.config.app_use_docker(app_id);
+        if use_docker {
             info!("docker instance try to uninstall app:{}", app_id);
             let id = app_id.to_string();
-            let docker_api = self.docker_api.as_ref().unwrap();
-            // docker_api.volume_remove(&id).await; // 这里不用删除 volume 保留用户数据。
-            let _ = docker_api.uninstall(&id).await.map_err(|e| {
+            // self.docker_api.volume_remove(&id).await; // 这里不用删除 volume 保留用户数据。
+            let _ = self.docker_api.uninstall(&id).await.map_err(|e| {
                 warn!(
                     "remove docker container and build dir failed, app:{}, err:{}",
                     app_id, e
@@ -315,13 +308,12 @@ impl AppController {
             SubErrorCode::LoadFailed
         })?;
 
-        if self.docker_api.is_some() {
+        let use_docker = self.config.app_use_docker(app_id);
+        if use_docker {
             let cmd = dapp.get_start_cmd().unwrap();
             let cmd_param = Some(vec![cmd.to_string()]);
             info!("service cmd: {}", cmd);
             self.docker_api
-                .as_ref()
-                .unwrap()
                 .start(&id, config, cmd_param)
                 .await
                 .map_err(|e| {
@@ -333,7 +325,7 @@ impl AppController {
             info!("run app simple:{}", app_id);
             dapp.start().map_err(|e| {
                 warn!("start app directly failed, appId: {}, {}", app_id, e);
-                SubErrorCode::None
+                SubErrorCode::CommondFailed
             })?;
         }
         Ok(())
@@ -341,8 +333,9 @@ impl AppController {
 
     pub async fn stop_app(&self, app_id: &DecAppId) -> AppActionResult<()> {
         let id = app_id.to_string();
-        if self.docker_api.is_some() {
-            match self.docker_api.as_ref().unwrap().stop(&id).await {
+        let use_docker = self.config.app_use_docker(app_id);
+        if use_docker {
+            match self.docker_api.stop(&id).await {
                 Ok(_) => {
                     info!("stop docker container success!, app:{}", id);
                 }
@@ -358,7 +351,7 @@ impl AppController {
             })?;
             let result = dapp.stop().map_err(|e| {
                 warn!("stop app directly failed, app:{}, err:{}", app_id, e);
-                SubErrorCode::Unknown
+                SubErrorCode::CommondFailed
             })?;
             info!("stop dapp instance:{}", result);
         }
@@ -369,13 +362,14 @@ impl AppController {
     pub async fn is_app_running(&self, app_id: &DecAppId) -> BuckyResult<bool> {
         let id = app_id.to_string();
 
-        if self.docker_api.is_some() {
-            let result = self.docker_api.as_ref().unwrap().is_running(&id).await?;
-            return Ok(result);
+        let use_docker = self.config.app_use_docker(app_id);
+        if use_docker {
+            let result = self.docker_api.is_running(&id).await?;
+            Ok(result)
         } else {
             let mut dapp = DApp::load_from_app_id(&id)?;
             let result = dapp.status()?;
-            return Ok(result);
+            Ok(result)
         }
     }
 

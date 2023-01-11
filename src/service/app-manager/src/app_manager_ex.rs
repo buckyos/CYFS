@@ -13,6 +13,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use version_compare::Version;
+use app_manager_lib::{AppManagerConfig, AppSource};
 
 //pub const USER_APP_LIST: &str = "user_app";
 
@@ -47,12 +48,12 @@ pub struct AppManager {
     receiver: Receiver<bool>,
     cmd_executor: Option<AppCmdExecutor>,
     non_helper: Arc<NonHelper>,
-    use_docker: bool,
+    config: AppManagerConfig,
     start_couter: Arc<RwLock<HashMap<DecAppId, u8>>>,
 }
 
 impl AppManager {
-    pub fn new(shared_stack: SharedCyfsStack, use_docker: bool) -> Self {
+    pub fn new(shared_stack: SharedCyfsStack, config: AppManagerConfig) -> Self {
         let device = shared_stack.local_device();
         let owner = device
             .desc()
@@ -73,7 +74,7 @@ impl AppManager {
             receiver,
             cmd_executor: None,
             non_helper: Arc::new(NonHelper::new(owner, shared_stack)),
-            use_docker,
+            config,
             start_couter: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -96,7 +97,7 @@ impl AppManager {
         *self.app_local_list.write().unwrap() = Some(app_local_list);
         *self.status_list.write().unwrap() = status_list;
 
-        let mut app_controller = AppController::new(self.use_docker);
+        let mut app_controller = AppController::new(self.config.use_docker());
         app_controller
             .prepare_start(self.shared_stack.clone(), self.owner.clone())
             .await?;
@@ -111,7 +112,7 @@ impl AppManager {
             self.status_list.clone(),
             cmd_list,
             self.non_helper.clone(),
-            self.use_docker,
+            self.config.use_docker()
         ));
 
         self.cmd_executor.as_ref().unwrap().init()
@@ -205,6 +206,14 @@ impl AppManager {
         let ret;
         //添加，需要当前App不存在
         if let CmdCode::Add(add_app) = cmd_code {
+            // 如果app来源是system，不允许添加App
+            if self.config.app.source == AppSource::System {
+                return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, "disallow add app when use system app source"));
+            }
+            // 如果app在exclude里，不允许添加App
+            if self.config.app.exclude.contains(app_id) {
+                return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, format!("app {} in exclude list", app_id)));
+            }
             if let Some(owner_id) = add_app.app_owner_id {
                 let _ = self
                     .non_helper
@@ -1088,6 +1097,18 @@ impl AppManager {
                 Err(e) => {
                     warn!("get sys app list from {} fail, err {}", &id, e);
                 }
+            }
+        }
+
+        // 把app include也加入sys_app_list
+        let mut list = self.sys_app_list.write().unwrap();
+        if self.config.app.include.len() > 0 && list.is_none() {
+            *list = Some(AppList::create(self.owner.clone(), "", APPLIST_APP_CATEGORY));
+        }
+        for id in &self.config.app.include {
+            if let Ok(latest_version) = self.get_app_update_version(id, "0.0.0").await {
+                info!("add include app {} ver {}", id, &latest_version);
+                list.unwrap().put(AppStatus::create(self.owner.clone(), id.clone(), latest_version, true));
             }
         }
     }

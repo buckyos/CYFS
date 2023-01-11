@@ -1,54 +1,90 @@
+use std::fmt::{Display, Formatter, Write};
+use std::str::FromStr;
+use serde::{Deserialize, Deserializer, Serialize};
 use cyfs_base::*;
-
 
 pub const CONFIG_FILE_NAME: &str = "app-manager.toml";
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum AppManagerHostMode {
-    // default mode, now use docker as sanbox
-    Default = 0,
+#[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum SandBoxMode {
+    // no sandbox
+    No,
 
-    // native mode for developers, and as default on windows
-    Dev = 1,
+    // use docker as sandbox
+    Docker
 }
 
-
-impl ToString for AppManagerHostMode {
-    fn to_string(&self) -> String {
-        match *self {
-            Self::Default => "default",
-            Self::Dev => "dev",
+impl Display for SandBoxMode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SandBoxMode::No => {
+                f.write_str("no")
+            }
+            SandBoxMode::Docker => {
+                f.write_str("docker")
+            }
         }
-        .to_owned()
     }
 }
 
-impl std::str::FromStr for AppManagerHostMode {
+impl FromStr for SandBoxMode {
     type Err = BuckyError;
 
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        let ret = match value {
-            "default" => Self::Default,
-            "dev" => Self::Dev,
-
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "no" => Ok(Self::No),
+            "docker" => Ok(Self::Docker),
+            "default" => Ok(Self::default()),
             v @ _ => {
-                let msg = format!("unknown appmanager host mode type: {}", v);
+                let msg = format!("unknown app manager sandbox mode type: {}", v);
                 error!("{}", msg);
 
                 return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
             }
-        };
-
-        Ok(ret)
+        }
     }
-} 
+}
 
-impl Default for AppManagerHostMode {
+impl<'de> Deserialize<'de> for SandBoxMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(TStringVisitor::<Self>::new())
+    }
+}
+
+impl Default for SandBoxMode {
     fn default() -> Self {
         if cfg!(target_os = "windows") {
-            Self::Dev
+            Self::No
         } else {
-            Self::Default
+            Self::Docker
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum AppSource {
+    All,
+    System,
+    User
+}
+
+impl Display for AppSource {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AppSource::All => f.write_str("all"),
+            AppSource::System => f.write_str("system"),
+            AppSource::User => f.write_str("user")
+        }
+    }
+}
+
+impl Default for AppSource {
+    fn default() -> Self {
+        Self::All
     }
 }
