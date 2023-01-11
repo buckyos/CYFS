@@ -38,11 +38,11 @@ impl ObjectMapNOCCache for ObjectMapNOCCacheAdapter {
         }
     }
 
-    async fn get_object_map(
+    async fn get_object_map_ex(
         &self,
         dec_id: Option<ObjectId>,
         object_id: &ObjectId,
-    ) -> BuckyResult<Option<ObjectMap>> {
+    ) -> BuckyResult<Option<ObjectMapCacheItem>> {
         let noc_req = NamedObjectCacheGetObjectRequest {
             source: RequestSourceInfo::new_local_dec_or_system(dec_id),
             object_id: object_id.clone(),
@@ -57,11 +57,15 @@ impl ObjectMapNOCCache for ObjectMapNOCCacheAdapter {
         match resp {
             Some(resp) => {
                 match ObjectMap::raw_decode(&resp.object.object_raw) {
-                    Ok((obj, _)) => {
+                    Ok((object, _)) => {
                         // 首次加载后，直接设置id缓存，减少一次id计算
-                        obj.direct_set_object_id_on_init(object_id);
+                        object.direct_set_object_id_on_init(object_id);
 
-                        Ok(Some(obj))
+                        let item = ObjectMapCacheItem {
+                            object,
+                            access: AccessString::new(resp.meta.access_string),
+                        };
+                        Ok(Some(item))
                     }
                     Err(e) => {
                         error!("decode ObjectMap object error: id={}, {}", object_id, e);
