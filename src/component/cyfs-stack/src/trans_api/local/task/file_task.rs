@@ -182,15 +182,15 @@ impl Task for DownloadFileTask {
             e
         })?;
 
-        *session = Some(id);
-
         ChunkListReaderAdapter::new_file(Arc::new(writer), reader, &self.file).async_run();
 
         info!(
-            "create bdt file trans session success: task={}, device={:?}",
-            self.task_id, self.device_list,
+            "create bdt file trans session success: task={}, device={:?}, session={}",
+            self.task_id, self.device_list, id,
         );
 
+        *session = Some(id);
+        
         {
             self.task_status.lock().unwrap().status = TaskStatus::Running;
         }
