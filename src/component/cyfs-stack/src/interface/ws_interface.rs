@@ -1,4 +1,5 @@
 use super::auth::InterfaceAuth;
+use super::browser_server::BrowserSanbox;
 use super::http_server::HttpRequestSource;
 use super::http_ws_listener::ObjectHttpWSService;
 use crate::events::*;
@@ -9,6 +10,37 @@ use cyfs_lib::*;
 use async_trait::async_trait;
 use std::net::SocketAddr;
 use std::sync::Arc;
+
+struct BrowserSanboxChecker {
+    sanbox: BrowserSanbox,
+}
+
+impl BrowserSanboxChecker {
+    pub fn new(mode: BrowserSanboxMode) -> Self {
+        Self {
+            sanbox: BrowserSanbox::new(mode),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl WebSocketSessionChecker for BrowserSanboxChecker {
+    async fn check(&self, req: http_types::Request) -> BuckyResult<()> {
+        if req.method() != http_types::Method::Options {
+            let ret = self.sanbox.verify_dec(req);
+            match ret {
+                Ok(_req) => {
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+
+        // info!("recv ws session req: {:?}", req);
+        Ok(())
+    }
+}
 
 #[derive(Clone)]
 struct WebSocketRequestInnerHandler {
@@ -101,6 +133,7 @@ impl WebSocketEventInterface {
         router_events_manager: RouterEventsManager,
         addr: SocketAddr,
         auth: Option<InterfaceAuth>,
+        mode: BrowserSanboxMode,
     ) -> Self {
         let protocol = if auth.is_some() {
             RequestProtocol::HttpLocalAuth
@@ -120,7 +153,16 @@ impl WebSocketEventInterface {
             auth,
         };
 
-        let server = WebSocketServer::new(addr, Box::new(handler));
+        let checker = match mode {
+            BrowserSanboxMode::None => None,
+            _ => {
+                let checker =
+                    Arc::new(Box::new(BrowserSanboxChecker::new(mode)) as Box<dyn WebSocketSessionChecker>);
+                Some(checker)
+            }
+        };
+
+        let server = WebSocketServer::new(addr, Box::new(handler), checker);
         Self { server }
     }
 

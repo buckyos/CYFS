@@ -31,26 +31,19 @@ enum RequestSourceString<'a> {
     Other,
 }
 
-pub(super) struct BrowserSanboxHttpServer {
+pub(super) struct BrowserSanbox {
     mode: BrowserSanboxMode,
-    handler: HttpServerHandlerRef,
 }
 
-impl BrowserSanboxHttpServer {
+impl BrowserSanbox {
     pub(crate) fn new(
-        handler: HttpServerHandlerRef,
         mode: BrowserSanboxMode,
     ) -> Self {
         assert_ne!(mode, BrowserSanboxMode::None);
 
         Self {
-            handler,
             mode,
         }
-    }
-
-    pub fn into(self) -> HttpServerHandlerRef {
-        Arc::new(Box::new(self))
     }
 
     /*
@@ -300,7 +293,7 @@ impl BrowserSanboxHttpServer {
         }
     }
 
-    fn verify_dec(&self, mut req: http_types::Request,) -> BuckyResult<http_types::Request> {
+    pub fn verify_dec(&self, mut req: http_types::Request,) -> BuckyResult<http_types::Request> {
         let ret = Self::extract_source(&req)?;
         if ret.is_none() {
             return Ok(req);
@@ -406,6 +399,29 @@ impl BrowserSanboxHttpServer {
     }
 }
 
+
+pub(super) struct BrowserSanboxHttpServer {
+    sanbox: BrowserSanbox,
+    handler: HttpServerHandlerRef,
+}
+
+impl BrowserSanboxHttpServer {
+    pub(crate) fn new(
+        handler: HttpServerHandlerRef,
+        mode: BrowserSanboxMode,
+    ) -> Self {
+
+        Self {
+            sanbox: BrowserSanbox::new(mode),
+            handler,
+        }
+    }
+
+    pub fn into(self) -> HttpServerHandlerRef {
+        Arc::new(Box::new(self))
+    }
+}
+
 #[async_trait::async_trait]
 impl HttpServerHandler for BrowserSanboxHttpServer {
     async fn respond(
@@ -414,7 +430,7 @@ impl HttpServerHandler for BrowserSanboxHttpServer {
         mut req: http_types::Request,
     ) -> http_types::Result<http_types::Response> {
         if source.is_local() && req.method() != http_types::Method::Options {
-            let ret = self.verify_dec(req);
+            let ret = self.sanbox.verify_dec(req);
             match ret {
                 Ok(mreq) => {
                     req = mreq;
@@ -468,7 +484,7 @@ impl DisableBrowserRequestHttpServer {
         if origin.is_none() {
             // pass through the requests from none browser env(eg. nodejs/sdk)
             let user_agent_str = user_agent.as_ref().unwrap().last().as_str();
-            if !BrowserSanboxHttpServer::is_browser(user_agent_str) {
+            if !BrowserSanbox::is_browser(user_agent_str) {
                 return Ok(());
             }
         }

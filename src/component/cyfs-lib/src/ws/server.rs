@@ -61,7 +61,7 @@ impl BaseTcpListenerHandler for WebSocketServer {
             tcp_stream.peer_addr().unwrap(),
         );
 
-        info!("new ws connect stream: {:?}", conn_info);
+        // debug!("new ws connect stream: {:?}", conn_info);
 
         if let Some(checker) = &self.checker {
             let s = WebSocketPeekStream::new(tcp_stream.clone()).await?;

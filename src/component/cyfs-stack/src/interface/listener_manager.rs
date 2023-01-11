@@ -245,6 +245,7 @@ impl ObjectListenerManager {
                 router_events.clone(),
                 addr,
                 None,
+                config.get_stack_params().front.browser_mode,
             );
             self.ws_event_interface = Some(ws_event_interface);
             self.router_events_manager = Some(router_events.clone());
@@ -383,6 +384,7 @@ impl ObjectListenerManager {
                 self.router_events_manager.as_ref().unwrap().clone(),
                 sock_addr,
                 Some(auth),
+                BrowserSanboxMode::None,
             );
 
             if let Err(e) = ws_event_interface.start().await {
