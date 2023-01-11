@@ -1,11 +1,12 @@
-use std::fmt::{Display, Formatter, Write};
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize};
 use cyfs_base::*;
+use log::*;
 
 pub const CONFIG_FILE_NAME: &str = "app-manager.toml";
 
-#[derive(Serialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum SandBoxMode {
     // no sandbox
@@ -65,7 +66,7 @@ impl Default for SandBoxMode {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum AppSource {
     All,

@@ -43,7 +43,7 @@ pub struct AppManager {
     cmd_list: Option<Arc<Mutex<AppCmdList>>>,
     status_list: Arc<RwLock<HashMap<DecAppId, Arc<Mutex<AppLocalStatus>>>>>,
     owner: ObjectId,
-    app_controller: Option<Arc<AppController>>,
+    app_controller: Arc<AppController>,
     sender: Sender<bool>,
     receiver: Receiver<bool>,
     cmd_executor: Option<AppCmdExecutor>,
@@ -69,7 +69,7 @@ impl AppManager {
             cmd_list: None,
             status_list: Arc::new(RwLock::new(HashMap::new())),
             owner,
-            app_controller: None,
+            app_controller: Arc::new(AppController::new(config.clone(), owner.clone())),
             sender,
             receiver,
             cmd_executor: None,
@@ -97,22 +97,17 @@ impl AppManager {
         *self.app_local_list.write().unwrap() = Some(app_local_list);
         *self.status_list.write().unwrap() = status_list;
 
-        let mut app_controller = AppController::new(self.config.use_docker());
-        app_controller
-            .prepare_start(self.shared_stack.clone(), self.owner.clone())
-            .await?;
-        let controller = Arc::new(app_controller);
-        AppController::start_monitor_sn(controller.clone()).await;
-        self.app_controller = Some(controller);
+        self.app_controller.prepare_start(self.shared_stack.clone()).await?;
+        AppController::start_monitor_sn(self.app_controller.clone()).await;
 
         self.cmd_executor = Some(AppCmdExecutor::new(
             self.owner.clone(),
-            self.app_controller.as_ref().unwrap().clone(),
+            self.app_controller.clone(),
             //self.app_local_list.clone(),
             self.status_list.clone(),
             cmd_list,
             self.non_helper.clone(),
-            self.config.use_docker()
+            self.config.clone()
         ));
 
         self.cmd_executor.as_ref().unwrap().init()
@@ -609,8 +604,6 @@ impl AppManager {
     async fn check_running_app(&self, app_id: &DecAppId, status: Arc<Mutex<AppLocalStatus>>) {
         match self
             .app_controller
-            .as_ref()
-            .unwrap()
             .is_app_running(app_id)
             .await
         {
@@ -1039,8 +1032,6 @@ impl AppManager {
             .await?;
         let ver_dep = self
             .app_controller
-            .as_ref()
-            .unwrap()
             .query_app_version_dep(app_id, app_version, &dec_app)
             .await?;
         if ver_dep.0 != "*" {
@@ -1101,14 +1092,17 @@ impl AppManager {
         }
 
         // 把app include也加入sys_app_list
-        let mut list = self.sys_app_list.write().unwrap();
-        if self.config.app.include.len() > 0 && list.is_none() {
-            *list = Some(AppList::create(self.owner.clone(), "", APPLIST_APP_CATEGORY));
+        {
+            let mut list = self.sys_app_list.write().unwrap();
+            if self.config.app.include.len() > 0 && list.is_none() {
+                *list = Some(AppList::create(self.owner.clone(), "", APPLIST_APP_CATEGORY));
+            }
         }
+
         for id in &self.config.app.include {
             if let Ok(latest_version) = self.get_app_update_version(id, "0.0.0").await {
                 info!("add include app {} ver {}", id, &latest_version);
-                list.unwrap().put(AppStatus::create(self.owner.clone(), id.clone(), latest_version, true));
+                self.sys_app_list.write().unwrap().as_mut().unwrap().put(AppStatus::create(self.owner.clone(), id.clone(), latest_version, true));
             }
         }
     }

@@ -1,7 +1,7 @@
 #![windows_subsystem = "windows"]
 use crate::app_controller::AppController;
 use crate::app_manager_ex::AppManager as AppManagerEx;
-use app_manager_lib::{AppManagerConfig, AppManagerHostMode, SandBoxMode};
+use app_manager_lib::{AppManagerConfig};
 use clap::App;
 use cyfs_base::*;
 use cyfs_core::DecAppId;
@@ -27,12 +27,12 @@ mod non_helper;
 mod package;
 
 struct AppManagerProcessFuncs {
-    use_docker: bool,
+    config: AppManagerConfig,
 }
 
 impl AppManagerProcessFuncs {
-    async fn stop_apps(use_docker: bool) -> BuckyResult<()> {
-        let app_controller = AppController::new(use_docker);
+    async fn stop_apps(&self) -> BuckyResult<()> {
+        let app_controller = AppController::new(self.config.clone(), ObjectId::default());
 
         let app_dir = cyfs_util::get_cyfs_root_path().join("app");
         info!("[STOP] stop all apps");
@@ -57,7 +57,7 @@ impl AppManagerProcessFuncs {
 impl ProcessCmdFuncs for AppManagerProcessFuncs {
     fn exit_process(&self, action: ProcessAction, code: i32) -> ! {
         if action == ProcessAction::Stop {
-            let _ = async_std::task::block_on(Self::stop_apps(self.use_docker));
+            let _ = async_std::task::block_on(self.stop_apps());
         }
 
         info!("exit process, action:{:?}, code:{}", action, code);
@@ -70,7 +70,6 @@ async fn main_run() {
     //let action = cyfs_util::process::check_cmd_and_exec(APP_MANAGER_NAME);
 
     let app_config = AppManagerConfig::load();
-    let use_docker = app_config.use_docker();
 
     let app = App::new(&format!("{}", APP_MANAGER_NAME)).version(cyfs_base::get_version());
 
@@ -94,9 +93,9 @@ async fn main_run() {
             .start();
     }
 
-    info!("app use docker:{}", use_docker);
+    info!("app manager use docker:{}", app_config.use_docker());
 
-    let _ = set_process_cmd_funcs(Box::new(AppManagerProcessFuncs { use_docker }));
+    let _ = set_process_cmd_funcs(Box::new(AppManagerProcessFuncs { config: app_config.clone() }));
     check_cmd_and_exec(APP_MANAGER_NAME);
 
     if matches.is_present("stop") {
