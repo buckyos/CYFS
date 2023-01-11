@@ -8,6 +8,7 @@ use cyfs_core::*;
 use log::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock, atomic::AtomicBool, atomic::Ordering};
+use app_manager_lib::AppConfig;
 
 const APP_DIR_MAIN_PATH: &str = "/app";
 
@@ -19,6 +20,7 @@ pub struct AppCmdExecutor {
     cmd_list: Arc<Mutex<AppCmdList>>,
     non_helper: Arc<NonHelper>,
     use_docker: bool,
+    config: AppConfig,
     is_idle: AtomicBool,
 }
 
@@ -29,6 +31,7 @@ impl AppCmdExecutor {
         status_list: Arc<RwLock<HashMap<DecAppId, Arc<Mutex<AppLocalStatus>>>>>,
         cmd_list: Arc<Mutex<AppCmdList>>,
         non_helper: Arc<NonHelper>,
+        config: AppConfig,
         use_docker: bool,
     ) -> Self {
         Self {
@@ -39,6 +42,7 @@ impl AppCmdExecutor {
             status_list,
             cmd_list,
             non_helper,
+            config,
             use_docker,
             is_idle: AtomicBool::new(true),
         }

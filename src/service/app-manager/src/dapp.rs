@@ -167,6 +167,7 @@ impl DApp {
         let mut command = Command::new(program);
         command.args(&args[1..]).current_dir(dir);
         if let Some(out) = stdout {
+
             command.stdout(out);
         }
         #[cfg(target_os = "windows")]
