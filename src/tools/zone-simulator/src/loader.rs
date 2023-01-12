@@ -95,13 +95,7 @@ impl TestLoader {
     pub fn get_shared_stack(index: DeviceIndex) -> SharedCyfsStack {
         let id = Self::get_id(index);
 
-        let cyfs_stack = CyfsServiceLoader::cyfs_stack(Some(&id));
-        let params = cyfs_stack
-            .prepare_shared_object_stack_param(Some(DEC_ID.clone()), None)
-            .unwrap();
-
-        let stack = SharedCyfsStack::sync_open(params).unwrap();
-        stack
+        super::zone::SharedStackCache::instance().get(&id).unwrap()
     }
 
     pub async fn load_default(stack_config: &CyfsStackInsConfig) {
