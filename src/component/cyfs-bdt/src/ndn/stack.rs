@@ -23,7 +23,7 @@ use super::{
 
 #[derive(Clone)]
 pub struct Config {
-    pub atomic_interval: Duration, 
+    pub atomic_interval: Duration,  
     pub schedule_interval: Duration, 
     pub channel: channel::Config,
     pub chunk: chunk::Config

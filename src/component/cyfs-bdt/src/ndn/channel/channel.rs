@@ -6,7 +6,7 @@ use std::{
     time::Duration, 
 };
 use async_std::{
-    sync::Arc, 
+    sync::{Arc, Weak}, 
     task, 
 };
 use cyfs_base::*;
@@ -14,7 +14,7 @@ use crate::{
     types::*, 
     interface::udp::{MTU}, 
     protocol::*, 
-    tunnel::{TunnelGuard, DynamicTunnel}, 
+    tunnel::{TunnelGuard, DynamicTunnel, TunnelState}, 
     datagram::{self, DatagramTunnelGuard, Datagram, DatagramOptions}, 
     stack::{WeakStack, Stack}
 };
@@ -39,7 +39,8 @@ pub struct Config {
     pub block_interval: Duration,
     pub msl: Duration, 
     pub udp: udp::Config, 
-    pub history_speed: HistorySpeedConfig
+    pub history_speed: HistorySpeedConfig, 
+    pub reserve_timeout: Duration
 }
 
 
@@ -106,7 +107,7 @@ impl DownloadState {
         } else {
             let state = session.state();
             match state {
-                DownloadSessionState::Downloading(_) => {
+                DownloadSessionState::Downloading => {
                     self.running.insert(session.session_id().clone(), session.clone());
                 },
                 _ => {
@@ -209,6 +210,15 @@ impl std::fmt::Display for Channel {
     }
 }
 
+#[derive(Clone)]
+pub struct WeakChannel(Weak<ChannelImpl>);
+
+impl WeakChannel {
+    pub fn to_strong(&self) -> Option<Channel> {
+        self.0.upgrade().map(|s| Channel(s))
+    }
+}
+
 impl Channel {
     pub fn new(
         weak_stack: WeakStack, 
@@ -232,6 +242,13 @@ impl Channel {
         }))
     }
 
+    pub fn ref_count(&self) -> usize {
+        Arc::strong_count(&self.0)
+    }
+
+    pub fn to_weak(&self) -> WeakChannel {
+        WeakChannel(Arc::downgrade(&self.0))
+    }
 
     pub fn tunnel(&self) -> &TunnelGuard {
         &self.0.tunnel
@@ -306,7 +323,7 @@ impl Channel {
         })?;
 
         match session_state {
-            DownloadSessionState::Downloading(_) => {
+            DownloadSessionState::Downloading => {
                 {
                     let session = session.clone();
                     let channel = self.clone();
@@ -466,7 +483,7 @@ impl Channel {
         
         if let Some(session) = session {
             info!("{} ignore {:?} for upload session exists", self, command);
-            session.on_interest(command)
+            session.on_interest(self, command)
         } else {
             let stack = self.stack();
             stack.ndn().event_handler().on_newly_interest(&self.stack(), command, self).await
@@ -475,7 +492,7 @@ impl Channel {
 
     fn on_resp_interest(&self, command: &RespInterest) -> BuckyResult<()> {
         if let Some(session) = self.0.state.read().unwrap().download.find(&command.session_id) {
-            session.on_resp_interest(command)
+            session.on_resp_interest(self, command)
         } else {
             Err(BuckyError::new(BuckyErrorCode::NotFound, "session not found"))
         }
@@ -516,7 +533,7 @@ impl Channel {
         };
 
         if let Some(session) = session {
-            session.push_piece_data(&piece, tunnel);
+            session.push_piece_data(self, &piece, tunnel);
         } else {
             let strong_stack = Stack::from(&self.0.stack);
             // 这里可能要保证同步到同线程处理,重入会比较麻烦
@@ -554,7 +571,7 @@ impl Channel {
         };
 
         if let Some(session) = session {
-            session.on_piece_control(ctrl)
+            session.on_piece_control(self, ctrl)
         } else {
             Err(BuckyError::new(BuckyErrorCode::NotFound, "session not found"))
         }
@@ -568,7 +585,14 @@ impl Channel {
 
         let elements = {
             let mut state = self.0.state.write().unwrap();
-            let tunnels = state.tunnels.iter().map(|t| t.clone_as_tunnel()).collect();
+            let mut tunnels = state.tunnels.iter().filter_map(|t| {
+                if TunnelState::Dead != t.state() {
+                    Some(t.clone_as_tunnel())
+                } else {
+                    None
+                }
+            }).collect();
+            std::mem::swap(&mut tunnels, &mut state.tunnels);
             let downloaders = state.download.on_time_escape(now, self.config().msl);
             state.upload.on_time_escape(now, self.config().msl);
             Elements {
