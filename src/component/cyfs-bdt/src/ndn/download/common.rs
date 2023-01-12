@@ -64,11 +64,29 @@ pub trait DownloadContext: Send + Sync {
     }
     fn clone_as_context(&self) -> Box<dyn DownloadContext>;
     fn referer(&self) -> &str;
-    async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool;
-    async fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSource<DeviceDesc>>;
-    fn on_new_session(&self, _task: &dyn LeafDownloadTask, _session: &DownloadSession) {}
+    // update time when context's sources changed
+    fn update_at(&self) -> Timestamp;
+    async fn sources_of(
+        &self, 
+        filter: &DownloadSourceFilter, 
+        limit: usize
+    ) -> (
+        LinkedList<DownloadSource<DeviceDesc>>, 
+        /*context's current update_at*/
+        Timestamp);
+    fn on_new_session(
+        &self, 
+        _task: &dyn LeafDownloadTask, 
+        _session: &DownloadSession, 
+        /*session created based on context's update_at*/
+        _update_at: Timestamp
+    ) {}
     // called when tried all source in context but task didn't finish  
-    fn on_drain(&self, _task: &dyn LeafDownloadTask, _when: Timestamp) {}
+    fn on_drain(
+        &self, 
+        _task: &dyn LeafDownloadTask, 
+        /*event trigered based on context's update_at*/
+        _update_at: Timestamp) {}
 }
 
 #[derive(Clone, Debug)]

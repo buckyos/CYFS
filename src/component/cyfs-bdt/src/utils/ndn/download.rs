@@ -8,33 +8,37 @@ use crate::{
     stack::{Stack}, 
 };
 
+struct SampleContextSources {
+    update_at: Timestamp, 
+    sources: LinkedList<DownloadSource<DeviceDesc>>, 
+}
 
-struct SingleContextImpl {
+struct SampleContextImpl {
     referer: String, 
-    sources: RwLock<LinkedList<DownloadSource<DeviceDesc>>>, 
+    sources: RwLock<SampleContextSources>, 
 }
 
 #[derive(Clone)]
-pub struct SingleDownloadContext(Arc<SingleContextImpl>);
+pub struct SampleDownloadContext(Arc<SampleContextImpl>);
 
-impl Default for SingleDownloadContext {
+impl Default for SampleDownloadContext {
     fn default() -> Self {
-        Self(Arc::new(SingleContextImpl {
-            referer: "".to_owned(), 
-            sources: RwLock::new(Default::default()), 
-        }))
+        Self::new("".to_owned())
     }
 }
 
-impl SingleDownloadContext {
+impl SampleDownloadContext {
     pub fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
     pub fn new(referer: String) -> Self {
-        Self(Arc::new(SingleContextImpl {
+        Self(Arc::new(SampleContextImpl {
             referer, 
-            sources: RwLock::new(Default::default())
+            sources: RwLock::new(SampleContextSources {
+                update_at: bucky_time_now(), 
+                sources: Default::default()
+            })
         }))
     }
 
@@ -46,9 +50,9 @@ impl SingleDownloadContext {
                 codec_desc: ChunkCodecDesc::Stream(None, None, None), 
             });
         } 
-        Self(Arc::new(SingleContextImpl {
+        Self(Arc::new(SampleContextImpl {
             referer, 
-            sources: RwLock::new(sources)
+            sources: RwLock::new(SampleContextSources { update_at: bucky_time_now(),  sources})
         }))
     }
 
@@ -62,19 +66,21 @@ impl SingleDownloadContext {
                 codec_desc: ChunkCodecDesc::Stream(None, None, None), 
             });
         } 
-        Ok(Self(Arc::new(SingleContextImpl {
+        Ok(Self(Arc::new(SampleContextImpl {
             referer, 
-            sources: RwLock::new(sources)
+            sources: RwLock::new(SampleContextSources{ update_at: bucky_time_now(), sources })
         })))
     }
 
     pub fn add_source(&self, source: DownloadSource<DeviceDesc>) {
-        self.0.sources.write().unwrap().push_back(source);
+        let mut sources = self.0.sources.write().unwrap();
+        sources.update_at = bucky_time_now();
+        sources.push_back(source);
     }
 }
 
 #[async_trait::async_trait]
-impl DownloadContext for SingleDownloadContext {
+impl DownloadContext for SampleDownloadContext {
     fn clone_as_context(&self) -> Box<dyn DownloadContext> {
         Box::new(self.clone())
     }
@@ -83,16 +89,15 @@ impl DownloadContext for SingleDownloadContext {
         self.0.referer.as_str()
     }
 
-    async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool {
-        let sources = self.0.sources.read().unwrap();
-        sources.iter().find(|s| s.target.device_id().eq(&source.target) && s.codec_desc.support_desc(&source.codec_desc)).is_some()
+    fn update_at(&self) -> Timestamp {
+        self.0.sources.read().unwrap().update_at
     }
 
-    async fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSource<DeviceDesc>> {
+    async fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> (LinkedList<DownloadSource<DeviceDesc>>, Timestamp) {
         let mut result = LinkedList::new();
         let mut count = 0;
         let sources = self.0.sources.read().unwrap();
-        for source in sources.iter() {
+        for source in sources.sources.iter() {
             if filter.check(source) {
                 result.push_back(DownloadSource {
                     target: source.target.clone(), 
@@ -100,11 +105,11 @@ impl DownloadContext for SingleDownloadContext {
                 });
                 count += 1;
                 if count >= limit {
-                    return result;
+                    return (result, sources.update_at);
                 }
             }
         }
-        return result;
+        return (result, sources.update_at);
     }
 }
 

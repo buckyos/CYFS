@@ -98,7 +98,7 @@ async fn main() {
         &*ln_stack, 
         file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     let task = ln_stack.ndn().root_task().download().sub_task(path.as_str()).unwrap();
 
