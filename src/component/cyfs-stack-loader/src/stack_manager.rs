@@ -2,7 +2,6 @@ use crate::stack_info::StackInfo;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, DeviceId};
 use cyfs_bdt::StackGuard;
 use cyfs_debug::Mutex;
-use cyfs_lib::SharedCyfsStack;
 use cyfs_stack::CyfsStack;
 
 use lazy_static::lazy_static;
@@ -242,20 +241,6 @@ impl StackManager {
         .map(|info| info.cyfs_stack().unwrap().to_owned())
     }
 
-    pub fn get_shared_cyfs_stack(&self, id: Option<&str>) -> Option<SharedCyfsStack> {
-        let inner = self.0.lock().unwrap();
-        match id {
-            Some(id) => inner.get_stack(id),
-            None => inner.get_default_stack(),
-        }
-        .map(|info| match info.shared_cyfs_stack() {
-            Some(stack) => stack.to_owned(),
-            None => {
-                panic!("shared_stack_stub not enabled for id={:?}", id);
-            }
-        })
-    }
-
     pub fn get_device_id(&self, id: Option<&str>) -> Option<DeviceId> {
         let inner = self.0.lock().unwrap();
         match id {
@@ -276,10 +261,6 @@ impl StackManager {
 
     pub fn get_default_cyfs_stack(&self) -> Option<CyfsStack> {
         self.get_cyfs_stack(None)
-    }
-
-    pub fn get_default_shared_cyfs_stack(&self) -> Option<SharedCyfsStack> {
-        self.get_shared_cyfs_stack(None)
     }
 
     pub fn get_default_device_id(&self) -> Option<DeviceId> {
