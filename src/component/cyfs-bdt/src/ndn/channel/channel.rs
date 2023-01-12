@@ -323,13 +323,15 @@ impl Channel {
 
         match session_state {
             DownloadSessionState::Downloading => {
-                let session = session.clone();
-                let channel = self.clone();
-                task::spawn(async move {
-                    let _ = session.wait_finish().await;
-                    channel.0.state.write().unwrap().download.cancel(session.session_id());
-                });
-
+                {
+                    let session = session.clone();
+                    let channel = self.clone();
+                    task::spawn(async move {
+                        let _ = session.wait_finish().await;
+                        channel.0.state.write().unwrap().download.cancel(session.session_id());
+                    });
+                }
+                session.start();
             },
             _ => {
                 // do nothing
