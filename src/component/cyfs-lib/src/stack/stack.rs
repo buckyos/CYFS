@@ -123,6 +123,10 @@ pub struct CyfsStackRequestorConfig {
 
 impl CyfsStackRequestorConfig {
     pub fn default() -> Self {
+        Self::http()
+    }
+
+    pub fn http() -> Self {
         Self {
             non_service: CyfsStackRequestorType::Http,
             ndn_service: CyfsStackRequestorType::Http,
@@ -326,7 +330,7 @@ impl SharedCyfsStack {
     pub async fn open(param: SharedCyfsStackParam) -> BuckyResult<Self> {
         Self::sync_open(param)
     }
-    
+
     pub fn sync_open(param: SharedCyfsStackParam) -> BuckyResult<Self> {
         info!("will init shared object stack: {:?}", param);
 
