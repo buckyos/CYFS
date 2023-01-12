@@ -324,6 +324,10 @@ impl SharedCyfsStack {
     }
 
     pub async fn open(param: SharedCyfsStackParam) -> BuckyResult<Self> {
+        Self::sync_open(param)
+    }
+    
+    pub fn sync_open(param: SharedCyfsStackParam) -> BuckyResult<Self> {
         info!("will init shared object stack: {:?}", param);
 
         let dec_id = Arc::new(OnceCell::new());
@@ -408,13 +412,13 @@ impl SharedCyfsStack {
         // 初始化对应的事件处理器，二选一
         let router_handlers = match &param.event_type {
             CyfsStackEventType::WebSocket(ws_url) => {
-                RouterHandlerManager::new(Some(dec_id.clone()), ws_url.clone()).await?
+                RouterHandlerManager::new(Some(dec_id.clone()), ws_url.clone())
             }
         };
 
         let router_events = match &param.event_type {
             CyfsStackEventType::WebSocket(ws_url) => {
-                RouterEventManager::new(Some(dec_id.clone()), ws_url.clone()).await?
+                RouterEventManager::new(Some(dec_id.clone()), ws_url.clone())
             }
         };
 

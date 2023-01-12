@@ -47,14 +47,14 @@ pub struct RouterEventManager {
 }
 
 impl RouterEventManager {
-    pub async fn new(dec_id: Option<SharedObjectStackDecID>, ws_url: Url) -> BuckyResult<Self> {
+    pub fn new(dec_id: Option<SharedObjectStackDecID>, ws_url: Url) -> Self {
         let inner = RouterWSEventManager::new(ws_url);
 
-        Ok(Self {
+        Self {
             dec_id,
             inner,
             started: Arc::new(AtomicBool::new(false)),
-        })
+        }
     }
 
     pub fn clone_processor(&self) -> RouterEventManagerProcessorRef {
