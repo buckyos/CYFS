@@ -408,8 +408,8 @@ message GroupConsensusBlockBodyContent {
     message Proposal {
         bytes proposal_id = 1;
         bytes proposal_result_state = 2;
-        bytes proposal_receipt = 3;
-        bytes context = 4;
+        optional bytes proposal_receipt = 3;
+        optional bytes context = 4;
     }
 
     repeated Proposal proposals = 1;

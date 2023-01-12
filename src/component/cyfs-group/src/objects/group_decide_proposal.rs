@@ -80,6 +80,7 @@ impl GroupDecideProposalBuilder {
             Some(param_vec),
             None,
             None,
+            owner,
             None,
             None,
             None,

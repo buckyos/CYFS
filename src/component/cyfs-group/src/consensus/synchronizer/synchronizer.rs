@@ -199,7 +199,7 @@ impl Synchronizer {
         let rpath = self.rpath.clone();
         async_std::task::spawn(async move {
             futures::future::join_all(blocks.into_iter().map(|block| {
-                network_sender.post_package(HotstuffMessage::Block(block), rpath.clone(), &remote)
+                network_sender.post_message(HotstuffMessage::Block(block), rpath.clone(), &remote)
             }))
             .await;
         });
@@ -297,7 +297,7 @@ impl RequestSendInfo {
             let msg = HotstuffMessage::SyncRequest(self.min_bound, self.max_bound);
             let remote = resend_info.cmd.2;
             let sender = sender.clone();
-            async_std::task::spawn(async move { sender.post_package(msg, rpath, &remote).await });
+            async_std::task::spawn(async move { sender.post_message(msg, rpath, &remote).await });
 
             if resend_info.send_times >= SYNCHRONIZER_TRY_TIMES {
                 self.resends.remove(max_send_info_pos);
@@ -438,8 +438,8 @@ impl SynchronizerRunner {
 
     fn filter_outorder_blocks(
         &self,
-        mut min_height: u64,
-        mut max_bound: SyncBound,
+        min_height: u64,
+        max_bound: SyncBound,
     ) -> Vec<(u64, SyncBound)> {
         // TODO: limit the lenght of per range
         let mut last_range = Some((SyncBound::Height(min_height), max_bound));

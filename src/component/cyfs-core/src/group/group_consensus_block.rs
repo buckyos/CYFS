@@ -126,21 +126,21 @@ pub struct HotstuffTimeout {
 pub struct GroupConsensusBlockProposal {
     pub proposal: ObjectId,
     pub result_state: ObjectId,
-    pub receipt: Vec<u8>,
-    pub context: Vec<u8>,
+    pub receipt: Option<Vec<u8>>,
+    pub context: Option<Vec<u8>>,
 }
 
 impl ProtobufTransform<crate::codec::protos::group_consensus_block_body_content::Proposal>
     for GroupConsensusBlockProposal
 {
     fn transform(
-        value: crate::codec::protos::group_consensus_block_body_content::Proposal,
+        mut value: crate::codec::protos::group_consensus_block_body_content::Proposal,
     ) -> BuckyResult<Self> {
         Ok(Self {
             proposal: ObjectId::raw_decode(value.proposal_id.as_slice())?.0,
             result_state: ObjectId::raw_decode(&value.proposal_result_state.as_slice())?.0,
-            receipt: value.proposal_receipt.clone(),
-            context: value.context.clone(),
+            receipt: value.proposal_receipt.take(),
+            context: value.context.take(),
         })
     }
 }

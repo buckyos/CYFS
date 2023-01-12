@@ -165,6 +165,7 @@ pub trait GroupProposalObject {
         params: Option<Vec<u8>>,
         payload: Option<Vec<u8>>,
         timestamp: Option<u64>,
+        owner: ObjectId,
         meta_block_id: Option<ObjectId>,
         effective_begining: Option<u64>,
         effective_ending: Option<u64>,
@@ -213,6 +214,7 @@ impl GroupProposalObject for GroupProposal {
         params: Option<Vec<u8>>,
         payload: Option<Vec<u8>>,
         timestamp: Option<u64>,
+        owner: ObjectId,
         meta_block_id: Option<ObjectId>,
         effective_begining: Option<u64>,
         effective_ending: Option<u64>,
@@ -234,6 +236,7 @@ impl GroupProposalObject for GroupProposal {
             },
         )
         .create_time(timestamp.map_or(bucky_time_now(), |t| t))
+        .owner(owner)
     }
 
     fn r_path(&self) -> &GroupRPath {

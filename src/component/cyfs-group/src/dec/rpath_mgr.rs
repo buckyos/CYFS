@@ -10,15 +10,13 @@ type ByDec = HashMap<DecAppId, ByRPath>;
 type ByGroup = HashMap<GroupId, ByDec>;
 
 pub struct GroupRPathMgr {
-    dec_id: DecAppId,
     by_group: ByGroup,
 }
 
 impl GroupRPathMgr {
-    pub fn new(dec_id: DecAppId) -> Self {
+    pub fn new() -> Self {
         Self {
             by_group: ByGroup::default(),
-            dec_id,
         }
     }
 
@@ -30,32 +28,47 @@ impl GroupRPathMgr {
         unimplemented!()
     }
 
-    pub async fn register(&self, delegate_factory: Box<dyn DelegateFactory>) -> BuckyResult<()> {
+    pub async fn register(
+        &self,
+        dec_id: DecAppId,
+        delegate_factory: Box<dyn DelegateFactory>,
+    ) -> BuckyResult<()> {
+        unimplemented!()
+    }
+
+    pub async fn unregister(&self, dec_id: &DecAppId) -> BuckyResult<()> {
         unimplemented!()
     }
 
     pub async fn find_rpath_control(
         &self,
         group_id: &GroupId,
+        dec_id: &DecAppId,
         rpath: &str,
         is_auto_create: IsCreateRPath,
     ) -> BuckyResult<RPathControl> {
         unimplemented!()
     }
 
-    pub async fn rpath_client(&self, group_id: &GroupId, rpath: &str) -> BuckyResult<RPathClient> {
+    pub async fn rpath_client(
+        &self,
+        group_id: &GroupId,
+        dec_id: &DecAppId,
+        rpath: &str,
+    ) -> BuckyResult<RPathClient> {
         unimplemented!()
     }
 
     pub async fn rpath_control(
         &self,
         group_id: &GroupId,
+        dec_id: &DecAppId,
         rpath: &str,
     ) -> BuckyResult<RPathControl> {
         unimplemented!()
     }
 
-    pub async fn set_sync_path(&self, path: String) -> BuckyResult<()> {
+    pub async fn set_sync_path(&self, dec_id: &str, path: String) -> BuckyResult<()> {
         unimplemented!()
     }
 

@@ -93,7 +93,7 @@ pub(crate) enum HotstuffMessage {
     SyncRequest(SyncBound, SyncBound),
 
     StateChangeNotify(GroupConsensusBlock, GroupConsensusBlock), // (block, qc-block)
-    ProposalResult(ObjectId, NONObjectInfo),                     // (proposal-id, ExecuteResult)
+    ProposalResult(ObjectId, BuckyResult<Option<NONObjectInfo>>), // (proposal-id, ExecuteResult)
     QueryState(String),
     VerifiableState(GroupRPathStatus),
 }
@@ -104,7 +104,17 @@ pub(crate) enum HotstuffPackage {
     BlockVote(ProtocolAddress, HotstuffBlockQCVote),
     TimeoutVote(ProtocolAddress, HotstuffTimeoutVote),
     Timeout(ProtocolAddress, cyfs_core::HotstuffTimeout),
-    SyncRequest(ProtocolAddress, SyncBound, SyncBound),
+
+    SyncRequest(SyncBound, SyncBound),
+
+    StateChangeNotify(ProtocolAddress, GroupConsensusBlock, GroupConsensusBlock), // (block, qc-block)
+    ProposalResult(
+        ProtocolAddress,
+        ObjectId,
+        BuckyResult<Option<NONObjectInfo>>,
+    ), // (proposal-id, ExecuteResult)
+    QueryState(ProtocolAddress, String),
+    VerifiableState(ProtocolAddress, GroupRPathStatus),
 }
 
 #[derive(Clone, RawEncode, RawDecode)]

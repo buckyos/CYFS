@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 use async_std::channel::{Receiver, Sender};
 use cyfs_base::{
     bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
-    ObjectDesc, ObjectId, RsaCPUObjectSigner,
+    ObjectDesc, ObjectId, OwnerObjectDesc, RawConvertTo, RawDecode, RsaCPUObjectSigner,
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
@@ -14,14 +14,15 @@ use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
 use crate::{
-    consensus::{synchronizer::Synchronizer, timer::Timer},
-    AsProposal, Committee, ExecuteResult, HotstuffBlockQCVote, HotstuffMessage,
+    consensus::{proposal, synchronizer::Synchronizer, timer::Timer},
+    network, AsProposal, Committee, ExecuteResult, HotstuffBlockQCVote, HotstuffMessage,
     HotstuffTimeoutVote, PendingProposalMgr, ProposalConsumeMessage, RPathDelegate, Storage,
     VoteMgr, VoteThresholded, CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
 };
 
 /**
  * TODO: generate empty block when the 'Node' is synchronizing
+ * TODO: use admins instead ood_list
 */
 
 pub(crate) struct Hotstuff {
@@ -266,12 +267,9 @@ impl Hotstuff {
         for proposal_exe_info in block.proposals() {
             // TODO: 去重
             let proposal = proposals.get(&proposal_exe_info.proposal).unwrap();
-            let receipt = if proposal_exe_info.receipt.len() > 0 {
-                Some(NONObjectInfo::new_from_object_raw(
-                    proposal_exe_info.receipt.clone(),
-                )?)
-            } else {
-                None
+            let receipt = match proposal_exe_info.receipt.as_ref() {
+                Some(receipt) => Some(NONObjectInfo::raw_decode(receipt.as_slice())?.0),
+                None => None,
             };
 
             let exe_result = ExecuteResult {
@@ -325,9 +323,7 @@ impl Hotstuff {
              * */
             self.cleanup_proposal(&header_block).await;
 
-            if block.owner() == &self.local_id {
-                self.notify_proposal_result_for_block(&header_block);
-            }
+            self.notify_proposal_result_for_block(&header_block);
         }
 
         match self.vote_mgr.add_voting_block(block).await {
@@ -352,7 +348,7 @@ impl Hotstuff {
                 self.handle_vote(&vote, Some(block), remote).await?;
             } else {
                 self.network_sender
-                    .post_package(
+                    .post_message(
                         HotstuffMessage::BlockVote(vote),
                         self.rpath.clone(),
                         &next_leader,
@@ -398,13 +394,82 @@ impl Hotstuff {
         PendingProposalMgr::remove_proposals(&self.tx_proposal_consume, proposals).await
     }
 
-    fn notify_proposal_result(&self, proposal: &GroupProposal, result: &NONObjectInfo) {
-        // 通知客户端proposal执行结果
-        unimplemented!()
+    fn notify_proposal_result(
+        &self,
+        proposal: &GroupProposal,
+        result: BuckyResult<Option<NONObjectInfo>>,
+    ) {
+        // notify to the proposer
+        let proposal_id = proposal.desc().object_id();
+        match proposal.desc().owner() {
+            Some(proposer) => {
+                let network_sender = self.network_sender.clone();
+                let proposer = proposer.clone();
+                let rpath = self.rpath.clone();
+
+                async_std::task::spawn(async move {
+                    network_sender
+                        .post_message(
+                            HotstuffMessage::ProposalResult(proposal_id, result),
+                            rpath.clone(),
+                            &proposer,
+                        )
+                        .await
+                });
+            }
+            None => log::warn!("proposal({}) without owner", proposal_id),
+        }
     }
 
     fn notify_proposal_result_for_block(&self, block: &GroupConsensusBlock) {
-        unimplemented!()
+        if block.owner() == &self.local_id {
+            return;
+        }
+
+        let network_sender = self.network_sender.clone();
+        let rpath = self.rpath.clone();
+        let non_driver = self.non_driver.clone();
+        let proposal_exe_infos = block.proposals().clone();
+
+        async_std::task::spawn(async move {
+            let proposals = futures::future::join_all(
+                proposal_exe_infos
+                    .iter()
+                    .map(|proposal| non_driver.get_proposal(&proposal.proposal, None)),
+            )
+            .await;
+
+            for i in 0..proposal_exe_infos.len() {
+                let proposal = proposals.get(i).unwrap();
+                if proposal.is_err() {
+                    continue;
+                }
+                let proposal = proposal.as_ref().unwrap();
+                let proposer = proposal.desc().owner();
+                if proposer.is_none() {
+                    continue;
+                }
+
+                let proposer = proposer.as_ref().unwrap();
+                let exe_info = proposal_exe_infos.get(i).unwrap();
+
+                let receipt = match exe_info.receipt.as_ref() {
+                    Some(receipt) => match NONObjectInfo::raw_decode(receipt.as_slice()) {
+                        Ok((obj, _)) => Some(obj),
+                        _ => continue,
+                    },
+                    None => None,
+                };
+
+                network_sender
+                    .post_message(
+                        HotstuffMessage::ProposalResult(exe_info.proposal, Ok(receipt)),
+                        rpath.clone(),
+                        &proposer,
+                    )
+                    .await
+            }
+        });
     }
 
     async fn make_vote(&mut self, block: &GroupConsensusBlock) -> Option<HotstuffBlockQCVote> {
@@ -711,18 +776,27 @@ impl Hotstuff {
         }
 
         for proposal in time_adjust_proposals {
-            // TODO: 矫正系统时间
-            // self.notify_proposal_result(&proposal, result);
+            // timestamp is error
+            self.notify_proposal_result(
+                &proposal,
+                Err(BuckyError::new(
+                    BuckyErrorCode::ErrorTimestamp,
+                    "error timestamp",
+                )),
+            );
         }
 
         for proposal in timeout_proposals {
-            // TODO: 超时
-            // self.notify_proposal_result(&proposal, result);
+            // has timeout
+            self.notify_proposal_result(
+                &proposal,
+                Err(BuckyError::new(BuckyErrorCode::Timeout, "timeout")),
+            );
         }
 
-        for proposal in failed_proposals {
-            // TODO: 执行失败
-            // self.notify_proposal_result(&proposal, result)
+        for (proposal, err) in failed_proposals {
+            // failed
+            self.notify_proposal_result(&proposal, Err(err))
         }
 
         PendingProposalMgr::remove_proposals(&self.tx_proposal_consume, remove_proposals).await;
@@ -739,9 +813,7 @@ impl Hotstuff {
             .map(|(proposal, exe_result)| GroupConsensusBlockProposal {
                 proposal: proposal.id(),
                 result_state: exe_result.result_state_id,
-                receipt: exe_result
-                    .receipt
-                    .map_or(vec![], |receipt| receipt.object_raw),
+                receipt: exe_result.receipt.map(|receipt| receipt.to_vec().unwrap()),
                 context: exe_result.context,
             })
             .collect();

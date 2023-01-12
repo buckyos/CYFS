@@ -3,7 +3,7 @@ use cyfs_core::GroupProposal;
 use cyfs_lib::NONObjectInfo;
 
 #[async_trait::async_trait]
-pub trait DelegateFactory {
+pub trait DelegateFactory: Send + Sync {
     async fn create_rpath_delegate(
         &self,
         group: &Group,
@@ -23,7 +23,7 @@ pub trait DelegateFactory {
 pub struct ExecuteResult {
     pub result_state_id: ObjectId,      // pack block
     pub receipt: Option<NONObjectInfo>, // to client
-    pub context: Vec<u8>,               // timestamp etc.
+    pub context: Option<Vec<u8>>,       // timestamp etc.
 }
 
 #[async_trait::async_trait]

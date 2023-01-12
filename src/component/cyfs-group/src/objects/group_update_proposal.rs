@@ -21,6 +21,7 @@ impl GroupUpdateProposal {
     pub fn create(
         from_group_chunk_id: Option<ObjectId>,
         to_group: Group,
+        owner: ObjectId,
         target_dec_id: Vec<ObjectId>,
         meta_block_id: Option<ObjectId>,
         effective_begining: Option<u64>,
@@ -29,6 +30,7 @@ impl GroupUpdateProposal {
         GroupUpdateProposalBuilder::create(
             from_group_chunk_id,
             to_group,
+            owner,
             target_dec_id,
             meta_block_id,
             effective_begining,
@@ -38,6 +40,7 @@ impl GroupUpdateProposal {
 
     pub fn create_new_group(
         to_group: Group,
+        owner: ObjectId,
         target_dec_id: Vec<ObjectId>,
         meta_block_id: Option<ObjectId>,
         effective_begining: Option<u64>,
@@ -46,6 +49,7 @@ impl GroupUpdateProposal {
         GroupUpdateProposalBuilder::create(
             None,
             to_group,
+            owner,
             target_dec_id,
             meta_block_id,
             effective_begining,
@@ -157,6 +161,7 @@ impl GroupUpdateProposalBuilder {
     pub fn create(
         from_group_chunk_id: Option<ObjectId>,
         to_group: Group,
+        owner: ObjectId,
         target_dec_id: Vec<ObjectId>,
         meta_block_id: Option<ObjectId>,
         effective_begining: Option<u64>,
@@ -193,6 +198,7 @@ impl GroupUpdateProposalBuilder {
             Some(param_vec),
             Some(group_chunk_vec),
             None,
+            owner,
             meta_block_id,
             effective_begining,
             effective_ending,
@@ -208,6 +214,7 @@ impl GroupUpdateProposalBuilder {
 
     pub fn create_new_group(
         to_group: Group,
+        owner: ObjectId,
         target_dec_id: Vec<ObjectId>,
         meta_block_id: Option<ObjectId>,
         effective_begining: Option<u64>,
@@ -216,6 +223,7 @@ impl GroupUpdateProposalBuilder {
         Self::create(
             None,
             to_group,
+            owner,
             target_dec_id,
             meta_block_id,
             effective_begining,
