@@ -1,7 +1,11 @@
 use crate::user::*;
 use cyfs_base::*;
-use cyfs_lib::BrowserSanboxMode;
+use cyfs_lib::{BrowserSanboxMode, SharedCyfsStack};
 use cyfs_stack_loader::*;
+use crate::loader::*;
+
+use std::sync::Mutex;
+
 
 #[derive(Debug, Clone)]
 pub struct CyfsStackInsConfig {
@@ -14,6 +18,44 @@ impl Default for CyfsStackInsConfig {
         Self {
             browser_mode: BrowserSanboxMode::None,
         }
+    }
+}
+
+struct SharedStackCacheItem {
+    id: String,
+    stack: SharedCyfsStack,
+}
+
+pub struct SharedStackCache {
+    list: Mutex<Vec<SharedStackCacheItem>>,
+}
+
+impl SharedStackCache {
+    fn new() -> Self {
+        Self {
+            list: Mutex::new(vec![]),
+        }
+    }
+
+    pub fn instance() -> &'static SharedStackCache {
+        use once_cell::sync::OnceCell;
+        static SHARED_STACK_CACHE: OnceCell<SharedStackCache> = OnceCell::new();
+        SHARED_STACK_CACHE.get_or_init(|| Self::new())
+    }
+
+    fn add(&self, id: String, stack: SharedCyfsStack) {
+        let mut list = self.list.lock().unwrap();
+        assert!(list.iter().find(|v| v.id == id).is_none());
+        list.push(SharedStackCacheItem { id, stack });
+    }
+
+    pub fn get(&self, id: &str) -> Option<SharedCyfsStack> {
+        self.list
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|v| v.id == id)
+            .map(|v| v.stack.clone())
     }
 }
 
@@ -65,7 +107,7 @@ impl TestStack {
 
         // 初始化sharedobjectstack
         let stack = CyfsServiceLoader::cyfs_stack(Some(&device_id_str));
-        let stack = stack.open_shared_object_stack(None, None).await.unwrap();
+        let stack = stack.open_shared_object_stack(Some(DEC_ID.clone()), None).await.unwrap();
 
         stack
             .wait_online(Some(std::time::Duration::from_secs(10)))
@@ -73,6 +115,8 @@ impl TestStack {
             .unwrap();
 
         assert_eq!(stack.local_device_id().to_string(), device_id_str);
+
+        SharedStackCache::instance().add(device_id_str, stack);
     }
 }
 
