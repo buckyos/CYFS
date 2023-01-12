@@ -14,7 +14,8 @@ use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
 use crate::{
-    consensus::{proposal, synchronizer::Synchronizer, timer::Timer},
+    consensus::{proposal, synchronizer::Synchronizer},
+    helper::Timer,
     network, AsProposal, Committee, ExecuteResult, HotstuffBlockQCVote, HotstuffMessage,
     HotstuffTimeoutVote, PendingProposalMgr, ProposalConsumeMessage, RPathDelegate, Storage,
     VoteMgr, VoteThresholded, CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
