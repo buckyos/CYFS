@@ -372,7 +372,7 @@ impl DebugStub {
 
         let _ = tunnel.write_all("start downloading chunk..\r\n".as_ref()).await;
         let stack = Stack::from(&self.0.stack);
-        let context = SingleDownloadContext::id_streams(&stack, "".to_owned(), &remotes).await
+        let context = SampleDownloadContext::id_streams(&stack, "".to_owned(), &remotes).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
         let (_, reader) = download_chunk(&stack,
             chunk_id.clone(),
@@ -411,7 +411,7 @@ impl DebugStub {
         let _ = tunnel.write_all("start downloading file..\r\n".as_ref()).await;
 
         let stack = Stack::from(&self.0.stack);
-        let context = SingleDownloadContext::id_streams(&stack, "".to_owned(), &remotes).await
+        let context = SampleDownloadContext::id_streams(&stack, "".to_owned(), &remotes).await
             .map_err(|e| format!("download err: {}\r\n", e))?;
         let (_, reader) = download_file(
             &stack, 

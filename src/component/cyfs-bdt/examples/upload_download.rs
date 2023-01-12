@@ -93,7 +93,7 @@ async fn main() {
                     stack,
                     interest.chunk.clone(), 
                     None, 
-                    SingleDownloadContext::desc_streams("".to_owned(), vec![self.src_dev.desc().clone()]),
+                    SampleDownloadContext::desc_streams("".to_owned(), vec![self.src_dev.desc().clone()]),
                 ).await.unwrap();
                 {
                     let store = self.store.clone();
@@ -152,7 +152,7 @@ async fn main() {
         &*down_stack,
         chunkid.clone(), 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![cache_stack.local_const().clone(),]),
+        SampleDownloadContext::desc_streams("".to_owned(), vec![cache_stack.local_const().clone(),]),
     ).await.unwrap();
     down_store.write_chunk(&chunkid, reader).await.unwrap();
     let recv = future::timeout(

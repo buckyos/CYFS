@@ -64,7 +64,7 @@ async fn one_small_chunk(ln_ep: &[&str], rn_ep: &[&str], uploader_config: Option
         &*ln_stack,
         chunkid.clone(), 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]),
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]),
     ).await.unwrap();
 
     ln_store.write_chunk(&chunkid, reader).await.unwrap();
@@ -117,7 +117,7 @@ async fn empty_chunk() {
         &*ln_stack,
         chunkid.clone(), 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
 
     ln_store.write_chunk(&chunkid, reader).await.unwrap();
@@ -155,7 +155,7 @@ async fn one_small_chunk_with_refer() {
         &*ln_stack,
         chunkid.clone(), 
         None, 
-        SingleDownloadContext::desc_streams("referer".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("referer".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     ln_store.write_chunk(&chunkid, reader).await.unwrap();
     let recv = future::timeout(
@@ -217,7 +217,7 @@ async fn one_small_chunk_in_file() {
         &*ln_stack,
         chunkid.clone(), 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]),
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]),
     ).await.unwrap();
 
     ln_store.write_chunk(&chunkid, reader).await.unwrap();
@@ -311,7 +311,7 @@ async fn one_small_chunk_double_source() {
         .await
         .unwrap();
 
-    let context = SingleDownloadContext::desc_streams("".to_owned(), vec![
+    let context = SampleDownloadContext::desc_streams("".to_owned(), vec![
         ref_stack.local_const().clone(),
         src_stack.local_const().clone(),
     ]);
@@ -414,7 +414,7 @@ async fn upload_from_downloader() {
                     stack,
                     interest.chunk.clone(), 
                     None, 
-                    SingleDownloadContext::desc_streams("".to_owned(), vec![self.src_dev.desc().clone()]),
+                    SampleDownloadContext::desc_streams("".to_owned(), vec![self.src_dev.desc().clone()]),
                 ).await.unwrap();
 
                 {
@@ -474,7 +474,7 @@ async fn upload_from_downloader() {
         &*down_stack,
         chunkid.clone(), 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![cache_stack.local_const().clone()]),
+        SampleDownloadContext::desc_streams("".to_owned(), vec![cache_stack.local_const().clone()]),
     )
     .await.unwrap();
     down_store.write_chunk(&chunkid, reader).await.unwrap();
@@ -580,7 +580,7 @@ async fn upload_from_path() {
         &*down_stack,
         chunkid.clone(), 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![src_stack.local_const().clone()]),
+        SampleDownloadContext::desc_streams("".to_owned(), vec![src_stack.local_const().clone()]),
     )
     .await.unwrap();
     down_store.write_chunk(&chunkid, reader).await.unwrap();
