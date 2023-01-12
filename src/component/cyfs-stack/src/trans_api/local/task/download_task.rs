@@ -97,7 +97,7 @@ impl DownloadFileTaskParams {
     }
 }
 
-pub struct DownloadFileTask {
+pub(super) struct DownloadFileTask {
     task_store: Option<Arc<dyn TaskStore>>,
     named_data_components: NamedDataComponents,
     task_id: TaskId,
@@ -199,6 +199,7 @@ impl DownloadFileTask {
             } else if let Some(chunk_id) = &self.params.chunk_id {
                 Box::new(LocalChunkWriter::new(
                     path,
+                    chunk_id.to_owned(),
                     self.named_data_components.ndc.clone(),
                     self.named_data_components.tracker.clone(),
                 )) as Box<dyn ChunkWriter>
