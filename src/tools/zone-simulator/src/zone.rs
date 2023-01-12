@@ -64,7 +64,9 @@ impl TestStack {
         async_std::task::sleep(std::time::Duration::from_secs(5)).await;
 
         // 初始化sharedobjectstack
-        let stack = CyfsServiceLoader::shared_cyfs_stack(Some(&device_id_str));
+        let stack = CyfsServiceLoader::cyfs_stack(Some(&device_id_str));
+        let stack = stack.open_shared_object_stack(None, None).await.unwrap();
+
         stack
             .wait_online(Some(std::time::Duration::from_secs(10)))
             .await
