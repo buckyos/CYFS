@@ -1,5 +1,7 @@
 use super::manager::*;
+use super::state::{ContextSourceDownloadStateManager, NDNTaskCancelStrategy};
 use cyfs_base::*;
+use cyfs_bdt::ndn::channel::DownloadSession;
 use cyfs_bdt::*;
 use cyfs_core::TransContextObject;
 
@@ -39,6 +41,7 @@ struct TransContextHolderInner {
     value: TransContentValue,
     referer: String,
     manager: Option<ContextManager>,
+    state: ContextSourceDownloadStateManager,
 }
 
 impl TransContextHolderInner {
@@ -59,6 +62,7 @@ impl TransContextHolderInner {
             manager: Some(manager),
             value: TransContentValue::Context(value),
             referer: referer.into(),
+            state: ContextSourceDownloadStateManager::new(NDNTaskCancelStrategy::WaitingSource),
         }
     }
 
@@ -78,6 +82,7 @@ impl TransContextHolderInner {
             manager: None,
             value: TransContentValue::Target(value),
             referer: referer.into(),
+            state: ContextSourceDownloadStateManager::new(NDNTaskCancelStrategy::AutoCancel),
         }
     }
 
@@ -364,5 +369,13 @@ impl DownloadContext for TransContextHolder {
         limit: usize,
     ) -> LinkedList<DownloadSource<DeviceDesc>> {
         self.0.sources_of(filter, limit).await
+    }
+
+    fn on_new_session(&self, task: &dyn LeafDownloadTask, session: &DownloadSession) {
+        self.0.state.on_new_session(task, session);
+    }
+
+    fn on_drain(&self, task: &dyn LeafDownloadTask, when: Timestamp) {
+        self.0.state.on_drain(task, when);
     }
 }
