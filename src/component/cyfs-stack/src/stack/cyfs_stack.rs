@@ -951,13 +951,19 @@ impl CyfsStackImpl {
     pub fn prepare_shared_object_stack_param(
         &self,
         dec_id: Option<ObjectId>,
-    ) -> SharedCyfsStackParam {
+        requestor_config: Option<CyfsStackRequestorConfig>,
+    ) -> BuckyResult<SharedCyfsStackParam> {
         let non_http_addr = self
             .interface
             .get()
             .unwrap()
             .get_available_http_listener()
-            .unwrap();
+            .ok_or_else(|| {
+                let msg = format!("http interface not valid!");
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::NotSupport, msg)
+            })?;
+
         let non_http_service_url = format!("http://{}", non_http_addr);
 
         // 必须同时开启ws服务，用以基于ws的事件系统和http服务
@@ -966,18 +972,28 @@ impl CyfsStackImpl {
             .get()
             .unwrap()
             .get_ws_event_listener()
-            .unwrap();
+            .ok_or_else(|| {
+                let msg = format!("ws interface not valid!");
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::NotSupport, msg)
+            })?;
+
         let ws_url = format!("ws://{}", ws_addr);
 
-        SharedCyfsStackParam::new_with_ws_event(dec_id, &non_http_service_url, &ws_url).unwrap()
+        let mut param = SharedCyfsStackParam::new_with_ws_event(dec_id, &non_http_service_url, &ws_url).unwrap();
+        if let Some(requestor_config) = requestor_config {
+            param.requestor_config = requestor_config;
+        }
+
+        Ok(param)
     }
 
     pub async fn open_shared_object_stack(
         &self,
         dec_id: Option<ObjectId>,
+        requestor_config: Option<CyfsStackRequestorConfig>,
     ) -> BuckyResult<SharedCyfsStack> {
-        let param = self.prepare_shared_object_stack_param(dec_id);
-        // param.requestor_config = CyfsStackRequestorConfig::ws();
+        let param = self.prepare_shared_object_stack_param(dec_id, requestor_config)?;
 
         match SharedCyfsStack::open(param).await {
             Ok(stack) => Ok(stack),
@@ -1209,11 +1225,20 @@ impl CyfsStack {
         self.stack.restart_interface().await
     }
 
+    pub fn prepare_shared_object_stack_param(
+        &self,
+        dec_id: Option<ObjectId>,
+        requestor_config: Option<CyfsStackRequestorConfig>,
+    ) -> BuckyResult<SharedCyfsStackParam> {
+        self.stack.prepare_shared_object_stack_param(dec_id, requestor_config)
+    }
+
     pub async fn open_shared_object_stack(
         &self,
         dec_id: Option<ObjectId>,
+        requestor_config: Option<CyfsStackRequestorConfig>,
     ) -> BuckyResult<SharedCyfsStack> {
-        self.stack.open_shared_object_stack(dec_id).await
+        self.stack.open_shared_object_stack(dec_id, requestor_config).await
     }
 
     pub async fn open_uni_stack(&self, dec_id: &Option<ObjectId>) -> UniCyfsStackRef {
