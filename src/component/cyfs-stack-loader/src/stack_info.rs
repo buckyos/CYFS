@@ -8,6 +8,9 @@ use cyfs_bdt::StackGuard;
 use cyfs_lib::SharedCyfsStack;
 use cyfs_stack::{BdtStackParams, CyfsStack, CyfsStackKnownObjects};
 
+// Temporarily disable all ipv6 addresses!
+const IS_DISABLE_IPV6: bool = true;
+
 pub(crate) struct StackInfo {
     pub stack_params: CyfsStackLoaderParams,
     pub bdt_params: BdtParams,
@@ -229,11 +232,23 @@ impl StackInfo {
         let device_id = device_info.device.desc().calculate_id().to_string();
         RandomPortGenerator::prepare_endpoints(&device_id, &mut self.bdt_params.endpoint)?;
 
+        let mut endpoints = self.bdt_params.endpoint.clone();
+        if IS_DISABLE_IPV6 {
+            endpoints.retain(|ep|{
+                if ep.addr().is_ipv6() {
+                    warn!("ipv6 addr will been disabled! ep={}", ep);
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+
         device_info
             .device
             .mut_connect_info()
             .mut_endpoints()
-            .append(&mut self.bdt_params.endpoint.clone());
+            .append(&mut endpoints);
 
         self.device_info = Some(device_info);
 
