@@ -3,7 +3,8 @@
 use std::collections::HashSet;
 
 use cyfs_base::{
-    BuckyResult, GroupMemberScope, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc, RawDecode,
+    BuckyError, BuckyResult, GroupMemberScope, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc,
+    RawDecode,
 };
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupRPath};
 use cyfs_lib::NONObjectInfo;
@@ -14,7 +15,7 @@ use crate::{
 };
 
 enum StatePushMessage {
-    ProposalResult(GroupProposal, BuckyResult<Option<NONObjectInfo>>),
+    ProposalResult(GroupProposal, BuckyError),
     BlockCommit(GroupConsensusBlock, GroupConsensusBlock),
     LastStateRequest(ObjectId),
 }
@@ -43,13 +44,9 @@ impl StatePusher {
         }
     }
 
-    pub async fn notify_proposal_result(
-        &self,
-        proposal: GroupProposal,
-        result: BuckyResult<Option<NONObjectInfo>>,
-    ) {
+    pub async fn notify_proposal_err(&self, proposal: GroupProposal, err: BuckyError) {
         self.tx_notifier
-            .send(StatePushMessage::ProposalResult(proposal, result))
+            .send(StatePushMessage::ProposalResult(proposal, err))
             .await;
     }
 
@@ -60,6 +57,7 @@ impl StatePusher {
     ) {
         let block_id = block.named_object().desc().object_id();
         if qc_block.height() != block.height() + 1
+            || qc_block.qc().as_ref().expect("qc should not empty").round != block.round()
             || qc_block.round() <= block.round()
             || qc_block.prev_block_id().unwrap() != &block_id
         {
@@ -80,7 +78,7 @@ impl StatePusher {
             .await;
     }
 
-    pub async fn last_state_request(&self, remote: ObjectId) {
+    pub async fn request_last_state(&self, remote: ObjectId) {
         self.tx_notifier
             .send(StatePushMessage::LastStateRequest(remote))
             .await;
@@ -104,7 +102,7 @@ struct StateChanggeRunner {
     rx_notifier: async_std::channel::Receiver<StatePushMessage>,
     timer: Timer,
 
-    last_state_request_remotes: HashSet<ObjectId>,
+    request_last_state_remotes: HashSet<ObjectId>,
     notify_progress: Option<HeaderBlockNotifyProgress>,
 }
 
@@ -124,14 +122,11 @@ impl StateChanggeRunner {
             timer: Timer::new(SYNCHRONIZER_TIMEOUT),
             notify_progress: None,
             local_id,
-            last_state_request_remotes: HashSet::new(),
+            request_last_state_remotes: HashSet::new(),
         }
     }
-    pub async fn notify_proposal_result(
-        &self,
-        proposal: GroupProposal,
-        result: BuckyResult<Option<NONObjectInfo>>,
-    ) {
+
+    pub async fn notify_proposal_err(&self, proposal: GroupProposal, err: BuckyError) {
         // notify to the proposer
         let proposal_id = proposal.desc().object_id();
         match proposal.desc().owner() {
@@ -142,7 +137,7 @@ impl StateChanggeRunner {
 
                 network_sender
                     .post_message(
-                        HotstuffMessage::ProposalResult(proposal_id, result),
+                        HotstuffMessage::ProposalResult(proposal_id, Err(err)),
                         rpath.clone(),
                         &proposer,
                     )
@@ -152,7 +147,11 @@ impl StateChanggeRunner {
         }
     }
 
-    pub async fn notify_proposal_result_for_block(&self, block: GroupConsensusBlock) {
+    pub async fn notify_proposal_result_for_block(
+        &self,
+        block: &GroupConsensusBlock,
+        qc_block: &GroupConsensusBlock,
+    ) {
         let network_sender = self.network_sender.clone();
         let rpath = self.rpath.clone();
         let non_driver = self.non_driver.clone();
@@ -189,7 +188,10 @@ impl StateChanggeRunner {
 
             network_sender
                 .post_message(
-                    HotstuffMessage::ProposalResult(exe_info.proposal, Ok(receipt)),
+                    HotstuffMessage::ProposalResult(
+                        exe_info.proposal,
+                        Ok((receipt, block.clone(), qc_block.clone())),
+                    ),
                     rpath.clone(),
                     &proposer,
                 )
@@ -264,8 +266,8 @@ impl StateChanggeRunner {
         }
     }
 
-    fn last_state_request(&mut self, remote: ObjectId) {
-        self.last_state_request_remotes.insert(remote);
+    fn request_last_state(&mut self, remote: ObjectId) {
+        self.request_last_state_remotes.insert(remote);
     }
 
     async fn try_notify_block_commit(&mut self) {
@@ -279,7 +281,7 @@ impl StateChanggeRunner {
                 progress.cur_block_notify_times += notify_count;
 
                 let mut notify_targets = HashSet::new();
-                std::mem::swap(&mut self.last_state_request_remotes, &mut notify_targets);
+                std::mem::swap(&mut self.request_last_state_remotes, &mut notify_targets);
 
                 let start_pos = progress.cur_block_notify_times % progress.members.len();
                 let notify_targets_1 = &progress.members.as_slice()
@@ -316,14 +318,15 @@ impl StateChanggeRunner {
         loop {
             futures::select! {
                 message = self.rx_notifier.recv().fuse() => match message {
-                    Ok(StatePushMessage::ProposalResult(proposal, result)) => self.notify_proposal_result(proposal, result).await,
+                    Ok(StatePushMessage::ProposalResult(proposal, err)) => self.notify_proposal_err(proposal, err).await,
                     Ok(StatePushMessage::BlockCommit(block, qc_block)) => {
-                        self.notify_proposal_result_for_block(block.clone()).await;
+                        self.notify_proposal_result_for_block(&block, &qc_block).await;
                         self.update_commit_block(block, qc_block).await;
                     },
                     Ok(StatePushMessage::LastStateRequest(remote)) => {
-                        self.last_state_request(remote);
-                    },                    Err(e) => {
+                        self.request_last_state(remote);
+                    },
+                    Err(e) => {
                         log::warn!("[change-notifier] rx_notifier closed.")
                     },
                 },

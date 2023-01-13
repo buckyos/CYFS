@@ -412,13 +412,9 @@ impl Hotstuff {
         PendingProposalMgr::remove_proposals(&self.tx_proposal_consume, proposals).await
     }
 
-    async fn notify_proposal_result(
-        &self,
-        proposal: &GroupProposal,
-        result: BuckyResult<Option<NONObjectInfo>>,
-    ) {
+    async fn notify_proposal_err(&self, proposal: &GroupProposal, err: BuckyError) {
         self.state_pusher
-            .notify_proposal_result(proposal.clone(), result)
+            .notify_proposal_err(proposal.clone(), err)
             .await;
     }
 
@@ -727,28 +723,25 @@ impl Hotstuff {
 
         for proposal in time_adjust_proposals {
             // timestamp is error
-            self.notify_proposal_result(
+            self.notify_proposal_err(
                 &proposal,
-                Err(BuckyError::new(
-                    BuckyErrorCode::ErrorTimestamp,
-                    "error timestamp",
-                )),
+                BuckyError::new(BuckyErrorCode::ErrorTimestamp, "error timestamp"),
             )
             .await;
         }
 
         for proposal in timeout_proposals {
             // has timeout
-            self.notify_proposal_result(
+            self.notify_proposal_err(
                 &proposal,
-                Err(BuckyError::new(BuckyErrorCode::Timeout, "timeout")),
+                BuckyError::new(BuckyErrorCode::Timeout, "timeout"),
             )
             .await;
         }
 
         for (proposal, err) in failed_proposals {
             // failed
-            self.notify_proposal_result(&proposal, Err(err)).await;
+            self.notify_proposal_err(&proposal, err).await;
         }
 
         PendingProposalMgr::remove_proposals(&self.tx_proposal_consume, remove_proposals).await;

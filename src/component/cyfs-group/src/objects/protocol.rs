@@ -94,7 +94,14 @@ pub(crate) enum HotstuffMessage {
 
     LastStateRequest,
     StateChangeNotify(GroupConsensusBlock, GroupConsensusBlock), // (block, qc-block)
-    ProposalResult(ObjectId, BuckyResult<Option<NONObjectInfo>>), // (proposal-id, ExecuteResult)
+    ProposalResult(
+        ObjectId,
+        BuckyResult<(
+            Option<NONObjectInfo>,
+            GroupConsensusBlock,
+            GroupConsensusBlock,
+        )>,
+    ), // (proposal-id, (ExecuteResult, block, qc-block))
     QueryState(String),
     VerifiableState(GroupRPathStatus),
 }
