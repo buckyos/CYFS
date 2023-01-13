@@ -1,8 +1,9 @@
 // notify the members when the state of rpath changed
 
+use std::collections::HashSet;
+
 use cyfs_base::{
-    BuckyResult, Group, GroupMemberScope, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc,
-    RawDecode,
+    BuckyResult, GroupMemberScope, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc, RawDecode,
 };
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupRPath};
 use cyfs_lib::NONObjectInfo;
@@ -12,17 +13,18 @@ use crate::{
     helper::Timer, HotstuffMessage, CHANNEL_CAPACITY, STATE_NOTIFY_CYCLE, SYNCHRONIZER_TIMEOUT,
 };
 
-enum StateChangeNotifyMessage {
+enum StatePushMessage {
     ProposalResult(GroupProposal, BuckyResult<Option<NONObjectInfo>>),
     BlockCommit(GroupConsensusBlock, GroupConsensusBlock),
+    LastStateRequest(ObjectId),
 }
 
-pub struct StateChangeNotifier {
+pub struct StatePusher {
     local_id: ObjectId,
-    tx_notifier: async_std::channel::Sender<StateChangeNotifyMessage>,
+    tx_notifier: async_std::channel::Sender<StatePushMessage>,
 }
 
-impl StateChangeNotifier {
+impl StatePusher {
     pub fn new(
         local_id: ObjectId,
         network_sender: crate::network::Sender,
@@ -47,7 +49,7 @@ impl StateChangeNotifier {
         result: BuckyResult<Option<NONObjectInfo>>,
     ) {
         self.tx_notifier
-            .send(StateChangeNotifyMessage::ProposalResult(proposal, result))
+            .send(StatePushMessage::ProposalResult(proposal, result))
             .await;
     }
 
@@ -74,7 +76,13 @@ impl StateChangeNotifier {
         }
 
         self.tx_notifier
-            .send(StateChangeNotifyMessage::BlockCommit(block, qc_block))
+            .send(StatePushMessage::BlockCommit(block, qc_block))
+            .await;
+    }
+
+    pub async fn last_state_request(&self, remote: ObjectId) {
+        self.tx_notifier
+            .send(StatePushMessage::LastStateRequest(remote))
             .await;
     }
 }
@@ -93,9 +101,10 @@ struct StateChanggeRunner {
     network_sender: crate::network::Sender,
     rpath: GroupRPath,
     non_driver: crate::network::NonDriver,
-    rx_notifier: async_std::channel::Receiver<StateChangeNotifyMessage>,
+    rx_notifier: async_std::channel::Receiver<StatePushMessage>,
     timer: Timer,
 
+    last_state_request_remotes: HashSet<ObjectId>,
     notify_progress: Option<HeaderBlockNotifyProgress>,
 }
 
@@ -105,7 +114,7 @@ impl StateChanggeRunner {
         network_sender: crate::network::Sender,
         rpath: GroupRPath,
         non_driver: crate::network::NonDriver,
-        rx_notifier: async_std::channel::Receiver<StateChangeNotifyMessage>,
+        rx_notifier: async_std::channel::Receiver<StatePushMessage>,
     ) -> Self {
         Self {
             network_sender,
@@ -115,6 +124,7 @@ impl StateChanggeRunner {
             timer: Timer::new(SYNCHRONIZER_TIMEOUT),
             notify_progress: None,
             local_id,
+            last_state_request_remotes: HashSet::new(),
         }
     }
     pub async fn notify_proposal_result(
@@ -254,6 +264,10 @@ impl StateChanggeRunner {
         }
     }
 
+    fn last_state_request(&mut self, remote: ObjectId) {
+        self.last_state_request_remotes.insert(remote);
+    }
+
     async fn try_notify_block_commit(&mut self) {
         match self.notify_progress.as_mut() {
             Some(progress) if progress.cur_block_notify_times < progress.members.len() => {
@@ -264,36 +278,35 @@ impl StateChanggeRunner {
 
                 progress.cur_block_notify_times += notify_count;
 
+                let mut notify_targets = HashSet::new();
+                std::mem::swap(&mut self.last_state_request_remotes, &mut notify_targets);
+
                 let start_pos = progress.cur_block_notify_times % progress.members.len();
-                let notify_targets = &progress.members.as_slice()
+                let notify_targets_1 = &progress.members.as_slice()
                     [start_pos..progress.members.len().min(start_pos + notify_count)];
 
-                self.network_sender
-                    .broadcast(
-                        HotstuffMessage::StateChangeNotify(
-                            progress.header_block.clone(),
-                            progress.qc_block.clone(),
-                        ),
-                        self.rpath.clone(),
-                        notify_targets,
-                    )
-                    .await;
+                notify_targets_1.iter().for_each(|remote| {
+                    notify_targets.insert(remote.clone());
+                });
 
-                if notify_targets.len() < notify_count {
-                    let notify_targets =
+                if notify_targets_1.len() < notify_count {
+                    let notify_targets_2 =
                         &progress.members.as_slice()[0..notify_count - notify_targets.len()];
 
-                    self.network_sender
-                        .broadcast(
-                            HotstuffMessage::StateChangeNotify(
-                                progress.header_block.clone(),
-                                progress.qc_block.clone(),
-                            ),
-                            self.rpath.clone(),
-                            notify_targets,
-                        )
-                        .await;
+                    notify_targets_2.iter().for_each(|remote| {
+                        notify_targets.insert(remote.clone());
+                    });
                 }
+
+                let msg = HotstuffMessage::StateChangeNotify(
+                    progress.header_block.clone(),
+                    progress.qc_block.clone(),
+                );
+
+                let notify_targets: Vec<ObjectId> = notify_targets.into_iter().collect();
+                self.network_sender
+                    .broadcast(msg.clone(), self.rpath.clone(), notify_targets.as_slice())
+                    .await;
             }
             _ => return,
         }
@@ -303,12 +316,14 @@ impl StateChanggeRunner {
         loop {
             futures::select! {
                 message = self.rx_notifier.recv().fuse() => match message {
-                    Ok(StateChangeNotifyMessage::ProposalResult(proposal, result)) => self.notify_proposal_result(proposal, result).await,
-                    Ok(StateChangeNotifyMessage::BlockCommit(block, qc_block)) => {
+                    Ok(StatePushMessage::ProposalResult(proposal, result)) => self.notify_proposal_result(proposal, result).await,
+                    Ok(StatePushMessage::BlockCommit(block, qc_block)) => {
                         self.notify_proposal_result_for_block(block.clone()).await;
                         self.update_commit_block(block, qc_block).await;
                     },
-                    Err(e) => {
+                    Ok(StatePushMessage::LastStateRequest(remote)) => {
+                        self.last_state_request(remote);
+                    },                    Err(e) => {
                         log::warn!("[change-notifier] rx_notifier closed.")
                     },
                 },

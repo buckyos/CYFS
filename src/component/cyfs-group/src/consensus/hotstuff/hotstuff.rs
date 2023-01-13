@@ -14,11 +14,10 @@ use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
 use crate::{
-    consensus::{proposal, synchronizer::Synchronizer},
-    helper::Timer,
-    network, AsProposal, Committee, ExecuteResult, HotstuffBlockQCVote, HotstuffMessage,
-    HotstuffTimeoutVote, PendingProposalMgr, ProposalConsumeMessage, RPathDelegate, Storage,
-    VoteMgr, VoteThresholded, CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
+    consensus::synchronizer::Synchronizer, dec_state::StatePusher, helper::Timer, AsProposal,
+    Committee, ExecuteResult, HotstuffBlockQCVote, HotstuffMessage, HotstuffTimeoutVote,
+    PendingProposalMgr, ProposalConsumeMessage, RPathDelegate, Storage, VoteMgr, VoteThresholded,
+    CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
 };
 
 /**
@@ -46,6 +45,7 @@ pub(crate) struct Hotstuff {
     tx_message_inner: Sender<(GroupConsensusBlock, ObjectId)>,
     rx_message_inner: Receiver<(GroupConsensusBlock, ObjectId)>,
     rx_proposal_waiter: Option<(Receiver<u64>, u64)>,
+    state_pusher: StatePusher,
 }
 
 impl Hotstuff {
@@ -83,6 +83,13 @@ impl Hotstuff {
             tx_message_inner.clone(),
         );
 
+        let state_pusher = StatePusher::new(
+            local_id,
+            network_sender.clone(),
+            rpath.clone(),
+            non_driver.clone(),
+        );
+
         let mut hotstuff = Self {
             local_id,
             committee,
@@ -103,6 +110,7 @@ impl Hotstuff {
             rx_message_inner,
             rx_proposal_waiter: None,
             tc: None,
+            state_pusher,
         };
 
         async_std::task::spawn(async move { hotstuff.run().await });
@@ -324,7 +332,16 @@ impl Hotstuff {
              * */
             self.cleanup_proposal(&header_block).await;
 
-            self.notify_proposal_result_for_block(&header_block);
+            let (_, qc_block) = self
+                .store
+                .pre_commits()
+                .iter()
+                .next()
+                .expect("the pre-commit block must exist.");
+
+            self.state_pusher
+                .notify_block_commit(header_block, qc_block.clone())
+                .await
         }
 
         match self.vote_mgr.add_voting_block(block).await {
@@ -395,82 +412,14 @@ impl Hotstuff {
         PendingProposalMgr::remove_proposals(&self.tx_proposal_consume, proposals).await
     }
 
-    fn notify_proposal_result(
+    async fn notify_proposal_result(
         &self,
         proposal: &GroupProposal,
         result: BuckyResult<Option<NONObjectInfo>>,
     ) {
-        // notify to the proposer
-        let proposal_id = proposal.desc().object_id();
-        match proposal.desc().owner() {
-            Some(proposer) => {
-                let network_sender = self.network_sender.clone();
-                let proposer = proposer.clone();
-                let rpath = self.rpath.clone();
-
-                async_std::task::spawn(async move {
-                    network_sender
-                        .post_message(
-                            HotstuffMessage::ProposalResult(proposal_id, result),
-                            rpath.clone(),
-                            &proposer,
-                        )
-                        .await
-                });
-            }
-            None => log::warn!("proposal({}) without owner", proposal_id),
-        }
-    }
-
-    fn notify_proposal_result_for_block(&self, block: &GroupConsensusBlock) {
-        if block.owner() == &self.local_id {
-            return;
-        }
-
-        let network_sender = self.network_sender.clone();
-        let rpath = self.rpath.clone();
-        let non_driver = self.non_driver.clone();
-        let proposal_exe_infos = block.proposals().clone();
-
-        async_std::task::spawn(async move {
-            let proposals = futures::future::join_all(
-                proposal_exe_infos
-                    .iter()
-                    .map(|proposal| non_driver.get_proposal(&proposal.proposal, None)),
-            )
+        self.state_pusher
+            .notify_proposal_result(proposal.clone(), result)
             .await;
-
-            for i in 0..proposal_exe_infos.len() {
-                let proposal = proposals.get(i).unwrap();
-                if proposal.is_err() {
-                    continue;
-                }
-                let proposal = proposal.as_ref().unwrap();
-                let proposer = proposal.desc().owner();
-                if proposer.is_none() {
-                    continue;
-                }
-
-                let proposer = proposer.as_ref().unwrap();
-                let exe_info = proposal_exe_infos.get(i).unwrap();
-
-                let receipt = match exe_info.receipt.as_ref() {
-                    Some(receipt) => match NONObjectInfo::raw_decode(receipt.as_slice()) {
-                        Ok((obj, _)) => Some(obj),
-                        _ => continue,
-                    },
-                    None => None,
-                };
-
-                network_sender
-                    .post_message(
-                        HotstuffMessage::ProposalResult(exe_info.proposal, Ok(receipt)),
-                        rpath.clone(),
-                        &proposer,
-                    )
-                    .await
-            }
-        });
     }
 
     async fn make_vote(&mut self, block: &GroupConsensusBlock) -> Option<HotstuffBlockQCVote> {
@@ -784,7 +733,8 @@ impl Hotstuff {
                     BuckyErrorCode::ErrorTimestamp,
                     "error timestamp",
                 )),
-            );
+            )
+            .await;
         }
 
         for proposal in timeout_proposals {
@@ -792,12 +742,13 @@ impl Hotstuff {
             self.notify_proposal_result(
                 &proposal,
                 Err(BuckyError::new(BuckyErrorCode::Timeout, "timeout")),
-            );
+            )
+            .await;
         }
 
         for (proposal, err) in failed_proposals {
             // failed
-            self.notify_proposal_result(&proposal, Err(err))
+            self.notify_proposal_result(&proposal, Err(err)).await;
         }
 
         PendingProposalMgr::remove_proposals(&self.tx_proposal_consume, remove_proposals).await;

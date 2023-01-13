@@ -92,6 +92,7 @@ pub(crate) enum HotstuffMessage {
 
     SyncRequest(SyncBound, SyncBound),
 
+    LastStateRequest,
     StateChangeNotify(GroupConsensusBlock, GroupConsensusBlock), // (block, qc-block)
     ProposalResult(ObjectId, BuckyResult<Option<NONObjectInfo>>), // (proposal-id, ExecuteResult)
     QueryState(String),
