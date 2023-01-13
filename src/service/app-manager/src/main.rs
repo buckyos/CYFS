@@ -7,7 +7,7 @@ use cyfs_base::*;
 use cyfs_core::DecAppId;
 use cyfs_lib::SharedCyfsStack;
 use cyfs_util::process::{
-    check_cmd_and_exec, prepare_args, set_process_cmd_funcs, ProcessAction, ProcessCmdFuncs,
+    prepare_args, set_process_cmd_funcs, ProcessAction, ProcessCmdFuncs,
 };
 use log::*;
 use ood_daemon::init_system_config;
@@ -73,10 +73,8 @@ async fn main_run() {
 
     let app = prepare_args(app);
     let matches = app.get_matches();
-
-    if !matches.is_present("stop") && !matches.is_present("start") {
-        check_cmd_and_exec(APP_MANAGER_NAME);
-    } else {
+    let (action, _) = cyfs_util::process::parse_cmd(APP_MANAGER_NAME, &matches);
+    if action == ProcessAction::Start || action == ProcessAction::Stop {
         cyfs_debug::CyfsLoggerBuilder::new_service(APP_MANAGER_NAME)
             .level("debug")
             .console("debug")
@@ -96,9 +94,10 @@ async fn main_run() {
     info!("app manager use docker:{}", app_config.use_docker());
 
     let _ = set_process_cmd_funcs(Box::new(AppManagerProcessFuncs { config: app_config.clone() }));
-    check_cmd_and_exec(APP_MANAGER_NAME);
 
-    if matches.is_present("stop") {
+    cyfs_util::process::check_cmd_and_exec_with_args(APP_MANAGER_NAME, &matches);
+
+    if action == ProcessAction::Stop {
         unreachable!("Stop cmd should exit.");
     }
 
