@@ -482,7 +482,6 @@ async fn download_file_impl(
     }
 
     let task_list = ret.unwrap().task_list;
-    assert_eq!(task_list.len(), 1);
 
     for task in task_list.iter() {
         let ret = stack

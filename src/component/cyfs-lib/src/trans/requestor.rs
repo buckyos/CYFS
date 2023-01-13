@@ -294,7 +294,7 @@ impl TransRequestor {
     ) -> BuckyResult<TransQueryTasksOutputResponse> {
         info!("will query tasks: {:?}", req);
 
-        let url = self.service_url.join("query").unwrap();
+        let url = self.service_url.join("tasks").unwrap();
         let mut http_req = Request::new(Method::Post, url);
 
         self.encode_common_headers(&req.common, &mut http_req);
