@@ -277,9 +277,10 @@ impl DownloadTaskManager {
                     device_list: param.device_list,
                 });
             } else {
-                unreachable!()
+                unreachable!("unknown task type: task={}, type={}", task_id, task_type);
             }
         }
+        
         Ok(task_info_list)
     }
 }
