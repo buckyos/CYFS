@@ -98,7 +98,7 @@ impl Default for AppManagerConfig {
 
 impl AppManagerConfig {
     pub fn load() -> Self {
-        let config_file = cyfs_util::get_service_data_dir(APP_MANAGER_NAME).join(CONFIG_FILE_NAME);
+        let config_file = cyfs_util::get_service_config_dir(APP_MANAGER_NAME).join(CONFIG_FILE_NAME);
         let config = Self::load_from_file(&config_file).map_err(|e|{
             error!("load config file {} err {}, use default", config_file.display(), e);
             e
