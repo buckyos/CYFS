@@ -4,6 +4,7 @@ use std::{
 };
 use cyfs_base::*;
 use crate::{
+    types::*, 
     ndn::{*}, 
     stack::{Stack}, 
 };
@@ -75,7 +76,7 @@ impl SampleDownloadContext {
     pub fn add_source(&self, source: DownloadSource<DeviceDesc>) {
         let mut sources = self.0.sources.write().unwrap();
         sources.update_at = bucky_time_now();
-        sources.push_back(source);
+        sources.sources.push_back(source);
     }
 }
 
