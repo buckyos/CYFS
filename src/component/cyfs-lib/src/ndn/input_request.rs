@@ -281,7 +281,7 @@ impl fmt::Display for NDNPutDataInputRequest {
         write!(f, "common: {}", self.common)?;
         write!(f, ", object_id: {}", self.object_id)?;
 
-        write!(f, ", length: {:?}", self.length)
+        write!(f, ", length: {}", self.length)
     }
 }
 
