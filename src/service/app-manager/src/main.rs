@@ -69,8 +69,6 @@ async fn main_run() {
     //cyfs_base::init_log_with_isolate_bdt(APP_MANAGER_NAME, Some("debug"), None);
     //let action = cyfs_util::process::check_cmd_and_exec(APP_MANAGER_NAME);
 
-    let app_config = AppManagerConfig::load();
-
     let app = App::new(&format!("{}", APP_MANAGER_NAME)).version(cyfs_base::get_version());
 
     let app = prepare_args(app);
@@ -92,6 +90,8 @@ async fn main_run() {
             .build()
             .start();
     }
+
+    let app_config = AppManagerConfig::load();
 
     info!("app manager use docker:{}", app_config.use_docker());
 
