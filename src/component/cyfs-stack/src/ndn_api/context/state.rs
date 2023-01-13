@@ -3,6 +3,7 @@ use cyfs_bdt::channel::DownloadSessionState;
 use cyfs_bdt::ndn::channel::DownloadSession;
 use cyfs_bdt::*;
 
+use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -11,28 +12,39 @@ pub enum NDNTaskCancelStrategy {
     WaitingSource,
 }
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+struct ContextSourceIndex {
+    source: DeviceId,
+    chunk: ChunkId,
+}
+
 // use cyfs_bdt::
 struct ContextSourceDownloadState {
-    source: DeviceId,
+    update_at: Timestamp,
     state: Option<DownloadSessionState>,
 }
 
 #[derive(Clone)]
 pub(super) struct ContextSourceDownloadStateManager {
-    all: Arc<Mutex<Vec<ContextSourceDownloadState>>>,
+    all: Arc<Mutex<HashMap<ContextSourceIndex, ContextSourceDownloadState>>>,
     cancel_strategy: NDNTaskCancelStrategy,
 }
 
 impl ContextSourceDownloadStateManager {
     pub fn new(cancel_strategy: NDNTaskCancelStrategy) -> Self {
         Self {
-            all: Arc::new(Mutex::new(vec![])),
+            all: Arc::new(Mutex::new(HashMap::new())),
             cancel_strategy,
         }
     }
 
-    pub fn on_new_session(&self, task: &dyn LeafDownloadTask, session: &DownloadSession) {
-        self.add_session(task, session);
+    pub fn on_new_session(
+        &self,
+        task: &dyn LeafDownloadTask,
+        session: &DownloadSession,
+        update_at: Timestamp,
+    ) {
+        self.add_session(task, session, update_at);
 
         let this = self.clone();
         let session = session.clone();
@@ -51,21 +63,37 @@ impl ContextSourceDownloadStateManager {
     ) {
         let source = session.source();
         info!(
-            "task session on source finished! task={:?}, source={}, session={:?}",
+            "task session on source finished! task={:?}, source={}, chunk={}, session={:?}, state={:?}",
             group,
             source.target,
-            session.session_id()
+            session.chunk(),
+            session.session_id(),
+            state,
         );
 
+        let index = ContextSourceIndex {
+            source: source.target.clone(),
+            chunk: session.chunk().clone(),
+        };
+
         let mut all = self.all.lock().unwrap();
-        let ret = all.iter_mut().find(|item| item.source == source.target);
+        let ret = all.get_mut(&index);
         if ret.is_none() {
-            error!("task session finished but not found in state manager! task={:?}, source={}, session={:?}", group, source.target, session.session_id());
+            error!("task session finished but not found in state manager! task={:?}, source={}, chunk={}, session={:?}", 
+                group, source.target, index.chunk, session.session_id());
             return;
         }
 
         let item = ret.unwrap();
-        assert!(item.state.is_none());
+        if item.state.is_some() {
+            error!("task session on source already finished! task={:?}, source={}, session={:?}, current state={:?}",
+                group,
+                source.target,
+                session.session_id(),
+                item.state.as_ref().unwrap(),
+            );
+        }
+
         item.state = Some(state);
     }
 
@@ -88,23 +116,25 @@ impl ContextSourceDownloadStateManager {
 
         let mut err = None;
         let mut downloading = false;
-        for item in &*all {
+        for (index, item) in &*all {
             if item.state.is_none() {
                 warn!(
-                    "task drain source but still not finishe or canceled! task={:?}, source={}",
+                    "task drain source but still not finishe or canceled! task={:?}, source={}, chunk={}",
                     task.abs_group_path(),
-                    item.source
+                    index.source,
+                    index.chunk,
                 );
                 downloading = true;
                 break;
             }
 
             match item.state.as_ref().unwrap() {
-                DownloadSessionState::Downloading(_) => {
+                DownloadSessionState::Downloading => {
                     error!(
-                        "task drain source but still in downloading state! task={:?}, source={}",
+                        "task drain source but still in downloading state! task={:?}, source={}, chunk={}",
                         task.abs_group_path(),
-                        item.source
+                        index.source,
+                        index.chunk,
                     );
                     downloading = true;
                     break;
@@ -153,41 +183,42 @@ impl ContextSourceDownloadStateManager {
         }
     }
 
-    fn add_session(&self, task: &dyn LeafDownloadTask, session: &DownloadSession) {
+    fn add_session(&self, task: &dyn LeafDownloadTask, session: &DownloadSession, update_at: Timestamp,) {
         let source = session.source();
 
+        let index = ContextSourceIndex {
+            source: source.target.clone(),
+            chunk: session.chunk().clone(),
+        };
+
         let mut all = self.all.lock().unwrap();
-        let mut find = false;
-        for i in 0..all.len() {
-            let item = &mut all[i];
-            if item.source == source.target {
-                warn!(
-                    "task session on same source! task={:?}, source={}, prev={:?}, new={:?}",
+        match all.entry(index) {
+            Entry::Vacant(v) => {
+                let item = ContextSourceDownloadState { state: None, update_at };
+
+                info!(
+                    "new task session on source: task={:?}, source={}, chunk={}, session={:?}, update_at={}",
                     task.abs_group_path(),
-                    item.source,
+                    source.target,
+                    session.chunk(),
                     session.session_id(),
-                    session.session_id()
+                    item.update_at,
                 );
-                item.state = None;
-
-                find = true;
-                break;
+                v.insert(item);
             }
-        }
-
-        if !find {
-            let item = ContextSourceDownloadState {
-                source: source.target.clone(),
-                state: None,
-            };
-
-            info!(
-                "new task session on source: task={:?}, source={}, session={:?}",
-                task.abs_group_path(),
-                item.source,
-                session.session_id()
-            );
-            all.push(item);
+            Entry::Occupied(mut o) => {
+                warn!(
+                    "task session on same source! task={:?}, source={}, chunk={}, session={:?}, prev update_at={}, new update_at={}",
+                    task.abs_group_path(),
+                    source.target,
+                    session.chunk(),
+                    session.session_id(),
+                    o.get().update_at,
+                    update_at,
+                );
+                o.get_mut().state = None;
+                o.get_mut().update_at = update_at;
+            }
         }
     }
 }
