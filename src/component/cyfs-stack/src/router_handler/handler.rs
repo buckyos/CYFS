@@ -76,8 +76,12 @@ where
     ) -> BuckyResult<Self> {
         // 解析filter表达式
         let filter = if let Some(filter) = filter {
-            let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
-            Some(ExpEvaluator::new(&filter, reserved_token_list)?)
+            if !filter.is_empty() {
+                let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
+                Some(ExpEvaluator::new(&filter, reserved_token_list)?)
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -351,8 +355,12 @@ where
         }
 
         let filter = if let Some(filter) = &data.filter {
-            let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
-            Some(ExpEvaluator::new(filter, reserved_token_list)?)
+            if !filter.is_empty() {
+                let reserved_token_list = ROUTER_HANDLER_RESERVED_TOKEN_LIST.select::<REQ, RESP>();
+                Some(ExpEvaluator::new(filter, reserved_token_list)?)
+            } else {
+                None
+            }
         } else {
             None
         };
