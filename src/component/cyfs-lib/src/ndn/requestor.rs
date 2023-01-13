@@ -232,6 +232,8 @@ impl NDNRequestor {
         &self,
         req: NDNPutDataOutputRequest,
     ) -> BuckyResult<NDNPutDataOutputResponse> {
+        info!("will put_shared_data: {}", req);
+
         let mut http_req = self.encode_put_shared_data_request(&req);
 
         let reader = async_std::io::BufReader::new(req.data);
