@@ -90,7 +90,7 @@ impl DownloadContext for SampleDownloadContext {
         self.0.referer.as_str()
     }
 
-    fn update_at(&self) -> Timestamp {
+    async fn update_at(&self) -> Timestamp {
         self.0.sources.read().unwrap().update_at
     }
 

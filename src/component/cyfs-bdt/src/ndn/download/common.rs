@@ -89,7 +89,7 @@ pub trait DownloadContext: Send + Sync {
     fn clone_as_context(&self) -> Box<dyn DownloadContext>;
     fn referer(&self) -> &str;
     // update time when context's sources changed
-    fn update_at(&self) -> Timestamp;
+    async fn update_at(&self) -> Timestamp;
     async fn sources_of(
         &self, 
         filter: &DownloadSourceFilter, 
