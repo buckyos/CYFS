@@ -40,7 +40,11 @@ impl Listener {
         unimplemented!()
     }
 
-    pub async fn wait_query_state(&self, rpath: GroupRPath) -> BuckyResult<()> {
+    pub async fn wait_query_state(
+        &self,
+        sub_path: String,
+        rpath: GroupRPath,
+    ) -> BuckyResult<ReplyWaiter<BuckyResult<ObjectId>>> {
         unimplemented!()
     }
 }

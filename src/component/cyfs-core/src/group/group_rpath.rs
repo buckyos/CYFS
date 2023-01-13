@@ -1,7 +1,7 @@
 use cyfs_base::*;
 use serde::Serialize;
 
-#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
+#[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize, PartialEq)]
 #[cyfs_protobuf_type(crate::codec::protos::GroupRPath)]
 pub struct GroupRPath {
     group_id: ObjectId,

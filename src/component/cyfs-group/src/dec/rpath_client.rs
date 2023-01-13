@@ -43,6 +43,8 @@ impl RPathClient {
         &self,
         proposal: &GroupProposal,
     ) -> BuckyResult<Option<NONObjectInfo>> {
+        assert_eq!(proposal.r_path(), &self.rpath);
+
         // TODO: signature
         let group = self
             .non_driver
@@ -58,7 +60,7 @@ impl RPathClient {
             .await?;
         let mut waiter_future = Some(waiter.wait());
 
-        let mut post_result = None; // Err(BuckyError::new(BuckyErrorCode::Timeout, "timeout"));
+        let mut post_result = None;
         let mut exe_result = None;
 
         for admin in admins {
@@ -125,8 +127,49 @@ impl RPathClient {
         Ok(())
     }
 
-    pub async fn get_field(&self, sub_path: &str) -> BuckyResult<GroupRPathStatus> {
-        unimplemented!()
+    pub async fn get_by_path(&self, sub_path: &str) -> BuckyResult<ObjectId> {
+        let group = self
+            .non_driver
+            .get_group(self.rpath().group_id(), None)
+            .await?;
+
+        let members = group.select_members_with_distance(&self.local_id, GroupMemberScope::All);
+        let req_msg = HotstuffMessage::QueryState(sub_path.to_string());
+
+        let waiter = self
+            .network_listener
+            .wait_query_state(sub_path.to_string(), self.rpath.clone())
+            .await?;
+        let mut waiter_future = Some(waiter.wait());
+
+        let mut exe_result = None;
+
+        for member in members {
+            self.network_sender
+                .post_message(req_msg.clone(), self.rpath.clone(), member)
+                .await;
+
+            match futures::future::select(
+                waiter_future.take().unwrap(),
+                Box::pin(async_std::task::sleep(CLIENT_POLL_TIMEOUT)),
+            )
+            .await
+            {
+                futures::future::Either::Left((result, _)) => match result {
+                    Err(_) => return Err(BuckyError::new(BuckyErrorCode::Unknown, "unknown")),
+                    Ok(result) => match result {
+                        Ok(result) => return Ok(result),
+                        Err(e) => exe_result = Some(e),
+                    },
+                },
+                futures::future::Either::Right((_, waiter)) => {
+                    waiter_future = Some(waiter);
+                }
+            }
+        }
+
+        let err = exe_result.map_or(BuckyError::new(BuckyErrorCode::Timeout, "timeout"), |e| e);
+        Err(err)
     }
 
     pub async fn get_block(&self, height: Option<u64>) -> BuckyResult<GroupConsensusBlock> {
