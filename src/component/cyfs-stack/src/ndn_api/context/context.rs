@@ -176,95 +176,78 @@ impl TransContextHolderInner {
         context
     }
 
-    async fn source_exists_with_context(
-        &self,
-        target: &DeviceId,
-        codec_desc: &ChunkCodecDesc,
-    ) -> bool {
-        let ret = self.get_context().await;
-        if ret.is_none() {
-            return false;
-        }
-
-        let context = ret.unwrap();
-        let ret = context.object.device_list().iter().find(|item| {
-            if item.target.eq(target) && item.chunk_codec_desc.support_desc(codec_desc) {
-                true
-            } else {
-                false
-            }
-        });
-
-        ret.is_some()
-    }
-
     async fn sources_of_with_context(
         &self,
         filter: &DownloadSourceFilter,
         limit: usize,
-    ) -> LinkedList<DownloadSource<DeviceDesc>> {
+    ) -> (LinkedList<DownloadSource<DeviceDesc>>, Timestamp) {
         let mut result = LinkedList::new();
         let ret = self.get_context().await;
         if ret.is_none() {
-            return result;
+            return (result, 0);
         }
 
         let context = ret.unwrap();
+        let ts = context
+            .object
+            .body_expect("context object should has body!")
+            .update_time();
         let mut count = 0;
         for source in &context.source_list {
             if filter.check(source) {
                 result.push_back(source.clone());
                 count += 1;
                 if count >= limit {
-                    return result;
+                    return (result, ts);
                 }
             }
         }
 
-        result
-    }
-
-    async fn source_exists_with_target(
-        &self,
-        target: &DeviceId,
-        codec_desc: &ChunkCodecDesc,
-    ) -> bool {
-        let value = self.target_value();
-        value.target.eq(target) && value.source.codec_desc.support_desc(&codec_desc)
+        (result, ts)
     }
 
     async fn sources_of_with_target(
         &self,
         filter: &DownloadSourceFilter,
         _limit: usize,
-    ) -> LinkedList<DownloadSource<DeviceDesc>> {
+    ) -> (LinkedList<DownloadSource<DeviceDesc>>, Timestamp) {
         let mut result = LinkedList::new();
         let value = self.target_value();
         if filter.check(&value.source) {
             result.push_back(value.source.clone());
         }
-        result
-    }
 
-    async fn source_exists(&self, target: &DeviceId, codec_desc: &ChunkCodecDesc) -> bool {
-        match &self.value {
-            TransContentValue::Target(_) => {
-                self.source_exists_with_target(target, codec_desc).await
-            }
-            TransContentValue::Context(_) => {
-                self.source_exists_with_context(target, codec_desc).await
-            }
-        }
+        (result, 0)
     }
 
     async fn sources_of(
         &self,
         filter: &DownloadSourceFilter,
         limit: usize,
-    ) -> LinkedList<DownloadSource<DeviceDesc>> {
+    ) -> (LinkedList<DownloadSource<DeviceDesc>>, Timestamp) {
         match &self.value {
             TransContentValue::Target(_) => self.sources_of_with_target(filter, limit).await,
             TransContentValue::Context(_) => self.sources_of_with_context(filter, limit).await,
+        }
+    }
+
+    async fn update_at(&self) -> Timestamp {
+        match &self.value {
+            TransContentValue::Target(_) => 0,
+            TransContentValue::Context(_) => {
+                let ret = self.get_context().await;
+                if ret.is_none() {
+                    return 0;
+                }
+
+                let context = ret.unwrap();
+                let ts = context
+                    .object
+                    .body_expect("context object should has body!")
+                    .update_time();
+
+                ts
+            }
         }
     }
 
@@ -357,22 +340,25 @@ impl DownloadContext for TransContextHolder {
         &self.0.referer
     }
 
-    async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool {
-        self.0
-            .source_exists(&source.target, &source.codec_desc)
-            .await
+    async fn update_at(&self) -> Timestamp {
+        self.0.update_at().await
     }
 
     async fn sources_of(
         &self,
         filter: &DownloadSourceFilter,
         limit: usize,
-    ) -> LinkedList<DownloadSource<DeviceDesc>> {
+    ) -> (LinkedList<DownloadSource<DeviceDesc>>, Timestamp) {
         self.0.sources_of(filter, limit).await
     }
 
-    fn on_new_session(&self, task: &dyn LeafDownloadTask, session: &DownloadSession) {
-        self.0.state.on_new_session(task, session);
+    fn on_new_session(
+        &self,
+        task: &dyn LeafDownloadTask,
+        session: &DownloadSession,
+        update_at: Timestamp,
+    ) {
+        self.0.state.on_new_session(task, session, update_at);
     }
 
     fn on_drain(&self, task: &dyn LeafDownloadTask, when: Timestamp) {

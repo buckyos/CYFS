@@ -53,6 +53,7 @@ struct CanceledState {
     err: BuckyError
 }
 
+#[derive(Debug, Clone)]
 pub enum DownloadSessionState {
     Downloading, 
     Finished,

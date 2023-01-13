@@ -7,7 +7,6 @@ use cyfs_bdt::StackGuard;
 use cyfs_lib::TransTaskInfo;
 use cyfs_task_manager::*;
 
-use sha2::Digest;
 use std::path::PathBuf;
 use std::sync::Arc;
 
