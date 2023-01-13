@@ -15,7 +15,7 @@ pub enum BlockLinkState {
     InvalidBranch,
 }
 
-pub struct Storage {
+pub struct GroupStorage {
     group: Group,
     group_id: ObjectId,
     dec_id: ObjectId,
@@ -31,8 +31,12 @@ pub struct Storage {
     pre_commits: HashMap<ObjectId, GroupConsensusBlock>,
 }
 
-impl Storage {
-    pub async fn load(group_id: &ObjectId, dec_id: &ObjectId, rpath: &str) -> BuckyResult<Storage> {
+impl GroupStorage {
+    pub async fn load(
+        group_id: &ObjectId,
+        dec_id: &ObjectId,
+        rpath: &str,
+    ) -> BuckyResult<GroupStorage> {
         // 用hash加载chunk
         // 从chunk解析group
         unimplemented!()
@@ -42,7 +46,7 @@ impl Storage {
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
-    ) -> BuckyResult<Storage> {
+    ) -> BuckyResult<GroupStorage> {
         unimplemented!()
     }
 

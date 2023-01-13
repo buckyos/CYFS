@@ -1,3 +1,5 @@
-mod storage;
+mod dec_storage;
+mod group_storage;
 
-pub use storage::*;
+pub use dec_storage::*;
+pub use group_storage::*;

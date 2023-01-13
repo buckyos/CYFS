@@ -11,7 +11,7 @@ use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
 use futures::FutureExt;
 
 use crate::{
-    helper::Timer, storage::Storage, HotstuffMessage, SyncBound, CHANNEL_CAPACITY,
+    helper::Timer, storage::GroupStorage, HotstuffMessage, SyncBound, CHANNEL_CAPACITY,
     SYNCHRONIZER_TIMEOUT, SYNCHRONIZER_TRY_TIMES,
 };
 
@@ -119,7 +119,7 @@ impl Synchronizer {
         min_bound: SyncBound,
         max_bound: SyncBound,
         remote: ObjectId,
-        store: &Storage,
+        store: &GroupStorage,
     ) -> BuckyResult<()> {
         // TODO: combine the requests
 

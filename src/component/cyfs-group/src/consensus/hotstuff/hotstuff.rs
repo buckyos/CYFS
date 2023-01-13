@@ -15,9 +15,9 @@ use futures::FutureExt;
 
 use crate::{
     consensus::synchronizer::Synchronizer, dec_state::StatePusher, helper::Timer, AsProposal,
-    Committee, ExecuteResult, HotstuffBlockQCVote, HotstuffMessage, HotstuffTimeoutVote,
-    PendingProposalMgr, ProposalConsumeMessage, RPathDelegate, Storage, VoteMgr, VoteThresholded,
-    CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
+    Committee, ExecuteResult, GroupStorage, HotstuffBlockQCVote, HotstuffMessage,
+    HotstuffTimeoutVote, PendingProposalMgr, ProposalConsumeMessage, RPathDelegate, VoteMgr,
+    VoteThresholded, CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
 };
 
 /**
@@ -28,7 +28,7 @@ use crate::{
 pub(crate) struct Hotstuff {
     local_id: ObjectId,
     committee: Committee,
-    store: Storage,
+    store: GroupStorage,
     signer: RsaCPUObjectSigner,
     round: u64,                       // 当前轮次
     high_qc: Option<HotstuffBlockQC>, // 最后一次通过投票的确认信息
@@ -53,7 +53,7 @@ impl Hotstuff {
     pub async fn spawn(
         local_id: ObjectId,
         committee: Committee,
-        store: Storage,
+        store: GroupStorage,
         signer: RsaCPUObjectSigner,
         network_sender: crate::network::Sender,
         non_driver: crate::network::NonDriver,
