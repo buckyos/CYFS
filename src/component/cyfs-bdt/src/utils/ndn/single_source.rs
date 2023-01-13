@@ -102,7 +102,7 @@ impl DownloadContext for SingleSourceContext {
         self.0.referer.as_str()
     }
 
-    fn update_at(&self) -> Timestamp {
+    async fn update_at(&self) -> Timestamp {
         self.0.create_at
     }
 
@@ -114,7 +114,7 @@ impl DownloadContext for SingleSourceContext {
                 codec_desc: self.source().codec_desc.clone(), 
             });
         } 
-        (result, self.update_at())
+        (result, self.0.create_at)
     }
 
     fn on_new_session(&self, _task: &dyn LeafDownloadTask, new_session: &DownloadSession, _update_at: Timestamp) {
