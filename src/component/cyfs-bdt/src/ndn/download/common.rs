@@ -26,6 +26,7 @@ use serde::{
 #[derive(Clone, Debug)]
 pub struct DownloadSourceFilter {
     pub exclude_target: Option<Vec<DeviceId>>, 
+    pub include_target: Option<Vec<DeviceId>>, 
     pub include_codec: Option<Vec<ChunkCodecDesc>>, 
 } 
 
@@ -33,12 +34,17 @@ impl Default for DownloadSourceFilter {
     fn default() -> Self {
         Self {
             exclude_target: None, 
+            include_target: None, 
             include_codec: Some(vec![ChunkCodecDesc::Unknown])
         }
     } 
 }
 
 impl DownloadSourceFilter {
+    pub fn fill_values(&mut self, chunk: &ChunkId) {
+        self.include_codec = self.include_codec.as_ref().map(|include| include.iter().map(|codec| codec.fill_values(chunk)).collect());
+    }
+
     pub fn check(&self, source: &DownloadSource<DeviceDesc>) -> bool {
         if let Some(exclude) = self.exclude_target.as_ref() {
             for target in exclude {
@@ -48,15 +54,30 @@ impl DownloadSourceFilter {
             }
         }
 
-        if let Some(include) = self.include_codec.as_ref() {
+        if let Some(include_target) = self.include_target.as_ref() {
+            let target_id = source.target.device_id();
+            if include_target.iter().any(|include| target_id.eq(include)) {
+                if let Some(include) = self.include_codec.as_ref() {
+                    for codec in include {
+                        if source.codec_desc.support_desc(codec) {
+                            return true;
+                        }
+                    }
+                } else {
+                    return true;
+                }
+            }
+            false
+        } else if let Some(include) = self.include_codec.as_ref() {
             for codec in include {
                 if source.codec_desc.support_desc(codec) {
                     return true;
                 }
             }
+            false
+        } else {
+            false
         }
-
-        false
     }
 }
 

@@ -98,6 +98,27 @@ impl std::fmt::Display for DownloadSession {
 
 
 impl DownloadSession {
+    pub fn error(
+        chunk: ChunkId, 
+        session_id: Option<TempSeq>, 
+        source: DownloadSource<DeviceId>, 
+        referer: Option<String>, 
+        group_path: Option<String>,
+        err: BuckyError
+    ) -> Self {
+        Self(Arc::new(SessionImpl {
+            chunk, 
+            session_id: session_id.unwrap_or_default(), 
+            source, 
+            referer, 
+            group_path, 
+            state: RwLock::new(StateImpl::Canceled(CanceledState {
+                send_ctrl_time: None, 
+                err
+            })), 
+        }))
+    }
+
     pub fn interest(
         chunk: ChunkId, 
         session_id: TempSeq, 
