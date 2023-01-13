@@ -1966,6 +1966,7 @@ dependencies = [
  "protobuf",
  "protoc-bin-vendored",
  "protoc-rust",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "sha2 0.8.2",

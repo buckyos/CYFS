@@ -6,8 +6,9 @@ use cyfs_core::{
     GroupConsensusBlock, GroupProposal, GroupProposalObject, GroupRPath, GroupRPathStatus,
 };
 use cyfs_lib::NONObjectInfo;
+use rand::Rng;
 
-use crate::CLIENT_POLL_TIMEOUT;
+use crate::{HotstuffMessage, CLIENT_POLL_TIMEOUT};
 
 pub struct RPathClient {
     rpath: GroupRPath,
@@ -105,6 +106,23 @@ impl RPathClient {
                 Err(e) => Err(e),
             },
         )
+    }
+
+    // request last state from random admin
+    pub async fn refresh_state(&self) -> BuckyResult<()> {
+        let group = self
+            .non_driver
+            .get_group(&self.rpath.group_id(), None)
+            .await?;
+
+        let admins = group.select_members_with_distance(&self.local_id, GroupMemberScope::Admin);
+        let random = rand::thread_rng().gen_range(0..admins.len());
+        let admin = admins.get(random).unwrap().clone();
+
+        self.network_sender
+            .post_message(HotstuffMessage::LastStateRequest, self.rpath.clone(), admin)
+            .await;
+        Ok(())
     }
 
     pub async fn get_field(&self, sub_path: &str) -> BuckyResult<GroupRPathStatus> {
