@@ -89,6 +89,7 @@ impl DownloadTaskManager {
         }
     }
 
+    /*
     pub fn gen_task_id(obj_id: &ObjectId, local_path: Option<String>) -> TaskId {
         let mut sha256 = sha2::Sha256::new();
         sha256.input(DOWNLOAD_FILE_TASK.0.to_le_bytes());
@@ -98,6 +99,7 @@ impl DownloadTaskManager {
         }
         sha256.result().into()
     }
+    */
 
     pub async fn create_file_task(
         &self,
@@ -141,7 +143,7 @@ impl DownloadTaskManager {
             .task_manager
             .create_task(dec_id.clone(), source.clone(), DOWNLOAD_FILE_TASK, params)
             .await?;
-        assert_eq!(task_id, Self::gen_task_id(&file_id, local_path));
+        // assert_eq!(task_id, Self::gen_task_id(&file_id, local_path));
 
         let mut conn = self.trans_store.create_connection().await?;
         conn.add_task_info(&task_id, &None, TaskStatus::Stopped, vec![(source, dec_id)])
