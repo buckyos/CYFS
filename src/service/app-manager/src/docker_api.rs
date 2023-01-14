@@ -251,9 +251,9 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
             format!("failed to read the resolv file: {}", err),
         )
     })?;
-    let reg = regex::Regex::new(r"127.0.0.53").unwrap();
     let is_host_systemd_resolved = resolv_content.contains("127.0.0.53");
     if !is_host_systemd_resolved {
+        info!("resolv.conf file did not contain 127.0.0.53 use this file directly");
         mounts.push(Mount {
             // container's dns  conf bind host config
             target: Some("/etc/resolv.conf".to_string()),
@@ -262,6 +262,20 @@ fn get_hostconfig_mounts(id: &str) -> BuckyResult<Option<Vec<Mount>>> {
             read_only: Some(true),
             ..Default::default()
         })
+    } else {
+        info!("resolv.conf file contain 127.0.0.53, use systemd resolv.conf instead");
+        let systemd_resolve = "/run/systemd/resolve/resolv.conf";
+        let systemd_resolve_exist = std::path::Path::new(systemd_resolve).is_file();
+        if systemd_resolve_exist {
+            mounts.push(Mount {
+                // container's dns  conf bind host config
+                target: Some("/etc/resolv.conf".to_string()),
+                source: Some(systemd_resolve.to_string()),
+                typ: Some(bollard::models::MountTypeEnum::BIND),
+                read_only: Some(true),
+                ..Default::default()
+            })
+        }
     }
 
     Ok(Some(mounts))
