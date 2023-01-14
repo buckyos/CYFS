@@ -664,6 +664,10 @@ impl AppManager {
     //这一组函数的意义是响应cmd事件，判断是否可以执行cmd，如果可以执行，改变local_status并且将cmd加入队列
     async fn on_add_cmd(&self, app_id: &DecAppId) -> BuckyResult<()> {
         info!("recv add cmd, app:{}", app_id);
+        // 如果app在exclude里，不允许添加App
+        if self.config.app.exclude.contains(app_id) {
+            return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, format!("app {} in exclude list", app_id)));
+        }
         if self
             .app_local_list
             .read()
@@ -759,6 +763,11 @@ impl AppManager {
 
         match cmd_code {
             CmdCode::Install(_) | CmdCode::Start => {
+                // 如果app在exclude里，不允许App安装或启动
+                if self.config.app.exclude.contains(app_id) {
+                    return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, format!("app {} in exclude list", app_id)));
+                }
+
                 if from_user {
                     info!(
                         "recv cmd from user, cmd: {}, will reset retry count.",
