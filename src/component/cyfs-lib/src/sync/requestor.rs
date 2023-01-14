@@ -11,20 +11,7 @@ pub struct SyncRequestor {
     service_url: Url,
 }
 
-impl Default for SyncRequestor {
-    fn default() -> Self {
-        let service_addr = format!("127.0.0.1:{}", cyfs_base::NON_STACK_HTTP_PORT);
-
-        Self::new_tcp(&service_addr)
-    }
-}
-
 impl SyncRequestor {
-    pub fn new_tcp(service_addr: &str) -> Self {
-        let tcp_requestor = TcpHttpRequestor::new(service_addr);
-        Self::new(Arc::new(Box::new(tcp_requestor)))
-    }
-
     pub fn new(requestor: HttpRequestorRef) -> Self {
         let addr = requestor.remote_addr();
 
