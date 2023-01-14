@@ -17,6 +17,7 @@ enum WaitSession {
 
 struct ContextImpl {
     referer: String, 
+    create_at: Timestamp, 
     source: DownloadSource<DeviceDesc>, 
     session: RwLock<WaitSession>
 }
@@ -35,6 +36,7 @@ impl SingleSourceContext {
 
     pub fn from_desc(referer: String, remote: DeviceDesc) -> Self {
         Self(Arc::new(ContextImpl {
+            create_at: bucky_time_now(), 
             referer, 
             source: DownloadSource {
                 target: remote, 
@@ -48,6 +50,7 @@ impl SingleSourceContext {
         let device = stack.device_cache().get(&remote).await
                 .ok_or_else(|| BuckyError::new(BuckyErrorCode::NotFound, "device desc not found"))?;
         Ok(Self(Arc::new(ContextImpl {
+            create_at: bucky_time_now(), 
             referer, 
             source: DownloadSource {
                 target: device.desc().clone(), 
@@ -99,11 +102,11 @@ impl DownloadContext for SingleSourceContext {
         self.0.referer.as_str()
     }
 
-    async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool {
-        self.source().target.device_id().eq(&source.target) && self.source().codec_desc.support_desc(&source.codec_desc)
+    async fn update_at(&self) -> Timestamp {
+        self.0.create_at
     }
 
-    async fn sources_of(&self, filter: &DownloadSourceFilter, _limit: usize) -> LinkedList<DownloadSource<DeviceDesc>> {
+    async fn sources_of(&self, filter: &DownloadSourceFilter, _limit: usize) -> (LinkedList<DownloadSource<DeviceDesc>>, Timestamp) {
         let mut result = LinkedList::new();
         if filter.check(self.source()) {
             result.push_back(DownloadSource {
@@ -111,10 +114,10 @@ impl DownloadContext for SingleSourceContext {
                 codec_desc: self.source().codec_desc.clone(), 
             });
         } 
-        result
+        (result, self.0.create_at)
     }
 
-    fn on_new_session(&self, new_session: &DownloadSession) {
+    fn on_new_session(&self, _task: &dyn LeafDownloadTask, new_session: &DownloadSession, _update_at: Timestamp) {
         let waiter = {
             let mut session = self.0.session.write().unwrap();
             match &mut *session {

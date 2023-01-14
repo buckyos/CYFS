@@ -680,7 +680,7 @@ impl ChunkCache for SingleDiskChunkCache {
     async fn put_chunk(&self, chunk_id: &ChunkId, mut chunk: Box<dyn Chunk>) -> BuckyResult<()> {
         assert_eq!(chunk_id.len(), chunk.get_len());
         let file_path = self.get_file_path(chunk_id, true);
-        log::info!("will put chunk, chunk={}, file={}", chunk_id, file_path.display());
+        log::info!("will put chunk, chunk={}, len={}, local file={}", chunk_id, chunk_id.len(), file_path.display());
 
         if file_path.exists() {
             let msg = format!("put chunk but local file already exist! chunk={}, file={},", chunk_id, file_path.display());

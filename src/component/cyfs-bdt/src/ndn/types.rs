@@ -481,45 +481,6 @@ impl SpeedCounter {
 
 
 
-// 对scheduler的接口
-#[derive(Debug, Serialize, Deserialize)]
-pub enum NdnTaskState {
-    Running,
-    Paused,
-    Error(BuckyError/*被cancel的原因*/), 
-    Finished
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum NdnTaskControlState {
-    Normal, 
-    Paused, 
-    Canceled, 
-}
-
-pub trait NdnTask: Send + Sync {
-    fn clone_as_task(&self) -> Box<dyn NdnTask>;
-    fn state(&self) -> NdnTaskState;
-    fn control_state(&self) -> NdnTaskControlState;
-
-    fn resume(&self) -> BuckyResult<NdnTaskControlState> {
-        Ok(NdnTaskControlState::Normal)
-    }
-    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
-        Ok(NdnTaskControlState::Normal)
-    }
-    fn pause(&self) -> BuckyResult<NdnTaskControlState> {
-        Ok(NdnTaskControlState::Normal)
-    }
-    
-    fn close(&self) -> BuckyResult<()> {
-        Ok(())
-    }
-
-    fn cur_speed(&self) -> u32;
-    fn history_speed(&self) -> u32;
-}
-
 
 pub struct ProgressCounter {
     last_recv: u64, 
@@ -557,3 +518,46 @@ impl ProgressCounter {
         self.cur_speed
     }
 }
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum NdnTaskState {
+    Running,
+    Paused,
+    Error(BuckyError/*被cancel的原因*/), 
+    Finished
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum NdnTaskControlState {
+    Normal, 
+    Paused, 
+    Canceled, 
+}
+
+pub trait NdnTask: Send + Sync {
+    fn clone_as_task(&self) -> Box<dyn NdnTask>;
+    fn state(&self) -> NdnTaskState;
+    fn control_state(&self) -> NdnTaskControlState;
+
+    fn resume(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
+        self.cancel_by_error(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"))
+    }
+    fn cancel_by_error(&self, _err: BuckyError) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    fn pause(&self) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
+    }
+    
+    fn close(&self) -> BuckyResult<()> {
+        Ok(())
+    }
+
+    fn cur_speed(&self) -> u32;
+    fn history_speed(&self) -> u32;
+}
+

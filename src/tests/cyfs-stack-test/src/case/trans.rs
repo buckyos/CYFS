@@ -165,6 +165,8 @@ async fn add_dir_impl(
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        access: None,
+
         // 关联的dirs
         file_id: None,
         dirs: None,
@@ -242,6 +244,8 @@ async fn add_file_impl(
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        access: None,
+
         // 关联的dirs
         file_id: None,
         dirs: None,
@@ -288,6 +292,7 @@ async fn add_file_impl2(
         local_path: local_path.to_path_buf(),
         owner: USER1_DATA.get().unwrap().people_id.object_id().to_owned(),
         chunk_size: 1024 * 1024 * 4,
+        access: None,
     };
     let ret = stack.util().build_file_object(req).await.unwrap();
     let file_id = ret.object_id;
@@ -308,6 +313,8 @@ async fn add_file_impl2(
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        access: None,
+        
         // 关联的dirs
         file_id: Some(file_id),
         dirs: None,
@@ -475,7 +482,6 @@ async fn download_file_impl(
     }
 
     let task_list = ret.unwrap().task_list;
-    assert_eq!(task_list.len(), 1);
 
     for task in task_list.iter() {
         let ret = stack

@@ -155,6 +155,7 @@ impl StackConfig {
                 atomic_interval: Duration::from_millis(10), 
                 schedule_interval: Duration::from_secs(1), 
                 channel: ndn::channel::Config {
+                    reserve_timeout: Duration::from_secs(60), 
                     resend_interval: Duration::from_millis(500), 
                     resend_timeout: Duration::from_secs(5), 
                     block_interval: Duration::from_secs(2), 

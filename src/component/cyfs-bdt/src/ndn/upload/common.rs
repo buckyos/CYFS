@@ -25,6 +25,7 @@ impl Default for UploadTaskPriority {
 pub trait UploadTask: NdnTask {
     fn clone_as_upload_task(&self) -> Box<dyn UploadTask>;
 
+
     fn add_task(&self, _path: Option<String>, _sub: Box<dyn UploadTask>) -> BuckyResult<()> {
         Err(BuckyError::new(BuckyErrorCode::NotSupport, "no implement"))
     }

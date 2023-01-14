@@ -190,8 +190,8 @@ impl NdnTask for ChunkListTask {
         }
     }
 
-    
-    fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
+
+    fn cancel_by_error(&self, err: BuckyError) -> BuckyResult<NdnTaskControlState> {
         let waiters = {
             let mut state = self.0.state.write().unwrap();
             let waiters = match &mut state.control_state {
@@ -205,7 +205,7 @@ impl NdnTask for ChunkListTask {
 
             match &state.task_state {
                 TaskStateImpl::Downloading(_) => {
-                    state.task_state = TaskStateImpl::Error(BuckyError::new(BuckyErrorCode::UserCanceled, "cancel invoked"));
+                    state.task_state = TaskStateImpl::Error(err);
                 }, 
                 _ => {}
             };
@@ -252,6 +252,7 @@ impl DownloadTask for ChunkListTask {
             TaskStateImpl::Finished(downloaded) => *downloaded, 
             _ => 0,
         }
+
     }
 
     async fn wait_user_canceled(&self) -> BuckyError {
@@ -283,6 +284,10 @@ impl ChunkListTaskReader {
             offset: 0, 
             task
         }
+    }
+
+    pub fn task(&self) -> &dyn LeafDownloadTask {
+        &self.task
     }
 }
 

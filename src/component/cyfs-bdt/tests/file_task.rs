@@ -42,7 +42,7 @@ async fn one_small_file() {
         &*ln_stack, 
         file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     async_std::io::copy(reader, async_std::io::sink()).await.unwrap();
     
@@ -82,7 +82,7 @@ async fn same_chunk_file() {
     let (_, reader) = download_file(
         &*ln_stack, file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     async_std::io::copy(reader, async_std::io::sink()).await.unwrap();
   
@@ -110,7 +110,7 @@ async fn empty_file() {
     let (_, reader) = download_file(
         &*ln_stack, file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     async_std::io::copy(reader, async_std::io::sink()).await.unwrap();
    
@@ -154,7 +154,7 @@ async fn one_small_file_with_ranges() {
         &*ln_stack, 
         file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     
     
@@ -206,7 +206,7 @@ async fn one_small_file_with_ranges() {
 //         &*ln_stack, 
 //         file, 
 //         None, 
-//         SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+//         SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
 //     ).await.unwrap();
 
 //     let mut buffer = vec![0u8; 1024 * 1024];

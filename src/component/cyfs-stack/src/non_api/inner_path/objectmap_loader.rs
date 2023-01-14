@@ -66,11 +66,11 @@ impl NONObjectMapLoader {
         let object_id = ret.unwrap();
 
         let ret = if object_id.obj_type_code() == ObjectTypeCode::ObjectMap {
-            let obj = self.root_cache.get_object_map(&object_id).await?;
-            match obj {
-                Some(obj) => {
+            let ret = self.root_cache.get_object_map(&object_id).await?;
+            match ret {
+                Some(object) => {
                     let object = {
-                        let object_map = obj.lock().await;
+                        let object_map = object.lock().await;
                         object_map.clone()
                     };
 

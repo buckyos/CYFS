@@ -23,6 +23,7 @@ use super::super::{
 #[derive(Clone, Debug)]
 pub struct DownloadSourceFilter {
     pub exclude_target: Option<Vec<DeviceId>>, 
+    pub include_target: Option<Vec<DeviceId>>, 
     pub include_codec: Option<Vec<ChunkCodecDesc>>, 
 } 
 
@@ -30,12 +31,17 @@ impl Default for DownloadSourceFilter {
     fn default() -> Self {
         Self {
             exclude_target: None, 
+            include_target: None, 
             include_codec: Some(vec![ChunkCodecDesc::Unknown])
         }
     } 
 }
 
 impl DownloadSourceFilter {
+    pub fn fill_values(&mut self, chunk: &ChunkId) {
+        self.include_codec = self.include_codec.as_ref().map(|include| include.iter().map(|codec| codec.fill_values(chunk)).collect());
+    }
+
     pub fn check(&self, source: &DownloadSource<DeviceDesc>) -> bool {
         if let Some(exclude) = self.exclude_target.as_ref() {
             for target in exclude {
@@ -45,15 +51,30 @@ impl DownloadSourceFilter {
             }
         }
 
-        if let Some(include) = self.include_codec.as_ref() {
+        if let Some(include_target) = self.include_target.as_ref() {
+            let target_id = source.target.device_id();
+            if include_target.iter().any(|include| target_id.eq(include)) {
+                if let Some(include) = self.include_codec.as_ref() {
+                    for codec in include {
+                        if source.codec_desc.support_desc(codec) {
+                            return true;
+                        }
+                    }
+                } else {
+                    return true;
+                }
+            }
+            false
+        } else if let Some(include) = self.include_codec.as_ref() {
             for codec in include {
                 if source.codec_desc.support_desc(codec) {
                     return true;
                 }
             }
+            false
+        } else {
+            false
         }
-
-        false
     }
 }
 
@@ -64,9 +85,29 @@ pub trait DownloadContext: Send + Sync {
     }
     fn clone_as_context(&self) -> Box<dyn DownloadContext>;
     fn referer(&self) -> &str;
-    async fn source_exists(&self, source: &DownloadSource<DeviceId>) -> bool;
-    async fn sources_of(&self, filter: &DownloadSourceFilter, limit: usize) -> LinkedList<DownloadSource<DeviceDesc>>;
-    fn on_new_session(&self, _session: &DownloadSession) {}
+    // update time when context's sources changed
+    async fn update_at(&self) -> Timestamp;
+    async fn sources_of(
+        &self, 
+        filter: &DownloadSourceFilter, 
+        limit: usize
+    ) -> (
+        LinkedList<DownloadSource<DeviceDesc>>, 
+        /*context's current update_at*/
+        Timestamp);
+    fn on_new_session(
+        &self, 
+        _task: &dyn LeafDownloadTask, 
+        _session: &DownloadSession, 
+        /*session created based on context's update_at*/
+        _update_at: Timestamp
+    ) {}
+    // called when tried all source in context but task didn't finish  
+    fn on_drain(
+        &self, 
+        _task: &dyn LeafDownloadTask, 
+        /*event trigered based on context's update_at*/
+        _update_at: Timestamp) {}
 }
 
 #[derive(Clone, Debug)]
@@ -97,6 +138,7 @@ impl Default for DownloadTaskPriority {
         Self::Normal
     }
 }
+
 
 
 

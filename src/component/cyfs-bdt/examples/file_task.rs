@@ -98,7 +98,7 @@ async fn main() {
         &*ln_stack, 
         file, 
         None, 
-        SingleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
+        SampleDownloadContext::desc_streams("".to_owned(), vec![rn_stack.local_const().clone()]), 
     ).await.unwrap();
     let task = ln_stack.ndn().root_task().download().sub_task(path.as_str()).unwrap();
 
@@ -107,6 +107,7 @@ async fn main() {
     loop {
         log::info!("task speed {} progress {}", task.cur_speed(), task.downloaded() as f32 / file_len as f32);
         let _ = async_std::task::sleep(Duration::from_secs(1)).await;
+
         if let NdnTaskState::Finished = task.state() {
             break;
         }

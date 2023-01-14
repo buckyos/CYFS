@@ -359,7 +359,7 @@ impl DataSync {
 
         let task_id = format!("sync_chunk_{}", chunk_id);
 
-        let context = SingleDownloadContext::id_streams(
+        let context = SampleDownloadContext::id_streams(
             &self.bdt_stack,
             "".to_owned(),
             &[self.ood_device_id.clone()],
@@ -410,7 +410,7 @@ impl DataSync {
 
         let task_id = format!("sync_chunks_{}", file_id);
 
-        let context = SingleDownloadContext::id_streams(
+        let context = SampleDownloadContext::id_streams(
             &self.bdt_stack,
             "".to_owned(),
             &[self.ood_device_id.clone()],

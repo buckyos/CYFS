@@ -199,6 +199,7 @@ impl UtilInputTransformer {
             local_path: req.local_path,
             owner: req.owner,
             chunk_size: req.chunk_size,
+            access: req.access,
         };
 
         let out_resp = self.processor.build_file_object(out_req).await?;
@@ -466,6 +467,7 @@ impl UtilOutputProcessor for UtilOutputTransformer {
             local_path: req.local_path,
             owner: req.owner,
             chunk_size: req.chunk_size,
+            access: req.access,
         };
 
         let resp = self.processor.build_file_object(in_req).await?;
