@@ -2,16 +2,19 @@ use super::requestor::*;
 use cyfs_base::*;
 
 use http_types::{Request, Response};
-use std::sync::{Arc};
+use std::sync::Arc;
 use surf::{Client, Config};
 
-
+/*
 use once_cell::sync::Lazy;
 static GLOBAL_CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
     let client = Config::new().try_into().unwrap();
 
     Arc::new(client)
 });
+*/
+
+const DEFAULT_MAX_CONNECTIONS_PER_HOST: usize = 50;
 
 #[derive(Clone)]
 pub struct SurfHttpRequestor {
@@ -20,10 +23,19 @@ pub struct SurfHttpRequestor {
 }
 
 impl SurfHttpRequestor {
-    pub fn new(service_addr: &str) -> Self {
+    pub fn new(service_addr: &str, mut http_max_connections_per_host: usize) -> Self {
+        if http_max_connections_per_host == 0 {
+            http_max_connections_per_host = DEFAULT_MAX_CONNECTIONS_PER_HOST;
+        }
+
+        let client = Config::new()
+            .set_max_connections_per_host(http_max_connections_per_host)
+            .try_into()
+            .unwrap();
+
         Self {
             service_addr: service_addr.to_owned(),
-            client: GLOBAL_CLIENT.clone(),
+            client: Arc::new(client),
         }
     }
 }
