@@ -110,6 +110,11 @@ pub enum CyfsStackRequestorType {
 
 #[derive(Debug, Clone)]
 pub struct CyfsStackRequestorConfig {
+
+    // default is None, use the traditional http-tcp requestor without connection pool; 
+    // use Some(0) will use the default connection pool size 50
+    pub http_max_connections_per_host: Option<usize>,
+
     pub non_service: CyfsStackRequestorType,
     pub ndn_service: CyfsStackRequestorType,
     pub util_service: CyfsStackRequestorType,
@@ -122,6 +127,8 @@ pub struct CyfsStackRequestorConfig {
 impl CyfsStackRequestorConfig {
     pub fn default() -> Self {
         Self {
+            http_max_connections_per_host: None,
+
             non_service: CyfsStackRequestorType::Http,
             ndn_service: CyfsStackRequestorType::Http,
             util_service: CyfsStackRequestorType::Http,
@@ -134,6 +141,8 @@ impl CyfsStackRequestorConfig {
 
     pub fn ws() -> Self {
         Self {
+            http_max_connections_per_host: None,
+
             non_service: CyfsStackRequestorType::WebSocket,
             ndn_service: CyfsStackRequestorType::WebSocket,
             util_service: CyfsStackRequestorType::WebSocket,
@@ -248,13 +257,15 @@ impl SharedCyfsStackParam {
 
 #[derive(Clone)]
 struct RequestorHolder {
+    requestor_config: CyfsStackRequestorConfig,
     http: Option<HttpRequestorRef>,
     ws: Option<HttpRequestorRef>,
 }
 
 impl RequestorHolder {
-    fn new() -> Self {
+    fn new(requestor_config: CyfsStackRequestorConfig) -> Self {
         Self {
+            requestor_config,
             http: None,
             ws: None,
         }
@@ -275,7 +286,12 @@ impl RequestorHolder {
                             param.service_url.host_str().unwrap(),
                             param.service_url.port().unwrap()
                         );
-                        Arc::new(Box::new(TcpHttpRequestor::new(&addr)))
+
+                        if let Some(http_max_connections_per_host) = self.requestor_config.http_max_connections_per_host {
+                            Arc::new(Box::new(SurfHttpRequestor::new(&addr, http_max_connections_per_host)))
+                        } else {
+                            Arc::new(Box::new(TcpHttpRequestor::new(&addr)))
+                        }
                     })
                     .clone()
             }
@@ -329,7 +345,7 @@ impl SharedCyfsStack {
             dec_id.set(id.clone()).unwrap();
         }
 
-        let mut requestor_holder = RequestorHolder::new();
+        let mut requestor_holder = RequestorHolder::new(param.requestor_config.clone());
 
         // trans service
         let requestor =

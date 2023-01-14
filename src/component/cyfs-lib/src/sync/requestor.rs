@@ -3,7 +3,6 @@ use crate::*;
 use cyfs_base::BuckyResult;
 
 use http_types::{Method, Request, StatusCode, Url};
-use std::sync::Arc;
 
 
 pub struct SyncRequestor {
