@@ -48,6 +48,7 @@ impl NonDriver {
         &self,
         group_id: &ObjectId,
         group_chunk_id: Option<&ObjectId>,
+        from: Option<&ObjectId>,
     ) -> BuckyResult<Group> {
         unimplemented!()
     }

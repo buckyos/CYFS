@@ -1,9 +1,6 @@
 // the manager of the DEC's state that synchronized from the group's rpath
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectDesc, ObjectId,
@@ -16,7 +13,7 @@ use crate::{
     helper::{verify_block, Timer},
     network::NonDriver,
     storage::{DecStorage, DecStorageCache},
-    CHANNEL_CAPACITY, SYNCHRONIZER_TIMEOUT,
+    CHANNEL_CAPACITY,
 };
 
 use super::{CallReplyNotifier, CallReplyWaiter};
@@ -296,7 +293,7 @@ impl DecStateSynchronizerRunner {
                 let group_chunk_id = state_cache.header_block.group_chunk_id().clone();
                 let group = self
                     .non_driver
-                    .get_group(self.rpath.group_id(), Some(&group_chunk_id))
+                    .get_group(self.rpath.group_id(), Some(&group_chunk_id), None)
                     .await;
                 if let Ok(group) = group {
                     self.state_cache = Some(DecStateSynchronizerCache {
@@ -358,7 +355,11 @@ impl DecStateSynchronizerRunner {
             None => {
                 let group = self
                     .non_driver
-                    .get_group(self.rpath.group_id(), Some(header_block.group_chunk_id()))
+                    .get_group(
+                        self.rpath.group_id(),
+                        Some(header_block.group_chunk_id()),
+                        Some(&remote),
+                    )
                     .await?;
                 (header_block.group_chunk_id().clone(), group)
             }

@@ -41,7 +41,7 @@ impl DecStorage {
         unimplemented!()
     }
 
-    pub async fn get_by_path(&self, path: String) -> BuckyResult<GroupRPathStatus> {
+    pub async fn get_by_path(&self, path: &str) -> BuckyResult<GroupRPathStatus> {
         unimplemented!()
     }
 }

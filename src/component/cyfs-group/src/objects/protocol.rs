@@ -103,7 +103,7 @@ pub(crate) enum HotstuffMessage {
         )>,
     ), // (proposal-id, (ExecuteResult, block, qc-block))
     QueryState(String),
-    VerifiableState(GroupRPathStatus),
+    VerifiableState(String, BuckyResult<GroupRPathStatus>),
 }
 
 #[derive(Clone, RawEncode, RawDecode)]

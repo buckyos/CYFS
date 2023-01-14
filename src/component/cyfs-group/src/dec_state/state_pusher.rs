@@ -216,7 +216,11 @@ impl StateChanggeRunner {
                 if block.group_chunk_id() != progress.header_block.group_chunk_id() {
                     let group = self
                         .non_driver
-                        .get_group(block.r_path().group_id(), Some(block.group_chunk_id()))
+                        .get_group(
+                            block.r_path().group_id(),
+                            Some(block.group_chunk_id()),
+                            None,
+                        )
                         .await;
                     if group.is_err() {
                         return;
@@ -238,7 +242,11 @@ impl StateChanggeRunner {
             None => {
                 let group = self
                     .non_driver
-                    .get_group(block.r_path().group_id(), Some(block.group_chunk_id()))
+                    .get_group(
+                        block.r_path().group_id(),
+                        Some(block.group_chunk_id()),
+                        None,
+                    )
                     .await;
                 if group.is_err() {
                     return;

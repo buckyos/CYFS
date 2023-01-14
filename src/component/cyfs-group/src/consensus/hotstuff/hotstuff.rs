@@ -920,11 +920,16 @@ impl Hotstuff {
                     Ok((HotstuffMessage::BlockVote(vote), remote)) => self.handle_vote(&vote, None, remote).await,
                     Ok((HotstuffMessage::TimeoutVote(timeout), remote)) => self.handle_timeout(&timeout, remote).await,
                     Ok((HotstuffMessage::Timeout(tc), remote)) => self.handle_tc(&tc, remote).await,
+                    Ok((HotstuffMessage::SyncRequest(min_bound, max_bound), remote)) => self.synchronizer.process_sync_request(min_bound, max_bound, remote, &self.store).await,
+                    Ok((HotstuffMessage::LastStateRequest, _)) => panic!("should process by StatePusher"),
+                    Ok((HotstuffMessage::StateChangeNotify(_, _), _)) => panic!("should process by DecStateSynchronizer"),
+                    Ok((HotstuffMessage::ProposalResult(_, _), _)) => panic!("should process by DecStateSynchronizer"),
+                    Ok((HotstuffMessage::QueryState(_), _)) => panic!("should process by DecStateRequestor"),
+                    Ok((HotstuffMessage::VerifiableState(_, _), _)) => panic!("should process by DecStateRequestor"),
                     Err(e) => {
                         log::warn!("[hotstuff] rx_message closed.");
                         Ok(())
                     },
-                    Ok((HotstuffMessage::SyncRequest(min_bound, max_bound), remote)) => self.synchronizer.process_sync_request(min_bound, max_bound, remote, &self.store).await
                 },
                 message = self.rx_message_inner.recv().fuse() => match message {
                     Ok((block, remote)) => {

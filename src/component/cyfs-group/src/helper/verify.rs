@@ -27,6 +27,7 @@ pub async fn verify_block(
 
 pub async fn verify_rpath_value(
     value: &GroupRPathStatus,
+    sub_path: &str,
     block: &GroupConsensusBlock,
     qc: &HotstuffBlockQC,
     group: &Group,

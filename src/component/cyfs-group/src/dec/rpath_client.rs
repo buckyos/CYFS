@@ -2,14 +2,14 @@ use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, GroupMemberScope, NamedObject, ObjectDesc, ObjectId,
     RawConvertTo,
 };
-use cyfs_core::{
-    GroupConsensusBlock, GroupProposal, GroupProposalObject, GroupRPath, GroupRPathStatus,
-};
+use cyfs_core::{GroupConsensusBlock, GroupProposal, GroupProposalObject, GroupRPath};
 use cyfs_lib::NONObjectInfo;
 use rand::Rng;
 
 use crate::{
-    dec_state::DecStateSynchronizer, storage::DecStorage, HotstuffMessage, CLIENT_POLL_TIMEOUT,
+    dec_state::{DecStateRequestor, DecStateSynchronizer},
+    storage::DecStorage,
+    HotstuffMessage, CLIENT_POLL_TIMEOUT,
 };
 
 pub struct RPathClient {
@@ -17,8 +17,8 @@ pub struct RPathClient {
     local_id: ObjectId,
     non_driver: crate::network::NonDriver,
     network_sender: crate::network::Sender,
-    network_listener: crate::network::Listener,
     state_sync: DecStateSynchronizer,
+    state_requestor: DecStateRequestor,
 }
 
 impl RPathClient {
@@ -27,7 +27,6 @@ impl RPathClient {
         local_id: ObjectId,
         non_driver: crate::network::NonDriver,
         network_sender: crate::network::Sender,
-        network_listener: crate::network::Listener,
         dec_store: DecStorage,
     ) -> Self {
         let state_sync = DecStateSynchronizer::new(
@@ -37,13 +36,21 @@ impl RPathClient {
             dec_store.clone(),
         );
 
+        let state_requestor = DecStateRequestor::new(
+            local_id,
+            rpath.clone(),
+            network_sender.clone(),
+            non_driver.clone(),
+            dec_store.clone(),
+        );
+
         Self {
             rpath,
             non_driver,
             network_sender,
-            network_listener,
             local_id,
             state_sync,
+            state_requestor,
         }
     }
 
@@ -60,7 +67,7 @@ impl RPathClient {
         // TODO: signature
         let group = self
             .non_driver
-            .get_group(proposal.r_path().group_id(), None)
+            .get_group(proposal.r_path().group_id(), None, None)
             .await?;
         let admins = group.select_members_with_distance(&self.local_id, GroupMemberScope::Admin);
         let proposal_id = proposal.desc().object_id();
@@ -123,7 +130,7 @@ impl RPathClient {
     pub async fn refresh_state(&self) -> BuckyResult<()> {
         let group = self
             .non_driver
-            .get_group(&self.rpath.group_id(), None)
+            .get_group(&self.rpath.group_id(), None, None)
             .await?;
 
         let admins = group.select_members_with_distance(&self.local_id, GroupMemberScope::Admin);
@@ -139,16 +146,16 @@ impl RPathClient {
     pub async fn get_by_path(&self, sub_path: &str) -> BuckyResult<ObjectId> {
         let group = self
             .non_driver
-            .get_group(self.rpath().group_id(), None)
+            .get_group(self.rpath().group_id(), None, None)
             .await?;
 
         let members = group.select_members_with_distance(&self.local_id, GroupMemberScope::All);
         let req_msg = HotstuffMessage::QueryState(sub_path.to_string());
 
         let waiter = self
-            .network_listener
-            .wait_query_state(sub_path.to_string(), self.rpath.clone())
-            .await?;
+            .state_requestor
+            .wait_query_state(sub_path.to_string())
+            .await;
         let mut waiter_future = Some(waiter.wait());
 
         let mut exe_result = None;
