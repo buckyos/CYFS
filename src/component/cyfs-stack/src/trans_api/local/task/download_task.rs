@@ -8,10 +8,10 @@ use crate::ndn_api::{
 use crate::trans_api::{DownloadTaskTracker, TransStore};
 use crate::NamedDataComponents;
 use cyfs_base::*;
-use cyfs_bdt::{self, StackGuard};
+use cyfs_bdt::{self, LeafDownloadTask, StackGuard};
 use cyfs_task_manager::*;
 
-use cyfs_debug::Mutex;
+use async_std::sync::Mutex as AsyncMutex;
 use sha2::Digest;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -97,15 +97,15 @@ impl DownloadFileTaskParams {
     }
 }
 
-pub struct DownloadFileTask {
+pub(super) struct DownloadFileTask {
     task_store: Option<Arc<dyn TaskStore>>,
     named_data_components: NamedDataComponents,
     task_id: TaskId,
     bdt_stack: StackGuard,
     params: DownloadFileTaskParams,
-    session: async_std::sync::Mutex<Option<String>>,
+    session: async_std::sync::Mutex<Option<Box<dyn LeafDownloadTask>>>,
     verify_task: async_std::sync::Mutex<Option<RunnableTask<VerifyFileRunnable>>>,
-    task_status: Mutex<DownloadFileTaskStatus>,
+    task_status: AsyncMutex<DownloadFileTaskStatus>,
     trans_store: Arc<TransStore>,
 }
 
@@ -127,16 +127,27 @@ impl DownloadFileTask {
             params,
             session: async_std::sync::Mutex::new(None),
             verify_task: async_std::sync::Mutex::new(None),
-            task_status: Mutex::new(task_status),
+            task_status: AsyncMutex::new(task_status),
             trans_store,
         }
     }
 
-    async fn save_task_status(&self) -> BuckyResult<()> {
-        let (task_status, task_data) = {
-            let status = self.task_status.lock().unwrap();
-            (status.status, status.state.to_vec()?)
-        };
+    async fn get_session(&self) -> Option<Box<dyn LeafDownloadTask>> {
+        self.session
+            .lock()
+            .await
+            .as_ref()
+            .map(|v| v.clone_as_leaf_task())
+    }
+
+    async fn take_session(&self) -> Option<Box<dyn LeafDownloadTask>> {
+        self.session.lock().await.take()
+    }
+
+    async fn save_task_status(&self, status: &DownloadFileTaskStatus) -> BuckyResult<()> {
+        let task_status = status.status;
+        let task_data = status.state.to_vec()?;
+
         if self.task_store.is_some() {
             self.task_store
                 .as_ref()
@@ -199,6 +210,7 @@ impl DownloadFileTask {
             } else if let Some(chunk_id) = &self.params.chunk_id {
                 Box::new(LocalChunkWriter::new(
                     path,
+                    chunk_id.to_owned(),
                     self.named_data_components.ndc.clone(),
                     self.named_data_components.tracker.clone(),
                 )) as Box<dyn ChunkWriter>
@@ -210,6 +222,177 @@ impl DownloadFileTask {
         };
 
         Ok(writer)
+    }
+
+    async fn create_task(&self) -> BuckyResult<(String, Box<dyn LeafDownloadTask>)> {
+        let context = self.create_context().await?;
+        let writer = self.create_writer().await?;
+
+        // 创建bdt层的传输任务
+        let ret = if let Some(file) = &self.params.file {
+            let (id, reader) = cyfs_bdt::download_file(
+                &self.bdt_stack,
+                file.clone(),
+                self.params.group.clone(),
+                context,
+            )
+            .await
+            .map_err(|e| {
+                error!(
+                    "start bdt file trans session error! task_id={}, {}",
+                    self.task_id, e
+                );
+                e
+            })?;
+
+            let task = reader.task().clone_as_leaf_task();
+            ChunkListReaderAdapter::new_file(Arc::new(writer), reader, file).async_run();
+
+            info!(
+                "create bdt file trans session success: task={}, file={}, device={:?}, session={}",
+                self.task_id,
+                file.desc().calculate_id(),
+                self.params.device_list,
+                id,
+            );
+
+            (id, task)
+        } else if let Some(chunk_id) = &self.params.chunk_id {
+            let (id, reader) = cyfs_bdt::download_chunk(
+                &self.bdt_stack,
+                chunk_id.clone(),
+                self.params.group.clone(),
+                context,
+            )
+            .await
+            .map_err(|e| {
+                error!(
+                    "start bdt chunk trans session error! task_id={}, {}",
+                    self.task_id.to_string(),
+                    e
+                );
+                e
+            })?;
+
+            let task = reader.task().clone_as_leaf_task();
+            ChunkListReaderAdapter::new_chunk(Arc::new(writer), reader, chunk_id).async_run();
+
+            info!(
+                "create bdt chunk trans session success: task={}, chunk={}, device={:?}",
+                self.task_id.to_string(),
+                chunk_id,
+                self.params.device_list,
+            );
+
+            (id, task)
+        } else {
+            unreachable!();
+        };
+
+        Ok(ret)
+    }
+
+    async fn start_verify(&self) -> BuckyResult<RunnableTask<VerifyFileRunnable>> {
+        info!(
+            "will start verify task for download task! task={}",
+            self.task_id
+        );
+
+        let vtask = RunnableTask::new(VerifyFileRunnable::new(
+            self.named_data_components.chunk_manager.clone(),
+            self.task_id.clone(),
+            self.params.file.clone(),
+            self.params.chunk_id.clone(),
+            self.params.save_path.clone(),
+        ));
+        vtask.start_task().await?;
+
+        Ok(vtask)
+    }
+
+    async fn get_task_status_with_verify_task(
+        &self,
+        verify_task: &RunnableTask<VerifyFileRunnable>,
+    ) -> BuckyResult<DownloadTaskState> {
+        let verify_task_status = verify_task.get_task_status().await;
+
+        let state = match verify_task_status {
+            TaskStatus::Running | TaskStatus::Paused => DownloadTaskState {
+                task_status: TaskStatus::Running,
+                err_code: None,
+                speed: 0,
+                upload_speed: 0,
+                downloaded_progress: 100,
+                sum_size: self.params.len(),
+                group: self.params.group.clone(),
+            },
+            TaskStatus::Finished => {
+                let ret =
+                    bool::clone_from_slice(verify_task.get_task_detail_status().await?.as_slice())?;
+
+                if ret {
+                    DownloadTaskState {
+                        task_status: TaskStatus::Finished,
+                        err_code: None,
+                        speed: 0,
+                        upload_speed: 0,
+                        downloaded_progress: 100,
+                        sum_size: self.params.len(),
+                        group: self.params.group.clone(),
+                    }
+                } else {
+                    let msg = format!(
+                        "verify download task but got invalid data! task={}",
+                        self.task_id
+                    );
+                    error!("{}", msg);
+
+                    DownloadTaskState {
+                        task_status: TaskStatus::Failed,
+                        err_code: Some(BuckyErrorCode::InvalidData),
+                        speed: 0,
+                        upload_speed: 0,
+                        downloaded_progress: 100,
+                        sum_size: self.params.len(),
+                        group: self.params.group.clone(),
+                    }
+                }
+            }
+            TaskStatus::Failed => {
+                let msg = format!("verify download task but got error! task={}", self.task_id);
+                error!("{}", msg);
+
+                DownloadTaskState {
+                    task_status: TaskStatus::Failed,
+                    err_code: Some(BuckyErrorCode::InvalidData),
+                    speed: 0,
+                    upload_speed: 0,
+                    downloaded_progress: 100,
+                    sum_size: self.params.len(),
+                    group: self.params.group.clone(),
+                }
+            }
+            TaskStatus::Stopped => {
+                // should not come here?
+                let msg = format!(
+                    "verify download task but got error state! task={}",
+                    self.task_id
+                );
+                error!("{}", msg);
+
+                DownloadTaskState {
+                    task_status: TaskStatus::Stopped,
+                    err_code: Some(BuckyErrorCode::InvalidData),
+                    speed: 0,
+                    upload_speed: 0,
+                    downloaded_progress: 100,
+                    sum_size: self.params.len(),
+                    group: self.params.group.clone(),
+                }
+            }
+        };
+
+        Ok(state)
     }
 }
 
@@ -228,7 +411,7 @@ impl Task for DownloadFileTask {
     }
 
     async fn get_task_status(&self) -> TaskStatus {
-        self.task_status.lock().unwrap().status
+        self.task_status.lock().await.status
     }
 
     async fn set_task_store(&mut self, task_store: Arc<dyn TaskStore>) {
@@ -236,108 +419,59 @@ impl Task for DownloadFileTask {
     }
 
     async fn start_task(&self) -> BuckyResult<()> {
-        let mut session = self.session.lock().await;
-        // if session.is_some() {
-        //     session.as_ref().unwrap().resume()?;
-        //     return Ok(());
-        // }
-
-        {
-            if self.task_status.lock().unwrap().status == TaskStatus::Running {
-                return Ok(());
-            }
+        let mut task_status = self.task_status.lock().await;
+        if task_status.status == TaskStatus::Running {
+            warn!(
+                "start download task but already in running! task={}",
+                self.task_id
+            );
+            return Ok(());
         }
 
-        let context = self.create_context().await?;
-        let writer = self.create_writer().await?;
+        let (id, task) = self.create_task().await?;
 
-        // 创建bdt层的传输任务
-        let id = if let Some(file) = &self.params.file {
-            let (id, reader) = cyfs_bdt::download_file(
-                &self.bdt_stack,
-                file.clone(),
-                self.params.group.clone(),
-                context,
-            )
-            .await
-            .map_err(|e| {
-                error!(
-                    "start bdt file trans session error! task_id={}, {}",
-                    self.task_id, e
-                );
-                e
-            })?;
-
-            ChunkListReaderAdapter::new_file(Arc::new(writer), reader, file).async_run();
-
-            info!(
-                "create bdt file trans session success: task={}, file={}, device={:?}, session={}",
-                self.task_id,
-                file.desc().calculate_id(),
-                self.params.device_list,
-                id,
-            );
-
-            id
-        } else if let Some(chunk_id) = &self.params.chunk_id {
-            let (id, reader) = cyfs_bdt::download_chunk(
-                &self.bdt_stack,
-                chunk_id.clone(),
-                self.params.group.clone(),
-                context,
-            )
-            .await
-            .map_err(|e| {
-                error!(
-                    "start bdt chunk trans session error! task_id={}, {}",
-                    self.task_id.to_string(),
-                    e
-                );
-                e
-            })?;
-
-            ChunkListReaderAdapter::new_chunk(Arc::new(writer), reader, chunk_id).async_run();
-
-            info!(
-                "create bdt chunk trans session success: task={}, chunk={}, device={:?}",
-                self.task_id.to_string(),
-                chunk_id,
-                self.params.device_list,
-            );
-
-            id
-        } else {
-            unreachable!();
-        };
-
-        *session = Some(id);
-
+        info!("start download task: task={}, group={}", self.task_id, id);
         {
-            self.task_status.lock().unwrap().status = TaskStatus::Running;
+            let mut session = self.session.lock().await;
+            assert!(session.is_none());
+            *session = Some(task);
         }
-        self.save_task_status().await?;
+
+        task_status.status = TaskStatus::Running;
+
+        self.save_task_status(&task_status).await?;
         Ok(())
     }
 
     async fn pause_task(&self) -> BuckyResult<()> {
-        let task_group = self.session.lock().await.clone();
-        if let Some(id) = task_group {
-            let task = self
-                .bdt_stack
-                .ndn()
-                .root_task()
-                .download()
-                .sub_task(&id)
-                .ok_or_else(|| {
-                    let msg = format!("get task but ot found! task={}, group={}", self.task_id, id);
-                    error!("{}", msg);
-                    BuckyError::new(BuckyErrorCode::NotFound, msg)
-                })?;
+        let mut task_status = self.task_status.lock().await;
+        match task_status.status {
+            TaskStatus::Paused => {
+                warn!(
+                    "pause download task but already been paused! task={}",
+                    self.task_id
+                );
+                return Ok(());
+            }
+            TaskStatus::Running => {}
+            status @ _ => {
+                let msg = format!(
+                    "pause download task but not in running! task={}, state={:?}",
+                    self.task_id, status,
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
+            }
+        }
 
-            task.pause().map_err(|e| {
+        let session = self.get_session().await;
+        if let Some(session) = session {
+            session.pause().map_err(|e| {
                 error!(
-                    "pause task failed! task={}, group={}, {}",
-                    self.task_id, id, e
+                    "pause task failed! task={}, group={:?}, {}",
+                    self.task_id,
+                    session.abs_group_path(),
+                    e
                 );
                 e
             })?;
@@ -349,230 +483,239 @@ impl Task for DownloadFileTask {
             error!("{}", msg);
         }
 
-        {
-            self.task_status.lock().unwrap().status = TaskStatus::Paused;
-        }
-        self.save_task_status().await?;
+        task_status.status = TaskStatus::Paused;
+
+        self.save_task_status(&task_status).await?;
 
         Ok(())
     }
 
     async fn stop_task(&self) -> BuckyResult<()> {
-        let task_group = self.session.lock().await.take();
-        if let Some(id) = task_group {
-            let task = self
-                .bdt_stack
-                .ndn()
-                .root_task()
-                .download()
-                .sub_task(&id)
-                .ok_or_else(|| {
-                    let msg = format!("get task but ot found! task={}, group={}", self.task_id, id);
-                    error!("{}", msg);
-                    BuckyError::new(BuckyErrorCode::NotFound, msg)
-                })?;
+        let mut task_status = self.task_status.lock().await;
+        match task_status.status {
+            TaskStatus::Paused | TaskStatus::Running => {}
+            status @ _ => {
+                let msg = format!(
+                    "stop download task but not in running or pause state! task={}, state={:?}",
+                    self.task_id, status,
+                );
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::ErrorState, msg));
+            }
+        }
 
-            task.cancel().map_err(|e| {
+        let session = self.take_session().await;
+        if let Some(session) = session {
+            session.cancel().map_err(|e| {
                 error!(
-                    "stop task failed! task={}, group={}, {}",
-                    self.task_id, id, e
+                    "stop task failed! task={}, group={:?}, {}",
+                    self.task_id,
+                    session.abs_group_path(),
+                    e
                 );
                 e
             })?;
         } else {
-            let msg = format!("stop task but task group not exists! task={}", self.task_id);
+            let msg = format!(
+                "stop task but task session not exists! task={}",
+                self.task_id
+            );
             error!("{}", msg);
         }
 
         let mut verify_task = self.verify_task.lock().await;
         if verify_task.is_some() {
-            verify_task.take().unwrap().stop_task().await?;
+            info!("will stop download verify task! task={}", self.task_id);
+            if let Err(e) = verify_task.take().unwrap().stop_task().await {
+                error!(
+                    "stop download verify task failed! task={}, {}",
+                    self.task_id, e
+                );
+            }
         }
 
-        {
-            self.task_status.lock().unwrap().status = TaskStatus::Stopped;
-        }
-        self.save_task_status().await?;
+        task_status.status = TaskStatus::Stopped;
+
+        self.save_task_status(&task_status).await?;
 
         Ok(())
     }
 
     async fn get_task_detail_status(&self) -> BuckyResult<Vec<u8>> {
-        let group = self.session.lock().await.clone();
-        let task_state = if let Some(id) = &group {
-            let task = self
-                .bdt_stack
-                .ndn()
-                .root_task()
-                .download()
-                .sub_task(&id)
-                .ok_or_else(|| {
-                    let msg = format!("get task but ot found! task={}, group={}", self.task_id, id);
-                    error!("{}", msg);
-                    BuckyError::new(BuckyErrorCode::NotFound, msg)
-                })?;
+        let mut task_status = self.task_status.lock().await;
 
-            let state = task.state();
+        let session = self.get_session().await;
+        let ret = if let Some(session) = session {
+            let len = self.params.len();
+            let progress = if len > 0 {
+                ((session.downloaded() as f32 / len as f32) * 100.0) as u64
+            } else {
+                100
+            };
+
+            let state = session.state();
             match state {
-                cyfs_bdt::DownloadTaskState::Downloading => {
-                    log::info!("downloading speed {}", task.cur_speed());
-                    let progress =
-                        ((task.downloaded() as f32 / self.params.len() as f32) * 100.0) as u64;
-                    {
-                        let mut task_status = self.task_status.lock().unwrap();
-                        task_status.status = TaskStatus::Running;
-                        task_status.state.set_download_progress(progress);
+                cyfs_bdt::NdnTaskState::Running => {
+                    let speed = session.cur_speed();
+                    debug!(
+                        "task in downloading: task={}, speed={}",
+                        self.task_id, speed
+                    );
+
+                    if task_status.status != TaskStatus::Running {
+                        warn!("download task state not matched! task={}, session state={:?}, task state={:?}", 
+                            self.task_id, state, task_status.status);
                     }
-                    self.save_task_status().await?;
+
                     DownloadTaskState {
                         task_status: TaskStatus::Running,
                         err_code: None,
-                        speed: task.cur_speed() as u64,
+                        speed: speed as u64,
                         upload_speed: 0,
                         downloaded_progress: progress,
-                        sum_size: self.params.len(),
-                        group,
+                        sum_size: len,
+                        group: self.params.group.clone(),
                     }
                 }
-                cyfs_bdt::DownloadTaskState::Paused => {
-                    {
-                        let mut status = self.task_status.lock().unwrap();
-                        status.status = TaskStatus::Paused;
-                    };
+                cyfs_bdt::NdnTaskState::Paused => {
+                    if task_status.status != TaskStatus::Paused {
+                        warn!("download task state not matched! task={}, session state={:?}, task state={:?}", self.task_id, state, task_status.status);
+                    }
+
                     DownloadTaskState {
                         task_status: TaskStatus::Paused,
                         err_code: None,
                         speed: 0,
                         upload_speed: 0,
-                        downloaded_progress: 100,
-                        sum_size: self.params.len(),
-                        group,
+                        downloaded_progress: progress,
+                        sum_size: len,
+                        group: self.params.group.clone(),
                     }
                 }
-                cyfs_bdt::DownloadTaskState::Finished => {
-                    let mut verify_task = self.verify_task.lock().await;
-                    if verify_task.is_some() {
-                        let task = verify_task.as_ref().unwrap();
-                        let verify_task_status = task.get_task_status().await;
-                        if TaskStatus::Running == verify_task_status {
-                            self.task_status.lock().unwrap().status = TaskStatus::Running;
-                            DownloadTaskState {
-                                task_status: TaskStatus::Running,
-                                err_code: None,
-                                speed: 0,
-                                upload_speed: 0,
-                                downloaded_progress: 100,
-                                sum_size: self.params.len(),
-                                group,
-                            }
-                        } else if TaskStatus::Finished == verify_task_status {
-                            let ret = bool::clone_from_slice(
-                                task.get_task_detail_status().await?.as_slice(),
-                            )?;
-                            if ret {
-                                self.task_status.lock().unwrap().status = TaskStatus::Finished;
-                                self.save_task_status().await?;
-                                DownloadTaskState {
-                                    task_status: TaskStatus::Finished,
-                                    err_code: None,
-                                    speed: 0,
-                                    upload_speed: 0,
-                                    downloaded_progress: 100,
-                                    sum_size: self.params.len(),
-                                    group,
-                                }
-                            } else {
-                                self.task_status.lock().unwrap().status = TaskStatus::Failed;
-                                self.save_task_status().await?;
-                                DownloadTaskState {
-                                    task_status: TaskStatus::Failed,
-                                    err_code: Some(BuckyErrorCode::InvalidData),
-                                    speed: 0,
-                                    upload_speed: 0,
-                                    downloaded_progress: 100,
-                                    sum_size: self.params.len(),
-                                    group,
-                                }
-                            }
-                        } else {
-                            self.task_status.lock().unwrap().status = TaskStatus::Stopped;
-                            self.save_task_status().await?;
-                            DownloadTaskState {
-                                task_status: TaskStatus::Stopped,
-                                err_code: Some(BuckyErrorCode::InvalidData),
-                                speed: 0,
-                                upload_speed: 0,
-                                downloaded_progress: 100,
-                                sum_size: self.params.len(),
-                                group,
-                            }
-                        }
-                    } else {
-                        let task = RunnableTask::new(VerifyFileRunnable::new(
-                            self.named_data_components.chunk_manager.clone(),
-                            self.task_id.clone(),
-                            self.params.file.clone(),
-                            self.params.chunk_id.clone(),
-                            self.params.save_path.clone(),
-                        ));
-                        task.start_task().await?;
-                        *verify_task = Some(task);
+                cyfs_bdt::NdnTaskState::Finished => {
+                    info!(
+                        "download task bdt session finished! task={}, path={:?}",
+                        self.task_id,
+                        session.abs_group_path()
+                    );
 
-                        self.task_status.lock().unwrap().status = TaskStatus::Running;
+                    // should close the bdt session!
+                    self.take_session().await;
+
+                    // try start the verify task!
+                    if task_status.status == TaskStatus::Running
+                        || task_status.status == TaskStatus::Paused
+                    {
+                        let mut verify_task = self.verify_task.lock().await;
+                        assert!(verify_task.is_none());
+
+                        *verify_task = Some(self.start_verify().await?);
+
                         DownloadTaskState {
                             task_status: TaskStatus::Running,
                             err_code: None,
                             speed: 0,
                             upload_speed: 0,
                             downloaded_progress: 100,
-                            sum_size: self.params.len(),
-                            group,
+                            sum_size: len,
+                            group: self.params.group.clone(),
+                        }
+                    } else {
+                        error!("download session finished but task state is not running or paused! task={}, task state={:?}", self.task_id, task_status.status);
+                        DownloadTaskState {
+                            task_status: task_status.status,
+                            err_code: None,
+                            speed: 0,
+                            upload_speed: 0,
+                            downloaded_progress: 100,
+                            sum_size: len,
+                            group: self.params.group.clone(),
                         }
                     }
                 }
-                cyfs_bdt::DownloadTaskState::Error(err) => {
+                cyfs_bdt::NdnTaskState::Error(err) => {
+                    self.take_session().await;
+
                     if err.code() == BuckyErrorCode::Interrupted {
-                        {
-                            let mut status = self.task_status.lock().unwrap();
-                            status.status = TaskStatus::Stopped;
-                        };
                         DownloadTaskState {
                             task_status: TaskStatus::Stopped,
                             err_code: None,
                             speed: 0,
                             upload_speed: 0,
                             downloaded_progress: 100,
-                            sum_size: self.params.len(),
-                            group,
+                            sum_size: len,
+                            group: self.params.group.clone(),
                         }
                     } else {
-                        self.task_status.lock().unwrap().status = TaskStatus::Failed;
-                        self.save_task_status().await?;
                         DownloadTaskState {
                             task_status: TaskStatus::Failed,
                             err_code: Some(err.code()),
                             speed: 0,
                             upload_speed: 0,
                             downloaded_progress: 0,
-                            sum_size: self.params.len(),
-                            group,
+                            sum_size: len,
+                            group: self.params.group.clone(),
                         }
                     }
                 }
             }
         } else {
-            self.task_status.lock().unwrap().status = TaskStatus::Stopped;
-            DownloadTaskState {
-                task_status: TaskStatus::Stopped,
-                err_code: None,
-                speed: 0,
-                upload_speed: 0,
-                downloaded_progress: 0,
-                sum_size: self.params.len(),
-                group: None,
+            let mut verify_task = self.verify_task.lock().await;
+            if let Some(task) = &*verify_task {
+                let state = self.get_task_status_with_verify_task(task).await?;
+
+                if state.task_status != TaskStatus::Running
+                    && state.task_status != TaskStatus::Paused
+                {
+                    *verify_task = None;
+                }
+
+                state
+            } else {
+                let status = if task_status.status == TaskStatus::Paused
+                    || task_status.status == TaskStatus::Running
+                {
+                    error!("download task state not matched! task={}, session is empty, but task state={:?}", self.task_id, task_status.status);
+                    TaskStatus::Stopped
+                } else {
+                    task_status.status
+                };
+
+                DownloadTaskState {
+                    task_status: status,
+                    err_code: None,
+                    speed: 0,
+                    upload_speed: 0,
+                    downloaded_progress: task_status.state.download_progress,
+                    sum_size: self.params.len(),
+                    group: self.params.group.clone(),
+                }
             }
         };
-        Ok(task_state.to_vec()?)
+
+        let mut changed = false;
+        if task_status.status != ret.task_status {
+            info!(
+                "download task status updated! {:?} -> {:?}",
+                task_status.status, ret.task_status
+            );
+            changed = true;
+            task_status.status = ret.task_status;
+        }
+        if task_status.state.download_progress != ret.downloaded_progress {
+            info!(
+                "download task progress updated! {} -> {}",
+                task_status.state.download_progress, ret.downloaded_progress
+            );
+            changed = true;
+            task_status.state.download_progress = ret.downloaded_progress;
+        }
+
+        if changed {
+            self.save_task_status(&task_status).await?;
+        }
+
+        Ok(ret.to_vec()?)
     }
 }
 
