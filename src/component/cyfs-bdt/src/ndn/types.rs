@@ -507,10 +507,10 @@ pub trait NdnTask: Send + Sync {
         Ok(NdnTaskControlState::Normal)
     }
     fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
-        Ok(NdnTaskControlState::Normal)
+        self.cancel_by_error(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"))
     }
-    fn cancel_by_error(&self) -> BuckyResult<NdnTaskControlState> {
-        
+    fn cancel_by_error(&self, _err: BuckyError) -> BuckyResult<NdnTaskControlState> {
+        Ok(NdnTaskControlState::Normal)
     }
     fn pause(&self) -> BuckyResult<NdnTaskControlState> {
         Ok(NdnTaskControlState::Normal)
