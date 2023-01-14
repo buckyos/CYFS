@@ -35,17 +35,17 @@ impl ContextManager {
     fn decode_context_id_from_string(source_dec: &ObjectId, s: &str) -> TransContextRef {
         if OBJECT_ID_BASE58_RANGE.contains(&s.len()) {
             match ObjectId::from_base58(s) {
-                Ok(ret) => TransContextRef::Object(ret),
-                Err(_) => TransContextRef::Path((s.to_owned(), source_dec.to_owned())),
+                Ok(ret) => return TransContextRef::Object(ret),
+                Err(_) => {},
             }
         } else if OBJECT_ID_BASE36_RANGE.contains(&s.len()) {
             match ObjectId::from_base36(s) {
-                Ok(ret) => TransContextRef::Object(ret),
-                Err(_) => TransContextRef::Path((s.to_owned(), source_dec.to_owned())),
+                Ok(ret) => return TransContextRef::Object(ret),
+                Err(_) => {}
             }
-        } else {
-            TransContextRef::Path((s.to_owned(), source_dec.to_owned()))
-        }
+        } 
+            
+        TransContextRef::Path((TransContextPath::fix_path(s).to_string(), source_dec.to_owned()))
     }
 
     pub async fn create_download_context_from_trans_context(
