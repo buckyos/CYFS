@@ -17,4 +17,4 @@ pub const TIME_PRECISION: Duration = Duration::from_millis(60000);
 pub const SYNCHRONIZER_TIMEOUT: u64 = 500;
 pub const SYNCHRONIZER_TRY_TIMES: usize = 3;
 pub const CLIENT_POLL_TIMEOUT: Duration = Duration::from_millis(1000);
-pub const STATE_NOTIFY_CYCLE: u64 = 8000;
+pub const STATE_NOTIFY_COUNT_PER_ROUND: usize = 8;

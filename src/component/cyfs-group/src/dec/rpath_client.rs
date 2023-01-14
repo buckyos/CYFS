@@ -8,7 +8,9 @@ use cyfs_core::{
 use cyfs_lib::NONObjectInfo;
 use rand::Rng;
 
-use crate::{HotstuffMessage, CLIENT_POLL_TIMEOUT};
+use crate::{
+    dec_state::DecStateSynchronizer, storage::DecStorage, HotstuffMessage, CLIENT_POLL_TIMEOUT,
+};
 
 pub struct RPathClient {
     rpath: GroupRPath,
@@ -16,6 +18,7 @@ pub struct RPathClient {
     non_driver: crate::network::NonDriver,
     network_sender: crate::network::Sender,
     network_listener: crate::network::Listener,
+    state_sync: DecStateSynchronizer,
 }
 
 impl RPathClient {
@@ -25,13 +28,22 @@ impl RPathClient {
         non_driver: crate::network::NonDriver,
         network_sender: crate::network::Sender,
         network_listener: crate::network::Listener,
+        dec_store: DecStorage,
     ) -> Self {
+        let state_sync = DecStateSynchronizer::new(
+            local_id,
+            rpath.clone(),
+            non_driver.clone(),
+            dec_store.clone(),
+        );
+
         Self {
             rpath,
             non_driver,
             network_sender,
             network_listener,
             local_id,
+            state_sync,
         }
     }
 
@@ -54,10 +66,7 @@ impl RPathClient {
         let proposal_id = proposal.desc().object_id();
         let non_proposal = NONObjectInfo::new(proposal_id, proposal.to_vec()?, None);
 
-        let waiter = self
-            .network_listener
-            .wait_proposal_result(proposal_id)
-            .await?;
+        let waiter = self.state_sync.wait_proposal_result(proposal_id).await;
         let mut waiter_future = Some(waiter.wait());
 
         let mut post_result = None;
