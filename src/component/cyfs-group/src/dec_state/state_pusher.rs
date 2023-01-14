@@ -3,21 +3,19 @@
 use std::collections::HashSet;
 
 use cyfs_base::{
-    BuckyError, BuckyResult, GroupMemberScope, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc,
-    RawDecode,
+    BuckyError, GroupMemberScope, NamedObject, ObjectDesc, ObjectId, OwnerObjectDesc, RawDecode,
 };
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupRPath};
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
-use crate::{
-    helper::Timer, HotstuffMessage, CHANNEL_CAPACITY, STATE_NOTIFY_CYCLE, SYNCHRONIZER_TIMEOUT,
-};
+use crate::{helper::Timer, HotstuffMessage, CHANNEL_CAPACITY, STATE_NOTIFY_COUNT_PER_ROUND};
 
 enum StatePushMessage {
     ProposalResult(GroupProposal, BuckyError),
     BlockCommit(GroupConsensusBlock, GroupConsensusBlock),
     LastStateRequest(ObjectId),
+    DelayBroadcast,
 }
 
 pub struct StatePusher {
@@ -34,7 +32,8 @@ impl StatePusher {
     ) -> Self {
         let (tx, rx) = async_std::channel::bounded(CHANNEL_CAPACITY);
 
-        let mut runner = StateChanggeRunner::new(local_id, network_sender, rpath, non_driver, rx);
+        let mut runner =
+            StateChanggeRunner::new(local_id, network_sender, rpath, non_driver, tx.clone(), rx);
 
         async_std::task::spawn(async move { runner.run().await });
 
@@ -99,9 +98,10 @@ struct StateChanggeRunner {
     network_sender: crate::network::Sender,
     rpath: GroupRPath,
     non_driver: crate::network::NonDriver,
+    tx_notifier: async_std::channel::Sender<StatePushMessage>,
     rx_notifier: async_std::channel::Receiver<StatePushMessage>,
-    timer: Timer,
-
+    delay_notify_times: usize,
+    // timer: Timer,
     request_last_state_remotes: HashSet<ObjectId>,
     notify_progress: Option<HeaderBlockNotifyProgress>,
 }
@@ -112,14 +112,17 @@ impl StateChanggeRunner {
         network_sender: crate::network::Sender,
         rpath: GroupRPath,
         non_driver: crate::network::NonDriver,
+        tx_notifier: async_std::channel::Sender<StatePushMessage>,
         rx_notifier: async_std::channel::Receiver<StatePushMessage>,
     ) -> Self {
         Self {
             network_sender,
             rpath,
             non_driver,
+            tx_notifier,
             rx_notifier,
-            timer: Timer::new(SYNCHRONIZER_TIMEOUT),
+            delay_notify_times: 0,
+            // timer: Timer::new(SYNCHRONIZER_TIMEOUT),
             notify_progress: None,
             local_id,
             request_last_state_remotes: HashSet::new(),
@@ -264,26 +267,31 @@ impl StateChanggeRunner {
                 });
             }
         }
+
+        self.delay_notify(true).await;
     }
 
-    fn request_last_state(&mut self, remote: ObjectId) {
-        self.request_last_state_remotes.insert(remote);
+    async fn request_last_state(&mut self, remote: ObjectId) {
+        if self.request_last_state_remotes.insert(remote) {
+            self.delay_notify(true).await;
+        }
     }
 
     async fn try_notify_block_commit(&mut self) {
-        match self.notify_progress.as_mut() {
-            Some(progress) if progress.cur_block_notify_times < progress.members.len() => {
-                let notify_count = (progress.members.len() * SYNCHRONIZER_TIMEOUT as usize
-                    / STATE_NOTIFY_CYCLE as usize)
-                    .max(1)
+        self.delay_notify_times -= 1;
+
+        if let Some(progress) = self.notify_progress.as_mut() {
+            let mut notify_targets = HashSet::new();
+            std::mem::swap(&mut self.request_last_state_remotes, &mut notify_targets);
+
+            if progress.cur_block_notify_times < progress.members.len() {
+                let notify_count = STATE_NOTIFY_COUNT_PER_ROUND
                     .min(progress.members.len() - progress.cur_block_notify_times);
 
                 progress.cur_block_notify_times += notify_count;
 
-                let mut notify_targets = HashSet::new();
-                std::mem::swap(&mut self.request_last_state_remotes, &mut notify_targets);
-
-                let start_pos = progress.cur_block_notify_times % progress.members.len();
+                let start_pos = (progress.total_notify_times + progress.cur_block_notify_times)
+                    % progress.members.len();
                 let notify_targets_1 = &progress.members.as_slice()
                     [start_pos..progress.members.len().min(start_pos + notify_count)];
 
@@ -299,18 +307,32 @@ impl StateChanggeRunner {
                         notify_targets.insert(remote.clone());
                     });
                 }
+            }
 
-                let msg = HotstuffMessage::StateChangeNotify(
-                    progress.header_block.clone(),
-                    progress.qc_block.clone(),
-                );
+            let msg = HotstuffMessage::StateChangeNotify(
+                progress.header_block.clone(),
+                progress.qc_block.clone(),
+            );
 
+            if notify_targets.len() > 0 {
                 let notify_targets: Vec<ObjectId> = notify_targets.into_iter().collect();
                 self.network_sender
                     .broadcast(msg.clone(), self.rpath.clone(), notify_targets.as_slice())
                     .await;
             }
-            _ => return,
+
+            if progress.cur_block_notify_times < progress.members.len() {
+                self.delay_notify(false).await;
+            }
+        }
+    }
+
+    async fn delay_notify(&mut self, is_force: bool) {
+        if is_force || self.delay_notify_times == 0 {
+            self.tx_notifier
+                .send(StatePushMessage::DelayBroadcast)
+                .await;
+            self.delay_notify_times += 1;
         }
     }
 
@@ -326,11 +348,14 @@ impl StateChanggeRunner {
                     Ok(StatePushMessage::LastStateRequest(remote)) => {
                         self.request_last_state(remote);
                     },
+                    Ok(StatePushMessage::DelayBroadcast) => {
+                        self.try_notify_block_commit();
+                    },
                     Err(e) => {
                         log::warn!("[change-notifier] rx_notifier closed.")
                     },
                 },
-                () = self.timer.wait_next().fuse() => self.try_notify_block_commit().await,
+                // () = self.timer.wait_next().fuse() => self.try_notify_block_commit().await,
             };
         }
     }
