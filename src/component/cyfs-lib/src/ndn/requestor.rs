@@ -3,6 +3,7 @@ use super::output_request::*;
 use super::processor::*;
 use crate::base::*;
 use crate::stack::SharedObjectStackDecID;
+use crate::requestor::*;
 use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};

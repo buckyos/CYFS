@@ -2,7 +2,7 @@ use super::output_request::*;
 use super::processor::*;
 use super::request::*;
 use crate::non::NONObjectInfo;
-use crate::{base::*, SharedObjectStackDecID};
+use crate::*;
 use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};

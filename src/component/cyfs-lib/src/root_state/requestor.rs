@@ -4,6 +4,7 @@ use super::processor::*;
 use crate::base::*;
 use crate::non::NONRequestorHelper;
 use crate::stack::SharedObjectStackDecID;
+use crate::requestor::*;
 use cyfs_base::*;
 
 use http_types::{Method, Request, Response, Url};
