@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 use async_std::channel::{Receiver, Sender};
 use cyfs_base::{
     bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
-    ObjectDesc, ObjectId, OwnerObjectDesc, RawConvertTo, RawDecode, RsaCPUObjectSigner,
+    ObjectDesc, ObjectId, RawConvertTo, RawDecode, RsaCPUObjectSigner,
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
@@ -16,7 +16,7 @@ use futures::FutureExt;
 use crate::{
     consensus::synchronizer::Synchronizer, dec_state::StatePusher, helper::Timer, AsProposal,
     Committee, ExecuteResult, GroupStorage, HotstuffBlockQCVote, HotstuffMessage,
-    HotstuffTimeoutVote, PendingProposalMgr, ProposalConsumeMessage, RPathDelegate, VoteMgr,
+    HotstuffTimeoutVote, PendingProposalConsumer, RPathDelegate, SyncBound, VoteMgr,
     VoteThresholded, CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
 };
 
@@ -26,6 +26,82 @@ use crate::{
 */
 
 pub(crate) struct Hotstuff {
+    tx_message: Sender<(HotstuffMessage, ObjectId)>,
+}
+
+impl Hotstuff {
+    pub fn new(
+        local_id: ObjectId,
+        committee: Committee,
+        store: GroupStorage,
+        signer: RsaCPUObjectSigner,
+        network_sender: crate::network::Sender,
+        non_driver: crate::network::NonDriver,
+        proposal_consumer: PendingProposalConsumer,
+        delegate: Arc<Box<dyn RPathDelegate>>,
+        rpath: GroupRPath,
+    ) -> Self {
+        let (tx_message, rx_message) = async_std::channel::bounded(CHANNEL_CAPACITY);
+
+        let tx_message_runner = tx_message.clone();
+        async_std::task::spawn(async move {
+            HotstuffRunner::new(
+                local_id,
+                committee,
+                store,
+                signer,
+                network_sender,
+                non_driver,
+                tx_message_runner,
+                rx_message,
+                proposal_consumer,
+                delegate,
+                rpath,
+            )
+            .run()
+            .await
+        });
+
+        Self { tx_message }
+    }
+
+    pub async fn on_block(&self, block: cyfs_core::GroupConsensusBlock, remote: ObjectId) {
+        self.tx_message
+            .send((HotstuffMessage::Block(block), remote))
+            .await;
+    }
+
+    pub async fn on_block_vote(&self, vote: HotstuffBlockQCVote, remote: ObjectId) {
+        self.tx_message
+            .send((HotstuffMessage::BlockVote(vote), remote))
+            .await;
+    }
+
+    pub async fn on_timeout_vote(&self, vote: HotstuffTimeoutVote, remote: ObjectId) {
+        self.tx_message
+            .send((HotstuffMessage::TimeoutVote(vote), remote))
+            .await;
+    }
+
+    pub async fn on_timeout(&self, tc: HotstuffTimeout, remote: ObjectId) {
+        self.tx_message
+            .send((HotstuffMessage::Timeout(tc), remote))
+            .await;
+    }
+
+    pub async fn on_sync_request(
+        &self,
+        min_bound: SyncBound,
+        max_bound: SyncBound,
+        remote: ObjectId,
+    ) {
+        self.tx_message
+            .send((HotstuffMessage::SyncRequest(min_bound, max_bound), remote))
+            .await;
+    }
+}
+
+struct HotstuffRunner {
     local_id: ObjectId,
     committee: Committee,
     store: GroupStorage,
@@ -37,31 +113,31 @@ pub(crate) struct Hotstuff {
     vote_mgr: VoteMgr,
     network_sender: crate::network::Sender,
     non_driver: crate::network::NonDriver,
+    tx_message: Sender<(HotstuffMessage, ObjectId)>,
     rx_message: Receiver<(HotstuffMessage, ObjectId)>,
-    tx_proposal_consume: Sender<ProposalConsumeMessage>,
+    proposal_consumer: PendingProposalConsumer,
     delegate: Arc<Box<dyn RPathDelegate>>,
     synchronizer: Synchronizer,
     rpath: GroupRPath,
-    tx_message_inner: Sender<(GroupConsensusBlock, ObjectId)>,
-    rx_message_inner: Receiver<(GroupConsensusBlock, ObjectId)>,
     rx_proposal_waiter: Option<(Receiver<u64>, u64)>,
     state_pusher: StatePusher,
 }
 
-impl Hotstuff {
+impl HotstuffRunner {
     #[allow(clippy::too_many_arguments)]
-    pub async fn spawn(
+    pub fn new(
         local_id: ObjectId,
         committee: Committee,
         store: GroupStorage,
         signer: RsaCPUObjectSigner,
         network_sender: crate::network::Sender,
         non_driver: crate::network::NonDriver,
+        tx_message: Sender<(HotstuffMessage, ObjectId)>,
         rx_message: Receiver<(HotstuffMessage, ObjectId)>,
-        tx_proposal_consume: Sender<ProposalConsumeMessage>,
+        proposal_consumer: PendingProposalConsumer,
         delegate: Arc<Box<dyn RPathDelegate>>,
         rpath: GroupRPath,
-    ) {
+    ) -> Self {
         let max_round_block = store.block_with_max_round();
 
         let round = store
@@ -69,18 +145,16 @@ impl Hotstuff {
             .max(max_round_block.as_ref().map_or(1, |block| block.round()));
         let high_qc = max_round_block.map_or(None, |block| block.qc().clone());
 
-        let (tx_message_inner, rx_message_inner) = async_std::channel::bounded(CHANNEL_CAPACITY);
-
         let vote_mgr = VoteMgr::new(committee.clone(), round);
         let init_timer_interval = store.group().consensus_interval();
         let max_height = store.header_height() + 2;
 
-        let synchronizer = Synchronizer::spawn(
+        let synchronizer = Synchronizer::new(
             network_sender.clone(),
             rpath.clone(),
             max_height,
             round,
-            tx_message_inner.clone(),
+            tx_message.clone(),
         );
 
         let state_pusher = StatePusher::new(
@@ -90,7 +164,7 @@ impl Hotstuff {
             non_driver.clone(),
         );
 
-        let mut hotstuff = Self {
+        Self {
             local_id,
             committee,
             store,
@@ -100,20 +174,17 @@ impl Hotstuff {
             timer: Timer::new(init_timer_interval),
             vote_mgr,
             network_sender,
+            tx_message,
             rx_message,
             delegate,
             synchronizer,
             non_driver,
             rpath,
-            tx_proposal_consume,
-            tx_message_inner,
-            rx_message_inner,
+            proposal_consumer,
             rx_proposal_waiter: None,
             tc: None,
             state_pusher,
-        };
-
-        async_std::task::spawn(async move { hotstuff.run().await });
+        }
     }
 
     async fn handle_block(
@@ -409,7 +480,7 @@ impl Hotstuff {
             .iter()
             .map(|proposal| proposal.proposal)
             .collect();
-        PendingProposalMgr::remove_proposals(&self.tx_proposal_consume, proposals).await
+        self.proposal_consumer.remove_proposals(proposals).await
     }
 
     async fn notify_proposal_err(&self, proposal: &GroupProposal, err: BuckyError) {
@@ -650,7 +721,7 @@ impl Hotstuff {
     }
 
     async fn generate_proposal(&mut self, tc: Option<HotstuffTimeout>) -> BuckyResult<()> {
-        let mut proposals = PendingProposalMgr::query_proposals(&self.tx_proposal_consume).await?;
+        let mut proposals = self.proposal_consumer.query_proposals().await?;
         proposals.sort_by(|left, right| left.desc().create_time().cmp(&right.desc().create_time()));
 
         let now = SystemTime::now();
@@ -744,7 +815,9 @@ impl Hotstuff {
             self.notify_proposal_err(&proposal, err).await;
         }
 
-        PendingProposalMgr::remove_proposals(&self.tx_proposal_consume, remove_proposals).await;
+        self.proposal_consumer
+            .remove_proposals(remove_proposals)
+            .await;
 
         if self
             .try_wait_proposals(executed_proposals.as_slice(), &pre_block)
@@ -782,8 +855,8 @@ impl Hotstuff {
             self.local_id,
         );
 
-        self.tx_message_inner
-            .send((block.clone(), self.local_id))
+        self.tx_message
+            .send((HotstuffMessage::Block(block.clone()), self.local_id))
             .await;
 
         self.broadcast(HotstuffMessage::Block(block), &latest_group)
@@ -849,7 +922,9 @@ impl Hotstuff {
     async fn fetch_block(&mut self, block_id: &ObjectId, remote: ObjectId) -> BuckyResult<()> {
         let block = self.non_driver.get_block(block_id, Some(&remote)).await?;
 
-        self.tx_message_inner.send((block, remote)).await;
+        self.tx_message
+            .send((HotstuffMessage::Block(block), remote))
+            .await;
         Ok(())
     }
 
@@ -916,7 +991,13 @@ impl Hotstuff {
         loop {
             let result = futures::select! {
                 message = self.rx_message.recv().fuse() => match message {
-                    Ok((HotstuffMessage::Block(block), remote)) => self.handle_block(&block, remote).await,
+                    Ok((HotstuffMessage::Block(block), remote)) => {
+                        if remote == self.local_id {
+                            self.process_block(&block, remote).await
+                        } else {
+                            self.handle_block(&block, remote).await
+                        }
+                    },
                     Ok((HotstuffMessage::BlockVote(vote), remote)) => self.handle_vote(&vote, None, remote).await,
                     Ok((HotstuffMessage::TimeoutVote(timeout), remote)) => self.handle_timeout(&timeout, remote).await,
                     Ok((HotstuffMessage::Timeout(tc), remote)) => self.handle_tc(&tc, remote).await,
@@ -930,19 +1011,6 @@ impl Hotstuff {
                         log::warn!("[hotstuff] rx_message closed.");
                         Ok(())
                     },
-                },
-                message = self.rx_message_inner.recv().fuse() => match message {
-                    Ok((block, remote)) => {
-                        if remote == self.local_id {
-                            self.process_block(&block, remote).await
-                        } else {
-                            self.handle_block(&block, remote).await
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!("[hotstuff] rx_message_inner closed.");
-                        Ok(())
-                    }
                 },
                 () = self.timer.wait_next().fuse() => self.local_timeout_round().await,
                 wait_round = Self::proposal_waiter(self.rx_proposal_waiter.clone()).fuse() => {

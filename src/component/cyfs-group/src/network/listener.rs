@@ -13,12 +13,4 @@ impl Listener {
     pub fn new(vport: u16, bdt_stack: Stack) {}
 
     pub fn listen(&self) {}
-
-    pub async fn wait_query_state(
-        &self,
-        sub_path: String,
-        rpath: GroupRPath,
-    ) -> BuckyResult<CallReplyWaiter<BuckyResult<ObjectId>>> {
-        unimplemented!()
-    }
 }

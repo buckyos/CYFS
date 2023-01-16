@@ -12,6 +12,7 @@ use crate::{
     HotstuffMessage, CLIENT_POLL_TIMEOUT,
 };
 
+#[derive(Clone)]
 pub struct RPathClient {
     rpath: GroupRPath,
     local_id: ObjectId,

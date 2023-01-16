@@ -8,6 +8,7 @@ use cyfs_lib::NONObjectInfo;
 
 struct RPathControlRaw {
     network: crate::network::Sender,
+    
 }
 
 impl RPathControlRaw {
@@ -23,9 +24,6 @@ impl RPathControlRaw {
         unimplemented!()
     }
 
-    async fn on_get_field(&self, sub_path: &str) -> BuckyResult<GroupRPathStatus> {
-        unimplemented!()
-    }
 }
 
 pub struct RPathControl {

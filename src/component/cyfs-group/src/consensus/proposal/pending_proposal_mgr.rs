@@ -5,7 +5,7 @@ use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
 use cyfs_core::GroupProposal;
 use futures::FutureExt;
 
-use crate::AsProposal;
+use crate::{AsProposal, CHANNEL_CAPACITY};
 
 pub enum ProposalConsumeMessage {
     Query(Sender<Vec<GroupProposal>>),
@@ -17,36 +17,58 @@ pub struct PendingProposalMgr {
     rx_product: Receiver<GroupProposal>,
     rx_consume: Receiver<ProposalConsumeMessage>,
     tx_proposal_waker: Option<Sender<()>>,
-    network_sender: crate::network::Sender,
 
     // TODO: 需要设计一个结构便于按时间或数量拆分
     buffer: HashMap<ObjectId, GroupProposal>,
 }
 
 impl PendingProposalMgr {
-    pub fn spawn(
-        rx_product: Receiver<GroupProposal>,
-        rx_consume: Receiver<ProposalConsumeMessage>,
-        network_sender: crate::network::Sender,
-    ) {
+    pub fn new() -> (PendingProposalHandler, PendingProposalConsumer) {
+        let (tx_product, rx_product) = async_std::channel::bounded(CHANNEL_CAPACITY);
+        let (tx_consume, rx_consume) = async_std::channel::bounded(CHANNEL_CAPACITY);
+
         async_std::task::spawn(async move {
-            Self {
+            PendingProposalMgrRunner {
                 rx_product,
                 rx_consume,
                 buffer: HashMap::new(),
-                network_sender,
                 tx_proposal_waker: None,
             }
             .run()
             .await
         });
-    }
 
-    pub async fn query_proposals(
-        tx_consume: &Sender<ProposalConsumeMessage>,
-    ) -> BuckyResult<Vec<GroupProposal>> {
+        (
+            PendingProposalHandler { tx_product },
+            PendingProposalConsumer { tx_consume },
+        )
+    }
+}
+
+pub struct PendingProposalHandler {
+    tx_product: Sender<GroupProposal>,
+}
+
+impl PendingProposalHandler {
+    pub async fn on_proposal(&self, proposal: GroupProposal) -> BuckyResult<()> {
+        self.tx_product.send(proposal).await.map_err(|e| {
+            log::error!(
+                "[pending_proposal_mgr] send message(on_proposal) faield: {}",
+                e
+            );
+            BuckyError::new(BuckyErrorCode::ErrorState, "channel closed")
+        })
+    }
+}
+
+pub struct PendingProposalConsumer {
+    tx_consume: Sender<ProposalConsumeMessage>,
+}
+
+impl PendingProposalConsumer {
+    pub async fn query_proposals(&self) -> BuckyResult<Vec<GroupProposal>> {
         let (sender, receiver) = async_std::channel::bounded(1);
-        tx_consume
+        self.tx_consume
             .send(ProposalConsumeMessage::Query(sender))
             .await
             .map_err(|e| {
@@ -60,11 +82,8 @@ impl PendingProposalMgr {
         })
     }
 
-    pub async fn remove_proposals(
-        tx_consume: &Sender<ProposalConsumeMessage>,
-        proposal_ids: Vec<ObjectId>,
-    ) -> BuckyResult<()> {
-        tx_consume
+    pub async fn remove_proposals(&self, proposal_ids: Vec<ObjectId>) -> BuckyResult<()> {
+        self.tx_consume
             .send(ProposalConsumeMessage::Remove(proposal_ids))
             .await
             .map_err(|e| {
@@ -72,8 +91,19 @@ impl PendingProposalMgr {
                 BuckyError::new(BuckyErrorCode::ErrorState, "channel closed")
             })
     }
+}
 
-    async fn query_proposals_impl(&mut self) -> Vec<GroupProposal> {
+struct PendingProposalMgrRunner {
+    rx_product: Receiver<GroupProposal>,
+    rx_consume: Receiver<ProposalConsumeMessage>,
+    tx_proposal_waker: Option<Sender<()>>,
+
+    // TODO: 需要设计一个结构便于按时间或数量拆分
+    buffer: HashMap<ObjectId, GroupProposal>,
+}
+
+impl PendingProposalMgrRunner {
+    async fn handle_query_proposals(&mut self) -> Vec<GroupProposal> {
         self.buffer.iter().map(|(_, p)| p.clone()).collect()
     }
 
@@ -92,7 +122,7 @@ impl PendingProposalMgr {
                     if let Ok(message) = message {
                        match message {
                             ProposalConsumeMessage::Query(sender) => {
-                                let proposals = self.query_proposals_impl().await;
+                                let proposals = self.handle_query_proposals().await;
                                 sender.send(proposals).await;
                             },
                             ProposalConsumeMessage::Remove(proposal_ids) => {
