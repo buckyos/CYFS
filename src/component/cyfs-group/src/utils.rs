@@ -4,5 +4,5 @@ pub type Round = u64;
 
 pub enum IsCreateRPath {
     No,
-    Yes(Option<ObjectId>),
+    Yes(Option<ObjectId>), // init state
 }

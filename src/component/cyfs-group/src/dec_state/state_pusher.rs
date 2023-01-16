@@ -18,6 +18,7 @@ enum StatePushMessage {
     DelayBroadcast,
 }
 
+#[derive(Clone)]
 pub struct StatePusher {
     local_id: ObjectId,
     tx_notifier: async_std::channel::Sender<StatePushMessage>,

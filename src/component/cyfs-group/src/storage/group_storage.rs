@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, Group, ObjectId};
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupRPath};
 
+use crate::IsCreateRPath;
+
 pub enum BlockLinkState {
     Expired,
     DuplicateProposal,
@@ -36,6 +38,7 @@ impl GroupStorage {
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
+        is_auto_create: &IsCreateRPath,
     ) -> BuckyResult<GroupStorage> {
         // 用hash加载chunk
         // 从chunk解析group

@@ -27,6 +27,7 @@ use crate::{
 
 pub(crate) struct Hotstuff {
     tx_message: Sender<(HotstuffMessage, ObjectId)>,
+    state_pusher: StatePusher,
 }
 
 impl Hotstuff {
@@ -34,7 +35,7 @@ impl Hotstuff {
         local_id: ObjectId,
         committee: Committee,
         store: GroupStorage,
-        signer: RsaCPUObjectSigner,
+        signer: Arc<RsaCPUObjectSigner>,
         network_sender: crate::network::Sender,
         non_driver: crate::network::NonDriver,
         proposal_consumer: PendingProposalConsumer,
@@ -43,7 +44,16 @@ impl Hotstuff {
     ) -> Self {
         let (tx_message, rx_message) = async_std::channel::bounded(CHANNEL_CAPACITY);
 
+        let state_pusher = StatePusher::new(
+            local_id,
+            network_sender.clone(),
+            rpath.clone(),
+            non_driver.clone(),
+        );
+
         let tx_message_runner = tx_message.clone();
+        let state_pusher_runner = state_pusher.clone();
+
         async_std::task::spawn(async move {
             HotstuffRunner::new(
                 local_id,
@@ -55,6 +65,7 @@ impl Hotstuff {
                 tx_message_runner,
                 rx_message,
                 proposal_consumer,
+                state_pusher_runner,
                 delegate,
                 rpath,
             )
@@ -62,7 +73,10 @@ impl Hotstuff {
             .await
         });
 
-        Self { tx_message }
+        Self {
+            tx_message,
+            state_pusher,
+        }
     }
 
     pub async fn on_block(&self, block: cyfs_core::GroupConsensusBlock, remote: ObjectId) {
@@ -99,13 +113,17 @@ impl Hotstuff {
             .send((HotstuffMessage::SyncRequest(min_bound, max_bound), remote))
             .await;
     }
+
+    pub async fn request_last_state(&self, remote: ObjectId) {
+        self.state_pusher.request_last_state(remote).await;
+    }
 }
 
 struct HotstuffRunner {
     local_id: ObjectId,
     committee: Committee,
     store: GroupStorage,
-    signer: RsaCPUObjectSigner,
+    signer: Arc<RsaCPUObjectSigner>,
     round: u64,                       // 当前轮次
     high_qc: Option<HotstuffBlockQC>, // 最后一次通过投票的确认信息
     tc: Option<HotstuffTimeout>,
@@ -129,12 +147,13 @@ impl HotstuffRunner {
         local_id: ObjectId,
         committee: Committee,
         store: GroupStorage,
-        signer: RsaCPUObjectSigner,
+        signer: Arc<RsaCPUObjectSigner>,
         network_sender: crate::network::Sender,
         non_driver: crate::network::NonDriver,
         tx_message: Sender<(HotstuffMessage, ObjectId)>,
         rx_message: Receiver<(HotstuffMessage, ObjectId)>,
         proposal_consumer: PendingProposalConsumer,
+        state_pusher: StatePusher,
         delegate: Arc<Box<dyn RPathDelegate>>,
         rpath: GroupRPath,
     ) -> Self {
@@ -155,13 +174,6 @@ impl HotstuffRunner {
             max_height,
             round,
             tx_message.clone(),
-        );
-
-        let state_pusher = StatePusher::new(
-            local_id,
-            network_sender.clone(),
-            rpath.clone(),
-            non_driver.clone(),
         );
 
         Self {

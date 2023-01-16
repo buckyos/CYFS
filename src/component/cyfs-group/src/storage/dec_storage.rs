@@ -20,6 +20,7 @@ pub struct DecStorage {
 
 impl DecStorage {
     pub async fn load() -> BuckyResult<Self> {
+        unimplemented!();
         let obj = Self {
             cache: Arc::new(RwLock::new(None)),
         };

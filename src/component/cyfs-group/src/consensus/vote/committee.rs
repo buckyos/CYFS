@@ -9,7 +9,9 @@ use crate::{HotstuffBlockQCVote, HotstuffTimeoutVote};
 pub(crate) struct Committee {}
 
 impl Committee {
-    pub fn spawn() {}
+    pub fn new() -> Self {
+        Committee {}
+    }
 
     pub async fn get_group(&self, group_chunk_id: Option<&ObjectId>) -> BuckyResult<Group> {
         unimplemented!()

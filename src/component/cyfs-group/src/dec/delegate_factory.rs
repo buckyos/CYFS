@@ -1,5 +1,5 @@
 use cyfs_base::{BuckyResult, Group, ObjectId};
-use cyfs_core::GroupProposal;
+use cyfs_core::{GroupConsensusBlock, GroupProposal};
 use cyfs_lib::NONObjectInfo;
 
 #[async_trait::async_trait]
@@ -8,7 +8,7 @@ pub trait DelegateFactory: Send + Sync {
         &self,
         group: &Group,
         rpath: &str,
-        with_proposal: Option<&GroupProposal>,
+        with_block: Option<&GroupConsensusBlock>,
     ) -> BuckyResult<Box<dyn RPathDelegate>>;
 
     async fn on_state_changed(

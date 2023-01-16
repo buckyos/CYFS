@@ -6,6 +6,10 @@ use cyfs_lib::NONObjectInfo;
 pub struct NonDriver {}
 
 impl NonDriver {
+    pub fn new() -> Self {
+        Self {}
+    }
+
     pub async fn get_object(
         &self,
         object_id: &ObjectId,

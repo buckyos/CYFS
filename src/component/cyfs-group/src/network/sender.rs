@@ -8,7 +8,9 @@ use crate::HotstuffMessage;
 pub struct Sender {}
 
 impl Sender {
-    pub fn new(vport: u16, bdt_stack: Stack) {}
+    pub fn new(vport: u16, bdt_stack: Stack) -> Self {
+        unimplemented!()
+    }
 
     pub(crate) async fn post_message(
         &self,
@@ -16,8 +18,10 @@ impl Sender {
         rpath: GroupRPath,
         to: &ObjectId,
     ) {
+        unimplemented!()
     }
 
     pub(crate) async fn broadcast(&self, msg: HotstuffMessage, rpath: GroupRPath, to: &[ObjectId]) {
+        unimplemented!()
     }
 }

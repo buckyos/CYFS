@@ -113,22 +113,36 @@ pub(crate) enum HotstuffPackage {
     TimeoutVote(ProtocolAddress, HotstuffTimeoutVote),
     Timeout(ProtocolAddress, cyfs_core::HotstuffTimeout),
 
-    SyncRequest(SyncBound, SyncBound),
+    SyncRequest(ProtocolAddress, SyncBound, SyncBound),
 
     StateChangeNotify(ProtocolAddress, GroupConsensusBlock, GroupConsensusBlock), // (block, qc-block)
+    LastStateRequest(ProtocolAddress),
     ProposalResult(
         ProtocolAddress,
         ObjectId,
-        BuckyResult<Option<NONObjectInfo>>,
+        BuckyResult<(
+            Option<NONObjectInfo>,
+            GroupConsensusBlock,
+            GroupConsensusBlock,
+        )>,
     ), // (proposal-id, ExecuteResult)
     QueryState(ProtocolAddress, String),
-    VerifiableState(ProtocolAddress, GroupRPathStatus),
+    VerifiableState(ProtocolAddress, String, BuckyResult<GroupRPathStatus>),
 }
 
 #[derive(Clone, RawEncode, RawDecode)]
 pub(crate) enum ProtocolAddress {
     Full(GroupRPath),
     Channel(u64),
+}
+
+impl ProtocolAddress {
+    pub fn check_rpath(self) -> GroupRPath {
+        match self {
+            ProtocolAddress::Full(rpath) => rpath,
+            ProtocolAddress::Channel(_) => panic!("no rpath"),
+        }
+    }
 }
 
 #[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransformType)]

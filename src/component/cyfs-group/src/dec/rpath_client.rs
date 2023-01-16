@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, GroupMemberScope, NamedObject, ObjectDesc, ObjectId,
     RawConvertTo,
@@ -12,8 +14,7 @@ use crate::{
     HotstuffMessage, CLIENT_POLL_TIMEOUT,
 };
 
-#[derive(Clone)]
-pub struct RPathClient {
+struct RPathClientRaw {
     rpath: GroupRPath,
     local_id: ObjectId,
     non_driver: crate::network::NonDriver,
@@ -22,14 +23,17 @@ pub struct RPathClient {
     state_requestor: DecStateRequestor,
 }
 
+#[derive(Clone)]
+pub struct RPathClient(Arc<RPathClientRaw>);
+
 impl RPathClient {
-    pub fn new(
-        rpath: GroupRPath,
+    pub async fn load(
         local_id: ObjectId,
+        rpath: GroupRPath,
         non_driver: crate::network::NonDriver,
         network_sender: crate::network::Sender,
-        dec_store: DecStorage,
-    ) -> Self {
+    ) -> BuckyResult<Self> {
+        let dec_store = DecStorage::load().await?;
         let state_sync = DecStateSynchronizer::new(
             local_id,
             rpath.clone(),
@@ -45,36 +49,39 @@ impl RPathClient {
             dec_store.clone(),
         );
 
-        Self {
+        let raw = RPathClientRaw {
             rpath,
             non_driver,
             network_sender,
             local_id,
             state_sync,
             state_requestor,
-        }
+        };
+
+        Ok(Self(Arc::new(raw)))
     }
 
     pub fn rpath(&self) -> &GroupRPath {
-        &self.rpath
+        &self.0.rpath
     }
 
     pub async fn post_proposal(
         &self,
         proposal: &GroupProposal,
     ) -> BuckyResult<Option<NONObjectInfo>> {
-        assert_eq!(proposal.r_path(), &self.rpath);
+        assert_eq!(proposal.r_path(), &self.0.rpath);
 
         // TODO: signature
         let group = self
+            .0
             .non_driver
             .get_group(proposal.r_path().group_id(), None, None)
             .await?;
-        let admins = group.select_members_with_distance(&self.local_id, GroupMemberScope::Admin);
+        let admins = group.select_members_with_distance(&self.0.local_id, GroupMemberScope::Admin);
         let proposal_id = proposal.desc().object_id();
         let non_proposal = NONObjectInfo::new(proposal_id, proposal.to_vec()?, None);
 
-        let waiter = self.state_sync.wait_proposal_result(proposal_id).await;
+        let waiter = self.0.state_sync.wait_proposal_result(proposal_id).await;
         let mut waiter_future = Some(waiter.wait());
 
         let mut post_result = None;
@@ -82,6 +89,7 @@ impl RPathClient {
 
         for admin in admins {
             match self
+                .0
                 .non_driver
                 .post_object(non_proposal.clone(), admin)
                 .await
@@ -130,30 +138,38 @@ impl RPathClient {
     // request last state from random admin
     pub async fn refresh_state(&self) -> BuckyResult<()> {
         let group = self
+            .0
             .non_driver
-            .get_group(&self.rpath.group_id(), None, None)
+            .get_group(&self.0.rpath.group_id(), None, None)
             .await?;
 
-        let admins = group.select_members_with_distance(&self.local_id, GroupMemberScope::Admin);
+        let admins = group.select_members_with_distance(&self.0.local_id, GroupMemberScope::Admin);
         let random = rand::thread_rng().gen_range(0..admins.len());
         let admin = admins.get(random).unwrap().clone();
 
-        self.network_sender
-            .post_message(HotstuffMessage::LastStateRequest, self.rpath.clone(), admin)
+        self.0
+            .network_sender
+            .post_message(
+                HotstuffMessage::LastStateRequest,
+                self.0.rpath.clone(),
+                admin,
+            )
             .await;
         Ok(())
     }
 
     pub async fn get_by_path(&self, sub_path: &str) -> BuckyResult<ObjectId> {
         let group = self
+            .0
             .non_driver
-            .get_group(self.rpath().group_id(), None, None)
+            .get_group(self.0.rpath.group_id(), None, None)
             .await?;
 
-        let members = group.select_members_with_distance(&self.local_id, GroupMemberScope::All);
+        let members = group.select_members_with_distance(&self.0.local_id, GroupMemberScope::All);
         let req_msg = HotstuffMessage::QueryState(sub_path.to_string());
 
         let waiter = self
+            .0
             .state_requestor
             .wait_query_state(sub_path.to_string())
             .await;
@@ -162,8 +178,9 @@ impl RPathClient {
         let mut exe_result = None;
 
         for member in members {
-            self.network_sender
-                .post_message(req_msg.clone(), self.rpath.clone(), member)
+            self.0
+                .network_sender
+                .post_message(req_msg.clone(), self.0.rpath.clone(), member)
                 .await;
 
             match futures::future::select(
@@ -191,5 +208,40 @@ impl RPathClient {
 
     pub async fn get_block(&self, height: Option<u64>) -> BuckyResult<GroupConsensusBlock> {
         unimplemented!()
+    }
+
+    pub(crate) async fn on_message(&self, msg: HotstuffMessage, remote: ObjectId) {
+        match msg {
+            HotstuffMessage::Block(block) => unreachable!(),
+            HotstuffMessage::BlockVote(vote) => unreachable!(),
+            HotstuffMessage::TimeoutVote(vote) => unreachable!(),
+            HotstuffMessage::Timeout(tc) => unreachable!(),
+            HotstuffMessage::SyncRequest(min_bound, max_bound) => unreachable!(),
+            HotstuffMessage::LastStateRequest => unreachable!(),
+            HotstuffMessage::StateChangeNotify(header_block, qc_block) => {
+                self.0
+                    .state_sync
+                    .on_state_change(header_block, qc_block, remote)
+                    .await
+            }
+            HotstuffMessage::ProposalResult(proposal_id, result) => {
+                self.0
+                    .state_sync
+                    .on_proposal_complete(proposal_id, result, remote)
+                    .await
+            }
+            HotstuffMessage::QueryState(sub_path) => {
+                self.0
+                    .state_requestor
+                    .on_query_state(sub_path, remote)
+                    .await
+            }
+            HotstuffMessage::VerifiableState(sub_path, result) => {
+                self.0
+                    .state_requestor
+                    .on_verifiable_state(sub_path, result, remote)
+                    .await
+            }
+        }
     }
 }
