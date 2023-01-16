@@ -144,7 +144,7 @@ impl ContextManager {
                 break None;
             }
 
-            let ret = path.rsplit_once('/').unwrap();
+            let ret = current_path.rsplit_once('/').unwrap();
             current_path = match ret.0 {
                 "" => "/",
                 _ => ret.0,
@@ -265,3 +265,37 @@ impl ContextManager {
     }
 }
 
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn search_context(path: &str) {
+        assert!(TransContextPath::verify(path));
+
+        let mut current_path = path;
+        loop {
+            println!("{}", current_path);
+
+            let _id = TransContext::gen_context_id(None, current_path);
+           
+            if current_path == "/" {
+                error!("search trans context by path but not found! path={}", path);
+                break;
+            }
+
+            let ret = current_path.rsplit_once('/').unwrap();
+            current_path = match ret.0 {
+                "" => "/",
+                _ => ret.0,
+            };
+        }
+    }
+
+    #[test]
+    fn test() {
+        search_context("/");
+        search_context("/a");
+        search_context("/a/b");
+        search_context("/a/b/c");
+    }
+}
