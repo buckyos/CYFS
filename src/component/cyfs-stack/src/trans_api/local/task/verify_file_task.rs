@@ -472,7 +472,8 @@ mod test {
         let task = VerifyFileRunnable {
             chunk_manager: chunk_manager.clone(),
             task_id: TaskId::from(hash.as_slice()),
-            file,
+            file: Some(file),
+            chunk_id: None,
             save_path: Some("H:\\data".to_owned()),
             verify_result: Mutex::new(false),
         };
@@ -487,7 +488,8 @@ mod test {
         let task = VerifyFileRunnable {
             chunk_manager: chunk_manager.clone(),
             task_id: TaskId::from(hash.as_slice()),
-            file,
+            file: Some(file),
+            chunk_id: None,
             save_path: Some("H:\\data".to_owned()),
             verify_result: Mutex::new(false),
         };
