@@ -117,7 +117,7 @@ impl CyfsStackHolderImpl {
         let stack = CyfsServiceLoader::cyfs_stack(Some(&self.param.device));
         self.cyfs_stack = Some(stack);
 
-        let shared_stack = CyfsServiceLoader::shared_cyfs_stack(Some(&self.param.device));
+        let shared_stack = stack.open_shared_object_stack(None, None).await?;
         self.shared_stack = Some(shared_stack);
 
         Ok(())

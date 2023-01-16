@@ -68,8 +68,7 @@ impl MonitorRunner for SNOnlineMonitor {
                 bdt_stack.local_device_id()
             );
             let begin = std::time::Instant::now();
-            let net_listener = bdt_stack.net_manager().listener().clone();
-            let ret = net_listener.wait_online().await;
+            let ret = bdt_stack.sn_client().ping().wait_online().await;
             let during = std::time::Instant::now() - begin;
             if let Err(e) = ret {
                 let msg = format!(

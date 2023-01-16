@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use cyfs_base::*;
 use cyfs_base_meta::*;
-use crate::{DBExecutor, get_meta_err_code, HashValueEx, MetaConnection, SPVTxStorage};
+use crate::{DBExecutor, get_meta_err_code, MetaConnection, SPVTxStorage};
 
 #[derive(Serialize, Deserialize)]
 pub struct SPVNFTBidRecord {

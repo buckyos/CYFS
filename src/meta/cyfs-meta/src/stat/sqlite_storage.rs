@@ -219,13 +219,8 @@ impl Storage for SqliteStorage {
 
     async fn get_desc_total(&self, obj_type: Option<ObjectTypeCode>) -> BuckyResult<u64> {
         let mut sql = QUERY_DESC.to_owned();
-        let mut first_where = true;
         if obj_type.is_some() {
-            if first_where {
-                sql = sql + " where ";
-                first_where = false;
-            }
-            sql = sql + "type_code = ?1";
+            sql = sql + " where type_code = ?1";
         }
 
         let mut query = sqlx::query(&sql);

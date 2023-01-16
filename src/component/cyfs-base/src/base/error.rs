@@ -84,6 +84,7 @@ pub enum BuckySystemErrorCode {
     InvalidSignature = 32,
     AlreadyExistsAndSignatureMerged = 33,
     TargetNotFound = 34,
+    Aborted = 35,
 
     ConnectFailed = 40,
     ConnectInterZoneFailed = 41,
@@ -196,6 +197,7 @@ pub enum BuckyErrorCode {
     InvalidSignature,
     AlreadyExistsAndSignatureMerged,
     TargetNotFound,
+    Aborted,
 
     ConnectFailed,
     ConnectInterZoneFailed,
@@ -286,6 +288,7 @@ impl Into<BuckySystemErrorCode> for BuckyErrorCode {
                 BuckySystemErrorCode::AlreadyExistsAndSignatureMerged
             }
             Self::TargetNotFound => BuckySystemErrorCode::TargetNotFound,
+            Self::Aborted => BuckySystemErrorCode::Aborted,
 
             Self::ConnectFailed => BuckySystemErrorCode::ConnectFailed,
             Self::ConnectInterZoneFailed => BuckySystemErrorCode::ConnectInterZoneFailed,
@@ -374,6 +377,7 @@ impl Into<BuckyErrorCode> for BuckySystemErrorCode {
                 BuckyErrorCode::AlreadyExistsAndSignatureMerged
             }
             Self::TargetNotFound => BuckyErrorCode::TargetNotFound,
+            Self::Aborted => BuckyErrorCode::Aborted,
 
             Self::ConnectFailed => BuckyErrorCode::ConnectFailed,
             Self::ConnectInterZoneFailed => BuckyErrorCode::ConnectInterZoneFailed,

@@ -410,7 +410,7 @@ impl TunnelContainer {
     pub fn create_tunnel<T: 'static + Tunnel + Clone>(
         &self, 
         ep_pair: EndpointPair, 
-        proxy: ProxyType) -> Result<T, BuckyError> {
+        proxy: ProxyType) -> BuckyResult<(T, bool)> {
         trace!("{} try create tunnel on {}", self, ep_pair);
         let stack = self.stack();
         if stack.net_manager().listener().endpoints().get(ep_pair.remote()).is_some() {
@@ -419,7 +419,7 @@ impl TunnelContainer {
         }
 
         let tunnel_impl = &self.0;
-        let (tunnel, _newly_create) = {
+        let (tunnel, newly_create) = {
             let entries = &mut tunnel_impl.state.write().unwrap().tunnel_entries;
             if let Some(tunnel) = entries.get(&ep_pair) {
                 //FIXME: 如果是NAT1的情况，存在在收到AckProxy之前，从ProxyEndpoint上收到通过代理转发过来的RN包，
@@ -452,7 +452,7 @@ impl TunnelContainer {
                 (tunnel.clone(), Some(tunnel))
             }
         };
-        Ok(tunnel.clone_as_tunnel())
+        Ok((tunnel.clone_as_tunnel(), newly_create.is_some()))
         
     }
 
@@ -919,7 +919,7 @@ impl OnUdpPackageBox for TunnelContainer {
             Some(tunnel) => {
                 Ok(tunnel)
             }, 
-            None => self.create_tunnel::<udp::Tunnel>(ep_pair, ProxyType::None)
+            None => self.create_tunnel::<udp::Tunnel>(ep_pair, ProxyType::None).map(|(t, _)| t)
         }?;
         // 为了udp 和 tcp tunnel的package 流向一致，直接把box转给udp tunnel，
         // 需要一致处理的package从udp/tcp tunnel回调container的 OnPackage
@@ -936,7 +936,7 @@ impl OnUdpRawData<(interface::udp::Interface, DeviceId, MixAesKey, Endpoint)> fo
             Some(tunnel) => {
                 Ok(tunnel)
             }, 
-            None => self.create_tunnel::<udp::Tunnel>(ep_pair, ProxyType::None)
+            None => self.create_tunnel::<udp::Tunnel>(ep_pair, ProxyType::None).map(|(t, _)| t)
         }?;
         // 为了udp 和 tcp tunnel的package 流向一致，直接把box转给udp tunnel，
         // 需要一致处理的package从udp/tcp tunnel回调container的 OnPackage
@@ -953,7 +953,7 @@ impl OnTcpInterface for TunnelContainer {
             Some(tunnel) => {
                 Ok(tunnel)
             }, 
-            None => self.create_tunnel::<tcp::Tunnel>(ep_pair, ProxyType::None)
+            None => self.create_tunnel::<tcp::Tunnel>(ep_pair, ProxyType::None).map(|(t, _)| t)
         }?;
         // 为了udp 和 tcp tunnel的package 流向一致，直接把box转给tcp tunnel，
         // 需要一致处理的package从udp/tcp tunnel回调container的 OnPackage
@@ -1079,8 +1079,8 @@ impl PingClientCalledEvent<PackageBox> for TunnelContainer {
             // for local in net_listener.ip_set() {
                 for remote in &called.reverse_endpoint_array {
                     let ep_pair = EndpointPair::from((Endpoint::default_tcp(remote), *remote));
-                    let tunnel: BuckyResult<tcp::Tunnel> = self.create_tunnel(ep_pair, ProxyType::None);
-                    if let Ok(tunnel) = tunnel {
+                    let tunnel = self.create_tunnel::<tcp::Tunnel>(ep_pair, ProxyType::None);
+                    if let Ok((tunnel, _)) = tunnel {
                         let _ = tunnel.connect();
                     }
                 }

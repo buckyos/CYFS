@@ -10,7 +10,7 @@ default = []
 mail = ["dep:lettre"]
 
 [dependencies]
-cyfs-base = {path="../../component/cyfs-base"}
-lettre = {version = "0.10", optional = true}
-serde = {version="1.0", feautres=["derive"]}
+cyfs-base = { path = "../../component/cyfs-base" }
+lettre = { version = "0.10", optional = true }
+serde = { version = "1.0" }
 log = "0.4"

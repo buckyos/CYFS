@@ -1,6 +1,7 @@
 use log::*;
 use std::{
-    sync::RwLock
+    sync::RwLock, 
+    time::Duration
 };
 use async_std::{
     sync::{Arc}, 
@@ -38,6 +39,7 @@ enum ConnectTunnelBuilderState {
 
 struct ConnectTunnelBuilderImpl {
     stack: WeakStack, 
+    start_at: Timestamp, 
     tunnel: TunnelContainer,
     params: BuildTunnelParams, 
     sequence: TempSeq,
@@ -58,6 +60,7 @@ impl ConnectTunnelBuilder {
         let sequence = tunnel.generate_sequence();
         Self(Arc::new(ConnectTunnelBuilderImpl {
             stack, 
+            start_at: bucky_time_now(), 
             tunnel,
             params, 
             sequence, 
@@ -66,6 +69,15 @@ impl ConnectTunnelBuilder {
                 waiter:StateWaiter::new()
             }))
         }))
+    }
+
+    fn escaped(&self) -> Duration {
+        let now = bucky_time_now();
+        if now > self.0.start_at {
+            Duration::from_micros(now - self.0.start_at)
+        } else {
+            Duration::from_micros(0)
+        }
     }
 
     async fn build_inner(&self) -> BuckyResult<()> {
@@ -96,28 +108,39 @@ impl ConnectTunnelBuilder {
                         match finish_ret {
                             Ok(_) => {
                                 info!("{} call nearest sn finished, sn={}", self, sn);
-                                false
+                                if TunnelBuilderState::Establish != self.state() {
+                                    let escaped = self.escaped();
+                                    if stack.config().stream.stream.retry_sn_timeout > escaped {
+                                        Some(Duration::from_secs(0))
+                                    } else {
+                                        Some(stack.config().stream.stream.retry_sn_timeout - escaped)
+                                    }
+                                } else {
+                                    None
+                                }
                             }, 
                             Err(err) => {
                                 if err.code() == BuckyErrorCode::Interrupted {
                                     info!("{} call nearest sn canceled, sn={}", self, sn);
-                                    false
+                                    None
                                 } else {
                                     error!("{} call nearest sn failed, sn={}, err={}", self, sn, err);
-                                    true
+                                    Some(Duration::from_secs(0))
                                 }
                             }
                         }
                     },
                     Err(_) => {
                         warn!("{} call nearest sn timeout {}", self, sn);
-                        true
+                        Some(Duration::from_secs(0))
                     }
                 };
-                if retry_sn_list {
-                    if let Some(sn_list) = build_params.retry_sn_list(&stack, &sn) {
-                        info!("{} retry sn list call, sn={:?}", self, sn_list);
-                        let _ = self.call_sn(sn_list, first_box).await;
+                if let Some(delay) = retry_sn_list {
+                    if future::timeout(delay, self.wait_establish()).await.is_err() {
+                        if let Some(sn_list) = build_params.retry_sn_list(&stack, &sn) {
+                            info!("{} retry sn list call, sn={:?}", self, sn_list);
+                            let _ = self.call_sn(sn_list, first_box).await;
+                        }
                     }
                 }
             }
@@ -324,21 +347,25 @@ impl ConnectTunnelBuilder {
         let connect_info = remote.connect_info();
         for udp_interface in net_listener.udp() {
             for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_udp() && ep.is_same_ip_version(&udp_interface.local()) && filter(ep)) {
-                if let Ok(udp_tunnel) = tunnel.create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
-                    let action = SynUdpTunnel::new(
-                        udp_tunnel, 
-                        first_box.clone(), 
-                        tunnel.config().udp.holepunch_interval); 
-                    actions.push(Box::new(action) as DynBuildTunnelAction);
+                if let Ok((udp_tunnel, newly_created)) = tunnel.create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
+                    if newly_created {
+                        let action = SynUdpTunnel::new(
+                            udp_tunnel, 
+                            first_box.clone(), 
+                            tunnel.config().udp.holepunch_interval); 
+                        actions.push(Box::new(action) as DynBuildTunnelAction);
+                    }
                 }  
             }    
         }
 
         // for local_ip in net_listener.ip_set() {
             for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_tcp() && filter(ep)) {
-                if let Ok(tunnel) = tunnel.create_tunnel(EndpointPair::from((Endpoint::default_tcp(remote_ep), *remote_ep)), ProxyType::None) {
-                    let action = ConnectTcpTunnel::new(tunnel);
-                    actions.push(Box::new(action) as DynBuildTunnelAction);
+                if let Ok((tunnel, newly_created)) = tunnel.create_tunnel(EndpointPair::from((Endpoint::default_tcp(remote_ep), *remote_ep)), ProxyType::None) {
+                    if newly_created {
+                        let action = ConnectTcpTunnel::new(tunnel);
+                        actions.push(Box::new(action) as DynBuildTunnelAction);
+                    }
                 }   
             }   
         // }

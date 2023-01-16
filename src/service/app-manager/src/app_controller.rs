@@ -15,6 +15,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use async_std::prelude::StreamExt;
+use once_cell::sync::OnceCell;
+use app_manager_lib::AppManagerConfig;
 
 pub type AppActionResult<T> = Result<T, SubErrorCode>;
 
@@ -24,12 +26,12 @@ pub struct PermissionNode {
 }
 
 pub struct AppController {
-    shared_stack: Option<SharedCyfsStack>,
-    owner: Option<ObjectId>,
-    docker_api: Option<DockerApi>,
-    named_cache_client: Option<NamedCacheClient>,
+    shared_stack: OnceCell<SharedCyfsStack>,
+    owner: ObjectId,
+    docker_api: DockerApi,
+    named_cache_client: OnceCell<NamedCacheClient>,
     sn_hash: RwLock<HashValue>,
-    use_docker: bool,
+    config: AppManagerConfig
 }
 
 async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
@@ -46,29 +48,19 @@ async fn get_sn_list(stack: &SharedCyfsStack) -> BuckyResult<Vec<Device>> {
 }
 
 impl AppController {
-    pub fn new(use_docker: bool) -> Self {
-        // check platform
-        let docker_api;
-        if use_docker {
-            docker_api = Some(DockerApi::new());
-        } else {
-            docker_api = None;
-        }
-
+    pub fn new(config: AppManagerConfig, owner: ObjectId) -> Self {
         Self {
-            shared_stack: None,
-            owner: None,
-            named_cache_client: None,
+            shared_stack: OnceCell::new(),
+            owner,
+            named_cache_client: OnceCell::new(),
             sn_hash: RwLock::new(HashValue::default()),
-            docker_api,
-            use_docker,
+            docker_api: DockerApi::new(),
+            config,
         }
     }
 
     pub async fn prepare_start(
-        &mut self,
-        shared_stack: SharedCyfsStack,
-        owner: ObjectId,
+        &self, shared_stack: SharedCyfsStack,
     ) -> BuckyResult<()> {
         let sn_list = get_sn_list(&shared_stack).await.unwrap_or_else(|e| {
             error!("get sn list from stack err {}, use built-in sn list", e);
@@ -80,8 +72,9 @@ impl AppController {
 
         let sn_hash = hash_data(&sn_list.to_vec().unwrap());
         *self.sn_hash.write().unwrap() = sn_hash;
-        self.shared_stack = Some(shared_stack);
-        self.owner = Some(owner);
+        self.shared_stack.set(shared_stack).map_err(|_|{
+            BuckyError::from(BuckyErrorCode::AlreadyExists)
+        })?;
 
         let mut config = NamedCacheClientConfig::default();
         config.sn_list = Some(sn_list);
@@ -92,7 +85,9 @@ impl AppController {
         config.tcp_chunk_manager_port = 5310;
         let mut named_cache_client = NamedCacheClient::new(config);
         named_cache_client.init().await?;
-        self.named_cache_client = Some(named_cache_client);
+        self.named_cache_client.set(named_cache_client).map_err(|_|{
+            BuckyError::from(BuckyErrorCode::AlreadyExists)
+        })?;
         Ok(())
     }
 
@@ -101,13 +96,13 @@ impl AppController {
         async_std::task::spawn(async move {
             let mut interval = async_std::stream::interval(Duration::from_secs(5*60));
             while let Some(_) = interval.next().await {
-                match get_sn_list(this.shared_stack.as_ref().unwrap()).await {
+                match get_sn_list(this.shared_stack.get().unwrap()).await {
                     Ok(sn_list) => {
                         let sn_hash = hash_data(&sn_list.to_vec().unwrap());
                         let old_hash = this.sn_hash.read().unwrap().clone();
                         if old_hash != sn_hash {
                             info!("sn list from stack changed, {:?}", &sn_list);
-                            match this.named_cache_client.as_ref().unwrap().reset_sn_list(sn_list).await {
+                            match this.named_cache_client.get().unwrap().reset_sn_list(sn_list).await {
                                 Ok(_) => {
                                     *this.sn_hash.write().unwrap() = sn_hash;
                                 }
@@ -152,7 +147,7 @@ impl AppController {
         );
         // 返回了安装的service路径和web路径
         let (service_dir, web_dir) = pkg
-            .install(self.named_cache_client.as_ref().unwrap())
+            .install(self.named_cache_client.get().unwrap())
             .await
             .map_err(|e| {
                 error!("install app:{} failed, {}", app_id, e);
@@ -162,7 +157,7 @@ impl AppController {
         let web_dir_id = if web_dir.exists() {
             let pub_resp = self
                 .shared_stack
-                .as_ref()
+                .get()
                 .unwrap()
                 .trans()
                 .publish_file(&TransPublishFileOutputRequest {
@@ -174,7 +169,7 @@ impl AppController {
                         referer_object: vec![],
                         flags: 0,
                     },
-                    owner: self.owner.unwrap(),
+                    owner: self.owner.clone(),
                     local_path: web_dir,
                     chunk_size: 1024 * 1024,
                     file_id: None,
@@ -193,28 +188,6 @@ impl AppController {
                 app_id, pub_resp.file_id
             );
             Some(pub_resp.file_id)
-            /*let dir_id = self.shared_stack.util().build_dir_from_object_map(UtilBuildDirFromObjectMapOutputRequest {
-                    common: UtilOutputRequestCommon {
-                        req_path: None,
-                        dec_id: Some(get_system_dec_app().object_id().clone()),
-                        target: None,
-                        flags: 0
-                    },
-                    object_map_id: pub_resp.file_id.clone(),
-                    dir_type: BuildDirType::Zip
-                }).await
-                .and_then(|resp| {
-                    info!("dir obj id: {}", resp.object_id);
-                    DirId::try_from(resp.object_id)
-                })
-                .map_err(|e| {
-                    error!(
-                        "trans objmap to dir failed when install. app:{}, objmap id: {}, failed, {}",
-                        app_id, pub_resp.file_id, e
-                    );
-                    SubErrorCode::PubDirFailed
-                })?;
-            Some(dir_id)*/
         } else {
             None
         };
@@ -237,7 +210,9 @@ impl AppController {
             }
 
             //run docker install -> build image
-            if self.docker_api.is_some() {
+            let use_docker = self.config.app_use_docker(app_id);
+            info!("app {} use docker install: {}", app_id, use_docker);
+            if use_docker {
                 info!("run docker install!");
                 let id = app_id.to_string();
 
@@ -256,8 +231,7 @@ impl AppController {
                         Some(res)
                     }
                 };
-                let docker_api = self.docker_api.as_ref().unwrap();
-                docker_api
+                self.docker_api
                     .install(&id, version, executable)
                     .await
                     .map_err(|e| {
@@ -291,12 +265,13 @@ impl AppController {
 
         // docker remove
         // 删除镜像
-        if self.docker_api.is_some() {
+        let use_docker = self.config.app_use_docker(app_id);
+        info!("app {} use docker uninstall: {}", app_id, use_docker);
+        if use_docker {
             info!("docker instance try to uninstall app:{}", app_id);
             let id = app_id.to_string();
-            let docker_api = self.docker_api.as_ref().unwrap();
-            // docker_api.volume_remove(&id).await; // 这里不用删除 volume 保留用户数据。
-            let _ = docker_api.uninstall(&id).await.map_err(|e| {
+            // self.docker_api.volume_remove(&id).await; // 这里不用删除 volume 保留用户数据。
+            let _ = self.docker_api.uninstall(&id).await.map_err(|e| {
                 warn!(
                     "remove docker container and build dir failed, app:{}, err:{}",
                     app_id, e
@@ -315,13 +290,13 @@ impl AppController {
             SubErrorCode::LoadFailed
         })?;
 
-        if self.docker_api.is_some() {
+        let use_docker = self.config.app_use_docker(app_id);
+        info!("app {} use docker start: {}", app_id, use_docker);
+        if use_docker {
             let cmd = dapp.get_start_cmd().unwrap();
             let cmd_param = Some(vec![cmd.to_string()]);
             info!("service cmd: {}", cmd);
             self.docker_api
-                .as_ref()
-                .unwrap()
                 .start(&id, config, cmd_param)
                 .await
                 .map_err(|e| {
@@ -333,7 +308,7 @@ impl AppController {
             info!("run app simple:{}", app_id);
             dapp.start().map_err(|e| {
                 warn!("start app directly failed, appId: {}, {}", app_id, e);
-                SubErrorCode::None
+                SubErrorCode::CommondFailed
             })?;
         }
         Ok(())
@@ -341,8 +316,10 @@ impl AppController {
 
     pub async fn stop_app(&self, app_id: &DecAppId) -> AppActionResult<()> {
         let id = app_id.to_string();
-        if self.docker_api.is_some() {
-            match self.docker_api.as_ref().unwrap().stop(&id).await {
+        let use_docker = self.config.app_use_docker(app_id);
+        info!("app {} use docker stop: {}", app_id, use_docker);
+        if use_docker {
+            match self.docker_api.stop(&id).await {
                 Ok(_) => {
                     info!("stop docker container success!, app:{}", id);
                 }
@@ -358,7 +335,7 @@ impl AppController {
             })?;
             let result = dapp.stop().map_err(|e| {
                 warn!("stop app directly failed, app:{}, err:{}", app_id, e);
-                SubErrorCode::Unknown
+                SubErrorCode::CommondFailed
             })?;
             info!("stop dapp instance:{}", result);
         }
@@ -369,13 +346,15 @@ impl AppController {
     pub async fn is_app_running(&self, app_id: &DecAppId) -> BuckyResult<bool> {
         let id = app_id.to_string();
 
-        if self.docker_api.is_some() {
-            let result = self.docker_api.as_ref().unwrap().is_running(&id).await?;
-            return Ok(result);
+        let use_docker = self.config.app_use_docker(app_id);
+        info!("app {} use docker status: {}", app_id, use_docker);
+        if use_docker {
+            let result = self.docker_api.is_running(&id).await?;
+            Ok(result)
         } else {
             let mut dapp = DApp::load_from_app_id(&id)?;
             let result = dapp.status()?;
-            return Ok(result);
+            Ok(result)
         }
     }
 
@@ -401,7 +380,7 @@ impl AppController {
         let acl_dir;
 
         match pkg
-            .download_permission_config(self.named_cache_client.as_ref().unwrap())
+            .download_permission_config(self.named_cache_client.get().unwrap())
             .await
         {
             Ok(dir) => acl_dir = dir,
@@ -421,7 +400,7 @@ impl AppController {
         let acl_config = AppAclUtil::load_from_file(app_id, &acl_file)?;
 
         let _ =
-            AppAclUtil::apply_acl(app_id, self.shared_stack.as_ref().unwrap(), acl_config).await;
+            AppAclUtil::apply_acl(app_id, self.shared_stack.get().unwrap(), acl_config).await;
 
         //TODO: Requires users to agree to permissions, not automatic settings
         Ok(None)
@@ -473,7 +452,7 @@ impl AppController {
         );
 
         let _ = pkg
-            .download_dep_config(dep_dir, self.named_cache_client.as_ref().unwrap())
+            .download_dep_config(dep_dir, self.named_cache_client.get().unwrap())
             .await
             .map_err(|e| {
                 error!("download app dep {} failed, {}", app_id, e);
@@ -532,7 +511,7 @@ impl AppController {
         // DecApp会更新，这里要主动从远端获取
         let resp = self
             .shared_stack
-            .as_ref()
+            .get()
             .unwrap()
             .non_service()
             .get_object(NONGetObjectRequest {
@@ -558,7 +537,7 @@ impl AppController {
             ObjectTypeCode::People => {
                 match self
                     .shared_stack
-                    .as_ref()
+                    .get()
                     .unwrap()
                     .util_service()
                     .resolve_ood(UtilResolveOODOutputRequest::new(
@@ -612,8 +591,8 @@ mod tests {
             .to_owned()
             .unwrap_or_else(|| device.desc().calculate_id());
 
-        let mut app_controller = AppController::new(false);
-        app_controller.prepare_start(stack, owner).await;
+        let mut app_controller = AppController::new(AppManagerConfig::default(), stack, owner);
+        app_controller.prepare_start().await;
 
         app_controller
         //let app_controller = AppController::new(stack, owner, named_cache_client, false);
