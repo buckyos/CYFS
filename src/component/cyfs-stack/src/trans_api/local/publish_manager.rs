@@ -557,13 +557,18 @@ impl PublishManager {
             self.task_manager
                 .remove_task(&dec_id, &source, &task_id)
                 .await?;
-            if let BuildFileTaskStatus::Finished(file) = detail_status {
-                file
-            } else {
-                return Err(BuckyError::new(
-                    BuckyErrorCode::Failed,
-                    format!("publish local file {} failed", local_path),
-                ));
+
+            match detail_status {
+                BuildFileTaskStatus::Finished(file) => file,
+                BuildFileTaskStatus::Failed(err) => {
+                    let msg = format!(
+                        "build local file object failed! path={}, chunk_size={}, {}",
+                        local_path, chunk_size, err
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(err.code(), msg));
+                }
+                BuildFileTaskStatus::Running | BuildFileTaskStatus::Stopped => unreachable!(),
             }
         } else {
             file.unwrap()
@@ -595,13 +600,25 @@ impl PublishManager {
             .remove_task(&dec_id, &source, &task_id)
             .await?;
         let state = PublishLocalFileTaskStatus::clone_from_slice(detail_status.as_slice())?;
-        if let PublishLocalFileTaskStatus::Finished = state {
-            Ok(file_id)
-        } else {
-            Err(BuckyError::new(
-                BuckyErrorCode::Failed,
-                format!("publish local file {} failed", local_path),
-            ))
+        match state {
+            PublishLocalFileTaskStatus::Finished => {
+                info!(
+                    "publish local file success! path={}, chunk_size={}, file={}",
+                    local_path, chunk_size, file_id
+                );
+                Ok(file_id)
+            }
+            PublishLocalFileTaskStatus::Failed(err) => {
+                let msg = format!(
+                    "publish local file failed! path={}, chunk_size={}, file={}, {}",
+                    local_path, chunk_size, file_id, err
+                );
+                error!("{}", msg);
+                Err(BuckyError::new(err.code(), msg))
+            }
+            PublishLocalFileTaskStatus::Running | PublishLocalFileTaskStatus::Stopped => {
+                unreachable!()
+            }
         }
     }
 
@@ -642,13 +659,18 @@ impl PublishManager {
             self.task_manager
                 .remove_task(&dec_id, &source, &task_id)
                 .await?;
-            if let BuildDirTaskStatus::Finished(object_id) = detail_status {
-                object_id
-            } else {
-                return Err(BuckyError::new(
-                    BuckyErrorCode::Failed,
-                    format!("publish local dir {} failed", local_path),
-                ));
+
+            match detail_status {
+                BuildDirTaskStatus::Finished(object_id) => object_id,
+                BuildDirTaskStatus::Failed(err) => {
+                    let msg = format!(
+                        "build local dir object failed! path={}, chunk_size={}, {}",
+                        local_path, chunk_size, err
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(err.code(), msg));
+                }
+                BuildDirTaskStatus::Running | BuildDirTaskStatus::Stopped => unreachable!(),
             }
         } else {
             dir.unwrap()
@@ -676,14 +698,27 @@ impl PublishManager {
         self.task_manager
             .remove_task(&dec_id, &source, &task_id)
             .await?;
+
         let state = PublishLocalFileTaskStatus::clone_from_slice(detail_status.as_slice())?;
-        if let PublishLocalFileTaskStatus::Finished = state {
-            Ok(root_id)
-        } else {
-            Err(BuckyError::new(
-                BuckyErrorCode::Failed,
-                format!("publish local dir {} failed", local_path),
-            ))
+        match state {
+            PublishLocalFileTaskStatus::Finished => {
+                info!(
+                    "publish local dir success! path={}, chunk_size={}, dir={}",
+                    local_path, chunk_size, root_id
+                );
+                Ok(root_id)
+            }
+            PublishLocalFileTaskStatus::Failed(err) => {
+                let msg = format!(
+                    "publish local dir failed! path={}, chunk_size={}, dir={}, {}",
+                    local_path, chunk_size, root_id, err
+                );
+                error!("{}", msg);
+                Err(BuckyError::new(err.code(), msg))
+            }
+            PublishLocalFileTaskStatus::Running | PublishLocalFileTaskStatus::Stopped => {
+                unreachable!()
+            }
         }
     }
 }
