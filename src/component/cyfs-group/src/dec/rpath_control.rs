@@ -1,16 +1,11 @@
 use std::sync::Arc;
 
-use async_std::sync::Mutex;
-use cyfs_base::{BuckyResult, Group, NamedObject, ObjectDesc, ObjectId, RsaCPUObjectSigner};
-use cyfs_chunk_lib::ChunkMeta;
-use cyfs_core::{GroupProposal, GroupRPath, GroupRPathStatus};
-use cyfs_lib::NONObjectInfo;
+use cyfs_base::{BuckyResult, ObjectId, RsaCPUObjectSigner};
+use cyfs_core::{GroupProposal, GroupRPath};
 
 use crate::{
-    network::{self, NonDriver},
-    storage::GroupStorage,
-    Committee, Hotstuff, HotstuffMessage, IsCreateRPath, PendingProposalHandler,
-    PendingProposalMgr, RPathDelegate,
+    network::NonDriver, storage::GroupStorage, Committee, Hotstuff, HotstuffMessage,
+    PendingProposalHandler, PendingProposalMgr, RPathDelegate,
 };
 
 struct RPathControlRaw {
@@ -27,6 +22,7 @@ pub struct RPathControl(Arc<RPathControlRaw>);
 impl RPathControl {
     pub(crate) async fn load(
         local_id: ObjectId,
+        local_device_id: ObjectId,
         rpath: GroupRPath,
         signer: Arc<RsaCPUObjectSigner>,
         delegate: Arc<Box<dyn RPathDelegate>>,
@@ -35,9 +31,10 @@ impl RPathControl {
         store: GroupStorage,
     ) -> BuckyResult<Self> {
         let (pending_proposal_handle, pending_proposal_consumer) = PendingProposalMgr::new();
-        let committee = Committee::new();
+        let committee = Committee::new(rpath.group_id().clone(), non_driver.clone());
         let hotstuff = Hotstuff::new(
             local_id,
+            local_device_id,
             committee.clone(),
             store,
             signer,

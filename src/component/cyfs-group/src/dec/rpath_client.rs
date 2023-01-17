@@ -77,7 +77,7 @@ impl RPathClient {
             .non_driver
             .get_group(proposal.r_path().group_id(), None, None)
             .await?;
-        let admins = group.select_members_with_distance(&self.0.local_id, GroupMemberScope::Admin);
+        let oods = group.ood_list_with_distance(&self.0.local_id);
         let proposal_id = proposal.desc().object_id();
         let non_proposal = NONObjectInfo::new(proposal_id, proposal.to_vec()?, None);
 
@@ -87,11 +87,11 @@ impl RPathClient {
         let mut post_result = None;
         let mut exe_result = None;
 
-        for admin in admins {
+        for ood in oods {
             match self
                 .0
                 .non_driver
-                .post_object(non_proposal.clone(), admin)
+                .post_object(non_proposal.clone(), ood)
                 .await
             {
                 Ok(r) => post_result = Some(Ok(())),
@@ -135,7 +135,7 @@ impl RPathClient {
         )
     }
 
-    // request last state from random admin
+    // request last state from random ood in group.ood_list()
     pub async fn refresh_state(&self) -> BuckyResult<()> {
         let group = self
             .0
@@ -143,17 +143,13 @@ impl RPathClient {
             .get_group(&self.0.rpath.group_id(), None, None)
             .await?;
 
-        let admins = group.select_members_with_distance(&self.0.local_id, GroupMemberScope::Admin);
-        let random = rand::thread_rng().gen_range(0..admins.len());
-        let admin = admins.get(random).unwrap().clone();
+        let oods = group.ood_list_with_distance(&self.0.local_id);
+        let random = rand::thread_rng().gen_range(0..oods.len());
+        let ood = oods.get(random).unwrap().clone();
 
         self.0
             .network_sender
-            .post_message(
-                HotstuffMessage::LastStateRequest,
-                self.0.rpath.clone(),
-                admin,
-            )
+            .post_message(HotstuffMessage::LastStateRequest, self.0.rpath.clone(), ood)
             .await;
         Ok(())
     }

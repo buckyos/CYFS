@@ -3,7 +3,8 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 use async_std::channel::{Receiver, Sender};
 use cyfs_base::{
     bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
-    ObjectDesc, ObjectId, RawConvertTo, RawDecode, RsaCPUObjectSigner,
+    ObjectDesc, ObjectId, ObjectLink, RawConvertTo, RawDecode, RawEncode, RsaCPUObjectSigner,
+    SignatureSource, Signer,
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
@@ -33,6 +34,7 @@ pub(crate) struct Hotstuff {
 impl Hotstuff {
     pub fn new(
         local_id: ObjectId,
+        local_device_id: ObjectId,
         committee: Committee,
         store: GroupStorage,
         signer: Arc<RsaCPUObjectSigner>,
@@ -57,6 +59,7 @@ impl Hotstuff {
         async_std::task::spawn(async move {
             HotstuffRunner::new(
                 local_id,
+                local_device_id,
                 committee,
                 store,
                 signer,
@@ -121,6 +124,7 @@ impl Hotstuff {
 
 struct HotstuffRunner {
     local_id: ObjectId,
+    local_device_id: ObjectId,
     committee: Committee,
     store: GroupStorage,
     signer: Arc<RsaCPUObjectSigner>,
@@ -145,6 +149,7 @@ impl HotstuffRunner {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         local_id: ObjectId,
+        local_device_id: ObjectId,
         committee: Committee,
         store: GroupStorage,
         signer: Arc<RsaCPUObjectSigner>,
@@ -178,6 +183,7 @@ impl HotstuffRunner {
 
         Self {
             local_id,
+            local_device_id,
             committee,
             store,
             signer,
@@ -286,7 +292,7 @@ impl HotstuffRunner {
             }
         };
 
-        self.committee.verify_block(block).await?;
+        self.committee.verify_block(block, remote).await?;
 
         self.check_block_proposal_result_state_by_app(block, &proposals, &prev_block)
             .await?;
@@ -521,7 +527,12 @@ impl HotstuffRunner {
             return None;
         }
 
-        let vote = match HotstuffBlockQCVote::new(block, self.local_id, &self.signer).await {
+        match self.check_group_is_latest(block.group_chunk_id()).await {
+            Ok(is_latest) if is_latest => {}
+            _ => return None,
+        }
+
+        let vote = match HotstuffBlockQCVote::new(block, self.local_device_id, &self.signer).await {
             Ok(vote) => vote,
             Err(e) => {
                 log::warn!(
@@ -715,7 +726,7 @@ impl HotstuffRunner {
                 let timeout = HotstuffTimeoutVote::new(
                     self.high_qc.clone(),
                     self.round,
-                    self.local_id,
+                    self.local_device_id,
                     &self.signer,
                 )
                 .await?;
@@ -854,7 +865,7 @@ impl HotstuffRunner {
             .unwrap()
             .calculate_id();
 
-        let block = GroupConsensusBlock::create(
+        let mut block = GroupConsensusBlock::create(
             self.rpath.clone(),
             proposals_param,
             result_state_id,
@@ -867,6 +878,8 @@ impl HotstuffRunner {
             self.local_id,
         );
 
+        self.sign_block(&mut block).await?;
+
         self.tx_message
             .send((HotstuffMessage::Block(block.clone()), self.local_id))
             .await;
@@ -875,6 +888,22 @@ impl HotstuffRunner {
             .await;
 
         self.rx_proposal_waiter = None;
+        Ok(())
+    }
+
+    async fn sign_block(&self, block: &mut GroupConsensusBlock) -> BuckyResult<()> {
+        let sign_source = SignatureSource::Object(ObjectLink {
+            obj_id: self.local_device_id,
+            obj_owner: None,
+        });
+
+        let desc_hash = block.named_object().desc().raw_hash_encode()?;
+        let signature = self.signer.sign(desc_hash.as_slice(), &sign_source).await?;
+        block
+            .named_object_mut()
+            .signs_mut()
+            .set_desc_sign(signature);
+
         Ok(())
     }
 
@@ -938,6 +967,13 @@ impl HotstuffRunner {
             .send((HotstuffMessage::Block(block), remote))
             .await;
         Ok(())
+    }
+
+    async fn check_group_is_latest(&self, group_chunk_id: &ObjectId) -> BuckyResult<bool> {
+        let latest_group = self.committee.get_group(None).await?;
+        let group_chunk = ChunkMeta::from(&latest_group).to_chunk().await?;
+        let latest_chunk_id = group_chunk.calculate_id();
+        Ok(latest_chunk_id.as_object_id() == group_chunk_id)
     }
 
     async fn recover(&mut self) {

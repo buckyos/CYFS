@@ -197,7 +197,7 @@ pub(crate) struct HotstuffBlockQCVote {
 impl HotstuffBlockQCVote {
     pub async fn new(
         block: &GroupConsensusBlock,
-        local_id: ObjectId,
+        local_device_id: ObjectId,
         signer: &RsaCPUObjectSigner,
     ) -> BuckyResult<Self> {
         let block_id = block.named_object().desc().object_id();
@@ -205,20 +205,23 @@ impl HotstuffBlockQCVote {
         let signature = signer
             .sign(
                 Self::hash_content(&block_id, block.prev_block_id(), round).as_slice(),
-                &SignatureSource::RefIndex(0),
+                &SignatureSource::Object(ObjectLink {
+                    obj_id: local_device_id,
+                    obj_owner: None,
+                }),
             )
             .await?;
 
         Ok(Self {
             block_id,
             round,
-            voter: local_id,
+            voter: local_device_id,
             signature,
             prev_block_id: block.prev_block_id().map(|id| id.clone()),
         })
     }
 
-    fn hash(&self) -> HashValue {
+    pub fn hash(&self) -> HashValue {
         Self::hash_content(&self.block_id, self.prev_block_id.as_ref(), self.round)
     }
 
@@ -282,29 +285,32 @@ impl HotstuffTimeoutVote {
     pub async fn new(
         high_qc: Option<HotstuffBlockQC>,
         round: u64,
-        local_id: ObjectId,
+        local_device_id: ObjectId,
         signer: &RsaCPUObjectSigner,
     ) -> BuckyResult<Self> {
         let signature = signer
             .sign(
                 Self::hash_content(high_qc.as_ref().map_or(0, |qc| qc.round), round).as_slice(),
-                &SignatureSource::RefIndex(0),
+                &SignatureSource::Object(ObjectLink {
+                    obj_id: local_device_id,
+                    obj_owner: None,
+                }),
             )
             .await?;
 
         Ok(Self {
             high_qc,
             round,
-            voter: local_id,
+            voter: local_device_id,
             signature,
         })
     }
 
-    fn hash(&self) -> HashValue {
+    pub fn hash(&self) -> HashValue {
         Self::hash_content(self.high_qc.as_ref().map_or(0, |qc| qc.round), self.round)
     }
 
-    fn hash_content(high_qc_round: u64, round: u64) -> HashValue {
+    pub fn hash_content(high_qc_round: u64, round: u64) -> HashValue {
         let mut sha256 = sha2::Sha256::new();
         sha256.input(high_qc_round.to_le_bytes());
         sha256.input(round.to_le_bytes());

@@ -29,6 +29,7 @@ struct LocalInfo {
     signer: Arc<RsaCPUObjectSigner>,
     network_sender: crate::network::Sender,
     non_driver: crate::network::NonDriver,
+    bdt_stack: Stack,
 }
 
 #[derive(Clone)]
@@ -49,6 +50,7 @@ impl GroupRPathMgr {
             signer: Arc::new(signer),
             network_sender,
             non_driver,
+            bdt_stack,
         };
 
         let raw = GroupRPathMgrRaw {
@@ -86,7 +88,7 @@ impl GroupRPathMgr {
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
-        is_auto_create: &IsCreateRPath,
+        is_auto_create: IsCreateRPath,
     ) -> BuckyResult<RPathControl> {
         self.find_rpath_control_inner(group_id, dec_id, rpath, is_auto_create, None, None)
             .await
@@ -189,7 +191,7 @@ impl GroupRPathMgr {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        &IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes(None),
                         Some(&block),
                         Some(&remote),
                     )
@@ -205,7 +207,7 @@ impl GroupRPathMgr {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        &IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes(None),
                         None,
                         Some(&remote),
                     )
@@ -221,7 +223,7 @@ impl GroupRPathMgr {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        &IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes(None),
                         None,
                         Some(&remote),
                     )
@@ -237,7 +239,7 @@ impl GroupRPathMgr {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        &IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes(None),
                         None,
                         Some(&remote),
                     )
@@ -253,7 +255,7 @@ impl GroupRPathMgr {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        &IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes(None),
                         None,
                         Some(&remote),
                     )
@@ -269,7 +271,7 @@ impl GroupRPathMgr {
                         rpath.group_id(),
                         rpath.dec_id(),
                         rpath.r_path(),
-                        &IsCreateRPath::Yes(None),
+                        IsCreateRPath::Yes(None),
                         None,
                         Some(&remote),
                     )
@@ -327,7 +329,7 @@ impl GroupRPathMgr {
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
-        is_auto_create: &IsCreateRPath,
+        is_auto_create: IsCreateRPath,
         block: Option<&GroupConsensusBlock>,
         remote: Option<&ObjectId>,
     ) -> BuckyResult<RPathControl> {
@@ -353,8 +355,9 @@ impl GroupRPathMgr {
             let signer = local_info.signer.clone();
             let network_sender = local_info.network_sender.clone();
             let non_driver = local_info.non_driver.clone();
+            let local_device_id = local_info.bdt_stack.local_device_id().clone();
 
-            let store = GroupStorage::load(group_id, dec_id, rpath, &IsCreateRPath::No).await;
+            let store = GroupStorage::load(group_id, dec_id, rpath).await;
             let store = match store {
                 Ok(store) => Some(store),
                 Err(e) => {
@@ -395,7 +398,13 @@ impl GroupRPathMgr {
 
             let store = match store {
                 Some(store) => store,
-                None => GroupStorage::load(group_id, dec_id, rpath, is_auto_create).await?,
+                None => {
+                    let init_state = match is_auto_create {
+                        IsCreateRPath::Yes(init_state) => init_state,
+                        _ => unreachable!(),
+                    };
+                    GroupStorage::create(group_id, dec_id, rpath, init_state).await?
+                }
             };
 
             let found = raw
@@ -411,6 +420,7 @@ impl GroupRPathMgr {
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     let control = RPathControl::load(
                         local_id,
+                        local_device_id.object_id().clone(),
                         GroupRPath::new(group_id.clone(), dec_id.clone(), rpath.to_string()),
                         signer,
                         Arc::new(delegate),

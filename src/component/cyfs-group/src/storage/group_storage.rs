@@ -34,11 +34,21 @@ pub struct GroupStorage {
 }
 
 impl GroupStorage {
+    pub async fn create(
+        group_id: &ObjectId,
+        dec_id: &ObjectId,
+        rpath: &str,
+        init_state_id: Option<ObjectId>,
+    ) -> BuckyResult<GroupStorage> {
+        // 用hash加载chunk
+        // 从chunk解析group
+        unimplemented!()
+    }
+
     pub async fn load(
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
-        is_auto_create: &IsCreateRPath,
     ) -> BuckyResult<GroupStorage> {
         // 用hash加载chunk
         // 从chunk解析group

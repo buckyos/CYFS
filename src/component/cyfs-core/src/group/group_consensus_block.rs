@@ -227,6 +227,7 @@ pub trait GroupConsensusBlockObject {
     fn prev_block_id(&self) -> Option<&ObjectId>;
     fn owner(&self) -> &ObjectId;
     fn named_object(&self) -> &NamedObjectBase<GroupConsensusBlockType>;
+    fn named_object_mut(&mut self) -> &mut NamedObjectBase<GroupConsensusBlockType>;
     fn round(&self) -> u64;
     fn group_chunk_id(&self) -> &ObjectId;
     fn qc(&self) -> &Option<HotstuffBlockQC>;
@@ -321,6 +322,10 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
 
     fn named_object(&self) -> &NamedObjectBase<GroupConsensusBlockType> {
         &self.0
+    }
+
+    fn named_object_mut(&mut self) -> &mut NamedObjectBase<GroupConsensusBlockType> {
+        &mut self.0
     }
 
     fn round(&self) -> u64 {

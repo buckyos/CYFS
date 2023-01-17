@@ -325,6 +325,10 @@ impl Group {
         unimplemented!()
     }
 
+    pub fn ood_list_with_distance(&self, target: &ObjectId) -> Vec<&ObjectId> {
+        unimplemented!()
+    }
+
     // pub fn group_hash(&self) -> ObjectId {
     //     let mut without_sign = self.clone();
     //     without_sign.common_mut().join_signatures = vec![];

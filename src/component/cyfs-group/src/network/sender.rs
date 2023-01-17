@@ -4,7 +4,7 @@ use cyfs_core::GroupRPath;
 
 use crate::{HotstuffMessage, HotstuffPackage};
 
-use super::{non_driver, NonDriver};
+use super::NonDriver;
 
 #[derive(Clone)]
 pub struct Sender {
