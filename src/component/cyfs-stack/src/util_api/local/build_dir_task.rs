@@ -5,7 +5,8 @@ use cyfs_debug::Mutex;
 use cyfs_lib::*;
 use cyfs_task_manager::*;
 use cyfs_util::*;
-use futures::future::AbortHandle;
+
+use futures::future::{AbortHandle, Aborted};
 use sha2::Digest;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -888,16 +889,20 @@ impl Task for BuildDirTask {
                                 }
                             }
                         },
-                        Err(_) => {
+                        Err(Aborted) => {
                             {
+                                let msg = format!("build dir task been aborted! task={}", task_id);
+                                warn!("{}", msg);
+                                let err = BuckyError::new(BuckyErrorCode::UserCanceled, msg);
+
                                 let mut tmp_data = task_state.lock().unwrap();
-                                tmp_data.task_status = BuildDirTaskStatus::Stopped;
+                                tmp_data.task_status = BuildDirTaskStatus::Failed(err);
                             }
                             if task_store.is_some() {
                                 task_store
                                     .as_ref()
                                     .unwrap()
-                                    .save_task_status(&task_id, TaskStatus::Stopped)
+                                    .save_task_status(&task_id, TaskStatus::Failed)
                                     .await?;
                             }
                         }

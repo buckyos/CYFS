@@ -269,8 +269,8 @@ impl TaskManager {
                         task.start_task().await
                     }
                     None => {
-                        let msg = format!("not find task id {}", task_id.to_string());
-                        log::error!("{}", msg.as_str());
+                        let msg = format!("task not found: task={}", task_id.to_string());
+                        log::error!("{}", msg);
                         Err(BuckyError::new(BuckyErrorCode::NotFound, msg))
                     }
                 }
