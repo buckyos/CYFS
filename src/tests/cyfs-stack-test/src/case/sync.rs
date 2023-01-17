@@ -135,6 +135,7 @@ async fn add_file(stack: &SharedCyfsStack) -> FileId {
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        chunk_method: TransPublishChunkMethod::Track,
         access: None,
         
         // 关联的dirs
