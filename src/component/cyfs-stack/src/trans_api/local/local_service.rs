@@ -219,7 +219,8 @@ impl LocalTransService {
                 req.local_path.to_string_lossy().to_string(),
                 req.owner.clone(),
                 file,
-                req.chunk_size,
+                req.chunk_size, 
+                req.chunk_method, 
                 req.access,
             )
             .await?;
@@ -246,7 +247,8 @@ impl LocalTransService {
                 req.local_path.to_string_lossy().to_string(),
                 req.owner.clone(),
                 req.file_id,
-                req.chunk_size,
+                req.chunk_size, 
+                req.chunk_method, 
                 req.access,
             )
             .await?;

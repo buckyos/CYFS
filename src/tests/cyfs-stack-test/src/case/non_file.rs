@@ -48,6 +48,8 @@ async fn add_dir(_dec_id: &ObjectId) -> (DirId, FileId) {
         // chunk大小
         chunk_size: 1024 * 1024,
 
+        chunk_method: TransPublishChunkMethod::Track,
+
         access: None,
 
         // 关联的dirs

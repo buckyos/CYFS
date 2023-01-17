@@ -67,7 +67,7 @@ impl TransServiceRouter {
         target: Option<&ObjectId>,
     ) -> BuckyResult<TransInputProcessorRef> {
         if let Some(device_id) = self.get_target(target).await? {
-            debug!("util target resolved: {:?} -> {}", target, device_id);
+            debug!("trans target resolved: {:?} -> {}", target, device_id);
             let processor = self.get_forward(device_id).await?;
             Ok(processor)
         } else {
@@ -88,6 +88,14 @@ impl TransServiceRouter {
         processor.control_task(req).await
     }
 
+    async fn query_tasks(
+        &self,
+        req: TransQueryTasksInputRequest,
+    ) -> BuckyResult<TransQueryTasksInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.query_tasks(req).await
+    }
+
     pub async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
@@ -96,10 +104,16 @@ impl TransServiceRouter {
         processor.get_task_state(req).await
     }
 
-    pub async fn add_file(
+    pub async fn publish_file(
         &self,
         req: TransPublishFileInputRequest,
     ) -> BuckyResult<TransPublishFileInputResponse> {
+        if req.common.target.is_some() {
+            let msg = format!("target not support for trans.publish_file!");
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
+        }
+
         self.processor.publish_file(req).await
     }
 
@@ -107,14 +121,16 @@ impl TransServiceRouter {
         &self,
         req: TransGetTaskGroupStateInputRequest,
     ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
-        self.processor.get_task_group_state(req).await
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.get_task_group_state(req).await
     }
 
     async fn control_task_group(
         &self,
         req: TransControlTaskGroupInputRequest,
     ) -> BuckyResult<TransControlTaskGroupInputResponse> {
-        self.processor.control_task_group(req).await
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.control_task_group(req).await
     }
 }
 
@@ -145,8 +161,7 @@ impl TransInputProcessor for TransServiceRouter {
         &self,
         req: TransQueryTasksInputRequest,
     ) -> BuckyResult<TransQueryTasksInputResponse> {
-        let processor = self.get_processor(req.common.target.as_ref()).await?;
-        processor.query_tasks(req).await
+        Self::query_tasks(self, req).await
     }
 
     async fn get_task_state(
@@ -160,7 +175,7 @@ impl TransInputProcessor for TransServiceRouter {
         &self,
         req: TransPublishFileInputRequest,
     ) -> BuckyResult<TransPublishFileInputResponse> {
-        Self::add_file(self, req).await
+        Self::publish_file(self, req).await
     }
 
     async fn get_task_group_state(

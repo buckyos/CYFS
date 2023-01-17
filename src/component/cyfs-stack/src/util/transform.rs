@@ -198,7 +198,8 @@ impl UtilInputTransformer {
             common: Self::convert_common(req.common),
             local_path: req.local_path,
             owner: req.owner,
-            chunk_size: req.chunk_size,
+            chunk_size: req.chunk_size, 
+            chunk_method: req.chunk_method, 
             access: req.access,
         };
 
@@ -466,7 +467,8 @@ impl UtilOutputProcessor for UtilOutputTransformer {
             common: self.convert_common(req.common),
             local_path: req.local_path,
             owner: req.owner,
-            chunk_size: req.chunk_size,
+            chunk_size: req.chunk_size, 
+            chunk_method: req.chunk_method, 
             access: req.access,
         };
 

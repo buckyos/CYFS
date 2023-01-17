@@ -35,17 +35,17 @@ impl ContextManager {
     fn decode_context_id_from_string(source_dec: &ObjectId, s: &str) -> TransContextRef {
         if OBJECT_ID_BASE58_RANGE.contains(&s.len()) {
             match ObjectId::from_base58(s) {
-                Ok(ret) => TransContextRef::Object(ret),
-                Err(_) => TransContextRef::Path((s.to_owned(), source_dec.to_owned())),
+                Ok(ret) => return TransContextRef::Object(ret),
+                Err(_) => {},
             }
         } else if OBJECT_ID_BASE36_RANGE.contains(&s.len()) {
             match ObjectId::from_base36(s) {
-                Ok(ret) => TransContextRef::Object(ret),
-                Err(_) => TransContextRef::Path((s.to_owned(), source_dec.to_owned())),
+                Ok(ret) => return TransContextRef::Object(ret),
+                Err(_) => {}
             }
-        } else {
-            TransContextRef::Path((s.to_owned(), source_dec.to_owned()))
-        }
+        } 
+            
+        TransContextRef::Path((TransContextPath::fix_path(s).to_string(), source_dec.to_owned()))
     }
 
     pub async fn create_download_context_from_trans_context(
@@ -144,7 +144,7 @@ impl ContextManager {
                 break None;
             }
 
-            let ret = path.rsplit_once('/').unwrap();
+            let ret = current_path.rsplit_once('/').unwrap();
             current_path = match ret.0 {
                 "" => "/",
                 _ => ret.0,
@@ -265,3 +265,37 @@ impl ContextManager {
     }
 }
 
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn search_context(path: &str) {
+        assert!(TransContextPath::verify(path));
+
+        let mut current_path = path;
+        loop {
+            println!("{}", current_path);
+
+            let _id = TransContext::gen_context_id(None, current_path);
+           
+            if current_path == "/" {
+                error!("search trans context by path but not found! path={}", path);
+                break;
+            }
+
+            let ret = current_path.rsplit_once('/').unwrap();
+            current_path = match ret.0 {
+                "" => "/",
+                _ => ret.0,
+            };
+        }
+    }
+
+    #[test]
+    fn test() {
+        search_context("/");
+        search_context("/a");
+        search_context("/a/b");
+        search_context("/a/b/c");
+    }
+}

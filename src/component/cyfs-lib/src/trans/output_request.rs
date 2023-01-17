@@ -203,6 +203,8 @@ pub struct TransPublishFileOutputRequest {
     // chunk大小
     pub chunk_size: u32,
 
+    pub chunk_method: TransPublishChunkMethod, 
+
     pub access: Option<AccessString>,
     
     // 需要发布的文件对象ID，如果设置，内部不再计算文件对象

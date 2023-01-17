@@ -47,13 +47,14 @@ impl FileRecorder {
         &self,
         owner: &ObjectId,
         source: &Path,
-        chunk_size: u32,
+        chunk_size: u32, 
+        chunk_method: TransPublishChunkMethod, 
         dirs: Option<Vec<FileDirRef>>,
         access: Option<AccessString>,
     ) -> BuckyResult<FileId> {
         let file = Self::generate_file(owner, source, chunk_size).await?;
 
-        self.record_file(source, &file, dirs, access).await?;
+        self.record_file(source, &file, dirs, chunk_method, access).await?;
 
         Ok(file.desc().file_id())
     }
@@ -184,12 +185,13 @@ impl FileRecorder {
         &self,
         source: &Path,
         file: &File,
-        dirs: Option<Vec<FileDirRef>>,
+        dirs: Option<Vec<FileDirRef>>, 
+        chunk_method: TransPublishChunkMethod, 
         access: Option<AccessString>,
     ) -> BuckyResult<()> {
         let file_id = file.desc().file_id();
 
-        self.record_file_chunk_list(source, file).await?;
+        self.record_file_chunk_list(source, file, chunk_method).await?;
 
         // 添加到noc
         let object_raw = file.to_vec()?;
@@ -251,7 +253,85 @@ impl FileRecorder {
         Ok(())
     }
 
-    pub async fn record_file_chunk_list(&self, source: &Path, file: &File) -> BuckyResult<()> {
+    async fn track_chunk_in_file(
+        &self, 
+        source: &Path, 
+        file_id: &FileId, 
+        chunk_id: &ChunkId, 
+        cur_pos: u64, 
+        method: TransPublishChunkMethod
+    ) -> BuckyResult<u64> {
+        // 先添加到chunk索引
+        let ref_obj = ChunkObjectRef {
+            object_id: file_id.object_id().to_owned(),
+            relation: ChunkObjectRelation::FileBody,
+        };
+
+        let req = InsertChunkRequest {
+            chunk_id: chunk_id.to_owned(),
+            state: ChunkState::Ready,
+            ref_objects: Some(vec![ref_obj]),
+            trans_sessions: None,
+            flags: 0,
+        };
+
+        self.ndc.insert_chunk(&req).await.map_err(|e| {
+            error!(
+                "record file chunk to ndc error! file={}, chunk={}, {}",
+                file_id, chunk_id, e
+            );
+            e
+        })?;
+
+
+        let new_pos = cur_pos + chunk_id.len() as u64;
+
+        match method {
+            TransPublishChunkMethod::Track => {
+                // 添加到tracker
+                let pos = TrackerPostion::FileRange(PostionFileRange {
+                    path: source.to_str().unwrap().to_owned(),
+                    range_begin: cur_pos,
+                    range_end: cur_pos + chunk_id.len() as u64,
+                });
+
+                
+                let req = AddTrackerPositonRequest {
+                    id: chunk_id.to_string(),
+                    direction: TrackerDirection::Store,
+                    pos,
+                    flags: 0,
+                };
+
+                if let Err(e) = self.tracker.add_position(&req).await {
+                    match e.code() {
+                        BuckyErrorCode::AlreadyExists => {
+                            // 同一个文件路径，如果部分chunk相同，会重复添加，可能触发已经存在的错误
+                            warn!("record file chunk to tracker but already exists! path={}, file={}, chunk={}",
+                            source.display(), file_id, chunk_id);
+                            Ok(new_pos)
+                        }, 
+                        _ => {
+                            error!(
+                                "record file chunk to tracker error! path={}, file={}, chunk={}, {}",
+                                source.display(),
+                                file_id,
+                                chunk_id,
+                                e
+                            );
+                            Err(e)
+                        }
+                    }
+                } else {
+                    Ok(new_pos)
+                }
+            },
+            TransPublishChunkMethod::Copy => unimplemented!(), 
+            TransPublishChunkMethod::None => Ok(new_pos)
+        }
+    }
+
+    pub async fn record_file_chunk_list(&self, source: &Path, file: &File, method: TransPublishChunkMethod) -> BuckyResult<()> {
         let file_id = file.desc().file_id();
 
         let chunk_list = if let Some(body) = file.body() {
@@ -283,63 +363,7 @@ impl FileRecorder {
 
         let mut cur_pos = 0;
         for chunk_id in chunk_list {
-            // 先添加到chunk索引
-            let ref_obj = ChunkObjectRef {
-                object_id: file_id.object_id().to_owned(),
-                relation: ChunkObjectRelation::FileBody,
-            };
-
-            let req = InsertChunkRequest {
-                chunk_id: chunk_id.to_owned(),
-                state: ChunkState::Ready,
-                ref_objects: Some(vec![ref_obj]),
-                trans_sessions: None,
-                flags: 0,
-            };
-
-            self.ndc.insert_chunk(&req).await.map_err(|e| {
-                error!(
-                    "record file chunk to ndc error! file={}, chunk={}, {}",
-                    file_id, chunk_id, e
-                );
-                e
-            })?;
-
-            // 添加到tracker
-            let pos = TrackerPostion::FileRange(PostionFileRange {
-                path: source.to_str().unwrap().to_owned(),
-                range_begin: cur_pos,
-                range_end: cur_pos + chunk_id.len() as u64,
-            });
-
-            cur_pos += chunk_id.len() as u64;
-
-            let req = AddTrackerPositonRequest {
-                id: chunk_id.to_string(),
-                direction: TrackerDirection::Store,
-                pos,
-                flags: 0,
-            };
-
-            if let Err(e) = self.tracker.add_position(&req).await {
-                match e.code() {
-                    BuckyErrorCode::AlreadyExists => {
-                        // 同一个文件路径，如果部分chunk相同，会重复添加，可能触发已经存在的错误
-                        warn!("record file chunk to tracker but already exists! path={}, file={}, chunk={}",
-                        source.display(), file_id, chunk_id);
-                    }
-                    _ => {
-                        error!(
-                            "record file chunk to tracker error! path={}, file={}, chunk={}, {}",
-                            source.display(),
-                            file_id,
-                            chunk_id,
-                            e
-                        );
-                        return Err(e);
-                    }
-                }
-            }
+            cur_pos = self.track_chunk_in_file(source, &file_id, chunk_id, cur_pos, method).await?;
         }
         Ok(())
     }
@@ -349,6 +373,7 @@ impl FileRecorder {
         owner: &ObjectId,
         source: &Path,
         chunk_size: u32,
+        chunk_method: TransPublishChunkMethod, 
         access: Option<AccessString>,
     ) -> BuckyResult<(DirId, Vec<(FileId, PathBuf)>)> {
         let mut scaner = DirScaner::new(source);
@@ -427,7 +452,7 @@ impl FileRecorder {
                 dir_id: dir_id.clone(),
                 inner_path,
             };
-            self.record_file(&file_path, &file, Some(vec![dir_ref]), access.clone())
+            self.record_file(&file_path, &file, Some(vec![dir_ref]), chunk_method, access.clone())
                 .await?;
         }
 
