@@ -130,6 +130,45 @@ pub(crate) enum HotstuffPackage {
     VerifiableState(ProtocolAddress, String, BuckyResult<GroupRPathStatus>),
 }
 
+impl HotstuffPackage {
+    pub fn from_msg(msg: HotstuffMessage, rpath: GroupRPath) -> Self {
+        match msg {
+            HotstuffMessage::Block(block) => HotstuffPackage::Block(block),
+            HotstuffMessage::BlockVote(vote) => {
+                HotstuffPackage::BlockVote(ProtocolAddress::Full(rpath), vote)
+            }
+            HotstuffMessage::TimeoutVote(vote) => {
+                HotstuffPackage::TimeoutVote(ProtocolAddress::Full(rpath), vote)
+            }
+            HotstuffMessage::Timeout(tc) => {
+                HotstuffPackage::Timeout(ProtocolAddress::Full(rpath), tc)
+            }
+            HotstuffMessage::SyncRequest(min_bound, max_bound) => {
+                HotstuffPackage::SyncRequest(ProtocolAddress::Full(rpath), min_bound, max_bound)
+            }
+            HotstuffMessage::LastStateRequest => {
+                HotstuffPackage::LastStateRequest(ProtocolAddress::Full(rpath))
+            }
+            HotstuffMessage::StateChangeNotify(header_block, qc_block) => {
+                HotstuffPackage::StateChangeNotify(
+                    ProtocolAddress::Full(rpath),
+                    header_block,
+                    qc_block,
+                )
+            }
+            HotstuffMessage::ProposalResult(proposal_id, result) => {
+                HotstuffPackage::ProposalResult(ProtocolAddress::Full(rpath), proposal_id, result)
+            }
+            HotstuffMessage::QueryState(sub_path) => {
+                HotstuffPackage::QueryState(ProtocolAddress::Full(rpath), sub_path)
+            }
+            HotstuffMessage::VerifiableState(sub_path, result) => {
+                HotstuffPackage::VerifiableState(ProtocolAddress::Full(rpath), sub_path, result)
+            }
+        }
+    }
+}
+
 #[derive(Clone, RawEncode, RawDecode)]
 pub(crate) enum ProtocolAddress {
     Full(GroupRPath),

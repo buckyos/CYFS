@@ -1,4 +1,4 @@
-use cyfs_base::{BuckyResult, Group, ObjectId, RawDecode};
+use cyfs_base::{BuckyResult, DeviceId, Group, ObjectId, PeopleId, RawDecode};
 use cyfs_core::{GroupConsensusBlock, GroupProposal};
 use cyfs_lib::NONObjectInfo;
 
@@ -54,6 +54,10 @@ impl NonDriver {
         group_chunk_id: Option<&ObjectId>,
         from: Option<&ObjectId>,
     ) -> BuckyResult<Group> {
+        unimplemented!()
+    }
+
+    pub async fn get_ood(&self, people_id: &PeopleId) -> BuckyResult<DeviceId> {
         unimplemented!()
     }
 }

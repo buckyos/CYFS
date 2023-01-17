@@ -10,8 +10,6 @@ use crate::{
     RPathClient, RPathControl, NET_PROTOCOL_VPORT,
 };
 
-use super::delegate_factory;
-
 type ControlByRPath = HashMap<String, RPathControl>;
 type ControlByDec = HashMap<ObjectId, ControlByRPath>;
 type ControlByGroup = HashMap<ObjectId, ControlByDec>;
@@ -33,6 +31,7 @@ struct LocalInfo {
     non_driver: crate::network::NonDriver,
 }
 
+#[derive(Clone)]
 pub struct GroupRPathMgr(Arc<(LocalInfo, RwLock<GroupRPathMgrRaw>)>);
 
 impl GroupRPathMgr {
@@ -41,8 +40,10 @@ impl GroupRPathMgr {
         signer: RsaCPUObjectSigner,
         non_driver: crate::network::NonDriver,
         bdt_stack: Stack,
-    ) -> Self {
-        let network_sender = crate::network::Sender::new(NET_PROTOCOL_VPORT, bdt_stack);
+    ) -> BuckyResult<Self> {
+        let datagram = bdt_stack.datagram_manager().bind(NET_PROTOCOL_VPORT)?;
+        let network_sender = crate::network::Sender::new(datagram.clone(), non_driver.clone());
+
         let local_info = LocalInfo {
             local_id,
             signer: Arc::new(signer),
@@ -56,7 +57,11 @@ impl GroupRPathMgr {
             delegate_by_dec: HashMap::default(),
         };
 
-        Self(Arc::new((local_info, RwLock::new(raw))))
+        let mgr = Self(Arc::new((local_info, RwLock::new(raw))));
+
+        crate::network::Listener::spawn(datagram, mgr.clone());
+
+        Ok(mgr)
     }
 
     pub async fn register(
