@@ -131,25 +131,48 @@ impl Daemon {
                 .map(|v| v.config.fid.clone());
 
             // vood模式下，暂不重启ood-daemon
-            if self.mode != ServiceMode::VOOD
-                && daemon_fid.is_some()
-                && new_daemon_fid.is_some()
-                && new_daemon_fid != daemon_fid
-            {
-                info!(
-                    "ood-daemon fid changed: {:?} -> {:?}",
-                    daemon_fid, new_daemon_fid
-                );
+            if self.mode != ServiceMode::VOOD {
+                let mut need_restart = false;
+                if daemon_fid.is_some() && new_daemon_fid.is_some() && new_daemon_fid != daemon_fid
+                {
+                    need_restart = true;
 
-                // 需要确保ood-daemon-monitor已经启动
-                if !self.no_monitor {
-                    use crate::monitor::ServiceMonitor;
-                    if ServiceMonitor::launch_monitor().is_ok() {
-                        task::sleep(Duration::from_secs(5)).await;
+                    info!(
+                        "ood-daemon fid changed: {:?} -> {:?}",
+                        daemon_fid, new_daemon_fid
+                    );
+                } else {
+                    // info!("will check ood-daemon status by cmd!");
+                    // check ood-daemon status use --status --fid cmd
+                    let service = SERVICE_MANAGER
+                        .get_service_info(::cyfs_base::OOD_DAEMON_NAME)
+                        .map(|v| v.service.clone())
+                        .flatten();
+                    if let Some(service) = service {
+                        if let Some(exit_code) = service.check_status_by_cmd() {
+                            if cyfs_util::process::ProcessStatusCode::is_running_other(exit_code) {
+                                need_restart = true;
+
+                                warn!(
+                                    "ood-daemon running but fid not match! now will restart, fid={:?}",
+                                    new_daemon_fid
+                                );
+                            }
+                        }
+                    }
+                }
+
+                if need_restart {
+                    // 需要确保ood-daemon-monitor已经启动
+                    if !self.no_monitor {
+                        use crate::monitor::ServiceMonitor;
+                        if ServiceMonitor::launch_monitor().is_ok() {
+                            task::sleep(Duration::from_secs(5)).await;
+                            std::process::exit(0);
+                        }
+                    } else {
                         std::process::exit(0);
                     }
-                } else {
-                    std::process::exit(0);
                 }
             }
 

@@ -378,10 +378,7 @@ impl Service {
         }
     }
 
-    // use the status cmd to check the process and update the state
-    fn update_state_by_cmd(&self) {
-        assert!(!self.as_ood_daemon());
-
+    pub fn check_status_by_cmd(&self) -> Option<i32> {
         let check_script = self.info.lock().unwrap().get_script("status");
         if check_script.is_none() {
             warn!(
@@ -389,9 +386,7 @@ impl Service {
                 self.name
             );
 
-            // 默认为停止
-            self.change_state(ServiceState::STOP);
-            return;
+            return None;
         }
 
         // 检测进程的退出码，0表示不存在，> 0表示目标进程的pid
@@ -428,6 +423,21 @@ impl Service {
             }
         }
 
+        Some(exit_code)
+    }
+
+    // use the status cmd to check the process and update the state
+    fn update_state_by_cmd(&self) {
+        assert!(!self.as_ood_daemon());
+
+        let ret = self.check_status_by_cmd();
+        if ret.is_none() {
+            // 默认为停止
+            self.change_state(ServiceState::STOP);
+            return;
+        }
+
+        let exit_code = ret.unwrap();
         if exit_code != ProcessStatusCode::NotExists as i32 {
             if ProcessStatusCode::is_running_other(exit_code) {
                 warn!(
