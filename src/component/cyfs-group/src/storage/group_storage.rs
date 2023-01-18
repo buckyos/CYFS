@@ -1,9 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
 use cyfs_base::{
-    BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject, ObjectDesc, ObjectId,
+    bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
+    ObjectDesc, ObjectId,
 };
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
+
+use crate::{network::NonDriver, TIME_PRECISION};
 
 pub enum BlockLinkState {
     Expired,
@@ -22,6 +25,7 @@ pub struct GroupStorage {
     group_id: ObjectId,
     dec_id: ObjectId,
     rpath: String,
+    non_driver: NonDriver,
 
     dec_state_id: Option<ObjectId>, // commited/header state id
     group_chunk_id: ObjectId,
@@ -38,6 +42,7 @@ impl GroupStorage {
         dec_id: &ObjectId,
         rpath: &str,
         init_state_id: Option<ObjectId>,
+        non_driver: NonDriver,
     ) -> BuckyResult<GroupStorage> {
         // 用hash加载chunk
         // 从chunk解析group
@@ -48,6 +53,7 @@ impl GroupStorage {
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
+        non_driver: NonDriver,
     ) -> BuckyResult<GroupStorage> {
         // 用hash加载chunk
         // 从chunk解析group
@@ -149,6 +155,13 @@ impl GroupStorage {
                     if let Some(prev_prev_block) = self.pre_commits.get(prev_prev_block_id) {
                         assert_eq!(block.height(), header_height + 3);
                         assert_eq!(prev_prev_block.height(), header_height + 1);
+                        assert_eq!(
+                            prev_prev_block.prev_block_id(),
+                            self.header_block
+                                .as_ref()
+                                .map(|b| b.named_object().desc().object_id())
+                                .as_ref()
+                        );
 
                         new_header = Some(prev_prev_block.clone());
                         let new_header_id = prev_prev_block.named_object().desc().object_id();
@@ -240,24 +253,114 @@ impl GroupStorage {
     }
 
     pub async fn block_linked(&self, block: &GroupConsensusBlock) -> BuckyResult<BlockLinkState> {
-        if block.height() <= self.header_height() {
+        let header_height = self.header_height();
+        if block.height() <= header_height {
             return Ok(BlockLinkState::Expired);
         }
 
-        let linked_state = match block.height().cmp(&(self.header_height() + 3)) {
-            std::cmp::Ordering::Less => {
-                // 重复block，BlockLinkState::Duplicate
-                BlockLinkState::Link(None, HashMap::default())
-            }
-            std::cmp::Ordering::Equal => BlockLinkState::Link(None, HashMap::default()),
-            std::cmp::Ordering::Greater => BlockLinkState::Pending,
+        if block.height() > header_height + 3 {
+            return Ok(BlockLinkState::Pending);
         };
 
         // BlockLinkState::Link状态也可能因为缺少前序成为BlockLinkState::Pending
         // 去重proposal，BlockLinkState::DuplicateProposal，去重只检查相同分叉链上的proposal，不同分叉上允许有相同proposal
         // 检查Proposal时间戳，早于去重proposal集合区间，或者晚于当前系统时间戳一定时间
 
-        Ok(linked_state)
+        let block_id = block.named_object().desc().object_id();
+
+        if self.find_block_in_cache(&block_id).is_ok() {
+            return Ok(BlockLinkState::Duplicate);
+        }
+
+        let now = SystemTime::now();
+        let block_time = bucky_time_to_system_time(block.named_object().desc().create_time());
+
+        if let Ok(duration) = block_time.duration_since(now) {
+            if duration > TIME_PRECISION {
+                return Err(BuckyError::new(
+                    BuckyErrorCode::ErrorTimestamp,
+                    "error timestamp",
+                ));
+            }
+        }
+
+        let prev_block = match block.prev_block_id() {
+            Some(prev_block_id) => match self.find_block_in_cache(prev_block_id) {
+                Ok(prev_block) => {
+                    if prev_block.height() + 1 != block.height() {
+                        return Err(BuckyError::new(BuckyErrorCode::Failed, "height error"));
+                    } else if prev_block.round() <= block.round() {
+                        return Err(BuckyError::new(BuckyErrorCode::Failed, "round error"));
+                    } else {
+                        let prev_block_time = bucky_time_to_system_time(
+                            prev_block.named_object().desc().create_time(),
+                        );
+                        if let Ok(duration) = prev_block_time.duration_since(block_time) {
+                            if duration > TIME_PRECISION {
+                                return Err(BuckyError::new(
+                                    BuckyErrorCode::ErrorTimestamp,
+                                    "error timestamp",
+                                ));
+                            }
+                        }
+                        Some(prev_block)
+                    }
+                }
+                Err(_) => {
+                    if block.height() == header_height + 1 {
+                        return Ok(BlockLinkState::InvalidBranch);
+                    }
+                    return Ok(BlockLinkState::Pending);
+                }
+            },
+            None => {
+                if block.height() != 1 {
+                    return Err(BuckyError::new(BuckyErrorCode::Failed, "height error"));
+                } else if header_height != 0 {
+                    return Ok(BlockLinkState::InvalidBranch);
+                } else {
+                    None
+                }
+            }
+        };
+
+        let mut proposals = HashMap::new();
+        for proposal_result in block.proposals().as_slice() {
+            if proposals.get(&proposal_result.proposal).is_some() {
+                return Ok(BlockLinkState::DuplicateProposal);
+            }
+
+            if let Some(prev_block_id) = block.prev_block_id() {
+                if self
+                    .is_proposal_finished(&proposal_result.proposal, prev_block_id)
+                    .await?
+                {
+                    return Ok(BlockLinkState::DuplicateProposal);
+                }
+            }
+
+            let proposal = self
+                .non_driver
+                .get_proposal(&proposal_result.proposal, Some(block.owner()))
+                .await?;
+
+            let proposal_time = bucky_time_to_system_time(proposal.desc().create_time());
+            if block_time
+                .duration_since(proposal_time)
+                .or(proposal_time.duration_since(block_time))
+                .unwrap()
+                > TIME_PRECISION
+            {
+                return Err(BuckyError::new(
+                    BuckyErrorCode::ErrorTimestamp,
+                    "error timestamp",
+                ));
+            }
+
+            proposals.insert(proposal_result.proposal, proposal);
+        }
+
+        Ok(BlockLinkState::Link(prev_block, proposals))
     }
 
     pub fn find_block_in_cache(&self, block_id: &ObjectId) -> BuckyResult<GroupConsensusBlock> {

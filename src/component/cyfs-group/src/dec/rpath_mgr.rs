@@ -357,7 +357,7 @@ impl GroupRPathMgr {
             let non_driver = local_info.non_driver.clone();
             let local_device_id = local_info.bdt_stack.local_device_id().clone();
 
-            let store = GroupStorage::load(group_id, dec_id, rpath).await;
+            let store = GroupStorage::load(group_id, dec_id, rpath, non_driver.clone()).await;
             let store = match store {
                 Ok(store) => Some(store),
                 Err(e) => {
@@ -403,7 +403,8 @@ impl GroupRPathMgr {
                         IsCreateRPath::Yes(init_state) => init_state,
                         _ => unreachable!(),
                     };
-                    GroupStorage::create(group_id, dec_id, rpath, init_state).await?
+                    GroupStorage::create(group_id, dec_id, rpath, init_state, non_driver.clone())
+                        .await?
                 }
             };
 

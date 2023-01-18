@@ -570,7 +570,6 @@ impl HotstuffRunner {
             None => self
                 .store
                 .find_block_in_cache(&vote.block_id)
-                .await
                 .map_or(None, |b| Some(b)),
         };
 
@@ -609,7 +608,7 @@ impl HotstuffRunner {
         }
 
         let block = match timeout.high_qc.as_ref() {
-            Some(qc) => match self.store.find_block_in_cache(&qc.block_id).await {
+            Some(qc) => match self.store.find_block_in_cache(&qc.block_id) {
                 Ok(block) => Some(block),
                 Err(_) => {
                     self.vote_mgr.add_waiting_timeout(timeout.clone());
@@ -677,7 +676,6 @@ impl HotstuffRunner {
             let block = match self
                 .store
                 .find_block_in_cache_by_round(max_high_qc.high_qc_round)
-                .await
             {
                 Ok(block) => block,
                 Err(_) => {
@@ -752,7 +750,7 @@ impl HotstuffRunner {
         let now = SystemTime::now();
 
         let pre_block = match self.high_qc.as_ref() {
-            Some(qc) => Some(self.store.find_block_in_cache(&qc.block_id).await?),
+            Some(qc) => Some(self.store.find_block_in_cache(&qc.block_id)?),
             None => None,
         };
         let latest_group = self.committee.get_group(None).await?;
@@ -939,7 +937,7 @@ impl HotstuffRunner {
                         match pre_block.prev_block_id() {
                             Some(pre_pre_block_id) => {
                                 let pre_pre_block =
-                                    match self.store.find_block_in_cache(pre_pre_block_id).await {
+                                    match self.store.find_block_in_cache(pre_pre_block_id) {
                                         Ok(pre_pre_block) => pre_pre_block,
                                         Err(_) => return false,
                                     };
