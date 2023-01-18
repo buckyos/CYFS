@@ -311,7 +311,7 @@ impl HotstuffRunner {
     fn check_block_result_state(block: &GroupConsensusBlock) -> BuckyResult<()> {
         if let Some(last_proposal) = block.proposals().last() {
             if &last_proposal.result_state != block.result_state_id() {
-                log::warn!("the result-state({}) in last-proposal is unmatch with block.result_state_id({})"
+                log::warn!("the result-state({:?}) in last-proposal is unmatch with block.result_state_id({:?})"
                     , last_proposal.result_state, block.result_state_id());
                 return Err(BuckyError::new(
                     BuckyErrorCode::Unmatch,
@@ -330,7 +330,7 @@ impl HotstuffRunner {
             match prev_block.as_ref() {
                 Some(prev_block) => {
                     if block.result_state_id() != prev_block.result_state_id() {
-                        log::warn!("block.result_state_id({}) is unmatch with prev_block.result_state_id({}) with no proposal."
+                        log::warn!("block.result_state_id({:?}) is unmatch with prev_block.result_state_id({:?}) with no proposal."
                             , block.result_state_id(), prev_block.result_state_id());
 
                         return Err(BuckyError::new(
@@ -384,7 +384,7 @@ impl HotstuffRunner {
                 prev_state_id = proposal_exe_info.result_state;
             } else {
                 log::warn!(
-                    "block verify failed by app, proposal: {}, prev_state: {}, expect-result: {}",
+                    "block verify failed by app, proposal: {}, prev_state: {:?}, expect-result: {:?}",
                     proposal_exe_info.proposal,
                     prev_state_id,
                     proposal_exe_info.result_state

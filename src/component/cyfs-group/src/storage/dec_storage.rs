@@ -6,7 +6,7 @@ use cyfs_core::{GroupConsensusBlock, GroupRPathStatus};
 
 #[derive(Clone)]
 pub struct DecStorageCache {
-    pub state: ObjectId,
+    pub state: Option<ObjectId>,
     pub header_block: GroupConsensusBlock,
     pub qc_block: GroupConsensusBlock,
 }
