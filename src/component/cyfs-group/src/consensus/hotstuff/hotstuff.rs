@@ -512,6 +512,8 @@ impl HotstuffRunner {
             return None;
         }
 
+        // TODO: 时间和本地误差太大，不签名，打包的proposal时间和block时间差距太大，也不签名
+
         // round只能逐个递增
         let is_valid_round = if block.round() == block.qc().as_ref().map_or(0, |qc| qc.round) + 1 {
             true
