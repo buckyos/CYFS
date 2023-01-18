@@ -360,7 +360,7 @@ impl HotstuffRunner {
     ) -> BuckyResult<()> {
         let mut prev_state_id = prev_block
             .as_ref()
-            .map_or(ObjectId::default(), |block| block.result_state_id().clone());
+            .map_or(None, |block| block.result_state_id().clone());
 
         for proposal_exe_info in block.proposals() {
             // TODO: 去重
@@ -765,7 +765,7 @@ impl HotstuffRunner {
         let mut failed_proposals = vec![];
         let mut result_state_id = match pre_block.as_ref() {
             Some(block) => block.result_state_id().clone(),
-            None => self.store.dec_state_id(),
+            None => self.store.dec_state_id().clone(),
         };
 
         // TODO: The time may be too long for too many proposals

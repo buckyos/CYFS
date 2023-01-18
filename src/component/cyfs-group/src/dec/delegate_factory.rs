@@ -15,15 +15,15 @@ pub trait DelegateFactory: Send + Sync {
         &self,
         group_id: &ObjectId,
         rpath: &str,
-        state_id: ObjectId,
+        state_id: Option<ObjectId>,
         pre_state_id: Option<ObjectId>,
     );
 }
 
 pub struct ExecuteResult {
-    pub result_state_id: ObjectId,      // pack block
-    pub receipt: Option<NONObjectInfo>, // to client
-    pub context: Option<Vec<u8>>,       // timestamp etc.
+    pub result_state_id: Option<ObjectId>, // pack block
+    pub receipt: Option<NONObjectInfo>,    // to client
+    pub context: Option<Vec<u8>>,          // timestamp etc.
 }
 
 #[async_trait::async_trait]
@@ -33,20 +33,20 @@ pub trait RPathDelegate: Sync + Send {
     async fn on_execute(
         &self,
         proposal: &GroupProposal,
-        pre_state_id: ObjectId,
+        pre_state_id: Option<ObjectId>,
     ) -> BuckyResult<ExecuteResult>;
 
     async fn on_verify(
         &self,
         proposal: &GroupProposal,
-        pre_state_id: ObjectId,
+        pre_state_id: Option<ObjectId>,
         execute_result: &ExecuteResult,
     ) -> BuckyResult<bool>;
 
     async fn on_commited(
         &self,
         proposal: &GroupProposal,
-        pre_state_id: ObjectId,
+        pre_state_id: Option<ObjectId>,
         execute_result: &ExecuteResult,
     );
 }

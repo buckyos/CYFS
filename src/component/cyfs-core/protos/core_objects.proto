@@ -393,7 +393,7 @@ message GroupConsensusBlockDescContent {
     bytes body_hash = 2; // hash(Encode(proposals, proposal_result_states, proposal_receiptes))
 
     // result
-    bytes result_state_id = 3;
+    optional bytes result_state_id = 3;
     uint64 height = 4;
 
     // time
@@ -407,7 +407,7 @@ message GroupConsensusBlockDescContent {
 message GroupConsensusBlockBodyContent {
     message Proposal {
         bytes proposal_id = 1;
-        bytes proposal_result_state = 2;
+        optional bytes proposal_result_state = 2;
         optional bytes proposal_receipt = 3;
         optional bytes context = 4;
     }

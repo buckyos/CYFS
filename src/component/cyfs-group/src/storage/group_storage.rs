@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, Group, ObjectId};
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, GroupRPath};
 
-use crate::IsCreateRPath;
-
 pub enum BlockLinkState {
     Expired,
     DuplicateProposal,
@@ -55,36 +53,28 @@ impl GroupStorage {
         unimplemented!()
     }
 
-    pub async fn insert(
-        group_id: &ObjectId,
-        dec_id: &ObjectId,
-        rpath: &str,
-    ) -> BuckyResult<GroupStorage> {
-        unimplemented!()
-    }
-
     pub fn header_block(&self) -> &Option<GroupConsensusBlock> {
-        unimplemented!()
+        &self.header_block
     }
 
     pub fn header_round(&self) -> u64 {
-        unimplemented!()
+        self.header_block.as_ref().map_or(0, |b| b.round())
     }
 
     pub fn header_height(&self) -> u64 {
-        unimplemented!()
+        self.header_block.as_ref().map_or(0, |b| b.height())
     }
 
     pub fn first_block(&self) -> &Option<GroupConsensusBlock> {
-        unimplemented!()
+        &self.first_block
     }
 
     pub fn prepares(&self) -> &HashMap<ObjectId, GroupConsensusBlock> {
-        unimplemented!()
+        &self.prepares
     }
 
     pub fn pre_commits(&self) -> &HashMap<ObjectId, GroupConsensusBlock> {
-        unimplemented!()
+        &self.pre_commits
     }
 
     pub fn group(&self) -> &Group {
@@ -92,11 +82,11 @@ impl GroupStorage {
     }
 
     pub fn group_chunk_id(&self) -> &ObjectId {
-        unimplemented!()
+        &self.group_chunk_id
     }
 
-    pub fn dec_state_id(&self) -> ObjectId {
-        unimplemented!()
+    pub fn dec_state_id(&self) -> &Option<ObjectId> {
+        &self.dec_state_id
     }
 
     async fn user_nonce(&self, user_id: &ObjectId) -> BuckyResult<Option<u64>> {

@@ -13,7 +13,7 @@ use sha2::Digest;
 pub struct GroupConsensusBlockDescContent {
     r_path: GroupRPath,
     body_hash: HashValue,
-    result_state_id: ObjectId,
+    result_state_id: Option<ObjectId>,
     height: u64,
     meta_block_id: ObjectId,
     timestamp: u64,
@@ -125,7 +125,7 @@ pub struct HotstuffTimeout {
 #[cyfs_protobuf_type(crate::codec::protos::group_consensus_block_body_content::Proposal)]
 pub struct GroupConsensusBlockProposal {
     pub proposal: ObjectId,
-    pub result_state: ObjectId,
+    pub result_state: Option<ObjectId>,
     pub receipt: Option<Vec<u8>>,
     pub context: Option<Vec<u8>>,
 }
@@ -136,9 +136,14 @@ impl ProtobufTransform<crate::codec::protos::group_consensus_block_body_content:
     fn transform(
         mut value: crate::codec::protos::group_consensus_block_body_content::Proposal,
     ) -> BuckyResult<Self> {
+        let result_state = match value.proposal_result_state {
+            Some(state_id) => Some(ObjectId::raw_decode(state_id.as_slice())?.0),
+            None => None,
+        };
+
         Ok(Self {
             proposal: ObjectId::raw_decode(value.proposal_id.as_slice())?.0,
-            result_state: ObjectId::raw_decode(&value.proposal_result_state.as_slice())?.0,
+            result_state,
             receipt: value.proposal_receipt.take(),
             context: value.context.take(),
         })
@@ -151,7 +156,7 @@ impl ProtobufTransform<&GroupConsensusBlockProposal>
     fn transform(value: &GroupConsensusBlockProposal) -> BuckyResult<Self> {
         Ok(Self {
             proposal_id: value.proposal.to_vec()?,
-            proposal_result_state: value.result_state.to_vec()?,
+            proposal_result_state: value.result_state.map(|id| id.to_vec().unwrap()),
             proposal_receipt: value.receipt.clone(),
             context: value.context.clone(),
         })
@@ -209,7 +214,7 @@ pub trait GroupConsensusBlockObject {
     fn create(
         r_path: GroupRPath,
         proposals: Vec<GroupConsensusBlockProposal>,
-        result_state_id: ObjectId,
+        result_state_id: Option<ObjectId>,
         height: u64,
         meta_block_id: ObjectId,
         round: u64,
@@ -221,7 +226,7 @@ pub trait GroupConsensusBlockObject {
     fn check(&self) -> bool;
     fn r_path(&self) -> &GroupRPath;
     fn proposals(&self) -> &Vec<GroupConsensusBlockProposal>;
-    fn result_state_id(&self) -> &ObjectId;
+    fn result_state_id(&self) -> &Option<ObjectId>;
     fn height(&self) -> u64;
     fn meta_block_id(&self) -> &ObjectId;
     fn prev_block_id(&self) -> Option<&ObjectId>;
@@ -238,7 +243,7 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
     fn create(
         r_path: GroupRPath,
         proposals: Vec<GroupConsensusBlockProposal>,
-        result_state_id: ObjectId,
+        result_state_id: Option<ObjectId>,
         height: u64,
         meta_block_id: ObjectId,
         round: u64,
@@ -295,7 +300,7 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
         &body.proposals
     }
 
-    fn result_state_id(&self) -> &ObjectId {
+    fn result_state_id(&self) -> &Option<ObjectId> {
         let desc = self.0.desc().content();
         &desc.result_state_id
     }
