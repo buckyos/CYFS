@@ -118,11 +118,11 @@ async fn main() {
         let session = context.wait_session(future::pending::<BuckyError>()).await.unwrap();
         if let DownloadSessionState::Canceled(err) = session.wait_finish().await {
             assert_eq!(err.code(), BuckyErrorCode::NotFound);
-            let _ = down_stack.ndn().root_task().download().sub_task(path.as_str()).unwrap().cancel();
         } else {
             unreachable!()
         }
     });
+
    
     down_store.write_chunk(&chunkid, reader).await.unwrap_err();
 }

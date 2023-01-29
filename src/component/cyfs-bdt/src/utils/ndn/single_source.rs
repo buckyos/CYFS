@@ -6,7 +6,7 @@ use futures::future::{AbortRegistration};
 use cyfs_base::*;
 use crate::{
     types::*, 
-    ndn::{*, channel::DownloadSession}, 
+    ndn::{*, channel::{DownloadSession, DownloadSessionState}}, 
     stack::{Stack}, 
 };
 
@@ -131,6 +131,25 @@ impl DownloadContext for SingleSourceContext {
         };
        
         waiter.wake();
+    }
+
+    fn on_drain(
+        &self, 
+        task: &dyn LeafDownloadTask, 
+        _update_at: Timestamp) {
+        let session = {
+            let session = self.0.session.read().unwrap();
+            match &*session {
+                WaitSession::Some(session) => Some(session.clone()), 
+                _ => None
+            }
+        };
+        
+        if let Some(session) = session {
+            if let DownloadSessionState::Canceled(err) = session.state() {
+                let _ = task.cancel_by_error(err);
+            }
+        }
     }
 }
 

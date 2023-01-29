@@ -263,6 +263,7 @@ impl Drop for ChunkDowloaderImpl {
     }
 }
 
+#[derive(Clone)]
 pub struct WeakChunkDownloader(Weak<ChunkDowloaderImpl>);
 
 impl WeakChunkDownloader {
