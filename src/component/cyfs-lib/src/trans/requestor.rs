@@ -2,10 +2,9 @@ use super::output_request::*;
 use crate::base::*;
 use crate::*;
 use cyfs_base::*;
-use cyfs_core::TransContext;
 use cyfs_core::TransContextObject;
 
-use http_types::{Method, Request, StatusCode, Url};
+use http_types::{Method, Request, Url};
 use std::sync::Arc;
 
 #[derive(Clone)]

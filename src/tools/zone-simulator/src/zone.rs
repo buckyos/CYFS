@@ -148,7 +148,16 @@ impl TestZone {
             }
         }
 
+        fn random_select_cons() -> Option<usize> {
+            if bucky_time_now() / 2 == 0 {
+                None
+            } else {
+                Some(0)
+            }
+        }
+
         CyfsStackRequestorConfig {
+            http_max_connections_per_host: random_select_cons(),
             non_service: random_select(),
             ndn_service: random_select(),
             util_service: random_select(),
