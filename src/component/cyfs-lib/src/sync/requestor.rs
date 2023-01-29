@@ -2,7 +2,7 @@ use super::request::*;
 use crate::*;
 use cyfs_base::BuckyResult;
 
-use http_types::{Method, Request, StatusCode, Url};
+use http_types::{Method, Request, Url};
 
 
 pub struct SyncRequestor {
