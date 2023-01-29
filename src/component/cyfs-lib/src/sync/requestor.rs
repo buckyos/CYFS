@@ -2,7 +2,7 @@ use super::request::*;
 use crate::base::*;
 use cyfs_base::BuckyResult;
 
-use http_types::{Method, Request, StatusCode, Url};
+use http_types::{Method, Request, Url};
 use std::sync::Arc;
 
 
@@ -50,7 +50,7 @@ impl SyncRequestor {
         let mut resp = self.requestor.request_timeout(http_req, std::time::Duration::from_secs(30)).await?;
 
         match resp.status() {
-            StatusCode::Ok => {
+            code if code.is_success() => {
                 let ret = RequestorHelper::decode_json_body(&mut resp).await?;
 
                 info!(

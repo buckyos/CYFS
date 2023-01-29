@@ -5,9 +5,8 @@ use cyfs_base::*;
 use crate::{
     NDNOutputRequestCommon, SharedObjectStackDecID, TransOutputProcessor, TransOutputProcessorRef,
 };
-use cyfs_core::TransContext;
 use cyfs_core::TransContextObject;
-use http_types::{Method, Request, StatusCode, Url};
+use http_types::{Method, Request, Url};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -49,7 +48,11 @@ impl TransRequestor {
             }
         }
 
-        RequestorHelper::encode_opt_header_with_encoding(http_req, cyfs_base::CYFS_REQ_PATH, com_req.req_path.as_deref());
+        RequestorHelper::encode_opt_header_with_encoding(
+            http_req,
+            cyfs_base::CYFS_REQ_PATH,
+            com_req.req_path.as_deref(),
+        );
         http_req.insert_header(CYFS_API_LEVEL, com_req.level.to_string());
 
         if let Some(target) = &com_req.target {
@@ -57,7 +60,11 @@ impl TransRequestor {
         }
 
         if !com_req.referer_object.is_empty() {
-            RequestorHelper::insert_headers_with_encoding(http_req, cyfs_base::CYFS_REFERER_OBJECT, &com_req.referer_object);
+            RequestorHelper::insert_headers_with_encoding(
+                http_req,
+                cyfs_base::CYFS_REFERER_OBJECT,
+                &com_req.referer_object,
+            );
         }
 
         http_req.insert_header(cyfs_base::CYFS_FLAGS, com_req.flags.to_string());
@@ -65,9 +72,12 @@ impl TransRequestor {
 
     pub async fn get_context(
         &self,
-        req: &TransGetContextOutputRequest,
-    ) -> BuckyResult<TransContext> {
-        info!("will get context {}", req.context_name.as_str());
+        req: TransGetContextOutputRequest,
+    ) -> BuckyResult<TransGetContextOutputResponse> {
+        info!(
+            "will get context id={:?}, path={:?}",
+            req.context_id, req.context_path
+        );
 
         let url = self.service_url.join("get_context").unwrap();
         let mut http_req = Request::new(Method::Post, url);
@@ -78,60 +88,57 @@ impl TransRequestor {
 
         let mut resp = self.requestor.request(http_req).await?;
         match resp.status() {
-            StatusCode::Ok => {
-                let body = resp.body_string().await.unwrap_or("".to_owned());
-                TransContext::clone_from_hex(body.as_str(), &mut Vec::new())
+            code if code.is_success() => {
+                let context = RequestorHelper::decode_raw_object_body(&mut resp).await?;
+
+                Ok(TransGetContextOutputResponse { context })
             }
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "get context failed: context_name={}, status={}, msg={}",
-                    req.context_name.as_str(),
-                    code,
-                    msg
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "get context failed: id={:?}, path={:?}, status={}, {}",
+                    req.context_id, req.context_path, code, e
                 );
-                error!("{}", msg);
 
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
 
-    pub async fn put_context(&self, req: &TransPutContextOutputRequest) -> BuckyResult<()> {
-        info!("will put context {}", req.context.get_context_name());
+    pub async fn put_context(&self, req: TransPutContextOutputRequest) -> BuckyResult<()> {
+        info!("will put context {}", req.context.context_path());
 
         let url = self.service_url.join("put_context").unwrap();
         let mut http_req = Request::new(Method::Post, url);
 
         self.encode_common_headers(&req.common, &mut http_req);
-        let body = req.encode_string();
+
+        if let Some(access) = &req.access {
+            http_req.insert_header(cyfs_base::CYFS_ACCESS, access.value().to_string());
+        }
+        
+        let body = req.context.to_vec()?;
         http_req.set_body(body);
 
         let mut resp = self.requestor.request(http_req).await?;
         match resp.status() {
-            StatusCode::Ok => Ok(()),
+            code if code.is_success() => Ok(()),
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "update context failed: context_name={}, status={}, msg={}",
-                    req.context.get_context_name(),
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "update context failed: context={}, status={}, {}",
+                    req.context.context_path(),
                     code,
-                    msg
+                    e
                 );
-                error!("{}", msg);
-
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
 
     pub async fn create_task(
         &self,
-        req: &TransCreateTaskOutputRequest,
+        req: TransCreateTaskOutputRequest,
     ) -> BuckyResult<TransCreateTaskOutputResponse> {
         info!("will create trans task: {:?}", req);
 
@@ -145,7 +152,7 @@ impl TransRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         match resp.status() {
-            StatusCode::Ok => {
+            code if code.is_success() => {
                 let body = resp.body_string().await.map_err(|e| {
                     let msg = format!(
                         "trans create task failed, read body string error! req={:?} {}",
@@ -169,21 +176,17 @@ impl TransRequestor {
                 Ok(resp)
             }
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "create task failed: obj={}, status={}, msg={}",
-                    req.object_id, code, msg
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "create task failed: obj={}, status={}, {}",
+                    req.object_id, code, e
                 );
-                error!("{}", msg);
-
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
 
-    pub async fn control_task(&self, req: &TransControlTaskOutputRequest) -> BuckyResult<()> {
+    pub async fn control_task(&self, req: TransControlTaskOutputRequest) -> BuckyResult<()> {
         info!("will control trans task: {:?}", req);
 
         let url = self.service_url.join("task").unwrap();
@@ -196,26 +199,22 @@ impl TransRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         match resp.status() {
-            StatusCode::Ok => Ok(()),
+            code if code.is_success() => Ok(()),
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "stop trans task failed: task={}, status={}, msg={}",
-                    req.task_id, code, msg
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "stop trans task failed: task={}, status={}, {}",
+                    req.task_id, code, e
                 );
-                error!("{}", msg);
-
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
 
-    pub async fn start_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+    pub async fn start_task(&self, req: TransTaskOutputRequest) -> BuckyResult<()> {
         Self::control_task(
             self,
-            &TransControlTaskOutputRequest {
+            TransControlTaskOutputRequest {
                 common: req.common.clone(),
                 task_id: req.task_id.clone(),
                 action: TransTaskControlAction::Start,
@@ -224,10 +223,10 @@ impl TransRequestor {
         .await
     }
 
-    pub async fn stop_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+    pub async fn stop_task(&self, req: TransTaskOutputRequest) -> BuckyResult<()> {
         Self::control_task(
             self,
-            &TransControlTaskOutputRequest {
+            TransControlTaskOutputRequest {
                 common: req.common.clone(),
                 task_id: req.task_id.clone(),
                 action: TransTaskControlAction::Stop,
@@ -236,10 +235,10 @@ impl TransRequestor {
         .await
     }
 
-    pub async fn delete_task(&self, req: &TransTaskOutputRequest) -> BuckyResult<()> {
+    pub async fn delete_task(&self, req: TransTaskOutputRequest) -> BuckyResult<()> {
         Self::control_task(
             self,
-            &TransControlTaskOutputRequest {
+            TransControlTaskOutputRequest {
                 common: req.common.clone(),
                 task_id: req.task_id.clone(),
                 action: TransTaskControlAction::Delete,
@@ -250,8 +249,8 @@ impl TransRequestor {
 
     pub async fn get_task_state(
         &self,
-        req: &TransGetTaskStateOutputRequest,
-    ) -> BuckyResult<TransTaskState> {
+        req: TransGetTaskStateOutputRequest,
+    ) -> BuckyResult<TransGetTaskStateOutputResponse> {
         info!("will get trans task state: {:?}", req);
 
         let url = self.service_url.join("task/state").unwrap();
@@ -264,7 +263,7 @@ impl TransRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         match resp.status() {
-            StatusCode::Ok => {
+            code if code.is_success() => {
                 let content = resp.body_json().await.map_err(|e| {
                     let msg = format!("parse TransTaskState resp body error! err={}", e);
                     error!("{}", msg);
@@ -279,27 +278,23 @@ impl TransRequestor {
                 Ok(content)
             }
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "get trans task state failed: task={}, status={}, msg={}",
-                    req.task_id, code, msg
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "get trans task state failed: task={}, status={}, {}",
+                    req.task_id, code, e,
                 );
-                error!("{}", msg);
-
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
 
     pub async fn query_tasks(
         &self,
-        req: &TransQueryTasksOutputRequest,
+        req: TransQueryTasksOutputRequest,
     ) -> BuckyResult<TransQueryTasksOutputResponse> {
         info!("will query tasks: {:?}", req);
 
-        let url = self.service_url.join("query").unwrap();
+        let url = self.service_url.join("tasks").unwrap();
         let mut http_req = Request::new(Method::Post, url);
 
         self.encode_common_headers(&req.common, &mut http_req);
@@ -309,7 +304,7 @@ impl TransRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         match resp.status() {
-            StatusCode::Ok => {
+            code if code.is_success() => {
                 let content = resp.body_string().await.map_err(|e| {
                     let msg = format!("get query task resp body error! err={}", e);
                     error!("{}", msg);
@@ -320,20 +315,17 @@ impl TransRequestor {
                 Ok(resp)
             }
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!("query tasks failed: status={}, msg={}", code, msg);
-                error!("{}", msg);
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!("query tasks failed: status={}, msg={}", code, e);
 
-                let err_code = RequestorHelper::trans_status_code(code);
-
-                Err(BuckyError::new(err_code, msg))
+                Err(e)
             }
         }
     }
 
     pub async fn publish_file(
         &self,
-        req: &TransPublishFileOutputRequest,
+        req: TransPublishFileOutputRequest,
     ) -> BuckyResult<TransPublishFileOutputResponse> {
         info!("will publish file: {:?}", req);
 
@@ -347,10 +339,10 @@ impl TransRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         match resp.status() {
-            StatusCode::Ok => {
+            code if code.is_success() => {
                 let body = resp.body_string().await.map_err(|e| {
                     let msg = format!(
-                        "trans dd file failed, read body string error! req={:?} {}",
+                        "trans publish file failed, read body string error! req={:?} {}",
                         req, e
                     );
                     error!("{}", msg);
@@ -371,63 +363,153 @@ impl TransRequestor {
                 Ok(resp)
             }
             code @ _ => {
-                let msg = resp.body_string().await.unwrap_or("".to_owned());
-                let msg = format!(
-                    "trans publish file failed: file={}, status={}, msg={}",
+                let e = RequestorHelper::error_from_resp(&mut resp).await;
+                error!(
+                    "trans publish file failed: file={}, status={}, {}",
                     req.local_path.display(),
                     code,
-                    msg
+                    e
+                );
+
+                Err(e)
+            }
+        }
+    }
+
+    pub async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateOutputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateOutputResponse> {
+        info!("will get trans task group state: {:?}", req);
+
+        let url = self.service_url.join("task_group/state").unwrap();
+        let mut http_req = Request::new(Method::Post, url);
+
+        self.encode_common_headers(&req.common, &mut http_req);
+        http_req.set_body(serde_json::to_string(&req).unwrap());
+
+        let mut resp = self.requestor.request(http_req).await?;
+
+        if resp.status().is_success() {
+            let content = resp.body_json().await.map_err(|e| {
+                let msg = format!("parse get task group state resp body error! err={}", e);
+                error!("{}", msg);
+                BuckyError::new(BuckyErrorCode::InvalidData, msg)
+            })?;
+
+            info!(
+                "got trans task group state: task_group={}, state={:?}",
+                req.group, content
+            );
+
+            Ok(content)
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!(
+                "get trans task state failed: task_group={}, status={}, {}",
+                req.group,
+                resp.status(),
+                e
+            );
+
+            Err(e)
+        }
+    }
+
+    pub async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupOutputRequest,
+    ) -> BuckyResult<TransControlTaskGroupOutputResponse> {
+        info!("will control trans task group: {:?}", req);
+
+        let url = self.service_url.join("task_group").unwrap();
+        let mut http_req = Request::new(Method::Put, url);
+
+        self.encode_common_headers(&req.common, &mut http_req);
+        http_req.set_body(serde_json::to_string(&req).unwrap());
+
+        let mut resp = self.requestor.request(http_req).await?;
+
+        if resp.status().is_success() {
+            let resp = resp.body_json().await.map_err(|e| {
+                let msg = format!(
+                    "trans control task group failed, read body string error! req={:?} {}",
+                    req, e
                 );
                 error!("{}", msg);
 
-                let err_code = RequestorHelper::trans_status_code(code);
+                BuckyError::from(msg)
+            })?;
 
-                Err(BuckyError::new(err_code, msg))
-            }
+            debug!("trans control task group success: resp={:?}", resp);
+
+            Ok(resp)
+        } else {
+            let e = RequestorHelper::error_from_resp(&mut resp).await;
+            error!("trans control task failed! status={}, {}", resp.status(), e);
+
+            Err(e)
         }
     }
 }
 
 #[async_trait::async_trait]
 impl TransOutputProcessor for TransRequestor {
-    async fn get_context(&self, req: &TransGetContextOutputRequest) -> BuckyResult<TransContext> {
+    async fn get_context(
+        &self,
+        req: TransGetContextOutputRequest,
+    ) -> BuckyResult<TransGetContextOutputResponse> {
         Self::get_context(self, req).await
     }
 
-    async fn put_context(&self, req: &TransPutContextOutputRequest) -> BuckyResult<()> {
+    async fn put_context(&self, req: TransPutContextOutputRequest) -> BuckyResult<()> {
         Self::put_context(self, req).await
     }
 
     async fn create_task(
         &self,
-        req: &TransCreateTaskOutputRequest,
+        req: TransCreateTaskOutputRequest,
     ) -> BuckyResult<TransCreateTaskOutputResponse> {
         Self::create_task(self, req).await
     }
 
     async fn query_tasks(
         &self,
-        req: &TransQueryTasksOutputRequest,
+        req: TransQueryTasksOutputRequest,
     ) -> BuckyResult<TransQueryTasksOutputResponse> {
         Self::query_tasks(self, req).await
     }
 
     async fn get_task_state(
         &self,
-        req: &TransGetTaskStateOutputRequest,
-    ) -> BuckyResult<TransTaskState> {
+        req: TransGetTaskStateOutputRequest,
+    ) -> BuckyResult<TransGetTaskStateOutputResponse> {
         Self::get_task_state(self, req).await
     }
 
     async fn publish_file(
         &self,
-        req: &TransPublishFileOutputRequest,
+        req: TransPublishFileOutputRequest,
     ) -> BuckyResult<TransPublishFileOutputResponse> {
         Self::publish_file(self, req).await
     }
 
     async fn control_task(&self, req: TransControlTaskOutputRequest) -> BuckyResult<()> {
-        Self::control_task(self, &req).await
+        Self::control_task(self, req).await
+    }
+
+    async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateOutputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateOutputResponse> {
+        Self::get_task_group_state(self, req).await
+    }
+
+    async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupOutputRequest,
+    ) -> BuckyResult<TransControlTaskGroupOutputResponse> {
+        Self::control_task_group(self, req).await
     }
 }
 /*

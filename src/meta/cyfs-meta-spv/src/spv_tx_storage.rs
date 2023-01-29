@@ -791,7 +791,7 @@ impl SPVTxStorage {
                 Event::NFTStopAuction(params) => {
                     if event.event_result.status == 0 {
                         if event.event_result.data.len() > 0 {
-                            let beneficiary = ObjectId::clone_from_slice(event.event_result.data.as_slice());
+                            let beneficiary = ObjectId::clone_from_slice(event.event_result.data.as_slice())?;
                             self.nft_remove_all_bid(&mut conn, &params.nft_id).await?;
 
                             let nft_detail = self.nft_get2(&mut conn, &params.nft_id).await?;

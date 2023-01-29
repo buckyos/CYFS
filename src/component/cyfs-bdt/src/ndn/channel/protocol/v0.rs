@@ -177,13 +177,13 @@ impl FlagsCounter {
 pub struct Interest {
     pub session_id: TempSeq, 
     pub chunk: ChunkId,
-    pub prefer_type: ChunkEncodeDesc, 
+    pub prefer_type: ChunkCodecDesc, 
     pub referer: Option<String>,
     pub from: Option<DeviceId>, 
+    pub group_path: Option<String>
     // pub link_url: Option<String>,
     // flow_id:Option<u32>,
     // priority: Option<u8>,
-    // from_device_obj : Option<DeviceObject>,
     // token : Option<String>,//必要的验证token
     // sign : Option<Vec<u8>>,
 }
@@ -209,7 +209,8 @@ impl RawEncodeWithContext<DatagramOptions> for Interest {
         let buf = context.encode(buf, &self.chunk)?;
         let buf = context.encode(buf, &self.prefer_type)?;
         let buf = context.option_encode(buf, &self.referer, flags.next())?;
-        let _ = context.option_encode(buf, &self.from, flags.next())?;
+        let buf = context.option_encode(buf, &self.from, flags.next())?;
+        let _ = context.option_encode(buf, &self.group_path, flags.next())?;
         context.finish(enc_buf)
     }
 }
@@ -227,13 +228,15 @@ impl<'de> RawDecodeWithContext<'de, &DatagramOptions> for Interest {
         let (prefer_type, buf) = context.decode(buf)?;
         let (referer, buf) = context.option_decode(buf, flags.next())?;
         let (from, buf) = context.option_decode(buf, flags.next())?;
+        let (group_path, buf) = context.option_decode(buf, flags.next())?;
         Ok((
             Self {
                 session_id, 
                 chunk, 
                 prefer_type, 
                 referer,
-                from,
+                from, 
+                group_path
             },
             buf,
         ))
@@ -248,6 +251,7 @@ impl JsonCodec<Interest> for Interest {
         JsonCodecHelper::encode_field(&mut obj, "prefer_type", &self.prefer_type);
         JsonCodecHelper::encode_option_string_field(&mut obj, "referer", self.referer.as_ref());
         JsonCodecHelper::encode_option_string_field(&mut obj, "from", self.from.as_ref());
+        JsonCodecHelper::encode_option_string_field(&mut obj, "group_path", self.group_path.as_ref());
         obj
     }
 
@@ -259,6 +263,7 @@ impl JsonCodec<Interest> for Interest {
             prefer_type: JsonCodecHelper::decode_field(obj, "prefer_type")?, 
             referer: JsonCodecHelper::decode_option_string_field(obj, "referer")?, 
             from: JsonCodecHelper::decode_option_string_field(obj, "from")?, 
+            group_path: JsonCodecHelper::decode_option_string_field(obj, "group_path")?, 
         })
     }
 }
@@ -269,9 +274,10 @@ fn encode_protocol_ineterest() {
     let src = Interest {
         session_id: TempSeq::from(123), 
         chunk: ChunkId::default(),
-        prefer_type: ChunkEncodeDesc::Stream(None, None, None), 
-        from: None,
-        referer: Some("referer".to_owned()),
+        prefer_type: ChunkCodecDesc::Stream(None, None, None), 
+        referer: Some("referer".to_owned()), 
+        from: None, 
+        group_path: None
     };
 
     let mut buf = [0u8; 1500]; 
@@ -385,93 +391,6 @@ impl JsonCodec<RespInterest> for RespInterest {
 }
 
 
-#[derive(Clone, Debug)]
-pub enum PieceDesc {
-    Raptor(u32 /*raptor seq*/, u16 /*raptor k*/),
-    Range(u32 /*range index*/, u16 /*range size*/),
-}
-
-impl PieceDesc {
-    pub fn raw_raptor_bytes() -> usize {
-        u8::raw_bytes().unwrap() + u32::raw_bytes().unwrap() + u16::raw_bytes().unwrap()
-    }
-
-    pub fn raw_stream_bytes() -> usize {
-        u8::raw_bytes().unwrap() + u32::raw_bytes().unwrap() + u16::raw_bytes().unwrap()
-    }
-
-    pub fn raptor_index(&self, require_k: u16) -> Option<u32> {
-        match self {
-            Self::Raptor(index, k) => if *k == require_k {
-                Some(*index)
-            } else {
-                None
-            },
-            Self::Range(_, _) => None 
-        }
-    }
-
-    pub fn range_index(&self, require_range_size: u16) -> Option<u32> {
-        match self {
-            Self::Range(index, range_size) => if *range_size == require_range_size {
-                Some(*index)
-            } else {
-                None
-            },
-            Self::Raptor(_, _) => None 
-        }
-    }
-}
-
-impl RawFixedBytes for PieceDesc {
-    fn raw_bytes() -> Option<usize> {
-        Some(Self::raw_raptor_bytes())
-    }
-}
-
-impl RawEncode for PieceDesc {
-    fn raw_measure(&self, _purpose: &Option<RawEncodePurpose>) -> BuckyResult<usize> {
-        Ok(Self::raw_bytes().unwrap())
-    }
-
-    fn raw_encode<'a>(
-        &self,
-        buf: &'a mut [u8],
-        purpose: &Option<RawEncodePurpose>,
-    ) -> BuckyResult<&'a mut [u8]> {
-        match self {
-            Self::Raptor(index, k) => {
-                let buf = 0u8.raw_encode(buf, purpose)?;
-                let buf = index.raw_encode(buf, purpose)?;
-                k.raw_encode(buf, purpose)
-            }, 
-            Self::Range(index, len) => {
-                let buf = 1u8.raw_encode(buf, purpose)?;
-                let buf = index.raw_encode(buf, purpose)?;
-                len.raw_encode(buf, purpose)
-            }
-        }
-    }
-}
-
-impl<'de> RawDecode<'de> for PieceDesc {
-    fn raw_decode(buf: &'de [u8]) -> BuckyResult<(Self, &'de [u8])> {
-        let (code, buf) = u8::raw_decode(buf)?;
-        match code {
-            0u8 => {
-                let (index, buf) = u32::raw_decode(buf)?;
-                let (k, buf) = u16::raw_decode(buf)?;
-                Ok((Self::Raptor(index, k), buf))
-            }, 
-            1u8 => {
-                let (index, buf) = u32::raw_decode(buf)?;
-                let (len, buf) = u16::raw_decode(buf)?;
-                Ok((Self::Range(index, len), buf))
-            }, 
-            _ => Err(BuckyError::new(BuckyErrorCode::InvalidData, "invalid piece desc type code"))
-        }
-    }
-}
 
 pub struct PieceData {
     pub est_seq: Option<TempSeq>,
@@ -627,12 +546,16 @@ impl PieceControl {
                     let buf_ptr = context.encode(buf_ptr, &self.chunk)?;
                     let buf_ptr = context.encode(buf_ptr, &self.command)?;
                     let index_from = MTU - buf_ptr.len(); 
-                    let buf_ptr = context.option_encode(buf_ptr, &Some(0), flags.next())?;
+                    let buf_ptr = context.option_encode(buf_ptr, &self.max_index, flags.next())?;
                     let _ = context.option_encode(buf_ptr, &Some(vec![0u8; 0]), flags.next())?;
                     let _ = context.finish(&mut buffer[enc_from..])?;
                     
                     for indices in lost_index.chunks(Self::max_index_payload()) {
-                        let buf_ptr = self.max_index.unwrap().raw_encode(&mut buffer[index_from..], &None)?;
+                        let buf_ptr = if let Some(max_index) = self.max_index {
+                            max_index.raw_encode(&mut buffer[index_from..], &None)?
+                        } else {
+                            &mut buffer[index_from..]
+                        };
                         let buf_ptr = indices.raw_encode(buf_ptr, &None)?;
 
                         let len = MTU - buf_ptr.len();

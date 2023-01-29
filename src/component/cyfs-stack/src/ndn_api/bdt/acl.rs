@@ -4,7 +4,7 @@ use super::cache::*;
 use super::echo::BdtNdnEchoProcessor;
 use crate::acl::AclManagerRef;
 use crate::ndn::*;
-use crate::ndn_api::LocalDataManager;
+use crate::ndn_api::ChunkStoreReader;
 use crate::non::NONInputProcessorRef;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
@@ -26,7 +26,7 @@ impl BdtNDNDataAclProcessor {
         zone_manager: ZoneManagerRef,
         acl: AclManagerRef,
         router_handlers: RouterHandlersManager,
-        data_manager: LocalDataManager,
+        chunk_reader: ChunkStoreReader
     ) -> Self {
         // 最终的反射应答处理器
         let echo = BdtNdnEchoProcessor::new();
@@ -38,7 +38,7 @@ impl BdtNDNDataAclProcessor {
         // TODO 是否需要post-router的事件处理器?
 
         // 添加acl
-        let processor = NDNAclInputProcessor::new(acl, data_manager, handler_processor);
+        let processor = NDNAclInputProcessor::new(acl, chunk_reader, handler_processor);
 
         let cache = BdtDataAclCache::new();
 
@@ -132,6 +132,8 @@ impl BdtNDNDataAclProcessor {
             range: None,
 
             inner_path: None,
+            context: None,
+            group: None,
         };
 
         if let Some(referer) = referer {

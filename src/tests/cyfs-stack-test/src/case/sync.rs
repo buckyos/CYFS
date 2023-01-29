@@ -135,12 +135,14 @@ async fn add_file(stack: &SharedCyfsStack) -> FileId {
 
         // chunk大小
         chunk_size: 1024 * 1024 * 4,
+        access: None,
+        
         // 关联的dirs
         file_id: None,
         dirs: None,
     };
 
-    let ret = stack.trans().publish_file(&req).await;
+    let ret = stack.trans().publish_file(req).await;
     if ret.is_err() {
         error!("sync add_file error! {}", ret.unwrap_err());
         unreachable!();

@@ -125,7 +125,7 @@ impl From<ObjectId> for GenericArray<u8, U32> {
 
 impl From<H256> for ObjectId {
     fn from(val: H256) -> Self {
-        ObjectId::clone_from_slice(val.as_ref())
+        ObjectId::clone_from_slice(val.as_ref()).unwrap()
     }
 }
 
@@ -537,8 +537,14 @@ impl ObjectId {
         Self(inner)
     }
 
-    pub fn clone_from_slice(slice: &[u8]) -> Self {
-        ObjectId(GenericArray::clone_from_slice(slice))
+    pub fn clone_from_slice(slice: &[u8]) -> BuckyResult<Self> {
+        if slice.len() != U32::to_usize() {
+            let msg = format!("invalid buf len for ObjectId: len={}", slice.len());
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::InvalidData, msg));
+        }
+
+        Ok(ObjectId(GenericArray::clone_from_slice(slice)))
     }
 
     pub fn to_string(&self) -> String {
