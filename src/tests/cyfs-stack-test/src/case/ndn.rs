@@ -650,6 +650,7 @@ pub async fn test_chunk_in_bundle() {
         };
 
         meta.add_access(item).await.unwrap();
+        info!("modify req_path access success! path={}", req_path);
     }
 
     let target = stack.local_device_id();
@@ -669,4 +670,6 @@ pub async fn test_chunk_in_bundle() {
     ndn_req.common.flags = CYFS_REQUEST_FLAG_CHUNK_LEVEL_ACL;
     let ret = other_stack.ndn_service().get_data(ndn_req.clone()).await;
     assert!(ret.is_ok());
+
+    info!("test chunk in bundle success!");
 }
