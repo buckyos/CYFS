@@ -225,7 +225,7 @@ impl NDNRouter {
         let requestor = self.forward.get(&target).await?;
 
         // 这里不指定dec_id，使用forward request里面的dec_id
-        let processor = NDNRequestor::new(None, requestor).into_processor();
+        let processor = NDNRequestor::new(None, requestor, None).into_processor();
 
         // 增加一层错误监测处理
         let processor =
