@@ -160,7 +160,7 @@ impl AppController {
                 .get()
                 .unwrap()
                 .trans()
-                .publish_file(&TransPublishFileOutputRequest {
+                .publish_file(TransPublishFileOutputRequest {
                     common: NDNOutputRequestCommon {
                         req_path: None,
                         dec_id: Some(cyfs_core::get_system_dec_app().clone()),
@@ -174,6 +174,7 @@ impl AppController {
                     chunk_size: 1024 * 1024,
                     file_id: None,
                     dirs: None,
+                    access: None,
                 })
                 .await
                 .map_err(|e| {

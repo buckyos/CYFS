@@ -139,7 +139,7 @@ impl TestZone {
         }
     }
 
-    fn random_requestor_config() -> CyfsStackRequestorConfig {
+    pub fn random_requestor_config() -> CyfsStackRequestorConfig {
         fn random_select() -> CyfsStackRequestorType {
             if bucky_time_now() / 2 == 0 {
                 CyfsStackRequestorType::Http

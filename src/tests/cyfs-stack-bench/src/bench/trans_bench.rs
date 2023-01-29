@@ -183,9 +183,11 @@ impl TransBench {
             // 关联的dirs
             file_id: None,
             dirs: None,
+
+            access: None,
         };
 
-        let ret = self.stack.trans().publish_file(&req).await;
+        let ret = self.stack.trans().publish_file(req).await;
         if ret.is_err() {
             error!("trans add_file error! {}", ret.unwrap_err());
             unreachable!();
@@ -260,9 +262,11 @@ impl TransBench {
             // 关联的dirs
             file_id: None,
             dirs: None,
+
+            access: None,
         };
 
-        let ret = self.stack.trans().publish_file(&req).await;
+        let ret = self.stack.trans().publish_file(req).await;
         if ret.is_err() {
             error!("trans add_file error! {}", ret.unwrap_err());
             unreachable!();
@@ -303,6 +307,7 @@ impl TransBench {
             local_path: local_path.to_path_buf(),
             owner: Default::default(),
             chunk_size: 1024 * 1024 * 4,
+            access: None,
         };
         let ret = self.stack.util().build_file_object(req).await.unwrap();
         let file_id = ret.object_id;
@@ -326,9 +331,11 @@ impl TransBench {
             // 关联的dirs
             file_id: Some(file_id),
             dirs: None,
+
+            access: None,
         };
 
-        let ret = self.stack.trans().publish_file(&req).await;
+        let ret = self.stack.trans().publish_file(req).await;
         if ret.is_err() {
             error!("trans add_file error! {}", ret.unwrap_err());
             unreachable!();
@@ -395,11 +402,12 @@ impl TransBench {
             object_id: file_id.object_id().to_owned(),
             local_path: local_path.to_owned(),
             device_list: vec![device_id],
-            context_id: None,
+            context: None,
+            group: None,
             auto_start: false,
         };
 
-        let ret = self.stack.trans().create_task(&req).await;
+        let ret = self.stack.trans().create_task(req).await;
         if ret.is_err() {
             error!("trans create task error! {}", ret.err().unwrap());
             unreachable!();
@@ -417,7 +425,7 @@ impl TransBench {
             },
             task_id: task_id.clone(),
         };
-        let ret = self.stack.trans().start_task(&req).await;
+        let ret = self.stack.trans().start_task(req).await;
         if ret.is_err() {
             error!("trans start task error! {}", ret.err().unwrap());
             unreachable!()
@@ -437,7 +445,7 @@ impl TransBench {
                 task_id: task_id.clone(),
             };
 
-            let ret = self.stack.trans().get_task_state(&req).await;
+            let ret = self.stack.trans().get_task_state(req).await;
             if ret.is_err() {
                 error!("get trans task state error! {}", ret.unwrap_err());
                 unreachable!();
@@ -469,7 +477,7 @@ impl TransBench {
 
         let ret = self.stack
             .trans()
-            .query_tasks(&TransQueryTasksOutputRequest {
+            .query_tasks(TransQueryTasksOutputRequest {
                 common: NDNRequestCommon {
                     req_path: None,
                     dec_id: Some(ObjectId::default()),
@@ -478,7 +486,6 @@ impl TransBench {
                     referer_object: vec![],
                     flags: 0,
                 },
-                context_id: None,
                 task_status: Some(TransTaskStatus::Finished),
                 range: Some((0, 10)),
             })
@@ -494,7 +501,7 @@ impl TransBench {
         for task in task_list.iter() {
             let ret = self.stack
                 .trans()
-                .delete_task(&TransTaskOutputRequest {
+                .delete_task(TransTaskOutputRequest {
                     common: NDNRequestCommon {
                         req_path: None,
                         dec_id: Some(ObjectId::default()),
@@ -515,7 +522,7 @@ impl TransBench {
 
         let ret = self.stack
             .trans()
-            .query_tasks(&TransQueryTasksOutputRequest {
+            .query_tasks(TransQueryTasksOutputRequest {
                 common: NDNRequestCommon {
                     req_path: None,
                     dec_id: Some(ObjectId::default()),
@@ -524,7 +531,6 @@ impl TransBench {
                     referer_object: vec![],
                     flags: 0,
                 },
-                context_id: None,
                 task_status: Some(TransTaskStatus::Finished),
                 range: Some((0, 10)),
             })
@@ -613,11 +619,12 @@ impl TransBench {
             object_id: chunk_id.object_id().to_owned(),
             local_path: local_path.clone(),
             device_list: vec![device_id.clone()],
-            context_id: None,
+            context: None,
+            group: None,
             auto_start: false,
         };
     
-        let ret = self.stack.trans().create_task(&req).await;
+        let ret = self.stack.trans().create_task(req).await;
         if ret.is_err() {
             error!("trans start task error! {}", ret.err().unwrap());
             unreachable!();
@@ -638,7 +645,7 @@ impl TransBench {
             task_id: task_id.clone(),
         };
     
-        let ret = self.stack.trans().start_task(&req).await;
+        let ret = self.stack.trans().start_task(req).await;
         if ret.is_err() {
             error!("trans start task error! {}", ret.err().unwrap());
             unreachable!();
@@ -657,7 +664,7 @@ impl TransBench {
                 task_id: task_id.clone(),
             };
     
-            let ret = self.stack.trans().get_task_state(&req).await;
+            let ret = self.stack.trans().get_task_state(req).await;
             if ret.is_err() {
                 error!("get trans task state error! {}", ret.unwrap_err());
                 unreachable!();
