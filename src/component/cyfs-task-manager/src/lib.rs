@@ -11,3 +11,6 @@ pub(crate) use db_helper::*;
 pub(crate) use object_locker::*;
 pub use task::*;
 pub use task_store::*;
+
+#[macro_use]
+extern crate log;

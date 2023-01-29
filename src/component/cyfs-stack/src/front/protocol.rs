@@ -312,11 +312,37 @@ impl FrontProtocolHandler {
         url: &http_types::Url,
     ) -> BuckyResult<Vec<NDNDataRefererObject>> {
         // try extract referer from query pairs
-        match RequestorHelper::value_from_querys("referer", url) {
+        match RequestorHelper::value_from_querys_with_utf8_decoding("referer", url) {
             Ok(Some(v)) => Ok(vec![v]),
             Ok(None) => Ok(vec![]),
             Err(e) => {
                 let msg = format!("invalid request url referer query param! {}, {}", url, e);
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+            }
+        }
+    }
+
+    fn context_from_request(url: &http_types::Url) -> BuckyResult<Option<String>> {
+        // try extract group from query pairs
+        match RequestorHelper::value_from_querys_with_utf8_decoding("context", url) {
+            Ok(Some(v)) => Ok(Some(v)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                let msg = format!("invalid request url context query param! {}, {}", url, e);
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+            }
+        }
+    }
+
+    fn group_from_request(url: &http_types::Url) -> BuckyResult<Option<String>> {
+        // try extract group from query pairs
+        match RequestorHelper::value_from_querys_with_utf8_decoding("group", url) {
+            Ok(Some(v)) => Ok(Some(v)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                let msg = format!("invalid request url group query param! {}, {}", url, e);
                 error!("{}", msg);
                 Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
             }
@@ -521,6 +547,8 @@ impl FrontProtocolHandler {
         let range = Self::range_from_request(req.request.as_ref())?;
 
         let referer_objects = Self::referer_objects_from_request(&url)?;
+        let context = Self::context_from_request(&url)?;
+        let group = Self::group_from_request(&url)?;
 
         /*
         /object_id
@@ -562,6 +590,8 @@ impl FrontProtocolHandler {
                     format,
 
                     referer_objects,
+                    context,
+                    group,
 
                     flags,
                 }
@@ -593,6 +623,8 @@ impl FrontProtocolHandler {
                     format,
 
                     referer_objects,
+                    context,
+                    group,
 
                     flags,
                 }
@@ -766,6 +798,8 @@ impl FrontProtocolHandler {
         let mut action = GlobalStateAccessorAction::GetObjectByPath;
         let mut mode = FrontRequestGetMode::Default;
         let mut flags = 0;
+        let mut context = None;
+        let mut group = None;
 
         let pairs = req.request.url().query_pairs();
         for (k, v) in pairs {
@@ -804,6 +838,12 @@ impl FrontProtocolHandler {
                     })?;
                     page_size = Some(v);
                 }
+                "context" => {
+                    context = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
+                }
+                "group" => {
+                    group = Some(RequestorHelper::decode_url_param_with_utf8_decoding(k, v)?);
+                }
                 _ => {
                     warn!("unknown global state access url query: {}={}", k, v);
                 }
@@ -825,6 +865,8 @@ impl FrontProtocolHandler {
             page_size,
 
             mode,
+            context,
+            group,
 
             flags,
         };
@@ -894,6 +936,8 @@ impl FrontProtocolHandler {
         let mode = Self::mode_from_request(url)?;
         let flags = Self::flags_from_request(url)?;
         let referer_objects = Self::referer_objects_from_request(url)?;
+        let context = Self::context_from_request(url)?;
+        let group = Self::group_from_request(url)?;
 
         // TODO now target always be current zone's ood
         let target = self
@@ -914,7 +958,10 @@ impl FrontProtocolHandler {
             format,
 
             origin_url: url.to_owned(),
+
             referer_objects,
+            context,
+            group,
 
             flags,
         };

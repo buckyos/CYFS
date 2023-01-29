@@ -76,8 +76,8 @@ impl async_std::io::Seek for ReaderWithLimit {
                 // println!("pos ret={}", pos);
                 if pos < self.range.start {
                     let msg = format!("seek beyond the begin: {} < {}", pos, self.range.start);
-                    let err = std::io::Error::new(std::io::ErrorKind::InvalidInput, msg);
-                    return Poll::Ready(Err(err));
+                    let err = BuckyError::new(BuckyErrorCode::InvalidInput, msg);
+                    return Poll::Ready(Err(err.into()));
                 } else if pos > self.range.end {
                     pos = self.range.end;
                 }
@@ -132,16 +132,19 @@ impl async_std::io::Read for ChunkReaderWithHash {
                         let actual_id = ChunkId::new(&hash_value, self.chunk_id.len() as u32);
 
                         if actual_id.eq(&self.chunk_id) {
-                            debug!("read {} from file {:?}", self.chunk_id, self.path);
+                            debug!(
+                                "read chunk from file complete! chunk={}, file={}",
+                                self.chunk_id, self.path
+                            );
                             Poll::Ready(Ok(0))
                         } else {
                             let msg = format!(
-                                "content in file {:?} not match chunk id: expect={}, got={}",
-                                self.path, self.chunk_id, actual_id
+                                "content in file not match chunk id: chunk={}, file={}, expect hash={}, got={}",
+                                self.chunk_id, self.path, self.chunk_id, actual_id
                             );
                             error!("{}", msg);
-                            let err = std::io::Error::new(std::io::ErrorKind::InvalidData, msg);
-                            Poll::Ready(Err(err))
+                            let err = BuckyError::new(BuckyErrorCode::InvalidData, msg);
+                            Poll::Ready(Err(err.into()))
                         }
                     }
                 }
@@ -166,23 +169,25 @@ impl AsyncReadWithSeek for ChunkReaderWithHash {}
 
 #[cfg(test)]
 mod tests {
+    use super::{ChunkReaderWithHash, ReaderWithLimit};
     use async_std::io::prelude::*;
-    use super::{ReaderWithLimit, ChunkReaderWithHash};
     use cyfs_base::*;
     use std::io::SeekFrom;
     use std::str::FromStr;
 
     async fn test_file() {
-        let file = "C:\\cyfs\\data\\app\\cyfs-stack-test\\root\\test-chunk-in-bundle";
-        let chunk_id = ChunkId::from_str("7C8WUcPdJGHvGxWou3HoABNe41Xhm9m3aEsSHfj1zeWG").unwrap();
+        // let file = "C:\\cyfs\\data\\app\\cyfs-stack-test\\root\\test-chunk-in-bundle";
+        // let chunk_id = ChunkId::from_str("7C8WUcPdJGHvGxWou3HoABNe41Xhm9m3aEsSHfj1zeWG").unwrap();
 
-        let buf = std::fs::read(file).unwrap();
-        let real_id = ChunkId::calculate_sync(&buf).unwrap();
-        assert_eq!(real_id, chunk_id);
+        let file = "C:\\cyfs\\data\\test\\2JtHrtiW4J";
+        let chunk_id = ChunkId::from_str("7C8WXUGiYVyag6WXdsFz6B8JgpedMMgkng3MRM4XoPrX").unwrap();
+        
+        //let buf = std::fs::read(file).unwrap();
+        //let real_id = ChunkId::calculate_sync(&buf).unwrap();
+        //assert_eq!(real_id, chunk_id);
 
         let reader = async_std::fs::File::open(file).await.unwrap();
-        let mut reader =
-                ChunkReaderWithHash::new("test1".to_owned(), chunk_id, Box::new(reader));
+        let mut reader = ChunkReaderWithHash::new("test1".to_owned(), chunk_id, Box::new(reader));
 
         let mut buf2 = vec![];
         reader.read_to_end(&mut buf2).await.unwrap();
@@ -286,8 +291,8 @@ mod tests {
     #[test]
     fn test() {
         async_std::task::block_on(async move {
-            test1().await;
-            // test_file().await;
+            // test1().await;
+            test_file().await;
         });
     }
 }

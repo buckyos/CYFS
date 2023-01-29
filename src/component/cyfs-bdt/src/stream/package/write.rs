@@ -45,23 +45,20 @@ impl WriteProviderImpl {
         let timeout = self.cc.rto();
         let nagle = self.queue.check_nagle(stream, now);
         let (lost, _break) = if self.queue.flight() > 0 {
-            if self.queue.check_timeout(now, self.cc.rto()) {
-                debug!("{} ledbat lost some package's ack", stream);
-                self.cc.on_loss(0);
-                (true, false)
-            } else if now > self.last_recv {
+            let lost = self.queue.check_timeout(now, self.cc.rto());
+            if lost >= self.queue.flight() {
                 let d = Duration::from_micros(now - self.last_recv);
                 if d > stream.config().package.break_overtime {
                     (true, true)
-                } else if d >= self.cc.rto() {
-                    debug!("{} ledbat no ack in rto", stream);
-                    self.cc.on_no_resp(0);
-                    (true, false)
                 } else {
-                    (false, false)
+                    debug!("{} cc no ack in rto", stream);
+                    self.cc.on_no_resp(lost as u64);
+                    (true, false)
                 }
             } else {
-                (false, false)
+                debug!("{} cc lost some package's ack", stream);
+                self.cc.on_loss(lost as u64);
+                (true, false)
             }
         } else {
             (false, false)
@@ -228,6 +225,7 @@ impl WriteProvider {
                     provider.queue.close(stream);
                     provider.close_waiter = waker.map(|w| w.clone());
                     provider.check_wnd(stream, bucky_time_now(), provider.cc.rto(), &mut packages, false);
+                    *state = WriteProviderState::Closed;
                     Poll::Pending
                 }, 
                 WriteProviderState::Closed => Poll::Ready(Ok(()))
@@ -247,7 +245,10 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Writ
             match state {
                 WriteProviderState::Open(provider) => {
                     let now = bucky_time_now();
-                    if session_data.is_flags_contain(SESSIONDATA_FLAG_ACK_PACKAGEID) {
+                    if session_data.is_flags_contain(SESSIONDATA_FLAG_RESET) {
+                        *state = WriteProviderState::Closed;
+                        return Ok(OnPackageResult::Handled)
+                    } else if session_data.is_flags_contain(SESSIONDATA_FLAG_ACK_PACKAGEID) {
                         let ack_est_package = session_data;
                         let package_id = ack_est_package.id_part.as_ref().unwrap().package_id;
                         trace!("{} recv estimate ack package {}", stream, package_id);
@@ -315,7 +316,11 @@ impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for Writ
                         (Ok(OnPackageResult::Continue), Some(waiters))
                     }
                 }, 
-                WriteProviderState::Closed => (Ok(OnPackageResult::Continue), None)
+                WriteProviderState::Closed => {
+                    debug!("closed stream get data");
+
+                    (Ok(OnPackageResult::Break), None)
+                }
             }
         };
         

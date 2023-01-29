@@ -398,12 +398,14 @@ impl NONRouter {
         // 如果开启了flush标志位，那么不首先从noc获取
         let flush = (req.common.flags & CYFS_ROUTER_REQUEST_FLAG_FLUSH) != 0;
 
+        let mut err = None;
         if flush {
-            if let Ok(resp) = self
+            match self
                 .get_object_without_noc(save_to_noc, router_info, req.clone())
                 .await
             {
-                return Ok(resp);
+                Ok(resp) => return Ok(resp),
+                Err(e) => err = Some(e),
             }
         }
 
@@ -464,7 +466,7 @@ impl NONRouter {
             self.get_object_without_noc(save_to_noc, router_info, req)
                 .await
         } else {
-            Err(BuckyError::from(BuckyErrorCode::NotFound))
+            Err(err.unwrap())
         }
     }
 

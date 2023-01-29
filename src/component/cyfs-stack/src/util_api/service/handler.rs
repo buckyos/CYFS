@@ -396,7 +396,9 @@ impl UtilRequestHandler {
             },
             local_path: out_req.local_path,
             owner: out_req.owner,
-            chunk_size: out_req.chunk_size
+            chunk_size: out_req.chunk_size, 
+            chunk_method: out_req.chunk_method, 
+            access: out_req.access,
         };
         self.processor.build_file_object(in_req).await
     }

@@ -368,7 +368,9 @@ impl PingClient {
                                 }
 
                                 info!("{} online", self);
+
                                 next.update_cache = Some(Some(resp.from));
+
                                 *state = ClientState::Active {
                                     waiter: StateWaiter::new(), 
                                     state: ActiveState::Wait(bucky_time_now() + self.0.config.interval.as_micros() as u64, session.reset(None, Some(resp.from)))

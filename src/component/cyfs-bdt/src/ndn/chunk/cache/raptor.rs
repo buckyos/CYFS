@@ -29,7 +29,7 @@ use super::{
 enum EncoderStateImpl {
     Pending(StateWaiter),
     Ready(RawRaptorEncoder), 
-    Err(BuckyErrorCode)
+    Err(BuckyError)
 }
 
 struct RaptorEncoderImpl {
