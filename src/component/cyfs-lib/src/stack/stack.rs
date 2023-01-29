@@ -378,7 +378,8 @@ impl SharedCyfsStack {
         // ndn
         let requestor =
             requestor_holder.select_requestor(&param, &param.requestor_config.ndn_service);
-        let ndn_service = NDNRequestor::new(Some(dec_id.clone()), requestor);
+        let data_requestor = requestor_holder.select_requestor(&param, &CyfsStackRequestorType::Http);
+        let ndn_service = NDNRequestor::new(Some(dec_id.clone()), requestor, Some(data_requestor));
 
         // sync
         let requestor = requestor_holder.select_requestor(&param, &CyfsStackRequestorType::Http);
