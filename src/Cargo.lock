@@ -1597,7 +1597,7 @@ dependencies = [
  "cyfs-util",
  "dirs 4.0.0",
  "log 0.4.17",
- "sysinfo",
+ "sysinfo 0.26.5",
 ]
 
 [[package]]
@@ -1637,7 +1637,7 @@ dependencies = [
  "scan_dir",
  "sha2 0.8.2",
  "shared_memory",
- "sysinfo",
+ "sysinfo 0.26.5",
 ]
 
 [[package]]
@@ -2322,7 +2322,7 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_logger 2.3.0",
- "sysinfo",
+ "sysinfo 0.27.7",
  "toml",
  "url 2.3.0",
  "walkdir",
@@ -4398,7 +4398,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "sysinfo",
+ "sysinfo 0.26.5",
  "tide",
 ]
 
@@ -6532,6 +6532,21 @@ name = "sysinfo"
 version = "0.26.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ade661fa5e048ada64ad7901713301c21d2dbc5b65ee7967de8826c111452960"
+dependencies = [
+ "cfg-if 1.0.0",
+ "core-foundation-sys",
+ "libc",
+ "ntapi",
+ "once_cell",
+ "rayon",
+ "winapi",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.27.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "975fe381e0ecba475d4acff52466906d95b153a40324956552e027b2a9eaa89e"
 dependencies = [
  "cfg-if 1.0.0",
  "core-foundation-sys",

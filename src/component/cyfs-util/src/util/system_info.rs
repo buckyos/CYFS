@@ -17,6 +17,10 @@ pub struct SystemInfo {
     pub received_bytes: u64,
     pub transmitted_bytes: u64,
 
+    // total bytes of all networks
+    pub total_received_bytes: u64,
+    pub total_transmitted_bytes: u64,
+
     // SSD硬盘容量和可用容量，包括Unknown, in bytes
     pub ssd_disk_total: u64,
     pub ssd_disk_avail: u64,
@@ -35,6 +39,8 @@ impl Default for SystemInfo {
             used_memory: 0,
             received_bytes: 0,
             transmitted_bytes: 0,
+            total_received_bytes: 0,
+            total_transmitted_bytes: 0,
             ssd_disk_total: 0,
             ssd_disk_avail: 0,
             hdd_disk_total: 0,
@@ -150,8 +156,12 @@ impl SystemInfoManagerInner {
 
     fn update_network(&mut self) {
         let networks = self.handler.networks();
-        let mut received_total = 0;
-        let mut transmitted_total = 0;
+        let mut received_bytes = 0;
+        let mut transmitted_bytes = 0;
+        let mut total_received_bytes = 0;
+        let mut total_transmitted_bytes = 0;
+
+
         for (interface_name, network) in networks {
             if interface_name
                 .find("Hyper-V Virtual Ethernet Adapter")
@@ -166,13 +176,26 @@ impl SystemInfoManagerInner {
                 continue;
             }
 
-            //trace!("in: {}, {} bytes", interface_name, network.get_received());
-            received_total += network.received();
-            transmitted_total += network.transmitted();
+            if network.mac_address().is_unspecified() {
+                warn!("will ignore unspecified addr network interface: {}", interface_name);
+                continue;
+            }
+
+            // info!("in: {}, total_received_bytes={}, total_transmitted_bytes={}, addr={:?}", 
+            //    interface_name, network.total_received(), network.total_transmitted(), network.mac_address());
+
+            received_bytes += network.received();
+            transmitted_bytes += network.transmitted();
+
+            total_received_bytes += network.total_received();
+            total_transmitted_bytes += network.total_transmitted();
         }
 
-        self.info_inner.received_bytes = received_total;
-        self.info_inner.transmitted_bytes = transmitted_total;
+        self.info_inner.received_bytes = received_bytes;
+        self.info_inner.transmitted_bytes = transmitted_bytes;
+
+        self.info_inner.total_received_bytes = total_received_bytes;
+        self.info_inner.total_transmitted_bytes = total_transmitted_bytes;
     }
 }
 
