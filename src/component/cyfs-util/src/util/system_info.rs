@@ -7,6 +7,9 @@ use sysinfo::{CpuExt, DiskExt, DiskType, NetworkExt, RefreshKind, System, System
 pub struct SystemInfo {
     pub name: String,
 
+    pub uptime: u64,
+    pub boot_time: u64,
+
     pub cpu_usage: f32,
 
     // memory size in bytes
@@ -32,8 +35,14 @@ pub struct SystemInfo {
 
 impl Default for SystemInfo {
     fn default() -> Self {
+        let sys = System::new();
+        let uptime = sys.uptime() * 1000 * 1000;
+        let boot_time = cyfs_base::unix_time_to_bucky_time(sys.boot_time() * 1000 * 1000);
+        
         Self {
             name: "".to_owned(),
+            uptime,
+            boot_time,
             cpu_usage: 0.0,
             total_memory: 0,
             used_memory: 0,
