@@ -34,7 +34,7 @@ use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use cyfs_base::*;
-use cyfs_bdt::{DeviceCache, Stack, StackGuard, StackOpenParams, SnStatus};
+use cyfs_bdt::{DeviceCache, Stack, StackGuard, StackOpenParams, SnStatus, retry_sn_list_when_offline};
 use cyfs_chunk_cache::ChunkManager;
 use cyfs_lib::*;
 use cyfs_noc::*;
@@ -42,6 +42,7 @@ use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Clone)]
 pub(crate) struct ObjectServices {
@@ -761,7 +762,8 @@ impl CyfsStackImpl {
             bdt_stack.local_device_id()
         );
         let begin = std::time::Instant::now();
-        match bdt_stack.sn_client().ping().wait_online().await {
+        let ping_clients = bdt_stack.sn_client().ping();
+        match ping_clients.wait_online().await {
             Err(e) => {
                 error!(
                     "bdt stack wait sn online failed! {}, during={}ms, {}",
@@ -778,6 +780,11 @@ impl CyfsStackImpl {
                             bdt_stack.local_device_id(),
                             begin.elapsed().as_millis(),
                         );
+                        let bdt_stack = bdt_stack.clone();
+                        async_std::task::spawn(async move {
+                            let _ = ping_clients.wait_offline().await;
+                            retry_sn_list_when_offline(bdt_stack.clone(), ping_clients, Duration::from_secs(30));
+                        });
                     },
                     SnStatus::Offline => {
                         error!(
@@ -785,6 +792,7 @@ impl CyfsStackImpl {
                             bdt_stack.local_device_id(),
                             begin.elapsed().as_millis(),
                         );
+                        retry_sn_list_when_offline(bdt_stack.clone(), ping_clients, Duration::from_secs(30));
                     }
                 }
             }
