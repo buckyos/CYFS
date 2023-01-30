@@ -4,9 +4,12 @@ use cyfs_base::{
     bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
     ObjectDesc, ObjectId,
 };
+use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
 
 use crate::{network::NonDriver, TIME_PRECISION};
+
+use super::{storage_engine::StorageEngineMock, StorageEngine};
 
 pub enum BlockLinkState {
     Expired,
@@ -34,6 +37,8 @@ pub struct GroupStorage {
     first_block: Option<GroupConsensusBlock>,
     prepares: HashMap<ObjectId, GroupConsensusBlock>,
     pre_commits: HashMap<ObjectId, GroupConsensusBlock>,
+
+    storage_engine: StorageEngineMock,
 }
 
 impl GroupStorage {
@@ -44,9 +49,25 @@ impl GroupStorage {
         init_state_id: Option<ObjectId>,
         non_driver: NonDriver,
     ) -> BuckyResult<GroupStorage> {
-        // 用hash加载chunk
-        // 从chunk解析group
-        unimplemented!()
+        let group = non_driver.get_group(group_id, None, None).await?;
+        let group_chunk = ChunkMeta::from(&group);
+        let group_chunk_id = group_chunk.to_chunk().await.unwrap().calculate_id();
+
+        Ok(Self {
+            group,
+            group_id: group_id.clone(),
+            dec_id: dec_id.clone(),
+            rpath: rpath.to_string(),
+            non_driver,
+            dec_state_id: init_state_id,
+            group_chunk_id: group_chunk_id.object_id(),
+            last_vote_round: 0,
+            header_block: None,
+            first_block: None,
+            prepares: HashMap::new(),
+            pre_commits: HashMap::new(),
+            storage_engine: StorageEngineMock::new(),
+        })
     }
 
     pub async fn load(
@@ -57,7 +78,9 @@ impl GroupStorage {
     ) -> BuckyResult<GroupStorage> {
         // 用hash加载chunk
         // 从chunk解析group
-        unimplemented!()
+        // unimplemented!()
+
+        Err(BuckyError::new(BuckyErrorCode::NotFound, "not found"))
     }
 
     pub fn header_block(&self) -> &Option<GroupConsensusBlock> {
@@ -103,8 +126,9 @@ impl GroupStorage {
                 if height == self.first_block.as_ref().map_or(0, |b| b.height()) {
                     self.first_block.clone()
                 } else {
-                    // TODO find in storage
-                    unimplemented!()
+                    // find in storage
+                    let block_id = self.storage_engine.find_block_by_height(height).await?;
+                    Some(self.non_driver.get_block(&block_id, None).await?)
                 }
             }
             std::cmp::Ordering::Equal => self.header_block.clone(),
@@ -191,8 +215,34 @@ impl GroupStorage {
          * 5. 追加去重proposal, 注意翻页清理过期proposal
          * 6. 如果header有变更，返回新的header和被清理的分叉blocks
          */
-        // TODO: storage
-        // unimplemented!()
+        // storage
+        let mut writer = self.storage_engine.create_writer().await?;
+        writer.insert_prepares(&block_id).await?;
+        if let Some((new_pre_commit, _)) = new_pre_commit.as_ref() {
+            writer
+                .insert_pre_commit(new_pre_commit, new_header.is_some())
+                .await?;
+        }
+        if let Some(new_header) = new_header.as_ref() {
+            writer
+                .push_commit(
+                    new_header.height(),
+                    &new_header.named_object().desc().object_id(),
+                )
+                .await?;
+
+            writer.remove_prepares(remove_prepares.as_slice()).await?;
+
+            let finish_proposals: Vec<ObjectId> = new_header
+                .proposals()
+                .iter()
+                .map(|p| p.proposal.clone())
+                .collect();
+            writer.push_proposals(
+                finish_proposals.as_slice(),
+                new_header.named_object().desc().create_time(),
+            );
+        }
 
         // update memory
         if self.prepares.insert(block_id, block).is_some() {
@@ -244,8 +294,9 @@ impl GroupStorage {
             return Ok(());
         }
 
-        // TODO: storage
-        unimplemented!();
+        // storage
+        let mut writer = self.storage_engine.create_writer().await?;
+        writer.set_last_vote_round(round).await?;
 
         self.last_vote_round = round;
 
@@ -443,9 +494,9 @@ impl GroupStorage {
             }
         }
 
-        // TODO: find in storage
+        // find in storage
 
-        unimplemented!()
+        self.storage_engine.is_proposal_finished(proposal_id).await
     }
 
     pub fn block_with_max_round(&self) -> Option<GroupConsensusBlock> {

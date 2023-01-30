@@ -28,22 +28,20 @@
 |               |       |--xxx
 |               |--last-vote-round-->u64 // 最后一次投票的轮次
 |               |
-|               |--range-->(${first_height}, ${header_seq}) // 保留的历史block序列号区间
+|               |--range-->(${first_height}, ${header_height}) // 保留的历史block序列号区间
 |               |--str(${height})
 |               |   |--block-->GroupConsensusBlock
-|               |   |--proposals-->Set<Proposal>
 |               |
 |               |--prepares // Prepare状态的block
 |               |   |--${block.id}
 |               |       |--block
-|               |       |--result-state-->ObjectId(result-state)
 |               |--pre-commits // pre-commit状态的block
 |               |   |--${block.id}
 |               |       |--block
 |               |
 |               |--finish-proposals
 |               |   |--flip-time-->Timestamp // 取block时间戳
-|               |   |--recycle-->Set<ObjectId>
+|               |   |--over-->Set<ObjectId>
 |               |   |--adding-->Set<ObjectId>
 ```
 
