@@ -54,7 +54,7 @@ nix = '0.24'
 dirs = '4.0'
 
 [build-dependencies]
-cyfs-base = { path = '../cyfs-base' }
+cyfs-base = { path = '../cyfs-base', version = "0.6" }
 
 [dev-dependencies]
 rand = '0.8'
