@@ -7,7 +7,7 @@ use cyfs_base::{
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
 
-use crate::{network::NonDriver, TIME_PRECISION};
+use crate::{network::NonDriver, storage::StorageWriter, TIME_PRECISION};
 
 use super::{storage_engine::StorageEngineMock, StorageEngine};
 

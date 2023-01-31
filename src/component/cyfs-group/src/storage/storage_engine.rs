@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
 
 #[async_trait::async_trait]
-pub trait StorageWriter: Drop {
+pub trait StorageWriter: Send + Sync + Drop {
     async fn insert_prepares(&mut self, block_id: &ObjectId) -> BuckyResult<()>;
     async fn insert_pre_commit(&mut self, block_id: &ObjectId, is_instead: bool)
         -> BuckyResult<()>;
@@ -21,7 +21,7 @@ pub trait StorageWriter: Drop {
 #[async_trait::async_trait]
 pub trait StorageEngine {
     async fn find_block_by_height(&self, height: u64) -> BuckyResult<ObjectId>;
-    async fn create_writer(&mut self) -> BuckyResult<Box<dyn StorageWriter>>;
+    async fn create_writer(&mut self) -> BuckyResult<StorageEngineMockWriter>;
     async fn is_proposal_finished(&self, proposal_id: &ObjectId) -> BuckyResult<bool>;
 }
 
@@ -69,8 +69,8 @@ impl StorageEngine for StorageEngineMock {
             .ok_or(BuckyError::new(BuckyErrorCode::NotFound, "not found"))
     }
 
-    async fn create_writer(&mut self) -> BuckyResult<Box<dyn StorageWriter>> {
-        Ok(Box::new(StorageEngineMockWriter { engine: self }))
+    async fn create_writer(&mut self) -> BuckyResult<StorageEngineMockWriter> {
+        Ok(StorageEngineMockWriter { engine: self })
     }
 
     async fn is_proposal_finished(&self, proposal_id: &ObjectId) -> BuckyResult<bool> {
@@ -84,7 +84,7 @@ impl StorageEngine for StorageEngineMock {
     }
 }
 
-struct StorageEngineMockWriter<'a> {
+pub struct StorageEngineMockWriter<'a> {
     engine: &'a mut StorageEngineMock,
 }
 
