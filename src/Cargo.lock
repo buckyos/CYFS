@@ -1577,6 +1577,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyfs-bdt-ext"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-util",
+ "log 0.4.17",
+ "lru_time_cache",
+ "once_cell",
+ "serde",
+]
+
+[[package]]
 name = "cyfs-bench-mark"
 version = "0.1.0"
 dependencies = [
