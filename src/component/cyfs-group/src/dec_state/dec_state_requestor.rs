@@ -25,11 +25,11 @@ struct DecStateRequestorRaw {
 pub struct DecStateRequestor(Arc<DecStateRequestorRaw>);
 
 impl DecStateRequestor {
-    pub fn new(
+    pub(crate) fn new(
         local_id: ObjectId,
         rpath: GroupRPath,
         network_sender: crate::network::Sender,
-        non_driver: crate::network::NonDriver,
+        non_driver: crate::network::NONDriverHelper,
         store: DecStorage,
     ) -> Self {
         let (tx, rx) = async_std::channel::bounded(CHANNEL_CAPACITY);
@@ -92,7 +92,7 @@ struct DecStateRequestorRunner {
     store: DecStorage,
 
     network_sender: crate::network::Sender,
-    non_driver: crate::network::NonDriver,
+    non_driver: crate::network::NONDriverHelper,
     query_state_notifier: CallReplyNotifier<String, BuckyResult<ObjectId>>,
 }
 
@@ -106,7 +106,7 @@ impl DecStateRequestorRunner {
         )>,
         store: DecStorage,
         network_sender: crate::network::Sender,
-        non_driver: crate::network::NonDriver,
+        non_driver: crate::network::NONDriverHelper,
         query_state_notifier: CallReplyNotifier<String, BuckyResult<ObjectId>>,
     ) -> Self {
         Self {

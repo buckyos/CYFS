@@ -4,17 +4,17 @@ use cyfs_core::GroupRPath;
 
 use crate::{HotstuffMessage, HotstuffPackage};
 
-use super::NonDriver;
+use super::NONDriverHelper;
 
 #[derive(Clone)]
 pub struct Sender {
     datagram: DatagramTunnelGuard,
     vport: u16,
-    non_driver: NonDriver,
+    non_driver: NONDriverHelper,
 }
 
 impl Sender {
-    pub fn new(datagram: DatagramTunnelGuard, non_driver: NonDriver) -> Self {
+    pub(crate) fn new(datagram: DatagramTunnelGuard, non_driver: NONDriverHelper) -> Self {
         let vport = datagram.vport();
         Self {
             datagram,

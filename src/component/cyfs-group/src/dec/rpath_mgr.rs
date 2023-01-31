@@ -1,13 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_std::sync::RwLock;
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, GroupId, ObjectId, RsaCPUObjectSigner};
-use cyfs_bdt::Stack;
+use cyfs_base::{
+    BuckyError, BuckyErrorCode, BuckyResult, GroupId, ObjectId, OwnerObjectDesc, RsaCPUObjectSigner,
+};
+use cyfs_bdt::{DatagramTunnelGuard, StackGuard};
 use cyfs_core::{DecAppId, GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath};
 
 use crate::{
     storage::GroupStorage, DelegateFactory, HotstuffMessage, HotstuffPackage, IsCreateRPath,
-    RPathClient, RPathControl, NET_PROTOCOL_VPORT,
+    NONDriver, NONDriverHelper, RPathClient, RPathControl, NET_PROTOCOL_VPORT,
 };
 
 type ControlByRPath = HashMap<String, RPathControl>;
@@ -25,11 +27,10 @@ struct GroupRPathMgrRaw {
 }
 
 struct LocalInfo {
-    local_id: ObjectId,
     signer: Arc<RsaCPUObjectSigner>,
-    network_sender: crate::network::Sender,
-    non_driver: crate::network::NonDriver,
-    bdt_stack: Stack,
+    non_driver: Arc<Box<dyn NONDriver>>,
+    datagram: DatagramTunnelGuard,
+    bdt_stack: StackGuard,
 }
 
 #[derive(Clone)]
@@ -37,19 +38,16 @@ pub struct GroupRPathMgr(Arc<(LocalInfo, RwLock<GroupRPathMgrRaw>)>);
 
 impl GroupRPathMgr {
     pub fn new(
-        local_id: ObjectId,
         signer: RsaCPUObjectSigner,
-        non_driver: crate::network::NonDriver,
-        bdt_stack: Stack,
+        non_driver: Box<dyn crate::network::NONDriver>,
+        bdt_stack: StackGuard,
     ) -> BuckyResult<Self> {
         let datagram = bdt_stack.datagram_manager().bind(NET_PROTOCOL_VPORT)?;
-        let network_sender = crate::network::Sender::new(datagram.clone(), non_driver.clone());
 
         let local_info = LocalInfo {
-            local_id,
             signer: Arc::new(signer),
-            network_sender,
-            non_driver,
+            non_driver: Arc::new(non_driver),
+            datagram: datagram.clone(),
             bdt_stack,
         };
 
@@ -118,9 +116,10 @@ impl GroupRPathMgr {
             // write
 
             let local_info = self.local_info();
-            let local_id = local_info.local_id;
-            let network_sender = local_info.network_sender.clone();
-            let non_driver = local_info.non_driver.clone();
+            let local_id = local_info.bdt_stack.local_const().owner().unwrap();
+            let non_driver = NONDriverHelper::new(local_info.non_driver.clone(), dec_id.clone());
+            let network_sender =
+                crate::network::Sender::new(local_info.datagram.clone(), non_driver.clone());
 
             let mut raw = self.write().await;
 
@@ -351,10 +350,11 @@ impl GroupRPathMgr {
             // write
 
             let local_info = self.local_info();
-            let local_id = local_info.local_id;
+            let local_id = local_info.bdt_stack.local_const().owner().unwrap();
             let signer = local_info.signer.clone();
-            let network_sender = local_info.network_sender.clone();
-            let non_driver = local_info.non_driver.clone();
+            let non_driver = NONDriverHelper::new(local_info.non_driver.clone(), dec_id.clone());
+            let network_sender =
+                crate::network::Sender::new(local_info.datagram.clone(), non_driver.clone());
             let local_device_id = local_info.bdt_stack.local_device_id().clone();
 
             let store = GroupStorage::load(group_id, dec_id, rpath, non_driver.clone()).await;
@@ -373,9 +373,7 @@ impl GroupRPathMgr {
             };
 
             // TODO: query group
-            let group = self
-                .local_info()
-                .non_driver
+            let group = non_driver
                 .get_group(group_id, block.map(|b| b.group_chunk_id()), remote)
                 .await?;
 

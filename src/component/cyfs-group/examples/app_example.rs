@@ -1,9 +1,9 @@
 mod Client {
+    use cyfs_base::ObjectId;
     use cyfs_core::GroupProposal;
+    use cyfs_group::RPathClient;
 
-    pub struct DecClient {
-
-    }
+    pub struct DecClient {}
 
     impl DecClient {
         async fn do_something(&self) {
@@ -24,8 +24,8 @@ mod Client {
 
 mod GroupDecService {
     use cyfs_base::*;
-    use cyfs_core::GroupProposal;
-    use cyfs_group::{DelegateFactory, ExecuteResult, RPathControlMgr};
+    use cyfs_core::{DecAppId, GroupConsensusBlock, GroupProposal};
+    use cyfs_group::{DelegateFactory, ExecuteResult, RPathDelegate};
 
     pub struct DecService {}
 
@@ -43,9 +43,8 @@ mod GroupDecService {
         pub fn is_accept(
             &self,
             group: &Group,
-            dec_id: &ObjectId,
             rpath: &str,
-            with_proposal: Option<&GroupProposal>,
+            with_block: Option<&GroupConsensusBlock>,
         ) -> bool {
             // 由应用定义是否接收该rpath，并启动共识过程，参与该rpath的信息维护
             true
@@ -57,16 +56,25 @@ mod GroupDecService {
         async fn create_rpath_delegate(
             &self,
             group: &Group,
-            dec_id: &ObjectId,
             rpath: &str,
-            with_proposal: Option<&GroupProposal>,
+            with_block: Option<&GroupConsensusBlock>,
         ) -> BuckyResult<Box<dyn RPathDelegate>> {
-            if self.is_accept(group, dec_id, rpath, with_proposal) {
+            if self.is_accept(group, rpath, with_block) {
                 // 如果接受，就提供该rpath的处理响应对象
                 Ok(MyRPathDelegate::new())
             } else {
                 Err(BuckyError::new(BuckyErrorCode::Reject, ""))
             }
+        }
+
+        async fn on_state_changed(
+            &self,
+            group_id: &ObjectId,
+            rpath: &str,
+            state_id: Option<ObjectId>,
+            pre_state_id: Option<ObjectId>,
+        ) {
+            unimplemented!()
         }
     }
 
@@ -91,7 +99,7 @@ mod GroupDecService {
                 ObjectId::default()
             };
 
-            let return_object = {
+            let receipt = {
                 /**
                  * 返回给Client的对象，相当于这个请求的结果或者叫回执？
                  */
@@ -109,9 +117,9 @@ mod GroupDecService {
              * (result_state_id, return_object) = pre_state_id + proposal + context
              */
             Ok(ExecuteResult {
-                result_state_id,
-                return_object,
                 context,
+                result_state_id: Some(result_state_id),
+                receipt,
             })
         }
 
@@ -124,7 +132,7 @@ mod GroupDecService {
             /**
              * let is_same = (execute_result.result_state_id, execute_result.return_object)
              *  == pre_state_id + proposal + execute_result.context
-            */
+             */
             Ok(true)
         }
     }
@@ -154,9 +162,7 @@ mod GroupDecService {
             pre_state_id: ObjectId,
             execute_result: &ExecuteResult,
         ) {
-            /**
-             * 提交到共识链上了，可能有些善后事宜
-            */
+            // 提交到共识链上了，可能有些善后事宜
         }
     }
 }

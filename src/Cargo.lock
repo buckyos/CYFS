@@ -2323,6 +2323,7 @@ dependencies = [
  "cyfs-chunk-lib",
  "cyfs-core",
  "cyfs-debug",
+ "cyfs-group",
  "cyfs-lib",
  "cyfs-meta-lib",
  "cyfs-ndc",

@@ -12,17 +12,17 @@ use cyfs_base::{
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, HotstuffBlockQC, HotstuffTimeout};
 
-use crate::{network::NonDriver, HotstuffBlockQCVote, HotstuffTimeoutVote};
+use crate::{network::NONDriverHelper, HotstuffBlockQCVote, HotstuffTimeoutVote};
 
 #[derive(Clone)]
 pub(crate) struct Committee {
     group_id: ObjectId,
-    non_driver: NonDriver,
+    non_driver: NONDriverHelper,
     group_cache: Arc<RwLock<HashMap<ObjectId, Group>>>, // (group_chunk_id, group)
 }
 
 impl Committee {
-    pub fn new(group_id: ObjectId, non_driver: NonDriver) -> Self {
+    pub fn new(group_id: ObjectId, non_driver: NONDriverHelper) -> Self {
         Committee {
             group_id,
             non_driver,

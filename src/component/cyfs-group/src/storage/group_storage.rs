@@ -7,7 +7,7 @@ use cyfs_base::{
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
 
-use crate::{network::NonDriver, storage::StorageWriter, TIME_PRECISION};
+use crate::{storage::StorageWriter, NONDriverHelper, TIME_PRECISION};
 
 use super::{storage_engine::StorageEngineMock, StorageEngine};
 
@@ -28,7 +28,7 @@ pub struct GroupStorage {
     group_id: ObjectId,
     dec_id: ObjectId,
     rpath: String,
-    non_driver: NonDriver,
+    non_driver: NONDriverHelper,
 
     dec_state_id: Option<ObjectId>, // commited/header state id
     group_chunk_id: ObjectId,
@@ -42,12 +42,12 @@ pub struct GroupStorage {
 }
 
 impl GroupStorage {
-    pub async fn create(
+    pub(crate) async fn create(
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
         init_state_id: Option<ObjectId>,
-        non_driver: NonDriver,
+        non_driver: NONDriverHelper,
     ) -> BuckyResult<GroupStorage> {
         let group = non_driver.get_group(group_id, None, None).await?;
         let group_chunk = ChunkMeta::from(&group);
@@ -70,11 +70,11 @@ impl GroupStorage {
         })
     }
 
-    pub async fn load(
+    pub(crate) async fn load(
         group_id: &ObjectId,
         dec_id: &ObjectId,
         rpath: &str,
-        non_driver: NonDriver,
+        non_driver: NONDriverHelper,
     ) -> BuckyResult<GroupStorage> {
         // 用hash加载chunk
         // 从chunk解析group

@@ -4,7 +4,7 @@ use cyfs_base::{BuckyResult, ObjectId, RsaCPUObjectSigner};
 use cyfs_core::{GroupProposal, GroupRPath};
 
 use crate::{
-    network::NonDriver, storage::GroupStorage, Committee, Hotstuff, HotstuffMessage,
+    network::NONDriverHelper, storage::GroupStorage, Committee, Hotstuff, HotstuffMessage,
     PendingProposalHandler, PendingProposalMgr, RPathDelegate,
 };
 
@@ -27,7 +27,7 @@ impl RPathControl {
         signer: Arc<RsaCPUObjectSigner>,
         delegate: Arc<Box<dyn RPathDelegate>>,
         network_sender: crate::network::Sender,
-        non_driver: NonDriver,
+        non_driver: NONDriverHelper,
         store: GroupStorage,
     ) -> BuckyResult<Self> {
         let (pending_proposal_handle, pending_proposal_consumer) = PendingProposalMgr::new();

@@ -25,11 +25,11 @@ pub struct StatePusher {
 }
 
 impl StatePusher {
-    pub fn new(
+    pub(crate) fn new(
         local_id: ObjectId,
         network_sender: crate::network::Sender,
         rpath: GroupRPath,
-        non_driver: crate::network::NonDriver,
+        non_driver: crate::network::NONDriverHelper,
     ) -> Self {
         let (tx, rx) = async_std::channel::bounded(CHANNEL_CAPACITY);
 
@@ -98,7 +98,7 @@ struct StateChanggeRunner {
     local_id: ObjectId,
     network_sender: crate::network::Sender,
     rpath: GroupRPath,
-    non_driver: crate::network::NonDriver,
+    non_driver: crate::network::NONDriverHelper,
     tx_notifier: async_std::channel::Sender<StatePushMessage>,
     rx_notifier: async_std::channel::Receiver<StatePushMessage>,
     delay_notify_times: usize,
@@ -112,7 +112,7 @@ impl StateChanggeRunner {
         local_id: ObjectId,
         network_sender: crate::network::Sender,
         rpath: GroupRPath,
-        non_driver: crate::network::NonDriver,
+        non_driver: crate::network::NONDriverHelper,
         tx_notifier: async_std::channel::Sender<StatePushMessage>,
         rx_notifier: async_std::channel::Receiver<StatePushMessage>,
     ) -> Self {

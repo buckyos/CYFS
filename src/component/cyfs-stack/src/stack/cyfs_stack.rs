@@ -32,16 +32,17 @@ use crate::trans_api::{create_trans_store, TransService};
 use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
+use crate::GroupNONDriver;
 use cyfs_base::*;
 use cyfs_bdt::{ChunkReader, DeviceCache, Stack, StackGuard, StackOpenParams};
 use cyfs_chunk_cache::{ChunkManager, ChunkManagerRef};
+use cyfs_group::GroupRPathMgr;
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
-
 
 #[derive(Clone)]
 pub(crate) struct ObjectServices {
@@ -99,6 +100,9 @@ pub struct CyfsStackImpl {
 
     // global_state_meta
     global_state_meta: GlobalStateMetaService,
+
+    // group
+    group_manager: GroupRPathMgr,
 }
 
 impl CyfsStackImpl {
@@ -249,6 +253,11 @@ impl CyfsStackImpl {
             config.clone(),
         );
 
+        let signer = RsaCPUObjectSigner::new(
+            bdt_param.device.desc().public_key().clone(),
+            bdt_param.secret.clone(),
+        );
+
         // 初始化bdt协议栈
         let (bdt_stack, bdt_event) = Self::init_bdt_stack(
             zone_manager.clone(),
@@ -380,7 +389,7 @@ impl CyfsStackImpl {
 
         let services = ObjectServices {
             ndn_service,
-            non_service,
+            non_service: non_service.clone(),
 
             crypto_service,
             util_service,
@@ -395,6 +404,12 @@ impl CyfsStackImpl {
             services.crypto_service.local_service().verifier().clone(),
             config.clone(),
         );
+
+        let group_manager = GroupRPathMgr::new(
+            signer,
+            Box::new(GroupNONDriver::new(non_service.clone())),
+            bdt_stack.clone(),
+        )?;
 
         let mut stack = Self {
             config,
@@ -431,6 +446,8 @@ impl CyfsStackImpl {
             fail_handler,
 
             acl_manager,
+
+            group_manager,
         };
 
         // init an system-dec router-handler processor for later use
@@ -813,7 +830,6 @@ impl CyfsStackImpl {
         let task = async_std::task::spawn(async move {
             // 初始化known_objects
             for object in known_objects.list.into_iter() {
-
                 let req = NamedObjectCachePutObjectRequest {
                     source: RequestSourceInfo::new_local_system(),
                     object,
@@ -829,7 +845,7 @@ impl CyfsStackImpl {
         if known_objects.mode == CyfsStackKnownObjectsInitMode::Sync {
             task.await;
         }
-        
+
         Ok(noc)
     }
 

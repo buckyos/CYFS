@@ -17,7 +17,7 @@ use crate::{
 struct RPathClientRaw {
     rpath: GroupRPath,
     local_id: ObjectId,
-    non_driver: crate::network::NonDriver,
+    non_driver: crate::network::NONDriverHelper,
     network_sender: crate::network::Sender,
     state_sync: DecStateSynchronizer,
     state_requestor: DecStateRequestor,
@@ -27,10 +27,10 @@ struct RPathClientRaw {
 pub struct RPathClient(Arc<RPathClientRaw>);
 
 impl RPathClient {
-    pub async fn load(
+    pub(crate) async fn load(
         local_id: ObjectId,
         rpath: GroupRPath,
-        non_driver: crate::network::NonDriver,
+        non_driver: crate::network::NONDriverHelper,
         network_sender: crate::network::Sender,
     ) -> BuckyResult<Self> {
         let dec_store = DecStorage::load().await?;

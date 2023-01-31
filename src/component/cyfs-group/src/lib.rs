@@ -16,7 +16,7 @@ pub(crate) use crypto::*;
 pub use dec::*;
 pub(crate) use dec_state::*;
 pub(crate) use helper::*;
-pub(crate) use network::*;
+pub use network::*;
 pub use objects::*;
 pub use statepath::*;
 pub(crate) use storage::*;

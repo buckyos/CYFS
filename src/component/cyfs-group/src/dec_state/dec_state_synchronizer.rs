@@ -11,7 +11,7 @@ use futures::FutureExt;
 
 use crate::{
     helper::{verify_block, Timer},
-    network::NonDriver,
+    network::NONDriverHelper,
     storage::{DecStorage, DecStorageCache},
     CHANNEL_CAPACITY,
 };
@@ -41,10 +41,10 @@ struct DecStateSynchronizerRaw {
 pub struct DecStateSynchronizer(Arc<DecStateSynchronizerRaw>);
 
 impl DecStateSynchronizer {
-    pub fn new(
+    pub(crate) fn new(
         local_id: ObjectId,
         rpath: GroupRPath,
-        non_driver: crate::network::NonDriver,
+        non_driver: crate::network::NONDriverHelper,
         store: DecStorage,
     ) -> Self {
         let (tx, rx) = async_std::channel::bounded(CHANNEL_CAPACITY);
@@ -136,7 +136,7 @@ struct DecStateSynchronizerRunner {
     state_cache: Option<DecStateSynchronizerCache>,
     update_notifies: Option<UpdateNotifyInfo>,
 
-    non_driver: NonDriver,
+    non_driver: NONDriverHelper,
     proposal_result_notifier: CallReplyNotifier<ObjectId, BuckyResult<Option<NONObjectInfo>>>,
 }
 
@@ -153,7 +153,7 @@ impl DecStateSynchronizerRunner {
             ObjectId,
         )>,
         store: DecStorage,
-        non_driver: NonDriver,
+        non_driver: NONDriverHelper,
         proposal_result_notifier: CallReplyNotifier<ObjectId, BuckyResult<Option<NONObjectInfo>>>,
     ) -> Self {
         Self {

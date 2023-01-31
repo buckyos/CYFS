@@ -1,13 +1,39 @@
-use cyfs_base::{BuckyResult, Device, DeviceId, Group, ObjectId, PeopleId, RawDecode};
+use std::sync::Arc;
+
+use cyfs_base::{
+    BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceId, Group, NamedObject, ObjectDesc,
+    ObjectId, ObjectTypeCode, People, PeopleId, RawDecode,
+};
+use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{GroupConsensusBlock, GroupProposal};
 use cyfs_lib::NONObjectInfo;
 
-#[derive(Clone)]
-pub struct NonDriver {}
+#[async_trait::async_trait]
+pub trait NONDriver: Send + Sync {
+    async fn get_object(
+        &self,
+        dec_id: &ObjectId,
+        object_id: &ObjectId,
+        from: Option<&ObjectId>,
+    ) -> BuckyResult<NONObjectInfo>;
 
-impl NonDriver {
-    pub fn new() -> Self {
-        Self {}
+    async fn post_object(
+        &self,
+        dec_id: &ObjectId,
+        obj: NONObjectInfo,
+        to: &ObjectId,
+    ) -> BuckyResult<()>;
+}
+
+#[derive(Clone)]
+pub(crate) struct NONDriverHelper {
+    driver: Arc<Box<dyn NONDriver>>,
+    dec_id: ObjectId,
+}
+
+impl NONDriverHelper {
+    pub fn new(driver: Arc<Box<dyn NONDriver>>, dec_id: ObjectId) -> Self {
+        Self { driver, dec_id }
     }
 
     pub async fn get_object(
@@ -15,15 +41,15 @@ impl NonDriver {
         object_id: &ObjectId,
         from: Option<&ObjectId>,
     ) -> BuckyResult<NONObjectInfo> {
-        unimplemented!()
+        self.driver.get_object(&self.dec_id, object_id, from).await
     }
 
     pub async fn post_object(&self, obj: NONObjectInfo, to: &ObjectId) -> BuckyResult<()> {
-        unimplemented!()
+        self.driver.post_object(&self.dec_id, obj, to).await
     }
 
-    pub async fn broadcast(&self, obj: NONObjectInfo, to: &[ObjectId]) -> BuckyResult<()> {
-        unimplemented!()
+    pub async fn broadcast(&self, obj: NONObjectInfo, to: &[ObjectId]) {
+        futures::future::join_all(to.iter().map(|to| self.post_object(obj.clone(), to))).await;
     }
 
     pub async fn get_block(
@@ -54,14 +80,49 @@ impl NonDriver {
         group_chunk_id: Option<&ObjectId>,
         from: Option<&ObjectId>,
     ) -> BuckyResult<Group> {
-        unimplemented!()
+        match group_chunk_id {
+            Some(group_chunk_id) => {
+                let chunk = self.get_object(group_chunk_id, from).await?;
+                let (group_chunk, remain) = ChunkMeta::raw_decode(chunk.object_raw.as_slice())?;
+                assert_eq!(remain.len(), 0);
+                let group = Group::try_from(&group_chunk)?;
+                if &group.desc().object_id() == group_id {
+                    Ok(group)
+                } else {
+                    Err(BuckyError::new(BuckyErrorCode::Unmatch, "groupid"))
+                }
+            }
+            None => {
+                // TODO: latest version from metachain
+                let group = self.get_object(group_id, from).await?;
+                let (group, remain) = Group::raw_decode(group.object_raw.as_slice())?;
+                assert_eq!(remain.len(), 0);
+                Ok(group)
+            }
+        }
     }
 
     pub async fn get_ood(&self, people_id: &PeopleId) -> BuckyResult<DeviceId> {
-        unimplemented!()
+        let people = self
+            .get_object(people_id.object_id(), Some(people_id.object_id()))
+            .await?;
+        let (people, remain) = People::raw_decode(people.object_raw.as_slice())?;
+        assert_eq!(remain.len(), 0);
+        people
+            .ood_list()
+            .get(0)
+            .ok_or(BuckyError::new(BuckyErrorCode::NotFound, "empty ood-list"))
+            .map(|d| d.clone())
     }
 
     pub async fn get_device(&self, device_id: &ObjectId) -> BuckyResult<Device> {
-        unimplemented!()
+        if let ObjectTypeCode::Device = device_id.obj_type_code() {
+            let device = self.get_object(device_id, Some(device_id)).await?;
+            let (device, remain) = Device::raw_decode(device.object_raw.as_slice())?;
+            assert_eq!(remain.len(), 0);
+            Ok(device)
+        } else {
+            Err(BuckyError::new(BuckyErrorCode::Unmatch, "not device-id"))
+        }
     }
 }
