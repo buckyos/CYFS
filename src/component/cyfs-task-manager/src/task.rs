@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use async_std::task::JoinHandle;
 use base58::{FromBase58, ToBase58};
-use futures::future::{AbortHandle};
+use futures::future::{AbortHandle, Aborted};
 use generic_array::GenericArray;
 use generic_array::typenum::{U32};
 use cyfs_base::*;
@@ -199,6 +199,7 @@ pub trait Runnable: Send + Sync {
 struct RunnableTaskData {
     canceler: Option<AbortHandle>,
     task_status: TaskStatus,
+    error: Option<BuckyError>,
     task_store: Option<Arc<dyn TaskStore>>,
     runnable_handle: Option<JoinHandle<()>>,
 }
@@ -216,6 +217,7 @@ impl<R: Runnable> RunnableTask<R> {
             data: Arc::new(Mutex::new(RunnableTaskData {
                 canceler: None,
                 task_status: TaskStatus::Stopped,
+                error: None,
                 task_store: None,
                 runnable_handle: None,
             })),
@@ -320,6 +322,7 @@ impl<R: 'static + Runnable> Task for RunnableTask<R> {
                                 {
                                     let mut tmp_data = data.lock().unwrap();
                                     tmp_data.task_status = TaskStatus::Failed;
+                                    tmp_data.error = Some(err);
                                     tmp_data.canceler = None;
                                     tmp_data.runnable_handle = None;
                                     runnable.status_change(tmp_data.task_status);
@@ -330,14 +333,19 @@ impl<R: 'static + Runnable> Task for RunnableTask<R> {
                             }
                         }
                     }
-                    Err(_) => {
+                    Err(Aborted) => {
                         {
+                            let msg = format!("runnable task been aborted! task={}", runnable.get_task_id());
+                            warn!("{}", msg);
+                            let err = BuckyError::new(BuckyErrorCode::UserCanceled, msg);
+
                             let mut tmp_data = data.lock().unwrap();
-                            tmp_data.task_status = TaskStatus::Stopped;
+                            tmp_data.task_status = TaskStatus::Failed;
+                            tmp_data.error = Some(err);
                             runnable.status_change(tmp_data.task_status);
                         }
                         if task_store.is_some() {
-                            task_store.as_ref().unwrap().save_task_status(&task_id, TaskStatus::Stopped).await?;
+                            task_store.as_ref().unwrap().save_task_status(&task_id, TaskStatus::Failed).await?;
                         }
                     }
                 }

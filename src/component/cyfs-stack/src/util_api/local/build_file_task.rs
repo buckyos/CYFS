@@ -12,7 +12,7 @@ pub struct BuildFileParams {
     pub owner: ObjectId,
     pub dec_id: ObjectId,
     pub chunk_size: u32, 
-    pub chunk_method: TransPublishChunkMethod, 
+    pub chunk_method: TransPublishChunkMethod,
     pub access: Option<u32>,
 }
 
@@ -69,7 +69,7 @@ impl TaskFactory for BuildFileTaskFactory {
             params.owner,
             params.dec_id,
             params.chunk_size,
-            params.chunk_method, 
+            params.chunk_method,
             params.access,
             self.noc.clone(),
             self.ndc.clone(),
@@ -94,7 +94,7 @@ impl TaskFactory for BuildFileTaskFactory {
             params.owner,
             params.dec_id,
             params.chunk_size, 
-            params.chunk_method, 
+            params.chunk_method,
             params.access,
             task_state,
             self.noc.clone(),
@@ -224,7 +224,7 @@ pub struct BuildFileTask {
     owner: ObjectId,
     dec_id: ObjectId,
     chunk_size: u32, 
-    chunk_method: TransPublishChunkMethod, 
+    chunk_method: TransPublishChunkMethod,
     access: Option<u32>,
     noc: NamedObjectCacheRef,
     ndc: Box<dyn NamedDataCache>,
@@ -236,7 +236,7 @@ impl BuildFileTask {
         owner: ObjectId,
         dec_id: ObjectId,
         chunk_size: u32, 
-        chunk_method: TransPublishChunkMethod, 
+        chunk_method: TransPublishChunkMethod,
         access: Option<u32>,
         noc: NamedObjectCacheRef,
         ndc: Box<dyn NamedDataCache>,
@@ -260,7 +260,7 @@ impl BuildFileTask {
             owner,
             dec_id,
             chunk_size, 
-            chunk_method, 
+            chunk_method,
             access,
             noc,
             ndc,
@@ -272,7 +272,7 @@ impl BuildFileTask {
         owner: ObjectId,
         dec_id: ObjectId,
         chunk_size: u32, 
-        chunk_method: TransPublishChunkMethod, 
+        chunk_method: TransPublishChunkMethod,
         access: Option<u32>,
         task_state: FileTaskState,
         noc: NamedObjectCacheRef,
@@ -294,10 +294,69 @@ impl BuildFileTask {
             owner,
             dec_id,
             chunk_size, 
-            chunk_method, 
+            chunk_method,
             access,
             noc,
             ndc,
+        }
+    }
+
+    async fn run_inner(&self) -> BuckyResult<File> {
+        self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Running;
+        let builder = FileObjectBuilder::<TaskState>::new(
+            self.local_path.clone(),
+            self.owner.clone(),
+            self.chunk_size,
+            None,
+        );
+        let file = match builder.build().await {
+            Ok(file) => file,
+            Err(e) => {
+                return Err(e);
+            }
+        };
+        let query_ret = self
+            .ndc
+            .get_file_by_hash(&GetFileByHashRequest {
+                hash: file.desc().content().hash().to_string(),
+                flags: 0,
+            })
+            .await?;
+        if query_ret.is_some() {
+            let file = self
+                .noc
+                .get_object(&NamedObjectCacheGetObjectRequest {
+                    last_access_rpath: None,
+                    source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
+                    object_id: query_ret.unwrap().file_id.object_id().clone(),
+                })
+                .await?;
+            if let Some(file) = file {
+                if let Ok(file) = File::clone_from_slice(file.object.object_raw.as_slice()) {
+                    return Ok(file);
+                }
+            }
+        }
+
+        let object_raw = file.to_vec()?;
+        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
+
+        let req = NamedObjectCachePutObjectRequest {
+            source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
+            object,
+            storage_category: NamedObjectStorageCategory::Storage,
+            context: None,
+            last_access_rpath: None,
+            access_string: None,
+        };
+
+        match self.noc.put_object(&req).await {
+            Ok(_) => {
+                Ok(file)
+            }
+            Err(e) => {
+                Err(e)
+            }
         }
     }
 }
@@ -329,101 +388,31 @@ impl Runnable for BuildFileTask {
     }
 
     async fn run(&self) -> BuckyResult<()> {
-        self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Running;
-        let builder = FileObjectBuilder::<TaskState>::new(
-            self.local_path.clone(),
-            self.owner.clone(),
-            self.chunk_size,
-            None,
-        );
-        let file = match builder.build().await {
-            Ok(file) => file,
-            Err(e) => {
-                self.task_state.get_state_mut().await.state = FileTaskState::new();
-                if self.task_store.is_some() {
-                    self.task_store
-                        .as_ref()
-                        .unwrap()
-                        .save_task_data(&self.task_id, Vec::new())
-                        .await?;
-                }
+
+        let ret = self.run_inner().await;
+        let ret = match ret {
+            Ok(file) => {
                 self.task_state.get_state_mut().await.status =
-                    BuildFileTaskStatus::Failed(e.clone());
-                return Err(e);
-            }
-        };
-        let query_ret = self
-            .ndc
-            .get_file_by_hash(&GetFileByHashRequest {
-                hash: file.desc().content().hash().to_string(),
-                flags: 0,
-            })
-            .await?;
-        if query_ret.is_some() {
-            let file = self
-                .noc
-                .get_object(&NamedObjectCacheGetObjectRequest {
-                    last_access_rpath: None,
-                    source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
-                    object_id: query_ret.unwrap().file_id.object_id().clone(),
-                })
-                .await?;
-            if let Some(file) = file {
-                if let Ok(file) = File::clone_from_slice(file.object.object_raw.as_slice()) {
-                    self.task_state.get_state_mut().await.state = FileTaskState::new();
-                    if self.task_store.is_some() {
-                        self.task_store
-                            .as_ref()
-                            .unwrap()
-                            .save_task_data(&self.task_id, Vec::new())
-                            .await?;
-                    }
-                    self.task_state.get_state_mut().await.status =
-                        BuildFileTaskStatus::Finished(file);
-                    return Ok(());
-                }
-            }
-        }
-
-        let object_raw = file.to_vec()?;
-        let object = NONObjectInfo::new_from_object_raw(object_raw)?;
-
-        let req = NamedObjectCachePutObjectRequest {
-            source: RequestSourceInfo::new_local_dec(Some(self.dec_id.clone())),
-            object,
-            storage_category: NamedObjectStorageCategory::Storage,
-            context: None,
-            last_access_rpath: None,
-            access_string: None,
-        };
-
-        match self.noc.put_object(&req).await {
-            Ok(_) => {
-                self.task_state.get_state_mut().await.state = FileTaskState::new();
-                if self.task_store.is_some() {
-                    self.task_store
-                        .as_ref()
-                        .unwrap()
-                        .save_task_data(&self.task_id, Vec::new())
-                        .await?;
-                }
-                self.task_state.get_state_mut().await.status = BuildFileTaskStatus::Finished(file);
+                    BuildFileTaskStatus::Finished(file);
                 Ok(())
             }
             Err(e) => {
-                self.task_state.get_state_mut().await.state = FileTaskState::new();
-                if self.task_store.is_some() {
-                    self.task_store
-                        .as_ref()
-                        .unwrap()
-                        .save_task_data(&self.task_id, Vec::new())
-                        .await?;
-                }
                 self.task_state.get_state_mut().await.status =
                     BuildFileTaskStatus::Failed(e.clone());
                 Err(e)
             }
+        };
+
+        self.task_state.get_state_mut().await.state = FileTaskState::new();
+        if self.task_store.is_some() {
+            self.task_store
+                .as_ref()
+                .unwrap()
+                .save_task_data(&self.task_id, Vec::new())
+                .await?;
         }
+
+        ret
     }
 
     async fn get_task_detail_status(&self) -> BuckyResult<Vec<u8>> {
