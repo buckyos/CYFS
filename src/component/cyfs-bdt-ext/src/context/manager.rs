@@ -7,14 +7,14 @@ use cyfs_lib::*;
 use lru_time_cache::LruCache;
 use std::sync::{Arc, Mutex};
 
-pub(crate) struct ContextItem {
+pub struct ContextItem {
     pub object_id: ObjectId,
     pub object: TransContext,
     pub source_list: Vec<DownloadSource<DeviceDesc>>,
 }
 
 #[derive(Clone)]
-pub(crate) struct ContextManager {
+pub struct ContextManager {
     noc: NamedObjectCacheRef,
     device_manager: Arc<Box<dyn DeviceCache>>,
     list: Arc<Mutex<LruCache<ObjectId, Arc<ContextItem>>>>,

@@ -15,7 +15,7 @@ use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
-use super::super::context::*;
+use cyfs_bdt_ext::{TransContextHolder, ContextManager};
 
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -55,7 +55,6 @@ impl NDNLevelInputProcessor {
         router_handlers: RouterHandlersManager,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
-        context_manager: ContextManager,
     ) -> NDNInputProcessorRef {
         let ndc_processor = NDCLevelInputProcessor::new(
             acl.clone(),
@@ -75,7 +74,7 @@ impl NDNLevelInputProcessor {
             router_handlers,
             forward,
             fail_handler,
-            context_manager,
+            context_manager: named_data_components.context_manager.clone(),
         };
 
         Arc::new(Box::new(ret))
@@ -89,7 +88,6 @@ impl NDNLevelInputProcessor {
         router_handlers: RouterHandlersManager,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
-        context_manager: ContextManager,
     ) -> NDNInputProcessorRef {
         // 不带input acl的处理器
         let processor = Self::new(
@@ -100,7 +98,6 @@ impl NDNLevelInputProcessor {
             router_handlers,
             forward,
             fail_handler,
-            context_manager,
         );
 
         // 带同zone input acl的处理器

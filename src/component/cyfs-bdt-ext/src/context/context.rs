@@ -12,7 +12,7 @@ use std::sync::Arc;
 const CYFS_CONTEXT_OBJECT_EXPIRED_DATE: u64 = 1000 * 1000 * 10;
 
 #[derive(Debug)]
-pub(crate) enum TransContextRef {
+pub enum TransContextRef {
     Object(ObjectId),
     Path((String, ObjectId)),
 }
@@ -292,7 +292,7 @@ impl TransContextHolderInner {
 }
 
 #[derive(Clone)]
-pub(crate) struct TransContextHolder(Arc<TransContextHolderInner>);
+pub struct TransContextHolder(Arc<TransContextHolderInner>);
 
 impl TransContextHolder {
     pub fn new_context(

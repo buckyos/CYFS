@@ -1,5 +1,5 @@
 use super::state::*;
-use crate::ndn_api::ChunkWriter;
+use super::chunk_writer::ChunkWriter;
 use cyfs_base::*;
 use cyfs_chunk_cache::{Chunk, ChunkManagerRef};
 use cyfs_debug::Mutex;

@@ -9,11 +9,11 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 
-pub(super) trait ChunkSplitReader: DownloadTaskSplitRead + Seek {}
+pub trait ChunkSplitReader: DownloadTaskSplitRead + Seek {}
 
 impl<T: DownloadTaskSplitRead + Seek> ChunkSplitReader for T {}
 
-pub(super) struct ChunkListCacheReader {
+pub struct ChunkListCacheReader {
     task_id: String,
     reader: Box<dyn ChunkSplitReader + Unpin + Send + Sync + 'static>,
 

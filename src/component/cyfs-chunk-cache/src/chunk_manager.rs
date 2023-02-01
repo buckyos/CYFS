@@ -30,7 +30,12 @@ impl ChunkManager {
 
     pub async fn init(&self, isolate: &str) -> BuckyResult<()> {
         let chunk_cache: Arc<dyn ChunkCache> = Arc::new(LocalChunkCache::<SingleDiskChunkCache, CYFSDiskScanner>::new(isolate, CYFSDiskScanner).await?);
-        *self.chunk_cache.write().unwrap() = Some(chunk_cache);
+        {
+            let mut slot = self.chunk_cache.write().unwrap();
+            assert!(slot.is_none());
+            *slot = Some(chunk_cache);
+        }
+        
         Ok(())
     }
 

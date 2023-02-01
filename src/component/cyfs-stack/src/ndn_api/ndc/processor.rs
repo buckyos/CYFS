@@ -1,5 +1,5 @@
 use super::super::acl::NDNAclLocalInputProcessor;
-use super::super::data::{zero_bytes_reader, LocalDataManager};
+use super::super::data::LocalDataManager;
 use super::object_loader::NDNObjectLoader;
 use crate::acl::AclManagerRef;
 use crate::ndn_api::acl::NDNAclInputProcessor;
@@ -7,6 +7,7 @@ use crate::ndn_api::NDNForwardObjectData;
 use crate::non::*;
 use crate::{ndn::*, NamedDataComponents};
 use cyfs_base::*;
+use cyfs_bdt_ext::zero_bytes_reader;
 use cyfs_chunk_cache::MemChunk;
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_lib::*;
@@ -175,7 +176,14 @@ impl NDCLevelInputProcessor {
         }
 
         let (data, length, group) = if need_process {
-            self.data_manager.get_file(&req.common.source, &udata.file, req.group.as_deref(), ranges).await?
+            self.data_manager
+                .get_file(
+                    &req.common.source,
+                    &udata.file,
+                    req.group.as_deref(),
+                    ranges,
+                )
+                .await?
         } else {
             (zero_bytes_reader(), 0, None)
         };
@@ -222,7 +230,11 @@ impl NDCLevelInputProcessor {
 
         let (data, length, group) = if need_process {
             match req.data_type {
-                NDNDataType::Mem => self.data_manager.get_chunk(&req.common.source, &chunk_id, req.group.as_deref(), ranges).await?,
+                NDNDataType::Mem => {
+                    self.data_manager
+                        .get_chunk(&req.common.source, &chunk_id, req.group.as_deref(), ranges)
+                        .await?
+                }
                 NDNDataType::SharedMem => {
                     let (reader, len) = self.data_manager.get_chunk_meta(&chunk_id).await?;
                     (reader, len, None)

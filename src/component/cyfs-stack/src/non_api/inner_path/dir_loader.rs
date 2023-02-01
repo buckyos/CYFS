@@ -1,7 +1,7 @@
-use crate::ndn_api::ChunkStoreReader;
 use crate::ndn_api::DirLoader;
 use crate::non::*;
 use cyfs_base::*;
+use cyfs_bdt_ext::ChunkStoreReader;
 use cyfs_lib::*;
 
 use std::borrow::Cow;
@@ -131,7 +131,9 @@ impl NONDirLoader {
                     }
 
                     // then try load from noc
-                    let ret = self.load_object_from_non(&req.common, &object_id, false).await?;
+                    let ret = self
+                        .load_object_from_non(&req.common, &object_id, false)
+                        .await?;
                     if ret.is_none() {
                         let msg = format!("load dir inner_path object from noc but not found! dir={}, inner_path={}, file={}", 
                             req.object_id, inner_path, object_id);

@@ -1,4 +1,4 @@
-use crate::ndn::TaskGroupHelper;
+use cyfs_bdt_ext::TaskGroupHelper;
 use crate::resolver::OodResolver;
 use crate::NamedDataComponents;
 use cyfs_base::*;

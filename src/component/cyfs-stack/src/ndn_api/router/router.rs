@@ -14,7 +14,7 @@ use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_lib::*;
-use super::super::context::*;
+use cyfs_bdt_ext::{ContextManager, TransContextHolder};
 
 use cyfs_chunk_cache::ChunkManagerRef;
 use std::sync::Arc;
@@ -56,7 +56,6 @@ impl NDNRouter {
         router_handlers: RouterHandlersManager,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
-        context_manager: ContextManager,
     ) -> NDNInputProcessorRef {
         // 使用router加载目标file
         let object_loader = NDNObjectLoader::new(non_router.clone());
@@ -76,7 +75,7 @@ impl NDNRouter {
             router_handlers,
             forward,
             fail_handler,
-            context_manager,
+            context_manager: named_data_components.context_manager.clone(),
         };
 
         Arc::new(Box::new(ret))
@@ -92,7 +91,6 @@ impl NDNRouter {
         router_handlers: RouterHandlersManager,
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
-        context_manager: ContextManager,
     ) -> NDNInputProcessorRef {
         // 不带input acl的处理器
         let processor = Self::new(
@@ -105,7 +103,6 @@ impl NDNRouter {
             router_handlers,
             forward,
             fail_handler,
-            context_manager,
         );
 
         processor

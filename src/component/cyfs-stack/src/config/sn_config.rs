@@ -2,14 +2,14 @@ use crate::config::*;
 use crate::meta::*;
 use crate::name::*;
 use cyfs_base::*;
-use cyfs_bdt::{StackGuard, SnStatus, retry_sn_list_when_offline};
+use cyfs_bdt::{StackGuard};
 use cyfs_lib::*;
 use cyfs_util::SNDirParser;
+use cyfs_bdt_ext::BdtStackSNHelper;
 
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 /*
 sn config priority: local configuration file > meta > buildin
@@ -66,7 +66,7 @@ pub struct SNConfigManager {
     sn_list: Arc<Mutex<Vec<(DeviceId, Device)>>>,
     coll: Arc<OnceCell<SNConfigCollection>>,
 
-    bdt_stack: Arc<OnceCell<StackGuard>>,
+    bdt_stack: BdtStackSNHelper,
 }
 
 impl SNConfigManager {
@@ -86,14 +86,12 @@ impl SNConfigManager {
 
             sn_list: Arc::new(Mutex::new(vec![])),
             coll: Arc::new(OnceCell::new()),
-            bdt_stack: Arc::new(OnceCell::new()),
+            bdt_stack: BdtStackSNHelper::new(),
         }
     }
 
     pub fn bind_bdt_stack(&self, bdt_stack: StackGuard) {
-        if let Err(_) = self.bdt_stack.set(bdt_stack) {
-            unreachable!();
-        }
+        self.bdt_stack.bind_bdt_stack(bdt_stack);
 
         if self.coll.get().is_some() {
             self.try_start_sync_from_meta();
@@ -324,32 +322,8 @@ impl SNConfigManager {
             *current = list.clone();
         }
 
-        // notify bdt stack
-        if let Some(bdt_stack) = self.bdt_stack.get() {
-            let sn_list = list.into_iter().map(|v| v.1).collect();
-            let ping_clients = bdt_stack.reset_sn_list(sn_list);
-            match ping_clients.wait_online().await {
-                Err(err) => {
-                    error!("reset bdt sn list error! {}", err);
-                },
-                Ok(status) => {
-                    match status {
-                        SnStatus::Online => {
-                            info!("reset bdt sn list success!");
-                            let bdt_stack = bdt_stack.clone();
-                            async_std::task::spawn(async move {
-                                let _ = ping_clients.wait_offline().await;
-                                retry_sn_list_when_offline(bdt_stack.clone(), ping_clients, Duration::from_secs(30));
-                            });
-                        }, 
-                        SnStatus::Offline => {
-                            error!("reset bdt sn list error! offline");
-                            retry_sn_list_when_offline(bdt_stack.clone(), ping_clients, Duration::from_secs(30));
-                        }
-                    }
-                }  
-            } 
-        }
+        let sn_list = list.into_iter().map(|v| v.1).collect();
+        self.bdt_stack.on_sn_list_changed(sn_list).await;
     }
 
     async fn load_state(&self) -> BuckyResult<SNConfigCollection> {

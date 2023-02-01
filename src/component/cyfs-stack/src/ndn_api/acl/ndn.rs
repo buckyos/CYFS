@@ -2,7 +2,7 @@ use super::verifier::NDNRefererVerifier;
 use crate::acl::*;
 use crate::ndn::*;
 use crate::ndn_api::ndc::NDNObjectLoader;
-use crate::ndn_api::ChunkStoreReader;
+use cyfs_bdt_ext::ChunkStoreReader;
 use crate::ndn_api::NDNForwardObjectData;
 use crate::non::NONInputProcessorRef;
 use crate::non_api::NONGlobalStateValidator;

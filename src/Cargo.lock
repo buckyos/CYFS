@@ -1577,6 +1577,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyfs-bdt-ext"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-chunk-cache",
+ "cyfs-chunk-lib",
+ "cyfs-core",
+ "cyfs-debug",
+ "cyfs-lib",
+ "cyfs-ndc",
+ "cyfs-tracker-cache",
+ "cyfs-util",
+ "futures",
+ "log 0.4.17",
+ "lru_time_cache",
+ "once_cell",
+ "serde",
+]
+
+[[package]]
 name = "cyfs-bench-mark"
 version = "0.1.0"
 dependencies = [
@@ -2153,6 +2176,7 @@ dependencies = [
  "crossbeam",
  "cyfs-base",
  "cyfs-bdt",
+ "cyfs-bdt-ext",
  "cyfs-chunk-cache",
  "cyfs-chunk-lib",
  "cyfs-core",
@@ -2219,6 +2243,7 @@ dependencies = [
  "async-trait",
  "cyfs-base",
  "cyfs-bdt",
+ "cyfs-bdt-ext",
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-meta-lib",

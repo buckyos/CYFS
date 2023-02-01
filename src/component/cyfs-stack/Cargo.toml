@@ -12,6 +12,7 @@ build = "build.rs"
 
 [dependencies]
 cyfs-bdt = { path = "../../component/cyfs-bdt" }
+cyfs-bdt-ext = { path = "../../component/cyfs-bdt-ext" }
 cyfs-base = { path = "../../component/cyfs-base" }
 cyfs-core = { path = "../../component/cyfs-core" }
 cyfs-debug = { path = "../../component/cyfs-debug" }

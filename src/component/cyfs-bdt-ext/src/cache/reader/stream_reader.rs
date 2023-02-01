@@ -6,11 +6,11 @@ use std::ops::Range;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-pub(super) trait ChunkReader: Read + Seek {}
+pub trait ChunkReader: Read + Seek {}
 
 impl<T: Read + Seek> ChunkReader for T {}
 
-pub(super) struct ChunkListTaskRangesReader {
+pub struct ChunkListTaskRangesReader {
     task_id: String,
     ranges: Vec<Range<u64>>,
     range_index: usize,

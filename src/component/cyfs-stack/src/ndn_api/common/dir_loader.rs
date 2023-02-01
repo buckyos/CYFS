@@ -1,4 +1,4 @@
-use super::super::data::ChunkStoreReader;
+use cyfs_bdt_ext::ChunkStoreReader;
 use cyfs_base::*;
 
 use async_std::io::ReadExt;
