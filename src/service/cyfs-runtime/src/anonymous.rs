@@ -1,6 +1,5 @@
-use cyfs_stack_loader::LOCAL_DEVICE_MANAGER;
+use cyfs_util::{LOCAL_DEVICE_MANAGER, DeviceInfo};
 use cyfs_base::*;
-use cyfs_stack_loader::DeviceInfo;
 
 use rand::Rng;
 use std::path::PathBuf;

@@ -14,6 +14,7 @@ mod read_helper;
 mod read_seek;
 mod dir_loader;
 mod sn_dir;
+mod local_device_manager;
 
 pub use bdt_util::*;
 pub use condvar_helper::*;
@@ -31,3 +32,4 @@ pub use read_helper::*;
 pub use read_seek::*;
 pub use dir_loader::*;
 pub use sn_dir::*;
+pub use local_device_manager::*;

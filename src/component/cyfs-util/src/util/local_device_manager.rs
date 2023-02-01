@@ -2,11 +2,10 @@ use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, Device, FileDecoder, NamedObject, PrivateKey,
     StandardObject,
 };
-use cyfs_debug::Mutex;
 
 use std::collections::{hash_map::Entry, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc};
+use std::sync::{Arc, Mutex};
 
 use lazy_static::lazy_static;
 
@@ -18,14 +17,14 @@ pub struct DeviceInfo {
 }
 
 // 用以管理本地磁盘上的device文件和密钥
-pub struct LocalDeviceManagerImpl {
+struct LocalDeviceManagerImpl {
     root: PathBuf,
     list: HashMap<String, DeviceInfo>,
 }
 
 impl LocalDeviceManagerImpl {
-    pub fn new() -> Self {
-        let root = ::cyfs_util::get_cyfs_root_path().join("etc").join("desc");
+    fn new() -> Self {
+        let root = crate::get_cyfs_root_path().join("etc").join("desc");
 
         Self {
             root,

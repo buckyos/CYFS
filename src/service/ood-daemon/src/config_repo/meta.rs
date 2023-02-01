@@ -3,7 +3,7 @@ use crate::config::*;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
-use cyfs_stack_loader::LOCAL_DEVICE_MANAGER;
+use cyfs_util::LOCAL_DEVICE_MANAGER;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
