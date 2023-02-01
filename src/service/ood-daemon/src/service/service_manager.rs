@@ -101,7 +101,7 @@ pub struct ServiceManager {
 }
 
 impl ServiceManager {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             mode: Arc::new(Mutex::new(ServiceMode::Daemon)),
             enable_gc: Arc::new(Mutex::new(true)),

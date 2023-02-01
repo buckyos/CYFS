@@ -127,7 +127,7 @@ impl NOCLevelInputProcessor {
                     NamedObjectCachePutObjectResult::AlreadyExists => {
                         // 对象已经在noc里面了
                         info!(
-                            "object alreay in noc: id={}, access={:?}",
+                            "object alreay in noc and update time is newer: id={}, access={:?}",
                             noc_req.object.object_id, req.access
                         );
                     }

@@ -10,7 +10,7 @@ impl DaemonEnv {
     pub async fn prepare(fetch: bool) -> BuckyResult<()> {
         init_system_config().await?;
 
-        DEVICE_CONFIG_MANAGER.init().await?;
+        DEVICE_CONFIG_MANAGER.init()?;
 
         if fetch {
             DEVICE_CONFIG_MANAGER.fetch_config().await?;

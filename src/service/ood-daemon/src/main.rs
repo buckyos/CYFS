@@ -19,6 +19,19 @@ extern crate log;
 
 const SERVICE_NAME: &str = ::cyfs_base::OOD_DAEMON_NAME;
 
+fn start_log() {
+    cyfs_debug::CyfsLoggerBuilder::new_service(SERVICE_NAME)
+        .level("debug")
+        .console("info")
+        .enable_bdt(Some("debug"), Some("debug"))
+        .build()
+        .unwrap()
+        .start();
+
+    cyfs_debug::PanicBuilder::new("cyfs-service", SERVICE_NAME)
+        .build()
+        .start();
+}
 
 async fn main_run() {
     let app = App::new("ood-daemon service")
@@ -84,6 +97,11 @@ async fn main_run() {
                 .long("startup-mode")
                 .takes_value(false)
                 .help("Start the service when on system startup"),
+        ).arg(
+            Arg::with_name("stop_all")
+                .long("stop_all")
+                .takes_value(false)
+                .help("Stop all the services include ood-daemon"),
         );
 
     let app = cyfs_util::process::prepare_args(app);
@@ -102,19 +120,23 @@ async fn main_run() {
         monitor::ServiceMonitor::stop_monitor_process(SERVICE_NAME);
     }
 
+    if matches.is_present("stop_all") {
+        start_log();
+        
+        let code = match crate::daemon::ServicesStopController::new().stop_all().await {
+            Ok(()) => 0,
+            Err(e) => {
+                let code: u16 = e.code().into();
+                code as i32
+            }
+        };
+
+        std::process::exit(code);
+    }
+
     cyfs_util::process::check_cmd_and_exec_with_args(SERVICE_NAME, &matches);
 
-    cyfs_debug::CyfsLoggerBuilder::new_service(SERVICE_NAME)
-        .level("debug")
-        .console("info")
-        .enable_bdt(Some("debug"), Some("debug"))
-        .build()
-        .unwrap()
-        .start();
-
-    cyfs_debug::PanicBuilder::new("cyfs-service", SERVICE_NAME)
-        .build()
-        .start();
+    start_log();
 
     // ::cyfs_base::init_log_with_isolate_bdt(SERVICE_NAME, Some("trace"), Some("trace"));
 
