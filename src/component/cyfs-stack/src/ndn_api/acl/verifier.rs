@@ -1,5 +1,5 @@
 use super::super::common::DirLoader;
-use crate::ndn_api::ChunkStoreReader;
+use cyfs_bdt_ext::ChunkStoreReader;
 use cyfs_base::*;
 
 pub(crate) struct NDNRefererVerifier {

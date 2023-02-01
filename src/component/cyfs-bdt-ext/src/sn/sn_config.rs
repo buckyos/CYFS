@@ -5,6 +5,7 @@ use once_cell::sync::OnceCell;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[derive(Clone)]
 pub struct BdtStackSNHelper {
     bdt_stack: Arc<OnceCell<StackGuard>>,
 }
@@ -15,7 +16,7 @@ impl BdtStackSNHelper {
             bdt_stack: Arc::new(OnceCell::new()),
         }
     }
-    
+
     pub fn bind_bdt_stack(&self, bdt_stack: StackGuard) {
         if let Err(_) = self.bdt_stack.set(bdt_stack) {
             unreachable!();

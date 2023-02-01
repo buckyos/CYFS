@@ -3,9 +3,9 @@ use super::super::protocol::SyncChunksRequest;
 use super::cache::SyncObjectsStateCache;
 use super::dir_sync::DirListSync;
 use crate::NamedDataComponents;
-use crate::ndn_api::{ChunkListReaderAdapter};
 use cyfs_base::*;
 use cyfs_bdt::*;
+use cyfs_bdt_ext::ChunkListReaderAdapter;
 use cyfs_lib::*;
 
 use cyfs_debug::Mutex;
@@ -211,10 +211,7 @@ impl DataSync {
     }
 
     pub fn create_dir_sync(&self) -> DirListSync {
-        DirListSync::new(
-            self.state_cache.clone(),
-            &self.named_data_components,
-        )
+        DirListSync::new(self.state_cache.clone(), &self.named_data_components)
     }
 
     async fn filter_exists_chunks(&self, chunk_list: Vec<ChunkId>) -> BuckyResult<Vec<ChunkId>> {
@@ -363,7 +360,8 @@ impl DataSync {
             &self.bdt_stack,
             "".to_owned(),
             &[self.ood_device_id.clone()],
-        ).await?;
+        )
+        .await?;
 
         let writer = self.named_data_components.new_chunk_writer();
 
@@ -414,7 +412,8 @@ impl DataSync {
             &self.bdt_stack,
             "".to_owned(),
             &[self.ood_device_id.clone()],
-        ).await?;
+        )
+        .await?;
 
         let writer = self.named_data_components.new_chunk_writer();
 

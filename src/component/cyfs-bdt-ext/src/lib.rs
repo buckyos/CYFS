@@ -1,8 +1,9 @@
+mod cache;
 mod context;
 mod sn;
-mod cache;
 mod stack;
 
+pub use cache::*;
 pub use context::*;
 pub use sn::*;
 pub use stack::*;
@@ -15,6 +16,5 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-    }
+    fn it_works() {}
 }

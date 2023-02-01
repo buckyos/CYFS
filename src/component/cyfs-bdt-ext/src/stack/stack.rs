@@ -55,7 +55,7 @@ impl BdtStackHelper {
         }
     }
 
-    async fn init_bdt_stack(
+    pub async fn init_bdt_stack(
         params: BdtStackParams,
         device_cache: Box<dyn DeviceCache>,
         isolate: &str,
@@ -74,6 +74,8 @@ impl BdtStackHelper {
             bdt_params.config.interface.udp.sn_only = sn_only;
         }
 
+        bdt_params.known_sn = Some(params.known_sn);
+
         if !params.known_device.is_empty() {
             bdt_params.known_device = Some(params.known_device);
         }
@@ -82,7 +84,7 @@ impl BdtStackHelper {
         }
         bdt_params.outer_cache = Some(device_cache);
         bdt_params.chunk_store = Some(chunk_store);
-
+        
         bdt_params.ndn_event = ndn_event;
 
         let ret = Stack::open(params.device, params.secret, bdt_params).await;
@@ -141,7 +143,7 @@ impl BdtStackHelper {
                 }
             },
         }
-        
+
         Ok(bdt_stack)
     }
 }

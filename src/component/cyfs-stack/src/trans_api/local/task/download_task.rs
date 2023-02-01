@@ -2,7 +2,7 @@ use super::super::download_task_manager::DownloadTaskState;
 use super::chunk_task::DownloadChunkParam;
 use super::file_task::DownloadFileParam;
 use super::verify_file_task::*;
-use crate::ndn_api::{
+use cyfs_bdt_ext::{
     ChunkListReaderAdapter, ChunkWriter, LocalChunkWriter, LocalFileWriter, TransContextHolder,
 };
 use crate::trans_api::{DownloadTaskTracker, TransStore};

@@ -4,11 +4,11 @@ use super::cache::*;
 use super::echo::BdtNdnEchoProcessor;
 use crate::acl::AclManagerRef;
 use crate::ndn::*;
-use crate::ndn_api::ChunkStoreReader;
 use crate::non::NONInputProcessorRef;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
+use cyfs_bdt_ext::ChunkStoreReader;
 use cyfs_lib::*;
 use cyfs_util::acl::*;
 
@@ -26,7 +26,7 @@ impl BdtNDNDataAclProcessor {
         zone_manager: ZoneManagerRef,
         acl: AclManagerRef,
         router_handlers: RouterHandlersManager,
-        chunk_reader: ChunkStoreReader
+        chunk_reader: ChunkStoreReader,
     ) -> Self {
         // 最终的反射应答处理器
         let echo = BdtNdnEchoProcessor::new();
@@ -145,7 +145,7 @@ impl BdtNDNDataAclProcessor {
                 ndn_req.object_id = referer.object_id;
                 ndn_req.inner_path = referer.inner_path;
             }
-            
+
             ndn_req.common.req_path = referer.req_path;
             ndn_req.common.flags = referer.flags;
             if referer.referer_object.len() > 0 {
@@ -170,7 +170,7 @@ impl BdtNDNDataAclProcessor {
             action: NDNAction::GetData,
         };
 
-    
+
         if let Some(ret) = self.cache.get(&key) {
             info!(
                 "bdt get_data acl request hit cache: ret={:?}, object={}",

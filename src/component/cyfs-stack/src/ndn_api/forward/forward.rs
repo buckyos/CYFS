@@ -1,6 +1,6 @@
 use super::super::data::*;
 use crate::ndn::*;
-use crate::ndn_api::context::TransContextHolder;
+use cyfs_bdt_ext::{TransContextHolder, zero_bytes_reader};
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_chunk_cache::ChunkManagerRef;

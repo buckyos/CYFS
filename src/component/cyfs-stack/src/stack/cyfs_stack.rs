@@ -1,5 +1,4 @@
 // use super::dsg::{DSGService, DSGServiceOptions};
-use super::def::*;
 use super::params::*;
 use super::uni_stack::*;
 use crate::acl::{AclManager, AclManagerRef};
@@ -17,7 +16,7 @@ use crate::interface::{
 use crate::meta::*;
 use crate::name::NameResolver;
 use crate::ndn::NDNOutputTransformer;
-use crate::ndn_api::{BdtNDNEventHandler, NDNService, ContextManager};
+use crate::ndn_api::{BdtNDNEventHandler, NDNService};
 use crate::non::NONOutputTransformer;
 use crate::non_api::NONService;
 use crate::resolver::{CompoundObjectSearcher, DeviceInfoManager, OodResolver};
@@ -34,15 +33,14 @@ use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use cyfs_base::*;
-use cyfs_bdt::{DeviceCache, Stack, StackGuard, StackOpenParams, SnStatus, retry_sn_list_when_offline};
-use cyfs_chunk_cache::ChunkManager;
+use cyfs_bdt::{DeviceCache, StackGuard, SnStatus};
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
+use cyfs_bdt_ext::{NamedDataComponents, BdtStackParams};
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
-use std::time::Duration;
 
 #[derive(Clone)]
 pub(crate) struct ObjectServices {
@@ -99,9 +97,6 @@ pub struct CyfsStackImpl {
 
     // global_state_meta
     global_state_meta: GlobalStateMetaService,
-
-    // context
-    context_manager: ContextManager,
 }
 
 impl CyfsStackImpl {
@@ -139,13 +134,10 @@ impl CyfsStackImpl {
 
         let current_root = local_root_state.state().get_current_root();
 
-        // 初始化data cache和tracker
-        let ndc = Self::init_ndc(isolate)?;
-        let tracker = Self::init_tracker(isolate)?;
 
         let task_manager = Self::init_task_manager(isolate).await?;
         let trans_store = create_trans_store(isolate).await?;
-        let chunk_manager = Arc::new(ChunkManager::new());
+        // let chunk_manager = Arc::new(ChunkManager::new());
 
         // init sn config manager
         let root_state_processor = GlobalStateOutputTransformer::new(
@@ -184,10 +176,9 @@ impl CyfsStackImpl {
             bdt_param.device.clone(),
         );
 
-        let context_manager = ContextManager::new(noc.clone(), device_manager.clone_cache());
+        let named_data_components = cyfs_bdt_ext::BdtStackHelper::init_named_data_components(
+            isolate, noc.clone(), device_manager.clone_cache()).await?;
 
-        let named_data_components = NamedDataComponents::new(chunk_manager, ndc, tracker, context_manager.clone());
-        
         let fail_handler =
             ObjectFailHandler::new(raw_meta_cache.clone(), device_manager.clone_cache());
 
@@ -325,7 +316,6 @@ impl CyfsStackImpl {
             router_handlers.clone(),
             raw_meta_cache.clone(),
             fail_handler.clone(),
-            context_manager.clone(),
         );
 
         bdt_event.bind_non_processor(non_service.rmeta_noc_processor().clone());
@@ -437,8 +427,6 @@ impl CyfsStackImpl {
             fail_handler,
 
             acl_manager,
-
-            context_manager,
         };
 
         // init an system-dec router-handler processor for later use
@@ -464,8 +452,6 @@ impl CyfsStackImpl {
 
         // 首先初始化acl
         stack.acl_manager.init().await?;
-
-        stack.init_chunk_manager(isolate).await?;
 
         if param.config.sync_service {
             // 避免调用栈过深，使用task异步初始化
@@ -701,102 +687,32 @@ impl CyfsStackImpl {
     async fn init_bdt_stack(
         zone_manager: ZoneManagerRef,
         acl: AclManagerRef,
-        params: BdtStackParams,
+        mut params: BdtStackParams,
         device_cache: Box<dyn DeviceCache>,
         isolate: &str,
         named_data_components: &NamedDataComponents,
         router_handlers: RouterHandlersManager,
         sn_config_manager: &SNConfigManager,
     ) -> BuckyResult<(StackGuard, BdtNDNEventHandler)> {
-        let chunk_store = named_data_components.new_chunk_reader();
-
         let event =
             BdtNDNEventHandler::new(zone_manager, acl, router_handlers, named_data_components);
 
-        let mut bdt_params = StackOpenParams::new(isolate);
+         // priority: params sn(always loaded from config dir) > sn config manager(always loaded from meta) > buildin sn
+         if params.known_sn.is_empty() {
 
-        if !params.tcp_port_mapping.is_empty() {
-            bdt_params.tcp_port_mapping = Some(params.tcp_port_mapping);
-        }
-
-        if let Some(sn_only) = params.udp_sn_only {
-            bdt_params.config.interface.udp.sn_only = sn_only;
-        }
-
-        // priority: params sn(always loaded from config dir) > sn config manager(always loaded from meta) > buildin sn
-        if !params.known_sn.is_empty() {
-            bdt_params.known_sn = Some(params.known_sn);
-        } else {
             // use sn from sn config manager
             let mut sn_list = sn_config_manager.get_sn_list();
             if sn_list.is_empty() {
                 sn_list = cyfs_util::get_builtin_sn_desc().clone();
             }
 
-            bdt_params.known_sn = Some(sn_list.into_iter().map(|v| v.1).collect());
+            params.known_sn = sn_list.into_iter().map(|v| v.1).collect();
         }
 
-        if !params.known_device.is_empty() {
-            bdt_params.known_device = Some(params.known_device);
-        }
-        if !params.known_passive_pn.is_empty() {
-            bdt_params.passive_pn = Some(params.known_passive_pn);
-        }
-        bdt_params.outer_cache = Some(device_cache);
-        bdt_params.chunk_store = Some(chunk_store);
+        let bdt_stack = cyfs_bdt_ext::BdtStackHelper::init_bdt_stack(
+            params, device_cache, isolate, named_data_components, Some(Box::new(event.clone())),
+        ).await?;
 
-        bdt_params.ndn_event = Some(Box::new(event.clone()));
-
-        let ret = Stack::open(params.device, params.secret, bdt_params).await;
-
-        if let Err(e) = ret {
-            error!("init bdt stack error: {}", e);
-            return Err(e);
-        }
-
-        let bdt_stack = ret.unwrap();
-
-        // 等待sn上线
-        info!(
-            "now will wait for sn online {}......",
-            bdt_stack.local_device_id()
-        );
-        let begin = std::time::Instant::now();
-        let ping_clients = bdt_stack.sn_client().ping();
-        match ping_clients.wait_online().await {
-            Err(e) => {
-                error!(
-                    "bdt stack wait sn online failed! {}, during={}ms, {}",
-                    bdt_stack.local_device_id(),
-                    begin.elapsed().as_millis(),
-                    e
-                );
-            },
-            Ok(status) => {
-                match status {
-                    SnStatus::Online => {
-                        info!(
-                            "bdt stack sn online success! {}, during={}ms",
-                            bdt_stack.local_device_id(),
-                            begin.elapsed().as_millis(),
-                        );
-                        let bdt_stack = bdt_stack.clone();
-                        async_std::task::spawn(async move {
-                            let _ = ping_clients.wait_offline().await;
-                            retry_sn_list_when_offline(bdt_stack.clone(), ping_clients, Duration::from_secs(30));
-                        });
-                    },
-                    SnStatus::Offline => {
-                        error!(
-                            "bdt stack wait sn online failed! {}, during={}ms, offline",
-                            bdt_stack.local_device_id(),
-                            begin.elapsed().as_millis(),
-                        );
-                        retry_sn_list_when_offline(bdt_stack.clone(), ping_clients, Duration::from_secs(30));
-                    }
-                }
-            }
-        }
         Ok((bdt_stack, event))
     }
 
@@ -896,19 +812,6 @@ impl CyfsStackImpl {
             }
             Err(e) => {
                 log::info!("create task manager failed!.{}", &e);
-                Err(e)
-            }
-        }
-    }
-
-    async fn init_chunk_manager(&self, isolate: &str) -> BuckyResult<()> {
-        match self.named_data_components.chunk_manager.init(isolate).await {
-            Ok(()) => {
-                log::info!("init chunk manager success!");
-                Ok(())
-            }
-            Err(e) => {
-                log::info!("init chunk manager failed!.{}", &e);
                 Err(e)
             }
         }

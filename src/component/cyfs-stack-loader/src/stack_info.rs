@@ -5,7 +5,8 @@ use crate::{DeviceInfo, LOCAL_DEVICE_MANAGER};
 use crate::{KNOWN_OBJECTS_MANAGER, VAR_MANAGER};
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
-use cyfs_stack::{BdtStackParams, CyfsStack, CyfsStackKnownObjects};
+use cyfs_stack::{CyfsStack, CyfsStackKnownObjects};
+use cyfs_bdt_ext::BdtStackParams;
 
 // Temporarily disable all ipv6 addresses!
 const IS_DISABLE_IPV6: bool = true;

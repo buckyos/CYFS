@@ -1,6 +1,6 @@
 use super::assoc::AssociationObjects;
 use super::cache::SyncObjectsStateCache;
-use crate::ndn_api::ChunkStoreReader;
+use cyfs_bdt_ext::ChunkStoreReader;
 use crate::NamedDataComponents;
 use cyfs_base::*;
 use cyfs_bdt::ChunkReader;
