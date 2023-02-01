@@ -534,9 +534,6 @@ impl CyfsStackImpl {
         // finally start interface
         stack.interface.get().unwrap().start().await?;
 
-        // 初始化dsg
-        // stack.init_dsg(param.dsg_options).await?;
-
         // start rust's task thread pool and process dead lock checking
         cyfs_debug::ProcessDeadHelper::instance().start_check();
 
@@ -544,33 +541,6 @@ impl CyfsStackImpl {
 
         Ok(stack)
     }
-
-    /*
-    async fn init_dsg(&mut self, opt: Option<DSGServiceOptions>) -> BuckyResult<()> {
-        let zone_manager = self.zone_manager.clone();
-        let current_zone_info =
-            async_std::task::spawn(async move { zone_manager.get_current_info().await }).await?;
-
-        // 只有ood才开启DSG服务
-        if current_zone_info.is_ood_device {
-            info!("will init dsg serivce: {:?}", opt);
-
-            // FIXME暂时使用sharedobjectstack，以后切换到依赖ObjectStack
-            let stack = self.open_shared_object_stack().await?;
-
-            // 这里一定会成功
-            stack.wait_online(None).await.unwrap();
-
-            let opt = opt.unwrap_or_else(|| DSGServiceOptions::default());
-
-            let dsg_service = DSGService::open(stack, opt).await?;
-            assert!(self.dsg_service.is_none());
-            self.dsg_service = Some(dsg_service);
-        }
-
-        Ok(())
-    }
-    */
 
     async fn load_global_state(
         device_id: &DeviceId,
