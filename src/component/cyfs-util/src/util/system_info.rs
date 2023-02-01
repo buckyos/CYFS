@@ -7,7 +7,10 @@ use sysinfo::{CpuExt, DiskExt, DiskType, NetworkExt, RefreshKind, System, System
 pub struct SystemInfo {
     pub name: String,
 
+    // How long the system has been running since it was last booted, in microseconds
     pub uptime: u64,
+
+    // The time the system was last booted, in bucky time
     pub boot_time: u64,
 
     pub cpu_usage: f32,
@@ -20,7 +23,7 @@ pub struct SystemInfo {
     pub received_bytes: u64,
     pub transmitted_bytes: u64,
 
-    // total bytes of all networks
+    // total bytes of all networks since last booted
     pub total_received_bytes: u64,
     pub total_transmitted_bytes: u64,
 
