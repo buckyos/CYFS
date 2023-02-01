@@ -1,5 +1,5 @@
 use super::task::*;
-use crate::ndn::TaskGroupHelper;
+use cyfs_bdt_ext::TaskGroupHelper;
 use crate::trans_api::{DownloadTaskTracker, TransStore};
 use crate::NamedDataComponents;
 use cyfs_base::*;

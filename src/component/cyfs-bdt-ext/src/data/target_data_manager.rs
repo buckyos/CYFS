@@ -1,5 +1,4 @@
-use cyfs_bdt_ext::*;
-use crate::ndn::TaskGroupHelper;
+use crate::*;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
 use cyfs_chunk_cache::ChunkManagerRef;
@@ -10,14 +9,14 @@ use futures::AsyncReadExt;
 use std::ops::Range;
 
 // 用以向远程device发起chunk/file操作
-pub(crate) struct TargetDataManager {
+pub struct TargetDataManager {
     bdt_stack: StackGuard,
     chunk_manager: ChunkManagerRef,
     context: TransContextHolder,
 }
 
 impl TargetDataManager {
-    pub(crate) fn new(
+    pub fn new(
         bdt_stack: StackGuard,
         chunk_manager: ChunkManagerRef,
         context: TransContextHolder,
