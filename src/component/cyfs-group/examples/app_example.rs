@@ -6,8 +6,10 @@ mod Client {
     pub struct DecClient {}
 
     impl DecClient {
-        async fn do_something(&self) {
-            let rpath_client = RPathClient::new();
+        async fn do_something(&self, stack: &CyfsStack) {
+            let rpath_mgr = stack.group_mgr();
+
+            let rpath_client = rpath_mgr.rpath_client();
 
             let field_path = "/xxx/yyy";
             let old_value = rpath_client.get_field(field_path).await;
@@ -30,10 +32,13 @@ mod GroupDecService {
     pub struct DecService {}
 
     impl DecService {
-        pub async fn run() {
-            let rpath_mgr = RPathControlMgr::new(DecAppId::default());
+        pub async fn run(stack: &CyfsStack) {
+            let rpath_mgr = stack.group_mgr();
 
-            rpath_mgr.register(delegate_factory)
+            let appid = DecAppId::default();
+            let delegate_factory = GroupRPathDelegateFactory {};
+
+            rpath_mgr.register(appid, delegate_factory)
         }
     }
 
@@ -61,7 +66,7 @@ mod GroupDecService {
         ) -> BuckyResult<Box<dyn RPathDelegate>> {
             if self.is_accept(group, rpath, with_block) {
                 // 如果接受，就提供该rpath的处理响应对象
-                Ok(MyRPathDelegate::new())
+                Ok(Box::new(MyRPathDelegate::new()))
             } else {
                 Err(BuckyError::new(BuckyErrorCode::Reject, ""))
             }
@@ -90,7 +95,7 @@ mod GroupDecService {
         pub fn execute(
             &self,
             proposal: &GroupProposal,
-            pre_state_id: ObjectId,
+            pre_state_id: Option<cyfs_base::ObjectId>,
         ) -> BuckyResult<ExecuteResult> {
             let result_state_id = {
                 /**
@@ -126,7 +131,7 @@ mod GroupDecService {
         pub fn verify(
             &self,
             proposal: &GroupProposal,
-            pre_state_id: ObjectId,
+            pre_state_id: Option<cyfs_base::ObjectId>,
             execute_result: &ExecuteResult,
         ) -> BuckyResult<bool> {
             /**
@@ -142,7 +147,7 @@ mod GroupDecService {
         async fn on_execute(
             &self,
             proposal: &GroupProposal,
-            pre_state_id: ObjectId,
+            pre_state_id: Option<cyfs_base::ObjectId>,
         ) -> BuckyResult<ExecuteResult> {
             self.execute(proposal, pre_state_id)
         }
@@ -150,7 +155,7 @@ mod GroupDecService {
         async fn on_verify(
             &self,
             proposal: &GroupProposal,
-            pre_state_id: ObjectId,
+            pre_state_id: Option<cyfs_base::ObjectId>,
             execute_result: &ExecuteResult,
         ) -> BuckyResult<bool> {
             self.verify(proposal, pre_state_id, execute_result)
@@ -159,10 +164,16 @@ mod GroupDecService {
         async fn on_commited(
             &self,
             proposal: &GroupProposal,
-            pre_state_id: ObjectId,
+            pre_state_id: Option<cyfs_base::ObjectId>,
             execute_result: &ExecuteResult,
         ) {
             // 提交到共识链上了，可能有些善后事宜
+            unimplemented!()
+        }
+
+        async fn get_group(&self, group_chunk_id: Option<&ObjectId>) -> BuckyResult<Group> {
+            // 自定义同步Group版本策略
+            unimplemented!()
         }
     }
 }

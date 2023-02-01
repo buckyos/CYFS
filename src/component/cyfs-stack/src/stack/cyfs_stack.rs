@@ -1152,6 +1152,10 @@ impl CyfsStack {
         &self.stack.root_state
     }
 
+    pub fn group_mgr(&self) -> &GroupRPathMgr {
+        &self.stack.group_manager
+    }
+
     // use system dec as default dec
     pub async fn root_state_stub(
         &self,

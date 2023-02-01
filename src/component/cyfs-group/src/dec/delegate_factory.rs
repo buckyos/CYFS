@@ -48,5 +48,6 @@ pub trait RPathDelegate: Sync + Send {
         proposal: &GroupProposal,
         pre_state_id: Option<ObjectId>,
         execute_result: &ExecuteResult,
+        block: &GroupConsensusBlock,
     );
 }

@@ -428,6 +428,44 @@ impl HotstuffRunner {
                 .next()
                 .expect("the pre-commit block must exist.");
 
+            let pre_state_id = match header_block.prev_block_id() {
+                Some(block_id) => self
+                    .non_driver
+                    .get_block(block_id, None)
+                    .await?
+                    .result_state_id()
+                    .clone(),
+                None => None,
+            };
+
+            for proposal in header_block.proposals() {
+                let proposal_obj = self
+                    .non_driver
+                    .get_proposal(&proposal.proposal, None)
+                    .await?;
+                let receipt = match proposal.receipt.as_ref() {
+                    Some(receipt) => {
+                        let (receipt, remain) = NONObjectInfo::raw_decode(receipt.as_slice())?;
+                        assert_eq!(remain.len(), 0);
+                        Some(receipt)
+                    }
+                    None => None,
+                };
+
+                self.delegate
+                    .on_commited(
+                        &proposal_obj,
+                        pre_state_id,
+                        &ExecuteResult {
+                            result_state_id: header_block.result_state_id().clone(),
+                            receipt,
+                            context: proposal.context.clone(),
+                        },
+                        &header_block,
+                    )
+                    .await;
+            }
+
             self.state_pusher
                 .notify_block_commit(header_block, qc_block.clone())
                 .await
