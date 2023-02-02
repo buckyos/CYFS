@@ -270,7 +270,8 @@ pub struct TransGetTaskGroupStateOutputResponse {
     pub control_state: NdnTaskControlState,
     pub speed: Option<u32>,
     pub cur_speed: u32,
-    pub history_speed: u32,
+    pub history_speed: u32, 
+    pub transfered: u64
 }
 
 // control task group
@@ -279,7 +280,8 @@ pub enum TransTaskGroupControlAction {
     Resume,
     Cancel,
     Pause,
-    Close
+    Close, 
+    CloseRecursively
 }
 
 #[derive(Debug, Serialize, Deserialize)]

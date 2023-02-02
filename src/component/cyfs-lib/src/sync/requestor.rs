@@ -36,7 +36,7 @@ impl SyncRequestor {
         let mut resp = self.requestor.request_timeout(http_req, std::time::Duration::from_secs(30)).await?;
 
         match resp.status() {
-            StatusCode::Ok => {
+            code if code.is_success() => {
                 let ret = RequestorHelper::decode_json_body(&mut resp).await?;
 
                 info!(
