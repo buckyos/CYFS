@@ -132,6 +132,35 @@ impl ObjectMapSingleOpEnv {
         self.load_by_key(path, key).await
     }
 
+    pub async fn load_with_inner_path(&self, obj_map_id: &ObjectId, inner_path: Option<String>) -> BuckyResult<()> {
+        let value = match &inner_path {
+            Some(inner_path) if inner_path.len() > 0  => {
+                let object_path = ObjectMapPath::new(obj_map_id.clone(), self.cache.clone());
+                let value = object_path.get_by_path(&inner_path).await?;
+                if value.is_none() {
+                    let msg = format!(
+                        "load single_op_env with inner_path but not found! root={}, inner_path={}",
+                        obj_map_id, obj_map_id,
+                    );
+                    error!("{}", msg);
+                    return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+                }
+    
+                value.unwrap()
+            }
+            _ => {
+                obj_map_id.to_owned()
+            }
+        };
+
+        info!(
+            "will load single_op_env with inner_path! root={}, inner_path={:?}, target={}",
+            obj_map_id, inner_path, value,
+        );
+
+        self.load(&value).await
+    }
+
     // 加载指定路径上的object_map
     // root不能使用single_op_env直接操作，所以必须至少要指定一个key
     pub async fn load_by_key(&self, path: &str, key: &str) -> BuckyResult<()> {

@@ -1,6 +1,7 @@
 use super::state_manager::*;
 use crate::config::StackGlobalConfig;
-use crate::stack::{BdtStackParams, CyfsStackParams};
+use crate::stack::{CyfsStackParams};
+use cyfs_bdt_ext::*;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
@@ -235,12 +236,19 @@ async fn test1(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
     assert_eq!(prev_value, Some(x1_value));
 
     // 提交
-    let root = op_env.commit().await.unwrap();
-    info!("dec root changed to {}", root);
+    let dec_root = op_env.commit().await.unwrap();
+    info!("dec root changed to {}", dec_root);
     info!(
         "global root changed to {}",
         global_state_manager.get_current_root().0
     );
+
+    // single op env, test load_with_inner_path
+    let op_env = root.create_single_op_env(None).unwrap();
+    op_env.load_with_inner_path(&dec_root, Some("/a/b".to_owned())).await.unwrap();
+
+    let b_value = op_env.get_by_key("test1").await.unwrap().unwrap();
+    assert_eq!(b_value, x1_value2);
 }
 
 async fn test2(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
