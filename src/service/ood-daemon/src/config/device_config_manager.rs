@@ -4,10 +4,11 @@ use super::DeviceConfig;
 use super::PATHS;
 use crate::config_repo::*;
 use cyfs_base::*;
+use cyfs_debug::Mutex;
 
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub struct DeviceConfigManager {
@@ -159,7 +160,7 @@ impl DeviceConfigManager {
         );
 
         info!("device config: {}", device_config_str);
-        
+
         // 保存到本地配置文件
         Self::save_config_file(device_config_str.as_bytes()).await?;
 

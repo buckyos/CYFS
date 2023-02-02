@@ -7,7 +7,8 @@ use cyfs_util::{process::ProcessStatusCode};
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 #[derive(Debug)]
 struct ServiceInnerState {
@@ -26,7 +27,7 @@ impl ServiceInnerState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Service {
     name: String,
     fid: String,

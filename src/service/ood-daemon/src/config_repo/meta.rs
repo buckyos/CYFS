@@ -4,11 +4,11 @@ use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
 use cyfs_util::LOCAL_DEVICE_MANAGER;
+use cyfs_debug::Mutex;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use std::sync::Mutex;
 
 #[derive(Serialize, Deserialize)]
 struct DeviceConfigGenerator {
