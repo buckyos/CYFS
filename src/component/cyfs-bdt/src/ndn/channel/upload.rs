@@ -24,6 +24,7 @@ struct UploadingState {
     channel: Channel, 
     waiters: StateWaiter, 
     speed_counter: SpeedCounter,  
+    uploaded: u64, 
     history_speed: HistorySpeed, 
     encoder: Box<dyn ChunkEncoder>
 }
@@ -35,7 +36,7 @@ struct StateImpl {
 
 enum TaskStateImpl {
     Uploading(UploadingState),
-    Finished, 
+    Finished(u64), 
     Error(BuckyError),
 }
 
@@ -74,6 +75,7 @@ impl UploadSession {
                     waiters: StateWaiter::new(), 
                     history_speed: HistorySpeed::new(0, channel.config().history_speed.clone()), 
                     speed_counter: SpeedCounter::new(0), 
+                    uploaded: 0, 
                     encoder, 
                     channel
                 }),
@@ -117,6 +119,7 @@ impl UploadSession {
                         TaskStateImpl::Uploading(uploading) => {
                             if len > 0 {
                                 uploading.speed_counter.on_recv(len);
+                                uploading.uploaded += len as u64;
                             }
                             Ok(len)
                         },
@@ -141,7 +144,7 @@ impl UploadSession {
             let mut state = self.0.state.write().unwrap();
             match &mut state.task_state {
                 TaskStateImpl::Error(_) => None, 
-                TaskStateImpl::Finished => None,
+                TaskStateImpl::Finished(_) => None,
                 TaskStateImpl::Uploading(uploading) => {
                     let mut waiters = StateWaiter::new();
                     uploading.waiters.transfer_into(&mut waiters);
@@ -238,7 +241,7 @@ impl UploadSession {
                         info!("{} finished", self);
                         let mut waiters = StateWaiter::new();
                         uploading.waiters.transfer_into(&mut waiters); 
-                        state.task_state = TaskStateImpl::Finished;
+                        state.task_state = TaskStateImpl::Finished(uploading.uploaded);
                         NextStep::Notify(waiters)
                     }, 
                     _ => {
@@ -336,13 +339,21 @@ impl NdnTask for UploadSession {
     fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
             TaskStateImpl::Uploading(_) => NdnTaskState::Running,
-            TaskStateImpl::Finished => NdnTaskState::Finished, 
+            TaskStateImpl::Finished(_) => NdnTaskState::Finished, 
             TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone()),
         }
     }
 
     fn control_state(&self) -> NdnTaskControlState {
         self.0.state.read().unwrap().control_state.clone()
+    }
+
+    fn transfered(&self) -> u64 {
+        match &self.0.state.read().unwrap().task_state {
+            TaskStateImpl::Uploading(uploading) => uploading.uploaded,
+            TaskStateImpl::Finished(uploaded) => *uploaded, 
+            TaskStateImpl::Error(_) => 0,
+        }
     }
 
     fn cur_speed(&self) -> u32 {

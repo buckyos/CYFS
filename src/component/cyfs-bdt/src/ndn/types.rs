@@ -552,10 +552,11 @@ pub trait NdnTask: Send + Sync {
         Ok(NdnTaskControlState::Normal)
     }
     
-    fn close(&self) -> BuckyResult<()> {
+    fn close(&self, _recursion: bool) -> BuckyResult<()> {
         Ok(())
     }
 
     fn cur_speed(&self) -> u32;
     fn history_speed(&self) -> u32;
+    fn transfered(&self) -> u64;
 }

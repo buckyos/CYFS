@@ -190,6 +190,15 @@ impl NdnTask for ChunkListTask {
         }
     }
 
+    fn transfered(&self) -> u64 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(downloading) => downloading.downloaded + downloading.cur_chunk.0.cache().stream().len() as u64, 
+            TaskStateImpl::Finished(downloaded) => *downloaded, 
+            _ => 0,
+        }
+
+    }
 
     fn cancel_by_error(&self, err: BuckyError) -> BuckyResult<NdnTaskControlState> {
         let waiters = {
@@ -243,16 +252,6 @@ impl DownloadTask for ChunkListTask {
             }
             _ => 0,
         }
-    }
-
-    fn downloaded(&self) -> u64 {
-        let state = self.0.state.read().unwrap();
-        match &state.task_state {
-            TaskStateImpl::Downloading(downloading) => downloading.downloaded + downloading.cur_chunk.0.cache().stream().len() as u64, 
-            TaskStateImpl::Finished(downloaded) => *downloaded, 
-            _ => 0,
-        }
-
     }
 
     async fn wait_user_canceled(&self) -> BuckyError {

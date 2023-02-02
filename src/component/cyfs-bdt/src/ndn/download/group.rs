@@ -17,12 +17,14 @@ struct DownloadingState {
     entries: HashMap<String, Box<dyn DownloadTask>>, 
     running: Vec<Box<dyn DownloadTask>>, 
     closed: bool, 
+    history_downloaded: u64, 
+    downloaded: u64, 
     history_speed: HistorySpeed, 
 }
 
 enum TaskStateImpl {
     Downloading(DownloadingState), 
-    Finished, 
+    Finished(u64), 
     Error(BuckyError), 
 }
 
@@ -53,6 +55,8 @@ impl DownloadGroup {
                     entries: Default::default(), 
                     running: Default::default(), 
                     history_speed: HistorySpeed::new(0, history_speed), 
+                    history_downloaded: 0, 
+                    downloaded: 0, 
                     closed: false, 
                 }),
                 control_state: ControlStateImpl::Normal(StateWaiter::new()), 
@@ -74,7 +78,7 @@ impl NdnTask for DownloadGroup {
     fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
             TaskStateImpl::Downloading(_) => NdnTaskState::Running,
-            TaskStateImpl::Finished => NdnTaskState::Finished, 
+            TaskStateImpl::Finished(_) => NdnTaskState::Finished, 
             TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone())
         }
         
@@ -87,17 +91,32 @@ impl NdnTask for DownloadGroup {
         }
     }
 
-    fn close(&self) -> BuckyResult<()> {
-        let mut state = self.0.state.write().unwrap();
-        match &mut state.task_state {
-            TaskStateImpl::Downloading(downloading) => {
-                downloading.closed = true;
-                if downloading.running.len() == 0 {
-                    state.task_state = TaskStateImpl::Finished;
-                }
-            },
-            _ => {}
+    fn close(&self, recursion: bool) -> BuckyResult<()> {
+        let children: Option<Vec<_>> = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut state.task_state {
+                TaskStateImpl::Downloading(downloading) => {
+                    let running = if recursion {
+                        Some(downloading.running.iter().map(|t| t.clone_as_download_task()).collect())
+                    } else {
+                        None
+                    };
+                    downloading.closed = true;
+                    if downloading.running.len() == 0 {
+                        state.task_state = TaskStateImpl::Finished(downloading.downloaded);
+                    }
+                    running
+                },
+                _ => None
+            }
+        };
+
+        if recursion {
+            for task in children.unwrap() {
+                let _ = task.close(recursion);
+            }
         }
+        
         Ok(())
     }
 
@@ -113,6 +132,15 @@ impl NdnTask for DownloadGroup {
         let state = self.0.state.read().unwrap();
         match &state.task_state {
             TaskStateImpl::Downloading(downloading) => downloading.history_speed.average(),
+            _ => 0
+        }
+    }
+
+    fn transfered(&self) -> u64 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Downloading(downloading) => downloading.downloaded,
+            TaskStateImpl::Finished(downloaded) => *downloaded, 
             _ => 0
         }
     }
@@ -213,20 +241,25 @@ impl DownloadTask for DownloadGroup {
         let mut state = self.0.state.write().unwrap();
         let mut running = vec![];
         let mut cur_speed = 0;
+        let mut running_downloaded = 0;
         match &mut state.task_state {
             TaskStateImpl::Downloading(downloading) => {
                 for sub in &downloading.running {
+                    cur_speed += sub.calc_speed(when);
                     match sub.state() {
-                        NdnTaskState::Finished | NdnTaskState::Error(_) => continue, 
+                        NdnTaskState::Finished | NdnTaskState::Error(_) => {
+                            downloading.history_downloaded += sub.transfered();
+                        }, 
                         _ => {
-                            cur_speed += sub.calc_speed(when);
+                            running_downloaded += sub.transfered();
                             running.push(sub.clone_as_download_task());
                         }
                     }  
                 }
+                downloading.downloaded = downloading.history_downloaded + running_downloaded;
                 downloading.history_speed.update(Some(cur_speed), when);
                 if running.len() == 0 && downloading.closed {
-                    state.task_state = TaskStateImpl::Finished;
+                    state.task_state = TaskStateImpl::Finished(downloading.downloaded);
                 } else {
                     downloading.running = running;
                 }
