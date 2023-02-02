@@ -4447,6 +4447,7 @@ dependencies = [
  "fs_extra",
  "futures",
  "futures-util",
+ "hex",
  "http-types",
  "lazy_static",
  "log 0.4.17",

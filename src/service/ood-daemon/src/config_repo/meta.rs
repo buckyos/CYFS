@@ -147,7 +147,7 @@ impl DeviceConfigGenerator {
 
 struct LocalCache {
     service_list: AppList,
-    device_config: String,
+    device_config_str: String,
 }
 
 pub struct DeviceConfigMetaRepo {
@@ -375,7 +375,7 @@ impl DeviceConfigMetaRepo {
         Ok(())
     }
 
-    async fn update_service_list_to_device_config(
+    async fn gen_service_list_to_device_config(
         &self,
         service_list: &AppList,
     ) -> BuckyResult<DeviceConfigGenerator> {
@@ -408,6 +408,8 @@ impl DeviceConfigMetaRepo {
 
     // return true if is the same
     fn compare_service_list(left: &AppList, right: &AppList) -> bool {
+        // info!("will compare service list: left={}, right={}", left.format_json(), right.format_json());
+
         if left.body().as_ref().unwrap().update_time()
             != right.body().as_ref().unwrap().update_time()
         {
@@ -415,6 +417,7 @@ impl DeviceConfigMetaRepo {
         }
 
         if left.to_vec().unwrap() != right.to_vec().unwrap() {
+            warn!("service list raw data is not the same! left={}, right={}", hex::encode(left.to_vec().unwrap()), hex::encode(right.to_vec().unwrap()));
             return false;
         }
 
@@ -436,13 +439,13 @@ impl DeviceConfigRepo for DeviceConfigMetaRepo {
             let cache = self.cache.lock().unwrap();
             if let Some(cache) = &*cache {
                 if Self::compare_service_list(&cache.service_list, &service_list) {
-                    return Ok(cache.device_config.clone());
+                    return Ok(cache.device_config_str.clone());
                 }
             }
         }
 
         let mut device_config = self
-            .update_service_list_to_device_config(&service_list)
+            .gen_service_list_to_device_config(&service_list)
             .await?;
 
         device_config.sort();
@@ -452,7 +455,7 @@ impl DeviceConfigRepo for DeviceConfigMetaRepo {
             let mut cache = self.cache.lock().unwrap();
             *cache = Some(LocalCache {
                 service_list,
-                device_config: device_config_str.clone(),
+                device_config_str: device_config_str.clone(),
             });
         }
 
