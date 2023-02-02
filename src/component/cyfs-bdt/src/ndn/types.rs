@@ -545,7 +545,7 @@ pub trait NdnTask: Send + Sync {
     }
     fn cancel(&self) -> BuckyResult<NdnTaskControlState> {
         self.cancel_by_error(BuckyError::new(BuckyErrorCode::Interrupted, "user canceled"))
-    }
+	}
     fn cancel_by_error(&self, _err: BuckyError) -> BuckyResult<NdnTaskControlState> {
         Ok(NdnTaskControlState::Normal)
     }
@@ -553,11 +553,12 @@ pub trait NdnTask: Send + Sync {
         Ok(NdnTaskControlState::Normal)
     }
     
-    fn close(&self) -> BuckyResult<()> {
+    fn close(&self, _recursion: bool) -> BuckyResult<()> {
         Ok(())
     }
 
     fn cur_speed(&self) -> u32;
     fn history_speed(&self) -> u32;
+    fn transfered(&self) -> u64;
 }
 

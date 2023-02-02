@@ -2,12 +2,13 @@ use super::gateway_monitor::GATEWAY_MONITOR;
 use crate::config::{init_system_config, DeviceConfigManager};
 use crate::service::ServiceMode;
 use crate::service::SERVICE_MANAGER;
-use cyfs_base::BuckyResult;
+use cyfs_base::{bucky_time_now, BuckyResult};
 use cyfs_util::*;
 use ood_control::OOD_CONTROLLER;
 
 use async_std::task;
 use futures::future::{AbortHandle, Abortable};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -27,10 +28,26 @@ impl EventListenerSyncRoutine<(), ()> for BindNotify {
     }
 }
 
+struct ActionActive {
+    update: AtomicU64,
+    state: AtomicU64,
+}
+
+impl Default for ActionActive {
+    fn default() -> Self {
+        Self {
+            update: AtomicU64::new(0),
+            state: AtomicU64::new(0),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Daemon {
     mode: ServiceMode,
-    device_config_manager: DeviceConfigManager,
+    device_config_manager: Arc<DeviceConfigManager>,
     no_monitor: bool,
+    last_active: Arc<ActionActive>,
 }
 
 impl Daemon {
@@ -40,8 +57,9 @@ impl Daemon {
 
         Self {
             mode,
-            device_config_manager,
+            device_config_manager: Arc::new(device_config_manager),
             no_monitor,
+            last_active: Arc::new(ActionActive::default()),
         }
     }
 
@@ -58,16 +76,22 @@ impl Daemon {
 
         let _ = GATEWAY_MONITOR.init().await;
 
-        self.run_check_loop(notify).await;
+        self.start_check_active();
+
+        self.start_check_service_state();
+
+        self.run_check_update(notify).await;
 
         Ok(())
     }
 
-    async fn run_check_loop(&self, notify: BindNotify) {
-        Self::start_check_service_state();
-
+    async fn run_check_update(&self, notify: BindNotify) {
         let mut need_load_config = true;
         loop {
+            self.last_active
+                .update
+                .store(bucky_time_now(), Ordering::SeqCst);
+
             // 记录当前的fid
             let daemon_fid = SERVICE_MANAGER
                 .get_service_info(::cyfs_base::OOD_DAEMON_NAME)
@@ -107,25 +131,48 @@ impl Daemon {
                 .map(|v| v.config.fid.clone());
 
             // vood模式下，暂不重启ood-daemon
-            if self.mode != ServiceMode::VOOD
-                && daemon_fid.is_some()
-                && new_daemon_fid.is_some()
-                && new_daemon_fid != daemon_fid
-            {
-                info!(
-                    "ood-daemon fid changed: {:?} -> {:?}",
-                    daemon_fid, new_daemon_fid
-                );
+            if self.mode != ServiceMode::VOOD {
+                let mut need_restart = false;
+                if daemon_fid.is_some() && new_daemon_fid.is_some() && new_daemon_fid != daemon_fid
+                {
+                    need_restart = true;
 
-                // 需要确保ood-daemon-monitor已经启动
-                if !self.no_monitor {
-                    use crate::monitor::ServiceMonitor;
-                    if ServiceMonitor::launch_monitor().is_ok() {
-                        task::sleep(Duration::from_secs(5)).await;
+                    info!(
+                        "ood-daemon fid changed: {:?} -> {:?}",
+                        daemon_fid, new_daemon_fid
+                    );
+                } else {
+                    // info!("will check ood-daemon status by cmd!");
+                    // check ood-daemon status use --status --fid cmd
+                    let service = SERVICE_MANAGER
+                        .get_service_info(::cyfs_base::OOD_DAEMON_NAME)
+                        .map(|v| v.service.clone())
+                        .flatten();
+                    if let Some(service) = service {
+                        if let Some(exit_code) = service.check_status_by_cmd() {
+                            if cyfs_util::process::ProcessStatusCode::is_running_other(exit_code) {
+                                need_restart = true;
+
+                                warn!(
+                                    "ood-daemon running but fid not match! now will restart, fid={:?}",
+                                    new_daemon_fid
+                                );
+                            }
+                        }
+                    }
+                }
+
+                if need_restart {
+                    // 需要确保ood-daemon-monitor已经启动
+                    if !self.no_monitor {
+                        use crate::monitor::ServiceMonitor;
+                        if ServiceMonitor::launch_monitor().is_ok() {
+                            task::sleep(Duration::from_secs(5)).await;
+                            std::process::exit(0);
+                        }
+                    } else {
                         std::process::exit(0);
                     }
-                } else {
-                    std::process::exit(0);
                 }
             }
 
@@ -149,12 +196,43 @@ impl Daemon {
         }
     }
 
-    fn start_check_service_state() {
+    fn start_check_service_state(&self) {
+        let last_active = self.last_active.clone();
         task::spawn(async move {
             loop {
+                last_active.state.store(bucky_time_now(), Ordering::SeqCst);
+
                 SERVICE_MANAGER.sync_all_service_state().await;
 
                 task::sleep(Duration::from_secs(60)).await;
+            }
+        });
+    }
+
+    fn start_check_active(&self) {
+        const ACTIVE_TIMEOUT: u64 = 1000 * 1000 * 60 * 30;
+
+        let this = self.clone();
+        task::spawn(async move {
+            loop {
+                task::sleep(Duration::from_secs(60)).await;
+
+                let now = bucky_time_now();
+                if now - this.last_active.update.load(Ordering::SeqCst) > ACTIVE_TIMEOUT
+                    || now - this.last_active.state.load(Ordering::SeqCst) > ACTIVE_TIMEOUT
+                {
+                    error!("last active timeout! now will exit process!");
+
+                    if !this.no_monitor {
+                        use crate::monitor::ServiceMonitor;
+                        if ServiceMonitor::launch_monitor().is_ok() {
+                            task::sleep(Duration::from_secs(5)).await;
+                            std::process::exit(1);
+                        }
+                    } else {
+                        std::process::exit(1);
+                    }
+                }
             }
         });
     }

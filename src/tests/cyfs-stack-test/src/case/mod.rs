@@ -26,6 +26,7 @@ mod meta;
 mod call;
 mod mime;
 mod object_meta_access;
+mod shared_stack;
 mod context;
 mod shared_stack;
 

@@ -548,7 +548,7 @@ impl Task for DownloadFileTask {
         let ret = if let Some(session) = session {
             let len = self.params.len();
             let progress = if len > 0 {
-                ((session.downloaded() as f32 / len as f32) * 100.0) as u64
+                ((session.transfered() as f32 / len as f32) * 100.0) as u64
             } else {
                 100
             };

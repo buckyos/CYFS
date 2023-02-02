@@ -99,7 +99,8 @@ pub(crate) fn parse_front_host(host: &str) -> Option<FrontRequestType> {
                 if is_host_object_id(host) {
                     FrontRequestType::O
                 } else {
-                    return None;
+                    // treat as name
+                    FrontRequestType::O
                 }
             }
         }
@@ -120,7 +121,8 @@ pub(crate) fn parse_front_host_with_anonymous_dec_id(
             if is_host_object_id(host) {
                 FrontRequestType::O
             } else {
-                return None;
+                // treat as name
+                FrontRequestType::O
             }
         }
     };

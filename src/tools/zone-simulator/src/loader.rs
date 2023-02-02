@@ -9,7 +9,6 @@ use cyfs_stack_loader::*;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
 
-
 pub static USER1_DATA: OnceCell<TestUserData> = OnceCell::new();
 pub static USER2_DATA: OnceCell<TestUserData> = OnceCell::new();
 
@@ -92,15 +91,11 @@ impl TestLoader {
             }
         }
     }
+
     pub fn get_shared_stack(index: DeviceIndex) -> SharedCyfsStack {
         let id = Self::get_id(index);
 
-        let stack = CyfsServiceLoader::shared_cyfs_stack(Some(&id));
-        if stack.dec_id().is_none() {
-            stack.bind_dec(DEC_ID.clone());
-        }
-
-        stack
+        super::zone::SharedStackCache::instance().get(&id).unwrap()
     }
 
     pub async fn load_default(stack_config: &CyfsStackInsConfig) {

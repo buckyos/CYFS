@@ -58,14 +58,14 @@ pub struct RouterHandlerManager {
 }
 
 impl RouterHandlerManager {
-    pub async fn new(dec_id: Option<SharedObjectStackDecID>, ws_url: Url) -> BuckyResult<Self> {
+    pub fn new(dec_id: Option<SharedObjectStackDecID>, ws_url: Url) -> Self {
         let inner = RouterWSHandlerManager::new(ws_url);
 
-        Ok(Self {
+        Self {
             dec_id,
             inner,
             started: Arc::new(AtomicBool::new(false)),
-        })
+        }
     }
 
     fn get_dec_id(&self) -> Option<ObjectId> {

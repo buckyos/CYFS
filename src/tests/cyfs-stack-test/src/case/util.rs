@@ -208,6 +208,11 @@ async fn get_system_info() {
     let system_info = user1_ood.util().get_system_info(req).await.unwrap();
     info!("{}", system_info);
 
+    let boot_time = ObjectFormatHelper::format_time(system_info.info.boot_time);
+    info!("system boot time: {}", boot_time);
+    let uptime = std::time::Duration::from_micros(system_info.info.uptime);
+    info!("system up time: {:?}", uptime);
+
     // 同zone跨设备读取信息
     let ood_id = USER1_DATA.get().unwrap().ood_id.clone();
     let mut req = UtilGetSystemInfoRequest::new();

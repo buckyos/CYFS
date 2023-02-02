@@ -84,7 +84,7 @@ impl ObjectHttpWSService {
                 );
                 error!("{}", msg);
 
-                BuckyError::from(msg)
+                BuckyError::new(BuckyErrorCode::InvalidData, msg)
             })?
             .ok_or_else(|| {
                 let msg = format!(
@@ -93,7 +93,7 @@ impl ObjectHttpWSService {
                 );
                 error!("{}", msg);
 
-                BuckyError::from(msg)
+                BuckyError::new(BuckyErrorCode::InvalidData, msg)
             })?;
 
         // http请求都是同机请求，需要设定为当前device
@@ -119,9 +119,9 @@ impl ObjectHttpWSService {
                 // response编码到buffer
                 let mut encoder = async_h1::server::Encoder::new(resp, method);
                 let mut buf = vec![];
-                encoder.read_to_end(&mut buf).await.map_err(|e| {
+                if let Err(e) = encoder.read_to_end(&mut buf).await.map_err(|e| {
                     let msg = format!(
-                        "encode http response to buffer error! sid={}, seq={}, during={}ms, {}",
+                        "read http response to buffer error! sid={}, seq={}, during={}ms, {}",
                         sid,
                         seq,
                         begin.elapsed().as_millis(),
@@ -129,8 +129,25 @@ impl ObjectHttpWSService {
                     );
                     error!("{}", msg);
 
-                    BuckyError::from(msg)
-                })?;
+                    BuckyError::from(e)
+                }) {
+                    // read resp error, should return the error with new resp
+                    let resp = RequestorHelper::trans_error(e);
+                    let mut encoder = async_h1::server::Encoder::new(resp, method);
+                    buf.clear();
+                    encoder.read_to_end(&mut buf).await.map_err(|e| {
+                        let msg = format!(
+                            "encode http error response to buffer error! sid={}, seq={}, during={}ms, {}",
+                            sid,
+                            seq,
+                            begin.elapsed().as_millis(),
+                            e
+                        );
+                        error!("{}", msg);
+    
+                        BuckyError::new(BuckyErrorCode::IoError, msg)
+                    })?;
+                }
 
                 info!(
                     "ws http request complete! sid={}, seq={}, during={}ms",

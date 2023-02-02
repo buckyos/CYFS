@@ -363,11 +363,13 @@ impl NamedCacheClient {
                 Ok(mut resp) => {
                     // 这里超时后返回Timeout错误，再试一次
                     match async_std::future::timeout(self.config.timeout, async {
+                        info!("begin read chunk {} data, len {}", chunk_id, chunk_id.len());
                         resp.body_bytes().await
                     }).await {
                         Ok(buf) => {
                             match buf {
                                 Ok(buf) => {
+                                    info!("end read chunk {} data, len {}", chunk_id, chunk_id.len());
                                     let _ = chunk_content.set(buf);
                                     break;
                                 }

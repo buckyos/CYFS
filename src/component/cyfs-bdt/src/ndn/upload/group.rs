@@ -22,13 +22,15 @@ struct UploadingState {
     entries: HashMap<String, Box<dyn UploadTask>>, 
     running: Vec<Box<dyn UploadTask>>, 
     closed: bool, 
+    uploaded: u64, 
+    history_uploaded: u64, 
     history_speed: HistorySpeed, 
 }
 
 
 enum TaskStateImpl {
     Uploading(UploadingState), 
-    Finished, 
+    Finished(u64), 
     Error(BuckyError), 
 }
 
@@ -54,6 +56,8 @@ impl UploadGroup {
                     entries: Default::default(), 
                     running: Default::default(), 
                     closed: false, 
+                    uploaded: 0, 
+                    history_uploaded: 0, 
                     history_speed: HistorySpeed::new(0, history_speed), 
                 }), 
                 control_state: ControlStateImpl::Normal(StateWaiter::new())
@@ -74,7 +78,7 @@ impl NdnTask for UploadGroup {
     fn state(&self) -> NdnTaskState {
         match &self.0.state.read().unwrap().task_state {
             TaskStateImpl::Uploading(_) => NdnTaskState::Running,
-            TaskStateImpl::Finished => NdnTaskState::Finished, 
+            TaskStateImpl::Finished(_) => NdnTaskState::Finished, 
             TaskStateImpl::Error(err) => NdnTaskState::Error(err.clone())
         }
     }
@@ -122,18 +126,42 @@ impl NdnTask for UploadGroup {
         Ok(NdnTaskControlState::Canceled)
     }
 
-    fn close(&self) -> BuckyResult<()> {
-        let mut state = self.0.state.write().unwrap();
-        match &mut state.task_state {
-            TaskStateImpl::Uploading(uploading) => {
-                uploading.closed = true;
-                if uploading.running.len() == 0 {
-                    state.task_state = TaskStateImpl::Finished;
-                }
-            },
-            _ => {}
+    fn close(&self, recursion: bool) -> BuckyResult<()> {
+        let children: Option<Vec<_>> = {
+            let mut state = self.0.state.write().unwrap();
+            match &mut state.task_state {
+                TaskStateImpl::Uploading(uploading) => {
+                    let running = if recursion {
+                        Some(uploading.running.iter().map(|t| t.clone_as_upload_task()).collect())
+                    } else {
+                        None
+                    };
+                    uploading.closed = true;
+                    if uploading.running.len() == 0 {
+                        state.task_state = TaskStateImpl::Finished(uploading.uploaded);
+                    } 
+                    running
+                },
+                _ => None
+            }
+        };
+
+        if recursion {
+            for task in children.unwrap() {
+                let _ = task.close(recursion);
+            }
         }
+        
         Ok(())
+    }
+
+    fn transfered(&self) -> u64 {
+        let state = self.0.state.read().unwrap();
+        match &state.task_state {
+            TaskStateImpl::Uploading(uploading) => uploading.uploaded,
+            TaskStateImpl::Finished(uploaded) => *uploaded, 
+            _ => 0
+        }
     }
 
     fn cur_speed(&self) -> u32 {
@@ -212,20 +240,25 @@ impl UploadTask for UploadGroup {
         let mut state = self.0.state.write().unwrap();
         let mut running = vec![];
         let mut cur_speed = 0;
+        let mut running_uploaded = 0;
         match &mut state.task_state {
             TaskStateImpl::Uploading(uploading) => {
                 for sub in &uploading.running {
+                    cur_speed += sub.calc_speed(when);
                     match sub.state() {
-                        NdnTaskState::Finished | NdnTaskState::Error(_) => continue, 
+                        NdnTaskState::Finished | NdnTaskState::Error(_) => {
+                            uploading.history_uploaded += sub.transfered();
+                        }, 
                         _ => {
-                            cur_speed += sub.calc_speed(when);
+                            running_uploaded += sub.transfered();
                             running.push(sub.clone_as_upload_task());
                         }
                     }  
                 }
+                uploading.uploaded = uploading.history_uploaded + running_uploaded;
                 uploading.history_speed.update(Some(cur_speed), when);
                 if running.len() == 0 && uploading.closed {
-                    state.task_state = TaskStateImpl::Finished;
+                    state.task_state = TaskStateImpl::Finished(uploading.uploaded);
                 } else {
                     uploading.running = running;
                 }

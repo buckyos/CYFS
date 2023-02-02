@@ -323,6 +323,7 @@ impl Channel {
 
         match session_state {
             DownloadSessionState::Downloading => {
+
                 let session = session.clone();
                 let channel = self.clone();
                 task::spawn(async move {

@@ -107,7 +107,13 @@ impl ContextSourceDownloadStateManager {
                 );
                 self.check_and_cancel_task(task);
             }
-            NDNTaskCancelStrategy::WaitingSource => {}
+            NDNTaskCancelStrategy::WaitingSource => {
+                debug!(
+                    "task drain source and will still waiting for new source! task={:?}, when={}",
+                    task.abs_group_path(),
+                    when
+                );
+            }
         }
     }
 

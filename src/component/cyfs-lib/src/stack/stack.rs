@@ -1,6 +1,3 @@
-use crate::base::*;
-//use crate::file::*;
-//use crate::raw::*;
 use super::uni_stack::*;
 use crate::crypto::*;
 use crate::events::*;
@@ -13,6 +10,7 @@ use crate::storage::StateStorage;
 use crate::sync::*;
 use crate::trans::*;
 use crate::util::*;
+use crate::requestor::*;
 use cyfs_base::*;
 
 use http_types::Url;
@@ -112,6 +110,11 @@ pub enum CyfsStackRequestorType {
 
 #[derive(Debug, Clone)]
 pub struct CyfsStackRequestorConfig {
+
+    // default is None, use the traditional http-tcp requestor without connection pool; 
+    // use Some(0) will use the default connection pool size 50
+    pub http_max_connections_per_host: Option<usize>,
+
     pub non_service: CyfsStackRequestorType,
     pub ndn_service: CyfsStackRequestorType,
     pub util_service: CyfsStackRequestorType,
@@ -123,7 +126,13 @@ pub struct CyfsStackRequestorConfig {
 
 impl CyfsStackRequestorConfig {
     pub fn default() -> Self {
+        Self::http()
+    }
+
+    pub fn http() -> Self {
         Self {
+            http_max_connections_per_host: None,
+
             non_service: CyfsStackRequestorType::Http,
             ndn_service: CyfsStackRequestorType::Http,
             util_service: CyfsStackRequestorType::Http,
@@ -136,6 +145,8 @@ impl CyfsStackRequestorConfig {
 
     pub fn ws() -> Self {
         Self {
+            http_max_connections_per_host: None,
+
             non_service: CyfsStackRequestorType::WebSocket,
             ndn_service: CyfsStackRequestorType::WebSocket,
             util_service: CyfsStackRequestorType::WebSocket,
@@ -250,13 +261,15 @@ impl SharedCyfsStackParam {
 
 #[derive(Clone)]
 struct RequestorHolder {
+    requestor_config: CyfsStackRequestorConfig,
     http: Option<HttpRequestorRef>,
     ws: Option<HttpRequestorRef>,
 }
 
 impl RequestorHolder {
-    fn new() -> Self {
+    fn new(requestor_config: CyfsStackRequestorConfig) -> Self {
         Self {
+            requestor_config,
             http: None,
             ws: None,
         }
@@ -277,7 +290,12 @@ impl RequestorHolder {
                             param.service_url.host_str().unwrap(),
                             param.service_url.port().unwrap()
                         );
-                        Arc::new(Box::new(TcpHttpRequestor::new(&addr)))
+
+                        if let Some(http_max_connections_per_host) = self.requestor_config.http_max_connections_per_host {
+                            Arc::new(Box::new(SurfHttpRequestor::new(&addr, http_max_connections_per_host)))
+                        } else {
+                            Arc::new(Box::new(TcpHttpRequestor::new(&addr)))
+                        }
                     })
                     .clone()
             }
@@ -324,6 +342,10 @@ impl SharedCyfsStack {
     }
 
     pub async fn open(param: SharedCyfsStackParam) -> BuckyResult<Self> {
+        Self::sync_open(param)
+    }
+
+    pub fn sync_open(param: SharedCyfsStackParam) -> BuckyResult<Self> {
         info!("will init shared object stack: {:?}", param);
 
         let dec_id = Arc::new(OnceCell::new());
@@ -331,7 +353,7 @@ impl SharedCyfsStack {
             dec_id.set(id.clone()).unwrap();
         }
 
-        let mut requestor_holder = RequestorHolder::new();
+        let mut requestor_holder = RequestorHolder::new(param.requestor_config.clone());
 
         // trans service
         let requestor =
@@ -356,7 +378,8 @@ impl SharedCyfsStack {
         // ndn
         let requestor =
             requestor_holder.select_requestor(&param, &param.requestor_config.ndn_service);
-        let ndn_service = NDNRequestor::new(Some(dec_id.clone()), requestor);
+        let data_requestor = requestor_holder.select_requestor(&param, &CyfsStackRequestorType::Http);
+        let ndn_service = NDNRequestor::new(Some(dec_id.clone()), requestor, Some(data_requestor));
 
         // sync
         let requestor = requestor_holder.select_requestor(&param, &CyfsStackRequestorType::Http);
@@ -408,13 +431,13 @@ impl SharedCyfsStack {
         // 初始化对应的事件处理器，二选一
         let router_handlers = match &param.event_type {
             CyfsStackEventType::WebSocket(ws_url) => {
-                RouterHandlerManager::new(Some(dec_id.clone()), ws_url.clone()).await?
+                RouterHandlerManager::new(Some(dec_id.clone()), ws_url.clone())
             }
         };
 
         let router_events = match &param.event_type {
             CyfsStackEventType::WebSocket(ws_url) => {
-                RouterEventManager::new(Some(dec_id.clone()), ws_url.clone()).await?
+                RouterEventManager::new(Some(dec_id.clone()), ws_url.clone())
             }
         };
 

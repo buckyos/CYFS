@@ -79,6 +79,11 @@ async fn main_run() {
                 .long("ipv6-only")
                 .takes_value(false)
                 .help("Specify OOD bind service just use ipv6 address"),
+        ).arg(
+            Arg::with_name("startup_mode")
+                .long("startup-mode")
+                .takes_value(false)
+                .help("Start the service when on system startup"),
         );
 
     let app = cyfs_util::process::prepare_args(app);
@@ -120,6 +125,10 @@ async fn main_run() {
         }
     }
 
+    if matches.is_present("startup_mode") {
+        verify_state_on_startup();
+    }
+
     // 切换到目标的服务模式
     let mode = matches.value_of("mode").unwrap();
     let mode = match ServiceMode::from_str(mode) {
@@ -144,6 +153,26 @@ async fn main_run() {
     let daemon = Daemon::new(mode, no_monitor);
     if let Err(e) = daemon.run().await {
         error!("daemon run error! err={}", e);
+    }
+}
+
+fn verify_state_on_startup() {
+    for _ in 0..3 {
+        match cyfs_util::init_system_hosts() {
+            Ok(ret) => {
+                if !ret.none_local_ip_v4.is_empty() {
+                    break;
+                }
+
+                warn!("none local ip_v4 address is empty! now will try with some wait...");
+            }
+            Err(e) => {
+                // FIXME should exit process now?
+                error!("get system hosts failed! {}", e);
+            }
+        }
+
+        std::thread::sleep(std::time::Duration::from_secs(5));
     }
 }
 

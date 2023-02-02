@@ -69,7 +69,10 @@ impl CyfsStackInsImpl {
 
     pub fn set_config(&mut self, node: toml::Value) -> BuckyResult<()> {
         assert!(self.config.is_none());
-        info!("will load non stack config: {}", toml::to_string_pretty(&node).unwrap_or("".to_owned()));
+        info!(
+            "will load non stack config: {}",
+            toml::to_string_pretty(&node).unwrap_or("".to_owned())
+        );
         let non_config = CyfsServiceLoaderConfig::new_from_config(node)?;
         self.config = Some(non_config);
 
@@ -121,7 +124,7 @@ impl CyfsStackInsImpl {
         }
 
         assert!(self.cyfs_stack.is_none());
-        let stack = CyfsServiceLoader::default_object_stack();
+        let stack = CyfsServiceLoader::default_cyfs_stack();
         self.proxy.bind_non_stack(stack.clone());
         self.cyfs_stack = Some(stack);
 

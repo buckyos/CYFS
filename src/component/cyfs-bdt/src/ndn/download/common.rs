@@ -160,10 +160,6 @@ pub trait DownloadTask: NdnTask {
     }
 
     fn calc_speed(&self, when: Timestamp) -> u32;
-
-    fn downloaded(&self) -> u64 {
-        0
-    }
 }
 
 

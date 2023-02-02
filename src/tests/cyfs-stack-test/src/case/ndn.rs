@@ -650,6 +650,7 @@ pub async fn test_chunk_in_bundle() {
         };
 
         meta.add_access(item).await.unwrap();
+        info!("modify req_path access success! path={}", req_path);
     }
 
     let target = stack.local_device_id();
@@ -663,10 +664,23 @@ pub async fn test_chunk_in_bundle() {
     let mut ndn_req = NDNGetDataRequest::new_router(Some(target.object_id().to_owned()), bundle_file_id.clone(), None);
     ndn_req.common.req_path = Some(req_path.to_owned());
     let ret = other_stack.ndn_service().get_data(ndn_req.clone()).await;
-    assert!(ret.is_err());
+    match ret {
+        Ok(mut resp) => {
+            let mut buf = vec![];
+            resp.data.read_to_end(&mut buf).await.unwrap_err();
+        }
+        Err(_) => {
+
+        }
+    }
 
     // test get from other zone, with CYFS_REQUEST_FLAG_CHUNK_LEVEL_ACL flag
     ndn_req.common.flags = CYFS_REQUEST_FLAG_CHUNK_LEVEL_ACL;
     let ret = other_stack.ndn_service().get_data(ndn_req.clone()).await;
     assert!(ret.is_ok());
+    let mut resp = ret.unwrap();
+    let mut buf = vec![];
+    resp.data.read_to_end(&mut buf).await.unwrap();
+
+    info!("test chunk in bundle success!");
 }

@@ -8,6 +8,7 @@ use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
 
 use async_std::io::Read;
+use futures::AsyncReadExt;
 use std::ops::Range;
 
 // 用以向远程device发起chunk/file操作
@@ -99,6 +100,8 @@ impl TargetDataManager {
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         };
 
+        let resp = Self::wait_read_and_return(resp).await?;
+
         Ok((resp, total_size, Some(id)))
     }
 
@@ -165,6 +168,18 @@ impl TargetDataManager {
             Box::new(reader) as Box<dyn Read + Unpin + Send + Sync + 'static>
         };
 
+        let resp = Self::wait_read_and_return(resp).await?;
+
         Ok((resp, total_size as u64, Some(id)))
+    }
+
+    async fn wait_read_and_return(mut resp: Box<dyn Read + Unpin + Send + Sync + 'static>,) -> BuckyResult<Box<dyn Read + Unpin + Send + Sync + 'static>> {
+        let mut buf = vec![0; 1];
+        resp.read_exact(&mut buf).await.map_err(|e| {
+            BuckyError::from(e)
+        })?;
+
+        let cursor = async_std::io::Cursor::new(buf);
+        Ok(Box::new(cursor.chain(resp)))
     }
 }

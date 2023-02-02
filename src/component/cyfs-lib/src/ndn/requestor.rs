@@ -2,6 +2,7 @@ use super::def::*;
 use super::output_request::*;
 use super::processor::*;
 use crate::base::*;
+use crate::requestor::*;
 use crate::stack::SharedObjectStackDecID;
 use cyfs_base::*;
 
@@ -51,29 +52,37 @@ pub struct NDNRequestor {
     dec_id: Option<SharedObjectStackDecID>,
     requestor: HttpRequestorRef,
     service_url: Url,
+
+    data_requestor: HttpRequestorRef,
+    data_service_url: Url,
 }
 
 impl NDNRequestor {
-    pub fn new_default_tcp(dec_id: Option<SharedObjectStackDecID>) -> Self {
-        let service_addr = format!("127.0.0.1:{}", cyfs_base::NON_STACK_HTTP_PORT);
-        Self::new_tcp(dec_id, &service_addr)
-    }
-
-    pub fn new_tcp(dec_id: Option<SharedObjectStackDecID>, service_addr: &str) -> Self {
-        let tcp_requestor = TcpHttpRequestor::new(service_addr);
-        Self::new(dec_id, Arc::new(Box::new(tcp_requestor)))
-    }
-
-    pub fn new(dec_id: Option<SharedObjectStackDecID>, requestor: HttpRequestorRef) -> Self {
-        let addr = requestor.remote_addr();
-
-        let url = format!("http://{}/ndn/", addr);
+    pub fn new(
+        dec_id: Option<SharedObjectStackDecID>,
+        requestor: HttpRequestorRef,
+        data_requestor: Option<HttpRequestorRef>,
+    ) -> Self {
+        let url = format!("http://{}/ndn/", requestor.remote_addr());
         let url = Url::parse(&url).unwrap();
+
+        let data_service_url = match &data_requestor {
+            Some(requestor) => {
+                let url = format!("http://{}/ndn/", requestor.remote_addr());
+                Url::parse(&url).unwrap()
+            }
+            None => url.clone(),
+        };
+
+        let data_requestor = data_requestor.unwrap_or(requestor.clone());
 
         Self {
             dec_id,
             requestor,
             service_url: url,
+
+            data_requestor,
+            data_service_url,
         }
     }
 
@@ -125,7 +134,7 @@ impl NDNRequestor {
     }
 
     fn encode_put_data_request(&self, req: &NDNPutDataOutputRequest) -> Request {
-        let mut http_req = Request::new(Method::Put, self.service_url.clone());
+        let mut http_req = Request::new(Method::Put, self.data_service_url.clone());
 
         self.encode_common_headers(NDNAction::PutData, &req.common, &mut http_req);
 
@@ -191,7 +200,7 @@ impl NDNRequestor {
             let body = tide::Body::from_reader(reader, Some(req.length as usize));
             http_req.set_body(body);
         }
-        let mut resp = self.requestor.request(http_req).await?;
+        let mut resp = self.data_requestor.request(http_req).await?;
 
         if resp.status().is_success() {
             info!("put data to ndn service success: {}", req.object_id);
@@ -256,7 +265,7 @@ impl NDNRequestor {
     }
 
     fn encode_get_data_request(&self, action: NDNAction, req: &NDNGetDataOutputRequest) -> Request {
-        let mut http_req = Request::new(Method::Get, self.service_url.clone());
+        let mut http_req = Request::new(Method::Get, self.data_service_url.clone());
         self.encode_common_headers(action, &req.common, &mut http_req);
 
         http_req.insert_header(cyfs_base::CYFS_OBJECT_ID, req.object_id.to_string());
@@ -291,7 +300,7 @@ impl NDNRequestor {
     ) -> BuckyResult<NDNGetDataOutputResponse> {
         let http_req = self.encode_get_data_request(NDNAction::GetData, &req);
 
-        let mut resp = self.requestor.request(http_req).await?;
+        let mut resp = self.data_requestor.request(http_req).await?;
 
         if resp.status().is_success() {
             match NDNRequestorHelper::decode_get_data_response(&mut resp).await {

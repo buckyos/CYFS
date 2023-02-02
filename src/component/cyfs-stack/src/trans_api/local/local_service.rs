@@ -492,6 +492,7 @@ impl LocalTransService {
             speed: None,
             cur_speed: task.cur_speed(),
             history_speed: task.history_speed(),
+            transfered: task.transfered()
         };
 
         if let Some(tm) = req.speed_when {
@@ -521,7 +522,8 @@ impl LocalTransService {
             TransTaskGroupControlAction::Pause => task.pause(),
             TransTaskGroupControlAction::Resume => task.resume(),
             TransTaskGroupControlAction::Cancel => task.cancel(),
-            TransTaskGroupControlAction::Close => task.close().map(|_| task.control_state())
+            TransTaskGroupControlAction::Close => task.close(false).map(|_| task.control_state()), 
+            TransTaskGroupControlAction::CloseRecursively => task.close(true).map(|_| task.control_state())
         }?;
 
         let resp = TransControlTaskGroupInputResponse { control_state };

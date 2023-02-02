@@ -1,11 +1,9 @@
 use super::output_request::*;
 use crate::base::*;
+use crate::*;
 use cyfs_base::*;
-
-use crate::{
-    NDNOutputRequestCommon, SharedObjectStackDecID, TransOutputProcessor, TransOutputProcessorRef,
-};
 use cyfs_core::TransContextObject;
+
 use http_types::{Method, Request, Url};
 use std::sync::Arc;
 
@@ -17,11 +15,6 @@ pub struct TransRequestor {
 }
 
 impl TransRequestor {
-    pub fn new_tcp(dec_id: Option<SharedObjectStackDecID>, service_addr: &str) -> Self {
-        let tcp_requestor = TcpHttpRequestor::new(service_addr);
-        Self::new(dec_id, Arc::new(Box::new(tcp_requestor)))
-    }
-
     pub fn new(dec_id: Option<SharedObjectStackDecID>, requestor: HttpRequestorRef) -> Self {
         let addr = requestor.remote_addr();
 

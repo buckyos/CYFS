@@ -58,28 +58,29 @@ impl BrowserSanboxHttpServer {
     cyfs://o.{dec_id}/
     cyfs://o/
     cyfs://{object-id}
+    cyfs://{name}
     */
     fn parse_host(host: &str) -> BuckyResult<RequestSource> {
         if host == "static" {
             return Ok(RequestSource::System);
-        } 
+        }
         
         // Parse host in a|o|r|l.dec_id mode
         if let Some((_, dec_id)) = crate::front::parse_front_host_with_dec_id(host)? {
             return Ok(RequestSource::Dec(dec_id));
-        } 
+        }
 
-        // Parse host in raw a|o|r|l mode, treat as anonymous dec_id
+        // Parse host in raw a|o|r|l|{object-id}|{name} mode, treat as anonymous dec_id
         if let Some((_, dec_id)) = crate::front::parse_front_host_with_anonymous_dec_id(host) {
             return Ok(RequestSource::Dec(dec_id));
-        } 
+        }
 
         warn!("unknown request origin/referer host! host={}", host);
         Ok(RequestSource::Other)
     }
 
     // http://127.0.0.1:xxx/a|o|r|l[.dec_id]/xxx -> a|o|r|l[.dec_id]
-    // http://127.0.0.1:xxx/{object_id} -> {object_id}
+    // http://127.0.0.1:xxx/{object_id}|{name} -> {object_id}
     fn extract_front_root<'a>(req: &'a http_types::Request,) -> Option<&'a str> {
         let mut ret = req.url().path().trim_start_matches('/').split('/');
         let host = ret.next();
