@@ -341,7 +341,7 @@ impl Service {
                 let mut process = process.unwrap();
                 match process.try_wait() {
                     Ok(Some(status)) => {
-                        info!("service exited, name={}, status={}", self.name, status);
+                        info!("service exited, name={}, status={}, current state={}", self.name, status, state.state);
                         match process.wait() {
                             Ok(_) => {
                                 info!("wait service process complete! name={}", self.name);
@@ -350,17 +350,17 @@ impl Service {
                                 info!("wait service process error! name={}, err={}", self.name, e);
                             }
                         }
-                        self.change_state(ServiceState::STOP);
+                        state.state = ServiceState::STOP;
                     }
                     Ok(None) => {
-                        debug!("service running: {}", self.name);
+                        debug!("service still running: {}", self.name);
 
                         // 仍然在运行，需要保留进程object并继续等待
                         state.process = Some(process);
 
                         if state.state != ServiceState::RUN {
-                            warn!("process object exists and still running but state is not run! service={}", self.name);
-                            self.change_state(ServiceState::RUN);
+                            warn!("process object exists and still running but state is not run! service={}, current state={}", self.name, state.state);
+                            state.state = ServiceState::RUN;
                         }
                     }
                     Err(e) => {
