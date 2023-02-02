@@ -33,6 +33,12 @@ impl DeviceConfigGenerator {
         self.service = ret.unwrap();
     }
 
+    fn sort(&mut self) {
+        self.service.sort_by(|left, right| {
+            left.name.partial_cmp(&right.name).unwrap()
+        });
+    }
+
     pub fn to_string(&self) -> String {
         toml::to_string(&self).unwrap()
     }
@@ -435,10 +441,11 @@ impl DeviceConfigRepo for DeviceConfigMetaRepo {
             }
         }
 
-        let device_config = self
+        let mut device_config = self
             .update_service_list_to_device_config(&service_list)
             .await?;
 
+        device_config.sort();
         let device_config_str = device_config.to_string();
 
         {
