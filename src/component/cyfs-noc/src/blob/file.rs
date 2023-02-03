@@ -104,8 +104,9 @@ impl BlobStorage for FileBlobStorage {
 
         Self::write(&path, &data.object_raw).await.map_err(|e| {
             let msg = format!(
-                "save object blob to file error! path={}, {}",
+                "save object blob to file error! path={}, size={}bytes, {}",
                 path.display(),
+                data.object_raw.len(),
                 e
             );
             error!("{}", msg);
@@ -113,8 +114,8 @@ impl BlobStorage for FileBlobStorage {
         })?;
 
         info!(
-            "save object blob to file success! object={}",
-            data.object_id
+            "save object blob to file success! object={}, size={}bytes",
+            data.object_id, data.object_raw.len(),
         );
         Ok(())
     }
