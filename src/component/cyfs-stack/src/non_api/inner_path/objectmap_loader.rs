@@ -56,11 +56,11 @@ impl NONObjectMapLoader {
         let ret = path.get_by_path(&inner_path).await?;
         if ret.is_none() {
             let msg = format!(
-                "get_by_path but inner path not found! object={}, inner_path={}",
+                "get object from objectmap with inner_path but target path not exists! objectmap={}, inner_path={}",
                 req.object_id, inner_path,
             );
             warn!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+            return Err(BuckyError::new(BuckyErrorCode::InnerPathNotFound, msg));
         }
 
         let object_id = ret.unwrap();
@@ -88,8 +88,8 @@ impl NONObjectMapLoader {
 
         if ret.is_none() {
             let msg = format!(
-                "get_by_path but object not found! object={}, inner_path={}",
-                req.object_id, inner_path,
+                "get object from objectmap with inner_path but target object not found! objectmap={}, inner_path={}, target={}",
+                req.object_id, inner_path, object_id,
             );
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));

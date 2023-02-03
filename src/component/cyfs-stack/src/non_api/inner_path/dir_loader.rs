@@ -88,11 +88,11 @@ impl NONDirLoader {
             ret = desc.object_map.get(inner_path2);
             if ret.is_none() {
                 let msg = format!(
-                    "load dir with inner_path but target not found! dir={}, inner_path={}",
+                    "get object from dir with inner_path but target path not exists! dir={}, inner_path={}",
                     req.object_id, inner_path,
                 );
                 warn!("{}", msg);
-                return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
+                return Err(BuckyError::new(BuckyErrorCode::InnerPathNotFound, msg));
             }
         }
 
@@ -135,7 +135,7 @@ impl NONDirLoader {
                         .load_object_from_non(&req.common, &object_id, false)
                         .await?;
                     if ret.is_none() {
-                        let msg = format!("load dir inner_path object from noc but not found! dir={}, inner_path={}, file={}", 
+                        let msg = format!("get object from dir with inner_path but target file not found! dir={}, inner_path={}, file={}", 
                             req.object_id, inner_path, object_id);
                         warn!("{}", msg);
                         return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
