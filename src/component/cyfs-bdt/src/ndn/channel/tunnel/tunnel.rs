@@ -107,6 +107,19 @@ impl Uploaders {
         }
     }
 
+    pub fn cancel_by_error(&self, err: BuckyError) {
+        let sessions = {
+            let mut state = self.0.write().unwrap();
+            let sessions = state.sessions.clone();
+            state.sessions = vec![];
+            sessions
+        };
+       
+        for session in sessions {
+            session.cancel_by_error(err.clone());
+        }
+    }
+
     pub fn next_piece(&self, buf: &mut [u8]) -> usize {
         let mut try_count = 0;
         let len = loop {

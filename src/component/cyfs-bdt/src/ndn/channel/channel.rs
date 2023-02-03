@@ -290,9 +290,8 @@ impl Channel {
             task::spawn(async move {
                 let _ = session.wait_finish().await;
                 let mut state = channel.0.state.write().unwrap();
-                if state.tunnels.iter().find_map(|tunnel| tunnel.uploaders().remove(session.session_id())).is_some() {
-                    state.upload.canceled.insert(session.session_id().clone(), (session, bucky_time_now()));
-                }
+                let _ = state.tunnels.iter().find_map(|tunnel| tunnel.uploaders().remove(session.session_id()));
+                state.upload.canceled.insert(session.session_id().clone(), (session, bucky_time_now()));
             });
         }
         
@@ -577,29 +576,38 @@ impl Channel {
     pub fn on_time_escape(&self, now: Timestamp) {
         struct Elements {
             tunnels: Vec<DynamicChannelTunnel>, 
+            dead_tunnels: Vec<DynamicChannelTunnel>, 
             downloaders: Vec<DownloadSession>, 
         }
 
         let elements = {
             let mut state = self.0.state.write().unwrap();
-            let mut tunnels = state.tunnels.iter().filter_map(|t| {
-                if TunnelState::Dead != t.state() {
-                    Some(t.clone_as_tunnel())
+            let mut tunnels = vec![];
+            let mut dead_tunnels = vec![];
+            for tunnel in &state.tunnels {
+                if TunnelState::Dead != tunnel.state() {
+                    tunnels.push(tunnel.clone_as_tunnel());
                 } else {
-                    None
+                    dead_tunnels.push(tunnel.clone_as_tunnel());
                 }
-            }).collect();
+            };
+
             std::mem::swap(&mut tunnels, &mut state.tunnels);
             let downloaders = state.download.on_time_escape(now, self.config().msl);
             state.upload.on_time_escape(now, self.config().msl);
             Elements {
                 tunnels, 
+                dead_tunnels, 
                 downloaders
             }
         };
 
         for tunnel in elements.tunnels {
             let _ = tunnel.on_time_escape(now);
+        }
+
+        for tunnel in elements.dead_tunnels {
+            tunnel.uploaders().cancel_by_error(BuckyError::new(BuckyErrorCode::Timeout, "tunnel's dead"));
         }
 
         for session in elements.downloaders {

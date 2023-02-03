@@ -5,12 +5,21 @@ use cyfs_bdt::*;
 
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NDNTaskCancelStrategy {
     AutoCancel, // task auto finished when all source finished
     WaitingSource,
 }
+
+
+#[derive(Clone, Debug)]
+pub enum NDNTaskCancelSourceStrategy {
+    None, 
+    ZeroSpeed(Duration, Duration)
+}
+
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 struct ContextSourceIndex {
@@ -21,20 +30,25 @@ struct ContextSourceIndex {
 // use cyfs_bdt::
 struct ContextSourceDownloadState {
     update_at: Timestamp,
-    state: Option<DownloadSessionState>,
+    state: Option<DownloadSessionState>, 
 }
 
 #[derive(Clone)]
 pub(super) struct ContextSourceDownloadStateManager {
     all: Arc<Mutex<HashMap<ContextSourceIndex, ContextSourceDownloadState>>>,
     cancel_strategy: NDNTaskCancelStrategy,
+    cancel_source_strategy: NDNTaskCancelSourceStrategy
 }
 
 impl ContextSourceDownloadStateManager {
-    pub fn new(cancel_strategy: NDNTaskCancelStrategy) -> Self {
+    pub fn new(
+        cancel_strategy: NDNTaskCancelStrategy, 
+        cancel_source_strategy: NDNTaskCancelSourceStrategy
+    ) -> Self {
         Self {
             all: Arc::new(Mutex::new(HashMap::new())),
             cancel_strategy,
+            cancel_source_strategy
         }
     }
 
@@ -50,7 +64,32 @@ impl ContextSourceDownloadStateManager {
         let session = session.clone();
         let group = task.abs_group_path();
         async_std::task::spawn(async move {
-            let state = session.wait_finish().await;
+            let state =  match this.cancel_source_strategy {
+                NDNTaskCancelSourceStrategy::ZeroSpeed(atomic, timeout) => {
+                    {
+                        let session = session.clone();
+                        async_std::task::spawn(async move {
+                            let mut zero_speed_time = Duration::from_secs(0);
+                            loop {
+                                if async_std::future::timeout(atomic, session.wait_finish()).await.is_ok() {
+                                    break;
+                                }
+                                if session.cur_speed() == 0 {
+                                    zero_speed_time += atomic;
+                                    if zero_speed_time > timeout {
+                                        session.cancel_by_error(BuckyError::new(BuckyErrorCode::Timeout, "zero speed"));
+                                        break;
+                                    }
+                                } else {
+                                    zero_speed_time = Duration::from_secs(0);
+                                }
+                            }
+                        });
+                    }
+                    session.wait_finish().await
+                }, 
+                NDNTaskCancelSourceStrategy::None => session.wait_finish().await
+            };
             this.on_session_finished(&session, state, group);
         });
     }

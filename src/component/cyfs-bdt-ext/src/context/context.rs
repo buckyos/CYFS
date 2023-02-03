@@ -1,5 +1,5 @@
 use super::manager::*;
-use super::state::{ContextSourceDownloadStateManager, NDNTaskCancelStrategy};
+use super::state::{*};
 use cyfs_base::*;
 use cyfs_bdt::ndn::channel::DownloadSession;
 use cyfs_bdt::*;
@@ -8,6 +8,7 @@ use cyfs_core::TransContextObject;
 use async_std::sync::Mutex as AsyncMutex;
 use std::collections::LinkedList;
 use std::sync::Arc;
+use std::time::Duration;
 
 const CYFS_CONTEXT_OBJECT_EXPIRED_DATE: u64 = 1000 * 1000 * 10;
 
@@ -62,7 +63,10 @@ impl TransContextHolderInner {
             manager: Some(manager),
             value: TransContentValue::Context(value),
             referer: referer.into(),
-            state: ContextSourceDownloadStateManager::new(NDNTaskCancelStrategy::WaitingSource),
+            state: ContextSourceDownloadStateManager::new(
+                NDNTaskCancelStrategy::WaitingSource, 
+                NDNTaskCancelSourceStrategy::None
+            ),
         }
     }
 
@@ -82,7 +86,10 @@ impl TransContextHolderInner {
             manager: None,
             value: TransContentValue::Target(value),
             referer: referer.into(),
-            state: ContextSourceDownloadStateManager::new(NDNTaskCancelStrategy::AutoCancel),
+            state: ContextSourceDownloadStateManager::new(
+                NDNTaskCancelStrategy::AutoCancel, 
+                NDNTaskCancelSourceStrategy::ZeroSpeed(Duration::from_secs(1), Duration::from_secs(30))
+            ),
         }
     }
 
