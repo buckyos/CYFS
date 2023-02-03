@@ -400,7 +400,8 @@ impl TunnelDownloadState for UdpDownloadState {
             if now > last_pushed.time() {
                 match last_pushed {
                     LastPushed::PieceData(at) => {
-                        let interval = u64::min(self.config.block_interval.as_micros() as u64, 2 * (now - at));
+                        let interval = u64::min(2 * (now - at), self.config.udp.cc.min_rto.as_micros() as u64);
+                        let interval = u64::min(self.config.block_interval.as_micros() as u64, interval);
                         self.last_pushed = Some(LastPushed::PieceData(now));
                         self.next_send_time = Some(now + interval);
                     },

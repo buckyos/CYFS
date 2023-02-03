@@ -69,8 +69,13 @@ impl NdnStack {
             let ndn = self.clone();
             task::spawn(async move {
                 loop {
-                    ndn.on_time_escape(bucky_time_now());
-                    let _ = future::timeout(atomic_interval, future::pending::<()>()).await;
+                    let start = bucky_time_now();
+                    ndn.on_time_escape(start);
+                    let end = bucky_time_now();
+                    let escaped = Duration::from_micros(end - start);
+                    if escaped < atomic_interval {
+                        let _ = future::timeout(atomic_interval - escaped, future::pending::<()>()).await;
+                    }
                 }
             });
         }   
