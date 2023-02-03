@@ -4,13 +4,11 @@ use super::data::*;
 use super::sql::*;
 use cyfs_base::*;
 use cyfs_lib::*;
+use cyfs_util::SqliteConnectionHolder;
 
-use rusqlite::{named_params, Connection, OpenFlags, OptionalExtension, ToSql};
-use std::cell::RefCell;
+use rusqlite::{named_params, Connection, OptionalExtension, ToSql};
 use std::convert::{TryFrom, TryInto};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
-use thread_local::ThreadLocal;
 
 #[derive(Debug)]
 pub struct UpdateObjectMetaRequest<'a> {
@@ -37,10 +35,7 @@ pub(crate) struct SqliteMetaStorage {
 
     access: NamedObjecAccessHelper,
 
-    /* SQLite does not support multiple writers. */
-    read_conn: Arc<ThreadLocal<RefCell<Connection>>>,
-    write_conn: Arc<ThreadLocal<RefCell<Connection>>>,
-    conn_rw_lock: RwLock<u32>,
+    conn: SqliteConnectionHolder,
 }
 
 impl SqliteMetaStorage {
@@ -58,11 +53,9 @@ impl SqliteMetaStorage {
 
         let ret = Self {
             data_dir: root.to_owned(),
-            data_file,
+            data_file: data_file.clone(),
             access: NamedObjecAccessHelper::new(),
-            read_conn: Arc::new(ThreadLocal::new()),
-            write_conn: Arc::new(ThreadLocal::new()),
-            conn_rw_lock: RwLock::new(0),
+            conn: SqliteConnectionHolder::new(data_file),
         };
 
         if !file_exists {
@@ -91,46 +84,8 @@ impl SqliteMetaStorage {
         }
     }
 
-    fn get_write_conn(&self) -> BuckyResult<&RefCell<Connection>> {
-        self.write_conn.get_or_try(|| {
-            let ret = self.create_new_conn(false)?;
-            Ok(RefCell::new(ret))
-        })
-    }
-
-    fn get_read_conn(&self) -> BuckyResult<&RefCell<Connection>> {
-        self.read_conn.get_or_try(|| {
-            let ret = self.create_new_conn(true)?;
-            Ok(RefCell::new(ret))
-        })
-    }
-
-    fn create_new_conn(&self, read_only: bool) -> BuckyResult<Connection> {
-        let flags = if read_only {
-            OpenFlags::SQLITE_OPEN_READ_ONLY
-                | OpenFlags::SQLITE_OPEN_NO_MUTEX
-                | OpenFlags::SQLITE_OPEN_URI
-        } else {
-            OpenFlags::default()
-        };
-
-        let conn = Connection::open_with_flags(&self.data_file, flags).map_err(|e| {
-            let msg = format!("open noc db failed, db={}, {}", self.data_file.display(), e);
-            error!("{}", msg);
-
-            BuckyError::new(BuckyErrorCode::SqliteError, msg)
-        })?;
-
-        // 设置一个30s的锁重试
-        if let Err(e) = conn.busy_timeout(std::time::Duration::from_secs(30)) {
-            error!("init sqlite busy_timeout error! {}", e);
-        }
-
-        Ok(conn)
-    }
-
     fn init_db(&self) -> BuckyResult<()> {
-        let conn = self.get_write_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_write_conn()?;
 
         for sql in INIT_NAMEDOBJECT_META_SQL_LIST.iter() {
             info!("will exec: {}", sql);
@@ -148,7 +103,7 @@ impl SqliteMetaStorage {
     fn check_and_update(&self) -> BuckyResult<()> {
         use std::ops::DerefMut;
 
-        let mut conn = self.get_write_conn()?.borrow_mut();
+        let (mut conn, _lock) = self.conn.get_write_conn()?;
 
         let old = Self::get_db_version(&conn)?;
         if old < CURRENT_VERSION {
@@ -301,8 +256,7 @@ impl SqliteMetaStorage {
     pub async fn stat(&self) -> BuckyResult<NamedObjectMetaStat> {
         let sql = "SELECT COUNT(*) FROM data_namedobject_meta";
         let ret = {
-            let conn = self.get_read_conn()?.borrow();
-            let _lock = self.conn_rw_lock.read().unwrap();
+            let (conn, _lock) = self.conn.get_read_conn()?;
 
             conn.query_row(&sql, [], |row| {
                 let count: i64 = row.get(0).unwrap();
@@ -387,8 +341,7 @@ impl SqliteMetaStorage {
             ":access": req.access_string,
         };
 
-        let conn = self.get_write_conn()?.borrow();
-        let _lock = self.conn_rw_lock.write().unwrap();
+        let (conn, _lock) = self.conn.get_write_conn()?;
 
         let count = conn.execute(INSERT_NEW_SQL, params).map_err(|e| {
             let msg;
@@ -572,8 +525,7 @@ impl SqliteMetaStorage {
         };
 
         let count = {
-            let conn = self.get_write_conn()?.borrow();
-            let _lock = self.conn_rw_lock.write().unwrap();
+            let (conn, _lock) = self.conn.get_write_conn()?;
 
             conn.execute(UPDATE_SQL, params).map_err(|e| {
                 let msg = format!("noc meta update existing error: {} {}", req.object_id, e);
@@ -617,8 +569,7 @@ impl SqliteMetaStorage {
         };
 
         let ret = {
-            let conn = self.get_read_conn()?.borrow();
-            let _lock = self.conn_rw_lock.read().unwrap();
+            let (conn, _lock) = self.conn.get_read_conn()?;
 
             conn.query_row(QUERY_UPDATE_SQL, params, |row| {
                 Ok(NamedObjectMetaUpdateInfoRaw::try_from(row)?)
@@ -651,8 +602,7 @@ impl SqliteMetaStorage {
         };
 
         let ret = {
-            let conn = self.get_read_conn()?.borrow();
-            let _lock = self.conn_rw_lock.read().unwrap();
+            let (conn, _lock) = self.conn.get_read_conn()?;
 
             conn.query_row(QUERY_UPDATE_SQL, params, |row| {
                 Ok(NamedObjectMetaAccessInfoRaw::try_from(row)?)
@@ -728,8 +678,7 @@ impl SqliteMetaStorage {
         };
 
         let ret = {
-            let conn = self.get_read_conn()?.borrow();
-            let _lock = self.conn_rw_lock.read().unwrap();
+            let (conn, _lock) = self.conn.get_read_conn()?;
 
             conn.query_row(GET_SQL, params, |row| {
                 Ok(NamedObjectMetaDataRaw::try_from(row)?)
@@ -773,8 +722,7 @@ impl SqliteMetaStorage {
         };
 
         let count = {
-            let conn = self.get_write_conn()?.borrow();
-            let _lock = self.conn_rw_lock.write().unwrap();
+            let (conn, _lock) = self.conn.get_write_conn()?;
 
             conn.execute(UPDATE_SQL, params).map_err(|e| {
                 let msg = format!("noc meta update last access error: {} {}", req.object_id, e);
@@ -960,8 +908,7 @@ impl SqliteMetaStorage {
         };
 
         let count = {
-            let conn = self.get_write_conn()?.borrow();
-            let _lock = self.conn_rw_lock.write().unwrap();
+            let (conn, _lock) = self.conn.get_write_conn()?;
 
             conn.execute(&DELETE_SQL, params).map_err(|e| {
                 let msg = format!(
@@ -1052,8 +999,7 @@ impl SqliteMetaStorage {
         };
 
         let count = {
-            let conn = self.get_read_conn()?.borrow();
-            let _lock = self.conn_rw_lock.read().unwrap();
+            let (conn, _lock) = self.conn.get_read_conn()?;
 
             conn.query_row(&EXISTS_SQL, params, |row| {
                 let count: i64 = row.get(0).unwrap();
@@ -1196,8 +1142,7 @@ impl SqliteMetaStorage {
         let sql = UPDATE_SQL.replace("{}", &sqls.join(","));
 
         let count = {
-            let conn = self.get_write_conn()?.borrow();
-            let _lock = self.conn_rw_lock.write().unwrap();
+            let (conn, _lock) = self.conn.get_write_conn()?;
 
             conn.execute(&sql, params.as_slice()).map_err(|e| {
                 let msg = format!(

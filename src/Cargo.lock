@@ -2063,7 +2063,6 @@ dependencies = [
  "lru_time_cache",
  "once_cell",
  "rusqlite",
- "thread_local",
 ]
 
 [[package]]
@@ -2349,6 +2348,7 @@ dependencies = [
  "serde_json",
  "simple_logger 2.3.0",
  "sysinfo 0.27.7",
+ "thread_local",
  "toml",
  "url 2.3.0",
  "walkdir",

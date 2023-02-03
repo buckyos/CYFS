@@ -38,6 +38,7 @@ flexi_logger = '=0.19.5'
 log-panics = { version = '2.0', features = ['with-backtrace'] }
 sysinfo = '0.27'
 dirs = '4.0'
+thread_local = "1.1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = '0.3.6', features = [
