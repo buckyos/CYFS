@@ -2042,7 +2042,6 @@ dependencies = [
  "cyfs-util",
  "log 0.4.17",
  "rusqlite",
- "thread_local",
 ]
 
 [[package]]
@@ -2313,7 +2312,6 @@ dependencies = [
  "cyfs-util",
  "log 0.4.17",
  "rusqlite",
- "thread_local",
 ]
 
 [[package]]

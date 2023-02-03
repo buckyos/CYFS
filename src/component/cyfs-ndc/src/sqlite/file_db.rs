@@ -2,27 +2,18 @@ use super::file_data::*;
 use super::sql::*;
 use cyfs_base::*;
 use cyfs_lib::*;
+use cyfs_util::SqliteConnectionHolder;
 
 use rusqlite::{params, Connection, OptionalExtension};
-use std::cell::RefCell;
 use std::convert::{TryFrom, TryInto};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use thread_local::ThreadLocal;
 
+#[derive(Clone)]
 pub(crate) struct SqliteDBDataCache {
     data_file: PathBuf,
-    conn: Arc<ThreadLocal<RefCell<Connection>>>,
-}
-
-impl Clone for SqliteDBDataCache {
-    fn clone(&self) -> Self {
-        Self {
-            data_file: self.data_file.clone(),
-            conn: self.conn.clone(),
-        }
-    }
+    conn: Arc<SqliteConnectionHolder>,
 }
 
 impl SqliteDBDataCache {
@@ -50,8 +41,8 @@ impl SqliteDBDataCache {
         );
 
         let ret = Self {
-            data_file,
-            conn: Arc::new(ThreadLocal::new()),
+            data_file: data_file.clone(),
+            conn: Arc::new(SqliteConnectionHolder::new(data_file)),
         };
 
         if !file_exists {
@@ -70,44 +61,8 @@ impl SqliteDBDataCache {
         Ok(ret)
     }
 
-    fn get_conn(&self) -> BuckyResult<&RefCell<Connection>> {
-        self.conn.get_or_try(|| {
-            let ret = self.create_new_conn()?;
-            Ok(RefCell::new(ret))
-        })
-    }
-
-    fn create_new_conn(&self) -> BuckyResult<Connection> {
-        Connection::open(&self.data_file)
-            .map_err(|e| {
-                let msg = format!(
-                    "open ndc db failed, db={}, e={}",
-                    self.data_file.display(),
-                    e
-                );
-                error!("{}", msg);
-
-                BuckyError::new(BuckyErrorCode::SqliteError, msg)
-            })
-            .map(|conn| {
-                debug!(
-                    "open ndc db for thread={:?}, file={}",
-                    std::thread::current().id(),
-                    self.data_file.display()
-                );
-                assert!(conn.is_autocommit());
-
-                // 设置一个30s的锁重试
-                if let Err(e) = conn.busy_timeout(std::time::Duration::from_secs(30)) {
-                    error!("init sqlite busy_timeout error! {}", e);
-                }
-
-                conn
-            })
-    }
-
     fn init_db(&self) -> BuckyResult<()> {
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_write_conn()?;
 
         for sql in INIT_FILE_SQL_LIST.iter().chain(INIT_CHUNK_SQL_LIST.iter()) {
             info!("will exec: {}", sql);
@@ -146,7 +101,7 @@ impl SqliteDBDataCache {
         let file_hash = req.file.desc().content().hash().to_string();
         let len = req.file.desc().content().len();
 
-        let mut conn = self.get_conn()?.borrow_mut();
+        let (mut conn, _lock) = self.conn.get_write_conn()?;
 
         let tx = conn.transaction().map_err(|e| {
             let msg = format!("begin sqlite transation error: {}", e);
@@ -250,7 +205,7 @@ impl SqliteDBDataCache {
 
     pub fn remove_file(&self, req: &RemoveFileRequest) -> BuckyResult<usize> {
         let file_id = req.file_id.to_string();
-        let mut conn = self.get_conn()?.borrow_mut();
+        let (mut conn, _lock) = self.conn.get_write_conn()?;
 
         let tx = conn.transaction().map_err(|e| {
             let msg = format!("begin sqlite transation error: {}", e);
@@ -456,7 +411,7 @@ impl SqliteDBDataCache {
         &self,
         req: &GetFileByHashRequest,
     ) -> BuckyResult<Option<FileCacheData>> {
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_read_conn()?;
         let data = Self::get_file_main(&conn, &req.hash)?;
         if data.is_none() {
             return Ok(None);
@@ -484,7 +439,7 @@ impl SqliteDBDataCache {
     ) -> BuckyResult<Option<FileCacheData>> {
         let file_id = req.file_id.to_string();
 
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_read_conn()?;
         Self::get_file_by_file_id_impl(&conn, &file_id, req.flags)
     }
 
@@ -648,7 +603,7 @@ impl SqliteDBDataCache {
     ) -> BuckyResult<Vec<FileCacheData>> {
         let mut file_list = Vec::new();
 
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_read_conn()?;
 
         // 首先从quick_hash表查找对应的file_id列表，可能有多个
         let file_id_list = Self::get_file_list_by_quick_hash(&conn, &req.quick_hash, req.length)?;
@@ -714,7 +669,7 @@ impl SqliteDBDataCache {
 
     pub fn get_dirs_by_file(&self, req: &GetDirByFileRequest) -> BuckyResult<Vec<FileDirRef>> {
         let file_id = req.file_id.to_string();
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_read_conn()?;
 
         Self::get_dirs_by_file_id(&conn, &file_id)
     }
@@ -764,7 +719,7 @@ impl SqliteDBDataCache {
         let mut file_list = Vec::new();
         let chunk_id = req.chunk_id.to_string();
 
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_read_conn()?;
 
         // 首先查找chunk关联的所有file_id
         let file_id_list = Self::get_chunk_ref_objects_with_relation(
@@ -829,7 +784,7 @@ impl SqliteDBDataCache {
     pub fn insert_chunk(&self, req: &InsertChunkRequest) -> BuckyResult<()> {
         let chunk_id = req.chunk_id.to_string();
 
-        let mut conn = self.get_conn()?.borrow_mut();
+        let (mut conn, _lock) = self.conn.get_write_conn()?;
         let tx = conn.transaction().map_err(|e| {
             let msg = format!("begin sqlite transation error: {}", e);
             error!("{}", e);
@@ -1040,7 +995,7 @@ impl SqliteDBDataCache {
     pub fn remove_chunk(&self, req: &RemoveChunkRequest) -> BuckyResult<usize> {
         let chunk_id = req.chunk_id.to_string();
 
-        let mut conn = self.get_conn()?.borrow_mut();
+        let (mut conn, _lock) = self.conn.get_write_conn()?;
         let tx = conn.transaction().map_err(|e| {
             let msg = format!("begin sqlite transation error: {}", e);
             error!("{}", e);
@@ -1334,7 +1289,7 @@ impl SqliteDBDataCache {
 
     // 更新chunk的状态
     fn update_chunk_state(&self, req: &UpdateChunkStateRequest) -> BuckyResult<ChunkState> {
-        let conn = self.get_conn()?.borrow_mut();
+        let (conn, _lock) = self.conn.get_write_conn()?;
 
         Self::update_chunk_state_main(&conn, req)
     }
@@ -1451,7 +1406,7 @@ impl SqliteDBDataCache {
     ) -> BuckyResult<()> {
         let chunk_id = req.chunk_id.to_string();
 
-        let mut conn = self.get_conn()?.borrow_mut();
+        let (mut conn, _lock) = self.conn.get_write_conn()?;
         let tx = conn.transaction().map_err(|e| {
             let msg = format!("begin sqlite transation error: {}", e);
             error!("{}", e);
@@ -1498,7 +1453,7 @@ impl SqliteDBDataCache {
     pub fn update_chunk_ref_objects(&self, req: &UpdateChunkRefsRequest) -> BuckyResult<()> {
         let chunk_id = req.chunk_id.to_string();
 
-        let mut conn = self.get_conn()?.borrow_mut();
+        let (mut conn, _lock) = self.conn.get_write_conn()?;
         let tx = conn.transaction().map_err(|e| {
             let msg = format!("begin sqlite transation error: {}", e);
             error!("{}", e);
@@ -1544,7 +1499,7 @@ impl SqliteDBDataCache {
     }
 
     pub fn exists_chunks(&self, req: &ExistsChunkRequest) -> BuckyResult<Vec<bool>> {
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_read_conn()?;
 
         let states: Vec<String> = req
             .states
@@ -1596,7 +1551,7 @@ impl SqliteDBDataCache {
     pub fn get_chunk(&self, req: &GetChunkRequest) -> BuckyResult<Option<ChunkCacheData>> {
         let chunk_id = req.chunk_id.to_string();
 
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_read_conn()?;
         let data = Self::get_chunk_main(&conn, &chunk_id, &req.chunk_id)?;
         if data.is_none() {
             return Ok(None);
@@ -1657,7 +1612,7 @@ impl SqliteDBDataCache {
         &self,
         req: &Vec<GetChunkRequest>,
     ) -> BuckyResult<Vec<Option<ChunkCacheData>>> {
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_read_conn()?;
         let mut result_list = Vec::new();
         let mut chunk_id_list = Vec::new();
         for req in req {
@@ -1699,7 +1654,7 @@ impl SqliteDBDataCache {
     ) -> BuckyResult<Vec<String>> {
         let chunk_id = req.chunk_id.to_string();
 
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_read_conn()?;
         Self::get_chunk_trans_sessions_impl(&conn, &chunk_id)
     }
 
@@ -1739,7 +1694,7 @@ impl SqliteDBDataCache {
     ) -> BuckyResult<Vec<ChunkObjectRef>> {
         let chunk_id = req.chunk_id.to_string();
 
-        let conn = self.get_conn()?.borrow();
+        let (conn, _lock) = self.conn.get_read_conn()?;
         Self::get_chunk_ref_objects_impl(&conn, &chunk_id, &req.relation)
     }
 

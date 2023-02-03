@@ -3,15 +3,15 @@ use cyfs_base::*;
 use rusqlite::{Connection, OpenFlags};
 use std::cell::RefCell;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use thread_local::ThreadLocal;
 
 pub struct SqliteConnectionHolder {
     data_file: PathBuf,
 
     /* SQLite does not support multiple writers. */
-    read_conn: Arc<ThreadLocal<RefCell<Connection>>>,
-    write_conn: Arc<ThreadLocal<RefCell<Connection>>>,
+    read_conn: ThreadLocal<RefCell<Connection>>,
+    write_conn: ThreadLocal<RefCell<Connection>>,
     conn_rw_lock: RwLock<u32>,
 }
 
@@ -19,8 +19,8 @@ impl SqliteConnectionHolder {
     pub fn new(data_file: PathBuf) -> Self {
         Self {
             data_file,
-            read_conn: Arc::new(ThreadLocal::new()),
-            write_conn: Arc::new(ThreadLocal::new()),
+            read_conn: ThreadLocal::new(),
+            write_conn: ThreadLocal::new(),
             conn_rw_lock: RwLock::new(0),
         }
     }
@@ -57,11 +57,18 @@ impl SqliteConnectionHolder {
         };
 
         let conn = Connection::open_with_flags(&self.data_file, flags).map_err(|e| {
-            let msg = format!("open noc db failed, db={}, {}", self.data_file.display(), e);
+            let msg = format!("open db failed, db={}, {}", self.data_file.display(), e);
             error!("{}", msg);
 
             BuckyError::new(BuckyErrorCode::SqliteError, msg)
         })?;
+
+        info!(
+            "open db for thread={:?}, file={}",
+            std::thread::current().id(),
+            self.data_file.display()
+        );
+        assert!(conn.is_autocommit());
 
         // 设置一个30s的锁重试
         if let Err(e) = conn.busy_timeout(std::time::Duration::from_secs(30)) {
