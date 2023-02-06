@@ -15,7 +15,7 @@ pub enum NDNTaskCancelStrategy {
 
 
 #[derive(Clone, Debug)]
-pub enum NDNTaskCancelSourceStrategy {
+pub(crate) enum NDNTaskCancelSourceStrategy {
     None, 
     ZeroSpeed(Duration, Duration)
 }
@@ -197,11 +197,19 @@ impl ContextSourceDownloadStateManager {
             return;
         }
 
-        warn!(
-            "task all source finished or canceled! task={:?}, err={:?}",
-            task.abs_group_path(),
-            err,
-        );
+        if let Some(err) = &err {
+            warn!(
+                "task all source finished or canceled! task={:?}, err={}",
+                task.abs_group_path(),
+                err,
+            );
+        } else {
+            info!(
+                "task all source finished! task={:?}",
+                task.abs_group_path(),
+            );
+        }
+        
 
         if let Some(e) = err {
             warn!(
