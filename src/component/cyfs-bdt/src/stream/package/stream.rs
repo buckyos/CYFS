@@ -247,7 +247,6 @@ impl OnPackage<SessionData> for PackageStream {
                 OnPackageResult::Handled => {
                     Ok(OnPackageResult::Handled)
                 }, 
-                _ => unreachable!()
             }
         }?;
         let _ = self.send_packages(packages);
