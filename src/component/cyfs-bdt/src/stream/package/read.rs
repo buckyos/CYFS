@@ -344,8 +344,8 @@ impl ReadProvider {
         ret
     }
 
-    pub fn close(&self, stream: &PackageStream) {
-        let result = {
+    pub fn close(&self, _: &PackageStream) {
+        let _ = {
             let state = &mut *cyfs_debug::lock!(self.0).unwrap();
             match state {
                 ReadProviderState::Open(provider) => {
