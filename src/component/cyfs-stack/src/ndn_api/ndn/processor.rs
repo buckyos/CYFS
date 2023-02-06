@@ -4,18 +4,18 @@ use super::super::handler::*;
 use super::super::ndc::NDCLevelInputProcessor;
 use super::super::ndc::NDNObjectLoader;
 use super::NDNOutputFailHandleProcessor;
-use crate::NamedDataComponents;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::ndn::*;
 use crate::non::*;
 use crate::router_handler::RouterHandlersManager;
+use crate::NamedDataComponents;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
+use cyfs_bdt_ext::{ContextManager, NDNTaskCancelStrategy, TransContextHolder};
 use cyfs_chunk_cache::ChunkManagerRef;
 use cyfs_lib::*;
-use cyfs_bdt_ext::{TransContextHolder, ContextManager};
 
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -56,11 +56,8 @@ impl NDNLevelInputProcessor {
         forward: ForwardProcessorManager,
         fail_handler: ObjectFailHandler,
     ) -> NDNInputProcessorRef {
-        let ndc_processor = NDCLevelInputProcessor::new(
-            acl.clone(),
-            named_data_components,
-            non_processor.clone(),
-        );
+        let ndc_processor =
+            NDCLevelInputProcessor::new(acl.clone(), named_data_components, non_processor.clone());
 
         // target object loader
         let target_object_loader = NDNObjectLoader::new(non_processor);
@@ -106,12 +103,18 @@ impl NDNLevelInputProcessor {
         acl_processor
     }
 
-    async fn get_data_forward(&self, context: TransContextHolder) -> BuckyResult<NDNInputProcessorRef> {
+    async fn get_data_forward(
+        &self,
+        context: TransContextHolder,
+    ) -> BuckyResult<NDNInputProcessorRef> {
         // ensure target device in local, used for bdt stack
         // self.forward.get(&target).await?;
 
         let non_target = context.non_target().await.ok_or_else(|| {
-            let msg = format!("ndn get_file but non target not exists! {}", context.debug_string());
+            let msg = format!(
+                "ndn get_file but non target not exists! {}",
+                context.debug_string()
+            );
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::NotFound, msg)
         })?;
@@ -125,8 +128,11 @@ impl NDNLevelInputProcessor {
 
         // 增加前置的object加载器
         // 通过合适的non processor加载目标object
-        let processor =
-            NDNForwardObjectProcessor::new(non_target, self.target_object_loader.clone(), processor);
+        let processor = NDNForwardObjectProcessor::new(
+            non_target,
+            self.target_object_loader.clone(),
+            processor,
+        );
 
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(
@@ -208,19 +214,30 @@ impl NDNLevelInputProcessor {
 
     async fn get_data_processor(
         &self,
-        req: &NDNGetDataInputRequest
+        req: &NDNGetDataInputRequest,
     ) -> BuckyResult<NDNInputProcessorRef> {
         match &req.context {
             Some(context) => {
                 let referer = BdtDataRefererInfo::from(req).encode_string();
-                let context = self.context_manager.create_download_context_from_trans_context(&req.common.source.dec, referer, context.as_str()).await?;
+                let context = self
+                    .context_manager
+                    .create_download_context_from_trans_context(
+                        &req.common.source.dec,
+                        referer,
+                        context.as_str(),
+                        NDNTaskCancelStrategy::AutoCancel,
+                    )
+                    .await?;
                 let processor = self.get_data_forward(context).await?;
                 Ok(processor)
             }
             None => {
                 if let Some(device_id) = self.get_target(req.common.target.as_ref())? {
                     let referer = BdtDataRefererInfo::from(req).encode_string();
-                    let context =self.context_manager.create_download_context_from_target(referer, device_id).await?;
+                    let context = self
+                        .context_manager
+                        .create_download_context_from_target(referer, device_id)
+                        .await?;
                     let processor = self.get_data_forward(context).await?;
                     Ok(processor)
                 } else {
@@ -253,8 +270,7 @@ impl NDNLevelInputProcessor {
         if let Some(device_id) = self.get_target(req.common.target.as_ref())? {
             let msg = format!(
                 "ndn put_data to target not support! chunk={}, target={}",
-                req.object_id,
-                device_id,
+                req.object_id, device_id,
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg));

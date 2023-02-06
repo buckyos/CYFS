@@ -3,7 +3,7 @@ use super::chunk_task::DownloadChunkParam;
 use super::file_task::DownloadFileParam;
 use super::verify_file_task::*;
 use cyfs_bdt_ext::{
-    ChunkListReaderAdapter, ChunkWriter, LocalChunkWriter, LocalFileWriter, TransContextHolder,
+    ChunkListReaderAdapter, ChunkWriter, LocalChunkWriter, LocalFileWriter, TransContextHolder, NDNTaskCancelStrategy,
 };
 use crate::trans_api::{DownloadTaskTracker, TransStore};
 use crate::NamedDataComponents;
@@ -171,6 +171,7 @@ impl DownloadFileTask {
                         &self.params.dec_id,
                         self.params.referer.clone(),
                         context,
+                        NDNTaskCancelStrategy::WaitingSource,
                     )
                     .await
             }

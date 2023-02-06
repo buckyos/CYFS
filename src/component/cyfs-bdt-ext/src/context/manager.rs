@@ -1,4 +1,5 @@
 use super::context::*;
+use super::state::NDNTaskCancelStrategy;
 use cyfs_base::*;
 use cyfs_bdt::*;
 use cyfs_core::*;
@@ -36,16 +37,19 @@ impl ContextManager {
         if OBJECT_ID_BASE58_RANGE.contains(&s.len()) {
             match ObjectId::from_base58(s) {
                 Ok(ret) => return TransContextRef::Object(ret),
-                Err(_) => {},
+                Err(_) => {}
             }
         } else if OBJECT_ID_BASE36_RANGE.contains(&s.len()) {
             match ObjectId::from_base36(s) {
                 Ok(ret) => return TransContextRef::Object(ret),
                 Err(_) => {}
             }
-        } 
-            
-        TransContextRef::Path((TransContextPath::fix_path(s).to_string(), source_dec.to_owned()))
+        }
+
+        TransContextRef::Path((
+            TransContextPath::fix_path(s).to_string(),
+            source_dec.to_owned(),
+        ))
     }
 
     pub async fn create_download_context_from_trans_context(
@@ -53,10 +57,12 @@ impl ContextManager {
         source_dec: &ObjectId,
         referer: impl Into<String>,
         trans_context: &str,
+        task_cancel_strategy: NDNTaskCancelStrategy,
     ) -> BuckyResult<TransContextHolder> {
         let ref_id = Self::decode_context_id_from_string(source_dec, trans_context);
 
-        let holder = TransContextHolder::new_context(self.clone(), ref_id, referer);
+        let holder =
+            TransContextHolder::new_context(self.clone(), ref_id, referer, task_cancel_strategy);
         holder.init().await?;
 
         Ok(holder)
@@ -78,8 +84,7 @@ impl ContextManager {
         }
 
         let device = ret.unwrap();
-        let holder =
-            TransContextHolder::new_target(target, device.into_desc(), referer);
+        let holder = TransContextHolder::new_target(target, device.into_desc(), referer);
 
         Ok(holder)
     }
@@ -89,8 +94,7 @@ impl ContextManager {
         target: DeviceId,
         target_desc: DeviceDesc,
     ) -> TransContextHolder {
-        let holder =
-            TransContextHolder::new_target(target, target_desc, referer);
+        let holder = TransContextHolder::new_target(target, target_desc, referer);
 
         holder
     }
@@ -124,8 +128,12 @@ impl ContextManager {
         }
     }
 
-    /* path likes /a/b/c $/a/b/c */  
-    pub async fn search_context(&self, dec_id: Option<&ObjectId>, path: &str) -> Option<Arc<ContextItem>> {
+    /* path likes /a/b/c $/a/b/c */
+    pub async fn search_context(
+        &self,
+        dec_id: Option<&ObjectId>,
+        path: &str,
+    ) -> Option<Arc<ContextItem>> {
         assert!(TransContextPath::verify(path));
 
         let mut current_path = path;
@@ -176,7 +184,11 @@ impl ContextManager {
         }
     }
 
-    pub async fn get_context_by_path(&self, dec_id: Option<ObjectId>, context_path: &str) -> Option<Arc<ContextItem>> {
+    pub async fn get_context_by_path(
+        &self,
+        dec_id: Option<ObjectId>,
+        context_path: &str,
+    ) -> Option<Arc<ContextItem>> {
         let object_id = TransContext::gen_context_id(dec_id, context_path);
         self.get_context(&object_id).await
     }
@@ -277,7 +289,7 @@ mod test {
             println!("{}", current_path);
 
             let _id = TransContext::gen_context_id(None, current_path);
-           
+
             if current_path == "/" {
                 error!("search trans context by path but not found! path={}", path);
                 break;

@@ -50,6 +50,7 @@ impl TransContextHolderInner {
         manager: ContextManager,
         ref_id: TransContextRef,
         referer: impl Into<String>,
+        task_cancel_strategy: NDNTaskCancelStrategy,
     ) -> Self {
         let value = ContextValue {
             ref_id,
@@ -64,7 +65,7 @@ impl TransContextHolderInner {
             value: TransContentValue::Context(value),
             referer: referer.into(),
             state: ContextSourceDownloadStateManager::new(
-                NDNTaskCancelStrategy::WaitingSource, 
+                task_cancel_strategy, 
                 NDNTaskCancelSourceStrategy::None
             ),
         }
@@ -306,9 +307,10 @@ impl TransContextHolder {
         manager: ContextManager,
         ref_id: TransContextRef,
         referer: impl Into<String>,
+        task_cancel_strategy: NDNTaskCancelStrategy,
     ) -> Self {
         Self(Arc::new(TransContextHolderInner::new_context(
-            manager, ref_id, referer,
+            manager, ref_id, referer, task_cancel_strategy,
         )))
     }
 

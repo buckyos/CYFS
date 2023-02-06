@@ -485,7 +485,7 @@ impl LocalTransService {
             .download()
             .sub_task(&group)
             .ok_or_else(|| {
-                let msg = format!("get task group but ot found! group={}", group);
+                let msg = format!("get task group but not found! group={}", group);
                 error!("{}", msg);
                 BuckyError::new(BuckyErrorCode::NotFound, msg)
             })?;
