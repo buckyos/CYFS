@@ -8,7 +8,6 @@ use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::ndn::*;
 use crate::non::*;
-use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
@@ -33,7 +32,6 @@ pub(crate) struct NDNRouter {
     // object_loader
     object_loader: NDNObjectLoader,
 
-    ood_resolver: OodResolver,
     zone_manager: ZoneManagerRef,
 
     router_handlers: RouterHandlersManager,
@@ -51,7 +49,6 @@ impl NDNRouter {
         bdt_stack: StackGuard,
         named_data_components: &NamedDataComponents,
         non_router: NONInputProcessorRef,
-        ood_resolver: OodResolver,
         zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
         forward: ForwardProcessorManager,
@@ -70,7 +67,6 @@ impl NDNRouter {
             chunk_manager: named_data_components.chunk_manager.clone(),
             object_loader,
             ndc_processor,
-            ood_resolver,
             zone_manager,
             router_handlers,
             forward,
@@ -86,7 +82,6 @@ impl NDNRouter {
         bdt_stack: StackGuard,
         named_data_components: &NamedDataComponents,
         non_router: NONInputProcessorRef,
-        ood_resolver: OodResolver,
         zone_manager: ZoneManagerRef,
         router_handlers: RouterHandlersManager,
         forward: ForwardProcessorManager,
@@ -98,7 +93,6 @@ impl NDNRouter {
             bdt_stack,
             named_data_components,
             non_router,
-            ood_resolver,
             zone_manager,
             router_handlers,
             forward,

@@ -312,7 +312,6 @@ impl CyfsStackImpl {
             forward_manager.clone(),
             acl_manager.clone(),
             zone_manager.clone(),
-            ood_resoler.clone(),
             router_handlers.clone(),
             raw_meta_cache.clone(),
             fail_handler.clone(),
