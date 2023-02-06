@@ -274,7 +274,7 @@ impl CyfsStackImpl {
         forward_manager.start();
 
         // ood_resolver
-        let ood_resoler = OodResolver::new(device_id.clone(), obj_searcher.clone().into_ref());
+        let ood_resoler = OodResolver::new(device_id.clone(), device_manager.clone_cache(), obj_searcher.clone().into_ref());
 
         // crypto
         let crypto = ObjectCrypto::new(

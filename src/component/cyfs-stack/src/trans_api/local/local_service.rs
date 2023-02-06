@@ -128,7 +128,7 @@ impl LocalTransService {
         }
     }
 
-    //添加一个文件到本地ndc+tracker缓存，并根据配置开启一个上传任务
+    // 添加一个文件到本地ndc+tracker缓存，并根据配置开启一个上传任务
     pub async fn publish_file(
         &self,
         req: TransPublishFileInputRequest,
@@ -297,7 +297,10 @@ impl LocalTransService {
                 return Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg));
             }
             req.device_list = device_list;
+        } else {
+            self.ood_resolver.ensure_device_list(&req.device_list).await?;
         }
+
         Self::ensure_dir(local_path).await?;
 
         let referer = BdtDataRefererInfo {
