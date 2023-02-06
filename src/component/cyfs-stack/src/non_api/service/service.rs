@@ -6,7 +6,6 @@ use crate::NamedDataComponents;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::{MetaCacheRef, ObjectFailHandler};
 use crate::ndn_api::*;
-use crate::resolver::OodResolver;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
 use crate::{acl::*, non::*};
@@ -33,8 +32,6 @@ impl NONService {
         forward_manager: ForwardProcessorManager,
         acl: AclManagerRef,
         zone_manager: ZoneManagerRef,
-        ood_resovler: OodResolver,
-
         router_handlers: RouterHandlersManager,
         meta_cache: MetaCacheRef,
         fail_handler: ObjectFailHandler,
@@ -96,7 +93,6 @@ impl NONService {
             acl,
             bdt_stack,
             named_data_components,
-            ood_resovler,
             zone_manager,
             router_handlers.clone(),
             router,
