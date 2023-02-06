@@ -70,7 +70,11 @@ impl BdtNDNDataAclProcessor {
         info!("will process bdt get_data acl request: {}", req);
 
         let referer = if let Some(referer) = req.referer {
-            Some(BdtDataRefererInfo::decode_string(&referer)?)
+            if !referer.is_empty() {
+                Some(BdtDataRefererInfo::decode_string(&referer)?)
+            } else {
+                None
+            }            
         } else {
             None
         };
