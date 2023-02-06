@@ -743,4 +743,8 @@ impl CcImpl for Bbr {
 
     fn on_time_escape(&mut self, _: Timestamp) {
     }
+
+    fn rate(&self) -> u64 {
+        self.max_bandwidth.get_estimate()
+    }
 }

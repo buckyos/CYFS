@@ -111,7 +111,7 @@ impl Ledbat {
 
 
 impl CcImpl for Ledbat {
-    fn on_sent(&mut self, now: Timestamp, bytes: u64, last_packet_number: u64) {
+    fn on_sent(&mut self, _: Timestamp, _: u64, _: u64) {
     }
 
     fn cwnd(&self) -> u64 {
@@ -156,6 +156,10 @@ impl CcImpl for Ledbat {
 
     fn on_time_escape(&mut self, now: Timestamp) {
         self.est_delay.check_roll(&self.config, now);   
+    }
+
+    fn rate(&self) -> u64 {
+        0
     }
 }
 
