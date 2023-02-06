@@ -5,6 +5,7 @@ use crate::{
 
 pub trait CcImpl: Send {
     fn on_sent(&mut self, now: Timestamp, bytes: u64, last_packet_number: u64);
+    fn rate(&self) -> u64;
     fn cwnd(&self) -> u64;
     fn on_estimate(&mut self, rtt: Duration, rto: Duration, delay: Duration, app_limited: bool);
     fn on_ack(&mut self, flight: u64, ack: u64, largest_packet_num_acked: Option<u64>, sent_time: Timestamp, app_limited: bool);

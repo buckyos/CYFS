@@ -248,6 +248,18 @@ impl WriteProvider {
             _ => {}
         }
     }
+
+    pub fn rate(&self) -> u64 {
+        let state = &mut *cyfs_debug::lock!(self.0).unwrap();
+        match state {
+            WriteProviderState::Open(provider) => {
+                provider.cc.rate()
+            }
+            _ => {
+                0
+            }
+        }
+    }
 }
 
 impl OnPackage<SessionData, (&PackageStream, &mut Vec<DynamicPackage>)> for WriteProvider {

@@ -162,4 +162,8 @@ impl CongestionControl {
     pub fn on_time_escape(&mut self, now: Timestamp) {
         self.cc.on_time_escape(now)
     }
+
+    pub fn rate(&self) -> u64 {
+        self.cc.rate()
+    }
 }
