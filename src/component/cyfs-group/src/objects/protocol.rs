@@ -10,7 +10,7 @@ use cyfs_core::{
 use cyfs_lib::NONObjectInfo;
 use sha2::Digest;
 
-#[derive(RawEncode, RawDecode, PartialEq, Eq, Ord, Clone)]
+#[derive(RawEncode, RawDecode, PartialEq, Eq, Ord, Clone, Debug)]
 pub enum SyncBound {
     Height(u64),
     Round(u64),

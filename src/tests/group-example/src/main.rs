@@ -141,7 +141,8 @@ mod Common {
             device.signs_mut().set_body_sign(body_signature);
 
             log::info!(
-                "people: {:?}, device: {:?}, public-key: {:?}, private-key: {:?}, sign: {:?}, object: {:?}",
+                "people: {:?}/{:?}, device: {:?}, public-key: {:?}, private-key: {:?}, sign: {:?}, object: {:?}",
+                owner.name().unwrap(),
                 owner.desc().object_id(),
                 device.desc().object_id(),
                 private_key.public().to_hex().unwrap().split_at(32).0,
