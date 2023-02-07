@@ -53,10 +53,10 @@ struct CcImpl {
 }
 
 impl CcImpl {
-    fn new(config: &cc::Config) -> Self {
+    fn new(config: &cc::Config, init_seq: TempSeq) -> Self {
         Self {
             est_stubs: LinkedList::new(), 
-            est_seq: TempSeqGenerator::new(), 
+            est_seq: TempSeqGenerator::from(init_seq), 
             on_air: 0, 
             cc: CongestionControl::new(PieceData::max_payload(), config), 
             no_resp_counter: 0, 
@@ -95,7 +95,7 @@ impl UdpTunnel {
         config: channel::Config, 
         raw_tunnel: RawTunnel, 
         active_timestamp: Timestamp) -> Self {
-        let cc = CcImpl::new(&config.udp.cc);
+        let cc = CcImpl::new(&config.udp.cc, raw_tunnel.owner().map(|t| t.generate_sequence()).unwrap_or_default());
         Self(Arc::new(TunnelImpl {
             config, 
             raw_tunnel, 
@@ -212,19 +212,17 @@ impl ChannelTunnel for UdpTunnel {
         if let Some(est_seq) = piece.est_seq {
             if let Some(resp) = {
                 debug!("{} got estimate seqenuce:{:?}", self, est_seq);
+
                 let mut est_stub = self.0.resp_estimate.lock().unwrap();
                 est_stub.recved += 1;
                 if est_stub.seq < est_seq {
-                    let resp = ChannelEstimate {
-                        sequence: est_seq, 
-                        recved: est_stub.recved,
-                    };
                     est_stub.seq = est_seq;
-
-                    Some(resp)
-                } else {
-                    None
-                }
+                } 
+                let resp = ChannelEstimate {
+                    sequence: est_seq, 
+                    recved: est_stub.recved,
+                };
+                Some(resp)
             } {
                 let tunnel = &self.0.raw_tunnel;
                 let mut buffer = vec![0u8; tunnel.raw_data_header_len() + resp.raw_measure(&None).unwrap()];

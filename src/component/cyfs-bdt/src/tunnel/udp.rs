@@ -293,7 +293,7 @@ impl Tunnel {
     }
 
 
-    fn owner(&self) -> Option<TunnelContainer> {
+    pub fn owner(&self) -> Option<TunnelContainer> {
         let state = &*self.0.state.read().unwrap();
         match state {
             TunnelState::Connecting(connecting) => Some(connecting.container.clone()),  
