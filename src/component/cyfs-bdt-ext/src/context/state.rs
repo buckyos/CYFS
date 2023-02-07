@@ -68,6 +68,7 @@ impl ContextSourceDownloadStateManager {
                 NDNTaskCancelSourceStrategy::ZeroSpeed(atomic, timeout) => {
                     {
                         let session = session.clone();
+                        let group = group.clone();
                         async_std::task::spawn(async move {
                             let mut zero_speed_time = Duration::from_secs(0);
                             loop {
@@ -76,7 +77,20 @@ impl ContextSourceDownloadStateManager {
                                 }
                                 if session.cur_speed() == 0 {
                                     zero_speed_time += atomic;
+                                    info!(
+                                        "task session running but no speed, task={:?}, chunk={}, session={:?}, duration={:?}",
+                                        group,
+                                        session.chunk(),
+                                        session.session_id(),
+                                        zero_speed_time
+                                    );
                                     if zero_speed_time > timeout {
+                                        error!(
+                                            "task session zero speed for long time cancel it, task={:?}, chunk={}, session={:?}",
+                                            group,
+                                            session.chunk(),
+                                            session.session_id(),
+                                        );
                                         session.cancel_by_error(BuckyError::new(BuckyErrorCode::Timeout, "zero speed"));
                                         break;
                                     }
