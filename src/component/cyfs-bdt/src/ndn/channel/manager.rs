@@ -26,28 +26,23 @@ struct ChannelGuard {
 }
 
 impl ChannelGuard {
-    fn create(&mut self) -> Channel {
-        if self.reserving.is_some() {
-            self.reserving = None;
-        }
-        self.channel.clone()
-    }
-
     fn get(&self) -> Channel {
         self.channel.clone()
     }
 
     fn check(&mut self, when: Timestamp) -> bool {
-        if let Some(expire_at) = self.reserving {
+        if self.channel.ref_count() > 1 {
+            self.reserving = None;
+            true
+        } else if let Some(expire_at) = self.reserving {
             if when > expire_at {
+                info!("{} expired at {}", self.channel, expire_at);
                 false
             } else {
                 true
             }
         } else {
-            if self.channel.ref_count() == 1 {
-                self.reserving = Some(when + self.channel.config().reserve_timeout.as_micros() as u64);
-            }
+            self.reserving = Some(when + self.channel.config().reserve_timeout.as_micros() as u64);
             true
         }
     }
@@ -73,7 +68,8 @@ pub struct ChannelManager(Arc<ManagerImpl>);
 
 impl std::fmt::Display for ChannelManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ChannelManager")
+        let stack = Stack::from(&self.0.stack);
+        write!(f, "ChannelManager:{{local:{}}}", stack.local_device_id())
     }
 }
 
@@ -113,7 +109,7 @@ impl ChannelManager {
         let tunnel = stack.tunnel_manager().create_container(remote_const)?;
         let mut channels = self.0.channels.write().unwrap();
 
-        Ok(channels.entries.get_mut(&remote).map(|guard| guard.create())
+        Ok(channels.entries.get_mut(&remote).map(|guard| guard.get())
         .map_or_else(|| {
             info!("{} create channel on {}", self, remote);
 
@@ -148,6 +144,7 @@ impl ChannelManager {
             }
         }
         for remote in remove {
+            info!("{} will remove channel for not used, channel={}", self, remote);
             channels.entries.remove(&remote);
         }
 
