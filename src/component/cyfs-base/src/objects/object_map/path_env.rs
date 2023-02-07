@@ -80,7 +80,7 @@ impl ObjectMapPathOpEnv {
                 "path_op_env bind root snapshot: sid={}, root={}",
                 self.sid, root
             );
-            let path = ObjectMapPath::new(root.clone(), self.cache.clone());
+            let path = ObjectMapPath::new(root.clone(), self.cache.clone(), true);
 
             ObjectMapPathSnapshot {
                 root: RwLock::new(root),
