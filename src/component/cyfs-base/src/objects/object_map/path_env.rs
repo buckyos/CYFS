@@ -50,7 +50,7 @@ impl Drop for ObjectMapPathOpEnv {
 }
 
 impl ObjectMapPathOpEnv {
-    pub(crate) async fn new(
+    pub(crate) fn new(
         sid: u64,
         root_holder: &ObjectMapRootHolder,
         lock: &ObjectMapPathLock,
