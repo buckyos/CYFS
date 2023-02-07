@@ -3,8 +3,8 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 use async_std::channel::{Receiver, Sender};
 use cyfs_base::{
     bucky_time_to_system_time, BuckyError, BuckyErrorCode, BuckyResult, Group, NamedObject,
-    ObjectDesc, ObjectId, ObjectLink, RawConvertTo, RawDecode, RawEncode, RsaCPUObjectSigner,
-    SignatureSource, Signer,
+    ObjectDesc, ObjectId, ObjectLink, OwnerObjectDesc, RawConvertTo, RawDecode, RawEncode,
+    RsaCPUObjectSigner, SignatureSource, Signer,
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{
@@ -234,13 +234,23 @@ impl HotstuffRunner {
                 .committee
                 .get_leader(Some(block.group_chunk_id()), block.round())
                 .await?;
-            if &leader != block.owner() {
-                log::warn!(
-                    "receive block from invalid leader({}), expected {}",
-                    block.owner(),
-                    leader
-                );
-                return Err(BuckyError::new(BuckyErrorCode::Ignored, "invalid leader"));
+            let leader_owner = self
+                .non_driver
+                .get_device(&leader)
+                .await?
+                .desc()
+                .owner()
+                .clone();
+            match leader_owner.as_ref() {
+                Some(owner) if owner == block.owner() => {}
+                _ => {
+                    log::warn!(
+                        "receive block from invalid leader({}), expected {}",
+                        block.owner(),
+                        leader
+                    );
+                    return Err(BuckyError::new(BuckyErrorCode::Ignored, "invalid leader"));
+                }
             }
         }
 
@@ -489,7 +499,7 @@ impl HotstuffRunner {
         if let Some(vote) = self.make_vote(block).await {
             let next_leader = self.committee.get_leader(None, self.round + 1).await?;
 
-            if self.local_id == next_leader {
+            if self.local_device_id == next_leader {
                 self.handle_vote(&vote, Some(block), remote).await?;
             } else {
                 self.network_sender
@@ -628,7 +638,7 @@ impl HotstuffRunner {
     ) -> BuckyResult<()> {
         self.process_qc(&Some(qc)).await;
 
-        if self.local_id == self.committee.get_leader(None, self.round).await? {
+        if self.local_device_id == self.committee.get_leader(None, self.round).await? {
             self.generate_block(None).await;
         }
         Ok(())
@@ -642,6 +652,18 @@ impl HotstuffRunner {
         if timeout.round < self.round
             || timeout.high_qc.as_ref().map_or(0, |qc| qc.round) >= timeout.round
         {
+            if let Some(tc) = self.tc.as_ref() {
+                // if there is a timeout-qc, notify the remote to advance the round
+                if tc.round + 1 == self.round {
+                    self.network_sender
+                        .post_message(
+                            HotstuffMessage::Timeout(tc.clone()),
+                            self.rpath.clone(),
+                            &remote,
+                        )
+                        .await;
+                }
+            }
             return Ok(());
         }
 
@@ -682,7 +704,7 @@ impl HotstuffRunner {
         self.advance_round(tc.round).await;
         self.tc = Some(tc.clone());
 
-        if self.local_id == self.committee.get_leader(None, self.round).await? {
+        if self.local_device_id == self.committee.get_leader(None, self.round).await? {
             self.generate_block(Some(tc)).await;
             Ok(())
         } else {
@@ -735,7 +757,7 @@ impl HotstuffRunner {
         self.advance_round(tc.round).await;
         self.tc = Some(tc.clone());
 
-        if self.local_id == self.committee.get_leader(None, self.round).await? {
+        if self.local_device_id == self.committee.get_leader(None, self.round).await? {
             self.generate_block(Some(tc.clone())).await;
         }
         Ok(())
@@ -753,30 +775,20 @@ impl HotstuffRunner {
             }
         };
 
-        match self.tc.as_ref() {
-            Some(tc) => {
-                if tc.round + 1 == self.round {
-                    self.broadcast(HotstuffMessage::Timeout(tc.clone()), &latest_group)
-                        .await;
-                }
-            }
-            None => {
-                let timeout = HotstuffTimeoutVote::new(
-                    self.high_qc.clone(),
-                    self.round,
-                    self.local_device_id,
-                    &self.signer,
-                )
-                .await?;
+        let timeout = HotstuffTimeoutVote::new(
+            self.high_qc.clone(),
+            self.round,
+            self.local_device_id,
+            &self.signer,
+        )
+        .await?;
 
-                self.store.set_last_vote_round(self.round).await?;
+        self.store.set_last_vote_round(self.round).await?;
 
-                self.handle_timeout(&timeout, self.local_id).await;
+        self.handle_timeout(&timeout, self.local_id).await;
 
-                self.broadcast(HotstuffMessage::TimeoutVote(timeout), &latest_group)
-                    .await;
-            }
-        }
+        self.broadcast(HotstuffMessage::TimeoutVote(timeout), &latest_group)
+            .await;
 
         Ok(())
     }
@@ -1032,7 +1044,7 @@ impl HotstuffRunner {
         self.timer.reset(duration);
 
         if let Ok(leader) = self.committee.get_leader(None, self.round).await {
-            if leader == self.local_id {
+            if leader == self.local_device_id {
                 match max_round_block {
                     Some(max_round_block)
                         if max_round_block.owner() == &self.local_id
