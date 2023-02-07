@@ -58,15 +58,6 @@ impl TargetDataManager {
             return Ok((zero_bytes_reader(), 0, None));
         }
 
-        info!(
-            "will get file data from target: {:?}, file={}, file_len={}, len={}, ranges={:?}",
-            self.context.debug_string(),
-            file_id,
-            file_obj.len(),
-            total_size,
-            ranges
-        );
-
         let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
 
         let (id, reader) = cyfs_bdt::download_file(
@@ -80,6 +71,16 @@ impl TargetDataManager {
             error!("download file error! file={}, {}", file_id, e);
             e
         })?;
+
+        info!(
+            "get file data from target: {:?}, file={}, file_len={}, len={}, ranges={:?}, task={:?}",
+            self.context.debug_string(),
+            file_id,
+            file_obj.len(),
+            total_size,
+            ranges,
+            reader.task().abs_group_path(),
+        );
 
         let reader = ChunkListCacheReader::new(
             self.chunk_manager.clone(),
@@ -127,14 +128,6 @@ impl TargetDataManager {
             return Ok((zero_bytes_reader(), 0, None));
         }
 
-        info!(
-            "will get chunk data from target: {}, chunk={}, len={}, ranges={:?}",
-            self.context.debug_string(),
-            chunk_id,
-            total_size,
-            ranges
-        );
-
         let group = TaskGroupHelper::new_opt_with_dec(&source.dec, group);
 
         let (id, reader) = cyfs_bdt::download_chunk(
@@ -148,6 +141,15 @@ impl TargetDataManager {
             error!("download chunk error! chunk={}, {}", chunk_id, e);
             e
         })?;
+
+        info!(
+            "get chunk data from target: {}, chunk={}, len={}, ranges={:?}, task={:?}",
+            self.context.debug_string(),
+            chunk_id,
+            total_size,
+            ranges,
+            reader.task().abs_group_path(),
+        );
 
         let reader = ChunkListCacheReader::new(
             self.chunk_manager.clone(),

@@ -63,14 +63,15 @@ impl HttpRequestor for WSHttpRequestor {
         // 选择一个ws session
         let mut session = self.client.select_session();
         if session.is_none() {
-            error!("local ws disconnected! now will retry once");
+            warn!("local ws not yet established or disconnected! now will retry once");
             self.client.retry();
             async_std::task::sleep(std::time::Duration::from_secs(2)).await;
 
             session = self.client.select_session();
             if session.is_none() {
-                error!("local ws disconnected! now will end with error");
-                return Err(BuckyError::from(BuckyErrorCode::ConnectFailed));
+                let msg = format!("local ws not yet established or disconnected! now will end with error");
+                error!("{}", msg);
+                return Err(BuckyError::new(BuckyErrorCode::ConnectFailed, msg));
             }
         }
         let session = session.unwrap();

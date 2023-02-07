@@ -226,11 +226,6 @@ impl ContextSourceDownloadStateManager {
         
 
         if let Some(e) = err {
-            warn!(
-                "will cancel task on source error! task={:?}, err={}",
-                task.abs_group_path(),
-                e
-            );
             match task.cancel_by_error(e) {
                 Ok(state) => {
                     info!(
