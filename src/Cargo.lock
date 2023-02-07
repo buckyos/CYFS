@@ -2014,7 +2014,6 @@ dependencies = [
  "clap",
  "cyfs-base",
  "cyfs-base-meta",
- "cyfs-bdt",
  "cyfs-client",
  "cyfs-core",
  "cyfs-debug",
@@ -6254,6 +6253,20 @@ dependencies = [
  "cyfs-debug",
  "cyfs-util",
  "log 0.4.17",
+]
+
+[[package]]
+name = "sn-online-test"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "clap",
+ "cyfs-base",
+ "cyfs-bdt",
+ "cyfs-util",
+ "log 0.4.17",
+ "rand 0.7.3",
+ "simple_logger 4.0.0",
 ]
 
 [[package]]
