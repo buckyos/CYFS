@@ -34,7 +34,7 @@ pub struct ObjectMapIsolatePathOpEnv {
 }
 
 impl ObjectMapIsolatePathOpEnv {
-    pub(crate) async fn new(
+    pub(crate) fn new(
         sid: u64,
         root_holder: &ObjectMapRootHolder,
         root_cache: &ObjectMapRootCacheRef,
@@ -78,6 +78,7 @@ impl ObjectMapIsolatePathOpEnv {
         ))
     }
 
+    // init methods
     pub async fn create_new(&self, content_type: ObjectMapSimpleContentType) -> BuckyResult<()> {
         let obj = ObjectMap::new(
             content_type.clone(),
@@ -88,7 +89,7 @@ impl ObjectMapIsolatePathOpEnv {
         .build();
         let id = obj.flush_id();
         info!(
-            "create new objectmap for single op_env: content_type={:?}, id={}",
+            "create new objectmap for ioslate_path_op_env: content_type={:?}, id={}",
             content_type, id
         );
 
@@ -100,14 +101,14 @@ impl ObjectMapIsolatePathOpEnv {
         let ret = self.cache.get_object_map(obj_map_id).await?;
         if ret.is_none() {
             let msg = format!(
-                "load single op_env object_id but not found! id={}",
+                "load ioslate_path_op_env object_id but not found! id={}",
                 obj_map_id,
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
-        debug!("load objectmap for single op_env: id={}", obj_map_id,);
+        debug!("load objectmap for ioslate_path_op_env: id={}", obj_map_id,);
         self.init_path(obj_map_id.to_owned())
     }
 
@@ -128,7 +129,7 @@ impl ObjectMapIsolatePathOpEnv {
                 let value = object_path.get_by_path(&inner_path).await?;
                 if value.is_none() {
                     let msg = format!(
-                        "load single_op_env with inner_path but not found! root={}, inner_path={}",
+                        "load ioslate_path_op_env with inner_path but not found! root={}, inner_path={}",
                         obj_map_id, obj_map_id,
                     );
                     error!("{}", msg);
@@ -141,7 +142,7 @@ impl ObjectMapIsolatePathOpEnv {
         };
 
         info!(
-            "will load single_op_env with inner_path! root={}, inner_path={:?}, target={}",
+            "will load ioslate_path_op_env with inner_path! root={}, inner_path={:?}, target={}",
             obj_map_id, inner_path, value,
         );
 
@@ -163,7 +164,7 @@ impl ObjectMapIsolatePathOpEnv {
             let value = object_path.get_by_key(path, key).await?;
             if value.is_none() {
                 let msg = format!(
-                    "load single_op_env by path but not found! root={}, path={}, key={}",
+                    "load ioslate_path_op_env by path but not found! root={}, path={}, key={}",
                     root, path, key
                 );
                 error!("{}", msg);
@@ -177,7 +178,7 @@ impl ObjectMapIsolatePathOpEnv {
         };
 
         info!(
-            "will load single_op_env by path! root={}, path={}, key={}, value={}",
+            "will load ioslate_path_op_env by path! root={}, path={}, key={}, value={}",
             root, path, key, value
         );
 
