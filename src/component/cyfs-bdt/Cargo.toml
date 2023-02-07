@@ -35,6 +35,6 @@ clap = '2.34.0'
 serde_json = '1.0'
 md5 = '0.7.0'
 serde = { version = '1.0', features = ['derive'] }
-
+os-id = '3.0.1'
 [target.'cfg(unix)'.dependencies]
 nix = '0.24'
