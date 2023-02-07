@@ -1567,6 +1567,7 @@ dependencies = [
  "md5",
  "nix 0.24.2",
  "once_cell",
+ "os-id",
  "rand 0.7.3",
  "ringbuf",
  "rusqlite",
@@ -4565,6 +4566,15 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "os-id"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "510856ec55c552d86db0d675df95c32b87f28cfe1cdc47d3eba2342c39a0a5f6"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
