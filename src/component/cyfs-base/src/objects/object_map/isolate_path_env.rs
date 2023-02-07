@@ -58,7 +58,7 @@ impl ObjectMapIsolatePathOpEnv {
     }
 
     fn init_path(&self, root: ObjectId) -> BuckyResult<()> {
-        let path = ObjectMapPath::new(root.clone(), self.cache.clone());
+        let path = ObjectMapPath::new(root.clone(), self.cache.clone(), false);
         if let Err(_) = self.path.set(path) {
             let msg = format!(
                 "isolate_path_op_env has been initialized already! current root={}",
@@ -125,7 +125,7 @@ impl ObjectMapIsolatePathOpEnv {
     ) -> BuckyResult<()> {
         let value = match &inner_path {
             Some(inner_path) if inner_path.len() > 0 => {
-                let object_path = ObjectMapPath::new(obj_map_id.clone(), self.cache.clone());
+                let object_path = ObjectMapPath::new(obj_map_id.clone(), self.cache.clone(), false);
                 let value = object_path.get_by_path(&inner_path).await?;
                 if value.is_none() {
                     let msg = format!(
@@ -160,7 +160,7 @@ impl ObjectMapIsolatePathOpEnv {
         let root = self.root_holder.get_current_root();
 
         let value = if key.len() > 0 {
-            let object_path = ObjectMapPath::new(root.clone(), self.cache.clone());
+            let object_path = ObjectMapPath::new(root.clone(), self.cache.clone(), false);
             let value = object_path.get_by_key(path, key).await?;
             if value.is_none() {
                 let msg = format!(
