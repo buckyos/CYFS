@@ -11,7 +11,7 @@ use crate::{
 use cyfs_base::*;
 use cyfs_bdt::{
     ndn::channel::{protocol::v0::*, Channel, DownloadSession},
-    DefaultNdnEventHandler, NdnEventHandler, Stack,
+    NdnEventHandler, Stack,
 };
 use cyfs_lib::*;
 use cyfs_util::acl::*;
@@ -21,7 +21,6 @@ use cyfs_util::acl::*;
 pub(crate) struct BdtNDNEventHandler {
     acl: BdtNDNDataAclProcessor,
     handlers: RouterHandlersManager,
-    default: DefaultNdnEventHandler,
 }
 
 impl BdtNDNEventHandler {
@@ -39,7 +38,6 @@ impl BdtNDNEventHandler {
                 named_data_components.new_chunk_store_reader(),
             ),
             handlers,
-            default: DefaultNdnEventHandler::new(),
         }
     }
 
@@ -63,10 +61,30 @@ impl BdtNDNEventHandler {
             .await
         {
             Ok(_) => {
-                let _ = self
-                    .default
-                    .on_newly_interest(stack, interest, from)
-                    .await?;
+                let desc = interest.prefer_type.fill_values(&interest.chunk);
+                let cache = stack.ndn().chunk_manager().create_cache(&interest.chunk);
+                if cache.wait_loaded().await {
+                    let encoder = cache.create_encoder(&desc);
+                    let session = from.upload(
+                        interest.chunk.clone(), 
+                        interest.session_id.clone(), 
+                        desc.clone(), 
+                        encoder)?;
+                    
+                    let _ = stack.ndn().root_task().upload().add_task(vec![], &session)?;
+                    Ok(())
+                } else {
+                    from.resp_interest(RespInterest {
+                        session_id: interest.session_id.clone(),
+                        chunk: interest.chunk.clone(),
+                        err: BuckyErrorCode::NotFound,
+                        redirect: None,
+                        redirect_referer: None,
+                        to: None,
+                    });
+
+                    Ok(())
+                }
             }
             Err(err) => {
                 from.resp_interest(RespInterest {
@@ -77,9 +95,10 @@ impl BdtNDNEventHandler {
                     redirect_referer: None,
                     to: None,
                 });
+
+                Ok(())
             }
         }
-        Ok(())
     }
 
     async fn call_interest_handler(
@@ -144,11 +163,11 @@ impl BdtNDNEventHandler {
 impl NdnEventHandler for BdtNDNEventHandler {
     fn on_unknown_piece_data(
         &self,
-        stack: &Stack,
-        piece: &PieceData,
-        from: &Channel,
+        _stack: &Stack,
+        _piece: &PieceData,
+        _from: &Channel,
     ) -> BuckyResult<DownloadSession> {
-        self.default.on_unknown_piece_data(stack, piece, from)
+        Err(BuckyError::new(BuckyErrorCode::Interrupted, "no session downloading"))
     }
 
     async fn on_newly_interest(
