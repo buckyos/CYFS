@@ -2,13 +2,14 @@ use super::super::download_task_manager::DownloadTaskState;
 use super::chunk_task::DownloadChunkParam;
 use super::file_task::DownloadFileParam;
 use super::verify_file_task::*;
-use cyfs_bdt_ext::{
-    ChunkListReaderAdapter, ChunkWriter, LocalChunkWriter, LocalFileWriter, TransContextHolder, NDNTaskCancelStrategy,
-};
 use crate::trans_api::{DownloadTaskTracker, TransStore};
 use crate::NamedDataComponents;
 use cyfs_base::*;
 use cyfs_bdt::{self, LeafDownloadTask, StackGuard};
+use cyfs_bdt_ext::{
+    ChunkListReaderAdapter, ChunkWriter, LocalChunkWriter, LocalFileWriter, NDNTaskCancelStrategy,
+    TransContextHolder,
+};
 use cyfs_task_manager::*;
 
 use async_std::sync::Mutex as AsyncMutex;
@@ -197,7 +198,12 @@ impl DownloadFileTask {
         let writer = if self.params.save_path.is_some()
             && !self.params.save_path.as_ref().unwrap().is_empty()
         {
-            let path = PathBuf::from(self.params.save_path.as_ref().unwrap().clone());
+            let path = self.params.save_path.as_ref().unwrap();
+
+            #[cfg(not(windows))]
+            let path = path.replace("\\", "/");
+
+            let path = PathBuf::from(path.to_owned());
             if let Some(file) = &self.params.file {
                 Box::new(
                     LocalFileWriter::new(
