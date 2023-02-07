@@ -63,6 +63,7 @@ members = [
     "./misc/pn-miner",
     "./misc/cyfs-monitor",
     "./misc/misc-util",
+    "./misc/sn-online-test",
 
     "./tests/cyfs-stack-test",
     "./tests/cyfs-bench-mark",
