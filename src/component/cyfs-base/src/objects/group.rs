@@ -666,7 +666,12 @@ impl TryFrom<&CommonGroupBodyContent> for protos::CommonGroupBodyContent {
             ret.set_history_block_lifespan(value.history_block_lifespan);
         }
         ret.set_revoked_conclusions(ProtobufCodecHelper::encode_buf_list(
-            value.revoked_conclusions.to_vec()?.as_slice(),
+            value
+                .revoked_conclusions
+                .iter()
+                .map(|id| id.clone())
+                .collect::<Vec<_>>()
+                .as_slice(),
         )?);
         ret.version = value.version;
         if value.consensus_interval > 0 {

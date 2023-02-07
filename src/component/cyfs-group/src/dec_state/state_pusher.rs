@@ -9,7 +9,7 @@ use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal, G
 use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
-use crate::{helper::Timer, HotstuffMessage, CHANNEL_CAPACITY, STATE_NOTIFY_COUNT_PER_ROUND};
+use crate::{HotstuffMessage, CHANNEL_CAPACITY, STATE_NOTIFY_COUNT_PER_ROUND};
 
 enum StatePushMessage {
     ProposalResult(GroupProposal, BuckyError),

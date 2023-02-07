@@ -438,6 +438,7 @@ impl GroupProposalObject for GroupProposal {
         }
     }
 }
+
 #[cfg(test)]
 mod test {
     use super::{GroupProposal, GroupProposalObject};

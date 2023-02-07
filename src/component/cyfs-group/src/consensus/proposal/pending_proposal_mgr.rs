@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use async_std::channel::{Receiver, Sender};
-use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
+use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, NamedObject, ObjectDesc, ObjectId};
 use cyfs_core::GroupProposal;
 use futures::FutureExt;
 
-use crate::{AsProposal, CHANNEL_CAPACITY};
+use crate::CHANNEL_CAPACITY;
 
 pub enum ProposalConsumeMessage {
     Query(Sender<Vec<GroupProposal>>),
@@ -112,7 +112,7 @@ impl PendingProposalMgrRunner {
             futures::select! {
                 proposal = self.rx_product.recv().fuse() => {
                     if let Ok(proposal) = proposal {
-                        self.buffer.insert(proposal.id(), proposal);
+                        self.buffer.insert(proposal.desc().object_id(), proposal);
                         if let Some(waker) = self.tx_proposal_waker.take() {
                             waker.send(()).await;
                         }

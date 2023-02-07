@@ -18,4 +18,4 @@ pub const SYNCHRONIZER_TIMEOUT: u64 = 500;
 pub const SYNCHRONIZER_TRY_TIMES: usize = 3;
 pub const CLIENT_POLL_TIMEOUT: Duration = Duration::from_millis(1000);
 pub const STATE_NOTIFY_COUNT_PER_ROUND: usize = 8;
-pub const NET_PROTOCOL_VPORT: u16 = 20;
+pub const NET_PROTOCOL_VPORT: u16 = 2048;

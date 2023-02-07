@@ -1,10 +1,17 @@
-use std::{clone, time::Duration};
+use std::{clone, sync::Arc, time::Duration};
 
-use cyfs_base::{NamedObject, ObjectDesc, ObjectId};
+use cyfs_base::{
+    AnyNamedObject, NamedObject, ObjectDesc, ObjectId, RawConvertTo, RawFrom, TypelessCoreObject,
+};
 use cyfs_core::{GroupProposal, GroupProposalObject, GroupRPath};
 use cyfs_group::IsCreateRPath;
+use cyfs_lib::{
+    DeviceZoneCategory, DeviceZoneInfo, NONObjectInfo, NamedObjectCachePutObjectRequest,
+    NamedObjectStorageCategory, RequestProtocol, RequestSourceInfo,
+};
+use cyfs_stack::CyfsStack;
 use Common::{
-    create_stack, EXAMPLE_ADMINS, EXAMPLE_APP_NAME, EXAMPLE_DEC_APP_ID, EXAMPLE_GROUP,
+    create_stack, dummy, EXAMPLE_ADMINS, EXAMPLE_APP_NAME, EXAMPLE_DEC_APP_ID, EXAMPLE_GROUP,
     EXAMPLE_RPATH,
 };
 use GroupDecService::DecService;
@@ -14,9 +21,11 @@ mod Common {
 
     use cyfs_base::{
         AnyNamedObject, Area, Device, DeviceCategory, DeviceId, Endpoint, Group, GroupMember,
-        NamedObject, ObjectDesc, People, PrivateKey, Protocol, RawConvertTo, RawFrom,
-        StandardObject, TypelessCoreObject, UniqueId,
+        IpAddr, NamedObject, ObjectDesc, People, PrivateKey, Protocol, RawConvertTo, RawEncode,
+        RawFrom, RsaCPUObjectSigner, Signer, StandardObject, TypelessCoreObject, UniqueId,
+        SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF,
     };
+    use cyfs_chunk_lib::ChunkMeta;
     use cyfs_core::{DecApp, DecAppId, DecAppObj};
     use cyfs_lib::{BrowserSanboxMode, NONObjectInfo};
     use cyfs_meta_lib::MetaMinerTarget;
@@ -28,38 +37,48 @@ mod Common {
     use rand::Rng;
 
     lazy_static::lazy_static! {
-        pub static ref EXAMPLE_ADMINS: Vec<(People, PrivateKey, Device)> = create_members("admin", 4);
-        pub static ref EXAMPLE_MEMBERS: Vec<(People, PrivateKey, Device)> = create_members("member", 9);
+        pub static ref EXAMPLE_ADMINS: Vec<((People, PrivateKey), (Device, PrivateKey))> = create_members("admin", 4);
+        pub static ref EXAMPLE_MEMBERS: Vec<((People, PrivateKey), (Device, PrivateKey))> = create_members("member", 9);
 
-        pub static ref EXAMPLE_GROUP: Group = create_group(&EXAMPLE_ADMINS.get(0).unwrap().0, EXAMPLE_ADMINS.iter().map(|m| &m.0).collect(), EXAMPLE_MEMBERS.iter().map(|m| &m.0).collect(), EXAMPLE_ADMINS.iter().map(|m| &m.2).collect());
+        pub static ref EXAMPLE_GROUP: Group = create_group(&EXAMPLE_ADMINS.get(0).unwrap().0.0, EXAMPLE_ADMINS.iter().map(|m| &m.0.0).collect(), EXAMPLE_MEMBERS.iter().map(|m| &m.0.0).collect(), EXAMPLE_ADMINS.iter().map(|m| &m.1.0).collect());
+        pub static ref EXAMPLE_GROUP_CHUNK: ChunkMeta = ChunkMeta::from(&*EXAMPLE_GROUP);
         pub static ref EXAMPLE_APP_NAME: String = "group-example".to_string();
-        pub static ref EXAMPLE_DEC_APP: DecApp = DecApp::create(EXAMPLE_ADMINS.get(0).unwrap().0.desc().object_id(), EXAMPLE_APP_NAME.as_str());
+        pub static ref EXAMPLE_DEC_APP: DecApp = DecApp::create(EXAMPLE_ADMINS.get(0).unwrap().0.0.desc().object_id(), EXAMPLE_APP_NAME.as_str());
         pub static ref EXAMPLE_DEC_APP_ID: DecAppId = DecAppId::try_from(EXAMPLE_DEC_APP.desc().object_id()).unwrap();
         pub static ref EXAMPLE_RPATH: String = "rpath-example".to_string();
     }
 
-    fn create_members(name_prefix: &str, count: usize) -> Vec<(People, PrivateKey, Device)> {
+    fn create_members(
+        name_prefix: &str,
+        count: usize,
+    ) -> Vec<((People, PrivateKey), (Device, PrivateKey))> {
+        log::info!("create members");
+
         let port_begin = rand::thread_rng().gen_range(30000u16..60000u16);
         let mut members = vec![];
 
         for i in 0..count {
             let name = format!("{}-{}", name_prefix, i);
-            let private_key = PrivateKey::generate_secp256k1().unwrap();
+            let private_key = PrivateKey::generate_rsa(1024).unwrap();
+            let device_private_key = PrivateKey::generate_rsa(1024).unwrap();
             let mut owner =
                 People::new(None, vec![], private_key.public(), None, Some(name), None).build();
 
             let mut endpoint = Endpoint::default();
             endpoint.set_protocol(Protocol::Udp);
+            endpoint
+                .mut_addr()
+                .set_ip(IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)));
             endpoint.mut_addr().set_port(port_begin + i as u16);
             endpoint.set_static_wan(true);
 
-            let device = Device::new(
+            let mut device = Device::new(
                 Some(owner.desc().object_id()),
                 UniqueId::create_with_random(),
                 vec![endpoint],
                 vec![], // TODO: 当前版本是否支持无SN？
                 vec![],
-                private_key.public(),
+                device_private_key.public(),
                 Area::default(),
                 DeviceCategory::PC,
             )
@@ -68,7 +87,72 @@ mod Common {
             owner
                 .ood_list_mut()
                 .push(DeviceId::try_from(device.desc().object_id()).unwrap());
-            members.push((owner, private_key, device));
+
+            let signer = RsaCPUObjectSigner::new(private_key.public(), private_key.clone());
+
+            let owner_desc_hash = owner.desc().raw_hash_value().unwrap();
+            let owner_body_hash = owner.body().as_ref().unwrap().raw_hash_value().unwrap();
+            let device_desc_hash = device.desc().raw_hash_value().unwrap();
+            let device_body_hash = device.body().as_ref().unwrap().raw_hash_value().unwrap();
+
+            let (owner_desc_signature, owner_body_signature, desc_signature, body_signature) =
+                async_std::task::block_on(async move {
+                    let owner_desc_signature = signer
+                        .sign(
+                            owner_desc_hash.as_slice(),
+                            &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_SELF),
+                        )
+                        .await
+                        .unwrap();
+
+                    let owner_body_signature = signer
+                        .sign(
+                            owner_body_hash.as_slice(),
+                            &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_SELF),
+                        )
+                        .await
+                        .unwrap();
+
+                    let desc_signature = signer
+                        .sign(
+                            device_desc_hash.as_slice(),
+                            &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER),
+                        )
+                        .await
+                        .unwrap();
+
+                    let body_signature = signer
+                        .sign(
+                            device_body_hash.as_slice(),
+                            &cyfs_base::SignatureSource::RefIndex(SIGNATURE_SOURCE_REFINDEX_OWNER),
+                        )
+                        .await
+                        .unwrap();
+
+                    (
+                        owner_desc_signature,
+                        owner_body_signature,
+                        desc_signature,
+                        body_signature,
+                    )
+                });
+
+            device.signs_mut().set_desc_sign(desc_signature.clone());
+            device.signs_mut().set_body_sign(body_signature);
+
+            log::info!(
+                "people: {:?}, device: {:?}, public-key: {:?}, private-key: {:?}, sign: {:?}, object: {:?}",
+                owner.desc().object_id(),
+                device.desc().object_id(),
+                private_key.public().to_hex().unwrap().split_at(32).0,
+                private_key.to_string(),
+                desc_signature.to_hex().unwrap(),
+                owner.body().as_ref().unwrap().raw_hash_value().unwrap().to_hex()
+            );
+
+            owner.signs_mut().set_desc_sign(owner_desc_signature);
+            owner.signs_mut().set_body_sign(owner_body_signature);
+            members.push(((owner, private_key), (device, device_private_key)));
         }
 
         members
@@ -80,6 +164,8 @@ mod Common {
         members: Vec<&People>,
         oods: Vec<&Device>,
     ) -> Group {
+        log::info!("create group");
+
         let mut group = Group::new_org(founder.desc().object_id(), Area::default()).build();
         group.check_org_body_content_mut().set_admins(
             admins
@@ -98,22 +184,28 @@ mod Common {
                 .map(|d| DeviceId::try_from(d.desc().object_id()).unwrap())
                 .collect(),
         );
+
+        log::info!("create group: {:?}", group.desc().object_id());
+
         group
     }
 
-    pub async fn create_stack(
+    fn init_stack_params(
         people: People,
-        private_key: PrivateKey,
+        private_key: &PrivateKey,
         device: Device,
-    ) -> CyfsStack {
-        let mut admin_device: Vec<Device> = EXAMPLE_ADMINS.iter().map(|m| m.2.clone()).collect();
-        let mut member_device: Vec<Device> = EXAMPLE_MEMBERS.iter().map(|m| m.2.clone()).collect();
+    ) -> Box<(BdtStackParams, CyfsStackParams, CyfsStackKnownObjects)> {
+        log::info!("init_stack_params");
+
+        let mut admin_device: Vec<Device> = EXAMPLE_ADMINS.iter().map(|m| m.1 .0.clone()).collect();
+        let mut member_device: Vec<Device> =
+            EXAMPLE_MEMBERS.iter().map(|m| m.1 .0.clone()).collect();
         let known_device = vec![admin_device, member_device].concat();
 
         let bdt_param = BdtStackParams {
-            device,
+            device: device.clone(),
             tcp_port_mapping: vec![],
-            secret: private_key,
+            secret: private_key.clone(),
             known_sn: vec![],
             known_device,
             known_passive_pn: vec![],
@@ -146,7 +238,7 @@ mod Common {
             mode: CyfsStackKnownObjectsInitMode::Sync,
         };
 
-        for (member, _, device) in EXAMPLE_ADMINS.iter() {
+        for ((member, _), (device, _)) in EXAMPLE_ADMINS.iter() {
             known_objects.list.push(NONObjectInfo::new(
                 member.desc().object_id(),
                 member.to_vec().unwrap(),
@@ -156,15 +248,15 @@ mod Common {
             ));
 
             known_objects.list.push(NONObjectInfo::new(
-                member.desc().object_id(),
-                member.to_vec().unwrap(),
+                device.desc().object_id(),
+                device.to_vec().unwrap(),
                 Some(Arc::new(AnyNamedObject::Standard(StandardObject::Device(
                     device.clone(),
                 )))),
             ));
         }
 
-        for (member, _, device) in EXAMPLE_MEMBERS.iter() {
+        for ((member, _), (device, _)) in EXAMPLE_MEMBERS.iter() {
             known_objects.list.push(NONObjectInfo::new(
                 member.desc().object_id(),
                 member.to_vec().unwrap(),
@@ -174,8 +266,8 @@ mod Common {
             ));
 
             known_objects.list.push(NONObjectInfo::new(
-                member.desc().object_id(),
-                member.to_vec().unwrap(),
+                device.desc().object_id(),
+                device.to_vec().unwrap(),
                 Some(Arc::new(AnyNamedObject::Standard(StandardObject::Device(
                     device.clone(),
                 )))),
@@ -198,9 +290,31 @@ mod Common {
             Some(Arc::new(AnyNamedObject::Core(typeless))),
         ));
 
-        CyfsStack::open(bdt_param, stack_param, known_objects)
+        Box::new((bdt_param, stack_param, known_objects))
+    }
+
+    pub async fn create_stack(
+        people: People,
+        private_key: &PrivateKey,
+        device: Device,
+    ) -> CyfsStack {
+        let params = init_stack_params(people, private_key, device);
+
+        log::info!("cyfs-stack.open");
+
+        let stack = CyfsStack::open(params.0, params.1, params.2)
             .await
-            .unwrap()
+            .map_err(|e| {
+                log::error!("stack start failed: {}", e);
+                e
+            })
+            .unwrap();
+
+        stack
+    }
+
+    pub fn dummy(people: People, device: Device) {
+        log::info!("common::dummy");
     }
 }
 
@@ -460,6 +574,8 @@ fn create_proposal(delta: u64, owner: ObjectId) -> GroupProposal {
 }
 
 async fn main_run() {
+    log::info!("main_run");
+
     cyfs_debug::CyfsLoggerBuilder::new_app(EXAMPLE_APP_NAME.as_str())
         .level("debug")
         .console("debug")
@@ -475,16 +591,19 @@ async fn main_run() {
 
     cyfs_debug::ProcessDeadHelper::instance().enable_exit_on_task_system_dead(None);
 
-    let mut admin_stacks = vec![];
-    for (admin, private_key, device) in EXAMPLE_ADMINS.iter() {
-        let cyfs_stack = create_stack(admin.clone(), private_key.clone(), device.clone()).await;
+    log::info!("will open stacks");
+
+    let mut admin_stacks: Vec<CyfsStack> = vec![];
+    for ((admin, _), (device, private_key)) in EXAMPLE_ADMINS.iter() {
+        // dummy(admin.clone(), device.clone());
+        let cyfs_stack = create_stack(admin.clone(), private_key, device.clone()).await;
         DecService::run(&cyfs_stack, admin.name().unwrap().to_string()).await;
         admin_stacks.push(cyfs_stack);
     }
 
     for i in 1..100000000 {
         let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();
-        let owner = &EXAMPLE_ADMINS.get(i % EXAMPLE_ADMINS.len()).unwrap().0;
+        let owner = &EXAMPLE_ADMINS.get(i % EXAMPLE_ADMINS.len()).unwrap().0 .0;
         let proposal = create_proposal(i as u64, owner.desc().object_id());
 
         let control = stack
@@ -498,7 +617,33 @@ async fn main_run() {
             .await
             .unwrap();
 
+        let noc = stack.noc_manager().clone();
+
         async_std::task::spawn(async move {
+            let buf = proposal.to_vec().unwrap();
+            let proposal_any = Arc::new(AnyNamedObject::Core(
+                TypelessCoreObject::clone_from_slice(buf.as_slice()).unwrap(),
+            ));
+            noc.put_object(&NamedObjectCachePutObjectRequest {
+                source: RequestSourceInfo {
+                    protocol: RequestProtocol::DatagramBdt,
+                    zone: DeviceZoneInfo {
+                        device: None,
+                        zone: None,
+                        zone_category: DeviceZoneCategory::CurrentDevice,
+                    },
+                    dec: EXAMPLE_DEC_APP_ID.object_id().clone(),
+                    verified: None,
+                },
+                object: NONObjectInfo::new(proposal.desc().object_id(), buf, Some(proposal_any)),
+                storage_category: NamedObjectStorageCategory::Storage,
+                context: None,
+                last_access_rpath: None,
+                access_string: None,
+            })
+            .await
+            .unwrap();
+
             control.push_proposal(proposal).await.unwrap();
         });
 
@@ -507,7 +652,12 @@ async fn main_run() {
 }
 
 fn main() {
+    log::info!("main");
+
     cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
 
-    async_std::task::block_on(main_run())
+    log::info!("will main-run");
+
+    let fut = Box::pin(main_run());
+    async_std::task::block_on(async move { fut.await })
 }

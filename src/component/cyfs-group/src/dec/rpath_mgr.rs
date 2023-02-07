@@ -279,8 +279,8 @@ impl GroupRPathMgr {
                     .on_message(HotstuffMessage::LastStateRequest, remote)
                     .await;
             }
-            HotstuffPackage::StateChangeNotify(target, header_block, qc_block) => {
-                let rpath = target.check_rpath();
+            HotstuffPackage::StateChangeNotify(header_block, qc_block) => {
+                let rpath = header_block.r_path();
                 let client = self
                     .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
                     .await?;
@@ -291,13 +291,22 @@ impl GroupRPathMgr {
                     )
                     .await;
             }
-            HotstuffPackage::ProposalResult(target, proposal_id, result) => {
-                let rpath = target.check_rpath();
+            HotstuffPackage::ProposalResult(proposal_id, result) => {
+                let rpath = result.as_ref().map_or_else(
+                    |(_, target)| target.check_rpath(),
+                    |(_, block, _)| block.r_path(),
+                );
                 let client = self
                     .rpath_client(rpath.group_id(), rpath.dec_id(), rpath.r_path())
                     .await?;
                 client
-                    .on_message(HotstuffMessage::ProposalResult(proposal_id, result), remote)
+                    .on_message(
+                        HotstuffMessage::ProposalResult(
+                            proposal_id,
+                            result.map_err(|(err, _)| err),
+                        ),
+                        remote,
+                    )
                     .await;
             }
             HotstuffPackage::QueryState(target, sub_path) => {

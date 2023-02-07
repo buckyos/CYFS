@@ -42,10 +42,16 @@ impl Committee {
         let group = self.check_group(group_chunk_id, None).await?;
         let voters: Vec<&ObjectId> = voters
             .iter()
-            .filter(|id| group.admins().iter().find(|mem| mem.id == **id).is_some())
+            .filter(|id| {
+                group
+                    .ood_list()
+                    .iter()
+                    .find(|mem| mem.object_id() == *id)
+                    .is_some()
+            })
             .collect();
 
-        let is_enough = voters.len() >= ((group.admins().len() << 1) / 3 + 1);
+        let is_enough = voters.len() >= ((group.ood_list().len() << 1) / 3 + 1);
         Ok(is_enough)
     }
 
@@ -55,8 +61,8 @@ impl Committee {
         round: u64,
     ) -> BuckyResult<ObjectId> {
         let group = self.check_group(group_chunk_id, None).await?;
-        let i = (round % (group.admins().len() as u64)) as usize;
-        Ok(group.admins()[i].id)
+        let i = (round % (group.ood_list().len() as u64)) as usize;
+        Ok(group.ood_list()[i].object_id().clone())
     }
 
     pub async fn verify_block(

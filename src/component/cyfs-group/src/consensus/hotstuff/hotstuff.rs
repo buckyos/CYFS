@@ -15,10 +15,10 @@ use cyfs_lib::NONObjectInfo;
 use futures::FutureExt;
 
 use crate::{
-    consensus::synchronizer::Synchronizer, dec_state::StatePusher, helper::Timer, AsProposal,
-    Committee, ExecuteResult, GroupStorage, HotstuffBlockQCVote, HotstuffMessage,
-    HotstuffTimeoutVote, PendingProposalConsumer, RPathDelegate, SyncBound, VoteMgr,
-    VoteThresholded, CHANNEL_CAPACITY, HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
+    consensus::synchronizer::Synchronizer, dec_state::StatePusher, helper::Timer, Committee,
+    ExecuteResult, GroupStorage, HotstuffBlockQCVote, HotstuffMessage, HotstuffTimeoutVote,
+    PendingProposalConsumer, RPathDelegate, SyncBound, VoteMgr, VoteThresholded, CHANNEL_CAPACITY,
+    HOTSTUFF_TIMEOUT_DEFAULT, TIME_PRECISION,
 };
 
 /**
@@ -629,7 +629,7 @@ impl HotstuffRunner {
         self.process_qc(&Some(qc)).await;
 
         if self.local_id == self.committee.get_leader(None, self.round).await? {
-            self.generate_proposal(None).await;
+            self.generate_block(None).await;
         }
         Ok(())
     }
@@ -683,7 +683,7 @@ impl HotstuffRunner {
         self.tc = Some(tc.clone());
 
         if self.local_id == self.committee.get_leader(None, self.round).await? {
-            self.generate_proposal(Some(tc)).await;
+            self.generate_block(Some(tc)).await;
             Ok(())
         } else {
             let latest_group = self.committee.get_group(None).await?;
@@ -736,7 +736,7 @@ impl HotstuffRunner {
         self.tc = Some(tc.clone());
 
         if self.local_id == self.committee.get_leader(None, self.round).await? {
-            self.generate_proposal(Some(tc.clone())).await;
+            self.generate_block(Some(tc.clone())).await;
         }
         Ok(())
     }
@@ -781,7 +781,7 @@ impl HotstuffRunner {
         Ok(())
     }
 
-    async fn generate_proposal(&mut self, tc: Option<HotstuffTimeout>) -> BuckyResult<()> {
+    async fn generate_block(&mut self, tc: Option<HotstuffTimeout>) -> BuckyResult<()> {
         let mut proposals = self.proposal_consumer.query_proposals().await?;
         proposals.sort_by(|left, right| left.desc().create_time().cmp(&right.desc().create_time()));
 
@@ -806,15 +806,16 @@ impl HotstuffRunner {
 
         // TODO: The time may be too long for too many proposals
         for proposal in proposals {
+            let proposal_id = proposal.desc().object_id();
             if let Some(high_qc) = self.high_qc.as_ref() {
                 if let Ok(is_finished) = self
                     .store
-                    .is_proposal_finished(&proposal.id(), &high_qc.block_id)
+                    .is_proposal_finished(&proposal_id, &high_qc.block_id)
                     .await
                 {
                     if is_finished {
                         // dup_proposals.push(proposal);
-                        remove_proposals.push(proposal.id());
+                        remove_proposals.push(proposal_id);
                         continue;
                     }
                 }
@@ -828,14 +829,14 @@ impl HotstuffRunner {
                 > TIME_PRECISION
             {
                 // 时间误差太大
-                remove_proposals.push(proposal.id());
+                remove_proposals.push(proposal.desc().object_id());
                 time_adjust_proposals.push(proposal);
                 continue;
             }
 
             if let Some(ending) = proposal.effective_ending() {
                 if now >= bucky_time_to_system_time(ending) {
-                    remove_proposals.push(proposal.id());
+                    remove_proposals.push(proposal.desc().object_id());
                     timeout_proposals.push(proposal);
                     continue;
                 }
@@ -847,7 +848,7 @@ impl HotstuffRunner {
                     executed_proposals.push((proposal, exe_result));
                 }
                 Err(e) => {
-                    remove_proposals.push(proposal.id());
+                    remove_proposals.push(proposal_id);
                     failed_proposals.push((proposal, e));
                 }
             };
@@ -890,7 +891,7 @@ impl HotstuffRunner {
         let proposals_param = executed_proposals
             .into_iter()
             .map(|(proposal, exe_result)| GroupConsensusBlockProposal {
-                proposal: proposal.id(),
+                proposal: proposal.desc().object_id(),
                 result_state: exe_result.result_state_id,
                 receipt: exe_result.receipt.map(|receipt| receipt.to_vec().unwrap()),
                 context: exe_result.context,
@@ -907,7 +908,7 @@ impl HotstuffRunner {
             self.rpath.clone(),
             proposals_param,
             result_state_id,
-            self.store.header_height(),
+            pre_block.map_or(0, |b| b.height()) + 1,
             ObjectId::default(), // TODO: meta block id
             self.round,
             group_chunk_id.object_id(),
@@ -1050,7 +1051,7 @@ impl HotstuffRunner {
                         .await;
                     }
                     _ => {
-                        self.generate_proposal(None).await;
+                        self.generate_block(None).await;
                     }
                 }
             }
@@ -1101,7 +1102,7 @@ impl HotstuffRunner {
                 () = self.timer.wait_next().fuse() => self.local_timeout_round().await,
                 wait_round = Self::proposal_waiter(self.rx_proposal_waiter.clone()).fuse() => {
                     if wait_round == self.round {
-                        self.generate_proposal(None).await
+                        self.generate_block(None).await
                     } else {
                         Ok(())
                     }
