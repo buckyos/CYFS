@@ -5,9 +5,11 @@ use futures::AsyncReadExt;
 use zone_simulator::*;
 
 pub async fn test() {
-    let dec_id = super::ndn::new_dec("test-ndn");
+    let dec_id = super::ndn::new_dec("test-context");
     let (target, file_id) = publish_file(&dec_id).await;
     test_ndn_get_by_context(&dec_id, target, file_id).await;
+
+    info!("test context complete!");
 }
 
 async fn publish_file(dec_id: &ObjectId) -> (DeviceId, FileId) {

@@ -123,7 +123,7 @@ impl TestUser {
         let mut people = builder.no_create_time().build();
         let people_id = people.desc().calculate_id();
 
-        info!("{}: people={}", name, people_id);
+        info!("{}: people={}, sk={}", name, people_id, PrivateKeyType::Secp256k1);
 
         // 签名
         cyfs_base::sign_and_set_named_object_desc(
@@ -163,7 +163,7 @@ impl TestUser {
         .await
         .unwrap();
 
-        info!("{}: ood={}", name, ood_id);
+        info!("{}: ood={}, sk={}", name, ood_id, PrivateKeyType::Secp256k1);
         let ood_info = DeviceInfo {
             device: ood,
             private_key: Some(ood_sk),
@@ -201,7 +201,7 @@ impl TestUser {
             .unwrap();
 
             assert_ne!(ood_id, s_ood_id);
-            info!("{}: standby ood={}", name, s_ood_id);
+            info!("{}: standby ood={}, sk={}", name, s_ood_id, PrivateKeyType::Secp256k1);
             standby_ood = Some(DeviceInfo {
                 device: ood,
                 private_key: Some(ood_sk),
@@ -246,7 +246,7 @@ impl TestUser {
         .await
         .unwrap();
 
-        info!("{}: device1={}", name, device1_id);
+        info!("{}: device1={}, sk={}1024", name, device1_id, PrivateKeyType::Rsa);
         let device1_info = DeviceInfo {
             device: device1,
             private_key: Some(device1_sk),
@@ -277,7 +277,7 @@ impl TestUser {
         .await
         .unwrap();
 
-        info!("{}: device2={}", name, device2_id);
+        info!("{}: device2={}, sk={}2048", name, device2_id, PrivateKeyType::Rsa);
         let device2_info = DeviceInfo {
             device: device2,
             private_key: Some(device2_sk),
