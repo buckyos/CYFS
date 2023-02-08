@@ -36,16 +36,10 @@ struct StreamContainerEntries {
     remote_entries: BTreeMap<RemoteSequence, StreamContainer> 
 }
 
-pub struct StreamManagerImpl {
+struct StreamManagerImpl {
     stack: WeakStack, 
     stream_entries: RwLock<StreamContainerEntries>, 
     acceptor_entries: RwLock<BTreeMap<u16, StreamListener>>
-}
-
-impl StreamManagerImpl {
-    pub fn remove_acceptor(&self, acceptor: &StreamListener) {
-        self.acceptor_entries.write().unwrap().remove(&acceptor.port());
-    }
 }
 
 #[derive(Clone)]
@@ -94,14 +88,14 @@ impl StreamManager {
         let local_id = stack.id_generator().generate();
         let tunnel = stack.tunnel_manager().create_container(&build_params.remote_const)?;
 
-        let stream = StreamContainerImpl::new(
+        let stream = StreamContainer::new(
             manager_impl.stack.clone(), 
             tunnel.clone(), 
             port, 
             local_id, 
             tunnel.generate_sequence());
         manager_impl.stream_entries.write().unwrap().id_entries.insert(local_id, stream.clone());
-        stream.as_ref().connect(&stream, question, build_params).await.map_err(|err| {self.remove_stream(&stream); err})?;
+        stream.connect(question, build_params).await.map_err(|err| {self.remove_stream(&stream); err})?;
         Ok(StreamGuard::from(stream))
     }
 
@@ -135,16 +129,20 @@ impl StreamManager {
         self.0.stream_entries.read().unwrap().id_entries.get(id).map(|s| s.clone())
     }
 
-    pub fn stream_of_remote_sequence(&self, rs: &RemoteSequence) -> Option<StreamContainer> {
+    pub(crate) fn stream_of_remote_sequence(&self, rs: &RemoteSequence) -> Option<StreamContainer> {
         self.0.stream_entries.read().unwrap().remote_entries.get(rs).map(|s| s.clone())
     }
 
-    pub fn remove_stream(&self, stream: &StreamContainer) {
-        debug!("{} remove from stream manager", stream.as_ref());
+    pub(crate) fn remove_stream(&self, stream: &StreamContainer) {
+        debug!("{} remove from stream manager", stream);
         let mut stream_entries = self.0.stream_entries.write().unwrap();
         let _ = stream_entries.id_entries.remove(&stream.local_id());
         let remote_seq = RemoteSequence::from((stream.remote().0.clone(), stream.sequence()));
         let _ = stream_entries.remote_entries.remove(&remote_seq);
+    }
+
+    pub(crate) fn remove_acceptor(&self, acceptor: &StreamListener) {
+        self.0.acceptor_entries.write().unwrap().remove(&acceptor.port());
     }
 
     fn try_accept(
@@ -158,13 +156,13 @@ impl StreamManager {
             Some(acceptor) => {
                 let manager_impl = &self.0;
                 let local_id = Stack::from(&manager_impl.stack).id_generator().generate();
-                let stream = StreamContainerImpl::new(
+                let stream = StreamContainer::new(
                     manager_impl.stack.clone(), 
                     tunnel.clone(), 
                     port, 
                     local_id, 
                     sequence);
-                stream.as_ref().accept(&stream, remote_id);
+                stream.accept(remote_id);
                 // 先加入到stream entries
                 if let Some(exists) = {
                     let remote_seq = RemoteSequence(tunnel.remote().clone(), sequence);
@@ -177,13 +175,14 @@ impl StreamManager {
                         None
                     }                    
                 } {
-                    let _ = stream.as_ref().cancel_connecting_with(&BuckyError::new(BuckyErrorCode::AlreadyExists, "duplicate accepting stream"));
+                    let _ = stream.cancel_connecting_with(&BuckyError::new(BuckyErrorCode::AlreadyExists, "duplicate accepting stream"));
                     Some(exists)
                 } else {
                     // 因为可能会失败，用guard保证reset掉，从stream entries中移除
-                    let _ = acceptor.as_ref().push_stream(acceptor.clone(),PreAcceptedStream {
-                        stream:  StreamGuard::from(stream.clone()),
-                        question});
+                    let _ = acceptor.push_stream(PreAcceptedStream {
+                        stream: StreamGuard::from(stream.clone()),
+                        question
+                    });
                     Some(stream)  
                 }
             }, 
@@ -197,12 +196,6 @@ impl StreamManager {
     pub(crate) fn on_statistic(&self) -> String {
         let stream_count = self.0.stream_entries.read().unwrap().id_entries.len();
         format!("StreamCount: {}", stream_count)
-    }
-}
-
-impl AsRef<StreamManagerImpl> for StreamManager {
-    fn as_ref(&self) -> &StreamManagerImpl {
-        &self.0
     }
 }
 

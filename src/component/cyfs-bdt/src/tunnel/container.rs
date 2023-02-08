@@ -968,7 +968,7 @@ impl PingClientCalledEvent<PackageBox> for TunnelContainer {
                         return Ok(());
                     }
                     let stream = stream.unwrap();
-                    let acceptor = stream.as_ref().acceptor();
+                    let acceptor = stream.acceptor();
                     if acceptor.is_none() {
                         debug!("{} ignore accept stream builder for stream of {} no more connecting", self, remote_seq);
                         return Ok(());

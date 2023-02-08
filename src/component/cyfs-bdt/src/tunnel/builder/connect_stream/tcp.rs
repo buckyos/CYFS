@@ -33,7 +33,7 @@ struct ConnectTcpStreamImpl {
 
 impl std::fmt::Display for ConnectTcpStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ConnectTcpStream{{stream:{},local:{},remote:{}}}", self.0.stream.as_ref(), self.local(), self.remote())
+        write!(f, "ConnectTcpStream{{stream:{},local:{},remote:{}}}", self.0.stream, self.local(), self.remote())
     }
 }
 
@@ -59,7 +59,7 @@ impl ConnectTcpStream {
             let ca = a.clone();
             let stream = stream.clone();
             task::spawn(async move {
-                let (opt_waiter, tunnel_interface) = match stream.as_ref().wait_establish().await {
+                let (opt_waiter, tunnel_interface) = match stream.wait_establish().await {
                     Ok(_) => {
                         let state = &mut *ca.0.state.write().unwrap();
                         match state {
@@ -117,7 +117,7 @@ impl ConnectTcpStream {
             // tcp连不上， 直接进入 closed 状态
             let ca = a.clone();
             task::spawn(async move {
-                let tunnel_container: &TunnelContainer = ca.0.stream.as_ref().tunnel();
+                let tunnel_container: &TunnelContainer = ca.0.stream.tunnel();
                 let keystore = tunnel_container.stack().keystore().clone();
                 let key = keystore.create_key(tunnel_container.remote_const(), false);
                 let connect_result = tcp::Interface::connect(/*ca.local().addr().ip(),*/
@@ -236,7 +236,7 @@ impl ConnectStreamAction for ConnectTcpStream {
                 }
             }
         }?;
-        let syn_stream = self.0.stream.as_ref().syn_tcp_stream().ok_or_else(|| BuckyError::new(BuckyErrorCode::ErrorState, "continue connect on stream not connecting"))?;
+        let syn_stream = self.0.stream.syn_tcp_stream().ok_or_else(|| BuckyError::new(BuckyErrorCode::ErrorState, "continue connect on stream not connecting"))?;
         let ack = match interface.confirm_connect(&Stack::from(&self.0.stack), vec![DynamicPackage::from(syn_stream)], Stack::from(&self.0.stack).config().tunnel.tcp.confirm_timeout).await {
             Ok(resp_box) => {
                 let packages = resp_box.packages_no_exchange();
@@ -294,7 +294,7 @@ struct AcceptReverseTcpStreamImpl {
 
 impl std::fmt::Display for AcceptReverseTcpStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "AcceptReverseTcpStream{{stream:{},local:{},remote:{}}}", self.0.stream.as_ref(), self.0.local, self.0.remote)
+        write!(f, "AcceptReverseTcpStream{{stream:{},local:{},remote:{}}}", self.0.stream, self.0.local, self.0.remote)
     }
 }
 
@@ -316,7 +316,7 @@ impl AcceptReverseTcpStream {
             let ca = a.clone();
             let stream = stream.clone();
             task::spawn(async move {
-                let (waiter, interface) = match stream.as_ref().wait_establish().await {
+                let (waiter, interface) = match stream.wait_establish().await {
                     Ok(_) => {
                         let state = &mut *ca.0.state.write().unwrap();
                         match state {
@@ -362,14 +362,14 @@ impl AcceptReverseTcpStream {
                 }
 
                 if let Some(interface) = interface {
-                    let ack_ack_stream = stream.as_ref().ack_ack_tcp_stream(TCP_ACK_CONNECTION_RESULT_REFUSED);
+                    let ack_ack_stream = stream.ack_ack_tcp_stream(TCP_ACK_CONNECTION_RESULT_REFUSED);
                     let _ = match interface.confirm_accept(vec![DynamicPackage::from(ack_ack_stream)]).await {
                         Ok(_) => {
-                            debug!("{} confirm {} with refuse tcp connection ", stream.as_ref(), interface);
+                            debug!("{} confirm {} with refuse tcp connection ", stream, interface);
                         }, 
                         Err(e) => {
-                            warn!("{} confirm {} with tcp ack ack connection failed for {}", stream.as_ref(), interface, e);
-                            let tunnel = stream.as_ref().tunnel().create_tunnel::<tunnel::tcp::Tunnel>(EndpointPair::from((*interface.local(), Endpoint::default_tcp(interface.local()))), ProxyType::None);
+                            warn!("{} confirm {} with tcp ack ack connection failed for {}", stream, interface, e);
+                            let tunnel = stream.tunnel().create_tunnel::<tunnel::tcp::Tunnel>(EndpointPair::from((*interface.local(), Endpoint::default_tcp(interface.local()))), ProxyType::None);
                             if let Ok((tunnel, _)) = tunnel {
                                 tunnel.mark_dead(tunnel.state());
                             }
@@ -447,7 +447,7 @@ impl ConnectStreamAction for AcceptReverseTcpStream {
                 }
             }
         }?;
-        let ack_ack_stream = self.0.stream.as_ref().ack_ack_tcp_stream(TCP_ACK_CONNECTION_RESULT_OK);
+        let ack_ack_stream = self.0.stream.ack_ack_tcp_stream(TCP_ACK_CONNECTION_RESULT_OK);
         let _ = match interface.confirm_accept(vec![DynamicPackage::from(ack_ack_stream)]).await {
             Ok(_) => {
                 let state = &mut *self.0.state.write().unwrap();

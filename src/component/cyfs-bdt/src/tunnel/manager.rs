@@ -79,7 +79,7 @@ impl TunnelManager {
         let mut entries = self.0.entries.write().unwrap(); 
         let mut remove = LinkedList::new();
 
-        for (remote, keeper) in entries.iter() {
+        for (remote, keeper) in entries.iter_mut() {
             if !keeper.check(when) {
                 remove.push_back(remote.clone());
             }

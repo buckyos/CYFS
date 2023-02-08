@@ -637,7 +637,7 @@ impl TcpStream {
         key: AesKey) -> BuckyResult<Self> {
         let local = Endpoint::from((Protocol::Tcp, socket.local_addr()?));
         let remote = Endpoint::from((Protocol::Tcp, socket.peer_addr()?));
-        let stack = owner.as_ref().stack();
+        let stack = owner.stack();
         let config = stack.config().stream.stream.clone();
         let send_queue = SendQueue::new(&config);
         let (recv_queue, record_waker, data_producer) = RecvQueue::new(&config);
@@ -759,7 +759,7 @@ impl TcpStream {
         if result.is_err() {
             let _ = self.close_write(None);
             self.close_read();
-            self.0.owner.as_ref().break_with_error(&self.0.owner, result.unwrap_err().into())
+            self.0.owner.break_with_error(result.unwrap_err().into())
         }
     }
 
@@ -851,7 +851,7 @@ impl StreamProvider for TcpStream {
             Shutdown::Both => {
                 let _ = self.close_write(None);
                 self.close_read();
-                owner.as_ref().on_shutdown(owner);
+                owner.on_shutdown();
             }
         }
         Ok(())
