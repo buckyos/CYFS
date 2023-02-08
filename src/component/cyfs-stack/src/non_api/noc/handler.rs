@@ -51,7 +51,7 @@ impl NONRouterHandler {
             param.request.common.source,
             self.zone_manager.get_current_device_id(),
         );
-        error!("{}", msg);
+        warn!("{}", msg);
 
         Err(BuckyError::new(BuckyErrorCode::NotHandled, msg))
     }
