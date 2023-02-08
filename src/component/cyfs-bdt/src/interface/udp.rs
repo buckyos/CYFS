@@ -379,6 +379,7 @@ impl Interface {
         } 
         BOX_CRYPTO_BUFFER.with(|thread_crypto_buf| {
             let crypto_buf = &mut thread_crypto_buf.borrow_mut()[..];
+           
             let buf_len = crypto_buf.len();
             let next_ptr = package_box
                 .raw_encode_with_context(crypto_buf, context, &None)

@@ -45,7 +45,6 @@ pub struct UdpPingSession(Arc<SessionImpl>);
 
 impl std::fmt::Display for UdpPingSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // let stack = Stack::from(&self.0.stack);
         write!(f, "UdpSession{{sn:{}, local:{}}}", self.sn(), self.0.local)
     }
 }
