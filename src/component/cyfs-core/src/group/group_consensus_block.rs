@@ -5,10 +5,9 @@ use std::sync::{
 
 use crate::{CoreObjectType, GroupRPath};
 use cyfs_base::*;
-use serde::Serialize;
 use sha2::Digest;
 
-#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform)]
 #[cyfs_protobuf_type(crate::codec::protos::GroupConsensusBlockDescContent)]
 pub struct GroupConsensusBlockDescContent {
     r_path: GroupRPath,

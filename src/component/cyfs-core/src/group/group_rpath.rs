@@ -1,12 +1,17 @@
 use cyfs_base::*;
-use serde::Serialize;
 
-#[derive(Clone, Debug, ProtobufEncode, ProtobufDecode, ProtobufTransform, Serialize, PartialEq)]
+#[derive(Clone, ProtobufEncode, ProtobufDecode, ProtobufTransform, PartialEq)]
 #[cyfs_protobuf_type(crate::codec::protos::GroupRPath)]
 pub struct GroupRPath {
     group_id: ObjectId,
     dec_id: ObjectId,
     r_path: String,
+}
+
+impl std::fmt::Debug for GroupRPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}-{:?}-{:?}", self.group_id, self.dec_id, self.r_path)
+    }
 }
 
 impl GroupRPath {

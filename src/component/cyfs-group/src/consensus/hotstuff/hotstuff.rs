@@ -27,9 +27,16 @@ use crate::{
 */
 
 pub(crate) struct Hotstuff {
+    rpath: GroupRPath,
     local_device_id: ObjectId,
     tx_message: Sender<(HotstuffMessage, ObjectId)>,
     state_pusher: StatePusher,
+}
+
+impl std::fmt::Debug for Hotstuff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}-{:?}", self.rpath, self.local_device_id)
+    }
 }
 
 impl Hotstuff {
@@ -57,36 +64,40 @@ impl Hotstuff {
         let tx_message_runner = tx_message.clone();
         let state_pusher_runner = state_pusher.clone();
 
-        async_std::task::spawn(async move {
-            HotstuffRunner::new(
-                local_id,
-                local_device_id,
-                committee,
-                store,
-                signer,
-                network_sender,
-                non_driver,
-                tx_message_runner,
-                rx_message,
-                proposal_consumer,
-                state_pusher_runner,
-                delegate,
-                rpath,
-            )
-            .run()
-            .await
-        });
+        {
+            let rpath2 = rpath.clone();
+            async_std::task::spawn(async move {
+                HotstuffRunner::new(
+                    local_id,
+                    local_device_id,
+                    committee,
+                    store,
+                    signer,
+                    network_sender,
+                    non_driver,
+                    tx_message_runner,
+                    rx_message,
+                    proposal_consumer,
+                    state_pusher_runner,
+                    delegate,
+                    rpath2,
+                )
+                .run()
+                .await
+            });            
+        }
 
         Self {
             local_device_id,
             tx_message,
             state_pusher,
+            rpath
         }
     }
 
     pub async fn on_block(&self, block: cyfs_core::GroupConsensusBlock, remote: ObjectId) {
         log::debug!("[hotstuff] local: {:?}, on_block: {:?}/{:?}/{:?}, prev: {:?}/{:?}, owner: {:?}, remote: {:?},",
-            self.local_device_id,
+            self,
             block.named_object().desc().object_id(), block.round(), block.height(),
             block.prev_block_id(), block.qc().as_ref().map_or(0, |qc| qc.round),
             block.owner(), remote);
@@ -98,7 +109,7 @@ impl Hotstuff {
 
     pub async fn on_block_vote(&self, vote: HotstuffBlockQCVote, remote: ObjectId) {
         log::debug!("[hotstuff] local: {:?}, on_block_vote: {:?}/{:?}, prev: {:?}, voter: {:?}, remote: {:?},",
-            self.local_device_id,
+            self,
             vote.block_id, vote.round,
             vote.prev_block_id,
             vote.voter, remote);
@@ -111,7 +122,7 @@ impl Hotstuff {
     pub async fn on_timeout_vote(&self, vote: HotstuffTimeoutVote, remote: ObjectId) {
         log::debug!(
             "[hotstuff] local: {:?}, on_timeout_vote: {:?}, qc: {:?}, voter: {:?}, remote: {:?},",
-            self.local_device_id,
+            self,
             vote.round,
             vote.high_qc.as_ref().map(|qc| format!(
                 "{:?}/{:?}/{:?}/{:?}",
@@ -135,7 +146,7 @@ impl Hotstuff {
     pub async fn on_timeout(&self, tc: HotstuffTimeout, remote: ObjectId) {
         log::debug!(
             "[hotstuff] local: {:?}, on_timeout: {:?}, voter: {:?}, remote: {:?},",
-            self.local_device_id,
+            self,
             tc.round,
             tc.votes
                 .iter()
@@ -157,7 +168,7 @@ impl Hotstuff {
     ) {
         log::debug!(
             "[hotstuff] local: {:?}, on_sync_request: min: {:?}, max: {:?}, remote: {:?},",
-            self.local_device_id,
+            self,
             min_bound,
             max_bound,
             remote
@@ -171,7 +182,7 @@ impl Hotstuff {
     pub async fn request_last_state(&self, remote: ObjectId) {
         log::debug!(
             "[hotstuff] local: {:?}, on_sync_request: remote: {:?},",
-            self.local_device_id,
+            self,
             remote
         );
 
@@ -200,6 +211,12 @@ struct HotstuffRunner {
     rpath: GroupRPath,
     rx_proposal_waiter: Option<(Receiver<u64>, u64)>,
     state_pusher: StatePusher,
+}
+
+impl std::fmt::Debug for HotstuffRunner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.debug_identify())
+    }
 }
 
 impl HotstuffRunner {
@@ -268,7 +285,7 @@ impl HotstuffRunner {
         remote: ObjectId,
     ) -> BuckyResult<()> {
         log::debug!("[hotstuff] local: {:?}, handle_block: {:?}/{:?}/{:?}, prev: {:?}/{:?}, owner: {:?}, remote: {:?},",
-            self.local_device_id,
+            self,
             block.named_object().desc().object_id(), block.round(), block.height(),
             block.prev_block_id(), block.qc().as_ref().map_or(0, |qc| qc.round),
             block.owner(), remote);
@@ -277,7 +294,7 @@ impl HotstuffRunner {
         if !latest_group.contain_ood(&remote) {
             log::warn!(
                 "[hotstuff] local: {:?}, receive block({}) from unknown({})",
-                self.local_device_id,
+                self,
                 block.named_object().desc().object_id(),
                 remote
             );
@@ -300,7 +317,7 @@ impl HotstuffRunner {
                 .await.map_err(|err| {
                     log::warn!(
                         "[hotstuff] local: {:?}, get leader from group {:?} with round {} failed, {:?}.",
-                        self.local_device_id,
+                        self,
                         block.group_chunk_id(), block.round(),
                         err
                     );
@@ -314,7 +331,7 @@ impl HotstuffRunner {
                 .map_err(|err| {
                     log::warn!(
                         "[hotstuff] local: {:?}, get leader by id {:?} failed, {:?}.",
-                        self.local_device_id,
+                        self,
                         leader,
                         err
                     );
@@ -328,7 +345,7 @@ impl HotstuffRunner {
                 Some(leader_owner) if leader_owner == block.owner() => {}
                 _ => {
                     log::warn!("[hotstuff] local: {:?}, receive block({:?}) from invalid leader({}), expected {:?}",
-                        self.local_device_id,
+                        self,
                         block.named_object().desc().object_id(),
                         block.owner(),
                         leader_owner
@@ -343,14 +360,14 @@ impl HotstuffRunner {
                 crate::storage::BlockLinkState::Expired => {
                     log::warn!(
                         "[hotstuff] local: {:?}, receive block expired.",
-                        self.local_device_id
+                        self
                     );
                     return Err(BuckyError::new(BuckyErrorCode::Ignored, "expired"));
                 }
                 crate::storage::BlockLinkState::DuplicateProposal => {
                     log::warn!(
                         "[hotstuff] local: {:?}, receive block with duplicate proposal.",
-                        self.local_device_id
+                        self
                     );
                     return Err(BuckyError::new(
                         BuckyErrorCode::AlreadyExists,
@@ -360,7 +377,7 @@ impl HotstuffRunner {
                 crate::storage::BlockLinkState::Duplicate => {
                     log::warn!(
                         "[hotstuff] local: {:?}, receive duplicate block.",
-                        self.local_device_id
+                        self
                     );
                     return Err(BuckyError::new(
                         BuckyErrorCode::AlreadyExists,
@@ -370,7 +387,7 @@ impl HotstuffRunner {
                 crate::storage::BlockLinkState::Link(prev_block, proposals) => {
                     log::debug!(
                         "[hotstuff] local: {:?}, receive in-order block, height: {}.",
-                        self.local_device_id,
+                        self,
                         block.height()
                     );
 
@@ -381,7 +398,7 @@ impl HotstuffRunner {
                 crate::storage::BlockLinkState::Pending => {
                     log::warn!(
                         "[hotstuff] local: {:?}, receive out-order block, expect height: {}, get height: {}.",
-                        self.local_device_id,
+                        self,
                         self.store.header_height() + 3,
                         block.height()
                     );
@@ -404,7 +421,7 @@ impl HotstuffRunner {
                 crate::storage::BlockLinkState::InvalidBranch => {
                     log::warn!(
                         "[hotstuff] local: {:?}, receive block in invalid branch.",
-                        self.local_device_id
+                        self
                     );
                     return Err(BuckyError::new(BuckyErrorCode::Conflict, "conflict branch"));
                 }
@@ -417,7 +434,7 @@ impl HotstuffRunner {
             .map_err(|err| {
                 log::warn!(
                     "[hotstuff] local: {:?}, verify block {:?} failed, {:?}.",
-                    self.local_device_id,
+                    self,
                     block.named_object().desc().object_id(),
                     err
                 );
@@ -499,11 +516,11 @@ impl HotstuffRunner {
                     .is_proposal_finished(&proposal_exe_info.proposal, prev_block_id)
                     .await.map_err(|err| {
                         log::warn!("[hotstuff] local: {:?}, check proposal {:?} in block {:?} with prev-block {:?} duplicate failed, {:?}."
-                            , self.local_device_id, proposal_exe_info.proposal, block.named_object().desc().object_id(), prev_block_id, err);
+                            , self, proposal_exe_info.proposal, block.named_object().desc().object_id(), prev_block_id, err);
                         err
                     })? {
                         log::warn!("[hotstuff] local: {:?}, proposal {:?} in block {:?} with prev-block {:?} has finished before."
-                            , self.local_device_id, proposal_exe_info.proposal, block.named_object().desc().object_id(), prev_block_id);
+                            , self, proposal_exe_info.proposal, block.named_object().desc().object_id(), prev_block_id);
                         
                         return Err(BuckyError::new(BuckyErrorCode::ErrorState, "duplicate proposal"))
                     }
@@ -514,7 +531,7 @@ impl HotstuffRunner {
                 Some(receipt) => {
                     let (receipt, _) = NONObjectInfo::raw_decode(receipt.as_slice()).map_err(|err| {
                         log::warn!("[hotstuff] local: {:?}, proposal {:?} in block {:?} decode receipt failed {:?}."
-                            , self.local_device_id, proposal_exe_info.proposal, block.named_object().desc().object_id(), err);
+                            , self, proposal_exe_info.proposal, block.named_object().desc().object_id(), err);
 
                         err
                     })?;
@@ -535,7 +552,7 @@ impl HotstuffRunner {
                 .on_verify(proposal, prev_state_id, &exe_result)
                 .await.map_err(|err| {
                     log::warn!("[hotstuff] local: {:?}, proposal {:?} in block {:?} verify by app failed {:?}."
-                        , self.local_device_id, proposal_exe_info.proposal, block.named_object().desc().object_id(), err);
+                        , self, proposal_exe_info.proposal, block.named_object().desc().object_id(), err);
                     err
                 })?
             {
@@ -543,7 +560,7 @@ impl HotstuffRunner {
             } else {
                 log::warn!(
                     "[hotstuff] local: {:?}, block verify failed by app, proposal: {}, prev_state: {:?}, expect-result: {:?}",
-                    self.local_device_id,
+                    self,
                     proposal_exe_info.proposal,
                     prev_state_id,
                     proposal_exe_info.result_state
@@ -573,13 +590,14 @@ impl HotstuffRunner {
 
         log::info!(
             "[hotstuff] local: {:?}, will push new block {:?} to storage",
-            self.local_device_id, block.named_object().desc().object_id()
+            self, block.named_object().desc().object_id()
         );
 
+        let debug_identify = self.debug_identify();
         let new_header_block = self.store.push_block(block.clone()).await.map_err(|err| {
             log::warn!(
                 "[hotstuff] local: {:?}, push verified block {:?} to storage failed {:?}",
-                self.local_device_id, block.named_object().desc().object_id(), err
+                debug_identify, block.named_object().desc().object_id(), err
             );
 
             err
@@ -588,7 +606,7 @@ impl HotstuffRunner {
         if let Some(header_block) = new_header_block.map(|b| b.0.clone()) {
             log::info!(
                 "[hotstuff] local: {:?}, new header-block {:?} committed",
-                self.local_device_id, header_block.named_object().desc().object_id()
+                self, header_block.named_object().desc().object_id()
             );
 
             /**
@@ -611,7 +629,7 @@ impl HotstuffRunner {
                     .await.map_err(|err| {
                         log::warn!(
                             "[hotstuff] local: {:?}, get prev-block {:?} before commit-notify failed {:?}",
-                            self.local_device_id, block_id, err
+                            self, block_id, err
                         );
                         err
                     })?
@@ -627,7 +645,7 @@ impl HotstuffRunner {
                     .await.map_err(|err| {
                         log::warn!(
                             "[hotstuff] local: {:?}, get proposal {:?} in header-block {:?} before commit-notify failed {:?}",
-                            self.local_device_id, proposal.proposal, header_block.named_object().desc().object_id(), err
+                            self, proposal.proposal, header_block.named_object().desc().object_id(), err
                         );
 
                         err
@@ -637,7 +655,7 @@ impl HotstuffRunner {
                         let (receipt, remain) = NONObjectInfo::raw_decode(receipt.as_slice()).map_err(|err| {
                             log::warn!(
                                 "[hotstuff] local: {:?}, decode receipt of proposal {:?} in header-block {:?} before commit-notify failed {:?}",
-                                self.local_device_id, proposal.proposal, header_block.named_object().desc().object_id(), err
+                                self, proposal.proposal, header_block.named_object().desc().object_id(), err
                             );
                             err
                         })?;
@@ -670,14 +688,14 @@ impl HotstuffRunner {
             VoteThresholded::QC(qc) => {
                 log::debug!(
                     "[hotstuff] local: {:?}, the qc of block {:?} has received before",
-                    self.local_device_id, block.named_object().desc().object_id()
+                    self, block.named_object().desc().object_id()
                 );
                 return self.process_block_qc(qc, block, remote).await;
             },
             VoteThresholded::TC(tc, max_high_qc_block) => {
                 log::debug!(
                     "[hotstuff] local: {:?}, the timeout-qc of block {:?} has received before",
-                    self.local_device_id, block.named_object().desc().object_id()
+                    self, block.named_object().desc().object_id()
                 );
 
                 return self
@@ -690,7 +708,7 @@ impl HotstuffRunner {
         if block.round() != self.round {
             log::debug!(
                 "[hotstuff] local: {:?}, not my round {}, expect {}",
-                self.local_device_id, block.round(), self.round
+                self, block.round(), self.round
             );
             // 不是我的投票round
             return Ok(());
@@ -698,12 +716,12 @@ impl HotstuffRunner {
 
         if let Some(vote) = self.make_vote(block).await {
             log::info!("[hotstuff] local: {:?}, vote to block {}, round: {}",
-                self.local_device_id, block.named_object().desc().object_id(), block.round());
+                self, block.named_object().desc().object_id(), block.round());
 
             let next_leader = self.committee.get_leader(None, self.round + 1).await.map_err(|err| {
                 log::warn!(
                     "[hotstuff] local: {:?}, get leader in round {} failed {:?}",
-                    self.local_device_id, self.round + 1, err
+                    self, self.round + 1, err
                 );
 
                 err
@@ -729,7 +747,7 @@ impl HotstuffRunner {
         let qc_round = qc.as_ref().map_or(0, |qc| qc.round);
 
         log::debug!("[hotstuff] local: {:?}, process_qc round {}",
-            self.local_device_id, qc_round);
+            self, qc_round);
 
         self.advance_round(qc_round).await;
         self.update_high_qc(qc);
@@ -738,7 +756,7 @@ impl HotstuffRunner {
     async fn advance_round(&mut self, round: u64) {
         if round < self.round {
             log::debug!("[hotstuff] local: {:?}, round {} timeout expect {}",
-                self.local_device_id, round, self.round);
+                self, round, self.round);
             return;
         }
 
@@ -750,11 +768,11 @@ impl HotstuffRunner {
                 self.tc = None;
 
                 log::info!("[hotstuff] local: {:?}, update round from {} to {}",
-                    self.local_device_id, self.round, round + 1);
+                    self, self.round, round + 1);
             }
             Err(err) => {
                 log::warn!("[hotstuff] local: {:?}, get group before update round from {} to {} failed {:?}",
-                    self.local_device_id, self.round, round + 1, err);
+                    self, self.round, round + 1, err);
             }
         }
     }
@@ -766,7 +784,7 @@ impl HotstuffRunner {
             self.high_qc = qc.clone();
 
             log::info!("[hotstuff] local: {:?}, update high-qc from {} to {}",
-                self.local_device_id, cur_high_round, to_high_round);
+                self, cur_high_round, to_high_round);
         }
     }
 
@@ -778,14 +796,14 @@ impl HotstuffRunner {
             .collect();
 
         log::debug!("[hotstuff] local: {:?}, remove proposals: {:?}",
-            self.local_device_id, proposals);
+            self, proposals);
 
         self.proposal_consumer.remove_proposals(proposals).await
     }
 
     async fn notify_proposal_err(&self, proposal: &GroupProposal, err: BuckyError) {
         log::debug!("[hotstuff] local: {:?}, proposal {} failed {:?}",
-            self.local_device_id, proposal.desc().object_id(), err);
+            self, proposal.desc().object_id(), err);
 
         self.state_pusher
             .notify_proposal_err(proposal.clone(), err)
@@ -795,7 +813,7 @@ impl HotstuffRunner {
     async fn make_vote(&mut self, block: &GroupConsensusBlock) -> Option<HotstuffBlockQCVote> {
         if block.round() <= self.store.last_vote_round() {
             log::debug!("[hotstuff] local: {:?}, make vote ignore for timeouted block {}/{}, last vote roud: {}",
-                self.local_device_id, block.named_object().desc().object_id(), block.round(), self.store.last_vote_round());
+                self, block.named_object().desc().object_id(), block.round(), self.store.last_vote_round());
 
             return None;
         }
@@ -816,7 +834,7 @@ impl HotstuffRunner {
 
         if !is_valid_round {
             log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for invalid round {}, qc-round {}, tc-round {}",
-                self.local_device_id,
+                self,
                 block.named_object().desc().object_id(),
                 block.round(), qc_round,
                 block.tc().as_ref().map_or(0, |tc| tc.votes.iter().map(|v| v.high_qc_round).max().unwrap()));
@@ -828,7 +846,7 @@ impl HotstuffRunner {
             Ok(is_latest) if is_latest => {}
             _ => {
                 log::warn!("[hotstuff] local: {:?}, make vote to block {} ignore for the group is not latest",
-                    self.local_device_id,
+                    self,
                     block.named_object().desc().object_id());
 
                 return None;
@@ -840,7 +858,7 @@ impl HotstuffRunner {
             Err(e) => {
                 log::warn!(
                     "[hotstuff] local: {:?}, signature for block-vote failed, block: {}, err: {}",
-                    self.local_device_id,
+                    self,
                     block.named_object().desc().object_id(),
                     e
                 );
@@ -858,16 +876,30 @@ impl HotstuffRunner {
     async fn handle_vote(
         &mut self,
         vote: &HotstuffBlockQCVote,
-        block: Option<&GroupConsensusBlock>,
+        prev_block: Option<&GroupConsensusBlock>,
         remote: ObjectId,
     ) -> BuckyResult<()> {
         if vote.round < self.round {
+            log::warn!(
+                "[hotstuff] local: {:?}, receive timeout vote({}/{}/{:?}), local-round: {}",
+                self,
+                vote.block_id, vote.round, vote.prev_block_id,
+                self.round
+            );
             return Ok(());
         }
 
-        self.committee.verify_vote(vote).await?;
+        self.committee.verify_vote(vote).await.map_err(|err| {
+            log::warn!(
+                "[hotstuff] local: {:?}, verify vote({}/{}/{:?}) failed {:?}",
+                self,
+                vote.block_id, vote.round, vote.prev_block_id,
+                err
+            );
+            err
+        })?;
 
-        let block = match block {
+        let prev_block = match prev_block {
             Some(b) => Some(b.clone()),
             None => self
                 .store
@@ -875,24 +907,57 @@ impl HotstuffRunner {
                 .map_or(None, |b| Some(b)),
         };
 
-        if let Some((qc, block)) = self.vote_mgr.add_vote(vote.clone(), block).await? {
-            self.process_block_qc(qc, &block, remote).await?;
-        } else if vote.round > self.round {
-            self.fetch_block(&vote.block_id, remote).await;
-        }
+        let is_prev_none = prev_block.is_none();
+        let qc = self.vote_mgr.add_vote(vote.clone(), prev_block).await.map_err(|err| {
+            log::warn!(
+                "[hotstuff] local: {:?}, add vote({}/{}/{:?}) prev-block: {} failed {:?}",
+                self,
+                vote.block_id, vote.round, vote.prev_block_id,
+                if is_prev_none {"None"} else {"Some"},
+                err
+            );
+            err
+        })?;
 
+        if let Some((qc, block)) = qc {
+            log::info!(
+                "[hotstuff] local: {:?}, vote({}/{}/{:?}) prev-block: {} qc",
+                self,
+                vote.block_id, vote.round, vote.prev_block_id,
+                if is_prev_none {"None"} else {"Some"}
+            );
+
+            self.process_block_qc(qc, &block, remote).await?;
+        } else if vote.round > self.round && is_prev_none {
+            self.fetch_block(&vote.block_id, remote).await?;
+        }
         Ok(())
     }
 
     async fn process_block_qc(
         &mut self,
         qc: HotstuffBlockQC,
-        block: &GroupConsensusBlock,
+        prev_block: &GroupConsensusBlock,
         remote: ObjectId,
     ) -> BuckyResult<()> {
+        let qc_block_id = qc.block_id;
+        let qc_round = qc.round;
+        let qc_prev_block_id = qc.prev_block_id;
+
         self.process_qc(&Some(qc)).await;
 
-        if self.local_device_id == self.committee.get_leader(None, self.round).await? {
+        let new_leader = self.committee.get_leader(None, self.round).await.map_err(|err| {
+            log::warn!(
+                "[hotstuff] local: {:?}, get leader for vote-qc({}/{}/{:?}) with round {} failed {:?}",
+                self,
+                qc_block_id, qc_round, qc_prev_block_id,
+                self.round,
+                err
+            );
+            err
+        })?;
+
+        if self.local_device_id == new_leader {
             self.generate_block(None).await;
         }
         Ok(())
@@ -903,9 +968,25 @@ impl HotstuffRunner {
         timeout: &HotstuffTimeoutVote,
         remote: ObjectId,
     ) -> BuckyResult<()> {
-        if timeout.round < self.round
-            || timeout.high_qc.as_ref().map_or(0, |qc| qc.round) >= timeout.round
-        {
+        log::debug!(
+            "[hotstuff] local: {:?}, handle_timeout: {:?}, qc: {:?}, voter: {:?}, remote: {:?},",
+            self,
+            timeout.round,
+            timeout.high_qc.as_ref().map(|qc| format!(
+                "{:?}/{:?}/{:?}/{:?}",
+                qc.block_id,
+                qc.round,
+                qc.prev_block_id,
+                qc.votes
+                    .iter()
+                    .map(|v| v.voter.to_string())
+                    .collect::<Vec<String>>()
+            )),
+            timeout.voter,
+            remote
+        );
+
+        if timeout.round < self.round {
             if let Some(tc) = self.tc.as_ref() {
                 // if there is a timeout-qc, notify the remote to advance the round
                 if tc.round + 1 == self.round {
@@ -921,10 +1002,29 @@ impl HotstuffRunner {
             return Ok(());
         }
 
+        let high_qc_round = timeout.high_qc.as_ref().map_or(0, |qc| qc.round);
+        if high_qc_round >= timeout.round {
+            log::warn!(
+                "[hotstuff] local: {:?}, handle_timeout: {:?}, ignore for high-qc(round={}) invalid",
+                self,
+                timeout.round,
+                high_qc_round
+            );
+            return Ok(());
+        }
+
         let block = match timeout.high_qc.as_ref() {
             Some(qc) => match self.store.find_block_in_cache(&qc.block_id) {
                 Ok(block) => Some(block),
-                Err(_) => {
+                Err(err) => {
+                    log::warn!(
+                        "[hotstuff] local: {:?}, handle_timeout: {:?}, find qc-block {} failed {:?}",
+                        self,
+                        timeout.round,
+                        qc.block_id,
+                        err
+                    );
+
                     self.vote_mgr.add_waiting_timeout(timeout.clone());
                     self.fetch_block(&qc.block_id, remote).await;
                     return Ok(());
@@ -935,15 +1035,33 @@ impl HotstuffRunner {
 
         self.committee
             .verify_timeout(timeout, block.as_ref())
-            .await?;
+            .await.map_err(|err| {
+                log::warn!(
+                    "[hotstuff] local: {:?}, handle_timeout: {:?}, verify failed {:?}",
+                    self,
+                    timeout.round,
+                    err
+                );
+
+                err
+            })?;
 
         self.process_qc(&timeout.high_qc).await;
 
-        if let Some((tc, max_high_qc_block)) = self
+        let tc = self
             .vote_mgr
             .add_timeout(timeout.clone(), block.as_ref())
-            .await?
-        {
+            .await.map_err(|err| {
+                log::warn!(
+                    "[hotstuff] local: {:?}, handle_timeout: {:?}, check tc failed {:?}",
+                    self,
+                    timeout.round,
+                    err
+                );
+                err
+            })?;
+
+        if let Some((tc, max_high_qc_block)) = tc {
             self.process_timeout_qc(tc, max_high_qc_block.as_ref())
                 .await?;
         }
@@ -955,14 +1073,44 @@ impl HotstuffRunner {
         tc: HotstuffTimeout,
         max_high_qc_block: Option<&GroupConsensusBlock>,
     ) -> BuckyResult<()> {
+        log::debug!(
+            "[hotstuff] local: {:?}, process_timeout_qc: {:?}, voter: {:?}, high-qc block: {:?},",
+            self,
+            tc.round,
+            tc.votes
+                .iter()
+                .map(|vote| format!("{:?}/{:?}", vote.high_qc_round, vote.voter,))
+                .collect::<Vec<String>>(),
+            max_high_qc_block.as_ref().map(|qc| qc.prev_block_id())
+        );
+
         self.advance_round(tc.round).await;
         self.tc = Some(tc.clone());
 
-        if self.local_device_id == self.committee.get_leader(None, self.round).await? {
+        let new_leader = self.committee.get_leader(None, self.round).await.map_err(|err| {
+            log::warn!(
+                "[hotstuff] local: {:?}, process_timeout_qc: {:?}, get new leader failed {:?}",
+                self,
+                tc.round,
+                err
+            );
+
+            err
+        })?;
+        if self.local_device_id == new_leader {
             self.generate_block(Some(tc)).await;
             Ok(())
         } else {
-            let latest_group = self.committee.get_group(None).await?;
+            let latest_group = self.committee.get_group(None).await.map_err(|err| {
+                log::warn!(
+                    "[hotstuff] local: {:?}, process_timeout_qc: {:?}, get group failed {:?}",
+                    self,
+                    tc.round,
+                    err
+                );
+                err
+            })?;
+
             self.broadcast(HotstuffMessage::Timeout(tc), &latest_group)
                 .await
         }
@@ -974,13 +1122,39 @@ impl HotstuffRunner {
             .iter()
             .max_by(|high_qc_l, high_qc_r| high_qc_l.high_qc_round.cmp(&high_qc_r.high_qc_round));
 
+        log::debug!(
+            "[hotstuff] local: {:?}, handle_tc: {:?}, voter: {:?}, remote: {:?}, max-qc: {:?}",
+            self,
+            tc.round,
+            tc.votes
+                .iter()
+                .map(|vote| format!("{:?}/{:?}", vote.high_qc_round, vote.voter,))
+                .collect::<Vec<String>>(),
+            remote,
+            max_high_qc.as_ref().map(|qc| qc.high_qc_round)
+        );
+
         let max_high_qc = if let Some(max_high_qc) = max_high_qc {
             max_high_qc
         } else {
             return Ok(());
         };
 
-        if tc.round < self.round || max_high_qc.high_qc_round >= tc.round {
+        if tc.round < self.round {
+            log::warn!(
+                "[hotstuff] local: {:?}, handle_tc: {:?} ignore for round timeout",
+                self,
+                tc.round,
+            );
+        }
+        
+        if max_high_qc.high_qc_round >= tc.round {
+            log::warn!(
+                "[hotstuff] local: {:?}, handle_tc: {:?} ignore for high-qc round {} invalid",
+                self,
+                tc.round, max_high_qc.high_qc_round
+            );
+
             return Ok(());
         }
 
@@ -992,7 +1166,14 @@ impl HotstuffRunner {
                 .find_block_in_cache_by_round(max_high_qc.high_qc_round)
             {
                 Ok(block) => block,
-                Err(_) => {
+                Err(err) => {
+                    log::warn!(
+                        "[hotstuff] local: {:?}, handle_tc: {:?} find prev-block by round {} failed {:?}",
+                        self,
+                        tc.round, max_high_qc.high_qc_round,
+                        err
+                    );
+
                     // 同步前序block
                     let max_round_block = self.store.block_with_max_round();
                     self.synchronizer.sync_with_round(
@@ -1006,26 +1187,54 @@ impl HotstuffRunner {
             Some(block)
         };
 
-        self.committee.verify_tc(tc, block.as_ref()).await?;
+        self.committee.verify_tc(tc, block.as_ref()).await.map_err(|err| {
+            log::warn!(
+                "[hotstuff] local: {:?}, handle_tc: {:?} verify tc failed {:?}",
+                self,
+                tc.round,
+                err
+            );
+            err
+        })?;
 
         self.advance_round(tc.round).await;
         self.tc = Some(tc.clone());
 
-        if self.local_device_id == self.committee.get_leader(None, self.round).await? {
+        let new_leader = self.committee.get_leader(None, self.round).await.map_err(|err| {
+            log::warn!(
+                "[hotstuff] local: {:?}, handle_tc: {:?} get new leader failed {:?}",
+                self,
+                tc.round,
+                err
+            );
+            err
+        })?;
+
+        if self.local_device_id == new_leader {
             self.generate_block(Some(tc.clone())).await;
         }
         Ok(())
     }
 
     async fn local_timeout_round(&mut self) -> BuckyResult<()> {
+        log::debug!(
+            "[hotstuff] local: {:?}, local_timeout_round",
+            self,
+        );
+
         let latest_group = match self.committee.get_group(None).await {
             Ok(group) => {
                 self.timer.reset(group.consensus_interval());
                 group
             }
-            Err(e) => {
+            Err(err) => {
+                log::warn!(
+                    "[hotstuff] local: {:?}, local_timeout_round get latest group failed {:?}",
+                    self, err
+                );
+
                 self.timer.reset(HOTSTUFF_TIMEOUT_DEFAULT);
-                return Err(e);
+                return Err(err);
             }
         };
 
@@ -1035,7 +1244,13 @@ impl HotstuffRunner {
             self.local_device_id,
             &self.signer,
         )
-        .await?;
+        .await.map_err(|err| {
+            log::warn!(
+                "[hotstuff] local: {:?}, local_timeout_round create new timeout-vote failed {:?}",
+                self, err
+            );
+            err
+        })?;
 
         self.store.set_last_vote_round(self.round).await?;
 
@@ -1048,16 +1263,40 @@ impl HotstuffRunner {
     }
 
     async fn generate_block(&mut self, tc: Option<HotstuffTimeout>) -> BuckyResult<()> {
-        let mut proposals = self.proposal_consumer.query_proposals().await?;
-        proposals.sort_by(|left, right| left.desc().create_time().cmp(&right.desc().create_time()));
-
         let now = SystemTime::now();
+
+        log::debug!(
+            "[hotstuff] local: {:?}, generate_block with qc {:?} and tc {:?}, now: {:?}",
+            self,
+            self.high_qc.as_ref().map(|qc| format!("{}/{}/{:?}", qc.block_id, qc.round, qc.votes.iter().map(|v| v.voter).collect::<Vec<_>>())),
+            tc.as_ref().map(|tc| format!("{}/{:?}", tc.round, tc.votes.iter().map(|v| v.voter).collect::<Vec<_>>())),
+            now
+        );
+
+        let mut proposals = self.proposal_consumer.query_proposals().await.map_err(|err| {
+            log::warn!(
+                "[hotstuff] local: {:?}, generate_block query proposal failed {:?}",
+                self,
+                err
+            );
+            err
+        })?;
+
+        proposals.sort_by(|left, right| left.desc().create_time().cmp(&right.desc().create_time()));
 
         let pre_block = match self.high_qc.as_ref() {
             Some(qc) => Some(self.store.find_block_in_cache(&qc.block_id)?),
             None => None,
         };
-        let latest_group = self.committee.get_group(None).await?;
+        let latest_group = self.committee.get_group(None).await.map_err(|err| {
+            log::warn!(
+                "[hotstuff] local: {:?}, generate_block get latest group failed {:?}",
+                self,
+                err
+            );
+    
+            err
+        })?;
 
         let mut remove_proposals = vec![];
         // let mut dup_proposals = vec![];
@@ -1120,6 +1359,17 @@ impl HotstuffRunner {
             };
         }
 
+        if time_adjust_proposals.len() > 0 {
+            log::warn!(
+                "[hotstuff] local: {:?}, generate_block timestamp err {:?}",
+                self,
+                time_adjust_proposals.iter().map(|proposal| {
+                    let desc = proposal.desc();
+                    (desc.object_id(), desc.owner(), bucky_time_to_system_time(desc.create_time()))
+                }).collect::<Vec<_>>()
+            );
+        }
+
         for proposal in time_adjust_proposals {
             // timestamp is error
             self.notify_proposal_err(
@@ -1127,6 +1377,22 @@ impl HotstuffRunner {
                 BuckyError::new(BuckyErrorCode::ErrorTimestamp, "error timestamp"),
             )
             .await;
+        }
+
+        if timeout_proposals.len() > 0 {
+            log::warn!(
+                "[hotstuff] local: {:?}, generate_block timeout {:?}",
+                self,
+                timeout_proposals.iter().map(|proposal| {
+                    let desc = proposal.desc();
+                    (
+                        desc.object_id(),
+                        desc.owner(),
+                        bucky_time_to_system_time(desc.create_time()),
+                        proposal.effective_ending().as_ref().map(|ending| bucky_time_to_system_time(*ending))
+                    )
+                }).collect::<Vec<_>>()
+            );
         }
 
         for proposal in timeout_proposals {
@@ -1138,9 +1404,32 @@ impl HotstuffRunner {
             .await;
         }
 
+        if failed_proposals.len() > 0 {
+            log::warn!(
+                "[hotstuff] local: {:?}, generate_block failed proposal {:?}",
+                self,
+                failed_proposals.iter().map(|(proposal, err)| {
+                    let desc = proposal.desc();
+                    (
+                        desc.object_id(),
+                        desc.owner(),
+                        err.clone()
+                    )
+                }).collect::<Vec<_>>()
+            );
+        }
+
         for (proposal, err) in failed_proposals {
             // failed
             self.notify_proposal_err(&proposal, err).await;
+        }
+
+        if remove_proposals.len() > 0 {
+            log::warn!(
+                "[hotstuff] local: {:?}, generate_block finish proposal {:?}",
+                self,
+                remove_proposals
+            );
         }
 
         self.proposal_consumer
@@ -1151,6 +1440,10 @@ impl HotstuffRunner {
             .try_wait_proposals(executed_proposals.as_slice(), &pre_block)
             .await
         {
+            log::debug!(
+                "[hotstuff] local: {:?}, generate_block empty block, will ignore",
+                self,
+            );
             return Ok(());
         }
 
@@ -1183,7 +1476,22 @@ impl HotstuffRunner {
             self.local_id,
         );
 
-        self.sign_block(&mut block).await?;
+        log::debug!(
+            "[hotstuff] local: {:?}, generate_block new block {}",
+            self,
+            block.named_object().desc().object_id()
+        );
+
+        self.sign_block(&mut block).await.map_err(|err| {
+            log::warn!(
+                "[hotstuff] local: {:?}, generate_block new block {} sign failed {:?}",
+                self,
+                block.named_object().desc().object_id(),
+                err
+            );
+
+            err
+        })?;
 
         self.tx_message
             .send((HotstuffMessage::Block(block.clone()), self.local_id))
@@ -1236,7 +1544,14 @@ impl HotstuffRunner {
         let mut will_wait_proposals = false;
         if executed_proposals.len() == 0 {
             match pre_block.as_ref() {
-                None => will_wait_proposals = true,
+                None => {
+                    log::warn!(
+                        "[hotstuff] local: {:?}, new empty block will ignore for first block is empty.",
+                        self,
+                    );
+
+                    will_wait_proposals = true
+                },
                 Some(pre_block) => {
                     if pre_block.proposals().len() == 0 {
                         match pre_block.prev_block_id() {
@@ -1244,13 +1559,35 @@ impl HotstuffRunner {
                                 let pre_pre_block =
                                     match self.store.find_block_in_cache(pre_pre_block_id) {
                                         Ok(pre_pre_block) => pre_pre_block,
-                                        Err(_) => return false,
+                                        Err(err) => {
+                                            log::warn!(
+                                                "[hotstuff] local: {:?}, new empty block will generate for find prev-block {} failed {:?}",
+                                                self,
+                                                pre_pre_block_id,
+                                                err
+                                            );
+                                            return false;
+                                        }
                                     };
                                 if pre_pre_block.proposals().len() == 0 {
+                                    log::warn!(
+                                        "[hotstuff] local: {:?}, new empty block will ignore for 2 prev-block({}/{}) is empty",
+                                        self,
+                                        pre_pre_block_id, pre_block.named_object().desc().object_id()
+                                    );
+
                                     will_wait_proposals = true;
                                 }
                             }
-                            None => will_wait_proposals = true,
+                            None => {
+                                log::warn!(
+                                    "[hotstuff] local: {:?}, new empty block will ignore for prev-prev-block is None and prev-block is {}, maybe is a bug.",
+                                    self,
+                                    pre_block.named_object().desc().object_id()
+                                );
+
+                                will_wait_proposals = true;
+                            }
                         }
                     }
                 }
@@ -1374,6 +1711,16 @@ impl HotstuffRunner {
                     }
                 }
             };
+
+            log::debug!(
+                "[hotstuff] local: {:?}, new message response. result: {:?}",
+                self,
+                result
+            );
         }
+    }
+
+    fn debug_identify(&self) -> String {
+        format!("{:?}-{:?}-{}", self.rpath, self.local_device_id, self.round)
     }
 }
