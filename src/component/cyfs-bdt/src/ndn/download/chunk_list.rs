@@ -104,6 +104,7 @@ impl ChunkListTask {
         let mut state = self.0.state.write().unwrap();
         match &mut state.task_state {
             TaskStateImpl::Pending => {
+                debug!("{} create cache from pending, index={}, chunk={}", self, index, chunk);
                 let downloader = stack.ndn().chunk_manager().create_downloader(chunk, self.clone_as_leaf_task());
                 state.task_state = TaskStateImpl::Downloading(DownloadingState { 
                     downloaded: 0, 
@@ -116,6 +117,7 @@ impl ChunkListTask {
             TaskStateImpl::Downloading(downloading) => {
                 let (downloader, cur_index) = &downloading.cur_chunk;
                 if *cur_index != index {
+                    debug!("{} create new cache, old_index={}, old_chunk={}, index={}, chunk={}", self, *cur_index, downloader.cache().chunk(), index, chunk);
                     downloading.downloaded += downloader.cache().stream().len() as u64;
                     downloading.cur_chunk = (stack.ndn().chunk_manager().create_downloader(chunk, self.clone_as_leaf_task()), index);
                 }
@@ -335,15 +337,18 @@ impl DownloadTaskSplitRead for ChunkListTaskReader {
         buffer: &mut [u8],
     ) -> Poll<std::io::Result<Option<(ChunkCache, Range<usize>)>>> {
         let pined = self.get_mut();
+        debug!("{} poll split read, buffer={}, offset={}", pined.task(), buffer.len(), pined.offset);
         let ranges = pined.task.chunk_list().range_of(pined.offset..pined.offset + buffer.len() as u64);
         if ranges.is_empty() {
+            debug!("{} poll split read break, buffer={}, offset={}", pined.task(), buffer.len(), pined.offset);
             return Poll::Ready(Ok(None));
         }
         if let DownloadTaskState::Error(err) = pined.task.state() {
+            debug!("{} poll split read break, buffer={}, offset={}", pined.task(), buffer.len(), pined.offset);
             return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, BuckyError::new(err, ""))));
         } 
         let (index, range) = ranges[0].clone();
-
+        debug!("{} poll split on chunk index, buffer={}, offset={}, index={}", pined.task(), buffer.len(), pined.offset, index);
         let result = match pined.task.create_cache(index) {
             Ok(cache) => {
                 let mut reader = DownloadTaskReader::new(cache, pined.task.clone_as_leaf_task());
@@ -353,7 +358,9 @@ impl DownloadTaskSplitRead for ChunkListTaskReader {
                         let result = DownloadTaskSplitRead::poll_split_read(Pin::new(&mut reader), cx, &mut buffer[0..(range.end - range.start) as usize]);
                         if let Poll::Ready(result) = &result {
                             if let Some((_, r)) = result.as_ref().ok().and_then(|r| r.as_ref()) {
+                                let old_offset = pined.offset;
                                 pined.offset += (r.end - r.start) as u64;
+                                debug!("{} poll split offset changed, buffer={}, offset={}, new_offset={}", pined.task(), buffer.len(), old_offset, pined.offset);
                             }
                         }
                         result
@@ -367,11 +374,6 @@ impl DownloadTaskSplitRead for ChunkListTaskReader {
                 return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, err)));
             }
         };
-        
-        for (index, _) in ranges.into_iter().skip(1) {
-            let _ = pined.task.create_cache(index);
-        }
-
         result
     }
 }
