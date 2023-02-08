@@ -33,11 +33,11 @@ use crate::util::UtilOutputTransformer;
 use crate::util_api::UtilService;
 use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use cyfs_base::*;
-use cyfs_bdt::{DeviceCache, StackGuard, SnStatus};
+use cyfs_bdt::{DeviceCache, SnStatus, StackGuard};
+use cyfs_bdt_ext::{BdtStackParams, NamedDataComponents};
 use cyfs_lib::*;
 use cyfs_noc::*;
 use cyfs_task_manager::{SQLiteTaskStore, TaskManager};
-use cyfs_bdt_ext::{NamedDataComponents, BdtStackParams};
 
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
@@ -134,7 +134,6 @@ impl CyfsStackImpl {
 
         let current_root = local_root_state.state().get_current_root();
 
-
         let task_manager = Self::init_task_manager(isolate).await?;
         let trans_store = create_trans_store(isolate).await?;
         // let chunk_manager = Arc::new(ChunkManager::new());
@@ -177,7 +176,11 @@ impl CyfsStackImpl {
         );
 
         let named_data_components = cyfs_bdt_ext::BdtStackHelper::init_named_data_components(
-            isolate, noc.clone(), device_manager.clone_cache()).await?;
+            isolate,
+            noc.clone(),
+            device_manager.clone_cache(),
+        )
+        .await?;
 
         let fail_handler =
             ObjectFailHandler::new(raw_meta_cache.clone(), device_manager.clone_cache());
@@ -216,7 +219,7 @@ impl CyfsStackImpl {
             Self::load_global_state_meta(isolate, &local_root_state, noc.clone(), &source);
 
         // init global-state validator
-        let validator = GlobalStateValidatorManager::new(&local_root_state, &local_cache);
+        let validator = GlobalStateValidatorManager::new(&device_id, &local_root_state, &local_cache);
 
         noc.bind_object_meta_access_provider(Arc::new(Box::new(local_global_state_meta.clone())));
 
@@ -274,7 +277,11 @@ impl CyfsStackImpl {
         forward_manager.start();
 
         // ood_resolver
-        let ood_resoler = OodResolver::new(device_id.clone(), device_manager.clone_cache(), obj_searcher.clone().into_ref());
+        let ood_resoler = OodResolver::new(
+            device_id.clone(),
+            device_manager.clone_cache(),
+            obj_searcher.clone().into_ref(),
+        );
 
         // crypto
         let crypto = ObjectCrypto::new(
@@ -638,7 +645,13 @@ impl CyfsStackImpl {
         let processor = root_state.clone_global_state_processor();
         let processor = GlobalStateOutputTransformer::new(processor, source.clone());
 
-        GlobalStateMetaLocalService::new(isolate, processor, root_state.clone(), noc.clone())
+        GlobalStateMetaLocalService::new(
+            isolate,
+            processor,
+            root_state.clone(),
+            noc.clone(),
+            source.zone.device.as_ref().unwrap().clone(),
+        )
     }
 
     fn load_global_state_meta_service(
@@ -666,9 +679,8 @@ impl CyfsStackImpl {
         let event =
             BdtNDNEventHandler::new(zone_manager, acl, router_handlers, named_data_components);
 
-         // priority: params sn(always loaded from config dir) > sn config manager(always loaded from meta) > buildin sn
-         if params.known_sn.is_empty() {
-
+        // priority: params sn(always loaded from config dir) > sn config manager(always loaded from meta) > buildin sn
+        if params.known_sn.is_empty() {
             // use sn from sn config manager
             let mut sn_list = sn_config_manager.get_sn_list();
             if sn_list.is_empty() {
@@ -679,8 +691,13 @@ impl CyfsStackImpl {
         }
 
         let bdt_stack = cyfs_bdt_ext::BdtStackHelper::init_bdt_stack(
-            params, device_cache, isolate, named_data_components, Some(Box::new(event.clone())),
-        ).await?;
+            params,
+            device_cache,
+            isolate,
+            named_data_components,
+            Some(Box::new(event.clone())),
+        )
+        .await?;
 
         Ok((bdt_stack, event))
     }
@@ -790,11 +807,17 @@ impl CyfsStackImpl {
     pub async fn reset_network(&self, endpoints: &Vec<Endpoint>) -> BuckyResult<()> {
         info!("will reset bdt stack endpoints: {:?}", endpoints);
 
-        match self.bdt_stack.reset_endpoints(&endpoints).await.wait_online().await {
+        match self
+            .bdt_stack
+            .reset_endpoints(&endpoints)
+            .await
+            .wait_online()
+            .await
+        {
             Err(err) => {
                 error!("reset bdt stack error: {}", err);
                 return Err(err);
-            }, 
+            }
             Ok(status) => {
                 if status == SnStatus::Offline {
                     error!("reset bdt stack error: offline");
@@ -850,7 +873,9 @@ impl CyfsStackImpl {
 
         let ws_url = format!("ws://{}", ws_addr);
 
-        let mut param = SharedCyfsStackParam::new_with_ws_event(dec_id, &non_http_service_url, &ws_url).unwrap();
+        let mut param =
+            SharedCyfsStackParam::new_with_ws_event(dec_id, &non_http_service_url, &ws_url)
+                .unwrap();
         if let Some(requestor_config) = requestor_config {
             param.requestor_config = requestor_config;
         }
@@ -1100,7 +1125,8 @@ impl CyfsStack {
         dec_id: Option<ObjectId>,
         requestor_config: Option<CyfsStackRequestorConfig>,
     ) -> BuckyResult<SharedCyfsStackParam> {
-        self.stack.prepare_shared_object_stack_param(dec_id, requestor_config)
+        self.stack
+            .prepare_shared_object_stack_param(dec_id, requestor_config)
     }
 
     pub async fn open_shared_object_stack(
@@ -1108,7 +1134,9 @@ impl CyfsStack {
         dec_id: Option<ObjectId>,
         requestor_config: Option<CyfsStackRequestorConfig>,
     ) -> BuckyResult<SharedCyfsStack> {
-        self.stack.open_shared_object_stack(dec_id, requestor_config).await
+        self.stack
+            .open_shared_object_stack(dec_id, requestor_config)
+            .await
     }
 
     pub async fn open_uni_stack(&self, dec_id: &Option<ObjectId>) -> UniCyfsStackRef {

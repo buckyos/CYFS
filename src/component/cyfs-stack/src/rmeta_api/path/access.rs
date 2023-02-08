@@ -89,7 +89,7 @@ impl GlobalStatePathAccessList {
         self.list.clone()
     }
 
-    pub fn check<'d, 'a, 'b>(&self, req: GlobalStateAccessRequest<'d, 'a, 'b>) -> BuckyResult<()> {
+    pub fn check<'d, 'a, 'b>(&self, req: GlobalStateAccessRequest<'d, 'a, 'b>, current_device_id: &DeviceId) -> BuckyResult<()> {
         let req_path = if req.path.ends_with('/') {
             req.path.clone()
         } else {
@@ -106,7 +106,7 @@ impl GlobalStatePathAccessList {
                             return Ok(());
                         } else {
                             let msg =
-                                format!("raccess reject by item: req={}, access={}", req, item);
+                                format!("raccess reject by item: device={}, req={}, access={}", current_device_id, req, item);
                             warn!("{}", msg);
                             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                         }
@@ -119,7 +119,7 @@ impl GlobalStatePathAccessList {
                                 return Ok(());
                             } else {
                                 let msg =
-                                    format!("raccess reject by item: req={}, access={}", req, item);
+                                    format!("raccess reject by item: device={}, req={}, access={}", current_device_id, req, item);
                                 warn!("{}", msg);
                                 return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
                             }
@@ -132,7 +132,7 @@ impl GlobalStatePathAccessList {
             }
         }
 
-        let msg = format!("raccess reject by default: req={}", req);
+        let msg = format!("raccess reject by default: device={}, req={}", current_device_id, req);
         warn!("{}", msg);
         Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg))
     }
