@@ -2,12 +2,11 @@ use log::*;
 use async_std::{
     future, 
     task, 
-    sync::{Arc}
 };
 use std::{
     time::Duration, 
     fmt, 
-    sync::{RwLock}, 
+    sync::{RwLock, Arc, Weak}, 
     collections::{BTreeMap, LinkedList}, 
     ops::Deref,
     convert::TryFrom
@@ -118,14 +117,8 @@ enum TunnelStateImpl {
     Dead(TunnelDeadState)
 }
 
-enum TunnelRecycleState {
-    InUse, 
-    Recycle(Timestamp)
-}
-
 struct TunnelContainerState {
     last_update: Timestamp, 
-    recyle_state: TunnelRecycleState, 
     tunnel_state: TunnelStateImpl, 
     tunnel_entries: BTreeMap<EndpointPair, DynamicTunnel>
 }
@@ -151,7 +144,6 @@ impl TunnelContainer {
             remote_const, 
             sequence_generator: TempSeqGenerator::new(), 
             state: RwLock::new(TunnelContainerState {
-                recyle_state: TunnelRecycleState::InUse, 
                 tunnel_entries: BTreeMap::new(), 
                 last_update: bucky_time_now(), 
                 tunnel_state: TunnelStateImpl::Connecting(TunnelConnectingState {
@@ -168,22 +160,6 @@ impl TunnelContainer {
             tunnel.mtu()
         } else {
             MTU-12
-        }
-    }
-
-    fn mark_in_use(&self) {
-        let mut state = self.0.state.write().unwrap();
-        state.recyle_state = TunnelRecycleState::InUse;
-    }
-
-    fn mark_recycle(&self, when: Timestamp) -> Timestamp {
-        let mut state = self.0.state.write().unwrap();
-        match &state.recyle_state {
-            TunnelRecycleState::InUse => {
-                state.recyle_state = TunnelRecycleState::Recycle(when);
-                when
-            }, 
-            TunnelRecycleState::Recycle(when) => *when
         }
     }
 
@@ -1267,21 +1243,32 @@ impl OnPackage<AckProxy, &DeviceId> for TunnelContainer {
 #[derive(Clone)]
 pub struct TunnelGuard(Arc<TunnelContainer>);
 
+#[derive(Clone)]
+pub struct WeakTunnelGuard(Weak<TunnelContainer>);
+
+impl WeakTunnelGuard {
+    pub fn to_strong(&self) -> Option<TunnelGuard> {
+        self.0.upgrade().map(|s| TunnelGuard(s))
+    }
+}
+
 impl TunnelGuard {
     pub(super) fn new(tunnel: TunnelContainer) -> Self {
         Self(Arc::new(tunnel))
     }
 
-    pub(super) fn mark_in_use(&self) {
-        self.0.mark_in_use()
+    pub fn to_weak(&self) -> WeakTunnelGuard {
+        WeakTunnelGuard(Arc::downgrade(&self.0))
     }
 
-    pub(super) fn mark_recycle(&self, when: Timestamp) -> Option<Timestamp> {
-        if Arc::strong_count(&self.0) > 1 {
-            None
-        } else {
-            Some(self.0.mark_recycle(when))
-        }
+    pub fn ref_count(&self) -> usize {
+        Arc::strong_count(&self.0)
+    }
+}
+
+impl Drop for TunnelGuard {
+    fn drop(&mut self) {
+        self.0.reset();
     }
 }
 

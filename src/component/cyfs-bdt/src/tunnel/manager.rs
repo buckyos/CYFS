@@ -1,12 +1,13 @@
 use log::*;
 use std::{
     fmt, 
-    time::Duration,  
-    collections::{LinkedList, BTreeMap}, 
-    sync::RwLock
+    time::Duration, 
+    collections::{BTreeMap, LinkedList}, 
+    sync::{Arc, RwLock}
 };
 use async_std::{
-    sync::Arc, 
+    future, 
+    task
 };
 use cyfs_base::*;
 use crate::{
@@ -18,9 +19,37 @@ use crate::{
 };
 use super::container::{TunnelGuard, TunnelContainer, Config};
 
+struct TunnelKeeper {
+    reserving: Option<Timestamp>, 
+    tunnel: TunnelGuard
+}
+
+impl TunnelKeeper {
+    fn get(&self) -> TunnelGuard {
+        self.tunnel.clone()
+    }
+
+    fn check(&mut self, when: Timestamp) -> bool {
+        if self.tunnel.ref_count() > 1 {
+            self.reserving = None;
+            true
+        } else if let Some(expire_at) = self.reserving {
+            if when > expire_at {
+                info!("{} expired at {}", &*self.tunnel, expire_at);
+                false
+            } else {
+                true
+            }
+        } else {
+            self.reserving = Some(when + self.tunnel.config().retain_timeout.as_micros() as u64);
+            true
+        }
+    }
+}
+
 struct TunnelManagerImpl {
     stack: WeakStack, 
-    entries: RwLock<BTreeMap<DeviceId, TunnelGuard>>
+    entries: RwLock<BTreeMap<DeviceId, TunnelKeeper>>
 }
 
 #[derive(Clone)]
@@ -33,41 +62,32 @@ impl TunnelManager {
             entries: RwLock::new(BTreeMap::new())
         }));
 
-        // FIXME: check recyle
-        // {
-        //     let manager = manager.clone();
-        //     task::spawn(async move {
-        //         loop {
-        //             manager.check_recyle();
-        //             let _ = future::timeout(Duration::from_secs(1), future::pending::<()>()).await;           
-        //         }
-        //     });
-        // }
+        {
+            let manager = manager.clone();
+            task::spawn(async move {
+                loop {
+                    manager.check_recycle(bucky_time_now());
+                    let _ = future::timeout(Duration::from_secs(1), future::pending::<()>()).await;           
+                }
+            });
+        }
 
         manager
     }
 
-    fn check_recyle(&self) {
-        let now = bucky_time_now();
-        let to_reset = {
-            let mut entries = self.0.entries.write().unwrap();
-            let mut to_recycle = LinkedList::new();
-            for (remote, tunnel) in entries.iter() {
-                if let Some(when) = TunnelGuard::mark_recycle(tunnel, now) {
-                    if now > when && Duration::from_micros(now - when) > tunnel.config().retain_timeout {
-                        to_recycle.push_back(remote.clone());
-                    }
-                }
-            }
-            let mut to_reset = LinkedList::new();
-            for recycle in to_recycle {
-                to_reset.push_back(entries.remove(&recycle).unwrap());
-            }
-            to_reset
-        };
+    fn check_recycle(&self, when: Timestamp) {
+        let mut entries = self.0.entries.write().unwrap(); 
+        let mut remove = LinkedList::new();
 
-        for tunnel in to_reset {
-            let _ = tunnel.reset();
+        for (remote, keeper) in entries.iter() {
+            if !keeper.check(when) {
+                remove.push_back(remote.clone());
+            }
+        }
+
+        for remote in remove {
+            info!("{} will remove tunnel for not used, channel={}", self, remote);
+            entries.remove(&remote);
         }
     }
 
@@ -77,21 +97,15 @@ impl TunnelManager {
         stack.config().tunnel.clone()
     }
 
-    // 保活和 remote 之间的tunnel
-    pub(crate) fn keep(&self, _remote_const: &DeviceDesc) -> BuckyResult<()> {
-        unimplemented!()
-    }
-
     pub(crate) fn create_container(&self, remote_const: &DeviceDesc) -> Result<TunnelGuard, BuckyError> {
         let remote = remote_const.device_id();
         debug!("{} create new tunnel container of remote {}", self, remote);
         let mut entries = self.0.entries.write().unwrap();
         if let Some(tunnel) = entries.get(&remote) {
-            TunnelGuard::mark_in_use(tunnel);
-            Ok(tunnel.clone())
+            Ok(tunnel.get())
         } else {
             let tunnel = TunnelGuard::new(TunnelContainer::new(self.0.stack.clone(), remote_const.clone(), self.config_for(remote_const)));
-            entries.insert(remote, tunnel.clone());
+            entries.insert(remote, TunnelKeeper { reserving: None, tunnel: tunnel.clone() });
             Ok(tunnel)
         } 
     }
@@ -99,15 +113,14 @@ impl TunnelManager {
     pub(crate) fn container_of(&self, remote: &DeviceId) -> Option<TunnelGuard> {
         let entries = self.0.entries.read().unwrap();
         entries.get(&remote).map(|tunnel| {
-            TunnelGuard::mark_in_use(tunnel);
-            tunnel.clone()
+            tunnel.get()
         })
     }
 
     pub(crate) fn reset(&self) {
         let entries = self.0.entries.read().unwrap();
         for (_, tunnel) in entries.iter() {
-            tunnel.reset();
+            tunnel.get().reset();
         }
     }
 
