@@ -23,7 +23,6 @@ use crate::{
 
 /**
  * TODO: generate empty block when the 'Node' is synchronizing
- * TODO: use admins instead ood_list
 */
 
 pub(crate) struct Hotstuff {
@@ -311,121 +310,22 @@ impl HotstuffRunner {
 
         {
             // check leader
-            let leader = self
-                .committee
-                .get_leader(Some(block.group_chunk_id()), block.round())
-                .await.map_err(|err| {
-                    log::warn!(
-                        "[hotstuff] local: {:?}, get leader from group {:?} with round {} failed, {:?}.",
-                        self,
-                        block.group_chunk_id(), block.round(),
-                        err
-                    );
+            let leader_owner = self.get_leader_owner(Some(block.group_chunk_id()), block.round()).await?;
 
-                    err
-                })?;
-            let leader_owner = self
-                .non_driver
-                .get_device(&leader)
-                .await
-                .map_err(|err| {
-                    log::warn!(
-                        "[hotstuff] local: {:?}, get leader by id {:?} failed, {:?}.",
-                        self,
-                        leader,
-                        err
-                    );
-
-                    err
-                })?
-                .desc()
-                .owner()
-                .clone();
-            match leader_owner.as_ref() {
-                Some(leader_owner) if leader_owner == block.owner() => {}
-                _ => {
-                    log::warn!("[hotstuff] local: {:?}, receive block({:?}) from invalid leader({}), expected {:?}",
-                        self,
-                        block.named_object().desc().object_id(),
-                        block.owner(),
-                        leader_owner
-                    );
-                    return Err(BuckyError::new(BuckyErrorCode::Ignored, "invalid leader"));
-                }
+            if &leader_owner != block.owner() {
+                log::warn!("[hotstuff] local: {:?}, receive block({:?}) from invalid leader({}), expected {:?}",
+                    self,
+                    block.named_object().desc().object_id(),
+                    block.owner(),
+                    leader_owner
+                );
+                return Err(BuckyError::new(BuckyErrorCode::Ignored, "invalid leader"));
             }
         }
 
-        let (prev_block, proposals) = {
-            match self.store.block_linked(block).await? {
-                crate::storage::BlockLinkState::Expired => {
-                    log::warn!(
-                        "[hotstuff] local: {:?}, receive block expired.",
-                        self
-                    );
-                    return Err(BuckyError::new(BuckyErrorCode::Ignored, "expired"));
-                }
-                crate::storage::BlockLinkState::DuplicateProposal => {
-                    log::warn!(
-                        "[hotstuff] local: {:?}, receive block with duplicate proposal.",
-                        self
-                    );
-                    return Err(BuckyError::new(
-                        BuckyErrorCode::AlreadyExists,
-                        "duplicate proposal",
-                    ));
-                }
-                crate::storage::BlockLinkState::Duplicate => {
-                    log::warn!(
-                        "[hotstuff] local: {:?}, receive duplicate block.",
-                        self
-                    );
-                    return Err(BuckyError::new(
-                        BuckyErrorCode::AlreadyExists,
-                        "duplicate block",
-                    ));
-                }
-                crate::storage::BlockLinkState::Link(prev_block, proposals) => {
-                    log::debug!(
-                        "[hotstuff] local: {:?}, receive in-order block, height: {}.",
-                        self,
-                        block.height()
-                    );
-
-                    // 顺序连接状态
-                    Self::check_empty_block_result_state_with_prev(block, &prev_block)?;
-                    (prev_block, proposals)
-                }
-                crate::storage::BlockLinkState::Pending => {
-                    log::warn!(
-                        "[hotstuff] local: {:?}, receive out-order block, expect height: {}, get height: {}.",
-                        self,
-                        self.store.header_height() + 3,
-                        block.height()
-                    );
-
-                    // 乱序，同步
-                    if block.height() <= self.store.header_height() + 3 {
-                        self.fetch_block(block.prev_block_id().unwrap(), remote)
-                            .await;
-                    }
-
-                    let max_round_block = self.store.block_with_max_round();
-                    self.synchronizer.push_outorder_block(
-                        block.clone(),
-                        max_round_block.map_or(1, |block| block.height() + 1),
-                        remote,
-                    );
-
-                    return Ok(());
-                }
-                crate::storage::BlockLinkState::InvalidBranch => {
-                    log::warn!(
-                        "[hotstuff] local: {:?}, receive block in invalid branch.",
-                        self
-                    );
-                    return Err(BuckyError::new(BuckyErrorCode::Conflict, "conflict branch"));
-                }
-            }
+        let (prev_block, proposals) = match self.check_block_linked(&block, remote).await {
+            Ok(link) => link,
+            Err(err) => return err
         };
 
         self.committee
@@ -579,6 +479,126 @@ impl HotstuffRunner {
         Ok(())
     }
 
+    async fn get_leader_owner(&self, group_chunk_id: Option<&ObjectId>, round: u64) -> BuckyResult<ObjectId> {
+        let leader = self
+            .committee
+            .get_leader(group_chunk_id, round)
+            .await.map_err(|err| {
+                log::warn!(
+                    "[hotstuff] local: {:?}, get leader from group {:?} with round {} failed, {:?}.",
+                    self,
+                    group_chunk_id, round,
+                    err
+                );
+
+                err
+            })?;
+
+        let leader_owner = self
+            .non_driver
+            .get_device(&leader)
+            .await
+            .map_err(|err| {
+                log::warn!(
+                    "[hotstuff] local: {:?}, get leader by id {:?} failed, {:?}.",
+                    self,
+                    leader,
+                    err
+                );
+
+                err
+            })?
+            .desc()
+            .owner()
+            .clone();
+
+        match leader_owner {
+            Some(owner) => Ok(owner),
+            None => {
+                log::warn!("[hotstuff] local: {:?}, a owner must be set to the device {}",
+                    self,
+                    leader
+                );
+                Err(BuckyError::new(BuckyErrorCode::InvalidTarget, "no owner for device"))
+            }
+        }
+    }
+
+    async fn check_block_linked(&mut self, block: &GroupConsensusBlock, remote: ObjectId) -> Result<(Option<GroupConsensusBlock>, HashMap<ObjectId, GroupProposal>), BuckyResult<()>> {
+        match self.store.block_linked(block).await
+            .map_err(|err| Err(err))? {
+
+            crate::storage::BlockLinkState::Expired => {
+                log::warn!(
+                    "[hotstuff] local: {:?}, receive block expired.",
+                    self
+                );
+                Err(Err(BuckyError::new(BuckyErrorCode::Ignored, "expired")))
+            }
+            crate::storage::BlockLinkState::DuplicateProposal => {
+                log::warn!(
+                    "[hotstuff] local: {:?}, receive block with duplicate proposal.",
+                    self
+                );
+                Err (Err(BuckyError::new(
+                    BuckyErrorCode::AlreadyExists,
+                    "duplicate proposal",
+                )))
+            }
+            crate::storage::BlockLinkState::Duplicate => {
+                log::warn!(
+                    "[hotstuff] local: {:?}, receive duplicate block.",
+                    self
+                );
+                Err( Err(BuckyError::new(
+                    BuckyErrorCode::AlreadyExists,
+                    "duplicate block",
+                )))
+            }
+            crate::storage::BlockLinkState::Link(prev_block, proposals) => {
+                log::debug!(
+                    "[hotstuff] local: {:?}, receive in-order block, height: {}.",
+                    self,
+                    block.height()
+                );
+
+                // 顺序连接状态
+                Self::check_empty_block_result_state_with_prev(block, &prev_block).map_err(|err| Err(err))?;
+                Ok((prev_block, proposals))
+            }
+            crate::storage::BlockLinkState::Pending => {
+                log::warn!(
+                    "[hotstuff] local: {:?}, receive out-order block, expect height: {}, get height: {}.",
+                    self,
+                    self.store.header_height() + 3,
+                    block.height()
+                );
+
+                // 乱序，同步
+                if block.height() <= self.store.header_height() + 3 {
+                    self.fetch_block(block.prev_block_id().unwrap(), remote)
+                        .await;
+                }
+
+                let max_round_block = self.store.block_with_max_round();
+                self.synchronizer.push_outorder_block(
+                    block.clone(),
+                    max_round_block.map_or(1, |block| block.height() + 1),
+                    remote,
+                );
+
+                Err(Ok(()))
+            }
+            crate::storage::BlockLinkState::InvalidBranch => {
+                log::warn!(
+                    "[hotstuff] local: {:?}, receive block in invalid branch.",
+                    self
+                );
+                Err( Err(BuckyError::new(BuckyErrorCode::Conflict, "conflict branch")))
+            }
+        }
+    }
+
     async fn process_block(
         &mut self,
         block: &GroupConsensusBlock,
@@ -615,73 +635,7 @@ impl HotstuffRunner {
              * */
             self.cleanup_proposal(&header_block).await;
 
-            let (_, qc_block) = self
-                .store
-                .pre_commits()
-                .iter()
-                .next()
-                .expect("the pre-commit block must exist.");
-
-            let pre_state_id = match header_block.prev_block_id() {
-                Some(block_id) => self
-                    .non_driver
-                    .get_block(block_id, None)
-                    .await.map_err(|err| {
-                        log::warn!(
-                            "[hotstuff] local: {:?}, get prev-block {:?} before commit-notify failed {:?}",
-                            self, block_id, err
-                        );
-                        err
-                    })?
-                    .result_state_id()
-                    .clone(),
-                None => None,
-            };
-
-            for proposal in header_block.proposals() {
-                let proposal_obj = self
-                    .non_driver
-                    .get_proposal(&proposal.proposal, None)
-                    .await.map_err(|err| {
-                        log::warn!(
-                            "[hotstuff] local: {:?}, get proposal {:?} in header-block {:?} before commit-notify failed {:?}",
-                            self, proposal.proposal, header_block.named_object().desc().object_id(), err
-                        );
-
-                        err
-                    })?;
-                let receipt = match proposal.receipt.as_ref() {
-                    Some(receipt) => {
-                        let (receipt, remain) = NONObjectInfo::raw_decode(receipt.as_slice()).map_err(|err| {
-                            log::warn!(
-                                "[hotstuff] local: {:?}, decode receipt of proposal {:?} in header-block {:?} before commit-notify failed {:?}",
-                                self, proposal.proposal, header_block.named_object().desc().object_id(), err
-                            );
-                            err
-                        })?;
-                        assert_eq!(remain.len(), 0);
-                        Some(receipt)
-                    }
-                    None => None,
-                };
-
-                self.delegate
-                    .on_commited(
-                        &proposal_obj,
-                        pre_state_id,
-                        &ExecuteResult {
-                            result_state_id: header_block.result_state_id().clone(),
-                            receipt,
-                            context: proposal.context.clone(),
-                        },
-                        &header_block,
-                    )
-                    .await;
-            }
-
-            self.state_pusher
-                .notify_block_commit(header_block, qc_block.clone())
-                .await
+            self.notify_block_committed(header_block).await;
         }
 
         match self.vote_mgr.add_voting_block(block).await {
@@ -739,6 +693,78 @@ impl HotstuffRunner {
                     .await;
             }
         }
+
+        Ok(())
+    }
+
+    async fn notify_block_committed(&self, new_header: GroupConsensusBlock) -> BuckyResult<()> {
+        let (_, qc_block) = self
+            .store
+            .pre_commits()
+            .iter()
+            .next()
+            .expect("the pre-commit block must exist.");
+
+        let pre_state_id = match new_header.prev_block_id() {
+            Some(block_id) => self
+                .non_driver
+                .get_block(block_id, None)
+                .await.map_err(|err| {
+                    log::warn!(
+                        "[hotstuff] local: {:?}, get prev-block {:?} before commit-notify failed {:?}",
+                        self, block_id, err
+                    );
+                    err
+                })?
+                .result_state_id()
+                .clone(),
+            None => None,
+        };
+
+        for proposal in new_header.proposals() {
+            let proposal_obj = self
+                .non_driver
+                .get_proposal(&proposal.proposal, None)
+                .await.map_err(|err| {
+                    log::warn!(
+                        "[hotstuff] local: {:?}, get proposal {:?} in header-block {:?} before commit-notify failed {:?}",
+                        self, proposal.proposal, new_header.named_object().desc().object_id(), err
+                    );
+
+                    err
+                })?;
+            let receipt = match proposal.receipt.as_ref() {
+                Some(receipt) => {
+                    let (receipt, remain) = NONObjectInfo::raw_decode(receipt.as_slice()).map_err(|err| {
+                        log::warn!(
+                            "[hotstuff] local: {:?}, decode receipt of proposal {:?} in header-block {:?} before commit-notify failed {:?}",
+                            self, proposal.proposal, new_header.named_object().desc().object_id(), err
+                        );
+                        err
+                    })?;
+                    assert_eq!(remain.len(), 0);
+                    Some(receipt)
+                }
+                None => None,
+            };
+
+            self.delegate
+                .on_commited(
+                    &proposal_obj,
+                    pre_state_id,
+                    &ExecuteResult {
+                        result_state_id: new_header.result_state_id().clone(),
+                        receipt,
+                        context: proposal.context.clone(),
+                    },
+                    &new_header,
+                )
+                .await;
+        }
+
+        self.state_pusher
+            .notify_block_commit(new_header, qc_block.clone())
+            .await;
 
         Ok(())
     }
@@ -879,6 +905,12 @@ impl HotstuffRunner {
         prev_block: Option<&GroupConsensusBlock>,
         remote: ObjectId,
     ) -> BuckyResult<()> {
+        log::debug!("[hotstuff] local: {:?}, handle_vote: {:?}/{:?}, prev: {:?}, voter: {:?}, remote: {:?},",
+            self,
+            vote.block_id, vote.round,
+            vote.prev_block_id,
+            vote.voter, remote);
+
         if vote.round < self.round {
             log::warn!(
                 "[hotstuff] local: {:?}, receive timeout vote({}/{}/{:?}), local-round: {}",
@@ -1284,7 +1316,7 @@ impl HotstuffRunner {
 
         proposals.sort_by(|left, right| left.desc().create_time().cmp(&right.desc().create_time()));
 
-        let pre_block = match self.high_qc.as_ref() {
+        let prev_block = match self.high_qc.as_ref() {
             Some(qc) => Some(self.store.find_block_in_cache(&qc.block_id)?),
             None => None,
         };
@@ -1304,7 +1336,7 @@ impl HotstuffRunner {
         let mut timeout_proposals = vec![];
         let mut executed_proposals = vec![];
         let mut failed_proposals = vec![];
-        let mut result_state_id = match pre_block.as_ref() {
+        let mut result_state_id = match prev_block.as_ref() {
             Some(block) => block.result_state_id().clone(),
             None => self.store.dec_state_id().clone(),
         };
@@ -1359,6 +1391,36 @@ impl HotstuffRunner {
             };
         }
 
+        self.notify_adjust_time_proposals(time_adjust_proposals).await;
+        self.notify_timeout_proposals(timeout_proposals).await;
+        self.notify_failed_proposals(failed_proposals).await;
+        self.remove_pending_proposals(remove_proposals).await;
+
+        if self
+            .try_wait_proposals(executed_proposals.as_slice(), &prev_block)
+            .await
+        {
+            log::debug!(
+                "[hotstuff] local: {:?}, generate_block empty block, will ignore",
+                self,
+            );
+            return Ok(());
+        }
+
+        let block = self.package_block_with_proposals(executed_proposals, &latest_group, result_state_id, &prev_block, tc).await?;
+
+        self.tx_message
+            .send((HotstuffMessage::Block(block.clone()), self.local_id))
+            .await;
+
+        self.broadcast(HotstuffMessage::Block(block), &latest_group)
+            .await;
+
+        self.rx_proposal_waiter = None;
+        Ok(())
+    }
+
+    async fn notify_adjust_time_proposals(&self, time_adjust_proposals: Vec<GroupProposal>) {
         if time_adjust_proposals.len() > 0 {
             log::warn!(
                 "[hotstuff] local: {:?}, generate_block timestamp err {:?}",
@@ -1378,7 +1440,9 @@ impl HotstuffRunner {
             )
             .await;
         }
+    }
 
+    async fn notify_timeout_proposals(&self, timeout_proposals: Vec<GroupProposal>) {
         if timeout_proposals.len() > 0 {
             log::warn!(
                 "[hotstuff] local: {:?}, generate_block timeout {:?}",
@@ -1403,7 +1467,9 @@ impl HotstuffRunner {
             )
             .await;
         }
+    }
 
+    async fn notify_failed_proposals(&self, failed_proposals: Vec<(GroupProposal, BuckyError)>) {
         if failed_proposals.len() > 0 {
             log::warn!(
                 "[hotstuff] local: {:?}, generate_block failed proposal {:?}",
@@ -1423,30 +1489,29 @@ impl HotstuffRunner {
             // failed
             self.notify_proposal_err(&proposal, err).await;
         }
+    }
 
-        if remove_proposals.len() > 0 {
+    async fn remove_pending_proposals(&self, pending_proposals: Vec<ObjectId>) {
+        if pending_proposals.len() > 0 {
             log::warn!(
                 "[hotstuff] local: {:?}, generate_block finish proposal {:?}",
                 self,
-                remove_proposals
+                pending_proposals
             );
         }
 
         self.proposal_consumer
-            .remove_proposals(remove_proposals)
+            .remove_proposals(pending_proposals)
             .await;
+    }
 
-        if self
-            .try_wait_proposals(executed_proposals.as_slice(), &pre_block)
-            .await
-        {
-            log::debug!(
-                "[hotstuff] local: {:?}, generate_block empty block, will ignore",
-                self,
-            );
-            return Ok(());
-        }
-
+    async fn package_block_with_proposals(&self,
+        executed_proposals: Vec<(GroupProposal, ExecuteResult)>,
+        group: &Group,
+        result_state_id: Option<ObjectId>,
+        prev_block: &Option<GroupConsensusBlock>,
+        tc: Option<HotstuffTimeout>
+    ) -> BuckyResult<GroupConsensusBlock> {
         let proposals_param = executed_proposals
             .into_iter()
             .map(|(proposal, exe_result)| GroupConsensusBlockProposal {
@@ -1457,7 +1522,7 @@ impl HotstuffRunner {
             })
             .collect();
 
-        let group_chunk_id = ChunkMeta::from(&latest_group)
+        let group_chunk_id = ChunkMeta::from(group)
             .to_chunk()
             .await
             .unwrap()
@@ -1467,7 +1532,7 @@ impl HotstuffRunner {
             self.rpath.clone(),
             proposals_param,
             result_state_id,
-            pre_block.map_or(0, |b| b.height()) + 1,
+            prev_block.as_ref().map_or(0, |b| b.height()) + 1,
             ObjectId::default(), // TODO: meta block id
             self.round,
             group_chunk_id.object_id(),
@@ -1493,15 +1558,7 @@ impl HotstuffRunner {
             err
         })?;
 
-        self.tx_message
-            .send((HotstuffMessage::Block(block.clone()), self.local_id))
-            .await;
-
-        self.broadcast(HotstuffMessage::Block(block), &latest_group)
-            .await;
-
-        self.rx_proposal_waiter = None;
-        Ok(())
+        Ok(block)
     }
 
     async fn sign_block(&self, block: &mut GroupConsensusBlock) -> BuckyResult<()> {

@@ -186,6 +186,8 @@ mod Common {
                 .collect(),
         );
 
+        group.set_consensus_interval(5000);
+
         log::info!("create group: {:?}", group.desc().object_id());
 
         group

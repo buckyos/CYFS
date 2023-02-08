@@ -94,6 +94,8 @@ pub type GroupDesc = NamedObjectDesc<GroupDescContent>;
 pub type GroupId = NamedObjectId<GroupType>;
 pub type Group = NamedObjectBase<GroupType>;
 
+pub const GROUP_DEFAULT_CONSENSUS_INTERVAL: u64 = 5000; // default 5000 ms
+
 impl GroupDesc {
     pub fn group_id(&self) -> GroupId {
         GroupId::try_from(self.calculate_id()).unwrap()
@@ -220,7 +222,12 @@ impl Group {
     }
 
     pub fn consensus_interval(&self) -> u64 {
-        self.common().consensus_interval
+        let interval = self.common().consensus_interval;
+        if interval == 0 {
+            GROUP_DEFAULT_CONSENSUS_INTERVAL
+        } else {
+            interval
+        }
     }
 
     pub fn set_consensus_interval(&mut self, interval: u64) {

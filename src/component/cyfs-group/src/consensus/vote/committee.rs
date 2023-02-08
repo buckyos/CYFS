@@ -163,11 +163,12 @@ impl Committee {
         prev_block: Option<&GroupConsensusBlock>,
     ) -> BuckyResult<()> {
         let highest_round = tc.votes.iter().map(|v| v.high_qc_round).max();
-        if highest_round != prev_block.map(|b| b.round()) {
-            log::warn!("[group committee] hightest round is not match with prev-block in tc");
+        let prev_round = prev_block.map(|b| b.round());
+        if highest_round != prev_round {
+            log::warn!("[group committee] hightest round is not match with prev-block in tc, highest_round: {:?}, prev_round: {:?}", highest_round, prev_round);
             return Err(BuckyError::new(
                 BuckyErrorCode::NotMatch,
-                "rount not match in tc",
+                "round not match in tc",
             ));
         }
 
@@ -219,10 +220,10 @@ impl Committee {
         prev_block: &GroupConsensusBlock,
     ) -> BuckyResult<()> {
         if qc.round != prev_block.round() {
-            log::warn!("[group committee] round is not match with prev-block in qc");
+            log::warn!("[group committee] round is not match with prev-block in qc, round: {}, prev_round: {}", qc.round, prev_block.round());
             return Err(BuckyError::new(
                 BuckyErrorCode::NotMatch,
-                "rount not match in qc",
+                "round not match in qc",
             ));
         }
 
