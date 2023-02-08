@@ -35,7 +35,8 @@ impl Timer {
     }
 
     pub async fn wait_next(&mut self) {
-        self.sleep.take().unwrap().await;
+        let sleep = self.sleep.take().unwrap();
         self.reset(self.duration);
+        sleep.await;
     }
 }
