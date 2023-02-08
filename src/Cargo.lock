@@ -1561,6 +1561,7 @@ dependencies = [
  "generic-array 0.12.4",
  "hex",
  "libc",
+ "local-ip-address",
  "log 0.4.17",
  "lru_time_cache",
  "md5",
@@ -3959,6 +3960,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "local-ip-address"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "faa9d02443a1741e9f51dafdfcbffb3863b2a89c457d762b40337d6c5153ef81"
+dependencies = [
+ "libc",
+ "neli",
+ "thiserror",
+ "windows-sys 0.42.0",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4208,6 +4221,16 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "tempfile",
+]
+
+[[package]]
+name = "neli"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9053554eb5dcb7e10d9cdab1206965bde870eed5d0d341532ca035e3ba221508"
+dependencies = [
+ "byteorder",
+ "libc",
 ]
 
 [[package]]

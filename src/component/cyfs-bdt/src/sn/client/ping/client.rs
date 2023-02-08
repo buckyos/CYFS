@@ -614,7 +614,7 @@ impl PingClient {
                 info!("{} started", self); 
                 let mut ipv6_session = None;
                 let mut ipv4_sessions = vec![];
-                for local in self.0.net_listener.udp() {
+                for local in self.0.net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv4()) {
                     let sn_endpoints: Vec<Endpoint> = self.0.sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.is_same_ip_version(&local.local())).cloned().collect();
                     if sn_endpoints.len() > 0 {
                         let params = UdpSesssionParams {
@@ -626,14 +626,29 @@ impl PingClient {
                             sn_endpoints,  
                         };
                         let session = UdpPingSession::new(self.0.stack.clone(), self.0.gen_seq.clone(), params).clone_as_ping_session();
-                        if local.local().addr().is_ipv6() {
-                            if ipv6_session.is_none() {
-                                ipv6_session = Some(session);
-                            }
-                        } else {
-                            info!("{} add session {}", self, session);
-                            ipv4_sessions.push(session);
-                        }
+                      
+                        info!("{} add session {}", self, session);
+                        ipv4_sessions.push(session);
+                    }
+                };
+
+
+                for local in self.0.net_listener.udp().iter().filter(|interface| interface.local().addr().is_ipv6()) {
+                    let sn_endpoints: Vec<Endpoint> = self.0.sn.connect_info().endpoints().iter().filter(|endpoint| endpoint.is_udp() && endpoint.is_same_ip_version(&local.local())).cloned().collect();
+                    if sn_endpoints.len() > 0 {
+                        let params = UdpSesssionParams {
+                            config: self.0.config.udp.clone(), 
+                            local: local.clone(),
+                            local_device: self.local_device(), 
+                            with_device: false, 
+                            sn_desc: self.0.sn.desc().clone(),
+                            sn_endpoints,  
+                        };
+                        let session = UdpPingSession::new(self.0.stack.clone(), self.0.gen_seq.clone(), params).clone_as_ping_session();
+                        
+                        info!("{} add session {}", self, session);
+                        ipv6_session = Some(session);
+                        break; 
                     }
                 };
 
