@@ -437,7 +437,6 @@ impl StreamContainer {
                     waiter: StateWaiter::new(),
                     builder: AcceptStreamBuilder::new(self.0.stack.clone(), self.clone(), tunnel.as_ref().clone()),
                 }), tunnel.clone());
-
             let stream = self.clone();
             task::spawn(async move {
                 match future::timeout(
@@ -859,7 +858,6 @@ impl StreamContainer {
         }
     }
 
-
     pub fn tunnel(&self) -> Option<TunnelGuard> {
         match &*self.0.state.read().unwrap() {
             StreamStateImpl::Initial(tunnel) => Some(tunnel.clone()),
@@ -933,6 +931,7 @@ impl StreamContainer {
         *self.0.state.write().unwrap() = StreamStateImpl::Closed;
         self.stack().stream_manager().remove_stream(self, reserving);
     }
+
 
     pub async fn confirm(&self, answer: &[u8]) -> BuckyResult<()> {
         if answer.len() > ANSWER_MAX_LEN {

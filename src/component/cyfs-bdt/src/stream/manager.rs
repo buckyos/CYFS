@@ -40,6 +40,7 @@ struct StreamEntries {
     remote_entries: BTreeMap<RemoteSequence, StreamContainer>, 
 }
 
+
 impl StreamEntries {
     fn stream_of_id(&self, id: &IncreaseId) -> Option<StreamContainer> {
         self.id_entries.get(id).cloned()
@@ -80,6 +81,7 @@ struct StreamManagerImpl {
     reserving_entries: Mutex<ReservingEntries>, 
     acceptor_entries: RwLock<BTreeMap<u16, StreamListener>>
 }
+
 
 #[derive(Clone)]
 pub struct StreamManager(Arc<StreamManagerImpl>);
@@ -184,6 +186,10 @@ impl StreamManager {
                 entries.remote_entries.insert(remote_seq, stream.clone());
             }            
         }
+    }
+
+    pub(crate) fn remove_acceptor(&self, acceptor: &StreamListener) {
+        self.0.acceptor_entries.write().unwrap().remove(&acceptor.port());
     }
 
     pub(crate) fn remove_acceptor(&self, acceptor: &StreamListener) {
