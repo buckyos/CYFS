@@ -379,7 +379,7 @@ pub enum StreamProviderSelector {
 
 struct StreamContainerImpl {
     stack: WeakStack, 
-    remote_device: DeviceId, 
+    remote_device: DeviceId,
     remote_port: u16,
     local_id: IncreaseId,
     sequence: TempSeq,
@@ -858,6 +858,7 @@ impl StreamContainer {
             result,
         }
     }
+
 
     pub fn tunnel(&self) -> Option<TunnelGuard> {
         match &*self.0.state.read().unwrap() {

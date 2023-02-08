@@ -374,7 +374,7 @@ impl AcceptReverseTcpStream {
                                 let tunnel = tunnel.create_tunnel::<tunnel::tcp::Tunnel>(EndpointPair::from((*interface.local(), Endpoint::default_tcp(interface.local()))), ProxyType::None);
                                 if let Ok((tunnel, _)) = tunnel {
                                     tunnel.mark_dead(tunnel.state());
-                                }   
+                                }
                             }
                         }
                     };

@@ -218,7 +218,7 @@ impl ConnectStreamBuilder {
         let syn_tunnel = SynTunnel {
             protocol_version: self.tunnel().protocol_version(), 
             stack_version: self.tunnel().stack_version(), 
-            to_device_id: self.tunnel().remote().clone(), 
+            to_device_id: self.tunnel().remote().clone(),
             from_device_desc: local.clone(),
             sequence: syn_session_data.syn_info.as_ref().unwrap().sequence.clone(), 
             send_time: syn_session_data.send_time.clone()
@@ -350,8 +350,8 @@ impl ConnectStreamBuilder {
                     if newly_created {
                         SynUdpTunnel::new(
                             tunnel, 
-                            first_box.clone(), 
-                            self.tunnel().config().udp.holepunch_interval); 
+                            first_box.clone(),
+                            self.tunnel().config().udp.holepunch_interval);
                         has_udp_tunnel = true; 
                     }
                 }

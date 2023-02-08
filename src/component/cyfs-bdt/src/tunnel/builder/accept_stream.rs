@@ -365,7 +365,7 @@ impl AcceptStreamBuilder {
                     AcceptStreamState::Connecting(connecting) => {
                         if connecting.proxy.is_none() {
                             connecting.proxy = Some(ProxyBuilder::new(
-                                self.tunnel().clone(), 
+                                self.tunnel().clone(),
                                 syn_tunnel.from_device_desc.get_obj_update_time(),  
                                 first_box.clone()));
                             debug!("{} create proxy buidler", self);

@@ -59,8 +59,8 @@ impl PackageStream {
     }
     
     pub fn new(
-        owner: &StreamContainer, 
-        tunnel: &TunnelContainer, 
+        owner: &StreamContainer,
+        tunnel: &TunnelContainer,
         local_id: IncreaseId, 
         remote_id: IncreaseId,
     ) -> BuckyResult<Self> {
