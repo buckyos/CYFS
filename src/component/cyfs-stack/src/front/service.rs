@@ -110,7 +110,7 @@ impl FrontService {
         };
 
         let common = NONInputRequestCommon {
-            req_path: None,
+            req_path: req.req_path,
             source: req.source,
             level: NONAPILevel::Router,
             target,
@@ -467,6 +467,7 @@ impl FrontService {
                     AppInstallStatus::Installed((_dec_id, dir_id)) => {
                         let o_req = FrontORequest {
                             source: req.source,
+                            req_path: None,
                             target,
 
                             object_id: dir_id,
@@ -508,6 +509,7 @@ impl FrontService {
                     AppInstallStatus::Installed((_dec_id, local_status_id)) => {
                         let o_req = FrontORequest {
                             source: req.source,
+                            req_path: None,
                             target,
 
                             object_id: local_status_id,
