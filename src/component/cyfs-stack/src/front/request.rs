@@ -73,6 +73,7 @@ pub struct FrontNDNRequest {
     pub object: NONObjectInfo,
     pub range: Option<NDNDataRequestRange>,
 
+    pub req_path: Option<String>,
     pub referer_objects: Vec<NDNDataRefererObject>,
 
     pub context: Option<String>,
@@ -90,6 +91,7 @@ impl FrontNDNRequest {
             target: req.target,
             object: NONObjectInfo::new(req.object_id, vec![], None),
             range: req.range,
+            req_path: None,
             referer_objects: req.referer_objects,
             context: req.context,
             group: req.group,
@@ -120,6 +122,7 @@ impl FrontNDNRequest {
             target: req.target,
             object,
             range: req.range,
+            req_path: None,
             referer_objects,
             context: req.context,
             group: req.group,
@@ -127,17 +130,21 @@ impl FrontNDNRequest {
         }
     }
 
-    pub fn new_r_resp(req: FrontRRequest, object: NONObjectInfo) -> Self {
+    pub fn new_r_resp(req: FrontRRequest, state_resp: &RootStateAccessorGetObjectByPathInputResponse) -> Self {
         let target = match req.target {
             Some(target) => vec![target],
             None => vec![],
         };
 
+        let mut req_path = RequestGlobalStatePath::new(req.target_dec_id.clone(), req.inner_path.clone());
+        req_path.set_root(state_resp.root.clone());
+
         FrontNDNRequest {
             source: req.source,
             target,
-            object,
+            object: state_resp.object.object.clone(),
             range: req.range,
+            req_path: Some(req_path.format_string()),
             referer_objects: vec![],
             context: req.context,
             group: req.group,
