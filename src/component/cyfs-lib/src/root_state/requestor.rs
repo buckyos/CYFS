@@ -1176,7 +1176,7 @@ fn test_url() {
         cyfs_base::CYFS_OP_ENV_PATH,
         &value,
     );
-    let header =
+    let header: String =
         RequestorHelper::decode_header_with_utf8_decoding(&http_req, cyfs_base::CYFS_OP_ENV_PATH)
             .unwrap();
     assert_eq!(header, value);
@@ -1187,7 +1187,7 @@ fn test_url() {
         cyfs_base::CYFS_OP_ENV_PATH,
         &value,
     );
-    let header =
+    let header: String =
         RequestorHelper::decode_header_with_utf8_decoding(&http_req, cyfs_base::CYFS_OP_ENV_PATH)
             .unwrap();
     assert_eq!(header, value);
