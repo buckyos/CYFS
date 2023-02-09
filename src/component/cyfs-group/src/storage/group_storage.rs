@@ -273,6 +273,8 @@ impl GroupStorage {
             }
             None => {
                 if let Some(new_pre_commit) = new_pre_commit {
+                    assert!(remove_prepares.is_empty());
+
                     if self
                         .pre_commits
                         .insert(new_pre_commit.0, new_pre_commit.1)
@@ -280,6 +282,9 @@ impl GroupStorage {
                     {
                         assert!(false);
                     }
+                    self.prepares
+                        .remove(&new_pre_commit.0)
+                        .expect("any block in pre-commit should be from prepare");
                 }
             }
         }

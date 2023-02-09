@@ -106,14 +106,10 @@ impl Synchronizer {
         let tx_sync_message = self.tx_sync_message.clone();
         let height = block.height();
         let round = block.round();
-        let block_id = block.block_id();
+        let block_id = block.block_id().object_id().clone();
         async_std::task::spawn(async move {
             tx_sync_message
-                .send(SynchronizerMessage::PopBlock(
-                    height,
-                    round,
-                    block_id.object_id().clone(),
-                ))
+                .send(SynchronizerMessage::PopBlock(height, round, block_id))
                 .await
         });
     }
