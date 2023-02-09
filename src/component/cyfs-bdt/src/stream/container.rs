@@ -240,9 +240,9 @@ mod connector {
                     .await
                     {
                         Err(_) => {
-                            let _ = stream
-                                .tunnel()
-                                .send_packages(vec![DynamicPackage::from(syn_tcp.clone())]);
+                            if let Some(tunnel) = stream.tunnel() {
+                                let _ = tunnel.send_packages(vec![DynamicPackage::from(syn_tcp.clone())]);
+                            }
                         }
                         Ok(state) => {
                             match state {
@@ -364,10 +364,10 @@ impl fmt::Display for StreamState {
 }
 
 enum StreamStateImpl {
-    Initial,
-    Connecting(StreamConnectingState),
-    Establish(StreamEstablishState),
-    Closing(StreamEstablishState),
+    Initial(TunnelGuard),
+    Connecting(StreamConnectingState, TunnelGuard),
+    Establish(StreamEstablishState, TunnelGuard),
+    Closing(StreamEstablishState, TunnelGuard),
     Closed,
 }
 
@@ -378,8 +378,8 @@ pub enum StreamProviderSelector {
 }
 
 struct StreamContainerImpl {
-    stack: WeakStack,
-    tunnel: TunnelGuard,
+    stack: WeakStack, 
+    remote_device: DeviceId, 
     remote_port: u16,
     local_id: IncreaseId,
     sequence: TempSeq,
@@ -414,12 +414,12 @@ impl StreamContainer {
         sequence: TempSeq,
     ) -> StreamContainer {
         let stream_impl = StreamContainerImpl {
-            stack: weak_stack,
-            tunnel: tunnel,
+            stack: weak_stack, 
+            remote_device: tunnel.remote().clone(), 
             remote_port,
             local_id,
             sequence: sequence,
-            state: RwLock::new(StreamStateImpl::Initial),
+            state: RwLock::new(StreamStateImpl::Initial(tunnel)),
             answer_data: RwLock::new(None)
         };
 
@@ -429,14 +429,14 @@ impl StreamContainer {
     //收到ack以后继续连接, 可以完成时在builder里面调用 establish_with
     pub(super) fn accept(&self, remote_id: IncreaseId) {
         let state = &mut *self.0.state.write().unwrap();
-        if let StreamStateImpl::Initial = *state {
+        if let StreamStateImpl::Initial(tunnel) = &*state {
             info!("{} initial=>accepting remote_id {}", self, remote_id);
             *state =
                 StreamStateImpl::Connecting(StreamConnectingState::Accept(acceptor::Acceptor {
                     remote_id,
                     waiter: StateWaiter::new(),
-                    builder: AcceptStreamBuilder::new(self.0.stack.clone(), self.clone()),
-                }));
+                    builder: AcceptStreamBuilder::new(self.0.stack.clone(), self.clone(), tunnel.as_ref().clone()),
+                }), tunnel.clone());
 
             let stream = self.clone();
             task::spawn(async move {
@@ -481,18 +481,20 @@ impl StreamContainer {
         };
 
         // enter connecting connector unknown
-        {
+        let tunnel = {
             let mut state = self.0.state.write().unwrap();
-            if let StreamStateImpl::Initial = *state {
+            if let StreamStateImpl::Initial(tunnel) = &*state {
                 info!("{} initial=>connecting", self);
-                *state = StreamStateImpl::Connecting(StreamConnectingState::Connect(connector));
+                let tunnel = tunnel.clone();
+                *state = StreamStateImpl::Connecting(StreamConnectingState::Connect(connector), tunnel.clone());
+                tunnel
             } else {
                 unreachable!("not initial")
             }
-        }
+        };
 
         // 从tunnel container返回要用的connector provider
-        let _ = match self.0.tunnel.select_stream_connector(build_params, self.clone()).await
+        let _ = match tunnel.select_stream_connector(build_params, self.clone()).await
         {
             Ok(selector) => {
                 let (connector_state, connector_provider) =
@@ -500,7 +502,7 @@ impl StreamContainer {
                 // enter connecting connector provider
                 {
                     let state = &mut *self.0.state.write().unwrap();
-                    if let StreamStateImpl::Connecting(ref mut connecting) = state {
+                    if let StreamStateImpl::Connecting(ref mut connecting, _) = state {
                         if let StreamConnectingState::Connect(ref mut connector) = connecting {
                             if let connector::State::Unknown = connector.state {
                                 connector.state = connector_state;
@@ -543,7 +545,15 @@ impl StreamContainer {
         &self,
         selector: StreamProviderSelector
     ) -> BuckyResult<()> {
-        let remote_timestamp = match self.tunnel().wait_active().await {
+        let tunnel = self.tunnel()
+            .ok_or_else(|| BuckyError::new(
+                BuckyErrorCode::ErrorState,
+                "tunnel not active",
+            )).map_err(|e| {
+                error!("{} try establish failed for {}", self, e);
+                e
+            })?;
+        let remote_timestamp = match tunnel.wait_active().await {
             TunnelState::Active(remote_timetamp) => Ok(remote_timetamp),
             _ => Err(BuckyError::new(
                 BuckyErrorCode::ErrorState,
@@ -570,7 +580,7 @@ impl StreamContainer {
                     _ => vec![],
                 };
 
-                let stream = PackageStream::new(self, self.local_id().clone(), remote_id)?;
+                let stream = PackageStream::new(self, tunnel.as_ref(), self.local_id().clone(), remote_id)?;
                 (
                     Box::new(stream.clone()) as Box<dyn StreamProvider>,
                     Box::new(stream) as Box<dyn StreamProvider>,
@@ -602,7 +612,7 @@ impl StreamContainer {
 
         let state = &mut *self.0.state.write().unwrap();
         let waiter = match state {
-            StreamStateImpl::Connecting(ref mut connecting_state) => match connecting_state {
+            StreamStateImpl::Connecting(ref mut connecting_state, tunnel) => match connecting_state {
                 StreamConnectingState::Accept(ref mut acceptor) => {
                     let waiter = acceptor.waiter.transfer();
                     info!("{} accepting=>establish with provider {}", self, provider);
@@ -610,7 +620,7 @@ impl StreamContainer {
                         start_at: bucky_time_now(),
                         remote_timestamp,
                         provider: provider_stub,
-                    });
+                    }, tunnel.clone());
                     Ok(waiter)
                 }
                 StreamConnectingState::Connect(ref mut connector) => {
@@ -620,7 +630,7 @@ impl StreamContainer {
                         start_at: bucky_time_now(),
                         remote_timestamp,
                         provider: provider_stub,
-                    });
+                    }, tunnel.clone());
 
                     if answer_data.len() > 0 {
                         let data = &mut *self.0.answer_data.write().unwrap();
@@ -650,7 +660,7 @@ impl StreamContainer {
         warn!("{} cancel connecting with error: {}", self, err);
         let state = &mut *self.0.state.write().unwrap();
         let (waiter, state_dump) = match state {
-            StreamStateImpl::Connecting(ref mut connecting_state) => match connecting_state {
+            StreamStateImpl::Connecting(ref mut connecting_state, tunnel) => match connecting_state {
                 StreamConnectingState::Accept(ref mut acceptor) => {
                     let waiter = acceptor.waiter.transfer();
                     info!("{} accepting=>closed", self);
@@ -659,11 +669,12 @@ impl StreamContainer {
                 }
                 StreamConnectingState::Connect(ref mut connector) => {
                     let waiter = connector.waiter.transfer();
+                    let tunnel = tunnel.clone();
                     info!("{} connecting=>closed", self);
                     let state_dump = connector
                         .state
                         .remote_timestamp()
-                        .map(|r| (r, connector.start_at));
+                        .map(|r| (tunnel, r, connector.start_at));
                     *state = StreamStateImpl::Closed;
                     Ok((waiter, state_dump))
                 }
@@ -673,9 +684,9 @@ impl StreamContainer {
                 "stream not connecting",
             )),
         }?;
-        if let Some((remote_timestamp, start_at)) = state_dump {
+        if let Some((tunnel, remote_timestamp, start_at)) = state_dump {
             error!("{} mark tunnel dead", self);
-            let _ = self.tunnel().mark_dead(remote_timestamp, start_at);
+            let _ = tunnel.mark_dead(remote_timestamp, start_at);
         }
         // 唤醒等待 establish 的waiter
         waiter.wake();
@@ -686,7 +697,7 @@ impl StreamContainer {
         let waiter = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
-                StreamStateImpl::Connecting(ref mut connecting) => {
+                StreamStateImpl::Connecting(ref mut connecting, _) => {
                     let waiter = match connecting {
                         StreamConnectingState::Accept(ref mut acceptor) => {
                             acceptor.waiter.new_waiter()
@@ -697,7 +708,7 @@ impl StreamContainer {
                     };
                     Ok(Some(waiter))
                 }
-                StreamStateImpl::Establish(_) => Ok(None),
+                StreamStateImpl::Establish(..) => Ok(None),
                 _ => {
                     warn!("{} wait establish failed, neither StreamStateImpl::Connecting nor StreamStateImpl::Establish", self);
                     Err(BuckyError::new(
@@ -731,7 +742,7 @@ impl StreamContainer {
     pub(crate) fn syn_session_data(&self) -> Option<SessionData> {
         {
             match &*self.0.state.read().unwrap() {
-                StreamStateImpl::Connecting(connecting) => match connecting {
+                StreamStateImpl::Connecting(connecting, _) => match connecting {
                     StreamConnectingState::Connect(connector) => Some(connector.question.clone()),
                     _ => {
                         unreachable!()
@@ -759,7 +770,7 @@ impl StreamContainer {
     pub(crate) fn syn_ack_session_data(&self, answer: &[u8]) -> Option<SessionData> {
         {
             match &*self.0.state.read().unwrap() {
-                StreamStateImpl::Connecting(connecting) => match connecting {
+                StreamStateImpl::Connecting(connecting, _) => match connecting {
                     StreamConnectingState::Accept(acceptor) => Some(acceptor.remote_id.clone()),
                     _ => {
                         unreachable!()
@@ -791,7 +802,7 @@ impl StreamContainer {
     pub(crate) fn syn_tcp_stream(&self) -> Option<TcpSynConnection> {
         {
             match &*self.0.state.read().unwrap() {
-                StreamStateImpl::Connecting(connecting) => match connecting {
+                StreamStateImpl::Connecting(connecting, _) => match connecting {
                     StreamConnectingState::Connect(connector) => Some(connector.question.clone()),
                     _ => {
                         unreachable!()
@@ -818,7 +829,7 @@ impl StreamContainer {
     pub(crate) fn ack_tcp_stream(&self, answer: &[u8]) -> Option<TcpAckConnection> {
         {
             match &*self.0.state.read().unwrap() {
-                StreamStateImpl::Connecting(connecting) => match connecting {
+                StreamStateImpl::Connecting(connecting, _) => match connecting {
                     StreamConnectingState::Accept(acceptor) => Some(acceptor.remote_id.clone()),
                     _ => {
                         unreachable!()
@@ -848,16 +859,22 @@ impl StreamContainer {
         }
     }
 
-    pub fn tunnel(&self) -> &TunnelContainer {
-        &self.0.tunnel
+    pub fn tunnel(&self) -> Option<TunnelGuard> {
+        match &*self.0.state.read().unwrap() {
+            StreamStateImpl::Initial(tunnel) => Some(tunnel.clone()),
+            StreamStateImpl::Connecting(_, tunnel) => Some(tunnel.clone()),
+            StreamStateImpl::Establish(_, tunnel) => Some(tunnel.clone()),
+            StreamStateImpl::Closing(_, tunnel) => Some(tunnel.clone()),
+            StreamStateImpl::Closed => None
+        }
     }
 
     pub fn remote_id(&self) -> IncreaseId {
         match &*self.0.state.read().unwrap() {
-            StreamStateImpl::Establish(est) => {
+            StreamStateImpl::Establish(est, _) => {
                 est.provider.remote_id()
             }
-            StreamStateImpl::Closing(est) => {
+            StreamStateImpl::Closing(est, _) => {
                 est.provider.remote_id()
             },
             _ => IncreaseId::default(),
@@ -866,12 +883,12 @@ impl StreamContainer {
 
     pub fn state(&self) -> StreamState {
         match &*self.0.state.read().unwrap() {
-            StreamStateImpl::Initial => unreachable!(),
-            StreamStateImpl::Connecting(_) => StreamState::Connecting,
-            StreamStateImpl::Establish(establish) => {
+            StreamStateImpl::Initial(_) => unreachable!(),
+            StreamStateImpl::Connecting(..) => StreamState::Connecting,
+            StreamStateImpl::Establish(establish, ..) => {
                 StreamState::Establish(establish.remote_timestamp)
             }
-            StreamStateImpl::Closing(_) => StreamState::Closing,
+            StreamStateImpl::Closing(..) => StreamState::Closing,
             StreamStateImpl::Closed => StreamState::Closed,
         }
     }
@@ -880,13 +897,13 @@ impl StreamContainer {
         let state = self.0.state.read().unwrap();
         let s1 = state.deref();
         match s1 {
-            StreamStateImpl::Connecting(_) => true,
+            StreamStateImpl::Connecting(..) => true,
             _ => false,
         }
     }
 
     pub(crate) fn acceptor(&self) -> Option<AcceptStreamBuilder> {
-        if let StreamStateImpl::Connecting(connecting) = &*self.0.state.read().unwrap() {
+        if let StreamStateImpl::Connecting(connecting, _) = &*self.0.state.read().unwrap() {
             if let StreamConnectingState::Accept(acceptor) = connecting {
                 return Some(acceptor.builder.clone());
             }
@@ -903,17 +920,18 @@ impl StreamContainer {
         let state_dump = {
             let state = &mut *self.0.state.write().unwrap();
             match state {
-                StreamStateImpl::Establish(establish) => {
-                    let state_dump = Some((establish.remote_timestamp, establish.start_at));
+                StreamStateImpl::Establish(establish, tunnel) => {
+                    let tunnel = tunnel.clone();
+                    let state_dump = Some((tunnel, establish.remote_timestamp, establish.start_at));
                     *state = StreamStateImpl::Closed;
                     state_dump
                 }
                 _ => None,
             }
         };
-        if let Some((remote_timestamp, start_at)) = state_dump {
+        if let Some((tunnel, remote_timestamp, start_at)) = state_dump {
             debug!("{} mark tunnel dead for break", self);
-            let _ = self.tunnel().mark_dead(remote_timestamp, start_at);
+            let _ = tunnel.mark_dead(remote_timestamp, start_at);
         }
         self.stack().stream_manager().remove_stream(self);
     }
@@ -934,7 +952,7 @@ impl StreamContainer {
         let builder = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                StreamStateImpl::Connecting(connecting) => match connecting {
+                StreamStateImpl::Connecting(connecting, _) => match connecting {
                     StreamConnectingState::Accept(acceptor) => Ok(acceptor.builder.clone()),
                     _ => Err(BuckyError::new(
                         BuckyErrorCode::ErrorState,
@@ -964,7 +982,7 @@ impl StreamContainer {
         let provider = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                StreamStateImpl::Establish(s) => Ok(s.provider.clone_as_provider()),
+                StreamStateImpl::Establish(s, _) => Ok(s.provider.clone_as_provider()),
                 _ => {
                     //TODO 其他状态暂时不支持shutdown
                     Err(std::io::Error::new(
@@ -991,7 +1009,7 @@ impl StreamContainer {
         let provider = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                StreamStateImpl::Establish(s) => Some(s.provider.clone_as_provider()),
+                StreamStateImpl::Establish(s, _) => Some(s.provider.clone_as_provider()),
                 _ => None,
             }
         };
@@ -1048,15 +1066,15 @@ impl StreamContainer {
         let provider = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                StreamStateImpl::Initial | StreamStateImpl::Connecting(_) => {
+                StreamStateImpl::Initial(_) | StreamStateImpl::Connecting(..) => {
                     trace!(
                         "{} poll-write in initial/connecting.",
                         self,
                     );
                     None
                 }, 
-                StreamStateImpl::Establish(s) => Some(s.provider.clone_as_provider()),
-                StreamStateImpl::Closing(s) => Some(s.provider.clone_as_provider()), 
+                StreamStateImpl::Establish(s, _) => Some(s.provider.clone_as_provider()),
+                StreamStateImpl::Closing(s, _) => Some(s.provider.clone_as_provider()), 
                 _ => {
                     return Poll::Ready(Ok(0));
                 }
@@ -1099,16 +1117,16 @@ impl StreamContainer {
         let provider = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                StreamStateImpl::Establish(s) => Some(s.provider.clone_as_provider()),
-                StreamStateImpl::Initial => {
+                StreamStateImpl::Establish(s, _) => Some(s.provider.clone_as_provider()),
+                StreamStateImpl::Initial(_) => {
                     debug!("poll-close, {} in initial.", self);
                     None
                 }
-                StreamStateImpl::Connecting(_) => {
+                StreamStateImpl::Connecting(..) => {
                     debug!("poll-close, {} in connecting.", self);
                     None
                 }
-                StreamStateImpl::Closing(s) => {
+                StreamStateImpl::Closing(s, _) => {
                     debug!("poll-close, {} in closing.", self);
                     Some(s.provider.clone_as_provider())
                 }
@@ -1135,7 +1153,7 @@ impl StreamContainer {
     }
 
     pub fn remote(&self) -> (&DeviceId, u16) {
-        (self.0.tunnel.remote(), self.0.remote_port)
+        (&self.0.remote_device, self.0.remote_port)
     }
 
     pub fn sequence(&self) -> TempSeq {
@@ -1149,7 +1167,7 @@ impl StreamContainer {
     pub fn local_ep(&self) -> Option<Endpoint> {
         let state = &*self.0.state.read().unwrap();
         match state {
-            StreamStateImpl::Establish(s) => Some(*s.provider.local_ep()),
+            StreamStateImpl::Establish(s, _) => Some(*s.provider.local_ep()),
             _ => None,
         }
     }
@@ -1157,7 +1175,7 @@ impl StreamContainer {
     pub fn remote_ep(&self) -> Option<Endpoint> {
         let state = &*self.0.state.read().unwrap();
         match state {
-            StreamStateImpl::Establish(s) => Some(*s.provider.remote_ep()),
+            StreamStateImpl::Establish(s, _) => Some(*s.provider.remote_ep()),
             _ => None,
         }
     }
@@ -1170,8 +1188,8 @@ impl StreamContainer {
         let provider = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                StreamStateImpl::Establish(s) => Some(s.provider.clone_as_provider()),
-                StreamStateImpl::Initial | StreamStateImpl::Connecting(_) => {
+                StreamStateImpl::Establish(s, _) => Some(s.provider.clone_as_provider()),
+                StreamStateImpl::Initial(..) | StreamStateImpl::Connecting(..) => {
                     trace!(
                         "{} poll-write in initial/connecting.",
                         self,
@@ -1223,7 +1241,7 @@ impl OnPackage<TcpSynConnection, tcp::AcceptInterface> for StreamContainer {
         // syn tcp 直接转给builder
         let state = &*self.0.state.read().unwrap();
         let builder = match state {
-            StreamStateImpl::Connecting(connecting) => match connecting {
+            StreamStateImpl::Connecting(connecting, _) => match connecting {
                 StreamConnectingState::Accept(acceptor) => Ok(acceptor.builder.clone()),
                 _ => Err(BuckyError::new(
                     BuckyErrorCode::ErrorState,
@@ -1246,7 +1264,7 @@ impl OnPackage<SessionData> for StreamContainer {
             // syn session data直接转给builder
             let state = &*self.0.state.read().unwrap();
             let builder = match state {
-                StreamStateImpl::Connecting(connecting) => match connecting {
+                StreamStateImpl::Connecting(connecting, _) => match connecting {
                     StreamConnectingState::Accept(acceptor) => Ok(acceptor.builder.clone()),
                     _ => Err(BuckyError::new(
                         BuckyErrorCode::ErrorState,
@@ -1263,7 +1281,7 @@ impl OnPackage<SessionData> for StreamContainer {
             debug!("{} on package {}", self, pkg);
             // 传给 connector provider
             let handler: Box<dyn OnPackage<SessionData>> = match &*self.0.state.read().unwrap() {
-                StreamStateImpl::Connecting(connecting) => match connecting {
+                StreamStateImpl::Connecting(connecting, _) => match connecting {
                     StreamConnectingState::Connect(connector) => match &connector.state {
                         connector::State::Package(package_provider) => {
                             Ok(Box::new(package_provider.as_ref().clone())
@@ -1280,7 +1298,7 @@ impl OnPackage<SessionData> for StreamContainer {
                         "syn ack session data on error state",
                     )),
                 },
-                StreamStateImpl::Establish(state) => {
+                StreamStateImpl::Establish(state, _) => {
                     match state.provider.clone_as_package_handler() {
                         Some(h) => Ok(h),
                         None => Err(BuckyError::new(
@@ -1300,14 +1318,14 @@ impl OnPackage<SessionData> for StreamContainer {
             //进读锁转给provider
             let opt_handler: Option<Box<dyn OnPackage<SessionData>>> =
                 match &*self.0.state.read().unwrap() {
-                    StreamStateImpl::Establish(state) => state.provider.clone_as_package_handler(),
-                    StreamStateImpl::Connecting(connecting) => match connecting {
+                    StreamStateImpl::Establish(state, _) => state.provider.clone_as_package_handler(),
+                    StreamStateImpl::Connecting(connecting, _) => match connecting {
                         StreamConnectingState::Connect(_) => None,
                         StreamConnectingState::Accept(acceptor) => {
                             Some(Box::new(acceptor.builder.clone()))
                         }
                     },
-                    StreamStateImpl::Closing(state) => {
+                    StreamStateImpl::Closing(state, _) => {
                         state.provider.clone_as_package_handler()
                         // unimplemented!()
                     }
@@ -1332,7 +1350,7 @@ impl OnPackage<TcpSynConnection> for StreamContainer {
         // syn tcp 直接转给builder
         let state = &*self.0.state.read().unwrap();
         let builder = match state {
-            StreamStateImpl::Connecting(connecting) => match connecting {
+            StreamStateImpl::Connecting(connecting, _) => match connecting {
                 StreamConnectingState::Accept(acceptor) => Ok(acceptor.builder.clone()),
                 _ => Err(BuckyError::new(
                     BuckyErrorCode::ErrorState,
@@ -1358,7 +1376,7 @@ impl OnPackage<TcpAckConnection, tcp::AcceptInterface> for StreamContainer {
         let opt_handler = {
             let state = &*self.0.state.read().unwrap();
             match state {
-                StreamStateImpl::Connecting(connecting) => {
+                StreamStateImpl::Connecting(connecting, _) => {
                     match connecting {
                         StreamConnectingState::Connect(connector) => {
                             match &connector.state {
@@ -1428,13 +1446,15 @@ impl OnPackage<TcpAckConnection, tcp::AcceptInterface> for StreamContainer {
                                 interface,
                                 e
                             );
-                            let tunnel = stream.tunnel().create_tunnel::<tunnel::tcp::Tunnel>(
+                            let tunnel = stream.tunnel()
+                                .ok_or_else(|| BuckyError::new(BuckyErrorCode::ErrorState, "stream's closed"))
+                                .and_then(|tunnel| tunnel.create_tunnel::<tunnel::tcp::Tunnel>(
                                     EndpointPair::from((
                                         *interface.local(),
                                         Endpoint::default_tcp(interface.local()),
                                     )),
                                     ProxyType::None,
-                                );
+                                ));
                             if let Ok((tunnel, _)) = tunnel {
                                 tunnel.mark_dead(tunnel.state());
                             }

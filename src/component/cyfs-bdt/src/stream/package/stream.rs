@@ -14,7 +14,7 @@ use crate::{
     types::*, 
     protocol::{*, v0::*}, 
     interface,
-    tunnel::{udp::Tunnel as UdpTunnel, tunnel::Tunnel}, 
+    tunnel::{udp::Tunnel as UdpTunnel, tunnel::Tunnel, TunnelContainer}, 
     cc
 };
 use super::super::{
@@ -60,18 +60,19 @@ impl PackageStream {
     
     pub fn new(
         owner: &StreamContainer, 
+        tunnel: &TunnelContainer, 
         local_id: IncreaseId, 
         remote_id: IncreaseId,
     ) -> BuckyResult<Self> {
         let owner_disp = format!("{}", owner);
-        let config = owner.tunnel().stack().config().stream.stream.clone();
+        let config = tunnel.stack().config().stream.stream.clone();
 
         let write_provider = WriteProvider::new(&config);
         let read_provider = ReadProvider::new(&config);
         let stream = Self(Arc::new(PackageStreamImpl {
             owner_disp, 
             config, 
-            tunnel: owner.tunnel().default_udp_tunnel()?, 
+            tunnel: tunnel.default_udp_tunnel()?, 
             local_id, 
             remote_id, 
             write_provider,

@@ -10,7 +10,7 @@ use crate::{
     protocol::{*, v0::*}, 
     interface::*, 
     stream::{StreamContainer, StreamProviderSelector}, 
-    tunnel::{self, Tunnel, TunnelContainer, ProxyType}, 
+    tunnel::{self, Tunnel, ProxyType}, 
     stack::{Stack, WeakStack}
 };
 use super::super::{action::*};
@@ -117,53 +117,54 @@ impl ConnectTcpStream {
             // tcp连不上， 直接进入 closed 状态
             let ca = a.clone();
             task::spawn(async move {
-                let tunnel_container: &TunnelContainer = ca.0.stream.tunnel();
-                let keystore = tunnel_container.stack().keystore().clone();
-                let key = keystore.create_key(tunnel_container.remote_const(), false);
-                let connect_result = tcp::Interface::connect(/*ca.local().addr().ip(),*/
-                                                                    *ca.remote(),
-                                                                    tunnel_container.remote().clone(),
-                                                                    tunnel_container.remote_const().clone(),
-                                                                    key.key, 
-                                                                    Stack::from(&ca.0.stack).config().tunnel.tcp.connect_timeout
-                ).await;
+                if let Some(tunnel) = ca.0.stream.tunnel() {
+                    let keystore = tunnel.stack().keystore().clone();
+                    let key = keystore.create_key(tunnel.remote_const(), false);
+                    let connect_result = tcp::Interface::connect(/*ca.local().addr().ip(),*/
+                                                                        *ca.remote(),
+                                                                        tunnel.remote().clone(),
+                                                                        tunnel.remote_const().clone(),
+                                                                        key.key, 
+                                                                        Stack::from(&ca.0.stack).config().tunnel.tcp.connect_timeout
+                    ).await;
 
-                
-                let opt_waiter = match connect_result {
-                    Ok(interface) => {
-                        let state = &mut *ca.0.state.write().unwrap();
-                        match state {
-                            ConnectTcpStreamState::Connecting1(waiter) => {
-                                debug!("{} Connecting1=>PreEstablish", ca);
-                                let waiter = Some(waiter.transfer());
-                                *state = ConnectTcpStreamState::PreEstablish(interface);
-                                waiter
-                            }, 
-                            _ => {
-                                None
+                    
+                    let opt_waiter = match connect_result {
+                        Ok(interface) => {
+                            let state = &mut *ca.0.state.write().unwrap();
+                            match state {
+                                ConnectTcpStreamState::Connecting1(waiter) => {
+                                    debug!("{} Connecting1=>PreEstablish", ca);
+                                    let waiter = Some(waiter.transfer());
+                                    *state = ConnectTcpStreamState::PreEstablish(interface);
+                                    waiter
+                                }, 
+                                _ => {
+                                    None
+                                }
+                            }
+                        }, 
+                        Err(_) => {
+                            ca.0.tunnel.mark_dead(ca.0.tunnel.state());
+                            let state = &mut *ca.0.state.write().unwrap();
+                            match state {
+                                ConnectTcpStreamState::Connecting1(waiter) => {
+                                    debug!("{} Connecting1=>Closed", ca);
+                                    let waiter = Some(waiter.transfer());
+                                    *state = ConnectTcpStreamState::Closed;
+                                    waiter
+                                }, 
+                                _ => {
+                                    *state = ConnectTcpStreamState::Closed;
+                                    None
+                                }
                             }
                         }
-                    }, 
-                    Err(_) => {
-                        ca.0.tunnel.mark_dead(ca.0.tunnel.state());
-                        let state = &mut *ca.0.state.write().unwrap();
-                        match state {
-                            ConnectTcpStreamState::Connecting1(waiter) => {
-                                debug!("{} Connecting1=>Closed", ca);
-                                let waiter = Some(waiter.transfer());
-                                *state = ConnectTcpStreamState::Closed;
-                                waiter
-                            }, 
-                            _ => {
-                                *state = ConnectTcpStreamState::Closed;
-                                None
-                            }
-                        }
+                    };
+
+                    if let Some(waiter) = opt_waiter {
+                        waiter.wake()
                     }
-                };
-
-                if let Some(waiter) = opt_waiter {
-                    waiter.wake()
                 }
             });
         }
@@ -369,9 +370,11 @@ impl AcceptReverseTcpStream {
                         }, 
                         Err(e) => {
                             warn!("{} confirm {} with tcp ack ack connection failed for {}", stream, interface, e);
-                            let tunnel = stream.tunnel().create_tunnel::<tunnel::tcp::Tunnel>(EndpointPair::from((*interface.local(), Endpoint::default_tcp(interface.local()))), ProxyType::None);
-                            if let Ok((tunnel, _)) = tunnel {
-                                tunnel.mark_dead(tunnel.state());
+                            if let Some(tunnel) = stream.tunnel() {
+                                let tunnel = tunnel.create_tunnel::<tunnel::tcp::Tunnel>(EndpointPair::from((*interface.local(), Endpoint::default_tcp(interface.local()))), ProxyType::None);
+                                if let Ok((tunnel, _)) = tunnel {
+                                    tunnel.mark_dead(tunnel.state());
+                                }   
                             }
                         }
                     };

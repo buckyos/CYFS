@@ -505,7 +505,8 @@ impl TunnelContainer {
                         let builder = ConnectStreamBuilder::new(
                             tunnel_impl.stack.clone(), 
                             build_params, 
-                            stream);
+                            stream,
+                            self.clone());
                         state.last_update = bucky_time_now();
                         state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                             waiter: StateWaiter::new(), 
@@ -522,7 +523,8 @@ impl TunnelContainer {
                             let builder = ConnectStreamBuilder::new(
                                 tunnel_impl.stack.clone(), 
                                 build_params, 
-                                stream);
+                                stream, 
+                                self.clone());
                             connecting.build_state = TunnelBuildState::ConnectStream(builder.clone());
                             (None, Some(builder), None, None)
                         }, 
@@ -536,7 +538,8 @@ impl TunnelContainer {
                     let builder = ConnectStreamBuilder::new(
                         tunnel_impl.stack.clone(), 
                         build_params, 
-                        stream);
+                        stream,
+                        self.clone());
 
                     state.tunnel_state = TunnelStateImpl::Connecting(TunnelConnectingState {
                         waiter: StateWaiter::new(), 
@@ -1275,6 +1278,12 @@ impl Drop for ContainerRef {
 impl Deref for TunnelGuard {
     type Target = TunnelContainer;
     fn deref(&self) -> &TunnelContainer {
+        &self.0.0
+    }
+}
+
+impl AsRef<TunnelContainer> for TunnelGuard {
+    fn as_ref(&self) -> &TunnelContainer {
         &self.0.0
     }
 }

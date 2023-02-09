@@ -124,7 +124,11 @@ impl ConnectPackageStream {
                     match ca.state() {
                         ConnectStreamState::Connecting1 => {
                             trace!("{} send sync session data", ca);
-                            let _ = ca.0.stream.tunnel().send_packages(vec![DynamicPackage::from(syn_session_data.clone_with_data())]);
+                            if let Some(tunnel) = ca.0.stream.tunnel() {
+                                let _ = tunnel.send_packages(vec![DynamicPackage::from(syn_session_data.clone_with_data())]);
+                            } else {
+                                break;
+                            }
                         }, 
                         _ => break
                     };
