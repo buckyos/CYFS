@@ -1,8 +1,7 @@
+use super::super::forward::*;
 use super::super::handler::*;
 use super::super::ndc::*;
 use super::super::ndn::*;
-use super::super::forward::*;
-use crate::NamedDataComponents;
 use crate::acl::*;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
@@ -10,14 +9,14 @@ use crate::ndn::*;
 use crate::non::*;
 use crate::router_handler::RouterHandlersManager;
 use crate::zone::ZoneManagerRef;
+use crate::NamedDataComponents;
 use cyfs_base::*;
 use cyfs_bdt::StackGuard;
+use cyfs_bdt_ext::{ContextManager, NDNTaskCancelStrategy, TransContextHolder};
 use cyfs_lib::*;
-use cyfs_bdt_ext::{ContextManager, TransContextHolder, NDNTaskCancelStrategy};
 
 use cyfs_chunk_cache::ChunkManagerRef;
 use std::sync::Arc;
-
 
 pub(crate) struct NDNRouter {
     acl: AclManagerRef,
@@ -102,12 +101,18 @@ impl NDNRouter {
         processor
     }
 
-    async fn get_data_forward(&self, context: TransContextHolder) -> BuckyResult<NDNInputProcessorRef> {
+    async fn get_data_forward(
+        &self,
+        context: TransContextHolder,
+    ) -> BuckyResult<NDNInputProcessorRef> {
         // ensure target device in local, used for bdt stack
         // self.forward.get(&target).await?;
 
         let non_target = context.non_target().await.ok_or_else(|| {
-            let msg = format!("ndn get_file but non target not exists! {}", context.debug_string());
+            let msg = format!(
+                "ndn get_file but non target not exists! {}",
+                context.debug_string()
+            );
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::NotFound, msg)
         })?;
@@ -121,7 +126,7 @@ impl NDNRouter {
 
         // 使用non router加载file
         let processor =
-            NDNForwardObjectProcessor::new(non_target,self.object_loader.clone(), processor);
+            NDNForwardObjectProcessor::new(non_target, self.object_loader.clone(), processor);
 
         // 增加forward前置处理器
         let pre_processor = NDNHandlerPreProcessor::new(
@@ -143,7 +148,11 @@ impl NDNRouter {
     // NDN resolve target logic is same as NON
     // is target = current_device, return NONE
     async fn resolve_target(&self, target: Option<&ObjectId>) -> BuckyResult<Option<DeviceId>> {
-        let info = self.zone_manager.target_zone_manager().resolve_target(target).await?;
+        let info = self
+            .zone_manager
+            .target_zone_manager()
+            .resolve_target(target)
+            .await?;
         let ret = if info.target_device == *self.acl.get_current_device_id() {
             None
         } else {
@@ -159,18 +168,28 @@ impl NDNRouter {
         &self,
         req: &NDNGetDataInputRequest,
     ) -> BuckyResult<NDNInputProcessorRef> {
-
         match &req.context {
             Some(context) => {
                 let referer = BdtDataRefererInfo::from(req).encode_string();
-                let context = self.context_manager.create_download_context_from_trans_context(&req.common.source.dec, referer, context.as_str(), NDNTaskCancelStrategy::AutoCancel).await?;
+                let context = self
+                    .context_manager
+                    .create_download_context_from_trans_context(
+                        &req.common.source.dec,
+                        referer,
+                        context.as_str(),
+                        NDNTaskCancelStrategy::AutoCancel,
+                    )
+                    .await?;
                 let processor = self.get_data_forward(context).await?;
                 Ok(processor)
             }
             None => {
                 if let Some(device_id) = self.resolve_target(req.common.target.as_ref()).await? {
                     let referer = BdtDataRefererInfo::from(req).encode_string();
-                    let context =self.context_manager.create_download_context_from_target(referer, device_id).await?;
+                    let context = self
+                        .context_manager
+                        .create_download_context_from_target(referer, device_id)
+                        .await?;
                     let processor = self.get_data_forward(context).await?;
                     Ok(processor)
                 } else {
@@ -181,26 +200,19 @@ impl NDNRouter {
     }
 
     async fn get_data(&self, req: NDNGetDataInputRequest) -> BuckyResult<NDNGetDataInputResponse> {
-        debug!(
-            "will get data from ndn: id={}, {}, target={:?}",
-            req.object_id, req.common.source, req.common.target
-        );
+        debug!("will get data from ndn: {}", req);
 
         let processor = self.get_data_processor(&req).await?;
         processor.get_data(req).await
     }
 
     async fn put_data(&self, req: NDNPutDataInputRequest) -> BuckyResult<NDNPutDataInputResponse> {
-        debug!(
-            "will put data to ndn: id={}, {}, target={:?}",
-            req.object_id, req.common.source, req.common.target,
-        );
+        debug!("will put data to ndn: {}", req,);
 
         if let Some(device_id) = self.resolve_target(req.common.target.as_ref()).await? {
             let msg = format!(
                 "ndn put_data to target not support! chunk={}, target={}",
-                req.object_id,
-                device_id,
+                req.object_id, device_id,
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotSupport, msg));
@@ -208,7 +220,6 @@ impl NDNRouter {
 
         self.ndc_processor.put_data(req).await
     }
-
 
     // for NONE data processor， just forward the request as non does
     async fn get_forward(&self, target: DeviceId) -> BuckyResult<NDNInputProcessorRef> {
@@ -255,10 +266,7 @@ impl NDNRouter {
         &self,
         req: NDNDeleteDataInputRequest,
     ) -> BuckyResult<NDNDeleteDataInputResponse> {
-        debug!(
-            "will delete data from ndn: id={}, {}, target={:?}",
-            req.object_id, req.common.source, req.common.target,
-        );
+        debug!("will delete data from ndn: {}", req,);
 
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.delete_data(req).await
@@ -268,10 +276,7 @@ impl NDNRouter {
         &self,
         req: NDNQueryFileInputRequest,
     ) -> BuckyResult<NDNQueryFileInputResponse> {
-        debug!(
-            "will query file from ndn: param={}, {}, target={:?}",
-            req.param, req.common.source, req.common.target,
-        );
+        debug!("will query file from ndn: {}", req);
 
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.query_file(req).await
