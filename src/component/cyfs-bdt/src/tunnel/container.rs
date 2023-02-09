@@ -1238,13 +1238,13 @@ impl OnPackage<AckProxy, &DeviceId> for TunnelContainer {
     }
 }
 
-
-
-#[derive(Clone)]
-pub struct TunnelGuard(Arc<TunnelContainer>);
+struct ContainerRef(TunnelContainer);
 
 #[derive(Clone)]
-pub struct WeakTunnelGuard(Weak<TunnelContainer>);
+pub struct TunnelGuard(Arc<ContainerRef>);
+
+#[derive(Clone)]
+pub struct WeakTunnelGuard(Weak<ContainerRef>);
 
 impl WeakTunnelGuard {
     pub fn to_strong(&self) -> Option<TunnelGuard> {
@@ -1254,7 +1254,7 @@ impl WeakTunnelGuard {
 
 impl TunnelGuard {
     pub(super) fn new(tunnel: TunnelContainer) -> Self {
-        Self(Arc::new(tunnel))
+        Self(Arc::new(ContainerRef(tunnel)))
     }
 
     pub fn to_weak(&self) -> WeakTunnelGuard {
@@ -1266,7 +1266,7 @@ impl TunnelGuard {
     }
 }
 
-impl Drop for TunnelGuard {
+impl Drop for ContainerRef {
     fn drop(&mut self) {
         self.0.reset();
     }
@@ -1275,6 +1275,6 @@ impl Drop for TunnelGuard {
 impl Deref for TunnelGuard {
     type Target = TunnelContainer;
     fn deref(&self) -> &TunnelContainer {
-        &(*self.0)
+        &self.0.0
     }
 }

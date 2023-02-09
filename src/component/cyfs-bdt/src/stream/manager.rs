@@ -44,7 +44,9 @@ struct StreamManagerImpl {
 
 #[derive(Clone)]
 pub struct StreamManager(Arc<StreamManagerImpl>);
-pub type WeakStreamManager = Weak<StreamManagerImpl>;
+
+#[derive(Clone)]
+pub struct WeakStreamManager(Weak<StreamManagerImpl>);
 
 impl std::fmt::Display for StreamManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -65,7 +67,7 @@ impl StreamManager {
     }
 
     fn to_weak(&self) -> WeakStreamManager {
-        Arc::downgrade(&self.0)
+        WeakStreamManager(Arc::downgrade(&self.0))
     }
 
     // connect完成是返回stream
@@ -201,7 +203,7 @@ impl StreamManager {
 
 impl From<&WeakStreamManager> for StreamManager {
     fn from(w: &WeakStreamManager) -> Self {
-        Self(w.upgrade().unwrap())
+        Self(w.0.upgrade().unwrap())
     }
 }
 
