@@ -6,6 +6,7 @@ use cyfs_lib::*;
 pub struct FrontORequest {
     pub source: RequestSourceInfo,
 
+    pub req_path: Option<String>,
     pub target: Vec<ObjectId>,
 
     pub object_id: ObjectId,
@@ -91,7 +92,7 @@ impl FrontNDNRequest {
             target: req.target,
             object: NONObjectInfo::new(req.object_id, vec![], None),
             range: req.range,
-            req_path: None,
+            req_path: req.req_path,
             referer_objects: req.referer_objects,
             context: req.context,
             group: req.group,
@@ -122,7 +123,7 @@ impl FrontNDNRequest {
             target: req.target,
             object,
             range: req.range,
-            req_path: None,
+            req_path: req.req_path,
             referer_objects,
             context: req.context,
             group: req.group,
