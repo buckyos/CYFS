@@ -1,42 +1,35 @@
 use std::future::Future;
+use std::ops::Sub;
 use std::pin::Pin;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct Timer {
-    sleep: Option<Pin<Box<dyn Send + Sync + Future<Output = ()>>>>,
-    duration: u64,
+    last_wake_time: Instant,
+    duration: Duration,
 }
 
 impl Timer {
     pub fn new(duration: u64) -> Self {
-        let sleep = Box::pin(async move {
-            async_std::future::timeout(
-                Duration::from_millis(duration),
-                std::future::pending::<()>(),
-            )
-            .await;
-        });
         Self {
-            sleep: Some(sleep),
-            duration,
+            last_wake_time: Instant::now(),
+            duration: Duration::from_millis(duration),
         }
     }
 
     pub fn reset(&mut self, duration: u64) {
-        let sleep = Box::pin(async move {
-            async_std::future::timeout(
-                Duration::from_millis(duration),
-                std::future::pending::<()>(),
-            )
-            .await;
-        });
-        self.duration = duration;
-        self.sleep = Some(sleep);
+        self.duration = Duration::from_millis(duration);
+        self.last_wake_time = Instant::now();
     }
 
     pub async fn wait_next(&mut self) {
-        let sleep = self.sleep.take().unwrap();
-        self.reset(self.duration);
-        sleep.await;
+        let elapsed = Instant::now().duration_since(self.last_wake_time);
+        if elapsed < self.duration {
+            let _ = async_std::future::timeout(
+                self.duration.sub(elapsed),
+                std::future::pending::<()>(),
+            )
+            .await;
+        }
+        self.last_wake_time = Instant::now();
     }
 }

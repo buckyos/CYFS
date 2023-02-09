@@ -600,9 +600,27 @@ async fn main_run() {
     for ((admin, _), (device, private_key)) in EXAMPLE_ADMINS.iter() {
         // dummy(admin.clone(), device.clone());
         let cyfs_stack = create_stack(admin.clone(), private_key, device.clone()).await;
-        DecService::run(&cyfs_stack, admin.name().unwrap().to_string()).await;
         admin_stacks.push(cyfs_stack);
     }
+
+    for i in 0..admin_stacks.len() {
+        let stack = admin_stacks.get(i).unwrap();
+        let ((admin, _), _) = EXAMPLE_ADMINS.get(i).unwrap();
+        DecService::run(&stack, admin.name().unwrap().to_string()).await;
+
+        let control = stack
+            .group_mgr()
+            .find_rpath_control(
+                &EXAMPLE_GROUP.desc().object_id(),
+                EXAMPLE_DEC_APP_ID.object_id(),
+                &EXAMPLE_RPATH,
+                IsCreateRPath::Yes(None),
+            )
+            .await
+            .unwrap();
+    }
+
+    async_std::task::sleep(Duration::from_millis(30000)).await;
 
     for i in 1..100000000 {
         let stack = admin_stacks.get(i % admin_stacks.len()).unwrap();

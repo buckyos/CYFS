@@ -53,7 +53,7 @@ impl PendingProposalHandler {
     pub async fn on_proposal(&self, proposal: GroupProposal) -> BuckyResult<()> {
         self.tx_product.send(proposal).await.map_err(|e| {
             log::error!(
-                "[pending_proposal_mgr] send message(on_proposal) faield: {}",
+                "[pending_proposal_mgr] send message(on_proposal) failed: {}",
                 e
             );
             BuckyError::new(BuckyErrorCode::ErrorState, "channel closed")
@@ -72,7 +72,7 @@ impl PendingProposalConsumer {
             .send(ProposalConsumeMessage::Query(sender))
             .await
             .map_err(|e| {
-                log::error!("[pending_proposal_mgr] send message(query) faield: {}", e);
+                log::error!("[pending_proposal_mgr] send message(query) failed: {}", e);
                 BuckyError::new(BuckyErrorCode::ErrorState, "channel closed")
             })?;
 
@@ -82,12 +82,24 @@ impl PendingProposalConsumer {
         })
     }
 
+    pub async fn wait_proposals(&self) -> BuckyResult<Receiver<()>> {
+        let (sender, receiver) = async_std::channel::bounded(1);
+        self.tx_consume
+            .send(ProposalConsumeMessage::Wait(sender))
+            .await
+            .map_err(|e| {
+                log::error!("[pending_proposal_mgr] send message(wait) failed: {}", e);
+                BuckyError::new(BuckyErrorCode::ErrorState, "channel closed")
+            })?;
+        Ok(receiver)
+    }
+
     pub async fn remove_proposals(&self, proposal_ids: Vec<ObjectId>) -> BuckyResult<()> {
         self.tx_consume
             .send(ProposalConsumeMessage::Remove(proposal_ids))
             .await
             .map_err(|e| {
-                log::error!("[pending_proposal_mgr] send message(remove) faield: {}", e);
+                log::error!("[pending_proposal_mgr] send message(remove) failed: {}", e);
                 BuckyError::new(BuckyErrorCode::ErrorState, "channel closed")
             })
     }

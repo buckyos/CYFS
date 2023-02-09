@@ -11,15 +11,21 @@ pub struct Sender {
     datagram: DatagramTunnelGuard,
     vport: u16,
     non_driver: NONDriverHelper,
+    local_device_id: ObjectId,
 }
 
 impl Sender {
-    pub(crate) fn new(datagram: DatagramTunnelGuard, non_driver: NONDriverHelper) -> Self {
+    pub(crate) fn new(
+        datagram: DatagramTunnelGuard,
+        non_driver: NONDriverHelper,
+        local_device_id: ObjectId,
+    ) -> Self {
         let vport = datagram.vport();
         Self {
             datagram,
             vport,
             non_driver,
+            local_device_id,
         }
     }
 
@@ -44,13 +50,6 @@ impl Sender {
             _ => panic!("invalid remote type: {:?}", to.obj_type_code()),
         };
 
-        log::debug!(
-            "[group-sender] {:?} post message to {:?}, msg: {:?}",
-            rpath,
-            remote,
-            msg
-        );
-
         let pkg = HotstuffPackage::from_msg(msg, rpath);
 
         let len = pkg.raw_measure(&None).unwrap();
@@ -58,6 +57,15 @@ impl Sender {
         buf.resize(len, 0);
         let remain = pkg.raw_encode(buf.as_mut_slice(), &None).unwrap();
         assert_eq!(remain.len(), 0);
+
+        log::debug!(
+            "[group-sender] {:?}-{} post message to {:?}, pkg: {:?}, len: {}",
+            pkg.rpath(),
+            self.local_device_id,
+            remote,
+            pkg,
+            buf.len()
+        );
 
         let mut options = DatagramOptions::default();
 

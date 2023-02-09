@@ -162,8 +162,13 @@ impl Committee {
         tc: &HotstuffTimeout,
         prev_block: Option<&GroupConsensusBlock>,
     ) -> BuckyResult<()> {
-        let highest_round = tc.votes.iter().map(|v| v.high_qc_round).max();
-        let prev_round = prev_block.map(|b| b.round());
+        let highest_round = tc
+            .votes
+            .iter()
+            .map(|v| v.high_qc_round)
+            .max()
+            .map_or(0, |round| round);
+        let prev_round = prev_block.map_or(0, |b| b.round());
         if highest_round != prev_round {
             log::warn!("[group committee] hightest round is not match with prev-block in tc, highest_round: {:?}, prev_round: {:?}", highest_round, prev_round);
             return Err(BuckyError::new(

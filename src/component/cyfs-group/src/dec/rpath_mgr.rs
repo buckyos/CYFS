@@ -43,6 +43,7 @@ impl GroupRPathMgr {
         bdt_stack: StackGuard,
     ) -> BuckyResult<Self> {
         let datagram = bdt_stack.datagram_manager().bind(NET_PROTOCOL_VPORT)?;
+        let local_device_id = bdt_stack.local_device_id().object_id().clone();
 
         let local_info = LocalInfo {
             signer: Arc::new(signer),
@@ -59,7 +60,7 @@ impl GroupRPathMgr {
 
         let mgr = Self(Arc::new((local_info, RwLock::new(raw))));
 
-        crate::network::Listener::spawn(datagram, mgr.clone());
+        crate::network::Listener::spawn(datagram, mgr.clone(), local_device_id);
 
         Ok(mgr)
     }
@@ -117,9 +118,13 @@ impl GroupRPathMgr {
 
             let local_info = self.local_info();
             let local_id = local_info.bdt_stack.local_const().owner().unwrap();
+            let local_device_id = local_info.bdt_stack.local_device_id();
             let non_driver = NONDriverHelper::new(local_info.non_driver.clone(), dec_id.clone());
-            let network_sender =
-                crate::network::Sender::new(local_info.datagram.clone(), non_driver.clone());
+            let network_sender = crate::network::Sender::new(
+                local_info.datagram.clone(),
+                non_driver.clone(),
+                local_device_id.object_id().clone(),
+            );
 
             let mut raw = self.write().await;
 
@@ -360,10 +365,14 @@ impl GroupRPathMgr {
 
             let local_info = self.local_info();
             let local_id = local_info.bdt_stack.local_const().owner().unwrap();
+            let local_device_id = local_info.bdt_stack.local_device_id();
             let signer = local_info.signer.clone();
             let non_driver = NONDriverHelper::new(local_info.non_driver.clone(), dec_id.clone());
-            let network_sender =
-                crate::network::Sender::new(local_info.datagram.clone(), non_driver.clone());
+            let network_sender = crate::network::Sender::new(
+                local_info.datagram.clone(),
+                non_driver.clone(),
+                local_device_id.object_id().clone(),
+            );
             let local_device_id = local_info.bdt_stack.local_device_id().clone();
 
             let store = GroupStorage::load(group_id, dec_id, rpath, non_driver.clone()).await;

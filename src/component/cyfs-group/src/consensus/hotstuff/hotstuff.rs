@@ -208,7 +208,7 @@ struct HotstuffRunner {
     delegate: Arc<Box<dyn RPathDelegate>>,
     synchronizer: Synchronizer,
     rpath: GroupRPath,
-    rx_proposal_waiter: Option<(Receiver<u64>, u64)>,
+    rx_proposal_waiter: Option<(Receiver<()>, u64)>,
     state_pusher: StatePusher,
 }
 
@@ -788,13 +788,13 @@ impl HotstuffRunner {
 
         match  self.committee.get_group(None).await {
             Ok(group) => {
+                log::info!("[hotstuff] local: {:?}, update round from {} to {}",
+                    self, self.round, round + 1);
+
                 self.timer.reset(group.consensus_interval());
                 self.round = round + 1;
                 self.vote_mgr.cleanup(self.round);
                 self.tc = None;
-
-                log::info!("[hotstuff] local: {:?}, update round from {} to {}",
-                    self, self.round, round + 1);
             }
             Err(err) => {
                 log::warn!("[hotstuff] local: {:?}, get group before update round from {} to {} failed {:?}",
@@ -1581,7 +1581,7 @@ impl HotstuffRunner {
         let targets: Vec<ObjectId> = group
             .ood_list()
             .iter()
-            .filter(|ood_id| **ood_id != self.local_id)
+            .filter(|ood_id| **ood_id != self.local_device_id)
             .map(|ood_id| ood_id.object_id().clone())
             .collect();
 
@@ -1652,8 +1652,10 @@ impl HotstuffRunner {
         }
 
         if will_wait_proposals {
-            let (tx, rx) = async_std::channel::bounded(1);
-            self.rx_proposal_waiter = Some((rx, self.round));
+            match self.proposal_consumer.wait_proposals().await {
+                Ok(rx) => self.rx_proposal_waiter = Some((rx, self.round)),
+                _ => return false
+            }
         }
 
         will_wait_proposals
@@ -1718,7 +1720,7 @@ impl HotstuffRunner {
         }
     }
 
-    fn proposal_waiter(waiter: Option<(Receiver<u64>, u64)>) -> impl futures::Future<Output = u64> {
+    fn proposal_waiter(waiter: Option<(Receiver<()>, u64)>) -> impl futures::Future<Output = u64> {
         async move {
             match waiter.as_ref() {
                 Some((waiter, wait_round)) => {
@@ -1761,6 +1763,7 @@ impl HotstuffRunner {
                 },
                 () = self.timer.wait_next().fuse() => self.local_timeout_round().await,
                 wait_round = Self::proposal_waiter(self.rx_proposal_waiter.clone()).fuse() => {
+                    self.rx_proposal_waiter = None;
                     if wait_round == self.round {
                         self.generate_block(None).await
                     } else {
