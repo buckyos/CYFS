@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use cyfs_base::{
     BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceId, Group, NamedObject, ObjectDesc,
-    ObjectId, ObjectTypeCode, People, PeopleId, RawDecode,
+    ObjectId, ObjectTypeCode, People, PeopleId, RawConvertTo, RawDecode,
 };
 use cyfs_chunk_lib::ChunkMeta;
-use cyfs_core::{GroupConsensusBlock, GroupProposal};
+use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
 use cyfs_lib::NONObjectInfo;
 
 #[async_trait::async_trait]
@@ -16,6 +16,8 @@ pub trait NONDriver: Send + Sync {
         object_id: &ObjectId,
         from: Option<&ObjectId>,
     ) -> BuckyResult<NONObjectInfo>;
+
+    async fn put_object(&self, dec_id: &ObjectId, obj: NONObjectInfo) -> BuckyResult<()>;
 
     async fn post_object(
         &self,
@@ -44,6 +46,10 @@ impl NONDriverHelper {
         self.driver.get_object(&self.dec_id, object_id, from).await
     }
 
+    pub async fn put_object(&self, obj: NONObjectInfo) -> BuckyResult<()> {
+        self.driver.put_object(&self.dec_id, obj).await
+    }
+
     pub async fn post_object(&self, obj: NONObjectInfo, to: &ObjectId) -> BuckyResult<()> {
         self.driver.post_object(&self.dec_id, obj, to).await
     }
@@ -63,6 +69,16 @@ impl NONDriverHelper {
         Ok(block)
     }
 
+    pub async fn put_block(&self, block: &GroupConsensusBlock) -> BuckyResult<()> {
+        let block = NONObjectInfo {
+            object_id: block.block_id().object_id().clone(),
+            object_raw: block.to_vec()?,
+            object: None,
+        };
+        self.put_object(block).await?;
+        Ok(())
+    }
+
     pub async fn get_proposal(
         &self,
         object_id: &ObjectId,
@@ -80,26 +96,32 @@ impl NONDriverHelper {
         group_chunk_id: Option<&ObjectId>,
         from: Option<&ObjectId>,
     ) -> BuckyResult<Group> {
-        match group_chunk_id {
-            Some(group_chunk_id) => {
-                let chunk = self.get_object(group_chunk_id, from).await?;
-                let (group_chunk, remain) = ChunkMeta::raw_decode(chunk.object_raw.as_slice())?;
-                assert_eq!(remain.len(), 0);
-                let group = Group::try_from(&group_chunk)?;
-                if &group.desc().object_id() == group_id {
-                    Ok(group)
-                } else {
-                    Err(BuckyError::new(BuckyErrorCode::Unmatch, "groupid"))
-                }
-            }
-            None => {
-                // TODO: latest version from metachain
-                let group = self.get_object(group_id, from).await?;
-                let (group, remain) = Group::raw_decode(group.object_raw.as_slice())?;
-                assert_eq!(remain.len(), 0);
-                Ok(group)
-            }
-        }
+        // TODO: ignore group_chunk_id first
+        // match group_chunk_id {
+        //     Some(group_chunk_id) => {
+        //         let chunk = self.get_object(group_chunk_id, from).await?;
+        //         let (group_chunk, remain) = ChunkMeta::raw_decode(chunk.object_raw.as_slice())?;
+        //         assert_eq!(remain.len(), 0);
+        //         let group = Group::try_from(&group_chunk)?;
+        //         if &group.desc().object_id() == group_id {
+        //             Ok(group)
+        //         } else {
+        //             Err(BuckyError::new(BuckyErrorCode::Unmatch, "groupid"))
+        //         }
+        //     }
+        //     None => {
+        //         // TODO: latest version from metachain
+        //         let group = self.get_object(group_id, from).await?;
+        //         let (group, remain) = Group::raw_decode(group.object_raw.as_slice())?;
+        //         assert_eq!(remain.len(), 0);
+        //         Ok(group)
+        //     }
+        // }
+
+        let group = self.get_object(group_id, from).await?;
+        let (group, remain) = Group::raw_decode(group.object_raw.as_slice())?;
+        assert_eq!(remain.len(), 0);
+        Ok(group)
     }
 
     pub async fn get_ood(&self, people_id: &PeopleId) -> BuckyResult<DeviceId> {

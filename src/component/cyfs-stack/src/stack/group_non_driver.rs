@@ -3,8 +3,8 @@ use std::sync::Arc;
 use cyfs_base::{BuckyResult, ObjectId};
 use cyfs_lib::{
     DeviceZoneCategory, DeviceZoneInfo, NONAPILevel, NONGetObjectInputRequest,
-    NONInputRequestCommon, NONObjectInfo, NONPostObjectInputRequest, RequestProtocol,
-    RequestSourceInfo,
+    NONInputRequestCommon, NONObjectInfo, NONPostObjectInputRequest, NONPutObjectInputRequest,
+    RequestProtocol, RequestSourceInfo,
 };
 
 use crate::{non::NONInputProcessor, non_api::NONService};
@@ -52,6 +52,34 @@ impl cyfs_group::NONDriver for GroupNONDriver {
             })
             .await
             .map(|resp| resp.object)
+    }
+
+    async fn put_object(&self, dec_id: &ObjectId, obj: NONObjectInfo) -> BuckyResult<()> {
+        self.non_service
+            .put_object(NONPutObjectInputRequest {
+                common: NONInputRequestCommon {
+                    req_path: None,
+                    source: RequestSourceInfo {
+                        protocol: RequestProtocol::DataBdt,
+                        zone: DeviceZoneInfo {
+                            device: None,
+                            zone: None,
+                            zone_category: DeviceZoneCategory::CurrentZone,
+                        },
+                        dec: dec_id.clone(),
+                        verified: None,
+                    },
+
+                    level: NONAPILevel::Router,
+
+                    target: None,
+                    flags: 0,
+                },
+                object: obj,
+                access: None, // TODO access
+            })
+            .await
+            .map(|_| ())
     }
 
     async fn post_object(

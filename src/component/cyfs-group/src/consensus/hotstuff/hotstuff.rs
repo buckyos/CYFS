@@ -1166,10 +1166,9 @@ impl HotstuffRunner {
             max_high_qc.as_ref().map(|qc| qc.high_qc_round)
         );
 
-        let max_high_qc = if let Some(max_high_qc) = max_high_qc {
-            max_high_qc
-        } else {
-            return Ok(());
+        let max_high_qc = match max_high_qc {
+            Some(max_high_qc) => max_high_qc,
+            None => return Ok(())
         };
 
         if tc.round < self.round {
@@ -1178,6 +1177,7 @@ impl HotstuffRunner {
                 self,
                 tc.round,
             );
+            return Ok(());
         }
         
         if max_high_qc.high_qc_round >= tc.round {
@@ -1558,6 +1558,8 @@ impl HotstuffRunner {
             err
         })?;
 
+        self.non_driver.put_block(&block).await?;
+
         Ok(block)
     }
 
@@ -1659,6 +1661,24 @@ impl HotstuffRunner {
         }
 
         will_wait_proposals
+    }
+
+    async fn handle_proposal_waiting(&mut self) -> BuckyResult<()> {
+        log::debug!(
+            "[hotstuff] local: {:?}, handle_proposal_waiting",
+            self
+        );
+
+        assert_eq!(self.committee.get_leader(None, self.round).await?, self.local_device_id);
+
+        let tc = self.tc.as_ref().map_or(None, |tc| {
+            if tc.round + 1 == self.round {
+                Some(tc.clone())
+            } else {
+                None
+            }
+        });
+        self.generate_block(tc).await
     }
 
     async fn fetch_block(&mut self, block_id: &ObjectId, remote: ObjectId) -> BuckyResult<()> {
@@ -1766,14 +1786,7 @@ impl HotstuffRunner {
                     self.rx_proposal_waiter = None;
                     if wait_round == self.round {
                         // timeout
-                        let tc = self.tc.as_ref().map_or(None, |tc| {
-                            if tc.round + 1 == self.round {
-                                Some(tc.clone())
-                            } else {
-                                None
-                            }
-                        });
-                        self.generate_block(tc).await
+                        self.handle_proposal_waiting().await
                     } else {
                         Ok(())
                     }

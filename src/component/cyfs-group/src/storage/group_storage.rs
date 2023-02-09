@@ -203,8 +203,6 @@ impl GroupStorage {
                         assert_eq!(block.height(), header_height + 2);
                     }
                 }
-            } else {
-                assert_eq!(block.height(), header_height + 1);
             }
         }
 
@@ -347,7 +345,7 @@ impl GroupStorage {
                 Ok(prev_block) => {
                     if prev_block.height() + 1 != block.height() {
                         return Err(BuckyError::new(BuckyErrorCode::Failed, "height error"));
-                    } else if prev_block.round() <= block.round() {
+                    } else if prev_block.round() >= block.round() {
                         return Err(BuckyError::new(BuckyErrorCode::Failed, "round error"));
                     } else {
                         let prev_block_time = bucky_time_to_system_time(
