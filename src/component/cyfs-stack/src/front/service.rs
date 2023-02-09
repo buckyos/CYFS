@@ -185,7 +185,7 @@ impl FrontService {
         };
 
         let common = NDNInputRequestCommon {
-            req_path: None,
+            req_path: req.req_path,
             source: req.source,
             level: NDNAPILevel::Router,
             referer_object: vec![],
@@ -351,7 +351,7 @@ impl FrontService {
                         assert_eq!(mode, FrontRequestGetMode::Data);
 
                         let ndn_req =
-                            FrontNDNRequest::new_r_resp(req, state_resp.object.object.clone());
+                            FrontNDNRequest::new_r_resp(req, &state_resp);
                         let resp = self.process_get_chunk(ndn_req).await?;
 
                         FrontRResponse {
@@ -378,7 +378,7 @@ impl FrontService {
                             FrontRequestGetMode::Data => {
                                 let ndn_req = FrontNDNRequest::new_r_resp(
                                     req,
-                                    state_resp.object.object.clone(),
+                                    &state_resp
                                 );
                                 let ndn_resp = self.process_get_file(ndn_req).await?;
 
