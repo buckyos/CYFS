@@ -156,6 +156,7 @@ mod test_path_access {
     fn test() {
         cyfs_base::init_simple_log("test_path_access", None);
 
+        let current_device_id = DeviceId::default();
         let owner_dec = new_dec("owner");
         let mut list = GlobalStatePathAccessList::new();
         let default_access = AccessString::default();
@@ -214,7 +215,7 @@ mod test_path_access {
             permissions: AccessPermissions::WriteOnly,
         };
 
-        list.check(ret).unwrap();
+        list.check(ret, &current_device_id).unwrap();
 
         // same zone, diff dec
         let source = RequestSourceInfo {
@@ -235,7 +236,7 @@ mod test_path_access {
             permissions: AccessPermissions::ReadOnly,
         };
 
-        list.check(ret).unwrap();
+        list.check(ret, &current_device_id).unwrap();
 
         // same zone, diff dec, write
         let source = RequestSourceInfo {
@@ -256,7 +257,7 @@ mod test_path_access {
             permissions: AccessPermissions::WriteOnly,
         };
 
-        list.check(ret).unwrap_err();
+        list.check(ret, &current_device_id).unwrap_err();
 
         // test remove
         let device = DeviceId::default();

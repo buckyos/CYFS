@@ -349,6 +349,20 @@ impl FrontProtocolHandler {
         }
     }
 
+    fn req_path_from_request(
+        url: &http_types::Url,
+    ) -> BuckyResult<Option<String>> {
+        // try extract referer from query pairs
+        match RequestorHelper::value_from_querys_with_utf8_decoding("req_path", url) {
+            Ok(ret) => Ok(ret),
+            Err(e) => {
+                let msg = format!("invalid request url req_path query param! {}, {}", url, e);
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::InvalidParam, msg))
+            }
+        }
+    }
+
     fn is_cyfs_browser(req: &http_types::Request) -> bool {
         let ret: BuckyResult<Option<String>> =
             RequestorHelper::decode_optional_header(req, http_types::headers::USER_AGENT);
@@ -549,6 +563,7 @@ impl FrontProtocolHandler {
         let referer_objects = Self::referer_objects_from_request(&url)?;
         let context = Self::context_from_request(&url)?;
         let group = Self::group_from_request(&url)?;
+        let req_path = Self::req_path_from_request(&url)?;
 
         /*
         /object_id
@@ -580,6 +595,7 @@ impl FrontProtocolHandler {
                 FrontORequest {
                     source: req.source,
 
+                    req_path,
                     target: roots,
 
                     object_id: id,
@@ -613,6 +629,8 @@ impl FrontProtocolHandler {
 
                 FrontORequest {
                     source: req.source,
+                    
+                    req_path,
                     target: vec![],
 
                     object_id: roots[0],
