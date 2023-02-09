@@ -164,6 +164,12 @@ impl Monitor {
 
     pub async fn run(mut self, cases: Vec<&str>) ->BuckyResult<()> {
         info!("start monitor");
+        self.bug_reporter.report(&MonitorErrorInfo {
+            service: self.name.clone(),
+            case: "Monitor Start".to_owned(),
+            error: BuckyError::new(BuckyErrorCode::Ok, "CYFS Monitor Start"),
+            at_all: false
+        }).await;
         loop {
             // 每天本地时间17：30，上报一条自己正在正常工作的消息
             let time = chrono::Local::now();

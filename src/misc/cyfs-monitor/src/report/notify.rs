@@ -47,10 +47,7 @@ CYFS Monitor report:
             }
         });
 
-        let client = surf::client();
-        let req = surf::post(&self.dingtalk_url).body(msg);
-
-        let mut _res = client.send(req).await.map_err(|e|{
+        let _ = surf::post(&self.dingtalk_url).body(msg).await.map_err(|e|{
             let msg = format!("report to dingtalk error! {}", e);
             error!("{}", msg);
             BuckyError::from(msg)
