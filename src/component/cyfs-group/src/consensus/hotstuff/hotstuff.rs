@@ -1765,7 +1765,15 @@ impl HotstuffRunner {
                 wait_round = Self::proposal_waiter(self.rx_proposal_waiter.clone()).fuse() => {
                     self.rx_proposal_waiter = None;
                     if wait_round == self.round {
-                        self.generate_block(None).await
+                        // timeout
+                        let tc = self.tc.as_ref().map_or(None, |tc| {
+                            if tc.round + 1 == self.round {
+                                Some(tc.clone())
+                            } else {
+                                None
+                            }
+                        });
+                        self.generate_block(tc).await
                     } else {
                         Ok(())
                     }
