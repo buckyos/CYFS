@@ -73,17 +73,14 @@ impl ContextManager {
         referer: impl Into<String>,
         target: DeviceId,
     ) -> BuckyResult<TransContextHolder> {
-        let ret = self.device_manager.get(&target).await;
-        if ret.is_none() {
-            let msg = format!(
-                "load trans context with target but not found! target={}",
-                target
+        let device = self.device_manager.search(&target).await.map_err(|e| {
+            warn!(
+                "load trans context with target but failed! target={}, {}",
+                target, e
             );
-            error!("{}", msg);
-            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
-        }
+            e
+        })?;
 
-        let device = ret.unwrap();
         let holder = TransContextHolder::new_target(target, device.into_desc(), referer);
 
         Ok(holder)
@@ -102,18 +99,23 @@ impl ContextManager {
     async fn new_item(&self, object_id: ObjectId, object: TransContext) -> ContextItem {
         let mut source_list = Vec::with_capacity(object.device_list().len());
         for item in object.device_list() {
-            let ret = self.device_manager.get(&item.target).await;
-            if ret.is_none() {
-                warn!(
-                    "load trans context target but not found! id={}, context_path={}, target={}",
-                    object_id,
-                    object.context_path(),
-                    item.target
-                );
-                continue;
-            }
+            let device = match self.device_manager.search(&item.target).await {
+                Ok(device) => {
+                    device
+                }
+                Err(e) => {
+                    warn!(
+                        "search trans context target but not found! id={}, context_path={}, target={}, {}",
+                        object_id,
+                        object.context_path(),
+                        item.target,
+                        e
+                    );
 
-            let device = ret.unwrap();
+                    continue;
+                }
+            };
+            
             let source = DownloadSource {
                 target: device.into_desc(),
                 codec_desc: item.chunk_codec_desc.clone(),
@@ -241,6 +243,7 @@ impl ContextManager {
         let object_raw = trans_context.to_vec()?;
         let object = NONObjectInfo::new_from_object_raw(object_raw)?;
 
+        // First put context to noc
         let req = NamedObjectCachePutObjectRequest {
             source,
             object,
@@ -255,6 +258,7 @@ impl ContextManager {
             e
         })?;
 
+        // Then load to context cache in memory
         let item = self.new_item(context_id, trans_context).await;
         let item = Arc::new(item);
         self.update_context(item);

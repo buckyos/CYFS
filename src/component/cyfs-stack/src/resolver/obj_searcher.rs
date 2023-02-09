@@ -88,11 +88,12 @@ impl MetaSearcher {
         })?;
 
         if ret.is_none() {
-            warn!(
+            let msg = format!(
                 "load object from meta chain but not found! obj={}",
                 object_id,
             );
-            return Err(BuckyError::from(BuckyErrorCode::NotFound));
+            warn!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
 
         let ret = ret.unwrap();
