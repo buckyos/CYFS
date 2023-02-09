@@ -1567,7 +1567,7 @@ impl HotstuffRunner {
             obj_owner: None,
         });
 
-        let desc_hash = block.named_object().desc().raw_hash_encode()?;
+        let desc_hash = block.named_object().desc().raw_hash_value()?;
         let signature = self.signer.sign(desc_hash.as_slice(), &sign_source).await?;
         block
             .named_object_mut()

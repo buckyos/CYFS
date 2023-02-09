@@ -337,7 +337,7 @@ impl Committee {
                                 .named_object()
                                 .desc()
                                 .owner()
-                                .and_then(|blk_owner| Some(dev_owner == dev_owner))
+                                .and_then(|blk_owner| Some(blk_owner == dev_owner))
                         }) == Some(true)
                     {
                         sign_device = Some((device, sign));
