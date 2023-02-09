@@ -2,6 +2,8 @@ pub mod protos {
     include!(concat!(env!("OUT_DIR"), "/mod.rs"));
 }
 
+use std::result;
+
 use cyfs_base::*;
 use cyfs_core::{
     GroupConsensusBlock, GroupConsensusBlockObject, GroupRPath, GroupRPathStatus, HotstuffBlockQC,
@@ -91,7 +93,7 @@ pub(crate) enum HotstuffMessage {
     TimeoutVote(HotstuffTimeoutVote),
     Timeout(cyfs_core::HotstuffTimeout),
 
-    SyncRequest(SyncBound, SyncBound),
+    SyncRequest(SyncBound, SyncBound), // [min, max]
 
     LastStateRequest,
     StateChangeNotify(GroupConsensusBlock, GroupConsensusBlock), // (block, qc-block)
@@ -105,6 +107,91 @@ pub(crate) enum HotstuffMessage {
     ), // (proposal-id, (ExecuteResult, block, qc-block))
     QueryState(String),
     VerifiableState(String, BuckyResult<GroupRPathStatus>),
+}
+
+impl std::fmt::Debug for HotstuffMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Block(block) => {
+                write!(
+                    f,
+                    "HotstuffMessage::Block({}/{})",
+                    block.block_id(),
+                    block.round()
+                )
+            }
+            Self::BlockVote(vote) => {
+                write!(
+                    f,
+                    "HotstuffMessage::BlockVote({}/{})",
+                    vote.block_id, vote.round
+                )
+            }
+            Self::TimeoutVote(vote) => {
+                write!(
+                    f,
+                    "HotstuffMessage::TimeoutVote({}/{})",
+                    vote.round, vote.voter
+                )
+            }
+            Self::Timeout(tc) => {
+                write!(
+                    f,
+                    "HotstuffMessage::Timeout({}/{:?})",
+                    tc.round,
+                    tc.votes.iter().map(|v| v.voter).collect::<Vec<_>>()
+                )
+            }
+            Self::SyncRequest(min, max) => {
+                write!(f, "HotstuffMessage::SyncRequest([{:?}-{:?}])", min, max)
+            }
+            Self::StateChangeNotify(block, qc) => {
+                write!(
+                    f,
+                    "HotstuffMessage::StateChangeNotify({}/{}, {}/{})",
+                    block.block_id(),
+                    block.round(),
+                    qc.block_id(),
+                    qc.round()
+                )
+            }
+            Self::LastStateRequest => {
+                write!(f, "HotstuffMessage::LastStateRequest",)
+            }
+            Self::ProposalResult(proposal_id, result) => {
+                write!(
+                    f,
+                    "HotstuffMessage::ProposalResult({}, {:?})",
+                    proposal_id,
+                    result.as_ref().map_or_else(
+                        |err| { Err(err) },
+                        |(obj, block, qc)| {
+                            let ok = format!(
+                                "({:?}, {}/{}, {}/{})",
+                                obj.as_ref().map(|o| o.object_id),
+                                block.block_id(),
+                                block.round(),
+                                qc.block_id(),
+                                qc.round()
+                            );
+                            Ok(ok)
+                        }
+                    )
+                )
+            }
+            Self::QueryState(sub_path) => {
+                write!(f, "HotstuffMessage::QueryState({})", sub_path)
+            }
+            Self::VerifiableState(sub_path, result) => {
+                write!(
+                    f,
+                    "HotstuffMessage::VerifiableState({}, {:?})",
+                    sub_path,
+                    result.as_ref().map(|status| unimplemented!())
+                )
+            }
+        }
+    }
 }
 
 const PACKAGE_FLAG_BITS: usize = 1;
@@ -134,6 +221,111 @@ pub(crate) enum HotstuffPackage {
     ), // (proposal-id, ExecuteResult)
     QueryState(ProtocolAddress, String),
     VerifiableState(ProtocolAddress, String, BuckyResult<GroupRPathStatus>),
+}
+
+impl std::fmt::Debug for HotstuffPackage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Block(block) => {
+                write!(
+                    f,
+                    "HotstuffPackage::Block({}/{})",
+                    block.block_id(),
+                    block.round()
+                )
+            }
+            Self::BlockVote(_, vote) => {
+                write!(
+                    f,
+                    "HotstuffPackage::BlockVote({}/{})",
+                    vote.block_id, vote.round
+                )
+            }
+            Self::TimeoutVote(_, vote) => {
+                write!(
+                    f,
+                    "HotstuffPackage::TimeoutVote({}/{})",
+                    vote.round, vote.voter
+                )
+            }
+            Self::Timeout(_, tc) => {
+                write!(
+                    f,
+                    "HotstuffPackage::Timeout({}/{:?})",
+                    tc.round,
+                    tc.votes.iter().map(|v| v.voter).collect::<Vec<_>>()
+                )
+            }
+            Self::SyncRequest(_, min, max) => {
+                write!(f, "HotstuffPackage::SyncRequest([{:?}-{:?}])", min, max)
+            }
+            Self::StateChangeNotify(block, qc) => {
+                write!(
+                    f,
+                    "HotstuffPackage::StateChangeNotify({}/{}, {}/{})",
+                    block.block_id(),
+                    block.round(),
+                    qc.block_id(),
+                    qc.round()
+                )
+            }
+            Self::LastStateRequest(_) => {
+                write!(f, "HotstuffPackage::LastStateRequest",)
+            }
+            Self::ProposalResult(proposal_id, result) => {
+                write!(
+                    f,
+                    "HotstuffPackage::ProposalResult({}, {:?})",
+                    proposal_id,
+                    result.as_ref().map_or_else(
+                        |(err, _)| { Err(err) },
+                        |(obj, block, qc)| {
+                            let ok = format!(
+                                "({:?}, {}/{}, {}/{})",
+                                obj.as_ref().map(|o| o.object_id),
+                                block.block_id(),
+                                block.round(),
+                                qc.block_id(),
+                                qc.round()
+                            );
+                            Ok(ok)
+                        }
+                    )
+                )
+            }
+            Self::QueryState(_, sub_path) => {
+                write!(f, "HotstuffPackage::QueryState({})", sub_path)
+            }
+            Self::VerifiableState(_, sub_path, result) => {
+                write!(
+                    f,
+                    "HotstuffPackage::VerifiableState({}, {:?})",
+                    sub_path,
+                    result.as_ref().map(|status| unimplemented!())
+                )
+            }
+        }
+    }
+}
+
+impl HotstuffPackage {
+    pub(crate) fn rpath(&self) -> &GroupRPath {
+        match self {
+            HotstuffPackage::Block(block) => block.r_path(),
+            HotstuffPackage::BlockVote(addr, _) => addr.check_rpath(),
+            HotstuffPackage::TimeoutVote(addr, _) => addr.check_rpath(),
+            HotstuffPackage::Timeout(addr, _) => addr.check_rpath(),
+            HotstuffPackage::SyncRequest(addr, _, _) => addr.check_rpath(),
+            HotstuffPackage::StateChangeNotify(block, _) => block.r_path(),
+            HotstuffPackage::LastStateRequest(addr) => addr.check_rpath(),
+            HotstuffPackage::ProposalResult(_, result) => result.as_ref().map_or_else(
+                |(_, addr)| addr.check_rpath(),
+                |(_, block, _)| block.r_path(),
+            ),
+            HotstuffPackage::QueryState(addr, _) => addr.check_rpath(),
+            HotstuffPackage::VerifiableState(addr, _, _) => addr.check_rpath(),
+        }
+    }
 }
 
 fn encode_with_length<'a, O: RawEncode>(

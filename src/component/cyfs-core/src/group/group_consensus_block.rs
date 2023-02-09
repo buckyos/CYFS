@@ -183,7 +183,10 @@ type GroupConsensusBlockBuilder =
 
 pub type GroupConsensusBlockId = NamedObjectId<GroupConsensusBlockType>;
 #[derive(Clone)]
-pub struct GroupConsensusBlock(NamedObjectBase<GroupConsensusBlockType>, Arc<AtomicU8>);
+pub struct GroupConsensusBlock(
+    NamedObjectBase<GroupConsensusBlockType>,
+    Arc<(AtomicU8, GroupConsensusBlockId)>,
+);
 
 const BLOCK_CHECK_STATE_NONE: u8 = 0;
 const BLOCK_CHECK_STATE_SUCC: u8 = 1;
@@ -227,6 +230,7 @@ pub trait GroupConsensusBlockObject {
     fn proposals(&self) -> &Vec<GroupConsensusBlockProposal>;
     fn result_state_id(&self) -> &Option<ObjectId>;
     fn height(&self) -> u64;
+    fn block_id(&self) -> &GroupConsensusBlockId;
     fn meta_block_id(&self) -> &ObjectId;
     fn prev_block_id(&self) -> Option<&ObjectId>;
     fn owner(&self) -> &ObjectId;
@@ -269,19 +273,23 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
             .owner(owner)
             .build();
 
-        Self(block, Arc::new(AtomicU8::new(BLOCK_CHECK_STATE_SUCC)))
+        let block_id = GroupConsensusBlockId::try_from(block.desc().object_id()).unwrap();
+        Self(
+            block,
+            Arc::new((AtomicU8::new(BLOCK_CHECK_STATE_SUCC), block_id)),
+        )
     }
 
     fn check(&self) -> bool {
-        let state = self.1.load(Ordering::SeqCst);
+        let state = self.1 .0.load(Ordering::SeqCst);
         if state == BLOCK_CHECK_STATE_NONE {
             let desc = self.0.desc().content();
             let body = self.0.body().as_ref().unwrap().content();
             if body.hash() != desc.body_hash {
-                self.1.store(BLOCK_CHECK_STATE_FAIL, Ordering::SeqCst);
+                self.1 .0.store(BLOCK_CHECK_STATE_FAIL, Ordering::SeqCst);
                 false
             } else {
-                self.1.store(BLOCK_CHECK_STATE_SUCC, Ordering::SeqCst);
+                self.1 .0.store(BLOCK_CHECK_STATE_SUCC, Ordering::SeqCst);
                 true
             }
         } else {
@@ -307,6 +315,10 @@ impl GroupConsensusBlockObject for GroupConsensusBlock {
     fn height(&self) -> u64 {
         let desc = self.0.desc().content();
         desc.height
+    }
+
+    fn block_id(&self) -> &GroupConsensusBlockId {
+        &self.1 .1
     }
 
     fn meta_block_id(&self) -> &ObjectId {
@@ -370,8 +382,12 @@ impl RawEncode for GroupConsensusBlock {
 impl<'de> RawDecode<'de> for GroupConsensusBlock {
     fn raw_decode(buf: &'de [u8]) -> BuckyResult<(Self, &'de [u8])> {
         let (obj, remain) = NamedObjectBase::<GroupConsensusBlockType>::raw_decode(buf)?;
+        let block_id = GroupConsensusBlockId::try_from(obj.desc().object_id()).unwrap();
         Ok((
-            Self(obj, Arc::new(AtomicU8::new(BLOCK_CHECK_STATE_NONE))),
+            Self(
+                obj,
+                Arc::new((AtomicU8::new(BLOCK_CHECK_STATE_NONE), block_id)),
+            ),
             remain,
         ))
     }

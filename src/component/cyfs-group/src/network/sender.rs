@@ -29,15 +29,6 @@ impl Sender {
         rpath: GroupRPath,
         to: &ObjectId,
     ) {
-        let pkg = HotstuffPackage::from_msg(msg, rpath);
-        let len = pkg.raw_measure(&None).unwrap();
-        let mut buf = Vec::with_capacity(len);
-        buf.resize(len, 0);
-        let remain = pkg.raw_encode(buf.as_mut_slice(), &None).unwrap();
-        assert_eq!(remain.len(), 0);
-
-        let mut options = DatagramOptions::default();
-
         let remote = match to.obj_type_code() {
             cyfs_base::ObjectTypeCode::Device => DeviceId::try_from(to).unwrap(),
             cyfs_base::ObjectTypeCode::People => {
@@ -52,6 +43,23 @@ impl Sender {
             }
             _ => panic!("invalid remote type: {:?}", to.obj_type_code()),
         };
+
+        log::debug!(
+            "[group-sender] {:?} post message to {:?}, msg: {:?}",
+            rpath,
+            remote,
+            msg
+        );
+
+        let pkg = HotstuffPackage::from_msg(msg, rpath);
+
+        let len = pkg.raw_measure(&None).unwrap();
+        let mut buf = Vec::with_capacity(len);
+        buf.resize(len, 0);
+        let remain = pkg.raw_encode(buf.as_mut_slice(), &None).unwrap();
+        assert_eq!(remain.len(), 0);
+
+        let mut options = DatagramOptions::default();
 
         self.datagram
             .send_to(buf.as_slice(), &mut options, &remote, self.vport);

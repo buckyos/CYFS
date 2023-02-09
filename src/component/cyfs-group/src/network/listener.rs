@@ -20,6 +20,12 @@ impl Listener {
                         let remote = pkg.source.remote.object_id().clone();
                         if let Ok((pkg, remain)) = HotstuffPackage::raw_decode(pkg.data.as_slice())
                         {
+                            log::debug!(
+                                "[group-listener] {:?} recv message from {:?}, msg: {:?}",
+                                pkg.rpath(),
+                                remote,
+                                pkg
+                            );
                             assert_eq!(remain.len(), 0);
                             processor.on_message(pkg, remote).await;
                         }
