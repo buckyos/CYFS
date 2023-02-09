@@ -225,7 +225,7 @@ impl Interface {
     pub fn start(&self, stack: WeakStack) {
         let ci = self.clone();
         thread::spawn(move || {
-            info!("{} start on thread {:?}", ci, os_id::thread::get_raw_id());
+            info!("{} start on thread {:?}", ci, thread::current().id());
             ci.recv_loop(stack);
         });
     }
