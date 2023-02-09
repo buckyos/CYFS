@@ -8,8 +8,8 @@ pub async fn verify_block(
     qc: &HotstuffBlockQC,
     group: &Group,
 ) -> BuckyResult<bool> {
-    let block_id = block.named_object().desc().object_id();
-    if qc.round != block.round() || qc.block_id != block_id {
+    let block_id = block.block_id().object_id();
+    if qc.round != block.round() || &qc.block_id != block_id {
         log::error!(
             "the qc-block({}) should be next block({})",
             qc.round,

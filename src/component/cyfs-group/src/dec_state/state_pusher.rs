@@ -55,15 +55,15 @@ impl StatePusher {
         block: GroupConsensusBlock,
         qc_block: GroupConsensusBlock,
     ) {
-        let block_id = block.named_object().desc().object_id();
+        let block_id = block.block_id();
         if qc_block.height() != block.height() + 1
             || qc_block.qc().as_ref().expect("qc should not empty").round != block.round()
             || qc_block.round() <= block.round()
-            || qc_block.prev_block_id().unwrap() != &block_id
+            || qc_block.prev_block_id().unwrap() != block_id.object_id()
         {
             log::error!(
                 "the qc-block({}) should be next block({})",
-                qc_block.named_object().desc().object_id(),
+                qc_block.block_id(),
                 block_id
             );
             return;

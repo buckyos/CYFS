@@ -106,10 +106,14 @@ impl Synchronizer {
         let tx_sync_message = self.tx_sync_message.clone();
         let height = block.height();
         let round = block.round();
-        let block_id = block.named_object().desc().object_id();
+        let block_id = block.block_id();
         async_std::task::spawn(async move {
             tx_sync_message
-                .send(SynchronizerMessage::PopBlock(height, round, block_id))
+                .send(SynchronizerMessage::PopBlock(
+                    height,
+                    round,
+                    block_id.object_id().clone(),
+                ))
                 .await
         });
     }
@@ -587,10 +591,11 @@ impl SynchronizerRunner {
         for pos in 0..self.out_order_blocks.len() {
             let (block, remote) = self.out_order_blocks.get(pos).unwrap();
 
-            let block_id_out = block.named_object().desc().object_id();
-            if remove_block_ids.contains(block.prev_block_id().unwrap()) || block_id_out == block_id
+            let block_id_out = block.block_id().object_id();
+            if remove_block_ids.contains(block.prev_block_id().unwrap())
+                || block_id_out == &block_id
             {
-                remove_block_ids.insert(block_id_out);
+                remove_block_ids.insert(block_id_out.clone());
                 remove_pos = Some(pos);
                 max_height = max_height.max(block.height());
                 max_round = max_round.max(block.round());

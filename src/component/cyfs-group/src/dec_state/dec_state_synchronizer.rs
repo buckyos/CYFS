@@ -317,7 +317,7 @@ impl DecStateSynchronizerRunner {
         if qc_block.qc().is_none() {
             log::warn!(
                 "the qc is none for qc-block({})",
-                qc_block.named_object().desc().object_id()
+                qc_block.block_id()
             );
             return Err(BuckyError::new(BuckyErrorCode::Unknown, "qc lost"));
         }

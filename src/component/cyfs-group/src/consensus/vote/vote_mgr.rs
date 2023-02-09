@@ -44,11 +44,11 @@ impl VoteMgr {
             return VoteThresholded::None;
         }
 
-        let block_id = block.named_object().desc().object_id();
-        self.blocks.insert(block_id, block.clone());
+        let block_id = block.block_id().object_id();
+        self.blocks.insert(block_id.clone(), block.clone());
 
         if let Some(qc_makers) = self.votes.get_mut(&block.round()) {
-            if let Some(qc_maker) = qc_makers.get_mut(&block_id) {
+            if let Some(qc_maker) = qc_makers.get_mut(block_id) {
                 if let Some(qc) = qc_maker
                     .on_block(block, &self.committee)
                     .await
@@ -66,6 +66,7 @@ impl VoteMgr {
                 **round >= block.round()
                     && tc_maker
                         .max_block()
+                        .as_ref()
                         .map_or(false, |max_block_id| block_id == max_block_id)
             })
             .collect();
@@ -82,7 +83,7 @@ impl VoteMgr {
             }
         }
 
-        let waiting_timeouts = self.waiting_timeouts.remove(&block_id);
+        let waiting_timeouts = self.waiting_timeouts.remove(block_id);
         if let Some(waiting_timeouts) = waiting_timeouts {
             let mut waiting_timeouts: Vec<(u64, HashMap<ObjectId, HotstuffTimeoutVote>)> =
                 waiting_timeouts.into_iter().collect();
@@ -118,8 +119,7 @@ impl VoteMgr {
     ) -> BuckyResult<Option<(HotstuffBlockQC, GroupConsensusBlock)>> {
         assert!(block
             .as_ref()
-            .map_or(true, |b| b.named_object().desc().object_id()
-                == vote.block_id));
+            .map_or(true, |b| b.block_id().object_id() == &vote.block_id));
 
         let block_id = vote.block_id;
 
@@ -145,7 +145,7 @@ impl VoteMgr {
         block: Option<&GroupConsensusBlock>,
     ) -> BuckyResult<Option<(HotstuffTimeout, Option<GroupConsensusBlock>)>> {
         assert!(
-            block.map(|block| block.named_object().desc().object_id())
+            block.map(|block| block.block_id().object_id().clone())
                 == timeout.high_qc.as_ref().map(|qc| qc.block_id)
         );
 
@@ -250,7 +250,7 @@ impl QCMaker {
                 .await?;
             if self.thresholded {
                 return Ok(Some(HotstuffBlockQC {
-                    block_id: block.named_object().desc().object_id(),
+                    block_id: block.block_id().object_id().clone(),
                     prev_block_id: block.prev_block_id().map(|id| id.clone()),
                     round: block.round(),
                     votes: self

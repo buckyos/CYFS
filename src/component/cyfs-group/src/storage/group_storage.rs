@@ -163,7 +163,7 @@ impl GroupStorage {
         let header_height = self.header_height();
         assert!(block.height() > header_height && block.height() <= header_height + 3);
 
-        let block_id = block.named_object().desc().object_id();
+        let block_id = block.block_id();
         let prev_block_id = block.prev_block_id();
 
         let mut remove_prepares = vec![];
@@ -183,17 +183,18 @@ impl GroupStorage {
                             prev_prev_block.prev_block_id(),
                             self.header_block
                                 .as_ref()
-                                .map(|b| b.named_object().desc().object_id())
+                                .map(|b| b.block_id().object_id().clone())
                                 .as_ref()
                         );
 
                         new_header = Some(prev_prev_block.clone());
-                        let new_header_id = prev_prev_block.named_object().desc().object_id();
+                        let new_header_id = prev_prev_block.block_id().object_id();
 
                         for (id, block) in self.prepares.iter() {
-                            if block.prev_block_id().map(|prev_id| {
-                                prev_id == &new_header_id || prev_id == prev_block_id
-                            }) != Some(true)
+                            if block
+                                .prev_block_id()
+                                .map(|prev_id| prev_id == new_header_id || prev_id == prev_block_id)
+                                != Some(true)
                             {
                                 remove_prepares.push(id.clone());
                             }
@@ -217,7 +218,7 @@ impl GroupStorage {
          */
         // storage
         let mut writer = self.storage_engine.create_writer().await?;
-        writer.insert_prepares(&block_id).await?;
+        writer.insert_prepares(block_id.object_id()).await?;
         if let Some((new_pre_commit, _)) = new_pre_commit.as_ref() {
             writer
                 .insert_pre_commit(new_pre_commit, new_header.is_some())
@@ -225,10 +226,7 @@ impl GroupStorage {
         }
         if let Some(new_header) = new_header.as_ref() {
             writer
-                .push_commit(
-                    new_header.height(),
-                    &new_header.named_object().desc().object_id(),
-                )
+                .push_commit(new_header.height(), new_header.block_id().object_id())
                 .await?;
 
             writer.remove_prepares(remove_prepares.as_slice()).await?;
@@ -245,7 +243,11 @@ impl GroupStorage {
         }
 
         // update memory
-        if self.prepares.insert(block_id, block).is_some() {
+        if self
+            .prepares
+            .insert(block_id.object_id().clone(), block)
+            .is_some()
+        {
             assert!(false);
         }
 
@@ -317,9 +319,9 @@ impl GroupStorage {
         // 去重proposal，BlockLinkState::DuplicateProposal，去重只检查相同分叉链上的proposal，不同分叉上允许有相同proposal
         // 检查Proposal时间戳，早于去重proposal集合区间，或者晚于当前系统时间戳一定时间
 
-        let block_id = block.named_object().desc().object_id();
+        let block_id = block.block_id();
 
-        if self.find_block_in_cache(&block_id).is_ok() {
+        if self.find_block_in_cache(block_id.object_id()).is_ok() {
             return Ok(BlockLinkState::Duplicate);
         }
 
@@ -416,7 +418,7 @@ impl GroupStorage {
 
     pub fn find_block_in_cache(&self, block_id: &ObjectId) -> BuckyResult<GroupConsensusBlock> {
         if let Some(block) = self.header_block.as_ref() {
-            if &block.named_object().desc().object_id() == block_id {
+            if block.block_id().object_id() == block_id {
                 return Ok(block.clone());
             }
         }

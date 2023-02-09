@@ -651,11 +651,11 @@ impl HotstuffBlockQCVote {
         local_device_id: ObjectId,
         signer: &RsaCPUObjectSigner,
     ) -> BuckyResult<Self> {
-        let block_id = block.named_object().desc().object_id();
+        let block_id = block.block_id().object_id();
         let round = block.round();
         let signature = signer
             .sign(
-                Self::hash_content(&block_id, block.prev_block_id(), round).as_slice(),
+                Self::hash_content(block_id, block.prev_block_id(), round).as_slice(),
                 &SignatureSource::Object(ObjectLink {
                     obj_id: local_device_id,
                     obj_owner: None,
@@ -664,7 +664,7 @@ impl HotstuffBlockQCVote {
             .await?;
 
         Ok(Self {
-            block_id,
+            block_id: block_id.clone(),
             round,
             voter: local_device_id,
             signature,
