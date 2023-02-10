@@ -159,6 +159,12 @@ impl HandlerEndpoint {
             access_token.clone(),
             handler.to_owned(),
         ));
+
+        // external
+        let all = handler.fetch_all_external_servers();
+        for item in all {
+            item.register(server);
+        }
     }
 }
 
