@@ -290,11 +290,12 @@ impl NONRequestor {
         let mut resp = self.requestor.request(http_req).await?;
 
         if resp.status().is_success() {
+            let resp = NONRequestorHelper::decode_get_object_response(&mut resp).await?;
             info!(
-                "get object from non service success: {}",
-                req.object_debug_info()
+                "get object from non service success: {}, object={}",
+                req.object_debug_info(), resp.object.object_id,
             );
-            NONRequestorHelper::decode_get_object_response(&mut resp).await
+            Ok(resp)
         } else {
             let e = RequestorHelper::error_from_resp(&mut resp).await;
             error!(
