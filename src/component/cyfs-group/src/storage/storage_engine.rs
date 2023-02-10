@@ -130,7 +130,7 @@ impl<'a> StorageWriter for StorageEngineMockWriter<'a> {
     }
 
     async fn push_commit(&mut self, height: u64, block_id: &ObjectId) -> BuckyResult<()> {
-        if !self
+        if self
             .engine
             .commit_blocks
             .insert(height, block_id.clone())

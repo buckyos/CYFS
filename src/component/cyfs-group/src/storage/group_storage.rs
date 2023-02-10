@@ -191,10 +191,11 @@ impl GroupStorage {
                         let new_header_id = prev_prev_block.block_id().object_id();
 
                         for (id, block) in self.prepares.iter() {
-                            if block
-                                .prev_block_id()
-                                .map(|prev_id| prev_id == new_header_id || prev_id == prev_block_id)
-                                != Some(true)
+                            if block.prev_block_id().map(|prev_id| {
+                                assert_ne!(prev_id, prev_block_id);
+                                prev_id == new_header_id
+                            }) != Some(true)
+                                && id != prev_block_id
                             {
                                 remove_prepares.push(id.clone());
                             }
@@ -203,6 +204,8 @@ impl GroupStorage {
                         assert_eq!(block.height(), header_height + 2);
                     }
                 }
+            } else {
+                assert_ne!(block.height(), header_height + 3);
             }
         }
 

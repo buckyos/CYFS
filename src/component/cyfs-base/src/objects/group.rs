@@ -329,11 +329,36 @@ impl Group {
         target: &ObjectId,
         scope: GroupMemberScope,
     ) -> Vec<&ObjectId> {
-        unimplemented!()
+        let mut members = match scope {
+            GroupMemberScope::Admin => self.admins().iter().map(|m| &m.id).collect::<Vec<_>>(),
+            GroupMemberScope::Member => self.members().iter().map(|m| &m.id).collect::<Vec<_>>(),
+            GroupMemberScope::All => [
+                self.admins().iter().map(|m| &m.id).collect::<Vec<_>>(),
+                self.members().iter().map(|m| &m.id).collect::<Vec<_>>(),
+            ]
+            .concat(),
+        };
+
+        members.sort_unstable_by(|l, r| {
+            let dl = l.distance_of(target);
+            let dr = r.distance_of(target);
+            dl.cmp(&dr)
+        });
+        members
     }
 
     pub fn ood_list_with_distance(&self, target: &ObjectId) -> Vec<&ObjectId> {
-        unimplemented!()
+        let mut oods = self
+            .ood_list()
+            .iter()
+            .map(|id| id.object_id())
+            .collect::<Vec<_>>();
+        oods.sort_unstable_by(|l, r| {
+            let dl = l.distance_of(target);
+            let dr = r.distance_of(target);
+            dl.cmp(&dr)
+        });
+        oods
     }
 
     // pub fn group_hash(&self) -> ObjectId {

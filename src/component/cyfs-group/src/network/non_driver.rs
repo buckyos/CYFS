@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use cyfs_base::{
-    BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceId, Group, NamedObject, ObjectDesc,
-    ObjectId, ObjectTypeCode, People, PeopleId, RawConvertTo, RawDecode,
+    AnyNamedObject, BuckyError, BuckyErrorCode, BuckyResult, Device, DeviceId, Group, NamedObject,
+    ObjectDesc, ObjectId, ObjectTypeCode, People, PeopleId, RawConvertTo, RawDecode, RawFrom,
+    TypelessCoreObject,
 };
 use cyfs_chunk_lib::ChunkMeta;
 use cyfs_core::{GroupConsensusBlock, GroupConsensusBlockObject, GroupProposal};
@@ -70,10 +71,15 @@ impl NONDriverHelper {
     }
 
     pub async fn put_block(&self, block: &GroupConsensusBlock) -> BuckyResult<()> {
+        let buf = block.to_vec()?;
+        let block_any = Arc::new(AnyNamedObject::Core(
+            TypelessCoreObject::clone_from_slice(buf.as_slice()).unwrap(),
+        ));
+
         let block = NONObjectInfo {
             object_id: block.block_id().object_id().clone(),
             object_raw: block.to_vec()?,
-            object: None,
+            object: Some(block_any),
         };
         self.put_object(block).await?;
         Ok(())
