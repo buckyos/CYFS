@@ -12,15 +12,15 @@ pub(crate) struct BugReportManager {
 const DINGTALK_NIGHTLY_URL: &str = "https://oapi.dingtalk.com/robot/send?access_token=f44614438c8f63c7ccdd01ae1c83a062291e01b71b888aa21b7fa2b6588e4a9d";
 
 impl BugReportManager {
-    pub fn new() -> Self {
-        let mut ret = Self { list: vec![] };
-
-        ret.load_config();
-
-        ret
+    pub fn new(list: Vec<Box<dyn BugReportHandler>>) -> Self {
+        Self { list }
     }
 
-    fn load_config(&mut self) {
+    pub fn is_empty(&self) -> bool {
+        self.list.is_empty()
+    }
+
+    pub fn load_from_config(&mut self) {
         if let Some(config_node) = DebugConfig::get_config("report") {
             if let Err(e) = self.load_config_value(config_node) {
                 error!("load report config error! {}", e);

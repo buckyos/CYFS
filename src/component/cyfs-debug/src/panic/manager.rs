@@ -40,13 +40,10 @@ struct PanicManagerImpl {
 
 impl PanicManagerImpl {
     pub fn new(builder: PanicBuilder) -> Self {
-        let reporter = match builder.bug_reporter {
-            Some(item) => item,
-            None => {
-                let manager = BugReportManager::new();
-                Box::new(manager)
-            }
-        };
+        let mut reporter = BugReportManager::new(builder.bug_reporter);
+        if reporter.is_empty() {
+            reporter.load_from_config();
+        }
 
         Self {
             product_name: builder.product_name,
@@ -56,7 +53,7 @@ impl PanicManagerImpl {
             exit_on_panic: builder.exit_on_panic,
 
             on_panic: OnPanicEventManager::new(),
-            reporter,
+            reporter: Box::new(reporter),
         }
     }
 }
@@ -151,7 +148,7 @@ pub struct PanicBuilder {
     log_to_file: bool,
     log_dir: PathBuf,
 
-    bug_reporter: Option<Box<dyn BugReportHandler>>,
+    bug_reporter: Vec<Box<dyn BugReportHandler>>,
 
     // panic后是否结束进程
     exit_on_panic: bool,
@@ -171,7 +168,7 @@ impl PanicBuilder {
             service_name: service_name.to_owned(),
             log_to_file: true,
             log_dir: root,
-            bug_reporter: None,
+            bug_reporter: vec![],
             exit_on_panic: false,
         }
     }
@@ -189,21 +186,21 @@ impl PanicBuilder {
     }
 
     pub fn bug_report(mut self, handler: Box<dyn BugReportHandler>) -> Self {
-        self.bug_reporter = Some(handler);
+        self.bug_reporter.push(handler);
         self
     }
 
     // use default http bug_report impl for
     pub fn http_bug_report(mut self, url: &str) -> Self {
         let handler = HttpBugReporter::new(url);
-        self.bug_reporter = Some(Box::new(handler));
+        self.bug_reporter.push(Box::new(handler));
         self
     }
 
     // use dingtalk bug_report 
     pub fn dingtalk_bug_report(mut self, dingtalk_url: &str) -> Self {
         let handler = DingtalkNotifier::new(dingtalk_url);
-        self.bug_reporter = Some(Box::new(handler));
+        self.bug_reporter.push(Box::new(handler));
         self
     }
 
