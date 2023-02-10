@@ -127,6 +127,8 @@ impl ConnectStreamBuilder {
         }
 
         let first_box = Arc::new(first_box.unwrap());
+
+        info!("{} build with key {}", self, first_box.key());
         let remote_id = build_params.remote_const.device_id();
         let cached_remote = stack.device_cache().get_inner(&remote_id);
         let known_remote = cached_remote.as_ref().or_else(|| build_params.remote_desc.as_ref());

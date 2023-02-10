@@ -78,8 +78,7 @@ pub struct UdpSesssionParams {
 
 impl UdpPingSession {
     pub fn new(stack: WeakStack,  gen_seq: Arc<TempSeqGenerator>, params: UdpSesssionParams) -> Self {
-        let seq = gen_seq.generate();
-        let session = Self(Arc::new(SessionImpl {
+        Self(Arc::new(SessionImpl {
             stack, 
             gen_seq, 
             config: params.config, 
@@ -90,16 +89,7 @@ impl UdpPingSession {
             sn_desc: params.sn_desc, 
             sn_endpoints: params.sn_endpoints, 
             state: RwLock::new(SessionState::Init(StateWaiter::new()))
-        }));
-
-        {
-            let session = session.clone();
-            task::spawn(async move {
-                let _ = session.send_ping(seq).await;
-            });
-        }
-        
-        session
+        }))
     }
 
 
@@ -120,6 +110,7 @@ impl UdpPingSession {
 
         let key_stub = stack.keystore().create_key(&self.0.sn_desc, true);
 
+        info!("{} send sn ping, seq={:?} key={}", self, seq, key_stub.key);
         let mut pkg_box = PackageBox::encrypt_box(
             self.sn().clone(), 
             key_stub.key.clone());
@@ -145,8 +136,6 @@ impl UdpPingSession {
             }
         }
 
-        
-        info!("{} send sn ping, seq={:?}", self, seq);
         let iter = SendPingIter {
             interface: self.0.local.clone(), 
             endpoints: {

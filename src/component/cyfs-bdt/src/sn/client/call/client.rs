@@ -415,7 +415,7 @@ impl CallSession {
         }
         packages.push(call);
 
-        Self(Arc::new(SessionImpl {
+        let session = Self(Arc::new(SessionImpl {
             stack, 
             sn, 
             config, 
@@ -426,7 +426,11 @@ impl CallSession {
                 start_at: 0,  
                 state: SessionState::Init, 
             })
-        }))
+        }));
+
+
+        info!("{} created, key={}", session, key_stub.key);
+        session
     }
 
     pub fn sn(&self) -> &DeviceId {
@@ -589,6 +593,8 @@ impl CallSession {
             packages.push(exchange);
         }
         packages.push(call);
+
+        info!("{} reset with key {}", self, key_stub.key);
 
         let tunnels = {
             let mut state = self.0.state.write().unwrap();
