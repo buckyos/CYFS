@@ -1512,6 +1512,7 @@ impl HotstuffRunner {
         prev_block: &Option<GroupConsensusBlock>,
         tc: Option<HotstuffTimeout>
     ) -> BuckyResult<GroupConsensusBlock> {
+        let proposal_count = executed_proposals.len();
         let proposals_param = executed_proposals
             .into_iter()
             .map(|(proposal, exe_result)| GroupConsensusBlockProposal {
@@ -1542,9 +1543,9 @@ impl HotstuffRunner {
         );
 
         log::debug!(
-            "[hotstuff] local: {:?}, generate_block new block {}/{}/{}",
+            "[hotstuff] local: {:?}, generate_block new block {}/{}/{}, proposals: {}",
             self,
-            block.block_id(), block.height(), block.round()
+            block.block_id(), block.height(), block.round(), proposal_count
         );
 
         self.sign_block(&mut block).await.map_err(|err| {

@@ -20,19 +20,20 @@ mod Common {
     use std::sync::Arc;
 
     use cyfs_base::{
-        AnyNamedObject, Area, Device, DeviceCategory, DeviceId, Endpoint, Group, GroupMember,
-        IpAddr, NamedObject, ObjectDesc, People, PrivateKey, Protocol, RawConvertTo, RawEncode,
-        RawFrom, RsaCPUObjectSigner, Signer, StandardObject, TypelessCoreObject, UniqueId,
-        SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF,
+        AnyNamedObject, Area, Device, DeviceCategory, DeviceId, Endpoint, EndpointArea, Group,
+        GroupMember, IpAddr, NamedObject, ObjectDesc, People, PrivateKey, Protocol, RawConvertTo,
+        RawEncode, RawFrom, RsaCPUObjectSigner, Signer, StandardObject, TypelessCoreObject,
+        UniqueId, SIGNATURE_SOURCE_REFINDEX_OWNER, SIGNATURE_SOURCE_REFINDEX_SELF,
     };
+    use cyfs_bdt_ext::BdtStackParams;
     use cyfs_chunk_lib::ChunkMeta;
     use cyfs_core::{DecApp, DecAppId, DecAppObj};
     use cyfs_lib::{BrowserSanboxMode, NONObjectInfo};
     use cyfs_meta_lib::MetaMinerTarget;
     use cyfs_stack::{
-        BdtStackParams, CyfsStack, CyfsStackConfigParams, CyfsStackFrontParams,
-        CyfsStackInterfaceParams, CyfsStackKnownObjects, CyfsStackKnownObjectsInitMode,
-        CyfsStackMetaParams, CyfsStackNOCParams, CyfsStackParams,
+        CyfsStack, CyfsStackConfigParams, CyfsStackFrontParams, CyfsStackInterfaceParams,
+        CyfsStackKnownObjects, CyfsStackKnownObjectsInitMode, CyfsStackMetaParams,
+        CyfsStackNOCParams, CyfsStackParams,
     };
     use rand::Rng;
 
@@ -70,7 +71,7 @@ mod Common {
                 .mut_addr()
                 .set_ip(IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)));
             endpoint.mut_addr().set_port(port_begin + i as u16);
-            endpoint.set_static_wan(true);
+            endpoint.set_area(EndpointArea::Wan);
 
             let mut device = Device::new(
                 Some(owner.desc().object_id()),
@@ -669,7 +670,9 @@ async fn main_run() {
             control.push_proposal(proposal).await.unwrap();
         });
 
-        async_std::task::sleep(Duration::from_millis(1000)).await;
+        if i % 1 == 0 {
+            async_std::task::sleep(Duration::from_millis(1000)).await;
+        }
     }
 }
 

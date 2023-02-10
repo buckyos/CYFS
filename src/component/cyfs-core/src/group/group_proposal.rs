@@ -253,17 +253,7 @@ impl GroupProposalObject for GroupProposal {
     fn params_hash(&self) -> BuckyResult<Option<HashValue>> {
         match &self.desc().content().params {
             Some(params) => {
-                if params.len() != HASH_VALUE_LEN {
-                    Err(BuckyError::new(
-                        BuckyErrorCode::Unmatch,
-                        format!(
-                            "try parse GroupProposal.param as hash with error length: ${}",
-                            params.len()
-                        ),
-                    ))
-                } else {
-                    Ok(Some(HashValue::from(params.as_slice())))
-                }
+                HashValue::try_from(params.as_slice()).map(|h| Some(h))
             }
             None => Ok(None),
         }

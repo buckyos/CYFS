@@ -35,8 +35,7 @@ use crate::zone::{ZoneManager, ZoneManagerRef, ZoneRoleManager};
 use crate::GroupNONDriver;
 use cyfs_base::*;
 
-use cyfs_bdt::{ChunkReader, DeviceCache, Stack, StackGuard, StackOpenParams, SnStatus};
-use cyfs_chunk_cache::{ChunkManager, ChunkManagerRef};
+use cyfs_bdt::{DeviceCache, StackGuard, SnStatus};
 use cyfs_group::GroupRPathMgr;
 use cyfs_bdt_ext::{BdtStackParams, NamedDataComponents};
 use cyfs_lib::*;
