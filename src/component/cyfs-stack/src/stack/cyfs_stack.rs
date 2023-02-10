@@ -543,7 +543,12 @@ impl CyfsStackImpl {
         // start rust's task thread pool and process dead lock checking
         cyfs_debug::ProcessDeadHelper::instance().start_check();
 
-        task_manager.resume_task().await?;
+        // try resume all tasks
+        async_std::task::spawn(async move {
+            if let Err(e) = task_manager.resume_task().await {
+                error!("resume tasks failed! {}", e);
+            }
+        });
 
         Ok(stack)
     }
