@@ -78,6 +78,8 @@ impl AcceptTunnelBuilder {
             let mut first_box = PackageBox::encrypt_box(caller_box.remote().clone(), caller_box.key().clone());
             first_box.append(vec![DynamicPackage::from(ack_tunnel)]);
             let first_box = Arc::new(first_box);
+
+            info!("{} build with key {}", self, first_box.key());
             let _ = self.explore_endpoint_pair(&syn_tunnel.from_device_desc, first_box.clone(), |_| true);
 
             if let Some(proxy_builder) = {

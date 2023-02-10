@@ -334,7 +334,7 @@ impl Interface {
             }
             Err(err) => {
                 // do nothing
-                error!("{} decode failed, len={}, e={}", self, recv.len(), &err);
+                error!("{} decode failed, from={}, len={}, e={}", self, from, recv.len(), &err);
             }
         }
     }
