@@ -2,6 +2,7 @@ pub mod daemon;
 mod gateway_monitor;
 mod control;
 mod stop;
+mod status;
 
 pub use daemon::Daemon;
 pub use gateway_monitor::GATEWAY_MONITOR;
