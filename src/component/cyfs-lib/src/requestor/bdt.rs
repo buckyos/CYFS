@@ -66,7 +66,7 @@ impl HttpRequestor for BdtHttpRequestor {
         }
 
         let seq = bdt_stream.sequence();
-        info!(
+        debug!(
             "bdt connect to {} success, seq={:?}, during={}ms",
             self.remote_addr(),
             seq,
