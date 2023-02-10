@@ -101,7 +101,7 @@ impl UtilLocalService {
     ) -> BuckyResult<UtilGetDeviceInputResponse> {
         let resp = UtilGetDeviceInputResponse {
             device_id: self.bdt_stack.local_device_id().to_owned(),
-            device: self.bdt_stack.local(),
+            device: self.bdt_stack.sn_client().ping().default_local(),
         };
 
         Ok(resp)
@@ -214,7 +214,7 @@ impl UtilLocalService {
         let info = self.zone_manager.get_current_info().await?;
 
         let device_id = info.device_id.clone();
-        let device = self.bdt_stack.local();
+        let device = self.bdt_stack.sn_client().ping().default_local();
         let owner_id = device.desc().owner().clone();
 
         let cyfs_root = cyfs_util::get_cyfs_root_path();
@@ -245,7 +245,8 @@ impl UtilLocalService {
             owner_id,
             cyfs_root,
 
-            sn_list: self.bdt_stack.sn_client().sn_list().clone(),
+            sn_list: self.bdt_stack.sn_client().ping().sn_list().iter().map(|sn| sn.desc().device_id()).collect(),
+            known_sn_list: self.bdt_stack.sn_client().cache().known_list(),
         };
 
         Ok(UtilGetDeviceStaticInfoInputResponse { info })
@@ -301,6 +302,7 @@ impl UtilLocalService {
                 owner: req.owner,
                 dec_id: req.common.source.dec.clone(),
                 chunk_size: req.chunk_size,
+                access: req.access.map(|v| v.value()),
             };
             let task_id = self
                 .task_manager
@@ -335,6 +337,7 @@ impl UtilLocalService {
                 owner: req.owner,
                 dec_id: req.common.source.dec.clone(),
                 chunk_size: req.chunk_size,
+                access: req.access.map(|v|v.value()),
                 device_id: self.bdt_stack.local_device_id().object_id().clone(),
             };
             let task_id = self

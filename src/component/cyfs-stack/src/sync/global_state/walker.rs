@@ -65,6 +65,10 @@ impl ObjectMapWalker {
     async fn on_item(&mut self, item: &ObjectId) -> BuckyResult<()> {
         trace!("walk on item: {}", item);
 
+        if item.is_data() {
+            return Ok(());
+        }
+
         if item.obj_type_code() == ObjectTypeCode::Chunk {
             if let Err(e) = self.chunks_collector.append(item).await {
                 error!("walk object's chunks error! {}, {}", item, e);

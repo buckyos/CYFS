@@ -1,6 +1,8 @@
-use crate::{DeviceInfo, LOCAL_DEVICE_MANAGER};
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult};
 use cyfs_lib::BrowserSanboxMode;
+use cyfs_util::{LOCAL_DEVICE_MANAGER, DeviceInfo};
+
+use std::str::FromStr;
 
 pub const BDT_ENDPOINTS: &str = r#"
 [[stack.bdt.endpoint]]
@@ -152,14 +154,14 @@ impl Default for CyfsServiceLoaderParam {
             shared_stack_stub: false,
             sync_service: true,
             is_mobile_stack: false,
-            front_enable : true,
+            front_enable: true,
             browser_mode: BrowserSanboxMode::default(),
         }
     }
 }
 pub struct CyfsServiceLoaderConfig {
-    // 支持单table(单个stack)和列表模式(多个stack)
-    pub node: toml::Value,
+    // 只支持单table(单个stack)
+    node: toml::Value,
 }
 
 impl CyfsServiceLoaderConfig {
@@ -180,7 +182,12 @@ impl CyfsServiceLoaderConfig {
     }
 
     pub fn new_from_config(node: toml::Value) -> BuckyResult<Self> {
-        info!("will use config: {:?}", toml::to_string(&node));
+        Self::check_config_node(&node)?;
+
+        info!(
+            "will use config: \n{}",
+            toml::to_string_pretty(&node).unwrap_or("".to_owned())
+        );
 
         Ok(Self { node })
     }
@@ -189,7 +196,11 @@ impl CyfsServiceLoaderConfig {
         info!("will use config: {}", config);
 
         let node = Self::load_string_config(&config)?;
-        Ok(Self { node })
+        Self::new_from_config(node)
+    }
+
+    pub fn node(&self) -> &toml::Value {
+        &self.node
     }
 
     pub fn gen_bdt_endpoints(param: &BdtEndPointParams) -> String {
@@ -280,42 +291,30 @@ impl CyfsServiceLoaderConfig {
         Ok(stack.unwrap())
     }
 
-    // convert single node mode to vec mode
-    // 支持一级的table和两级的数组两种模式
-    pub fn root_to_list(cfg_node: toml::Value) -> BuckyResult<Vec<toml::value::Table>> {
-        match cfg_node {
-            toml::Value::Table(cfg) => Ok(vec![cfg]),
-            toml::Value::Array(list) => {
-                let mut result = vec![];
-                for cfg_node in list {
-                    match cfg_node {
-                        toml::Value::Table(cfg) => {
-                            result.push(cfg);
-                        }
-                        _ => {
-                            let msg = format!(
-                                "stack config list item invalid format! config={:?}",
-                                cfg_node
-                            );
-                            error!("{}", msg);
-                            return Err(BuckyError::from((BuckyErrorCode::InvalidFormat, msg)));
-                        }
-                    }
-                }
-
-                Ok(result)
-            }
+    fn check_config_node(node: &toml::Value) -> BuckyResult<()> {
+        match &node {
+            toml::Value::Table(_) => Ok(()),
             _ => {
-                let msg = format!(
-                    "stack config root node invalid format! config={:?}",
-                    cfg_node
-                );
+                let msg = format!("stack config root node invalid format! config={:?}", node);
                 error!("{}", msg);
                 Err(BuckyError::from((BuckyErrorCode::InvalidFormat, msg)))
             }
         }
     }
 
+    pub fn reset_bdt_device(&mut self, device_name: &str) -> BuckyResult<()> {
+        let mut doc = self.begin_edit();
+        doc["bdt"]["config"]["device"] = toml_edit::value(device_name);
+        self.end_edit(doc)
+    }
+
+    pub fn reset_browser_mode(&mut self, browser_mode: &BrowserSanboxMode) -> BuckyResult<()> {
+        let mut doc = self.begin_edit();
+        doc["front"]["browser_mode"] = toml_edit::value(browser_mode.as_str());
+        self.end_edit(doc)
+    }
+
+    /*
     pub fn reset_bdt_device(&mut self, device_name: &str) -> BuckyResult<()> {
         match &mut self.node {
             toml::Value::Table(cfg) => Self::reset_stack_bdt_device(cfg, device_name),
@@ -412,11 +411,57 @@ impl CyfsServiceLoaderConfig {
 
         Ok(())
     }
+    */
+
+    pub fn begin_edit(&self) -> toml_edit::Document {
+        let value = self.node.to_string();
+        let doc = value
+            .parse::<toml_edit::Document>()
+            .expect(&format!("invalid toml config node: {}", value));
+        doc
+    }
+
+    pub fn end_edit(&mut self, doc: toml_edit::Document) -> BuckyResult<()> {
+        let value = doc.to_string();
+        let node = toml::Value::from_str(&value).map_err(|e| {
+            let msg = format!("invalid toml config value! {}, {}", value, e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::InvalidData, msg)
+        })?;
+
+        self.node = node;
+        info!("stack config updated! {}", value);
+
+        Ok(())
+    }
+}
+
+impl Into<toml::Value> for CyfsServiceLoaderConfig {
+    fn into(self) -> toml::Value {
+        self.node
+    }
 }
 
 #[cfg(test)]
-mod Test {
+mod test {
     use super::*;
+    use toml_edit::value;
+
+    #[test]
+    fn test_edit() {
+        let list = CyfsServiceLoaderParam::default();
+        let mut this = CyfsServiceLoaderConfig::new(list).unwrap();
+
+        let mut doc = this.begin_edit();
+        println!("doc={}", doc);
+        let id = &doc["config"]["id"];
+        println!("id={}", id);
+
+        doc["config"]["id"] = value("new_id");
+        this.end_edit(doc).unwrap();
+
+        println!("new doc={}", this.node.to_string());
+    }
 
     #[test]
     fn test_reset_bdt() {
@@ -430,15 +475,15 @@ mod Test {
             .unwrap()
             .remove("config")
             .unwrap();
-        println!("{:?}", toml::to_string(&this.node));
+        println!("{}", this.node.to_string());
 
         this.reset_bdt_device("asdasd").unwrap();
-        println!("{:?}", toml::to_string(&this.node));
+        println!("{}", this.node.to_string());
 
         this.node.as_table_mut().unwrap().remove("bdt").unwrap();
-        println!("{:?}", toml::to_string(&this.node));
+        println!("{}", this.node.to_string());
 
         this.reset_bdt_device("asdasd").unwrap();
-        println!("{:?}", toml::to_string(&this.node));
+        println!("{}", this.node.to_string());
     }
 }

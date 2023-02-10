@@ -213,7 +213,8 @@ impl DatagramTunnel {
         let stack = Stack::from(&self.as_ref().stack);
         let tunnel = stack.tunnel_manager().container_of(remote);
         if let Some(tunnel) = tunnel {
-            if tunnel.state() == TunnelState::Dead {
+            if tunnel.state() == TunnelState::Dead
+                || tunnel.state() == TunnelState::Connecting {
                 debug!(
                     "{} tunnel to {} dead, will build tunnel",
                     self.as_ref(),
@@ -225,7 +226,7 @@ impl DatagramTunnel {
                     if let Some(remote_device) = stack.device_cache().get(&remote).await {
                         let build_params = BuildTunnelParams {
                             remote_const: remote_device.desc().clone(),
-                            remote_sn: stack.sn_client().sn_list(),
+                            remote_sn: None,
                             remote_desc: Some(remote_device),
                         };
                         let _ = tunnel.build_send(DynamicPackage::from(datagram), build_params, plaintext);
@@ -242,15 +243,8 @@ impl DatagramTunnel {
                     "pending on building tunnel",
                 ))
             } else {
-                if plaintext {
-                    tunnel
-                        .send_plaintext(DynamicPackage::from(datagram))
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.msg()))
-                } else {
-                    tunnel
-                        .send_package(DynamicPackage::from(datagram))
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.msg()))
-                }
+                tunnel.send_package(DynamicPackage::from(datagram), plaintext)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.msg()))
             }
         } else {
             debug!(
@@ -268,7 +262,7 @@ impl DatagramTunnel {
                         .unwrap();
                     let build_params = BuildTunnelParams {
                         remote_const: remote_device.desc().clone(),
-                        remote_sn: stack.sn_client().sn_list(),
+                        remote_sn: None,
                         remote_desc: Some(remote_device),
                     };
                     let _ = tunnel.build_send(DynamicPackage::from(datagram), build_params, plaintext);

@@ -22,6 +22,8 @@ unsafe impl Send for SharedMemChunk {
 
 impl SharedMemChunk {
     pub fn new(capacity: usize, data_len: usize, unique_id: &str) -> BuckyResult<Self> {
+        log::debug!("new shared mem chunk: capacity={}, data_len={}, unique_id={}", capacity, data_len, unique_id);
+
         match ShmemConf::new().size(capacity).os_id(unique_id).create() {
             Ok(shmem) => Ok(Self {
                 unique_id: unique_id.to_string(),
@@ -72,24 +74,28 @@ impl Chunk for SharedMemChunk {
     }
 
     async fn read(&mut self, buf: &mut [u8]) -> BuckyResult<usize> {
+        // log::debug!("SharedMemChunk read: buf={}, cur_pos={}, data_len={}", buf.len(), self.cur_pos, self.data_len);
+
         let this = self;
         let shmem = &this.shmem;
         if this.cur_pos >= this.data_len {
             Ok(0)
         } else if buf.len() > this.data_len - this.cur_pos {
-            unsafe {std::ptr::copy::<u8>(shmem.as_slice()[this.cur_pos..].as_ptr(), buf.as_mut_ptr(), this.data_len - this.cur_pos)};
-            let read_len = shmem.len() - this.cur_pos;
-            this.cur_pos = shmem.len();
+            let read_len = this.data_len - this.cur_pos;
+            unsafe {std::ptr::copy::<u8>(shmem.as_slice()[this.cur_pos..].as_ptr(), buf.as_mut_ptr(), read_len)};
+            this.cur_pos = this.data_len;
             Ok(read_len)
         } else {
-            unsafe {std::ptr::copy::<u8>(shmem.as_slice()[this.cur_pos..this.cur_pos + buf.len()].as_ptr(), buf.as_mut_ptr(), buf.len())};
             let read_len = buf.len();
-            this.cur_pos = this.cur_pos + read_len;
+            unsafe {std::ptr::copy::<u8>(shmem.as_slice()[this.cur_pos..this.cur_pos + read_len].as_ptr(), buf.as_mut_ptr(), read_len)};
+            this.cur_pos += read_len;
             Ok(read_len)
         }
     }
 
     async fn seek(&mut self, pos: SeekFrom) -> BuckyResult<u64> {
+        // log::debug!("SharedMemChunk seek: pos={:?}, cur_pos={}, data_len={}", pos, self.cur_pos, self.data_len);
+
         let this = self;
         match pos {
             SeekFrom::Start(pos) => {

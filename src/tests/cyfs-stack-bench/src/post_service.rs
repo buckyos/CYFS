@@ -271,9 +271,11 @@ impl EventListenerAsyncRoutine<RouterHandlerPostObjectRequest, RouterHandlerPost
                         // 关联的dirs
                         file_id: None,
                         dirs: None,
+
+                        access: None,
                     };
                 
-                    let ret = self.owner.cyfs_stack.trans().publish_file(&req).await;
+                    let ret = self.owner.cyfs_stack.trans().publish_file(req).await;
                     if ret.is_err() {
                         error!("trans add_dir error! {}", ret.unwrap_err());
                         unreachable!();

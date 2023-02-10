@@ -2,10 +2,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use base::{DeviceInfo, LOCAL_DEVICE_MANAGER};
 use cyfs_base::{
     BuckyError, BuckyResult, DeviceCategory, DeviceId, FileEncoder, NamedObject, ObjectId,
 };
+use cyfs_util::{LOCAL_DEVICE_MANAGER, DeviceInfo};
 use desc_tool::desc;
 
 pub struct DeviceDescGenerator {

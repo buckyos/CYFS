@@ -1,6 +1,7 @@
 use super::state_manager::*;
 use crate::config::StackGlobalConfig;
-use crate::stack::CyfsStackParams;
+use crate::stack::{CyfsStackParams};
+use cyfs_bdt_ext::*;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_lib::*;
@@ -28,10 +29,14 @@ impl MemoryNOC {
 
         let meta = NamedObjectMetaData {
             object_id: req.object.object_id.clone(),
+            object_type: req.object.object().obj_type(),
             owner_id: req.object.object().owner().to_owned(),
             create_dec_id: req.source.dec.clone(),
             insert_time: 0,
             update_time: 0,
+            author: req.object.object().author().to_owned(),
+            dec_id: req.object.object().dec_id().to_owned(),
+            object_create_time: Some(req.object.object().create_time()),
             object_update_time: req.object.object().update_time().to_owned(),
             object_expired_time: req.object.object().update_time().to_owned(),
             storage_category: req.storage_category,
@@ -131,18 +136,26 @@ impl NamedObjectCache for MemoryNOC {
 
     async fn update_object_meta(
         &self,
-        req: &NamedObjectCacheUpdateObjectMetaRequest,
+        _req: &NamedObjectCacheUpdateObjectMetaRequest,
     ) -> BuckyResult<()> {
         unreachable!();
     }
 
-    async fn check_object_access(&self, 
-        req: &NamedObjectCacheCheckObjectAccessRequest
+    async fn check_object_access(
+        &self,
+        _req: &NamedObjectCacheCheckObjectAccessRequest,
     ) -> BuckyResult<Option<()>> {
         unreachable!();
     }
 
     async fn stat(&self) -> BuckyResult<NamedObjectCacheStat> {
+        unreachable!();
+    }
+
+    fn bind_object_meta_access_provider(
+        &self,
+        _object_meta_access_provider: NamedObjectCacheObjectMetaAccessProviderRef,
+    ) {
         unreachable!();
     }
 }
@@ -166,7 +179,19 @@ async fn create_global_state_manager() -> GlobalStateManager {
     let owner = ObjectId::from_str("5aSixgLtjoYcAFH9isc6KCqDgKfTJ8jpgASAoiRz5NLk").unwrap();
     let noc = GLOBAL_NOC.get().unwrap();
     let params = CyfsStackParams::new_default();
-    let config = StackGlobalConfig::new(params);
+
+    let device = "0001580e4800000000661456d9a5d0503f01cbca7dc66dea0d4de188f44a3751ee66d0230000000000010a027fee89e7e40d2f9544683e480d28575794f56013a49d81b119ce3b84ff29e761000000107e8397450134fdbf16e62a576a32e35900002f4b38abe31967000140680a070a1481c0a838010a070a1481c0a864ed0a070c1481c0a838010a070c1481c0a864ed12204400000001d707019d5593b7e33a6acf5c2beb475df3feffecee8acadb8f0b741a204400000001ecdeb526690e03f1feb00d51796cc7cca0eac8a1f06915780163360100fe002f4b38abc85cb0055c4f938cd5ee2f303909cb4556d5b8033c48e69db17308d01e886e823111002645f936ed188cb9848452b9fec239f5fc8394110421ff440007b51f3e676fa2f10100ff002f4b38abe3197405863ac70379ab5cddec296d5ca292a918815e59741b22bbc8e24765d6feb25e2940c15a24979fe71ba97ffa754c405449ba64cc8a79034b579703f2fd0054b0dd";
+    let mut buf = vec![];
+    let bdt_params = BdtStackParams {
+        device: Device::clone_from_hex(&device, &mut buf).unwrap(),
+        tcp_port_mapping: vec![],
+        secret: PrivateKey::generate_rsa(1024).unwrap(),
+        known_sn: vec![],
+        known_device: vec![],
+        known_passive_pn: vec![],
+        udp_sn_only: None,
+    };
+    let config = StackGlobalConfig::new(params, bdt_params);
 
     let state_manager = GlobalStateManager::load(
         GlobalStateCategory::RootState,
@@ -211,12 +236,19 @@ async fn test1(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
     assert_eq!(prev_value, Some(x1_value));
 
     // 提交
-    let root = op_env.commit().await.unwrap();
-    info!("dec root changed to {}", root);
+    let dec_root = op_env.commit().await.unwrap();
+    info!("dec root changed to {}", dec_root);
     info!(
         "global root changed to {}",
         global_state_manager.get_current_root().0
     );
+
+    // single op env, test load_with_inner_path
+    let op_env = root.create_single_op_env(None).unwrap();
+    op_env.load_with_inner_path(&dec_root, Some("/a/b".to_owned())).await.unwrap();
+
+    let b_value = op_env.get_by_key("test1").await.unwrap().unwrap();
+    assert_eq!(b_value, x1_value2);
 }
 
 async fn test2(global_state_manager: &GlobalStateManager, dec_id: &ObjectId) {
@@ -430,7 +462,10 @@ async fn test_managed(global_state_manager: &GlobalStateManager, dec_id: &Object
 
     // 通过sid获取到对应的env才可以进行操作
     {
-        let op_env = root.managed_envs().get_path_op_env(op_env_sid, None).unwrap();
+        let op_env = root
+            .managed_envs()
+            .get_path_op_env(op_env_sid, None)
+            .unwrap();
 
         let current_value = op_env.get_by_key("/a/c", "test1").await.unwrap();
         assert!(current_value.is_none());
@@ -599,7 +634,7 @@ async fn test_path_lock(global_state_manager: &GlobalStateManager, dec_id: &Obje
 
     // 一组测试数据
     let x1_value = ObjectId::from_str("95RvaS5anntyAoRUBi48vQoivWzX95M8xm4rkB93DdSt").unwrap();
-    let x1_value2 = ObjectId::from_str("95RvaS5aZKKM8ghTYmsTyhSEWD4pAmALoUSJx1yNxSx5").unwrap();
+    let _x1_value2 = ObjectId::from_str("95RvaS5aZKKM8ghTYmsTyhSEWD4pAmALoUSJx1yNxSx5").unwrap();
 
     // 测试流程
     // /a/b/d/test1 = x1_value

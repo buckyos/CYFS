@@ -1,5 +1,6 @@
 use super::output_request::*;
 use super::processor::*;
+use crate::non::NONGetObjectOutputResponse;
 use cyfs_base::*;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -17,8 +18,16 @@ pub struct GlobalStateStub {
 }
 
 impl GlobalStateStub {
-    pub fn new(processor: GlobalStateOutputProcessorRef, target: Option<ObjectId>, target_dec_id: Option<ObjectId>) -> Self {
-        Self { processor, target, target_dec_id }
+    pub fn new(
+        processor: GlobalStateOutputProcessorRef,
+        target: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
+    ) -> Self {
+        Self {
+            processor,
+            target,
+            target_dec_id,
+        }
     }
 
     // return (global_root, revision,)
@@ -52,9 +61,11 @@ impl GlobalStateStub {
         self.create_path_op_env_with_access(None).await
     }
 
-    pub async fn create_path_op_env_with_access(&self, access: Option<RootStateOpEnvAccess>) -> BuckyResult<PathOpEnvStub> {
-        let mut req = RootStateCreateOpEnvOutputRequest::new(
-            ObjectMapOpEnvType::Path);
+    pub async fn create_path_op_env_with_access(
+        &self,
+        access: Option<RootStateOpEnvAccess>,
+    ) -> BuckyResult<PathOpEnvStub> {
+        let mut req = RootStateCreateOpEnvOutputRequest::new(ObjectMapOpEnvType::Path);
         req.access = access;
         req.common.target = self.target.clone();
         req.common.target_dec_id = self.target_dec_id.clone();
@@ -68,7 +79,10 @@ impl GlobalStateStub {
         self.create_single_op_env_with_access(None).await
     }
 
-    pub async fn create_single_op_env_with_access(&self, access: Option<RootStateOpEnvAccess>) -> BuckyResult<SingleOpEnvStub> {
+    pub async fn create_single_op_env_with_access(
+        &self,
+        access: Option<RootStateOpEnvAccess>,
+    ) -> BuckyResult<SingleOpEnvStub> {
         let mut req = RootStateCreateOpEnvOutputRequest::new(ObjectMapOpEnvType::Single);
         req.access = access;
         req.common.target = self.target.clone();
@@ -88,8 +102,16 @@ pub struct SingleOpEnvStub {
 }
 
 impl SingleOpEnvStub {
-    pub(crate) fn new(processor: OpEnvOutputProcessorRef, target: Option<ObjectId>, target_dec_id: Option<ObjectId>) -> Self {
-        Self { processor, target, target_dec_id }
+    pub(crate) fn new(
+        processor: OpEnvOutputProcessorRef,
+        target: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
+    ) -> Self {
+        Self {
+            processor,
+            target,
+            target_dec_id,
+        }
     }
 
     // init methods
@@ -102,6 +124,13 @@ impl SingleOpEnvStub {
     }
     pub async fn load(&self, target: ObjectId) -> BuckyResult<()> {
         let mut req = OpEnvLoadOutputRequest::new(target);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        self.processor.load(req).await
+    }
+    pub async fn load_with_inner_path(&self, target: ObjectId, inner_path: impl Into<String>) -> BuckyResult<()> {
+        let mut req = OpEnvLoadOutputRequest::new_with_inner_path(target, inner_path);
         req.common.target = self.target.clone();
         req.common.target_dec_id = self.target_dec_id.clone();
 
@@ -291,8 +320,16 @@ pub struct PathOpEnvStub {
 }
 
 impl PathOpEnvStub {
-    pub(crate) fn new(processor: OpEnvOutputProcessorRef, target: Option<ObjectId>, target_dec_id: Option<ObjectId>) -> Self {
-        Self { processor, target, target_dec_id }
+    pub(crate) fn new(
+        processor: OpEnvOutputProcessorRef,
+        target: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
+    ) -> Self {
+        Self {
+            processor,
+            target,
+            target_dec_id,
+        }
     }
 
     // get_current_root
@@ -321,7 +358,11 @@ impl PathOpEnvStub {
         self.processor.lock(req).await
     }
 
-    pub async fn try_lock(&self, path_list: Vec<String>, duration_in_millsecs: u64) -> BuckyResult<()> {
+    pub async fn try_lock(
+        &self,
+        path_list: Vec<String>,
+        duration_in_millsecs: u64,
+    ) -> BuckyResult<()> {
         let mut req = OpEnvLockOutputRequest::new_try(path_list, duration_in_millsecs);
         req.common.target = self.target.clone();
         req.common.target_dec_id = self.target_dec_id.clone();
@@ -349,8 +390,7 @@ impl PathOpEnvStub {
         key: impl Into<String>,
         content_type: ObjectMapSimpleContentType,
     ) -> BuckyResult<()> {
-        let mut req =
-            OpEnvCreateNewOutputRequest::new_with_path_and_key(path, key, content_type);
+        let mut req = OpEnvCreateNewOutputRequest::new_with_path_and_key(path, key, content_type);
         req.common.target = self.target.clone();
         req.common.target_dec_id = self.target_dec_id.clone();
 
@@ -424,8 +464,7 @@ impl PathOpEnvStub {
         full_path: impl Into<String>,
         content_type: ObjectMapSimpleContentType,
     ) -> BuckyResult<()> {
-        let mut req =
-            OpEnvCreateNewOutputRequest::new_with_full_path(full_path, content_type);
+        let mut req = OpEnvCreateNewOutputRequest::new_with_full_path(full_path, content_type);
         req.common.target = self.target.clone();
         req.common.target_dec_id = self.target_dec_id.clone();
 
@@ -433,7 +472,11 @@ impl PathOpEnvStub {
         Ok(())
     }
 
-    pub async fn insert_with_path(&self, full_path: impl Into<String>, value: &ObjectId) -> BuckyResult<()> {
+    pub async fn insert_with_path(
+        &self,
+        full_path: impl Into<String>,
+        value: &ObjectId,
+    ) -> BuckyResult<()> {
         let mut req =
             OpEnvInsertWithKeyOutputRequest::new_full_path_and_value(full_path, value.to_owned());
         req.common.target = self.target.clone();
@@ -576,5 +619,58 @@ impl PathOpEnvStub {
         };
 
         Ok(metadata)
+    }
+}
+
+#[derive(Clone)]
+pub struct GlobalStateAccessorStub {
+    processor: GlobalStateAccessorOutputProcessorRef,
+    target: Option<ObjectId>,
+    target_dec_id: Option<ObjectId>,
+}
+
+impl GlobalStateAccessorStub {
+    pub(crate) fn new(
+        processor: GlobalStateAccessorOutputProcessorRef,
+        target: Option<ObjectId>,
+        target_dec_id: Option<ObjectId>,
+    ) -> Self {
+        Self {
+            processor,
+            target,
+            target_dec_id,
+        }
+    }
+
+    // get_object_by_path
+    pub async fn get_object_by_path(
+        &self,
+        path: impl Into<String>,
+    ) -> BuckyResult<NONGetObjectOutputResponse> {
+        let mut req = RootStateAccessorGetObjectByPathOutputRequest::new(path);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.get_object_by_path(req).await?;
+        Ok(resp.object)
+    }
+
+    // list
+    pub async fn list(&self, path: impl Into<String>) -> BuckyResult<Vec<ObjectMapContentItem>> {
+        let mut req = RootStateAccessorListOutputRequest::new(path);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.list(req).await?;
+        Ok(resp.list)
+    }
+
+    pub async fn list_by_page(&self, path: impl Into<String>, page_index: u32, page_size: u32) -> BuckyResult<Vec<ObjectMapContentItem>> {
+        let mut req = RootStateAccessorListOutputRequest::new_with_page(path, page_index, page_size);
+        req.common.target = self.target.clone();
+        req.common.target_dec_id = self.target_dec_id.clone();
+
+        let resp = self.processor.list(req).await?;
+        Ok(resp.list)
     }
 }

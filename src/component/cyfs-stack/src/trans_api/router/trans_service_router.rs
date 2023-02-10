@@ -1,7 +1,7 @@
 use crate::meta::ObjectFailHandler;
 use cyfs_base::*;
-use cyfs_core::TransContext;
 use cyfs_lib::*;
+
 use std::sync::Arc;
 
 use crate::forward::ForwardProcessorManager;
@@ -67,7 +67,7 @@ impl TransServiceRouter {
         target: Option<&ObjectId>,
     ) -> BuckyResult<TransInputProcessorRef> {
         if let Some(device_id) = self.get_target(target).await? {
-            debug!("util target resolved: {:?} -> {}", target, device_id);
+            debug!("trans target resolved: {:?} -> {}", target, device_id);
             let processor = self.get_forward(device_id).await?;
             Ok(processor)
         } else {
@@ -88,25 +88,55 @@ impl TransServiceRouter {
         processor.control_task(req).await
     }
 
+    async fn query_tasks(
+        &self,
+        req: TransQueryTasksInputRequest,
+    ) -> BuckyResult<TransQueryTasksInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.query_tasks(req).await
+    }
+
     pub async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.get_task_state(req).await
     }
 
-    pub async fn add_file(
+    pub async fn publish_file(
         &self,
         req: TransPublishFileInputRequest,
     ) -> BuckyResult<TransPublishFileInputResponse> {
+        if req.common.target.is_some() {
+            let msg = format!("target not support for trans.publish_file!");
+            error!("{}", msg);
+            return Err(BuckyError::new(BuckyErrorCode::UnSupport, msg));
+        }
+
         self.processor.publish_file(req).await
+    }
+
+    async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateInputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.get_task_group_state(req).await
+    }
+
+    async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupInputRequest,
+    ) -> BuckyResult<TransControlTaskGroupInputResponse> {
+        let processor = self.get_processor(req.common.target.as_ref()).await?;
+        processor.control_task_group(req).await
     }
 }
 
 #[async_trait::async_trait]
 impl TransInputProcessor for TransServiceRouter {
-    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransContext> {
+    async fn get_context(&self, req: TransGetContextInputRequest) -> BuckyResult<TransGetContextInputResponse> {
         let processor = self.get_processor(req.common.target.as_ref()).await?;
         processor.get_context(req).await
     }
@@ -131,14 +161,13 @@ impl TransInputProcessor for TransServiceRouter {
         &self,
         req: TransQueryTasksInputRequest,
     ) -> BuckyResult<TransQueryTasksInputResponse> {
-        let processor = self.get_processor(req.common.target.as_ref()).await?;
-        processor.query_tasks(req).await
+        Self::query_tasks(self, req).await
     }
 
     async fn get_task_state(
         &self,
         req: TransGetTaskStateInputRequest,
-    ) -> BuckyResult<TransTaskState> {
+    ) -> BuckyResult<TransGetTaskStateInputResponse> {
         Self::get_task_state(self, req).await
     }
 
@@ -146,6 +175,20 @@ impl TransInputProcessor for TransServiceRouter {
         &self,
         req: TransPublishFileInputRequest,
     ) -> BuckyResult<TransPublishFileInputResponse> {
-        Self::add_file(self, req).await
+        Self::publish_file(self, req).await
+    }
+
+    async fn get_task_group_state(
+        &self,
+        req: TransGetTaskGroupStateInputRequest,
+    ) -> BuckyResult<TransGetTaskGroupStateInputResponse> {
+        Self::get_task_group_state(self, req).await
+    }
+
+    async fn control_task_group(
+        &self,
+        req: TransControlTaskGroupInputRequest,
+    ) -> BuckyResult<TransControlTaskGroupInputResponse> {
+        Self::control_task_group(self, req).await
     }
 }

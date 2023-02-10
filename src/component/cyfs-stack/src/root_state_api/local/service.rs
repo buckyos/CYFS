@@ -178,7 +178,12 @@ impl OpEnvInputProcessor for GlobalStateLocalService {
         let op_env = dec_root_manager
             .managed_envs()
             .get_single_op_env(req.common.sid, Some(&req.common.source.into()))?;
-        op_env.load(&req.target).await
+
+        if req.inner_path.is_some() {
+            op_env.load_with_inner_path(&req.target, req.inner_path).await
+        } else {
+            op_env.load(&req.target).await
+        }
     }
 
     async fn load_by_path(&self, req: OpEnvLoadByPathInputRequest) -> BuckyResult<()> {

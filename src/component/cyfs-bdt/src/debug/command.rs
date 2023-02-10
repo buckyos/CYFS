@@ -177,7 +177,6 @@ impl DebugCommand {
                 let subcommand = params.subcommand_matches("sn_conn_status").unwrap();
                 let timeout = u64::from_str(subcommand.value_of("timeout").unwrap()).unwrap();
                 Ok(Self::SnConnStatus(DebugCommandSnConnStatus {
-                    sn: None,
                     timeout_sec: timeout,
                 }))
             },
@@ -244,7 +243,6 @@ pub struct DebugCommandPutFile {
 }
 
 pub struct DebugCommandSnConnStatus {
-    pub sn: Option<DeviceId>, 
     pub timeout_sec: u64,
 }
 

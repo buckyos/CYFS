@@ -10,6 +10,7 @@ use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
 use async_std::task;
 use async_trait::async_trait;
+use futures::future::{AbortHandle, Aborted};
 use std::collections::{hash_map::Entry, HashMap};
 use std::fmt;
 use std::sync::Arc;
@@ -79,6 +80,10 @@ struct RouterHttpHandlerManagerImpl {
 
     // cyfs-stack rules服务地址
     service_url: String,
+
+    // 取消listener的运行
+    canceler: Option<AbortHandle>,
+    running_task: Option<async_std::task::JoinHandle<()>>,
 }
 
 impl RouterHttpHandlerManagerImpl {
@@ -91,6 +96,8 @@ impl RouterHttpHandlerManagerImpl {
             handlers: HashMap::new(),
             routine_url: None,
             service_url: service_url.to_owned(),
+            canceler: None,
+            running_task: None,
         }
     }
 
@@ -165,9 +172,9 @@ impl RouterHttpHandlerManager {
             inner.routine_url = Some(addr)
         }
 
-        let server = self.clone();
-        task::spawn(async move {
-            match server.run_inner(tcp_listener).await {
+        let this = self.clone();
+        let (release_task, handle) = futures::future::abortable(async move {
+            match this.run_inner(tcp_listener).await {
                 Ok(_) => {
                     info!("router handler http listener finished!");
                 }
@@ -177,7 +184,42 @@ impl RouterHttpHandlerManager {
             }
         });
 
+        let task = async_std::task::spawn(async move {
+            match release_task.await {
+                Ok(_) => {
+                    info!("router handler http listener finished!");
+                }
+                Err(Aborted) => {
+                    info!("router handler http listener cancelled!");
+                }
+            }
+        });
+
+        {
+            let mut inner = self.0.lock().unwrap();
+            assert!(inner.canceler.is_none());
+            assert!(inner.running_task.is_none());
+            inner.canceler = Some(handle);
+            inner.running_task = Some(task);
+        }
+
         Ok(())
+    }
+
+    pub async fn stop(&self) {
+        let (canceler, task) = {
+            let mut inner = self.0.lock().unwrap();
+            (inner.canceler.take(), inner.running_task.take())
+        };
+
+        if let Some(canceler) = canceler {
+            info!("will stop router handler http listener!");
+            canceler.abort();
+
+            if let Some(task) = task {
+                task.await;
+            }
+        }
     }
 
     pub fn add_handler<REQ, RESP>(
@@ -302,8 +344,13 @@ impl RouterHttpHandlerManager {
                     "will remove router handler without current register: id={:?}",
                     id
                 );
-                let unregister =
-                    RouterHandlerUnregister::new(id.chain, id.category, id.id, dec_id, &service_url);
+                let unregister = RouterHandlerUnregister::new(
+                    id.chain,
+                    id.category,
+                    id.id,
+                    dec_id,
+                    &service_url,
+                );
                 unregister.unregister().await
             }
         }

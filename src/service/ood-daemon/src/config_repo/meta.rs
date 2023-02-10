@@ -1,14 +1,14 @@
 use super::DeviceConfigRepo;
 use crate::config::*;
-use base::LOCAL_DEVICE_MANAGER;
 use cyfs_base::*;
 use cyfs_core::*;
 use cyfs_meta_lib::{MetaClient, MetaClientHelper, MetaMinerTarget};
+use cyfs_util::LOCAL_DEVICE_MANAGER;
+use cyfs_debug::Mutex;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use std::sync::Mutex;
 
 #[derive(Serialize, Deserialize)]
 struct DeviceConfigGenerator {
@@ -33,7 +33,13 @@ impl DeviceConfigGenerator {
         self.service = ret.unwrap();
     }
 
-    pub fn to_string(&mut self) -> String {
+    fn sort(&mut self) {
+        self.service.sort_by(|left, right| {
+            left.name.partial_cmp(&right.name).unwrap()
+        });
+    }
+
+    pub fn to_string(&self) -> String {
         toml::to_string(&self).unwrap()
     }
 
@@ -139,6 +145,11 @@ impl DeviceConfigGenerator {
     }
 }
 
+struct LocalCache {
+    service_list: AppList,
+    device_config_str: String,
+}
+
 pub struct DeviceConfigMetaRepo {
     desc: String,
 
@@ -148,7 +159,7 @@ pub struct DeviceConfigMetaRepo {
 
     meta_client: MetaClient,
 
-    device_config: Mutex<DeviceConfigGenerator>,
+    cache: Mutex<Option<LocalCache>>,
 }
 
 impl DeviceConfigMetaRepo {
@@ -161,7 +172,7 @@ impl DeviceConfigMetaRepo {
             device_id: None,
             service_list_id: None,
             meta_client,
-            device_config: Mutex::new(DeviceConfigGenerator::new()),
+            cache: Mutex::new(None),
         }
     }
 
@@ -191,9 +202,6 @@ impl DeviceConfigMetaRepo {
 
         self.service_list_id = Some(service_list_id);
         self.device_id = Some(device_id);
-
-        // 加载本地缓存
-        self.device_config.lock().unwrap().load_from_local();
 
         Ok(())
     }
@@ -238,7 +246,7 @@ impl DeviceConfigMetaRepo {
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;
 
-        info!(
+        debug!(
             "load service list object success! id={:?}, list={:?}",
             self.service_list_id,
             list.app_list()
@@ -334,7 +342,12 @@ impl DeviceConfigMetaRepo {
         }
     }
 
-    async fn load_service_fid(&self, service_id: &ObjectId, version: &str) -> BuckyResult<()> {
+    async fn load_service_fid(
+        &self,
+        device_config: &mut DeviceConfigGenerator,
+        service_id: &ObjectId,
+        version: &str,
+    ) -> BuckyResult<()> {
         let service = self.load_service(service_id).await?;
 
         let ret = service.find_source(version);
@@ -357,39 +370,58 @@ impl DeviceConfigMetaRepo {
         let fid = self.load_fid(&dir_id, dir)?;
 
         // 更新
-        self.device_config
-            .lock()
-            .unwrap()
-            .update_service(&service, &fid);
+        device_config.update_service(&service, &fid);
 
         Ok(())
     }
 
-    async fn update_service_list_to_device_config(&self, service_list: &AppList) {
+    async fn gen_service_list_to_device_config(
+        &self,
+        service_list: &AppList,
+    ) -> BuckyResult<DeviceConfigGenerator> {
+        let mut device_config = DeviceConfigGenerator::new();
         for (id, status) in service_list.app_list() {
             debug!("got service item from service list: {}", id);
 
-            let version_changed = self
-                .device_config
-                .lock()
-                .unwrap()
-                .update_service_status(status);
+            let version_changed = device_config.update_service_status(status);
             if version_changed {
                 let version = status.version();
 
-                if let Err(e) = self.load_service_fid(id.object_id(), version).await {
-                    error!(
-                        "load service fid failed! id={}, version={}, {}",
-                        id, version, e
-                    );
-                }
+                self.load_service_fid(&mut device_config, id.object_id(), version)
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            "load service fid failed! id={}, version={}, {}",
+                            id, version, e
+                        );
+                        e
+                    })?;
             }
         }
 
         // info!("list {:?}", self.device_config.lock().uwnrap().service);
 
         // 移除已经不存在的service
-        self.device_config.lock().unwrap().sync_list(service_list);
+        device_config.sync_list(service_list);
+        Ok(device_config)
+    }
+
+    // return true if is the same
+    fn compare_service_list(left: &AppList, right: &AppList) -> bool {
+        // info!("will compare service list: left={}, right={}", left.format_json(), right.format_json());
+
+        if left.body().as_ref().unwrap().update_time()
+            != right.body().as_ref().unwrap().update_time()
+        {
+            return false;
+        }
+
+        if left.to_vec().unwrap() != right.to_vec().unwrap() {
+            warn!("service list raw data is not the same! left={}, right={}", hex::encode(left.to_vec().unwrap()), hex::encode(right.to_vec().unwrap()));
+            return false;
+        }
+
+        true
     }
 }
 
@@ -403,12 +435,31 @@ impl DeviceConfigRepo for DeviceConfigMetaRepo {
         // 从mete-chain拉取对应的service_list
         let service_list = self.load_service_list().await?;
 
-        self.update_service_list_to_device_config(&service_list)
-            .await;
+        {
+            let cache = self.cache.lock().unwrap();
+            if let Some(cache) = &*cache {
+                if Self::compare_service_list(&cache.service_list, &service_list) {
+                    return Ok(cache.device_config_str.clone());
+                }
+            }
+        }
 
-        let device_config_str = self.device_config.lock().unwrap().to_string();
+        let mut device_config = self
+            .gen_service_list_to_device_config(&service_list)
+            .await?;
 
-        info!(
+        device_config.sort();
+        let device_config_str = device_config.to_string();
+
+        {
+            let mut cache = self.cache.lock().unwrap();
+            *cache = Some(LocalCache {
+                service_list,
+                device_config_str: device_config_str.clone(),
+            });
+        }
+
+        debug!(
             "load device_config from meta: device_id={}, config={}",
             self.device_id.as_ref().unwrap(),
             device_config_str

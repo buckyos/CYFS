@@ -7,18 +7,29 @@ use cyfs_base::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use chrono::Timelike;
+use cyfs_base_meta::SavedMetaObject;
+use cyfs_meta_lib::{MetaClient, MetaMinerTarget};
+use cyfs_util::SNDirParser;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MontiorConfig {
+    #[serde(default = "default_url")]
     pub dingtalk_url: Option<String>,
+    pub monitor_name: Option<String>
+}
+
+fn default_url() -> Option<String> {
+    option_env!("DINGTOKEN").map(|token| {
+        format!("https://oapi.dingtalk.com/robot/send?access_token={}", token)
+    })
 }
 
 impl Default for MontiorConfig {
     fn default() -> Self {
-        let url = option_env!("DINGTOKEN").map(|token| {
-            format!("https://oapi.dingtalk.com/robot/send?access_token={}", token)
-        });
-        Self { dingtalk_url: url, }
+        Self {
+            dingtalk_url: default_url(),
+            monitor_name: None,
+        }
     }
 }
 
@@ -34,13 +45,13 @@ struct MonitorCase {
 
 impl MonitorCase {
     fn countdown(&mut self) -> bool {
-        if self.remain_minutes == 0 {
-            self.remain_minutes = self.interval_minutes - 1;
-        } else {
+        if self.remain_minutes > 0 {
             self.remain_minutes = self.remain_minutes - 1;
+            false
+        } else {
+            self.remain_minutes = self.interval_minutes - 1;
+            true
         }
-
-        self.remain_minutes == 0
     }
 
     fn failed(&mut self) -> bool {
@@ -49,8 +60,9 @@ impl MonitorCase {
             new_interval = self.timeout_secs / 60 + 1;
         }
         self.interval_minutes = new_interval;
+        self.remain_minutes = self.interval_minutes - 1;
 
-        if self.fail_times == self.report_after_fail_times {
+        if self.fail_times >= self.report_after_fail_times {
             self.fail_times = 1;
         } else {
             self.fail_times = self.fail_times + 1;
@@ -62,7 +74,7 @@ impl MonitorCase {
                     self.fail_times,
                     self.report_after_fail_times);
 
-        self.fail_times == self.report_after_fail_times
+        self.fail_times >= self.report_after_fail_times
     }
 
     fn success(&mut self) {
@@ -73,27 +85,66 @@ impl MonitorCase {
             self.fail_times = 0;
         }
     }
+
+    fn name(&self) -> &str {
+        self.runner.name()
+    }
 }
 
 pub struct Monitor {
     monitor_list: HashMap<String, MonitorCase>,
-
     bug_reporter: Arc<BugReportManager>,
+    name: String
+}
+
+async fn get_sn_devices_from_meta() -> BuckyResult<Vec<(DeviceId, Device)>> {
+    let meta_client = MetaClient::new_target(MetaMinerTarget::default());
+    let (info, _) = meta_client.get_name(CYFS_SN_NAME).await?.ok_or(BuckyError::from(BuckyErrorCode::NotFound))?;
+    if let NameLink::ObjectLink(id) = info.record.link {
+        let data = meta_client.get_desc(&id).await?;
+        if let SavedMetaObject::Data(data) = data {
+            Ok(SNDirParser::parse(Some(&data.id), &data.data)?)
+        } else {
+            warn!("get sn list name from meta but not support");
+            Err(BuckyError::from(BuckyErrorCode::NotMatch))
+        }
+
+    } else {
+        warn!("get sn list name from meta but not support");
+        Err(BuckyError::from(BuckyErrorCode::NotSupport))
+    }
+}
+
+async fn get_sn_devices() -> Vec<Device> {
+    get_sn_devices_from_meta().await.unwrap_or_else(|e| {
+        warn!("get sn list from meta err {}, use built-in sn list", e);
+        cyfs_util::get_sn_desc().clone()
+    }).iter().map(|(_, device)| {
+        device.clone()
+    }).collect()
 }
 
 impl Monitor {
     pub async fn new(config: MontiorConfig) -> BuckyResult<Self> {
+        info!("use config {:?}", &config);
         let bug_reporter = BugReportManager::new(&config);
         let mut monitor = Self {
             monitor_list: HashMap::new(),
             bug_reporter: Arc::new(bug_reporter),
+            name: config.monitor_name.as_ref().map(|name|format!("monitor-{}", &name)).unwrap_or("monitor".to_owned())
         };
+
+        // 添加sn测试用例
+        let sn_devices = get_sn_devices().await;
+        for sn_device in sn_devices {
+            info!("add sn online monitor {}", sn_device.desc().calculate_id());
+            monitor.add_case(SNOnlineMonitor::new(sn_device), 5, 20, 3);
+        }
 
         //添加测试用例
         // monitor.add_case(ExampleCaseMonitor::new(true), 3, 10, 3);
         monitor.add_case(MetaChainReadMonitor::new(), 5, 20, 2);
         monitor.add_case(MetaChainWriteMonitor::new(), 60, 60, 1);
-        monitor.add_case(SNOnlineMonitor::new(), 5, 10, 3);
         monitor.add_case(CyfsRepoMonitor::new(), 60, 60, 1);
 
         Ok(monitor)
@@ -112,13 +163,22 @@ impl Monitor {
     }
 
     pub async fn run(mut self, cases: Vec<&str>) ->BuckyResult<()> {
+        info!("start monitor");
+        self.bug_reporter.report(&MonitorErrorInfo {
+            service: self.name.clone(),
+            case: "Monitor Start".to_owned(),
+            error: BuckyError::new(BuckyErrorCode::Ok, "CYFS Monitor Start"),
+            at_all: false
+        }).await;
         loop {
             // 每天本地时间17：30，上报一条自己正在正常工作的消息
             let time = chrono::Local::now();
             if time.hour() == 17 && time.minute() == 30 {
                 let _ = self.bug_reporter.report(&MonitorErrorInfo {
-                    service: "monitor".to_string(),
-                    error: BuckyError::new(BuckyErrorCode::Ok, "CYFS Monitor Running")
+                    service: self.name.clone(),
+                    case: "Alive Report".to_owned(),
+                    error: BuckyError::new(BuckyErrorCode::Ok, "CYFS Monitor Running"),
+                    at_all: false
                 }).await;
             }
             let ret = self.run_once(cases.as_slice()).await;
@@ -132,28 +192,31 @@ impl Monitor {
 
     pub async fn run_once(&mut self, cases: &[&str]) -> BuckyResult<()> {
         let mut run_cases = vec![];
-        for (_, item) in &mut self.monitor_list {
+        for (_, item) in self.monitor_list.iter_mut() {
+            info!("check case {}, left {}", item.runner.name(), item.remain_minutes);
             if !cases.is_empty() && cases.contains(&item.runner.name()) {
                 info!("run case {} once", item.runner.name());
-                run_cases.push((item.clone(), true))
+                run_cases.push((item.name().to_owned(), true))
             } else if cases.is_empty(){
                 if item.countdown() {
                     info!("case {} will run now", item.runner.name());
-                    run_cases.push((item.clone(), false));
+                    run_cases.push((item.name().to_owned(), false));
                 }
             }
         }
+
         let mut run_futures = vec![];
-        for (case, once) in &run_cases {
-            let case = case.clone();
+        for (case_name, once) in &run_cases {
+            let case = self.monitor_list.get(case_name).unwrap();
+            let runner = case.runner.clone();
             let ret = async_std::future::timeout(
                 std::time::Duration::from_secs(case.timeout_secs + if *once {0} else {1} as u64),
                 async move {
-                    let name = case.runner.name();
+                    let name = runner.name();
                     let tick = std::time::Instant::now();
                     debug!("will run monitor case: {}", name);
 
-                    let ret = case.runner.run_once(*once).await;
+                    let ret = runner.run_once(*once).await;
                     let duration = tick.elapsed().as_secs();
                     if ret.is_err() {
                         let e = ret.unwrap_err();
@@ -176,23 +239,25 @@ impl Monitor {
         let rets = futures::future::join_all(run_futures).await;
         let mut return_status = Ok(());
         // 有一个case出错，就返回最后一个出错的值
-        for (ret, (case, _)) in rets.iter().zip(run_cases.iter()) {
+        for (ret, (case_name, _)) in rets.iter().zip(run_cases.iter()) {
             let ret = match ret {
                 Ok(ret) => {
                     ret.clone()
                 }
                 Err(_) => {
-                    Err(BuckyError::new(BuckyErrorCode::Timeout, format!("run case timeout after {} secs", case.timeout_secs)))
+                    Err(BuckyError::new(BuckyErrorCode::Timeout, format!("run case {} timeout", case_name)))
                 }
             };
-            let real_case = self.monitor_list.get_mut(case.runner.name()).unwrap();
+            let real_case = self.monitor_list.get_mut(case_name).unwrap();
             if ret.is_err() {
                 return_status = ret.clone();
 
                 if real_case.failed() {
                     let info = MonitorErrorInfo {
-                        service: real_case.runner.name().to_owned(),
+                        service: self.name.clone(),
                         error: ret.unwrap_err(),
+                        at_all: true,
+                        case: real_case.runner.name().to_owned()
                     };
                     let _ = self.bug_reporter.report(&info).await;
                 }

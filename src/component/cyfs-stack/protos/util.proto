@@ -5,6 +5,7 @@ message BuildFileParams {
   bytes owner = 2;
   bytes dec_id = 3;
   uint32 chunk_size = 4;
+  optional uint32 access = 5;
 }
 
 message BuildDirParams {
@@ -13,4 +14,5 @@ message BuildDirParams {
   bytes dec_id = 3;
   uint32 chunk_size = 4;
   bytes device_id = 5;
+  optional uint32 access = 6;
 }

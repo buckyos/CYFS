@@ -3,11 +3,12 @@ use super::local::LocalRepo;
 use super::named_data::NamedDataRepo;
 use crate::config::PATHS;
 use cyfs_base::*;
+use cyfs_debug::Mutex;
 use cyfs_util::TomlHelper;
 
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum RepoType {
@@ -44,7 +45,28 @@ impl RepoPackageInfo {
 
 #[async_trait]
 pub trait Repo: Send + Sync {
-    async fn fetch(&self, info: &RepoPackageInfo, local_file: &Path) -> Result<(), BuckyError>;
+    async fn fetch(&self, info: &RepoPackageInfo, local_file: &Path) -> BuckyResult<()>;
+
+    async fn fetch_with_timeout(
+        &self,
+        info: &RepoPackageInfo,
+        local_file: &Path,
+        timeout: std::time::Duration,
+    ) -> BuckyResult<()> {
+        let ret = async_std::future::timeout(timeout, self.fetch(info, local_file)).await;
+        match ret {
+            Ok(ret) => ret,
+            Err(async_std::future::TimeoutError { .. }) => {
+                let msg = format!(
+                    "fetch from repo timeout: repo={:?}, info={:?}",
+                    self.get_type(),
+                    info,
+                );
+                error!("{}", msg);
+                Err(BuckyError::new(BuckyErrorCode::Timeout, msg))
+            }
+        }
+    }
 
     fn get_type(&self) -> RepoType;
 }
@@ -117,6 +139,7 @@ impl RepoManager {
         let local_file = cache_dir.join(&info.file_name);
 
         // 遍历repo列表，直到找到
+        let mut err = None;
         for repo in repo_list {
             // FIXME 如果存在本地文件，是否直接使用？
             // 如果存在本地文件，那么首先尝试删除
@@ -147,14 +170,19 @@ impl RepoManager {
                     );
                     return Ok(local_file);
                 }
-                Err(_e) => {}
+                Err(e) => {
+                    err = Some(e);
+                }
             }
         }
 
-        let msg = format!("fetch service from repo list failed! fid={}", fid);
+        let msg = format!(
+            "fetch service from repo list failed! fid={}, err={:?}",
+            fid, err
+        );
         error!("{}", msg);
 
-        return Err(BuckyError::from(msg));
+        Err(err.unwrap_or(BuckyError::from(msg)))
     }
 
     async fn fetch_service_with_repo(
@@ -162,7 +190,10 @@ impl RepoManager {
         info: &RepoPackageInfo,
         local_file: &Path,
     ) -> BuckyResult<()> {
-        if let Err(e) = repo.fetch(info, local_file).await {
+        if let Err(e) = repo
+            .fetch_with_timeout(info, local_file, std::time::Duration::from_secs(60 * 20))
+            .await
+        {
             error!(
                 "fetch from repo error: repo={:?}, info={:?}, err={}",
                 repo.get_type(),

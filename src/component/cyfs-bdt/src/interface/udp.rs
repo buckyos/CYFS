@@ -75,7 +75,8 @@ thread_local! {
 
 struct InterfaceImpl {
     config: Config, 
-    socket: UdpSocket,
+    socket: UdpSocket, 
+    mapping_port: Option<u16>,
     local: RwLock<Endpoint>,
     outer: RwLock<Option<Endpoint>>,
 }
@@ -89,9 +90,16 @@ impl std::fmt::Display for Interface {
     }
 }
 
+impl std::fmt::Debug for Interface {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "UdpInterface {{local:{}}}", self.local())
+    }
+}
+
+
 
 impl Interface {
-    pub fn bind(local: &Endpoint, config: Config) -> Result<Self, BuckyError> {
+    pub fn bind(local: Endpoint, out: Option<Endpoint>, mapping_port: Option<u16>, config: Config) -> Result<Self, BuckyError> {
         fn bind_socket(bind_addr: &Endpoint, recv_buffer: usize) -> Result<UdpSocket, BuckyError> {
             let domain = if bind_addr.addr().is_ipv6() {
                 Domain::IPV6
@@ -112,7 +120,7 @@ impl Interface {
             if local.addr().is_ipv6() {
                 #[cfg(windows)]
                 {
-                    let mut default_local = Endpoint::default_udp(local);
+                    let mut default_local = Endpoint::default_udp(&local);
                     default_local.mut_addr().set_port(local.addr().port());
                     match bind_socket(&default_local, config.recv_buffer) {
                         Ok(socket) => {
@@ -179,12 +187,12 @@ impl Interface {
             } else {
                 let bind_addr = {
                     if local.is_sys_default() {
-                        let mut default_local = Endpoint::default_udp(local);
+                        let mut default_local = Endpoint::default_udp(&local);
                         default_local.mut_addr().set_port(local.addr().port());
         
                         default_local
                     } else {
-                        *local
+                        local
                     }
                 };
 
@@ -194,22 +202,30 @@ impl Interface {
 
         Ok(Self(Arc::new(InterfaceImpl {
             config, 
-            local: RwLock::new(local.clone()),
+            mapping_port, 
+            local: RwLock::new(local),
             socket,
-            outer: RwLock::new(None),
+            outer: RwLock::new(out),
         })))
+    }
+
+
+    pub fn mapping_port(&self) -> Option<u16> {
+        self.0.mapping_port
     }
 
     pub fn reset(&self, local: &Endpoint) -> Self {
         info!("{} reset with {}", self, local);
-        *self.0.local.write().unwrap() = local.clone();
-        *self.0.outer.write().unwrap() = None;
-        self.clone()
+        let new =  self.clone();
+        *new.0.local.write().unwrap() = local.clone();
+        *new.0.outer.write().unwrap() = None;
+        new
     }
 
     pub fn start(&self, stack: WeakStack) {
         let ci = self.clone();
         thread::spawn(move || {
+            info!("{} start on thread {:?}", ci, thread::current().id());
             ci.recv_loop(stack);
         });
     }
@@ -318,7 +334,7 @@ impl Interface {
             }
             Err(err) => {
                 // do nothing
-                error!("{} decode failed, len={}, e={}", self, recv.len(), &err);
+                error!("{} decode failed, from={}, len={}, e={}", self, from, recv.len(), &err);
             }
         }
     }
@@ -703,7 +719,7 @@ impl<'de>
                 None => {
                     let mut enc_key = AesKey::default();
                     let (remain, _) = context.local_secret().decrypt_aeskey(buf, enc_key.as_mut_slice()).map_err(|e|{
-                        error!("decrypt aeskey err={}. (maybe: 1. local or remote device time incorrect 2. the packet is broken 3. the packet not contains Exchange info etc.. )", e);
+                        error!("decrypt aeskey err={}. (maybe: 1. local/remote device time is not correct 2. the packet is broken 3. the packet not contains Exchange info etc.. )", e);
                         e
                     })?;
                     let encrypted = Vec::from(&buf[..buf.len() - remain.len()]);

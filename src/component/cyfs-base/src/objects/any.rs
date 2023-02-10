@@ -200,6 +200,23 @@ impl AnyNamedObject {
         )
     }
 
+    pub fn body_prev_version(&self) -> &Option<HashValue> {
+        match_any_obj!(
+            self,
+            o,
+            {
+                if let Some(body) = o.body() {
+                    let hash_value = body.prev_version();
+                    hash_value
+                } else {
+                    &None
+                }
+            },
+            _chunk_id,
+            { &None }
+        )
+    }
+
     pub fn ref_objs(&self) -> Option<&Vec<ObjectLink>> {
         match_any_obj!(self, o, { o.desc().ref_objs().as_ref() }, chunk_id, {
             error!("chunk has no ref_objs: {}", chunk_id);
@@ -321,6 +338,10 @@ impl AnyNamedObject {
         };
 
         std::cmp::max(update_time, latest_sign_time)
+    }
+
+    pub fn nonce(&self) -> &Option<u128> {
+        match_any_obj!(self, o, { o.nonce() }, _chunk_id, { &None })
     }
 }
 

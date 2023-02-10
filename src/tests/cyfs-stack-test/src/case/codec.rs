@@ -48,4 +48,6 @@ pub async fn test() {
     let value = task.encode_string();
     info!("json value: {}", value);
     TransControlTaskOutputRequest::decode_string(&value).unwrap();
+
+    info!("test codec complete!");
 }

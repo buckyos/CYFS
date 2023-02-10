@@ -330,6 +330,7 @@ struct StreamEstablishState {
 
 #[derive(Clone)]
 pub struct Config {
+    pub retry_sn_timeout: Duration, 
     pub connect_timeout: Duration,
     pub nagle: Duration,
     pub recv_timeout: Duration,
@@ -350,7 +351,7 @@ impl Config {
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Debug)]
 pub enum StreamState {
     Connecting,
     Establish(Timestamp),
@@ -810,7 +811,7 @@ impl StreamContainerImpl {
             }
         }
         .map(|question| {
-            let local_device = Stack::from(&self.stack).local().clone();
+            let local_device = Stack::from(&self.stack).sn_client().ping().default_local();
             TcpSynConnection {
                 sequence: self.sequence,
                 result: 0u8,
@@ -844,7 +845,7 @@ impl StreamContainerImpl {
                 sequence: self.sequence,
                 to_session_id: remote_id,
                 result: TCP_ACK_CONNECTION_RESULT_OK,
-                to_device_desc: Stack::from(&self.stack).local().clone(),
+                to_device_desc: Stack::from(&self.stack).sn_client().ping().default_local(),
                 payload: TailedOwnedData::from(payload),
             }
         })
@@ -859,6 +860,18 @@ impl StreamContainerImpl {
 
     pub fn tunnel(&self) -> &TunnelContainer {
         &self.tunnel
+    }
+
+    pub fn remote_id(&self) -> IncreaseId {
+        match &*self.state.read().unwrap() {
+            StreamStateImpl::Establish(est) => {
+                est.provider.remote_id()
+            }
+            StreamStateImpl::Closing(est) => {
+                est.provider.remote_id()
+            },
+            _ => IncreaseId::default(),
+        }
     }
 
     pub fn state(&self) -> StreamState {
@@ -925,6 +938,10 @@ impl StreamContainerImpl {
 pub struct StreamContainer(Arc<StreamContainerImpl>);
 
 impl StreamContainer {
+    pub fn remote_id(&self) -> IncreaseId {
+        self.0.remote_id()
+    }
+
     pub async fn confirm(&self, answer: &[u8]) -> Result<(), BuckyError> {
         if answer.len() > ANSWER_MAX_LEN {
             return Err(BuckyError::new(
@@ -1441,15 +1458,14 @@ impl OnPackage<TcpAckConnection, tcp::AcceptInterface> for StreamContainer {
                                 interface,
                                 e
                             );
-                            let tunnel: BuckyResult<tunnel::tcp::Tunnel> =
-                                stream.as_ref().tunnel().create_tunnel(
+                            let tunnel = stream.as_ref().tunnel().create_tunnel::<tunnel::tcp::Tunnel>(
                                     EndpointPair::from((
                                         *interface.local(),
                                         Endpoint::default_tcp(interface.local()),
                                     )),
                                     ProxyType::None,
                                 );
-                            if let Ok(tunnel) = tunnel {
+                            if let Ok((tunnel, _)) = tunnel {
                                 tunnel.mark_dead(tunnel.state());
                             }
                         }

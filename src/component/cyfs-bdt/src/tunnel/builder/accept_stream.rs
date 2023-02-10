@@ -293,7 +293,7 @@ impl AcceptStreamBuilder {
         info!("{} build with active pn {:?}", self, active_pn_list);
         {
             let stack = Stack::from(&self.0.stack);
-            let local = stack.device_cache().local();
+            let local = stack.sn_client().ping().default_local();
             let stream = &self.0.stream;
             let net_listener = stack.net_manager().listener();
             let key = caller_box.key().clone();
@@ -341,13 +341,16 @@ impl AcceptStreamBuilder {
             first_box.append(vec![DynamicPackage::from(ack_tunnel), DynamicPackage::from(confirm_ack.package_syn_ack.clone_with_data())]);
             let first_box = Arc::new(first_box);
 
+            info!("{} build with key {}", self, first_box.key());
             for udp_interface in net_listener.udp() {
                 for remote_ep in connect_info.endpoints().iter().filter(|ep| ep.is_udp() && ep.is_same_ip_version(&udp_interface.local())) {
-                    if let Ok(tunnel) = stream.as_ref().tunnel().create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
-                        SynUdpTunnel::new(
-                            tunnel, 
-                            first_box.clone(), 
-                            stream.as_ref().tunnel().config().udp.holepunch_interval);      
+                    if let Ok((tunnel, newly_created)) = stream.as_ref().tunnel().create_tunnel(EndpointPair::from((udp_interface.local(), *remote_ep)), ProxyType::None) {
+                        if newly_created {
+                            SynUdpTunnel::new(
+                                tunnel, 
+                                first_box.clone(), 
+                                stream.as_ref().tunnel().config().udp.holepunch_interval);
+                        }
                     }    
                 }  
             }
@@ -397,7 +400,7 @@ impl AcceptStreamBuilder {
             .map_err(|err| { 
                 debug!("{} reverse tcp stream to {} {} connect tcp interface failed for {}", self, remote_device_id, remote_ep, err);
                 err
-            })?;
+            })?.0;
 
         let tcp_interface = tcp::Interface::connect(
             /*local_ip, */
@@ -683,7 +686,7 @@ impl OnPackage<TcpSynConnection> for AcceptStreamBuilder {
                     } else {
                         let ack_ack: &TcpAckAckConnection = resp_packages[0].as_ref();
 
-                        let tcp_tunnel: tunnel::tcp::Tunnel = tunnel.create_tunnel(ep_pair, ProxyType::None)?;
+                        let tcp_tunnel: tunnel::tcp::Tunnel = tunnel.create_tunnel(ep_pair, ProxyType::None)?.0;
                         let _ = tcp_tunnel.pre_active(remote_timestamp);
 
                         match ack_ack.result {

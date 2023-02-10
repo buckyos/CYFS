@@ -5,6 +5,7 @@ use super::default::GlobalStateDefaultMetas;
 use crate::forward::ForwardProcessorManager;
 use crate::meta::ObjectFailHandler;
 use crate::rmeta::*;
+use crate::rmeta_api::GlobalStatePathMetaSyncCollection;
 use crate::root_state_api::GlobalStateLocalService;
 use crate::zone::ZoneManagerRef;
 use cyfs_base::*;
@@ -15,8 +16,9 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GlobalStateMetaLocalService {
-    root_state_meta: GlobalStatePathMetaManagerRef,
+    device_id: DeviceId,
 
+    root_state_meta: GlobalStatePathMetaManagerRef,
     local_cache_meta: GlobalStatePathMetaManagerRef,
 }
 
@@ -26,6 +28,7 @@ impl GlobalStateMetaLocalService {
         root_state: GlobalStateOutputProcessorRef,
         root_state_service: GlobalStateLocalService,
         noc: NamedObjectCacheRef,
+        device_id: DeviceId,
     ) -> Self {
         // root_state
         let root_state_meta = GlobalStatePathMetaManager::new(
@@ -34,6 +37,7 @@ impl GlobalStateMetaLocalService {
             root_state_service.clone(),
             GlobalStateCategory::RootState,
             noc.clone(),
+            device_id.clone(),
         );
 
         let root_state_meta = Arc::new(root_state_meta);
@@ -45,11 +49,13 @@ impl GlobalStateMetaLocalService {
             root_state_service,
             GlobalStateCategory::LocalCache,
             noc,
+            device_id.clone(),
         );
 
         let local_cache_meta = Arc::new(local_cache_meta);
 
         Self {
+            device_id,
             root_state_meta,
             local_cache_meta,
         }
@@ -79,6 +85,18 @@ impl GlobalStateMetaLocalService {
         }
     }
 
+    pub async fn get_dec_meta(
+        &self,
+        target_dec_id: &ObjectId,
+        category: GlobalStateCategory,
+    ) -> BuckyResult<Option<GlobalStatePathMetaSyncCollection>> {
+        let rmeta = self.get_meta_manager(category);
+
+        rmeta
+            .get_option_global_state_meta(target_dec_id, false)
+            .await
+    }
+
     pub async fn check_access(
         &self,
         source: &RequestSourceInfo,
@@ -94,7 +112,7 @@ impl GlobalStateMetaLocalService {
             .get_option_global_state_meta(target_dec_id, false)
             .await?;
         if ret.is_none() {
-            let msg = format!("global state check rmeta but target dec rmeta not found! target_dec={}, req_path={}", target_dec_id, req_path);
+            let msg = format!("global state check access but target dec rmeta not found! device={}, target_dec={}, req_path={}", self.device_id, target_dec_id, req_path);
             warn!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::PermissionDenied, msg));
         }
@@ -110,7 +128,7 @@ impl GlobalStateMetaLocalService {
 
         if let Err(e) = dec_rmeta.check_access(check_req) {
             error!(
-                "global check check rmeta but been rejected! source={}, req_path={}, permissons={}",
+                "global check access but been rejected! source={}, req_path={}, permissons={}",
                 source,
                 req_path,
                 permissions.as_str()
@@ -119,6 +137,53 @@ impl GlobalStateMetaLocalService {
         }
 
         Ok(())
+    }
+
+    pub async fn check_object_access(
+        &self,
+        target_dec_id: &ObjectId,
+        source: &RequestSourceInfo,
+        object_data: &dyn ObjectSelectorDataProvider,
+        permissions: impl Into<AccessPermissions>,
+    ) -> BuckyResult<Option<()>> {
+        let rmeta = self.get_meta_manager(GlobalStateCategory::RootState);
+
+        let ret = rmeta
+            .get_option_global_state_meta(target_dec_id, false)
+            .await?;
+        if ret.is_none() {
+            return Ok(None);
+        }
+
+        let dec_rmeta = ret.unwrap();
+        let permissions = permissions.into();
+
+        match dec_rmeta.check_object_access(&target_dec_id, object_data, source, permissions) {
+            Ok(ret) => Ok(ret),
+            Err(e) => {
+                error!(
+                    "global check object meta access but been rejected! source={}, req={}, permissons={}",
+                    source,
+                    object_data.object_id(),
+                    permissions.as_str()
+                );
+                Err(e)
+            }
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl NamedObjectCacheObjectMetaAccessProvider for GlobalStateMetaLocalService {
+    async fn check_access(
+        &self,
+        target_dec_id: &ObjectId,
+        object_data: &dyn ObjectSelectorDataProvider,
+        source: &RequestSourceInfo,
+        permissions: AccessPermissions,
+    ) -> BuckyResult<Option<()>> {
+        self.check_object_access(target_dec_id, source, object_data, permissions)
+            .await
     }
 }
 

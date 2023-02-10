@@ -5,6 +5,7 @@ use crate::{
     protocol::{*, v0::*}, 
 };
 
+#[derive(PartialEq, Eq)]
 pub enum TunnelBuilderState {
     Connecting, 
     Establish, 

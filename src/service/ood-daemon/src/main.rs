@@ -19,6 +19,19 @@ extern crate log;
 
 const SERVICE_NAME: &str = ::cyfs_base::OOD_DAEMON_NAME;
 
+fn start_log() {
+    cyfs_debug::CyfsLoggerBuilder::new_service(SERVICE_NAME)
+        .level("debug")
+        .console("info")
+        .enable_bdt(Some("debug"), Some("debug"))
+        .build()
+        .unwrap()
+        .start();
+
+    cyfs_debug::PanicBuilder::new("cyfs-service", SERVICE_NAME)
+        .build()
+        .start();
+}
 
 async fn main_run() {
     let app = App::new("ood-daemon service")
@@ -79,6 +92,16 @@ async fn main_run() {
                 .long("ipv6-only")
                 .takes_value(false)
                 .help("Specify OOD bind service just use ipv6 address"),
+        ).arg(
+            Arg::with_name("startup_mode")
+                .long("startup-mode")
+                .takes_value(false)
+                .help("Start the service when on system startup"),
+        ).arg(
+            Arg::with_name("stop_all")
+                .long("stop_all")
+                .takes_value(false)
+                .help("Stop all the services include ood-daemon"),
         );
 
     let app = cyfs_util::process::prepare_args(app);
@@ -97,25 +120,35 @@ async fn main_run() {
         monitor::ServiceMonitor::stop_monitor_process(SERVICE_NAME);
     }
 
+    if matches.is_present("stop_all") {
+        start_log();
+        
+        let code = match crate::daemon::ServicesStopController::new().stop_all().await {
+            Ok(()) => 0,
+            Err(e) => {
+                let code: u16 = e.code().into();
+                code as i32
+            }
+        };
+
+        std::process::exit(code);
+    }
+
     cyfs_util::process::check_cmd_and_exec_with_args(SERVICE_NAME, &matches);
 
-    cyfs_debug::CyfsLoggerBuilder::new_service(SERVICE_NAME)
-        .level("debug")
-        .console("info")
-        .enable_bdt(Some("debug"), Some("debug"))
-        .build()
-        .unwrap()
-        .start();
-
-    cyfs_debug::PanicBuilder::new("cyfs-service", SERVICE_NAME)
-        .build()
-        .start();
+    start_log();
 
     // ::cyfs_base::init_log_with_isolate_bdt(SERVICE_NAME, Some("trace"), Some("trace"));
 
     // 启动monitor服务
     if !no_monitor {
-        monitor::ServiceMonitor::start_monitor(SERVICE_NAME);
+        if let Err(e) = monitor::ServiceMonitor::start_monitor(SERVICE_NAME) {
+            error!("start monitor failed! {}", e);
+        }
+    }
+
+    if matches.is_present("startup_mode") {
+        verify_state_on_startup();
     }
 
     // 切换到目标的服务模式
@@ -142,6 +175,26 @@ async fn main_run() {
     let daemon = Daemon::new(mode, no_monitor);
     if let Err(e) = daemon.run().await {
         error!("daemon run error! err={}", e);
+    }
+}
+
+fn verify_state_on_startup() {
+    for _ in 0..3 {
+        match cyfs_util::init_system_hosts() {
+            Ok(ret) => {
+                if !ret.none_local_ip_v4.is_empty() {
+                    break;
+                }
+
+                warn!("none local ip_v4 address is empty! now will try with some wait...");
+            }
+            Err(e) => {
+                // FIXME should exit process now?
+                error!("get system hosts failed! {}", e);
+            }
+        }
+
+        std::thread::sleep(std::time::Duration::from_secs(5));
     }
 }
 

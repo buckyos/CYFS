@@ -24,7 +24,7 @@ unsafe impl Sync for Keystore {}
 #[derive(Clone)]
 pub enum EncryptedKey {
     None, 
-    Confirmed, 
+    Confirmed(Vec<u8>), 
     Unconfirmed(Vec<u8>)
 }
 
@@ -115,6 +115,7 @@ impl Keystore {
     }
 
     pub fn reset_peer(&self, device_id: &DeviceId) {
+        info!("keystore reset peer {}", device_id);
         let mut mgr = self.key_manager.lock().unwrap();
         mgr.reset_peer(device_id);
     }
@@ -273,6 +274,8 @@ impl KeyManager {
                 target
             },
             None => {
+                info!("keystore add remote key remote={} key={} confirmed={}", peerid, key, !encrypted.is_unconfirmed());
+                
                 let new_key = KeyInfo {
                     key: key.clone(),
                     peerid: peerid.clone(),
@@ -379,11 +382,23 @@ impl KeyManager {
         if let Some(found_key_list) = found_map {
             let mut remain = vec![];
             for exist in found_key_list.iter() {
-                if match &exist.borrow().info.encrypted {
-                    EncryptedKey::Unconfirmed(_) => true, 
-                    EncryptedKey::Confirmed => false, 
-                    EncryptedKey::None => true
-                } {
+                let reserve = {
+                    let mut mut_ref = exist.borrow_mut();
+                    if let Some(encrypted) = match &mut_ref.info.encrypted {
+                        EncryptedKey::Unconfirmed(encrypted) => Some(encrypted.clone()), 
+                        EncryptedKey::Confirmed(encrypted) => Some(encrypted.clone()), 
+                        EncryptedKey::None => None
+                    } {
+                        info!("keystore reset key remote={} key={}", device_id, mut_ref.info.key);
+                        mut_ref.info.encrypted = EncryptedKey::Unconfirmed(encrypted);
+                        true
+                    } else {
+                        info!("keystore drop key remote={} key={}", device_id, mut_ref.info.key);
+                        false
+                    }
+                };
+                
+                if reserve {
                     remain.push(exist.clone());
                 }
             }   
@@ -503,9 +518,14 @@ struct KeyInfo {
 impl KeyInfo {
     fn update(&mut self, is_confirmed: bool, expire_time: SystemTime) -> bool {
         let mut is_changed = false;
-        if is_confirmed && self.encrypted.is_unconfirmed() {
-            self.encrypted = EncryptedKey::Confirmed;
-            is_changed = true;
+        if is_confirmed {
+            match &self.encrypted {
+                EncryptedKey::Unconfirmed(ecrypted) => {
+                    self.encrypted = EncryptedKey::Confirmed(ecrypted.clone());
+                    is_changed = true;
+                },
+                _ => {}
+            }
         }
 
         // 超时时间更新频率一般跟收包频率有关，可能很大，要控制一下，不然可能要频繁地持久化

@@ -114,7 +114,7 @@ async fn main() {
         rn_secret, 
         rn_params).await.unwrap();
 
-    rn_stack.net_manager().listener().wait_online().await.unwrap();
+    assert_eq!(SnStatus::Online, rn_stack.sn_client().ping().wait_online().await.unwrap());
 
     let (sample_size, sample) = utils::random_mem(1024, 512);
     let (signal_sender, signal_recver) = channel::bounded::<Vec<u8>>(1);
@@ -129,7 +129,7 @@ async fn main() {
     {
         let param = BuildTunnelParams {
             remote_const: rn_stack.local_const().clone(),
-            remote_sn: vec![sn1.desc().device_id()],
+            remote_sn: Some(vec![sn1.desc().device_id()]),
             remote_desc: None,
         };
         let mut stream = ln_stack
@@ -150,14 +150,14 @@ async fn main() {
     }
     
 
-    let _ = rn_stack.reset_sn_list(vec![sn2.clone()]).await;
+    assert_eq!(SnStatus::Online, rn_stack.reset_sn_list(vec![sn2.clone()]).wait_online().await.unwrap());
     let _ = future::timeout(Duration::from_secs(1), future::pending::<()>()).await;
 
     {
         
         let param = BuildTunnelParams {
             remote_const: rn_stack.local_const().clone(),
-            remote_sn: vec![sn2.desc().device_id()],
+            remote_sn: Some(vec![sn2.desc().device_id()]),
             remote_desc: None,
         };
         let mut stream = ln_stack

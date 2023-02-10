@@ -315,6 +315,7 @@ pub struct DeviceStaticInfo {
 
     // current sn list config
     pub sn_list: Vec<DeviceId>,
+    pub known_sn_list: Vec<DeviceId>,
 }
 
 #[derive(Debug, Clone)]
@@ -516,6 +517,7 @@ pub struct UtilBuildFileOutputRequest {
     pub local_path: PathBuf,
     pub owner: ObjectId,
     pub chunk_size: u32,
+    pub access: Option<AccessString>,
 }
 
 pub struct UtilBuildFileOutputResponse {

@@ -527,7 +527,7 @@ pub trait Package {
     fn cmd_code() -> PackageCmdCode;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Exchange {
     pub sequence: TempSeq,
     pub to_device_id: DeviceId, 
@@ -536,6 +536,19 @@ pub struct Exchange {
     pub sign: Signature,
     pub from_device_desc: Device,
     pub mix_key: AesKey,
+}
+
+impl std::fmt::Debug for Exchange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Exchange:{{sequence:{:?}, to_device_id:{:?}, from_device_desc:{}, mix_key:{:?}}}",
+            self.sequence,
+            self.to_device_id,
+            self.from_device_desc.desc().device_id(), 
+            self.mix_key.to_hex().unwrap(),
+        )
+    }
 }
 
 impl Exchange {
@@ -725,7 +738,7 @@ fn encode_protocol_exchange() {
     )
 }
 
-#[derive(Debug)]
+
 pub struct SynTunnel {
     pub protocol_version: u8,
     pub stack_version: u32,  
@@ -733,6 +746,19 @@ pub struct SynTunnel {
     pub sequence: TempSeq,
     pub from_device_desc: Device,
     pub send_time: Timestamp,
+}
+
+
+impl std::fmt::Debug for SynTunnel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "SynTunnel:{{sequence:{:?}, to_device_id:{:?}, from_device_desc:{}}}",
+            self.sequence,
+            self.to_device_id,
+            self.from_device_desc.desc().device_id(), 
+        )
+    }
 }
 
 impl Package for SynTunnel {
@@ -995,7 +1021,7 @@ fn encode_protocol_ack_tunnel() {
 
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SnCall {
     pub protocol_version: u8, 
     pub stack_version: u32, 
@@ -1011,6 +1037,25 @@ pub struct SnCall {
     pub is_always_call: bool,
 }
 
+
+impl std::fmt::Debug for SnCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "SnCall:{{seq:{:?}, sn_peer_id:{:?}, to_peer_id:{}, from_peer_id:{:?}, reverse_endpoint_array:{:?}, active_pn_list:{:?}, peer_info:{}, payload:{}}}",
+            self.seq,
+            self.sn_peer_id,
+            self.to_peer_id, 
+            self.from_peer_id,
+            self.reverse_endpoint_array, 
+            self.active_pn_list, 
+            self.peer_info.is_some(),
+            self.payload.len()
+        )
+    }
+}
+
+
 impl Package for SnCall {
     fn version(&self) -> u8 {
         self.protocol_version
@@ -1022,17 +1067,19 @@ impl Package for SnCall {
 }
 
 
-impl From<(&SnCall, Device, Vec<u8>, AesKey)> for Exchange {
-    fn from(context: (&SnCall, Device, Vec<u8>, AesKey)) -> Self {
-        let (sn_call, local_device, key_encrypted, mix_key) = context;
-    
+
+
+impl From<(&SnCall, Vec<u8>, AesKey)> for Exchange {
+    fn from(context: (&SnCall, Vec<u8>, AesKey)) -> Self {
+        let (sn_call, key_encrypted, mix_key) = context;
+
         Self {
             sequence: sn_call.seq.clone(),  
             to_device_id: sn_call.sn_peer_id.clone(), 
             send_time: sn_call.send_time,  
             key_encrypted, 
             sign: Signature::default(),
-            from_device_desc: local_device,
+            from_device_desc: sn_call.peer_info.clone().unwrap(),
             mix_key
         }
     }
@@ -1434,7 +1481,7 @@ fn encode_protocol_sn_ping() {
 
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SynProxy {
     pub protocol_version: u8, 
     pub stack_version: u32, 
@@ -1446,6 +1493,19 @@ pub struct SynProxy {
 }
 
 impl std::fmt::Display for SynProxy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "SynProxy:{{sequence:{:?}, to:{:?}, from:{}, mix_key:{:?}}}",
+            self.seq,
+            self.to_peer_id,
+            self.from_peer_info.desc().device_id(), 
+            self.mix_key.to_hex(),
+        )
+    }
+}
+
+impl std::fmt::Debug for SynProxy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

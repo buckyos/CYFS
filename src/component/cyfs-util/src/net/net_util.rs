@@ -298,7 +298,7 @@ pub fn get_system_hosts() -> BuckyResult<SystemHostInfo> {
     Ok(SYSTEM_HOST_INFO.get().unwrap().clone())
 }
 
-fn init_system_hosts() -> BuckyResult<SystemHostInfo> {
+pub fn init_system_hosts() -> BuckyResult<SystemHostInfo> {
     let ret = get_if_addrs();
     if let Err(e) = ret {
         let msg = format!("get_if_addrs error! err={}", e);

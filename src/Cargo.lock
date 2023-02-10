@@ -196,23 +196,23 @@ dependencies = [
 
 [[package]]
 name = "async-executor"
-version = "1.5.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17adb73da160dfb475c183343c8cccd80721ea5a605d3eb57125f0a7b7a92d0b"
+checksum = "871f9bb5e0a22eeb7e8cf16641feb87c9dc67032ccf8ff49e772eb9941d3a965"
 dependencies = [
- "async-lock",
  "async-task",
  "concurrent-queue",
  "fastrand",
  "futures-lite",
+ "once_cell",
  "slab",
 ]
 
 [[package]]
 name = "async-global-executor"
-version = "2.3.1"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1b6f5d7df27bd294849f8eec66ecfc63d11814df7a4f5d74168a2394467b776"
+checksum = "0da5b41ee986eed3f524c380e6d64965aea573882a8907682ad100f7859305ca"
 dependencies = [
  "async-channel",
  "async-executor",
@@ -245,12 +245,12 @@ version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c374dda1ed3e7d8f0d9ba58715f924862c63eae6849c92d3a18e7fbde9e2794"
 dependencies = [
- "async-lock",
  "autocfg 1.1.0",
  "concurrent-queue",
  "futures-lite",
  "libc",
  "log 0.4.17",
+ "once_cell",
  "parking",
  "polling",
  "slab",
@@ -261,12 +261,11 @@ dependencies = [
 
 [[package]]
 name = "async-lock"
-version = "2.6.0"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8101efe8695a6c17e02911402145357e718ac92d3ff88ae8419e84b1707b685"
+checksum = "e97a171d191782fba31bb902b14ad94e24a68145032b7eedf871ab0bc0d077b6"
 dependencies = [
  "event-listener",
- "futures-lite",
 ]
 
 [[package]]
@@ -698,9 +697,9 @@ checksum = "572f695136211188308f16ad2ca5c851a712c464060ae6974944458eb83880ba"
 
 [[package]]
 name = "byte-slice-cast"
-version = "1.2.2"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3ac9f8b63eca6fd385229b3675f6cc0dc5c8a5c8a54a59d4f52ffd670d87b0c"
+checksum = "87c5fdd0166095e1d463fc6cc01aa8ce547ad77a4e84d42eb6762b084e28067e"
 
 [[package]]
 name = "byte-tools"
@@ -1241,7 +1240,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-base"
-version = "0.6.7"
+version = "0.6.8"
 dependencies = [
  "aes 0.7.5",
  "async-recursion",
@@ -1293,7 +1292,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-base-meta"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1311,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-bdt"
-version = "0.6.7"
+version = "0.6.8"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1334,6 +1333,7 @@ dependencies = [
  "rand 0.7.3",
  "ringbuf",
  "rusqlite",
+ "serde",
  "serde_json",
  "sha2 0.8.2",
  "socket2",
@@ -1363,6 +1363,7 @@ version = "0.5.1"
 dependencies = [
  "async-std",
  "async-trait",
+ "base-x",
  "cyfs-base",
  "cyfs-chunk-lib",
  "cyfs-debug",
@@ -1376,12 +1377,12 @@ dependencies = [
  "scan_dir",
  "sha2 0.8.2",
  "shared_memory",
- "sysinfo",
+ "sysinfo 0.26.5",
 ]
 
 [[package]]
 name = "cyfs-chunk-lib"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1395,7 +1396,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-cip"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "bip39",
  "cyfs-base",
@@ -1413,12 +1414,13 @@ dependencies = [
 
 [[package]]
 name = "cyfs-core"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "async-std",
  "async-trait",
  "chrono",
  "cyfs-base",
+ "cyfs-bdt",
  "cyfs-util",
  "generic-array 0.12.4",
  "hex",
@@ -1438,7 +1440,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-debug"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "async-h1",
  "async-std",
@@ -1634,7 +1636,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-perf-client"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "android_logger",
  "async-std",
@@ -1668,7 +1670,7 @@ dependencies = [
 
 [[package]]
 name = "cyfs-sha2"
-version = "0.8.3"
+version = "0.8.4"
 dependencies = [
  "block-buffer 0.7.3",
  "digest 0.8.1",
@@ -1690,6 +1692,7 @@ dependencies = [
  "crossbeam",
  "cyfs-base",
  "cyfs-bdt",
+ "cyfs-bdt-ext",
  "cyfs-chunk-cache",
  "cyfs-chunk-lib",
  "cyfs-core",
@@ -1734,6 +1737,7 @@ dependencies = [
  "async-trait",
  "cyfs-base",
  "cyfs-bdt",
+ "cyfs-bdt-ext",
  "cyfs-debug",
  "cyfs-lib",
  "cyfs-meta-lib",
@@ -1745,11 +1749,12 @@ dependencies = [
  "regex",
  "serde",
  "toml",
+ "toml_edit",
 ]
 
 [[package]]
 name = "cyfs-task-manager"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "async-std",
  "async-trait",
@@ -1774,12 +1779,11 @@ dependencies = [
  "cyfs-util",
  "log 0.4.17",
  "rusqlite",
- "thread_local",
 ]
 
 [[package]]
 name = "cyfs-util"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "async-h1",
  "async-std",
@@ -2234,13 +2238,13 @@ dependencies = [
 
 [[package]]
 name = "futures-intrusive"
-version = "0.4.2"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a604f7a68fbf8103337523b1fadc8ade7361ee3f112f7c680ad179651616aed5"
+checksum = "1b6bdbb8c5a42b2bb5ee8dd9dc2c7d73ce3e15d26dfe100fb347ffa3f58c672b"
 dependencies = [
  "futures-core",
  "lock_api",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
 ]
 
 [[package]]
@@ -2684,9 +2688,9 @@ dependencies = [
 
 [[package]]
 name = "iana-time-zone"
-version = "0.1.53"
+version = "0.1.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64c122667b287044802d6ce17ee2ddf13207ed924c712de9a66a5814d5b64765"
+checksum = "f5a6ef98976b22b3b7f2f3a806f858cb862044cfa66805aa3ad84cb3d3b785ed"
 dependencies = [
  "android_system_properties",
  "core-foundation-sys",
@@ -2960,9 +2964,9 @@ checksum = "201de327520df007757c1f0adce6e827fe8562fbc28bfd9c15571c66ca1f5f79"
 
 [[package]]
 name = "libm"
-version = "0.2.6"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
+checksum = "292a948cd991e376cf75541fe5b97a1081d713c618b4f1b9500f8844e49eb565"
 
 [[package]]
 name = "libsecp256k1"
@@ -3072,9 +3076,9 @@ checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
 name = "memmap2"
-version = "0.5.8"
+version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b182332558b18d807c4ce1ca8ca983b34c3ee32765e47b3f0f69b90355cc1dc"
+checksum = "95af15f345b17af2efc8ead6080fb8bc376f8cec1b35277b935637595fe77498"
 dependencies = [
  "libc",
 ]
@@ -3154,9 +3158,12 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 name = "miniz_oxide"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b275950c28b37e794e8c55d88aeb5e139d0ce23fdbbeda68f8d7174abdf9e8fa"
+checksum = "57ee1c23c7c63b0c9250c339ffdc69255f110b298b901b9f6c82547b7b87caaf"
 dependencies = [
- "adler",
+ "libc",
+ "log 0.4.17",
+ "wasi 0.11.0+wasi-snapshot-preview1",
+ "windows-sys 0.36.1",
 ]
 
 [[package]]
@@ -3181,9 +3188,9 @@ dependencies = [
 
 [[package]]
 name = "native-tls"
-version = "0.2.11"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07226173c32f2926027b63cce4bcd8076c3552846cbe7925f3aaffeac0a3b92e"
+checksum = "fd7e2f3618557f980e0b17e8856252eee3c97fa12c54dff0ca290fb6266ca4a9"
 dependencies = [
  "lazy_static",
  "libc",
@@ -3371,9 +3378,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.16.0"
+version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
+checksum = "6f61fba1741ea2b3d6a1e3178721804bb716a68a6aeba1149b5d52e3d464ea66"
 
 [[package]]
 name = "oorandom"
@@ -3670,9 +3677,9 @@ dependencies = [
 
 [[package]]
 name = "pkg-config"
-version = "0.3.26"
+version = "0.3.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ac9a59f73473f1b8d852421e59e64809f025994837ef743615c6d0c5b305160"
+checksum = "1df8c4ec4b0627e53bdf214615ad287367e482558cf84b109250b37464dc03ae"
 
 [[package]]
 name = "plotters"
@@ -3729,9 +3736,9 @@ dependencies = [
 
 [[package]]
 name = "ppv-lite86"
-version = "0.2.17"
+version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
+checksum = "eb9f9e6e233e5c4a35559a617bf40a4ec447db2e84c20b55a6f83167b7e57872"
 
 [[package]]
 name = "prettyplease"
@@ -4102,6 +4109,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "quoted_printable"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20f14e071918cbeefc5edc986a7aa92c425dae244e003a35e1cdddb5ca39b5cb"
+
+[[package]]
 name = "radium"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4276,9 +4289,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.7.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e076559ef8e241f2ae3479e36f97bd5741c0330689e217ad51ce2c76808b868a"
+checksum = "4c4eb3267174b8c6c2f654116623910a0fef09c4753f8dd83db29c48a0df988b"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -4293,9 +4306,9 @@ checksum = "6c230d73fb8d8c1b9c0b3135c5142a8acee3a0558fb8db5cf1cb65f8d7862132"
 
 [[package]]
 name = "regex-syntax"
-version = "0.6.28"
+version = "0.6.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "456c603be3e8d448b072f410900c09faf164fbce2d480456f50eea6e25f9c848"
+checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
 
 [[package]]
 name = "remove_dir_all"
@@ -4794,7 +4807,7 @@ dependencies = [
  "atty",
  "colored",
  "log 0.4.17",
- "time 0.3.17",
+ "time 0.3.16",
  "winapi",
 ]
 
@@ -5278,16 +5291,16 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.17"
+version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a561bf4617eebd33bca6434b988f39ed798e527f51a1e797d0ee4f61c0a38376"
+checksum = "0fab5c8b9980850e06d92ddbe3ab839c062c801f3927c0fb8abd6fc8e918fbca"
 dependencies = [
  "itoa 1.0.5",
  "libc",
  "num_threads",
  "serde",
  "time-core",
- "time-macros 0.2.6",
+ "time-macros 0.2.5",
 ]
 
 [[package]]
@@ -5308,9 +5321,9 @@ dependencies = [
 
 [[package]]
 name = "time-macros"
-version = "0.2.6"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d967f99f534ca7e495c575c62638eebc2898a8c84c119b89e250477bc4ba16b2"
+checksum = "65bb801831d812c562ae7d2bfb531f26e66e4e1f6b17307ba4149c5064710e5b"
 dependencies = [
  "time-core",
 ]
@@ -5962,7 +5975,7 @@ dependencies = [
  "hmac 0.12.1",
  "pbkdf2",
  "sha1 0.10.5",
- "time 0.3.17",
+ "time 0.3.16",
  "zstd",
 ]
 

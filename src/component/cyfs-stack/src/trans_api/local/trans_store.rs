@@ -1,5 +1,5 @@
 use crate::trans_api::{sql_query, SqlConnection, SqlPool};
-use cyfs_base::BuckyResult;
+use cyfs_base::*;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -59,9 +59,24 @@ pub async fn create_trans_store(isolate: &str) -> BuckyResult<Arc<TransStore>> {
     base_dir.push("data");
     base_dir.push(isolate);
     base_dir.push("tracker-cache");
+
+    if !base_dir.is_dir() {
+        async_std::fs::create_dir_all(&base_dir).await.map_err(|e| {
+            let msg = format!("create tracker-cache dir failed! dir={}, {}", base_dir.display(), e);
+            error!("{}", msg);
+            BuckyError::new(BuckyErrorCode::IoError, msg)
+        })?;
+    }
+    
     base_dir.push("trans.db");
 
+    info!("will init trans store: db={}", base_dir.display());
+
     let store = TransStore::new(base_dir).await?;
-    store.init().await?;
+    store.init().await.map_err(|e| {
+        error!("init trans store failed! {}", e);
+        e
+    })?;
+
     Ok(Arc::new(store))
 }

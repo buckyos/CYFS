@@ -2,6 +2,9 @@ mod local;
 mod meta;
 mod http;
 
+#[cfg(test)]
+mod test;
+
 pub use local::*;
 pub use meta::*;
 pub use http::*;

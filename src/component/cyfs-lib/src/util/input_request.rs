@@ -89,6 +89,7 @@ pub struct UtilBuildFileInputRequest {
     pub local_path: PathBuf,
     pub owner: ObjectId,
     pub chunk_size: u32,
+    pub access: Option<AccessString>,
 }
 
 pub type UtilBuildFileInputResponse = UtilBuildFileOutputResponse;

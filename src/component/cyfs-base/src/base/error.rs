@@ -84,12 +84,13 @@ pub enum BuckySystemErrorCode {
     InvalidSignature = 32,
     AlreadyExistsAndSignatureMerged = 33,
     TargetNotFound = 34,
+    Aborted = 35,
 
     ConnectFailed = 40,
     ConnectInterZoneFailed = 41,
     InnerPathNotFound = 42,
     RangeNotSatisfiable = 43,
-
+    UserCanceled = 44, 
     Conflict = 50,
 
     OutofSessionLimit = 60,
@@ -200,11 +201,13 @@ pub enum BuckyErrorCode {
     InvalidSignature,
     AlreadyExistsAndSignatureMerged,
     TargetNotFound,
+    Aborted,
 
     ConnectFailed,
     ConnectInterZoneFailed,
     InnerPathNotFound,
     RangeNotSatisfiable,
+    UserCanceled,
 
     Conflict,
 
@@ -294,12 +297,13 @@ impl Into<BuckySystemErrorCode> for BuckyErrorCode {
                 BuckySystemErrorCode::AlreadyExistsAndSignatureMerged
             }
             Self::TargetNotFound => BuckySystemErrorCode::TargetNotFound,
+            Self::Aborted => BuckySystemErrorCode::Aborted,
 
             Self::ConnectFailed => BuckySystemErrorCode::ConnectFailed,
             Self::ConnectInterZoneFailed => BuckySystemErrorCode::ConnectInterZoneFailed,
             Self::InnerPathNotFound => BuckySystemErrorCode::InnerPathNotFound,
             Self::RangeNotSatisfiable => BuckySystemErrorCode::RangeNotSatisfiable,
-
+            Self::UserCanceled => BuckySystemErrorCode::UserCanceled, 
             Self::Conflict => BuckySystemErrorCode::Conflict,
 
             Self::OutofSessionLimit => BuckySystemErrorCode::OutofSessionLimit,
@@ -386,11 +390,13 @@ impl Into<BuckyErrorCode> for BuckySystemErrorCode {
                 BuckyErrorCode::AlreadyExistsAndSignatureMerged
             }
             Self::TargetNotFound => BuckyErrorCode::TargetNotFound,
+            Self::Aborted => BuckyErrorCode::Aborted,
 
             Self::ConnectFailed => BuckyErrorCode::ConnectFailed,
             Self::ConnectInterZoneFailed => BuckyErrorCode::ConnectInterZoneFailed,
             Self::InnerPathNotFound => BuckyErrorCode::InnerPathNotFound,
             Self::RangeNotSatisfiable => BuckyErrorCode::RangeNotSatisfiable,
+            Self::UserCanceled => BuckyErrorCode::UserCanceled, 
 
             Self::Conflict => BuckyErrorCode::Conflict,
 
@@ -622,6 +628,8 @@ pub enum BuckyOriginError {
     HttpStatusCodeError(http_types::StatusCode),
     #[cfg(not(target_arch = "wasm32"))]
     SqliteError(rusqlite::Error),
+    #[cfg(feature = "sqlx-error")]
+    SqlxError(sqlx::Error),
     HexError(hex::FromHexError),
     RsaError(rsa::errors::Error),
     CodeError(u32),
@@ -700,6 +708,11 @@ impl RawEncode for BuckyOriginError {
                 Ok(USize(2).raw_measure(purpose)? + msg.raw_measure(purpose)?)
             }
             BuckyOriginError::ErrorMsg(msg) => {
+                Ok(USize(2).raw_measure(purpose)? + msg.raw_measure(purpose)?)
+            }
+            #[cfg(feature = "sqlx-error")]
+            BuckyOriginError::SqlxError(e) => {
+                let msg = format!("{:?}", e);
                 Ok(USize(2).raw_measure(purpose)? + msg.raw_measure(purpose)?)
             }
             _ => Ok(USize(3).raw_measure(purpose)?),
@@ -810,6 +823,13 @@ impl RawEncode for BuckyOriginError {
                 let buf = msg.raw_encode(buf, purpose)?;
                 Ok(buf)
             }
+            #[cfg(feature = "sqlx-error")]
+            BuckyOriginError::SqlxError(e) => {
+                let msg = format!("{:?}", e);
+                let buf = USize(2).raw_encode(buf, purpose)?;
+                let buf = msg.raw_encode(buf, purpose)?;
+                Ok(buf)
+            }
             _ => {
                 let buf = USize(3).raw_encode(buf, purpose)?;
                 Ok(buf)
@@ -868,12 +888,22 @@ impl BuckyError {
         self.code
     }
 
+    pub fn with_code(mut self, code: impl Into<BuckyErrorCode>) -> Self {
+        self.code = code.into();
+        self
+    }
+
     pub fn set_msg(&mut self, msg: impl Into<String>) {
         self.msg = msg.into();
     }
 
     pub fn msg(&self) -> &str {
         self.msg.as_ref()
+    }
+
+    pub fn with_msg(mut self, msg: impl Into<String>) -> Self {
+        self.msg = msg.into();
+        self
     }
 
     pub fn origin(&self) -> &Option<BuckyOriginError> {
@@ -944,15 +974,45 @@ impl BuckyError {
             _ => BuckyErrorCode::UnknownBdtError,
         }
     }
+
+    fn bucky_error_to_io_error(e: BuckyError) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::Other, e)
+    }
+
+    fn io_error_to_bucky_error(e: std::io::Error) -> BuckyError {
+        let kind = e.kind();
+        if kind == std::io::ErrorKind::Other && e.get_ref().is_some() {
+            match e.into_inner().unwrap().downcast::<BuckyError>() {
+                Ok(e) => {
+                    e.as_ref().clone()
+                }
+                Err(e) => {
+                    BuckyError {
+                        code: Self::io_error_kind_to_code(kind),
+                        msg: format!("io_error: {}", e),
+                        origin: None,
+                    }
+                }
+            }
+        } else {
+            BuckyError {
+                code: Self::io_error_kind_to_code(e.kind()),
+                msg: format!("io_error: {}", e),
+                origin: Some(BuckyOriginError::IoError(e)),
+            }
+        }
+    }
 }
 
 impl From<std::io::Error> for BuckyError {
     fn from(err: std::io::Error) -> BuckyError {
-        BuckyError {
-            code: Self::io_error_kind_to_code(err.kind()),
-            msg: format!("io_error: {}", err),
-            origin: Some(BuckyOriginError::IoError(err)),
-        }
+        BuckyError::io_error_to_bucky_error(err)
+    }
+}
+
+impl From<BuckyError> for std::io::Error {
+    fn from(err: BuckyError) -> std::io::Error {
+        BuckyError::bucky_error_to_io_error(err)
     }
 }
 
@@ -1051,6 +1111,16 @@ impl From<rusqlite::Error> for BuckyError {
             code: BuckyErrorCode::SqliteError,
             msg: format!("sqlite_error: {}", err),
             origin: Some(BuckyOriginError::SqliteError(err)),
+        }
+    }
+}
+#[cfg(feature = "sqlx-error")]
+impl From<sqlx::Error> for BuckyError {
+    fn from(err: sqlx::Error) -> Self {
+        Self {
+            code: BuckyErrorCode::SqliteError,
+            msg: format!("sqlx error: {}", err),
+            origin: Some(BuckyOriginError::SqlxError(err))
         }
     }
 }
@@ -1304,5 +1374,23 @@ mod tests {
         let value: u16 = code.into();
         let code2 = BuckyErrorCode::from(value);
         assert_eq!(code, code2);
+    }
+
+    
+    #[test]
+    fn test_io_error() {
+        let err =  BuckyError::new(BuckyErrorCode::AddrInUse, "invaid address");
+        assert!(err.code() == BuckyErrorCode::AddrInUse);
+
+        let e = BuckyError::bucky_error_to_io_error(err.clone());
+        let be = BuckyError::io_error_to_bucky_error(e);
+        assert_eq!(be.code(), err.code());
+        assert_eq!(be.msg(), err.msg());
+
+        let e: std::io::Error = err.clone().into();
+        let be: BuckyError = e.into();
+
+        assert_eq!(be.code(), err.code());
+        assert_eq!(be.msg(), err.msg());
     }
 }

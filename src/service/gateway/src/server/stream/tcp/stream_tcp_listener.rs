@@ -1,5 +1,6 @@
 use crate::upstream::TcpUpStream;
 use cyfs_base::BuckyError;
+use cyfs_stack_loader::ListenerUtil;
 
 use async_std::net::TcpListener;
 use async_std::stream::StreamExt;
@@ -204,7 +205,7 @@ impl StreamTcpListenerManager {
     }
     */
     pub fn load(&mut self, server_node: &toml::value::Table) -> Result<(), BuckyError> {
-        let addr_list = match ::base::ListenerUtil::load_tcp_listener(server_node) {
+        let addr_list = match ListenerUtil::load_tcp_listener(server_node) {
             Ok(v) => v,
             Err(e) => {
                 return Err(e);

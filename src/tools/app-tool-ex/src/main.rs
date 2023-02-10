@@ -193,8 +193,9 @@ async fn main_run() -> BuckyResult<()> {
                 } else {
                     warn!("===> app list not found!");
                 }
+                Ok(())
             })
-            .await;
+            .await
         }
         ("cmd_list", Some(_matches)) => {
             async_std::task::spawn(async move {
@@ -205,8 +206,9 @@ async fn main_run() -> BuckyResult<()> {
                 } else {
                     warn!("===> app cmd list not found!");
                 }
+                Ok(())
             })
-            .await;
+            .await
         }
         ("cmd", Some(matches)) => match matches.subcommand() {
             ("add", Some(matches)) => {
@@ -229,10 +231,12 @@ async fn main_run() -> BuckyResult<()> {
                         }
                         Err(e) => {
                             warn!("===> add app failed, err:{}", e);
+                            return Err(e);
                         }
-                    };
+                    }
+                    Ok(())
                 })
-                .await;
+                .await
             }
             ("install", Some(matches)) => {
                 let matches = matches.clone();
@@ -258,10 +262,12 @@ async fn main_run() -> BuckyResult<()> {
                         }
                         Err(e) => {
                             warn!("===> install app failed, err:{}", e);
+                            return Err(e);
                         }
-                    };
+                    }
+                    Ok(())
                 })
-                .await;
+                .await
             }
             ("uninstall", Some(matches)) => {
                 let matches = matches.clone();
@@ -282,10 +288,12 @@ async fn main_run() -> BuckyResult<()> {
                         }
                         Err(e) => {
                             warn!("===> uninstall app failed, err:{}", e);
+                            return Err(e);
                         }
-                    };
+                    }
+                    Ok(())
                 })
-                .await;
+                .await
             }
             ("start", Some(matches)) => {
                 let matches = matches.clone();
@@ -306,10 +314,12 @@ async fn main_run() -> BuckyResult<()> {
                         }
                         Err(e) => {
                             warn!("===> start app failed, err:{}", e);
+                            return Err(e);
                         }
-                    };
+                    }
+                    Ok(())
                 })
-                .await;
+                .await
             }
             ("stop", Some(matches)) => {
                 let matches = matches.clone();
@@ -330,10 +340,12 @@ async fn main_run() -> BuckyResult<()> {
                         }
                         Err(e) => {
                             warn!("===> stop app failed, err:{}", e);
+                            return Err(e);
                         }
-                    };
+                    }
+                    Ok(())
                 })
-                .await;
+                .await
             }
             ("remove", Some(matches)) => {
                 let matches = matches.clone();
@@ -354,10 +366,12 @@ async fn main_run() -> BuckyResult<()> {
                         }
                         Err(e) => {
                             warn!("===> remove app failed, err:{}", e);
+                            return Err(e);
                         }
-                    };
+                    }
+                    Ok(())
                 })
-                .await;
+                .await
             }
             ("setautoupdate", Some(matches)) => {
                 let matches = matches.clone();
@@ -382,10 +396,12 @@ async fn main_run() -> BuckyResult<()> {
                         }
                         Err(e) => {
                             warn!("===> set autoupdate failed, err:{}", e);
+                            return Err(e);
                         }
-                    };
+                    }
+                    Ok(())
                 })
-                .await;
+                .await
             }
             v @ _ => {
                 error!("unknown cmd command: {}", v.0);
@@ -397,12 +413,10 @@ async fn main_run() -> BuckyResult<()> {
             std::process::exit(1);
         }
     }
-
-    Ok(())
 }
 
-fn main() {
+fn main() -> BuckyResult<()> {
     cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
 
-    async_std::task::block_on(main_run());
+    async_std::task::block_on(main_run())
 }

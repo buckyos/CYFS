@@ -1,4 +1,4 @@
-const only_ood = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", 'aarch64-unknown-linux-gnu']
+const only_ood = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
 const formal_platform = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"]
 
 const installer = [
@@ -91,7 +91,7 @@ const services = [
 const sdk = [
     {
         "name": "cyfs-runtime",
-        "include": formal_platform.concat(["aarch64-linux-android"]),
+        "include": formal_platform,
         "icon": "",
         "lib": { "aarch64-linux-android": "cyfsruntime" },
     },
@@ -99,11 +99,6 @@ const sdk = [
         "name": "cyfs-mobile-stack",
         "include": ["aarch64-linux-android", "armv7-linux-androideabi"],
         "lib": { "aarch64-linux-android": "cyfsstack", "armv7-linux-androideabi": "cyfsstack" },
-    },
-    {
-        "name": "ood-control",
-        "include": ["aarch64-linux-android", "armv7-linux-androideabi"],
-        "lib": { "aarch64-linux-android": "ood_control", "armv7-linux-androideabi": "ood_control" },
     }
 ]
 
@@ -138,7 +133,11 @@ const misc = [
     {
         "name": "cyfs-monitor",
         "include": formal_platform
-    }
+    },
+    {
+        "name": "sn-online-test",
+        "include": formal_platform
+    },
 ]
 
 module.exports = {

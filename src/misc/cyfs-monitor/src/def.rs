@@ -9,7 +9,9 @@ pub trait MonitorRunner {
 #[derive(Debug, Clone)]
 pub struct MonitorErrorInfo {
     pub service: String,
+    pub case: String,
     pub error: BuckyError,
+    pub at_all: bool
 }
 
 // 上报一个错误

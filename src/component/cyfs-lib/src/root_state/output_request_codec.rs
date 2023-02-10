@@ -153,6 +153,7 @@ impl JsonCodec<Self> for OpEnvLoadOutputRequest {
 
         JsonCodecHelper::encode_field(&mut obj, "common", &self.common);
         JsonCodecHelper::encode_string_field(&mut obj, "target", &self.target);
+        JsonCodecHelper::encode_option_string_field(&mut obj, "inner_path", self.inner_path.as_ref());
 
         obj
     }
@@ -161,6 +162,7 @@ impl JsonCodec<Self> for OpEnvLoadOutputRequest {
         Ok(Self {
             common: JsonCodecHelper::decode_field(obj, "common")?,
             target: JsonCodecHelper::decode_string_field(obj, "target")?,
+            inner_path: JsonCodecHelper::decode_option_string_field(obj, "inner_path")?,
         })
     }
 }

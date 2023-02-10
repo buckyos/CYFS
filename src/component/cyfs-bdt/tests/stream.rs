@@ -10,7 +10,6 @@ use async_std::{
 };
 use futures::StreamExt;
 use cyfs_base::*;
-use cyfs_util::cache::{NamedDataCache, TrackerCache};
 use cyfs_bdt::*;
 mod utils;
 
@@ -31,7 +30,7 @@ async fn send_large_stream(
     data: &[u8]) -> BuckyResult<()> {
     let param = BuildTunnelParams {
         remote_const: rn_dev.desc().clone(),
-        remote_sn: vec![],
+        remote_sn: None,
         remote_desc: Some(rn_dev.clone()),
     };
     let mut stream = ln_stack.stream_manager().connect(0u16, vec![], param).await?;
@@ -53,7 +52,7 @@ async fn large_stream(ln_ep: &[&str], rn_ep: &[&str]) {
             signal_sender.send(recv_large_stream(rn_stack).await).await.unwrap();
         });
     }
-    send_large_stream(&ln_stack, rn_stack.local(), sample.as_ref()).await.unwrap();
+    send_large_stream(&ln_stack, rn_stack.sn_client().ping().default_local(), sample.as_ref()).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), signal_recver.recv()).await.unwrap().unwrap();
     let recv_sample = recv.unwrap();
 
@@ -88,7 +87,7 @@ async fn large_udp_stream_with_loss() {
             signal_sender.send(recv_large_stream(rn_stack).await).await.unwrap();
         });
     }
-    send_large_stream(&ln_stack, rn_stack.local(), sample.as_ref()).await.unwrap();
+    send_large_stream(&ln_stack, rn_stack.sn_client().ping().default_local(), sample.as_ref()).await.unwrap();
     let recv = future::timeout(Duration::from_secs(5), signal_recver.recv()).await.unwrap().unwrap();
     let recv_sample = recv.unwrap();
 
@@ -115,11 +114,10 @@ async fn error_tcp_endpoint() {
     let (rn_dev2, rn_secret2) = utils::create_device("5aSixgLuJjfrNKn9D4z66TEM6oxL3uNmWCWHk52cJDKR", &["W4tcp127.0.0.1:10004"]).unwrap();
 
     let mut ln_params = StackOpenParams::new("");
-    let ln_tracker = MemTracker::new();
-    let ln_store = MemChunkStore::new(NamedDataCache::clone(&ln_tracker).as_ref());
+
+    let ln_store = MemChunkStore::new();
     ln_params.chunk_store = Some(ln_store.clone_as_reader());
-    ln_params.ndc = Some(NamedDataCache::clone(&ln_tracker));
-    ln_params.tracker = Some(TrackerCache::clone(&ln_tracker));
+   
 
     let mut rn_dev = rn_dev1.clone();
 
@@ -130,21 +128,16 @@ async fn error_tcp_endpoint() {
 
 
     let mut rn_params = StackOpenParams::new("");
-    let rn_tracker = MemTracker::new();
-    let rn_store = MemChunkStore::new(NamedDataCache::clone(&rn_tracker).as_ref());
+  
+    let rn_store = MemChunkStore::new();
     rn_params.chunk_store = Some(rn_store.clone_as_reader());
-    rn_params.ndc = Some(NamedDataCache::clone(&rn_tracker));
-    rn_params.tracker = Some(TrackerCache::clone(&rn_tracker));
    
     let rn_stack1 = Stack::open(rn_dev1, rn_secret1, rn_params).await.unwrap();
 
 
     let mut rn_params = StackOpenParams::new("");
-    let rn_tracker = MemTracker::new();
-    let rn_store = MemChunkStore::new(NamedDataCache::clone(&rn_tracker).as_ref());
+    let rn_store = MemChunkStore::new();
     rn_params.chunk_store = Some(rn_store.clone_as_reader());
-    rn_params.ndc = Some(NamedDataCache::clone(&rn_tracker));
-    rn_params.tracker = Some(TrackerCache::clone(&rn_tracker));
     let _ = Stack::open(rn_dev2, rn_secret2, rn_params).await.unwrap();
 
 

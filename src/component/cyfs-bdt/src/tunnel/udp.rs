@@ -293,7 +293,7 @@ impl Tunnel {
     }
 
 
-    fn owner(&self) -> Option<TunnelContainer> {
+    pub fn owner(&self) -> Option<TunnelContainer> {
         let state = &*self.0.state.read().unwrap();
         match state {
             TunnelState::Connecting(connecting) => Some(connecting.container.clone()),  
@@ -440,6 +440,49 @@ impl tunnel::Tunnel for Tunnel {
         let mut state = self.0.state.write().unwrap();
         *state = TunnelState::Dead;
     }
+
+    fn mark_dead(&self, former_state: tunnel::TunnelState) {
+        let notify = match &former_state {
+            tunnel::TunnelState::Connecting => {
+                let state = &mut *self.0.state.write().unwrap();
+                match state {
+                    TunnelState::Connecting(connecting) => {
+                        info!("{} Connecting=>Dead", self);
+                        let owner = connecting.owner.clone_as_tunnel_owner();
+                        *state = TunnelState::Dead;
+                        Some((owner, tunnel::TunnelState::Dead))
+                    }, 
+                    _ => {
+                        None
+                    }
+                }
+            }, 
+            tunnel::TunnelState::Active(remote_timestamp) => {
+                let remote_timestamp = *remote_timestamp;
+                let state = &mut *self.0.state.write().unwrap();
+                match state {
+                    TunnelState::Active(active) => {
+                        let owner = active.owner.clone_as_tunnel_owner();
+                        if active.remote_timestamp == remote_timestamp {
+                            info!("{} Active({})=>Dead for active by {}", self, active.remote_timestamp, remote_timestamp);
+                            *state = TunnelState::Dead;
+                            Some((owner, tunnel::TunnelState::Dead))
+                        } else {
+                            None
+                        }
+                    }, 
+                    _ => {
+                        None
+                    }
+                }
+            }, 
+            tunnel::TunnelState::Dead => None
+        };
+
+        if let Some((owner, new_state)) = notify {
+            owner.sync_tunnel_state(&DynamicTunnel::new(self.clone()), former_state, new_state);
+        }
+    }
 }
 
 impl OnUdpPackageBox for Tunnel {
@@ -467,7 +510,7 @@ impl OnPackage<SynTunnel, &PackageBox> for Tunnel {
             result: 0,
             send_time: 0,
             mtu: udp::MTU as u16,
-            to_device_desc: container.stack().device_cache().local()       
+            to_device_desc: container.stack().sn_client().ping().default_local()
         };
 
         let mut package_box = PackageBox::encrypt_box(

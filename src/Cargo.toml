@@ -25,9 +25,9 @@ members = [
     "./component/cyfs-chunk-cache",
     "./component/cyfs-chunk-lib",
     "./component/cyfs-mobile-stack",
+    "./component/cyfs-bdt-ext",
     "./component/cyfs-group",
 
-    "./service/base",
     "./service/ood-control",
     "./service/ood-daemon",
     "./service/app-manager",
@@ -63,6 +63,8 @@ members = [
     "./misc/sn-miner-rust",
     "./misc/pn-miner",
     "./misc/cyfs-monitor",
+    "./misc/misc-util",
+    "./misc/sn-online-test",
 
     "./tests/cyfs-stack-test",
     "./tests/cyfs-bench-mark",

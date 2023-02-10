@@ -372,11 +372,12 @@ impl NONRouter {
         }
     }
 
-    // 对于dir+inner_path的请求，返回InnerPathNotFound说明对象已经查找到，但指定的内部路径不存在，所以不需要继续后续路由了
+    // 对于(dir | objectmap) + inner_path的请求，返回InnerPathNotFound说明对象已经查找到，但指定的内部路径不存在，所以不需要继续后续路由了
     fn is_dir_inner_path_error(req: &NONGetObjectInputRequest, e: &BuckyError) -> bool {
-        if e.code() == BuckyErrorCode::InnerPathNotFound
-            && req.object_id.obj_type_code() == ObjectTypeCode::Dir
-            && req.inner_path.is_some()
+        let type_code = req.object_id.obj_type_code();
+        if req.inner_path.is_some()
+            && e.code() == BuckyErrorCode::InnerPathNotFound
+            && (type_code == ObjectTypeCode::Dir || type_code == ObjectTypeCode::ObjectMap)
         {
             true
         } else {
@@ -391,19 +392,21 @@ impl NONRouter {
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
         info!(
-            "router get_object default handler, object={}, router={}",
-            req.object_id, router_info,
+            "router get_object default handler, req={}, router={}",
+            req, router_info,
         );
 
         // 如果开启了flush标志位，那么不首先从noc获取
         let flush = (req.common.flags & CYFS_ROUTER_REQUEST_FLAG_FLUSH) != 0;
 
+        let mut err = None;
         if flush {
-            if let Ok(resp) = self
+            match self
                 .get_object_without_noc(save_to_noc, router_info, req.clone())
                 .await
             {
-                return Ok(resp);
+                Ok(resp) => return Ok(resp),
+                Err(e) => err = Some(e),
             }
         }
 
@@ -464,7 +467,7 @@ impl NONRouter {
             self.get_object_without_noc(save_to_noc, router_info, req)
                 .await
         } else {
-            Err(BuckyError::from(BuckyErrorCode::NotFound))
+            Err(err.unwrap())
         }
     }
 
@@ -560,7 +563,7 @@ impl NONRouter {
         &self,
         req: NONGetObjectInputRequest,
     ) -> BuckyResult<NONGetObjectInputResponse> {
-        info!("router will handle get_object request: {}", req);
+        // info!("router will handle get_object request: {}", req);
         // 查找操作一定会转发到当前zone的ood来处理
         // final_target有下面几种情况，查找流程如下(其中-->表示跨协议栈转发操作)
         // 1. 当前协议栈： noc-->ood->noc->meta

@@ -43,6 +43,8 @@ enum CheckRoot {
 
 #[derive(Clone)]
 pub struct GlobalStateValidator {
+    device_id: DeviceId,
+
     global_state: Arc<GlobalStateManager>,
     op_env_cache: ObjectMapOpEnvCacheRef,
 
@@ -50,9 +52,10 @@ pub struct GlobalStateValidator {
 }
 
 impl GlobalStateValidator {
-    pub fn new(global_state: Arc<GlobalStateManager>) -> Self {
+    pub fn new(device_id: DeviceId, global_state: Arc<GlobalStateManager>) -> Self {
         let op_env_cache = ObjectMapOpEnvMemoryCache::new_ref(global_state.root_cache().clone());
         Self {
+            device_id,
             global_state,
             op_env_cache,
             cache: GlobalStatePathCache::new(),
@@ -108,7 +111,10 @@ impl GlobalStateValidator {
             GlobalStateValidateRoot::None => {
                 let ret = self.global_state.get_dec_root(&req.dec_id).await?;
                 if ret.is_none() {
-                    let msg = format!("current dec root was not found! {}", req.dec_id);
+                    let msg = format!(
+                        "current dec root was not found! device={}, dec={}",
+                        self.device_id, req.dec_id
+                    );
                     error!("{}", msg);
                     return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
                 }
@@ -132,8 +138,8 @@ impl GlobalStateValidator {
             let ret = self.load_target(&cache_key, check_root).await?;
             if ret.is_none() {
                 let msg = format!(
-                    "the object referenced by path was not found! req={}",
-                    debug_info
+                    "the object referenced by path was not found! device={}, req={}",
+                    self.device_id, debug_info
                 );
                 warn!("{}", msg);
                 let err = BuckyError::new(BuckyErrorCode::NotFound, msg);
@@ -178,7 +184,10 @@ impl GlobalStateValidator {
             .get_object_map(&key.root)
             .await?;
         if ret.is_none() {
-            let msg = format!("the specified global root was not found! {}", key.root);
+            let msg = format!(
+                "the specified global root was not found! device={}, root={}",
+                self.device_id, key.root
+            );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
         }
@@ -188,7 +197,8 @@ impl GlobalStateValidator {
         let obj = root.lock().await;
         if obj.class() != ObjectMapClass::GlobalRoot {
             let msg = format!(
-                "the specified global root was not valid root objectmap! {}, class={:?}",
+                "the specified global root was not valid root objectmap! device={}, root={}, class={:?}",
+                self.device_id,
                 key.root,
                 obj.class()
             );
@@ -199,7 +209,8 @@ impl GlobalStateValidator {
         if let Some(dec) = obj.desc().dec_id() {
             if dec != cyfs_core::get_system_dec_app() {
                 let msg = format!(
-                    "the specified global root object's dec is not empty or system dec! root={}, dec={}",
+                    "the specified global root object's dec is not empty or system dec! device={}, root={}, dec={}",
+                    self.device_id,
                     key.root,
                     dec,
                 );
@@ -223,8 +234,8 @@ impl GlobalStateValidator {
             .await?;
         if ret.is_none() {
             let msg = format!(
-                "the specified dec_root was not found! {}, dec={}",
-                key.root, dec_id
+                "the specified dec_root was not found! device={}, root={}, dec={}",
+                self.device_id, key.root, dec_id
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));
@@ -235,7 +246,8 @@ impl GlobalStateValidator {
         let obj = root.lock().await;
         if obj.class() != ObjectMapClass::DecRoot {
             let msg = format!(
-                "the specified dec root was not valid dec root objectmap! {}, dec={}, class={:?}",
+                "the specified dec root was not valid dec root objectmap! device={}, root={}, dec={}, class={:?}",
+                self.device_id,
                 key.root,
                 dec_id,
                 obj.class()
@@ -245,7 +257,8 @@ impl GlobalStateValidator {
         }
 
         if obj.desc().dec_id().as_ref() != Some(dec_id) {
-            let msg = format!("the specified dec root object's dec not match the target dec! {}, current_dec={:?}, target_dec={}", 
+            let msg = format!("the specified dec root object's dec not match the target dec! device={}, root={}, current_dec={:?}, target_dec={}", 
+            self.device_id,
             key.root, obj.desc().dec_id(), dec_id);
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::Unmatch, msg));
@@ -289,8 +302,12 @@ impl GlobalStateValidator {
             // check if contains
             let contains = self
                 .check_contains(target, req_object_id, debug_info)
-                .await.map_err(|e| {
-                    let msg = format!("global state path validate got error! {}", e);
+                .await
+                .map_err(|e| {
+                    let msg = format!(
+                        "global state path validate got error! device={}, {}",
+                        self.device_id, e
+                    );
                     BuckyError::new(BuckyErrorCode::PermissionDenied, msg)
                 })?;
             if contains {
@@ -303,7 +320,8 @@ impl GlobalStateValidator {
         }
 
         let msg = format!(
-            "global state path validate unmatch or uncontains! req={}, expect={}, got={}",
+            "global state path validate unmatch or uncontains! device={}, req={}, expect={}, got={}",
+            self.device_id,
             debug_info, req_object_id, target
         );
         warn!("{}", msg);
@@ -324,8 +342,8 @@ impl GlobalStateValidator {
 
         if ret.is_none() {
             let msg = format!(
-                "global state path target objectmap not found! target={}, req={}",
-                target, debug_info
+                "global state path target objectmap not found! device={}, target={}, req={}",
+                self.device_id, target, debug_info
             );
             error!("{}", msg);
             return Err(BuckyError::new(BuckyErrorCode::NotFound, msg));

@@ -1195,8 +1195,8 @@ impl<T: TypeCatagoryMark> NamedObjectBase<TypelessObjectType<T>> {
                 // ignore
             }
             TypelessCatagory::Standard => {
-                assert!(self.desc().is_stand_object());
-                if !self.desc().is_stand_object() {
+                assert!(self.desc().is_standard_object());
+                if !self.desc().is_standard_object() {
                     return Err(BuckyError::new(
                         BuckyErrorCode::NotMatch,
                         format!(
@@ -1363,22 +1363,22 @@ impl TryFrom<TypelessAnyObject> for AnyNamedObject {
                 })?,
             ))),
             ObjectTypeCode::Custom => {
-                assert!(obj_type >= OBJECT_TYPE_CORE_START);
+                assert!(object_type_helper::is_custom_object(obj_type));
 
-                if obj_type >= OBJECT_TYPE_DECAPP_START {
-                    return Ok(AnyNamedObject::DECApp(
-                        value.convert_to_typeless::<DECAppTypeMark>().map_err(|e| {
-                            log::error!("AnyNamedObject::try_from/DECApp error:{}", e);
-                            e
-                        })?,
-                    ));
-                } else {
-                    return Ok(AnyNamedObject::Core(
+                if object_type_helper::is_core_object(obj_type) {
+                    Ok(AnyNamedObject::Core(
                         value.convert_to_typeless::<CoreTypeMark>().map_err(|e| {
                             log::error!("AnyNamedObject::try_from/Core error:{}", e);
                             e
                         })?,
-                    ));
+                    ))
+                } else {
+                    Ok(AnyNamedObject::DECApp(
+                        value.convert_to_typeless::<DECAppTypeMark>().map_err(|e| {
+                            log::error!("AnyNamedObject::try_from/DECApp error:{}", e);
+                            e
+                        })?,
+                    ))
                 }
             }
         }

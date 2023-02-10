@@ -1,3 +1,4 @@
+use super::path::GlobalStatePathHelper;
 use crate::base::*;
 use cyfs_base::*;
 
@@ -15,7 +16,7 @@ pub struct GlobalStatePathSpecifiedGroup {
     // specified dec, None for any dec
     pub dec: Option<ObjectId>,
 
-    pub access: u8 /*AccessPermissions*/,
+    pub access: u8, /*AccessPermissions*/
 }
 
 impl GlobalStatePathSpecifiedGroup {
@@ -107,6 +108,47 @@ impl PartialOrd for GlobalStatePathGroupAccess {
     }
 }
 
+impl Ord for GlobalStatePathGroupAccess {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl std::fmt::Display for GlobalStatePathGroupAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            Self::Default(p) => {
+                write!(f, "{}", AccessString::new(*p))
+            }
+            Self::Specified(s) => {
+                write!(
+                    f,
+                    "zone={:?}, zone_category={:?} dec={:?}, {}",
+                    s.zone,
+                    s.zone_category,
+                    s.dec.as_ref().map(|id| cyfs_core::dec_id_to_string(id)),
+                    AccessPermissions::format_u8(s.access),
+                )
+            }
+        }
+    }
+}
+
+impl GlobalStatePathGroupAccess {
+    pub fn check_valid(&self) -> bool {
+        match &self {
+            Self::Default(_) => {}
+            Self::Specified(v) => {
+                if v.is_empty() {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct GlobalStatePathAccessItem {
     // GlobalState path, must end with /
@@ -118,56 +160,11 @@ pub struct GlobalStatePathAccessItem {
 
 impl GlobalStatePathAccessItem {
     pub fn check_valid(&self) -> bool {
-        match &self.access {
-            GlobalStatePathGroupAccess::Default(_) => {}
-            GlobalStatePathGroupAccess::Specified(v) => {
-                if v.is_empty() {
-                    return false;
-                }
-            }
-        }
-
-        true
+        self.access.check_valid()
     }
 
-    pub fn fix_path(path: impl Into<String> + AsRef<str>) -> String {
-        let path = path.as_ref().trim();
-
-        let ret = match path.ends_with("/") {
-            true => {
-                if path.starts_with('/') {
-                    path.into()
-                } else {
-                    format!("/{}", path.as_ref() as &str)
-                }
-            }
-            false => {
-                if path.starts_with('/') {
-                    format!("{}/", path.as_ref() as &str)
-                } else {
-                    format!("/{}/", path.as_ref() as &str)
-                }
-            }
-        };
-
-        ret
-    }
-
-    pub fn compare_path(left: &String, right: &String) -> Option<Ordering> {
-        let len1 = left.len();
-        let len2 = right.len();
-
-        if len1 > len2 {
-            Some(Ordering::Less)
-        } else if len1 < len2 {
-            Some(Ordering::Greater)
-        } else {
-            left.partial_cmp(right)
-        }
-    }
-
-    pub fn new(path: impl Into<String> + AsRef<str>, access: u32) -> Self {
-        let path = Self::fix_path(path);
+    pub fn new(path: &str, access: u32) -> Self {
+        let path = GlobalStatePathHelper::fix_path(path).to_string();
 
         Self {
             path,
@@ -176,7 +173,7 @@ impl GlobalStatePathAccessItem {
     }
 
     pub fn new_group(
-        path: impl Into<String> + AsRef<str>,
+        path: &str,
         zone: Option<ObjectId>,
         zone_category: Option<DeviceZoneCategory>,
         dec: Option<ObjectId>,
@@ -184,7 +181,7 @@ impl GlobalStatePathAccessItem {
     ) -> Self {
         assert!(zone.is_some() || dec.is_some());
 
-        let path = Self::fix_path(path);
+        let path = GlobalStatePathHelper::fix_path(path).to_string();
 
         Self {
             path,
@@ -198,28 +195,13 @@ impl GlobalStatePathAccessItem {
     }
 
     pub fn try_fix_path(&mut self) {
-        self.path = Self::fix_path(&self.path);
+        self.path = GlobalStatePathHelper::fix_path(&self.path).to_string();
     }
 }
 
 impl std::fmt::Display for GlobalStatePathAccessItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.access {
-            GlobalStatePathGroupAccess::Default(p) => {
-                write!(f, "({}, {})", self.path, AccessString::new(*p))
-            }
-            GlobalStatePathGroupAccess::Specified(s) => {
-                write!(
-                    f,
-                    "({}, zone={:?}, zone_category={:?} dec={:?}, {})",
-                    self.path,
-                    s.zone,
-                    s.zone_category,
-                    s.dec.as_ref().map(|id| cyfs_core::dec_id_to_string(id)),
-                    AccessPermissions::format_u8(s.access),
-                )
-            }
-        }
+        write!(f, "({}, {})", self.path, self.access)
     }
 }
 
@@ -231,7 +213,7 @@ impl std::fmt::Debug for GlobalStatePathAccessItem {
 
 impl PartialOrd for GlobalStatePathAccessItem {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match Self::compare_path(&self.path, &other.path) {
+        match GlobalStatePathHelper::compare_path(&self.path, &other.path) {
             Some(Ordering::Equal) | None => self.access.partial_cmp(&other.access),
             ret @ _ => ret,
         }

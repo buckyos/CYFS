@@ -46,6 +46,12 @@ impl fmt::Display for BdtDataRefererInfo {
     }
 }
 
+impl fmt::Debug for BdtDataRefererInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+
 impl JsonCodec<BdtDataRefererInfo> for BdtDataRefererInfo {
     fn encode_json(&self) -> Map<String, Value> {
         let mut obj = Map::new();
@@ -79,5 +85,21 @@ impl JsonCodec<BdtDataRefererInfo> for BdtDataRefererInfo {
             referer_object: JsonCodecHelper::decode_str_array_field(obj, "referer_object")?,
             flags: JsonCodecHelper::decode_int_field(obj, "flags")?,
         })
+    }
+}
+
+
+impl From<&NDNGetDataInputRequest> for  BdtDataRefererInfo{
+    fn from(req: &NDNGetDataInputRequest) -> Self {
+        BdtDataRefererInfo {
+            // FIXME: set target field from o link
+            target: None, 
+            object_id: req.object_id.clone(),
+            inner_path: req.inner_path.clone(),
+            dec_id: req.common.source.get_opt_dec().cloned(),
+            req_path: req.common.req_path.clone(),
+            referer_object: req.common.referer_object.clone(),
+            flags: req.common.flags,
+        }
     }
 }

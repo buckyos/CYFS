@@ -1,9 +1,5 @@
 use clap::{App, Arg, ArgMatches, SubCommand};
-use cyfs_base::{
-    AnyNamedObject, ChunkList, Dir, DirBodyContent, File, FileDecoder, InnerNode, NDNObjectInfo,
-    NamedObject, ObjectDesc, RawEncode, RawFrom, SignatureSource, SingleKeyObjectDesc,
-    StandardObject,
-};
+use cyfs_base::{AnyNamedObject, ChunkList, Dir, DirBodyContent, File, FileDecoder, InnerNode, NDNObjectInfo, NamedObject, ObjectDesc, RawEncode, RawFrom, SignatureSource, SingleKeyObjectDesc, StandardObject, AreaObjectDesc};
 use cyfs_core::{AppList, AppListObj, AppStatusObj, CoreObjectType, DecApp, DecAppObj};
 use std::convert::TryFrom;
 use std::path::Path;
@@ -216,6 +212,12 @@ pub fn show_desc(matches: &ArgMatches) {
                 AnyNamedObject::Standard(standard) => match standard {
                     StandardObject::Device(p) => {
                         println!("desc type: device");
+                        if matches.is_present("all") {
+                            if let Some(area) = p.desc().area() {
+                                println!("area: {}", area)
+                            }
+
+                        }
                         if matches.is_present("all") || matches.is_present("show_endpoint") {
                             print!("endpoint: [");
                             for endpoint in p.body().as_ref().unwrap().content().endpoints() {

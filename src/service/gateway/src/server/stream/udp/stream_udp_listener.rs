@@ -1,6 +1,7 @@
 use crate::upstream::UdpUpStreamManager;
 use crate::upstream::{UpstreamDatagramSender, MAXIMUM_UDP_PAYLOAD_SIZE};
 use cyfs_base::BuckyError;
+use cyfs_stack_loader::ListenerUtil;
 
 use async_std::net::UdpSocket;
 use async_std::task;
@@ -216,7 +217,7 @@ impl StreamUdpListenerManager {
     }
     */
     pub fn load(&mut self, server_node: &toml::value::Table) -> Result<(), BuckyError> {
-        let addr_list = match ::base::ListenerUtil::load_udp_listener(server_node) {
+        let addr_list = match ListenerUtil::load_udp_listener(server_node) {
             Ok(v) => v,
             Err(e) => {
                 return Err(e);

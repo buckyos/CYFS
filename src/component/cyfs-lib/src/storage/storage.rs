@@ -6,6 +6,7 @@ use cyfs_base::*;
 use cyfs_core::*;
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use async_std::sync::Mutex as AsyncMutex;
 
 struct NOCStorageRawHelper {
     id: String,
@@ -173,6 +174,7 @@ pub struct NOCGlobalStateStorage {
     path: String,
     target: Option<ObjectId>,
     noc: NOCStorageRawHelper,
+    op_lock: AsyncMutex<u32>,
 }
 
 impl NOCGlobalStateStorage {
@@ -192,6 +194,7 @@ impl NOCGlobalStateStorage {
             path,
             target,
             noc,
+            op_lock: AsyncMutex::new(0),
         }
     }
 
@@ -213,6 +216,9 @@ impl NOCStorage for NOCGlobalStateStorage {
     }
 
     async fn load(&self) -> BuckyResult<Option<Vec<u8>>> {
+        // info!("try load global state storage: path={}", self.path);
+        let _lock = self.op_lock.lock().await;
+
         let stub = self.create_global_stub();
 
         let path_stub = stub.create_path_op_env().await?;
@@ -250,6 +256,9 @@ impl NOCStorage for NOCGlobalStateStorage {
     }
 
     async fn save(&self, buf: Vec<u8>) -> BuckyResult<()> {
+        // info!("try save global state storage: path={}", self.path);
+        let _lock = self.op_lock.lock().await;
+
         // First save as storage object to noc
         let storage_id = self.noc.save(buf, true).await.map_err(|mut e| {
             let msg = format!(
@@ -297,6 +306,9 @@ impl NOCStorage for NOCGlobalStateStorage {
     }
 
     async fn delete(&self) -> BuckyResult<()> {
+        // info!("try delete global state storage: path={}", self.path);
+        let _lock = self.op_lock.lock().await;
+
         // First update the global state to save the object_id
         let stub = self.create_global_stub();
         let path_stub = stub.create_path_op_env().await?;

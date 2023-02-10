@@ -257,7 +257,7 @@ impl SaveTarget {
     }
 }
 
-async fn save_obj<D, N>(target: SaveTarget, obj: &N)
+async fn save_obj<D, N>(target: SaveTarget, obj: &N) -> BuckyResult<()>
 where
     D: ObjectType,
     N: RawEncode,
@@ -286,6 +286,7 @@ where
                 }
                 Err(e) => {
                     error!("upload obj to meta fail, err {}", e);
+                    return Err(e);
                 }
             }
         }
@@ -295,9 +296,12 @@ where
             }
             Err(e) => {
                 info!("write obj to {} failed, err {}", path, e);
+                return Err(e)
             }
         },
     }
+
+    Ok(())
 }
 
 lazy_static! {
@@ -673,6 +677,7 @@ async fn main_run() -> BuckyResult<()> {
                                 }
                                 Err(e) => {
                                     error!("upload app list {} to meta fail, err {}", &id, e);
+                                    return Err(e);
                                 }
                             }
                         } else {
@@ -687,16 +692,18 @@ async fn main_run() -> BuckyResult<()> {
                                         path.display(),
                                         e
                                     );
+                                    return Err(e);
                                 }
                             }
                         }
+                        Ok(())
                     })
-                    .await;
+                    .await
                 }
                 ("put", Some(matches)) => {
                     let matches = matches.clone();
                     async_std::task::spawn(async move {
-                        let (mut list, target) = get_list(&matches).await.unwrap();
+                        let (mut list, target) = get_list(&matches).await?;
 
                         let app_id =
                             DecAppId::from_str(matches.value_of("appid").unwrap()).unwrap();
@@ -708,38 +715,38 @@ async fn main_run() -> BuckyResult<()> {
                             matches.is_present("status"),
                         );
                         list.put(status);
-                        save_obj(target, &list).await;
+                        save_obj(target, &list).await
                     })
-                    .await;
+                    .await
                 }
                 ("remove", Some(matches)) => {
                     let matches = matches.clone();
                     async_std::task::spawn(async move {
-                        let (mut list, target) = get_list(&matches).await.unwrap();
+                        let (mut list, target) = get_list(&matches).await?;
 
                         let app_id =
                             DecAppId::from_str(matches.value_of("appid").unwrap()).unwrap();
                         list.remove(&app_id);
 
-                        save_obj(target, &list).await;
+                        save_obj(target, &list).await
                     })
-                    .await;
+                    .await
                 }
                 ("clear", Some(matches)) => {
                     let matches = matches.clone();
                     async_std::task::spawn(async move {
-                        let (mut list, target) = get_list(&matches).await.unwrap();
+                        let (mut list, target) = get_list(&matches).await?;
 
                         list.clear();
 
-                        save_obj(target, &list).await;
+                        save_obj(target, &list).await
                     })
-                    .await;
+                    .await
                 }
                 ("show", Some(matches)) => {
                     let matches = matches.clone();
                     async_std::task::spawn(async move {
-                        let (list, _) = get_list(&matches).await.unwrap();
+                        let (list, _) = get_list(&matches).await?;
 
                         println!("desc type: App List");
                         println!("owner: {}", list.desc().owner().unwrap());
@@ -753,13 +760,14 @@ async fn main_run() -> BuckyResult<()> {
                                 status.status()
                             )
                         }
+                        Ok(())
                     })
-                    .await;
+                    .await
                 }
                 ("update", Some(matches)) => {
                     let matches = matches.clone();
                     async_std::task::spawn(async move {
-                        let (mut list, target) = get_list(&matches).await.unwrap();
+                        let (mut list, target) = get_list(&matches).await?;
                         let config: serde_json::Value = serde_json::from_reader(
                             std::fs::File::open(matches.value_of("config").unwrap()).unwrap(),
                         )
@@ -800,13 +808,14 @@ async fn main_run() -> BuckyResult<()> {
                             list.put(status);
                         }
 
-                        save_obj(target, &list).await;
+                        save_obj(target, &list).await
                     })
-                    .await;
+                    .await
                 }
                 v @ _ => {
                     error!("unknown list command: {}", v.0);
-                    std::process::exit(1);
+                    Err(BuckyError::new(BuckyErrorCode::NotSupport, v.0))
+                    // std::process::exit(1);
                 }
             }
         }
@@ -842,6 +851,7 @@ async fn main_run() -> BuckyResult<()> {
                             }
                             Err(e) => {
                                 error!("upload app {} to meta fail, err {}", &id, e);
+                                return Err(e)
                             }
                         }
                     } else {
@@ -852,77 +862,79 @@ async fn main_run() -> BuckyResult<()> {
                             }
                             Err(e) => {
                                 error!("write app to file {} fail, err {}", path.display(), e);
+                                return Err(e)
                             }
                         }
                     }
-                })
-                .await;
+                    Ok(())
+                }).await
             }
             ("set", Some(matches)) => {
                 let matches = matches.clone();
                 async_std::task::spawn(async move {
-                    let (mut app, target) = get_app(&matches).await.unwrap();
+                    let (mut app, target) = get_app(&matches).await?;
 
                     let source = ObjectId::from_str(matches.value_of("source").unwrap()).unwrap();
                     let ver = matches.value_of("appver").unwrap().to_owned();
                     app.set_source(ver, source, None);
 
-                    save_obj(target, &app).await;
+                    save_obj(target, &app).await
                 })
-                .await;
+                .await
             }
             ("remove", Some(matches)) => {
                 let matches = matches.clone();
                 async_std::task::spawn(async move {
-                    let (mut app, target) = get_app(&matches).await.unwrap();
+                    let (mut app, target) = get_app(&matches).await?;
 
                     let ver = matches.value_of("appver").unwrap();
                     app.remove_source(&ver);
 
-                    save_obj(target, &app).await;
+                    save_obj(target, &app).await
                 })
-                .await;
+                .await
             }
             ("clear", Some(matches)) => {
                 let matches = matches.clone();
                 async_std::task::spawn(async move {
-                    let (mut app, target) = get_app(&matches).await.unwrap();
+                    let (mut app, target) = get_app(&matches).await?;
 
                     app.clear_source();
 
-                    save_obj(target, &app).await;
+                    save_obj(target, &app).await
                 })
-                .await;
+                .await
             }
             ("show", Some(matches)) => {
                 let matches = matches.clone();
                 async_std::task::spawn(async move {
-                    let (app, _) = get_app(&matches).await.unwrap();
+                    let (app, _) = get_app(&matches).await?;
 
                     println!("desc type: Dec App");
                     println!("name {}", app.name());
                     for (ver, source) in app.source() {
                         println!("app have source: {} : {}", ver, source);
                     }
+                    Ok(())
                 })
-                .await;
+                .await
             }
             v @ _ => {
                 error!("unknown list command: {}", v.0);
-                std::process::exit(1);
+                Err(BuckyError::new(BuckyErrorCode::NotSupport, v.0))
+                //std::process::exit(1);
             }
         },
         v @ _ => {
             error!("unknown command: {}", v.0);
-            std::process::exit(1);
+            Err(BuckyError::new(BuckyErrorCode::NotSupport, v.0))
+            //std::process::exit(1);
         }
     }
-
-    Ok(())
 }
 
-fn main() {
+fn main() -> BuckyResult<()> {
     cyfs_debug::ProcessDeadHelper::patch_task_min_thread();
 
-    async_std::task::block_on(main_run());
+    async_std::task::block_on(main_run())
 }

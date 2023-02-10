@@ -37,7 +37,7 @@ impl NFTDesc {
                 desc.content().hash().clone()
             }
             NFTDesc::ListDesc(desc) => {
-                HashValue::from(desc.calculate_id().as_slice())
+                HashValue::try_from(desc.calculate_id().as_slice()).unwrap()
             }
             NFTDesc::FileDesc2((desc, _)) => {
                 desc.content().hash().clone()

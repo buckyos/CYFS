@@ -11,6 +11,7 @@ description = "Rust app-manager-lib package"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_trace"] }
 toml = "0.5"
 cyfs-base = {path="../../component/cyfs-base"}
+cyfs-core = {path="../../component/cyfs-core"}
 cyfs-util = { path = "../../component/cyfs-util" }
 serde = "1.0"
 serde_json = "1.0"

@@ -1,13 +1,12 @@
+use cyfs_base_meta::*;
+use crate::state_storage::{StateRef, StateWeakRef};
 use super::context;
 use crate::archive_storage::*;
 use crate::executor::context::AccountMethods;
 use crate::helper::ArcWeakHelper;
 use crate::meta_backend::MetaBackend;
-use crate::state_storage::{StateRef, StateWeakRef};
-use crate::{State, ViewBalanceResult};
-use cyfs_base::*;
-use cyfs_base_meta::*;
-use evm::executor::{MemoryStackState, StackExecutor, StackSubstateMetadata};
+use evm::executor::{MemoryStackState, StackSubstateMetadata, StackExecutor};
+use crate::stat::Stat;
 
 struct ViewExecuteContext {}
 
@@ -16,22 +15,17 @@ impl ViewExecuteContext {}
 pub struct ViewMethodExecutor<M: ViewMethod> {
     method: M,
     ref_state: StateWeakRef,
-    ref_archive: ArchiveWeakRef,
+    stat: Option<Stat>,
     block: BlockDesc,
     evm_config: evm::Config,
 }
 
-impl<M: ViewMethod> ViewMethodExecutor<M> {
-    pub fn new(
-        block: &BlockDesc,
-        ref_state: &StateRef,
-        ref_archive: &ArchiveRef,
-        method: M,
-    ) -> ViewMethodExecutor<M> {
+impl <M: ViewMethod> ViewMethodExecutor<M> {
+    pub fn new(block: &BlockDesc, ref_state: &StateRef, stat: Option<Stat>, method: M) -> ViewMethodExecutor<M> {
         ViewMethodExecutor {
             method,
             ref_state: StateRef::downgrade(ref_state),
-            ref_archive: ArchiveRef::downgrade(ref_archive),
+            stat,
             block: block.clone(),
             evm_config: evm::Config::istanbul(), // 先把evm的config创建在这里，以后能自己设置了，应该是外边传进来的
         }
@@ -69,7 +63,13 @@ impl ViewMethodExecutor<ViewBalanceMethod> {
 
 impl ViewMethodExecutor<ViewDescMethod> {
     pub async fn exec(&self) -> BuckyResult<<ViewDescMethod as ViewMethod>::Result> {
-        self.ref_state.to_rc()?.get_obj_desc(&self.method.id).await
+        let ret = self.ref_state.to_rc()?.get_obj_desc(&self.method.id).await;
+
+        if let Some(stat) = &self.stat {
+            stat.query_desc(&self.method.id, ret.is_ok());
+        }
+
+        ret
     }
 }
 
@@ -85,14 +85,8 @@ impl ViewMethodExecutor<ViewNameMethod> {
 // 查询objects
 impl ViewMethodExecutor<ViewRawMethod> {
     pub async fn exec(&self) -> BuckyResult<<ViewRawMethod as ViewMethod>::Result> {
-        match self.ref_state.to_rc()?.get_obj_desc(&self.method.id).await {
+        let ret = match self.ref_state.to_rc()?.get_obj_desc(&self.method.id).await {
             Ok(obj) => {
-                let status: u8 = 0/* success*/;
-                let _ = self
-                    .ref_archive
-                    .to_rc()?
-                    .set_meta_object_stat(&self.method.id, status)
-                    .await;
                 match obj {
                     SavedMetaObject::Device(obj) => Ok(obj.to_vec()?),
                     SavedMetaObject::People(obj) => Ok(obj.to_vec()?),
@@ -110,15 +104,13 @@ impl ViewMethodExecutor<ViewRawMethod> {
                 }
             }
             Err(e) => {
-                let status: u8 = 1 /* failed */;
-                let _ = self
-                    .ref_archive
-                    .to_rc()?
-                    .set_meta_object_stat(&self.method.id, status)
-                    .await;
-                return Err(e);
+                Err(e)
             }
+        };
+        if let Some(stat) = &self.stat {
+            stat.query_desc(&self.method.id, ret.is_ok());
         }
+        ret
     }
 }
 

@@ -25,6 +25,9 @@ mod storage;
 mod meta;
 mod call;
 mod mime;
+mod object_meta_access;
+mod shared_stack;
+mod context;
 
 pub async fn test_restart() {
     let stack = TestLoader::get_stack(DeviceIndex::User1OOD);
@@ -34,22 +37,29 @@ pub async fn test_restart() {
 }
 
 pub async fn test() {
+    async_std::task::spawn(async move {
+        shared_stack::test().await;
+    });
+
+    
     // role::test().await;
 
     // meta::test().await;
 
     // crypto::test().await;
 
-    //root_state::test().await;
+    non::test().await;
+    codec::test().await;
+    meta::test().await;
+    util::test().await;
+    context::test().await;
+    root_state::test().await;
     mime::test().await;
     ndn::test().await;
-    //non::test().await;
-    //call::test().await;
+    call::test().await;
+    object_meta_access::test().await;
     return;
 
-    meta::test().await;
-    
-    codec::test().await;
     test_restart().await;
 
     test_obj_searcher::test().await;
@@ -60,15 +70,7 @@ pub async fn test() {
     // crypto::test().await;
     zone::test().await;
 
-    // perf::test().await;
-
-    util::test().await;
-    root_state::test().await;
-
-    ndn::test().await;
-
     non_handlers::test().await;
-    non::test().await;
     //non_file::test().await;
 
     trans::test().await;

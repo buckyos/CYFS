@@ -49,7 +49,10 @@ impl JsonCodec<DeviceStaticInfo> for DeviceStaticInfo {
         if self.sn_list.len() > 0 {
             JsonCodecHelper::encode_str_array_field(&mut obj, "sn_list", &self.sn_list);
         }
-        
+        if self.known_sn_list.len() > 0 {
+            JsonCodecHelper::encode_str_array_field(&mut obj, "known_sn_list", &self.known_sn_list);
+        }
+
         obj
     }
 
@@ -69,6 +72,7 @@ impl JsonCodec<DeviceStaticInfo> for DeviceStaticInfo {
             owner_id: JsonCodecHelper::decode_option_string_field(obj, "owner_id")?,
             cyfs_root: JsonCodecHelper::decode_string_field(obj, "cyfs_root")?,
             sn_list: JsonCodecHelper::decode_str_array_field(obj, "sn_list")?,
+            known_sn_list: JsonCodecHelper::decode_str_array_field(obj, "known_sn_list")?,
         };
 
         Ok(ret)
@@ -242,11 +246,20 @@ impl JsonCodec<UtilBuildFileOutputRequest> for UtilBuildFileOutputRequest {
         );
         JsonCodecHelper::encode_string_field(&mut obj, "owner", &self.owner);
         JsonCodecHelper::encode_number_field(&mut obj, "chunk_size", self.chunk_size);
+
+        if let Some(access) = &self.access {
+            JsonCodecHelper::encode_number_field(&mut obj, "access", access.value());
+        }
+        
         obj
     }
 
     fn decode_json(obj: &Map<String, Value>) -> BuckyResult<UtilBuildFileOutputRequest> {
         let common: UtilOutputRequestCommon = JsonCodecHelper::decode_field(obj, "common")?;
+
+        let access: Option<u32> = JsonCodecHelper::decode_option_int_field(obj, "access")?;
+        let access = access.map(|v| AccessString::new(v));
+
         Ok(Self {
             common,
             local_path: PathBuf::from(JsonCodecHelper::decode_string_field::<String>(
@@ -255,6 +268,7 @@ impl JsonCodec<UtilBuildFileOutputRequest> for UtilBuildFileOutputRequest {
             )?),
             owner: JsonCodecHelper::decode_string_field(obj, "owner")?,
             chunk_size: JsonCodecHelper::decode_int_field(obj, "chunk_size")?,
+            access,
         })
     }
 }

@@ -7,7 +7,8 @@ use cyfs_util::{process::ProcessStatusCode};
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use cyfs_debug::Mutex;
 
 #[derive(Debug)]
 struct ServiceInnerState {
@@ -26,7 +27,7 @@ impl ServiceInnerState {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Service {
     name: String,
     fid: String,
@@ -118,15 +119,9 @@ impl Service {
         }
     }
 
-    fn start(&self, need_update_state: bool) {
+    // start the process and change the state on success!
+    fn start(&self) {
         if self.as_ood_daemon() {
-            return;
-        }
-
-        if need_update_state {
-            self.update_state();
-        }
-        if self.state() == ServiceState::RUN {
             return;
         }
 
@@ -142,29 +137,20 @@ impl Service {
         }
     }
 
-    fn stop(&self, need_update_state: bool) {
+    // stop process and change the state
+    fn stop(&self) {
         if self.as_ood_daemon() {
             return;
         }
 
-        if need_update_state {
-            self.update_state();
-        }
-
-        if self.state() == ServiceState::STOP {
-            return;
-        }
-
-        if self.info.lock().unwrap().get_script("stop").is_none() {
-            warn!("stop script is none, service={}", self.name);
+        // 如果进程是我们自己拉起的，那么优先尝试使用进程对象来停止
+        if self.state.lock().unwrap().process.is_some() {
             self.kill_process();
-        } else {
-            self.stop_process_by_cmd();
         }
 
-        if need_update_state {
-            self.update_state();
-        }
+        self.stop_process_by_cmd();
+
+        self.change_state(ServiceState::STOP);
     }
 
     pub fn sync_state(&self, target_state: ServiceState) {
@@ -203,10 +189,10 @@ impl Service {
 
         match target_state {
             ServiceState::RUN => {
-                self.start(false);
+                self.start();
             }
             ServiceState::STOP => {
-                self.stop(false);
+                self.stop();
             }
         }
     }
@@ -219,8 +205,10 @@ impl Service {
         }
 
         let process = self.state.lock().unwrap().process.take();
-
-        assert!(process.is_some());
+        if process.is_none() {
+            error!("try kill process but process object is none! name={}", self.name);
+            return;
+        }
 
         let mut process = process.unwrap();
         match process.kill() {
@@ -253,11 +241,6 @@ impl Service {
 
     fn stop_process_by_cmd(&self) {
         assert!(!self.as_ood_daemon());
-
-        // 如果进程是我们自己拉起的，那么优先尝试使用进程对象来停止
-        if self.state.lock().unwrap().process.is_some() {
-            self.kill_process();
-        }
 
         // 使用package.cfg里面配置的stop命令来停止
         let stop_script = self.info.lock().unwrap().get_script("stop");
@@ -300,6 +283,7 @@ impl Service {
         }
     }
 
+    // launch the process and change the state if success!
     fn start_process(&self) {
         // assert!(!self.as_ood_daemon());
 
@@ -314,7 +298,7 @@ impl Service {
             return;
         }
 
-        assert_eq!(self.state(), ServiceState::STOP);
+        // assert_eq!(self.state(), ServiceState::STOP);
 
         let v = start_script.as_ref().unwrap();
 
@@ -349,7 +333,6 @@ impl Service {
         }
 
         let mut need_cmd_check = false;
-        let mut need_change_state = false;
         {
             let mut state = self.state.lock().unwrap();
             let process = state.process.take();
@@ -359,7 +342,7 @@ impl Service {
                 let mut process = process.unwrap();
                 match process.try_wait() {
                     Ok(Some(status)) => {
-                        info!("service exited, name={}, status={}", self.name, status);
+                        info!("service exited, name={}, status={}, current state={}", self.name, status, state.state);
                         match process.wait() {
                             Ok(_) => {
                                 info!("wait service process complete! name={}", self.name);
@@ -368,14 +351,18 @@ impl Service {
                                 info!("wait service process error! name={}, err={}", self.name, e);
                             }
                         }
-                        need_change_state = true;
+                        state.state = ServiceState::STOP;
                     }
                     Ok(None) => {
-                        debug!("service running: {}", self.name);
-                        assert_eq!(state.state, ServiceState::RUN);
+                        debug!("service still running: {}", self.name);
 
                         // 仍然在运行，需要保留进程object并继续等待
                         state.process = Some(process);
+
+                        if state.state != ServiceState::RUN {
+                            warn!("process object exists and still running but state is not run! service={}, current state={}", self.name, state.state);
+                            state.state = ServiceState::RUN;
+                        }
                     }
                     Err(e) => {
                         // 出错的情况下，直接放弃这个进程object，并使用cmd进一步检测
@@ -386,20 +373,13 @@ impl Service {
             }
         }
 
-        if need_change_state {
-            self.change_state(ServiceState::STOP);
-        }
-
         if need_cmd_check {
             // 如果进程对象不存在，那么尝试通过命令行来检测
-            self.check_process_by_cmd();
+            self.update_state_by_cmd();
         }
     }
 
-    // 使用check命令行来检测进程是否存在
-    fn check_process_by_cmd(&self) {
-        assert!(!self.as_ood_daemon());
-
+    pub fn check_status_by_cmd(&self) -> Option<i32> {
         let check_script = self.info.lock().unwrap().get_script("status");
         if check_script.is_none() {
             warn!(
@@ -407,9 +387,7 @@ impl Service {
                 self.name
             );
 
-            // 默认为停止
-            self.change_state(ServiceState::STOP);
-            return;
+            return None;
         }
 
         // 检测进程的退出码，0表示不存在，> 0表示目标进程的pid
@@ -440,28 +418,44 @@ impl Service {
             },
             Err(err) => {
                 error!(
-                    "exec stop cmd error! name={}, err={}, cmd={}",
+                    "exec check cmd error! name={}, err={}, cmd={}",
                     self.name, err, v
                 );
             }
         }
 
-        if exit_code != ProcessStatusCode::NotExists as i32 {
-            debug!(
-                "check service in running: exit code={}, service={}, fid={}",
-                exit_code,
-                self.name(),
-                self.fid
-            );
-            self.change_state(ServiceState::RUN);
+        Some(exit_code)
+    }
 
-            if exit_code == ProcessStatusCode::RunningOther as i32 {
+    // use the status cmd to check the process and update the state
+    fn update_state_by_cmd(&self) {
+        assert!(!self.as_ood_daemon());
+
+        let ret = self.check_status_by_cmd();
+        if ret.is_none() {
+            // 默认为停止
+            self.change_state(ServiceState::STOP);
+            return;
+        }
+
+        let exit_code = ret.unwrap();
+        if exit_code != ProcessStatusCode::NotExists as i32 {
+            if ProcessStatusCode::is_running_other(exit_code) {
                 warn!(
                     "service running but fid not match! now will kill process, service={}, fid={}",
                     self.name, self.fid
                 );
-                self.stop(false);
+
+                self.stop();
+                self.change_state(ServiceState::STOP);
             } else {
+                debug!(
+                    "check service in running: exit code={}, service={}, fid={}",
+                    exit_code,
+                    self.name(),
+                    self.fid
+                );
+                self.change_state(ServiceState::RUN);
             }
         } else {
             self.change_state(ServiceState::STOP);
@@ -558,10 +552,28 @@ impl Service {
         self.sync_state(ServiceState::STOP);
 
         // 加载新的包文件
-        self.info.lock().unwrap().load_package_file(&file)
+        let ret = self.info.lock().unwrap().load_package_file(&file)?;
+
+        self.sync_state(ServiceState::STOP);
+
+        Ok(ret)
     }
 
     pub fn check_package(&self) -> bool {
         self.info.lock().unwrap().check_package()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::process::Command;
+
+    #[test]
+    fn test_exit_code() {
+        // let mut output = Command::new("H:/work/CYFS_PUBLIC/src/target/debug/ood-daemon.exe");
+        let mut output = Command::new("/mnt/h/work/CYFS_PUBLIC/src/target/debug/ood-daemon");
+        let mut p = output.spawn().unwrap();
+        let status = p.wait().unwrap();
+        assert_eq!(status.code().unwrap(), -1);
     }
 }

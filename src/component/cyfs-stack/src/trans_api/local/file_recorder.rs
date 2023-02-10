@@ -49,10 +49,11 @@ impl FileRecorder {
         source: &Path,
         chunk_size: u32,
         dirs: Option<Vec<FileDirRef>>,
+        access: Option<AccessString>,
     ) -> BuckyResult<FileId> {
         let file = Self::generate_file(owner, source, chunk_size).await?;
 
-        self.record_file(source, &file, dirs).await?;
+        self.record_file(source, &file, dirs, access).await?;
 
         Ok(file.desc().file_id())
     }
@@ -184,6 +185,7 @@ impl FileRecorder {
         source: &Path,
         file: &File,
         dirs: Option<Vec<FileDirRef>>,
+        access: Option<AccessString>,
     ) -> BuckyResult<()> {
         let file_id = file.desc().file_id();
 
@@ -200,7 +202,7 @@ impl FileRecorder {
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
             last_access_rpath: None,
-            access_string: None,
+            access_string: access.map(|v| v.value()),
         };
 
         match self.noc.put_object(&req).await {
@@ -347,6 +349,7 @@ impl FileRecorder {
         owner: &ObjectId,
         source: &Path,
         chunk_size: u32,
+        access: Option<AccessString>,
     ) -> BuckyResult<(DirId, Vec<(FileId, PathBuf)>)> {
         let mut scaner = DirScaner::new(source);
         scaner.scan_all_dir().await?;
@@ -419,12 +422,12 @@ impl FileRecorder {
         let dir_id = dir.desc().dir_id();
 
         // 登记所有的文件
-        for (file_path, inner_file_path, file) in file_list {
+        for (file_path, inner_path, file) in file_list {
             let dir_ref = FileDirRef {
                 dir_id: dir_id.clone(),
-                inner_path: inner_file_path,
+                inner_path,
             };
-            self.record_file(&file_path, &file, Some(vec![dir_ref]))
+            self.record_file(&file_path, &file, Some(vec![dir_ref]), access.clone())
                 .await?;
         }
 
@@ -439,7 +442,7 @@ impl FileRecorder {
             storage_category: NamedObjectStorageCategory::Storage,
             context: None,
             last_access_rpath: None,
-            access_string: None,
+            access_string: access.map(|v| v.value()),
         };
 
         match self.noc.put_object(&req).await {

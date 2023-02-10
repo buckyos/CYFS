@@ -1,6 +1,7 @@
 use super::validate::GlobalStateValidator;
 use crate::root_state_api::GlobalStateLocalService;
 use cyfs_lib::*;
+use cyfs_base::*;
 
 #[derive(Clone)]
 pub struct GlobalStateValidatorManager {
@@ -9,10 +10,10 @@ pub struct GlobalStateValidatorManager {
 }
 
 impl GlobalStateValidatorManager {
-    pub fn new(root_state: &GlobalStateLocalService, local_cache: &GlobalStateLocalService) -> Self {
+    pub fn new(device_id: &DeviceId, root_state: &GlobalStateLocalService, local_cache: &GlobalStateLocalService) -> Self {
         Self {
-            root_state: GlobalStateValidator::new(root_state.state().clone()),
-            local_cache: GlobalStateValidator::new(local_cache.state().clone()),
+            root_state: GlobalStateValidator::new(device_id.clone(), root_state.state().clone()),
+            local_cache: GlobalStateValidator::new(device_id.clone(), local_cache.state().clone()),
         }
     }
 

@@ -137,54 +137,6 @@ impl Tunnel {
         tunnel
     }
 
-    pub fn mark_dead(&self, former_state: tunnel::TunnelState) {
-        let notify = match &former_state {
-            tunnel::TunnelState::Connecting => {
-                let state = &mut *self.0.state.lock().unwrap();
-                match state {
-                    TunnelState::Connecting(connecting) => {
-                        info!("{} Connecting=>Dead", self);
-                        let owner = connecting.owner.clone();
-                        *state = TunnelState::Dead;
-                        Some((owner, tunnel::TunnelState::Dead, None))
-                    }, 
-                    _ => {
-                        None
-                    }
-                }
-            }, 
-            tunnel::TunnelState::Active(remote_timestamp) => {
-                let remote_timestamp = *remote_timestamp;
-                let state = &mut *self.0.state.lock().unwrap();
-                match state {
-                    TunnelState::Active(active) => {
-                        let owner = active.owner.clone();
-                        if active.remote_timestamp == remote_timestamp {
-                            info!("{} Active({})=>Dead for active by {}", self, active.remote_timestamp, remote_timestamp);
-                            let mut dead_waiters = StateWaiter::new();
-                            std::mem::swap(&mut dead_waiters, &mut active.dead_waiters);
-                            *state = TunnelState::Dead;
-                            Some((owner, tunnel::TunnelState::Dead, Some(dead_waiters)))
-                        } else {
-                            None
-                        }
-                    }, 
-                    _ => {
-                        None
-                    }
-                }
-            }, 
-            tunnel::TunnelState::Dead => None
-        };
-
-        if let Some((owner, new_state, dead_waiters)) = notify {
-            if let Some(dead_waiters) = dead_waiters {
-                dead_waiters.wake();
-            }
-            owner.sync_tunnel_state(&DynamicTunnel::new(self.clone()), former_state, new_state);
-        }
-    }
-
     pub fn pre_active(&self, remote_timestamp: Timestamp) -> BuckyResult<TunnelContainer> {
         self.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
         struct NextStep {
@@ -636,7 +588,7 @@ impl Tunnel {
             stack_version: owner.stack_version(),  
             to_device_id: owner.remote().clone(),
             sequence: syn_seq.clone(),
-            from_device_desc: stack.local().clone(),
+            from_device_desc: stack.sn_client().ping().default_local(), 
             send_time: bucky_time_now()
         };
         let resp_box = interface.confirm_connect(&stack, vec![DynamicPackage::from(syn_tunnel)], owner.config().tcp.confirm_timeout).await?;
@@ -661,9 +613,8 @@ impl Tunnel {
 
     async fn reverse_connect_inner(&self, owner: TunnelContainer, reg: AbortRegistration) -> Result<(), BuckyError> {
         let stack = owner.stack();
-        let remote = stack.device_cache().get(owner.remote()).await.ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "device not cached"))?;
+        let remote = stack.device_cache().get_inner(owner.remote()).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "device not cached"))?;
         let sn_id = remote.connect_info().sn_list().get(0).ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "device no sn"))?;
-        let sn = stack.device_cache().get(sn_id).await.ok_or_else(| | BuckyError::new(BuckyErrorCode::NotFound, "sn not cached"))?;
 
         let key_stub = stack.keystore().create_key(owner.remote_const(), true);
         let mut syn_box = PackageBox::encrypt_box(owner.remote().clone(), key_stub.key.clone());
@@ -672,7 +623,7 @@ impl Tunnel {
             stack_version: owner.stack_version(),  
             to_device_id: owner.remote().clone(),
             sequence: owner.generate_sequence(),
-            from_device_desc: stack.local().clone(),
+            from_device_desc: stack.sn_client().ping().default_local(), 
             send_time: bucky_time_now()
         };
         if let keystore::EncryptedKey::Unconfirmed(encrypted) = key_stub.encrypted {
@@ -697,22 +648,19 @@ impl Tunnel {
             }
         }
 
-        let _ = stack.sn_client().call(
-            &endpoints, 
-            owner.remote(), 
-            &sn, 
-            true, 
-            true,
-            false,
+        let call_session = stack.sn_client().call().call(
+            Some(&endpoints), 
+            owner.remote(),
+            &vec![sn_id.clone()],
             |sn_call| {
                 let mut context = udp::PackageBoxEncodeContext::from(sn_call);
                 let mut buf = vec![0u8; interface::udp::MTU_LARGE];
                 let enc_len = syn_box.raw_tail_encode_with_context(&mut buf, &mut context, &None).unwrap().len();
                 buf.truncate(enc_len);
                 buf
-            }).await;
+            }).await?;
                 
-        let waiter = Abortable::new(future::pending::<()>(), reg);
+        let waiter = Abortable::new(call_session.next(), reg);
         let _ = future::timeout(owner.config().connect_timeout, waiter).await?;
         Ok(())
     }
@@ -899,7 +847,7 @@ impl Tunnel {
             // tunnel显式销毁时，需要shutdown tcp stream; 这里receive_package就会出错了
             match interface.receive_package(&mut recv_buf).await {
                 Ok(recv_box) => {
-                    tunnel.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
+                    // tunnel.0.last_active.store(bucky_time_now(), Ordering::SeqCst);
 
                     match recv_box {
                         RecvBox::Package(package_box) => {
@@ -921,7 +869,7 @@ impl Tunnel {
                             }
                         }, 
                         RecvBox::RawData(raw_data) => {
-                            let _ = owner.on_raw_data(raw_data);
+                            let _ = owner.on_raw_data(raw_data, DynamicTunnel::new(tunnel.clone()));
                         }
                     }
                 }, 
@@ -1181,6 +1129,54 @@ impl tunnel::Tunnel for Tunnel {
             dead_waiters.wake();
         }
     }
+
+    fn mark_dead(&self, former_state: tunnel::TunnelState) {
+        let notify = match &former_state {
+            tunnel::TunnelState::Connecting => {
+                let state = &mut *self.0.state.lock().unwrap();
+                match state {
+                    TunnelState::Connecting(connecting) => {
+                        info!("{} Connecting=>Dead", self);
+                        let owner = connecting.owner.clone();
+                        *state = TunnelState::Dead;
+                        Some((owner, tunnel::TunnelState::Dead, None))
+                    }, 
+                    _ => {
+                        None
+                    }
+                }
+            }, 
+            tunnel::TunnelState::Active(remote_timestamp) => {
+                let remote_timestamp = *remote_timestamp;
+                let state = &mut *self.0.state.lock().unwrap();
+                match state {
+                    TunnelState::Active(active) => {
+                        let owner = active.owner.clone();
+                        if active.remote_timestamp == remote_timestamp {
+                            info!("{} Active({})=>Dead for active by {}", self, active.remote_timestamp, remote_timestamp);
+                            let mut dead_waiters = StateWaiter::new();
+                            std::mem::swap(&mut dead_waiters, &mut active.dead_waiters);
+                            *state = TunnelState::Dead;
+                            Some((owner, tunnel::TunnelState::Dead, Some(dead_waiters)))
+                        } else {
+                            None
+                        }
+                    }, 
+                    _ => {
+                        None
+                    }
+                }
+            }, 
+            tunnel::TunnelState::Dead => None
+        };
+
+        if let Some((owner, new_state, dead_waiters)) = notify {
+            if let Some(dead_waiters) = dead_waiters {
+                dead_waiters.wake();
+            }
+            owner.sync_tunnel_state(&DynamicTunnel::new(self.clone()), former_state, new_state);
+        }
+    }
 }
 
 impl OnPackage<PingTunnel> for Tunnel {
@@ -1248,7 +1244,7 @@ impl OnTcpInterface for Tunnel {
                     result: ret,
                     send_time: bucky_time_now(),
                     mtu: udp::MTU as u16,
-                    to_device_desc: owner.stack().local().clone(),
+                    to_device_desc: owner.stack().sn_client().ping().default_local()
                 };
                 let tunnel = self.clone();
                 task::spawn(async move {
