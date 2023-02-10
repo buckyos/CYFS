@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs::create_dir_all;
 use std::io::{SeekFrom};
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
@@ -224,6 +225,10 @@ impl LocalFile {
     pub async fn open(local_path: PathBuf, file: File) -> BuckyResult<Self> {
         async_std::task::spawn_blocking(move || {
             let file_handle = if !local_path.exists() {
+                let parent = local_path.parent();
+                if parent.is_some() && !parent.as_ref().unwrap().exists() {
+                    let _ = create_dir_all(parent.as_ref().unwrap());
+                }
                 let file_handle = std::fs::OpenOptions::new().create(true).read(true).write(true).open(local_path.as_path()).map_err(|e| {
                     let msg = format!("open file {} failed.err {}", local_path.display(), e);
                     log::error!("{}", msg);
