@@ -221,13 +221,21 @@ impl NONGetObjectOutputRequest {
     pub fn object_debug_info(&self) -> String {
         if let Some(req_path) = &self.common.req_path {
             if let Some(inner_path) = &self.inner_path {
-                format!("{}:{}:{}", req_path, self.object_id, inner_path)
+                if inner_path.starts_with('/') {
+                    format!("{}:{}{}", req_path, self.object_id, inner_path)
+                } else {
+                    format!("{}:{}/{}", req_path, self.object_id, inner_path)
+                }
             } else {
                 format!("{}:{}", req_path, self.object_id)
             }
         } else {
             if let Some(inner_path) = &self.inner_path {
-                format!("{}:{}", self.object_id, inner_path)
+                if inner_path.starts_with('/') {
+                    format!("{}{}", self.object_id, inner_path)
+                } else {
+                    format!("{}/{}", self.object_id, inner_path)
+                }
             } else {
                 self.object_id.to_string()
             }
