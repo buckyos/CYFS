@@ -542,11 +542,12 @@ mod GroupDecService {
             });
 
             log::info!(
-                "proposal commited: height: {}, delta: {}, result: {} -> {}, local: {}",
-                block.height(),
+                "proposal commited: height: {}/{}, delta: {}, result: {} -> {}, block: {}, local: {}",
+                block.height(), block.round(),
                 delta,
                 pre_value,
                 result_value,
+                block.block_id(),
                 self.local_name
             );
         }

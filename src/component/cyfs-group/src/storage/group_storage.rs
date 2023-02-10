@@ -256,8 +256,11 @@ impl GroupStorage {
             Some(new_header) => {
                 self.dec_state_id = new_header.result_state_id().clone();
                 self.header_block = Some(new_header);
-                let mut removed_blocks =
-                    HashMap::from([new_pre_commit.expect("shoud got new pre-commit block")]);
+
+                let new_pre_commit = new_pre_commit.expect("shoud got new pre-commit block");
+                self.prepares.remove(&new_pre_commit.0);
+
+                let mut removed_blocks = HashMap::from([new_pre_commit]);
 
                 std::mem::swap(&mut self.pre_commits, &mut removed_blocks);
                 let mut removed_blocks: Vec<GroupConsensusBlock> =

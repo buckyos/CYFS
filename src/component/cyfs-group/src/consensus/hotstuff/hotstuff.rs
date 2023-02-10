@@ -609,8 +609,8 @@ impl HotstuffRunner {
          */
 
         log::info!(
-            "[hotstuff] local: {:?}, will push new block {:?} to storage",
-            self, block.block_id()
+            "[hotstuff] local: {:?}, will push new block {:?}/{}/{} to storage",
+            self, block.block_id(), block.height(), block.round()
         );
 
         let debug_identify = self.debug_identify();
@@ -1542,9 +1542,9 @@ impl HotstuffRunner {
         );
 
         log::debug!(
-            "[hotstuff] local: {:?}, generate_block new block {}",
+            "[hotstuff] local: {:?}, generate_block new block {}/{}/{}",
             self,
-            block.block_id()
+            block.block_id(), block.height(), block.round()
         );
 
         self.sign_block(&mut block).await.map_err(|err| {
