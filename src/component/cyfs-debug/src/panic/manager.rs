@@ -200,6 +200,13 @@ impl PanicBuilder {
         self
     }
 
+    // use dingtalk bug_report 
+    pub fn dingtalk_bug_report(mut self, dingtalk_url: &str) -> Self {
+        let handler = DingtalkNotifier::new(dingtalk_url);
+        self.bug_reporter = Some(Box::new(handler));
+        self
+    }
+
     // panic后是否结束进程，默认不结束
     pub fn exit_on_panic(mut self, exit: bool) -> Self {
         self.exit_on_panic = exit;
