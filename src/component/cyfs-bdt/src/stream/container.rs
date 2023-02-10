@@ -983,6 +983,7 @@ impl StreamContainer {
             let state = &*self.0.state.read().unwrap();
             match state {
                 StreamStateImpl::Establish(s, _) => Ok(s.provider.clone_as_provider()),
+				StreamStateImpl::Closed => Ok(None),
                 _ => {
                     //TODO 其他状态暂时不支持shutdown
                     Err(std::io::Error::new(
@@ -996,7 +997,12 @@ impl StreamContainer {
             error!("{} shutdown failed for {}", self, e);
             e
         })?;
-        provider.shutdown(which, &self)
+
+        if let Some(provider) = provider {
+            provider.shutdown(which, &self)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn readable(&self) -> StreamReadableFuture {
