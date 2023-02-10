@@ -4452,6 +4452,7 @@ dependencies = [
  "ood-control",
  "serde",
  "serde_json",
+ "tide",
  "toml",
  "zip",
 ]
