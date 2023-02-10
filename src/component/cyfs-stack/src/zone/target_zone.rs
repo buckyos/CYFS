@@ -48,7 +48,7 @@ impl TargetZoneManager {
                         Ok((zone.zone_id(), device_id))
                     }
 
-                    ObjectTypeCode::People | ObjectTypeCode::SimpleGroup => {
+                    ObjectTypeCode::People | ObjectTypeCode::Group => {
                         let zone = self.zone_manager.resolve_zone(target, object_raw).await?;
                         Ok((zone.zone_id(), zone.ood().clone()))
                     }
@@ -178,7 +178,7 @@ impl TargetZoneManager {
                 }
             }
 
-            ObjectTypeCode::People | ObjectTypeCode::SimpleGroup => {
+            ObjectTypeCode::People | ObjectTypeCode::Group => {
                 if info.owner_id == *target {
                     let ret = TargetZoneInfo {
                         is_current_zone: true,

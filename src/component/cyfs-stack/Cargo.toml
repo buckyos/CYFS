@@ -25,6 +25,7 @@ cyfs-task-manager = { path = "../../component/cyfs-task-manager" }
 cyfs-chunk-cache = { path = "../../component/cyfs-chunk-cache" }
 cyfs-util = { path = "../cyfs-util" }
 cyfs-meta-lib = { path = "../cyfs-meta-lib" }
+cyfs-group = { path = "../../component/cyfs-group" }
 #dsg-client = {path = "../dsg/dsg-client"}
 log = "0.4"
 serde = "1.0"

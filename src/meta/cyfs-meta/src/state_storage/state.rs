@@ -19,9 +19,10 @@ pub struct DescExtra {
 pub enum AccountInfo {
     People(PeopleDesc),
     Device(DeviceDesc),
-    Group(SimpleGroupDesc),
+    SimpleGroup,
     Union(UnionAccountDesc),
     MinerGroup(MinerGroup),
+    Group(GroupDesc),
 }
 
 impl AccountInfo {
@@ -33,14 +34,17 @@ impl AccountInfo {
             Self::Device(desc) => {
                 desc.calculate_id()
             }
-            Self::Group(desc) => {
-                desc.calculate_id()
+            Self::SimpleGroup => {
+                panic!("SimpleGroup is deprecated, you can use the Group.")
             }
             Self::Union(desc) => {
                 desc.calculate_id()
             }
             Self::MinerGroup(group) => {
                 group.desc().calculate_id()
+            }
+            Self::Group(desc) => {
+                desc.calculate_id()
             }
         }
     }
@@ -61,6 +65,9 @@ impl AccountInfo {
             }
             Self::MinerGroup(_) => {
                 Err(BuckyError::new(BuckyErrorCode::Failed, "Failed"))
+            }
+            Self::SimpleGroup => {
+                panic!("SimpleGroup is deprecated, you can use the Group.")
             }
         }
     }
