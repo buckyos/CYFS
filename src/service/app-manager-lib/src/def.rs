@@ -4,6 +4,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize};
 use cyfs_base::*;
 use log::*;
+use cyfs_util::get_cyfs_root_path;
 
 pub const CONFIG_FILE_NAME: &str = "app-manager.toml";
 
@@ -33,7 +34,9 @@ impl FromStr for RepoMode {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "named_data" {
-            return Ok(Self::NamedData)
+            return Ok(Self::NamedData);
+        } else if s == "local" {
+            return Ok(Self::Local(get_cyfs_root_path().join("app_repo")));
         }
 
         let parts: Vec<&str> = s.splitn(2, ":").collect();

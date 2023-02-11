@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use zip;
 
 use fs_extra::dir;
+use app_manager_lib::RepoMode;
 
 use cyfs_base::{BuckyError, BuckyErrorCode, BuckyResult, ObjectId};
 use cyfs_util::{get_app_acl_dir, get_app_dep_dir, get_app_dir, get_app_web_dir, get_temp_path};
@@ -26,12 +27,19 @@ pub struct AppPackage {
 }
 
 impl AppPackage {
-    pub async fn install(app_id: &DecAppId, dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient) -> BuckyResult<()> {
-        // 先下载到/cyfs/tmp/app/{appid}下
-        let tmp_path = get_temp_path().join("app").join(app_id.to_string());
-        Self::download(dir, owner, client, &tmp_path);
-        Self::install_from_local(app_id, &tmp_path, true)?;
-        Ok(())
+    pub async fn install(app_id: &DecAppId, dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, repo_mode: RepoMode) -> BuckyResult<()> {
+        match repo_mode {
+            RepoMode::NamedData => {
+                // 先下载到/cyfs/tmp/app/{appid}下
+                let tmp_path = get_temp_path().join("app").join(app_id.to_string());
+                Self::download(dir, owner, client, &tmp_path);
+                Self::install_from_local(app_id, &tmp_path, true)
+            }
+            RepoMode::Local(local_path) => {
+                let repo_path = local_path.join(dir.to_string());
+                Self::install_from_local(app_id, &repo_path, false)
+            }
+        }
     }
 
     pub async fn download(dir: &ObjectId, owner: &ObjectId, client: &NamedCacheClient, target_path: &Path) -> BuckyResult<()> {
@@ -41,6 +49,7 @@ impl AppPackage {
         }
         // 下载acl文件，/cyfs/tmp/app/{appid}/acl
         Self::download_acl(dir, owner, client, &target_path.join("acl")).await?;
+        Self::download_dep(dir, owner, client, &target_path.join("dep")).await?;
         let service_path = target_path.join("service");
         // 下载service文件，/cyfs/tmp/app/{appid}/service/{dir_id}.dl
         let service_pkg_path = service_path.join(dir.to_string()).with_extension("dl");
@@ -59,9 +68,11 @@ impl AppPackage {
         let app_str = app_id.to_string();
         let service_path = get_app_dir(&app_str);
         let acl_path = get_app_acl_dir(&app_str);
-        let dep_path = get_app_dep_dir(&app_str)
+        let dep_path = get_app_dep_dir(&app_str);
         // 拷贝acl
         Self::copy_dir_contents(&local_path.join("acl"), &acl_path)?;
+        // 拷贝dep
+        Self::copy_dir_contents(&local_path.join("dep"), &dep_path)?;
         // 拷贝service
         Self::copy_dir_contents(&local_path.join("service"), &service_path)?;
         // 拷贝webdir

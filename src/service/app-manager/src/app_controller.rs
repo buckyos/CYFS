@@ -417,28 +417,14 @@ impl AppController {
         &self,
         app_id: &DecAppId,
     ) -> BuckyResult<(String, String)> {
-        let dep_dir = get_app_dep_dir(&app_id.to_string(), version);
+        let dep_dir = get_app_dep_dir(&app_id.to_string());
         let dep_file = dep_dir.join("dependent.cfg");
         if dep_file.exists() {
-            info!("dep config already exists. app:{}, ver:{}", app_id, version);
+            info!("dep config already exists. app:{}", app_id);
             return self.parse_dep_config(app_id, dep_file);
         }
 
-        let source_id = dec_app.find_source(version).map_err(|e| {
-            error!("app:{} cannot find source for ver {}", app_id, version);
-            e
-        })?;
-        let owner_id = self.get_owner_id(&app_id).await?;
-
-        let _ = AppPackage
-            ::download_dep(&source_id, &owner_id, self.named_cache_client.get().unwrap(), &dep_dir)
-            .await
-            .map_err(|e| {
-                error!("download app dep {} failed, {}", app_id, e);
-                e
-            })?;
-
-        self.parse_dep_config(app_id, dep_file)
+        return Ok(("*".to_string(), "*.".to_string()))
     }
 
     fn parse_dep_config(
@@ -457,7 +443,7 @@ impl AppController {
         let dep_file = File::open(dep_file)?;
         let dep_info: Value = serde_json::from_reader(dep_file)?;
         let dep_map = dep_info.as_object().ok_or_else(|| {
-            let msg = format!("invalid acl file format: {}", dep_info);
+            let msg = format!("invalid dep file format: {}", dep_info);
             error!("{}", msg);
             BuckyError::new(BuckyErrorCode::InvalidFormat, msg)
         })?;

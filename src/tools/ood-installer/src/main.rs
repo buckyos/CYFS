@@ -135,6 +135,12 @@ async fn main_run() {
                 .help(&format!("Sync service packages from repo to local repo store")),
         )
         .arg(
+            Arg::with_name("sync_app_repo")
+                .long("sync-app-repo")
+                .takes_value(false)
+                .help(&format!("Sync app packages from repo to local repo store")),
+        )
+        .arg(
             Arg::with_name("init_ood_daemon")
                 .long("init-ood-daemon")
                 .takes_value(false)

@@ -72,7 +72,7 @@ async fn main_run() {
     let app = App::new(&format!("{}", APP_MANAGER_NAME)).version(cyfs_base::get_version());
 
     let app = prepare_args(app);
-    app.arg(Arg::with_name("sync-repo"))
+    app.arg(Arg::with_name("sync-repo").default_value())
     let matches = app.get_matches();
     let (action, _) = cyfs_util::process::parse_cmd(APP_MANAGER_NAME, &matches);
     if action == ProcessAction::Start || action == ProcessAction::Stop {
